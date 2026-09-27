@@ -16,7 +16,7 @@
     "test": "turbo test"
   },
   "devDependencies": {
-    "@types/node": "^26.6.3",
+    "@types/node": "^24",
     "oxlint": "^1.85.0",
     "prettier": "^3.9.9",
     "turbo": "^2.11.4",
