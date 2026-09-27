@@ -1,3 +1,4 @@
+import { formatDuration } from '@galena/chat-core';
 import type { VoiceMeta } from '@galena/protocol';
 import { Pause, Play } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -6,7 +7,6 @@ import { Pressable, View } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT, BUBBLE_COLORS, MUTED_FOREGROUND } from '@/lib/colors';
-import { formatVoiceDuration } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { useColorScheme } from 'nativewind';
 
@@ -94,7 +94,7 @@ export function VoiceMessage({ voice, outgoing }: VoiceMessageProps) {
           })}
         </View>
         <Text className="text-[13px]" style={{ color: metaColor }}>
-          {formatVoiceDuration(voice.duration_ms)}
+          {formatDuration(voice.duration_ms)}
         </Text>
         <Pressable
           accessibilityRole="button"

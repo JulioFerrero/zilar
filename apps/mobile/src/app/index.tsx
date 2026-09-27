@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Search, SquarePen } from 'lucide-react-native';
+import { Search } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, TextInput, View } from 'react-native';
@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ChatListItem } from '@/components/chat/chat-list-item';
 import { FolderTabs } from '@/components/chat/folder-tabs';
+import { NewChatButton } from '@/components/chat/new-chat-button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -95,14 +96,7 @@ export default function ChatsScreen() {
           </View>
         }
       />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="New chat"
-        onPress={() => console.log('compose: new chat')}
-        className="absolute bottom-6 right-5 h-14 w-14 items-center justify-center rounded-full bg-accent shadow-lg active:bg-accent/90"
-      >
-        <SquarePen size={24} color="#ffffff" />
-      </Pressable>
+      <NewChatButton />
     </SafeAreaView>
   );
 }

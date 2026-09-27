@@ -26,7 +26,7 @@ function message(
   chatId: string,
   id: string,
   sender: Sender,
-  createdAt: string,
+  createdAt: Date,
   content: Content,
 ): UiMessage {
   return {
@@ -122,13 +122,15 @@ export const mockMessagesByChat: Record<string, UiMessage[]> = {
     message('viernes', 'viernes-06', ANA, at(0, 10, 2), { voice: VOICE }),
     message('viernes', 'viernes-07', LUIS, at(0, 10, 5), {
       text: '🎧 on it',
-      replyTo: { senderName: 'Ana', excerpt: '🎤 Voice message (0:12)' },
+      replyTo: { id: 'viernes-06', senderName: 'Ana', text: '🎤 Voice message (0:12)' },
     }),
     message('viernes', 'viernes-08', MARTA, at(0, 10, 20), {
       image: { url: gradientImage('sunset'), width: 1200, height: 800 },
     }),
     message('viernes', 'viernes-09', ME, at(0, 12, 31), { text: 'Great pic 😂' }),
     message('viernes', 'viernes-10', ANA, at(0, 12, 37), { text: 'ok!' }),
+    message('viernes', 'viernes-11', ME, at(0, 12, 38), { text: 'See you there' }),
+    message('viernes', 'viernes-12', ANA, at(0, 12, 40), { text: '🥳🥳' }),
   ],
   'dev-ai': [
     message('dev-ai', 'dev-ai-01', ME, at(1, 22, 10), {
@@ -165,7 +167,7 @@ export const mockMessagesByChat: Record<string, UiMessage[]> = {
     }),
     message('dev-team', 'dev-team-06', RUBEN, at(0, 11, 0), {
       text: 'PR #41 is merged',
-      replyTo: { senderName: 'You', excerpt: 'Deployed and smoke-tested ✅' },
+      replyTo: { id: 'dev-team-03', senderName: 'You', text: 'Deployed and smoke-tested ✅' },
     }),
     message('dev-team', 'dev-team-07', SOFIA, at(0, 11, 1), { text: '🎉' }),
     message('dev-team', 'dev-team-08', ME, at(0, 11, 1), { text: 'Great work everyone 👏' }),
@@ -215,7 +217,7 @@ export const mockMessagesByChat: Record<string, UiMessage[]> = {
     message('family', 'family-04', ME, at(3, 12, 32), { text: 'Beautiful 😍' }),
     message('family', 'family-05', MAMA, at(2, 19, 0), {
       text: 'Dinner at ours on Sunday 🥘',
-      replyTo: { senderName: 'You', excerpt: 'Beautiful 😍' },
+      replyTo: { id: 'family-04', senderName: 'You', text: 'Beautiful 😍' },
     }),
     message('family', 'family-06', ME, at(2, 19, 5), { text: 'Count me in' }),
     message('family', 'family-07', MAMA, at(2, 19, 6), { text: 'Call me when you can 💚' }),

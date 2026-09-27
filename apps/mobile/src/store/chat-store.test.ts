@@ -1,6 +1,13 @@
+import { groupMessages, unreadDividerIndex } from '@galena/chat-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { READ_DELAY_MS, SENT_DELAY_MS, createChatStore } from './chat-store';
+import {
+  READ_DELAY_MS,
+  SENT_DELAY_MS,
+  TYPING_DURATION_MS,
+  TYPING_START_MS,
+  createChatStore,
+} from './chat-store';
 
 describe('chat store', () => {
   beforeEach(() => {
@@ -41,6 +48,14 @@ describe('chat store', () => {
     expect(store.getState().messages('ana')).toHaveLength(before);
   });
 
+  it('keeps the reply reference on the sent message', () => {
+    const store = createChatStore();
+    const replyTo = { id: 'ana-16', senderName: 'Ana', text: 'See you tonight ❤️' };
+    store.getState().sendText('ana', 'On my way', { replyTo });
+
+    expect(store.getState().messages('ana').at(-1)?.replyTo).toEqual(replyTo);
+  });
+
   it('clears unread when a chat is opened', () => {
     const store = createChatStore();
     expect(store.getState().chats.find((chat) => chat.id === 'ana')?.unread).toBe(2);
@@ -58,6 +73,31 @@ describe('chat store', () => {
     store.getState().setActiveFolder('work');
     expect(store.getState().search).toBe('dev');
     expect(store.getState().activeFolder).toBe('work');
+  });
+
+  it('shows typing after the mock delay and clears it again', () => {
+    const store = createChatStore();
+    expect(store.getState().typing).toEqual({});
+
+    vi.advanceTimersByTime(TYPING_START_MS);
+    expect(store.getState().typing).toEqual({
+      ana: { names: ['Ana'] },
+      viernes: { names: ['Luis'] },
+    });
+
+    vi.advanceTimersByTime(TYPING_DURATION_MS);
+    expect(store.getState().typing).toEqual({});
+  });
+
+  it('places the unread divider above the first unread message', () => {
+    const store = createChatStore();
+    const items = groupMessages(store.getState().messages('ana'));
+    const index = unreadDividerIndex(items, 2);
+
+    expect(index).not.toBeNull();
+    const firstUnread = items[index ?? -1];
+    expect(firstUnread?.kind).toBe('message');
+    expect(firstUnread?.kind === 'message' ? firstUnread.message.id : undefined).toBe('ana-15');
   });
 
   it('ships the ten mock chats with their history', () => {

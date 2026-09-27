@@ -51,6 +51,7 @@ module.exports = {
         'badge-muted': 'var(--badge-muted)',
         divider: 'var(--divider)',
         danger: 'var(--danger)',
+        online: 'var(--online)',
       },
       borderRadius: {
         lg: 'var(--radius)',

@@ -37,6 +37,7 @@
     --badge-muted: #c4c9cc;
     --divider: #dfe1e5;
     --danger: #e53935;
+    --online: #4dcd5e;
   }
 
   .dark:root {
@@ -72,5 +73,6 @@
     --badge-muted: #3e546a;
     --divider: #0e1621;
     --danger: #ef5350;
+    --online: #4dcd5e;
   }
 }
