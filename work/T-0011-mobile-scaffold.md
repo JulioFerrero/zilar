@@ -1,7 +1,7 @@
 ---
 id: T-0011
 title: Expo app scaffold in the monorepo (Expo Router, NativeWind, React Native Reusables)
-status: review
+status: merged
 milestone: M0
 branch: task/T-0011-mobile-scaffold
 model: opencode-go/deepseek-v4.1-flash
@@ -248,7 +248,23 @@ the alternative is a repo-wide `nodeLinker: hoisted`, which the spec says needs 
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict: approved.** Merged by Claude after rebasing onto the current `main`.
+
+This is excellent work. The app builds, installs and runs in the iOS simulator, and the report is exact.
+
+### What I verified myself (on commit 80007d9, then again after the rebase)
+- **Screenshots:**
+  - Light: `/private/var/folders/gm/h0mkvrd15q3fvrf_vtbkvh340000gn/T/opencode/galena-ios-2.png`
+  - Dark: `/private/var/folders/gm/h0mkvrd15q3fvrf_vtbkvh340000gn/T/opencode/galena-ios-dark3.png`
+  - Both show the correct screen (Galena, subtitle, protocol line), centered. The dark scheme switches correctly.
+- No Metro server left running (port 8081 is free).
+- After rebasing onto `main` (T-0013, T-0002 and T-0006 had merged), I regenerated the lockfile with `pnpm install`. Then `format:check`, `lint`, `typecheck`, `test` and `build` (including `expo export`) all PASS. Details in the merge commit.
 
 ### Findings
--
+1. **(accepted)** The explicit `react-native-css-interop@0.2.7` is the right fix with pnpm's isolated linker. It's much better than a repo-wide `nodeLinker: hoisted`. Keep it in sync with the version NativeWind pins, and add a comment in `apps/mobile/README.md` next time it's touched.
+2. **(accepted)** The `expo/types` reference in `nativewind-env.d.ts` fixes typecheck in a clean checkout.
+3. **(accepted)** The `src/app` layout is fine. The spec's `app/` meant "the routes folder".
+4. **(accepted)** React Native Reusables is copied into the repo on purpose, the same way shadcn works.
+5. **(accepted)** Skipping `prettier-plugin-tailwindcss` is fine for now. We can revisit it when the real UI work starts.
+6. **(note)** The `@types/react` 19.2 / `@types/react-dom` 19.3 peer warning comes from Expo's pins and is harmless. It resolves with Expo SDK 58.
+7. **(process note)** `expo run:ios` leaves Metro running, which caused the 40-minute timeout. Future specs should say to launch with `--no-bundler` or to stop Metro after the build.
