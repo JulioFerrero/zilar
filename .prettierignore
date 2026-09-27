@@ -1,0 +1,12 @@
+# Files not owned by the scaffold task and not Prettier-shaped yet.
+# Kept out of `prettier --check` so `pnpm format:check` reflects the code we own.
+AGENTS.md
+README.md
+docs/
+work/
+
+# Generated or third-party content
+pnpm-lock.yaml
+dist/
+coverage/
+.turbo/

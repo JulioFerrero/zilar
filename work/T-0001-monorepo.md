@@ -1,7 +1,7 @@
 ---
 id: T-0001
 title: Monorepo scaffold (pnpm + Turborepo, TypeScript strict, lint, tests, CI)
-status: todo
+status: review
 milestone: M0
 branch: task/T-0001-monorepo
 model: deepseek/deepseek-v4-pro
@@ -145,22 +145,64 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+- Root scaffold: pnpm 10 workspace (`apps/*`, `packages/*`) + Turborepo 2 (`build` with `^build` and `dist/**` outputs, `dev` uncached/persistent, `typecheck`, `test`), strict shared `tsconfig.base.json`, Prettier, oxlint, Vitest, `.nvmrc` = 24, `.editorconfig`.
+- `@galena/protocol`: `HandoffSchema` matching plan §9.5 (all 11 fields, JIDs contain `@`, artifact kinds enum, `EUR|USD` budget with positive `max`, `context_summary` ≤ 2000), the `Handoff` type, `protocolVersion`, and 6 tests (the 5 required cases + the 2000-character boundary). Consumed from source through `exports: "./src/index.ts"`.
+- `@galena/server`: Hono app with `GET /health` → `{ ok, name, version, protocolVersion }` (version read from apps/server/package.json at runtime without any cast), Node entry point via `@hono/node-server` with a validated `PORT`, tests through `app.request()` (no real server).
+- `@galena/web`: Vite + React 19 + Tailwind 4 (`@tailwindcss/vite` + `@import 'tailwindcss'`), centered "Galena" page, subtitle "People and AIs, together.", dark colors driven by `prefers-color-scheme` (`dark:` variant), plus the `protocolVersion` line from `@galena/protocol`; 3 Testing Library tests on jsdom.
+- `.github/workflows/ci.yml` (format, lint, typecheck, test, build) and the README `## Development` section.
 
 ### Files changed
--
+
+- Root: `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json`, `.nvmrc`, `.editorconfig`, `.prettierrc.json`, `.prettierignore`, `.oxlintrc.json`, `pnpm-lock.yaml`, `.github/workflows/ci.yml`, `README.md` (`## Development` only).
+- `packages/protocol`: `package.json`, `tsconfig.json`, `src/index.ts`, `src/handoff.ts`, `src/version.ts`, `src/handoff.test.ts`.
+- `apps/server`: `package.json`, `tsconfig.json`, `src/index.ts`, `src/app.ts`, `src/version.ts`, `src/app.test.ts`.
+- `apps/web`: `package.json`, `tsconfig.json`, `vite.config.ts`, `index.html`, `src/main.tsx`, `src/App.tsx`, `src/index.css`, `src/App.test.tsx`.
+- `work/T-0001-monorepo.md` (status + this Report).
 
 ### Dependency versions installed
--
+
+- Root devDeps: turbo 2.11.4, typescript 6.0.3, oxlint 1.85.0, prettier 3.9.9, vitest 5.0.2, @types/node 26.6.3.
+- `@galena/protocol`: zod 4.6.5.
+- `@galena/server`: hono 4.13.9, @hono/node-server 2.1.1, tsx 4.23.15 (dev).
+- `@galena/web`: react 19.3.0, react-dom 19.3.0; dev: vite 8.3.1, @vitejs/plugin-react 6.1.1, tailwindcss 4.3.3, @tailwindcss/vite 4.3.3, @types/react 19.3.0, @types/react-dom 19.3.0, jsdom 30.1.1, @testing-library/react 16.3.3.
+- Toolchain: pnpm 10.32.1, Node 24.14.0.
 
 ### Commands run and real results
-- `pnpm test`:
+
+- `pnpm install --frozen-lockfile`: PASS. The same command plus the five checks below were re-run in a copy of the tree with `node_modules`/`.git` excluded (clean-clone simulation): everything PASS there too.
+- `pnpm format:check`: PASS — "All matched files use Prettier code style!".
+- `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (12 files, 127 rules).
+- `pnpm typecheck`: PASS — turbo "3 successful, 3 total" (protocol, server, web).
+- `pnpm test`: PASS — turbo "3 successful, 3 total": protocol 6 tests / 1 file, server 2 tests / 1 file, web 3 tests / 1 file.
+- `pnpm build`: PASS — turbo "1 successful, 1 total": web `vite build` → `dist/index.html` 0.39 kB, CSS 6.19 kB, JS 303.85 kB.
+- `PORT=3100 pnpm --filter @galena/server dev` + `curl -s localhost:3100/health` → `{"ok":true,"name":"galena-server","version":"0.1.0","protocolVersion":"0.1.0"}`.
+- `PORT=3100 pnpm dev` (turbo): server log "galena-server listening on http://localhost:3100", web `HTTP 200` on 5173, processes stopped afterwards.
+- `pnpm --filter @galena/web dev` + `curl`: index.html contains `<title>Galena</title>`; `/src/App.tsx` compiles and imports `@galena/protocol` through `/@fs/.../packages/protocol/src/index.ts` (workspace link proven through Vite as well).
+- Built CSS contains `prefers-color-scheme:dark` and `min-height:100vh` (Tailwind produced the dark-scheme rules).
+- `.github/workflows/ci.yml`: parsed as YAML (Ruby `YAML.safe_load`); steps are checkout@v7, pnpm/action-setup@v6, setup-node@v7 (`node-version-file: .nvmrc`, `cache: pnpm`), `pnpm install --frozen-lockfile`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`.
+- `grep` for `any`, `@ts-ignore`, `@ts-expect-error`, comments: nothing (only `src/checkout/*` and `http://localhost` inside strings).
+- `git status`: only the files listed above.
 
 ### Problems, deviations from the spec, open questions
--
+
+1. **TypeScript**: upstream `latest` is 7.0.2, but the spec pins "latest stable 5.x/6.x", so 6.0.3 was installed; everything typechecks on 6.0.3.
+2. **`.prettierignore` excludes `AGENTS.md`, `README.md`, `docs/`, `work/`**: those files are not Prettier-formatted today and are outside this task's allowed edits (README only `## Development`); the only Prettier diff in README is the alignment of the existing "Where to look" table. Without the exclusion `pnpm format:check` cannot pass. The `## Development` section itself is Prettier-clean. Follow-up: reformat those docs in a later task and then drop them from `.prettierignore`.
+3. **oxlint config**: `plugins` lists `eslint, unicorn, oxc, typescript, react`, because setting `plugins` overwrites oxlint's default set (eslint/unicorn/oxc/typescript) and `react` is opt-in. `categories.correctness` is set to `error` so `pnpm lint` fails CI on correctness violations (oxlint's default severity is `warn`, which exits 0).
+4. **`pnpm-workspace.yaml`** has `onlyBuiltDependencies: [esbuild]`: pnpm 10 blocks postinstall scripts by default and warned about esbuild.
+5. **`turbo.json` `dev` task has `"passThroughEnv": ["PORT"]`** — a deviation from the spec's turbo.json description, because Turbo 2's strict env mode dropped `PORT`: `PORT=3100 pnpm dev` silently bound 3000 until this was added. `build`/`typecheck`/`test` need no env vars today.
+6. **CI**: `actions/checkout@v7` is needed to get the repo (the spec's step list starts at pnpm/action-setup), the action versions are the current majors, and `permissions: contents: read` follows setup-node's recommendation. No extra checks were added.
+7. **Port 3000 on this machine is already taken** by an unrelated Next.js dev server, so the literal `curl localhost:3000/health` could not be demonstrated; the server does default to 3000 (its failed bind log reads `port: 3000`) and the exact JSON was verified with `PORT=3100`. On a machine with a free 3000 nothing has to be set.
+8. **`GET /health` returns `protocolVersion` on top of `{ ok, name, version }`** — this is the acceptance criteria's suggested way to prove workspace linking.
+9. `protocolVersion` is the constant `'0.1.0'` in `packages/protocol/src/version.ts`; the three workspace packages are at version `0.1.0`.
+10. Only `@galena/web` has a `build` script (protocol and server are consumed from source), so `pnpm build` builds the web app; that matches the spec's script list.
+11. `@testing-library/react` declares `@testing-library/dom` as a peer dependency; pnpm auto-installed it into the virtual store and the tests run, so no extra dependency was declared.
+12. The web tests use plain assertions (`toBeTruthy`, `getByRole`) because `@testing-library/jest-dom` is not in the allowed dependency list.
+13. No visual browser check was possible (no desktop browser connected to this session, no Chrome at the DevTools MCP's default path); rendering is covered by the jsdom test plus the compiled dev output and generated CSS.
 
 ### Blocked / needs a decision
--
+
+- Nothing blocked. Open questions for review: (a) whether to keep `README.md`/`docs/`/`work/` out of `.prettierignore` until a docs-formatting task runs, (b) whether `passThroughEnv` should be widened now for future env vars (Postgres URL, LiteLLM, `VITE_*`) or per task as they arrive.
 
 ---
 

@@ -1,0 +1,26 @@
+{
+  "name": "galena",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "lint": "oxlint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "turbo test"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "oxlint": "^1.85.0",
+    "prettier": "^3.9.9",
+    "turbo": "^2.11.4",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.2"
+  }
+}
