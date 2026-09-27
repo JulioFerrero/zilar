@@ -1,1 +1,185 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+@theme inline {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --breakpoint-wide: 900px;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-danger: var(--danger);
+  --color-divider: var(--divider);
+  --color-list-hover: var(--list-hover);
+  --color-list-active: var(--list-active);
+  --color-list-active-foreground: var(--list-active-foreground);
+  --color-badge-muted: var(--badge-muted);
+  --color-bubble-in: var(--bubble-in);
+  --color-bubble-out: var(--bubble-out);
+  --color-bubble-in-meta: var(--bubble-in-meta);
+  --color-bubble-out-meta: var(--bubble-out-meta);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #3390ec;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #000000;
+  --muted: #f4f4f5;
+  --muted-foreground: #707579;
+  --accent: #3390ec;
+  --accent-foreground: #ffffff;
+  --destructive: #e53935;
+  --destructive-foreground: #ffffff;
+  --border: #dfe1e5;
+  --input: #dfe1e5;
+  --ring: #3390ec;
+  --danger: #e53935;
+  --divider: #dfe1e5;
+  --list-hover: #f4f4f5;
+  --list-active: #3390ec;
+  --list-active-foreground: #ffffff;
+  --badge-muted: #c4c9cc;
+  --bubble-in: #ffffff;
+  --bubble-out: #eeffde;
+  --bubble-in-meta: #a0acb6;
+  --bubble-out-meta: #4fae4e;
+  --radius: 0.75rem;
+  --chat-background: linear-gradient(135deg, #c9dfc5 0%, #d8e8f0 100%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #17212b;
+    --foreground: #f5f5f5;
+    --card: #182533;
+    --card-foreground: #f5f5f5;
+    --popover: #17212b;
+    --popover-foreground: #f5f5f5;
+    --primary: #5288c1;
+    --primary-foreground: #ffffff;
+    --secondary: #202b36;
+    --secondary-foreground: #f5f5f5;
+    --muted: #202b36;
+    --muted-foreground: #708499;
+    --accent: #5288c1;
+    --accent-foreground: #ffffff;
+    --destructive: #ef5350;
+    --destructive-foreground: #ffffff;
+    --border: #0e1621;
+    --input: #202b36;
+    --ring: #5288c1;
+    --danger: #ef5350;
+    --divider: #0e1621;
+    --list-hover: #202b36;
+    --list-active: #2b5278;
+    --list-active-foreground: #ffffff;
+    --badge-muted: #3e546a;
+    --bubble-in: #182533;
+    --bubble-out: #2b5278;
+    --bubble-in-meta: #6d7f8f;
+    --bubble-out-meta: #7da8d3;
+    --chat-background: #0e1621;
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  button {
+    font: inherit;
+  }
+}
+
+.chat-background {
+  background: var(--chat-background);
+}
+
+.bubble-tail-out::after,
+.bubble-tail-in::after {
+  position: absolute;
+  bottom: 0;
+  width: 8px;
+  height: 14px;
+  content: '';
+}
+
+.bubble-tail-out::after {
+  right: -7px;
+  background: var(--bubble-out);
+  clip-path: path('M0 0 C0 7 3 12 8 14 L0 14 Z');
+}
+
+.bubble-tail-in::after {
+  left: -7px;
+  background: var(--bubble-in);
+  clip-path: path('M8 0 C8 7 5 12 0 14 L8 14 Z');
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 35%, transparent) transparent;
+}
+
+@keyframes galena-typing {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+.typing-dot {
+  animation: galena-typing 1.2s infinite ease-in-out both;
+}

@@ -1,23 +1,16 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
-import { protocolVersion } from '@galena/protocol';
+import { describe, expect, it } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { App } from './App';
 
-afterEach(cleanup);
-
 describe('App', () => {
-  it('renders the Galena heading', () => {
+  it('renders the chat shell with the search field', () => {
     render(<App />);
-    expect(screen.getByRole('heading', { name: 'Galena' })).toBeTruthy();
+    expect(screen.getByLabelText('Search chats')).toBeTruthy();
   });
 
-  it('renders the subtitle', () => {
+  it('renders the mock chat list', () => {
     render(<App />);
-    expect(screen.getByText('People and AIs, together.')).toBeTruthy();
-  });
-
-  it('renders the protocol version from @galena/protocol', () => {
-    render(<App />);
-    expect(screen.getByText(`protocol v${protocolVersion}`)).toBeTruthy();
+    expect(screen.getByText('Ana')).toBeTruthy();
+    expect(screen.getByText('Dev team')).toBeTruthy();
   });
 });
