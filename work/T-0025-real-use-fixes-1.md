@@ -215,10 +215,51 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:** Round 3 (final): changes requested
+**Verdict:** Round 3: **approved**. Merging.
 
-History: round 1 verified; round 2 fixed all three findings and is good work. One
-gap is left, and it is the one place where the fix provably does not take effect.
+### What the lead verified in round 3
+- **Uncached** run of every check in the worktree. My first attempt was worthless:
+  turbo replayed the worker's own cache and finished in seconds, so I re-ran with
+  `--force`. Real timings: `test` 53 s, `build` 32 s, `typecheck` 6 s,
+  `format:check` 2 s, `lint` exit 0. All PASS. The test counts moved exactly with
+  the new code (web 76 -> 78, xmpp-core 114 -> 115), which is the proof the new
+  tests actually executed rather than being cached.
+  Final counts: web 78, xmpp-core 115 passed / 3 skipped, server 155, protocol
+  132, mobile 48, chat-core 50, agent-drivers 19, devtools 9.
+- **Live against the running stack:** `integration.test.ts` and
+  `integration-invites.test.ts` re-run by the lead with
+  `GALENA_XMPP_INTEGRATION=1`: **2/2 passed** (messages, payloads, typing,
+  displayed, reconnect with a fresh token, MAM, XEP-0249 invitations and roster
+  pushes), without stopping or resetting anything.
+- **Protocol-truth probe.** I wrote a throwaway probe (never committed, deleted
+  after) that connected one real client to a real room and asked the server what
+  it reflects back for my own chat state. The result is worth recording, because
+  it partly corrects the reasoning in the round-3 review:
+
+  ```
+  typing:    fromJid = <me>@galena.localhost   outgoing = true   (resolved)
+  displayed: fromJid = <me>@galena.localhost   outgoing = true   (resolved)
+  ```
+
+  So against ejabberd 26.07 the reflection of my own state **is** resolved to my
+  bare JID, and the round-2 `isOwnSender` check would usually have caught it. The
+  round-3 `outgoing` flag is therefore hardening, not the thing that rescues the
+  common path. It still matters, for two concrete reasons:
+  1. `Me.jid` is `z.string().nullable().optional()` in `apps/web/src/lib/api.ts`,
+     and the store initialises `me: undefined` until `GET /api/me` resolves. While
+     it is null or missing, `isOwnSender` returns false and the bug is back.
+     `outgoing` comes from the sender resolution and does not depend on it.
+  2. The unresolved branch of `resolveSender()` is reachable whenever our own
+     occupant is not yet in the roster, and there the JID check can never match.
+
+  The fix is deterministic in both cases, and it is the right place to fix it.
+- Scope: every path in `git diff main...HEAD` is inside the Allowed files. No new
+  dependencies, no `any`, no `@ts-ignore`, no `console.*` in the code. The
+  worktree is clean and nothing untracked is being merged.
+
+### Findings
+- None outstanding. Findings 1, 2 and 3 from round 1, and finding 1 from round 3,
+  are all resolved and verified.
 
 ### What the lead verified in round 2
 - Re-ran every check in the worktree myself, without trusting the Report:
