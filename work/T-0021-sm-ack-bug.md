@@ -1,7 +1,7 @@
 ---
 id: T-0021
 title: Fix random disconnects — XEP-0198 stream-management ack miscount (xmpp.js over WebSocket)
-status: review
+status: merged
 milestone: M1
 branch: task/T-0021-sm-ack-bug
 model: opencode-go/deepseek-v4.1-flash
@@ -192,7 +192,18 @@ No `pnpm-lock.yaml` change, no dependency change, no `patches/`, no root-file ch
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict: approved.** Merged by Claude.
+
+The root-cause analysis is outstanding, with exact code references and a stanza trace. It found **two** xmpp.js 0.14 counter bugs:
+- the pre-`<enabled/>` stanzas counted because the reset is asynchronous
+- IQ replies never counted, because the IQ caller short-circuits `next()`
+
+### What I verified myself (on commit 5b3dead)
+- `format:check`, `lint`, `typecheck`, `test` and `build`: all PASS.
+- **3 consecutive integration runs** against the dev stack (including the new ≥60 s, ≥200-stanza stress test): **96/96 passed each time**. ejabberd logged **0** "acknowledged more stanzas" closes during my runs.
+- The fix follows XEP-0198 §4: reset to 0 on `<enabled/>`, continue after `<resumed/>`, count only message/presence/iq, and rewrite only the `h` of outgoing `<a/>` / `<resume/>`. Stream management stays enabled. No `node_modules` patch.
 
 ### Findings
--
+1. **(accepted)** Our own counter plus a `send` wrapper. It's cleaner than poking xmpp.js internals, and the reasoning is documented in the code.
+2. **(accepted, answer to 4)** Keep `afterOnline` as it is. With a correct counter, sending presence before `<enable/>` is fine.
+3. **(note)** Re-check this when upgrading `@xmpp/client`. If upstream fixes it, our counter becomes redundant but still correct. There's a comment in `stream-management.ts`.
