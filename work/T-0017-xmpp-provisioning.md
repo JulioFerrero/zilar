@@ -1,7 +1,7 @@
 ---
 id: T-0017
 title: Server — XMPP account provisioning on sign-up, chat token endpoint, profile name
-status: review
+status: merged
 milestone: M1
 branch: task/T-0017-xmpp-provisioning
 model: opencode-go/deepseek-v4.1-flash
@@ -157,7 +157,25 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict: approved.** Merged by Claude.
+
+This is excellent. Provisioning is idempotent and safe under concurrency, a sign-up never gets stuck (lazy retry), there's a clean 503 path, rate limiting, and the name update goes through Better Auth's API.
+
+### What I verified myself (on commit 5775c5f)
+- `install`, `format:check`, `lint`, `typecheck`, `test` (server **121**) and `build`: all PASS.
+- **First real end-to-end run against the dev stack** (Postgres, ejabberd), with the server on :3188:
+  1. `invite:create` CLI → it ran the migrations and printed an invite link
+  2. requesting a code **with** the invite → 200, and the code arrived in the dev mail log
+  3. signing in with the code and the invite → 200 plus a session cookie
+  4. `PATCH /api/me` `{name}` → 200. `GET /api/me` shows the name and a `jid`.
+  5. `POST /api/xmpp/token` → `{ jid, token, expiresAt, service, domain, mucDomain }`
+  6. a second, new email trying the **used** invite → the same 200, but **no code sent** (T-0015 gating works)
+  7. **XMPP login to ejabberd with the server-issued token → online as the right JID**
 
 ### Findings
--
+1. **(accepted)**
+   - Lowercased Better Auth ids as localparts (random 32 characters). The collision risk is negligible, and the unique constraint rejects a collision rather than merging accounts.
+   - `GET /api/me` has no side effects.
+   - The `PATCH` response shape.
+   - The 503 `xmpp_unavailable` response.
+   - Counting rate-limited requests before provisioning.
