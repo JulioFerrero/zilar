@@ -1,0 +1,168 @@
+import { View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+
+import { Avatar } from '@/components/chat/avatar';
+import { ImageMessage } from '@/components/chat/image-message';
+import { PayloadCard } from '@/components/chat/payload-card';
+import { ReplyQuote } from '@/components/chat/reply-quote';
+import { Ticks } from '@/components/chat/ticks';
+import { VoiceMessage } from '@/components/chat/voice-message';
+import { Text } from '@/components/ui/text';
+import { senderColor } from '@/lib/avatar';
+import { asColorScheme } from '@/lib/color-scheme';
+import { BUBBLE_COLORS } from '@/lib/colors';
+import { formatTime } from '@/lib/time';
+import { CURRENT_USER_ID, type UiMessage } from '@/lib/types';
+import { cn } from '@/lib/utils';
+import { useColorScheme } from 'nativewind';
+
+const TAIL_WIDTH = 9;
+const TAIL_HEIGHT = 12;
+
+function BubbleTail({ outgoing, color }: { outgoing: boolean; color: string }) {
+  return (
+    <Svg
+      width={TAIL_WIDTH}
+      height={TAIL_HEIGHT}
+      viewBox={`0 0 ${TAIL_WIDTH} ${TAIL_HEIGHT}`}
+      style={
+        outgoing
+          ? { position: 'absolute', right: -8, bottom: 0 }
+          : { position: 'absolute', left: -8, bottom: 0, transform: [{ scaleX: -1 }] }
+      }
+    >
+      <Path
+        d={`M0 0 C0.5 6.5 2.5 9.5 ${TAIL_WIDTH} ${TAIL_HEIGHT} L0 ${TAIL_HEIGHT} Z`}
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+function BubbleMeta({
+  message,
+  outgoing,
+  color,
+  className,
+}: {
+  message: UiMessage;
+  outgoing: boolean;
+  color: string;
+  className?: string;
+}) {
+  return (
+    <View className={cn('flex-row items-center gap-1', className)}>
+      <Text className="text-[12px]" style={{ color }}>
+        {formatTime(message.createdAt)}
+      </Text>
+      {outgoing ? <Ticks status={message.status} color={color} size={14} /> : null}
+    </View>
+  );
+}
+
+type MessageBubbleProps = {
+  message: UiMessage;
+  isGroup: boolean;
+  isFirstInGroup: boolean;
+  isLastInGroup: boolean;
+};
+
+export function MessageBubble({
+  message,
+  isGroup,
+  isFirstInGroup,
+  isLastInGroup,
+}: MessageBubbleProps) {
+  const scheme = asColorScheme(useColorScheme().colorScheme);
+  const colors = BUBBLE_COLORS[scheme];
+  const outgoing = message.senderId === CURRENT_USER_ID;
+  const metaColor = outgoing ? colors.outgoingMeta : colors.incomingMeta;
+  const showSenderName = isGroup && !outgoing && isFirstInGroup;
+  const showAvatar = isGroup && !outgoing && isLastInGroup;
+  return (
+    <View
+      className={cn(
+        'flex-row px-2',
+        outgoing ? 'justify-end' : 'items-end',
+        isLastInGroup ? 'mb-2' : 'mb-0.5',
+      )}
+    >
+      {!outgoing ? (
+        showAvatar ? (
+          <Avatar id={message.senderId} name={message.senderName} size={34} className="mr-2" />
+        ) : (
+          <View className="mr-2" style={{ width: 34 }} />
+        )
+      ) : null}
+      <View className={cn('max-w-[80%] shrink', outgoing ? 'items-end' : 'items-start')}>
+        <View className="relative">
+          <View
+            className={cn(
+              'rounded-2xl px-2.5 py-1.5',
+              outgoing ? 'bg-bubble-out' : 'bg-bubble-in',
+              isLastInGroup ? (outgoing ? 'rounded-br-none' : 'rounded-bl-none') : null,
+            )}
+          >
+            {showSenderName ? (
+              <Text
+                className="text-[14px] font-semibold"
+                style={{ color: senderColor(message.senderId) }}
+              >
+                {message.senderName}
+              </Text>
+            ) : null}
+            {message.replyTo ? <ReplyQuote reply={message.replyTo} /> : null}
+            {message.card ? (
+              <>
+                <PayloadCard card={message.card} />
+                <BubbleMeta
+                  message={message}
+                  outgoing={outgoing}
+                  color={metaColor}
+                  className="mt-1 justify-end"
+                />
+              </>
+            ) : message.image ? (
+              <View className="relative">
+                <ImageMessage image={message.image} />
+                <View className="absolute bottom-2 right-2 flex-row items-center gap-1 rounded-full bg-black/40 px-2 py-0.5">
+                  <Text className="text-[11px] text-white">{formatTime(message.createdAt)}</Text>
+                  {outgoing ? <Ticks status={message.status} color="#ffffff" size={13} /> : null}
+                </View>
+                {message.text ? (
+                  <Text className="mt-1 px-0.5 text-[15px] text-foreground">{message.text}</Text>
+                ) : null}
+              </View>
+            ) : message.voice ? (
+              <>
+                <VoiceMessage voice={message.voice} outgoing={outgoing} />
+                <BubbleMeta
+                  message={message}
+                  outgoing={outgoing}
+                  color={metaColor}
+                  className="mt-1 justify-end"
+                />
+              </>
+            ) : (
+              <Text className="text-[15px] leading-5 text-foreground">
+                {message.text}
+                <Text className="text-[12px]" style={{ color: metaColor }}>
+                  {'  '}
+                  {formatTime(message.createdAt)}
+                  {outgoing && message.status !== 'sending'
+                    ? message.status === 'read'
+                      ? ' ✓✓'
+                      : ' ✓'
+                    : ''}
+                </Text>
+              </Text>
+            )}
+          </View>
+          {isLastInGroup ? (
+            <BubbleTail outgoing={outgoing} color={outgoing ? colors.outgoing : colors.incoming} />
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+}
