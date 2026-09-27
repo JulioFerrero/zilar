@@ -1,7 +1,7 @@
 ---
 id: T-0013
 title: Protocol v0 — zod schemas for Galena's chat payloads
-status: todo
+status: review
 milestone: M0
 branch: task/T-0013-protocol-payloads
 model: opencode-go/deepseek-v4.1-flash
@@ -126,16 +126,37 @@ pnpm test
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Added the protocol payload schemas as zod v4 strict objects with `z.infer` types:
+  - `common.ts`: `JidSchema` (non-empty, ≤3071, exactly one `@`, no whitespace), `IdSchema` (≤128), `IsoDateTimeSchema` (`z.iso.datetime({ offset: true })`), `CurrencySchema`, `MoneySchema` (amount ≥ 0), `BudgetSchema` (max > 0), `ArtifactKindSchema`, `ArtifactRefSchema` (`ref` = `IdSchema` ∪ URL ≤ 2048).
+  - `task.ts`: `TaskStateSchema` (7 A2A states), `TaskSchema`, `DecisionSchema`, `BoardArtifactSchema` (`ArtifactRef & { id }`), `BoardUpdateSchema` (discriminated union on `op`: `task.created`, `task.updated`, `decision.added`, `artifact.added`; each has `room`).
+  - `approval.ts`: `ApprovalRequestSchema` (64 lowercase hex `args_hash`), `ApprovalDecisionSchema`.
+  - `progress.ts`: `ProgressSchema`, `PreviewSchema` (http/https URL), `CostTokensSchema`, `CostSchema`.
+  - `wake.ts`: `WakeReasonSchema`.
+  - `poll.ts`: `PollOptionSchema`, `PollSchema` (2–10 options, unique ids), `PollVoteSchema` (1–10 unique `option_ids`).
+  - `voice.ts`: `VoiceTranscriptSchema`, `VoiceMetaSchema`.
+- Added `payload.ts`: `PayloadSchema` (discriminated union on `type`, all 12 variants `{ v: 0, type, data }`), `Payload`, `MAX_PAYLOAD_BYTES` (64 KiB), `encodePayload` (validates via `PayloadSchema.parse`, compact `JSON.stringify`), and `decodePayload` (never throws; rejects too-large, invalid JSON, non-object, unknown `type`, unsupported `v`, and schema failures with short fixed messages that never echo the input).
+- Updated `handoff.ts` to reuse `JidSchema` for `from`/`to` and `ArtifactRefSchema` for `artifacts`; also reused `IdSchema` for `task_id` and a shared `BudgetSchema`, and made the object strict.
+- Updated `index.ts` to export everything and bumped `protocolVersion` to `0.2.0`.
+- Added a Vitest file next to each schema module (valid example + ≥2 invalid cases each), plus the required `JidSchema`, `PollSchema`/`PollVoteSchema` uniqueness, and `ApprovalRequestSchema` hash tests, round-trips for every payload `type`, the decode failure cases, a hostile-input `try`/`catch` test, and a UTF-8 byte-count test.
 
 ### Files changed
--
+- Modified: `packages/protocol/src/handoff.ts`, `packages/protocol/src/index.ts`, `packages/protocol/src/version.ts`, `work/T-0013-protocol-payloads.md` (status + this report).
+- Added: `packages/protocol/src/common.ts`, `task.ts`, `approval.ts`, `progress.ts`, `wake.ts`, `poll.ts`, `voice.ts`, `payload.ts` and their `.test.ts` files (`common.test.ts`, `task.test.ts`, `approval.test.ts`, `progress.test.ts`, `wake.test.ts`, `poll.test.ts`, `voice.test.ts`, `payload.test.ts`).
 
 ### Commands run and real results
--
+- `pnpm install`: "Lockfile is up to date, resolution step is skipped. Already up to date. Done in 448ms".
+- `pnpm format:check`: "All matched files use Prettier code style!" (exit 0).
+- `pnpm lint`: "Found 0 warnings and 0 errors. Finished in 8ms on 28 files with 127 rules" (exit 0).
+- `pnpm typecheck`: "Tasks: 3 successful, 3 total" (protocol cache miss, web/server cache hit).
+- `pnpm exec turbo typecheck --force` (cache bypass): "Tasks: 3 successful, 3 total, 0 cached" — `@galena/protocol`, `@galena/web`, `@galena/server` all pass.
+- `pnpm test`: "Tasks: 3 successful, 3 total"; `@galena/protocol` 122 passed (9 files), `@galena/server` 2 passed, `@galena/web` 3 passed.
+- `pnpm exec turbo test --force` (cache bypass): `@galena/protocol` 122 passed, `@galena/server` 2 passed, `@galena/web` 3 passed. Includes the 6 existing handoff tests.
+- During development one test failed: `PreviewSchema` rejected `http://localhost:3000` because `z.httpUrl()` requires a dotted host. Fixed by using `z.url({ protocol: /^https?$/ })`, which accepts `http://localhost:3000`/`http://127.0.0.1:3000` and still rejects `ftp://`/`mailto:`.
 
 ### Problems, deviations from the spec, open questions
--
+- Deviation (small, within scope): `handoff.ts` `task_id` now uses `IdSchema` (max 128), the handoff object is strict, and its `budget` uses the shared `BudgetSchema` instead of an inline duplicate. The spec only required `from`/`to` → `JidSchema` and `artifacts` → `ArtifactRefSchema`; the extra reuse keeps the schemas consistent and all handoff tests still pass.
+- Implementation note: UTF-8 byte length in `decodePayload` is computed with a small local `utf8ByteLength` helper. `TextEncoder` is not available under this package's `lib: ["ES2023"]` tsconfig (no DOM/global node types), and the helper keeps the module runtime-agnostic (no Node `Buffer`). `prettier`/`oxlint` pass.
+- No open questions. No new dependencies; only allowed files touched; no `any`, no `as unknown as`, no `@ts-ignore`, no disabled checks.
 
 ---
 
