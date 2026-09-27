@@ -1,7 +1,7 @@
 ---
 id: T-0024
 title: Web — real login (invite, email code, name) and real chats (xmpp-core + server APIs)
-status: review
+status: merged
 milestone: M1
 branch: task/T-0024-web-real-data
 model: opencode-go/deepseek-v4.1-flash
@@ -162,7 +162,23 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict: approved.** Merged by Claude. **Julio used it live.**
 
-### Findings
--
+### What I verified myself (on commit 05cbede)
+- `format:check`, `lint`, `typecheck`, `test` (web **62**, xmpp-core **98**) and `build`: all PASS.
+- **Live on the dev stack** (Postgres, ejabberd, server on :3188, Vite on :5173 proxying `/api`):
+  - **API level:** a bootstrap invite → A signs up. A's invite → B signs up. Contacts are created automatically in both directions. A creates a group. Both chat lists are correct and tokens are issued.
+  - **Chat through `xmpp-core`:** a DM and a group message arrive, with the sender resolved to the real JID. Group history loads and occupants are listed.
+  - **In a real browser** (simulator Safari): the invite page validates the code ("You're invited to Galena") and the sign-in page renders.
+  - **Julio signed up himself** in his Mac browser through an invite from "Claude (test)", entering the email code and his name, and **sent his first real message**. It arrived, and he received the reply. A group with 3 real accounts works.
+
+### Findings (from real use, fixed in T-0025)
+1. **(bug)** The chat-list preview stays on the 🕐 "sending" icon after the bubble shows ✓. The list's `lastMessage` status isn't updated when the message status changes.
+2. **(bug)** Being added to a group, or getting a new contact, doesn't update the chat list until you reload. Fix: the server sends XEP-0249 direct invitations when adding group members, and the client reacts to invitations and roster pushes by refreshing `/api/chats`.
+3. **(accepted)**
+   - the three new dependencies (`better-auth` client, `zod`, `xmpp-core`)
+   - approximate unread counts
+   - everything in the personal space
+   - "New message" pointing to invites
+   - sign-out reloads the page
+4. **(note)** The `node:dns` externalization warning from `@xmpp/resolve` is harmless in practice: the browser connects with an explicit WebSocket `service` URL. It could be silenced later with a Vite alias.
