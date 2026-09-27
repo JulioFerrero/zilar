@@ -24,9 +24,11 @@ import {
   FORWARD_NAMESPACE,
   MAM_NAMESPACE,
   MUC_USER_NAMESPACE,
+  OCCUPANT_ID_NAMESPACE,
   REPLY_NAMESPACE,
   RSM_NAMESPACE,
 } from './namespaces';
+import type { OccupantsEvent } from './types';
 
 type FakeClient = XmppClient & {
   sent: XmppElement[];
@@ -158,6 +160,32 @@ function joinPresences(fake: FakeClient, roomJid: string, nick: string): XmppEle
       stanza.attrs['to'] === `${roomJid}/${nick}` &&
       stanza.attrs['type'] === undefined,
   );
+}
+
+function mucPresence(
+  roomJid: string,
+  nick: string,
+  attrs: {
+    realJid?: string;
+    occupantId?: string;
+    affiliation?: string;
+    role?: string;
+    type?: string;
+  } = {},
+): XmppElement {
+  const itemAttrs: Record<string, string> = {};
+  if (attrs.affiliation !== undefined) itemAttrs['affiliation'] = attrs.affiliation;
+  if (attrs.role !== undefined) itemAttrs['role'] = attrs.role;
+  if (attrs.realJid !== undefined) itemAttrs['jid'] = attrs.realJid;
+
+  const children: XmppElement[] = [xml('x', { xmlns: MUC_USER_NAMESPACE }, xml('item', itemAttrs))];
+  if (attrs.occupantId !== undefined) {
+    children.push(xml('occupant-id', { xmlns: OCCUPANT_ID_NAMESPACE, id: attrs.occupantId }));
+  }
+
+  const presenceAttrs: Record<string, string> = { from: `${roomJid}/${nick}` };
+  if (attrs.type !== undefined) presenceAttrs['type'] = attrs.type;
+  return xml('presence', presenceAttrs, ...children);
 }
 
 describe('createXmppCore: connection lifecycle', () => {
@@ -398,6 +426,140 @@ describe('createXmppCore: rooms', () => {
       (stanza) => stanza.is('presence') && stanza.attrs['type'] === 'unavailable',
     );
     expect(leave?.attrs['to']).toBe(`${roomJid}/bob`);
+  });
+});
+
+describe('createXmppCore: occupant roster', () => {
+  const roomJid = 'project@rooms.galena.localhost';
+  const bobJid = 'bob@galena.localhost';
+  const aliceJid = 'alice@galena.localhost';
+
+  it('tracks occupants from MUC presence and fires the occupants event', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const changes: OccupantsEvent[] = [];
+    core.on('occupants', (event) => changes.push(event));
+
+    const joining = core.joinRoom(roomJid, 'bob');
+    await flush();
+    fake.emitStanza(
+      mucPresence(roomJid, 'bob', {
+        realJid: bobJid,
+        occupantId: 'occ-bob',
+        affiliation: 'member',
+        role: 'participant',
+      }),
+    );
+    fake.emitStanza(
+      mucPresence(roomJid, 'alice', {
+        realJid: aliceJid,
+        occupantId: 'occ-alice',
+        affiliation: 'owner',
+        role: 'moderator',
+      }),
+    );
+    await joining;
+
+    const occupants = core.occupants(roomJid);
+    expect(occupants.map((occupant) => occupant.nick)).toEqual(['alice', 'bob']);
+    expect(occupants.find((occupant) => occupant.nick === 'alice')).toMatchObject({
+      realJid: aliceJid,
+      occupantId: 'occ-alice',
+      affiliation: 'owner',
+      role: 'moderator',
+      available: true,
+    });
+    expect(changes.at(-1)?.roomJid).toBe(roomJid);
+    expect(changes.at(-1)?.occupants).toHaveLength(2);
+  });
+
+  it('resolves a live groupchat message to the real JID through the roster', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const messages: ChatMessage[] = [];
+    core.on('message', (message) => messages.push(message));
+
+    const joining = core.joinRoom(roomJid, 'bob');
+    await flush();
+    fake.emitStanza(mucPresence(roomJid, 'bob', { realJid: bobJid, occupantId: 'occ-bob' }));
+    fake.emitStanza(mucPresence(roomJid, 'alice', { realJid: aliceJid, occupantId: 'occ-alice' }));
+    await joining;
+
+    fake.emitStanza(
+      xml(
+        'message',
+        { from: `${roomJid}/alice`, type: 'groupchat', id: 'm-1' },
+        xml('occupant-id', { xmlns: OCCUPANT_ID_NAMESPACE, id: 'occ-alice' }),
+        xml('body', {}, 'hello'),
+      ),
+    );
+
+    expect(messages.at(-1)).toMatchObject({
+      fromJid: aliceJid,
+      fromResolved: true,
+      occupantId: 'occ-alice',
+      fromNick: 'alice',
+      outgoing: false,
+    });
+  });
+
+  it('removes an occupant on a leave presence', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const joining = core.joinRoom(roomJid, 'bob');
+    await flush();
+    fake.emitStanza(mucPresence(roomJid, 'bob', { realJid: bobJid }));
+    fake.emitStanza(mucPresence(roomJid, 'alice', { realJid: aliceJid }));
+    await joining;
+    expect(core.occupants(roomJid)).toHaveLength(2);
+
+    fake.emitStanza(mucPresence(roomJid, 'alice', { type: 'unavailable' }));
+
+    expect(core.occupants(roomJid).map((occupant) => occupant.nick)).toEqual(['bob']);
+  });
+
+  it('ignores spoofed presence from a non-room sender or an unjoined room', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+
+    fake.emitStanza(
+      xml(
+        'presence',
+        { from: 'alice@galena.localhost/phone' },
+        xml('x', { xmlns: MUC_USER_NAMESPACE }, xml('item', { jid: 'alice@galena.localhost' })),
+      ),
+    );
+    fake.emitStanza(
+      xml(
+        'presence',
+        { from: 'other@rooms.galena.localhost/mallory' },
+        xml('x', { xmlns: MUC_USER_NAMESPACE }, xml('item', { jid: 'mallory@galena.localhost' })),
+      ),
+    );
+
+    expect(core.occupants(roomJid)).toEqual([]);
+    expect(core.occupants('other@rooms.galena.localhost')).toEqual([]);
+  });
+
+  it('drops the roster on disconnect and rebuilds it after a reconnect', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const joining = core.joinRoom(roomJid, 'bob');
+    await flush();
+    fake.emitStanza(mucPresence(roomJid, 'bob', { realJid: bobJid }));
+    await joining;
+    expect(core.occupants(roomJid)).toHaveLength(1);
+
+    fake.emitStatus('disconnect');
+    fake.emitOnline(bobJid);
+    await flush();
+    expect(core.occupants(roomJid)).toEqual([]);
+
+    fake.emitStanza(mucPresence(roomJid, 'bob', { realJid: bobJid }));
+    expect(core.occupants(roomJid)).toHaveLength(1);
+
+    await core.disconnect();
+    expect(core.occupants(roomJid)).toEqual([]);
   });
 });
 

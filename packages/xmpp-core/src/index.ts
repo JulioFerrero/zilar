@@ -9,6 +9,8 @@ export type {
   ErrorEvent,
   HistoryPage,
   LoadHistoryOptions,
+  Occupant,
+  OccupantsEvent,
   SendMessageOptions,
   TypingEvent,
   XmppCore,

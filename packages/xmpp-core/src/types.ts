@@ -21,8 +21,12 @@ export interface ChatMessage {
   kind: ChatKind;
   /** Real bare JID of the sender when known, else the occupant JID. */
   fromJid: string;
+  /** True when `fromJid` is a real bare JID, false when it is an occupant JID. */
+  fromResolved: boolean;
   /** MUC nickname, when the message came from a room. */
   fromNick?: string;
+  /** XEP occupant-id of the sender, when the message carries one. */
+  occupantId?: string;
   body?: string;
   /** Decoded with `decodePayload`; invalid payloads are dropped. */
   payload?: Payload;
@@ -31,6 +35,24 @@ export interface ChatMessage {
   timestamp: Date;
   /** Sent by me, including room reflections and carbons. */
   outgoing: boolean;
+}
+
+/** One present occupant of a room, tracked from that room's MUC presence. */
+export interface Occupant {
+  /** Occupant JID: `roomJid/nick`. */
+  jid: string;
+  nick: string;
+  /** Real bare JID, when the room is non-anonymous and reveals it. */
+  realJid?: string;
+  occupantId?: string;
+  affiliation?: string;
+  role?: string;
+  available: boolean;
+}
+
+export interface OccupantsEvent {
+  roomJid: string;
+  occupants: Occupant[];
 }
 
 export interface HistoryPage {
@@ -78,6 +100,8 @@ export interface XmppCore {
   disconnect(): Promise<void>;
   joinRoom(roomJid: string, nick: string): Promise<void>;
   leaveRoom(roomJid: string): Promise<void>;
+  /** Present occupants of a room, tracked from that room's MUC presence. */
+  occupants(roomJid: string): Occupant[];
   sendMessage(
     to: string,
     kind: ChatKind,
@@ -97,5 +121,6 @@ export interface XmppCore {
     event: 'displayed',
     cb: (e: { chatJid: string; fromJid: string; messageId: string }) => void,
   ): () => void;
+  on(event: 'occupants', cb: (e: { roomJid: string; occupants: Occupant[] }) => void): () => void;
   on(event: 'error', cb: (e: { message: string }) => void): () => void;
 }

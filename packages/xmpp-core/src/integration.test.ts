@@ -104,7 +104,21 @@ describe.skipIf(!integrationEnabled)('@galena/xmpp-core integration', () => {
 
       await alice.joinRoom(roomJid, 'alice');
       await bob.joinRoom(roomJid, 'bob');
-      console.log('PASS  both clients join the members-only room');
+      await waitFor(
+        () => bob.occupants(roomJid).some((occupant) => occupant.realJid === aliceJid),
+        'Bob to see Alice in the room roster',
+      );
+      const aliceOccupant = bob
+        .occupants(roomJid)
+        .find((occupant) => occupant.realJid === aliceJid);
+      expect(aliceOccupant?.nick).toBe('alice');
+      expect(aliceOccupant?.available).toBe(true);
+      console.log(
+        `PASS  both clients join the members-only room (roster: ${bob
+          .occupants(roomJid)
+          .map((occupant) => occupant.nick)
+          .join(', ')})`,
+      );
 
       const bobRoomMessages: ChatMessage[] = [];
       bob.on('message', (message) => {
@@ -120,13 +134,15 @@ describe.skipIf(!integrationEnabled)('@galena/xmpp-core integration', () => {
       const receivedPayload = bobRoomMessages.find((message) => message.body === 'progress update');
       expect(receivedPayload?.payload).toEqual(progress);
       const receivedText = bobRoomMessages.find((message) => message.body === 'hello room');
-      // ejabberd 26.07 does not add the muc#user item to live groupchat
-      // messages, so the sender falls back to the occupant JID (the real JID
-      // is learned from the room presence roster, a later task).
-      expect([aliceJid, `${roomJid}/alice`]).toContain(receivedText?.fromJid);
+      // The live message has no muc#user item; the real JID is resolved from
+      // the roster through the occupant-id / nick.
+      expect(receivedText?.fromJid).toBe(aliceJid);
+      expect(receivedText?.fromResolved).toBe(true);
       expect(receivedText?.fromNick).toBe('alice');
       expect(receivedText?.outgoing).toBe(false);
-      console.log('PASS  text and payload messages arrive live');
+      console.log(
+        `PASS  text and payload messages arrive live (fromJid=${receivedText?.fromJid}, fromResolved=${receivedText?.fromResolved}, occupantId=${receivedText?.occupantId ?? 'none'})`,
+      );
 
       const typing: TypingEvent[] = [];
       alice.on('typing', (event) => typing.push(event));
@@ -151,6 +167,8 @@ describe.skipIf(!integrationEnabled)('@galena/xmpp-core integration', () => {
       });
       await alice.sendMessage(bobJid, 'chat', 'private hello');
       await waitFor(() => bobDms.length > 0, 'Bob to receive the DM');
+      expect(bobDms[0]?.fromJid).toBe(aliceJid);
+      expect(bobDms[0]?.fromResolved).toBe(true);
       console.log('PASS  a direct message arrives');
 
       expect(tokenCounts.bob).toBe(1);
@@ -178,6 +196,13 @@ describe.skipIf(!integrationEnabled)('@galena/xmpp-core integration', () => {
         (message) => message.body === 'progress update',
       );
       expect(archivedPayload?.payload).toEqual(progress);
+      const archivedText = roomHistory.messages.find((message) => message.body === 'hello room');
+      expect(archivedText?.fromJid).toBe(aliceJid);
+      expect(archivedText?.fromResolved).toBe(true);
+      expect(archivedText?.fromNick).toBe('alice');
+      console.log(
+        `      history sender: fromJid=${archivedText?.fromJid} fromResolved=${archivedText?.fromResolved} fromNick=${archivedText?.fromNick} occupantId=${archivedText?.occupantId ?? 'none'}`,
+      );
       console.log(
         `PASS  room history comes back oldest first (${roomHistory.messages.length} messages, complete=${roomHistory.complete})`,
       );

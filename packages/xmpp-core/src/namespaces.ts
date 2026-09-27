@@ -8,6 +8,7 @@ export const FORWARD_NAMESPACE = 'urn:xmpp:forward:0';
 export const MAM_NAMESPACE = 'urn:xmpp:mam:2';
 export const MUC_NAMESPACE = 'http://jabber.org/protocol/muc';
 export const MUC_USER_NAMESPACE = 'http://jabber.org/protocol/muc#user';
+export const OCCUPANT_ID_NAMESPACE = 'urn:xmpp:occupant-id:0';
 export const REPLY_NAMESPACE = 'urn:xmpp:reply:0';
 export const RSM_NAMESPACE = 'http://jabber.org/protocol/rsm';
 export const STANZA_ID_NAMESPACE = 'urn:xmpp:sid:0';

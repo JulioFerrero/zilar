@@ -10,6 +10,7 @@ function message(id: string, timestamp: string, body: string): ChatMessage {
     chatJid: 'project@rooms.galena.localhost',
     kind: 'groupchat',
     fromJid: 'alice@galena.localhost',
+    fromResolved: true,
     body,
     timestamp: new Date(timestamp),
     outgoing: false,

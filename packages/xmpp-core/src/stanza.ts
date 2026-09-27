@@ -12,10 +12,11 @@ import {
   MAM_NAMESPACE,
   MUC_NAMESPACE,
   MUC_USER_NAMESPACE,
+  OCCUPANT_ID_NAMESPACE,
   REPLY_NAMESPACE,
   STANZA_ID_NAMESPACE,
 } from './namespaces';
-import type { ChatKind, ChatMessage, DisplayedEvent, TypingEvent } from './types';
+import type { ChatKind, ChatMessage, DisplayedEvent, Occupant, TypingEvent } from './types';
 
 const CHAT_STATES: ReadonlyArray<'composing' | 'paused' | 'active'> = [
   'composing',
@@ -115,12 +116,35 @@ export type ParseContext = {
   domain: string;
   mucDomain: string;
   now: () => Date;
+  /** Live occupant roster for a room, keyed by occupant JID (`room/nick`). */
+  rosterFor?: ((roomJid: string) => ReadonlyMap<string, Occupant> | undefined) | undefined;
+  /** The nick I joined a room with, used to mark my own messages outgoing. */
+  myNickFor?: ((roomJid: string) => string | undefined) | undefined;
 };
 
 export type DecodedStanza = {
   message?: ChatMessage;
   typing?: TypingEvent;
   displayed?: DisplayedEvent;
+};
+
+/** A MUC presence event from a room, trusted only when it comes from the room. */
+export type MucPresence = {
+  roomJid: string;
+  occupantJid: string;
+  nick: string;
+  available: boolean;
+  realJid?: string;
+  occupantId?: string;
+  affiliation?: string;
+  role?: string;
+};
+
+export type SenderResolution = {
+  jid: string;
+  resolved: boolean;
+  occupantId?: string;
+  outgoing: boolean;
 };
 
 type Envelope = {
@@ -184,16 +208,123 @@ function mucUserItem(stanza: XmppElement): XmppElement | undefined {
   return stanza.getChild('x', MUC_USER_NAMESPACE)?.getChild('item');
 }
 
-function senderBareJid(stanza: XmppElement, from: string, kind: ChatKind): string {
-  if (kind === 'groupchat') {
-    const itemJid = mucUserItem(stanza)?.attrs['jid'];
-    if (itemJid !== undefined && itemJid !== '') {
-      return bareJid(itemJid);
-    }
-    // Rooms are non-anonymous, but fall back to the occupant JID.
-    return from;
+export function occupantIdOf(stanza: XmppElement): string | undefined {
+  const occupantId = stanza.getChild('occupant-id', OCCUPANT_ID_NAMESPACE)?.attrs['id'];
+  return occupantId === '' ? undefined : occupantId;
+}
+
+// A MUC presence is only trusted when it comes from the room itself: a JID on
+// the MUC domain with a nick. Identity claims from anyone else are ignored.
+export function parseMucPresence(stanza: XmppElement, mucDomain: string): MucPresence | undefined {
+  if (!stanza.is('presence')) return undefined;
+  const from = stanza.attrs['from'];
+  if (from === undefined || jidDomain(from) !== mucDomain) return undefined;
+  const nick = jidResource(from);
+  if (nick === undefined || nick === '') return undefined;
+
+  const type = stanza.attrs['type'];
+  if (type !== undefined && type !== 'unavailable') return undefined;
+
+  const roomJid = bareJid(from);
+  const item = mucUserItem(stanza);
+  const presence: MucPresence = {
+    roomJid,
+    occupantJid: `${roomJid}/${nick}`,
+    nick,
+    available: type === undefined,
+  };
+
+  const itemJid = item?.attrs['jid'];
+  if (itemJid !== undefined && itemJid !== '') presence.realJid = bareJid(itemJid);
+  const occupantId = occupantIdOf(stanza);
+  if (occupantId !== undefined) presence.occupantId = occupantId;
+  const affiliation = item?.attrs['affiliation'];
+  if (affiliation !== undefined) presence.affiliation = affiliation;
+  const role = item?.attrs['role'];
+  if (role !== undefined) presence.role = role;
+  return presence;
+}
+
+function findOccupantByOccupantId(
+  roster: ReadonlyMap<string, Occupant>,
+  occupantId: string,
+): Occupant | undefined {
+  for (const occupant of roster.values()) {
+    if (occupant.occupantId === occupantId) return occupant;
   }
-  return bareJid(from);
+  return undefined;
+}
+
+function isOutgoing(
+  realJid: string,
+  nick: string,
+  me: string | undefined,
+  myNick: string | undefined,
+): boolean {
+  return (me !== undefined && realJid === me) || (myNick !== undefined && nick === myNick);
+}
+
+// Resolves a sender to a real bare JID, in the spec's order: a JID carried by
+// the message itself, then the message's occupant-id, then the nick against the
+// room roster. Falls back to the occupant JID when nothing resolves.
+export function resolveSender(input: {
+  kind: ChatKind;
+  from: string;
+  itemJid?: string | undefined;
+  occupantId?: string | undefined;
+  me?: string | undefined;
+  myNick?: string | undefined;
+  roster?: ReadonlyMap<string, Occupant> | undefined;
+}): SenderResolution {
+  if (input.kind === 'chat') {
+    const jid = bareJid(input.from);
+    return { jid, resolved: true, outgoing: input.me !== undefined && jid === input.me };
+  }
+
+  const roomJid = bareJid(input.from);
+  const nick = jidResource(input.from);
+  const carryOccupantId = input.occupantId !== undefined ? { occupantId: input.occupantId } : {};
+
+  if (input.itemJid !== undefined && input.itemJid !== '') {
+    const jid = bareJid(input.itemJid);
+    return {
+      jid,
+      resolved: true,
+      ...carryOccupantId,
+      outgoing: input.me !== undefined && jid === input.me,
+    };
+  }
+
+  if (input.occupantId !== undefined && input.roster !== undefined) {
+    const occupant = findOccupantByOccupantId(input.roster, input.occupantId);
+    if (occupant?.realJid !== undefined) {
+      return {
+        jid: occupant.realJid,
+        resolved: true,
+        ...carryOccupantId,
+        outgoing: isOutgoing(occupant.realJid, occupant.nick, input.me, input.myNick),
+      };
+    }
+  }
+
+  if (nick !== undefined && nick !== '' && input.roster !== undefined) {
+    const occupant = input.roster.get(`${roomJid}/${nick}`);
+    if (occupant?.realJid !== undefined) {
+      return {
+        jid: occupant.realJid,
+        resolved: true,
+        ...carryOccupantId,
+        outgoing: isOutgoing(occupant.realJid, occupant.nick, input.me, input.myNick),
+      };
+    }
+  }
+
+  return {
+    jid: input.from,
+    resolved: false,
+    ...carryOccupantId,
+    outgoing: nick !== undefined && nick !== '' && nick === input.myNick,
+  };
 }
 
 function conversationJid(
@@ -275,7 +406,16 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
 
   const decoded: DecodedStanza = {};
 
-  const sender = senderBareJid(inner, from, kind);
+  const roomJid = bareJid(from);
+  const sender = resolveSender({
+    kind,
+    from,
+    itemJid: mucUserItem(inner)?.attrs['jid'],
+    occupantId: occupantIdOf(inner),
+    me: ctx.me,
+    myNick: kind === 'groupchat' ? ctx.myNickFor?.(roomJid) : undefined,
+    roster: kind === 'groupchat' ? ctx.rosterFor?.(roomJid) : undefined,
+  });
   const chatJid = conversationJid(inner, from, kind, ctx.me);
 
   const bodyElement = inner.getChild('body');
@@ -295,10 +435,12 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
       id: messageId(inner, envelope.archiveId, kind, chatJid, ctx.me),
       chatJid,
       kind,
-      fromJid: sender,
+      fromJid: sender.jid,
+      fromResolved: sender.resolved,
       timestamp: timestamp(inner, envelope.forwardedDelay, ctx),
-      outgoing: ctx.me !== undefined && sender === ctx.me,
+      outgoing: sender.outgoing,
     };
+    if (sender.occupantId !== undefined) message.occupantId = sender.occupantId;
     if (body !== undefined) message.body = body;
     if (payload !== undefined) message.payload = payload;
     if (kind === 'groupchat') {
@@ -310,10 +452,10 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
     decoded.message = message;
   }
 
-  const typing = parseTyping(inner, kind, from, ctx);
+  const typing = parseTyping(inner, kind, from, ctx, sender.jid);
   if (typing !== undefined) decoded.typing = typing;
 
-  const displayed = parseDisplayed(inner, kind, from, ctx);
+  const displayed = parseDisplayed(inner, kind, from, ctx, sender.jid);
   if (displayed !== undefined) decoded.displayed = displayed;
 
   return decoded;
@@ -324,6 +466,7 @@ function parseTyping(
   kind: ChatKind,
   from: string,
   ctx: ParseContext,
+  senderJid: string,
 ): TypingEvent | undefined {
   const state = CHAT_STATES.find(
     (candidate) => stanza.getChild(candidate, CHAT_STATES_NAMESPACE) !== undefined,
@@ -331,7 +474,7 @@ function parseTyping(
   if (state === undefined) return undefined;
   return {
     chatJid: conversationJid(stanza, from, kind, ctx.me),
-    fromJid: senderBareJid(stanza, from, kind),
+    fromJid: senderJid,
     state,
   };
 }
@@ -341,13 +484,14 @@ function parseDisplayed(
   kind: ChatKind,
   from: string,
   ctx: ParseContext,
+  senderJid: string,
 ): DisplayedEvent | undefined {
   const displayed = stanza.getChild('displayed', CHAT_MARKERS_NAMESPACE);
   const messageId = displayed?.attrs['id'];
   if (displayed === undefined || messageId === undefined) return undefined;
   return {
     chatJid: conversationJid(stanza, from, kind, ctx.me),
-    fromJid: senderBareJid(stanza, from, kind),
+    fromJid: senderJid,
     messageId,
   };
 }

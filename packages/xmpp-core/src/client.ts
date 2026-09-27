@@ -18,7 +18,9 @@ import {
   decodeMessageStanza,
   isMamResult,
   mamResultQueryId,
+  parseMucPresence,
   stanzaErrorCondition,
+  type MucPresence,
   type ParseContext,
 } from './stanza';
 import type {
@@ -29,6 +31,8 @@ import type {
   ErrorEvent,
   HistoryPage,
   LoadHistoryOptions,
+  Occupant,
+  OccupantsEvent,
   SendMessageOptions,
   TypingEvent,
   XmppCore,
@@ -59,6 +63,7 @@ type EventPayload = {
   message: ChatMessage;
   typing: TypingEvent;
   displayed: DisplayedEvent;
+  occupants: OccupantsEvent;
   error: ErrorEvent;
 };
 type EventName = keyof EventPayload;
@@ -132,6 +137,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
 
   const listeners = new Map<EventName, Set<StoredListener>>();
   const joinedRooms = new Map<string, string>();
+  const rosters = new Map<string, Map<string, Occupant>>();
   const pendingJoins = new Map<string, PendingJoin>();
   const pendingQueries = new Map<string, PendingQuery>();
 
@@ -167,8 +173,79 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     emitEvent('status', next);
   }
 
+  function rosterFor(roomJid: string): Map<string, Occupant> {
+    let roster = rosters.get(roomJid);
+    if (roster === undefined) {
+      roster = new Map();
+      rosters.set(roomJid, roster);
+    }
+    return roster;
+  }
+
+  function occupantsFor(roomJid: string): Occupant[] {
+    const roster = rosters.get(roomJid);
+    if (roster === undefined) return [];
+    const result: Occupant[] = [];
+    for (const occupant of roster.values()) {
+      result.push({ ...occupant });
+    }
+    result.sort((left, right) => left.jid.localeCompare(right.jid));
+    return result;
+  }
+
+  function emitOccupants(roomJid: string): void {
+    emitEvent('occupants', { roomJid, occupants: occupantsFor(roomJid) });
+  }
+
+  function clearRoster(roomJid: string): void {
+    const roster = rosters.get(roomJid);
+    if (roster === undefined) return;
+    rosters.delete(roomJid);
+    if (roster.size > 0) {
+      emitEvent('occupants', { roomJid, occupants: [] });
+    }
+  }
+
+  function clearAllRosters(): void {
+    const roomJids: string[] = [];
+    for (const roomJid of rosters.keys()) {
+      roomJids.push(roomJid);
+    }
+    for (const roomJid of roomJids) {
+      clearRoster(roomJid);
+    }
+  }
+
+  function applyPresence(presence: MucPresence): void {
+    const roster = rosterFor(presence.roomJid);
+    if (!presence.available) {
+      if (roster.delete(presence.occupantJid)) {
+        emitOccupants(presence.roomJid);
+      }
+      return;
+    }
+
+    const occupant: Occupant = {
+      jid: presence.occupantJid,
+      nick: presence.nick,
+      available: true,
+    };
+    if (presence.realJid !== undefined) occupant.realJid = presence.realJid;
+    if (presence.occupantId !== undefined) occupant.occupantId = presence.occupantId;
+    if (presence.affiliation !== undefined) occupant.affiliation = presence.affiliation;
+    if (presence.role !== undefined) occupant.role = presence.role;
+    roster.set(presence.occupantJid, occupant);
+    emitOccupants(presence.roomJid);
+  }
+
   function parseContext(): ParseContext {
-    const context: ParseContext = { domain: options.domain, mucDomain, now };
+    const context: ParseContext = {
+      domain: options.domain,
+      mucDomain,
+      now,
+      rosterFor: (roomJid) => rosters.get(roomJid),
+      myNickFor: (roomJid) => joinedRooms.get(roomJid),
+    };
     if (meJid !== undefined) context.me = meJid;
     return context;
   }
@@ -207,6 +284,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     hasBeenOnline = false;
     setStatus('offline');
     meJid = undefined;
+    clearAllRosters();
     const current = xmpp;
     if (current !== undefined) {
       try {
@@ -221,6 +299,9 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     await sendQuietly(current, buildAvailablePresence());
     await sendQuietly(current, buildCarbonsEnable(generateId()));
     for (const [roomJid, nick] of joinedRooms) {
+      // The server sends the full occupant list when we rejoin, so drop the
+      // stale roster first.
+      clearRoster(roomJid);
       await sendQuietly(current, buildJoinPresence(roomJid, nick));
     }
   }
@@ -318,21 +399,27 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
 
   function handlePresence(stanza: XmppElement): void {
     const from = stanza.attrs['from'];
-    if (from === undefined) return;
-    const pending = pendingJoins.get(from);
-    if (pending === undefined) return;
-    const type = stanza.attrs['type'];
-    if (type === 'error') {
-      pendingJoins.delete(from);
-      clearTimeout(pending.timer);
-      pending.reject(new Error(`the room rejected the join: ${stanzaErrorCondition(stanza)}`));
-      return;
+    if (from !== undefined) {
+      const pending = pendingJoins.get(from);
+      if (pending !== undefined) {
+        const type = stanza.attrs['type'];
+        if (type === 'error') {
+          pendingJoins.delete(from);
+          clearTimeout(pending.timer);
+          pending.reject(new Error(`the room rejected the join: ${stanzaErrorCondition(stanza)}`));
+        } else if (type === undefined) {
+          pendingJoins.delete(from);
+          clearTimeout(pending.timer);
+          pending.resolve();
+        }
+      }
     }
-    if (type === undefined) {
-      pendingJoins.delete(from);
-      clearTimeout(pending.timer);
-      pending.resolve();
-    }
+
+    // Roster data is only trusted from rooms we joined and only from the MUC
+    // domain, so another sender cannot claim an identity.
+    const presence = parseMucPresence(stanza, mucDomain);
+    if (presence === undefined || !joinedRooms.has(presence.roomJid)) return;
+    applyPresence(presence);
   }
 
   function handleMamResult(stanza: XmppElement): void {
@@ -395,6 +482,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     hasBeenOnline = false;
     setStatus('offline');
     finishConnect(new Error('the XMPP client was disconnected'));
+    clearAllRosters();
     const current = xmpp;
     if (current !== undefined) {
       try {
@@ -432,6 +520,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   async function leaveRoom(roomJid: string): Promise<void> {
     const nick = joinedRooms.get(roomJid);
     joinedRooms.delete(roomJid);
+    clearRoster(roomJid);
     if (nick === undefined || xmpp === undefined || currentStatus !== 'online') return;
     await sendQuietly(xmpp, buildLeavePresence(roomJid, nick));
   }
@@ -513,6 +602,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     disconnect,
     joinRoom,
     leaveRoom,
+    occupants: occupantsFor,
     sendMessage,
     loadHistory,
     sendTyping,

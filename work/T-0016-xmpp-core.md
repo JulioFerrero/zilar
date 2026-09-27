@@ -1,7 +1,7 @@
 ---
 id: T-0016
 title: "@galena/xmpp-core — shared XMPP client (token login, rooms, DMs, history, receipts, payloads)"
-status: changes-requested
+status: review
 milestone: M1
 branch: task/T-0016-xmpp-core
 model: opencode-go/deepseek-v4.1-flash
@@ -235,6 +235,56 @@ PASS  DM history comes back (1 messages)
 
 - Nothing blocked. The one thing worth a decision is finding 4: whether the client should also expose the room presence roster (so consumers can map occupant → real JID), or whether that belongs entirely to the later `chat-core` task.
 
+### Round 2
+
+Finding 1 (resolve real sender JIDs via the MUC occupant roster) is implemented.
+
+**What I changed**
+
+- `src/types.ts` — `ChatMessage` gains `fromResolved: boolean` and `occupantId?: string`; new `Occupant` and `OccupantsEvent` types; `XmppCore` gains `occupants(roomJid)` and `on('occupants', …)`.
+- `src/stanza.ts` — `parseMucPresence` parses a MUC presence (join/leave, real JID, occupant-id, affiliation, role) and only accepts a stanza that comes from `rooms.<domain>` and carries a nick; `occupantIdOf`; `resolveSender` resolves in the spec's order (a JID on the message → the message's occupant-id → the nick against the roster → keep the occupant JID) and computes `outgoing` from the resolved real JID or from my own nick in the room; `ParseContext` gains `rosterFor`/`myNickFor`; typing and displayed `fromJid` use the same resolution.
+- `src/client.ts` — per-room occupant rosters keyed by occupant JID (`room/nick`); `occupants(roomJid)`; an `occupants` event on every roster change; rosters are cleared when leaving a room, on disconnect/SASL failure, and before rejoining after a reconnect (so the server's fresh presence burst rebuilds them). Roster data is only trusted from rooms we joined and only from the MUC domain, so another sender cannot claim an identity.
+- `src/index.ts` — exports `Occupant` and `OccupantsEvent`.
+
+**What ejabberd returns for real JIDs (raw stanzas from the dev stack)**
+
+- Presence for another occupant, sent by the room, carries both the occupant-id and the real full JID:
+  `<presence from="<room>/alice"><occupant-id xmlns="urn:xmpp:occupant-id:0" id="…"/><x xmlns="…muc#user"><item jid="alice@galena.localhost/probe-a" role="moderator" affiliation="owner"/></x></presence>`
+- A **live** groupchat message has **no** `muc#user` item: only `<archived>`, `<stanza-id>`, `<occupant-id>` and `<body>`. Live resolution therefore uses the occupant-id (or the nick).
+- A **MAM-archived** groupchat message **does** include the real JID: `<x xmlns="…muc#user"><item jid="alice@galena.localhost/probe-a"/></x>`, plus `<stanza-id>`, `<occupant-id>` and a forwarded `<delay>`. So history resolves through the message's own JID (priority 1) and also carries an occupant-id.
+
+**Tests**
+
+- Unit — new `src/presence.test.ts` (18): presence parsing (join, leave, nick change, affiliation/role, occupant-id), ignoring non-room / wrong-domain / no-nick / non-join-leave presence, `occupantIdOf` namespace check, resolution via message JID, then occupant-id, then nick, then unresolved, `outgoing` by real JID or nick, and a DM sender treated as already resolved. `src/core.test.ts` +5: roster tracking + `occupants` event, live resolution through the roster, leave removes an occupant, spoofed presence from a non-room sender or an unjoined room is ignored, and the roster is dropped on disconnect and rebuilt after a reconnect.
+- Integration — Bob's `occupants(roomJid)` lists alice and bob; Alice's **live** message has `fromJid === alice's bare JID` and `fromResolved: true`; the **archived** message has the same; the DM is resolved.
+
+**Checks (all pass, integration against the dev stack)**
+
+- `pnpm format:check` PASS; `pnpm lint` PASS (0 warnings, 0 errors, 83 files); `pnpm typecheck` PASS (7/7); `pnpm test` PASS (7/7; `@galena/xmpp-core` **85 passed + 1 skipped**); `pnpm build` PASS (2/2).
+- No-Node-types: `tsc --noEmit --listFiles -p packages/xmpp-core/tsconfig.json` → 0 `@types/node` files, `integration.test.ts` not listed.
+- `pnpm infra:up` all three services healthy; `GALENA_XMPP_INTEGRATION=1 pnpm --filter @galena/xmpp-core test` → 5 files, **86 passed**; `pnpm infra:down` → containers and network removed, volumes kept.
+
+Full integration output:
+
+```
+integration room: core-muk0d7lcoi0u@rooms.galena.localhost
+
+PASS  both clients connect with a JWT
+PASS  both clients join the members-only room (roster: alice, bob)
+PASS  text and payload messages arrive live (fromJid=core-alice-muk0d7lcoi0u@galena.localhost, fromResolved=true, occupantId=g20AAAAgtomhkci5okSzUrDMS22ExnzYD/HlM4CTVfeU3BxVu/g=)
+PASS  typing and displayed markers arrive
+PASS  a direct message arrives
+PASS  reconnect fetches a fresh token (getToken called twice)
+      history sender: fromJid=core-alice-muk0d7lcoi0u@galena.localhost fromResolved=true fromNick=alice occupantId=g20AAAAgtomhkci5okSzUrDMS22ExnzYD/HlM4CTVfeU3BxVu/g=
+PASS  room history comes back oldest first (2 messages, complete=true)
+PASS  DM history comes back (1 messages)
+```
+
+**Notes**
+
+- `Occupant.affiliation` and `role` are optional because a leave or an unusual presence may omit them; an available presence from ejabberd always carries both.
+- `occupants()` lists who is **present now** (from presence), not the full member list; membership is affiliations, which this library does not query.
+- The old round-1 note that "real JIDs need a later task" is resolved: this library now does the resolution.
 
 ---
 
