@@ -830,11 +830,15 @@ What we do instead:
 
 The interface is shaped like ACP, the Agent Client Protocol, which is the common standard across OpenCode, Goose, Codex, Claude, Cline and Gemini. That lets us swap engines per AI later.
 
+Implemented in `packages/agent-drivers` (T-0006). Live-tested against OpenCode v2.
+
 ```ts
 export interface AgentDriver {
-  start(opts: { deskId: string; aiId: string; resumeSessionId?: string }): Promise<SessionRef>;
-  prompt(s: SessionRef, input: AgentInput): Promise<void>;          // returns immediately
-  events(s: SessionRef): AsyncIterable<AgentEvent>;                 // text | tool_call | tool_result
+  start(opts: { directory: string; model: ModelRef; rules: PermissionRule[]; title?: string; agent?: string }): Promise<SessionRef>;
+  prompt(s: SessionRef, text: string): Promise<PromptRef>;          // returns once accepted: { messageId, createdAt }
+  events(s: SessionRef, o: { after: PromptRef; signal?: AbortSignal }): AsyncIterable<AgentEvent>;
+                                                                    // only the run started by `after`:
+                                                                    // text | reasoning | tool_call | tool_result
                                                                     // | permission_request | done | error
   answerPermission(s: SessionRef, requestId: string,
                    decision: 'allow_once' | 'allow_always' | 'reject', note?: string): Promise<void>;
