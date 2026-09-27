@@ -1,7 +1,7 @@
 ---
 id: T-0015
 title: Auth — Better Auth with email codes (no passwords), invite-only sign-up, sessions for web and mobile
-status: review
+status: merged
 milestone: M1
 branch: task/T-0015-auth-invites
 model: opencode-go/deepseek-v4.1-flash
@@ -265,3 +265,12 @@ Round 1 stays above. This round addresses findings 1, 2 and 3 from the review. F
 5. **(accepted, note)** The 30 s test timeouts are fine. The machine was heavily loaded; Claude will run fewer workers at once.
 6. **(noted for the OAuth task)** Your open question about OAuth first-time users needing to carry the invite code through the OAuth redirect is noted for that task.
 
+**Verdict (round 2): approved.** Merged by Claude.
+
+- I re-ran `format:check`, `lint`, `typecheck`, `test` (server **64**) and `build`: all PASS.
+- Every round 1 finding is resolved:
+  - OTP sends are gated on an existing user or a usable invite, with an identical response.
+  - Rate limits apply everywhere: 3 sends per 10 minutes, 10 verifies per 10 minutes.
+  - OTPs are stored hashed.
+  - `WEB_ORIGINS` is fed to `trustedOrigins`, CORS and an origin guard for our own cookie routes.
+- **Follow-up (deployment task):** set `advanced.ipAddress.ipAddressHeaders` / `trustedProxies` for the real proxy (Coolify's Traefik), so rate-limit IPs can't be spoofed with `x-forwarded-for`. Recorded on the board.
