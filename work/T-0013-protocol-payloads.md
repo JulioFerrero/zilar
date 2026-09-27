@@ -1,7 +1,7 @@
 ---
 id: T-0013
 title: Protocol v0 — zod schemas for Galena's chat payloads
-status: review
+status: merged
 milestone: M0
 branch: task/T-0013-protocol-payloads
 model: opencode-go/deepseek-v4.1-flash
@@ -223,3 +223,16 @@ Fixed findings 1, 2, 3 and 5 from the review (finding 4 was accepted as-is, no c
 3. **(nit) `VoiceMetaSchema.mime`**: require it to start with `audio/`, max 100 chars, and add a test.
 4. **(accepted)** Reusing `IdSchema`, `BudgetSchema` and a strict object in the handoff is a good improvement. The local `utf8ByteLength` helper is a reasonable way to avoid DOM and Node types.
 5. **(doc)** Add a one-line comment on `JidSchema`: **bare JIDs only** (`local@domain`). Full JIDs with a resource aren't accepted by design.
+
+**Verdict (round 2): approved.** Merged by Claude.
+
+- I re-ran `format:check`, `lint`, `typecheck` and `test`: all PASS (protocol 132, server 2, web 3).
+- Re-probed:
+
+  | Probe | Result |
+  |---|---|
+  | `javascript:alert(1)`, long `javascript:`, uppercase `JAVASCRIPT:`, `data:text/html` refs | all rejected ✓ |
+  | An https PR URL and the id `m-31` | accepted ✓ |
+  | 50 MB input | rejected in ~0 ms (fast path) ✓ |
+
+- Every finding from round 1 is resolved.
