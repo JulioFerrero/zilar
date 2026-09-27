@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { loadXmppConfig, type XmppConfig } from './xmpp/config';
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -48,14 +49,27 @@ const serverConfigSchema = z
     BETTER_AUTH_URL: value.BETTER_AUTH_URL ?? value.PUBLIC_URL,
   }));
 
-export type ServerConfig = z.infer<typeof serverConfigSchema>;
+export type ServerConfig = z.infer<typeof serverConfigSchema> & {
+  xmpp: XmppConfig;
+};
 
 export function loadServerConfig(env: Record<string, string | undefined>): ServerConfig {
   const result = serverConfigSchema.safeParse(env);
   if (!result.success) {
     throw new ConfigError(formatIssues(result.error));
   }
-  return result.data;
+
+  let xmpp: XmppConfig;
+  try {
+    xmpp = loadXmppConfig(env);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new ConfigError(error.message);
+    }
+    throw error;
+  }
+
+  return { ...result.data, xmpp };
 }
 
 export function loadServerConfigOrExit(env: Record<string, string | undefined>): ServerConfig {

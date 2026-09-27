@@ -6,6 +6,7 @@ import { loadServerConfigOrExit } from './config';
 import { createDb } from './db/client';
 import { runMigrations } from './db/migrate';
 import { createLogger } from './logger';
+import { createEjabberdAdminClient } from './xmpp/admin-client';
 
 const config = loadServerConfigOrExit(process.env);
 const logger = createLogger(config);
@@ -24,8 +25,9 @@ try {
 const { db, close } = createDb(config.DATABASE_URL);
 await runMigrations(db);
 
-const auth = createAuth({ db, config, mailer });
-const app = createApp({ db, logger, config, auth });
+const adminClient = createEjabberdAdminClient(config.xmpp);
+const auth = createAuth({ db, config, mailer, adminClient, logger });
+const app = createApp({ db, logger, config, auth, adminClient });
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
   logger.info({ port: info.port }, 'galena-server listening');
 });

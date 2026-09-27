@@ -15,6 +15,13 @@
       "when": 1790522349033,
       "tag": "0001_nifty_nomad",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790524775276,
+      "tag": "0002_superb_katie_power",
+      "breakpoints": true
     }
   ]
 }

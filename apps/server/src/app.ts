@@ -10,12 +10,15 @@ import type { ServerConfig } from './config';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { serverVersion } from './version';
+import type { EjabberdAdminClient } from './xmpp/admin-client';
+import { createXmppRoutes } from './xmpp/routes';
 
 export interface AppDependencies {
   db: ServerDatabase;
   logger: Logger;
   config: ServerConfig;
   auth: Auth;
+  adminClient: EjabberdAdminClient;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -26,6 +29,7 @@ export function createApp({
   logger,
   config,
   auth,
+  adminClient,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
 
@@ -66,6 +70,7 @@ export function createApp({
 
   app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
   app.route('/api', createAuthRoutes({ auth, db, config }));
+  app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));
 
   app.get('/health', async (c) => {
     const up = await isDatabaseUp(db);

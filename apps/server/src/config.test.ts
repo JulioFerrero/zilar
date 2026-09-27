@@ -4,6 +4,22 @@ import { ConfigError, loadServerConfig } from './config';
 const VALID_DATABASE_URL = 'postgres://galena:hunter2@127.0.0.1:5432/galena';
 const VALID_SECRET = 'a'.repeat(32);
 
+const VALID_XMPP_ENV = {
+  EJABBERD_ADMIN_JID: 'admin@galena.localhost',
+  EJABBERD_ADMIN_PASSWORD: 'admin-password',
+  GALENA_XMPP_JWT_SECRET: 'x'.repeat(40),
+};
+
+const VALID_XMPP = {
+  apiUrl: 'http://127.0.0.1:5280/api',
+  adminJid: 'admin@galena.localhost',
+  adminPassword: 'admin-password',
+  domain: 'galena.localhost',
+  mucDomain: 'rooms.galena.localhost',
+  wsPublicUrl: 'ws://127.0.0.1:5280/ws',
+  jwtSecret: 'x'.repeat(40),
+};
+
 function configErrorMessage(env: Record<string, string | undefined>): string {
   try {
     loadServerConfig(env);
@@ -19,7 +35,11 @@ function configErrorMessage(env: Record<string, string | undefined>): string {
 describe('loadServerConfig', () => {
   it('applies defaults and parses a valid environment', () => {
     expect(
-      loadServerConfig({ DATABASE_URL: VALID_DATABASE_URL, BETTER_AUTH_SECRET: VALID_SECRET }),
+      loadServerConfig({
+        DATABASE_URL: VALID_DATABASE_URL,
+        BETTER_AUTH_SECRET: VALID_SECRET,
+        ...VALID_XMPP_ENV,
+      }),
     ).toEqual({
       NODE_ENV: 'development',
       PORT: 3000,
@@ -29,6 +49,7 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_SECRET: VALID_SECRET,
       BETTER_AUTH_URL: 'http://localhost:3000',
       WEB_ORIGINS: ['http://localhost:5173'],
+      xmpp: VALID_XMPP,
     });
   });
 
@@ -43,6 +64,7 @@ describe('loadServerConfig', () => {
         BETTER_AUTH_SECRET: VALID_SECRET,
         BETTER_AUTH_URL: 'https://auth.example.com',
         WEB_ORIGINS: 'https://app.example.com, https://admin.example.com',
+        ...VALID_XMPP_ENV,
       }),
     ).toEqual({
       NODE_ENV: 'production',
@@ -53,7 +75,18 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_SECRET: VALID_SECRET,
       BETTER_AUTH_URL: 'https://auth.example.com',
       WEB_ORIGINS: ['https://app.example.com', 'https://admin.example.com'],
+      xmpp: VALID_XMPP,
     });
+  });
+
+  it('surfaces a missing XMPP variable without printing a value', () => {
+    const message = configErrorMessage({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+    });
+    expect(message).toContain('EJABBERD_ADMIN_JID');
+    expect(message).toContain('GALENA_XMPP_JWT_SECRET');
+    expect(message).not.toContain('admin-password');
   });
 
   it('normalizes web origins to their origin', () => {
@@ -61,6 +94,7 @@ describe('loadServerConfig', () => {
       DATABASE_URL: VALID_DATABASE_URL,
       BETTER_AUTH_SECRET: VALID_SECRET,
       WEB_ORIGINS: 'http://localhost:5173/, https://app.example.com/some/path?x=1',
+      ...VALID_XMPP_ENV,
     });
     expect(config.WEB_ORIGINS).toEqual(['http://localhost:5173', 'https://app.example.com']);
   });
@@ -70,6 +104,7 @@ describe('loadServerConfig', () => {
       DATABASE_URL: VALID_DATABASE_URL,
       BETTER_AUTH_SECRET: VALID_SECRET,
       WEB_ORIGINS: 'https://app.example.com,not-an-origin',
+      ...VALID_XMPP_ENV,
     });
     expect(message).toContain('WEB_ORIGINS');
     expect(message).not.toContain('not-an-origin');
@@ -80,6 +115,7 @@ describe('loadServerConfig', () => {
       DATABASE_URL: VALID_DATABASE_URL,
       BETTER_AUTH_SECRET: VALID_SECRET,
       WEB_ORIGINS: '',
+      ...VALID_XMPP_ENV,
     });
     expect(message).toContain('WEB_ORIGINS');
   });
@@ -89,6 +125,7 @@ describe('loadServerConfig', () => {
       DATABASE_URL: VALID_DATABASE_URL,
       BETTER_AUTH_SECRET: VALID_SECRET,
       PUBLIC_URL: 'https://galena.example.com',
+      ...VALID_XMPP_ENV,
     });
     expect(config.BETTER_AUTH_URL).toBe('https://galena.example.com');
   });
@@ -142,6 +179,7 @@ describe('loadServerConfig', () => {
     const message = configErrorMessage({
       DATABASE_URL: VALID_DATABASE_URL,
       BETTER_AUTH_SECRET: 'short-secret-value',
+      ...VALID_XMPP_ENV,
     });
     expect(message).toContain('BETTER_AUTH_SECRET');
     expect(message).not.toContain('short-secret-value');
@@ -151,6 +189,7 @@ describe('loadServerConfig', () => {
     const message = configErrorMessage({
       DATABASE_URL: 'mysql://user:hunter2@localhost/db',
       BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
     });
     expect(message).toContain('DATABASE_URL');
     expect(message).not.toContain('hunter2');
@@ -163,6 +202,7 @@ describe('loadServerConfig', () => {
         DATABASE_URL: VALID_DATABASE_URL,
         BETTER_AUTH_SECRET: VALID_SECRET,
         PORT: port,
+        ...VALID_XMPP_ENV,
       });
       expect(message).toContain('PORT');
       if (port !== '') {
@@ -172,7 +212,11 @@ describe('loadServerConfig', () => {
   });
 
   it('accepts the port boundaries', () => {
-    const base = { DATABASE_URL: VALID_DATABASE_URL, BETTER_AUTH_SECRET: VALID_SECRET };
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
     expect(loadServerConfig({ ...base, PORT: '1' }).PORT).toBe(1);
     expect(loadServerConfig({ ...base, PORT: '65535' }).PORT).toBe(65535);
   });

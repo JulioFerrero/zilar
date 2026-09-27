@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
-import { invites, session, user, verification } from '../db/schema';
-import { TEST_SECRET, createTestContext, type TestContext } from '../test-support';
+import { invites, session, user, verification, xmppAccounts } from '../db/schema';
+import {
+  FakeAdminClient,
+  TEST_SECRET,
+  TEST_XMPP_DOMAIN,
+  createTestContext,
+  type TestContext,
+} from '../test-support';
+import { localpartFor } from '../xmpp/provisioning';
 import { INVITE_HEADER } from './auth';
 import {
   consumeInvite,
@@ -23,6 +30,7 @@ function appFor(context: TestContext): TestApp {
     logger: context.logger,
     config: context.config,
     auth: context.auth,
+    adminClient: context.adminClient,
   });
 }
 
@@ -102,9 +110,10 @@ describe('auth flows', () => {
 
     const me = await app.request(`${BASE_URL}/api/me`, { headers: { cookie } });
     expect(me.status).toBe(200);
-    const body = (await me.json()) as { id: string; email: string };
+    const body = (await me.json()) as { id: string; email: string; jid: string | null };
     expect(body.email).toBe('first@example.com');
     expect(body.id).toBeTruthy();
+    expect(body.jid).toBe(`${localpartFor(body.id)}@${TEST_XMPP_DOMAIN}`);
 
     const stored = await findInviteByCode(context.db, invite.code);
     expect(stored?.uses).toBe(1);
@@ -559,5 +568,124 @@ describe('auth flows', () => {
     const stored = await findInviteByCode(context.db, invite.code);
     expect(stored?.uses).toBe(2);
     expect(await context.db.select().from(invites)).toHaveLength(1);
+  });
+
+  it('provisions the XMPP account on sign-up', async () => {
+    const invite = await createInvite(context.db, { createdBy: null });
+    const { app, response } = await bootstrap(context, 'provisioned@example.com', invite.code);
+    expect(response.status).toBe(200);
+    const me = await app.request(`${BASE_URL}/api/me`, {
+      headers: { cookie: sessionCookie(response) },
+    });
+    const { id } = (await me.json()) as { id: string };
+    const localpart = localpartFor(id);
+
+    const rows = await context.db.select().from(xmppAccounts);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ userId: id, localpart, provisioned: true });
+    expect(context.adminClient.registered).toEqual([localpart]);
+  });
+
+  it('still signs the user up when ejabberd is unreachable, with provisioned false', async () => {
+    const adminClient = new FakeAdminClient();
+    adminClient.failRegister = true;
+    const failing = await createTestContext({ adminClient });
+    try {
+      const invite = await createInvite(failing.db, { createdBy: null });
+      const { response } = await bootstrap(failing, 'offline@example.com', invite.code);
+      expect(response.status).toBe(200);
+
+      const rows = await failing.db.select().from(xmppAccounts);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.provisioned).toBe(false);
+      expect(failing.adminClient.registered).toEqual([]);
+      expect(failing.logOutput()).not.toContain(failing.xmppConfig.jwtSecret);
+    } finally {
+      await failing.close();
+    }
+  });
+
+  describe('PATCH /api/me', () => {
+    async function signedIn(): Promise<{ app: TestApp; cookie: string; id: string }> {
+      const invite = await createInvite(context.db, { createdBy: null });
+      const { app, response } = await bootstrap(context, 'profile@example.com', invite.code);
+      const cookie = sessionCookie(response);
+      const me = await app.request(`${BASE_URL}/api/me`, { headers: { cookie } });
+      const { id } = (await me.json()) as { id: string };
+      return { app, cookie, id };
+    }
+
+    async function patchName(app: TestApp, cookie: string, body: unknown): Promise<Response> {
+      return app.request(`${BASE_URL}/api/me`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(body),
+      });
+    }
+
+    it('sets a trimmed display name and returns it', async () => {
+      const { app, cookie } = await signedIn();
+
+      const response = await patchName(app, cookie, { name: '  Ada Lovelace  ' });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ name: 'Ada Lovelace' });
+
+      const me = await app.request(`${BASE_URL}/api/me`, { headers: { cookie } });
+      expect(await me.json()).toMatchObject({ name: 'Ada Lovelace' });
+    });
+
+    it('returns the JID on GET /api/me', async () => {
+      const { app, cookie, id } = await signedIn();
+
+      const me = await app.request(`${BASE_URL}/api/me`, { headers: { cookie } });
+      expect(await me.json()).toMatchObject({
+        jid: `${localpartFor(id)}@${TEST_XMPP_DOMAIN}`,
+      });
+    });
+
+    it('rejects an empty or whitespace-only name', async () => {
+      const { app, cookie } = await signedIn();
+      for (const name of ['', '   ', '\t\n']) {
+        const response = await patchName(app, cookie, { name });
+        expect(response.status).toBe(400);
+      }
+    });
+
+    it('rejects a name longer than 64 characters', async () => {
+      const { app, cookie } = await signedIn();
+      const response = await patchName(app, cookie, { name: 'a'.repeat(65) });
+      expect(response.status).toBe(400);
+    });
+
+    it('accepts exactly 64 characters', async () => {
+      const { app, cookie } = await signedIn();
+      const response = await patchName(app, cookie, { name: 'a'.repeat(64) });
+      expect(response.status).toBe(200);
+    });
+
+    it('rejects control characters', async () => {
+      const { app, cookie } = await signedIn();
+      for (const name of ['Ada\u0000Lovelace', 'Ada\u001fLovelace', 'Ada\u007fLovelace']) {
+        const response = await patchName(app, cookie, { name });
+        expect(response.status).toBe(400);
+      }
+    });
+
+    it('rejects a missing or non-string name', async () => {
+      const { app, cookie } = await signedIn();
+      expect((await patchName(app, cookie, {})).status).toBe(400);
+      expect((await patchName(app, cookie, { name: 42 })).status).toBe(400);
+    });
+
+    it('requires authentication', async () => {
+      const app = appFor(context);
+      const response = await app.request(`${BASE_URL}/api/me`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Nobody' }),
+      });
+      expect(response.status).toBe(401);
+    });
   });
 });
