@@ -1,22 +1,40 @@
 import { serve } from '@hono/node-server';
-import { app } from './app';
+import { createApp } from './app';
+import { loadServerConfigOrExit } from './config';
+import { createDb } from './db/client';
+import { runMigrations } from './db/migrate';
+import { createLogger } from './logger';
 
-const port = parsePort(process.env.PORT);
+const config = loadServerConfigOrExit(process.env);
+const logger = createLogger(config);
 
-serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`galena-server listening on http://localhost:${info.port}`);
+const { db, close } = createDb(config.DATABASE_URL);
+await runMigrations(db);
+
+const app = createApp({ db, logger, config });
+const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
+  logger.info({ port: info.port }, 'galena-server listening');
 });
 
-function parsePort(raw: string | undefined): number {
-  if (raw === undefined) {
-    return 3000;
+let shuttingDown = false;
+
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) {
+    return;
   }
-  if (!/^\d+$/.test(raw)) {
-    throw new Error(`PORT must be an integer between 1 and 65535, got "${raw}"`);
-  }
-  const parsed = Number.parseInt(raw, 10);
-  if (parsed < 1 || parsed > 65535) {
-    throw new Error(`PORT must be an integer between 1 and 65535, got "${raw}"`);
-  }
-  return parsed;
+  shuttingDown = true;
+  logger.info({ signal }, 'shutting down');
+
+  await new Promise<void>((resolve) => {
+    server.close(() => resolve());
+  });
+  await close();
+  process.exit(0);
 }
+
+process.on('SIGINT', () => {
+  void shutdown('SIGINT');
+});
+process.on('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});

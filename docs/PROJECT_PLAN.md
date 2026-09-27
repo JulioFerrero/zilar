@@ -132,6 +132,8 @@ These are Julio's requirements, quoted where possible.
 | D19 | Privacy model | **Like Telegram:** normal chats are stored on the server and readable by it (that's what lets AIs, sync and search work). **No end-to-end encrypted chats for now.** | Julio's decision |
 | D20 | Stack | Confirmed: Vite + React web app, Hono + Drizzle + Postgres, Better Auth, pnpm + Turborepo, Expo for mobile ([§17.2](#172-mobile-react-native--expo)) | Julio: "I love the stack" |
 | D21 | Object storage | **No MinIO:** its Docker images were deleted from Docker Hub in September 2026. File uploads use ejabberd's built-in upload for the MVP, Supabase Storage in production, and Garage or RustFS if we need S3 locally. | Research on 2026-09-27 |
+| D22 | OpenCode service network access | Julio's OpenCode v2 service stays reachable on his home network (`hostname 0.0.0.0`, password-protected) | Julio: "keep it open". He uses it from his phone. |
+| D23 | UI style | **Close to Telegram** in layout, patterns and feel, with no Telegram brand assets. Source of truth: `docs/design/ui-style.md`. | Julio: "we need to be closer to what Telegram is"; more detail once he's used the app |
 
 ---
 
