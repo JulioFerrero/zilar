@@ -21,4 +21,26 @@ A self-hosted, Telegram-like chat app where people and AI agents talk together: 
 
 ## Development
 
-Setup instructions will appear here once T-0001 (monorepo) and T-0002 (dev infrastructure) are merged.
+Prerequisites: **Node 24** (see `.nvmrc`) and **pnpm 10** (see `packageManager` in `package.json`; `corepack enable` or `npm install -g pnpm@10`).
+
+```bash
+pnpm install
+```
+
+Start the dev servers — `@galena/server` on <http://localhost:3000> (`PORT` overrides it), `@galena/web` on <http://localhost:5173>:
+
+```bash
+pnpm dev
+```
+
+Checks (the same ones CI runs):
+
+```bash
+pnpm format:check   # Prettier
+pnpm lint           # oxlint
+pnpm typecheck      # tsc --noEmit, every package
+pnpm test           # Vitest, every package
+pnpm build          # Turborepo, builds the web app
+```
+
+`pnpm format` rewrites files in place. Apps live in `apps/*`, shared libraries in `packages/*`.

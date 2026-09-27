@@ -1,0 +1,19 @@
+{
+  "name": "@galena/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@galena/protocol": "workspace:*",
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.13.9"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  }
+}
