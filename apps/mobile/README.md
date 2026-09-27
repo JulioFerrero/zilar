@@ -5,9 +5,10 @@ The Galena mobile app: an [Expo](https://expo.dev) (SDK 57) app using
 [NativeWind](https://www.nativewind.dev) and
 [React Native Reusables](https://reactnativereusables.com).
 
-For now it shows a single placeholder screen that mirrors `apps/web`: the app name, a subtitle
-and the `@galena/protocol` version. That proves the monorepo wiring (Expo + pnpm + Metro resolving
-a TypeScript workspace package) and the styling stack.
+For now it shows the Telegram-like chat shell from T-0019 (mock data): the chat list with folder
+tabs and search, and the chat screen with bubbles, voice/image messages, AI cards and the composer.
+It also proves the monorepo wiring (Expo + pnpm + Metro resolving a TypeScript workspace package)
+and the styling stack.
 
 ## Requirements
 
@@ -58,11 +59,18 @@ commit them and do not edit them by hand: change `app.json` or a config plugin i
 
 ```
 src/
-  app/           # Expo Router routes (_layout.tsx, index.tsx)
-  components/    # React Native Reusables components (ui/)
-  lib/           # helpers (cn, theme, protocol label)
-  global.css     # Tailwind entry + React Native Reusables CSS variables
+  app/           # Expo Router routes (index.tsx = chat list, chat/[id].tsx = chat screen)
+  components/    # React Native Reusables components (ui/) and chat components (chat/)
+  lib/           # pure helpers (time, avatars, grouping, previews, colors) + tests
+  mock/          # mock chats and messages until the real data lands
+  store/         # zustand chat store (sendText, openChat, search, folders)
+  global.css     # Tailwind entry + Galena CSS variables (light and dark)
+  screenshots/   # simulator screenshots, committed for review
 ```
 
 `@/*` maps to `src/*` (see `tsconfig.json`). Styling uses NativeWind (Tailwind classes); the
 component copies come from React Native Reusables and live under `src/components/ui`.
+
+`react-native-css-interop` is pinned to the exact version NativeWind depends on (0.2.7). The NativeWind
+JSX transform imports `react-native-css-interop/jsx-runtime` from app code, and pnpm's isolated
+`node_modules` otherwise hides it. Keep both versions in sync when upgrading NativeWind.
