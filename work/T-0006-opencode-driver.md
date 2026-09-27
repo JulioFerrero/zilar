@@ -1,7 +1,7 @@
 ---
 id: T-0006
 title: Agent driver package + OpenCode v2 driver (spike S4)
-status: review
+status: merged
 milestone: M0
 branch: task/T-0006-opencode-driver
 model: opencode-go/deepseek-v4.1-flash
@@ -275,3 +275,17 @@ Round 2 command results (all exit 0, run after the fixes and a `prettier --write
    - the DOM lib in tsconfig, same as devtools
    - a `node:http` fake server with no new dependency
    - rule order asks → allows → denies
+
+**Verdict (round 2): approved.** Merged by Claude.
+
+- Re-ran `format:check`, `lint`, `typecheck`, `test` (agent-drivers **19**) and `build`: all PASS.
+- **Live test against a real OpenCode v2 server.** I started a private `opencode2 serve` on `127.0.0.1:4917` with a throwaway random password, and used the `deepseek-v4.1-flash` model. One session, two prompts:
+
+  | Run | Prompt | Events | Result |
+  |---|---|---|---|
+  | 1 | "reply: first run ok" | `text("first run ok")` → `done(succeeded)` | PASS |
+  | 2 | "run `date`, then reply: second run ok" (session rule `shell date*` = ask) | `tool_call(shell date)` → `permission_request(shell: date)` → the driver answered `allow_once` → `tool_result(shell, completed)` → `text("second run ok")` → `done(succeeded)` | PASS |
+  | – | **No replay** | Run 2 contained nothing from run 1 | PASS |
+
+- Afterwards I deleted the test session (204), stopped the private server, and deleted the password file.
+- Both round 1 findings are resolved. The plan's §10.2 interface has been updated to the new `prompt → PromptRef` and `events(session, { after })` signatures.
