@@ -19,6 +19,7 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | [T-0021](T-0021-sm-ack-bug.md) | Fix random disconnects: XEP-0198 ack miscount (xmpp.js over WebSocket) | **in-progress** | v4.1-flash | T-0016 | Uses the dev stack |
 | [T-0022](T-0022-web-ui-polish.md) | Web polish: new-chat button, unread divider, typing, message menu and reply, big emoji, safe links, green online dot | **in-progress** | v4.1-flash | T-0018 | Per ui-style.md additions |
 | T-0023 | Mobile polish: the same additions, plus swipe-to-reply, haptics, switch to `@galena/chat-core` | planned | v4.1-flash | T-0022 | After T-0021 (simulator load) |
+| [T-0024](T-0024-web-real-data.md) | Web on real data: invite, email code, name; real chats via xmpp-core; groups and invites | planned | v4.1-flash | T-0020, T-0021, T-0022 | **The milestone where Julio can use Galena** |
 
 ## Follow-ups
 
