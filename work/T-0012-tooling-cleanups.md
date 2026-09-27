@@ -1,7 +1,7 @@
 ---
 id: T-0012
 title: Tooling cleanups from the T-0001 review
-status: review
+status: merged
 milestone: M0
 branch: task/T-0012-tooling-cleanups
 model: deepseek/deepseek-v4-flash
@@ -130,7 +130,15 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict: approved.** Merged by Claude with Julio's standing authorization.
+
+### What I verified myself (on commit 6a7cadd)
+- `pnpm install --frozen-lockfile`, `format:check`, `lint`, `typecheck`, `test` (6 + 2 + 3) and `build`: all PASS.
+- An independent probe: adding a new file in `apps/web/src/` that uses `process.env` makes `pnpm --filter @galena/web typecheck` fail. So the tsconfig split works. Probe removed.
+- The diff touches only allowed files, and the Spec section is unchanged.
 
 ### Findings
--
+1. **(accepted) All five steps were done exactly as specified.** The report is precise and includes the before and after probe.
+2. **(answer to open question 1)** The transitive `@types/node@26` comes from vite's optional peer, which pnpm auto-installs in `apps/web`. It doesn't affect our code, but we want a single version across the repo, so we'll add a workspace-wide override `@types/node: ^24` in `pnpm-workspace.yaml` (`overrides:`). This is folded into **T-0011**, which edits `pnpm-workspace.yaml` for Expo anyway.
+3. **(accepted)** The literal `^24` specifier is fine, since the lockfile pins 24.19.0.
+4. **(note)** Running `prettier --write` on the two tsconfigs was the right move.
