@@ -1,7 +1,7 @@
 ---
 id: T-0022
 title: Web UI polish — new-chat button, unread divider, typing, message menu + reply, big emoji, safe links
-status: review
+status: merged
 milestone: M1
 branch: task/T-0022-web-ui-polish
 model: opencode-go/deepseek-v4.1-flash
@@ -136,7 +136,23 @@ Also `work/T-0022-web-ui-polish.md` (status + this Report). No other files touch
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict: approved.** Merged by Claude.
+
+### What I verified myself (on commit 31125e4)
+- `format:check`, `lint`, `typecheck`, `test` (web **40**, chat-core **50**) and `build`: all PASS. No `alert` / `confirm` / `prompt` in the app code (`javascript:alert(1)` appears only as a test string for the link filter).
+- Screenshots in iPad simulator Safari show:
+  - `typing…` with animated dots in the list and the header ("Luis is typing…" in the group)
+  - the **Unread messages** divider in Ana's chat
+  - the pencil new-chat button
+  - **big emoji** without a bubble, with a time pill
+  - fixed initials ("V")
+  - the green online dot
+  - the mute icon spacing
+  - reply quotes
 
 ### Findings
--
+1. **(nit, next polish)** The sender name above a big-emoji message is faint (pale name with no bubble). Hide it, as Telegram does: show only the avatar.
+2. **(accepted)**
+   - the custom message menu (focus, `Esc`, outside click)
+   - the bare `typing…` in DMs
+   - voice and photo reply excerpts through `previewBody`
