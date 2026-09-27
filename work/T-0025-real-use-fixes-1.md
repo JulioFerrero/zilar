@@ -143,6 +143,47 @@ pnpm build
 
 - Nothing blocked. Two optional follow-ups are listed above (wire the pino logger in `app.ts`, or make the admin-client method required and add the noop line in `cli-config.ts`).
 
+### Round 2 (findings 1-3)
+
+**Finding 1 — my own typing/displayed is ignored in groups.**
+- `handleTyping` and `handleDisplayed` now drop events whose `fromJid` is my own bare JID (`me.jid`). The MUC's chat-state reflection no longer shows "me typing", and my own displayed marker no longer marks a message read (only a peer's marker does).
+- Tests: own typing reflected from a group is ignored while a peer's still shows; own displayed marker leaves the message `sent` while a peer's marker makes it `read`.
+
+**Finding 2 — sender names never fall back to a JID localpart.**
+- `senderNameFor` now resolves in the order from the review: "You" → contact name → `fromNick` → group member name (`GET /api/groups/:id`, cached per chat) → room occupant nick (matched by `realJid`, or by occupant JID for an unresolved sender) → DM title → **"Someone"**. The `message.fromJid.split('@')[0]` fallback is gone, so a raw localpart can no longer be rendered.
+- Added `getGroup(groupId)` to `lib/api.ts` and the `ApiClient` seam. Group ids are remembered from `/api/chats`; members are loaded once per chat when a group is joined (boot), opened, created, or seen for the first time through a refresh or a typing event.
+- Tests: a group member who is not a contact types and the name shows ("Luis"); an unknown group sender shows "Someone"; a sender with no member row but a room occupant shows the occupant nick ("Pablo").
+
+**Finding 3 — cleanup.**
+- `sendDirectInvitation` is now a required method on `EjabberdAdminClient`; `FullEjabberdAdminClient` and the `?.` call are removed; the noop `sendDirectInvitation` was added to `apps/server/src/auth/cli-config.ts`.
+- `createGroupsRoutes` takes a required `logger: InviteLogger`; `app.ts` passes the real pino `logger`; the groups service inputs require a logger; the `console.warn` fallback is gone. The "invitation cannot be sent" test now asserts the captured pino output instead of spying on `console.warn`.
+
+**Files changed (round 2).**
+- web: `src/store/realStore.ts`, `src/store/realStore.test.ts`, `src/lib/api.ts`.
+- server: `src/app.ts`, `src/auth/cli-config.ts`, `src/xmpp/admin-client.ts`, `src/groups/routes.ts`, `src/groups/service.ts`, `src/groups/groups.test.ts`.
+- `work/T-0025-real-use-fixes-1.md` (this Round 2 note). No other file was touched.
+
+**Commands run and real results (round 2).**
+- `pnpm format:check`: PASS — "All matched files use Prettier code style!".
+- `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (233 files, 127 rules).
+- `pnpm typecheck`: PASS — 8/8 tasks successful.
+- `pnpm test`: PASS — 8/8 tasks successful. `@galena/web` **76 passed** (17 files; `realStore` 22), `@galena/xmpp-core` **114 passed, 3 skipped**, `@galena/server` **155 passed**.
+- `pnpm build`: PASS — 2/2 tasks successful.
+- `GALENA_XMPP_INTEGRATION=1 pnpm --filter @galena/xmpp-core test integration-invites`: PASS — 1/1 against the still-running stack:
+  ```
+  PASS  the invited client connects
+  PASS  roster push received (jid=inv-alice-…@galena.localhost, subscription=both, name=Alice)
+  PASS  direct invitation received (roomJid=inv-…@rooms.galena.localhost,
+        fromJid=inv-…@rooms.galena.localhost, reason=Join the room)
+  Test Files  1 passed (1)   Tests  1 passed (1)
+  ```
+
+**Problems, deviations, open questions (round 2).**
+- Group members are matched to a sender by the JID localpart, which the provisioning layer defines as the user id lowercased (`localpartFor`). It is used only as a cache key and never displayed; an id that needs the hashed localpart falls through to the occupant nick or "Someone".
+- The occupant lookup is the fallback for a member missing from the cached list or for an unresolved sender JID.
+- `nick(me)` still falls back to the localpart only when a user has an empty display name; the sign-up flow enforces a name, so this is not expected in practice.
+- No new dependencies. The dev stack was not stopped or reset.
+
 ---
 
 ## Review (written by Claude)

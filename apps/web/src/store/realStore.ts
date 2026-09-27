@@ -14,6 +14,7 @@ import {
   createInvite as createInviteRequest,
   getChats,
   getContacts,
+  getGroup,
   getMe,
   getXmppToken,
   type ChatEntry,
@@ -36,6 +37,7 @@ export interface ApiClient {
   getMe(): Promise<Me>;
   getChats(): Promise<ChatEntry[]>;
   getContacts(): Promise<Contact[]>;
+  getGroup(groupId: string): Promise<GroupDetail>;
   getXmppToken(): Promise<XmppToken>;
   createGroup(input: { title: string; memberIds: string[] }): Promise<GroupDetail>;
   createInvite(): Promise<Invite>;
@@ -59,6 +61,7 @@ const realApi: ApiClient = {
   getMe,
   getChats,
   getContacts,
+  getGroup,
   getXmppToken,
   createGroup: createGroupRequest,
   createInvite: createInviteRequest,
@@ -178,6 +181,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const cursors: Record<string, string | undefined> = {};
     const pendingOutgoing = new Map<string, string[]>();
     const messageAliases = new Map<string, string>();
+    const groupIds = new Map<string, string>();
+    // chatId -> (lowercased userId -> display name)
+    const groupMembers = new Map<string, Map<string, string>>();
+    const loadingGroupMembers = new Set<string>();
     const loadingOlder = new Set<string>();
 
     function persistLastRead(): void {
@@ -274,8 +281,62 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       });
     }
 
+    function myJid(): string | undefined {
+      const jid = get().me?.jid;
+      return jid === undefined || jid === null || jid === '' ? undefined : jid;
+    }
+
+    function isOwnSender(fromJid: string): boolean {
+      const jid = myJid();
+      return jid !== undefined && fromJid === jid;
+    }
+
+    // The localpart of a JID on our own domain, used only as a lookup key.
+    // It is never shown; the localpart of a user JID is the user id lowercased.
+    function userLocalpartOf(fromJid: string): string | undefined {
+      const mine = myJid();
+      if (mine === undefined) {
+        return undefined;
+      }
+      const domain = mine.slice(mine.indexOf('@') + 1);
+      const at = fromJid.indexOf('@');
+      if (at === -1) {
+        return undefined;
+      }
+      const local = fromJid.slice(0, at);
+      const host = fromJid.slice(at + 1);
+      return host === domain ? local.toLowerCase() : undefined;
+    }
+
+    function groupMemberNameFor(chatId: string, fromJid: string): string | undefined {
+      const members = groupMembers.get(chatId);
+      if (members === undefined) {
+        return undefined;
+      }
+      const localpart = userLocalpartOf(fromJid);
+      if (localpart === undefined) {
+        return undefined;
+      }
+      const name = members.get(localpart);
+      return name !== undefined && name !== '' ? name : undefined;
+    }
+
+    function occupantNameFor(chatId: string, fromJid: string): string | undefined {
+      if (core === undefined) {
+        return undefined;
+      }
+      const occupant = core
+        .occupants(chatId)
+        .find((item) => item.realJid === fromJid || item.jid === fromJid);
+      const nick = occupant?.nick;
+      return nick !== undefined && nick !== '' ? nick : undefined;
+    }
+
+    // Resolves a display name without ever falling back to a JID localpart.
+    // Order: me, contact, MUC nick, group member, room occupant, DM title,
+    // then "Someone".
     function senderNameFor(message: ChatMessage): string {
-      if (message.outgoing) {
+      if (message.outgoing || isOwnSender(message.fromJid)) {
         return 'You';
       }
       const contact = get().contacts.find((entry) => entry.jid === message.fromJid);
@@ -285,11 +346,52 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (message.fromNick !== undefined && message.fromNick !== '') {
         return message.fromNick;
       }
+      const member = groupMemberNameFor(message.chatJid, message.fromJid);
+      if (member !== undefined) {
+        return member;
+      }
+      const occupant = occupantNameFor(message.chatJid, message.fromJid);
+      if (occupant !== undefined) {
+        return occupant;
+      }
       const chat = get().chats.find((entry) => entry.id === message.chatJid);
       if (chat !== undefined && chat.kind === 'dm') {
         return chat.title;
       }
-      return message.fromJid.split('@')[0] ?? message.fromJid;
+      return 'Someone';
+    }
+
+    function rememberGroupIds(entries: ChatEntry[]): void {
+      for (const entry of entries) {
+        if (entry.kind === 'group') {
+          groupIds.set(entry.chatJid, entry.groupId);
+        }
+      }
+    }
+
+    // Loads the member names of a group once per chat, so a typing indicator
+    // or a message from a member who is not a contact can still show a name.
+    async function ensureGroupMembers(chatId: string): Promise<void> {
+      if (groupMembers.has(chatId) || loadingGroupMembers.has(chatId)) {
+        return;
+      }
+      const groupId = groupIds.get(chatId);
+      if (groupId === undefined) {
+        return;
+      }
+      loadingGroupMembers.add(chatId);
+      try {
+        const detail = await api.getGroup(groupId);
+        const members = new Map<string, string>();
+        for (const member of detail.members) {
+          members.set(member.userId.toLowerCase(), member.name);
+        }
+        groupMembers.set(chatId, members);
+      } catch {
+        // The name falls back to the occupant nick or "Someone".
+      } finally {
+        loadingGroupMembers.delete(chatId);
+      }
     }
 
     function toUiMessage(message: ChatMessage, meId: string): UiMessage {
@@ -419,7 +521,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     }
 
     function handleTyping(event: { chatJid: string; fromJid: string; state: string }): void {
+      // The MUC reflects my own chat states back to me; they are not someone
+      // else typing.
+      if (isOwnSender(event.fromJid)) {
+        return;
+      }
       const chatId = event.chatJid;
+      void ensureGroupMembers(chatId);
       const name = senderNameFor({
         chatJid: chatId,
         fromJid: event.fromJid,
@@ -448,7 +556,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    function handleDisplayed(event: { chatJid: string; messageId: string }): void {
+    function handleDisplayed(event: { chatJid: string; fromJid: string; messageId: string }): void {
+      // My own displayed marker, reflected in a group, means I displayed my
+      // own message, not that a peer read it.
+      if (isOwnSender(event.fromJid)) {
+        return;
+      }
       updateMessageStatus(event.chatJid, event.messageId, 'read');
     }
 
@@ -507,6 +620,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (chat.kind !== 'group') {
           continue;
         }
+        void ensureGroupMembers(chat.id);
         try {
           await current.joinRoom(chat.id, nick(me));
         } catch {
@@ -568,6 +682,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         });
       // New chats appear at the top; the rest keep their recency order.
       set({ chats: [...fresh, ...sortByRecency(kept)] });
+      rememberGroupIds(entries);
 
       const current = core;
       const me = get().me;
@@ -579,6 +694,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           continue;
         }
         await current.joinRoom(entry.chatJid, nick(me)).catch(() => {});
+        void ensureGroupMembers(entry.chatJid);
       }
       for (const entry of entries) {
         if (known.has(entry.chatJid)) {
@@ -714,6 +830,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
       lastReadUserId = me.id;
       lastRead = readLastRead(storage, me.id);
+      rememberGroupIds(entries);
       set({
         me,
         currentUserId: me.id,
@@ -789,6 +906,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       openChat: (chatId) => {
         set({ activeChatId: chatId });
         recordRead(chatId, lastRead[chatId]);
+        void ensureGroupMembers(chatId);
         void openHistory(chatId);
       },
       loadOlder,
@@ -844,6 +962,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       createGroup: async (title, memberIds) => {
         const detail = await api.createGroup({ title, memberIds });
         const entries = await api.getChats();
+        rememberGroupIds(entries);
         const previous = get().chats;
         set({
           chats: sortByRecency(
@@ -873,6 +992,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (core !== undefined && me !== undefined) {
           await core.joinRoom(created.chatJid, nick(me)).catch(() => {});
         }
+        void ensureGroupMembers(created.chatJid);
         await openHistory(created.chatJid);
         return created.chatJid;
       },

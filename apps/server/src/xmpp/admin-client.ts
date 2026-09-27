@@ -68,11 +68,7 @@ export type EjabberdAdminClient = {
   setAffiliation(roomId: string, jid: string, affiliation: RoomAffiliation): Promise<void>;
   getAffiliations(roomId: string): Promise<RoomAffiliationEntry[]>;
   destroyRoom(roomId: string): Promise<void>;
-  /**
-   * Optional on the interface so lightweight stubs (for example the
-   * schema-generation CLI) stay valid; every real client implements it.
-   */
-  sendDirectInvitation?(
+  sendDirectInvitation(
     roomId: string,
     users: string[],
     options?: SendDirectInvitationOptions,
@@ -85,9 +81,6 @@ export type EjabberdAdminClient = {
   deleteRosterItem(localpart: string, contactJid: string): Promise<void>;
   getRoster(localpart: string): Promise<RosterEntry[]>;
 };
-
-/** The concrete client, which always implements every command. */
-export type FullEjabberdAdminClient = Required<EjabberdAdminClient>;
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
@@ -172,7 +165,7 @@ function splitBareJid(value: string): { user: string; host: string } {
 export function createEjabberdAdminClient(
   config: XmppConfig,
   fetchImpl: FetchLike = fetch,
-): FullEjabberdAdminClient {
+): EjabberdAdminClient {
   async function call(command: string, body: Record<string, unknown>): Promise<ApiResponse> {
     const response = await fetchImpl(`${config.apiUrl}/${command}`, {
       method: 'POST',

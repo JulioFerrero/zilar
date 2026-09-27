@@ -21,17 +21,8 @@ export interface GroupsRoutesDependencies {
   db: ServerDatabase;
   config: ServerConfig;
   adminClient: EjabberdAdminClient;
-  logger?: InviteLogger;
+  logger: InviteLogger;
 }
-
-// `app.ts` does not pass the pino logger to these routes yet, so a failed
-// invitation is reported through the console. A pino logger is used when one
-// is provided.
-const consoleInviteLogger: InviteLogger = {
-  warn: (fields, message) => {
-    console.warn(`[groups] ${message}`, fields);
-  },
-};
 
 const titleSchema = z
   .string()
@@ -53,7 +44,7 @@ export function createGroupsRoutes({
   db,
   config,
   adminClient,
-  logger = consoleInviteLogger,
+  logger,
 }: GroupsRoutesDependencies): Hono {
   const routes = new Hono();
   const domain = config.xmpp.domain;

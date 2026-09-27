@@ -46,7 +46,7 @@ export interface CreateGroupInput {
   title: string;
   memberIds: string[];
   domain: string;
-  logger?: InviteLogger;
+  logger: InviteLogger;
 }
 
 export interface AddGroupMembersInput {
@@ -54,7 +54,7 @@ export interface AddGroupMembersInput {
   actorId: string;
   userIds: string[];
   domain: string;
-  logger?: InviteLogger;
+  logger: InviteLogger;
 }
 
 export interface RemoveGroupMemberInput {
@@ -369,16 +369,16 @@ async function inviteNewMembers(
   roomLocalpart: string,
   userIds: string[],
   domain: string,
-  logger: InviteLogger | undefined,
+  logger: InviteLogger,
 ): Promise<void> {
   if (userIds.length === 0) {
     return;
   }
   const users = userIds.map((userId) => jidFor(localpartFor(userId), domain));
   try {
-    await adminClient.sendDirectInvitation?.(roomLocalpart, users);
+    await adminClient.sendDirectInvitation(roomLocalpart, users);
   } catch (error) {
-    logger?.warn(
+    logger.warn(
       { err: error, roomLocalpart, members: users.length },
       'could not send the group invitations',
     );

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { groupMembers, groups } from '../db/schema';
 import {
@@ -141,18 +141,14 @@ describe('groups', () => {
     const owner = await bootstrapUser(context, app, 'owner@example.com');
     const member = await contactOf(context, app, owner.id, 'member@example.com');
     context.adminClient.failDirectInvitation = true;
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    try {
-      const response = await createGroupRequest(owner.cookie, {
-        title: 'Trip',
-        memberIds: [member.id],
-      });
-      expect(response.status).toBe(201);
-      expect(warn).toHaveBeenCalled();
-    } finally {
-      warn.mockRestore();
-    }
+    const response = await createGroupRequest(owner.cookie, {
+      title: 'Trip',
+      memberIds: [member.id],
+    });
+
+    expect(response.status).toBe(201);
+    expect(context.logOutput()).toContain('could not send the group invitations');
   });
 
   it('rejects a member who is not a contact without naming them', async () => {
