@@ -1,7 +1,7 @@
 ---
 id: T-0001
 title: Monorepo scaffold (pnpm + Turborepo, TypeScript strict, lint, tests, CI)
-status: review
+status: approved
 milestone: M0
 branch: task/T-0001-monorepo
 model: deepseek/deepseek-v4-pro
@@ -208,10 +208,31 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict: approved.** Julio can merge.
+
+The work is excellent. Every acceptance criterion is met, the worker stayed inside the allowed files, the Spec section was left untouched, and the Report is honest and detailed.
+
+### What I verified myself (2026-09-27, on commit 75922e5)
+- `pnpm install --frozen-lockfile`: PASS.
+- `format:check`, `lint`, `typecheck`, `test`, `build`: all PASS. Tests: protocol 6, server 2, web 3.
+- `PORT=3197 pnpm --filter @galena/server dev` then `curl /health` returns `{"ok":true,"name":"galena-server","version":"0.1.0","protocolVersion":"0.1.0"}`.
+- The GitHub Actions versions used exist upstream as the latest releases: `actions/checkout` v7.0.1, `actions/setup-node` v7.0.0, `pnpm/action-setup` v6.1.0.
+- The diff touches only allowed files, and `README.md` changed only in `## Development`.
 
 ### Findings
--
+1. **(minor, follow-up) `@types/node` is 26.x, but the runtime is Node 24.** The types allow Node 26-only APIs that would crash on Node 24. Pin `@types/node` to `^24`.
+2. **(minor, follow-up) The web tsconfig includes `node` types for browser code,** because `vite.config.ts` is in the same project. That means `process` or `Buffer` in `src/` would typecheck and then fail in the browser. Split it into `tsconfig.json` (for `src`, DOM + `vite/client`) and `tsconfig.node.json` (for `vite.config.ts`, with node types).
+3. **(minor, follow-up) The web tests rely on pnpm auto-installing the `@testing-library/dom` peer.** Declare it explicitly as a devDependency of `@galena/web`, so the tests don't break if pnpm settings change.
+4. **(nit, follow-up) CI runs twice on pull requests,** because it's triggered by both `push` (all branches) and `pull_request`. Limit `push` to `main`.
+5. **(accepted) TypeScript 6.0.3 instead of 7.0.2.** This is correct per the spec. We stay on 6.x until the tools we use (tsx, Vitest, oxlint, Expo) confirm TypeScript 7 support. This is now a recorded decision.
+6. **(accepted) Answer to open question (a):** keep `AGENTS.md`, `README.md`, `docs/` and `work/` in `.prettierignore` **permanently**. They're hand-formatted documents, workers edit the Report sections, and Prettier reflowing tables would create noisy diffs. Change the comment in `.prettierignore` to say so.
+7. **(accepted) Answer to open question (b):** add `passThroughEnv` / `env` entries **per task, as each variable arrives**. Keep them explicit.
+8. **(accepted) `passThroughEnv: ["PORT"]`, the oxlint plugin list, and `correctness: error`** are all good calls.
+9. **(note for later)**
+   - `apps/server/src/version.ts` reads `package.json` at runtime, relative to the source file. That has to change when the server gets a build or bundle step.
+   - When the server gets real configuration (T-0003 or later), use a zod env schema instead of hand-written checks. zod wasn't in the server's allowed dependencies for this task, so the current approach was correct here.
+10. **(process note)** The worker ran in the main checkout rather than a separate worktree. That's fine with one worker, but parallel workers each need their own worktree (see `work/README.md`).
 
 ### Follow-ups
--
+- New task **T-0012 (tooling cleanups)** for findings 1–4 and 6. It's small, so it's assigned to `deepseek-v4-flash`.
+- Findings 9 are carried into the specs of the first real server tasks.

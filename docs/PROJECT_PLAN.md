@@ -1646,7 +1646,31 @@ In short: Claude plans and reviews, DeepSeek builds, Julio decides.
   - Claude does the hard integration work (XMPP on React Native, push, the runner tunnel, security).
 - **State lives in the repo:** this plan, `tasks/`, and PR descriptions. Any new Claude session can pick up where the last one stopped.
 
-**Dogfooding.** Once M3 works (runners and desks), this workflow moves **into the platform itself.** The DeepSeek dev AIs live in a group with Julio, with a Claude-model boss AI, working on the platform's own repo.
+**Dogfooding: using Galena to improve Galena.** Once M3 (runners and desks) and M4 (teamwork and approvals) work, this workflow moves **into Galena itself.**
+
+- **The "Galena dev" group:**
+  - Julio, who decides and approves.
+  - A strong-model boss/reviewer AI, which plans and reviews the way Claude does now.
+  - DeepSeek dev AIs on Julio's Mac runner.
+  - A QA AI that tests each preview at phone and desktop sizes.
+  - A marketing AI that writes changelogs and the landing page.
+- **Friends are testers.** "This button doesn't work" in any chat → the listener creates a task → the AIs fix it → Julio approves the merge.
+- **Mapping from today's workflow:** task files become the board, Reports become PR descriptions, Reviews become approval cards.
+
+**Safety rules for self-improvement.** AIs must never be able to weaken the guardrails that control them.
+
+1. **Protected paths.** The following can only change with **Julio's** review, enforced by CODEOWNERS and branch protection:
+   - the policy/approvals/budgets code
+   - the credential and action proxy
+   - auth
+   - the runner's command list
+   - `AGENTS.md`
+   - CI config
+
+   AI approvals never count.
+2. **Two Galenas.** The AIs live in **production** Galena, but their changes are tested in a separate **staging** Galena (a preview deployment). Production updates only through a release Julio approves, so a bad change can't break the chat the AIs work in.
+3. **One-click rollback** of any release (Coolify redeploys the previous version).
+4. **Keep the markdown + OpenCode workflow as a backup path** for when Galena itself is down.
 
 **Limits to be honest about:**
 - Claude works in sessions that Julio starts. It isn't always on, so work pauses between sessions unless workers are left running in the background.

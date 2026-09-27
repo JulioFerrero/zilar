@@ -5,7 +5,7 @@ status: todo
 milestone: M0
 branch: task/T-0002-dev-infra
 model: deepseek/deepseek-v4-pro
-depends_on: [T-0001]
+depends_on: [T-0001, T-0012]
 estimate: 1–2 days
 ---
 
