@@ -1,0 +1,111 @@
+# Galena local development infrastructure: Postgres (pgvector), ejabberd and LiteLLM.
+#
+#   pnpm infra:up      start everything and wait for the healthchecks
+#   pnpm infra:down    stop the containers, keep the data volumes
+#   pnpm infra:logs    follow the logs
+#   pnpm infra:reset   delete the data volumes (asks for confirmation)
+#
+# Secrets come from infra/.env (git-ignored, see infra/.env.example). Every
+# published port binds to 127.0.0.1 only. Image tags and the LiteLLM digest are
+# pinned on purpose; do not switch to floating tags.
+
+name: galena-dev
+
+services:
+  postgres:
+    # pgvector 0.8.6 on PostgreSQL 18. Postgres 18 keeps PGDATA under
+    # /var/lib/postgresql/<major>/docker, so the volume mounts the parent.
+    image: pgvector/pgvector:0.8.6-pg18-trixie
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:5432:5432'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in infra/.env}
+      POSTGRES_DB: postgres
+      GALENA_DB_PASSWORD: ${GALENA_DB_PASSWORD:?GALENA_DB_PASSWORD is required in infra/.env}
+      EJABBERD_DB_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required in infra/.env}
+      LITELLM_DB_PASSWORD: ${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD is required in infra/.env}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - galena
+
+  ejabberd:
+    # XMPP server, pinned to the 26.07 release.
+    image: ghcr.io/processone/ejabberd:26.07
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:5222:5222'
+      - '127.0.0.1:5280:5280'
+    environment:
+      EJABBERD_MACRO_HOST: galena.localhost
+      # The container registers admin@galena.localhost on first start and
+      # overrides the ADMIN macro in infra/ejabberd/ejabberd.yml with it.
+      EJABBERD_MACRO_ADMIN: admin@galena.localhost
+      REGISTER_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required in infra/.env}
+      EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required in infra/.env}
+    volumes:
+      - ./ejabberd/ejabberd.yml:/opt/ejabberd/conf/ejabberd.yml:ro
+      - ejabberd-database:/opt/ejabberd/database
+      - ejabberd-uploads:/opt/ejabberd/upload
+    healthcheck:
+      test: ['CMD', 'ejabberdctl', 'status']
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+    networks:
+      - galena
+
+  litellm:
+    # LiteLLM proxy 1.102.1, pinned by digest. Never use 1.82.7 or 1.82.8:
+    # those releases were compromised.
+    image: ghcr.io/berriai/litellm@sha256:87f34979b9f8cb274fac90ca8a4fdda07d8480de22755562a26adeb95ce20d02
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:4000:4000'
+    environment:
+      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD is required in infra/.env}@postgres:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY is required in infra/.env}
+      PLACEHOLDER_API_KEY: ${PLACEHOLDER_API_KEY:-CHANGE_ME}
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    command: ['--config', '/app/config.yaml', '--port', '4000', '--host', '0.0.0.0']
+    healthcheck:
+      # The image has no curl, so the healthcheck uses its bundled Python.
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=5)",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    networks:
+      - galena
+
+networks:
+  galena:
+    name: galena-dev
+
+volumes:
+  postgres-data:
+  ejabberd-database:
+  ejabberd-uploads:

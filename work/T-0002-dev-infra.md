@@ -1,7 +1,7 @@
 ---
 id: T-0002
 title: Local dev infrastructure (docker-compose with Postgres, ejabberd, LiteLLM)
-status: todo
+status: merged
 milestone: M0
 branch: task/T-0002-dev-infra
 model: opencode-go/deepseek-v4.1-flash
@@ -139,31 +139,106 @@ pnpm infra:down
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+- `infra/docker-compose.dev.yml` (project `galena-dev`) starts **Postgres (pgvector), ejabberd and LiteLLM**. Every published port is bound to `127.0.0.1`; data lives in three named volumes; all secrets are interpolated from `infra/.env`.
+- **Postgres**: `pgvector/pgvector:0.8.6-pg18-trixie` (PostgreSQL 18.6, pgvector 0.8.6). `infra/postgres/init/10-create-databases.sql` creates the users/databases `galena`, `ejabberd`, `litellm` (passwords from env, read with psql `\getenv`) and enables the `vector` extension in `galena`. Healthcheck `pg_isready`. The volume mounts `/var/lib/postgresql` (Postgres 18 keeps PGDATA in `/var/lib/postgresql/18/docker`).
+- **ejabberd**: `infra/ejabberd/ejabberd.yml`, mounted read-only. Domain `galena.localhost`, MUC service `rooms.galena.localhost`, SQL backend on the `ejabberd` database with `update_sql_schema: true` (tables created automatically on first start: verified 24 tables). Listeners: 5222 c2s and 5280 HTTP with `/ws` (WebSocket), `/upload` (mod_http_upload, 50 MB, volume) and `/api` (mod_http_api, admin auth). Modules: `mod_muc` (persistent, members-only, MAM), `mod_mam` (SQL, `default: always`), `mod_http_upload`, `mod_stream_mgmt`, `mod_carboncopy`, `mod_ping`, `mod_push`, `mod_http_api`, plus the usual roster/vcard/disco/offline set. Admin `admin@galena.localhost` registered on first start via `REGISTER_ADMIN_PASSWORD` + `EJABBERD_MACRO_ADMIN`. Healthcheck `ejabberdctl status`. **No `mod_register`** and **no s2s listener**, plus `s2s_access: s2s` with `s2s: deny: all`.
+- **LiteLLM**: `infra/litellm/config.yaml` with one placeholder model (`openai/placeholder`, key from `os.environ/PLACEHOLDER_API_KEY`), `master_key` and `database_url` from `os.environ`. Healthcheck uses the image's bundled `python` against `/health/liveliness` (the image has no curl/wget). Postgres-backed (Prisma migrated automatically: 78 tables) and verified healthy.
+- `infra/.env.example` documents each variable with a `CHANGE_ME` placeholder; `infra/.env` is git-ignored. `infra/reset.mjs` implements `pnpm infra:reset` (asks for `yes`, then `docker compose down --volumes`).
+- `packages/devtools` (`@galena/devtools`, private, ESM, scripts `smoke`/`typecheck`/`test`, dev dep `tsx`) with `src/smoke.ts` and pure helpers `src/smoke-lib.ts` + Vitest tests. The smoke test resolves `infra/docker-compose.dev.yml` and `infra/.env` from the repo root via `import.meta.url`, so it works from any cwd. Checks: Postgres for the three users (compose exec + psql), `ejabberdctl status`, `/api/status` with admin Basic auth, a real XMPP WebSocket `<open/>` handshake on `ws://127.0.0.1:5280/ws` (Node's built-in WebSocket), and LiteLLM `/health/liveliness`.
+- Root `package.json` got the five `infra:*` scripts; README got its `### Infrastructure` subsection.
+- Note: when `/api` is called through the published port, ejabberd logs `Using module :mod_http_api for host 127.0.0.1, but it isn't configured in the configuration file`. It is benign (the Host header is the published address, not the XMPP domain, and the default/virtual-host module is used); the call is still authenticated and authorized, and all three smoke checks that use it pass.
 
 ### Files changed
--
+
+- `infra/docker-compose.dev.yml` (new)
+- `infra/.env.example` (new; `infra/.env` created locally for testing and git-ignored)
+- `infra/postgres/init/10-create-databases.sql` (new)
+- `infra/ejabberd/ejabberd.yml` (new)
+- `infra/litellm/config.yaml` (new)
+- `infra/reset.mjs` (new)
+- `packages/devtools/package.json`, `packages/devtools/tsconfig.json`, `packages/devtools/src/smoke.ts`, `packages/devtools/src/smoke-lib.ts`, `packages/devtools/src/smoke-lib.test.ts` (new)
+- `package.json` (only the `infra:*` scripts)
+- `pnpm-lock.yaml` (only the new `packages/devtools` importer)
+- `README.md` (only `## Development` → `### Infrastructure`)
+- `work/T-0002-dev-infra.md` (status + this Report)
 
 ### Image versions and digests pinned
--
+
+| Image | Pin | Notes |
+|---|---|---|
+| `pgvector/pgvector` | `0.8.6-pg18-trixie` (tag digest `sha256:78bf48b801e792f99e3ac62b5036fd3876e9be48afda16c1e331af1c75ceb2ff`) | PostgreSQL 18.6 + pgvector 0.8.6, amd64/arm64 |
+| `ghcr.io/processone/ejabberd` | `26.07` (tag digest `sha256:5aeb0faa39cfe38792c5eea9cc6344ba9ab6c59c708a24e897d6b471882c8497`) | ejabberd 26.7.0 |
+| `ghcr.io/berriai/litellm` | `@sha256:87f34979b9f8cb274fac90ca8a4fdda07d8480de22755562a26adeb95ce20d02` | LiteLLM 1.102.1; both tags `1.102.1` and `v1.102.1` resolve to this digest; not 1.82.7/1.82.8 |
 
 ### Commands run and real results
-- `pnpm infra:smoke`:
+
+- `pnpm install`: PASS. "Scope: all 5 workspace projects … Done". `pnpm-lock.yaml` gained only the `packages/devtools` importer (tsx 4.23.15).
+- `pnpm format:check`: PASS — "All matched files use Prettier code style!".
+- `pnpm lint`: PASS — "Found 0 warnings and 0 errors … 16 files with 127 rules".
+- `pnpm typecheck`: PASS — turbo "4 successful, 4 total" (protocol, server, web, devtools).
+- `pnpm test`: PASS — turbo "4 successful, 4 total": devtools 9 tests, protocol 6, server 2, web 3.
+- `cp infra/.env.example infra/.env` then filled every `CHANGE_ME` with random local dev values (git-ignored; not shown here).
+- `pnpm infra:up`: PASS — Postgres, ejabberd and LiteLLM all reach "Healthy" before `--wait` returns.
+- `pnpm infra:smoke`: PASS — all 5 checks:
+  `PASS Postgres accepts a connection for the users galena, ejabberd and litellm` / `PASS ejabberd reports "started" (ejabberdctl status)` / `PASS ejabberd answers /api/status with admin auth` / `PASS ejabberd accepts the XMPP WebSocket <open/> handshake` / `PASS LiteLLM liveness endpoint answers 200`.
+- `pnpm infra:down` then `pnpm infra:up`: PASS — a marker row created in `galena` before `down` is still there after `up` (`SELECT count(*)` → `1`).
+- `printf 'nope\n' | pnpm infra:reset`: PASS — prints "Aborted. Nothing was deleted." and the marker row is still `1`.
+- `printf 'yes\n' | pnpm infra:reset` then `pnpm infra:up`: PASS — all volumes removed, services healthy again, marker table gone, `vector` extension present again.
+- Port check `docker ps --filter name=galena-dev --format '{{.Names}} | {{.Ports}}'`: only `127.0.0.1:5432`, `127.0.0.1:5222`, `127.0.0.1:5280`, `127.0.0.1:4000` are published. The other ports shown for the ejabberd row (1880, 5269, 5443, …) are the image's `EXPOSE`s, not host bindings.
+- In-band registration check: over the WebSocket, after `<open/>`, the server replies with `<stream:features>` containing only SASL mechanisms — no `<register xmlns='http://jabber.org/features/iq-register'/>` feature — and `mod_register` is absent from `infra/ejabberd/ejabberd.yml`. Registration is off.
+- s2s check: `netstat -tln` inside the ejabberd container shows listeners on 5222 and 5280 but **not 5269**, the config has no `ejabberd_s2s_in` listener, and `s2s_access: s2s` with `s2s: deny: all` blocks outgoing s2s too.
+- SQL auto-schema check: `pg_tables` in `ejabberd` → 24 tables (users, rosterusers, muc_room, archive, …) and in `litellm` → 78 tables, both created automatically.
 
 ### Problems, deviations from the spec, open questions
--
+
+1. **`mod_carbons` (spec) vs. the real module name.** ejabberd 26.07 has no `mod_carbons`; XEP-0280 is `mod_carboncopy` (it is what the image's default config loads). I used `mod_carboncopy`. `mod_carbons` would be an unknown module and stop startup.
+2. **Postgres init is a `.sql` file, not the `.sh` "init script".** A shell init script did not work on Docker Desktop: bind mounts are presented as executable, so the postgres entrypoint uses its `if [ -x ]` → exec path, and executing a bind-mounted script fails with `bad interpreter: Permission denied` (verified: executing a script from `/tmp` works, from `/docker-entrypoint-initdb.d` it does not). A `.sql` file is processed by the entrypoint with `psql -f` (no execve) and reads the passwords with psql's `\getenv`. The file is still `infra/postgres/init/`.
+3. **`access.allow` is AND-ed, not OR-ed.** The image's default `access: allow: [acl: loopback, acl: admin]` requires *both*, so `/api` from the host (Docker gateway IP) was 403 even with a valid admin login. Following the docs' "admin access" example, `who: access: allow: - acl: admin` now requires admin auth and the network reach is limited by the 127.0.0.1 binding and the Compose network.
+4. **`packages/devtools/tsconfig.json` adds `lib: ["DOM", "DOM.Iterable"]`.** The installed `@types/node` does not declare the global `WebSocket` (nor `fetch`) types, and the spec requires Node 24's built-in WebSocket without new dependencies. DOM supplies the WHATWG types; Node 24 supplies both globals at runtime.
+5. **LiteLLM healthcheck uses Python.** The LiteLLM image has no `curl`/`wget` (checked inside the image), so the healthcheck runs `python -c "import urllib.request; …"` against `/health/liveliness`.
+6. **Extra env var `PLACEHOLDER_API_KEY`.** The placeholder model must read a key from the environment, so `.env.example` has that variable; no real provider key is present anywhere.
+7. **`s2s_access: s2s` with `s2s: deny: all`** was added on top of "no s2s listener" so outgoing federation is explicitly off, not only incoming.
+8. **Postgres 5432 is published** on `127.0.0.1` for developer convenience (psql, GUI tools). The smoke test itself only uses `docker compose exec`. Happy to drop the port if you prefer a smaller surface.
+9. **`rooms.galena.localhost`** is configured through `mod_muc`'s `hosts` option (the `host` option is deprecated in 26.07). The upload `put_url` is `http://galena.localhost:5280/upload`; uploads are not covered by the 5 smoke checks (out of scope for T-0002).
+10. Local dev values in `infra/.env` are random strings generated for this test run and are not committed (the file is git-ignored).
 
 ### Blocked / needs a decision
--
+
+- Nothing blocked. Questions for review: (a) keep or drop the published Postgres port; (b) whether `/api` should also allow unauthenticated loopback calls (default config does, but the spec says admin auth is required, so I require admin auth for all callers).
+
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict: approved.** Merged by Claude.
+
+The work is excellent: careful, secure by default, and every deviation is explained with evidence.
+
+### What I verified myself (on commit 76201e3)
+- `install`, `format:check`, `lint`, `typecheck`, `test` (devtools 9, protocol 6, server 2, web 3) and `build`: all PASS.
+- `pnpm infra:up` → all three services healthy. `pnpm infra:smoke` → **5/5 PASS**. `pnpm infra:down` → volumes kept.
+- Published ports: only `127.0.0.1:4000`, `:5222`, `:5280` and `:5432`.
+- The LiteLLM version inside the pinned digest is **1.102.1** (checked with `pip show` in the container). It's not a compromised release.
+- An XMPP WebSocket probe shows **no in-band registration feature**.
+- Unauthenticated calls are refused:
+  - ejabberd `/api/status` with no auth → **403**, with a wrong password → **401**
+  - LiteLLM `/key/list` with no key → **401**
+- No secrets in git. `infra/.env` stays local and ignored.
 
 ### Findings
--
-
-### Follow-ups
--
+1. **(accepted)** Every deviation in the Report is correct:
+   - `mod_carboncopy` is the real module name.
+   - The `.sql` init avoids Docker Desktop's exec problem.
+   - The `/api` access rule is admin-only.
+   - The devtools package gets the DOM lib for Node's global WebSocket/fetch types.
+   - The Python healthcheck is needed because the image has no curl.
+   - `PLACEHOLDER_API_KEY` exists only so the proxy can boot.
+   - Outgoing s2s is explicitly denied.
+   - `mod_muc` uses `hosts`.
+2. **(answer a)** **Keep** the Postgres port published on `127.0.0.1`. It's useful for psql and GUI tools, and it's local only.
+3. **(answer b)** **Keep admin auth for every `/api` caller**, including loopback. Secure by default; our server will use the admin credentials (T-0003).
+4. **(follow-up, T-0003)** `muc_create: allow: local` lets any local user create rooms. Once our server owns room creation, restrict `access_create` to the admin/server account, so rooms only come from the app (with the right owners and policies).
+5. **(follow-up, T-0010/T-0003)** Upload `put_url` is `http://galena.localhost:5280/upload`. Browsers resolve `*.localhost`, but check it from Node and React Native when uploads are first tested.
+6. **(nit)** The example model id in the `infra/litellm/config.yaml` comment is outdated. Update it to current model ids when real providers are added.
