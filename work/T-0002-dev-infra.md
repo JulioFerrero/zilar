@@ -1,7 +1,7 @@
 ---
 id: T-0002
 title: Local dev infrastructure (docker-compose with Postgres, ejabberd, LiteLLM)
-status: review
+status: merged
 milestone: M0
 branch: task/T-0002-dev-infra
 model: opencode-go/deepseek-v4.1-flash
@@ -212,10 +212,33 @@ pnpm infra:down
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict: approved.** Merged by Claude.
+
+The work is excellent: careful, secure by default, and every deviation is explained with evidence.
+
+### What I verified myself (on commit 76201e3)
+- `install`, `format:check`, `lint`, `typecheck`, `test` (devtools 9, protocol 6, server 2, web 3) and `build`: all PASS.
+- `pnpm infra:up` → all three services healthy. `pnpm infra:smoke` → **5/5 PASS**. `pnpm infra:down` → volumes kept.
+- Published ports: only `127.0.0.1:4000`, `:5222`, `:5280` and `:5432`.
+- The LiteLLM version inside the pinned digest is **1.102.1** (checked with `pip show` in the container). It's not a compromised release.
+- An XMPP WebSocket probe shows **no in-band registration feature**.
+- Unauthenticated calls are refused:
+  - ejabberd `/api/status` with no auth → **403**, with a wrong password → **401**
+  - LiteLLM `/key/list` with no key → **401**
+- No secrets in git. `infra/.env` stays local and ignored.
 
 ### Findings
--
-
-### Follow-ups
--
+1. **(accepted)** Every deviation in the Report is correct:
+   - `mod_carboncopy` is the real module name.
+   - The `.sql` init avoids Docker Desktop's exec problem.
+   - The `/api` access rule is admin-only.
+   - The devtools package gets the DOM lib for Node's global WebSocket/fetch types.
+   - The Python healthcheck is needed because the image has no curl.
+   - `PLACEHOLDER_API_KEY` exists only so the proxy can boot.
+   - Outgoing s2s is explicitly denied.
+   - `mod_muc` uses `hosts`.
+2. **(answer a)** **Keep** the Postgres port published on `127.0.0.1`. It's useful for psql and GUI tools, and it's local only.
+3. **(answer b)** **Keep admin auth for every `/api` caller**, including loopback. Secure by default; our server will use the admin credentials (T-0003).
+4. **(follow-up, T-0003)** `muc_create: allow: local` lets any local user create rooms. Once our server owns room creation, restrict `access_create` to the admin/server account, so rooms only come from the app (with the right owners and policies).
+5. **(follow-up, T-0010/T-0003)** Upload `put_url` is `http://galena.localhost:5280/upload`. Browsers resolve `*.localhost`, but check it from Node and React Native when uploads are first tested.
+6. **(nit)** The example model id in the `infra/litellm/config.yaml` comment is outdated. Update it to current model ids when real providers are added.
