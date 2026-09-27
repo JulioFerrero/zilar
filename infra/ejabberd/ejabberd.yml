@@ -160,6 +160,9 @@ modules:
       members_only: true
       persistent: true
       mam: true
+      # Non-anonymous: every occupant sees members' real JIDs, so clients can
+      # show who sent each message (Galena groups are between known contacts).
+      anonymous: false
   # MUC room management commands (create_room_with_opts, set_room_affiliation,
   # get_room_affiliations, destroy_room) used through /api.
   mod_muc_admin: {}

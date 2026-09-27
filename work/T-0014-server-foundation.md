@@ -213,3 +213,5 @@ This is a clean, well-structured foundation, and every deviation in the Report i
 2. **(follow-up, next server task)** The `dev` script doesn't load `apps/server/.env`. Use `tsx watch --env-file-if-exists=.env src/index.ts`, or Node's `--env-file-if-exists`, so `pnpm --filter @galena/server dev` works after copying `.env.example`.
 3. **(follow-up, next server task)** Type `HttpError.status` as Hono's `ContentfulStatusCode`, so `onError` doesn't need the `as` cast.
 4. **(note)** Running migrations on startup is fine for a single instance. Revisit this (with a lock or a separate migration step) before running more than one server instance.
+
+- **Live check (after merge, 2026-09-27):** against the Docker Postgres, `db:migrate` → "database migrations applied". `GET /health` → `{"ok":true,…,"db":"ok"}`, and the `server_meta` table exists. PASS.
