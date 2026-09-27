@@ -1,7 +1,7 @@
 ---
 id: T-0013
 title: Protocol v0 — zod schemas for Galena's chat payloads
-status: review
+status: changes-requested
 milestone: M0
 branch: task/T-0013-protocol-payloads
 model: opencode-go/deepseek-v4.1-flash
@@ -162,7 +162,35 @@ pnpm test
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict (round 1): changes requested.** The work is strong overall: every schema is strict, there are 122 tests, and `decodePayload` held up against hostile inputs. One security issue has to be fixed before clients can render these payloads.
+
+### What I verified myself (on commit f7b4549)
+- `install`, `format:check`, `lint`, `typecheck`, `test` (122 + 2 + 3) and `build`: all PASS.
+- Independent probes (a temporary test file, since removed):
+
+  | Probe | Result |
+  |---|---|
+  | Extra key on `BoardArtifactSchema` | rejected ✓ |
+  | `__proto__` key in an envelope | rejected ✓ |
+  | 30,000-deep nested JSON | rejected, no throw ✓ |
+  | 50 MB string | rejected in ~262 ms (see finding 2) |
+  | **`ArtifactRef` with `javascript:alert(1)`, `javascript:` + 200 chars, `data:text/html,…`** | **accepted ✗** |
 
 ### Findings
--
+1. **(must fix, security) Artifact refs accept `javascript:` and `data:` URLs.**
+   - Why: `ref` is `IdSchema ∪ z.url()`.
+     - `IdSchema` accepts any short string, including `javascript:alert(1)`.
+     - `z.url()` accepts any scheme.
+   - The risk: a malicious or tricked AI could post a `pr` or `preview` artifact that turns into a script link in the web app.
+   - Fix:
+     - (a) Restrict `IdSchema` to URL-safe unreserved characters `^[A-Za-z0-9._~-]+$` (still 1–128). Note: this also forbids `:` in ids.
+     - (b) Make the URL branch of `ArtifactRefSchema.ref` accept **http/https only**, the same way `PreviewSchema` does.
+   - Add tests showing that `javascript:`, `data:`, `vbscript:` and `file:` refs are rejected, an http(s) URL is accepted, and ids containing `:` or spaces are rejected.
+   - Check that the handoff tests and the existing examples still pass. If any existing example id breaks, keep the change and update the test data.
+2. **(should fix, robustness) Reject oversized input before counting bytes.**
+   - Add a fast path: `if (raw.length > MAX_PAYLOAD_BYTES) return too-large`. It's safe because UTF-8 bytes ≥ UTF-16 code units.
+   - Make `utf8ByteLength` stop as soon as it passes the limit.
+   - Add a correctness test for a 70 KiB ASCII string and one for a multi-byte string just over the limit. No timing assertions.
+3. **(nit) `VoiceMetaSchema.mime`**: require it to start with `audio/`, max 100 chars, and add a test.
+4. **(accepted)** Reusing `IdSchema`, `BudgetSchema` and a strict object in the handoff is a good improvement. The local `utf8ByteLength` helper is a reasonable way to avoid DOM and Node types.
+5. **(doc)** Add a one-line comment on `JidSchema`: **bare JIDs only** (`local@domain`). Full JIDs with a resource aren't accepted by design.
