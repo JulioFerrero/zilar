@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColorScheme } from 'nativewind';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -11,6 +11,8 @@ import { MessageList } from '@/components/chat/message-list';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
+import { replyRef } from '@/lib/format';
+import type { ReplyRef, UiMessage } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store';
 
 export default function ChatScreen() {
@@ -21,6 +23,8 @@ export default function ChatScreen() {
   const chat = useChatStore((state) => state.chats.find((item) => item.id === chatId));
   const openChat = useChatStore((state) => state.openChat);
   const sendText = useChatStore((state) => state.sendText);
+  const currentUserId = useChatStore((state) => state.currentUserId);
+  const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
 
   useEffect(() => {
     if (chatId) {
@@ -35,6 +39,9 @@ export default function ChatScreen() {
       </SafeAreaView>
     );
   }
+
+  const startReply = (message: UiMessage) => setReplyTo(replyRef(message, currentUserId));
+  const cancelReply = () => setReplyTo(undefined);
 
   return (
     <View className="flex-1">
@@ -51,8 +58,15 @@ export default function ChatScreen() {
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <MessageList chat={chat} />
-        <Composer onSend={(text) => sendText(chat.id, text)} />
+        <MessageList chat={chat} onReply={startReply} />
+        <Composer
+          onSend={(text) => {
+            sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
+            cancelReply();
+          }}
+          replyTo={replyTo}
+          onCancelReply={cancelReply}
+        />
       </KeyboardAvoidingView>
     </View>
   );

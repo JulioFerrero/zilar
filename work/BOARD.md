@@ -9,13 +9,12 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 
-| T-0004 | Spike S2: `@xmpp/client` in Expo (connect, reconnect, background) | planned | v4-pro | T-0003 | Risky; Claude reviews closely |
+| [T-0004](T-0004-expo-xmpp-spike.md) | Spike S2: `@xmpp/client` in Expo (connect, reconnect, background) | todo | v4-pro | T-0003 | Risky; Claude reviews closely. Gates the mobile app on real data |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | T-0007 | Spike S5: LiteLLM virtual keys with budgets, adding a user's own key | planned | v4-flash | T-0002 | |
 | T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely |
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | |
 | T-0010 | Voice message spike: record on web, convert with ffmpeg, local Whisper transcript | planned | v4-flash | T-0002 | Plan §6.7 |
-| [T-0023](T-0023-mobile-ui-polish.md) | Mobile polish: the same additions, plus swipe-to-reply, haptics, switch to `@galena/chat-core` | **in-progress** | v4.1-flash | T-0019, T-0022 | Simulator screenshots |
 | [T-0025](T-0025-real-use-fixes-1.md) | Real-use fixes 1: list status stuck on sending, live list updates (XEP-0249 invites + roster pushes), big-emoji sender | **in-progress** | v4.1-flash | T-0024 | From Julio's first real use |
 
 ## Follow-ups
@@ -44,3 +43,4 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | [T-0021](T-0021-sm-ack-bug.md) | Fixed random disconnects: our own XEP-0198 inbound counter (2 xmpp.js 0.14 bugs), stress-tested 3× with 0 server closes | 2026-09-27 |
 | [T-0020](T-0020-contacts-groups-chats.md) | Server: contacts from invites (roster, nick refresh), groups (MUC), `GET /api/chats` (2 rounds) | 2026-09-27 |
 | [T-0024](T-0024-web-real-data.md) | **Web on real data**: invite, email code, name; real DMs and groups via xmpp-core. **Julio used it live.** | 2026-09-28 |
+| [T-0023](T-0023-mobile-ui-polish.md) | Mobile polish: switch to `@galena/chat-core`, typing, unread divider, long-press menu + swipe to reply with haptics, big emoji, safe links (2 rounds) | 2026-09-28 |

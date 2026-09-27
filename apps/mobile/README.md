@@ -5,10 +5,13 @@ The Galena mobile app: an [Expo](https://expo.dev) (SDK 57) app using
 [NativeWind](https://www.nativewind.dev) and
 [React Native Reusables](https://reactnativereusables.com).
 
-For now it shows the Telegram-like chat shell from T-0019 (mock data): the chat list with folder
-tabs and search, and the chat screen with bubbles, voice/image messages, AI cards and the composer.
-It also proves the monorepo wiring (Expo + pnpm + Metro resolving a TypeScript workspace package)
-and the styling stack.
+For now it shows the Telegram-like chat shell from T-0019 (mock data), polished
+in T-0023: the chat list with folder tabs, search, typing and the new-chat menu;
+the chat screen with bubbles, an unread divider, big emoji, safe links, reply
+quotes, swipe-to-reply, long-press actions and the composer. Shared pure logic
+(time, avatars, grouping, previews, big emoji, links, the unread divider) lives
+in `@galena/chat-core`. It also proves the monorepo wiring (Expo + pnpm + Metro
+resolving a TypeScript workspace package) and the styling stack.
 
 ## Requirements
 
@@ -61,15 +64,18 @@ commit them and do not edit them by hand: change `app.json` or a config plugin i
 src/
   app/           # Expo Router routes (index.tsx = chat list, chat/[id].tsx = chat screen)
   components/    # React Native Reusables components (ui/) and chat components (chat/)
-  lib/           # pure helpers (time, avatars, grouping, previews, colors) + tests
+  lib/           # mobile-only helpers (format, links, chat, filter, colors) + tests
   mock/          # mock chats and messages until the real data lands
-  store/         # zustand chat store (sendText, openChat, search, folders)
+  store/         # zustand chat store (sendText, openChat, typing, search, folders)
   global.css     # Tailwind entry + Galena CSS variables (light and dark)
   screenshots/   # simulator screenshots, committed for review
 ```
 
 `@/*` maps to `src/*` (see `tsconfig.json`). Styling uses NativeWind (Tailwind classes); the
-component copies come from React Native Reusables and live under `src/components/ui`.
+component copies come from React Native Reusables and live under `src/components/ui`. Shared pure
+logic comes from `@galena/chat-core`; `src/lib` keeps only what is mobile-specific. The app root is
+wrapped in `GestureHandlerRootView` for `react-native-gesture-handler` (swipe-to-reply) and
+`react-native-reanimated` (animated dots and the swipe arrow).
 
 `react-native-css-interop` is pinned to the exact version NativeWind depends on (0.2.7). The NativeWind
 JSX transform imports `react-native-css-interop/jsx-runtime` from app code, and pnpm's isolated

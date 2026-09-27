@@ -12,13 +12,16 @@
     "build": "expo export --platform ios --platform android --output-dir dist"
   },
   "dependencies": {
+    "@galena/chat-core": "workspace:*",
     "@galena/protocol": "workspace:*",
     "@rn-primitives/portal": "^1.5.3",
     "@rn-primitives/slot": "^1.5.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "expo": "~57.0.25",
+    "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.19",
+    "expo-haptics": "~57.0.3",
     "expo-linear-gradient": "~57.0.2",
     "expo-linking": "~57.0.11",
     "expo-router": "~57.0.23",

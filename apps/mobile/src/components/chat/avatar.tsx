@@ -1,8 +1,9 @@
-import { Text } from '@/components/ui/text';
-import { avatarGradient, initials } from '@/lib/avatar';
-import { cn } from '@/lib/utils';
+import { avatarGradient, initials } from '@galena/chat-core';
 import { LinearGradient } from 'expo-linear-gradient';
 import { View } from 'react-native';
+
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/utils';
 
 type AvatarProps = {
   id: string;
@@ -12,9 +13,10 @@ type AvatarProps = {
   className?: string;
 };
 
-/** Gradient circle with initials, plus the online dot from ui-style.md §4. */
+/** Gradient circle with initials, plus the green online dot from ui-style.md §4. */
 export function Avatar({ id, name, size = 54, online = false, className }: AvatarProps) {
-  const colors = avatarGradient(id);
+  const gradient = avatarGradient(id);
+  const colors = [gradient.from, gradient.to] as const;
   const fontSize = Math.round(size * 0.4);
   const dotSize = Math.max(8, Math.round(size * 0.22));
   return (
@@ -40,7 +42,7 @@ export function Avatar({ id, name, size = 54, online = false, className }: Avata
       </LinearGradient>
       {online ? (
         <View
-          className="absolute border-2 border-background bg-accent"
+          className="absolute border-2 border-background bg-online"
           style={{
             right: 0,
             bottom: 0,
