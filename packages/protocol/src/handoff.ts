@@ -1,22 +1,18 @@
 import { z } from 'zod';
+import { ArtifactRefSchema, BudgetSchema, IdSchema, JidSchema } from './common';
 
-const jid = z.string().min(1).includes('@');
-const nonEmptyString = z.string().min(1);
-
-const artifactKind = z.enum(['message', 'screenshot', 'pr', 'preview', 'file', 'report']);
-
-export const HandoffSchema = z.object({
-  task_id: nonEmptyString,
-  from: jid,
-  to: jid,
-  objective: nonEmptyString,
+export const HandoffSchema = z.strictObject({
+  task_id: IdSchema,
+  from: JidSchema,
+  to: JidSchema,
+  objective: z.string().min(1),
   context_summary: z.string().max(2000),
-  acceptance: z.array(nonEmptyString),
-  constraints: z.array(nonEmptyString),
-  artifacts: z.array(z.object({ kind: artifactKind, ref: nonEmptyString })),
-  budget: z.object({ currency: z.enum(['EUR', 'USD']), max: z.number().positive() }),
-  return_format: nonEmptyString,
-  reply_to: nonEmptyString,
+  acceptance: z.array(z.string().min(1)),
+  constraints: z.array(z.string().min(1)),
+  artifacts: z.array(ArtifactRefSchema),
+  budget: BudgetSchema,
+  return_format: z.string().min(1),
+  reply_to: z.string().min(1),
 });
 
 export type Handoff = z.infer<typeof HandoffSchema>;

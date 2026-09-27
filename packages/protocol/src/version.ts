@@ -1,1 +1,1 @@
-export const protocolVersion = '0.1.0';
+export const protocolVersion = '0.2.0';

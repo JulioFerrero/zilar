@@ -19,7 +19,6 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | |
 | T-0010 | Voice message spike: record on web, convert with ffmpeg, local Whisper transcript | planned | v4-flash | T-0002 | Plan §6.7 |
 | [T-0011](T-0011-mobile-scaffold.md) | Expo app scaffold (SDK 57, Expo Router, NativeWind, React Native Reusables) | **in-progress** | v4.1-flash | T-0001, T-0012 | Plan §17.2 |
-| [T-0013](T-0013-protocol-payloads.md) | Protocol v0: zod schemas for chat payloads + safe encode/decode | **in-progress** | v4.1-flash | T-0001 | Plan §6.3 |
 
 ## Done
 
@@ -27,3 +26,4 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 |---|---|---|
 | [T-0001](T-0001-monorepo.md) | Monorepo scaffold | 2026-09-27 |
 | [T-0012](T-0012-tooling-cleanups.md) | Tooling cleanups from the T-0001 review | 2026-09-27 |
+| [T-0013](T-0013-protocol-payloads.md) | Protocol v0 payload schemas (2 review rounds: fixed javascript:/data: link injection) | 2026-09-27 |
