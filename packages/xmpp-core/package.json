@@ -1,0 +1,17 @@
+{
+  "name": "@galena/xmpp-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.integration.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@galena/protocol": "workspace:*",
+    "@xmpp/client": "^0.14.0"
+  }
+}
