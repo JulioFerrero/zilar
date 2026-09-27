@@ -9,6 +9,7 @@ export const redactPaths: string[] = [
   'req.headers.authorization',
   'req.headers.cookie',
   'DATABASE_URL',
+  'BETTER_AUTH_SECRET',
 ];
 
 export function createLogger(config: ServerConfig, destination?: DestinationStream): Logger {

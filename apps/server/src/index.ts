@@ -1,5 +1,7 @@
 import { serve } from '@hono/node-server';
 import { createApp } from './app';
+import { createAuth } from './auth/auth';
+import { createMailer, MailerConfigurationError, type Mailer } from './auth/mailer';
 import { loadServerConfigOrExit } from './config';
 import { createDb } from './db/client';
 import { runMigrations } from './db/migrate';
@@ -8,10 +10,22 @@ import { createLogger } from './logger';
 const config = loadServerConfigOrExit(process.env);
 const logger = createLogger(config);
 
+let mailer: Mailer;
+try {
+  mailer = createMailer(config, logger);
+} catch (error) {
+  if (error instanceof MailerConfigurationError) {
+    console.error(error.message);
+    process.exit(1);
+  }
+  throw error;
+}
+
 const { db, close } = createDb(config.DATABASE_URL);
 await runMigrations(db);
 
-const app = createApp({ db, logger, config });
+const auth = createAuth({ db, config, mailer });
+const app = createApp({ db, logger, config, auth });
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
   logger.info({ port: info.port }, 'galena-server listening');
 });

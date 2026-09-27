@@ -20,13 +20,20 @@ const databaseUrlSchema = z
   .string()
   .refine((value) => /^postgres(ql)?:\/\//.test(value), { error: 'invalid database url' });
 
-const serverConfigSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: portSchema,
-  DATABASE_URL: databaseUrlSchema,
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
-  PUBLIC_URL: z.url().default('http://localhost:3000'),
-});
+const serverConfigSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    PORT: portSchema,
+    DATABASE_URL: databaseUrlSchema,
+    LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+    PUBLIC_URL: z.url().default('http://localhost:3000'),
+    BETTER_AUTH_SECRET: z.string().min(32),
+    BETTER_AUTH_URL: z.url().optional(),
+  })
+  .transform((value) => ({
+    ...value,
+    BETTER_AUTH_URL: value.BETTER_AUTH_URL ?? value.PUBLIC_URL,
+  }));
 
 export type ServerConfig = z.infer<typeof serverConfigSchema>;
 

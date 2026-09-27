@@ -8,6 +8,13 @@
       "when": 1790520606789,
       "tag": "0000_medical_exodus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790522349033,
+      "tag": "0001_nifty_nomad",
+      "breakpoints": true
     }
   ]
 }

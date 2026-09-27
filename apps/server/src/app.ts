@@ -1,9 +1,10 @@
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { requestId, type RequestIdVariables } from 'hono/request-id';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Logger } from 'pino';
 import { protocolVersion } from '@galena/protocol';
+import type { Auth } from './auth/auth';
+import { createAuthRoutes } from './auth/routes';
 import type { ServerConfig } from './config';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
@@ -13,6 +14,7 @@ export interface AppDependencies {
   db: ServerDatabase;
   logger: Logger;
   config: ServerConfig;
+  auth: Auth;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -20,6 +22,8 @@ const DB_HEALTH_TIMEOUT_MS = 1000;
 export function createApp({
   db,
   logger,
+  config,
+  auth,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
 
@@ -41,6 +45,9 @@ export function createApp({
 
     logger.info({ ...fields, status: c.res.status, durationMs: durationSince(start) }, 'request');
   });
+
+  app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
+  app.route('/api', createAuthRoutes({ auth, db, config }));
 
   app.get('/health', async (c) => {
     const up = await isDatabaseUp(db);
@@ -71,7 +78,7 @@ export function createApp({
         {
           error: { code: error.code, message: error.message, requestId: requestIdValue },
         },
-        error.status as ContentfulStatusCode,
+        error.status,
       );
     }
 

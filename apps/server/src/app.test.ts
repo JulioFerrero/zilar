@@ -1,19 +1,8 @@
-import { PGlite } from '@electric-sql/pglite';
-import { drizzle } from 'drizzle-orm/pglite';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from './app';
-import { loadServerConfig } from './config';
-import type { PgliteServerDatabase } from './db/client';
-import * as schema from './db/schema';
 import { HttpError } from './errors';
-import { createLogger } from './logger';
-
-const config = loadServerConfig({
-  NODE_ENV: 'test',
-  DATABASE_URL: 'postgres://user:hunter2@127.0.0.1:5432/galena',
-});
-const logger = createLogger(config, { write: () => {} });
+import { createTestContext, type TestContext } from './test-support';
 
 function createTestRoutes(): Hono {
   const routes = new Hono();
@@ -29,20 +18,23 @@ function createTestRoutes(): Hono {
 }
 
 describe('createApp', () => {
-  let client: PGlite;
-  let db: PgliteServerDatabase;
+  let context: TestContext;
 
-  beforeEach(() => {
-    client = new PGlite();
-    db = drizzle(client, { schema });
+  beforeEach(async () => {
+    context = await createTestContext();
   });
 
   afterEach(async () => {
-    await client.close();
+    await context.close();
   });
 
   function testApp() {
-    const app = createApp({ db, logger, config });
+    const app = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+    });
     app.route('/test', createTestRoutes());
     return app;
   }
@@ -59,7 +51,7 @@ describe('createApp', () => {
   });
 
   it('reports a down database when the health query fails', async () => {
-    vi.spyOn(db, 'execute').mockRejectedValue(new Error('connection refused'));
+    vi.spyOn(context.db, 'execute').mockRejectedValue(new Error('connection refused'));
     const res = await testApp().request('/health');
 
     expect(res.status).toBe(503);
