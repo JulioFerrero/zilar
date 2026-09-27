@@ -1,7 +1,7 @@
 ---
 id: T-0014
 title: Server foundation — config, logging, errors, Postgres via Drizzle, migrations (tested with PGlite)
-status: review
+status: merged
 milestone: M1
 branch: task/T-0014-server-foundation
 model: opencode-go/deepseek-v4.1-flash
@@ -191,7 +191,25 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict: approved.** Merged by Claude.
+
+This is a clean, well-structured foundation, and every deviation in the Report is justified.
+
+### What I verified myself (on commit cc44384)
+- `install`, `format:check`, `lint`, `typecheck`, `test` (server **17**) and `build`: all PASS.
+- An independent leak probe (a temporary test, removed afterwards) on a route that throws `Error('leak postgres://u:SUPERSECRET@h/db')`, sent with `Authorization: Bearer SECRETTOKEN` and `x-request-id: <script>…`:
+  - status **500**
+  - the body does **not** contain the secret
+  - the malicious request id was **replaced** with a generated UUID
+  - the logs do **not** contain the bearer token
+- A live check against the Docker Postgres is postponed until T-0003 releases the dev stack (PGlite already covers migrations, round-trips and health).
 
 ### Findings
--
+1. **(accepted)**
+   - redact paths covering both the bare and `*.`-prefixed keys
+   - the test-only `destination` argument
+   - per-driver migrator dispatch
+   - Prettier on the generated JSON
+2. **(follow-up, next server task)** The `dev` script doesn't load `apps/server/.env`. Use `tsx watch --env-file-if-exists=.env src/index.ts`, or Node's `--env-file-if-exists`, so `pnpm --filter @galena/server dev` works after copying `.env.example`.
+3. **(follow-up, next server task)** Type `HttpError.status` as Hono's `ContentfulStatusCode`, so `onError` doesn't need the `as` cast.
+4. **(note)** Running migrations on startup is fine for a single instance. Revisit this (with a lock or a separate migration step) before running more than one server instance.
