@@ -66,3 +66,8 @@ export function formatDuration(durationMs: number): string {
   const seconds = totalSeconds % 60;
   return `${minutes}:${pad(seconds)}`;
 }
+
+/** Full date and time for the hover tooltip on a message, e.g. `27 September 2026, 12:41`. */
+export function formatFullDateTime(date: Date): string {
+  return new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'short' }).format(date);
+}

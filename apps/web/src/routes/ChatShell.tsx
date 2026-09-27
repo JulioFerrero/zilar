@@ -40,7 +40,11 @@ export function ChatShell() {
           chatId === undefined ? 'hidden wide:flex' : 'flex',
         )}
       >
-        {chat !== undefined ? <ChatView chat={chat} /> : <EmptyState variant="no-chat-selected" />}
+        {chat !== undefined ? (
+          <ChatView key={chat.id} chat={chat} />
+        ) : (
+          <EmptyState variant="no-chat-selected" />
+        )}
       </main>
     </div>
   );

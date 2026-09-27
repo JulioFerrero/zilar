@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { UiMessage } from './types';
-import { groupMessages, previewBody, previewPrefix, previewText } from './messages';
+import {
+  groupMessages,
+  previewBody,
+  previewPrefix,
+  previewText,
+  unreadDividerIndex,
+} from './messages';
 
 type MessageOverrides = Partial<UiMessage> & Pick<UiMessage, 'id' | 'senderId' | 'createdAt'>;
 
@@ -109,5 +115,40 @@ describe('previewText', () => {
   it('returns an empty string without a message', () => {
     expect(previewText(undefined, options)).toBe('');
     expect(previewBody(undefined)).toBe('');
+  });
+});
+
+describe('unreadDividerIndex', () => {
+  const items = groupMessages([
+    message({ id: '1', senderId: 'ana', createdAt: at(0, 0) }),
+    message({ id: '2', senderId: 'ana', createdAt: at(0, 3) }),
+    message({ id: '3', senderId: 'ana', createdAt: at(0, 6) }),
+    message({ id: '4', senderId: 'ana', createdAt: at(0, 9) }),
+  ]);
+  // items: [separator, message 1, message 2, message 3, message 4]
+
+  it('places the divider above the first unread message from a count', () => {
+    expect(unreadDividerIndex(items, 2)).toBe(3);
+  });
+
+  it('places the divider after the last read message id', () => {
+    expect(unreadDividerIndex(items, '2')).toBe(3);
+  });
+
+  it('returns null when nothing is unread', () => {
+    expect(unreadDividerIndex(items, 0)).toBeNull();
+    expect(unreadDividerIndex(items, -1)).toBeNull();
+  });
+
+  it('returns null when the anchor message is missing', () => {
+    expect(unreadDividerIndex(items, 'nope')).toBeNull();
+  });
+
+  it('puts the divider at the top when all messages are unread', () => {
+    expect(unreadDividerIndex(items, 99)).toBe(1);
+  });
+
+  it('returns null without message items', () => {
+    expect(unreadDividerIndex(groupMessages([]), 2)).toBeNull();
   });
 });

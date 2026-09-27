@@ -1,3 +1,5 @@
+import { graphemes } from './text';
+
 export interface AvatarGradient {
   index: number;
   from: string;
@@ -31,15 +33,6 @@ export function avatarGradient(id: string): AvatarGradient {
 }
 
 const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
-
-const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter() : undefined;
-
-function graphemes(value: string): string[] {
-  if (segmenter === undefined) {
-    return Array.from(value);
-  }
-  return Array.from(segmenter.segment(value), (segment) => segment.segment);
-}
 
 function firstLetterOrDigit(word: string): string {
   for (const grapheme of graphemes(word)) {

@@ -38,6 +38,7 @@
   --color-bubble-out: var(--bubble-out);
   --color-bubble-in-meta: var(--bubble-in-meta);
   --color-bubble-out-meta: var(--bubble-out-meta);
+  --color-online: var(--online);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -75,6 +76,7 @@
   --bubble-out: #eeffde;
   --bubble-in-meta: #a0acb6;
   --bubble-out-meta: #4fae4e;
+  --online: #4dcd5e;
   --radius: 0.75rem;
   --chat-background: linear-gradient(135deg, #c9dfc5 0%, #d8e8f0 100%);
 }
@@ -110,6 +112,7 @@
     --bubble-out: #2b5278;
     --bubble-in-meta: #6d7f8f;
     --bubble-out-meta: #7da8d3;
+    --online: #4dcd5e;
     --chat-background: #0e1621;
   }
 }

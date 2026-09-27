@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatDateSeparator, formatDuration, formatListTime, formatTime } from './format';
+import {
+  formatDateSeparator,
+  formatDuration,
+  formatFullDateTime,
+  formatListTime,
+  formatTime,
+} from './format';
 
 const NOW = new Date(2026, 8, 27, 12, 0); // Sunday 27 September 2026, local time.
 
@@ -63,5 +69,13 @@ describe('formatDuration', () => {
     expect(formatDuration(12_000)).toBe('0:12');
     expect(formatDuration(65_000)).toBe('1:05');
     expect(formatDuration(3_600_000)).toBe('60:00');
+  });
+});
+
+describe('formatFullDateTime', () => {
+  it('includes the full date and the clock time', () => {
+    const formatted = formatFullDateTime(new Date(2026, 8, 27, 12, 41));
+    expect(formatted).toContain('2026');
+    expect(formatted).toContain('12:41');
   });
 });

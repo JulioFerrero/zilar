@@ -4,7 +4,9 @@ import { Link } from 'react-router';
 import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
 import { MessageTicks } from './MessageTicks';
+import { TypingDots } from './TypingDots';
 import { useChatStore } from '@/store/ChatStoreProvider';
+import { typingLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 export function ChatListItem({ chat, selected }: { chat: ChatSummary; selected: boolean }) {
@@ -14,6 +16,7 @@ export function ChatListItem({ chat, selected }: { chat: ChatSummary; selected: 
   const prefix = previewPrefix(last, options);
   const body = previewBody(last);
   const own = last !== undefined && last.senderId === store.currentUserId;
+  const typing = typingLabel(chat, store.typing[chat.id]?.names ?? []);
 
   return (
     <Link
@@ -32,18 +35,18 @@ export function ChatListItem({ chat, selected }: { chat: ChatSummary; selected: 
         online={chat.online === true}
       />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center">
           <span
             className={cn('truncate text-[16px] leading-5 font-semibold', selected && 'text-white')}
           >
             {chat.title}
           </span>
-          {chat.isAI && <AiBadge />}
+          {chat.isAI && <AiBadge className="ml-1.5" />}
           {chat.muted && (
             <VolumeX
               aria-label="Muted"
               className={cn(
-                'size-4 shrink-0',
+                'ml-4 size-4 shrink-0',
                 selected ? 'text-white/80' : 'text-muted-foreground',
               )}
             />
@@ -51,7 +54,7 @@ export function ChatListItem({ chat, selected }: { chat: ChatSummary; selected: 
           {last !== undefined && (
             <span
               className={cn(
-                'ml-auto shrink-0 text-[12px]',
+                'ml-auto shrink-0 pl-1.5 text-[12px]',
                 selected ? 'text-white/80' : 'text-muted-foreground',
               )}
             >
@@ -60,17 +63,29 @@ export function ChatListItem({ chat, selected }: { chat: ChatSummary; selected: 
           )}
         </div>
         <div className="mt-0.5 flex items-center gap-1.5">
-          <span
-            className={cn(
-              'truncate text-[15px] leading-5',
-              selected ? 'text-white/85' : 'text-muted-foreground',
-            )}
-          >
-            {prefix.length > 0 && (
-              <span className={selected ? 'text-white' : 'text-foreground'}>{prefix}</span>
-            )}
-            {body}
-          </span>
+          {typing !== undefined ? (
+            <span
+              className={cn(
+                'truncate text-[15px] leading-5',
+                selected ? 'text-white' : 'text-accent',
+              )}
+            >
+              {typing}
+              <TypingDots className="ml-0.5" />
+            </span>
+          ) : (
+            <span
+              className={cn(
+                'truncate text-[15px] leading-5',
+                selected ? 'text-white/85' : 'text-muted-foreground',
+              )}
+            >
+              {prefix.length > 0 && (
+                <span className={selected ? 'text-white' : 'text-foreground'}>{prefix}</span>
+              )}
+              {body}
+            </span>
+          )}
           {chat.unread > 0 ? (
             <span
               className={cn(
