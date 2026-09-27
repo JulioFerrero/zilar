@@ -138,6 +138,9 @@ importers:
       hono:
         specifier: ^4.13.9
         version: 4.13.9
+      jose:
+        specifier: ^6.2.12
+        version: 6.2.12
       pino:
         specifier: ^10.3.1
         version: 10.3.1
@@ -209,6 +212,9 @@ importers:
 
   packages/devtools:
     devDependencies:
+      '@xmpp/client':
+        specifier: ^0.14.0
+        version: 0.14.0
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
@@ -2155,6 +2161,118 @@ packages:
     resolution: {integrity: sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A==}
     engines: {node: '>=14.6'}
 
+  '@xmpp/base64@0.14.0':
+    resolution: {integrity: sha512-tz2LuzLMtjGSVVeuXDnDw19H+uOrqhrRFcQKJ3THV0HVjerDewT8WKXdrtBVSQ7n4Ue0k+awYcIE7qDD9rwMMQ==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/client-core@0.14.0':
+    resolution: {integrity: sha512-fW0C6vn4y8Jp1g8uBmCETuOmEDXpjFc/mfY8P0J88nhK2AdPOB5m0ntz0yyAXcPd16smnHVckiOsk9qBjF9dDA==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/client@0.14.0':
+    resolution: {integrity: sha512-Y6k77iifYOGuWncOLRr6dVmbsQvcsIFjYI9pXhkSzQDDNnd3hVJGgo/Xx+W/0/o1+kg/tPm/NwX5Yq77NTd9xA==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/connection-tcp@0.14.0':
+    resolution: {integrity: sha512-gvYyUghuCHW0qalEYaZvbHeTnEoXc+hCCWP/qvoVGjjSQNwkYRUsy1/8RP/sA6RlQ2sR0nhpkJkJE6K/4rsFIQ==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/connection@0.14.0':
+    resolution: {integrity: sha512-VRnukXwiXWCsRVQVISUiAxHHgRWH37nxdUaz50o0+cUAYyqtlHIJ2zy+ZHMlxkEWtl+XciNLxwkJKbypJFQheQ==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/error@0.14.0':
+    resolution: {integrity: sha512-b4W/MwAZl8basfmYhcemK3De92xBOiSrIz0VY2cnN2ss1VMsa4d32GuaJGBIpa4ulN/2DFb3vPCeTn5jXvHAJw==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/events@0.14.0':
+    resolution: {integrity: sha512-6mKRIEi69sYr8H9SrkJKaXobOgCq/sU6/pKTQS5cuQZCy0qLuyx9uttkOyAYmtUbVD+HSrXYS72KhMpdQQh88Q==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/id@0.14.0':
+    resolution: {integrity: sha512-0n8OFYPWkBYDi5fHGiJT6SLg9ncOflTmINzjHzt5A3NxEMVrYmqxbRB44u3NLMk1gBNqGtEkc2wl0WHjS0tHWg==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/iq@0.14.0':
+    resolution: {integrity: sha512-0r3QVKR4XAvkZ4shQwPBkSM21sSfj26Cg8+AYBkd0BKJTde7mRQCISBNidt1xiXA5VPH1+6Qx7fmtPzk3uel+Q==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/jid@0.14.0':
+    resolution: {integrity: sha512-ggiNgjblkeHPbHJ7JLOMIqxc1qQQt0gV+LhXI16afib2wLr120YgvRChY04gjkvQ+IF2sGz7mzPvcAukTmNGHA==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/middleware@0.14.0':
+    resolution: {integrity: sha512-UGm7ed5NEMapE/z0jqY5daGSBqto/iciDjtyncoXHZdOnR4iFYFF9gSO/65Z1HsL2pbHQpcK0WS+Kn+FGOxPTw==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/reconnect@0.14.0':
+    resolution: {integrity: sha512-XaaT3KrFLf1ZfYZCIx11zauT8bIVXRz9FMaGj4mofq1tC8SiKvIIqJXSgrouhkibb9vPeM9XSiGkH47B/1hc6g==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/resolve@0.14.0':
+    resolution: {integrity: sha512-S4Rhupb2zS4EtT4EFUJLPl2pPSFPfrjp/1bxPil+zBt9sNcbrvIwSNaYeQAAfLD/yYb8/DhaxC/blvdHyM1Xzw==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/resource-binding@0.14.0':
+    resolution: {integrity: sha512-b8EyHUOpkAS25b6cpOQ8fv7cCLfOpJq4dkgs6Td0MdODMmcfWEh38siZKaP0OoNmYWZCxBSANdsBmeidozJxqA==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/sasl-anonymous@0.14.0':
+    resolution: {integrity: sha512-lZ8jaYuKBpfQ2T5Bv+7yxII9OduV1a+mlNkKtG94WchrVzR8fU6VpbTrez88KajA42ngcVCtiO3i6tPepYyK8Q==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/sasl-ht-sha-256-none@0.14.0':
+    resolution: {integrity: sha512-LmMSzX35bI/V2lV26k/hYPm8Pn7InsBEX72b86+ugIBQpzD8/jmB1F/Mfm5vrbWkMLl2KWe61gE+L/p0mvLZdA==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/sasl-plain@0.14.0':
+    resolution: {integrity: sha512-TGQX6gsCi6LP2lPNkkd+HoZ1ynCesRMQrtJrWbDAa6oMyCwie9xuBcG/5lDJ5fn03G7xxRh1YSQp+x8yFK+q4w==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/sasl-scram-sha-1@0.14.0':
+    resolution: {integrity: sha512-0ZrsMDx9Haou2yTCzDCwvMsYPvHCxF2bkpyBuiPoYAOWRsIQH1TssZK3d88N7wSvvojter905DNwLPizdaF3og==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/sasl2@0.14.0':
+    resolution: {integrity: sha512-OcDIDr9xwiOO58yqr6hj0eh9CfKOvwBbNDNhC0wByA07cwOsoojLb1dv3WR7pKk1cETv6wHWQ1o/leRoDB/Yzg==}
+    engines: {node: '>= 14'}
+
+  '@xmpp/sasl@0.14.0':
+    resolution: {integrity: sha512-C6mWvtRhJCCjv0Q6uuc3FUuDdgUhnX7lCF9afmNT5umy1XB0l1iRmBJYTriSHNBwgErM3i3mydafeRjpuQfP5Q==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/starttls@0.14.0':
+    resolution: {integrity: sha512-n21Oy5pyD6Cipo96SAVI1ASx/5qo/z3W7J1TWZSG3/gGgrTaCB+VSV0xI+FqRexVJysg3lw3cBidYQL+Lp/pHw==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/stream-features@0.14.0':
+    resolution: {integrity: sha512-XoogP53qv1lzq/TNnzydT0KmmDKsJ7vpbV1c33fcuBDY0LCmPWA2U5th+Atn3JjEMlyznpVDFco9BF1NgFTHzg==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/stream-management@0.14.0':
+    resolution: {integrity: sha512-i7qLB8KXzLtm2TZXgtVlBprI4Vm8lykJ7Gth2TFavBTky+PQFNr2BH4lGxxvZ7/WkYbhx2jsmDT9JjI7sUCRdw==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/tcp@0.14.0':
+    resolution: {integrity: sha512-vJb5Y60ub+YClK01l+653+qpIe6vedw/82szuB4IU50eTDTL8voer6eGK7AMJOJzoZzRofbLh8Ow5txAyZ8vXw==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/time@0.14.0':
+    resolution: {integrity: sha512-KlOLwZXXYrRiIZ+Lg0Rg+iDxIBLfCgVQOkIaYG2nieLVtbrHItI5gv2eI2I6m0cPsX8LajGkCpvQTqUCNZclag==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/tls@0.14.0':
+    resolution: {integrity: sha512-nY/nHlHYgs3i2+xwt/5Ff3J4aCdZADdTOH+NwdfgqBIK9kWDJPW43nnIrbrZgmUL3YOjW5sb1lUI20bFUJACww==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/websocket@0.14.0':
+    resolution: {integrity: sha512-mRjpRHtOujrPIT7I/X2xvn8w6X/7J8gGPfGIKNGLJHBQu1OlT5noUd++mslCAcGdCOf5TGwtJvE7a8CPtSnTFg==}
+    engines: {node: '>= 20.10'}
+
+  '@xmpp/xml@0.14.0':
+    resolution: {integrity: sha512-1rrj3SaIM51wtJUn1l2n4FK2e1QLfEmma9bsD1utaaosA8elpCyWi12QDPfaYoTyWSXNvQ7mGzvFevUJUs1mcQ==}
+    engines: {node: '>= 20.10'}
+
   abort-controller@3.0.0:
     resolution: {integrity: sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==}
     engines: {node: '>=6.5'}
@@ -2764,6 +2882,10 @@ packages:
     resolution: {integrity: sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==}
     engines: {node: '>=6'}
 
+  events@3.3.0:
+    resolution: {integrity: sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q==}
+    engines: {node: '>=0.8.x'}
+
   expect-type@1.4.0:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
@@ -3174,6 +3296,9 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
+  jose@6.2.12:
+    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
+
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
     engines: {node: '>=10'}
@@ -3210,6 +3335,9 @@ packages:
   kleur@3.0.3:
     resolution: {integrity: sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==}
     engines: {node: '>=6'}
+
+  koa-compose@4.1.0:
+    resolution: {integrity: sha512-8ODW8TrDuMYvXRwra/Kh7/rJo9BtOfPc6qO8eAfC80CnCvSjSl0bkRM24X6/XBBEyj0v1nRUQ1LyOy3dbqOWXw==}
 
   lan-network@0.2.1:
     resolution: {integrity: sha512-ONPnazC96VKDntab9j9JKwIWhZ4ZUceB4A9Epu4Ssg0hYFmtHZSeQ+n15nIwTFmcBUKtExOer8WTJ4GF9MO64A==}
@@ -3468,6 +3596,10 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
+
+  ltx@3.1.2:
+    resolution: {integrity: sha512-tFSKojN92FqNK6eRTmKK/ROUTUYVWKAxgohz523TPhF1G3nR3DXQS/I7/705rEPrDSloKDgMdRlh0qgMFQoVYw==}
+    engines: {node: '>= 12.4.0'}
 
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
@@ -4201,6 +4333,21 @@ packages:
     resolution: {integrity: sha512-4lyHX0ZU0AZKwjgZ1InxZAa3PNpyEb8rOQ+Zss1ReYmhNzW0Q+h1zE5nvniXN0HaAWZaZE1zgVNEirb0R7LmNg==}
     engines: {node: '>=18.18'}
     hasBin: true
+
+  sasl-anonymous@0.1.0:
+    resolution: {integrity: sha512-x+0sdsV0Gie2EexxAUsx6ZoB+X6OCthlNBvAQncQxreEWQJByAPntj0EAgTlJc2kZicoc+yFzeR6cl8VfsQGfA==}
+    engines: {node: '>= 0.4.0'}
+
+  sasl-plain@0.1.0:
+    resolution: {integrity: sha512-X8mCSfR8y0NryTu0tuVyr4IS2jBunBgyG+3a0gEEkd0nlHGiyqJhlc4EIkzmSwaa7F8S4yo+LS6Cu5qxRkJrmg==}
+    engines: {node: '>= 0.4.0'}
+
+  sasl-scram-sha-1@1.4.0:
+    resolution: {integrity: sha512-kdP8uAFkak8flnmKTldWnQ98IuC15ASdKxNHWwbqexRj7szHs7y+JEtigLkPoq9gnp/SAxxU4O2huL8OLqSr9w==}
+
+  saslmechanisms@0.1.1:
+    resolution: {integrity: sha512-pVlvK5ysevz8MzybRnDIa2YMxn0OJ7b9lDiWhMoaKPoJ7YkAg/7YtNjUgaYzElkwHxsw8dBMhaEn7UP6zxEwPg==}
+    engines: {node: '>= 0.4.0'}
 
   sax@1.6.1:
     resolution: {integrity: sha512-42tBVwLWnaQvW5zc4HbZrTuWccECCZfBi92FDuwtqxasH+JbPB3/FOKb1m222K42R4WxuxzzMsTswfzgtSu64Q==}
@@ -6689,6 +6836,156 @@ snapshots:
 
   '@xmldom/xmldom@0.9.12': {}
 
+  '@xmpp/base64@0.14.0': {}
+
+  '@xmpp/client-core@0.14.0':
+    dependencies:
+      '@xmpp/connection': 0.14.0
+      '@xmpp/events': 0.14.0
+      '@xmpp/jid': 0.14.0
+      '@xmpp/sasl': 0.14.0
+      '@xmpp/xml': 0.14.0
+      saslmechanisms: 0.1.1
+
+  '@xmpp/client@0.14.0':
+    dependencies:
+      '@xmpp/client-core': 0.14.0
+      '@xmpp/iq': 0.14.0
+      '@xmpp/middleware': 0.14.0
+      '@xmpp/reconnect': 0.14.0
+      '@xmpp/resolve': 0.14.0
+      '@xmpp/resource-binding': 0.14.0
+      '@xmpp/sasl': 0.14.0
+      '@xmpp/sasl-anonymous': 0.14.0
+      '@xmpp/sasl-ht-sha-256-none': 0.14.0
+      '@xmpp/sasl-plain': 0.14.0
+      '@xmpp/sasl-scram-sha-1': 0.14.0
+      '@xmpp/sasl2': 0.14.0
+      '@xmpp/starttls': 0.14.0
+      '@xmpp/stream-features': 0.14.0
+      '@xmpp/stream-management': 0.14.0
+      '@xmpp/tcp': 0.14.0
+      '@xmpp/tls': 0.14.0
+      '@xmpp/websocket': 0.14.0
+      saslmechanisms: 0.1.1
+
+  '@xmpp/connection-tcp@0.14.0':
+    dependencies:
+      '@xmpp/connection': 0.14.0
+      '@xmpp/xml': 0.14.0
+
+  '@xmpp/connection@0.14.0':
+    dependencies:
+      '@xmpp/error': 0.14.0
+      '@xmpp/events': 0.14.0
+      '@xmpp/jid': 0.14.0
+      '@xmpp/xml': 0.14.0
+
+  '@xmpp/error@0.14.0': {}
+
+  '@xmpp/events@0.14.0':
+    dependencies:
+      events: 3.3.0
+
+  '@xmpp/id@0.14.0': {}
+
+  '@xmpp/iq@0.14.0':
+    dependencies:
+      '@xmpp/events': 0.14.0
+      '@xmpp/id': 0.14.0
+      '@xmpp/middleware': 0.14.0
+      '@xmpp/xml': 0.14.0
+
+  '@xmpp/jid@0.14.0': {}
+
+  '@xmpp/middleware@0.14.0':
+    dependencies:
+      '@xmpp/error': 0.14.0
+      '@xmpp/jid': 0.14.0
+      '@xmpp/xml': 0.14.0
+      koa-compose: 4.1.0
+
+  '@xmpp/reconnect@0.14.0':
+    dependencies:
+      '@xmpp/events': 0.14.0
+
+  '@xmpp/resolve@0.14.0':
+    dependencies:
+      '@xmpp/events': 0.14.0
+      '@xmpp/xml': 0.14.0
+
+  '@xmpp/resource-binding@0.14.0':
+    dependencies:
+      '@xmpp/xml': 0.14.0
+
+  '@xmpp/sasl-anonymous@0.14.0':
+    dependencies:
+      sasl-anonymous: 0.1.0
+
+  '@xmpp/sasl-ht-sha-256-none@0.14.0': {}
+
+  '@xmpp/sasl-plain@0.14.0':
+    dependencies:
+      sasl-plain: 0.1.0
+
+  '@xmpp/sasl-scram-sha-1@0.14.0':
+    dependencies:
+      sasl-scram-sha-1: 1.4.0
+
+  '@xmpp/sasl2@0.14.0':
+    dependencies:
+      '@xmpp/base64': 0.14.0
+      '@xmpp/error': 0.14.0
+      '@xmpp/events': 0.14.0
+      '@xmpp/jid': 0.14.0
+      '@xmpp/sasl': 0.14.0
+      '@xmpp/xml': 0.14.0
+
+  '@xmpp/sasl@0.14.0':
+    dependencies:
+      '@xmpp/base64': 0.14.0
+      '@xmpp/error': 0.14.0
+      '@xmpp/events': 0.14.0
+      '@xmpp/xml': 0.14.0
+
+  '@xmpp/starttls@0.14.0':
+    dependencies:
+      '@xmpp/events': 0.14.0
+      '@xmpp/tls': 0.14.0
+      '@xmpp/xml': 0.14.0
+
+  '@xmpp/stream-features@0.14.0': {}
+
+  '@xmpp/stream-management@0.14.0':
+    dependencies:
+      '@xmpp/error': 0.14.0
+      '@xmpp/events': 0.14.0
+      '@xmpp/time': 0.14.0
+      '@xmpp/xml': 0.14.0
+
+  '@xmpp/tcp@0.14.0':
+    dependencies:
+      '@xmpp/connection-tcp': 0.14.0
+
+  '@xmpp/time@0.14.0': {}
+
+  '@xmpp/tls@0.14.0':
+    dependencies:
+      '@xmpp/connection': 0.14.0
+      '@xmpp/connection-tcp': 0.14.0
+      '@xmpp/events': 0.14.0
+
+  '@xmpp/websocket@0.14.0':
+    dependencies:
+      '@xmpp/connection': 0.14.0
+      '@xmpp/events': 0.14.0
+      '@xmpp/xml': 0.14.0
+
+  '@xmpp/xml@0.14.0':
+    dependencies:
+      '@xmpp/events': 0.14.0
+      ltx: 3.1.2
+
   abort-controller@3.0.0:
     dependencies:
       event-target-shim: 5.0.1
@@ -7267,6 +7564,8 @@ snapshots:
 
   event-target-shim@5.0.1: {}
 
+  events@3.3.0: {}
+
   expect-type@1.4.0: {}
 
   expo-asset@57.0.18(expo@57.0.25)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)(typescript@6.0.3):
@@ -7714,6 +8013,8 @@ snapshots:
 
   jiti@2.7.0: {}
 
+  jose@6.2.12: {}
+
   joycon@3.1.1: {}
 
   js-tokens@4.0.0: {}
@@ -7754,6 +8055,8 @@ snapshots:
   json5@2.2.3: {}
 
   kleur@3.0.3: {}
+
+  koa-compose@4.1.0: {}
 
   lan-network@0.2.1: {}
 
@@ -7932,6 +8235,8 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
+
+  ltx@3.1.2: {}
 
   lz-string@1.5.0: {}
 
@@ -8921,6 +9226,14 @@ snapshots:
   safe-stable-stringify@2.5.0: {}
 
   sandbox-cli-detector@0.2.0: {}
+
+  sasl-anonymous@0.1.0: {}
+
+  sasl-plain@0.1.0: {}
+
+  sasl-scram-sha-1@1.4.0: {}
+
+  saslmechanisms@0.1.1: {}
 
   sax@1.6.1: {}
 

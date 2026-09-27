@@ -18,7 +18,8 @@
     "infra:down": "docker compose -f infra/docker-compose.dev.yml --env-file infra/.env down",
     "infra:logs": "docker compose -f infra/docker-compose.dev.yml --env-file infra/.env logs -f",
     "infra:reset": "node infra/reset.mjs",
-    "infra:smoke": "pnpm --filter @galena/devtools smoke"
+    "infra:smoke": "pnpm --filter @galena/devtools smoke",
+    "xmpp:e2e": "pnpm --filter @galena/devtools xmpp:e2e"
   },
   "devDependencies": {
     "@types/node": "^24",

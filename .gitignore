@@ -26,6 +26,8 @@ android/
 .env.*
 !.env.example
 infra/**/.env
+# JWK signed keys generated at container start (never committed).
+infra/ejabberd/*.jwk
 
 # local data
 infra/data/
