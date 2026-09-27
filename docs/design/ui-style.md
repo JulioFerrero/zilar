@@ -53,6 +53,7 @@ Both apps use these semantic tokens. The values are close to Telegram's classic 
 | `--badge-muted` | `#c4c9cc` | `#3e546a` | Unread badge of muted chats |
 | `--divider` | `#dfe1e5` | `#0e1621` | Thin separators |
 | `--danger` | `#e53935` | `#ef5350` | Destructive actions |
+| `--online` | `#4dcd5e` | `#4dcd5e` | The online dot on avatars (always green, on both web and mobile) |
 
 - **Light or dark** follows the system setting (`prefers-color-scheme`, or the phone's setting).
 - **Avatars** without a photo get a **gradient circle with initials**. Pick one of 7 gradients, deterministically from a hash of the chat or user id:
@@ -81,7 +82,7 @@ Both apps use these semantic tokens. The values are close to Telegram's classic 
 ## 4. Components
 
 ### Chat list item (height 72 px web / 76 mobile)
-- **Avatar:** a 54 px circle, with a green "online" dot (12 px, bordered) for people who are online.
+- **Avatar:** a 54 px circle, with a green "online" dot (`--online`, 12 px, with a 2 px border in the background color) for people who are online.
 - **Row 1:** the name (bold, one line, ellipsis).
   - AI chats and AI members show a small **`AI` badge**: a rounded pill with accent-colored outline text, 11 px.
   - A mute icon if muted.
@@ -146,6 +147,31 @@ Both apps use these semantic tokens. The values are close to Telegram's classic 
 ### Empty states
 - **No chats:** a friendly illustration-free message plus an **"Invite a friend"** button (invite links from T-0015).
 - **No chat selected** (desktop): the pill described in §1.
+
+
+### Added after the first screenshots (2026-09-27)
+- **New-chat button:** a round accent pencil button (56 px).
+  - Web: bottom right of the chat list column.
+  - Mobile: bottom right of the list screen (it's already there).
+  - It opens a small menu: **New group** and **New message**.
+- **Mute icon:** a 16 px gap from the name. Keep it vertically centered with the name.
+- **Unread divider:** opening a chat with unread messages shows a full-width bar reading **"Unread messages"** above the first unread one, with a translucent background and muted text. The view scrolls there instead of to the bottom. The bar disappears the next time the chat is opened.
+- **Typing:**
+  - In the list preview, **`typing…`** in accent color with 3 animated dots replaces the last-message preview. In groups it reads `Ana is typing…`.
+  - In the header subtitle, the same text replaces `online` / `members`.
+- **Message actions** (right-click on web, long-press on mobile): a small menu with **Reply**, **Copy text**, and **Delete** (disabled for now).
+  - On mobile, a light haptic on long-press.
+  - **Swipe right to reply** on mobile.
+- **Reply bar:** when replying, a bar appears above the input with:
+  - a colored left bar
+  - "Reply to Ana" in accent color
+  - a one-line excerpt
+  - an **×** to cancel
+
+  The sent message carries `replyTo`.
+- **Big emoji:** a message that's only 1–3 emoji (and no other text) renders **without a bubble**, at about 48 px, with its time in a small translucent pill below.
+- **Links:** `http://` and `https://` URLs in text become links in the accent color, underlined on hover. On web they open with `target="_blank" rel="noopener noreferrer"`. **Never** linkify other schemes (`javascript:`, `data:` and so on).
+- **Full time on hover** (web): hovering a bubble's time shows the full date and time as a tooltip.
 
 ## 5. Motion and feel
 

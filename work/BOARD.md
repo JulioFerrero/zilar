@@ -17,6 +17,8 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | T-0010 | Voice message spike: record on web, convert with ffmpeg, local Whisper transcript | planned | v4-flash | T-0002 | Plan §6.7 |
 | [T-0020](T-0020-contacts-groups-chats.md) | Server: contacts from invites (roster), groups (MUC), `GET /api/chats` | **in-progress** | v4.1-flash | T-0017 | M1; PGlite only |
 | [T-0021](T-0021-sm-ack-bug.md) | Fix random disconnects: XEP-0198 ack miscount (xmpp.js over WebSocket) | **in-progress** | v4.1-flash | T-0016 | Uses the dev stack |
+| [T-0022](T-0022-web-ui-polish.md) | Web polish: new-chat button, unread divider, typing, message menu and reply, big emoji, safe links, green online dot | **in-progress** | v4.1-flash | T-0018 | Per ui-style.md additions |
+| T-0023 | Mobile polish: the same additions, plus swipe-to-reply, haptics, switch to `@galena/chat-core` | planned | v4.1-flash | T-0022 | After T-0021 (simulator load) |
 
 ## Follow-ups
 
