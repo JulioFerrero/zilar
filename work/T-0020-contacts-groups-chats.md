@@ -1,7 +1,7 @@
 ---
 id: T-0020
 title: Server — contacts from invites (XMPP roster), groups (MUC rooms) and the chat list API
-status: review
+status: merged
 milestone: M1
 branch: task/T-0020-contacts-groups-chats
 model: opencode-go/deepseek-v4.1-flash
@@ -246,3 +246,4 @@ Finding 1 (refresh roster nicks when a name changes) is implemented. Finding 2 n
    - admin seeding in tests
    - opt-in `anonymous: false`
 
+**Verdict (round 2): approved.** Merged by Claude. The roster nick refresh on name change is best-effort, with a lazy resync using the current name, plus 2 new tests. Server: **149** tests pass. The live check against the dev stack happens as part of the T-0024 end-to-end run.
