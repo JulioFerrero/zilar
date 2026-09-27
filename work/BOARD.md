@@ -16,7 +16,6 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | |
 | T-0010 | Voice message spike: record on web, convert with ffmpeg, local Whisper transcript | planned | v4-flash | T-0002 | Plan §6.7 |
 | [T-0023](T-0023-mobile-ui-polish.md) | Mobile polish: the same additions, plus swipe-to-reply, haptics, switch to `@galena/chat-core` | **in-progress** | v4.1-flash | T-0019, T-0022 | Simulator screenshots |
-| [T-0024](T-0024-web-real-data.md) | Web on real data: invite, email code, name; real chats via xmpp-core; groups and invites | **in-progress** | v4.1-flash | T-0020, T-0021, T-0022 | **The milestone where Julio can use Galena** |
 
 ## Follow-ups
 
@@ -43,3 +42,4 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | [T-0022](T-0022-web-ui-polish.md) | Web polish: new-chat button, unread divider, typing, message menu and reply, big emoji, safe links, green online dot | 2026-09-27 |
 | [T-0021](T-0021-sm-ack-bug.md) | Fixed random disconnects: our own XEP-0198 inbound counter (2 xmpp.js 0.14 bugs), stress-tested 3× with 0 server closes | 2026-09-27 |
 | [T-0020](T-0020-contacts-groups-chats.md) | Server: contacts from invites (roster, nick refresh), groups (MUC), `GET /api/chats` (2 rounds) | 2026-09-27 |
+| [T-0024](T-0024-web-real-data.md) | **Web on real data**: invite, email code, name; real DMs and groups via xmpp-core. **Julio used it live.** | 2026-09-28 |
