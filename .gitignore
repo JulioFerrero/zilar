@@ -12,6 +12,7 @@ coverage/
 
 # expo / react native
 .expo/
+expo-env.d.ts
 ios/
 android/
 *.jks
