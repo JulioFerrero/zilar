@@ -1,7 +1,7 @@
 ---
 id: T-0003
 title: Spike S1 — ejabberd accounts, token login and group chats from our server
-status: review
+status: merged
 milestone: M0
 branch: task/T-0003-xmpp-accounts-rooms
 model: opencode-go/deepseek-v4.1-flash
@@ -309,3 +309,9 @@ All steps passed.
    - importing the server module by relative path in the devtools script (fine for a dev tool)
    - re-joining the room before the MAM query
 7. **(note for later)** `jwt-entrypoint.sh` derives the key from the raw secret bytes, so `GALENA_XMPP_JWT_SECRET` must be at least 32 random chars. The config already enforces that. Good.
+
+**Verdict (round 2): approved.** Merged by Claude.
+
+- From a clean `infra:reset` + `infra:up`, I ran `pnpm infra:smoke` → **5/5 PASS**, then `pnpm xmpp:e2e` → **12/12 PASS**. That includes the new check "a non-admin account cannot log in with a known SQL password", which is rejected with `not-authorized`, while the same account logs in with a valid JWT.
+- The admin keeps SQL auth for `/api` (smoke passes). Round 1's finding 1 is resolved, with the doc sections cited.
+- Rebased onto `main` (T-0011 and T-0014 had merged): I resolved `apps/server/package.json` and regenerated `pnpm-lock.yaml`, then all code checks pass. Julio's local `infra/.env` got `GALENA_XMPP_JWT_SECRET` and `EJABBERD_ADMIN_JID`.
