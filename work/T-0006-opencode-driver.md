@@ -1,7 +1,7 @@
 ---
 id: T-0006
 title: Agent driver package + OpenCode v2 driver (spike S4)
-status: review
+status: changes-requested
 milestone: M0
 branch: task/T-0006-opencode-driver
 model: opencode-go/deepseek-v4.1-flash
@@ -211,7 +211,32 @@ reasoning plus a failed tool result; and the fake server rejecting missing basic
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict (round 1): changes requested.** This is a clean, well-tested driver, and polling is the right call given that `/api/event` is loosely typed. One real bug needs fixing before the gateway can use it.
+
+### What I verified myself (on commit afe5446)
+- `install`, `format:check`, `lint`, `typecheck`, `test` (agent-drivers 15 and all other packages) and `build`: all PASS.
+- I checked the response shapes against the real OpenCode v2 spec:
+  - `/prompt` returns `{ data: { id: "msg_…", sessionID, time: { created }, type: "user", payload } }`, which matches.
+  - `/interrupt` returns `{ interrupted: boolean }`, which matches.
 
 ### Findings
--
+1. **(must fix) `events()` replays earlier runs and stops on an old `idle`.**
+   - `events()` reads the latest 100 messages of the **whole session**. When the gateway sends a **follow-up prompt** to a session that already finished a run (which is normal: review rounds, "fix finding 2", chat follow-ups), `events()`:
+     - re-emits every old text and tool event
+     - immediately yields `done` for the **previous** run's `idle` and stops
+   - Fix:
+     - `prompt()` must return a `PromptRef = { messageId, createdAt }` taken from the `/prompt` response (`data.id`, `data.time.created`).
+     - `events(session, { after: PromptRef, signal? })` only processes messages **newer than that prompt message**. Walk the `desc` list and stop at the prompt's message id, and fall back to `time.created > createdAt` if the id isn't in the page. Only an `idle` that comes after the prompt ends the stream.
+     - Update `AgentDriver` in `types.ts`, the README example, and every test.
+   - New tests:
+     - (a) A session that already contains a completed run (assistant text + tool + `idle`) and then a second prompt whose run produces new text and a new `idle`. `events(after)` yields **only** the new run's events and ends on the **new** `idle`.
+     - (b) The new run's messages appear over several polls after the prompt, and nothing old leaks in.
+2. **(should fix) Network failures escape as raw errors.** If `fetch` itself rejects (server down, connection refused), `request()` lets a `TypeError` escape, and `events()` rethrows it.
+   - Fix: wrap it in `DriverError(operation, "<operation> could not reach the server")` with no status. The password and the full URL must still never appear.
+   - Test: a `fetchImpl` that rejects gives an `error` event in `events()` and a `DriverError` from `start` / `prompt`.
+3. **(accepted)**
+   - polling over SSE
+   - `limit=100` (documented)
+   - the DOM lib in tsconfig, same as devtools
+   - a `node:http` fake server with no new dependency
+   - rule order asks → allows → denies
