@@ -181,6 +181,92 @@ describe('contacts from invites', () => {
     expect(bobList.map((contact) => contact.userId)).toEqual([alice.id]);
   });
 
+  it('updates the nickname in every contact roster when the name changes', async () => {
+    const alice = await bootstrapUser(context, app, 'alice@example.com');
+    const bob = await contactOf(context, app, alice.id, 'bob@example.com');
+    const carol = await contactOf(context, app, alice.id, 'carol@example.com');
+    context.adminClient.rosterItems.length = 0;
+
+    await setDisplayName(alice.cookie, 'Alice Wonderland');
+
+    expect(context.adminClient.rosterItems).toHaveLength(2);
+    expect(context.adminClient.rosterItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          localpart: localpartFor(bob.id),
+          contactJid: `${localpartFor(alice.id)}@${TEST_XMPP_DOMAIN}`,
+          nick: 'Alice Wonderland',
+          groups: ['Galena'],
+          subs: 'both',
+        }),
+        expect.objectContaining({
+          localpart: localpartFor(carol.id),
+          contactJid: `${localpartFor(alice.id)}@${TEST_XMPP_DOMAIN}`,
+          nick: 'Alice Wonderland',
+          groups: ['Galena'],
+          subs: 'both',
+        }),
+      ]),
+    );
+
+    const rows = (await context.db.select().from(contacts)).filter(
+      (row) => row.contactUserId === alice.id,
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.rosterSynced)).toBe(true);
+  });
+
+  it('marks the rows unsynced when the nickname refresh fails, and the contact token call resyncs', async () => {
+    const alice = await bootstrapUser(context, app, 'alice@example.com');
+    const bob = await contactOf(context, app, alice.id, 'bob@example.com');
+    const carol = await contactOf(context, app, alice.id, 'carol@example.com');
+    context.adminClient.rosterItems.length = 0;
+
+    context.adminClient.failRoster = true;
+    await setDisplayName(alice.cookie, 'Alice Wonderland');
+
+    const unsynced = (await context.db.select().from(contacts)).filter(
+      (row) => row.contactUserId === alice.id,
+    );
+    expect(unsynced).toHaveLength(2);
+    expect(unsynced.every((row) => !row.rosterSynced)).toBe(true);
+    expect(context.adminClient.rosterItems).toHaveLength(0);
+
+    context.adminClient.failRoster = false;
+    const bobToken = await app.request(`${TEST_BASE_URL}/api/xmpp/token`, {
+      method: 'POST',
+      headers: { cookie: bob.cookie },
+    });
+    expect(bobToken.status).toBe(200);
+    expect(context.adminClient.rosterItems).toEqual([
+      expect.objectContaining({
+        localpart: localpartFor(bob.id),
+        contactJid: `${localpartFor(alice.id)}@${TEST_XMPP_DOMAIN}`,
+        nick: 'Alice Wonderland',
+      }),
+    ]);
+
+    const afterBob = await context.db.select().from(contacts);
+    expect(
+      afterBob.find((row) => row.userId === bob.id && row.contactUserId === alice.id)?.rosterSynced,
+    ).toBe(true);
+    expect(
+      afterBob.find((row) => row.userId === carol.id && row.contactUserId === alice.id)
+        ?.rosterSynced,
+    ).toBe(false);
+
+    const carolToken = await app.request(`${TEST_BASE_URL}/api/xmpp/token`, {
+      method: 'POST',
+      headers: { cookie: carol.cookie },
+    });
+    expect(carolToken.status).toBe(200);
+    expect(context.adminClient.rosterItems).toHaveLength(2);
+    const afterCarol = (await context.db.select().from(contacts)).filter(
+      (row) => row.contactUserId === alice.id,
+    );
+    expect(afterCarol.every((row) => row.rosterSynced)).toBe(true);
+  });
+
   it('requires authentication', async () => {
     const response = await app.request(`${TEST_BASE_URL}/api/contacts`);
     expect(response.status).toBe(401);

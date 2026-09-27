@@ -1,7 +1,7 @@
 ---
 id: T-0020
 title: Server — contacts from invites (XMPP roster), groups (MUC rooms) and the chat list API
-status: changes-requested
+status: review
 milestone: M1
 branch: task/T-0020-contacts-groups-chats
 model: opencode-go/deepseek-v4.1-flash
@@ -185,6 +185,39 @@ pnpm build
 
 - Nothing blocked. The one product question is the empty display name / roster nick noted above (refresh nicks vs. email fallback).
 
+### Round 2
+
+Finding 1 (refresh roster nicks when a name changes) is implemented. Finding 2 needed no change.
+
+#### What I changed
+
+- **`src/contacts/service.ts` — new `refreshRosterNicknames(db, adminClient, domain, userId, name)`.** It selects every `contacts` row where `contact_user_id = userId` (i.e. the roster items owned by each contact where the changed user is the contact), marks all of them `roster_synced = false` first, then calls `addRosterItem(<contact's localpart>, <my JID>, { nick: newName, groups: ['Galena'], subs: 'both' })` for each. It reads my JID from `xmpp_accounts` (falling back to the deterministic `jidFor`), and on an ejabberd failure it returns `{ ok: false, pending }` with the remaining rows left unsynced. It never throws for an admin error. Marking every row unsynced up front means a failure at the first contact still leaves the rest retryable.
+- **`src/auth/routes.ts` — `PATCH /api/me` triggers the refresh.** After `updateUser` and re-reading the session, it calls `refreshRosterNicknames` with the new `user.name`. It is best-effort: the route still returns 200, and an incomplete/failed refresh is logged as a warning (the route now takes `adminClient` and an optional `logger`, like the XMPP route).
+- **`src/app.ts`** passes `adminClient` and `logger` to `createAuthRoutes`.
+- **`syncRoster` already used the current display name** (`nick: row.name` from the join on the contact's `user` row), so the lazy retry pushes the new name with no change. Confirmed by the round 2 tests.
+- **Tests (`src/contacts/contacts.test.ts`, +2).**
+  - "updates the nickname in every contact roster when the name changes": Alice has Bob and Carol as contacts; after Alice sets `Alice Wonderland`, exactly two `add_rosteritem` calls go out — one for Bob's roster and one for Carol's — both with `contactJid = alice@…` and `nick = 'Alice Wonderland'`, and both rows end `roster_synced = true`.
+  - "marks the rows unsynced when the nickname refresh fails, and the contact token call resyncs": with `failRoster = true`, Alice's PATCH still returns 200, both `(bob→alice)` and `(carol→alice)` rows are `roster_synced = false` and no roster call succeeded. After clearing the failure, Bob's `POST /api/xmpp/token` pushes exactly one item with `nick = 'Alice Wonderland'` (the **current** name) and syncs only Bob's row; Carol's token call then syncs the second row.
+
+#### Files changed (round 2)
+
+- Modified: `apps/server/src/contacts/service.ts`, `apps/server/src/auth/routes.ts`, `apps/server/src/app.ts`, `apps/server/src/contacts/contacts.test.ts`
+- Modified: `work/T-0020-contacts-groups-chats.md` (status + this Round 2)
+
+#### Commands run and real results (round 2)
+
+- `pnpm format:check`: PASS — "All matched files use Prettier code style!".
+- `pnpm lint`: PASS — "Found 0 warnings and 0 errors." (197 files, 127 rules).
+- `pnpm typecheck`: PASS — 8/8 tasks successful.
+- `pnpm test`: PASS — 8/8 tasks successful: server **149**, protocol 132, xmpp-core 85 (+1 skipped), mobile 48, chat-core 31, web 26, agent-drivers 19, devtools 9.
+- `pnpm build`: PASS — 2/2 tasks successful.
+- No Docker. No new dependencies or schema change (no new migration).
+
+#### Notes (round 2)
+
+- The refresh is intentionally per-contact (a `add_rosteritem` per contact's roster). With the 50-member cap that is at most a few dozen admin calls on a name change, and each is an upsert.
+- The retry after a failed refresh is driven by the **contacts'** token calls (their `syncRoster` picks up their own pending row), not the renamed user's. That is what the review asked for and what the test asserts.
+- The empty-name-at-sign-up behaviour is unchanged; the apps will show a placeholder until the name is set (T-0024), as noted in the review.
 
 ---
 

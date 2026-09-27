@@ -126,6 +126,62 @@ export async function syncRoster(
   return { synced, pending: 0, ok: true };
 }
 
+export interface RosterNicknameResult {
+  updated: number;
+  pending: number;
+  ok: boolean;
+}
+
+// After a user changes their display name, the nickname in every contact's
+// roster must follow: the item that matters is the one where this user is the
+// contact, owned by each of their contacts. Every row is marked unsynced
+// first, so if ejabberd fails, `syncRoster` fixes it on the contact's next
+// token request using the user's current display name.
+export async function refreshRosterNicknames(
+  db: ServerDatabase,
+  adminClient: EjabberdAdminClient,
+  domain: string,
+  userId: string,
+  name: string,
+): Promise<RosterNicknameResult> {
+  const rows = await db
+    .select({ ownerId: contacts.userId })
+    .from(contacts)
+    .where(eq(contacts.contactUserId, userId));
+  if (rows.length === 0) {
+    return { updated: 0, pending: 0, ok: true };
+  }
+
+  await db.update(contacts).set({ rosterSynced: false }).where(eq(contacts.contactUserId, userId));
+
+  const [account] = await db
+    .select({ jid: xmppAccounts.jid })
+    .from(xmppAccounts)
+    .where(eq(xmppAccounts.userId, userId))
+    .limit(1);
+  const jid = account?.jid ?? jidFor(localpartFor(userId), domain);
+
+  let updated = 0;
+  for (const row of rows) {
+    try {
+      await adminClient.addRosterItem(localpartFor(row.ownerId), jid, {
+        nick: name,
+        groups: [ROSTER_GROUP],
+        subs: 'both',
+      });
+    } catch {
+      return { updated, pending: rows.length - updated, ok: false };
+    }
+    await db
+      .update(contacts)
+      .set({ rosterSynced: true })
+      .where(and(eq(contacts.userId, row.ownerId), eq(contacts.contactUserId, userId)));
+    updated += 1;
+  }
+
+  return { updated, pending: 0, ok: true };
+}
+
 export interface SetUpContactsInput {
   userId: string;
   inviteCode: string;
