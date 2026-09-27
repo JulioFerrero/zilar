@@ -16,6 +16,7 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | |
 | T-0010 | Voice message spike: record on web, convert with ffmpeg, local Whisper transcript | planned | v4-flash | T-0002 | Plan §6.7 |
 | [T-0023](T-0023-mobile-ui-polish.md) | Mobile polish: the same additions, plus swipe-to-reply, haptics, switch to `@galena/chat-core` | **in-progress** | v4.1-flash | T-0019, T-0022 | Simulator screenshots |
+| [T-0025](T-0025-real-use-fixes-1.md) | Real-use fixes 1: list status stuck on sending, live list updates (XEP-0249 invites + roster pushes), big-emoji sender | **in-progress** | v4.1-flash | T-0024 | From Julio's first real use |
 
 ## Follow-ups
 
