@@ -20,6 +20,7 @@ import {
   isMamResult,
   mamResultQueryId,
   parseMucPresence,
+  parseContactPresence,
   stanzaErrorCondition,
   type MucPresence,
   type ParseContext,
@@ -34,6 +35,7 @@ import type {
   LoadHistoryOptions,
   Occupant,
   OccupantsEvent,
+  PresenceEvent,
   SendMessageOptions,
   TypingEvent,
   XmppCore,
@@ -65,6 +67,7 @@ type EventPayload = {
   typing: TypingEvent;
   displayed: DisplayedEvent;
   occupants: OccupantsEvent;
+  presence: PresenceEvent;
   error: ErrorEvent;
 };
 type EventName = keyof EventPayload;
@@ -420,8 +423,13 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     // Roster data is only trusted from rooms we joined and only from the MUC
     // domain, so another sender cannot claim an identity.
     const presence = parseMucPresence(stanza, mucDomain);
-    if (presence === undefined || !joinedRooms.has(presence.roomJid)) return;
-    applyPresence(presence);
+    if (presence !== undefined && joinedRooms.has(presence.roomJid)) {
+      applyPresence(presence);
+      return;
+    }
+
+    const contact = parseContactPresence(stanza, options.domain);
+    if (contact !== undefined) emitEvent('presence', contact);
   }
 
   function handleMamResult(stanza: XmppElement): void {

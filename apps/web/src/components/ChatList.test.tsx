@@ -73,4 +73,14 @@ describe('ChatList', () => {
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
     expect(document.activeElement).toBe(input);
   });
+
+  it('shows the connecting bar while the XMPP connection is not online', () => {
+    renderApp('/', { status: 'connecting' });
+    expect(screen.getByText('Connecting…')).toBeTruthy();
+  });
+
+  it('shows the waiting-for-network bar when offline', () => {
+    renderApp('/', { status: 'offline' });
+    expect(screen.getByText('Waiting for network…')).toBeTruthy();
+  });
 });

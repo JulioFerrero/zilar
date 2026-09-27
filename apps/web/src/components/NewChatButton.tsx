@@ -1,34 +1,21 @@
 import { Pencil } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { cn } from '@/lib/utils';
-
-type NewChatAction = 'group' | 'message';
+import { useState } from 'react';
+import { InviteDialog } from './InviteDialog';
+import { NewGroupDialog } from './NewGroupDialog';
 
 const MENU_ITEM_CLASS =
   'flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none';
 
+type Dialog = 'group' | 'message' | 'invite';
+
 /** Round pencil button at the bottom right of the chat list, with a small menu. */
 export function NewChatButton() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [action, setAction] = useState<NewChatAction | undefined>(undefined);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const [dialog, setDialog] = useState<Dialog | undefined>(undefined);
 
-  useEffect(() => {
-    if (action !== undefined) {
-      closeButtonRef.current?.focus();
-    }
-  }, [action]);
-
-  const openDialog = (next: NewChatAction): void => {
+  const openDialog = (next: Dialog): void => {
     setMenuOpen(false);
-    setAction(next);
-  };
-
-  const onEscape = (close: () => void) => (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      close();
-    }
+    setDialog(next);
   };
 
   return (
@@ -45,7 +32,11 @@ export function NewChatButton() {
           <div
             role="menu"
             aria-label="New chat actions"
-            onKeyDown={onEscape(() => setMenuOpen(false))}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setMenuOpen(false);
+              }
+            }}
             className="absolute right-0 bottom-full z-20 mb-2 min-w-[180px] rounded-xl border border-divider bg-popover py-1 shadow-lg"
           >
             <button
@@ -79,34 +70,31 @@ export function NewChatButton() {
         <Pencil className="size-5" aria-hidden="true" />
       </button>
 
-      {action !== undefined && (
+      {dialog === 'group' && <NewGroupDialog onClose={() => setDialog(undefined)} />}
+      {dialog === 'invite' && <InviteDialog onClose={() => setDialog(undefined)} />}
+      {dialog === 'message' && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={action === 'group' ? 'New group' : 'New message'}
-          onKeyDown={onEscape(() => setAction(undefined))}
-          onClick={() => setAction(undefined)}
-          className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
+          aria-label="New message"
+          onClick={() => setDialog(undefined)}
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
         >
           <div
             onClick={(event) => event.stopPropagation()}
             className="w-full max-w-xs rounded-2xl bg-background p-4 shadow-xl"
           >
-            <h2 className="text-[16px] font-semibold">
-              {action === 'group' ? 'New group' : 'New message'}
-            </h2>
-            <p className="mt-1 text-[15px] text-muted-foreground">Coming soon</p>
-            <div className="mt-4 flex justify-end">
+            <h2 className="text-[16px] font-semibold">New message</h2>
+            <p className="mt-1 text-[15px] text-muted-foreground">
+              Invite a friend to start a conversation.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
               <button
-                ref={closeButtonRef}
                 type="button"
-                onClick={() => setAction(undefined)}
-                className={cn(
-                  'rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground',
-                  'hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none',
-                )}
+                onClick={() => openDialog('invite')}
+                className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
               >
-                Close
+                Invite a friend
               </button>
             </div>
           </div>

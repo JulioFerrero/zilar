@@ -8,5 +8,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "../../packages/xmpp-core/src/types/xmpp.d.ts"]
 }

@@ -70,6 +70,13 @@ export interface TypingEvent {
   state: 'composing' | 'paused' | 'active';
 }
 
+/** A contact's (roster) availability, from a bare-JID presence stanza. */
+export interface PresenceEvent {
+  /** Bare JID of the contact. */
+  jid: string;
+  available: boolean;
+}
+
 export interface DisplayedEvent {
   chatJid: string;
   fromJid: string;
@@ -122,5 +129,6 @@ export interface XmppCore {
     cb: (e: { chatJid: string; fromJid: string; messageId: string }) => void,
   ): () => void;
   on(event: 'occupants', cb: (e: { roomJid: string; occupants: Occupant[] }) => void): () => void;
+  on(event: 'presence', cb: (e: PresenceEvent) => void): () => void;
   on(event: 'error', cb: (e: { message: string }) => void): () => void;
 }

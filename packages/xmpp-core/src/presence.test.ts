@@ -3,6 +3,7 @@ import { xml } from '@xmpp/client';
 import {
   decodeMessageStanza,
   occupantIdOf,
+  parseContactPresence,
   parseMucPresence,
   resolveSender,
   type ParseContext,
@@ -130,6 +131,41 @@ describe('parseMucPresence', () => {
       ),
     ).toBe('x');
     expect(occupantIdOf(xml('message', {}, xml('occupant-id', { id: 'x' })))).toBeUndefined();
+  });
+});
+
+describe('parseContactPresence', () => {
+  const domain = 'galena.localhost';
+
+  it('parses an available presence into a bare JID', () => {
+    expect(
+      parseContactPresence(xml('presence', { from: 'alice@galena.localhost/phone' }), domain),
+    ).toEqual({ jid: 'alice@galena.localhost', available: true });
+  });
+
+  it('parses an unavailable presence', () => {
+    expect(
+      parseContactPresence(
+        xml('presence', { from: 'alice@galena.localhost/phone', type: 'unavailable' }),
+        domain,
+      ),
+    ).toEqual({ jid: 'alice@galena.localhost', available: false });
+  });
+
+  it('ignores another domain, a MUC domain, subscription requests and no sender', () => {
+    expect(
+      parseContactPresence(xml('presence', { from: 'alice@evil.example/phone' }), domain),
+    ).toBeUndefined();
+    expect(
+      parseContactPresence(xml('presence', { from: `${roomJid}/alice` }), domain),
+    ).toBeUndefined();
+    expect(
+      parseContactPresence(
+        xml('presence', { from: 'alice@galena.localhost', type: 'subscribe' }),
+        domain,
+      ),
+    ).toBeUndefined();
+    expect(parseContactPresence(xml('presence', {}), domain)).toBeUndefined();
   });
 });
 

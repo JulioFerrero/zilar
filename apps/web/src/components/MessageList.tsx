@@ -28,6 +28,7 @@ export function MessageList({
   const scrollRef = useRef<HTMLDivElement>(null);
   const dividerRef = useRef<HTMLDivElement>(null);
   const previousCount = useRef(messages.length);
+  const prependScrollHeight = useRef<number | undefined>(undefined);
   const [atBottom, setAtBottom] = useState(true);
   const [pending, setPending] = useState(0);
 
@@ -51,6 +52,12 @@ export function MessageList({
     }
     const added = messages.length - previousCount.current;
     previousCount.current = messages.length;
+    const previousHeight = prependScrollHeight.current;
+    if (previousHeight !== undefined) {
+      prependScrollHeight.current = undefined;
+      element.scrollTop += element.scrollHeight - previousHeight;
+      return;
+    }
     if (atBottom) {
       element.scrollTop = element.scrollHeight;
     } else if (added > 0) {
@@ -68,6 +75,10 @@ export function MessageList({
     setAtBottom(nearBottom);
     if (nearBottom) {
       setPending(0);
+    }
+    if (element.scrollTop < NEAR_BOTTOM_PX && store.hasMore(chat.id)) {
+      prependScrollHeight.current = element.scrollHeight;
+      store.loadOlder(chat.id);
     }
   };
 

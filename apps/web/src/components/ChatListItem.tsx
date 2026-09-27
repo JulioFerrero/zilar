@@ -20,7 +20,7 @@ export function ChatListItem({ chat, selected }: { chat: ChatSummary; selected: 
 
   return (
     <Link
-      to={`/c/${chat.id}`}
+      to={`/c/${encodeURIComponent(chat.id)}`}
       aria-current={selected ? 'page' : undefined}
       className={cn(
         'flex h-[72px] items-center gap-3 px-2.5 transition-colors',
