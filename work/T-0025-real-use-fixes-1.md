@@ -147,7 +147,30 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Round 1: changes requested
+
+Verified by the lead: every check passes (web 71, xmpp-core 114 + 3 skipped, server 155 tests). The diff is within the Allowed files. The code is good:
+- the alias map with monotonic statuses is the right fix for the stuck list status
+- the roster-push spoof handling and the RFC 6121 result are correct
+- the invite parsing only triggers a server-authoritative `/api/chats` refetch, never a direct join, so a hostile invitation can't pull the client into a room
+
+Round 2 adds **two bugs Julio hit live** while this task was running, plus the cleanup you offered.
 
 ### Findings
--
+1. **Your own typing is shown to you in groups** (Julio, live). The MUC reflects your chat states back to you, and `handleTyping` doesn't ignore them. Ignore `typing` **and** `displayed` events whose `fromJid` is my own bare JID (`me.jid`). An own displayed marker, reflected in a group, must not mark someone else's message as read. Tests for both, with a fake core emitting events from `me.jid`.
+2. **Names fall back to the raw JID localpart** (Julio, live: typing showed "a string of numbers and letters"). `senderNameFor` only knows contacts and `fromNick`, and typing events carry no nick. Fix:
+   - Resolve names in this order:
+     1. "You" for yourself
+     2. a contact's name
+     3. the message's `fromNick`
+     4. the group member's name from `GET /api/groups/:id` (load the members when a group chat is joined or opened, and cache them per chat)
+     5. the xmpp-core occupant whose `realJid` matches (its nick)
+     6. the DM title
+     7. finally **"Someone"**
+   - **Never show a JID localpart.** Use it in typing (list + header) and in sender names.
+   - Tests: typing from a group member who is not a contact shows their name; an unknown sender shows "Someone".
+3. **Cleanup (your open questions: yes to both).** `apps/server/src/app.ts` and `apps/server/src/auth/cli-config.ts` are now allowed, for these changes only:
+   - Make `sendDirectInvitation` **required** on `EjabberdAdminClient` and add the noop to `cli-config.ts`. Remove `FullEjabberdAdminClient` and the `?.` call.
+   - Pass the real pino `logger` to `createGroupsRoutes` in `app.ts`. Make the logger required in the groups routes and service inputs, and remove the `console.warn` fallback.
+
+After round 2, the lead will live-test it against the running stack with the test accounts.
