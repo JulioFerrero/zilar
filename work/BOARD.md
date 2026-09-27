@@ -15,7 +15,7 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely |
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | |
 | T-0010 | Voice message spike: record on web, convert with ffmpeg, local Whisper transcript | planned | v4-flash | T-0002 | Plan §6.7 |
-| T-0023 | Mobile polish: the same additions, plus swipe-to-reply, haptics, switch to `@galena/chat-core` | planned | v4.1-flash | T-0022 | After T-0021 (simulator load) |
+| [T-0023](T-0023-mobile-ui-polish.md) | Mobile polish: the same additions, plus swipe-to-reply, haptics, switch to `@galena/chat-core` | **in-progress** | v4.1-flash | T-0019, T-0022 | Simulator screenshots |
 | [T-0024](T-0024-web-real-data.md) | Web on real data: invite, email code, name; real chats via xmpp-core; groups and invites | **in-progress** | v4.1-flash | T-0020, T-0021, T-0022 | **The milestone where Julio can use Galena** |
 
 ## Follow-ups
