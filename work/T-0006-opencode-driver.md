@@ -1,7 +1,7 @@
 ---
 id: T-0006
 title: Agent driver package + OpenCode v2 driver (spike S4)
-status: todo
+status: review
 milestone: M0
 branch: task/T-0006-opencode-driver
 model: opencode-go/deepseek-v4.1-flash
@@ -130,16 +130,82 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Created the new package `@galena/agent-drivers`.
+- `src/types.ts`: the `AgentDriver` interface, the `AgentEvent` discriminated union
+  (`text`, `reasoning`, `tool_call`, `tool_result`, `permission_request`, `done`, `error`),
+  `StartOptions`, `SessionRef`, `PermissionRule`/`PermissionEffect`, `PermissionDecision`, and a
+  typed `DriverError` that carries the operation name and HTTP status.
+- `src/rules.ts`: `defaultWorkerRules()` returns the DeepSeek worker ruleset on the `shell` action,
+  in the order asks → narrow allows → denies, so the later rules win.
+- `src/opencode-v2.ts`: `createOpenCodeV2Driver({ baseUrl, password, username?, fetchImpl?,
+  pollIntervalMs? })`. Uses `fetch` with basic auth, validates every response body with zod
+  (unknown assistant content item types are skipped, not errors), maps
+  `allow_once|allow_always|reject` → `once|always|reject`, and turns non-OK responses and invalid
+  JSON into `DriverError`. The password is never put in errors or logs.
+- `events()` is a polling loop over `GET /api/session/{id}/message?limit=100&order=desc` and
+  `GET /api/session/{id}/permission`. It tracks per-message progress so text is emitted as deltas,
+  appends new content items exactly once, emits `tool_call`/`tool_result` once per call id, emits
+  each permission request once, ends after the `idle` message, and returns when the `AbortSignal`
+  fires. A transport/parse failure during polling is yielded as an `error` event and ends the stream.
+- `src/fake-opencode-server.ts`: a test-only `node:http` fake of the OpenCode v2 API (basic auth,
+  session create, prompt, message list, permission list/reply, interrupt) that replays a scripted run.
+- Tests (Vitest): 15 tests across `src/rules.test.ts` and `src/opencode-v2.test.ts`, covering the
+  full event order with no duplicates, request bodies, permission decision mapping, cancel/interrupt,
+  401 and 500 `DriverError`s without the password, abort stopping the stream, malformed JSON, and
+  failed tool results. See below for the exact cases.
+- `README.md`: what a driver is, a usage example, and the polling-vs-SSE decision with its trade-offs.
 
 ### Files changed
--
+- `packages/agent-drivers/package.json` (new)
+- `packages/agent-drivers/tsconfig.json` (new)
+- `packages/agent-drivers/README.md` (new)
+- `packages/agent-drivers/src/index.ts` (new)
+- `packages/agent-drivers/src/types.ts` (new)
+- `packages/agent-drivers/src/rules.ts` (new)
+- `packages/agent-drivers/src/opencode-v2.ts` (new)
+- `packages/agent-drivers/src/fake-opencode-server.ts` (new)
+- `packages/agent-drivers/src/rules.test.ts` (new)
+- `packages/agent-drivers/src/opencode-v2.test.ts` (new)
+- `pnpm-lock.yaml` (added the `packages/agent-drivers` importer entry only)
+- `work/T-0006-opencode-driver.md` (this status/report)
+
+No other file was touched. `work/assets/opencode-v2-openapi.json` was only read.
 
 ### Commands run and real results
--
+- `pnpm install`: exit 0. "Scope: all 6 workspace projects", up to date.
+- `pnpm format:check`: exit 0. "All matched files use Prettier code style!" (I also ran
+  `prettier --write` on `packages/agent-drivers/**` first; it reformatted the test file.)
+- `pnpm lint`: exit 0. "Found 0 warnings and 0 errors."
+- `pnpm typecheck`: exit 0. `turbo typecheck`: 5 successful, 5 total (`@galena/agent-drivers`
+  cache miss, the other four replayed from cache).
+- `pnpm test`: exit 0. `turbo test`: 5 successful, 5 total. `@galena/agent-drivers`:
+  2 test files, 15 tests passed (`rules.test.ts` 4, `opencode-v2.test.ts` 11).
+- `pnpm build`: exit 0. `turbo build`: 1 successful, 1 total (`@galena/web`; the other packages have
+  no build script).
+
+The fake-server tests cover: full ordered event sequence with no duplicates; the session-create
+body; `answerPermission` bodies for all three decisions (including `message`); cancel → interrupt;
+401 `DriverError` with no password; 500 `DriverError` with no password; abort stopping `events()`;
+malformed message JSON yielding an `error` event; malformed session JSON throwing `DriverError`;
+reasoning plus a failed tool result; and the fake server rejecting missing basic auth.
 
 ### Problems, deviations from the spec, open questions
--
+- **Polling, not SSE.** I used polling. In the pinned spec, `/api/event` describes each event as an
+  opaque JSON-encoded string (`V2EventEncoded` is `type: string, contentMediaType:
+  application/json`), so the event shapes are not a stable contract. `/message` and `/permission`
+  have explicit schemas, so polling is the safe choice; `/messages` is polled newest-first and
+  reversed to process oldest-first.
+- **Event classification.** `AgentEvent` is a discriminated union keyed by `type`, like the plan's
+  protocol schemas. `tool_result.status` is the OpenCode tool state (`completed`/`error`), and
+  `tool_result.error` carries the structured error message.
+- **tsconfig.** The package needs `"types": ["node"]` and the `DOM` lib (for `fetch`, `Response`,
+  `AbortSignal`), exactly as `packages/devtools/tsconfig.json` does; the base config only lists
+  `ES2023`.
+- **Pagination limit.** `events()` requests `limit=100` messages per poll. A single poll interval
+  that produces more than 100 messages could drop the oldest ones. Acceptable for the spike; noted
+  in the README.
+- **No blockers.** No architecture or security decision was guessed; no files outside "Allowed
+  files" were touched.
 
 ---
 
