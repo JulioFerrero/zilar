@@ -32,6 +32,10 @@ describe('initials', () => {
     expect(initials('Dev Team')).toBe('DT');
   });
 
+  it('takes the first letter or digit of a word', () => {
+    expect(initials('Dev-1')).toBe('D');
+  });
+
   it('ignores extra whitespace', () => {
     expect(initials('  Ana   María  ')).toBe('AM');
   });
@@ -41,8 +45,15 @@ describe('initials', () => {
     expect(initials('   ')).toBe('');
   });
 
-  it('keeps emoji names readable', () => {
-    expect(initials('🍻')).toBe('🍻');
-    expect(initials('Viernes 🍻')).toBe('V🍻');
+  it('ignores emoji and symbols', () => {
+    expect(initials('Viernes 🍻')).toBe('V');
+    expect(initials('🍻 Viernes')).toBe('V');
+    expect(initials('Dev Team 🍻')).toBe('DT');
+  });
+
+  it('returns an empty string when there is no letter or digit', () => {
+    expect(initials('🍻🍻')).toBe('');
+    expect(initials('🎉 ✨')).toBe('');
+    expect(initials('-_-')).toBe('');
   });
 });

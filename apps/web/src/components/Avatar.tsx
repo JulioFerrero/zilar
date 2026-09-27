@@ -1,4 +1,5 @@
 import { avatarGradient, initials } from '@galena/chat-core';
+import { User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface AvatarProps {
@@ -28,7 +29,14 @@ export function Avatar({ id, name, size = 54, online = false, avatarUrl, classNa
             fontSize: Math.round(size * 0.4),
           }}
         >
-          {label}
+          {label.length > 0 ? (
+            label
+          ) : (
+            <User
+              aria-hidden="true"
+              style={{ width: Math.round(size * 0.5), height: Math.round(size * 0.5) }}
+            />
+          )}
         </span>
       ) : (
         <img src={avatarUrl} alt="" className="h-full w-full rounded-full object-cover" />

@@ -30,24 +30,36 @@ export function avatarGradient(id: string): AvatarGradient {
   return AVATAR_GRADIENTS[index] ?? AVATAR_GRADIENTS[0]!;
 }
 
-function firstCharacter(value: string): string {
-  const [character] = Array.from(value);
-  return character ?? '';
+const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
+
+const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter() : undefined;
+
+function graphemes(value: string): string[] {
+  if (segmenter === undefined) {
+    return Array.from(value);
+  }
+  return Array.from(segmenter.segment(value), (segment) => segment.segment);
+}
+
+function firstLetterOrDigit(word: string): string {
+  for (const grapheme of graphemes(word)) {
+    if (LETTER_OR_DIGIT.test(grapheme)) {
+      return grapheme;
+    }
+  }
+  return '';
 }
 
 /**
- * Up to two initials from a name: the first letters of the first two words.
- * Emoji are kept as a single grapheme, and empty names return an empty string.
+ * Up to two initials from a name: the first letter or digit of the first two
+ * words that contain one. Emoji and other symbols never count, so a name with
+ * no letters or digits returns an empty string.
  */
 export function initials(name: string): string {
-  const words = name
+  const characters = name
     .trim()
     .split(/\s+/)
-    .filter((word) => word.length > 0);
-  if (words.length === 0) {
-    return '';
-  }
-  const first = firstCharacter(words[0]!);
-  const second = words[1] === undefined ? '' : firstCharacter(words[1]);
-  return (first + second).toUpperCase();
+    .map(firstLetterOrDigit)
+    .filter((character) => character.length > 0);
+  return ((characters[0] ?? '') + (characters[1] ?? '')).toUpperCase();
 }

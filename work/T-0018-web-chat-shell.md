@@ -1,7 +1,7 @@
 ---
 id: T-0018
 title: Web app — Telegram-like chat shell (list, folders, chat view, composer) with mock data
-status: changes-requested
+status: review
 milestone: M1
 branch: task/T-0018-web-chat-shell
 model: opencode-go/deepseek-v4.1-flash
@@ -178,6 +178,14 @@ pnpm build
 - I added `previewPrefix`/`previewBody`/`firstName` and `formatTime`/`formatWeekday`/`formatShortDate`/`formatDuration` as small exported helpers; `previewText` composes them and is unchanged in behaviour.
 - `Avatar`/`ImageMessage` use inline `data:image/svg+xml` URIs from the mock, so nothing is fetched from the network.
 - No blocking questions; the task is ready for review.
+
+### Round 2
+Fixing review finding 1 (must fix): `initials()` no longer counts emoji or symbols.
+- **`packages/chat-core/src/avatar.ts`**: `initials()` now takes the first **letter or digit** (`/[\p{L}\p{N}]/u`) of the first two words that contain one, scanning graphemes (via `Intl.Segmenter`, falling back to `Array.from`). A name with no letters or digits returns `""`.
+- **`apps/web/src/components/Avatar.tsx`**: when the initials are empty it renders a neutral person glyph (`User` from `lucide-react`) on the gradient instead of text; so `"Viernes 🍻"` now shows `V` and `"🍻🍻"` shows the person icon.
+- **Tests**: `packages/chat-core/src/avatar.test.ts` now covers the requested cases `"Viernes 🍻"→"V"`, `"🍻 Viernes"→"V"`, `"Ana María"→"AM"`, `"ana"→"A"`, `"🍻🍻"→""`, `"Dev-1"→"D"` (plus symbols-only and whitespace cases). Added `apps/web/src/components/Avatar.test.tsx` for the neutral glyph.
+- **Commands (all pass)**: `pnpm format:check` (Prettier clean); `pnpm lint` (0 warnings, 0 errors, 110 files); `pnpm typecheck` (7/7); `pnpm test` (web **26** in 8 files, chat-core **31** in 3 files, all 7 tasks successful); `pnpm build` (2/2 successful).
+- No other files changed; no new open questions.
 
 
 ---
