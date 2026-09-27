@@ -1,7 +1,7 @@
 ---
 id: T-0015
 title: Auth — Better Auth with email codes (no passwords), invite-only sign-up, sessions for web and mobile
-status: review
+status: changes-requested
 milestone: M1
 branch: task/T-0015-auth-invites
 model: opencode-go/deepseek-v4.1-flash
@@ -185,7 +185,38 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict (round 1): changes requested.** This is a strong implementation: an atomic invite consume (proven with 10 concurrent racers), passwords disabled, an invite hook on the only user-creation seam, and no secrets in logs. All checks pass (server **52** tests). A few security hardenings are needed before merge, and one wiring setting the web app needs.
 
 ### Findings
--
+1. **(must fix, security) Don't send codes to strangers, and rate-limit.**
+   - Right now anyone can make the server email a code to **any** address, with no invite and no limit. That's a spam and cost vector, and it'll matter once a real mailer exists.
+   - Fix it with a Better Auth `hooks.before` on the send-OTP endpoint (`/email-otp/send-verification-otp`): if the email doesn't belong to an existing user **and** the request has no **usable** invite in `x-galena-invite`, **don't send**. Check the invite without consuming it; consumption stays in `user.create.before`.
+   - **Respond exactly as if a code were sent** (same status and body), so nobody can probe which emails exist.
+   - **Rate limits.** Enable Better Auth's rate limiter explicitly in every environment, including tests, with memory storage for now, and set custom rules:
+     - send OTP: at most **3 per 10 minutes** per IP
+     - OTP sign-in / verify: at most **10 per 10 minutes** per IP
+   - Tests:
+     - an unknown email with no invite → 200, and the mailer is **not** called
+     - an unknown email with a valid invite → the mailer is called, and the invite is **not** consumed yet
+     - an existing user without an invite → the mailer is called
+     - a 4th send within the window → 429
+2. **(must fix, security) Store OTPs hashed.** Use the Email OTP plugin's hashed storage option (`storeOTP: 'hashed'` or whatever the current name is), so read access to the database never reveals live codes.
+   - Test: after a send, the `verification` row doesn't contain the plain code, and verifying with the plain code still works.
+3. **(must fix, needed for the web app) Trusted origins.**
+   - Add `WEB_ORIGINS`: a comma-separated list of URLs, default `http://localhost:5173`, validated.
+   - Pass them to Better Auth's `trustedOrigins`.
+   - Add Hono CORS for `/api/*` with `credentials: true`, allowing only those origins.
+   - Tests:
+     - a cookie-authenticated POST from an untrusted `Origin` is rejected
+     - a CORS preflight from a trusted origin is allowed, and from an untrusted one it isn't
+4. **(accepted)**
+   - Invite atomicity via a single conditional `UPDATE … RETURNING`. It's well argued, and burning a use on a rare failure is acceptable.
+   - Invite transport via the `x-galena-invite` header.
+   - Disabling Better Auth's logger.
+   - The committed `cli-config.ts`.
+   - The `--env-file-if-exists` flags.
+   - The CLI running migrations first.
+   - `test-support.ts` under `src/`.
+5. **(accepted, note)** The 30 s test timeouts are fine. The machine was heavily loaded; Claude will run fewer workers at once.
+6. **(noted for the OAuth task)** Your open question about OAuth first-time users needing to carry the invite code through the OAuth redirect is noted for that task.
+
