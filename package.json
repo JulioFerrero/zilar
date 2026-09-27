@@ -13,7 +13,12 @@
     "lint": "oxlint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "turbo test"
+    "test": "turbo test",
+    "infra:up": "docker compose -f infra/docker-compose.dev.yml --env-file infra/.env up -d --wait",
+    "infra:down": "docker compose -f infra/docker-compose.dev.yml --env-file infra/.env down",
+    "infra:logs": "docker compose -f infra/docker-compose.dev.yml --env-file infra/.env logs -f",
+    "infra:reset": "node infra/reset.mjs",
+    "infra:smoke": "pnpm --filter @galena/devtools smoke"
   },
   "devDependencies": {
     "@types/node": "^24",

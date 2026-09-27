@@ -44,3 +44,35 @@ pnpm build          # Turborepo, builds the web app
 ```
 
 `pnpm format` rewrites files in place. Apps live in `apps/*`, shared libraries in `packages/*`.
+
+### Infrastructure
+
+The backing services run in Docker Compose (Docker Desktop, or any Docker with Compose v2):
+
+- **Postgres** with pgvector, one database and user each for our server (`galena`), ejabberd (`ejabberd`) and LiteLLM (`litellm`)
+- **ejabberd** on the XMPP domain `galena.localhost`, group chats on `rooms.galena.localhost`, admin account `admin@galena.localhost`
+- **LiteLLM** as the LLM gateway, with a placeholder model and no real provider keys
+
+`infra/.env` is git-ignored; create it once and replace every `CHANGE_ME`:
+
+```bash
+cp infra/.env.example infra/.env
+```
+
+| Script | Does |
+|---|---|
+| `pnpm infra:up` | Start every service and wait until the healthchecks pass |
+| `pnpm infra:down` | Stop the containers, keeping the data volumes |
+| `pnpm infra:logs` | Follow the logs |
+| `pnpm infra:smoke` | Check Postgres users, ejabberd (status, admin API, WebSocket) and LiteLLM |
+| `pnpm infra:reset` | Delete the data volumes, after confirmation |
+
+Everything binds to `127.0.0.1` only:
+
+| Service | Endpoints | Notes |
+|---|---|---|
+| Postgres | `127.0.0.1:5432` | pgvector enabled in the `galena` database |
+| ejabberd | `127.0.0.1:5222` (c2s), `127.0.0.1:5280` (`/ws`, `/upload`, `/api`) | In-band registration and s2s federation are off |
+| LiteLLM | `127.0.0.1:4000` | `master_key` and `database_url` come from `infra/.env` |
+
+Configs live in `infra/`: `docker-compose.dev.yml`, `ejabberd/ejabberd.yml`, `litellm/config.yaml` and `postgres/init/`. Images are pinned to exact tags (LiteLLM by digest); never use LiteLLM 1.82.7 or 1.82.8, those releases were compromised.
