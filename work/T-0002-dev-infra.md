@@ -4,7 +4,7 @@ title: Local dev infrastructure (docker-compose with Postgres, ejabberd, LiteLLM
 status: todo
 milestone: M0
 branch: task/T-0002-dev-infra
-model: deepseek/deepseek-v4-pro
+model: opencode-go/deepseek-v4.1-flash
 depends_on: [T-0001, T-0012]
 estimate: 1–2 days
 ---
@@ -34,10 +34,13 @@ Later tasks (the T-0003 ejabberd spike and the T-0007 LiteLLM spike) build on th
   - LiteLLM proxy: config.yaml, `master_key`, `database_url`, health endpoints
 
 ### Allowed files
-- `infra/**`: new folder
+- `infra/**`: new folder, for compose file, configs, env example and init scripts
+- `packages/devtools/**`: new workspace package `@galena/devtools`, which holds the smoke test (see below)
 - Root `package.json`, only to add the `infra:*` scripts below
-- `pnpm-workspace.yaml` and `pnpm-lock.yaml`, only if you make `infra` a workspace package (see Smoke test)
+- `pnpm-lock.yaml`, only the changes `pnpm install` makes for the new package
 - `README.md`, only the `## Development` section, to add an "Infrastructure" subsection
+
+**Do not edit `pnpm-workspace.yaml`.** Another worker (T-0011) is editing it in parallel. `packages/devtools` is already covered by the existing `packages/*` glob.
 
 ### Requirements
 
@@ -90,17 +93,17 @@ Later tasks (the T-0003 ejabberd spike and the T-0007 LiteLLM spike) build on th
 | `infra:down` | Stop the containers, keeping the volumes |
 | `infra:logs` | Follow the logs |
 | `infra:reset` | Remove the volumes, after confirmation |
-| `infra:smoke` | Run `tsx infra/smoke.ts` |
+| `infra:smoke` | Run `pnpm --filter @galena/devtools smoke` |
 
-**Smoke test: `infra/smoke.ts`**
+**Smoke test: `packages/devtools/src/smoke.ts`** (package `@galena/devtools`: private, ESM, with scripts `smoke`, `typecheck` and `test`, and dev dependency `tsx`)
 - Exits non-zero, with a clear message per check, if any of these fail:
   1. Postgres accepts a connection for each of the three users. `docker compose exec` with `psql` is fine; no new npm dependency.
   2. ejabberd reports `started` (`ejabberdctl status` through `docker compose exec`).
   3. ejabberd's `/api/status`, or an equivalent admin API command, answers with admin auth.
   4. ejabberd's WebSocket endpoint accepts an XMPP WebSocket handshake. Open a `ws://127.0.0.1:5280/ws` connection with subprotocol `xmpp` and send an `<open/>` frame for `galena.localhost`. The server must answer with an `<open` frame. Use Node 24's built-in `WebSocket`, with no new dependency.
   5. LiteLLM's liveness endpoint returns 200.
-- Put small pure helpers (e.g. building the `<open/>` frame, parsing the response) in `infra/smoke-lib.ts`, with **Vitest unit tests** in `infra/smoke-lib.test.ts`.
-- Make the root `pnpm test` include them. The simplest way is an `infra` Vitest project, or making `infra` a tiny workspace package `@galena/infra`; either is fine. If you choose the package route, add `infra` to `pnpm-workspace.yaml` and say so in the Report.
+- Put small pure helpers (e.g. building the `<open/>` frame, parsing the response) in `packages/devtools/src/smoke-lib.ts`, with **Vitest unit tests** in `smoke-lib.test.ts` next to it. The root `pnpm test` picks them up through Turborepo.
+- The compose file path used by the smoke test must be resolved relative to the repo root, so it works from any working directory.
 
 ### Acceptance criteria
 - [ ] On a clean clone with `infra/.env` copied from `.env.example` (placeholders replaced), `pnpm infra:up` starts all three services, and `--wait` returns once they're healthy.

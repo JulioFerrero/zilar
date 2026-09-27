@@ -289,7 +289,9 @@ Every AI message has a normal readable body. That way any XMPP client still work
 - `cost`
 - `wake-reason`
 
-**Example: Dev-1 hands a task to QA in a room**
+**Encoding (decided 2026-09-27).** The payload is a JSON **envelope** `{ "v": 0, "type": "<payload type>", "data": { … } }`, carried as text inside the `urn:galena:agent:0` element. Every client validates it with the zod schemas in `@galena/protocol` (T-0013). Decoding never throws, and payloads are capped at 64 KiB. Why JSON rather than XML children: one set of schemas works on the server, web and mobile, and JSON is easier to validate.
+
+**Example: Dev-1 hands a task to QA in a room** (older XML sketch; the real encoding is the JSON envelope above)
 
 ```xml
 <message to="project-a@rooms.example.com" type="groupchat" id="m-42">
@@ -811,6 +813,18 @@ What we do instead:
   }
 }
 ```
+
+**OpenCode v2 facts (verified on Julio's Mac, 2026-09-27, `opencode2` 2.0.12):**
+- **Background service.** A background service (`opencode2 service`) runs the v2 API on localhost with basic auth. `opencode2 api <operationId>` calls it using the stored login.
+- **The API:**
+  - `POST /api/session` takes `model {providerID,id}`, `location {directory}` and a **`permissions` ruleset**
+  - `POST /api/session/{id}/prompt` takes `{text}`
+  - `GET /api/session/{id}/message` lists messages (newest first; a message of type `idle` marks the end of a run)
+  - `GET /api/session/{id}/permission` lists pending requests, answered with `POST …/permission/{requestID}/reply` and `{decision: once|always|reject, message}`
+  - `GET /api/event` streams events (SSE)
+  - `POST /api/session/{id}/interrupt` stops a run
+- **Permission rules** are `{action, resource, effect: allow|ask|deny}`, and **the shell tool's action is `shell`**, not `bash`. Session rules override the agent's rules: tested with a `deny` on `echo *` and an `ask` on `date*`.
+- **Sessions created through the API show up live** in Julio's `opencode2` app (`opencode2 -s <id>`). That's the same model the Galena gateway will use.
 
 ### 10.2 Our own driver interface
 

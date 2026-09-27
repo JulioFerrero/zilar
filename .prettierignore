@@ -1,5 +1,4 @@
-# Files not owned by the scaffold task and not Prettier-shaped yet.
-# Kept out of `prettier --check` so `pnpm format:check` reflects the code we own.
+# Hand-formatted documents (plans, specs, reports). Permanently excluded: reflowing them creates noisy diffs.
 AGENTS.md
 README.md
 docs/
