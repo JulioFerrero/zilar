@@ -1,7 +1,7 @@
 ---
 id: T-0025
 title: Real-use fixes 1 — list status stuck on "sending", live chat-list updates (group invites + roster pushes), big-emoji sender name
-status: todo
+status: review
 milestone: M1
 branch: task/T-0025-real-use-fixes-1
 model: opencode-go/deepseek-v4.1-flash
@@ -88,16 +88,60 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+**1. List status fix (web).**
+`apps/web/src/store/realStore.ts` now keeps an alias map between an optimistic local id and its server id, and a single `updateMessageStatus` helper updates both the open conversation and the chat-list `lastMessage` when the ids refer to the same message. Statuses are monotonic (`sending → sent → read`), so a late echo or a late send confirmation never downgrades a message the peer already read. The `.then` after `sendMessage` now links the returned id and advances the status (previously only the bubble changed, which is the reported bug), and `handleDisplayed` goes through the same helper.
+
+**2. Group invites (server → XMPP).**
+`apps/server/src/xmpp/admin-client.ts` got `sendDirectInvitation(roomId, users, options?)` (`send_direct_invitation`, args `room`, `service`, `password`, `reason`, `users`; omitted password/reason become `none`, per the 26.07 docs). `apps/server/src/groups/service.ts` sends a XEP-0249 invitation to exactly the new members after the affiliations are set, on **create** and on `POST /api/groups/:id/members` (only `toAdd`), never the creator/actor. It is best effort: a failure is logged and never fails the request.
+
+**3. `xmpp-core` events (additive).**
+- `on('invited', …)`: `parseDirectInvitation` accepts a `<message><x xmlns='jabber:x:conference' jid='…'/></message>` only when the room is on `rooms.<domain>` and the sender is on our domain or the MUC domain; otherwise it is ignored.
+- `on('roster', …)`: `parseRosterPush` handles `<iq type='set'><query xmlns='jabber:iq:roster'>` only from our own server (no `from`, our bare JID or our domain); it replies with an empty `iq type='result'` and emits one event per item. A push from anyone else gets an `iq type='error'` (`forbidden`) and emits nothing.
+- `InvitedEvent`, `RosterEvent`, `RosterSubscription` exported from the package index; `buildRosterResult` / `buildRosterError` added to `stanza.ts`.
+
+**4. Live refresh (web store).**
+`on('invited')` and `on('roster')` schedule a debounced (500 ms) `/api/chats` refetch that keeps existing previews/unread/presence, puts new chats at the top, joins new group rooms and loads their last message. The timer is cleared on `stop()`.
+
+**5. Big emoji (web).** `MessageBubble` computes `bigEmoji` before `showSender` and hides the sender name above a big-emoji group message; the avatar still renders.
+
+**Integration check:** `packages/xmpp-core/src/integration-invites.test.ts` (gated by `GALENA_XMPP_INTEGRATION=1`) creates two users and a room with the admin client, connects one client, pushes a roster item and sends a direct invitation, and asserts both events arrive. Output is pasted below; it was run against the already-running dev stack, which was not stopped or reset.
 
 ### Files changed
--
+
+- **web:** `src/store/realStore.ts`, `src/store/realStore.test.ts`, `src/components/MessageBubble.tsx`, `src/components/MessageContent.test.tsx`.
+- **server:** `src/xmpp/admin-client.ts`, `src/xmpp/admin-client.test.ts`, `src/groups/service.ts`, `src/groups/routes.ts`, `src/groups/groups.test.ts`, `src/test-support.ts`.
+- **xmpp-core:** `src/namespaces.ts`, `src/types.ts`, `src/stanza.ts`, `src/client.ts`, `src/index.ts`, `src/events.test.ts` (new), `src/core.test.ts`, `src/integration-invites.test.ts` (new), `tsconfig.json` (exclude the new integration file from the main typecheck, like the two existing ones).
+- `work/T-0025-real-use-fixes-1.md` (status + this Report). No other file was touched.
 
 ### Commands run and real results
--
+
+- `pnpm install`: PASS — "Done in 7.9s" (lockfile up to date).
+- `pnpm format:check`: PASS — "All matched files use Prettier code style!" (after `pnpm format`).
+- `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (233 files, 127 rules).
+- `pnpm typecheck`: PASS — 8/8 tasks successful.
+- `pnpm test`: PASS — 8/8 tasks successful. `@galena/web` **71 passed** (17 files); `@galena/xmpp-core` **114 passed, 3 skipped** (the three live-integration files); `@galena/server` **155 passed** (16 files). New tests: xmpp-core `events.test.ts` 12 + `core.test.ts` 4 + 1 gated integration; server admin-client +3, groups +3; web realStore +7, MessageContent +2.
+- `pnpm build`: PASS — 2/2 tasks successful (web `dist/assets/index-*.js` 565.92 kB).
+- `GALENA_XMPP_INTEGRATION=1 pnpm --filter @galena/xmpp-core test integration-invites`: PASS — 1/1 (1.1 s) against the running stack:
+  ```
+  PASS  the invited client connects
+  PASS  roster push received (jid=inv-alice-…@galena.localhost, subscription=both, name=Alice)
+  PASS  direct invitation received (roomJid=inv-…@rooms.galena.localhost,
+        fromJid=inv-…@rooms.galena.localhost, reason=Join the room)
+  Test Files  1 passed (1)   Tests  1 passed (1)
+  ```
 
 ### Problems, deviations from the spec, open questions
--
+
+- **The warning logger is a `console.warn` fallback.** `app.ts` builds `createGroupsRoutes` without a logger and is **not** in this task's Allowed files, so I made `GroupsRoutesDependencies.logger` optional (`InviteLogger`) and defaulted it to `console.warn`. The failure path is tested (a spy on `console.warn`). If you want the real pino logger, `app.ts` needs one line (`createGroupsRoutes({ …, logger })`); tell me and I'll do it in a follow-up.
+- **`sendDirectInvitation` is optional on `EjabberdAdminClient`.** The interface change broke the schema-generation noop stub in `apps/server/src/auth/cli-config.ts`, which is outside Allowed files. To keep "Only allowed files touched" true I marked the interface member optional and added `FullEjabberdAdminClient = Required<EjabberdAdminClient>` as the concrete factory return type, so every real caller sees it as required. If you prefer the method required, `cli-config.ts` needs one noop line.
+- **Integration scope.** The integration test creates the users/room and sends the invite through the admin client (which the spec allows), so it verifies the ejabberd wire format and the client's parsing/replies end to end. The automatic "add member → invite" wiring is covered by the server unit tests, not by a live server-service run.
+- **Observed invitation sender.** ejabberd sends the XEP-0249 message with `from` = the room bare JID on the MUC domain, so `invited.fromJid` is the room (accepted because the sender may be on the MUC domain). Contacts' presence still only resolves real bare JIDs on the user domain.
+- No new dependencies. No secrets logged. The dev stack was never stopped or reset.
+
+### Blocked / needs a decision
+
+- Nothing blocked. Two optional follow-ups are listed above (wire the pino logger in `app.ts`, or make the admin-client method required and add the noop line in `cli-config.ts`).
 
 ---
 

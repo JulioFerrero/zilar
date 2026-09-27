@@ -15,15 +15,20 @@ import {
   buildJoinPresence,
   buildLeavePresence,
   buildMessage,
+  buildRosterError,
+  buildRosterResult,
   buildTyping,
   decodeMessageStanza,
   isMamResult,
   mamResultQueryId,
+  parseDirectInvitation,
   parseMucPresence,
   parseContactPresence,
+  parseRosterPush,
   stanzaErrorCondition,
   type MucPresence,
   type ParseContext,
+  type RosterPush,
 } from './stanza';
 import type {
   ChatKind,
@@ -32,10 +37,12 @@ import type {
   DisplayedEvent,
   ErrorEvent,
   HistoryPage,
+  InvitedEvent,
   LoadHistoryOptions,
   Occupant,
   OccupantsEvent,
   PresenceEvent,
+  RosterEvent,
   SendMessageOptions,
   TypingEvent,
   XmppCore,
@@ -68,6 +75,8 @@ type EventPayload = {
   displayed: DisplayedEvent;
   occupants: OccupantsEvent;
   presence: PresenceEvent;
+  invited: InvitedEvent;
+  roster: RosterEvent;
   error: ErrorEvent;
 };
 type EventName = keyof EventPayload;
@@ -387,6 +396,8 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         handleMamResult(stanza);
         return;
       }
+      const invited = parseDirectInvitation(stanza, options.domain, mucDomain);
+      if (invited !== undefined) emitEvent('invited', invited);
       const decoded = decodeMessageStanza(stanza, parseContext());
       if (decoded.message !== undefined) emitEvent('message', decoded.message);
       if (decoded.typing !== undefined) emitEvent('typing', decoded.typing);
@@ -442,6 +453,12 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   }
 
   function handleIq(stanza: XmppElement): void {
+    const rosterPush = parseRosterPush(stanza, options.domain, meJid);
+    if (rosterPush !== undefined) {
+      handleRosterPush(rosterPush);
+      return;
+    }
+
     const id = stanza.attrs['id'];
     if (id === undefined) return;
     for (const [queryId, pending] of pendingQueries) {
@@ -455,6 +472,19 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       pending.resolve(toHistoryPage(pending.messages, parseMamFin(stanza)));
       return;
     }
+  }
+
+  function handleRosterPush(push: RosterPush): void {
+    if (xmpp !== undefined) {
+      const reply = push.trusted
+        ? buildRosterResult(push.id, push.from)
+        : buildRosterError(push.id, push.from);
+      void xmpp.send(reply).catch((error: unknown) => {
+        emitError(errorMessage(error));
+      });
+    }
+    if (!push.trusted) return;
+    for (const item of push.items) emitEvent('roster', item);
   }
 
   function requireOnline(): XmppClient {

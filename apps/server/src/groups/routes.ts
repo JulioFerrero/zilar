@@ -13,6 +13,7 @@ import {
   getMembership,
   MAX_GROUP_MEMBERS,
   removeGroupMember,
+  type InviteLogger,
 } from './service';
 
 export interface GroupsRoutesDependencies {
@@ -20,7 +21,17 @@ export interface GroupsRoutesDependencies {
   db: ServerDatabase;
   config: ServerConfig;
   adminClient: EjabberdAdminClient;
+  logger?: InviteLogger;
 }
+
+// `app.ts` does not pass the pino logger to these routes yet, so a failed
+// invitation is reported through the console. A pino logger is used when one
+// is provided.
+const consoleInviteLogger: InviteLogger = {
+  warn: (fields, message) => {
+    console.warn(`[groups] ${message}`, fields);
+  },
+};
 
 const titleSchema = z
   .string()
@@ -42,6 +53,7 @@ export function createGroupsRoutes({
   db,
   config,
   adminClient,
+  logger = consoleInviteLogger,
 }: GroupsRoutesDependencies): Hono {
   const routes = new Hono();
   const domain = config.xmpp.domain;
@@ -63,6 +75,7 @@ export function createGroupsRoutes({
       title: parsed.data.title,
       memberIds: parsed.data.memberIds,
       domain,
+      logger,
     });
     return c.json(group, 201);
   });
@@ -97,6 +110,7 @@ export function createGroupsRoutes({
       actorId: user.id,
       userIds: parsed.data.userIds,
       domain,
+      logger,
     });
     return c.json(group);
   });

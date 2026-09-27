@@ -67,4 +67,71 @@ describe('message content', () => {
     const time = within(list).getByText('12:41');
     expect(time.getAttribute('title')).toContain('2026');
   });
+
+  it('hides the sender name above a big-emoji message in a group', () => {
+    const group: ChatSummary = {
+      id: 'g1',
+      title: 'Team',
+      kind: 'group',
+      isAI: false,
+      space: 'personal',
+      unread: 0,
+      muted: false,
+      memberCount: 3,
+    };
+    renderApp('/c/g1', {
+      currentUserId: 'u-you',
+      chats: [group],
+      messagesByChat: {
+        g1: [
+          {
+            id: 'm1',
+            chatId: 'g1',
+            senderId: 'u-bea',
+            senderName: 'Bea',
+            text: '😂😂',
+            createdAt: new Date(2026, 8, 27, 12, 41),
+            status: 'read',
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByText('😂😂')).toBeTruthy();
+    expect(screen.queryByText('Bea')).toBeNull();
+    // The avatar is still shown.
+    expect(screen.getByText('B')).toBeTruthy();
+  });
+
+  it('still shows the sender name above a text message in a group', () => {
+    const group: ChatSummary = {
+      id: 'g1',
+      title: 'Team',
+      kind: 'group',
+      isAI: false,
+      space: 'personal',
+      unread: 0,
+      muted: false,
+      memberCount: 3,
+    };
+    renderApp('/c/g1', {
+      currentUserId: 'u-you',
+      chats: [group],
+      messagesByChat: {
+        g1: [
+          {
+            id: 'm1',
+            chatId: 'g1',
+            senderId: 'u-bea',
+            senderName: 'Bea',
+            text: 'hello',
+            createdAt: new Date(2026, 8, 27, 12, 41),
+            status: 'read',
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByText('Bea')).toBeTruthy();
+  });
 });

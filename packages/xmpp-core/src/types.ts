@@ -83,6 +83,24 @@ export interface DisplayedEvent {
   messageId: string;
 }
 
+/** A direct MUC invitation (XEP-0249). */
+export interface InvitedEvent {
+  /** Bare JID of the room, on the MUC domain (`rooms.<domain>`). */
+  roomJid: string;
+  /** Bare JID of the sender, when the stanza carried one. */
+  fromJid?: string;
+  reason?: string;
+}
+
+export type RosterSubscription = 'none' | 'to' | 'from' | 'both' | 'remove';
+
+/** One item of a roster push from our own server (RFC 6121 §2.1.6). */
+export interface RosterEvent {
+  jid: string;
+  subscription: RosterSubscription;
+  name?: string;
+}
+
 export interface SendMessageOptions {
   payload?: Payload;
   replyTo?: { id: string; to?: string };
@@ -130,5 +148,7 @@ export interface XmppCore {
   ): () => void;
   on(event: 'occupants', cb: (e: { roomJid: string; occupants: Occupant[] }) => void): () => void;
   on(event: 'presence', cb: (e: PresenceEvent) => void): () => void;
+  on(event: 'invited', cb: (e: InvitedEvent) => void): () => void;
+  on(event: 'roster', cb: (e: RosterEvent) => void): () => void;
   on(event: 'error', cb: (e: { message: string }) => void): () => void;
 }

@@ -70,7 +70,6 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const own = message.senderId === currentUserId;
-  const showSender = !own && chat.kind === 'group' && firstInGroup;
   const hasText = message.text !== undefined && message.text.length > 0;
   const isSending = own && message.status === 'sending';
   const bigEmoji =
@@ -80,6 +79,9 @@ export function MessageBubble({
     message.voice === undefined &&
     message.card === undefined &&
     isBigEmoji(message.text ?? '');
+  // A big-emoji message is shown without its bubble, so the sender name would
+  // float on its own; Telegram shows only the avatar in that case.
+  const showSender = !own && chat.kind === 'group' && firstInGroup && !bigEmoji;
   const imageOnly =
     message.image !== undefined &&
     !hasText &&

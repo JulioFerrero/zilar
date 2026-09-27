@@ -16,6 +16,7 @@ import type {
   CreateRoomOptions,
   RoomAffiliation,
   RosterEntry,
+  SendDirectInvitationOptions,
 } from './xmpp/admin-client';
 import type { XmppConfig } from './xmpp/config';
 import { localpartFor } from './xmpp/provisioning';
@@ -49,6 +50,12 @@ export class FakeAdminClient implements EjabberdAdminClient {
   readonly roomOptions: Array<{ roomId: string } & CreateRoomOptions> = [];
   readonly affiliations: Array<{ roomId: string; jid: string; affiliation: RoomAffiliation }> = [];
   readonly destroyedRooms: string[] = [];
+  readonly directInvitations: Array<{
+    roomId: string;
+    users: string[];
+    reason?: string;
+    password?: string;
+  }> = [];
   readonly rosterItems: Array<{
     localpart: string;
     contactJid: string;
@@ -61,6 +68,7 @@ export class FakeAdminClient implements EjabberdAdminClient {
   failRegister = false;
   failRoom = false;
   failAffiliation = false;
+  failDirectInvitation = false;
   failRoster = false;
 
   registerUser(localpart: string) {
@@ -104,6 +112,21 @@ export class FakeAdminClient implements EjabberdAdminClient {
 
   destroyRoom(roomId: string): Promise<void> {
     this.destroyedRooms.push(roomId);
+    return Promise.resolve();
+  }
+
+  sendDirectInvitation(
+    roomId: string,
+    users: string[],
+    options: SendDirectInvitationOptions = {},
+  ): Promise<void> {
+    if (this.failDirectInvitation) {
+      return Promise.reject(new Error('ejabberd is down'));
+    }
+    const invitation: (typeof this.directInvitations)[number] = { roomId, users };
+    if (options.reason !== undefined) invitation.reason = options.reason;
+    if (options.password !== undefined) invitation.password = options.password;
+    this.directInvitations.push(invitation);
     return Promise.resolve();
   }
 
