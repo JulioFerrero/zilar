@@ -75,7 +75,10 @@ declare module '@xmpp/client' {
     sendMany(stanzas: XmppElement[]): Promise<void>;
     on(event: 'online', listener: (jid: XmppJid) => void): XmppClient;
     on(event: 'offline', listener: () => void): XmppClient;
+    on(event: 'disconnect', listener: () => void): XmppClient;
     on(event: 'error', listener: (error: Error) => void): XmppClient;
+    on(event: 'element', listener: (element: XmppElement) => void): XmppClient;
+    on(event: 'send', listener: (element: XmppElement) => void): XmppClient;
     on(event: 'stanza', listener: (stanza: XmppElement) => void): XmppClient;
     on(event: 'status', listener: (status: XmppStatus) => void): XmppClient;
     on(event: string, listener: (...args: never[]) => void): XmppClient;
