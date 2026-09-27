@@ -7,8 +7,20 @@ import { useChatStore } from '@/store/ChatStoreProvider';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 
+function decodeParam(value: string | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export function ChatShell() {
-  const { chatId } = useParams();
+  const params = useParams<{ chatJid?: string }>();
+  const chatId = decodeParam(params.chatJid);
   const store = useChatStore();
   const navigate = useNavigate();
   const isWide = useMediaQuery('(min-width: 900px)');

@@ -11,6 +11,7 @@ export type {
   LoadHistoryOptions,
   Occupant,
   OccupantsEvent,
+  PresenceEvent,
   SendMessageOptions,
   TypingEvent,
   XmppCore,

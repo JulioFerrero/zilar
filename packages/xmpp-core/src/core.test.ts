@@ -12,6 +12,7 @@ import type {
   ChatMessage,
   ConnectionStatus,
   DisplayedEvent,
+  PresenceEvent,
   TypingEvent,
   XmppCore,
   XmppCoreOptions,
@@ -662,6 +663,24 @@ describe('createXmppCore: messages and markers', () => {
     );
 
     expect(messages).toHaveLength(0);
+  });
+});
+
+describe('createXmppCore: contact presence', () => {
+  it('emits presence for a bare-JID contact and ignores MUC and foreign senders', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const events: PresenceEvent[] = [];
+    core.on('presence', (event) => events.push(event));
+
+    fake.emitStanza(xml('presence', { from: 'alice@galena.localhost/phone' }));
+    fake.emitStanza(xml('presence', { from: 'alice@galena.localhost/phone', type: 'unavailable' }));
+    fake.emitStanza(xml('presence', { from: 'mallory@evil.example/phone' }));
+
+    expect(events).toEqual([
+      { jid: 'alice@galena.localhost', available: true },
+      { jid: 'alice@galena.localhost', available: false },
+    ]);
   });
 });
 

@@ -18,7 +18,17 @@ export function Composer({
   const store = useChatStore();
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastTypingRef = useRef(0);
   const canSend = value.trim().length > 0;
+
+  const onChange = (next: string): void => {
+    setValue(next);
+    const timestamp = Date.now();
+    if (next.trim().length > 0 && timestamp - lastTypingRef.current > 2000) {
+      lastTypingRef.current = timestamp;
+      store.sendTyping(chatId);
+    }
+  };
 
   useEffect(() => {
     const element = textareaRef.current;
@@ -89,7 +99,7 @@ export function Composer({
             ref={textareaRef}
             rows={1}
             value={value}
-            onChange={(event) => setValue(event.target.value)}
+            onChange={(event) => onChange(event.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Message"
             aria-label="Message"

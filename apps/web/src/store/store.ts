@@ -1,9 +1,12 @@
 import type { ChatSummary, MessageStatus, ReplyRef, UiMessage } from '@galena/chat-core';
+import type { Contact, Me } from '@/lib/api';
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
 import { currentUserId as defaultCurrentUserId, mockChats, mockMessages } from '@/mock';
 
 export type FolderId = 'all' | 'personal' | 'ais' | 'work';
+
+export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
 
 export interface TypingState {
   names: string[];
@@ -15,11 +18,22 @@ export interface SendTextOptions {
 
 export interface ChatStore {
   currentUserId: string;
+  me: Me | undefined;
+  status: ConnectionStatus;
   chats: ChatSummary[];
+  contacts: Contact[];
   messages: (chatId: string) => UiMessage[];
   typing: Record<string, TypingState>;
   openChat: (chatId: string) => void;
+  loadOlder: (chatId: string) => void;
+  hasMore: (chatId: string) => boolean;
   sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
+  sendTyping: (chatId: string) => void;
+  createGroup: (title: string, memberIds: string[]) => Promise<string>;
+  createInvite: () => Promise<string>;
+  signOut: () => Promise<void>;
+  start: () => void;
+  stop: () => void;
   search: string;
   setSearch: (value: string) => void;
   activeFolder: FolderId;
@@ -28,10 +42,15 @@ export interface ChatStore {
 
 export type ChatStoreState = ChatStore & {
   messagesByChat: Record<string, UiMessage[]>;
+  activeChatId: string | undefined;
+  historyComplete: Record<string, boolean>;
 };
 
 export interface ChatStoreSeed {
   currentUserId?: string;
+  me?: Me;
+  status?: ConnectionStatus;
+  contacts?: Contact[];
   chats?: ChatSummary[];
   messagesByChat?: Record<string, UiMessage[]>;
 }
@@ -96,18 +115,44 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
 
     return {
       currentUserId: seed.currentUserId ?? defaultCurrentUserId,
+      me:
+        seed.me ??
+        ({
+          id: seed.currentUserId ?? defaultCurrentUserId,
+          email: 'you@galena.test',
+          name: 'You',
+          image: null,
+          jid: null,
+        } satisfies Me),
+      status: seed.status ?? 'online',
+      contacts: seed.contacts ?? [],
       chats: seed.chats ?? mockChats,
       messagesByChat: cloneMessages(seed.messagesByChat ?? mockMessages),
+      activeChatId: undefined,
+      historyComplete: {},
       search: '',
       activeFolder: 'all',
       typing: {},
       messages: (chatId) => get().messagesByChat[chatId] ?? [],
       openChat: (chatId) =>
         set((state) => ({
+          activeChatId: chatId,
           chats: state.chats.map((chat) =>
             chat.id === chatId && chat.unread > 0 ? { ...chat, unread: 0 } : chat,
           ),
         })),
+      loadOlder: () => {},
+      hasMore: () => false,
+      sendTyping: () => {},
+      createGroup: async () => {
+        throw new Error('createGroup is not available in the mock store');
+      },
+      createInvite: async () => {
+        throw new Error('createInvite is not available in the mock store');
+      },
+      signOut: async () => {},
+      start: () => {},
+      stop: () => {},
       sendText: (chatId, text, options) => {
         const trimmed = text.trim();
         if (trimmed.length === 0) {

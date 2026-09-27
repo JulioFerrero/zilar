@@ -1,7 +1,7 @@
 ---
 id: T-0024
 title: Web — real login (invite, email code, name) and real chats (xmpp-core + server APIs)
-status: todo
+status: review
 milestone: M1
 branch: task/T-0024-web-real-data
 model: opencode-go/deepseek-v4.1-flash
@@ -104,16 +104,59 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+**`@galena/xmpp-core` — additive contact presence (the only package change).**
+
+- New `PresenceEvent { jid, available }` type, exported from the package index, plus an `on('presence', cb)` overload on `XmppCore`.
+- `parseContactPresence(stanza, domain)` in `src/stanza.ts`: accepts a bare-JID presence from our own domain (available = no `type`, unavailable = `type="unavailable"`), ignores MUC presence, other domains, subscription stanzas and sender-less presence.
+- `handlePresence` in `src/client.ts` now emits the contact event after the MUC branch (a MUC stanza on `rooms.<domain>` never matches the contact parser). The API is additive; no existing behaviour changed.
+- Tests: 3 new cases in `src/presence.test.ts` and a client-level test in `src/core.test.ts` (98 passed, 2 integration skipped).
+
+**`apps/web` — real data.**
+
+- **Dev proxy:** `vite.config.ts` proxies `/api` to `http://localhost:3000` (overridable with `GALENA_API_URL`), so Better Auth cookies are first-party.
+- **API client** (`src/lib/api.ts`): zod-validated `fetch` wrappers for `GET /api/me`, `PATCH /api/me`, `GET /api/chats`, `GET /api/contacts`, `POST /api/groups`, `POST /api/invites`, `GET /api/invites/:code`, `POST /api/xmpp/token`, with an `ApiError`.
+- **Auth client** (`src/lib/auth.ts`): Better Auth React client with the `emailOTP` plugin; `sendSignInCode`/`verifySignInCode` attach the `x-galena-invite` header when an invite code is present.
+- **Session + guards** (`src/auth/AuthProvider.tsx`, `src/routes/AppRoutes.tsx`): `useSession`-based provider; `/invite/:code`, `/login`, `/welcome/name`, `/`, `/c/:chatJid`; a guard redirects guests to `/login` with the target in router state, and users with an empty name to `/welcome/name`. JIDs are URL-encoded in links and decoded in `ChatShell`.
+- **Auth screens:** `InvitePage` validates the link with `GET /api/invites/:code`; the shared `AuthFlow` does email → 6-box code (`OtpInput`: auto-advance, backspace, paste, `Wrong code` / `Too many attempts, try again later`) → session; `NamePage` calls `PATCH /api/me`.
+- **Real store** (`src/store/realStore.ts`) implementing the extended `ChatStore` interface: loads `/api/me`, `/api/chats`, `/api/contacts`; connects `xmpp-core` with `getToken` calling `POST /api/xmpp/token` (first token reused, fresh token per reconnect); joins every group room; loads each chat's last message with `loadHistory(..., {max:1})` and sorts chats by recency; opening a chat loads 50 messages and paginates on scroll-up (`before`); live messages, typing, displayed markers and occupants come from xmpp-core events; contact presence drives the DM online dot; unread is counted from loaded messages with a per-user `localStorage` last-read map (safe `try/catch`) and `markDisplayed` is sent for visible open chats; a thin "Connecting…" / "Waiting for network…" bar shows while not `online`; `createGroup` creates the group then refreshes `/api/chats` and opens the room; `createInvite` returns the link; `signOut` stops XMPP, clears local state and reloads to `/login`. A generation counter makes `start`/`stop` safe under React StrictMode's double-invoked effects.
+- **UI:** `ChatList` got the ☰ menu (Invite a friend / Sign out) and the connection bar, plus the empty-state invite button; `NewChatButton` opens the real `NewGroupDialog` (contacts → title → create → opens) and `InviteDialog` (link + Copy); `Composer` sends typing notifications; `MessageList` paginates older messages on scroll-up.
+- **Mock kept:** `?mock=1` (or `VITE_MOCK=1`; tests use `import.meta.env.MODE === 'test'`) still selects the mock store; the real store is the default. The mock implements the extended interface so components are unchanged.
+- **Tests** (`apps/web`, 62 passing): `realStore.test.ts` (10: loading/sorting, live message, open clears + `markDisplayed`, optimistic send + echo dedupe, pagination, status, token refetch, group creation, presence, invite), `AuthFlow.test.tsx` (4: invite header on both calls, login without header, wrong code, too many attempts), `OtpInput.test.tsx` (3: paste, auto-advance, invalid), `NamePage.test.tsx` (2: `PATCH /api/me` + refetch, empty name), `NewChatButton.test.tsx` (2: create group and open it, invite link + copy), `App.test.tsx` (3: guest redirect, chat shell, empty-name redirect), plus two connection-bar cases in `ChatList.test.tsx`.
 
 ### Files changed
--
+
+- **New:** `apps/web/src/lib/api.ts`, `apps/web/src/lib/auth.ts`, `apps/web/src/auth/AuthProvider.tsx`, `apps/web/src/components/auth/AuthFlow.tsx`, `apps/web/src/components/auth/OtpInput.tsx`, `apps/web/src/components/InviteDialog.tsx`, `apps/web/src/components/NewGroupDialog.tsx`, `apps/web/src/routes/InvitePage.tsx`, `apps/web/src/routes/LoginPage.tsx`, `apps/web/src/routes/NamePage.tsx`, `apps/web/src/store/realStore.ts` and their tests.
+- **Modified:** `apps/web/package.json`, `apps/web/vite.config.ts`, `apps/web/tsconfig.json`, `apps/web/src/App.tsx`, `App.test.tsx`, `src/routes/AppRoutes.tsx`, `src/routes/ChatShell.tsx`, `src/store/store.ts`, `src/store/ChatStoreProvider.tsx`, `src/components/ChatList.tsx`, `ChatListItem.tsx`, `Composer.tsx`, `MessageList.tsx`, `NewChatButton.tsx`, `src/test/renderApp.tsx`.
+- **Modified (xmpp-core):** `src/types.ts`, `src/index.ts`, `src/stanza.ts`, `src/client.ts`, `src/core.test.ts`, `src/presence.test.ts`.
+- **Modified:** `pnpm-lock.yaml`; `work/T-0024-web-real-data.md` (status + this Report).
+- No other task, board or doc file was touched.
 
 ### Commands run and real results
--
+
+- `pnpm install`: PASS — "Done" (added `better-auth`, `zod`, `@galena/xmpp-core` to `apps/web`; lockfile updated).
+- `pnpm format:check`: PASS — "All matched files use Prettier code style!" (after `pnpm format`).
+- `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (231 files, 127 rules).
+- `pnpm typecheck`: PASS — 8/8 tasks successful.
+- `pnpm test`: PASS — 8/8 tasks successful. `@galena/web` **62 passed** (17 files); `@galena/xmpp-core` **98 passed, 2 skipped** (the two live-integration files). Other packages unchanged.
+- `pnpm build`: PASS — 2/2 tasks successful (web `dist/assets/index-*.js` 563.10 kB).
+- No live dev-stack run by me (see below).
 
 ### Problems, deviations from the spec, open questions
--
+
+- **New dependencies (please confirm):** `better-auth` (the spec's Decisions require Better Auth's client), `zod` (AGENTS.md requires zod validation at network boundaries), and `@galena/xmpp-core` (the real store uses it). All are workspace-consistent versions; the spec lists `pnpm-lock.yaml` as allowed.
+- **No end-to-end browser run.** Docker/dev-stack and the two simulator browsers are Claude's live check. Everything here is covered by unit tests with a fake `fetch`/XmppCore; the real ejabberd round trip is **not** exercised. The `vite build` warns that `@xmpp/resolve` imports `node:dns`, which Vite externalizes for the browser — the service URL is passed explicitly, so it should be inert, but this is the highest-risk untested area.
+- **Unread counts are approximate**, as the spec accepts: they count loaded messages after the stored last-read id, and a live message increments by one. On first load a chat's last message is treated as read (no server-side unread exists).
+- **Groups are all in the `personal` space** (no workspace concept yet), so the `Work` folder stays empty.
+- **"New message" is not a way to create a DM.** DM chats come from contacts created by invites; the menu item shows an "Invite a friend" prompt instead of a user picker.
+- **Sign out reloads** (`window.location.assign('/login')`) so the next user gets a fresh store and XMPP connection; a pure SPA sign-out would leave a torn-down store.
+- **`reconnecting` shows "Connecting…"**, and `offline` shows "Waiting for network…" (the spec names both).
+- **Reply `senderName`** for a server echo is resolved from the quoted message when it is loaded; otherwise it is empty.
+- **`console.log` in `ApprovalCard`** is pre-existing (approve/deny ids, not tokens) and was left untouched.
+
+### Blocked / needs a decision
+
+- Nothing blocked. Please confirm the three dependency additions and run the live flow.
 
 ---
 

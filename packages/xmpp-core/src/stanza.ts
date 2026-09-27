@@ -16,7 +16,14 @@ import {
   REPLY_NAMESPACE,
   STANZA_ID_NAMESPACE,
 } from './namespaces';
-import type { ChatKind, ChatMessage, DisplayedEvent, Occupant, TypingEvent } from './types';
+import type {
+  ChatKind,
+  ChatMessage,
+  DisplayedEvent,
+  Occupant,
+  PresenceEvent,
+  TypingEvent,
+} from './types';
 
 const CHAT_STATES: ReadonlyArray<'composing' | 'paused' | 'active'> = [
   'composing',
@@ -243,6 +250,23 @@ export function parseMucPresence(stanza: XmppElement, mucDomain: string): MucPre
   const role = item?.attrs['role'];
   if (role !== undefined) presence.role = role;
   return presence;
+}
+
+// A contact's presence is a bare-JID stanza from our own domain. MUC presence
+// (resources on the MUC domain) is handled by `parseMucPresence`; subscription
+// requests and errors are not availability and are ignored.
+export function parseContactPresence(
+  stanza: XmppElement,
+  domain: string,
+): PresenceEvent | undefined {
+  if (!stanza.is('presence')) return undefined;
+  const from = stanza.attrs['from'];
+  if (from === undefined || jidDomain(from) !== domain) return undefined;
+  const type = stanza.attrs['type'];
+  if (type !== undefined && type !== 'unavailable') return undefined;
+  const jid = bareJid(from);
+  if (!jid.includes('@')) return undefined;
+  return { jid, available: type === undefined };
 }
 
 function findOccupantByOccupantId(
