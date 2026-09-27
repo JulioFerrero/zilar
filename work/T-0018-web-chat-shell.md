@@ -1,7 +1,7 @@
 ---
 id: T-0018
 title: Web app — Telegram-like chat shell (list, folders, chat view, composer) with mock data
-status: review
+status: merged
 milestone: M1
 branch: task/T-0018-web-chat-shell
 model: opencode-go/deepseek-v4.1-flash
@@ -226,3 +226,4 @@ Fixing review finding 1 (must fix): `initials()` no longer counts emoji or symbo
 3. **(accepted, note)** The `--bubble-in-meta` contrast of about 2.4:1 matches Telegram's own low-contrast meta text. We keep it for now and revisit with Julio's feedback.
 4. **(note)** Mock chat ids (`c-viernes`) differ from the room JIDs in `ids.ts`. That's fine for mock data, and the wiring task will use real JIDs.
 
+**Verdict (round 2): approved.** Merged by Claude. The initials fix is verified: the chat-core tests pass, and they include the emoji cases.
