@@ -1,0 +1,14 @@
+export const AGENT_NAMESPACE = 'urn:galena:agent:0';
+export const CARBONS_NAMESPACE = 'urn:xmpp:carbons:2';
+export const CHAT_MARKERS_NAMESPACE = 'urn:xmpp:chat-markers:0';
+export const CHAT_STATES_NAMESPACE = 'http://jabber.org/protocol/chatstates';
+export const DATA_FORMS_NAMESPACE = 'jabber:x:data';
+export const DELAY_NAMESPACE = 'urn:xmpp:delay';
+export const FORWARD_NAMESPACE = 'urn:xmpp:forward:0';
+export const MAM_NAMESPACE = 'urn:xmpp:mam:2';
+export const MUC_NAMESPACE = 'http://jabber.org/protocol/muc';
+export const MUC_USER_NAMESPACE = 'http://jabber.org/protocol/muc#user';
+export const OCCUPANT_ID_NAMESPACE = 'urn:xmpp:occupant-id:0';
+export const REPLY_NAMESPACE = 'urn:xmpp:reply:0';
+export const RSM_NAMESPACE = 'http://jabber.org/protocol/rsm';
+export const STANZA_ID_NAMESPACE = 'urn:xmpp:sid:0';
