@@ -20,6 +20,18 @@ const databaseUrlSchema = z
   .string()
   .refine((value) => /^postgres(ql)?:\/\//.test(value), { error: 'invalid database url' });
 
+const webOriginsSchema = z
+  .string()
+  .default('http://localhost:5173')
+  .transform((value) =>
+    value
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0),
+  )
+  .pipe(z.array(z.url()).min(1))
+  .transform((origins) => [...new Set(origins.map((origin) => new URL(origin).origin))]);
+
 const serverConfigSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -29,6 +41,7 @@ const serverConfigSchema = z
     PUBLIC_URL: z.url().default('http://localhost:3000'),
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url().optional(),
+    WEB_ORIGINS: webOriginsSchema,
   })
   .transform((value) => ({
     ...value,

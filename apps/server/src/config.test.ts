@@ -28,6 +28,7 @@ describe('loadServerConfig', () => {
       PUBLIC_URL: 'http://localhost:3000',
       BETTER_AUTH_SECRET: VALID_SECRET,
       BETTER_AUTH_URL: 'http://localhost:3000',
+      WEB_ORIGINS: ['http://localhost:5173'],
     });
   });
 
@@ -41,6 +42,7 @@ describe('loadServerConfig', () => {
         PUBLIC_URL: 'https://chat.example.com',
         BETTER_AUTH_SECRET: VALID_SECRET,
         BETTER_AUTH_URL: 'https://auth.example.com',
+        WEB_ORIGINS: 'https://app.example.com, https://admin.example.com',
       }),
     ).toEqual({
       NODE_ENV: 'production',
@@ -50,7 +52,36 @@ describe('loadServerConfig', () => {
       PUBLIC_URL: 'https://chat.example.com',
       BETTER_AUTH_SECRET: VALID_SECRET,
       BETTER_AUTH_URL: 'https://auth.example.com',
+      WEB_ORIGINS: ['https://app.example.com', 'https://admin.example.com'],
     });
+  });
+
+  it('normalizes web origins to their origin', () => {
+    const config = loadServerConfig({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      WEB_ORIGINS: 'http://localhost:5173/, https://app.example.com/some/path?x=1',
+    });
+    expect(config.WEB_ORIGINS).toEqual(['http://localhost:5173', 'https://app.example.com']);
+  });
+
+  it('rejects invalid web origins without printing them', () => {
+    const message = configErrorMessage({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      WEB_ORIGINS: 'https://app.example.com,not-an-origin',
+    });
+    expect(message).toContain('WEB_ORIGINS');
+    expect(message).not.toContain('not-an-origin');
+  });
+
+  it('rejects an empty web origin list', () => {
+    const message = configErrorMessage({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      WEB_ORIGINS: '',
+    });
+    expect(message).toContain('WEB_ORIGINS');
   });
 
   it('defaults BETTER_AUTH_URL to PUBLIC_URL', () => {
@@ -78,6 +109,7 @@ describe('loadServerConfig', () => {
       PUBLIC_URL: 'not-a-url',
       BETTER_AUTH_SECRET: 'too-short-to-be-a-valid-secret',
       BETTER_AUTH_URL: 'also-not-a-url',
+      WEB_ORIGINS: 'not-an-origin',
     });
 
     for (const name of [
@@ -88,6 +120,7 @@ describe('loadServerConfig', () => {
       'PUBLIC_URL',
       'BETTER_AUTH_SECRET',
       'BETTER_AUTH_URL',
+      'WEB_ORIGINS',
     ]) {
       expect(message).toContain(name);
     }
@@ -99,6 +132,7 @@ describe('loadServerConfig', () => {
       'not-a-url',
       'too-short-to-be-a-valid-secret',
       'also-not-a-url',
+      'not-an-origin',
     ]) {
       expect(message).not.toContain(value);
     }

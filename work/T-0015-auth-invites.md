@@ -1,7 +1,7 @@
 ---
 id: T-0015
 title: Auth — Better Auth with email codes (no passwords), invite-only sign-up, sessions for web and mobile
-status: changes-requested
+status: review
 milestone: M1
 branch: task/T-0015-auth-invites
 model: opencode-go/deepseek-v4.1-flash
@@ -181,7 +181,52 @@ pnpm build
 - **Verification that no user can be created without an invite:** email/password and social sign-in are disabled (a request to `/api/auth/sign-up/email` returns 400 `EMAIL_PASSWORD_SIGN_UP_DISABLED`, asserted in a test), and the only user-creation seam (`databaseHooks.user.create.before`) throws `APIError` unless a valid invite is presented and atomically consumed. Tests (b), (c) and the "unusable invite" test assert no `user` or `session` row is created otherwise.
 - **Open question:** when Google/Apple/GitHub sign-in arrives, the same `user.create.before` hook will require an invite for first-time OAuth users too; the client will need to forward the invite link through the OAuth flow. Flagging so the later task designs for it.
 
+### Round 2
+
+Round 1 stays above. This round addresses findings 1, 2 and 3 from the review. Finding 4/5/6 needed no change.
+
+#### What I changed
+- **Finding 1 — no codes to strangers, and rate limits.**
+  - Added a Better Auth `hooks.before` middleware (`createAuthMiddleware`) that matches `/email-otp/send-verification-otp`. If the email does **not** belong to an existing user and the request has no **usable** invite in `x-galena-invite` (`findUsableInvite`, no consumption), it short-circuits with `ctx.json({ success: true })` — the same 200 and body the real endpoint returns, so existence cannot be probed. Existing users and invited new emails proceed normally. Consumption still happens only in `databaseHooks.user.create.before`.
+  - Enabled Better Auth's rate limiter in every environment (`rateLimit.enabled: true`, `storage: 'memory'`) and added `rateLimit.customRules`: send OTP `{ window: 600, max: 3 }`; `/sign-in/email-otp`, `/email-otp/check-verification-otp` and `/email-otp/verify-email` `{ window: 600, max: 10 }`. Custom rules override the plugin's and the built-in defaults (verified: the six sign-in attempts in test (f) now exceed the old max of 3 and still pass).
+- **Finding 2 — OTPs are stored hashed.** `emailOTP({ storeOTP: 'hashed' })`. The mailer still receives the plain code; only the `verification.value` column is hashed, and verification with the plain code still works.
+- **Finding 3 — trusted origins.**
+  - Config: `WEB_ORIGINS`, a comma-separated list of URLs, default `http://localhost:5173`, validated with zod and normalized to each URL's origin (deduped). Error messages keep listing only the variable name.
+  - `auth.ts`: `trustedOrigins: config.WEB_ORIGINS` (Better Auth already trusts its own `baseURL` origin) and `advanced.disableOriginCheck: false` so those checks are not skipped in test environments.
+  - `app.ts`: Hono `cors({ origin: config.WEB_ORIGINS, credentials: true })` on `/api/*`, plus a small origin guard that rejects unsafe methods (`POST`/`PUT`/`PATCH`/`DELETE`) when an `Origin` header is present and not in `WEB_ORIGINS` ∪ the `PUBLIC_URL`/`BETTER_AUTH_URL` origins (403). The guard covers our own cookie-authenticated routes, which Better Auth's CSRF check does not.
+  - `.env.example` documents `WEB_ORIGINS`.
+
+#### Better Auth options used (and docs)
+- `rateLimit.enabled`, `rateLimit.storage`, `rateLimit.customRules` — https://www.better-auth.com/docs/concepts/rate-limit
+- `hooks.before` with `createAuthMiddleware`, `ctx.json` to short-circuit — https://www.better-auth.com/docs/concepts/hooks
+- `emailOTP.storeOTP: 'hashed'` (also `otpLength`, `expiresIn`, `allowedAttempts`) — https://www.better-auth.com/docs/plugins/email-otp#options
+- `trustedOrigins` — https://www.better-auth.com/docs/reference/options#trustedorigins
+- `advanced.disableOriginCheck` — https://www.better-auth.com/docs/reference/options#advanced. Better Auth defaults its internal `skipOriginCheck` to `true` in test environments (verified in `better-auth/dist/context/create-context.mjs`); `disableOriginCheck: false` keeps origin checks on everywhere so `WEB_ORIGINS` is enforced.
+- Hono side: `cors` from `hono/cors` (array `origin`, `credentials: true`).
+
+#### Tests added / changed
+- Finding 1: unknown email with no invite → 200 and the mailer is **not** called; unknown email with a usable invite → mailer called and `uses` stays 0; existing user without an invite → mailer called; a 4th send within the window → 429.
+- Finding 2: after a send, the `verification` rows do not contain the plain code, and signing in with the plain code still returns 200.
+- Finding 3: cookie-authenticated `POST /api/invites` from `https://evil.example` → 403; from `http://localhost:5173` → 200; `OPTIONS` preflight from a trusted origin returns 204 with `Access-Control-Allow-Origin`/`-Credentials`/`-Headers` and from an untrusted origin has no `Access-Control-Allow-Origin`; a direct `auth.handler` POST with a cookie from an untrusted origin → 403 and from a trusted origin → 200 (proves `trustedOrigins`).
+- Config: `WEB_ORIGINS` default, explicit list, normalization to origins, invalid entry rejected, empty list rejected, value never printed.
+- Existing tests (b), (c), (f) and `bootstrap` were updated to request the OTP **with** a usable invite, because a new email without an invite no longer receives a code. Each test now sends a unique `x-forwarded-for`, since Better Auth's in-memory rate-limit store is process-global and keyed by IP+path.
+
+#### Commands run and real results
+- `pnpm format:check`: "All matched files use Prettier code style!"
+- `pnpm lint`: "Found 0 warnings and 0 errors."
+- `pnpm typecheck`: 6/6 tasks successful.
+- `pnpm --filter @galena/server test`: 8 files, **64 tests passed** (config 12, logger 1, invite-cli 6, mailer 3, migrate 4, app 6, invites 7, auth 25).
+- `pnpm test`: 6/6 tasks successful.
+- `pnpm build`: 2/2 tasks successful.
+- `pnpm --filter @galena/server db:generate` (re-check): "No schema changes, nothing to migrate" — the new options add no tables/columns.
+
+#### Notes / deviations
+- **Per-IP limits depend on a trusted client IP.** Better Auth reads `x-forwarded-for` by default, so a directly exposed server lets a client spoof it. Once the deployment topology is known, set `advanced.ipAddress.ipAddressHeaders` (a single header the proxy overwrites) or `advanced.ipAddress.trustedProxies`. Flagging rather than guessing; the finding asked for memory storage "for now".
+- **Origin checks forced on in tests** via `advanced.disableOriginCheck: false`. This is a deliberate difference from Better Auth's test default so the trust list is exercised; it does not change production behavior.
+- The rate-limit tests are not flaky across tests inside one file because each test uses its own `x-forwarded-for`; within one `vitest run` the counters reset on process start.
+
 ---
+
 
 ## Review (written by Claude)
 

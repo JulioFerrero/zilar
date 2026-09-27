@@ -1,13 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
-import { invites, session, user } from '../db/schema';
+import { invites, session, user, verification } from '../db/schema';
 import { TEST_SECRET, createTestContext, type TestContext } from '../test-support';
 import { INVITE_HEADER } from './auth';
-import { consumeInvite, createInvite, findInviteByCode, revokeInvite } from './invites';
+import {
+  consumeInvite,
+  createInvite,
+  findInviteByCode,
+  findUsableInvite,
+  revokeInvite,
+} from './invites';
 
 const BASE_URL = 'http://localhost:3000';
 
 type TestApp = ReturnType<typeof createApp>;
+
+let clientIp = '10.0.0.1';
 
 function appFor(context: TestContext): TestApp {
   return createApp({
@@ -26,13 +34,19 @@ async function post(
 ): Promise<Response> {
   return app.request(`${BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': clientIp, ...headers },
     body: JSON.stringify(body),
   });
 }
 
-async function sendSignInOtp(app: TestApp, email: string): Promise<Response> {
-  return post(app, '/api/auth/email-otp/send-verification-otp', { email, type: 'sign-in' });
+async function sendSignInOtp(app: TestApp, email: string, invite?: string): Promise<Response> {
+  const headers = invite ? { [INVITE_HEADER]: invite } : {};
+  return post(
+    app,
+    '/api/auth/email-otp/send-verification-otp',
+    { email, type: 'sign-in' },
+    headers,
+  );
 }
 
 async function signInWithOtp(
@@ -59,7 +73,7 @@ async function bootstrap(
   invite: string,
 ): Promise<{ app: TestApp; response: Response }> {
   const app = appFor(context);
-  await sendSignInOtp(app, email);
+  await sendSignInOtp(app, email, invite);
   const otp = context.mailer.codeFor(email);
   const response = await signInWithOtp(app, { email, otp, invite });
   return { app, response };
@@ -67,8 +81,11 @@ async function bootstrap(
 
 describe('auth flows', () => {
   let context: TestContext;
+  let testCounter = 0;
 
   beforeEach(async () => {
+    testCounter += 1;
+    clientIp = `10.0.0.${testCounter}`;
     context = await createTestContext();
   });
 
@@ -93,11 +110,13 @@ describe('auth flows', () => {
     expect(stored?.uses).toBe(1);
   });
 
-  it('(b) rejects a new email without an invite and creates nothing', async () => {
+  it('(b) rejects sign-up without an invite and creates nothing', async () => {
     const app = appFor(context);
     const invite = await createInvite(context.db, { createdBy: null });
 
-    await sendSignInOtp(app, 'no-invite@example.com');
+    // The code is delivered because the send carries the invite, but the
+    // sign-in below omits it, so account creation must be rejected.
+    await sendSignInOtp(app, 'no-invite@example.com', invite.code);
     const otp = context.mailer.codeFor('no-invite@example.com');
     const response = await signInWithOtp(app, { email: 'no-invite@example.com', otp });
 
@@ -111,14 +130,15 @@ describe('auth flows', () => {
 
   it('(c) rejects an expired invite', async () => {
     const app = appFor(context);
-    const invite = await createInvite(context.db, { createdBy: null, expiresInDays: -1 });
+    const usable = await createInvite(context.db, { createdBy: null });
+    const expired = await createInvite(context.db, { createdBy: null, expiresInDays: -1 });
 
-    await sendSignInOtp(app, 'expired@example.com');
+    await sendSignInOtp(app, 'expired@example.com', usable.code);
     const otp = context.mailer.codeFor('expired@example.com');
     const response = await signInWithOtp(app, {
       email: 'expired@example.com',
       otp,
-      invite: invite.code,
+      invite: expired.code,
     });
 
     expect(response.status).toBe(400);
@@ -127,15 +147,16 @@ describe('auth flows', () => {
 
   it('(c) rejects a revoked invite', async () => {
     const app = appFor(context);
-    const invite = await createInvite(context.db, { createdBy: null });
-    await revokeInvite(context.db, invite.code);
+    const usable = await createInvite(context.db, { createdBy: null });
+    const revoked = await createInvite(context.db, { createdBy: null });
+    await revokeInvite(context.db, revoked.code);
 
-    await sendSignInOtp(app, 'revoked@example.com');
+    await sendSignInOtp(app, 'revoked@example.com', usable.code);
     const otp = context.mailer.codeFor('revoked@example.com');
     const response = await signInWithOtp(app, {
       email: 'revoked@example.com',
       otp,
-      invite: invite.code,
+      invite: revoked.code,
     });
 
     expect(response.status).toBe(400);
@@ -144,15 +165,16 @@ describe('auth flows', () => {
 
   it('(c) rejects a used-up invite', async () => {
     const app = appFor(context);
-    const invite = await createInvite(context.db, { createdBy: null, maxUses: 1 });
-    await consumeInvite(context.db, invite.code);
+    const usable = await createInvite(context.db, { createdBy: null });
+    const usedUp = await createInvite(context.db, { createdBy: null, maxUses: 1 });
+    await consumeInvite(context.db, usedUp.code);
 
-    await sendSignInOtp(app, 'used-up@example.com');
+    await sendSignInOtp(app, 'used-up@example.com', usable.code);
     const otp = context.mailer.codeFor('used-up@example.com');
     const response = await signInWithOtp(app, {
       email: 'used-up@example.com',
       otp,
-      invite: invite.code,
+      invite: usedUp.code,
     });
 
     expect(response.status).toBe(400);
@@ -163,8 +185,8 @@ describe('auth flows', () => {
     const app = appFor(context);
     const invite = await createInvite(context.db, { createdBy: null, maxUses: 1 });
 
-    await sendSignInOtp(app, 'race-a@example.com');
-    await sendSignInOtp(app, 'race-b@example.com');
+    await sendSignInOtp(app, 'race-a@example.com', invite.code);
+    await sendSignInOtp(app, 'race-b@example.com', invite.code);
     const otpA = context.mailer.codeFor('race-a@example.com');
     const otpB = context.mailer.codeFor('race-b@example.com');
 
@@ -194,7 +216,7 @@ describe('auth flows', () => {
   it('(f) locks the OTP after five wrong attempts', async () => {
     const app = appFor(context);
     const invite = await createInvite(context.db, { createdBy: null });
-    await sendSignInOtp(app, 'attempts@example.com');
+    await sendSignInOtp(app, 'attempts@example.com', invite.code);
     const otp = context.mailer.codeFor('attempts@example.com');
     const wrongOtp = otp === '000000' ? '111111' : '000000';
 
@@ -333,19 +355,173 @@ describe('auth flows', () => {
 
   it('rejects a valid OTP presented with an unusable invite', async () => {
     const app = appFor(context);
-    const invite = await createInvite(context.db, { createdBy: null });
-    await revokeInvite(context.db, invite.code);
+    const usable = await createInvite(context.db, { createdBy: null });
+    const revoked = await createInvite(context.db, { createdBy: null });
+    await revokeInvite(context.db, revoked.code);
 
-    await sendSignInOtp(app, 'invalid-invite@example.com');
+    await sendSignInOtp(app, 'invalid-invite@example.com', usable.code);
     const otp = context.mailer.codeFor('invalid-invite@example.com');
     const response = await signInWithOtp(app, {
       email: 'invalid-invite@example.com',
       otp,
-      invite: invite.code,
+      invite: revoked.code,
     });
 
     expect(response.status).toBe(400);
     expect(await context.db.select().from(user)).toHaveLength(0);
+  });
+
+  it('does not send a code to an unknown email without an invite', async () => {
+    const app = appFor(context);
+
+    const response = await sendSignInOtp(app, 'stranger@example.com');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ success: true });
+    expect(context.mailer.sent).toHaveLength(0);
+  });
+
+  it('sends a code to an unknown email with a usable invite and does not consume it', async () => {
+    const app = appFor(context);
+    const invite = await createInvite(context.db, { createdBy: null });
+
+    const response = await sendSignInOtp(app, 'invited@example.com', invite.code);
+
+    expect(response.status).toBe(200);
+    expect(context.mailer.codeFor('invited@example.com')).toHaveLength(6);
+    const stored = await findUsableInvite(context.db, invite.code);
+    expect(stored).not.toBeNull();
+    expect(stored?.uses).toBe(0);
+  });
+
+  it('sends a code to an existing user without an invite', async () => {
+    const invite = await createInvite(context.db, { createdBy: null });
+    const { app } = await bootstrap(context, 'existing@example.com', invite.code);
+    const before = context.mailer.sent.length;
+
+    const response = await sendSignInOtp(app, 'existing@example.com');
+
+    expect(response.status).toBe(200);
+    expect(context.mailer.sent.length).toBe(before + 1);
+  });
+
+  it('rate-limits the send-OTP endpoint to 3 per 10 minutes per IP', async () => {
+    const app = appFor(context);
+    const invite = await createInvite(context.db, { createdBy: null });
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await sendSignInOtp(app, 'limited@example.com', invite.code);
+      expect(response.status).toBe(200);
+    }
+
+    const fourth = await sendSignInOtp(app, 'limited@example.com', invite.code);
+    expect(fourth.status).toBe(429);
+  });
+
+  it('stores OTPs hashed and still verifies the plain code', async () => {
+    const app = appFor(context);
+    const invite = await createInvite(context.db, { createdBy: null });
+
+    await sendSignInOtp(app, 'hashed@example.com', invite.code);
+    const otp = context.mailer.codeFor('hashed@example.com');
+
+    const rows = await context.db.select().from(verification);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(JSON.stringify(rows)).not.toContain(otp);
+
+    const response = await signInWithOtp(app, {
+      email: 'hashed@example.com',
+      otp,
+      invite: invite.code,
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it('rejects a cookie-authenticated POST from an untrusted origin', async () => {
+    const invite = await createInvite(context.db, { createdBy: null });
+    const { app, response: signIn } = await bootstrap(
+      context,
+      'untrusted@example.com',
+      invite.code,
+    );
+    const cookie = sessionCookie(signIn);
+
+    const response = await app.request(`${BASE_URL}/api/invites`, {
+      method: 'POST',
+      headers: { cookie, origin: 'https://evil.example' },
+    });
+
+    expect(response.status).toBe(403);
+  });
+
+  it('allows a cookie-authenticated POST from a trusted origin', async () => {
+    const invite = await createInvite(context.db, { createdBy: null });
+    const { app, response: signIn } = await bootstrap(context, 'trusted@example.com', invite.code);
+    const cookie = sessionCookie(signIn);
+
+    const response = await app.request(`${BASE_URL}/api/invites`, {
+      method: 'POST',
+      headers: { cookie, origin: 'http://localhost:5173' },
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('trusts only WEB_ORIGINS in Better Auth origin checks', async () => {
+    const sendBody = JSON.stringify({ email: 'origin@example.com', type: 'sign-in' });
+    const untrusted = await context.auth.handler(
+      new Request(`${BASE_URL}/api/auth/email-otp/send-verification-otp`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          cookie: 'better-auth.session_token=fake',
+          origin: 'https://evil.example',
+        },
+        body: sendBody,
+      }),
+    );
+    expect(untrusted.status).toBe(403);
+
+    const trusted = await context.auth.handler(
+      new Request(`${BASE_URL}/api/auth/email-otp/send-verification-otp`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          cookie: 'better-auth.session_token=fake',
+          origin: 'http://localhost:5173',
+        },
+        body: sendBody,
+      }),
+    );
+    expect(trusted.status).toBe(200);
+  });
+
+  it('answers CORS preflight for trusted origins and not for untrusted ones', async () => {
+    const app = appFor(context);
+
+    const trusted = await app.request(`${BASE_URL}/api/invites`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'http://localhost:5173',
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'content-type, x-galena-invite',
+      },
+    });
+    expect(trusted.status).toBe(204);
+    expect(trusted.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+    expect(trusted.headers.get('access-control-allow-credentials')).toBe('true');
+    expect(trusted.headers.get('access-control-allow-headers')?.toLowerCase()).toContain(
+      'x-galena-invite',
+    );
+
+    const untrusted = await app.request(`${BASE_URL}/api/invites`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://evil.example',
+        'access-control-request-method': 'POST',
+      },
+    });
+    expect(untrusted.headers.get('access-control-allow-origin')).toBeNull();
   });
 
   it('(j) never logs the OTP, a session token or the auth secret outside development/test', async () => {
@@ -374,7 +550,7 @@ describe('auth flows', () => {
     const invite = await createInvite(context.db, { createdBy: null, maxUses: 2 });
 
     for (const email of ['one@example.com', 'two@example.com']) {
-      await sendSignInOtp(app, email);
+      await sendSignInOtp(app, email, invite.code);
       const otp = context.mailer.codeFor(email);
       const response = await signInWithOtp(app, { email, otp, invite: invite.code });
       expect(response.status).toBe(200);
