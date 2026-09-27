@@ -1,9 +1,11 @@
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { requestId, type RequestIdVariables } from 'hono/request-id';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Logger } from 'pino';
 import { protocolVersion } from '@galena/protocol';
+import type { Auth } from './auth/auth';
+import { createAuthRoutes } from './auth/routes';
 import type { ServerConfig } from './config';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
@@ -13,13 +15,17 @@ export interface AppDependencies {
   db: ServerDatabase;
   logger: Logger;
   config: ServerConfig;
+  auth: Auth;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
+const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 export function createApp({
   db,
   logger,
+  config,
+  auth,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
 
@@ -41,6 +47,25 @@ export function createApp({
 
     logger.info({ ...fields, status: c.res.status, durationMs: durationSince(start) }, 'request');
   });
+
+  app.use(
+    '/api/*',
+    cors({
+      origin: config.WEB_ORIGINS,
+      credentials: true,
+    }),
+  );
+
+  app.use('/api/*', async (c, next) => {
+    const origin = c.req.header('origin');
+    if (origin && UNSAFE_METHODS.has(c.req.method) && !allowedOrigins(config).includes(origin)) {
+      throw new HttpError(403, 'forbidden', 'Origin is not allowed');
+    }
+    await next();
+  });
+
+  app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
+  app.route('/api', createAuthRoutes({ auth, db, config }));
 
   app.get('/health', async (c) => {
     const up = await isDatabaseUp(db);
@@ -71,7 +96,7 @@ export function createApp({
         {
           error: { code: error.code, message: error.message, requestId: requestIdValue },
         },
-        error.status as ContentfulStatusCode,
+        error.status,
       );
     }
 
@@ -122,4 +147,11 @@ function statusFor(error: unknown): number {
 
 function durationSince(start: number): number {
   return Math.round(performance.now() - start);
+}
+
+function allowedOrigins(config: ServerConfig): string[] {
+  const origins = new Set(config.WEB_ORIGINS);
+  origins.add(new URL(config.PUBLIC_URL).origin);
+  origins.add(new URL(config.BETTER_AUTH_URL).origin);
+  return [...origins];
 }

@@ -15,10 +15,14 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely |
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | |
 | T-0010 | Voice message spike: record on web, convert with ffmpeg, local Whisper transcript | planned | v4-flash | T-0002 | Plan §6.7 |
-| [T-0015](T-0015-auth-invites.md) | Auth: Better Auth email codes (no passwords), invite-only sign-up, cookie + bearer sessions | **in-progress** | v4.1-flash | T-0014 | M1; PGlite only |
 | [T-0018](T-0018-web-chat-shell.md) | Web: Telegram-like chat shell (list, folders, chat, composer) + `@galena/chat-core`, mock data | **in-progress** | v4.1-flash | T-0013 | M1; style per `docs/design/ui-style.md` |
 | [T-0019](T-0019-mobile-chat-shell.md) | Mobile: Telegram-like chat shell with mock data + simulator screenshots | **in-progress** | v4.1-flash | T-0011, T-0013 | M1 |
 | [T-0016](T-0016-xmpp-core.md) | `@galena/xmpp-core`: shared XMPP client (JWT reconnect, rooms, DMs, MAM, typing, receipts, payloads) | **in-progress** | v4.1-flash | T-0003, T-0013 | Uses the dev stack for its integration test |
+
+## Follow-ups
+
+- Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
+- OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
 
 ## Done
 
@@ -32,3 +36,4 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | [T-0011](T-0011-mobile-scaffold.md) | Expo app (SDK 57, React Native 0.86, Expo Router, NativeWind + React Native Reusables); runs in the iOS simulator, light and dark | 2026-09-27 |
 | [T-0014](T-0014-server-foundation.md) | Server foundation: zod config, redacted pino logs, JSON errors, request ids, Drizzle + migrations, PGlite tests | 2026-09-27 |
 | [T-0003](T-0003-xmpp-accounts-rooms.md) | XMPP: server-created accounts, JWT-only login (non-admin), members-only rooms, MAM history; `pnpm xmpp:e2e` 12/12 (2 rounds) | 2026-09-27 |
+| [T-0015](T-0015-auth-invites.md) | Auth: invite-only sign-up, 6-digit email codes (hashed, gated, rate-limited), cookie + bearer sessions, trusted origins (2 rounds) | 2026-09-27 |

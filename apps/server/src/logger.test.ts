@@ -12,6 +12,7 @@ function captureLog(payload: Record<string, unknown>): string {
   const config = loadServerConfig({
     NODE_ENV: 'test',
     DATABASE_URL: 'postgres://user:hunter2@127.0.0.1:5432/galena',
+    BETTER_AUTH_SECRET: 'test-secret-test-secret-test-secret',
   });
 
   createLogger(config, destination).info(payload, 'test');

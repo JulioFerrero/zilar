@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ConfigError, loadServerConfig } from './config';
 
 const VALID_DATABASE_URL = 'postgres://galena:hunter2@127.0.0.1:5432/galena';
+const VALID_SECRET = 'a'.repeat(32);
 
 function configErrorMessage(env: Record<string, string | undefined>): string {
   try {
@@ -17,12 +18,17 @@ function configErrorMessage(env: Record<string, string | undefined>): string {
 
 describe('loadServerConfig', () => {
   it('applies defaults and parses a valid environment', () => {
-    expect(loadServerConfig({ DATABASE_URL: VALID_DATABASE_URL })).toEqual({
+    expect(
+      loadServerConfig({ DATABASE_URL: VALID_DATABASE_URL, BETTER_AUTH_SECRET: VALID_SECRET }),
+    ).toEqual({
       NODE_ENV: 'development',
       PORT: 3000,
       DATABASE_URL: VALID_DATABASE_URL,
       LOG_LEVEL: 'info',
       PUBLIC_URL: 'http://localhost:3000',
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      BETTER_AUTH_URL: 'http://localhost:3000',
+      WEB_ORIGINS: ['http://localhost:5173'],
     });
   });
 
@@ -34,6 +40,9 @@ describe('loadServerConfig', () => {
         DATABASE_URL: 'postgresql://galena:hunter2@db.internal:5432/galena',
         LOG_LEVEL: 'debug',
         PUBLIC_URL: 'https://chat.example.com',
+        BETTER_AUTH_SECRET: VALID_SECRET,
+        BETTER_AUTH_URL: 'https://auth.example.com',
+        WEB_ORIGINS: 'https://app.example.com, https://admin.example.com',
       }),
     ).toEqual({
       NODE_ENV: 'production',
@@ -41,12 +50,53 @@ describe('loadServerConfig', () => {
       DATABASE_URL: 'postgresql://galena:hunter2@db.internal:5432/galena',
       LOG_LEVEL: 'debug',
       PUBLIC_URL: 'https://chat.example.com',
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      BETTER_AUTH_URL: 'https://auth.example.com',
+      WEB_ORIGINS: ['https://app.example.com', 'https://admin.example.com'],
     });
+  });
+
+  it('normalizes web origins to their origin', () => {
+    const config = loadServerConfig({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      WEB_ORIGINS: 'http://localhost:5173/, https://app.example.com/some/path?x=1',
+    });
+    expect(config.WEB_ORIGINS).toEqual(['http://localhost:5173', 'https://app.example.com']);
+  });
+
+  it('rejects invalid web origins without printing them', () => {
+    const message = configErrorMessage({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      WEB_ORIGINS: 'https://app.example.com,not-an-origin',
+    });
+    expect(message).toContain('WEB_ORIGINS');
+    expect(message).not.toContain('not-an-origin');
+  });
+
+  it('rejects an empty web origin list', () => {
+    const message = configErrorMessage({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      WEB_ORIGINS: '',
+    });
+    expect(message).toContain('WEB_ORIGINS');
+  });
+
+  it('defaults BETTER_AUTH_URL to PUBLIC_URL', () => {
+    const config = loadServerConfig({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      PUBLIC_URL: 'https://galena.example.com',
+    });
+    expect(config.BETTER_AUTH_URL).toBe('https://galena.example.com');
   });
 
   it('lists every missing required variable without printing values', () => {
     const message = configErrorMessage({});
     expect(message).toContain('DATABASE_URL');
+    expect(message).toContain('BETTER_AUTH_SECRET');
     expect(message).toContain('missing');
   });
 
@@ -57,18 +107,51 @@ describe('loadServerConfig', () => {
       DATABASE_URL: 'mysql://galena:hunter2@127.0.0.1:3306/galena',
       LOG_LEVEL: 'loud',
       PUBLIC_URL: 'not-a-url',
+      BETTER_AUTH_SECRET: 'too-short-to-be-a-valid-secret',
+      BETTER_AUTH_URL: 'also-not-a-url',
+      WEB_ORIGINS: 'not-an-origin',
     });
 
-    for (const name of ['NODE_ENV', 'PORT', 'DATABASE_URL', 'LOG_LEVEL', 'PUBLIC_URL']) {
+    for (const name of [
+      'NODE_ENV',
+      'PORT',
+      'DATABASE_URL',
+      'LOG_LEVEL',
+      'PUBLIC_URL',
+      'BETTER_AUTH_SECRET',
+      'BETTER_AUTH_URL',
+      'WEB_ORIGINS',
+    ]) {
       expect(message).toContain(name);
     }
-    for (const value of ['nope', 'abc', 'hunter2', 'loud', 'not-a-url']) {
+    for (const value of [
+      'nope',
+      'abc',
+      'hunter2',
+      'loud',
+      'not-a-url',
+      'too-short-to-be-a-valid-secret',
+      'also-not-a-url',
+      'not-an-origin',
+    ]) {
       expect(message).not.toContain(value);
     }
   });
 
+  it('rejects a secret shorter than 32 characters without printing it', () => {
+    const message = configErrorMessage({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: 'short-secret-value',
+    });
+    expect(message).toContain('BETTER_AUTH_SECRET');
+    expect(message).not.toContain('short-secret-value');
+  });
+
   it('rejects a non-postgres database URL', () => {
-    const message = configErrorMessage({ DATABASE_URL: 'mysql://user:hunter2@localhost/db' });
+    const message = configErrorMessage({
+      DATABASE_URL: 'mysql://user:hunter2@localhost/db',
+      BETTER_AUTH_SECRET: VALID_SECRET,
+    });
     expect(message).toContain('DATABASE_URL');
     expect(message).not.toContain('hunter2');
     expect(message).not.toContain('mysql');
@@ -76,7 +159,11 @@ describe('loadServerConfig', () => {
 
   it('rejects invalid ports', () => {
     for (const port of ['abc', '0', '65536', '12.5', '']) {
-      const message = configErrorMessage({ DATABASE_URL: VALID_DATABASE_URL, PORT: port });
+      const message = configErrorMessage({
+        DATABASE_URL: VALID_DATABASE_URL,
+        BETTER_AUTH_SECRET: VALID_SECRET,
+        PORT: port,
+      });
       expect(message).toContain('PORT');
       if (port !== '') {
         expect(message).not.toContain(port);
@@ -85,7 +172,8 @@ describe('loadServerConfig', () => {
   });
 
   it('accepts the port boundaries', () => {
-    expect(loadServerConfig({ DATABASE_URL: VALID_DATABASE_URL, PORT: '1' }).PORT).toBe(1);
-    expect(loadServerConfig({ DATABASE_URL: VALID_DATABASE_URL, PORT: '65535' }).PORT).toBe(65535);
+    const base = { DATABASE_URL: VALID_DATABASE_URL, BETTER_AUTH_SECRET: VALID_SECRET };
+    expect(loadServerConfig({ ...base, PORT: '1' }).PORT).toBe(1);
+    expect(loadServerConfig({ ...base, PORT: '65535' }).PORT).toBe(65535);
   });
 });

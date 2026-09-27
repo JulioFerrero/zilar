@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { PgliteServerDatabase } from './client';
 import { runMigrations } from './migrate';
 import * as schema from './schema';
-import { serverMeta } from './schema';
+import { account, invites, serverMeta, session, user, verification } from './schema';
 
 describe('runMigrations', () => {
   let client: PGlite;
@@ -45,5 +45,19 @@ describe('runMigrations', () => {
 
     const rows = await db.select().from(serverMeta);
     expect(rows).toHaveLength(1);
+  });
+
+  it('creates the auth and invite tables', async () => {
+    await runMigrations(db);
+
+    const rows = [
+      await db.select().from(user).limit(0),
+      await db.select().from(session).limit(0),
+      await db.select().from(account).limit(0),
+      await db.select().from(verification).limit(0),
+      await db.select().from(invites).limit(0),
+    ];
+
+    expect(rows).toEqual([[], [], [], [], []]);
   });
 });
