@@ -1,7 +1,7 @@
 ---
 id: T-0025
 title: Real-use fixes 1 — list status stuck on "sending", live chat-list updates (group invites + roster pushes), big-emoji sender name
-status: review
+status: merged
 milestone: M1
 branch: task/T-0025-real-use-fixes-1
 model: opencode-go/deepseek-v4.1-flash
