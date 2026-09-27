@@ -1,7 +1,7 @@
 ---
 id: T-0006
 title: Agent driver package + OpenCode v2 driver (spike S4)
-status: changes-requested
+status: review
 milestone: M0
 branch: task/T-0006-opencode-driver
 model: opencode-go/deepseek-v4.1-flash
@@ -206,6 +206,41 @@ reasoning plus a failed tool result; and the fake server rejecting missing basic
   in the README.
 - **No blockers.** No architecture or security decision was guessed; no files outside "Allowed
   files" were touched.
+
+### Round 2 (review fixes)
+- **Finding 1 (must fix): follow-up prompts no longer replay old runs.**
+  - `prompt()` now returns `PromptRef = { messageId, createdAt }`, taken from `data.id` and
+    `data.time.created` of the `/prompt` response (zod-validated, with `time.created` required).
+  - `AgentDriver.events` now takes `EventsOptions = { after: PromptRef; signal?: AbortSignal }`.
+    The polling loop calls a new `selectAfter(messages, after)` helper that walks the `desc` page and
+    keeps only messages newer than the prompt: it stops at the prompt's message id (`slice(0,
+    index)`), and falls back to `time.created > createdAt` when the id is not in the page. Only an
+    `idle` inside that slice yields `done`, so an old run's text, tool events and `idle` never leak.
+  - Updated `types.ts` (`PromptRef`, `EventsOptions`, `prompt`/`events` signatures), the README
+    example and event notes, and every test.
+  - New tests (in a `follow-up prompts` describe): (a) a session holding a completed run plus a
+    second prompt yields only the new run's text and ends on the new `idle`; (b) the new run's
+    messages appear over three polls with no old events; (c) the timestamp fallback when the prompt
+    message has scrolled out of the page.
+- **Finding 2 (should fix): network failures are wrapped.** `request()` now catches a rejected
+  `fetch` and throws `DriverError(operation, "<operation> could not reach the server")` with no
+  status, no URL and no password. New test uses a `fetchImpl` that rejects and checks that `start`
+  and `prompt` throw `DriverError` and that `events()` yields an `error` event, with neither the
+  password nor the base URL in any message.
+- `packages/agent-drivers/src/fake-opencode-server.ts`: prompt responses are now scriptable
+  (`promptResponses?: { id, createdAt }[]`) and the `/prompt` reply includes `time.created`, so the
+  tests can drive real follow-up prompts.
+- No new dependencies, no `any`, no casts added; only `packages/agent-drivers/**` plus this task file
+  were touched.
+
+Round 2 command results (all exit 0, run after the fixes and a `prettier --write` on the package):
+- `pnpm install`: up to date.
+- `pnpm format:check`: "All matched files use Prettier code style!"
+- `pnpm lint`: "Found 0 warnings and 0 errors."
+- `pnpm typecheck`: `turbo typecheck` 5 successful, 5 total (`@galena/agent-drivers` cache miss).
+- `pnpm test`: `turbo test` 5 successful, 5 total. `@galena/agent-drivers`: 2 test files,
+  **19 tests passed** (was 15; `rules.test.ts` 4, `opencode-v2.test.ts` 15).
+- `pnpm build`: `turbo build` 1 successful, 1 total (FULL TURBO cache).
 
 ---
 

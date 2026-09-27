@@ -8,6 +8,11 @@ export interface FakeFrame {
   permissions: unknown[];
 }
 
+export interface FakePromptResponse {
+  id: string;
+  createdAt: number;
+}
+
 export interface RecordedRequest {
   method: string;
   path: string;
@@ -19,6 +24,8 @@ export interface FakeServerOptions {
   frames?: FakeFrame[];
   password?: string;
   requireAuth?: boolean;
+  // Prompt responses, in order; the last one is repeated. Defaults to a single `msg_user_1`.
+  promptResponses?: FakePromptResponse[];
   // Makes every request fail with this status, to exercise driver error handling.
   fail?: { status: number; body?: string };
   // Returns invalid JSON for one endpoint, to check the driver never crashes.
@@ -48,15 +55,18 @@ export class FakeOpenCodeServer {
   private readonly frames: FakeFrame[];
   private readonly expectedAuth: string;
   private readonly requireAuth: boolean;
+  private readonly promptResponses: FakePromptResponse[];
   private readonly fail: { status: number; body?: string } | undefined;
   private readonly malformedJson: 'create' | 'message' | undefined;
   private frameIndex = 0;
+  private promptIndex = 0;
   private activeFrame: FakeFrame | undefined;
 
   private constructor(options: FakeServerOptions) {
     this.frames = options.frames ?? [];
     this.expectedAuth = basicAuthHeader(FAKE_USERNAME, options.password ?? FAKE_PASSWORD);
     this.requireAuth = options.requireAuth ?? true;
+    this.promptResponses = options.promptResponses ?? [{ id: 'msg_user_1', createdAt: 0 }];
     this.fail = options.fail;
     this.malformedJson = options.malformedJson;
     this.httpServer = createServer((request, response) => {
@@ -123,7 +133,12 @@ export class FakeOpenCodeServer {
         return;
       }
       if (method === 'POST' && path === '/api/session/ses_1/prompt') {
-        this.sendJson(response, 200, { data: { id: 'msg_user_1' } });
+        const index = Math.min(this.promptIndex, Math.max(this.promptResponses.length - 1, 0));
+        const prompt = this.promptResponses[index] ?? { id: 'msg_user_1', createdAt: 0 };
+        this.promptIndex += 1;
+        this.sendJson(response, 200, {
+          data: { id: prompt.id, time: { created: prompt.createdAt } },
+        });
         return;
       }
       if (method === 'GET' && path === '/api/session/ses_1/message') {

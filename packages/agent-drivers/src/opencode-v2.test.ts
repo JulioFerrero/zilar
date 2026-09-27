@@ -3,12 +3,22 @@ import {
   FAKE_PASSWORD,
   FakeOpenCodeServer,
   type FakeFrame,
+  type FakePromptResponse,
   type RecordedRequest,
 } from './fake-opencode-server';
 import { createOpenCodeV2Driver } from './opencode-v2';
-import { DriverError, type AgentEvent, type SessionRef, type StartOptions } from './types';
+import {
+  DriverError,
+  type AgentEvent,
+  type PromptRef,
+  type SessionRef,
+  type StartOptions,
+} from './types';
 
 const SESSION: SessionRef = { sessionId: 'ses_1' };
+
+// The default fake prompt response, so `events()` can be called without a real prompt.
+const AFTER: PromptRef = { messageId: 'msg_user_1', createdAt: 0 };
 
 const startOptions: StartOptions = {
   directory: '/tmp/galena-desk',
@@ -16,16 +26,16 @@ const startOptions: StartOptions = {
   rules: [{ action: 'shell', resource: 'git push*', effect: 'deny' }],
 };
 
-function userMessage(): unknown {
-  return { id: 'msg_user', type: 'user', time: { created: 0 }, text: 'hi' };
+function userMessage(id = 'msg_user_1', created = 0): unknown {
+  return { id, type: 'user', time: { created }, text: 'hi' };
 }
 
-function assistantMessage(content: unknown[]): unknown {
-  return { id: 'msg_1', type: 'assistant', time: { created: 1 }, content };
+function assistantMessage(id: string, created: number, content: unknown[]): unknown {
+  return { id, type: 'assistant', time: { created }, content };
 }
 
-function idleMessage(): unknown {
-  return { id: 'msg_idle', type: 'idle', time: { created: 2 }, outcome: 'succeeded' };
+function idleMessage(id = 'msg_idle', created = 2, outcome = 'succeeded'): unknown {
+  return { id, type: 'idle', time: { created }, outcome };
 }
 
 const textHello = [{ type: 'text', text: 'Hello' }];
@@ -52,17 +62,21 @@ const reasoning = { type: 'reasoning', text: 'Thinking' };
 
 const frames: FakeFrame[] = [
   { messages: [userMessage()], permissions: [] },
-  { messages: [userMessage(), assistantMessage(textHello)], permissions: [] },
+  { messages: [userMessage(), assistantMessage('msg_1', 1, textHello)], permissions: [] },
   {
-    messages: [userMessage(), assistantMessage([...textHelloWorld, toolRunning])],
+    messages: [userMessage(), assistantMessage('msg_1', 1, [...textHelloWorld, toolRunning])],
     permissions: [{ id: 'per_1', action: 'shell', resources: ['ls'] }],
   },
   {
-    messages: [userMessage(), assistantMessage([...textHelloWorld, toolCompleted])],
+    messages: [userMessage(), assistantMessage('msg_1', 1, [...textHelloWorld, toolCompleted])],
     permissions: [],
   },
   {
-    messages: [userMessage(), assistantMessage([...textHelloWorld, toolCompleted]), idleMessage()],
+    messages: [
+      userMessage(),
+      assistantMessage('msg_1', 1, [...textHelloWorld, toolCompleted]),
+      idleMessage(),
+    ],
     permissions: [],
   },
 ];
@@ -101,8 +115,9 @@ describe('createOpenCodeV2Driver', () => {
     const server = await startServer({ frames });
     const driver = createDriver(server);
     const session = await driver.start(startOptions);
+    const prompt = await driver.prompt(session, 'hi');
 
-    const events = await collect(driver.events(session));
+    const events = await collect(driver.events(session, { after: prompt }));
 
     expect(events).toEqual([
       { type: 'text', messageId: 'msg_1', text: 'Hello' },
@@ -222,9 +237,40 @@ describe('createOpenCodeV2Driver', () => {
     }
   });
 
+  it('wraps a fetch rejection in a DriverError without the URL or password', async () => {
+    const failingFetch: typeof fetch = () => Promise.reject(new TypeError('fetch failed'));
+    const driver = createOpenCodeV2Driver({
+      baseUrl: 'http://127.0.0.1:1',
+      password: FAKE_PASSWORD,
+      fetchImpl: failingFetch,
+      pollIntervalMs: 1,
+    });
+
+    let caught: unknown;
+    try {
+      await driver.start(startOptions);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(DriverError);
+    if (caught instanceof DriverError) {
+      expect(caught.operation).toBe('start');
+      expect(caught.status).toBeUndefined();
+      expect(caught.message).toContain('start could not reach the server');
+      expect(caught.message).not.toContain(FAKE_PASSWORD);
+      expect(caught.message).not.toContain('127.0.0.1');
+    }
+
+    await expect(driver.prompt(SESSION, 'hi')).rejects.toBeInstanceOf(DriverError);
+
+    const events = await collect(driver.events(SESSION, { after: AFTER }));
+    expect(events).toEqual([{ type: 'error', message: 'events could not reach the server' }]);
+  });
+
   it('stops events when the abort signal fires', async () => {
     const server = await startServer({
-      frames: [{ messages: [assistantMessage(textHello)], permissions: [] }],
+      frames: [{ messages: [assistantMessage('msg_1', 1, textHello)], permissions: [] }],
     });
     const driver = createDriver(server, 5);
     const controller = new AbortController();
@@ -233,7 +279,10 @@ describe('createOpenCodeV2Driver', () => {
     // The stream never ends on its own (the fake run has no idle message), so this
     // resolves only if the abort signal stops the loop.
     const consume = (async () => {
-      for await (const event of driver.events(SESSION, controller.signal)) {
+      for await (const event of driver.events(SESSION, {
+        after: AFTER,
+        signal: controller.signal,
+      })) {
         events.push(event);
         if (events.length === 1) {
           controller.abort();
@@ -251,7 +300,7 @@ describe('createOpenCodeV2Driver', () => {
     const server = await startServer({ frames, malformedJson: 'message' });
     const driver = createDriver(server);
 
-    const events = await collect(driver.events(SESSION));
+    const events = await collect(driver.events(SESSION, { after: AFTER }));
 
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: 'error' });
@@ -268,18 +317,18 @@ describe('createOpenCodeV2Driver', () => {
   it('emits reasoning and failed tool results', async () => {
     const runFrames: FakeFrame[] = [
       {
-        messages: [assistantMessage([reasoning, toolRunning])],
+        messages: [assistantMessage('msg_1', 1, [reasoning, toolRunning])],
         permissions: [],
       },
       {
-        messages: [assistantMessage([reasoning, toolFailed]), idleMessage()],
+        messages: [assistantMessage('msg_1', 1, [reasoning, toolFailed]), idleMessage()],
         permissions: [],
       },
     ];
     const server = await startServer({ frames: runFrames });
     const driver = createDriver(server);
 
-    const events = await collect(driver.events(SESSION));
+    const events = await collect(driver.events(SESSION, { after: AFTER }));
 
     expect(events).toEqual([
       { type: 'reasoning', messageId: 'msg_1', text: 'Thinking' },
@@ -305,6 +354,110 @@ describe('createOpenCodeV2Driver', () => {
         status: 'error',
         error: 'exit 1',
       },
+      { type: 'done', outcome: 'succeeded' },
+    ]);
+  });
+});
+
+describe('follow-up prompts', () => {
+  const promptResponses: FakePromptResponse[] = [
+    { id: 'msg_p1', createdAt: 0 },
+    { id: 'msg_p2', createdAt: 10 },
+  ];
+
+  it('streams only the new run and ends on the new idle', async () => {
+    const followUpFrames: FakeFrame[] = [
+      {
+        messages: [
+          userMessage('msg_p1', 0),
+          assistantMessage('msg_old', 1, [{ type: 'text', text: 'old answer' }]),
+          idleMessage('msg_idle_old', 2),
+          userMessage('msg_p2', 10),
+          assistantMessage('msg_new', 11, [{ type: 'text', text: 'new answer' }]),
+          idleMessage('msg_idle_new', 12),
+        ],
+        permissions: [],
+      },
+    ];
+    const server = await startServer({ frames: followUpFrames, promptResponses });
+    const driver = createDriver(server);
+    const session = await driver.start(startOptions);
+    await driver.prompt(session, 'first');
+    const prompt = await driver.prompt(session, 'second');
+
+    const events = await collect(driver.events(session, { after: prompt }));
+
+    expect(events).toEqual([
+      { type: 'text', messageId: 'msg_new', text: 'new answer' },
+      { type: 'done', outcome: 'succeeded' },
+    ]);
+  });
+
+  it('collects a follow-up run that arrives over several polls', async () => {
+    const old = assistantMessage('msg_old', 1, [{ type: 'text', text: 'old answer' }]);
+    const oldIdle = idleMessage('msg_idle_old', 2);
+    const runFrames: FakeFrame[] = [
+      {
+        messages: [userMessage('msg_p1', 0), old, oldIdle, userMessage('msg_p2', 10)],
+        permissions: [],
+      },
+      {
+        messages: [
+          userMessage('msg_p1', 0),
+          old,
+          oldIdle,
+          userMessage('msg_p2', 10),
+          assistantMessage('msg_new', 11, [{ type: 'text', text: 'part one' }]),
+        ],
+        permissions: [],
+      },
+      {
+        messages: [
+          userMessage('msg_p1', 0),
+          old,
+          oldIdle,
+          userMessage('msg_p2', 10),
+          assistantMessage('msg_new', 11, [{ type: 'text', text: 'part one part two' }]),
+          idleMessage('msg_idle_new', 12),
+        ],
+        permissions: [],
+      },
+    ];
+    const server = await startServer({ frames: runFrames, promptResponses });
+    const driver = createDriver(server);
+    const session = await driver.start(startOptions);
+    await driver.prompt(session, 'first');
+    const prompt = await driver.prompt(session, 'second');
+
+    const events = await collect(driver.events(session, { after: prompt }));
+
+    expect(events).toEqual([
+      { type: 'text', messageId: 'msg_new', text: 'part one' },
+      { type: 'text', messageId: 'msg_new', text: ' part two' },
+      { type: 'done', outcome: 'succeeded' },
+    ]);
+  });
+
+  it('falls back to timestamps when the prompt message is not in the page', async () => {
+    const fallbackFrames: FakeFrame[] = [
+      {
+        messages: [
+          assistantMessage('msg_old', 1, [{ type: 'text', text: 'old answer' }]),
+          idleMessage('msg_idle_old', 2),
+          assistantMessage('msg_new', 11, [{ type: 'text', text: 'new answer' }]),
+          idleMessage('msg_idle_new', 12),
+        ],
+        permissions: [],
+      },
+    ];
+    const server = await startServer({ frames: fallbackFrames });
+    const driver = createDriver(server);
+    const missing: PromptRef = { messageId: 'msg_p2', createdAt: 10 };
+
+    const events = await collect(driver.events(SESSION, { after: missing }));
+
+    expect(events).toEqual([
+      { type: 'text', messageId: 'msg_new', text: 'new answer' },
       { type: 'done', outcome: 'succeeded' },
     ]);
   });

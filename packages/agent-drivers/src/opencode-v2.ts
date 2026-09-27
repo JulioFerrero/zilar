@@ -3,7 +3,9 @@ import {
   DriverError,
   type AgentDriver,
   type AgentEvent,
+  type EventsOptions,
   type PermissionDecision,
+  type PromptRef,
   type StartOptions,
   type SessionRef,
 } from './types';
@@ -26,7 +28,10 @@ const CreateSessionResponseSchema = z.object({
 });
 
 const PromptResponseSchema = z.object({
-  data: z.object({ id: z.string() }),
+  data: z.object({
+    id: z.string(),
+    time: z.object({ created: z.number() }),
+  }),
 });
 
 const InterruptResponseSchema = z.object({
@@ -36,6 +41,7 @@ const InterruptResponseSchema = z.object({
 const MessageSchema = z.object({
   id: z.string(),
   type: z.string(),
+  time: z.object({ created: z.number() }).optional(),
   content: z.array(z.unknown()).optional(),
   outcome: z.string().optional(),
 });
@@ -116,6 +122,16 @@ function toOpenCodeDecision(decision: PermissionDecision): 'once' | 'always' | '
   }
 }
 
+// Keeps only the messages newer than the prompt that started the run. `messages` is newest first.
+// The prompt message id is the boundary; if the page no longer holds it, fall back to timestamps.
+function selectAfter(messages: SessionMessage[], after: PromptRef): SessionMessage[] {
+  const boundary = messages.findIndex((message) => message.id === after.messageId);
+  if (boundary >= 0) {
+    return messages.slice(0, boundary);
+  }
+  return messages.filter((message) => (message.time?.created ?? 0) > after.createdAt);
+}
+
 function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
   return new Promise((resolve) => {
     if (signal?.aborted) {
@@ -163,17 +179,18 @@ class OpenCodeV2Driver implements AgentDriver {
     return { sessionId: parsed.data.id };
   }
 
-  async prompt(session: SessionRef, text: string): Promise<void> {
+  async prompt(session: SessionRef, text: string): Promise<PromptRef> {
     const response = await this.request(
       'prompt',
       `/api/session/${encodeURIComponent(session.sessionId)}/prompt`,
       { method: 'POST', body: { text } },
     );
-    await this.parseBody('prompt', response, PromptResponseSchema);
+    const parsed = await this.parseBody('prompt', response, PromptResponseSchema);
+    return { messageId: parsed.data.id, createdAt: parsed.data.time.created };
   }
 
-  events(session: SessionRef, signal?: AbortSignal): AsyncIterable<AgentEvent> {
-    return this.run(session, signal);
+  events(session: SessionRef, options: EventsOptions): AsyncIterable<AgentEvent> {
+    return this.run(session, options);
   }
 
   async answerPermission(
@@ -202,10 +219,8 @@ class OpenCodeV2Driver implements AgentDriver {
     await this.parseBody('cancel', response, InterruptResponseSchema);
   }
 
-  private async *run(
-    session: SessionRef,
-    signal: AbortSignal | undefined,
-  ): AsyncGenerator<AgentEvent> {
+  private async *run(session: SessionRef, options: EventsOptions): AsyncGenerator<AgentEvent> {
+    const { after, signal } = options;
     const progress = new Map<string, MessageProgress>();
     const seenPermissions = new Set<string>();
     let done = false;
@@ -228,8 +243,9 @@ class OpenCodeV2Driver implements AgentDriver {
         throw error;
       }
 
-      // The API returns messages newest first; process them oldest first for a stable order.
-      for (const message of [...messages].reverse()) {
+      // Only the run started by `after`; process it oldest first for a stable order.
+      const runMessages = selectAfter(messages, after);
+      for (const message of [...runMessages].reverse()) {
         yield* this.messageEvents(message, progress);
         if (message.type === 'idle') {
           done = true;
@@ -359,14 +375,19 @@ class OpenCodeV2Driver implements AgentDriver {
     init?: { method?: string; body?: unknown },
   ): Promise<Response> {
     const hasBody = init?.body !== undefined;
-    const response = await this.fetchImpl(joinUrl(this.baseUrl, path), {
-      method: init?.method ?? 'GET',
-      headers: {
-        authorization: this.authHeader,
-        ...(hasBody ? { 'content-type': 'application/json' } : {}),
-      },
-      ...(hasBody ? { body: JSON.stringify(init.body) } : {}),
-    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl(joinUrl(this.baseUrl, path), {
+        method: init?.method ?? 'GET',
+        headers: {
+          authorization: this.authHeader,
+          ...(hasBody ? { 'content-type': 'application/json' } : {}),
+        },
+        ...(hasBody ? { body: JSON.stringify(init.body) } : {}),
+      });
+    } catch {
+      throw new DriverError(operation, `${operation} could not reach the server`);
+    }
     if (!response.ok) {
       throw new DriverError(
         operation,

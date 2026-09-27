@@ -28,6 +28,17 @@ export interface SessionRef {
   sessionId: string;
 }
 
+// Identifies the prompt message that starts a run, so `events()` can ignore everything older.
+export interface PromptRef {
+  messageId: string;
+  createdAt: number;
+}
+
+export interface EventsOptions {
+  after: PromptRef;
+  signal?: AbortSignal;
+}
+
 export type AgentEvent =
   | { type: 'text'; messageId: string; text: string }
   | { type: 'reasoning'; messageId: string; text: string }
@@ -48,8 +59,9 @@ export interface AgentDriver {
   // Creates a session in a directory with a model and permission rules.
   start(options: StartOptions): Promise<SessionRef>;
   // Returns once the engine has accepted the prompt; the run continues in the background.
-  prompt(session: SessionRef, text: string): Promise<void>;
-  events(session: SessionRef, signal?: AbortSignal): AsyncIterable<AgentEvent>;
+  prompt(session: SessionRef, text: string): Promise<PromptRef>;
+  // Streams only the run started by `after`, so follow-up prompts never replay old runs.
+  events(session: SessionRef, options: EventsOptions): AsyncIterable<AgentEvent>;
   answerPermission(
     session: SessionRef,
     requestId: string,

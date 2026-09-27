@@ -24,10 +24,10 @@ const session = await driver.start({
   rules: defaultWorkerRules(),
 });
 
-await driver.prompt(session, 'Summarise the repository layout.');
+const prompt = await driver.prompt(session, 'Summarise the repository layout.');
 
 const controller = new AbortController();
-for await (const event of driver.events(session, controller.signal)) {
+for await (const event of driver.events(session, { after: prompt, signal: controller.signal })) {
   switch (event.type) {
     case 'text':
       console.log(event.text);
@@ -54,6 +54,11 @@ for await (const event of driver.events(session, controller.signal)) {
 - `permission_request` — the engine is waiting for a person's decision.
 - `done` — the run ended (`succeeded`, `failed` or `interrupted`); the stream ends after it.
 - `error` — the stream hit a transport or parse problem and stopped.
+
+`prompt()` returns a `PromptRef`, and `events(session, { after })` only processes messages newer
+than that prompt. A follow-up prompt on the same session therefore streams just its own run and ends
+on its own `idle`, instead of replaying the earlier run. If the prompt message has already scrolled
+out of the page, the driver falls back to comparing `time.created` against the `PromptRef`.
 
 ## Polling, not SSE
 
