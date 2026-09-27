@@ -9,7 +9,6 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 
-| [T-0002](T-0002-dev-infra.md) | Dev infrastructure: docker-compose with Postgres, ejabberd, LiteLLM (pinned) | **in-progress** | v4.1-flash | T-0001, T-0012 | No MinIO (plan D21) |
 | T-0003 | Spike S1: ejabberd WebSocket, groups, history, account creation through the API, token login | planned | v4-pro | T-0002 | Plan §23 |
 | T-0004 | Spike S2: `@xmpp/client` in Expo (connect, reconnect, background) | planned | v4-pro | T-0003 | Risky; Claude reviews closely |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
@@ -27,3 +26,4 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | [T-0001](T-0001-monorepo.md) | Monorepo scaffold | 2026-09-27 |
 | [T-0012](T-0012-tooling-cleanups.md) | Tooling cleanups from the T-0001 review | 2026-09-27 |
 | [T-0013](T-0013-protocol-payloads.md) | Protocol v0 payload schemas (2 review rounds: fixed javascript:/data: link injection) | 2026-09-27 |
+| [T-0002](T-0002-dev-infra.md) | Local dev infrastructure: Postgres 18 + pgvector, ejabberd 26.07, LiteLLM 1.102.1; `pnpm infra:up` / `infra:smoke` | 2026-09-27 |
