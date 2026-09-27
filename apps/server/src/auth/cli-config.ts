@@ -18,6 +18,9 @@ const noopAdminClient: EjabberdAdminClient = {
   setAffiliation: async () => {},
   getAffiliations: async () => [],
   destroyRoom: async () => {},
+  addRosterItem: async () => {},
+  deleteRosterItem: async () => {},
+  getRoster: async () => [],
 };
 
 const config = loadServerConfig({

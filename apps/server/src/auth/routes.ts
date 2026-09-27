@@ -1,16 +1,26 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { ServerConfig } from '../config';
+import { refreshRosterNicknames } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
+import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { findXmppAccount } from '../xmpp/provisioning';
 import type { Auth } from './auth';
 import { createInvite, findInviteByCode, findUsableInvite, revokeInvite } from './invites';
+import { requireSession } from './session';
 
 export interface AuthRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
   config: ServerConfig;
+  adminClient: EjabberdAdminClient;
+  logger?: AuthRoutesLogger;
+}
+
+// Minimal slice of pino's Logger the route needs, so tests can pass a capture.
+export interface AuthRoutesLogger {
+  warn: (fields: Record<string, unknown>, message: string) => void;
 }
 
 // 1-64 characters after trimming, with no control characters.
@@ -25,7 +35,13 @@ const displayNameSchema = z
 
 const updateMeSchema = z.object({ name: displayNameSchema });
 
-export function createAuthRoutes({ auth, db, config }: AuthRoutesDependencies): Hono {
+export function createAuthRoutes({
+  auth,
+  db,
+  config,
+  adminClient,
+  logger,
+}: AuthRoutesDependencies): Hono {
   const routes = new Hono();
 
   routes.get('/me', async (c) => {
@@ -61,6 +77,28 @@ export function createAuthRoutes({ auth, db, config }: AuthRoutesDependencies): 
     });
 
     const { user } = await requireSession(auth, c.req.raw.headers);
+
+    // The nickname must follow the name in every contact's roster. This is
+    // best-effort: a failure leaves the rows `roster_synced = false` and the
+    // token endpoint retries with the current name.
+    try {
+      const refreshed = await refreshRosterNicknames(
+        db,
+        adminClient,
+        config.xmpp.domain,
+        user.id,
+        user.name,
+      );
+      if (!refreshed.ok) {
+        logger?.warn(
+          { userId: user.id, pending: refreshed.pending },
+          'roster nickname refresh is incomplete',
+        );
+      }
+    } catch (error) {
+      logger?.warn({ userId: user.id, err: error }, 'could not refresh roster nicknames');
+    }
+
     return c.json({
       id: user.id,
       email: user.email,
@@ -101,14 +139,6 @@ export function createAuthRoutes({ auth, db, config }: AuthRoutesDependencies): 
   });
 
   return routes;
-}
-
-async function requireSession(auth: Auth, headers: Headers) {
-  const session = await auth.api.getSession({ headers });
-  if (!session) {
-    throw new HttpError(401, 'unauthorized', 'Authentication required');
-  }
-  return session;
 }
 
 function isControlCharacter(character: string): boolean {

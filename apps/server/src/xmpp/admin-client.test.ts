@@ -176,6 +176,99 @@ describe('createEjabberdAdminClient', () => {
     ]);
   });
 
+  it('adds a roster item with both subscriptions and the Galena group', async () => {
+    const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
+    const client = createEjabberdAdminClient(config, fetchImpl);
+
+    await client.addRosterItem('alice', 'bob@galena.localhost', {
+      nick: 'Bob',
+      groups: ['Galena'],
+    });
+
+    const call = calls[0]!;
+    expect(call.url).toBe('http://ejabberd.test/api/add_rosteritem');
+    expect(bodyOf(call)).toEqual({
+      localuser: 'alice',
+      localhost: 'galena.localhost',
+      user: 'bob',
+      host: 'galena.localhost',
+      nick: 'Bob',
+      groups: ['Galena'],
+      subs: 'both',
+    });
+  });
+
+  it('deletes a roster item', async () => {
+    const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
+    const client = createEjabberdAdminClient(config, fetchImpl);
+
+    await client.deleteRosterItem('alice', 'bob@galena.localhost');
+
+    expect(calls[0]!.url).toBe('http://ejabberd.test/api/delete_rosteritem');
+    expect(bodyOf(calls[0]!)).toEqual({
+      localuser: 'alice',
+      localhost: 'galena.localhost',
+      user: 'bob',
+      host: 'galena.localhost',
+    });
+  });
+
+  it('returns the validated roster', async () => {
+    const { fetchImpl } = createFetch(() =>
+      jsonResponse([
+        {
+          jid: 'bob@galena.localhost',
+          nick: 'Bob',
+          subscription: 'both',
+          pending: 'none',
+          groups: ['Galena'],
+        },
+      ]),
+    );
+    const client = createEjabberdAdminClient(config, fetchImpl);
+    await expect(client.getRoster('alice')).resolves.toEqual([
+      {
+        jid: 'bob@galena.localhost',
+        nick: 'Bob',
+        subscription: 'both',
+        pending: 'none',
+        groups: ['Galena'],
+      },
+    ]);
+  });
+
+  it('creates a non-anonymous room when asked', async () => {
+    const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
+    const client = createEjabberdAdminClient(config, fetchImpl);
+
+    await client.createRoom('trip', { title: 'Trip', anonymous: false });
+
+    expect(bodyOf(calls[0]!).options).toEqual([
+      { name: 'members_only', value: 'true' },
+      { name: 'persistent', value: 'true' },
+      { name: 'mam', value: 'true' },
+      { name: 'anonymous', value: 'false' },
+      { name: 'title', value: 'Trip' },
+    ]);
+  });
+
+  it('rejects invalid roster inputs before any request', async () => {
+    const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
+    const client = createEjabberdAdminClient(config, fetchImpl);
+
+    await expect(
+      client.addRosterItem('Alice', 'bob@galena.localhost', { nick: 'Bob', groups: ['Galena'] }),
+    ).rejects.toThrow('localpart');
+    await expect(
+      client.addRosterItem('alice', 'not-a-jid', { nick: 'Bob', groups: ['Galena'] }),
+    ).rejects.toThrow('jid');
+    await expect(
+      client.addRosterItem('alice', 'bob@galena.localhost', { nick: 'Bob', groups: [] }),
+    ).rejects.toThrow();
+    await expect(client.getRoster('Bad/Jid')).rejects.toThrow('localpart');
+    expect(calls).toHaveLength(0);
+  });
+
   it('maps a non-2xx error to a typed error without the admin password', async () => {
     const { fetchImpl } = createFetch(() =>
       jsonResponse({ status: 'error', code: 1, message: 'boom' }, 500),

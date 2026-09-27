@@ -1,14 +1,22 @@
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import type { Logger } from 'pino';
+import { createApp } from './app';
 import { loadServerConfig, type ServerConfig } from './config';
 import type { PgliteServerDatabase } from './db/client';
 import { runMigrations } from './db/migrate';
 import * as schema from './db/schema';
-import { createAuth, type Auth } from './auth/auth';
+import { createAuth, INVITE_HEADER, type Auth } from './auth/auth';
+import { createInvite } from './auth/invites';
 import type { OtpPurpose } from './auth/mailer';
 import { createLogger } from './logger';
 import type { EjabberdAdminClient } from './xmpp/admin-client';
+import type {
+  AddRosterItemOptions,
+  CreateRoomOptions,
+  RoomAffiliation,
+  RosterEntry,
+} from './xmpp/admin-client';
 import type { XmppConfig } from './xmpp/config';
 import { localpartFor } from './xmpp/provisioning';
 
@@ -38,7 +46,22 @@ export class TestMailer {
 export class FakeAdminClient implements EjabberdAdminClient {
   readonly registered: string[] = [];
   readonly roomsCreated: string[] = [];
+  readonly roomOptions: Array<{ roomId: string } & CreateRoomOptions> = [];
+  readonly affiliations: Array<{ roomId: string; jid: string; affiliation: RoomAffiliation }> = [];
+  readonly destroyedRooms: string[] = [];
+  readonly rosterItems: Array<{
+    localpart: string;
+    contactJid: string;
+    nick: string;
+    groups: string[];
+    subs: string;
+  }> = [];
+  readonly removedRosterItems: Array<{ localpart: string; contactJid: string }> = [];
+
   failRegister = false;
+  failRoom = false;
+  failAffiliation = false;
+  failRoster = false;
 
   registerUser(localpart: string) {
     if (this.failRegister) {
@@ -57,22 +80,61 @@ export class FakeAdminClient implements EjabberdAdminClient {
     return Promise.resolve();
   }
 
-  createRoom(roomId: string) {
+  createRoom(roomId: string, options: CreateRoomOptions = {}) {
+    if (this.failRoom) {
+      return Promise.reject(new Error('ejabberd is down'));
+    }
     const created = !this.roomsCreated.includes(roomId);
     this.roomsCreated.push(roomId);
+    this.roomOptions.push({ roomId, ...options });
     return Promise.resolve({ created });
   }
 
-  setAffiliation(): Promise<void> {
+  setAffiliation(roomId: string, jid: string, affiliation: RoomAffiliation): Promise<void> {
+    if (this.failAffiliation) {
+      return Promise.reject(new Error('ejabberd is down'));
+    }
+    this.affiliations.push({ roomId, jid, affiliation });
     return Promise.resolve();
   }
 
-  getAffiliations() {
+  getAffiliations(): Promise<[]> {
     return Promise.resolve([]);
   }
 
-  destroyRoom(): Promise<void> {
+  destroyRoom(roomId: string): Promise<void> {
+    this.destroyedRooms.push(roomId);
     return Promise.resolve();
+  }
+
+  addRosterItem(
+    localpart: string,
+    contactJid: string,
+    options: AddRosterItemOptions,
+  ): Promise<void> {
+    if (this.failRoster) {
+      return Promise.reject(new Error('ejabberd is down'));
+    }
+    this.rosterItems.push({
+      localpart,
+      contactJid,
+      nick: options.nick,
+      groups: options.groups,
+      subs: options.subs ?? 'both',
+    });
+    return Promise.resolve();
+  }
+
+  deleteRosterItem(localpart: string, contactJid: string): Promise<void> {
+    if (this.failRoster) {
+      return Promise.reject(new Error('ejabberd is down'));
+    }
+    this.removedRosterItems.push({ localpart, contactJid });
+    return Promise.resolve();
+  }
+
+  getRoster(): Promise<RosterEntry[]> {
+    return Promise.resolve([]);
   }
 }
 
@@ -156,4 +218,97 @@ export async function createTestContext(options: TestContextOptions = {}): Promi
     logOutput: () => chunks.join(''),
     close: () => client.close(),
   };
+}
+
+export const TEST_BASE_URL = 'http://localhost:3000';
+
+export type TestApp = ReturnType<typeof createApp>;
+
+export function testApp(context: TestContext): TestApp {
+  return createApp({
+    db: context.db,
+    logger: context.logger,
+    config: context.config,
+    auth: context.auth,
+    adminClient: context.adminClient,
+  });
+}
+
+export interface SignedInUser {
+  cookie: string;
+  bearer: string;
+  id: string;
+}
+
+let clientIpCounter = 0;
+
+// Better Auth rate-limits by client IP, so every test request gets its own.
+export function nextClientIp(): string {
+  clientIpCounter += 1;
+  return `10.${(clientIpCounter >> 16) & 255}.${(clientIpCounter >> 8) & 255}.${clientIpCounter & 255}`;
+}
+
+// Signs a new user up through an invite, exactly as the apps do.
+export async function signUpWithInvite(
+  context: TestContext,
+  app: TestApp,
+  email: string,
+  inviteCode: string,
+): Promise<SignedInUser> {
+  const ip = nextClientIp();
+  const headers = {
+    'content-type': 'application/json',
+    'x-forwarded-for': ip,
+    [INVITE_HEADER]: inviteCode,
+  };
+
+  await app.request(`${TEST_BASE_URL}/api/auth/email-otp/send-verification-otp`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ email, type: 'sign-in' }),
+  });
+  const otp = context.mailer.codeFor(email);
+  const response = await app.request(`${TEST_BASE_URL}/api/auth/sign-in/email-otp`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ email, otp }),
+  });
+  if (response.status !== 200) {
+    throw new Error(`sign-up for ${email} failed with ${response.status}`);
+  }
+
+  const body = (await response.json()) as { user: { id: string } };
+  const cookie = response.headers
+    .getSetCookie()
+    .find((value) => value.includes('better-auth.session_token='));
+  if (!cookie) {
+    throw new Error(`sign-up for ${email} returned no session cookie`);
+  }
+
+  return {
+    cookie: cookie.split(';')[0] ?? '',
+    bearer: response.headers.get('set-auth-token') ?? '',
+    id: body.user.id,
+  };
+}
+
+// The first user: an invite with no creator, so no contacts are created.
+export async function bootstrapUser(
+  context: TestContext,
+  app: TestApp,
+  email: string,
+): Promise<SignedInUser> {
+  const invite = await createInvite(context.db, { createdBy: null });
+  return signUpWithInvite(context, app, email, invite.code);
+}
+
+// A user who signs up through `inviterId`'s invite, so they become contacts.
+export async function contactOf(
+  context: TestContext,
+  app: TestApp,
+  inviterId: string,
+  email: string,
+): Promise<SignedInUser> {
+  const invite = await createInvite(context.db, { createdBy: inviterId });
+  return signUpWithInvite(context, app, email, invite.code);
 }

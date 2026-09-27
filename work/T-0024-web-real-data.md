@@ -1,7 +1,7 @@
 ---
 id: T-0024
 title: Web — real login (invite, email code, name) and real chats (xmpp-core + server APIs)
-status: planned
+status: todo
 milestone: M1
 branch: task/T-0024-web-real-data
 model: opencode-go/deepseek-v4.1-flash
