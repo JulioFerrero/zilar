@@ -2,6 +2,7 @@ import { Menu } from 'lucide-react';
 import { ChatListItem } from './ChatListItem';
 import { EmptyState } from './EmptyState';
 import { FolderTabs } from './FolderTabs';
+import { NewChatButton } from './NewChatButton';
 import { SearchBar } from './SearchBar';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { visibleChats } from '@/store/store';
@@ -11,7 +12,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const chats = visibleChats(store);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="relative flex h-full min-h-0 flex-col bg-background">
       <div className="flex shrink-0 items-center gap-1.5 px-2 pt-2 pb-1.5">
         <button
           type="button"
@@ -32,6 +33,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
           ))
         )}
       </nav>
+      <NewChatButton />
     </div>
   );
 }

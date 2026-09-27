@@ -1,26 +1,47 @@
-import { groupMessages, type ChatSummary } from '@galena/chat-core';
+import {
+  groupMessages,
+  unreadDividerIndex,
+  type ChatSummary,
+  type UiMessage,
+} from '@galena/chat-core';
 import { ArrowDown } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { DateSeparator } from './DateSeparator';
 import { MessageBubble } from './MessageBubble';
+import { UnreadDivider } from './UnreadDivider';
 import { useChatStore } from '@/store/ChatStoreProvider';
 
 const NEAR_BOTTOM_PX = 80;
 
-export function MessageList({ chat }: { chat: ChatSummary }) {
+export function MessageList({
+  chat,
+  onReply,
+}: {
+  chat: ChatSummary;
+  onReply: (message: UiMessage) => void;
+}) {
   const store = useChatStore();
   const messages = store.messages(chat.id);
   const items = groupMessages(messages);
+  const [initialUnread] = useState(() => chat.unread);
+  const dividerIndex = unreadDividerIndex(items, initialUnread);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dividerRef = useRef<HTMLDivElement>(null);
   const previousCount = useRef(messages.length);
   const [atBottom, setAtBottom] = useState(true);
   const [pending, setPending] = useState(0);
 
   useEffect(() => {
     const element = scrollRef.current;
-    if (element !== null) {
-      element.scrollTop = element.scrollHeight;
+    const divider = dividerRef.current;
+    if (element === null) {
+      return;
     }
+    if (divider !== null) {
+      divider.scrollIntoView({ block: 'center' });
+      return;
+    }
+    element.scrollTop = element.scrollHeight;
   }, []);
 
   useEffect(() => {
@@ -68,20 +89,23 @@ export function MessageList({ chat }: { chat: ChatSummary }) {
         className="chat-background scrollbar-thin h-full overflow-y-auto"
       >
         <div className="mx-auto flex w-full max-w-[860px] flex-col px-3 pt-3 pb-4">
-          {items.map((item) =>
-            item.kind === 'separator' ? (
-              <DateSeparator key={item.id} date={item.date} />
-            ) : (
-              <MessageBubble
-                key={item.message.id}
-                message={item.message}
-                chat={chat}
-                firstInGroup={item.firstInGroup}
-                lastInGroup={item.lastInGroup}
-                currentUserId={store.currentUserId}
-              />
-            ),
-          )}
+          {items.map((item, index) => (
+            <Fragment key={item.kind === 'separator' ? item.id : item.message.id}>
+              {dividerIndex === index && <UnreadDivider ref={dividerRef} />}
+              {item.kind === 'separator' ? (
+                <DateSeparator date={item.date} />
+              ) : (
+                <MessageBubble
+                  message={item.message}
+                  chat={chat}
+                  firstInGroup={item.firstInGroup}
+                  lastInGroup={item.lastInGroup}
+                  currentUserId={store.currentUserId}
+                  onReply={onReply}
+                />
+              )}
+            </Fragment>
+          ))}
         </div>
       </div>
       {!atBottom && (

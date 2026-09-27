@@ -1,7 +1,7 @@
 ---
 id: T-0022
 title: Web UI polish — new-chat button, unread divider, typing, message menu + reply, big emoji, safe links
-status: todo
+status: review
 milestone: M1
 branch: task/T-0022-web-ui-polish
 model: opencode-go/deepseek-v4.1-flash
@@ -93,16 +93,44 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+Implemented every web item from `docs/design/ui-style.md` §4 "Added after the first screenshots (2026-09-27)" in `apps/web` on top of the T-0018 shell, keeping all data behind the `ChatStore` interface and all shared pure logic in `packages/chat-core`:
+
+1. **Theme:** added the `--online: #4dcd5e` token (light and dark) and mapped it to Tailwind via `--color-online`; `Avatar`'s online dot now uses `bg-online`.
+2. **Mute icon spacing:** the AI badge and mute icon are spaced explicitly (`ml-1.5` for the badge, `ml-4` = 16 px for the mute icon), vertically centered with the name.
+3. **New-chat button:** `NewChatButton` — a round 56 px accent pencil button pinned to the bottom right of the chat list column. It opens a small `role="menu"` with **New group** / **New message**; each opens a keyboard-accessible placeholder `role="dialog"` reading "Coming soon" with a **Close** button. Focus moves to Close on open and `Esc` closes it. No `alert`/`confirm`/`prompt`.
+4. **Unread divider:** `unreadDividerIndex(items, lastReadMessageId | unreadCount)` in chat-core returns the render-item index above the first unread message. `MessageList` captures the chat's unread count at mount (before `openChat` clears it), renders the full-width `UnreadDivider` ("Unread messages") and calls `scrollIntoView({ block: 'center' })` on it instead of scrolling to the bottom. Ana's mock (unread 2) shows it; reopening the chat remounts the list and the divider is gone.
+5. **Typing:** the store gained `typing: Record<chatId, { names: string[] }>` plus a mock simulation (`scheduleTypingSimulation`) that sets Ana (`['Ana']`) and Viernes 🍻 (`['Luis']`) after 2 s and clears after 6 s. `ChatListItem` shows `typing…` (accent) or `Luis is typing…` in place of the preview, and `ChatHeader` shows the same as the subtitle — both with the existing animated dots (`TypingDots`, extracted from the old `WorkingDots`).
+6. **Message actions menu:** right-click on a bubble, or the ⋯ button revealed on hover, opens `MessageActionsMenu` with **Reply**, **Copy text** (`copyText`: async Clipboard API with a temporary-textarea fallback) and **Delete** (disabled). The menu is focusable (first item focused on open), closes on `Esc` and on an outside click.
+7. **Reply:** `ChatView` owns the draft reply; `ReplyQuote`/message data builds a `ReplyRef`. The composer shows the reply bar (colored left bar, "Reply to {name}" in accent, one-line excerpt, `×` to cancel); `Esc` in the textarea cancels. Sending calls `store.sendText(chatId, text, { replyTo })` and the new bubble renders the quote.
+8. **Big emoji:** `isBigEmoji(text)` in chat-core accepts 1–3 emoji graphemes and nothing else (no text, digits or keycaps), counting flags and ZWJ families as one grapheme via `Intl.Segmenter`. Such messages render bubble-less at 48 px with the time in a small translucent pill below.
+9. **Safe links:** `splitLinks(text)` in chat-core links only `http://`/`https://` with a non-empty authority, trims trailing sentence punctuation (`https://x.com/a).` → `https://x.com/a`) while keeping balanced brackets; `javascript:`, `data:`, `vbscript:`, `file:` and bare `www.x.com` stay plain text. `LinkText` renders `<a target="_blank" rel="noopener noreferrer">`.
+10. **Full time tooltip:** bubble times carry a `title` with `formatFullDateTime` (full date + clock time).
+
+Tests added: chat-core `emoji.test.ts` (6), `links.test.ts` (6), `unreadDividerIndex` cases in `messages.test.ts` (6) and `formatFullDateTime` in `format.test.ts`; web `NewChatButton.test.tsx` (2), `MessageActions.test.tsx` (5), `MessageContent.test.tsx` (4: big emoji, safe link, unsafe scheme, full-time title), `TypingIndicator.test.tsx` (1, fake timers), `UnreadDivider.test.tsx` (1, asserts `scrollIntoView`) and an online-dot case in `Avatar.test.tsx`.
 
 ### Files changed
--
+**`packages/chat-core`** (new) `src/text.ts`, `src/emoji.ts`, `src/emoji.test.ts`, `src/links.ts`, `src/links.test.ts`; (modified) `src/avatar.ts` (reuses the shared `graphemes`), `src/format.ts` (+`formatFullDateTime`), `src/format.test.ts`, `src/messages.ts` (+`unreadDividerIndex`), `src/messages.test.ts`, `src/index.ts`.
+
+**`apps/web`** (new) `src/components/TypingDots.tsx`, `src/components/NewChatButton.tsx`, `src/components/MessageActionsMenu.tsx`, `src/components/LinkText.tsx`, `src/components/UnreadDivider.tsx`, `src/lib/clipboard.ts`, and the tests `NewChatButton.test.tsx`, `MessageActions.test.tsx`, `MessageContent.test.tsx`, `TypingIndicator.test.tsx`, `UnreadDivider.test.tsx`; (modified) `src/index.css`, `src/components/Avatar.tsx`, `Avatar.test.tsx`, `ChatHeader.tsx`, `ChatList.tsx`, `ChatListItem.tsx`, `Composer.tsx`, `MessageBubble.tsx`, `MessageList.tsx`, `src/lib/format.ts` (+`typingLabel`, +`replyRef`), `src/routes/ChatView.tsx`, `src/routes/ChatShell.tsx`, `src/store/store.ts`, `src/test/setup.ts` (jsdom `scrollIntoView` stub).
+
+Also `work/T-0022-web-ui-polish.md` (status + this Report). No other files touched; no dependency added.
 
 ### Commands run and real results
--
+- `pnpm install`: Done in ~10 s — 902 packages, all 9 workspace projects resolved; lockfile up to date.
+- `pnpm format:check`: "All matched files use Prettier code style!".
+- `pnpm lint`: "Found 0 warnings and 0 errors" (204 files, 127 rules).
+- `pnpm typecheck`: 8 successful, 8 total.
+- `pnpm test`: 8 tasks successful. `@galena/web` **40 passed** (13 files); `@galena/chat-core` **50 passed** (5 files); `@galena/mobile` 48 passed (7 files, unchanged); `@galena/devtools` 9 passed (1 file).
+- `pnpm build`: 2 successful (web `dist/assets/index-*.js` 352.30 kB, `index-*.css` 32.07 kB; mobile Expo export).
+- Verified in the built CSS: `--online:#4dcd5e` (light + dark), `.bg-online`, `.typing-dot`.
 
 ### Problems, deviations from the spec, open questions
--
+- **Visual check not done by me:** `pnpm --filter @galena/web dev --port 5211` starts cleanly ("VITE v8.3.1 ready"), but the desktop browser tool was disconnected in this session, so I could not screenshot the result. Behaviour is covered by the Testing Library tests and the built CSS above; Claude will screenshot.
+- **Message actions menu is custom, not radix.** The spec allows "a small custom menu" when the shadcn dropdown/context menu isn't already installed. The repo has the `radix-ui` primitives but no shadcn `dropdown-menu`/`context-menu` component (only `ui/button.tsx`), and the custom menu covers the required behaviours for both the right-click and the ⋯ trigger (focus on open, `Esc`, outside-click) and is directly testable with the installed tooling (`@testing-library/user-event` isn't installed). Happy to migrate to radix if you prefer.
+- **DM typing label** is the bare `typing…` for the list and header (per the spec text), while groups name the first person (`Luis is typing…`).
+- **Reply quote source** uses `previewBody` for the excerpt, so replying to a voice/photo message quotes `🎤 Voice message (0:12)` / `🖼 Photo`.
+- No new open questions; the task is ready for review.
+
 
 ---
 

@@ -1,16 +1,25 @@
-import type { ChatSummary, MessageStatus, UiMessage } from '@galena/chat-core';
+import type { ChatSummary, MessageStatus, ReplyRef, UiMessage } from '@galena/chat-core';
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
 import { currentUserId as defaultCurrentUserId, mockChats, mockMessages } from '@/mock';
 
 export type FolderId = 'all' | 'personal' | 'ais' | 'work';
 
+export interface TypingState {
+  names: string[];
+}
+
+export interface SendTextOptions {
+  replyTo?: ReplyRef;
+}
+
 export interface ChatStore {
   currentUserId: string;
   chats: ChatSummary[];
   messages: (chatId: string) => UiMessage[];
+  typing: Record<string, TypingState>;
   openChat: (chatId: string) => void;
-  sendText: (chatId: string, text: string) => void;
+  sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
   search: string;
   setSearch: (value: string) => void;
   activeFolder: FolderId;
@@ -39,6 +48,27 @@ function withLastMessage(chats: ChatSummary[], chatId: string, message: UiMessag
   );
 }
 
+const TYPING_START_MS = 2000;
+const TYPING_DURATION_MS = 4000;
+
+/**
+ * Mock typing simulation: Ana and the "Viernes 🍻" group start typing two
+ * seconds after the app loads and stop four seconds later.
+ */
+function scheduleTypingSimulation(set: (partial: Partial<ChatStoreState>) => void): void {
+  window.setTimeout(() => {
+    set({
+      typing: {
+        'c-ana': { names: ['Ana'] },
+        'c-viernes': { names: ['Luis'] },
+      },
+    });
+  }, TYPING_START_MS);
+  window.setTimeout(() => {
+    set({ typing: {} });
+  }, TYPING_START_MS + TYPING_DURATION_MS);
+}
+
 export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreState> {
   let sequence = 0;
 
@@ -62,12 +92,15 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       });
     };
 
+    scheduleTypingSimulation(set);
+
     return {
       currentUserId: seed.currentUserId ?? defaultCurrentUserId,
       chats: seed.chats ?? mockChats,
       messagesByChat: cloneMessages(seed.messagesByChat ?? mockMessages),
       search: '',
       activeFolder: 'all',
+      typing: {},
       messages: (chatId) => get().messagesByChat[chatId] ?? [],
       openChat: (chatId) =>
         set((state) => ({
@@ -75,7 +108,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
             chat.id === chatId && chat.unread > 0 ? { ...chat, unread: 0 } : chat,
           ),
         })),
-      sendText: (chatId, text) => {
+      sendText: (chatId, text, options) => {
         const trimmed = text.trim();
         if (trimmed.length === 0) {
           return;
@@ -89,6 +122,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
           text: trimmed,
           createdAt: new Date(),
           status: 'sending',
+          ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
         };
         set((state) => ({
           messagesByChat: {

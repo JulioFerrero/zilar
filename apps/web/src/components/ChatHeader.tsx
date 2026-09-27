@@ -3,25 +3,17 @@ import { ArrowLeft, MoreVertical, Search } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
-import { chatSubtitle } from '@/lib/format';
-
-function WorkingDots() {
-  return (
-    <span className="inline-flex items-center gap-0.5 pb-0.5" aria-hidden="true">
-      {[0, 1, 2].map((index) => (
-        <span
-          key={index}
-          className="typing-dot size-1 rounded-full bg-current"
-          style={{ animationDelay: `${index * 0.2}s` }}
-        />
-      ))}
-    </span>
-  );
-}
+import { TypingDots } from './TypingDots';
+import { chatSubtitle, typingLabel } from '@/lib/format';
+import { useChatStore } from '@/store/ChatStoreProvider';
+import { cn } from '@/lib/utils';
 
 export function ChatHeader({ chat }: { chat: ChatSummary }) {
   const navigate = useNavigate();
-  const subtitle = chatSubtitle(chat, new Date());
+  const store = useChatStore();
+  const names = store.typing[chat.id]?.names ?? [];
+  const typing = typingLabel(chat, names);
+  const subtitle = typing ?? chatSubtitle(chat, new Date());
   const working = chat.isAI && chat.aiStatus === 'working';
 
   return (
@@ -46,9 +38,14 @@ export function ChatHeader({ chat }: { chat: ChatSummary }) {
           <span className="truncate text-[16px] leading-5 font-semibold">{chat.title}</span>
           {chat.isAI && <AiBadge />}
         </div>
-        <div className="flex items-center gap-1 text-[14px] leading-5 text-muted-foreground">
+        <div
+          className={cn(
+            'flex items-center gap-1 text-[14px] leading-5 text-muted-foreground',
+            typing !== undefined && 'text-accent',
+          )}
+        >
           <span className="truncate">{subtitle}</span>
-          {working && <WorkingDots />}
+          {(working || typing !== undefined) && <TypingDots />}
         </div>
       </div>
       <button

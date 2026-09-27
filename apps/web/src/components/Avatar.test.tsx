@@ -12,4 +12,9 @@ describe('Avatar', () => {
     const { container } = render(<Avatar id="c-party" name="🍻🍻" />);
     expect(container.querySelector('svg')).not.toBeNull();
   });
+
+  it('uses the online colour token for the online dot', () => {
+    const { getByLabelText } = render(<Avatar id="c-ana" name="Ana" online />);
+    expect(getByLabelText('Online').className).toContain('bg-online');
+  });
 });

@@ -44,7 +44,7 @@ export function Avatar({ id, name, size = 54, online = false, avatarUrl, classNa
       {online && (
         <span
           aria-label="Online"
-          className="absolute right-0 bottom-0 rounded-full border-2 border-background bg-[#4dcd5e]"
+          className="absolute right-0 bottom-0 rounded-full border-2 border-background bg-online"
           style={{ width: 12, height: 12 }}
         />
       )}

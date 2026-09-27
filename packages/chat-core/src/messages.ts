@@ -114,3 +114,42 @@ export function previewBody(lastMessage: UiMessage | undefined): string {
 export function previewText(lastMessage: UiMessage | undefined, options: PreviewOptions): string {
   return previewPrefix(lastMessage, options) + previewBody(lastMessage);
 }
+
+/**
+ * Index in `items` at which to render the "Unread messages" divider, i.e. just
+ * above the first unread message. The anchor is either the id of the last read
+ * message or the unread count. Returns `null` when there is no divider to show.
+ */
+export function unreadDividerIndex(
+  items: readonly RenderItem[],
+  anchor: string | number,
+): number | null {
+  const messagePositions: number[] = [];
+  items.forEach((item, index) => {
+    if (item.kind === 'message') {
+      messagePositions.push(index);
+    }
+  });
+
+  const total = messagePositions.length;
+  if (total === 0) {
+    return null;
+  }
+
+  if (typeof anchor === 'string') {
+    const found = messagePositions.findIndex((position) => {
+      const item = items[position];
+      return item?.kind === 'message' && item.message.id === anchor;
+    });
+    if (found === -1) {
+      return null;
+    }
+    return messagePositions[found + 1] ?? null;
+  }
+
+  if (!Number.isFinite(anchor) || anchor <= 0) {
+    return null;
+  }
+  const firstUnread = Math.max(0, total - Math.floor(anchor));
+  return messagePositions[firstUnread] ?? null;
+}

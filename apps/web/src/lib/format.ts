@@ -1,4 +1,10 @@
-import type { ChatSummary } from '@galena/chat-core';
+import {
+  firstName,
+  previewBody,
+  type ChatSummary,
+  type ReplyRef,
+  type UiMessage,
+} from '@galena/chat-core';
 import type { Money } from '@galena/protocol';
 
 export function formatLastSeen(date: Date, now: Date): string {
@@ -43,4 +49,31 @@ export function chatSubtitle(chat: ChatSummary, now: Date): string {
     return `last seen ${formatLastSeen(chat.lastSeenAt, now)}`;
   }
   return 'last seen recently';
+}
+
+/**
+ * Typing label for the list preview and the header subtitle (see `ui-style.md`
+ * §4). Direct messages read `typing`; groups name the first person.
+ */
+export function typingLabel(chat: ChatSummary, names: readonly string[]): string | undefined {
+  const first = names[0];
+  if (first === undefined) {
+    return undefined;
+  }
+  if (chat.kind === 'group') {
+    return names.length > 1
+      ? `${firstName(first)} and others are typing`
+      : `${firstName(first)} is typing`;
+  }
+  return 'typing';
+}
+
+/** Reply reference built from a message, used by the composer's reply bar. */
+export function replyRef(message: UiMessage, currentUserId: string): ReplyRef {
+  const text = previewBody(message);
+  return {
+    id: message.id,
+    senderName: message.senderId === currentUserId ? 'You' : message.senderName,
+    ...(text.length > 0 ? { text } : {}),
+  };
 }
