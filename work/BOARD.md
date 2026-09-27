@@ -16,13 +16,11 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | |
 | T-0010 | Voice message spike: record on web, convert with ffmpeg, local Whisper transcript | planned | v4-flash | T-0002 | Plan §6.7 |
 | [T-0020](T-0020-contacts-groups-chats.md) | Server: contacts from invites (roster), groups (MUC), `GET /api/chats` | **in-progress** | v4.1-flash | T-0017 | M1; PGlite only |
-| [T-0021](T-0021-sm-ack-bug.md) | Fix random disconnects: XEP-0198 ack miscount (xmpp.js over WebSocket) | **in-progress** | v4.1-flash | T-0016 | Uses the dev stack |
 | T-0023 | Mobile polish: the same additions, plus swipe-to-reply, haptics, switch to `@galena/chat-core` | planned | v4.1-flash | T-0022 | After T-0021 (simulator load) |
 | [T-0024](T-0024-web-real-data.md) | Web on real data: invite, email code, name; real chats via xmpp-core; groups and invites | planned | v4.1-flash | T-0020, T-0021, T-0022 | **The milestone where Julio can use Galena** |
 
 ## Follow-ups
 
-- **T-0021 (must fix before real use):** the XEP-0198 stream-management ack miscount (xmpp.js over WebSocket) makes ejabberd close sessions: "Client acknowledged more stanzas than sent by server".
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
 
@@ -44,3 +42,4 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | [T-0016](T-0016-xmpp-core.md) | `@galena/xmpp-core`: JWT reconnect, rooms, DMs, MAM, typing, receipts, payloads, real-JID resolution via occupant roster (2 rounds) | 2026-09-27 |
 | [T-0017](T-0017-xmpp-provisioning.md) | Server: XMPP account on sign-up, chat token endpoint, profile name; live end-to-end invite → code → sign-in → token → XMPP online | 2026-09-27 |
 | [T-0022](T-0022-web-ui-polish.md) | Web polish: new-chat button, unread divider, typing, message menu and reply, big emoji, safe links, green online dot | 2026-09-27 |
+| [T-0021](T-0021-sm-ack-bug.md) | Fixed random disconnects: our own XEP-0198 inbound counter (2 xmpp.js 0.14 bugs), stress-tested 3× with 0 server closes | 2026-09-27 |
