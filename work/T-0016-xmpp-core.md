@@ -1,7 +1,7 @@
 ---
 id: T-0016
 title: "@galena/xmpp-core — shared XMPP client (token login, rooms, DMs, history, receipts, payloads)"
-status: review
+status: changes-requested
 milestone: M1
 branch: task/T-0016-xmpp-core
 model: opencode-go/deepseek-v4.1-flash
@@ -240,7 +240,36 @@ PASS  DM history comes back (1 messages)
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict (round 1): changes requested.** This is a strong library:
+- the exact public API
+- a fresh token per connect, with no loop on bad credentials
+- a clean `lib: ES2023 + DOM` build with no Node types
+- 62 unit tests, and 8/8 integration steps against the real server
+
+Finding 4 is important for plan §6.2 ("people are identified by their real JID"), and the fix belongs **in this library**: resolving identity is protocol-level work, not UI work.
 
 ### Findings
--
+1. **(must fix) Resolve real sender JIDs in rooms.**
+   - Track each joined room's **occupants from MUC presence**. In non-anonymous rooms, ejabberd's presence carries `<x xmlns='http://jabber.org/protocol/muc#user'><item jid=… affiliation=… role=…/>` and `<occupant-id xmlns='urn:xmpp:occupant-id:0' id=…/>`.
+   - Keep, per room: occupant JID (room/nick) → `{ realJid (bare), nick, occupantId, affiliation, role, available }`.
+   - For groupchat messages (live **and** from MAM), resolve `fromJid` to the **real bare JID**, in this order:
+     1. a real JID in the message itself, if ejabberd provides one (check MAM results for non-anonymous rooms and report what you see)
+     2. the message's `occupant-id` looked up in the roster
+     3. the nick looked up in the roster
+   - Add `occupantId?` and `fromResolved: boolean` to `ChatMessage`. When nothing resolves, keep the occupant JID and set `fromResolved: false`.
+   - **Security:** only trust roster data from presence sent **by the room itself** (`from` on `rooms.<domain>`). Never accept identity claims from other senders.
+   - **Public API:** `occupants(roomJid): Occupant[]`, plus an event `on('occupants', cb: (e: { roomJid, occupants }) => void)` fired when the roster changes. The UI needs this for "3 members, 1 online".
+   - `outgoing` for room messages must use the resolved real JID, or your own nick in the room.
+   - **Tests:**
+     - unit: presence parsing (join, leave, nick change if simple, affiliation and role); resolution through occupant-id, then nick, then unresolved; spoofed presence from a non-room sender is ignored
+     - **integration:** Bob sees Alice's messages with `fromJid === alice's bare JID` and `fromResolved: true`, both live and in room history, and `occupants()` lists both users
+2. **(accepted)**
+   - the `@galena/protocol` workspace dependency
+   - a hand-written fake instead of `@xmpp/test`
+   - the derived MUC domain
+   - `connect()` semantics with a 15 s timeout
+   - body truncation on a code-point boundary
+   - the history-ordering heuristic
+   - the separate integration tsconfig
+3. **(note)** Dev-stack handling (a local `.env`, one `--force-recreate`, no reset) was fine.
+
