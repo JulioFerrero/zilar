@@ -151,7 +151,10 @@ In `apps/mobile/screenshots/` (iPhone 17 Pro, 1206×2622):
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Round 1: changes requested (one small fix)
+
+Checks all pass locally (mobile: 23 tests). The screenshots show typing in the list and header, big emoji without a sender name, the reply bar, the green online dot and mute spacing. The chat-core switch is clean. Gestures and haptics can't be exercised in the simulator screenshots, so I accept them on code review.
 
 ### Findings
--
+1. **Double space after the name in group previews** (`chat-list-item.tsx`). chat-core's `previewPrefix` already returns `"Dani: "` with a trailing space, and the row adds another `{prefix} `. That renders "Dani:  PR #42" (visible in `chats-light.png`: Dev team, Neighbors, Family, Design sync). Render the prefix as it comes, add a test (or assertion) on the exact preview string, and retake `chats-light.png`.
+2. *(No change needed.)* Avatar colors: 5 of the 10 mock chats show the red gradient. I checked, and it's hash luck on these short mock ids (FNV-1a mod 7 gives `0 6 4 0 4 5 0 1 0 0`), not a regression. Keep using chat-core's `avatarGradient(id)` as it is.
