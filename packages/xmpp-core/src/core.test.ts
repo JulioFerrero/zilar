@@ -669,6 +669,50 @@ describe('createXmppCore: messages and markers', () => {
 
     expect(messages).toHaveLength(0);
   });
+
+  it('marks a reflected chat state and marker of my own nick as outgoing', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const typing: TypingEvent[] = [];
+    const displayed: DisplayedEvent[] = [];
+    core.on('typing', (event) => typing.push(event));
+    core.on('displayed', (event) => displayed.push(event));
+
+    const reflectedRoom = 'project@rooms.galena.localhost';
+    const joining = core.joinRoom(reflectedRoom, 'bob');
+    await flush();
+    fake.emitStanza(xml('presence', { from: `${reflectedRoom}/bob` }));
+    await joining;
+
+    // An unresolved reflection: the sender stays the full room JID and the
+    // nick matches my own, so `outgoing` is the only signal.
+    fake.emitStanza(
+      xml(
+        'message',
+        { from: `${reflectedRoom}/bob`, type: 'groupchat' },
+        xml('composing', { xmlns: CHAT_STATES_NAMESPACE }),
+      ),
+    );
+    fake.emitStanza(
+      xml(
+        'message',
+        { from: `${reflectedRoom}/bob`, type: 'groupchat' },
+        xml('displayed', { xmlns: CHAT_MARKERS_NAMESPACE, id: 'm-1' }),
+      ),
+    );
+
+    expect(typing.at(-1)).toMatchObject({
+      chatJid: reflectedRoom,
+      fromJid: `${reflectedRoom}/bob`,
+      outgoing: true,
+    });
+    expect(displayed.at(-1)).toMatchObject({
+      chatJid: reflectedRoom,
+      fromJid: `${reflectedRoom}/bob`,
+      messageId: 'm-1',
+      outgoing: true,
+    });
+  });
 });
 
 describe('createXmppCore: contact presence', () => {

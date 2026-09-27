@@ -348,6 +348,7 @@ describe('decodeMessageStanza: replies, typing and displayed', () => {
         chatJid: 'alice@galena.localhost',
         fromJid: 'alice@galena.localhost',
         state,
+        outgoing: false,
       });
     }
   });
@@ -364,6 +365,7 @@ describe('decodeMessageStanza: replies, typing and displayed', () => {
       chatJid: 'alice@galena.localhost',
       fromJid: 'alice@galena.localhost',
       messageId: 'm-1',
+      outgoing: false,
     });
   });
 });

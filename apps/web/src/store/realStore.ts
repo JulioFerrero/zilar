@@ -520,10 +520,16 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    function handleTyping(event: { chatJid: string; fromJid: string; state: string }): void {
-      // The MUC reflects my own chat states back to me; they are not someone
-      // else typing.
-      if (isOwnSender(event.fromJid)) {
+    function handleTyping(event: {
+      chatJid: string;
+      fromJid: string;
+      state: string;
+      outgoing: boolean;
+    }): void {
+      // A MUC reflects my own chat states back to me. When the sender cannot be
+      // resolved to a real JID, xmpp-core marks the reflection `outgoing` and
+      // keeps the full room JID, so the JID check alone is not enough.
+      if (event.outgoing || isOwnSender(event.fromJid)) {
         return;
       }
       const chatId = event.chatJid;
@@ -556,10 +562,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    function handleDisplayed(event: { chatJid: string; fromJid: string; messageId: string }): void {
-      // My own displayed marker, reflected in a group, means I displayed my
-      // own message, not that a peer read it.
-      if (isOwnSender(event.fromJid)) {
+    function handleDisplayed(event: {
+      chatJid: string;
+      fromJid: string;
+      messageId: string;
+      outgoing: boolean;
+    }): void {
+      // A reflected marker of my own message means I displayed it, not that a
+      // peer read it. `outgoing` covers the unresolved full-room-JID case.
+      if (event.outgoing || isOwnSender(event.fromJid)) {
         return;
       }
       updateMessageStatus(event.chatJid, event.messageId, 'read');

@@ -184,6 +184,33 @@ pnpm build
 - `nick(me)` still falls back to the localpart only when a user has an empty display name; the sign-up flow enforces a name, so this is not expected in practice.
 - No new dependencies. The dev stack was not stopped or reset.
 
+### Round 3 (finding 1)
+
+**The own-typing/own-displayed filter now works when the sender is unresolved.**
+- `TypingEvent` and `DisplayedEvent` gained an `outgoing: boolean` field (additive). `parseTyping` and `parseDisplayed` set it from `sender.outgoing`, so a reflection that `resolveSender` leaves as the full room JID (`room@rooms.domain/nick`, `resolved: false`) is still marked outgoing.
+- The store drops `typing` and `displayed` when `event.outgoing === true` **or** `isOwnSender(event.fromJid)`, with a comment explaining why an own chat state or marker can arrive at all (the MUC reflects it). The JID check stays as the DM belt-and-braces path.
+- Tests:
+  - xmpp-core `core.test.ts`: an unresolved reflection from our own nick (`room@rooms.domain/bob` after joining as `bob`) comes out of both parsers with `outgoing: true`.
+  - web `realStore.test.ts`: a fake core emitting `{ fromJid: 'team@rooms.galena.test/mynick', outgoing: true }` is ignored for typing (no typing state) and for displayed (the message stays `sent`).
+- Existing `stanza.test.ts` DM assertions gained the new `outgoing: false` field.
+
+**Files changed (round 3).**
+- xmpp-core: `src/types.ts`, `src/stanza.ts`, `src/stanza.test.ts`, `src/core.test.ts`.
+- web: `src/store/realStore.ts`, `src/store/realStore.test.ts`.
+- `work/T-0025-real-use-fixes-1.md` (this Round 3 note). No other file was touched.
+
+**Commands run and real results (round 3).**
+- `pnpm format:check`: PASS — "All matched files use Prettier code style!".
+- `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (233 files, 127 rules).
+- `pnpm typecheck`: PASS — 8/8 tasks successful.
+- `pnpm test --force`: PASS — 8/8 tasks. `@galena/xmpp-core` **115 passed, 3 skipped**; `@galena/web` **78 passed**; `@galena/server` **155**; protocol 132, chat-core 50, mobile 48, agent-drivers 19, devtools 9.
+- `pnpm build`: PASS — 2/2 tasks successful.
+- `GALENA_XMPP_INTEGRATION=1 … vitest run src/integration.test.ts src/integration-invites.test.ts`: PASS — 2/2 against the running stack, including "typing and displayed markers arrive" and the invite/roster events.
+
+**Problems, deviations, open questions (round 3).**
+- None. `outgoing` is additive on both events; the event types are only produced by `xmpp-core` and consumed by the store.
+- No new dependencies. The dev stack was not stopped or reset.
+
 ---
 
 ## Review (written by Claude)

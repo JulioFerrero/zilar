@@ -412,6 +412,39 @@ describe('createRealChatStore', () => {
     expect(store.getState().messages('team@rooms.galena.test').at(-1)?.status).toBe('read');
   });
 
+  it('ignores an unresolved own typing reflection from a group', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit('typing', {
+      chatJid: 'team@rooms.galena.test',
+      fromJid: 'team@rooms.galena.test/mynick',
+      state: 'composing',
+      outgoing: true,
+    });
+
+    expect(store.getState().typing['team@rooms.galena.test']).toBeUndefined();
+  });
+
+  it('ignores an unresolved own displayed reflection from a group', async () => {
+    const { store, xmpp } = await setup();
+
+    store.getState().sendText('team@rooms.galena.test', 'mine');
+    await flush();
+
+    xmpp.emit('displayed', {
+      chatJid: 'team@rooms.galena.test',
+      fromJid: 'team@rooms.galena.test/mynick',
+      messageId: 'srv-1',
+      outgoing: true,
+    });
+
+    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.status).toBe('sent');
+    expect(
+      store.getState().chats.find((entry) => entry.id === 'team@rooms.galena.test')?.lastMessage
+        ?.status,
+    ).toBe('sent');
+  });
+
   it('shows a group member name for typing when they are not a contact', async () => {
     const getGroup = vi.fn(async () => ({
       id: 'g1',

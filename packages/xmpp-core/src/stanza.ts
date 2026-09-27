@@ -592,10 +592,10 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
     decoded.message = message;
   }
 
-  const typing = parseTyping(inner, kind, from, ctx, sender.jid);
+  const typing = parseTyping(inner, kind, from, ctx, sender);
   if (typing !== undefined) decoded.typing = typing;
 
-  const displayed = parseDisplayed(inner, kind, from, ctx, sender.jid);
+  const displayed = parseDisplayed(inner, kind, from, ctx, sender);
   if (displayed !== undefined) decoded.displayed = displayed;
 
   return decoded;
@@ -606,7 +606,7 @@ function parseTyping(
   kind: ChatKind,
   from: string,
   ctx: ParseContext,
-  senderJid: string,
+  sender: SenderResolution,
 ): TypingEvent | undefined {
   const state = CHAT_STATES.find(
     (candidate) => stanza.getChild(candidate, CHAT_STATES_NAMESPACE) !== undefined,
@@ -614,8 +614,9 @@ function parseTyping(
   if (state === undefined) return undefined;
   return {
     chatJid: conversationJid(stanza, from, kind, ctx.me),
-    fromJid: senderJid,
+    fromJid: sender.jid,
     state,
+    outgoing: sender.outgoing,
   };
 }
 
@@ -624,14 +625,15 @@ function parseDisplayed(
   kind: ChatKind,
   from: string,
   ctx: ParseContext,
-  senderJid: string,
+  sender: SenderResolution,
 ): DisplayedEvent | undefined {
   const displayed = stanza.getChild('displayed', CHAT_MARKERS_NAMESPACE);
   const messageId = displayed?.attrs['id'];
   if (displayed === undefined || messageId === undefined) return undefined;
   return {
     chatJid: conversationJid(stanza, from, kind, ctx.me),
-    fromJid: senderJid,
+    fromJid: sender.jid,
     messageId,
+    outgoing: sender.outgoing,
   };
 }

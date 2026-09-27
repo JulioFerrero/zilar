@@ -68,6 +68,8 @@ export interface TypingEvent {
   chatJid: string;
   fromJid: string;
   state: 'composing' | 'paused' | 'active';
+  /** True when the chat state is mine (a MUC reflection of my own state). */
+  outgoing: boolean;
 }
 
 /** A contact's (roster) availability, from a bare-JID presence stanza. */
@@ -81,6 +83,8 @@ export interface DisplayedEvent {
   chatJid: string;
   fromJid: string;
   messageId: string;
+  /** True when the marker is mine (a MUC reflection of my own marker). */
+  outgoing: boolean;
 }
 
 /** A direct MUC invitation (XEP-0249). */
@@ -140,11 +144,16 @@ export interface XmppCore {
   on(event: 'message', cb: (m: ChatMessage) => void): () => void;
   on(
     event: 'typing',
-    cb: (e: { chatJid: string; fromJid: string; state: 'composing' | 'paused' | 'active' }) => void,
+    cb: (e: {
+      chatJid: string;
+      fromJid: string;
+      state: 'composing' | 'paused' | 'active';
+      outgoing: boolean;
+    }) => void,
   ): () => void;
   on(
     event: 'displayed',
-    cb: (e: { chatJid: string; fromJid: string; messageId: string }) => void,
+    cb: (e: { chatJid: string; fromJid: string; messageId: string; outgoing: boolean }) => void,
   ): () => void;
   on(event: 'occupants', cb: (e: { roomJid: string; occupants: Occupant[] }) => void): () => void;
   on(event: 'presence', cb: (e: PresenceEvent) => void): () => void;
