@@ -1,4 +1,4 @@
-import { formatListTime, previewBody, previewPrefix } from '@galena/chat-core';
+import { formatListTime } from '@galena/chat-core';
 import { VolumeX } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
@@ -9,7 +9,7 @@ import { TypingDots } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT, MUTED_FOREGROUND } from '@/lib/colors';
-import { typingLabel } from '@/lib/format';
+import { previewParts, typingLabel } from '@/lib/format';
 import { CURRENT_USER_ID, type ChatSummary, type MessageStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store';
@@ -39,9 +39,10 @@ export function ChatListItem({ chat, onPress }: ChatListItemProps) {
   const names = useChatStore((state) => state.typing[chat.id]?.names);
   const last = chat.lastMessage;
   const typing = typingLabel(chat, names ?? []);
-  const previewOptions = { isGroup: chat.kind === 'group', currentUserId: CURRENT_USER_ID };
-  const prefix = typing === undefined ? previewPrefix(last, previewOptions) : '';
-  const body = typing === undefined ? previewBody(last) : '';
+  const preview = previewParts(last, {
+    isGroup: chat.kind === 'group',
+    currentUserId: CURRENT_USER_ID,
+  });
   const showTicks = chat.unread === 0 && last?.senderId === CURRENT_USER_ID;
   return (
     <Pressable
@@ -82,8 +83,8 @@ export function ChatListItem({ chat, onPress }: ChatListItemProps) {
               </View>
             ) : (
               <Text numberOfLines={1} className="mr-2 flex-1 text-[15px] text-muted-foreground">
-                {prefix ? <Text className="text-foreground">{prefix} </Text> : null}
-                {body}
+                {preview.prefix ? <Text className="text-foreground">{preview.prefix}</Text> : null}
+                {preview.body}
               </Text>
             )}
             {chat.unread > 0 ? (

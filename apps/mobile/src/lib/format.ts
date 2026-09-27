@@ -1,6 +1,7 @@
 import {
   firstName,
   previewBody,
+  previewPrefix,
   type ChatSummary,
   type ReplyRef,
   type UiMessage,
@@ -9,6 +10,23 @@ import {
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
+
+export type PreviewOptions = {
+  isGroup: boolean;
+  currentUserId: string;
+};
+
+/**
+ * Prefix and body for the chat-list preview, kept apart so the sender can be
+ * colored. `previewPrefix` already includes its trailing space, so joining the
+ * two parts yields the exact preview text (`Dani: ok!`).
+ */
+export function previewParts(
+  lastMessage: UiMessage | undefined,
+  options: PreviewOptions,
+): { prefix: string; body: string } {
+  return { prefix: previewPrefix(lastMessage, options), body: previewBody(lastMessage) };
+}
 
 /**
  * Relative "last seen" text for the chat header. `chat-core` has no

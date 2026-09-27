@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatLastSeen, replyRef, typingLabel } from './format';
+import { formatLastSeen, previewParts, replyRef, typingLabel } from './format';
 import type { ChatSummary, UiMessage } from './types';
 
 const NOW = new Date(2026, 8, 27, 15, 0);
@@ -17,6 +17,50 @@ function chat(overrides: Partial<ChatSummary>): ChatSummary {
     ...overrides,
   };
 }
+
+describe('previewParts', () => {
+  const last: UiMessage = {
+    id: 'm1',
+    chatId: 'dev-team',
+    senderId: 'dani',
+    senderName: 'Dani',
+    text: 'PR #42 is ready for review',
+    createdAt: NOW,
+    status: 'read',
+  };
+
+  it('keeps the single space after the sender prefix', () => {
+    const { prefix, body } = previewParts(last, { isGroup: true, currentUserId: 'me' });
+    expect(prefix).toBe('Dani: ');
+    expect(`${prefix}${body}`).toBe('Dani: PR #42 is ready for review');
+  });
+
+  it('prefixes your own messages with You:', () => {
+    const { prefix, body } = previewParts(
+      { ...last, senderId: 'me', senderName: 'You' },
+      { isGroup: true, currentUserId: 'me' },
+    );
+    expect(`${prefix}${body}`).toBe('You: PR #42 is ready for review');
+  });
+
+  it('has no prefix in a direct message', () => {
+    const { prefix, body } = previewParts(last, { isGroup: false, currentUserId: 'me' });
+    expect(prefix).toBe('');
+    expect(`${prefix}${body}`).toBe('PR #42 is ready for review');
+  });
+
+  it('falls back to the voice preview body', () => {
+    const { prefix, body } = previewParts(
+      {
+        ...last,
+        text: undefined,
+        voice: { duration_ms: 12_400, mime: 'audio/ogg', waveform: [1] },
+      },
+      { isGroup: true, currentUserId: 'me' },
+    );
+    expect(`${prefix}${body}`).toBe('Dani: 🎤 Voice message (0:12)');
+  });
+});
 
 describe('formatLastSeen', () => {
   it('formats just now, minutes, hours and days', () => {

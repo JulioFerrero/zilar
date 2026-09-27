@@ -147,6 +147,27 @@ In `apps/mobile/screenshots/` (iPhone 17 Pro, 1206×2622):
 5. **Old screenshots deleted.** The T-0019 shots showed the pre-T-0023 UI (blue online dot, no new features), so I removed them and committed only the four the spec lists. Happy to re-shoot the dark list or the AI cards if you want them back.
 6. **No new questions / blockers.**
 
+### Round 2 (review fixes)
+
+**Finding 1 fixed — double space in group previews.** `chat-core`'s `previewPrefix` already returns `"Dani: "` with its trailing space, and `chat-list-item.tsx` added another `{prefix} `. I added a small mobile helper `previewParts(lastMessage, options)` in `lib/format.ts` (returns `{ prefix, body }` straight from `chat-core`) and the row now renders `{preview.prefix}` as it comes, with no extra space. The row shows `Dani: PR #42 is ready for review` (one space) again.
+
+**Test added.** `lib/format.test.ts` gained a `previewParts` block (4 cases) asserting the exact preview strings: `"Dani: PR #42 is ready for review"`, `"You: PR #42 is ready for review"`, no prefix in a DM, and `"Dani: 🎤 Voice message (0:12)"` for a voice message. Mobile tests are now **27 passed** (was 23).
+
+**Finding 2:** no change, as instructed — `avatarGradient(id)` stays as chat-core provides it.
+
+**`chats-light.png` retaken** (temporary widened typing window, reverted afterwards): the group rows now read `Dani: PR #42 is ready for review`, `Diego: Thanks 🙏`, `Mamá: Call me when you can`, `You: Merging now` — all single-spaced.
+
+**Commands run and real results (Round 2):**
+- `npx expo run:ios --no-bundler --device "iPhone 17 Pro"` → **BUILD EXIT: 0**.
+- Metro started in watch mode, app bundled (3902 modules) and launched, screenshot taken, then Metro stopped: `lsof -ti tcp:8081` → port 8081 free, no `expo start` process left.
+- `pnpm format:check` → PASS ("All matched files use Prettier code style!").
+- `pnpm lint` → PASS ("Found 0 warnings and 0 errors", 218 files).
+- `pnpm typecheck` → PASS (8 successful, 8 total).
+- `pnpm test` → PASS (8 tasks successful; `@galena/mobile` **27 passed**, 5 files).
+- `pnpm build` → PASS (2 successful; mobile `Exported: dist`).
+
+Status kept at `review`. Only `apps/mobile/**` and the task file changed in this round; the temporary typing window is reverted (grep confirms 2000/4000).
+
 ---
 
 ## Review (written by Claude)
