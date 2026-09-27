@@ -1,7 +1,7 @@
 ---
 id: T-0016
 title: "@galena/xmpp-core — shared XMPP client (token login, rooms, DMs, history, receipts, payloads)"
-status: review
+status: merged
 milestone: M1
 branch: task/T-0016-xmpp-core
 model: opencode-go/deepseek-v4.1-flash
@@ -323,3 +323,12 @@ Finding 4 is important for plan §6.2 ("people are identified by their real JID"
    - the separate integration tsconfig
 3. **(note)** Dev-stack handling (a local `.env`, one `--force-recreate`, no reset) was fine.
 
+**Verdict (round 2): approved.** Merged by Claude.
+
+- I re-ran `format:check`, `lint`, `typecheck`, `test` (xmpp-core **85 + 1 skipped**) and `build`: all PASS.
+- The integration test against the dev stack **passed 2 of 3 runs**. The failing run was the first one after a cold `infra:up`: Bob's session was closed right after connecting.
+- **ejabberd's log shows the cause:** `Closing c2s session … Client acknowledged more stanzas than sent by server (undefined-condition)`. That's a **stream-management (XEP-0198) ack miscount on the client side** (xmpp.js over WebSocket, see xmpp.js discussion #1009).
+- This isn't caused by round 2, but it will cause random disconnects in the apps. It's split out as **T-0021** (a must-fix before real use). Everything else in round 1 is resolved:
+  - real-JID resolution for live messages (through occupant-id) and MAM (through the message item)
+  - `occupants()` and its event
+  - spoofed presence is ignored
