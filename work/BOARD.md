@@ -17,6 +17,7 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | T-0010 | Voice message spike: record on web, convert with ffmpeg, local Whisper transcript | planned | v4-flash | T-0002 | Plan §6.7 |
 | [T-0018](T-0018-web-chat-shell.md) | Web: Telegram-like chat shell (list, folders, chat, composer) + `@galena/chat-core`, mock data | **in-progress** | v4.1-flash | T-0013 | M1; style per `docs/design/ui-style.md` |
 | [T-0016](T-0016-xmpp-core.md) | `@galena/xmpp-core`: shared XMPP client (JWT reconnect, rooms, DMs, MAM, typing, receipts, payloads) | **in-progress** | v4.1-flash | T-0003, T-0013 | Uses the dev stack for its integration test |
+| [T-0017](T-0017-xmpp-provisioning.md) | Server: XMPP account on sign-up, `POST /api/xmpp/token`, `PATCH /api/me` name | **in-progress** | v4.1-flash | T-0003, T-0015 | M1; PGlite only |
 
 ## Follow-ups
 
