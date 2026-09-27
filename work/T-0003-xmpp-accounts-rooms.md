@@ -1,7 +1,7 @@
 ---
 id: T-0003
 title: Spike S1 — ejabberd accounts, token login and group chats from our server
-status: changes-requested
+status: review
 milestone: M0
 branch: task/T-0003-xmpp-accounts-rooms
 model: opencode-go/deepseek-v4.1-flash
@@ -239,6 +239,55 @@ All steps passed.
 ### Blocked / needs a decision
 
 - Nothing blocked. The one decision I would like reviewed is item 3 above (whether SQL password auth for non-admin accounts should be disabled with `jwt_auth_only_rule`).
+
+### Round 2
+
+Answer to review finding 1: **yes, non-admin accounts are now JWT-only.**
+
+**Changes**
+
+- `infra/ejabberd/ejabberd.yml`: switched to `auth_method: [jwt, sql]` (JWT first) and added `jwt_auth_only_rule: jwt_only`, with the access rule `jwt_only: { deny: admin, allow: all }` in `access_rules`. Only the admin account can use its SQL password; every non-admin account is restricted to JWT. I followed the ejabberd docs: **Configure → Authentication → "JWT Authentication"** (the `[jwt, sql]` example with `jwt_auth_only_rule`) and **Top-Level Options → `jwt_auth_only_rule`** (value is an access-rule name; "users that match this rule can only use JWT").
+- `apps/server/src/xmpp/admin-client.ts`: added `changePassword(localpart, password)`, a zod-validated wrapper over `/api/change_password` (`{user, host, newpass}`), used by the new negative check. Unit tests added (body per command; empty password rejected before any request).
+- `packages/devtools/src/xmpp-e2e.ts`: registers a dedicated `e2e-password-<suffix>` account and adds the negative step **"a non-admin account cannot log in with a known SQL password"**. It sets a known password through `changePassword`, tries SASL PLAIN with it (must be rejected), then logs the same account in with a **valid JWT** (must succeed).
+
+**Checks (all pass, from a clean `infra:reset`)**
+
+- `pnpm format:check`: PASS. `pnpm lint`: 0 warnings, 0 errors. `pnpm typecheck`: 4 successful, 4 total. `pnpm test`: 4 successful, 4 total (server 26, devtools 9, protocol 132, web 3). `pnpm build`: 1 successful, 1 total.
+- `printf 'yes\n' | pnpm infra:reset` then `pnpm infra:up`: PASS, all three services healthy.
+- `pnpm infra:smoke`: PASS, 5/5 — the admin's SQL password still authenticates `/api`, so `jwt_auth_only_rule` did not lock the admin out.
+- `pnpm infra:down`: PASS.
+
+Full `pnpm xmpp:e2e` output (clean stack):
+
+```
+XMPP end-to-end spike: room e2e-mujyawzeukfi@rooms.galena.localhost
+
+PASS  our server registers the e2e users through the admin API
+PASS  our server creates the members-only room and sets Alice owner, Bob member
+PASS  our server issues a JWT and Alice and Bob log in with it
+PASS  Alice and Bob join the room
+PASS  Bob receives all three of Alice's messages live
+PASS  Bob reconnects with a new token and reads the history back through MAM
+      ejabberd answered: login failed for e2e-alice-mujyawzeukfi: not-authorized - Invalid username or password
+PASS  negative: an expired token is rejected
+      ejabberd answered: login failed for e2e-alice-mujyawzeukfi: not-authorized - Invalid username or password
+PASS  negative: a token signed with the wrong secret is rejected
+      password login answered: login failed for e2e-password-mujyawzeukfi: not-authorized - Invalid username or password
+PASS  negative: a non-admin account cannot log in with a known SQL password
+      the room answered with: registration-required
+PASS  negative: Carol, who is not a member, cannot join the members-only room
+      the MUC service answered with: forbidden
+PASS  negative: a normal user cannot create a room
+PASS  clean up: the server destroys the room
+
+All steps passed.
+```
+
+**Observed behaviour after the switch**
+
+- A known SQL password on a non-admin account is rejected at SASL with `not-authorized - Invalid username or password`; the same account with a valid JWT logs in. This closes the gap from Round 1 item 3.
+- The four earlier negative checks are unchanged (expired JWT, wrong secret, non-member join `registration-required`, user room creation `forbidden`).
+- `pnpm infra:smoke` confirms the admin account is exempt from `jwt_auth_only_rule` and still uses SQL for `/api`.
 
 ---
 

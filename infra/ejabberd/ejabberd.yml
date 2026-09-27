@@ -44,12 +44,16 @@ update_sql_schema: true
 s2s_access: s2s
 
 ## Authentication. Our server creates XMPP accounts and issues short-lived
-## HS256 JWTs; clients send the token as their SASL PLAIN password. `sql`
-## keeps the stored password for the admin account (used by /api basic auth).
-## jwt_key is written at container start by infra/ejabberd/jwt-entrypoint.sh
-## from GALENA_XMPP_JWT_SECRET.
-auth_method: [sql, jwt]
+## HS256 JWTs; clients send the token as their SASL PLAIN password. `jwt` is
+## listed first and `jwt_auth_only_rule` restricts every non-admin account to
+## JWT, so a stored account password can never be used to log in. `sql` stays
+## only for the admin account (used by /api basic auth). jwt_key is written at
+## container start by infra/ejabberd/jwt-entrypoint.sh from
+## GALENA_XMPP_JWT_SECRET. See "Authentication" and "Top-Level Options ->
+## jwt_auth_only_rule" in the ejabberd 26.07 docs.
+auth_method: [jwt, sql]
 jwt_key: /opt/ejabberd/conf/jwt.jwk
+jwt_auth_only_rule: jwt_only
 
 listen:
   - port: PORT_C2S
@@ -82,6 +86,12 @@ acl:
 access_rules:
   local:
     allow: local
+  # Accounts that must use JWT only: every account except the admin, which
+  # keeps SQL password auth for the /api basic auth. Referenced by
+  # jwt_auth_only_rule above.
+  jwt_only:
+    deny: admin
+    allow: all
   c2s:
     deny: blocked
     allow: all

@@ -12,6 +12,8 @@ const NameSchema = z
     'must be 1-64 characters of lowercase letters, digits, ".", "_" or "-"',
   );
 
+const PasswordSchema = z.string().min(1, 'must not be empty').max(1024);
+
 export const RoomAffiliationSchema = z.enum(['owner', 'admin', 'member', 'none']);
 export type RoomAffiliation = z.infer<typeof RoomAffiliationSchema>;
 
@@ -34,6 +36,7 @@ export type CreatedResult = { created: boolean };
 export type EjabberdAdminClient = {
   registerUser(localpart: string): Promise<CreatedResult>;
   userExists(localpart: string): Promise<boolean>;
+  changePassword(localpart: string, password: string): Promise<void>;
   createRoom(roomId: string, options?: CreateRoomOptions): Promise<CreatedResult>;
   setAffiliation(roomId: string, jid: string, affiliation: RoomAffiliation): Promise<void>;
   getAffiliations(roomId: string): Promise<RoomAffiliationEntry[]>;
@@ -194,6 +197,17 @@ export function createEjabberdAdminClient(
         fail('check_account', response, `unexpected result: ${errorText(result)}`);
       }
       return parsed.data === 0;
+    },
+
+    async changePassword(localpart: string, password: string): Promise<void> {
+      const user = parseName(localpart, 'localpart');
+      const newpass = PasswordSchema.parse(password);
+      const response = await call('change_password', {
+        user,
+        host: config.domain,
+        newpass,
+      });
+      expectMutationResult('change_password', response);
     },
 
     async createRoom(roomId: string, options: CreateRoomOptions = {}): Promise<CreatedResult> {

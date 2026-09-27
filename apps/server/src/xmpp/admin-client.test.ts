@@ -94,6 +94,29 @@ describe('createEjabberdAdminClient', () => {
     ).resolves.toBe(false);
   });
 
+  it('changes a password through change_password', async () => {
+    const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
+    const client = createEjabberdAdminClient(config, fetchImpl);
+
+    await client.changePassword('alice', 'known-password');
+
+    const call = calls[0]!;
+    expect(call.url).toBe('http://ejabberd.test/api/change_password');
+    expect(bodyOf(call)).toEqual({
+      user: 'alice',
+      host: 'galena.localhost',
+      newpass: 'known-password',
+    });
+  });
+
+  it('rejects an empty password before any request', async () => {
+    const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
+    const client = createEjabberdAdminClient(config, fetchImpl);
+
+    await expect(client.changePassword('alice', '')).rejects.toThrow();
+    expect(calls).toHaveLength(0);
+  });
+
   it('creates a members-only persistent room with MAM and a title', async () => {
     const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
     const client = createEjabberdAdminClient(config, fetchImpl);

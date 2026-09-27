@@ -283,11 +283,13 @@ async function main(): Promise<void> {
   const aliceLocal = `e2e-alice-${suffix}`;
   const bobLocal = `e2e-bob-${suffix}`;
   const carolLocal = `e2e-carol-${suffix}`;
+  const passwordLocal = `e2e-password-${suffix}`;
   const roomId = `e2e-${suffix}`;
   const roomJid = `${roomId}@${config.mucDomain}`;
   const aliceJid = `${aliceLocal}@${config.domain}`;
   const bobJid = `${bobLocal}@${config.domain}`;
   const carolJid = `${carolLocal}@${config.domain}`;
+  const passwordJid = `${passwordLocal}@${config.domain}`;
 
   const messages = [
     `hello from Alice (1) [${suffix}]`,
@@ -324,7 +326,7 @@ async function main(): Promise<void> {
   console.log(`XMPP end-to-end spike: room ${roomJid}\n`);
 
   await step('our server registers the e2e users through the admin API', async () => {
-    for (const localpart of [aliceLocal, bobLocal, carolLocal]) {
+    for (const localpart of [aliceLocal, bobLocal, carolLocal, passwordLocal]) {
       const { created } = await admin.registerUser(localpart);
       if (!created) throw new Error(`${localpart} already existed`);
       if (!(await admin.userExists(localpart))) throw new Error(`${localpart} is missing`);
@@ -399,6 +401,18 @@ async function main(): Promise<void> {
     const { token } = await issueXmppToken(wrongConfig, aliceJid);
     const reason = await expectLoginFails(runtime, aliceLocal, token, 'wrong-secret token');
     console.log(`      ejabberd answered: ${reason}`);
+  });
+
+  await step('negative: a non-admin account cannot log in with a known SQL password', async () => {
+    const knownPassword = `known-password-${suffix}`;
+    await admin.changePassword(passwordLocal, knownPassword);
+    const reason = await expectLoginFails(runtime, passwordLocal, knownPassword, 'SQL password');
+    console.log(`      password login answered: ${reason}`);
+
+    // The same account still logs in with a valid JWT.
+    const jwt = await issueXmppToken(config, passwordJid);
+    const xmpp = await connect(runtime, passwordLocal, jwt.token, 'password-jwt');
+    await xmpp.stop().catch(() => {});
   });
 
   await step(
