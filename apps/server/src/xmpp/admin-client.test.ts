@@ -13,6 +13,7 @@ const config: XmppConfig = {
   adminPassword: 'admin-secret-value',
   domain: 'galena.localhost',
   mucDomain: 'rooms.galena.localhost',
+  wsPublicUrl: 'ws://ejabberd.test:5280/ws',
   jwtSecret: 's'.repeat(40),
 };
 

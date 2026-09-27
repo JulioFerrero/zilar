@@ -5,6 +5,8 @@ import { bearer, emailOTP } from 'better-auth/plugins';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import * as schema from '../db/schema';
+import { ensureXmppAccount } from '../xmpp/provisioning';
+import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { consumeInvite, findUsableInvite } from './invites';
 import type { Mailer } from './mailer';
 
@@ -20,9 +22,21 @@ export interface CreateAuthInput {
   db: ServerDatabase;
   config: ServerConfig;
   mailer: Mailer;
+  adminClient: EjabberdAdminClient;
 }
 
-export function createAuth({ db, config, mailer }: CreateAuthInput) {
+// Minimal slice of pino's Logger we need; the server passes its own logger.
+export interface AuthLogger {
+  warn: (fields: Record<string, unknown>, message: string) => void;
+}
+
+export function createAuth({
+  db,
+  config,
+  mailer,
+  adminClient,
+  logger,
+}: CreateAuthInput & { logger?: AuthLogger }) {
   return betterAuth({
     baseURL: config.BETTER_AUTH_URL,
     secret: config.BETTER_AUTH_SECRET,
@@ -107,6 +121,18 @@ export function createAuth({ db, config, mailer }: CreateAuthInput) {
               });
             }
             return { data: user };
+          },
+          after: async (user) => {
+            // The XMPP account is created here, but its failure must never block
+            // sign-up: the token endpoint provisions lazily on the next request.
+            try {
+              await ensureXmppAccount(db, adminClient, user.id, config.xmpp.domain);
+            } catch (error) {
+              logger?.warn(
+                { userId: user.id, err: error },
+                'could not provision the XMPP account on sign-up',
+              );
+            }
           },
         },
       },

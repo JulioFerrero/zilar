@@ -16,6 +16,7 @@ export const xmppEnvSchema = z.object({
   EJABBERD_ADMIN_PASSWORD: z.string().min(1, 'must not be empty'),
   XMPP_DOMAIN: DomainSchema.default('galena.localhost'),
   XMPP_MUC_DOMAIN: DomainSchema.default('rooms.galena.localhost'),
+  XMPP_WS_PUBLIC_URL: z.url({ protocol: /^wss?$/ }).default('ws://127.0.0.1:5280/ws'),
   GALENA_XMPP_JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),
 });
 
@@ -27,6 +28,7 @@ export type XmppConfig = {
   adminPassword: string;
   domain: string;
   mucDomain: string;
+  wsPublicUrl: string;
   jwtSecret: string;
 };
 
@@ -56,6 +58,7 @@ export function loadXmppConfig(env: Record<string, string | undefined>): XmppCon
     adminPassword: result.data.EJABBERD_ADMIN_PASSWORD,
     domain: result.data.XMPP_DOMAIN,
     mucDomain: result.data.XMPP_MUC_DOMAIN,
+    wsPublicUrl: result.data.XMPP_WS_PUBLIC_URL,
     jwtSecret: result.data.GALENA_XMPP_JWT_SECRET,
   };
 }

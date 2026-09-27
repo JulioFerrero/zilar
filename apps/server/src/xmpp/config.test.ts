@@ -7,6 +7,7 @@ const validEnv = {
   EJABBERD_ADMIN_PASSWORD: 'admin-password',
   XMPP_DOMAIN: 'galena.localhost',
   XMPP_MUC_DOMAIN: 'rooms.galena.localhost',
+  XMPP_WS_PUBLIC_URL: 'ws://127.0.0.1:5280/ws',
   GALENA_XMPP_JWT_SECRET: 'a'.repeat(40),
 };
 
@@ -30,6 +31,7 @@ describe('loadXmppConfig', () => {
       adminPassword: 'admin-password',
       domain: 'galena.localhost',
       mucDomain: 'rooms.galena.localhost',
+      wsPublicUrl: 'ws://127.0.0.1:5280/ws',
       jwtSecret: 'a'.repeat(40),
     });
   });
@@ -43,6 +45,14 @@ describe('loadXmppConfig', () => {
     expect(config.apiUrl).toBe('http://127.0.0.1:5280/api');
     expect(config.domain).toBe('galena.localhost');
     expect(config.mucDomain).toBe('rooms.galena.localhost');
+    expect(config.wsPublicUrl).toBe('ws://127.0.0.1:5280/ws');
+  });
+
+  it('rejects a WebSocket URL that is not ws:// or wss://', () => {
+    const error = captureError(() =>
+      loadXmppConfig({ ...validEnv, XMPP_WS_PUBLIC_URL: 'http://127.0.0.1:5280/ws' }),
+    );
+    expect(error.message).toContain('XMPP_WS_PUBLIC_URL');
   });
 
   it('strips trailing slashes from the API URL', () => {

@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
+import { findXmppAccount } from '../xmpp/provisioning';
 import type { Auth } from './auth';
 import { createInvite, findInviteByCode, findUsableInvite, revokeInvite } from './invites';
 
@@ -11,17 +13,59 @@ export interface AuthRoutesDependencies {
   config: ServerConfig;
 }
 
+// 1-64 characters after trimming, with no control characters.
+const displayNameSchema = z
+  .string()
+  .trim()
+  .min(1, { message: 'name must not be empty' })
+  .max(64, { message: 'name must be at most 64 characters' })
+  .refine((value) => [...value].every((character) => !isControlCharacter(character)), {
+    message: 'name must not contain control characters',
+  });
+
+const updateMeSchema = z.object({ name: displayNameSchema });
+
 export function createAuthRoutes({ auth, db, config }: AuthRoutesDependencies): Hono {
   const routes = new Hono();
 
   routes.get('/me', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
+    const account = await findXmppAccount(db, user.id);
     return c.json({
       id: user.id,
       email: user.email,
       name: user.name,
       image: user.image ?? null,
       createdAt: user.createdAt,
+      jid: account?.jid ?? null,
+    });
+  });
+
+  routes.patch('/me', async (c) => {
+    await requireSession(auth, c.req.raw.headers);
+
+    const body = await c.req.json().catch(() => null);
+    const parsed = updateMeSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpError(
+        400,
+        'invalid_request',
+        parsed.error.issues[0]?.message ?? 'Invalid name',
+      );
+    }
+
+    // Update through Better Auth's own API so its hooks and validation apply.
+    await auth.api.updateUser({
+      headers: c.req.raw.headers,
+      body: { name: parsed.data.name },
+    });
+
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    return c.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      image: user.image ?? null,
     });
   });
 
@@ -65,4 +109,9 @@ async function requireSession(auth: Auth, headers: Headers) {
     throw new HttpError(401, 'unauthorized', 'Authentication required');
   }
   return session;
+}
+
+function isControlCharacter(character: string): boolean {
+  const code = character.codePointAt(0) ?? 0;
+  return code <= 0x1f || code === 0x7f;
 }

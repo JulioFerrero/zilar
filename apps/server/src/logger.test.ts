@@ -13,6 +13,9 @@ function captureLog(payload: Record<string, unknown>): string {
     NODE_ENV: 'test',
     DATABASE_URL: 'postgres://user:hunter2@127.0.0.1:5432/galena',
     BETTER_AUTH_SECRET: 'test-secret-test-secret-test-secret',
+    EJABBERD_ADMIN_JID: 'admin@galena.localhost',
+    EJABBERD_ADMIN_PASSWORD: 'admin-password',
+    GALENA_XMPP_JWT_SECRET: 'x'.repeat(40),
   });
 
   createLogger(config, destination).info(payload, 'test');

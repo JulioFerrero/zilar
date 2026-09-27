@@ -7,6 +7,9 @@ import { ConsoleMailer, MailerConfigurationError, createMailer } from './mailer'
 const baseEnv = {
   DATABASE_URL: 'postgres://user:hunter2@127.0.0.1:5432/galena',
   BETTER_AUTH_SECRET: TEST_SECRET,
+  EJABBERD_ADMIN_JID: 'admin@galena.localhost',
+  EJABBERD_ADMIN_PASSWORD: 'admin-password',
+  GALENA_XMPP_JWT_SECRET: 'x'.repeat(40),
 };
 
 function captureLogs() {

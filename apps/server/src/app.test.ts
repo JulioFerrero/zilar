@@ -34,6 +34,7 @@ describe('createApp', () => {
       logger: context.logger,
       config: context.config,
       auth: context.auth,
+      adminClient: context.adminClient,
     });
     app.route('/test', createTestRoutes());
     return app;
