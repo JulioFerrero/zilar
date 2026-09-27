@@ -17,6 +17,7 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | |
 | T-0010 | Voice message spike: record on web, convert with ffmpeg, local Whisper transcript | planned | v4-flash | T-0002 | Plan §6.7 |
 | [T-0011](T-0011-mobile-scaffold.md) | Expo app scaffold (SDK 57, Expo Router, NativeWind, React Native Reusables) | **in-progress** | v4.1-flash | T-0001, T-0012 | Plan §17.2 |
+| [T-0014](T-0014-server-foundation.md) | Server foundation: config, pino logging (redacted), JSON errors, request ids, Drizzle + migrations, PGlite tests | **in-progress** | v4.1-flash | T-0001 | M1; no Docker |
 
 ## Done
 
