@@ -1,7 +1,7 @@
 ---
 id: T-0018
 title: Web app — Telegram-like chat shell (list, folders, chat view, composer) with mock data
-status: review
+status: changes-requested
 milestone: M1
 branch: task/T-0018-web-chat-shell
 model: opencode-go/deepseek-v4.1-flash
@@ -184,7 +184,37 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict (round 1): changes requested (one small bug).** This is excellent, Telegram-faithful work.
+
+### What I verified myself (on commit af4fd12)
+- `install`, `format:check`, `lint`, `typecheck`, `test` (web **24**, chat-core **29**) and `build`: all PASS. No external URLs, no Telegram brand references.
+- **Visual check in iPad simulator Safari** (≥ 900 px, two panes), light and dark, of the chat list, the "Viernes 🍻" group and the Dev AI chat:
+  - layout, tokens, folder tabs and badges match `ui-style.md`
+  - selected row in the accent color
+  - reply quotes, sender names and avatars on the last bubble of a group
+  - date pills
+  - the voice message
+  - ✓✓ ticks
+  - "AI · working" with dots and the progress card
+  - the composer
+  - dark mode is correct
 
 ### Findings
--
+1. **(must fix) `initials()` includes emoji.** "Viernes 🍻" renders the avatar as **`V🍻`** in the list and the header.
+   - Fix it in `packages/chat-core/src/avatar.ts`: consider only words that contain a letter or digit (`/[\p{L}\p{N}]/u`), and take the first **letter or digit** of each (grapheme-safe). Symbols and emoji never count.
+   - A name with no letters or digits (e.g. `"🍻🍻"`) returns `""`, and the avatar then shows a neutral glyph such as a person icon.
+   - Tests to add:
+     - `"Viernes 🍻"` → `"V"`
+     - `"🍻 Viernes"` → `"V"`
+     - `"Ana María"` → `"AM"`
+     - `"ana"` → `"A"`
+     - `"🍻🍻"` → `""`
+     - `"Dev-1"` → `"D"`
+2. **(accepted)**
+   - The three `ChatSummary` additions (`aiStatus`, `onlineCount`, `lastSeenAt`). Mobile (T-0019) added the same ones, so keep them in `chat-core`.
+   - The type-only dependency on `@galena/protocol`.
+   - The helper functions.
+   - Dropping the shadcn preset extras.
+3. **(accepted, note)** The `--bubble-in-meta` contrast of about 2.4:1 matches Telegram's own low-contrast meta text. We keep it for now and revisit with Julio's feedback.
+4. **(note)** Mock chat ids (`c-viernes`) differ from the room JIDs in `ids.ts`. That's fine for mock data, and the wiring task will use real JIDs.
+
