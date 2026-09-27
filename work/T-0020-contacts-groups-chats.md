@@ -1,7 +1,7 @@
 ---
 id: T-0020
 title: Server — contacts from invites (XMPP roster), groups (MUC rooms) and the chat list API
-status: review
+status: changes-requested
 milestone: M1
 branch: task/T-0020-contacts-groups-chats
 model: opencode-go/deepseek-v4.1-flash
@@ -190,7 +190,26 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict (round 1): one small change requested.** This is an excellent, careful implementation:
+- the checks and authorization are right, 404 vs 403 without leaking existence
+- best-effort room cleanup when an affiliation fails
+- all checks PASS (server **147** tests)
 
 ### Findings
--
+1. **(must fix, answering your open question) Refresh roster nicks when a name changes.**
+   - After `PATCH /api/me` updates the name, update the user's nick in **every contact's roster** (`add_rosteritem` again with the new nick and subscription `both`; it's an upsert).
+   - Best-effort: on ejabberd failure, set `roster_synced = false` on those contact rows, so the existing lazy `syncRoster` retry on `POST /api/xmpp/token` fixes it. `syncRoster` must use the **current** display name as the nick.
+   - Tests:
+     - a name change calls `add_rosteritem` for each contact with the new nick
+     - a failure marks the rows unsynced
+     - the next token call resyncs with the current name
+   - (The apps will show a placeholder for an empty name. That's UI work for T-0024.)
+2. **(accepted)**
+   - the `user_invites` claim table
+   - re-reading the invite header in the `after` hook
+   - 50 invited members plus the owner
+   - the 404/403 policy
+   - best-effort `destroyRoom`
+   - admin seeding in tests
+   - opt-in `anonymous: false`
+
