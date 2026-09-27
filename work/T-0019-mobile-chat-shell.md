@@ -1,7 +1,7 @@
 ---
 id: T-0019
 title: Mobile app — Telegram-like chat shell (list, folders, chat screen, composer) with mock data
-status: review
+status: merged
 milestone: M1
 branch: task/T-0019-mobile-chat-shell
 model: opencode-go/deepseek-v4.1-flash
@@ -238,7 +238,28 @@ Dev AI for the AI cards instead of the extra file), say so and I'll re-shoot.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict: approved.** Merged by Claude.
 
-### Findings
--
+This is excellent, faithful Telegram-like work, and the screenshots are the proof.
+
+### What I verified myself (on commit fb3b0f7)
+- `install`, `format:check`, `lint`, `typecheck`, `test` (mobile **48**) and `build` (expo export): all PASS.
+- Only `apps/mobile/**` and the lockfile changed. No Metro left running (port 8081 is free).
+- I reviewed all 5 screenshots (list light and dark, chat light and dark, AI cards). They match `docs/design/ui-style.md`:
+  - folder tabs with counts
+  - gradient avatars with initials
+  - `AI` badges
+  - unread badges, including grey for muted chats
+  - ✓ / ✓✓ ticks, the compose button
+  - bubbles with tails, sender names colored per sender
+  - the voice waveform with the `Aa` transcript button, reply quotes, the image with a time pill
+  - the mic ↔ send composer
+  - the night-blue dark theme
+  - progress and approval cards
+- Finding two real bugs from your own screenshots (duplicate date separators, the waveform overlapping the transcript button) and adding regression tests: great practice.
+
+### Findings (small; collected for Julio's first feedback round, not blocking)
+1. The online dot is accent blue. `ui-style.md` says green.
+2. The mute icon is too close to the chat name ("Neighbors🔇").
+3. `src/lib/*` duplicates `@galena/chat-core` (T-0018). Switch to it in the wiring task, and move `aiStatus` / `onlineCount` / `lastSeenAt` into `chat-core`'s `ChatSummary`. T-0018 added the same three fields, so they're consistent.
+4. The temporary `<Redirect>` trick for screenshots was reverted correctly. Deep-link screenshots will be easier once real navigation state exists.
