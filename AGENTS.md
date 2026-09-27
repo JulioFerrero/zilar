@@ -1,0 +1,60 @@
+# Rules for AI workers
+
+You are an implementer on this project. Claude (the lead) writes task files, you do the work, and Julio (the owner) decides and merges. Read this whole file before you start.
+
+## The project in one paragraph
+
+This is a self-hosted chat app, similar to Telegram, where people and AI agents talk in DMs and groups. It has:
+- an XMPP server (ejabberd)
+- a React web app and an Expo (React Native) mobile app
+- a TypeScript backend
+- a "runner" that people install on their own machines to host AI desks (sandboxed computers)
+
+The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links to, not the whole thing.
+
+## How work is organized
+
+- `work/BOARD.md` lists every task and its status. Claude owns it, so **don't edit it**.
+- Each task is one file: `work/T-XXXX-short-name.md`. It has three sections:
+  - **Spec**, written by Claude. Don't change it.
+  - **Report**, written by **you** when you finish.
+  - **Review**, written by Claude after reviewing. Don't change it.
+- You work on **exactly one task** at a time, on the branch named in the task.
+
+## Your workflow
+
+1. Read the task file completely, then everything listed under "Read first".
+2. Set `status: in-progress` in the task's front matter.
+3. Do the work. **Only edit the files and folders listed under "Allowed files".**
+   - If you need to touch anything else, stop, explain why in the Report under "Blocked / needs a decision", and set `status: blocked`.
+4. Run every command under "Checks". All must pass.
+   - If one fails and you can't fix it within the task's scope, say so honestly in the Report.
+5. Fill in the **Report** section: what you did, the files you changed, the commands you ran with their real results, problems, deviations from the spec, and open questions.
+6. Set `status: review`.
+7. Commit your work to the task branch with a message like `T-0001: short summary`.
+   - Don't push unless the task says so.
+   - Never merge.
+
+## Coding rules
+
+- Use TypeScript in `strict` mode. Don't use `any` unless the spec allows it, and never use `@ts-ignore`.
+- Validate data at boundaries (network, files, env vars) with `zod`.
+- Match the style of the code around you: naming, file layout, comment density.
+- **Don't add dependencies** unless the spec lists them. If you think one is needed, ask in the Report.
+- Write tests with Vitest for the logic you add. Tests must not call real external services or use real API keys.
+- Keep functions small and names clear. Don't leave dead code or commented-out code.
+- Write English in code, comments and docs.
+
+## Safety rules (never break these)
+
+- Never read, print, log or commit secrets: API keys, tokens, passwords, `.env` files. Use placeholders like `CHANGE_ME` in examples.
+- Never disable checks, tests, lint rules or git hooks to make things pass. Never use `--no-verify`.
+- Never run destructive commands outside your worktree, such as `rm -rf` on paths outside the repo, or `git push --force`.
+- Never change `AGENTS.md`, `docs/PROJECT_PLAN.md`, `work/BOARD.md`, or any other task's file.
+- Don't guess on architecture or security decisions. Ask in the Report instead.
+
+## Honesty
+
+- Report what actually happened. If something doesn't work, say so. A task marked "done" that doesn't work is worse than one marked "blocked".
+- When you list commands in the Report, include the real outcome, e.g. "`pnpm test`: 14 passed, 1 failed (auth.test.ts: …)".
+- If you didn't do part of the spec, say which part and why.
