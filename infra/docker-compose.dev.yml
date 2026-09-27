@@ -48,6 +48,11 @@ services:
     ports:
       - '127.0.0.1:5222:5222'
       - '127.0.0.1:5280:5280'
+    # jwt-entrypoint.sh derives /opt/ejabberd/conf/jwt.jwk from
+    # GALENA_XMPP_JWT_SECRET, then runs the image's normal tini + ejabberdctl.
+    # command is repeated because overriding entrypoint drops the image CMD.
+    entrypoint: ['/bin/sh', '/galena/jwt-entrypoint.sh']
+    command: ['foreground']
     environment:
       EJABBERD_MACRO_HOST: galena.localhost
       # The container registers admin@galena.localhost on first start and
@@ -55,8 +60,10 @@ services:
       EJABBERD_MACRO_ADMIN: admin@galena.localhost
       REGISTER_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required in infra/.env}
       EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required in infra/.env}
+      GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required in infra/.env}
     volumes:
       - ./ejabberd/ejabberd.yml:/opt/ejabberd/conf/ejabberd.yml:ro
+      - ./ejabberd/jwt-entrypoint.sh:/galena/jwt-entrypoint.sh:ro
       - ejabberd-database:/opt/ejabberd/database
       - ejabberd-uploads:/opt/ejabberd/upload
     healthcheck:

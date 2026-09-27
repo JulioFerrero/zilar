@@ -43,6 +43,14 @@ update_sql_schema: true
 ## Federation off: no s2s listener below and every s2s connection is denied.
 s2s_access: s2s
 
+## Authentication. Our server creates XMPP accounts and issues short-lived
+## HS256 JWTs; clients send the token as their SASL PLAIN password. `sql`
+## keeps the stored password for the admin account (used by /api basic auth).
+## jwt_key is written at container start by infra/ejabberd/jwt-entrypoint.sh
+## from GALENA_XMPP_JWT_SECRET.
+auth_method: [sql, jwt]
+jwt_key: /opt/ejabberd/conf/jwt.jwk
+
 listen:
   - port: PORT_C2S
     ip: '0.0.0.0'
@@ -78,7 +86,8 @@ access_rules:
     deny: blocked
     allow: all
   muc_create:
-    allow: local
+    # Only the admin (server) account creates rooms (T-0002 follow-up 4).
+    allow: admin
   configure:
     allow: admin
   announce:
@@ -141,6 +150,9 @@ modules:
       members_only: true
       persistent: true
       mam: true
+  # MUC room management commands (create_room_with_opts, set_room_affiliation,
+  # get_room_affiliations, destroy_room) used through /api.
+  mod_muc_admin: {}
   # History in the database, on by default for every chat.
   mod_mam:
     db_type: sql

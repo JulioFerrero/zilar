@@ -59,12 +59,15 @@ The backing services run in Docker Compose (Docker Desktop, or any Docker with C
 cp infra/.env.example infra/.env
 ```
 
+`infra/.env` also holds the XMPP login secret (`GALENA_XMPP_JWT_SECRET`, at least 32 random bytes) and the admin JID (`EJABBERD_ADMIN_JID`). The ejabberd container derives its HS256 JWT signing key from the secret on start, and `@galena/server` signs the short-lived tokens clients log in with.
+
 | Script | Does |
 |---|---|
 | `pnpm infra:up` | Start every service and wait until the healthchecks pass |
 | `pnpm infra:down` | Stop the containers, keeping the data volumes |
 | `pnpm infra:logs` | Follow the logs |
 | `pnpm infra:smoke` | Check Postgres users, ejabberd (status, admin API, WebSocket) and LiteLLM |
+| `pnpm xmpp:e2e` | Create users and a members-only room, log in with JWTs and check live messages plus MAM history |
 | `pnpm infra:reset` | Delete the data volumes, after confirmation |
 
 Everything binds to `127.0.0.1` only:
