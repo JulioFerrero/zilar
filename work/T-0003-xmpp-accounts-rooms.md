@@ -1,7 +1,7 @@
 ---
 id: T-0003
 title: Spike S1 — ejabberd accounts, token login and group chats from our server
-status: review
+status: changes-requested
 milestone: M0
 branch: task/T-0003-xmpp-accounts-rooms
 model: opencode-go/deepseek-v4.1-flash
@@ -244,7 +244,19 @@ All steps passed.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict (round 1): changes requested.** This is an excellent spike: 11/11 end-to-end steps, real negative checks, and a clean JWK-from-env design that keeps the key off the host. The one open security question (item 3) is answered **yes**, which needs a small round 2.
 
 ### Findings
--
+1. **(must fix, security) Make every non-admin account JWT-only.**
+   - Switch to `auth_method: [jwt, sql]` and add `jwt_auth_only_rule: jwt_only`, with an access rule `jwt_only: { deny: admin, allow: all }`, so only the admin account can use its SQL password. Check the exact syntax and order against the ejabberd 26.07 docs, and cite the doc section in the Report.
+   - **New negative e2e step:** give a test user a **known** password through the admin API (`change_password`, or `register` with a known password for a dedicated test account), then try SASL PLAIN with that password. It **must be rejected**. The same user with a valid JWT must still log in.
+   - `pnpm infra:smoke` (which uses the admin's password on `/api`) must still pass.
+2. **(accepted)** Adding `mod_muc_admin` was required and correct.
+3. **(accepted)** `EJABBERD_ADMIN_JID` in `.env.example`: correct. Claude will add it and `GALENA_XMPP_JWT_SECRET` to Julio's local `infra/.env` after merge.
+4. **(accepted)** An async `issueXmppToken` is fine, and so is `createRoom` returning `{created}`.
+5. **(accepted)** Validating `roomId` and `localpart` more strictly (lowercase) than `IdSchema` is correct for XMPP localparts: it avoids case-folding ambiguity. Room ids the server generates will follow it.
+6. **(accepted)**
+   - the ambient types for `@xmpp/client`
+   - importing the server module by relative path in the devtools script (fine for a dev tool)
+   - re-joining the room before the MAM query
+7. **(note for later)** `jwt-entrypoint.sh` derives the key from the raw secret bytes, so `GALENA_XMPP_JWT_SECRET` must be at least 32 random chars. The config already enforces that. Good.
