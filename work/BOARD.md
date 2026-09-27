@@ -9,7 +9,7 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 
-| T-0004 | Spike S2: `@xmpp/client` in Expo (connect, reconnect, background) | planned | v4-pro | T-0003 | Risky; Claude reviews closely |
+| [T-0004](T-0004-expo-xmpp-spike.md) | Spike S2: `@xmpp/client` in Expo (connect, reconnect, background) | todo | v4-pro | T-0003 | Risky; Claude reviews closely. Gates the mobile app on real data |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | T-0007 | Spike S5: LiteLLM virtual keys with budgets, adding a user's own key | planned | v4-flash | T-0002 | |
 | T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely |
