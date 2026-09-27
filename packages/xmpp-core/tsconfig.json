@@ -5,5 +5,5 @@
     "types": []
   },
   "include": ["src"],
-  "exclude": ["src/integration.test.ts"]
+  "exclude": ["src/integration.test.ts", "src/integration-sm.test.ts"]
 }

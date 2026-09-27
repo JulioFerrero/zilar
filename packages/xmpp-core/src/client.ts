@@ -7,6 +7,7 @@ import {
 } from '@xmpp/client';
 import { jidLocalPart } from './jid';
 import { DEFAULT_HISTORY_MAX, buildMamQuery, parseMamFin, toHistoryPage } from './mam';
+import { installStreamManagementAck } from './stream-management';
 import {
   buildAvailablePresence,
   buildCarbonsEnable,
@@ -372,6 +373,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       resource: defaultResource(),
     });
     attachHandlers(created);
+    installStreamManagementAck(created);
     xmpp = created;
     return created;
   }
