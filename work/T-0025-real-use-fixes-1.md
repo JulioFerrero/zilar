@@ -188,7 +188,76 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:** Round 1: changes requested
+**Verdict:** Round 3 (final): changes requested
+
+History: round 1 verified; round 2 fixed all three findings and is good work. One
+gap is left, and it is the one place where the fix provably does not take effect.
+
+### What the lead verified in round 2
+- Re-ran every check in the worktree myself, without trusting the Report:
+  `format:check`, `lint`, `typecheck`, `test` and `build` **all PASS**. The test
+  counts match your Report exactly: `@galena/web` 76, `@galena/xmpp-core` 114
+  passed / 3 skipped, `@galena/server` 155, plus protocol 132, mobile 48,
+  chat-core 50, agent-drivers 19 and devtools 9.
+- Scope: every path in `git diff main...HEAD` is inside the Allowed files,
+  including the two added to the allow-list in round 1.
+- No new dependencies (`pnpm-lock.yaml` and every `package.json` untouched), no
+  `any`, no `@ts-ignore`, no `console.*` left in the code.
+- Finding 1 (own typing/displayed), finding 2 (the name ladder ending at
+  "Someone", with the JID-localpart fallback deleted) and finding 3 (required
+  `sendDirectInvitation` and the real pino logger, `console.warn` gone) are
+  genuinely done, and the new tests assert behaviour through the store rather
+  than the mock's internals. All accepted.
+
+### Findings
+1. **The own-typing filter silently no-ops when the sender is not resolved**
+   (`packages/xmpp-core/src/stanza.ts`, `apps/web/src/store/realStore.ts`).
+   `isOwnSender()` compares `fromJid` to `me.jid` exactly. But the last branch
+   of `resolveSender()` for a `groupchat` returns `jid: input.from` when the
+   sender cannot be resolved to a real JID, that is, the **full room JID**
+   `team@rooms.galena.test/mynick`, with `resolved: false` and
+   `outgoing: true` (the nick matches `myNick`).
+
+   That `outgoing` is computed correctly and then thrown away: `parseTyping`
+   and `parseDisplayed` copy only `sender.jid` into the event, and neither
+   `TypingEvent` nor `DisplayedEvent` has an `outgoing` field. The store then
+   compares `team@rooms.galena.test/mynick` with `me@galena.test`, gets
+   `false`, and shows me typing to me: finding 1 still reproducing whenever
+   occupant resolution misses, such as a reflection arriving before our own
+   occupant is in the roster.
+
+   Your test only covers the resolved case (`fromJid: 'me@galena.test'`), which
+   is why it passes. Fix it at the source instead of guessing in the store:
+   - Add `outgoing: boolean` to `TypingEvent` and `DisplayedEvent`, set from
+     `sender.outgoing` in `parseTyping` and `parseDisplayed`. This is additive,
+     so it stays inside the Allowed files.
+   - In the store, drop `typing` and `displayed` when `outgoing === true`
+     **or** `isOwnSender(fromJid)`. Keep the JID check as a belt-and-braces
+     path for DMs.
+   - Tests: a fake core emitting
+     `{ fromJid: 'team@rooms.galena.test/mynick', outgoing: true }` must still
+     be ignored for both events, and an xmpp-core unit test that an unresolved
+     reflection from our own nick comes out with `outgoing: true`.
+
+   While you are there, a short comment on why an own chat state or marker can
+   arrive at all (the MUC reflects them) will stop the next reader from
+   "simplifying" the check away.
+
+2. *(No change needed.)* The `nick(me)` localpart fallback and using the
+   localpart as a cache key in `userLocalpartOf` are both fine: sign-up
+   requires a display name and the localpart is never rendered. Putting the
+   occupant fallback before "Someone" is the right order.
+
+### Follow-ups
+- None new. The pre-existing board follow-ups stand.
+
+After round 3, the lead will live-test against the running stack with the test
+accounts (own typing in a group, an unknown group sender, a group invite
+appearing live) before merging.
+
+<details><summary>Earlier rounds</summary>
+
+**Round 1: changes requested**
 
 Verified by the lead: every check passes (web 71, xmpp-core 114 + 3 skipped, server 155 tests). The diff is within the Allowed files. The code is good:
 - the alias map with monotonic statuses is the right fix for the stuck list status
@@ -215,3 +284,6 @@ Round 2 adds **two bugs Julio hit live** while this task was running, plus the c
    - Pass the real pino `logger` to `createGroupsRoutes` in `app.ts`. Make the logger required in the groups routes and service inputs, and remove the `console.warn` fallback.
 
 After round 2, the lead will live-test it against the running stack with the test accounts.
+
+</details>
+
