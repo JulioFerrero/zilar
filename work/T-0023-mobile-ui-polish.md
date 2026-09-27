@@ -1,7 +1,7 @@
 ---
 id: T-0023
 title: Mobile UI polish — Telegram additions, swipe-to-reply, haptics, switch to @galena/chat-core
-status: approved
+status: merged
 milestone: M1
 branch: task/T-0023-mobile-ui-polish
 model: opencode-go/deepseek-v4.1-flash
