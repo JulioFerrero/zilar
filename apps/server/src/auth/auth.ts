@@ -5,6 +5,7 @@ import { bearer, emailOTP } from 'better-auth/plugins';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import * as schema from '../db/schema';
+import { setUpContactsFromInvite } from '../contacts/service';
 import { ensureXmppAccount } from '../xmpp/provisioning';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { consumeInvite, findUsableInvite } from './invites';
@@ -122,7 +123,7 @@ export function createAuth({
             }
             return { data: user };
           },
-          after: async (user) => {
+          after: async (user, context) => {
             // The XMPP account is created here, but its failure must never block
             // sign-up: the token endpoint provisions lazily on the next request.
             try {
@@ -132,6 +133,25 @@ export function createAuth({
                 { userId: user.id, err: error },
                 'could not provision the XMPP account on sign-up',
               );
+            }
+
+            // Contacts from the invite: record which invite created the user
+            // and, when the inviter is known, make them contacts and add the
+            // two roster items. Roster failures are retried on the token
+            // endpoint, so they must never block sign-up.
+            const inviteCode = context?.headers?.get(INVITE_HEADER)?.trim();
+            if (inviteCode) {
+              try {
+                await setUpContactsFromInvite(db, adminClient, config.xmpp.domain, {
+                  userId: user.id,
+                  inviteCode,
+                });
+              } catch (error) {
+                logger?.warn(
+                  { userId: user.id, err: error },
+                  'could not set up contacts on sign-up',
+                );
+              }
             }
           },
         },

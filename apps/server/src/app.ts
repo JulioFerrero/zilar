@@ -6,9 +6,12 @@ import type { Logger } from 'pino';
 import { protocolVersion } from '@galena/protocol';
 import type { Auth } from './auth/auth';
 import { createAuthRoutes } from './auth/routes';
+import { createChatsRoutes } from './chats/routes';
 import type { ServerConfig } from './config';
+import { createContactsRoutes } from './contacts/routes';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
+import { createGroupsRoutes } from './groups/routes';
 import { serverVersion } from './version';
 import type { EjabberdAdminClient } from './xmpp/admin-client';
 import { createXmppRoutes } from './xmpp/routes';
@@ -70,6 +73,9 @@ export function createApp({
 
   app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
   app.route('/api', createAuthRoutes({ auth, db, config }));
+  app.route('/api', createContactsRoutes({ auth, db, config }));
+  app.route('/api', createGroupsRoutes({ auth, db, config, adminClient }));
+  app.route('/api', createChatsRoutes({ auth, db, config }));
   app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));
 
   app.get('/health', async (c) => {

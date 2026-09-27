@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import type { Auth } from '../auth/auth';
+import { requireSession } from '../auth/session';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
+import { syncRoster } from '../contacts/service';
 import type { EjabberdAdminClient } from './admin-client';
 import type { XmppConfig } from './config';
 import { ensureXmppAccount } from './provisioning';
@@ -57,6 +59,13 @@ export function createXmppRoutes({
       throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
     }
 
+    // Retry any roster items a failed sign-up could not push. A failure here
+    // is not fatal: the user can still chat and the next request retries.
+    const roster = await syncRoster(db, adminClient, xmppConfig.domain, user.id);
+    if (!roster.ok) {
+      logger.warn({ userId: user.id, pending: roster.pending }, 'roster sync is incomplete');
+    }
+
     const { token, expiresAt } = await issueXmppToken(xmppConfig, jid, TOKEN_TTL_SECONDS);
 
     return c.json({
@@ -70,14 +79,6 @@ export function createXmppRoutes({
   });
 
   return routes;
-}
-
-async function requireSession(auth: Auth, headers: Headers) {
-  const session = await auth.api.getSession({ headers });
-  if (!session) {
-    throw new HttpError(401, 'unauthorized', 'Authentication required');
-  }
-  return session;
 }
 
 // Simple in-memory limiter keyed by user id. It is per process: with several

@@ -17,6 +17,19 @@ const PasswordSchema = z.string().min(1, 'must not be empty').max(1024);
 export const RoomAffiliationSchema = z.enum(['owner', 'admin', 'member', 'none']);
 export type RoomAffiliation = z.infer<typeof RoomAffiliationSchema>;
 
+export const RosterSubscriptionSchema = z.enum(['none', 'to', 'from', 'both']);
+export type RosterSubscription = z.infer<typeof RosterSubscriptionSchema>;
+
+// A roster entry as returned by `get_roster`.
+export const RosterEntrySchema = z.object({
+  jid: JidSchema,
+  nick: z.string(),
+  subscription: RosterSubscriptionSchema,
+  pending: z.string(),
+  groups: z.array(z.string()),
+});
+export type RosterEntry = z.infer<typeof RosterEntrySchema>;
+
 export const RoomAffiliationEntrySchema = z.object({
   jid: JidSchema,
   affiliation: z.string().min(1),
@@ -29,6 +42,13 @@ export type CreateRoomOptions = {
   membersOnly?: boolean;
   persistent?: boolean;
   mam?: boolean;
+  anonymous?: boolean;
+};
+
+export type AddRosterItemOptions = {
+  nick: string;
+  groups: string[];
+  subs?: RosterSubscription;
 };
 
 export type CreatedResult = { created: boolean };
@@ -41,6 +61,13 @@ export type EjabberdAdminClient = {
   setAffiliation(roomId: string, jid: string, affiliation: RoomAffiliation): Promise<void>;
   getAffiliations(roomId: string): Promise<RoomAffiliationEntry[]>;
   destroyRoom(roomId: string): Promise<void>;
+  addRosterItem(
+    localpart: string,
+    contactJid: string,
+    options: AddRosterItemOptions,
+  ): Promise<void>;
+  deleteRosterItem(localpart: string, contactJid: string): Promise<void>;
+  getRoster(localpart: string): Promise<RosterEntry[]>;
 };
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
@@ -212,12 +239,15 @@ export function createEjabberdAdminClient(
 
     async createRoom(roomId: string, options: CreateRoomOptions = {}): Promise<CreatedResult> {
       const room = parseName(roomId, 'roomId');
-      const { title, membersOnly = true, persistent = true, mam = true } = options;
+      const { title, membersOnly = true, persistent = true, mam = true, anonymous } = options;
       const roomOptions = [
         { name: 'members_only', value: String(membersOnly) },
         { name: 'persistent', value: String(persistent) },
         { name: 'mam', value: String(mam) },
       ];
+      if (anonymous !== undefined) {
+        roomOptions.push({ name: 'anonymous', value: String(anonymous) });
+      }
       if (title !== undefined) {
         roomOptions.push({ name: 'title', value: title });
       }
@@ -272,6 +302,51 @@ export function createEjabberdAdminClient(
       const room = parseName(roomId, 'roomId');
       const response = await call('destroy_room', { room, service: config.mucDomain });
       expectMutationResult('destroy_room', response);
+    },
+
+    async addRosterItem(
+      localpart: string,
+      contactJid: string,
+      options: AddRosterItemOptions,
+    ): Promise<void> {
+      const localuser = parseName(localpart, 'localpart');
+      const { user, host } = splitBareJid(contactJid);
+      const nick = z.string().max(1024).parse(options.nick);
+      const groups = z.array(z.string().min(1).max(1024)).min(1).parse(options.groups);
+      const subs = RosterSubscriptionSchema.parse(options.subs ?? 'both');
+      const response = await call('add_rosteritem', {
+        localuser,
+        localhost: config.domain,
+        user,
+        host,
+        nick,
+        groups,
+        subs,
+      });
+      expectMutationResult('add_rosteritem', response);
+    },
+
+    async deleteRosterItem(localpart: string, contactJid: string): Promise<void> {
+      const localuser = parseName(localpart, 'localpart');
+      const { user, host } = splitBareJid(contactJid);
+      const response = await call('delete_rosteritem', {
+        localuser,
+        localhost: config.domain,
+        user,
+        host,
+      });
+      expectMutationResult('delete_rosteritem', response);
+    },
+
+    async getRoster(localpart: string): Promise<RosterEntry[]> {
+      const user = parseName(localpart, 'localpart');
+      const response = await call('get_roster', { user, host: config.domain });
+      const result = expectOk('get_roster', response);
+      const parsed = z.array(RosterEntrySchema).safeParse(result);
+      if (!parsed.success) {
+        fail('get_roster', response, `unexpected result: ${errorText(result)}`);
+      }
+      return parsed.data;
     },
   };
 }

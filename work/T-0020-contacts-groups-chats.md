@@ -1,7 +1,7 @@
 ---
 id: T-0020
 title: Server — contacts from invites (XMPP roster), groups (MUC rooms) and the chat list API
-status: todo
+status: review
 milestone: M1
 branch: task/T-0020-contacts-groups-chats
 model: opencode-go/deepseek-v4.1-flash
@@ -119,16 +119,72 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+- **Schema + migration (`src/db/schema.ts`, `drizzle/0003_shocking_boom_boom.sql`, generated with drizzle-kit — not hand-written).**
+  - `contacts(user_id, contact_user_id, source 'invite'|'manual', roster_synced, created_at)`, composite primary key on `(user_id, contact_user_id)` (one row per direction). `roster_synced` is the spec's "stored with `roster_synced = false`" flag.
+  - `user_invites(user_id pk, invite_id, invited_by, created_at)` — our own claim table: which invite created each user and who invited them. `invite_id`/`invited_by` are nullable with `ON DELETE SET NULL` so deleting an invite never loses the inviter.
+  - `groups(id pk, room_localpart unique, title, created_by, created_at)` and `group_members(group_id, user_id, role 'owner'|'admin'|'member', added_at)`, composite PK on `(group_id, user_id)`.
+- **Admin client (`src/xmpp/admin-client.ts`).** Added `addRosterItem(localpart, contactJid, { nick, groups, subs })`, `deleteRosterItem(localpart, contactJid)` and `getRoster(localpart)` (all zod-validated in and out; `add_rosteritem` uses the 26.07 argument names `localuser`/`localhost`/`groups`/`subs`). `CreateRoomOptions` gained `anonymous`, and `createRoom` now includes `{ name: 'anonymous', value: String(anonymous) }` **only when the caller passes it**, so the existing T-0003 call sites keep their exact body. Documented per the ejabberd 26.07 API reference (`add_rosteritem`, `delete_rosteritem`, `get_roster`, `create_room_with_opts`).
+- **Contacts (`src/contacts/service.ts`, `routes.ts`).** `addContactPair` inserts both directions idempotently; `setUpContactsFromInvite` records the invite claim then, for an invite with a creator, makes the pair contacts; `syncRoster` pushes every not-yet-synced contact with `addRosterItem(… 'both', group 'Galena')` and flips `roster_synced`. A failed admin call leaves the rows unsynced and stops early (never throws for an admin error), so the retry is safe. `listContacts` returns `{ userId, name, jid, avatarUrl? }` for one user only. `GET /api/contacts` is auth-only.
+- **Sign-up wiring (`src/auth/auth.ts`).** `user.create.after` still provisions XMPP first, then reads `x-galena-invite` from the endpoint context, records the claim and sets up the contacts/rosters. Both steps are wrapped so a failure logs a warning and never blocks sign-up. A bootstrap invite (no creator) records the claim but creates no contacts.
+- **Lazy retry (`src/xmpp/routes.ts`).** `POST /api/xmpp/token` calls `syncRoster` after provisioning. A roster failure logs `roster sync is incomplete` with the pending count and still returns the token (chat works; the next request retries).
+- **Groups (`src/groups/service.ts`, `routes.ts`).** `POST /api/groups` validates (title 1–100 after trim, `memberIds` ≤ 50), requires every member to be the creator's contact (generic 403 that never names anyone), creates the members-only/persistent/MAM/non-anonymous room with the title as its name, sets the creator `owner` and the others `member`, all inside a DB transaction so any ejabberd failure rolls the rows back and returns 503 (plus a best-effort `destroyRoom` if the room was already created). `room_localpart` is `g` + 16 random lowercase base32 chars. `GET /api/groups/:id` returns members with names to members only (404 otherwise). `POST /api/groups/:id/members` (owner/admin, caller's contacts) and `DELETE /api/groups/:id/members/:userId` (owner/admin, or self) keep the DB and the ejabberd affiliations in sync in a transaction. `listGroupsForUser` is the chat-list projection.
+- **Chats (`src/chats/routes.ts`).** `GET /api/chats` merges the caller's DMs (from contacts, `chatJid` = the contact's bare JID) and groups (`chatJid` = `<room_localpart>@<XMPP_MUC_DOMAIN>`, `memberCount`, `role`) and sorts by title.
+- **Shared auth helper (`src/auth/session.ts`).** Extracted `requireSession` (cookie or bearer via `auth.api.getSession`) and reused it in `auth/routes.ts`, `xmpp/routes.ts` and the new routes instead of copying it twice more.
+- **App wiring (`src/app.ts`).** Mounts the three new route modules under `/api`.
+- **Test helpers (`src/test-support.ts`).** Extended `FakeAdminClient` (roster items, affiliations, room options, destroyed rooms, `failRoom`/`failAffiliation`/`failRoster`) and added `testApp`, `signUpWithInvite`, `bootstrapUser`, `contactOf`, `nextClientIp`.
+- **Tests (Vitest + PGlite + fake admin client, no network):**
+  - `src/contacts/contacts.test.ts` (5): invite sign-up → two contact rows + two roster calls with the right localparts, contact JIDs, nicks, group and `both` subscription; bootstrap invite → no contacts but a claim; roster failure → `roster_synced = false` → the token endpoint syncs the caller's side and the inviter's next token syncs the other; `GET /api/contacts` is scoped to me; 401 without auth.
+  - `src/groups/groups.test.ts` (11): creator becomes owner; room options include non-anonymous and the title; affiliations are set correctly; non-contact member → generic 403 with nothing stored; >50 → 400; empty/over-100 → 400 and exactly 100 → 201; room-create failure → 503 + no rows; affiliation failure → 503 + no rows + the room destroyed; owner adds a contact and member/non-member/non-contact are rejected; an admin (seeded) can add; add/remove permission matrix incl. self-removal, owner not removable, unknown member → 404, affiliations set to `none`; `GET /api/groups/:id` for a non-member/missing → 404; every group route → 401.
+  - `src/chats/chats.test.ts` (5): exact DM + group entries with correct JIDs, titles, `memberCount` and roles for both sides; a third user sees nothing; sorting by title; 401; bearer auth works.
+  - `src/xmpp/admin-client.test.ts` (new cases): `addRosterItem`/`deleteRosterItem` request bodies, validated `getRoster`, non-anonymous room option, invalid roster inputs rejected before any request.
 
 ### Files changed
--
+
+- New: `apps/server/src/auth/session.ts`
+- New: `apps/server/src/contacts/service.ts`, `apps/server/src/contacts/routes.ts`, `apps/server/src/contacts/contacts.test.ts`
+- New: `apps/server/src/groups/service.ts`, `apps/server/src/groups/routes.ts`, `apps/server/src/groups/groups.test.ts`
+- New: `apps/server/src/chats/routes.ts`, `apps/server/src/chats/chats.test.ts`
+- New (generated): `apps/server/drizzle/0003_shocking_boom_boom.sql`, `apps/server/drizzle/meta/0003_snapshot.json`
+- Modified: `apps/server/src/db/schema.ts`, `apps/server/src/xmpp/admin-client.ts`, `apps/server/src/xmpp/admin-client.test.ts`, `apps/server/src/xmpp/routes.ts`, `apps/server/src/auth/auth.ts`, `apps/server/src/auth/routes.ts`, `apps/server/src/auth/cli-config.ts`, `apps/server/src/app.ts`, `apps/server/src/test-support.ts`, `apps/server/drizzle/meta/_journal.json`
+- Modified: `work/T-0020-contacts-groups-chats.md` (status + this Report)
+- No dependency changes; `apps/server/package.json` and `pnpm-lock.yaml` untouched.
 
 ### Commands run and real results
--
+
+- `pnpm install`: PASS ("Done in 9.7s").
+- `pnpm --filter @galena/server db:generate`: PASS — "`[✓] Your SQL migration file ➜ drizzle/0003_shocking_boom_boom.sql`"; re-run: "No schema changes, nothing to migrate".
+- `pnpm format:check`: PASS — "All matched files use Prettier code style!".
+- `pnpm lint`: PASS — "Found 0 warnings and 0 errors." (197 files, 127 rules).
+- `pnpm typecheck`: PASS — 8/8 tasks successful.
+- `pnpm test`: PASS — 8/8 tasks successful: server **147**, protocol 132, xmpp-core 85 (+1 skipped), mobile 48, chat-core 31, web 26, agent-drivers 19, devtools 9.
+- `pnpm build`: PASS — 2/2 tasks successful.
+
+### How I checked that no endpoint leaks other users' data
+
+- Every new route goes through the shared `requireSession`; the tests assert 401 with no session for `GET /api/contacts`, all four `/api/groups…` routes and `GET /api/chats` (and a bearer token works).
+- `contacts` and `chats` are always filtered by `contacts.user_id = <session user>` / `group_members.user_id = <session user>`, never by a caller-supplied id.
+- `GET /api/groups/:id` returns 404 for a signed-in non-member and for an unknown id (same body), so group ids cannot be probed.
+- Group creation only accepts the creator's contacts and returns a single generic 403 that never names the offending user; the test asserts the response body does not contain that user's id.
+- Member add/remove requires membership plus owner/admin (or self-removal) and re-checks that added users are the caller's contacts.
+- `GET /api/chats` for a third user with no contacts/groups is empty in the test; another user's group never appears.
 
 ### Problems, deviations from the spec, open questions
--
+
+- **Invite claim table named `user_invites`.** The spec offered "`users_invited_by` or a column"; I used a small table with `user_id`, `invite_id` and `invited_by`, which satisfies "store which invite created each user" and survives invite deletion.
+- **How `created_by` is passed to `user.create.after`.** Better Auth has no before→after channel other than the request context, and a module-level map would be racy across concurrent sign-ups, so the `after` hook re-reads the `x-galena-invite` header and looks the invite up (`findInviteByCode`, after consumption). A bootstrap invite still records a claim with `invited_by = null`.
+- **Better Auth OTP sign-up creates users with `name = ''`** (verified: the probe printed `PROBE_USER_NAME=""`). The invitee therefore has no display name yet when the after hook runs, so the invitee's roster nick in the inviter's roster is the empty string, matching the stored display name. `GET /api/chats` reads the live `user.name`, so DM titles become correct as soon as the app's "enter a name" step calls `PATCH /api/me`; the XMPP roster nick is not refreshed because the spec defines `syncRoster` as a retry, not a nickname sync. **Open question:** should we refresh roster nicks when a name changes, or fall back to the email when the display name is empty? Say which and I'll add it.
+- **Group member cap.** `memberIds` is capped at 50 (the creator is implicit and not counted), so a group can hold at most 51 people. The spec says "at most 50 members"; if you meant 50 including the owner, say so.
+- **Permission statuses.** `GET /api/groups/:id` returns 404 for non-members (per spec) to avoid leaking existence; the modify routes return 403 for a non-member actor and 404 when the target is not a member. The owner cannot be removed (403), and a member removing themselves is allowed for any role.
+- **Best-effort room cleanup.** The spec only required rolling back the DB rows on an ejabberd failure; when the room was created but an affiliation failed I also call `destroyRoom` (errors swallowed) so no orphan room is left. There is no test for the "destroy itself fails" branch.
+- **Admin role has no API.** There is no endpoint to promote a member to `admin` (out of scope), so the "admin can add" test seeds the role directly in `group_members`.
+- **`anonymous: false` is opt-in in the client.** It is only sent when a caller passes it, so T-0003's existing request bodies are unchanged; group creation passes it explicitly as the spec requires.
+- **No Docker / no live check.** As required, all tests use PGlite and `FakeAdminClient`; the only external contracts asserted are the request bodies against the ejabberd 26.07 API reference. Claude runs the live check.
+
+### Blocked / needs a decision
+
+- Nothing blocked. The one product question is the empty display name / roster nick noted above (refresh nicks vs. email fallback).
+
 
 ---
 

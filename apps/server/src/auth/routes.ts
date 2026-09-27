@@ -6,6 +6,7 @@ import { HttpError } from '../errors';
 import { findXmppAccount } from '../xmpp/provisioning';
 import type { Auth } from './auth';
 import { createInvite, findInviteByCode, findUsableInvite, revokeInvite } from './invites';
+import { requireSession } from './session';
 
 export interface AuthRoutesDependencies {
   auth: Auth;
@@ -101,14 +102,6 @@ export function createAuthRoutes({ auth, db, config }: AuthRoutesDependencies): 
   });
 
   return routes;
-}
-
-async function requireSession(auth: Auth, headers: Headers) {
-  const session = await auth.api.getSession({ headers });
-  if (!session) {
-    throw new HttpError(401, 'unauthorized', 'Authentication required');
-  }
-  return session;
 }
 
 function isControlCharacter(character: string): boolean {
