@@ -40,7 +40,7 @@ const KNOWN_PAYLOAD_TYPES: ReadonlySet<string> = new Set(
 
 export type DecodePayloadResult = { ok: true; payload: Payload } | { ok: false; error: string };
 
-function utf8ByteLength(value: string): number {
+function utf8ByteLength(value: string, limit: number): number {
   let bytes = 0;
   for (const character of value) {
     const codePoint = character.codePointAt(0) ?? 0;
@@ -53,6 +53,9 @@ function utf8ByteLength(value: string): number {
     } else {
       bytes += 4;
     }
+    if (bytes > limit) {
+      return bytes;
+    }
   }
   return bytes;
 }
@@ -63,7 +66,11 @@ export function encodePayload(payload: Payload): string {
 
 export function decodePayload(raw: string): DecodePayloadResult {
   try {
-    if (utf8ByteLength(raw) > MAX_PAYLOAD_BYTES) {
+    // UTF-8 bytes are never fewer than UTF-16 code units, so a longer string is always too large.
+    if (
+      raw.length > MAX_PAYLOAD_BYTES ||
+      utf8ByteLength(raw, MAX_PAYLOAD_BYTES) > MAX_PAYLOAD_BYTES
+    ) {
       return { ok: false, error: 'payload exceeds the 64 KiB limit' };
     }
 

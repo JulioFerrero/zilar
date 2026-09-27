@@ -170,14 +170,14 @@ describe('PayloadSchema', () => {
 });
 
 describe('decodePayload', () => {
-  it('rejects a payload above the byte limit', () => {
+  it('rejects a 70 KiB ASCII string', () => {
     const tooLarge = 'a'.repeat(70 * 1024);
     expect(tooLarge.length).toBeGreaterThan(MAX_PAYLOAD_BYTES);
     expect(decodePayload(tooLarge).ok).toBe(false);
   });
 
-  it('counts UTF-8 bytes, not UTF-16 characters, for the size limit', () => {
-    const emoji = '😀'.repeat(20 * 1024);
+  it('rejects a multi-byte string just over the byte limit', () => {
+    const emoji = '😀'.repeat(Math.floor(MAX_PAYLOAD_BYTES / 4) + 1);
     expect(emoji.length).toBeLessThan(MAX_PAYLOAD_BYTES);
     expect(decodePayload(`{"v":0,"type":"task","data":{"title":"${emoji}"}}`).ok).toBe(false);
   });

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Bare JIDs only (`local@domain`); full JIDs with a resource are not accepted by design.
 export const JidSchema = z
   .string()
   .min(1)
@@ -13,7 +14,11 @@ export const JidSchema = z
 
 export type Jid = z.infer<typeof JidSchema>;
 
-export const IdSchema = z.string().min(1).max(128);
+export const IdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9._~-]+$/);
 
 export type Id = z.infer<typeof IdSchema>;
 
@@ -52,7 +57,7 @@ export type ArtifactKind = z.infer<typeof ArtifactKindSchema>;
 
 export const ArtifactRefSchema = z.strictObject({
   kind: ArtifactKindSchema,
-  ref: z.union([IdSchema, z.url().max(2048)]),
+  ref: z.union([IdSchema, z.url({ protocol: /^https?$/ }).max(2048)]),
 });
 
 export type ArtifactRef = z.infer<typeof ArtifactRefSchema>;

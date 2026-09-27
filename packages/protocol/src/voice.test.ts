@@ -35,6 +35,16 @@ describe('VoiceMetaSchema', () => {
     expect(VoiceMetaSchema.safeParse({ ...voice, duration_ms: 3_600_001 }).success).toBe(false);
   });
 
+  it('rejects a mime type that is not audio', () => {
+    expect(VoiceMetaSchema.safeParse({ ...voice, mime: 'video/mp4' }).success).toBe(false);
+  });
+
+  it('rejects a mime type longer than 100 characters', () => {
+    expect(VoiceMetaSchema.safeParse({ ...voice, mime: `audio/${'a'.repeat(95)}` }).success).toBe(
+      false,
+    );
+  });
+
   it('rejects an empty waveform', () => {
     expect(VoiceMetaSchema.safeParse({ ...voice, waveform: [] }).success).toBe(false);
   });

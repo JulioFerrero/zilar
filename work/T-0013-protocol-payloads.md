@@ -1,7 +1,7 @@
 ---
 id: T-0013
 title: Protocol v0 — zod schemas for Galena's chat payloads
-status: changes-requested
+status: review
 milestone: M0
 branch: task/T-0013-protocol-payloads
 model: opencode-go/deepseek-v4.1-flash
@@ -157,6 +157,35 @@ pnpm test
 - Deviation (small, within scope): `handoff.ts` `task_id` now uses `IdSchema` (max 128), the handoff object is strict, and its `budget` uses the shared `BudgetSchema` instead of an inline duplicate. The spec only required `from`/`to` → `JidSchema` and `artifacts` → `ArtifactRefSchema`; the extra reuse keeps the schemas consistent and all handoff tests still pass.
 - Implementation note: UTF-8 byte length in `decodePayload` is computed with a small local `utf8ByteLength` helper. `TextEncoder` is not available under this package's `lib: ["ES2023"]` tsconfig (no DOM/global node types), and the helper keeps the module runtime-agnostic (no Node `Buffer`). `prettier`/`oxlint` pass.
 - No open questions. No new dependencies; only allowed files touched; no `any`, no `as unknown as`, no `@ts-ignore`, no disabled checks.
+
+### Round 2
+
+Fixed findings 1, 2, 3 and 5 from the review (finding 4 was accepted as-is, no change).
+
+**Finding 1 (security) — artifact refs accept `javascript:`/`data:`**
+- `IdSchema` is now `z.string().min(1).max(128).regex(/^[A-Za-z0-9._~-]+$/)`, so ids can no longer contain `:`, `/`, spaces or other URL syntax.
+- The URL branch of `ArtifactRefSchema.ref` is now `z.url({ protocol: /^https?$/ }).max(2048)`, so only http/https URLs are accepted.
+- Tests added in `common.test.ts`: `javascript:`, `javascript:` + 200 chars, `data:`, `vbscript:` and `file:` refs are all rejected; an `http(s)` URL is accepted; ids containing `:` or whitespace are rejected. The existing handoff/payload examples use URL-safe ids (`t-17`, `m-31`, `a-9`, `o-1`, …), so nothing had to be changed and the handoff tests still pass.
+
+**Finding 2 (robustness) — reject oversized input before counting bytes**
+- `decodePayload` now returns too-large immediately when `raw.length > MAX_PAYLOAD_BYTES` (UTF-8 bytes are never fewer than UTF-16 code units).
+- `utf8ByteLength(value, limit)` now returns as soon as the running total passes `limit`.
+- Tests: a 70 KiB ASCII string is rejected (exercises the fast path), and a multi-byte string just over the limit (`'😀'.repeat(MAX_PAYLOAD_BYTES / 4 + 1)` = 65,540 bytes but only 32,770 UTF-16 units) is rejected. No timing assertions.
+
+**Finding 3 (nit) — `VoiceMetaSchema.mime`**
+- `mime` is now `z.string().startsWith('audio/').max(100)`. Tests: `video/mp4` is rejected and a `audio/` + 95 chars (101 total) mime is rejected; the existing `audio/mp4` example still passes.
+
+**Finding 5 (doc) — `JidSchema` comment**
+- Added a one-line comment above `JidSchema`: bare JIDs only (`local@domain`); full JIDs with a resource are not accepted by design.
+
+**Files changed in round 2**: `packages/protocol/src/common.ts`, `packages/protocol/src/common.test.ts`, `packages/protocol/src/payload.ts`, `packages/protocol/src/payload.test.ts`, `packages/protocol/src/voice.ts`, `packages/protocol/src/voice.test.ts`, and this task file.
+
+**Commands run and real results (round 2)**
+- `pnpm install`: "Lockfile is up to date ... Already up to date".
+- `pnpm format:check`: "All matched files use Prettier code style!" (exit 0).
+- `pnpm lint`: "Found 0 warnings and 0 errors. Finished in 22ms on 28 files with 127 rules" (exit 0).
+- `pnpm exec turbo typecheck --force` (cache bypass): "Tasks: 3 successful, 3 total, 0 cached" — protocol, web and server all pass.
+- `pnpm exec turbo test --force` (cache bypass): "Tasks: 3 successful, 3 total, 0 cached"; `@galena/protocol` 132 passed (9 files, +10 vs round 1), `@galena/server` 2 passed, `@galena/web` 3 passed.
 
 ---
 

@@ -49,6 +49,14 @@ describe('IdSchema', () => {
   it('rejects an id longer than 128 characters', () => {
     expect(IdSchema.safeParse('a'.repeat(129)).success).toBe(false);
   });
+
+  it('rejects an id containing a colon', () => {
+    expect(IdSchema.safeParse('javascript:alert(1)').success).toBe(false);
+  });
+
+  it('rejects an id containing whitespace', () => {
+    expect(IdSchema.safeParse('has space').success).toBe(false);
+  });
 });
 
 describe('IsoDateTimeSchema', () => {
@@ -119,6 +127,22 @@ describe('ArtifactRefSchema', () => {
       ArtifactRefSchema.safeParse({ kind: 'pr', ref: 'https://github.com/acme/shop/pull/42' })
         .success,
     ).toBe(true);
+  });
+
+  it('accepts an http url ref', () => {
+    expect(
+      ArtifactRefSchema.safeParse({ kind: 'preview', ref: 'http://localhost:3000' }).success,
+    ).toBe(true);
+  });
+
+  it.each([
+    'javascript:alert(1)',
+    'javascript:' + 'a'.repeat(200),
+    'data:text/html,<h1>x</h1>',
+    'vbscript:msgbox(1)',
+    'file:///etc/passwd',
+  ])('rejects a %s ref', (ref) => {
+    expect(ArtifactRefSchema.safeParse({ kind: 'pr', ref }).success).toBe(false);
   });
 
   it('rejects an unknown kind', () => {

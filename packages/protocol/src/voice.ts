@@ -10,7 +10,7 @@ export type VoiceTranscript = z.infer<typeof VoiceTranscriptSchema>;
 
 export const VoiceMetaSchema = z.strictObject({
   duration_ms: z.int().min(1).max(3_600_000),
-  mime: z.string().min(1),
+  mime: z.string().startsWith('audio/').max(100),
   waveform: z.array(z.int().min(0).max(255)).min(1).max(128),
   transcript: VoiceTranscriptSchema.optional(),
 });
