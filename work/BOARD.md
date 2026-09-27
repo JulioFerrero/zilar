@@ -4,12 +4,12 @@ Claude maintains this file. Statuses are explained in [README.md](README.md).
 
 ## M0: Foundations
 
-The name and stack are confirmed. T-0001 and T-0002 are ready to start. Claude writes the specs for the other tasks as their dependencies finish.
+Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authorization, 2026-09-27). Each task gets its own git worktree `../galena-T-XXXX`. Watch a worker live with `cd ../galena-T-XXXX && opencode2 -s <session>`.
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0001](T-0001-monorepo.md) | Monorepo scaffold: pnpm + Turborepo, TypeScript strict, lint, Vitest, CI | **approved** | v4-pro | – | Julio: merge `task/T-0001-monorepo` |
-| [T-0002](T-0002-dev-infra.md) | Dev infrastructure: docker-compose with Postgres, ejabberd, LiteLLM (pinned) | **todo** | v4-pro | T-0001, T-0012 | Start after T-0012 is merged. No MinIO (plan D21). |
+
+| [T-0002](T-0002-dev-infra.md) | Dev infrastructure: docker-compose with Postgres, ejabberd, LiteLLM (pinned) | **in-progress** | v4.1-flash | T-0001, T-0012 | No MinIO (plan D21) |
 | T-0003 | Spike S1: ejabberd WebSocket, groups, history, account creation through the API, token login | planned | v4-pro | T-0002 | Plan §23 |
 | T-0004 | Spike S2: `@xmpp/client` in Expo (connect, reconnect, background) | planned | v4-pro | T-0003 | Risky; Claude reviews closely |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
@@ -18,9 +18,12 @@ The name and stack are confirmed. T-0001 and T-0002 are ready to start. Claude w
 | T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely |
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | |
 | T-0010 | Voice message spike: record on web, convert with ffmpeg, local Whisper transcript | planned | v4-flash | T-0002 | Plan §6.7 |
-| T-0011 | Expo app scaffold in the monorepo (Expo Router, NativeWind, React Native Reusables, dev build) | planned | v4-pro | T-0001 | Plan §17.2 |
-| [T-0012](T-0012-tooling-cleanups.md) | Tooling cleanups from the T-0001 review | **todo** | v4-flash | T-0001 | **Do this next,** before T-0002. Both touch the root `package.json` and the lockfile. |
+| [T-0011](T-0011-mobile-scaffold.md) | Expo app scaffold (SDK 57, Expo Router, NativeWind, React Native Reusables) | **in-progress** | v4.1-flash | T-0001, T-0012 | Plan §17.2 |
+| [T-0013](T-0013-protocol-payloads.md) | Protocol v0: zod schemas for chat payloads + safe encode/decode | **in-progress** | v4.1-flash | T-0001 | Plan §6.3 |
 
 ## Done
 
-(none yet)
+| ID | Title | Merged |
+|---|---|---|
+| [T-0001](T-0001-monorepo.md) | Monorepo scaffold | 2026-09-27 |
+| [T-0012](T-0012-tooling-cleanups.md) | Tooling cleanups from the T-0001 review | 2026-09-27 |
