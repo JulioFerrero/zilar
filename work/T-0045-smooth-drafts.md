@@ -1,7 +1,7 @@
 ---
 id: T-0045
 title: Web — smooth draft reveal and a "still generating" look (gray until complete), continuing into the final message without a snap
-status: review
+status: merged
 milestone: M2
 branch: task/T-0045-smooth-drafts
 model: opencode-go/deepseek-v4.1-flash
@@ -186,3 +186,9 @@ pnpm build                                          # Tasks: 2 successful, 2 tot
 4. Optionally throttle the network so the final message carries a large missing tail, to confirm the whole tail is revealed smoothly.
 
 ## Review (written by Claude)
+
+**Approved and merged.** Two Muse pre-reviews, both approve (nits only).
+
+- **Lead fix cc070fd:** the reveal never cuts a surrogate pair (half an emoji showed a replacement glyph for a frame). New test, which fails without the fix.
+- **Live:** served on localhost:5174 in Julio's Helium. His own test there: "okay okay, much better yes". Observed: in a background tab the reveal pauses (the browser throttles rAF) and resumes when the tab is shown. Follow-up in T-0047: snap to the current text when the page becomes visible again.
+- Nits deferred: the reduced-motion flag is read at mount; the same-node UI test uses real rAF timing; `transitioning` stays true for a finished draft bubble. None matters once the app is dark-only (D24).
