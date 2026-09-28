@@ -482,43 +482,75 @@ export async function revertPersonaFromChat(
 // already done, so a delete that failed part way (ejabberd or LiteLLM down) can
 // be retried without revoking a key twice, re-deleting a model or failing on an
 // item that is already gone. The key row goes only once both are gone.
+//
+// The gateway steps run under the same locks as `ensureAiModel` and
+// `changeAiModel` (the in-process mutex and the Postgres advisory lock): a
+// delete racing a model switch re-reads the current model id instead of
+// deleting a stale one, so no `ai-<id>` model is ever orphaned with no key row
+// and no AI row behind it.
 export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string): Promise<void> {
   const ai = await findOwnedAi(deps.db, id, ownerId);
   if (!ai) {
     throw new HttpError(404, 'not_found', 'AI not found');
   }
 
-  // 1. Revoke the gateway key and clear its id in place. A retry then sees
-  //    `litellmKeyId === null` and never calls revoke again, while the row (and
-  //    the model id it carries) survives until the model is gone too.
-  if (ai.litellmKeyId !== null) {
-    try {
-      await deps.litellm.revokeKey(ai.litellmKeyId);
-    } catch (error) {
-      deps.logger.warn({ err: error, aiId: ai.id }, 'could not revoke the AI virtual key');
-      throw teardownFailed();
-    }
-    await deps.db
-      .update(llmVirtualKeys)
-      .set({ litellmKeyId: null })
-      .where(eq(llmVirtualKeys.aiId, ai.id));
-  }
+  await withAiEnsureLock(ai.id, async () => {
+    // 1. Revoke the gateway key and clear its id in place, in a locked
+    //    transaction. A retry then sees `litellmKeyId === null` and never
+    //    calls revoke again, while the row (and the model id it carries)
+    //    survives until the model is gone too.
+    await deps.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${ai.id}), ${ENSURE_MODEL_LOCK_SCOPE})`,
+      );
+      const [keyRow] = await tx
+        .select({ litellmKeyId: llmVirtualKeys.litellmKeyId })
+        .from(llmVirtualKeys)
+        .where(eq(llmVirtualKeys.aiId, ai.id))
+        .limit(1);
+      if (!keyRow || keyRow.litellmKeyId === null) {
+        return;
+      }
+      try {
+        await deps.litellm.revokeKey(keyRow.litellmKeyId);
+      } catch (error) {
+        deps.logger.warn({ err: error, aiId: ai.id }, 'could not revoke the AI virtual key');
+        throw teardownFailed();
+      }
+      await tx
+        .update(llmVirtualKeys)
+        .set({ litellmKeyId: null })
+        .where(eq(llmVirtualKeys.aiId, ai.id));
+    });
 
-  // 2. Delete the private model registered for this AI. `deleteModel` treats an
-  //    already-gone model as success; an AI created before this task has no
-  //    model id and is skipped.
-  if (ai.litellmModelId !== null) {
-    try {
-      await deps.litellm.deleteModel(ai.litellmModelId);
-    } catch (error) {
-      deps.logger.warn({ err: error, aiId: ai.id }, 'could not delete the AI private model');
-      throw teardownFailed();
-    }
-  }
+    // 2. Delete the private model currently registered for this AI, re-read
+    //    under the lock (a model switch may have replaced it after step 0),
+    //    plus any stray `ai-<id>` entries. `deleteModel` treats an
+    //    already-gone model as success; an AI with no model id is skipped.
+    await deps.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${ai.id}), ${ENSURE_MODEL_LOCK_SCOPE})`,
+      );
+      const [keyRow] = await tx
+        .select({ litellmModelId: llmVirtualKeys.litellmModelId })
+        .from(llmVirtualKeys)
+        .where(eq(llmVirtualKeys.aiId, ai.id))
+        .limit(1);
+      if (keyRow?.litellmModelId != null) {
+        try {
+          await deps.litellm.deleteModel(keyRow.litellmModelId);
+        } catch (error) {
+          deps.logger.warn({ err: error, aiId: ai.id }, 'could not delete the AI private model');
+          throw teardownFailed();
+        }
+      }
+      await deleteModelsNamed(deps, ai.id, modelNameForAi(ai.id));
 
-  // 3. Nothing is left to revoke or delete on the gateway side, so the key row
-  //    goes.
-  await deps.db.delete(llmVirtualKeys).where(eq(llmVirtualKeys.aiId, ai.id));
+      // 3. Nothing is left to revoke or delete on the gateway side, so the key
+      //    row goes.
+      await tx.delete(llmVirtualKeys).where(eq(llmVirtualKeys.aiId, ai.id));
+    });
+  });
 
   const ownerLocalpart = localpartFor(ownerId);
   const ownerJid = jidFor(ownerLocalpart, deps.domain);
@@ -794,11 +826,21 @@ export async function changeAiModel(deps: AiServiceDeps, input: ChangeAiModelInp
         // the old model and connection, and clear the stale model id so the
         // next gateway turn re-registers the old model via `ensureAiModel`.
         // A separate locked transaction: the first one already rolled back.
+        // The owner is re-checked as in the main path; a row that is gone or
+        // no longer ours is left alone, and the update failure still stands.
         try {
           await deps.db.transaction(async (tx) => {
             await tx.execute(
               sql`SELECT pg_advisory_xact_lock(hashtext(${ai.id}), ${ENSURE_MODEL_LOCK_SCOPE})`,
             );
+            const [ownerRow] = await tx
+              .select({ owner: ais.owner })
+              .from(ais)
+              .where(eq(ais.id, ai.id))
+              .limit(1);
+            if (!ownerRow || ownerRow.owner !== input.ownerId) {
+              return;
+            }
             await tx
               .update(llmVirtualKeys)
               .set({ litellmModelId: null })

@@ -172,4 +172,21 @@ Served this worktree's Vite on `localhost:5231` (`GALENA_API_URL` → throwaway 
 - `ai_update_failed` surfaces in the panel through the existing `describeAiError` mapping ("The server couldn't finish…"), not the raw server string — consistent with every other panel error.
 - No migration, no gateway change, no new dependencies. Only Allowed files changed (`git status` clean otherwise).
 
+## Round 2 (review fixes)
+
+1. **should-fix — `deleteAi` under the same locks.** The revoke step and the model-delete/key-row step each run in their own advisory-locked transaction inside `withAiEnsureLock`, re-reading the key/model ids under the lock; step 2 also reclaims strays named `ai-<id>` via the shared `deleteModelsNamed`. Commit points are unchanged (revoke+clear commits before the model delete), so all existing resumable-teardown semantics hold: revoke exactly once, key row survives a model-delete failure with a nulled key id, null-model and keyless AIs skip. New service test: concurrent `changeAiModel` + `deleteAi` (`Promise.allSettled`) → no AI/key rows left, key revoked once, every registered model id deleted.
+2. **nit — panel shows server truth on failed save.** The save-error path now `getAi(id)` and repopulates every field from it, keeping the inline error; if the refetch itself fails it falls back to the stale snapshot. New test: PATCH 502 after a partial commit (server has new model, old name) → error shown, model input shows the new model, name reverts. The old error-keeps-values test still passes (refetch returns the unchanged AI).
+3. **nit — recovery transaction owner check.** The failure-recovery transaction re-reads `ais.owner` and skips the null-out when the row is gone or no longer owned, mirroring the main path; the `updateFailed()` error still stands.
+
+### Commands (real results, Round 2)
+```bash
+pnpm format:check                                   # All matched files use Prettier code style!
+pnpm lint                                           # exit 0
+pnpm typecheck                                      # Tasks: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/server --filter=@galena/web
+  # server: 37 files, 427 passed / 7 skipped; web: 35 files, 235 passed; Tasks 2 successful
+pnpm build                                          # Tasks: 2 successful, 2 total
+```
+`PREREVIEW.md` left untracked. No screenshot change (panel visuals unchanged; error path verified by test).
+
 ## Review (written by Claude)

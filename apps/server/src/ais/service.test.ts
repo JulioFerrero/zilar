@@ -13,15 +13,18 @@ import type {
 import { createKeyCipher } from '../connections/crypto';
 import { aiLimits, ais, llmVirtualKeys, providerConnections, user } from '../db/schema';
 import { createTestContext, TEST_XMPP_DOMAIN, type TestContext } from '../test-support';
-import { ensureAiModel, changeAiModel, updateAi, type AiServiceDeps } from './service';
+import { ensureAiModel, changeAiModel, deleteAi, updateAi, type AiServiceDeps } from './service';
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
 const PROVIDER_KEY = 'sk-provider-key-do-not-leak';
 
 class FakeLitellm implements LitellmAdminClient {
   readonly added: AddModelInput[] = [];
+  /** The ids `addModel` handed out, in order. */
+  readonly createdIds: string[] = [];
   readonly updated: UpdateVirtualKeyInput[] = [];
   readonly deleted: string[] = [];
+  readonly revoked: string[] = [];
   /** Every model/key call in order, so tests can assert the swap ordering. */
   readonly order: string[] = [];
   /** Models `listModels` returns, so tests can plant a stray `ai-<id>`. */
@@ -37,7 +40,9 @@ class FakeLitellm implements LitellmAdminClient {
       return Promise.reject(new Error('gateway down'));
     }
     this.modelCounter += 1;
-    return Promise.resolve(`model-${this.modelCounter}`);
+    const id = `model-${this.modelCounter}`;
+    this.createdIds.push(id);
+    return Promise.resolve(id);
   }
 
   deleteModel(modelId: string): Promise<void> {
@@ -75,8 +80,9 @@ class FakeLitellm implements LitellmAdminClient {
     });
   }
 
-  revokeKey(_key: string): Promise<void> {
-    throw new Error('revokeKey is not used by ensureAiModel');
+  revokeKey(key: string): Promise<void> {
+    this.revoked.push(key);
+    return Promise.resolve();
   }
 }
 
@@ -310,6 +316,7 @@ async function seedSwappableAi(
     aiId,
   );
   litellm.added.length = 0;
+  litellm.createdIds.length = 0;
   litellm.updated.length = 0;
   litellm.deleted.length = 0;
   litellm.order.length = 0;
@@ -508,11 +515,40 @@ describe('changeAiModel', () => {
       expect(litellm.updated.at(-1)).toEqual({ key: 'old-token-1', models: [`ai-${aiId}`] });
       // Every registered model but the live one was deleted.
       const liveId = keyRow?.litellmModelId;
-      const registered = litellm.added.map((_, index) => `model-${index + 1}`);
-      for (const id of registered) {
+      for (const id of litellm.createdIds) {
         if (id !== liveId) {
           expect(litellm.deleted).toContain(id);
         }
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('leaves no registered model and no rows when a switch races a delete', async () => {
+    const context = await createTestContext();
+    try {
+      const litellm = new FakeLitellm();
+      const { aiId, ownerId, connectionId } = await seedSwappableAi(context, litellm);
+      const deps = depsFor(context, litellm);
+
+      // Either order converges: a switch that lands is re-read and torn down
+      // by the delete; a delete that lands first makes the switch a 404.
+      await Promise.allSettled([
+        changeAiModel(deps, {
+          id: aiId,
+          ownerId,
+          model: 'gpt-4o',
+          providerConnectionId: connectionId,
+        }),
+        deleteAi(deps, aiId, ownerId),
+      ]);
+
+      expect(await context.db.select().from(ais)).toHaveLength(0);
+      expect(await context.db.select().from(llmVirtualKeys)).toHaveLength(0);
+      expect(litellm.revoked).toEqual(['swap-token-1']);
+      for (const id of litellm.createdIds) {
+        expect(litellm.deleted).toContain(id);
       }
     } finally {
       await context.close();

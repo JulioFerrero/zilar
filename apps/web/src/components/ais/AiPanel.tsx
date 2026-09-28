@@ -4,6 +4,7 @@ import type { ChatSummary } from '@galena/chat-core';
 import { X } from 'lucide-react';
 import {
   deleteAi,
+  getAi,
   listAis,
   listConnections,
   updateAi,
@@ -190,9 +191,22 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
       }));
     } catch (error) {
       setSaveError(describeAiError(error, 'Could not update the AI').message);
-      // Keep the old values shown: the failed model and connection never apply.
-      setSelectedConnectionId(ai.providerConnectionId);
-      setModelDraft(ai.model);
+      // A combined PATCH can commit one field and fail a later one (the model
+      // swaps before the roster rename), so show what the server really has
+      // instead of the stale snapshot. When even that fails, fall back to it.
+      try {
+        const fresh = await getAi(ai.id);
+        setAi(fresh);
+        setName(fresh.name);
+        setPersona(fresh.persona);
+        setDay(String(fresh.limits.perDayUsd));
+        setMonth(String(fresh.limits.perMonthUsd));
+        setSelectedConnectionId(fresh.providerConnectionId);
+        setModelDraft(fresh.model);
+      } catch {
+        setSelectedConnectionId(ai.providerConnectionId);
+        setModelDraft(ai.model);
+      }
     } finally {
       setBusy(false);
     }

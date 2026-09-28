@@ -75,11 +75,13 @@ function patchesTo(fetchMock: ReturnType<typeof vi.fn>): unknown[][] {
 }
 
 // The panel loads the AI list and the connections list; PATCH answers come
-// from `patch` (a body) or fail with `patchError`.
+// from `patch` (a body) or fail with `patchError`. A GET for one AI answers
+// `refetched`, the server truth after a partial save.
 function mockPanelFetch(
   connections: unknown[] = [openaiConnection],
   patch: unknown = { ...ai },
   patchError?: { status: number; message: string },
+  refetched: unknown = { ...ai },
 ): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
     const target = String(url);
@@ -96,6 +98,9 @@ function mockPanelFetch(
     }
     if ((init?.method ?? 'GET') === 'DELETE') {
       return jsonResponse(204, null);
+    }
+    if (/\/ais\/[^/]+$/.test(target)) {
+      return jsonResponse(200, refetched);
     }
     return jsonResponse(200, [ai]);
   });
@@ -288,6 +293,35 @@ describe('AiPanel', () => {
     await waitFor(() =>
       expect((screen.getByLabelText('Model') as HTMLInputElement).value).toBe('gpt-4o'),
     );
+  });
+
+  it('shows the server truth after a partial save failure', async () => {
+    // The swap committed the model but the later rename failed: the server
+    // has the new model with the old name.
+    const fetchMock = mockPanelFetch(
+      [openaiConnection],
+      undefined,
+      { status: 502, message: 'The AI could not be updated' },
+      { ...ai, model: 'gpt-4o-mini' },
+    );
+
+    renderPanel();
+    const model = (await screen.findByLabelText('Model')) as HTMLInputElement;
+    fireEvent.change(model, { target: { value: 'gpt-4o-mini' } });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Dev-2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(
+      await screen.findByText(
+        "The server couldn't finish. Nothing was left half-created; try again.",
+      ),
+    ).toBeTruthy();
+    // The refetch ran and its values — not the stale snapshot — are shown.
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/ais/a-1'))).toBe(true),
+    );
+    expect((screen.getByLabelText('Model') as HTMLInputElement).value).toBe('gpt-4o-mini');
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Dev-1');
   });
 
   it('resets the model to the new provider default and sends both', async () => {
