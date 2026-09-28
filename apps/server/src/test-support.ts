@@ -46,6 +46,7 @@ export class TestMailer {
 // In-memory stand-in for the ejabberd admin API. Tests never touch the network.
 export class FakeAdminClient implements EjabberdAdminClient {
   readonly registered: string[] = [];
+  readonly unregistered: string[] = [];
   readonly roomsCreated: string[] = [];
   readonly roomOptions: Array<{ roomId: string } & CreateRoomOptions> = [];
   readonly affiliations: Array<{ roomId: string; jid: string; affiliation: RoomAffiliation }> = [];
@@ -66,6 +67,7 @@ export class FakeAdminClient implements EjabberdAdminClient {
   readonly removedRosterItems: Array<{ localpart: string; contactJid: string }> = [];
 
   failRegister = false;
+  failUnregister = false;
   failRoom = false;
   failAffiliation = false;
   failDirectInvitation = false;
@@ -82,6 +84,14 @@ export class FakeAdminClient implements EjabberdAdminClient {
 
   userExists(localpart: string): Promise<boolean> {
     return Promise.resolve(this.registered.includes(localpart));
+  }
+
+  unregisterUser(localpart: string): Promise<void> {
+    if (this.failUnregister) {
+      return Promise.reject(new Error('ejabberd is down'));
+    }
+    this.unregistered.push(localpart);
+    return Promise.resolve();
   }
 
   changePassword(): Promise<void> {

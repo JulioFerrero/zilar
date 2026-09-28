@@ -1,7 +1,7 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, count, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { ServerDatabase } from '../db/client';
-import { providerConnections } from '../db/schema';
+import { ais, providerConnections } from '../db/schema';
 import type { KeyCipher } from './crypto';
 import type { ProviderId } from './providers';
 
@@ -92,6 +92,21 @@ export async function deleteConnection(
     .where(and(eq(providerConnections.id, id), eq(providerConnections.owner, owner)))
     .returning();
   return row !== undefined;
+}
+
+// How many AIs still use a connection. The `ais.provider_connection_id` foreign
+// key is RESTRICT, so the delete route turns "in use" into a clean 409 before
+// the database can refuse the delete. The result is a bare count: the route
+// never lists the AIs.
+export async function countAisUsingConnection(
+  db: ServerDatabase,
+  connectionId: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ total: count() })
+    .from(ais)
+    .where(eq(ais.providerConnectionId, connectionId));
+  return Number(row?.total ?? 0);
 }
 
 // The seam for the LLM gateway: decrypts a stored key in memory for the one

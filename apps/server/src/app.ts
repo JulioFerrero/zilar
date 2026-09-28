@@ -4,6 +4,9 @@ import { cors } from 'hono/cors';
 import { requestId, type RequestIdVariables } from 'hono/request-id';
 import type { Logger } from 'pino';
 import { protocolVersion } from '@galena/protocol';
+import { createLitellmAdminClientFromConfig, type LitellmAdminClient } from './ai/litellm-client';
+import { createAisRoutes } from './ais/routes';
+import type { AiLogger } from './ais/service';
 import type { Auth } from './auth/auth';
 import { createAuthRoutes } from './auth/routes';
 import { createChatsRoutes } from './chats/routes';
@@ -37,6 +40,12 @@ export interface AppDependencies {
     probe?: ProviderProbe;
     logger?: ConnectionsLogger;
   };
+  /** Overrides the AI routes; tests inject a fake LiteLLM and key cipher. */
+  ais?: {
+    litellm?: LitellmAdminClient;
+    cipher?: KeyCipher;
+    logger?: AiLogger;
+  };
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -51,6 +60,7 @@ export function createApp({
   voice,
   voiceMaxBytes,
   connections,
+  ais,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
 
@@ -122,6 +132,29 @@ export function createApp({
       logger: connections?.logger ?? logger,
       ...(connectionsCipher === undefined ? {} : { cipher: connectionsCipher }),
       ...(connections?.probe === undefined ? {} : { probe: connections.probe }),
+    }),
+  );
+
+  // AIs always mount. Creating one needs both the key cipher (to seal its
+  // gateway key) and the LiteLLM admin client; when either is missing every
+  // write route answers 503 (`ais_unavailable`) rather than failing halfway.
+  // The LLM client is built from the config here, so `index.ts` needs no change.
+  const aisCipher = ais?.cipher ?? connectionsCipher;
+  const aisLitellm =
+    ais?.litellm ??
+    (config.LITELLM_MASTER_KEY === undefined
+      ? undefined
+      : createLitellmAdminClientFromConfig(config));
+  app.route(
+    '/api',
+    createAisRoutes({
+      auth,
+      db,
+      config,
+      adminClient,
+      logger: ais?.logger ?? logger,
+      ...(aisCipher === undefined ? {} : { cipher: aisCipher }),
+      ...(aisLitellm === undefined ? {} : { litellm: aisLitellm }),
     }),
   );
 

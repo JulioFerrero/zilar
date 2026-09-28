@@ -12,6 +12,7 @@ const noopMailer: Mailer = {
 
 const noopAdminClient: EjabberdAdminClient = {
   registerUser: async () => ({ created: false }),
+  unregisterUser: async () => {},
   userExists: async () => false,
   changePassword: async () => {},
   createRoom: async () => ({ created: false }),

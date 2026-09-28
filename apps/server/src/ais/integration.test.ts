@@ -1,0 +1,307 @@
+/// <reference types="node" />
+import http from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { describe, expect, it } from 'vitest';
+import { createLitellmAdminClient, DEFAULT_LITELLM_BASE_URL } from '../ai/litellm-client';
+import { createEjabberdAdminClient } from '../xmpp/admin-client';
+import type { XmppConfig } from '../xmpp/config';
+import { localpartFor } from '../xmpp/provisioning';
+import { aiLocalpart, virtualKeyAlias } from './service';
+
+/**
+ * The gated live check for the server-side AI path. It drives the real dev
+ * server (no mocks) through sign-up, then create → check XMPP account and
+ * roster → check the LiteLLM cap → patch the cap → delete, and finally checks
+ * that the XMPP account and the virtual key are gone. The provider key is
+ * made up, so no real model call is made.
+ *
+ * Required env vars:
+ *   GALENA_AIS_INTEGRATION=1                 (turns the test on)
+ *   GALENA_AIS_INTEGRATION_LOG=<file>        (server log, to read the OTP)
+ *   GALENA_AIS_INVITE_CODE=<invite>          (a fresh, unused invite code)
+ *   GALENA_AIS_TEST_EMAIL=<email>            (a brand-new test email)
+ *   EJABBERD_API_URL=<url>                   (ejabberd admin API, e.g. http://127.0.0.1:5280/api)
+ *   EJABBERD_ADMIN_JID=<jid>                 (e.g. admin@galena.localhost)
+ *   EJABBERD_ADMIN_PASSWORD=<password>
+ *   LITELLM_MASTER_KEY=<key>                 (LiteLLM admin key)
+ *
+ * Optional:
+ *   GALENA_AIS_INTEGRATION_URL (default http://127.0.0.1:3188)
+ *   XMPP_DOMAIN                (default galena.localhost)
+ *   LITELLM_BASE_URL           (default http://127.0.0.1:4000)
+ *
+ *   GALENA_AIS_INTEGRATION=1 \
+ *   GALENA_AIS_INTEGRATION_LOG=<server log file> \
+ *   GALENA_AIS_INVITE_CODE=<fresh invite> \
+ *   GALENA_AIS_TEST_EMAIL=<new test email> \
+ *   EJABBERD_API_URL=http://127.0.0.1:5280/api \
+ *   EJABBERD_ADMIN_JID=admin@galena.localhost \
+ *   EJABBERD_ADMIN_PASSWORD=<password> \
+ *   LITELLM_MASTER_KEY=<key> \
+ *   pnpm --filter @galena/server test src/ais/integration.test.ts
+ *
+ * The server's ConsoleMailer writes `[dev-mailer] OTP for <email>: <code>` to
+ * its log; the code is read from there, never from the response.
+ */
+
+const ENABLED = process.env['GALENA_AIS_INTEGRATION'] === '1';
+
+const FAKE_PROVIDER_KEY = 'sk-fake-integration-key-000000000000';
+const OTP_TIMEOUT_MS = 20_000;
+const POLL_INTERVAL_MS = 300;
+
+interface HttpResponse {
+  status: number;
+  headers: http.IncomingHttpHeaders;
+  body: unknown;
+}
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (value === undefined || value === '') {
+    throw new Error(`Set ${name} to run the AIs integration test`);
+  }
+  return value;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function request(
+  baseUrl: string,
+  path: string,
+  options: { method: string; headers: Record<string, string>; body?: unknown },
+): Promise<HttpResponse> {
+  const url = new URL(`${baseUrl}${path}`);
+  const payload = options.body === undefined ? undefined : JSON.stringify(options.body);
+  const headers: Record<string, string> = {
+    ...options.headers,
+    ...(payload === undefined ? {} : { 'content-length': String(Buffer.byteLength(payload)) }),
+  };
+
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: `${url.pathname}${url.search}`,
+        method: options.method,
+        headers,
+      },
+      (res) => {
+        let text = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk: string) => {
+          text += chunk;
+        });
+        res.on('end', () => {
+          let body: unknown = null;
+          try {
+            body = text === '' ? null : JSON.parse(text);
+          } catch {
+            body = text;
+          }
+          resolve({ status: res.statusCode ?? 0, headers: res.headers, body });
+        });
+      },
+    );
+    req.on('error', reject);
+    if (payload !== undefined) req.write(payload);
+    req.end();
+  });
+}
+
+async function fileSize(path: string): Promise<number> {
+  try {
+    return (await stat(path)).size;
+  } catch {
+    return 0;
+  }
+}
+
+async function readOtpFromLog(
+  logPath: string,
+  email: string,
+  from: number,
+): Promise<string | undefined> {
+  const pattern = new RegExp(`\\[dev-mailer\\] OTP for ${escapeRegExp(email)}: (\\d{6})`, 'g');
+  const deadline = Date.now() + OTP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const text = await readFile(logPath, 'utf8').catch(() => '');
+    const matches = [...text.slice(from).matchAll(pattern)];
+    const last = matches.at(-1);
+    if (last?.[1] !== undefined) {
+      return last[1];
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+  return undefined;
+}
+
+function bearer(token: string): Record<string, string> {
+  return { authorization: `Bearer ${token}` };
+}
+
+// A LiteLLM key as it appears in `/key/list`. The endpoint has returned bare
+// token strings in some versions and objects in others, so both are handled.
+type KeyListEntry =
+  string | { token?: string; token_id?: string; key?: string; key_alias?: string | null };
+
+function entryToken(entry: KeyListEntry): string | undefined {
+  if (typeof entry === 'string') {
+    return entry;
+  }
+  return entry.token ?? entry.token_id ?? entry.key;
+}
+
+function entryAlias(entry: KeyListEntry): string | undefined {
+  return typeof entry === 'string' ? undefined : (entry.key_alias ?? undefined);
+}
+
+// Finds the LiteLLM token id for an AI's key alias. `/key/info?key_alias=` is
+// not supported by this pinned version, so the key is located through
+// `/key/list` and then read with `/key/info?key=<token>`.
+async function findKeyToken(baseUrl: string, masterKey: string, alias: string): Promise<string> {
+  const response = await fetch(`${baseUrl}/key/list`, {
+    headers: { authorization: `Bearer ${masterKey}` },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    throw new Error(`GET /key/list failed with HTTP ${response.status}`);
+  }
+  const body = (await response.json()) as { keys?: KeyListEntry[] };
+  const match = (body.keys ?? []).find((entry) => entryAlias(entry) === alias);
+  const token = match === undefined ? undefined : entryToken(match);
+  if (token === undefined) {
+    throw new Error(`no LiteLLM key with alias "${alias}"`);
+  }
+  return token;
+}
+
+async function isKeyPresent(baseUrl: string, masterKey: string, alias: string): Promise<boolean> {
+  try {
+    await findKeyToken(baseUrl, masterKey, alias);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe.skipIf(!ENABLED)('AIs integration (real server)', () => {
+  it('create → cap → patch cap → delete, against real ejabberd and LiteLLM', async () => {
+    const baseUrl = process.env['GALENA_AIS_INTEGRATION_URL'] ?? 'http://127.0.0.1:3188';
+    const logPath = requireEnv('GALENA_AIS_INTEGRATION_LOG');
+    const invite = requireEnv('GALENA_AIS_INVITE_CODE');
+    const email = requireEnv('GALENA_AIS_TEST_EMAIL');
+    const domain = process.env['XMPP_DOMAIN'] ?? 'galena.localhost';
+    const litellmBaseUrl = (process.env['LITELLM_BASE_URL'] ?? DEFAULT_LITELLM_BASE_URL).replace(
+      /\/+$/,
+      '',
+    );
+    const masterKey = requireEnv('LITELLM_MASTER_KEY');
+
+    const xmppConfig: XmppConfig = {
+      apiUrl: requireEnv('EJABBERD_API_URL').replace(/\/+$/, ''),
+      adminJid: requireEnv('EJABBERD_ADMIN_JID'),
+      adminPassword: requireEnv('EJABBERD_ADMIN_PASSWORD'),
+      domain,
+      mucDomain: process.env['XMPP_MUC_DOMAIN'] ?? `rooms.${domain}`,
+      wsPublicUrl: '',
+      jwtSecret: '',
+    };
+    const adminClient = createEjabberdAdminClient(xmppConfig);
+    const litellm = createLitellmAdminClient({ baseUrl: litellmBaseUrl, masterKey });
+
+    // 1. Sign up through the invite, reading the OTP from the server log.
+    const before = await fileSize(logPath);
+    const sendResponse = await request(baseUrl, '/api/auth/email-otp/send-verification-otp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+      body: { email, type: 'sign-in' },
+    });
+    expect(sendResponse.status).toBe(200);
+
+    const otp = await readOtpFromLog(logPath, email, before);
+    expect(otp).toBeDefined();
+    if (otp === undefined) return;
+
+    const signInResponse = await request(baseUrl, '/api/auth/sign-in/email-otp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+      body: { email, otp },
+    });
+    expect(signInResponse.status).toBe(200);
+    const token = signInResponse.headers['set-auth-token'];
+    expect(typeof token).toBe('string');
+    if (typeof token !== 'string') return;
+    const userId = (signInResponse.body as { user: { id: string } }).user.id;
+
+    // 2. Create a connection with a made-up key.
+    const connectionResponse = await request(baseUrl, '/api/connections', {
+      method: 'POST',
+      headers: { ...bearer(token), 'content-type': 'application/json' },
+      body: { provider: 'openai', key: FAKE_PROVIDER_KEY, label: 'AIs integration' },
+    });
+    expect(connectionResponse.status).toBe(201);
+    const connectionId = (connectionResponse.body as { id: string }).id;
+
+    // 3. Create an AI with a 3 USD monthly cap.
+    const createResponse = await request(baseUrl, '/api/ais', {
+      method: 'POST',
+      headers: { ...bearer(token), 'content-type': 'application/json' },
+      body: {
+        name: 'Integration AI',
+        template: 'dev',
+        providerConnectionId: connectionId,
+        model: 'gpt-4o-mini',
+        limits: { perDayUsd: 1, perMonthUsd: 3 },
+      },
+    });
+    expect(createResponse.status).toBe(201);
+    const created = createResponse.body as { id: string; jid: string };
+    expect(created.jid).toBe(`${aiLocalpart(created.id)}@${domain}`);
+    expect(JSON.stringify(createResponse.body)).not.toContain('sk-');
+
+    // 4. The XMPP account exists and is in the owner's roster.
+    expect(await adminClient.userExists(aiLocalpart(created.id))).toBe(true);
+    const roster = await adminClient.getRoster(localpartFor(userId));
+    expect(roster).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ jid: created.jid, nick: 'Integration AI', subscription: 'both' }),
+      ]),
+    );
+
+    // 5. The gateway key is capped at perMonthUsd.
+    const alias = virtualKeyAlias(created.id);
+    const keyToken = await findKeyToken(litellmBaseUrl, masterKey, alias);
+    const info = await litellm.getKeyInfo(keyToken);
+    expect(info.maxBudget).toBe(3);
+
+    // 6. Patching the limit updates the cap in the gateway.
+    const patchResponse = await request(baseUrl, `/api/ais/${created.id}`, {
+      method: 'PATCH',
+      headers: { ...bearer(token), 'content-type': 'application/json' },
+      body: { limits: { perDayUsd: 1, perMonthUsd: 7 } },
+    });
+    expect(patchResponse.status).toBe(200);
+    const patchedInfo = await litellm.getKeyInfo(keyToken);
+    expect(patchedInfo.maxBudget).toBe(7);
+
+    // 7. Delete: the account and the key are gone.
+    const deleteResponse = await request(baseUrl, `/api/ais/${created.id}`, {
+      method: 'DELETE',
+      headers: bearer(token),
+    });
+    expect(deleteResponse.status).toBe(204);
+    expect(await adminClient.userExists(aiLocalpart(created.id))).toBe(false);
+    expect(await isKeyPresent(litellmBaseUrl, masterKey, alias)).toBe(false);
+
+    // 8. Clean up the connection we created.
+    const removeConnection = await request(baseUrl, `/api/connections/${connectionId}`, {
+      method: 'DELETE',
+      headers: bearer(token),
+    });
+    expect(removeConnection.status).toBe(204);
+  });
+});

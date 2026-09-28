@@ -8,6 +8,7 @@ import type { KeyCipher } from './crypto';
 import { redactKey, createProviderProbe, type ProviderProbe } from './probe';
 import { ProviderIdSchema, type ProviderId } from './providers';
 import {
+  countAisUsingConnection,
   createConnection as createConnectionRow,
   deleteConnection as deleteConnectionRow,
   findOwnedConnection,
@@ -126,7 +127,19 @@ export function createConnectionsRoutes({
   routes.delete('/connections/:id', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
     requireCipher();
-    const deleted = await deleteConnectionRow(db, c.req.param('id'), user.id);
+    const connection = await findOwnedConnection(db, c.req.param('id'), user.id);
+    if (!connection) {
+      throw new HttpError(404, 'not_found', 'Connection not found');
+    }
+    const inUse = await countAisUsingConnection(db, connection.id);
+    if (inUse > 0) {
+      throw new HttpError(
+        409,
+        'connection_in_use',
+        `This connection is used by ${inUse} AI${inUse === 1 ? '' : 's'}`,
+      );
+    }
+    const deleted = await deleteConnectionRow(db, connection.id, user.id);
     if (!deleted) {
       throw new HttpError(404, 'not_found', 'Connection not found');
     }

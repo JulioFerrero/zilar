@@ -1,7 +1,7 @@
 ---
 id: T-0030
 title: M2 — AIs on the server: profiles, their own XMPP account, a capped LiteLLM virtual key
-status: todo
+status: review
 milestone: M2
 branch: task/T-0030-ais-server
 model: opencode-go/deepseek-v4.1-flash
@@ -186,19 +186,144 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+Built the server-side AI module behind `/api/ais` (M2), following the spec.
+
+**Storage** (`apps/server/src/db/schema.ts`, migration `0005_clean_frightful_four.sql`):
+- `ais` with exactly the spec's columns (`id`, `owner`, `name`, `template`
+  dev|marketing|fun|custom, `persona`, `provider_connection_id` FK RESTRICT,
+  `model`, `localpart` unique, `jid` unique, `status` active|disabled,
+  `created_at`, `updated_at`) plus an `ais_owner_idx` index for the list query.
+- `ai_limits` (`ai_id` PK cascade, `per_day_usd`, `per_month_usd` numeric(12,2),
+  `updated_at`).
+- `llm_virtual_keys` (`ai_id` PK cascade, `litellm_key_id`, `encrypted_key`,
+  `budget_usd`, `budget_duration`, `created_at`).
+
+**Routes** (`apps/server/src/ais/routes.ts`), all `requireSession` and
+owner-only:
+- `GET /api/ais`, `GET /api/ais/:id`, `POST /api/ais`, `PATCH /api/ais/:id`,
+  `DELETE /api/ais/:id`.
+- Create/patch bodies are zod `.strict()`; unknown fields are 400. Limits must
+  be positive, `perDayUsd <= perMonthUsd`, and `perMonthUsd <= MAX_MONTHLY_USD`
+  (a server constant, 200, with a comment). A `custom` AI without a persona is
+  400.
+- The public shape is exactly `{ id, name, template, persona, model, jid,
+  status, providerConnectionId, limits: { perDayUsd, perMonthUsd }, createdAt }`.
+  The virtual key string, its LiteLLM id, and the connection's key are never
+  returned; the tests search every body for them.
+- Missing/foreign id -> the same 404. The connection must be the caller's,
+  `active` and not `github`, else 400 (`invalid_connection` /
+  `connection_inactive` / `connection_not_llm`).
+
+**XMPP identity** (`apps/server/src/ais/service.ts`): localpart `ai-` + the
+existing id-derived suffix. On create the owner's account is ensured, the AI is
+registered, and two roster items are written (subscription `both`, group
+`Galena`): the AI in the owner's roster under the AI's name, the owner in the
+AI's roster. On rename the owner's roster nickname is updated. `unregisterUser`
+(ejabberd `unregister`) was added to the admin client.
+
+**Capped virtual key**: `generateKey` with `max_budget = perMonthUsd`,
+`budget_duration = '30d'`, `models = [model]`, alias `galena-ai-<id>` and
+metadata `{ ai_id }`. The key id and the key string sealed with the T-0028
+`KeyCipher` are stored; the plaintext exists only in memory. `PATCH limits`
+calls `updateKey` with the new monthly budget first, then updates the rows.
+`per_day_usd` is stored for the later daily ledger and is explicitly not
+enforced by LiteLLM (comment in `service.ts`).
+
+**All-or-nothing** create: rows are inserted `disabled`, then XMPP register ->
+roster -> virtual key -> `status = 'active'`. Any external failure compensates
+(revoke key, delete both roster items, unregister, delete rows) and answers 502
+`ai_provisioning_failed`; a compensation failure is logged and never masks the
+original. `DELETE` does the reverse teardown (revoke -> roster -> unregister ->
+rows); if the gateway or ejabberd is down it answers 502 and keeps the AI.
+
+**Connections**: `DELETE /api/connections/:id` now returns 409
+`connection_in_use` with the bare count before the RESTRICT FK can fire.
 
 ### Files changed
--
+
+- `apps/server/src/ais/templates.ts` (new) — template enum + default personas.
+- `apps/server/src/ais/service.ts` (new) — storage, XMPP, gateway, rollback.
+- `apps/server/src/ais/routes.ts` (new) — `/api/ais` routes.
+- `apps/server/src/ais/routes.test.ts` (new, 14 tests).
+- `apps/server/src/ais/integration.test.ts` (new, gated by
+  `GALENA_AIS_INTEGRATION=1`; not run).
+- `apps/server/src/db/schema.ts` — `ais`, `ai_limits`, `llm_virtual_keys`.
+- `apps/server/drizzle/0005_clean_frightful_four.sql`,
+  `drizzle/meta/0005_snapshot.json`, `drizzle/meta/_journal.json` — generated.
+- `apps/server/src/app.ts` — mount the routes, build the gateway client from
+  the config, inject test doubles through `AppDependencies.ais`.
+- `apps/server/src/xmpp/admin-client.ts` — add `unregisterUser`.
+- `apps/server/src/xmpp/admin-client.test.ts` — `unregisterUser` test.
+- `apps/server/src/connections/service.ts` — `countAisUsingConnection`.
+- `apps/server/src/connections/routes.ts` — 409 on an in-use connection.
+- `apps/server/src/connections/routes.test.ts` — 409 test.
+- `work/T-0030-ais-server.md` — this Report.
+
+**Two files outside "Allowed files"** (see problems below; both are needed by
+the allowed change and are mechanical):
+- `apps/server/src/test-support.ts` — added `unregisterUser` + its call log to
+  `FakeAdminClient`, which `implements EjabberdAdminClient`.
+- `apps/server/src/auth/cli-config.ts` — added a `unregisterUser` noop to the
+  `noopAdminClient` stub, which is typed `EjabberdAdminClient`.
+
+No changes under `apps/web/**`, `apps/mobile/**`, `packages/**`, `infra/**`,
+`docs/**` or `apps/server/src/ai/**`.
 
 ### Commands run and real results
-- `pnpm test`:
+
+- `pnpm install`: done, no lockfile change.
+- `pnpm format:check`: `All matched files use Prettier code style!`
+- `pnpm lint`: `Found 0 warnings and 0 errors.` (308 files, 127 rules).
+- `pnpm typecheck`: `Tasks: 8 successful, 8 total`.
+- `pnpm exec turbo test --force`: `Tasks: 8 successful, 8 total` (uncached).
+  `@galena/server`: 27 files passed, 4 skipped; **251 passed, 5 skipped**.
+  This includes the new `src/ais/routes.test.ts` (14), the new admin-client
+  `unregisterUser` test, and the new connections 409 test. `src/ais/integration.test.ts`
+  is among the skipped files (gate not set).
+- `pnpm build`: `Tasks: 2 successful, 2 total`.
+- Integration test: **not run** (the spec says the lead runs it after review).
 
 ### Problems, deviations from the spec, open questions
--
+
+1. **Two files outside "Allowed files" had to change, and neither is listed.**
+   Adding a required `unregisterUser` to the `EjabberdAdminClient` type breaks
+   every implementer that TypeScript checks, which includes the shared test fake
+   (`test-support.ts`) and the CLI noop stub (`auth/cli-config.ts`). Without
+   those two mechanical edits the whole repo fails `typecheck`. They are one
+   method each, no behaviour change for existing tests. I judged this the
+   intended, unavoidable consequence of the allowed admin-client edit rather
+   than a reason to block; the lead can move them if preferred.
+2. **Error codes.** The spec names only `ai_provisioning_failed` (create). For
+   patch and delete failures I used `ai_update_failed` and `ai_teardown_failed`
+   (both 502) so the client can tell them apart. Easy to rename.
+3. **`PATCH` ordering.** External steps run before the DB write (roster rename,
+   then `updateKey`, then rows), so a gateway/ejabberd failure leaves the stored
+   AI unchanged. If a patch carries both a rename and a limit and `updateKey`
+   fails after the roster rename succeeded, the roster nickname is briefly ahead
+   of the DB; a retry fixes it. The spec did not define patch failure semantics;
+   the delete/create rules are strict as specified.
+4. **Redirect/redaction.** I did not call `redactSecrets` directly in the AIs
+   module: the LiteLLM admin client already redacts the token id/`sk-` tokens on
+   `updateKey`/`revokeKey` (it is passed the secret), `generateKey` errors cannot
+   contain the not-yet-issued key, and every route failure message is a fixed
+   string. Tests assert no response or log carries the fake virtual key, its id
+   or the provider key. If the lead wants an explicit call in `service.ts` too,
+   it is a small addition.
+5. **`GET /api/ais/:id`** and the list need no gateway/cipher and still work
+   when they are unconfigured; only writes answer 503 `ais_unavailable`. The
+   spec did not say what to do without a configured gateway.
+6. **The integration test** uses `/key/list` to find the key by its alias and
+   then `/key/info?key=<token>` (the T-0007 decision note records that
+   `/key/info?key_alias=` returns 404 in this pinned version). If that pinned
+   `/key/list` response shape differs, the lead will see it on the first live
+   run; the env vars it needs are listed at the top of the file.
+7. `numeric(12,2)` money is stored as a string by Drizzle; the service converts
+   with `Number()` and `toFixed(2)`.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+
+- (none — status is review)
 
 ---
 

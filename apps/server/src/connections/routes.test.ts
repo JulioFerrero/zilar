@@ -1,7 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
-import { providerConnections } from '../db/schema';
-import { bootstrapUser, createTestContext, TEST_BASE_URL, type TestContext } from '../test-support';
+import { ais, providerConnections } from '../db/schema';
+import {
+  bootstrapUser,
+  createTestContext,
+  TEST_BASE_URL,
+  TEST_XMPP_DOMAIN,
+  type TestContext,
+} from '../test-support';
 import { createKeyCipher } from './crypto';
 import type { ProbeOutcome, ProviderProbe } from './probe';
 import type { ProviderId } from './providers';
@@ -298,6 +305,44 @@ describe('connections routes', () => {
       headers: { cookie: user.cookie },
     });
     expect(await list.json()).toEqual([]);
+  });
+
+  it('refuses to delete a connection an AI uses, returning a bare count', async () => {
+    const app = mount(new FakeProbe());
+    const user = await bootstrapUser(context, app, `inuse${testCounter}@example.com`);
+
+    const created = await createFor(app, user.cookie);
+    const id = ((await created.json()) as { id: string }).id;
+
+    const aiId = randomUUID();
+    await context.db.insert(ais).values({
+      id: aiId,
+      owner: user.id,
+      name: 'Dev-1',
+      template: 'dev',
+      persona: 'Concise.',
+      providerConnectionId: id,
+      model: 'gpt-4o-mini',
+      localpart: `ai-${aiId}`,
+      jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
+      status: 'active',
+    });
+
+    const remove = await app.request(`${TEST_BASE_URL}/api/connections/${id}`, {
+      method: 'DELETE',
+      headers: { cookie: user.cookie },
+    });
+    expect(remove.status).toBe(409);
+    const body = (await remove.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('connection_in_use');
+    expect(body.error.message).toContain('1');
+    expect(JSON.stringify(body)).not.toContain('Dev-1');
+
+    // The connection is still there.
+    const list = await app.request(`${TEST_BASE_URL}/api/connections`, {
+      headers: { cookie: user.cookie },
+    });
+    expect((await list.json()) as unknown[]).toHaveLength(1);
   });
 
   it('trims whitespace from a pasted key', async () => {
