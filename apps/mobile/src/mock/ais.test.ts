@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { aisMockScenario, createMockAisApi, mockAis } from './ais';
+import { aisMockScenario, createMockAisApi, mockAis, resetAisMock } from './ais';
+
+// Every case starts from a clean mock: the module keeps one mutable list per
+// scenario, so without this the tests depend on their run order.
+beforeEach(() => {
+  resetAisMock();
+});
 
 describe('aisMockScenario', () => {
   it('returns null without a mock request', () => {
@@ -24,8 +30,19 @@ describe('aisMockScenario', () => {
     ).toBe('error');
   });
 
-  it('falls back to default for an unknown scenario', () => {
-    expect(aisMockScenario({}, { mock: 'nonsense' })).toBe('default');
+  it('returns null for an unknown value instead of mocking', () => {
+    expect(aisMockScenario({}, { mock: 'nonsense' })).toBeNull();
+    expect(aisMockScenario({}, { mock: 'foo' })).toBeNull();
+    expect(aisMockScenario({ EXPO_PUBLIC_GALENA_MOCK: 'false' }, {})).toBeNull();
+  });
+
+  it('still runs the default scenario when MOCK=1 has an unknown narrowing', () => {
+    expect(
+      aisMockScenario(
+        { EXPO_PUBLIC_GALENA_MOCK: '1', EXPO_PUBLIC_GALENA_MOCK_SCENARIO: 'nonsense' },
+        {},
+      ),
+    ).toBe('default');
   });
 });
 

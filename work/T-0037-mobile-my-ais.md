@@ -293,4 +293,65 @@ shows a plain message, not a crash; the list scrolls when it grows.
 
 Nothing blocked.
 
+## Round 2
+
+Three fixes requested; two needed code, one was already in place. No new
+screenshots.
+
+**1. Mock test isolation (should-fix).** `apps/mobile/src/mock/ais.ts` now
+exports `resetAisMock()` (clears the per-scenario `states` map and resets the id
+`sequence`), and `apps/mobile/src/mock/ais.test.ts` calls it in a top-level
+`beforeEach`, so no case depends on the order the others ran in.
+
+Proof (real results):
+- `pnpm --filter @galena/mobile exec vitest run src/mock/ais.test.ts -t "keeps each scenario"`
+  → **1 passed | 11 skipped (12)**, exit 0. It passes on its own.
+- `pnpm --filter @galena/mobile exec vitest run src/mock/ais.test.ts --sequence.shuffle`
+  → **12 passed (12)**; ran 4 times with seeds `1790607419899`, `1790607426940`,
+  `1790607428313`, `1790607429707`, all 12/12.
+
+**2. Model `maxLength` (nit) — already present.** `model-picker.tsx:34` already
+has `maxLength={256}` at HEAD `057fa2f`, matching the server's
+`model: z.string().trim().min(1).max(256)` (`apps/server/src/ais/routes.ts:57`).
+Adding it again would duplicate the JSX attribute, so I left it. Verified with
+`git show HEAD:apps/mobile/src/components/ais/model-picker.tsx | grep maxLength`
+→ `34: maxLength={256}`. (The pre-review finding looks like it was based on an
+earlier revision.)
+
+**3. Unknown mock value (nit).** `aisMockScenario` now returns
+`normalizeScenario(requested)` instead of `normalizeScenario(requested) ?? 'default'`,
+so an unrecognized value means the real API. The `EXPO_PUBLIC_GALENA_MOCK=1`
+narrowing by `EXPO_PUBLIC_GALENA_MOCK_SCENARIO` still falls back to the default
+scenario (comment added), since `1` explicitly asks for mock mode. Tests:
+`?mock=nonsense`, `?mock=foo` and `EXPO_PUBLIC_GALENA_MOCK=false` all → `null`;
+`MOCK=1` + unknown `MOCK_SCENARIO` → `'default'`.
+
+### Checks (Round 2, real results)
+
+- `pnpm install` — "Already up to date", 0.8s.
+- `pnpm format:check` — **FAILS, but only on the untracked `PREREVIEW.md`** (the
+  lead's pre-review file, which I was told not to commit or delete). Prettier
+  wants its fenced code blocks de-indented; the repo `.prettierignore` covers
+  `work/` and `docs/` but not the root. `pnpm exec prettier --check
+  apps/mobile/src/mock/ais.ts apps/mobile/src/mock/ais.test.ts` → "All matched
+  files use Prettier code style!" Remove or ignore `PREREVIEW.md` and the check
+  is green. I did not touch that file.
+- `pnpm lint` — clean (oxlint, no output).
+- `pnpm typecheck` — 9 tasks successful (8 cached).
+- `pnpm exec turbo test --force --filter=@galena/mobile` — **19 files passed,
+  160 tests passed, 2 skipped (162)**: one more test than round 1 (the mock
+  isolation/scenario cases).
+- `pnpm build` — 2 tasks successful; iOS/Android bundles exported.
+
+### Files changed (Round 2)
+
+- `apps/mobile/src/mock/ais.ts` — `resetAisMock()`, unknown-value → `null`.
+- `apps/mobile/src/mock/ais.test.ts` — `beforeEach(resetAisMock)`, updated and
+  added scenario cases.
+- `work/T-0037-mobile-my-ais.md` — this section.
+
+No `apps/web/**`, `apps/server/**`, `packages/**`, `docs/**`, other mobile file
+or screenshot changed. `PREREVIEW.md` was read only: not staged, not committed,
+not modified.
+
 ## Review (written by Claude)

@@ -85,6 +85,8 @@ export const mockAis: readonly PublicAi[] = [
  * Which mock scenario a session asked for, or null for the real API.
  * A `?mock=<scenario>` param wins over `EXPO_PUBLIC_GALENA_MOCK`; `1` means the
  * default scenario and can be narrowed by `EXPO_PUBLIC_GALENA_MOCK_SCENARIO`.
+ * Any other unrecognized value means the real API: a stray `?mock=` (or
+ * `EXPO_PUBLIC_GALENA_MOCK=false`) must never silently serve fake data.
  */
 export function aisMockScenario(
   env: Record<string, string | undefined>,
@@ -97,9 +99,11 @@ export function aisMockScenario(
     return null;
   }
   if (requested === '1') {
+    // `1` explicitly asks for mock mode, so an unrecognized narrowing still
+    // runs the default scenario instead of the real API.
     return normalizeScenario(env['EXPO_PUBLIC_GALENA_MOCK_SCENARIO']) ?? 'default';
   }
-  return normalizeScenario(requested) ?? 'default';
+  return normalizeScenario(requested);
 }
 
 function normalizeScenario(value: string | undefined): AisMockScenario | null {
@@ -139,6 +143,15 @@ function stateFor(scenario: AisMockScenario): PublicAi[] {
 }
 
 let sequence = 0;
+
+/**
+ * Clears the per-scenario state and the id sequence. Tests call this between
+ * cases so they do not depend on the order they run in.
+ */
+export function resetAisMock(): void {
+  states.clear();
+  sequence = 0;
+}
 
 /** An `AisApi` backed by the mock data, for offline UI work and screenshots. */
 export function createMockAisApi(scenario: AisMockScenario = 'default'): AisApi {
