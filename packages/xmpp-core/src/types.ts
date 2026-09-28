@@ -11,6 +11,11 @@ export interface XmppCoreOptions {
   domain: string;
   /** Called for every (re)connect; must return a fresh short-lived JWT. */
   getToken: () => Promise<{ jid: string; token: string }>;
+  /**
+   * Fixed XMPP resource, e.g. `gateway`. When absent, a random
+   * `galena-xxxxxxxx` resource is used, as before.
+   */
+  resource?: string;
 }
 
 export interface ChatMessage {
@@ -182,4 +187,10 @@ export interface XmppCore {
   on(event: 'invited', cb: (e: InvitedEvent) => void): () => void;
   on(event: 'roster', cb: (e: RosterEvent) => void): () => void;
   on(event: 'error', cb: (e: { message: string }) => void): () => void;
+  /**
+   * Another session logged in with the same full JID and replaced this one
+   * (the `conflict` stream error). The client is already stopped with no
+   * auto-reconnect when this fires.
+   */
+  on(event: 'replaced', cb: () => void): () => void;
 }

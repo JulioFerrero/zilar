@@ -83,6 +83,7 @@ type EventPayload = {
   invited: InvitedEvent;
   roster: RosterEvent;
   error: ErrorEvent;
+  replaced: void;
 };
 type EventName = keyof EventPayload;
 type StoredListener = (payload: never) => void;
@@ -135,6 +136,24 @@ function errorMessage(error: unknown): string {
 
 function isSaslError(error: unknown): boolean {
   return error instanceof Error && error.name === 'SASLError';
+}
+
+// A `conflict` stream error: another session logged in with the same full
+// JID and the server replaced this one. @xmpp/client reports it through the
+// `error` event as a StreamError whose `condition` is the stanza condition
+// name (`conflict - <text>` in the message).
+function isConflictError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const condition = (error as { condition?: unknown }).condition;
+  if (condition === 'conflict') {
+    return true;
+  }
+  return (
+    error.name === 'StreamError' &&
+    (error.message === 'conflict' || error.message.startsWith('conflict - '))
+  );
 }
 
 function redact(text: string, secret: string): string {
@@ -389,6 +408,15 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
 
     current.on('error', (error) => {
       emitError(errorMessage(error));
+      if (isConflictError(error)) {
+        // Replaced by another session with the same full JID: stop for good
+        // with no auto-reconnect, so two clients never kick each other in a
+        // loop. A later explicit `connect()` still works.
+        finishConnect(error);
+        void stopAfterFailure();
+        emitEvent('replaced', undefined);
+        return;
+      }
       if (authFailed || isSaslError(error)) {
         authFailed = false;
         finishConnect(error);
@@ -407,7 +435,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       service: options.service,
       domain: options.domain,
       credentials,
-      resource: defaultResource(),
+      resource: options.resource ?? defaultResource(),
     });
     attachHandlers(created);
     installStreamManagementAck(created);

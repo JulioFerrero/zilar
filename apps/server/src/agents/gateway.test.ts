@@ -23,7 +23,12 @@ import { aiLimits, ais, llmVirtualKeys, providerConnections, user } from '../db/
 import { createTestContext, TEST_XMPP_DOMAIN, type TestContext } from '../test-support';
 import { localpartFor } from '../xmpp/provisioning';
 import { aiLocalpart, createAi, deleteAi, onAiLifecycle, type AiServiceDeps } from '../ais/service';
-import { createAgentGateway, type AgentGateway, type AgentGatewayDeps } from './gateway';
+import {
+  createAgentGateway,
+  GATEWAY_RESOURCE,
+  type AgentGateway,
+  type AgentGatewayDeps,
+} from './gateway';
 import { createDraftHub, type DraftHub } from '../drafts/hub';
 import type { DraftHubEvent } from '../drafts/events';
 import {
@@ -56,6 +61,7 @@ class FakeCore implements XmppCore {
   failHistory = false;
   sent: Array<{ to: string; kind: ChatKind; text: string }> = [];
   typing: Array<{ to: string; kind: ChatKind; state: 'composing' | 'paused' }> = [];
+  displayed: Array<{ chatJid: string; kind: ChatKind; messageId: string }> = [];
   /** What MAM returns: every incoming message, archived on receipt. */
   archive: ChatMessage[] = [];
   private statusValue: ConnectionStatus = 'offline';
@@ -132,8 +138,8 @@ class FakeCore implements XmppCore {
     this.typing.push({ to, kind, state });
   }
 
-  markDisplayed(): void {
-    // Read receipts are out of scope for v0.
+  markDisplayed(chatJid: string, kind: ChatKind, messageId: string): void {
+    this.displayed.push({ chatJid, kind, messageId });
   }
 
   // Contextual typing by the overloaded `XmppCore['on']` gives the arrow
@@ -156,6 +162,10 @@ class FakeCore implements XmppCore {
   receive(message: ChatMessage): void {
     this.archive.push(message);
     this.emit('message', message);
+  }
+
+  emitReplaced(): void {
+    this.emit('replaced', undefined);
   }
 
   private emit(event: string, payload: unknown): void {
@@ -812,6 +822,175 @@ describe('agent gateway', () => {
       await waitFor(() => core.sent.length === 2);
       expect(core.sent.map((message) => message.text)).toEqual(['reply one', 'reply two']);
       expect(calls).toHaveLength(2);
+    });
+  });
+
+  describe('fixed resource and replaced', () => {
+    it('connects every AI with the fixed gateway resource', async () => {
+      expect(GATEWAY_RESOURCE).toBe('gateway');
+      await seedAi(context);
+      await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = completionFetch();
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+
+      await started.start();
+
+      expect(cores).toHaveLength(2);
+      for (const core of cores) {
+        expect(core.options.resource).toBe('gateway');
+      }
+    });
+
+    it('stands down on replaced and never reconnects that AI', async () => {
+      const first = await seedAi(context);
+      const second = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = completionFetch();
+      const { gateway: started, logger } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const firstCore = await coreFor(cores, first.aiJid);
+      const secondCore = await coreFor(cores, second.aiJid);
+
+      firstCore.emitReplaced();
+      await waitFor(() => started.size() === 1);
+
+      expect(started.aiIds()).toEqual([second.aiId]);
+      expect(firstCore.disconnects).toBe(1);
+      const standingDown = logger.calls.filter(
+        (call) => call.message === 'AI session replaced by another gateway; standing down',
+      );
+      expect(standingDown).toHaveLength(1);
+      expect(standingDown[0]?.level).toBe('warn');
+      // Only the AI id is logged: no tokens, JIDs, or message bodies.
+      expect(standingDown[0]?.fields).toEqual({ aiId: first.aiId });
+
+      // A later reconcile never reconnects the superseded AI...
+      const connectsBefore = firstCore.connects;
+      const coresBefore = cores.length;
+      await started.reconcile();
+      await tick(50);
+      expect(firstCore.connects).toBe(connectsBefore);
+      expect(cores).toHaveLength(coresBefore);
+      expect(started.size()).toBe(1);
+
+      // ...while the other AI keeps working.
+      secondCore.receive(incoming(second.aiJid, second.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+      expect(secondCore.sent).toEqual([{ to: second.ownerJid, kind: 'chat', text: 'AI says hi' }]);
+    });
+
+    it('clears the superseded set on restart', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = completionFetch();
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      core.emitReplaced();
+      await waitFor(() => started.size() === 0);
+
+      await started.stop();
+      await started.start();
+
+      expect(started.size()).toBe(1);
+      expect(cores).toHaveLength(2);
+    });
+  });
+
+  describe('read markers', () => {
+    it('sends one displayed marker per turn, for the last owner message', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = completionFetch();
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'first'));
+      await waitFor(() => core.sent.length === 1);
+      expect(core.displayed).toEqual([
+        { chatJid: seeded.ownerJid, kind: 'chat', messageId: 'm-1' },
+      ]);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'second'));
+      await waitFor(() => core.sent.length === 2);
+      expect(core.displayed).toEqual([
+        { chatJid: seeded.ownerJid, kind: 'chat', messageId: 'm-1' },
+        { chatJid: seeded.ownerJid, kind: 'chat', messageId: 'm-2' },
+      ]);
+    });
+
+    it('marks the last owner message of a coalesced batch', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const calls: Call[] = [];
+      const resolvers: Array<(response: Response) => void> = [];
+      const fetchImpl: FetchLike = (url, init) => {
+        calls.push({ url, init });
+        return new Promise<Response>((resolve) => {
+          resolvers.push(resolve);
+        });
+      };
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'first'));
+      await waitFor(() => calls.length === 1);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'second'));
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-3', 'third'));
+      resolvers[0]!(completionResponse('reply one'));
+      await waitFor(() => calls.length === 2);
+      resolvers[1]!(completionResponse('reply two'));
+      await waitFor(() => core.sent.length === 2);
+
+      expect(core.displayed).toEqual([
+        { chatJid: seeded.ownerJid, kind: 'chat', messageId: 'm-1' },
+        { chatJid: seeded.ownerJid, kind: 'chat', messageId: 'm-3' },
+      ]);
+    });
+
+    it('marks nothing for strangers and other AIs', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = completionFetch();
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, `stranger@${TEST_XMPP_DOMAIN}`, 'm-9', 'hey'));
+      core.receive(incoming(seeded.aiJid, `ai-other@${TEST_XMPP_DOMAIN}`, 'm-10', 'bot loop'));
+      await tick(150);
+
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+      expect(core.displayed).toHaveLength(0);
+    });
+
+    it('sends the marker before the reply', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = completionFetch();
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      const order: string[] = [];
+      const mark = core.markDisplayed.bind(core);
+      core.markDisplayed = (chatJid, kind, messageId) => {
+        order.push(`mark:${messageId}`);
+        mark(chatJid, kind, messageId);
+      };
+      const send = core.sendMessage.bind(core);
+      core.sendMessage = async (to, kind, text) => {
+        order.push(`send:${text}`);
+        return send(to, kind, text);
+      };
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => core.sent.length === 1);
+
+      expect(order).toEqual(['mark:m-1', 'send:AI says hi']);
     });
   });
 

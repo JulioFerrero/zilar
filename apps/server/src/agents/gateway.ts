@@ -80,6 +80,11 @@ export const RETRY_MAX_DELAY_MS = 60_000;
 // (re)connect, so no connection ever runs on a stale token.
 const XMPP_TOKEN_TTL_SECONDS = 300;
 
+// Every gateway logs each AI in with the same fixed resource, so ejabberd
+// replaces the old session when a new gateway logs in. The replaced gateway
+// stands down (see the `replaced` handler): the newest gateway wins.
+export const GATEWAY_RESOURCE = 'gateway';
+
 interface PendingMessage {
   id: string;
   body: string;
@@ -167,6 +172,10 @@ export function createAgentGateway(
   const baseUrl = deps.litellmBaseUrl ?? DEFAULT_LITELLM_BASE_URL;
   const draftHub = deps.drafts?.hub ?? sharedDraftHub;
   const sessions = new Map<string, AiSession>();
+  // AIs another gateway replaced while this process runs. `reconcile` and
+  // retries never reconnect them again until the gateway restarts. In memory
+  // only, keyed by the gateway's own AI ids.
+  const superseded = new Set<string>();
 
   let started = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -241,7 +250,7 @@ export function createAgentGateway(
   }
 
   async function connectAi(record: ActiveAiForGateway): Promise<void> {
-    if (!started || sessions.has(record.id)) {
+    if (!started || sessions.has(record.id) || superseded.has(record.id)) {
       return;
     }
     const aiId = record.id;
@@ -251,6 +260,7 @@ export function createAgentGateway(
       core = createCore({
         service: deps.xmpp.wsPublicUrl,
         domain: deps.xmpp.domain,
+        resource: GATEWAY_RESOURCE,
         getToken: async () => {
           const issued = await issueXmppToken(deps.xmpp, aiJid, XMPP_TOKEN_TTL_SECONDS);
           return { jid: aiJid, token: issued.token };
@@ -279,6 +289,9 @@ export function createAgentGateway(
     session.unsubs.push(
       core.on('message', (message) => {
         handleIncoming(session, message);
+      }),
+      core.on('replaced', () => {
+        handleReplaced(session);
       }),
       core.on('status', (status) => {
         // Tokens never appear here: only the AI id is logged.
@@ -335,6 +348,22 @@ export function createAgentGateway(
       logger.warn({ err: toRedactedError(error, secretsFor()), aiId }, 'AI disconnect failed');
     }
     logger.info({ aiId }, 'AI is offline');
+  }
+
+  // Another gateway logged this AI in with the same resource and ejabberd
+  // replaced this session: the newest gateway wins, so this process stands
+  // down for the AI and never reconnects it until a restart. Pending
+  // messages are dropped and no new turns start; a turn already in flight
+  // may finish, but its final send fails quietly once torn down.
+  function handleReplaced(session: AiSession): void {
+    if (sessions.get(session.aiId) !== session) {
+      return;
+    }
+    superseded.add(session.aiId);
+    // The AI id only: never tokens, JIDs with tokens, or message bodies.
+    logger.warn({ aiId: session.aiId }, 'AI session replaced by another gateway; standing down');
+    session.pending.length = 0;
+    void disconnectAi(session.aiId).catch(() => undefined);
   }
 
   async function reconcile(): Promise<void> {
@@ -440,6 +469,14 @@ export function createAgentGateway(
       return;
     }
     const trigger = ownerMessages[ownerMessages.length - 1] as PendingMessage;
+
+    // The owner's ticks turn to read: one XEP-0333 displayed marker per turn
+    // for the last owner message of the batch. `trigger.id` is the incoming
+    // `ChatMessage.id`, the same id the owner's client stores and matches
+    // received markers against (the archive stanza-id when known, else the
+    // stanza id). Only owner messages are ever marked: strangers and other
+    // AIs returned above, before this point.
+    session.core.markDisplayed(ownerJid, 'chat', trigger.id);
 
     // Each turn streams its drafts to the owner under one turn id. The
     // publisher throttles (150 ms); the complete reply is flushed as a draft
@@ -568,6 +605,7 @@ export function createAgentGateway(
       return;
     }
     started = true;
+    superseded.clear();
     await reconcile();
     unsubscribe = onAiLifecycle((event) => {
       if (!started) {
@@ -604,6 +642,7 @@ export function createAgentGateway(
 
   async function stop(): Promise<void> {
     started = false;
+    superseded.clear();
     if (timer !== undefined) {
       clearInterval(timer);
       timer = undefined;
