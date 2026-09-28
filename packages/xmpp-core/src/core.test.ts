@@ -938,3 +938,112 @@ describe('createXmppCore: invitations and roster pushes', () => {
     expect(reply?.getChild('error')?.getChild('forbidden', STANZA_NAMESPACE)).toBeDefined();
   });
 });
+
+describe('createXmppCore: fixed resource and replaced', () => {
+  // A stream error the way @xmpp/client reports it: a StreamError whose
+  // `condition` is the stanza condition name.
+  function streamError(condition: string, text = ''): Error {
+    const error = new Error(text === '' ? condition : `${condition} - ${text}`);
+    error.name = 'StreamError';
+    Object.assign(error, { condition });
+    return error;
+  }
+
+  it('passes the configured resource to the client factory', async () => {
+    const fake = createFakeClient();
+    let captured: ClientOptions | undefined;
+    const core = createCore(
+      {
+        ...options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+        resource: 'gateway',
+      },
+      {
+        createClient: (clientOptions) => {
+          captured = clientOptions;
+          return fake;
+        },
+      },
+    );
+
+    const connecting = core.connect();
+    fake.emitOnline('bob@galena.localhost');
+    await connecting;
+
+    expect(captured?.resource).toBe('gateway');
+  });
+
+  it('defaults to a random galena- resource', async () => {
+    const seen = new Set<string>();
+    for (let index = 0; index < 2; index += 1) {
+      const fake = createFakeClient();
+      let captured: ClientOptions | undefined;
+      const core = createCore(
+        options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+        {
+          createClient: (clientOptions) => {
+            captured = clientOptions;
+            return fake;
+          },
+        },
+      );
+      const connecting = core.connect();
+      fake.emitOnline('bob@galena.localhost');
+      await connecting;
+      expect(captured?.resource).toMatch(/^galena-[a-z0-9]{8}$/);
+      seen.add(captured?.resource ?? '');
+      await core.disconnect();
+    }
+    expect(seen.size).toBe(2);
+  });
+
+  it('emits replaced, goes offline and never reconnects on a conflict stream error', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    let replaced = 0;
+    const errors: string[] = [];
+    const statuses: ConnectionStatus[] = [];
+    core.on('replaced', () => {
+      replaced += 1;
+    });
+    core.on('error', (event) => errors.push(event.message));
+    core.on('status', (status) => statuses.push(status));
+
+    fake.emitClientError(streamError('conflict', 'replaced by new connection'));
+    await flush();
+
+    expect(replaced).toBe(1);
+    expect(core.status()).toBe('offline');
+    expect(statuses).toEqual(['offline']);
+    // Existing `error` listeners still receive the message.
+    expect(errors.some((message) => message.includes('conflict'))).toBe(true);
+    expect(fake.stopCalls).toBe(1);
+
+    // No auto-reconnect, even after the reconnect delay.
+    const starts = fake.startCalls;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fake.startCalls).toBe(starts);
+    expect(core.status()).toBe('offline');
+
+    // A later explicit `connect()` still works.
+    const connecting = core.connect();
+    fake.emitOnline('bob@galena.localhost');
+    await connecting;
+    expect(core.status()).toBe('online');
+  });
+
+  it('leaves other stream errors on the old path', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    let replaced = 0;
+    core.on('replaced', () => {
+      replaced += 1;
+    });
+
+    fake.emitClientError(streamError('internal-server-error', 'oops'));
+    await flush();
+
+    expect(replaced).toBe(0);
+    expect(core.status()).toBe('online');
+    expect(fake.stopCalls).toBe(0);
+  });
+});

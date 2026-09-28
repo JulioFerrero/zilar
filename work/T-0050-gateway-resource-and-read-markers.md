@@ -1,7 +1,7 @@
 ---
 id: T-0050
 title: Agent gateway — one fixed XMPP resource per AI (newest gateway wins, the old one stands down) and read markers when the AI takes a message
-status: planned
+status: merged
 milestone: M2
 branch: task/T-0050-gateway-resource-read-markers
 model: opencode-go/muse-spark-1.3-contributor
@@ -117,4 +117,91 @@ pnpm build
 
 ## Report (written by the worker when done)
 
+### What I did
+1. **xmpp-core: optional fixed `resource` + typed `replaced` event.**
+   - `XmppCoreOptions.resource?: string` (`packages/xmpp-core/src/types.ts`); `ensureClient` uses
+     `options.resource ?? defaultResource()`, so web/mobile (no option) keep the random `galena-xxxxxxxx`.
+   - `conflict` stream-error detection in `client.ts`: @xmpp/client reports it via the `error` event as a
+     `StreamError` with `condition === 'conflict'` (verified against the bundled
+     `packages/xmpp-core/node_modules/@xmpp/client/dist/xmpp.js`: `_onStreamError` emits
+     `StreamError.fromElement(t)` and `XMPPError` sets `this.condition` to the condition element name).
+     The check accepts `condition === 'conflict'` plus a `StreamError`-name + `conflict [- …]` message
+     fallback. On conflict: `finishConnect(error)` (rejects a pending connect, no-op when already online),
+     then the `stopAfterFailure()` path (status `offline`, `stop()`, no auto-reconnect), then emit typed
+     `replaced` (payload `void`). The `error` event still fires first, as before.
+   - New `on(event: 'replaced', cb: () => void)` overload on `XmppCore`.
+2. **Gateway: fixed resource, newest wins.**
+   - Exported `GATEWAY_RESOURCE = 'gateway'`; `connectAi` passes `resource: GATEWAY_RESOURCE`.
+   - `core.on('replaced')` → `handleReplaced`: guards on the current session, adds the AI id to an
+     in-memory `superseded` set (own AI ids only), logs one warning
+     `AI session replaced by another gateway; standing down` with `{ aiId }` only, drops pending,
+     and tears the session down via `disconnectAi` (an in-flight turn may finish; its final send then
+     fails quietly through the existing send-error paths). `connectAi` returns early for superseded ids,
+     so `reconcile` and retry timers never reconnect them. `start()` and `stop()` clear the set.
+3. **Gateway: read markers.** `runSessionTurn` calls
+   `session.core.markDisplayed(ownerJid, 'chat', trigger.id)` once per turn, right after the owner filter
+   (so strangers/other AIs return before any marker) and before any model work. `trigger` is the last
+   owner message of the batch.
+
+### Which id the marker uses, and how I verified it
+The marker uses the incoming `ChatMessage.id` (`session.pending` stores `message.id` verbatim).
+- `packages/xmpp-core/src/types.ts:17`: `ChatMessage.id` is "Archive stanza-id (XEP-0359) when known, else
+  the message id"; `stanza.ts:537-554` (`messageId`) prefers `<stanza-id/>`, then the MAM archive id, then
+  the stanza id — the same decode runs on both the owner's client and the gateway.
+- `apps/web/src/store/realStore.ts:531-533` (`toUiMessage`): `UiMessage.id` is copied verbatim from
+  `ChatMessage.id`.
+- `realStore.ts:837-849` (`handleDisplayed`) → `updateMessageStatus(chatJid, messageId, 'read')`
+  (`:367-394`), which matches via `sameMessage(item.id, messageId)` (alias-aware: covers the optimistic
+  local id ↔ server id link). The web sends its own markers with `ui.id` (`:790`, `:1101`).
+- So the gateway marking with the incoming `ChatMessage.id` is exactly the id the web compares against.
+- Tests: gateway `read markers` block asserts `markDisplayed` receives `m-1` / `m-3` (the stanza ids in the
+  fakes, standing in for whatever `messageId()` decoded); xmpp-core `stanza.test.ts`/`core.test.ts` already
+  cover the stanza-id preference.
+
+### Deviation from the spec
+- The spec wrote `core.markDisplayed(ownerJid, 'dm', …)`, but `XmppCore`'s `ChatKind` is only
+  `'chat' | 'groupchat'`, and the web maps every DM to `'chat'` (`realStore.ts:159-161`, `coreKind`). I used
+  `'chat'` — the only type-correct value, producing the same wire stanza kind the web sends.
+
+### Files changed (all in Allowed files)
+- `packages/xmpp-core/src/types.ts` — `resource?: string`, `replaced` overload.
+- `packages/xmpp-core/src/client.ts` — resource plumbing, `isConflictError`, `replaced` emit.
+- `packages/xmpp-core/src/core.test.ts` — 4 new tests (resource passthrough, random default, conflict →
+  replaced/offline/no-reconnect + explicit reconnect works, other stream errors unchanged).
+- `apps/server/src/agents/gateway.ts` — `GATEWAY_RESOURCE`, superseded set, `handleReplaced`, marker.
+- `apps/server/src/agents/gateway.test.ts` — FakeCore records `displayed` + `emitReplaced()`; 3 fixed-resource/
+  replaced tests + 4 read-marker tests.
+
+### Commands and real results
+- `pnpm install` — ok (7.8s).
+- `pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/server` — pass:
+  xmpp-core 123 passed / 3 skipped (6 files), server 420 passed / 7 skipped (37 files). Targeted runs:
+  core.test.ts `-t "fixed resource"` 4 passed; gateway.test.ts `-t "replaced"` 3 passed, `-t "marker"`
+  4 passed, `-t "resource"` 3 passed.
+- `pnpm format:check` — initially failed (my gateway.test.ts); fixed with `prettier --write`, now pass.
+- `pnpm lint` — pass. `pnpm typecheck` — 9 tasks pass. `pnpm build` — 2 tasks pass.
+
+### Live proof — skipped, steps for the lead
+Skipped: `docker` needs lead approval and I must not touch the running server on 3188 or its data.
+Suggested lead check on throwaway ports with a scratch ejabberd+server (never 3188):
+1. Start server instance A (own ports) with `AGENT_GATEWAY_ENABLED=true`; DM its AI from the owner account;
+   confirm a reply arrives.
+2. Start instance B with the same config/domain (same AI JIDs). A's log should show exactly one
+   `AI session replaced by another gateway; standing down` per AI; B's log shows `AI is online`.
+3. DM the AI again: only one reply arrives (from B); A's gateway never reconnects (no `AI is online`
+   for it afterwards, even after 60s+ reconcile).
+4. As the owner, check the DM: the owner's sent ticks turn to read once B's AI takes the message
+   (marker for the last owner message of the turn).
+
+### Open questions / problems
+- None blocking. Note: `stop()` also clears `superseded` per spec, so a stop/start cycle (not a restart)
+  reconnects superseded AIs — assumed intended since the spec says both clear it.
+
 ## Review (written by Claude)
+
+**Verdict: approved, merged.**
+
+- Pre-review (Muse): no must-fix or should-fix issues. One nit: the "never reconnects after the delay" half of the conflict test can't fail, because the fake client has no reconnect driver. The half that matters (`stopCalls === 1`, then `offline`) is asserted. Accepted.
+- `'chat'` instead of `'dm'` for the marker kind is correct: xmpp-core's `ChatKind` is `'chat' | 'groupchat'`.
+- Marker id: the incoming `ChatMessage.id`, which the web copies verbatim and matches alias-aware (`sameMessage`). Verified in the pre-review and by reading the code.
+- Live proof: the lead does it after the merge, against a second server instance (see the board or the playbook note).
