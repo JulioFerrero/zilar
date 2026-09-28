@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0032](T-0032-create-ai-wizard.md) | M2: web Create-AI wizard + My AIs list (§20.2) | changes requested (round 2) | deepseek-v4.1-flash | T-0028, T-0030 | Web only. Lead clicked through live: all flows work; round 2 fixes model suggestions (keyed by connection id instead of provider). |
 | T-0033 | M2: AIs reply when @mentioned (agent gateway: XMPP login as the AI, context, LiteLLM call with the AI's virtual key) | planned | | T-0030 (merged) | Must decide how the owner's provider key reaches the provider (T-0007 follow-up). Must also list AIs in `/api/chats` so "Open chat" from My AIs opens the DM (found in the T-0032 live check). |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
@@ -64,3 +63,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0031](T-0031-mobile-boot-check.md) | **Mobile boot check** `boot:ios`: pods vs autolinking (auto `pod install`), stale-deps check, own Metro on 8082, passes only after the JS app runs; caught the SecureStore regression live | 2026-09-28 |
 | [T-0030](T-0030-ais-server.md) | **M2: AIs on the server**: `/api/ais`, own XMPP account + roster, capped LiteLLM virtual key (sealed), all-or-nothing create, resumable delete, 409 on a connection in use; live-verified by the lead (3 rounds) | 2026-09-28 |
 | [T-0008](T-0008-runner-tunnel-spike.md) | Spike S6: runner tunnel over one WebSocket. Design confirmed for M3; round 2 fixed runner isolation, stream-id ownership and the WS payload cap. | 2026-09-28 |
+| [T-0032](T-0032-create-ai-wizard.md) | **M2: web Create-AI wizard + My AIs** (list, edit, two-step delete); lead clicked through live in Chrome; round 2 fixed model suggestions keyed by connection id | 2026-09-28 |
