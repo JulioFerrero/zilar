@@ -15,14 +15,14 @@ export function ProgressCard({ data }: { data: Progress }) {
         <ActivityIndicator size="small" color={ACCENT[scheme]} />
         <Text className="flex-1 text-[15px] font-semibold text-foreground">{data.stage}</Text>
         {data.percent === undefined ? null : (
-          <Text className="text-[13px] text-muted-foreground">{data.percent}%</Text>
+          <Text className="font-mono text-[12px] text-muted-foreground">{data.percent}%</Text>
         )}
       </View>
       {data.detail ? (
         <Text className="text-[13px] leading-4 text-muted-foreground">{data.detail}</Text>
       ) : null}
       {data.percent === undefined ? null : (
-        <View className="h-1 overflow-hidden rounded-full bg-black/10">
+        <View className="h-1 overflow-hidden rounded-full bg-[#0c0c0c]">
           <View className="h-1 rounded-full bg-accent" style={{ width: `${data.percent}%` }} />
         </View>
       )}

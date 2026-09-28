@@ -5,9 +5,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { useKeyPress } from '@/components/ui/use-key-press';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, BUBBLE_COLORS, MUTED_FOREGROUND } from '@/lib/colors';
-import { cn } from '@/lib/utils';
+import { BUBBLE_COLORS } from '@/lib/colors';
+import {
+  ACCENT_FOREGROUND,
+  ICON_COLOR,
+  KEY_PRIMARY_PRESSED_SHADOW,
+  iconKey,
+  pressStyle,
+  primaryKey,
+  segment,
+} from '@/lib/depth';
 import { useColorScheme } from 'nativewind';
 
 const BAR_COUNT = 24;
@@ -31,6 +40,7 @@ type VoiceMessageProps = {
 /** Play/pause toggle, waveform, duration and transcript. No real audio yet. */
 export function VoiceMessage({ voice, outgoing }: VoiceMessageProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
+  const { pressed, reduceMotion, setPressed } = useKeyPress();
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [showTranscript, setShowTranscript] = useState(false);
@@ -59,7 +69,6 @@ export function VoiceMessage({ voice, outgoing }: VoiceMessageProps) {
   const metaColor = outgoing
     ? BUBBLE_COLORS[scheme].outgoingMeta
     : BUBBLE_COLORS[scheme].incomingMeta;
-  const idleBar = outgoing ? BUBBLE_COLORS[scheme].outgoingMeta : MUTED_FOREGROUND[scheme];
   const peak = Math.max(...bars, 1);
 
   return (
@@ -69,12 +78,15 @@ export function VoiceMessage({ voice, outgoing }: VoiceMessageProps) {
           accessibilityRole="button"
           accessibilityLabel={playing ? 'Pause voice message' : 'Play voice message'}
           onPress={() => setPlaying((value) => !value)}
-          className="h-9 w-9 items-center justify-center rounded-full bg-accent"
+          onPressIn={() => setPressed(true)}
+          onPressOut={() => setPressed(false)}
+          className="h-9 w-9 items-center justify-center rounded-full"
+          style={[primaryKey, pressStyle(pressed, KEY_PRIMARY_PRESSED_SHADOW, reduceMotion)]}
         >
           {playing ? (
-            <Pause size={16} color="#ffffff" fill="#ffffff" />
+            <Pause size={16} color={ACCENT_FOREGROUND} fill={ACCENT_FOREGROUND} />
           ) : (
-            <Play size={16} color="#ffffff" fill="#ffffff" />
+            <Play size={16} color={ACCENT_FOREGROUND} fill={ACCENT_FOREGROUND} />
           )}
         </Pressable>
         <View className="flex-row items-center gap-[2px]" style={{ width: WAVEFORM_WIDTH }}>
@@ -87,29 +99,25 @@ export function VoiceMessage({ voice, outgoing }: VoiceMessageProps) {
                 style={{
                   width: 2.5,
                   height: 4 + (value / peak) * 16,
-                  backgroundColor: played ? ACCENT[scheme] : idleBar,
+                  backgroundColor: played ? '#ededed' : '#525252',
                 }}
               />
             );
           })}
         </View>
-        <Text className="text-[13px]" style={{ color: metaColor }}>
+        <Text className="font-mono text-[12px]" style={{ color: metaColor }}>
           {formatDuration(voice.duration_ms)}
         </Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={showTranscript ? 'Hide transcript' : 'Show transcript'}
           onPress={() => setShowTranscript((value) => !value)}
-          className={cn(
-            'h-7 w-7 items-center justify-center rounded-full',
-            showTranscript ? 'bg-accent' : 'bg-black/10',
-          )}
+          className="rounded-md px-1.5 py-0.5"
+          style={showTranscript ? segment : iconKey}
         >
           <Text
-            className={cn(
-              'text-[13px] font-semibold',
-              showTranscript ? 'text-white' : 'text-foreground',
-            )}
+            className="text-[11px] font-semibold"
+            color={showTranscript ? undefined : ICON_COLOR}
           >
             Aa
           </Text>

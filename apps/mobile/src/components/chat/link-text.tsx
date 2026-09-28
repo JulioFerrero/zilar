@@ -1,20 +1,25 @@
 import { splitLinks } from '@galena/chat-core';
-import { Linking } from 'react-native';
+import { Linking, Text as RNText } from 'react-native';
 
-import { Text } from '@/components/ui/text';
 import { safeLinkTarget } from '@/lib/links';
 
-/** Renders message text, turning http/https URLs into safe external links. */
-export function LinkText({ text }: { text: string }) {
+/**
+ * Renders message text, turning http/https URLs into safe external links.
+ *
+ * The color, family and size are passed as inline styles on a plain RN `Text`
+ * rather than through the shared `Text` component: its class-based default
+ * color wins over a color passed across a component boundary on this setup.
+ */
+export function LinkText({ text, color }: { text: string; color: string }) {
   const segments = splitLinks(text);
 
   return (
-    <Text className="text-[15px] leading-5 text-foreground">
+    <RNText style={{ color, fontFamily: 'Geist_400Regular', fontSize: 15, lineHeight: 20 }}>
       {segments.map((segment, index) =>
         segment.kind === 'link' ? (
-          <Text
+          <RNText
             key={index}
-            className="text-accent"
+            style={{ textDecorationLine: 'underline' }}
             onPress={() => {
               const target = safeLinkTarget(segment.href);
               if (target !== undefined) {
@@ -23,11 +28,11 @@ export function LinkText({ text }: { text: string }) {
             }}
           >
             {segment.text}
-          </Text>
+          </RNText>
         ) : (
-          <Text key={index}>{segment.text}</Text>
+          <RNText key={index}>{segment.text}</RNText>
         ),
       )}
-    </Text>
+    </RNText>
   );
 }

@@ -103,7 +103,7 @@ export function AuthFlow({
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
       />
       <SafeAreaView className="flex-1 items-center justify-center p-4">
-        <View className="w-full max-w-sm rounded-2xl bg-background p-6 shadow-xl">
+        <View className="w-full max-w-sm rounded-2xl border border-border-strong bg-surface p-6 shadow-xl">
           <Text className="text-center text-[24px] font-semibold leading-8 text-foreground">
             {heading}
           </Text>
@@ -126,7 +126,7 @@ export function AuthFlow({
                 onChangeText={setEmail}
                 onSubmitEditing={submitEmail}
                 placeholder="you@example.com"
-                placeholderTextColor="#707579"
+                placeholderTextColor="#a1a1a1"
                 className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
               />
               {error !== undefined && (

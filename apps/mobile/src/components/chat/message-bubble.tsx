@@ -1,4 +1,4 @@
-import { avatarGradient, formatTime, isBigEmoji, type UiMessage } from '@galena/chat-core';
+import { formatTime, isBigEmoji, type UiMessage } from '@galena/chat-core';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
@@ -16,7 +16,8 @@ import { Ticks } from '@/components/chat/ticks';
 import { VoiceMessage } from '@/components/chat/voice-message';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, BUBBLE_COLORS } from '@/lib/colors';
+import { BUBBLE_COLORS } from '@/lib/colors';
+import { bubbleStyle, raisedPill, senderColor } from '@/lib/depth';
 import { cn } from '@/lib/utils';
 import { useColorScheme } from 'nativewind';
 
@@ -57,10 +58,10 @@ function BubbleMeta({
 }) {
   return (
     <View className={cn('flex-row items-center gap-1', className)}>
-      <Text className="text-[12px]" style={{ color }}>
+      <Text className="font-mono text-[10px]" color={color}>
         {formatTime(message.createdAt)}
       </Text>
-      {outgoing ? <Ticks status={message.status} color={color} size={14} /> : null}
+      {outgoing ? <Ticks status={message.status} color={color} size={13} /> : null}
     </View>
   );
 }
@@ -81,9 +82,14 @@ function BigEmoji({
       className={cn('flex-col', outgoing ? 'items-end' : 'items-start')}
     >
       <Text className="px-2 py-1 text-[48px] leading-none text-foreground">{message.text}</Text>
-      <View className="mt-1 flex-row items-center gap-1 rounded-full bg-black/25 px-2 py-0.5">
-        <Text className="text-[12px] text-white">{formatTime(message.createdAt)}</Text>
-        {outgoing ? <Ticks status={message.status} color="#ffffff" size={13} /> : null}
+      <View
+        className="mt-1 flex-row items-center gap-1 self-center rounded-full px-2 py-0.5"
+        style={raisedPill}
+      >
+        <Text className="font-mono text-[10px] text-muted-foreground">
+          {formatTime(message.createdAt)}
+        </Text>
+        {outgoing ? <Ticks status={message.status} color="#8a8a8a" size={13} /> : null}
       </View>
     </Pressable>
   );
@@ -111,6 +117,7 @@ export function MessageBubble({
   const [menuOpen, setMenuOpen] = useState(false);
   const outgoing = message.senderId === currentUserId;
   const metaColor = outgoing ? colors.outgoingMeta : colors.incomingMeta;
+  const textColor = outgoing ? '#0a0a0a' : '#ededed';
   const hasText = message.text !== undefined && message.text.length > 0;
   const bigEmoji =
     hasText &&
@@ -129,7 +136,7 @@ export function MessageBubble({
 
   return (
     <>
-      <SwipeToReply color={ACCENT[scheme]} onReply={() => onReply(message)}>
+      <SwipeToReply color={colors.incomingMeta} onReply={() => onReply(message)}>
         <View
           className={cn(
             'flex-row px-2',
@@ -152,16 +159,13 @@ export function MessageBubble({
                 <Pressable
                   onLongPress={openMenu}
                   delayLongPress={LONG_PRESS_MS}
-                  className={cn(
-                    'rounded-2xl px-2.5 py-1.5',
-                    outgoing ? 'bg-bubble-out' : 'bg-bubble-in',
-                    isLastInGroup ? (outgoing ? 'rounded-br-none' : 'rounded-bl-none') : null,
-                  )}
+                  className="rounded-[14px] px-3 py-2"
+                  style={bubbleStyle(outgoing ? 'outgoing' : 'incoming', isLastInGroup)}
                 >
                   {showSenderName ? (
                     <Text
-                      className="text-[14px] font-semibold"
-                      style={{ color: avatarGradient(message.senderId).from }}
+                      className="mb-0.5 text-[14px] font-semibold"
+                      color={senderColor(message.senderId)}
                     >
                       {message.senderName}
                     </Text>
@@ -180,16 +184,19 @@ export function MessageBubble({
                   ) : message.image ? (
                     <View className="relative">
                       <ImageMessage image={message.image} />
-                      <View className="absolute bottom-2 right-2 flex-row items-center gap-1 rounded-full bg-black/40 px-2 py-0.5">
-                        <Text className="text-[11px] text-white">
+                      <View
+                        className="absolute right-2 bottom-2 flex-row items-center gap-1 rounded-full px-2 py-0.5"
+                        style={raisedPill}
+                      >
+                        <Text className="font-mono text-[10px] text-muted-foreground">
                           {formatTime(message.createdAt)}
                         </Text>
                         {outgoing ? (
-                          <Ticks status={message.status} color="#ffffff" size={13} />
+                          <Ticks status={message.status} color="#8a8a8a" size={13} />
                         ) : null}
                       </View>
                       {message.text ? (
-                        <Text className="mt-1 px-0.5 text-[15px] text-foreground">
+                        <Text className="mt-1 px-0.5 text-[15px]" color={textColor}>
                           {message.text}
                         </Text>
                       ) : null}
@@ -205,16 +212,11 @@ export function MessageBubble({
                       />
                     </>
                   ) : (
-                    <Text className="text-[15px] leading-5 text-foreground">
-                      <LinkText text={message.text ?? ''} />
-                      <Text className="text-[12px]" style={{ color: metaColor }}>
+                    <Text className="text-[15px] leading-5" color={textColor}>
+                      <LinkText text={message.text ?? ''} color={textColor} />
+                      <Text className="font-mono text-[10px]" color={metaColor}>
                         {'  '}
                         {formatTime(message.createdAt)}
-                        {outgoing && message.status !== 'sending'
-                          ? message.status === 'read'
-                            ? ' ✓✓'
-                            : ' ✓'
-                          : ''}
                       </Text>
                     </Text>
                   )}

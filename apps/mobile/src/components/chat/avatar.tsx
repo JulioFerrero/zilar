@@ -1,8 +1,8 @@
-import { avatarGradient, initials } from '@galena/chat-core';
-import { LinearGradient } from 'expo-linear-gradient';
+import { initials } from '@galena/chat-core';
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { avatarShade } from '@/lib/depth';
 import { cn } from '@/lib/utils';
 
 type AvatarProps = {
@@ -10,36 +10,44 @@ type AvatarProps = {
   name: string;
   size?: number;
   online?: boolean;
+  /** AIs get the light `#ededed` circle; people and groups a monochrome shade. */
+  ai?: boolean;
   className?: string;
 };
 
-/** Gradient circle with initials, plus the green online dot from ui-style.md §4. */
-export function Avatar({ id, name, size = 54, online = false, className }: AvatarProps) {
-  const gradient = avatarGradient(id);
-  const colors = [gradient.from, gradient.to] as const;
-  const fontSize = Math.round(size * 0.4);
-  const dotSize = Math.max(8, Math.round(size * 0.22));
+/** Monochrome circle with initials and the online dot (ui-style.md §2). */
+export function Avatar({
+  id,
+  name,
+  size = 54,
+  online = false,
+  ai = false,
+  className,
+}: AvatarProps) {
+  const shade = avatarShade(id, ai);
+  const fontSize = Math.round(size * 0.35);
+  const dotSize = Math.max(10, Math.round(size * 0.22));
   return (
     <View className={cn('relative', className)} style={{ width: size, height: size }}>
-      <LinearGradient
-        colors={colors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+      <View
         style={{
           width: size,
           height: size,
           borderRadius: size / 2,
           alignItems: 'center',
           justifyContent: 'center',
+          backgroundColor: shade.background,
+          borderWidth: shade.ring ? 1 : 0,
+          borderColor: '#333333',
         }}
       >
         <Text
-          className="font-semibold text-white"
-          style={{ fontSize, lineHeight: Math.round(fontSize * 1.2) }}
+          className="font-semibold"
+          style={{ fontSize, lineHeight: Math.round(fontSize * 1.2), color: shade.color }}
         >
           {initials(name)}
         </Text>
-      </LinearGradient>
+      </View>
       {online ? (
         <View
           className="absolute border-2 border-background bg-online"

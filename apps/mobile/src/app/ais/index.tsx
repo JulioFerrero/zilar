@@ -14,8 +14,9 @@ import { useAisApi } from '@/components/ais/use-ais-api';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
-import { ACCENT, FOREGROUND } from '@/lib/colors';
+import { ACCENT, ICON } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
+import { ACCENT_FOREGROUND } from '@/lib/depth';
 import type { PublicAi } from '@/lib/ais-api';
 
 type PageStatus = 'loading' | 'ready' | 'error';
@@ -111,7 +112,7 @@ function AisList() {
         scroll
         right={
           <IconButton label="Create AI" onPress={() => router.push('/ais/new')}>
-            <Plus size={24} color={FOREGROUND[scheme]} />
+            <Plus size={22} color={ICON[scheme]} />
           </IconButton>
         }
       >
@@ -133,7 +134,7 @@ function AisList() {
               </Text>
             ) : null}
             <Button variant="outline" onPress={reload}>
-              <RefreshCw size={16} color={FOREGROUND[scheme]} />
+              <RefreshCw size={16} color={ICON[scheme]} />
               <Text>Retry</Text>
             </Button>
           </View>
@@ -146,7 +147,7 @@ function AisList() {
               You have no AIs yet. Create one to give it a chat account and a budget.
             </Text>
             <Button onPress={() => router.push('/ais/new')}>
-              <Plus size={16} color="#ffffff" />
+              <Plus size={16} color={ACCENT_FOREGROUND} />
               <Text>Create an AI</Text>
             </Button>
           </View>
@@ -155,7 +156,7 @@ function AisList() {
         {status === 'ready' && ais.length > 0 && (
           <View className="gap-3">
             <Button className="self-start" onPress={() => router.push('/ais/new')}>
-              <Plus size={16} color="#ffffff" />
+              <Plus size={16} color={ACCENT_FOREGROUND} />
               <Text>Create AI</Text>
             </Button>
             <View className="gap-1">

@@ -7,7 +7,7 @@ import { useColorScheme } from 'nativewind';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
-import { FOREGROUND } from '@/lib/colors';
+import { ICON } from '@/lib/colors';
 
 type AisScreenShellProps = {
   title: string;
@@ -37,7 +37,7 @@ export function AisScreenShell({
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="flex-row items-center gap-1 px-2 py-2">
         <IconButton label="Back" onPress={onBack}>
-          <ChevronLeft size={26} color={FOREGROUND[scheme]} />
+          <ChevronLeft size={24} color={ICON[scheme]} />
         </IconButton>
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">

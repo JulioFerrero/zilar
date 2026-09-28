@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { formatMoney } from '@/lib/chat';
 
-/** Title, summary, cost and Approve / Deny buttons. Static for now. */
+/** Title, summary, cost and Approve (primary key) / Deny (outline key). */
 export function ApprovalCard({ data }: { data: ApprovalRequest }) {
   return (
     <View className="min-w-[230px] gap-2 py-0.5">
@@ -18,6 +18,7 @@ export function ApprovalCard({ data }: { data: ApprovalRequest }) {
       ) : null}
       <View className="flex-row gap-2">
         <Button
+          variant="key"
           size="sm"
           className="flex-1"
           onPress={() => console.log(`approval ${data.id}: approve`)}
@@ -27,7 +28,7 @@ export function ApprovalCard({ data }: { data: ApprovalRequest }) {
         <Button
           size="sm"
           variant="outline"
-          className="flex-1 active:bg-list-hover"
+          className="flex-1"
           onPress={() => console.log(`approval ${data.id}: deny`)}
         >
           <Text>Deny</Text>

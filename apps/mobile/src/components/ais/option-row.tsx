@@ -34,7 +34,7 @@ export function OptionRow({
       onPress={onPress}
       className={cn(
         'flex-row items-center gap-3 rounded-xl border px-3 py-2.5 active:opacity-80',
-        selected ? 'border-accent bg-accent/10' : 'border-divider bg-background',
+        selected ? 'border-accent bg-surface-raised' : 'border-divider bg-background',
         disabled && 'opacity-50',
         className,
       )}
@@ -50,7 +50,7 @@ export function OptionGlyph({ label, selected }: { label: string; selected: bool
     <View
       className={cn(
         'h-9 w-9 shrink-0 items-center justify-center rounded-full',
-        selected ? 'bg-accent' : 'bg-accent/10',
+        selected ? 'bg-accent' : 'bg-surface',
       )}
     >
       <Text

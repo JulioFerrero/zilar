@@ -1,7 +1,7 @@
 ---
 id: T-0048
 title: Mobile redesign (D24): dark tokens, Geist, skeuomorphic primitives, chat list and chat screen
-status: planned
+status: review
 milestone: M2
 branch: task/T-0048-mobile-redesign
 model: opencode-go/deepseek-v4.1-flash
@@ -154,5 +154,131 @@ pnpm --filter @galena/mobile build
 - New features (search, if the list has none).
 
 ## Report (written by the worker when done)
+
+### What I did
+
+Brought the Expo app to the D24 look. Store logic, API calls, navigation and behaviour are unchanged.
+
+**1. Theme (dark only).** `global.css` now carries the D24 palette from `ui-style.md` §2 in
+`:root` (the app is always dark, so there is no system-scheme switch): `--page`, `--panel`,
+`--surface`, `--surface-raised`, `--well`, `--border`, `--border-strong`, `--edge`,
+`--foreground` `#ededed`, `--muted-foreground`, `--subtle-foreground`,
+`--generating-foreground`, `--accent` `#ededed`, `--online`, `--danger` and the bubble tokens.
+The old shadcn names (`primary`, `muted`, `card`, `destructive`, `danger`, `online`…) are kept and
+pointed at the D24 values, so My AIs/wizard/auth restyled themselves. `tailwind.config.js` exposes
+the new names. `app.json` got `userInterfaceStyle: "dark"` and splash `#000000`; `_layout.tsx`
+calls `colorScheme.set('dark')`, uses `NAV_THEME.dark` and a light status bar.
+
+**2. Fonts.** `@expo-google-fonts/geist`, `@expo-google-fonts/geist-mono` and `expo-font` added with
+`expo install`. `_layout.tsx` loads Geist 400/500/600 and Geist Mono 400/500 with `useFonts` and
+keeps the splash up until they resolve (or fail). Tailwind maps `font-sans` → `Geist_400Regular`,
+`font-medium` → `Geist_500Medium`, `font-semibold` → `Geist_600SemiBold`, `font-mono` →
+`GeistMono_400Regular` (plus `font-mono-medium`), since each RN weight is its own family.
+
+**3. Depth primitives.** New `src/lib/depth.ts` holds the four §4 recipes once — primary key, icon
+key, well, raised segment, raised pill — plus the three bubble looks, with the exact shadow strings
+and gradients, and `pressStyle()` for the pressed state (1 px sink, none under reduced motion).
+`boxShadow` is a string; gradients use `experimental_backgroundImage` (verified on iOS). New
+`ui/use-key-press.ts` tracks pressed state. `ui/button.tsx` renders `default`/`key` as the primary
+key; `ui/icon-button.tsx` is the icon key (12 px radius, `#d4d4d4` glyphs).
+
+**4. Chat list.** Large `Chats` (28/600, −0.02em), the existing search as a well, the folder tabs as
+a segmented control (well track + raised active segment), 52 px monochrome avatars, hairline
+`#1a1a1a` separators, mono times, mono `AI` badge, primary/raised unread pills, `writing…` with a
+pulsing dot for AIs, and the 56 px primary `+` FAB (18 px radius, above the safe area).
+
+**5. Chat screen.** `--surface` header with bottom border, icon-key back/more, 36 px avatar,
+15/600 name, mono `AI` badge, 12 subtitle. Background is black with a **dot grid** drawn cheaply
+with an `react-native-svg` `Pattern` (`components/chat/chat-background.tsx`). Bubbles: glossy white
+outgoing (`#0a0a0a` text, `#525252` mono meta, `#ededed`-underlined links), dark incoming card
+(`#ededed` text/links), 14 px radius with a 4 px tail corner only on the last of a group, 2/8 px
+grouping, group sender names via the web's `SENDER_COLORS`, big emoji without a bubble and their
+time on a raised pill. Date separator is a raised pill; the unread divider a well strip. Composer is
+a 14 px well with the attach icon key, auto-growing input (`Message <title>`), emoji icon key and
+either the mic icon key or the 36 px primary send key. The reply bar is a well strip with a `#333`
+bar. Voice play is a primary key circle, waveform `#ededed`/`#525252`; images are 12 px with an
+`--edge` border and a raised time pill; approval/progress use the incoming card look with a primary
+Approve and an outline Deny. The actions sheet is `--surface` with a `--border-strong` top border
+and 16 px top radius. Swipe-to-reply, the sheets and keyboard avoidance all remain.
+
+**6. Reduced motion.** `useReducedMotion` gates the press translation and the typing/writing dots
+(`ui/use-key-press.ts`, `chat/typing-dots.tsx`).
+
+**7. Other screens.** My AIs, the wizard and auth picked up the tokens; I only swapped leftover
+white-on-accent icons (`#ffffff` → `#0a0a0a`) and dead `bg-accent/5` transparency for
+`bg-surface-raised`, and re-pointed the icon constants at `#d4d4d4`.
+
+### Files changed
+All under `apps/mobile/` except the lockfile and this task file:
+`app.json`, `package.json`, `tailwind.config.js`, `src/global.css`, `src/lib/{theme,colors,depth}.ts`,
+`src/lib/depth.test.ts`, `src/app/_layout.tsx`, `src/app/index.tsx`, `src/app/chat/[id].tsx`,
+`src/app/ais/index.tsx`, `src/components/ui/{button,icon-button,text,use-key-press}`,
+`src/components/chat/**` (incl. new `chat-background.tsx`), `src/components/ais/{ai-row,option-row,
+screen-shell,template-cards}.tsx`, `src/auth/{AuthFlow,NameForm}.tsx`, and
+`apps/mobile/screenshots/T-0048/**`.
+
+### Tests
+- `src/lib/depth.test.ts` (new, 10 tests): each §4 recipe exists, its shadow string equals the
+  `ui-style.md` value, the primary/icon keys have pressed variants, the bubble picker sets the right
+  look and 4 px tail corner only on the last of a group, and `senderColor`/`avatarShade` are stable.
+- All existing mobile tests pass unchanged: **172 passed, 2 skipped (174)**, 20 files passed.
+
+### Commands (real results)
+```bash
+pnpm install                                   # up to date, done
+pnpm format:check                              # All matched files use Prettier code style!
+pnpm lint                                      # oxlint: no findings
+pnpm typecheck                                 # turbo: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/mobile
+                                               # 172 passed, 2 skipped (174); depth.test.ts 10 passed
+pnpm --filter @galena/mobile build             # Exported: dist (ios + android bundles)
+```
+`pnpm --filter @galena/mobile boot:ios --device <mine>` in mock mode: **PASS** — bundle loaded and
+the JS app ran with no errors.
+
+### Visual check
+- My own simulator `Galena T-0048` (iPhone 17, `ED130044-78DA-4429-B278-446028CF0EB4`), Metro on
+  **8082** in `EXPO_PUBLIC_GALENA_MOCK=1`. At the end I stopped my Metro, shut down and **deleted**
+  my simulator. Julio's `DB167CD4…` was never booted or touched, and 8081 was never used.
+- Screenshots in `apps/mobile/screenshots/T-0048/` (all 402×874), each checked once, downscaled:
+  - `01-chat-list.png` — title, search, segmented control, 52 px monochrome avatars, mono times,
+    AI badge, unread pills, dot-free list, white `+` FAB.
+  - `02-dm.png` — DM: white outgoing / dark incoming bubbles, tails, mono meta, dot grid,
+    composer well with icon keys.
+  - `03-group.png` — group: sender names/avatars, reply quotes with `#333` bar, progress card,
+    unread divider.
+  - `04-voice.png` — voice: primary-key play circle, `#ededed`/`#525252` waveform, `Aa` key, image
+    with `--edge` border and raised time pill, big emoji on a raised pill.
+  - `05-approval.png` — approval card with primary Approve / outline Deny; progress cards.
+  - `06-composer.png` — composer with text and the software keyboard up, send primary key, reply bar.
+  - `07-actions.png` — message actions bottom sheet (`--surface`, top border, 16 px top radius).
+  - `08-reply.png` — reply bar above the composer (`#333` bar, name, muted excerpt, cancel).
+  - `09-my-ais.png` — My AIs with light AI avatars, AI/disabled badges, white Create AI key.
+  - `10-auth.png` — sign-in card on the new tokens (no blue left).
+
+### Differences from the mockup I chose to keep
+- The list header keeps **two** icon keys (My AIs and Search) instead of the mockup's single
+  settings key, because those two actions already existed.
+- The composer keeps the **emoji** icon key: `Main.dc.html` omits it, but the web app's 390 px
+  screenshots (also a quality bar) include it.
+- The FAB sits 34 pt above the bottom (mockup value) rather than a full safe-area offset.
+
+### Problems / deviations
+- **`expo install` added an `expo-font` config plugin to `app.json`.** The spec allows only
+  `userInterfaceStyle` and the splash colour there, so I removed the plugin entry; fonts load at
+  runtime through `useFonts` (the boot build proved it).
+- **NativeWind drops a function `style` on `Pressable`** when a `className` is also present, so the
+  keys' gradients/shadows vanished. Keys now track pressed state via `onPressIn`/`onPressOut` and a
+  static style array (`ui/use-key-press.ts`). This was found and fixed in the visual pass.
+- **The shared `Text` base `text-foreground` class won over an inline `style.color`** across a
+  component boundary (outgoing bubble text rendered white-on-white). `ui/text.tsx` now takes a
+  `color` prop that supplies the colour as a style and drops the base class; `LinkText` writes its
+  colour/family as inline RN styles directly.
+- **Screenshot artifact:** the scripted `:` keystroke was delivered as `>`, so
+  `06-composer.png` reads `6>30`. Typing normally is unaffected.
+- **Behavior:** unchanged. Only styling/class swaps on the AIS/auth screens.
+
+### Open questions
+None.
 
 ## Review (written by Claude)

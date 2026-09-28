@@ -1,8 +1,10 @@
 import { TextClassContext } from '@/components/ui/text';
+import { useKeyPress } from '@/components/ui/use-key-press';
+import { KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import { cn } from '@/lib/utils';
 import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
-import { Platform, Pressable } from 'react-native';
+import { Platform, Pressable, type StyleProp, type ViewStyle } from 'react-native';
 
 const buttonVariants = cva(
   cn(
@@ -14,10 +16,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: cn(
-          'bg-primary active:bg-primary/90 shadow-sm shadow-black/5',
-          Platform.select({ web: 'hover:bg-primary/90' }),
-        ),
+        // `default` and `key` both render the glossy primary key (ui-style.md §4).
+        default: '',
+        key: '',
         destructive: cn(
           'bg-destructive active:bg-destructive/90 dark:bg-destructive/60 shadow-sm shadow-black/5',
           Platform.select({
@@ -25,19 +26,16 @@ const buttonVariants = cva(
           }),
         ),
         outline: cn(
-          'border-border bg-background active:bg-accent dark:bg-input/30 dark:border-input dark:active:bg-input/50 border shadow-sm shadow-black/5',
+          'border-border-strong bg-surface active:bg-surface-raised dark:bg-surface border shadow-sm shadow-black/5',
           Platform.select({
-            web: 'hover:bg-accent dark:hover:bg-input/50',
+            web: 'hover:bg-surface-raised',
           }),
         ),
         secondary: cn(
           'bg-secondary active:bg-secondary/80 shadow-sm shadow-black/5',
           Platform.select({ web: 'hover:bg-secondary/80' }),
         ),
-        ghost: cn(
-          'active:bg-accent dark:active:bg-accent/50',
-          Platform.select({ web: 'hover:bg-accent dark:hover:bg-accent/50' }),
-        ),
+        ghost: cn('active:bg-surface-raised', Platform.select({ web: 'hover:bg-surface-raised' })),
         link: '',
       },
       size: {
@@ -62,16 +60,17 @@ const buttonTextVariants = cva(
   {
     variants: {
       variant: {
-        default: 'text-primary-foreground',
+        default: 'text-accent-foreground',
+        key: 'text-accent-foreground',
         destructive: 'text-white',
         outline: cn(
-          'group-active:text-accent-foreground',
-          Platform.select({ web: 'group-hover:text-accent-foreground' }),
+          'group-active:text-foreground',
+          Platform.select({ web: 'group-hover:text-foreground' }),
         ),
         secondary: 'text-secondary-foreground',
-        ghost: 'group-active:text-accent-foreground',
+        ghost: 'group-active:text-foreground',
         link: cn(
-          'text-primary group-active:underline',
+          'text-accent group-active:underline',
           Platform.select({ web: 'underline-offset-4 hover:underline group-hover:underline' }),
         ),
       },
@@ -89,16 +88,34 @@ const buttonTextVariants = cva(
   },
 );
 
-type ButtonProps = React.ComponentProps<typeof Pressable> &
-  React.RefAttributes<typeof Pressable> &
-  VariantProps<typeof buttonVariants>;
+const KEY_VARIANTS = new Set(['default', 'key']);
 
-function Button({ className, variant, size, ...props }: ButtonProps) {
+type ButtonProps = Omit<React.ComponentProps<typeof Pressable>, 'style'> &
+  React.RefAttributes<typeof Pressable> &
+  VariantProps<typeof buttonVariants> & { style?: StyleProp<ViewStyle> };
+
+function Button({ className, variant, size, style, onPressIn, onPressOut, ...props }: ButtonProps) {
+  const { pressed, reduceMotion, setPressed } = useKeyPress();
+  const isKey = KEY_VARIANTS.has(variant ?? 'default');
+
   return (
     <TextClassContext.Provider value={buttonTextVariants({ variant, size })}>
       <Pressable
         className={cn(props.disabled && 'opacity-50', buttonVariants({ variant, size }), className)}
         role="button"
+        style={[
+          isKey ? primaryKey : undefined,
+          isKey ? pressStyle(pressed, KEY_PRIMARY_PRESSED_SHADOW, reduceMotion) : undefined,
+          style,
+        ]}
+        onPressIn={(event) => {
+          setPressed(true);
+          onPressIn?.(event);
+        }}
+        onPressOut={(event) => {
+          setPressed(false);
+          onPressOut?.(event);
+        }}
         {...props}
       />
     </TextClassContext.Provider>

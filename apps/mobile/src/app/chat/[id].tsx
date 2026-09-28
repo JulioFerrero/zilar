@@ -1,17 +1,14 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useColorScheme } from 'nativewind';
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { ChatBackground } from '@/components/chat/chat-background';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { Composer } from '@/components/chat/composer';
 import { MessageList } from '@/components/chat/message-list';
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
-import { CHAT_BACKGROUND } from '@/lib/colors';
 import { replyRef } from '@/lib/format';
 import type { ReplyRef, UiMessage } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -28,7 +25,6 @@ function Chat() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
   const chatId = typeof params.id === 'string' ? params.id : '';
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const chat = useChatStore((state) => state.chats.find((item) => item.id === chatId));
   const openChat = useChatStore((state) => state.openChat);
   const sendText = useChatStore((state) => state.sendText);
@@ -54,14 +50,9 @@ function Chat() {
   const cancelReply = () => setReplyTo(undefined);
 
   return (
-    <View className="flex-1">
-      <LinearGradient
-        colors={CHAT_BACKGROUND[scheme]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <SafeAreaView edges={['top']} className="bg-background">
+    <View className="flex-1 bg-background">
+      <ChatBackground />
+      <SafeAreaView edges={['top']} className="bg-surface">
         <ChatHeader chat={chat} onBack={() => router.back()} />
       </SafeAreaView>
       <KeyboardAvoidingView
@@ -70,6 +61,7 @@ function Chat() {
       >
         <MessageList chat={chat} onReply={startReply} />
         <Composer
+          title={chat.title}
           onSend={(text) => {
             sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
             cancelReply();
