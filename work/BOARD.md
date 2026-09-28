@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0047](T-0047-redesign-chat-panel.md) | Web redesign (D24) part 2: chat panel — header, glossy/recessed bubbles, composer well, pills, cards | in progress | deepseek-v4.1-flash | T-0045, T-0046 | In progress. |
 | T-0048 | Mobile redesign (D24) | planned (after T-0047) | deepseek-v4.1-flash | T-0047 | Spec to write. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
@@ -81,3 +80,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0044](T-0044-draft-tail-flush.md) | Server publishes the complete reply as a draft before the final XMPP message | 2026-09-28 |
 | [T-0045](T-0045-smooth-drafts.md) | Web reveals AI drafts smoothly, gray until complete, continuing into the final message without a snap | 2026-09-28 |
 | [T-0046](T-0046-redesign-foundation-sidebar.md) | Web redesign part 1 (D24): dark tokens, Geist, skeuomorphic primitives, floating panels, sidebar | 2026-09-28 |
+| [T-0047](T-0047-redesign-chat-panel.md) | Web redesign part 2: chat panel (glossy/recessed bubbles, header, composer well, rich messages, hidden-tab reveal snap) | 2026-09-28 |
