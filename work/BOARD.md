@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0033](T-0033-ai-models-litellm.md) | M2: each AI's private model in LiteLLM (owner key stays in the gateway) + AIs in `/api/chats` | review (Muse pre-review running) | deepseek-v4.1-flash | T-0030, T-0032 | Julio decided: register per-AI models in LiteLLM (§8.3). Lead restarts LiteLLM with `store_model_in_db` + salt key and runs the gated integration at review. |
 | T-0034 | M2: AIs reply in their DM (log in as the AI, context from §9.2, LiteLLM call with the AI's capped key, budget-exceeded message) | planned | | T-0033 | Spec after T-0033 lands. Group @mentions come after AIs can join rooms. |
 | [T-0037](T-0037-mobile-my-ais.md) | Mobile: My AIs list + Create-AI wizard (same `/api/ais` contract as T-0032), screenshots of every state | in progress | deepseek-v4.1-flash | T-0032 | UI task on Flash (vision). Own simulator only; Julio's iPhone/iPad untouched. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
@@ -64,3 +63,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0032](T-0032-create-ai-wizard.md) | **M2: web Create-AI wizard + My AIs** (list, edit, two-step delete); lead clicked through live in Chrome; round 2 fixed model suggestions keyed by connection id | 2026-09-28 |
 | [T-0036](T-0036-web-tests-under-load.md) | `apps/web` tests reliable under load: measured cause (render work ×10 under CPU starvation), one package-level 15 s `testTimeout`, T-0029's per-test timeouts removed; 3/3 forced full runs under 8 burners | 2026-09-28 |
 | [T-0035](T-0035-server-followups.md) | Server follow-ups: Test-key route rate-limited (5/min/user, before any provider call) via a shared limiter; `Unnamed user` for blank-name contacts (never the email) | 2026-09-28 |
+| [T-0033](T-0033-ai-models-litellm.md) | **M2: each AI's private LiteLLM model** (owner key decrypted once, stored only in LiteLLM encrypted with the salt key); virtual key limited to `ai-<id>`; concurrent-safe backfill; AIs in `/api/chats`. Muse pre-review found 5 issues; live-proven against LiteLLM (2 rounds) | 2026-09-28 |
