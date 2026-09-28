@@ -256,3 +256,41 @@ going to ask you to fix — which is the best possible outcome here.
   exchange, and run a real `git` client through the proxy) needs Julio's GitHub
   account, so it cannot be done by a worker. It is a small task once he is
   awake and I have put it on the board.
+
+### Round 2 review (2026-09-28 09:27) — **approved, merged**
+
+**Verdict:** the fail-open bypass is closed. I re-read `proxy.ts` at
+`apps/server/src/git/proxy.ts:89-118` and `:150-157` myself rather than trusting
+the Report, and re-ran the module's suite.
+
+### What the lead verified this round
+- **`parseRefUpdates` now reports malformation, it does not swallow it**
+  (`proxy.ts:89-118`). It returns `{ refs, malformed: true }` on a non-hex
+  length, a `length < 4`, a length that runs past the end of the body, a command
+  line that is not exactly three fields, an empty ref, and a body that ends with
+  no flush packet. The previous behaviour — a partial ref list returned as if it
+  were complete — is gone.
+- **The guard fails closed** (`proxy.ts:153-155`):
+  `if (parsed.malformed || parsed.refs.length === 0) throw new HttpError(403,
+  'push_rejected', 'push is unparseable')`. This is the exact line I asked for,
+  it runs **before** the ref loop and before anything is forwarded, and the
+  comment above it says *why* ("A push we cannot enumerate is not a push we can
+  allow") so the next person does not "optimise" it back. This is the control
+  the whole task exists to prove, and it now holds.
+- **Tests: 22 passed (22), 3 files**, run directly with vitest in the worktree
+  (not a turbo replay). The three new tests all assert the upstream call list is
+  empty, which is the assertion that distinguishes a real refusal from a refusal
+  that still phones home.
+- `format:check` and `lint` were clean on my earlier uncached pass this round;
+  nothing in the file changed since, so I did not burn another full run.
+
+### Accepted as stated (not a caveat, a known limit)
+- The proxy buffers the receive-pack body instead of streaming the pack, and it
+  is not mounted in `app.ts` because that file was outside the Allowed files.
+  Both are recorded and correct for a spike whose verdict is "the logic holds".
+
+### Follow-ups carried to the board
+- Real App wiring — needs Julio's GitHub account. On the board.
+- `GITHUB_APP_PRIVATE_KEY` should be added to `logger.ts` `redactPaths` when the
+  route is mounted. The code never logs it today; this is defence in depth for
+  whoever wires it.
