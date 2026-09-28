@@ -2041,6 +2041,44 @@ describe('agent gateway', () => {
       expect(limited[0]?.fields).toEqual({ aiId: seeded.aiId, groupId, messageId: 'm-7' });
     });
 
+    it('starts a re-added AI with a fresh rate budget', async () => {
+      const { seeded, member, roomJid, core, calls, groupId } = await roomSetup();
+      for (let index = 1; index <= 6; index += 1) {
+        core.receive(mention(seeded, member, roomJid, `m-${index}`));
+        await waitFor(() => core.sent.length === index);
+      }
+      expect(calls).toHaveLength(6);
+
+      await context.db
+        .delete(groupAis)
+        .where(and(eq(groupAis.groupId, groupId), eq(groupAis.aiId, seeded.aiId)));
+      emitGroupAi({ type: 'ai-removed', groupId, aiId: seeded.aiId });
+      await waitFor(() => core.left.length === 1);
+      await context.db
+        .insert(groupAis)
+        .values({ groupId, aiId: seeded.aiId, addedBy: seeded.ownerId });
+      emitGroupAi({ type: 'ai-added', groupId, aiId: seeded.aiId });
+      await waitFor(() => core.joined.length === 2);
+
+      // Within the same 10 minutes, but the leave cleared the budget.
+      core.receive(mention(seeded, member, roomJid, 'm-7'));
+      await waitFor(() => core.sent.length === 7);
+      expect(calls).toHaveLength(7);
+    });
+
+    it('answers a mixed-case mention in a mixed-case room JID', async () => {
+      const { seeded, member, roomJid, core, calls } = await roomSetup();
+      core.receive(
+        roomMessage(roomJid.toUpperCase(), member.jid, 'm-1', 'hey, what do you think?', {
+          nick: 'Ana',
+          mentions: [seeded.aiJid.toUpperCase()],
+        }),
+      );
+      await waitFor(() => calls.length === 1);
+      expect(core.sent).toHaveLength(1);
+      expect(core.sent[0]).toMatchObject({ to: roomJid, kind: 'groupchat' });
+    });
+
     it('coalesces a burst of mentions like DMs', async () => {
       const seeded = await seedAi(context);
       const member = await seedMember('Ana');

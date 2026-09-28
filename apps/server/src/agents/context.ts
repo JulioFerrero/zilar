@@ -33,6 +33,13 @@ export function bareJid(jid: string): string {
   return (slash < 0 ? jid : jid.slice(0, slash)).toLowerCase();
 }
 
+// Canonical form for every JID comparison on the group path: bare and
+// lowercase. Room keys, mention matching, the member check and reply mentions
+// all run through this one helper, so a mixed-case stanza still matches.
+export function normBareJid(jid: string): string {
+  return bareJid(jid);
+}
+
 function isNonEmptyText(body: unknown): body is string {
   return typeof body === 'string' && body.trim() !== '';
 }

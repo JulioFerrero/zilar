@@ -37,6 +37,7 @@ import {
   buildGroupMessages,
   displayNameOf,
   DM_HISTORY_MESSAGE_LIMIT,
+  normBareJid,
   type ChatCompletionMessage,
 } from './context';
 import { mapFailureToReply, runDmTurn, runGroupTurn, type ExecuteToolCall } from './reply';
@@ -234,7 +235,7 @@ async function loadRoomGateState(
     .where(eq(groupMembers.groupId, groupId));
   return {
     memberJids: new Set(
-      members.map((row) => jidFor(localpartFor(row.userId), domain).toLowerCase()),
+      members.map((row) => normBareJid(jidFor(localpartFor(row.userId), domain))),
     ),
   };
 }
@@ -269,7 +270,7 @@ export function createAgentGateway(
   }
 
   function roomJidFor(roomLocalpart: string): string {
-    return `${roomLocalpart}@${deps.xmpp.mucDomain}`.toLowerCase();
+    return normBareJid(`${roomLocalpart}@${deps.xmpp.mucDomain}`);
   }
 
   function aiDeps(): AiServiceDeps {
@@ -506,6 +507,8 @@ export function createAgentGateway(
     session.rooms.delete(roomJid);
     session.roomPending.delete(roomJid);
     session.roomBusy.delete(roomJid);
+    // A re-added AI starts with a fresh rate budget.
+    session.roomTurns.delete(roomJid);
     try {
       await session.core.leaveRoom(roomJid);
     } catch (error) {
@@ -614,7 +617,7 @@ export function createAgentGateway(
     if (body === '') {
       return;
     }
-    const roomJid = bareJid(message.chatJid);
+    const roomJid = normBareJid(message.chatJid);
     const room = session.rooms.get(roomJid);
     if (room === undefined) {
       // Not a room this AI joined: strangers' rooms are never answered.
@@ -625,15 +628,17 @@ export function createAgentGateway(
     if (message.timestamp.getTime() < room.joinedAtMs - GROUP_JOIN_SKEW_MS) {
       return;
     }
-    const aiBare = bareJid(session.aiJid);
-    const mentioned = (message.mentions ?? []).some((mention) => mention.jid === aiBare);
+    const aiBare = normBareJid(session.aiJid);
+    const mentioned = (message.mentions ?? []).some(
+      (mention) => normBareJid(mention.jid) === aiBare,
+    );
     if (!mentioned) {
       // No mention, nobody replies (M2 rule 3).
       return;
     }
     // No AI-to-AI turns in M2: any `ai-*` real JID never wakes the AI. An
     // occupant whose real JID is unknown is decided at turn time by nick.
-    if (isAiSender(bareJid(message.fromJid))) {
+    if (isAiSender(normBareJid(message.fromJid))) {
       return;
     }
     const queued = session.roomPending.get(roomJid) ?? [];
@@ -698,7 +703,7 @@ export function createAgentGateway(
     }
     const eligible: RoomPendingMessage[] = [];
     for (const item of batch) {
-      const fromBare = bareJid(item.fromJid);
+      const fromBare = normBareJid(item.fromJid);
       if (isAiSender(fromBare)) {
         continue;
       }
@@ -800,7 +805,7 @@ export function createAgentGateway(
         aiId: session.aiId,
         roomJid,
         triggerId: trigger.id,
-        senderJid: bareJid(trigger.fromJid),
+        senderJid: normBareJid(trigger.fromJid),
         senderName,
         messages,
         baseUrl: baseUrl,
@@ -822,11 +827,11 @@ export function createAgentGateway(
         'AI group turn failed',
       );
       const reply = mapFailureToReply(error);
-      const name = senderName.trim() === '' ? bareJid(trigger.fromJid) : senderName.trim();
+      const name = senderName.trim() === '' ? normBareJid(trigger.fromJid) : senderName.trim();
       try {
         await session.core.sendMessage(roomJid, 'groupchat', `@${name} ${reply}`, {
           replyTo: { id: trigger.id },
-          mentions: [{ jid: bareJid(trigger.fromJid), begin: 0, end: name.length + 1 }],
+          mentions: [{ jid: normBareJid(trigger.fromJid), begin: 0, end: name.length + 1 }],
         });
       } catch {
         // There is nobody left to tell when the send itself fails.

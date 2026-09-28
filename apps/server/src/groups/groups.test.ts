@@ -551,6 +551,19 @@ describe('groups', () => {
       ).toHaveLength(1);
     });
 
+    it('answers 200 to two concurrent adds with a single row', async () => {
+      const { owner, groupId } = await groupWithMember();
+      const ai = await seedAi(owner.id);
+
+      const [first, second] = await Promise.all([
+        addAiRequest(owner.cookie, groupId, { aiId: ai.aiId }),
+        addAiRequest(owner.cookie, groupId, { aiId: ai.aiId }),
+      ]);
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+      expect(await context.db.select().from(groupAis)).toHaveLength(1);
+    });
+
     it('counts AIs toward the member cap in both directions', async () => {
       const { owner, groupId } = await groupWithMember();
       // Two people already; fill the rest with people straight in the db.
@@ -612,6 +625,16 @@ describe('groups', () => {
       );
       expect(await context.db.select().from(groupAis)).toHaveLength(0);
       expect(seen).toEqual([{ type: 'ai-removed', groupId, aiId: ai.aiId }]);
+    });
+
+    it('rejects AI removal by a plain member', async () => {
+      const { owner, member, groupId } = await groupWithMember();
+      const ai = await seedAi(owner.id);
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: ai.aiId })).status).toBe(200);
+
+      // A member who is neither an admin nor the AI owner.
+      expect((await removeAiRequest(member.cookie, groupId, ai.aiId)).status).toBe(403);
+      expect(await context.db.select().from(groupAis)).toHaveLength(1);
     });
 
     it('lets a group owner remove an AI they do not own', async () => {

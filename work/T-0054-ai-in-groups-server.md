@@ -253,4 +253,46 @@ rule skips every unknown real JID anyway, so I implemented a single
 skip-unresolved with a comment citing both clauses. Say the word if you want
 the nick check split out explicitly.
 
+### Round 2 — review fixes (lead review, 2026-09-28)
+
+All four items fixed, no other behavior changed.
+
+1. **should-fix — rate budget reset on leave.** `leaveRoomQuietly` in
+   `apps/server/src/agents/gateway.ts` now also clears `roomTurns` for that
+   room, so a removed-then-re-added AI starts with a fresh 6-per-10-min budget.
+   New test `starts a re-added AI with a fresh rate budget`: 6 turns, DB
+   remove + `ai-removed`, DB re-insert + `ai-added`, 7th mention in the same
+   10 minutes replies instead of dropping (7 calls, 7 sends).
+2. **nit — concurrent duplicate POST /ais.** The `group_ais` insert in
+   `addGroupAi` (`apps/server/src/groups/service.ts`) is now
+   `.onConflictDoNothing({ target: [groupId, aiId] })`, so two concurrent adds
+   that both pass the pre-check both answer 200 with one row (affiliation set
+   is idempotent, as before). New test `answers 200 to two concurrent adds
+   with a single row` via `Promise.all`.
+3. **nit — one JID normalizer for the group path.** New exported
+   `normBareJid` in `apps/server/src/agents/context.ts` (bare + lowercase;
+   `bareJid` already did both, the alias names the guarantee). The whole group
+   path in `gateway.ts` runs through it now: `roomJidFor`, room lookup keys,
+   AI-bare-JID, mention-JID comparison (mixed-case mentions previously missed),
+   `isAiSender` input, member-JID set construction and check, `senderJid` and
+   the catch-path mention. New test `answers a mixed-case mention in a
+   mixed-case room JID`. DM path untouched (`bareJid` as before).
+4. **nit — plain-member removal.** New test `rejects AI removal by a plain
+   member`: a member who is neither admin nor AI owner gets 403 and the row
+   survives. (Stranger → 403 was already covered.)
+
+Files changed in round 2: `apps/server/src/agents/context.ts`,
+`gateway.ts`, `gateway.test.ts`, `apps/server/src/groups/service.ts`,
+`groups.test.ts`, plus this report.
+
+Commands and real results (round 2):
+- `pnpm install`: ok.
+- `pnpm format:check`: all tracked files pass; the single remaining warning
+  is the lead's untracked `PREREVIEW.md`, left untouched per instructions.
+- `pnpm lint` (oxlint): pass.
+- `pnpm typecheck` (turbo, 9 tasks): pass.
+- `pnpm exec turbo test --force --filter=@galena/server`: **37 files passed,
+  476 tests passed, 7 skipped, 0 failed** (round 1 was 472 passed; +4 new).
+- `pnpm exec turbo build --force`: pass (2 tasks, uncached).
+
 ## Review (written by Claude)

@@ -355,9 +355,12 @@ export async function addGroupAi(
   try {
     await db.transaction(async (tx) => {
       await adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'member');
+      // Two concurrent adds both pass the check above: the loser lands here
+      // and still answers 200, keeping the add idempotent.
       await tx
         .insert(groupAis)
-        .values({ groupId: input.groupId, aiId: input.aiId, addedBy: input.actorId });
+        .values({ groupId: input.groupId, aiId: input.aiId, addedBy: input.actorId })
+        .onConflictDoNothing({ target: [groupAis.groupId, groupAis.aiId] });
     });
   } catch (error) {
     throw mapXmppError(error);
