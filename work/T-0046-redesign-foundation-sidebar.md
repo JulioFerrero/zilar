@@ -1,7 +1,7 @@
 ---
 id: T-0046
 title: Web redesign (D24), part 1 — dark tokens, Geist, skeuomorphic key/well primitives, floating panels, sidebar
-status: planned
+status: review
 milestone: M2
 branch: task/T-0046-redesign-foundation-sidebar
 model: opencode-go/deepseek-v4.1-flash
@@ -140,5 +140,142 @@ pnpm build
 - A light theme and the accent setting UI.
 
 ## Report (written by the worker when done)
+
+### What I did
+
+Implemented part 1 of D24: dark-only tokens, bundled Geist/Geist Mono, the four depth
+primitives in `index.css`, the two floating panels in `ChatShell`, and the whole sidebar.
+
+**Tokens (`index.css`).** Replaced the light + `prefers-color-scheme` palettes with the
+D24 tokens in `:root`, dark only, `color-scheme: dark`. The shadcn names stay and are
+mapped (`--background` → `--panel`, `--primary` → `--accent`, `--divider` → `--border`,
+`--list-hover`/`--list-active` → `--surface-raised`, …). Added `--page`, `--panel`,
+`--surface`, `--surface-raised`, `--well`, `--border-strong`, `--edge`,
+`--subtle-foreground`, `--generating-foreground`, `--accent`/`--accent-foreground`, and
+the `--color-*`/`--font-*` theme entries. The `dark:` variant is kept but redefined as
+class-based (`&:where(.dark, .dark *)`), so it is inert now that the app is always dark.
+
+**Fonts.** Added `@fontsource-variable/geist` and `@fontsource-variable/geist-mono`
+(both exist at 5.3.0), imported in `main.tsx`, wired to `--font-sans` (Geist Variable) and
+the new `--font-mono` (Geist Mono Variable). Both are bundled by Vite: the build output
+contains `dist/assets/geist-*.woff2` and `geist-mono-*.woff2`. No CDN.
+
+**Depth primitives** (`@utility` in `index.css`, exact §4 recipes):
+`key-primary`, `key-icon`, `well-surface`, `raised-pill`, `segment-raised`.
+`Button`'s `default` variant uses `key-primary`; the new `IconButton`
+(`components/ui/icon-button.tsx`) uses `key-icon`; the new `Well`
+(`components/ui/well.tsx`) uses `well-surface`. `:active` translates 1 px with the inset
+shadow, `:focus-visible` shows the ring, and the reduced-motion block removes the
+translation and the pulsing/typing animations. The primary key's text-shadow reads from
+`--key-text-shadow`, so a dark (blue) accent flips it later.
+
+**Layout (`ChatShell`).** Wide ≥ 900 px: black page, 12 px padding, 12 px gap, a 360 px
+sidebar panel and a filling chat panel, both `--panel` + 1 px `--border` + 16 px radius +
+`overflow: hidden`. Narrow keeps one pane edge to edge.
+
+**Sidebar.** Menu icon key + search well with a mono `⌘K` (Ctrl/Cmd+K kept in `SearchBar`);
+folders as a segmented control (well track, equal tabs, raised active segment, unread
+pills, `role=tablist`/`tab` + `aria-selected`, arrow/Home/End keys); rows per §5
+(44 px monochrome avatars, online dot with a row-matched ring, mono `AI` badge, mono times,
+unread as a primary pill, ticks, `writing…` with a pulsing dot for a draft or typing,
+hover/selected in `--surface-raised`); a full-width primary **New chat** key with a mono `N`
+on wide screens and the primary FAB on narrow; skeleton rows and the empty pill restyled.
+
+**Depth verification.** Built CSS contains `key-primary`, `key-icon`, `well-surface`,
+`segment-raised`, `--key-shadow`, `pulse-dot` (checked in `dist/assets/index-*.css`).
+
+### Files changed (all inside Allowed files)
+
+- `apps/web/src/index.css`, `apps/web/src/main.tsx`
+- `apps/web/src/components/ui/button.tsx`; new `ui/icon-button.tsx`, `ui/well.tsx`
+- `apps/web/src/routes/ChatShell.tsx`
+- `apps/web/src/components/{ChatList,ChatListItem,FolderTabs,SearchBar,NewChatButton,Avatar,AiBadge,EmptyState,Skeleton}.tsx`
+- tests: new `ChatListItem.test.tsx`, `FolderTabs.test.tsx`; extended `Avatar.test.tsx`;
+  changed `TypingIndicator.test.tsx`
+- `apps/web/package.json` (the two fonts), `pnpm-lock.yaml`
+- `work/T-0046-redesign-foundation-sidebar.md`, `work/screenshots/T-0046/*`
+
+No file outside the Allowed set changed.
+
+### Test changes (selectors/text the redesign changes)
+
+- `TypingIndicator.test.tsx`: the list no longer renders `typing`/`Luis is typing`; it now
+  renders `writing…` (header keeps the D23 `typing` label). Assertions updated.
+- `Avatar.test.tsx`: added “same id → same shade”, “AIs get the light avatar”, and a
+  person-shade check.
+- New `FolderTabs.test.tsx`: `role=tablist`/`tab` with `aria-selected`, and arrow-key
+  selection + focus.
+- New `ChatListItem.test.tsx`: shows `writing…` while a draft exists.
+- No other existing test needed changes (`ChatList.test.tsx`, `ChatShell.test.tsx`, etc.
+  still pass unchanged).
+
+### Commands (real results)
+
+```bash
+pnpm install                                   # ok, +2 packages (the two fonts)
+pnpm format:check                              # All matched files use Prettier code style!
+pnpm lint                                      # ok (oxlint, no findings)
+pnpm typecheck                                 # 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/web
+                                               # 33 files, 187 tests passed
+pnpm build                                     # 2 successful, 2 total; web built in 450ms
+```
+
+### Visual check
+
+Screenshots in `work/screenshots/T-0046/`: `list-1440.png`, `list-390.png`,
+`login-1440.png`, `ais-1440.png`, plus `connections-1440.png`,
+`new-ai-dialog-1440.png`, `chat-1440.png`, `newchat-menu-1440.png`.
+
+Served this worktree's Vite on `localhost:5199` (`GALENA_API_URL=http://localhost:3188`)
+and opened it in the DevTools browser. To render authenticated screens without signing in
+as anyone, I used `?mock=1` and an init-script that answers `/api/auth/get-session` with a
+fake user (same shape the tests inject); `/api/ais` and `/api/connections` were stubbed for
+the AIs/Connections screenshots. The live stack (Julio's `[::1]:5173`, server `:3188`) was
+never navigated or signed into.
+
+- `list-1440.png` compares well with `Main.dc.html`: two floating panels, 360 px sidebar,
+  segmented control, glossy `New chat` key with the `N` hint, and the centered raised
+  “Select a chat to start messaging” pill on the dot grid. AI avatars are light; people
+  and groups are monochrome; `writing…` appears for a typing chat.
+- `list-390.png`: one pane edge to edge with the primary FAB bottom-right (the `New chat`
+  menu opens correctly above the wide button — verified by rect: right edge 371 ≈ sidebar
+  edge 372, sitting above the bar).
+- `login-1440.png`, `ais-1440.png`, `connections-1440.png`, `new-ai-dialog-1440.png`:
+  dark, readable, on-palette, with the new key buttons.
+- `chat-1440.png`: the part-2 chat panel is left as-is and is still readable after the token
+  change (incoming #182533, outgoing #2b5278, white text on both).
+
+### Deviations from the spec (chosen, with reasons)
+
+1. **Bubble tokens.** Since the file is dark-only now, `--bubble-in/-out/-in-meta/-out-meta`
+   hold their previous *dark* values. `MessageBubble`/messages were not touched; part 2
+   repaints them.
+2. **Narrow web ≠ `Mobile.dc.html`.** Narrow web keeps the §5 sidebar (menu key, `⌘K`
+   search, 44 px avatars, FAB). It does not adopt the mobile mockup's 28/600 `Chats` title,
+   52 px avatars or hairline separators, because “Mobile (a later task)” is out of scope and
+   §5/§1 do not ask for them. `Main.dc.html` is the comparison target for this task.
+3. **Focus rings** use `outline: 2px solid var(--muted-foreground); outline-offset: 2px`
+   rather than appending box-shadow rings. On `--panel` that is the same visible result
+   (2 px gap + 2 px ring) and it composes with the `:active` shadows.
+4. **FAB shadow.** The FAB keeps the primary key's depth. I did not add the mockup's extra
+   `0 8px 24px` float shadow: it would override the `:active` box-shadow and break the press
+   state (the mockup's inline style has the same issue).
+5. **`/settings/ais` avatars.** `AisPage` passes no `ai` prop and is not in the Allowed
+   files, so its AI avatars use the deterministic person shade (still readable/on-palette);
+   the chat list's AI avatars are light. A one-line follow-up (`<Avatar … ai />`) would fix
+   it if wanted.
+6. **Segmented track border** is `#1a1a1a` (the §4 track value) via an inline `borderColor`
+   on top of `well-surface`'s `--border`; otherwise exact.
+7. `--chat-background` is now the D24 dot grid (`#0a0a0a` + 22 px `#1c1c1c` dots), so the
+   part-2 messages area already matches §1's chat background. Token only.
+
+### Problems / needs attention
+
+- **Leftover dev server (kill blocked).** My Vite on port **5199** is still running because
+  `kill` is denied by the permission rules (PIDs `20707` pnpm wrapper, `20715` vite). Please
+  stop it. It serves this worktree only and does not touch the live stack.
+- No signing in as anyone: “dark on other screens” and the live-reload check remain the
+  lead's live check.
 
 ## Review (written by Claude)

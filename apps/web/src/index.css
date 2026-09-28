@@ -1,16 +1,27 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
-@custom-variant dark (@media (prefers-color-scheme: dark));
+/*
+ * D24: Telegram's layout, Vercel-dark look, skeuomorphic depth. Dark only for
+ * now, so tokens live in `:root` with no system-scheme switch. The `dark:`
+ * variant stays for the untouched part-2 components, but it is class-based and
+ * therefore inert.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --breakpoint-wide: 900px;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-page: var(--page);
+  --color-panel: var(--panel);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-well: var(--well);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -21,11 +32,15 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-generating-foreground: var(--generating-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-edge: var(--edge);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-danger: var(--danger);
@@ -47,77 +62,66 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* The D24 palette (ui-style.md §2). Dark only. */
 :root {
-  --background: #ffffff;
-  --foreground: #000000;
-  --card: #ffffff;
-  --card-foreground: #000000;
-  --popover: #ffffff;
-  --popover-foreground: #000000;
-  --primary: #3390ec;
-  --primary-foreground: #ffffff;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #000000;
-  --muted: #f4f4f5;
-  --muted-foreground: #707579;
-  --accent: #3390ec;
-  --accent-foreground: #ffffff;
-  --destructive: #e53935;
-  --destructive-foreground: #ffffff;
-  --border: #dfe1e5;
-  --input: #dfe1e5;
-  --ring: #3390ec;
-  --danger: #e53935;
-  --divider: #dfe1e5;
-  --list-hover: #f4f4f5;
-  --list-active: #3390ec;
-  --list-active-foreground: #ffffff;
-  --badge-muted: #c4c9cc;
-  --bubble-in: #ffffff;
-  --bubble-out: #eeffde;
-  --bubble-in-meta: #a0acb6;
-  --bubble-out-meta: #4fae4e;
-  --bubble-in-generating: #707579;
-  --online: #4dcd5e;
-  --radius: 0.75rem;
-  --chat-background: linear-gradient(135deg, #c9dfc5 0%, #d8e8f0 100%);
-}
+  color-scheme: dark;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #17212b;
-    --foreground: #f5f5f5;
-    --card: #182533;
-    --card-foreground: #f5f5f5;
-    --popover: #17212b;
-    --popover-foreground: #f5f5f5;
-    --primary: #5288c1;
-    --primary-foreground: #ffffff;
-    --secondary: #202b36;
-    --secondary-foreground: #f5f5f5;
-    --muted: #202b36;
-    --muted-foreground: #708499;
-    --accent: #5288c1;
-    --accent-foreground: #ffffff;
-    --destructive: #ef5350;
-    --destructive-foreground: #ffffff;
-    --border: #0e1621;
-    --input: #202b36;
-    --ring: #5288c1;
-    --danger: #ef5350;
-    --divider: #0e1621;
-    --list-hover: #202b36;
-    --list-active: #2b5278;
-    --list-active-foreground: #ffffff;
-    --badge-muted: #3e546a;
-    --bubble-in: #182533;
-    --bubble-out: #2b5278;
-    --bubble-in-meta: #6d7f8f;
-    --bubble-out-meta: #7da8d3;
-    --bubble-in-generating: #8ba0b2;
-    --online: #4dcd5e;
-    --chat-background: #0e1621;
-  }
+  --page: #000000;
+  --panel: #0a0a0a;
+  --surface: #111111;
+  --surface-raised: #171717;
+  --well: #0c0c0c;
+  --border: #1f1f1f;
+  --border-strong: #262626;
+  --edge: #050505;
+
+  --foreground: #ededed;
+  --muted-foreground: #a1a1a1;
+  --subtle-foreground: #8a8a8a;
+  --generating-foreground: #8f8f8f;
+
+  --accent: #ededed;
+  --accent-foreground: #0a0a0a;
+  /* The primary key's text-shadow follows the accent's lightness. A future
+   * blue accent flips this to a dark shadow. */
+  --key-text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+  --online: #22c55e;
+  --danger: #ef4444;
+
+  /* The online dot's ring matches the row it sits on. */
+  --avatar-ring: var(--panel);
+
+  /* shadcn aliases, mapped onto the D24 values. */
+  --background: var(--panel);
+  --card: var(--panel);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface);
+  --popover-foreground: var(--foreground);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-foreground);
+  --secondary: var(--surface);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--surface);
+  --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+  --input: var(--border-strong);
+  --ring: var(--muted-foreground);
+  --divider: var(--border);
+  --list-hover: var(--surface-raised);
+  --list-active: var(--surface-raised);
+  --list-active-foreground: var(--foreground);
+  --badge-muted: #333333;
+
+  /* Bubble tokens stay on their previous dark values: part 2 (T-0047)
+   * repaints the bubbles, part 1 only has to keep them readable. */
+  --bubble-in: #182533;
+  --bubble-out: #2b5278;
+  --bubble-in-meta: #6d7f8f;
+  --bubble-out-meta: #7da8d3;
+  --bubble-in-generating: #8ba0b2;
+
+  --radius: 0.75rem;
+  --chat-background: radial-gradient(#1c1c1c 1px, transparent 1px) 0 0 / 22px 22px var(--panel);
 }
 
 @layer base {
@@ -143,6 +147,112 @@
   button {
     font: inherit;
   }
+}
+
+/*
+ * The four depth recipes from ui-style.md §4. Implemented once here and reused
+ * through the components.
+ */
+
+/* Primary (accent) button, badge and FAB: a glossy key. */
+@utility key-primary {
+  --key-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -2px 0 rgba(0, 0, 0, 0.2),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 1px 0 rgba(0, 0, 0, 0.95),
+    0 2px 3px rgba(0, 0, 0, 0.7), 0 10px 18px -8px rgba(0, 0, 0, 0.95);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.4),
+      rgba(255, 255, 255, 0.08) 48%,
+      rgba(0, 0, 0, 0) 52%,
+      rgba(0, 0, 0, 0.14)
+    ),
+    var(--accent);
+  box-shadow: var(--key-shadow);
+  color: var(--accent-foreground);
+  text-shadow: var(--key-text-shadow);
+  transition:
+    transform 80ms,
+    box-shadow 80ms;
+
+  &:active {
+    transform: translateY(1px);
+    box-shadow:
+      inset 0 2px 5px rgba(0, 0, 0, 0.35),
+      0 1px 0 rgba(0, 0, 0, 0.95);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--muted-foreground);
+    outline-offset: 2px;
+  }
+}
+
+/* Icon button: a dark key. */
+@utility key-icon {
+  --key-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(0, 0, 0, 0.65),
+    0 1px 0 rgba(0, 0, 0, 0.95), 0 3px 6px -1px rgba(0, 0, 0, 0.75);
+  background: linear-gradient(180deg, #2c2c2c, #151515);
+  border: 1px solid var(--edge);
+  box-shadow: var(--key-shadow);
+  color: #d4d4d4;
+  transition:
+    transform 80ms,
+    box-shadow 80ms;
+
+  svg {
+    filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.95));
+  }
+
+  &:active {
+    transform: translateY(1px);
+    box-shadow:
+      inset 0 2px 5px rgba(0, 0, 0, 0.9),
+      0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--muted-foreground);
+    outline-offset: 2px;
+  }
+}
+
+/* Well: recessed search, composer and segment track. */
+@utility well-surface {
+  --well-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.9), inset 0 1px 1px rgba(0, 0, 0, 0.8),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: var(--well);
+  border: 1px solid var(--border);
+  box-shadow: var(--well-shadow);
+
+  &:focus-within {
+    outline: 2px solid var(--muted-foreground);
+    outline-offset: 2px;
+  }
+}
+
+/* Raised segment / pill: active folder tab, date pill. */
+@utility raised-pill {
+  background: linear-gradient(180deg, #1f1f1f, #121212);
+  border: 1px solid var(--edge);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* The folder track's active tab. */
+@utility segment-raised {
+  background: linear-gradient(180deg, #333333, #1c1c1c);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 2px 4px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.7);
 }
 
 .chat-background {
@@ -186,6 +296,37 @@
   }
 }
 
+@keyframes galena-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .typing-dot {
   animation: galena-typing 1.2s infinite ease-in-out both;
+}
+
+.pulse-dot {
+  animation: galena-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .key-primary,
+  .key-icon {
+    transition: none;
+  }
+
+  .key-primary:active,
+  .key-icon:active {
+    transform: none;
+  }
+
+  .typing-dot,
+  .pulse-dot {
+    animation: none;
+  }
 }

@@ -1,18 +1,24 @@
-import { Pencil } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { InviteDialog } from './InviteDialog';
 import { NewAiDialog } from './ais/NewAiDialog';
 import { NewGroupDialog } from './NewGroupDialog';
+import { Button } from './ui/button';
+import { useMediaQuery } from '@/lib/useMediaQuery';
+import { cn } from '@/lib/utils';
 
 const MENU_ITEM_CLASS =
-  'flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none';
+  'flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none';
 
 type Dialog = 'group' | 'message' | 'invite' | 'ai';
 
-/** Round pencil button at the bottom right of the chat list, with a small menu. */
+/** New chat: a full-width primary key on wide screens, a primary FAB on narrow. */
 export function NewChatButton() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog | undefined>(undefined);
+  const isWide = useMediaQuery('(min-width: 900px)');
+
+  const toggleMenu = (): void => setMenuOpen((value) => !value);
 
   const openDialog = (next: Dialog): void => {
     setMenuOpen(false);
@@ -20,7 +26,12 @@ export function NewChatButton() {
   };
 
   return (
-    <div className="absolute right-4 bottom-4 z-10">
+    <div
+      className={cn(
+        'z-10',
+        isWide ? 'relative shrink-0 border-t border-border p-3' : 'absolute right-4 bottom-4',
+      )}
+    >
       {menuOpen && (
         <>
           <button
@@ -38,7 +49,7 @@ export function NewChatButton() {
                 setMenuOpen(false);
               }
             }}
-            className="absolute right-0 bottom-full z-20 mb-2 min-w-[180px] rounded-xl border border-divider bg-popover py-1 shadow-lg"
+            className="absolute right-0 bottom-full z-20 mb-2 min-w-[180px] rounded-xl border border-border bg-popover py-1 shadow-lg"
           >
             <button
               type="button"
@@ -68,16 +79,33 @@ export function NewChatButton() {
         </>
       )}
 
-      <button
-        type="button"
-        aria-label="New chat"
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        onClick={() => setMenuOpen((value) => !value)}
-        className="flex size-14 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-lg transition-colors hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none"
-      >
-        <Pencil className="size-5" aria-hidden="true" />
-      </button>
+      {isWide ? (
+        <Button
+          type="button"
+          aria-label="New chat"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={toggleMenu}
+          className="h-10 w-full gap-2 rounded-[10px] text-[14px] font-semibold"
+        >
+          <Plus aria-hidden="true" />
+          New chat
+          <kbd className="font-mono rounded-[5px] border border-current px-1 text-[11px] leading-4 opacity-60">
+            N
+          </kbd>
+        </Button>
+      ) : (
+        <button
+          type="button"
+          aria-label="New chat"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={toggleMenu}
+          className="key-primary flex size-14 items-center justify-center rounded-[18px]"
+        >
+          <Plus className="size-[22px]" aria-hidden="true" />
+        </button>
+      )}
 
       {dialog === 'group' && <NewGroupDialog onClose={() => setDialog(undefined)} />}
       {dialog === 'ai' && <NewAiDialog onClose={() => setDialog(undefined)} />}
@@ -92,20 +120,20 @@ export function NewChatButton() {
         >
           <div
             onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-xs rounded-2xl bg-background p-4 shadow-xl"
+            className="w-full max-w-xs rounded-2xl border border-border bg-panel p-4 shadow-xl"
           >
             <h2 className="text-[16px] font-semibold">New message</h2>
             <p className="mt-1 text-[15px] text-muted-foreground">
               Invite a friend to start a conversation.
             </p>
             <div className="mt-4 flex justify-end gap-2">
-              <button
+              <Button
                 type="button"
                 onClick={() => openDialog('invite')}
-                className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
+                className="h-9 rounded-full px-4"
               >
                 Invite a friend
-              </button>
+              </Button>
             </div>
           </div>
         </div>

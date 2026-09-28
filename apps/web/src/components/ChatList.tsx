@@ -10,6 +10,7 @@ import { SearchBar } from './SearchBar';
 import { ChatListSkeleton } from './Skeleton';
 import { useDelayed } from '@/lib/useDelayed';
 import { Button } from './ui/button';
+import { IconButton } from './ui/icon-button';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { visibleChats } from '@/store/store';
 
@@ -43,19 +44,17 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   };
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-background">
-      <div className="flex shrink-0 items-center gap-1.5 px-2 pt-2 pb-1.5">
+    <div className="relative flex h-full min-h-0 flex-col bg-panel">
+      <div className="flex shrink-0 items-center gap-2 px-3 pt-3 pb-2">
         <div className="relative">
-          <button
-            type="button"
+          <IconButton
             aria-label="Open menu"
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((value) => !value)}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
           >
-            <Menu className="size-5" aria-hidden="true" />
-          </button>
+            <Menu className="size-[18px]" aria-hidden="true" />
+          </IconButton>
           {menuOpen && (
             <>
               <button
@@ -68,7 +67,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
               <div
                 role="menu"
                 aria-label="Main menu"
-                className="absolute top-full left-0 z-20 mt-1 min-w-[180px] rounded-xl border border-divider bg-popover py-1 shadow-lg"
+                className="absolute top-full left-0 z-20 mt-1 min-w-[180px] rounded-xl border border-border bg-popover py-1 shadow-lg"
               >
                 <button
                   type="button"
@@ -77,7 +76,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                     setMenuOpen(false);
                     setInviteOpen(true);
                   }}
-                  className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-list-hover"
+                  className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
                 >
                   Invite a friend
                 </button>
@@ -88,7 +87,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                     setMenuOpen(false);
                     navigate('/settings/connections');
                   }}
-                  className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-list-hover"
+                  className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
                 >
                   Connections
                 </button>
@@ -99,7 +98,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                     setMenuOpen(false);
                     navigate('/settings/ais');
                   }}
-                  className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-list-hover"
+                  className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
                 >
                   My AIs
                 </button>
@@ -107,7 +106,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                   type="button"
                   role="menuitem"
                   onClick={signOut}
-                  className="flex w-full items-center px-3 py-2 text-left text-[15px] text-danger hover:bg-list-hover"
+                  className="flex w-full items-center px-3 py-2 text-left text-[15px] text-danger hover:bg-surface-raised"
                 >
                   Sign out
                 </button>
@@ -118,12 +117,15 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
         <SearchBar />
       </div>
       {connection !== undefined && (
-        <div className="shrink-0 border-b border-divider px-3 py-1 text-center text-[12px] text-muted-foreground">
+        <div className="shrink-0 border-b border-border px-3 py-1 text-center text-[12px] text-muted-foreground">
           {connection}
         </div>
       )}
       <FolderTabs />
-      <nav aria-label="Chats" className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
+      <nav
+        aria-label="Chats"
+        className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2"
+      >
         {store.chatsState === 'loading' ? (
           <ChatListSkeleton />
         ) : store.chatsState === 'error' && store.chats.length === 0 ? (
@@ -141,7 +143,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
         ) : (
           <>
             {store.chatsState === 'error' && (
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-divider px-3 py-2">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
                 <p className="text-[13px] text-muted-foreground">{"Couldn't load chats"}</p>
                 <Button
                   type="button"

@@ -1,10 +1,11 @@
 import { cn } from '@/lib/utils';
 
+/** Geist Mono `AI` badge (ui-style.md §2). */
 export function AiBadge({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center rounded-full border border-accent px-1.5 py-px text-[11px] leading-[14px] font-semibold tracking-wide text-accent',
+        'font-mono inline-flex shrink-0 items-center rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground',
         className,
       )}
     >

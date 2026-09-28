@@ -4,7 +4,6 @@ import { Link } from 'react-router';
 import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
 import { MessageTicks } from './MessageTicks';
-import { TypingDots } from './TypingDots';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { typingLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -17,80 +16,59 @@ export function ChatListItem({ chat, selected }: { chat: ChatSummary; selected: 
   const body = previewBody(last);
   const own = last !== undefined && last.senderId === store.currentUserId;
   const typing = typingLabel(chat, store.typing[chat.id]?.names ?? []);
+  const writing = store.drafts[chat.id] !== undefined || typing !== undefined;
 
   return (
     <Link
       to={`/c/${encodeURIComponent(chat.id)}`}
       aria-current={selected ? 'page' : undefined}
       className={cn(
-        'flex h-[72px] items-center gap-3 px-2.5 transition-colors',
-        selected ? 'bg-list-active text-list-active-foreground' : 'hover:bg-list-hover',
+        'flex items-center gap-3 rounded-[12px] p-[10px] transition-colors hover:bg-surface-raised',
+        selected && 'bg-surface-raised shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]',
+        'hover:[--avatar-ring:var(--surface-raised)]',
+        selected && '[--avatar-ring:var(--surface-raised)]',
       )}
     >
       <Avatar
         id={chat.id}
         name={chat.title}
         avatarUrl={chat.avatarUrl}
-        size={54}
+        size={44}
         online={chat.online === true}
+        ai={chat.isAI}
       />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center">
-          <span
-            className={cn('truncate text-[16px] leading-5 font-semibold', selected && 'text-white')}
-          >
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-[14px] leading-5 font-semibold text-foreground">
             {chat.title}
           </span>
-          {chat.isAI && <AiBadge className="ml-1.5" />}
-          {chat.muted && (
-            <VolumeX
-              aria-label="Muted"
-              className={cn(
-                'ml-4 size-4 shrink-0',
-                selected ? 'text-white/80' : 'text-muted-foreground',
-              )}
-            />
-          )}
-          {last !== undefined && (
-            <span
-              className={cn(
-                'ml-auto shrink-0 pl-1.5 text-[12px]',
-                selected ? 'text-white/80' : 'text-muted-foreground',
-              )}
-            >
-              {formatListTime(last.createdAt, new Date())}
-            </span>
-          )}
+          {chat.isAI && <AiBadge />}
+          <span className="ml-auto flex shrink-0 items-center gap-2 pl-1.5">
+            {chat.muted && <VolumeX aria-label="Muted" className="size-4 text-subtle-foreground" />}
+            {last !== undefined && (
+              <span className="font-mono text-[11px] text-subtle-foreground">
+                {formatListTime(last.createdAt, new Date())}
+              </span>
+            )}
+          </span>
         </div>
         <div className="mt-0.5 flex items-center gap-1.5">
-          {typing !== undefined ? (
-            <span
-              className={cn(
-                'truncate text-[15px] leading-5',
-                selected ? 'text-white' : 'text-accent',
-              )}
-            >
-              {typing}
-              <TypingDots className="ml-0.5" />
+          {writing ? (
+            <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
+              <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-muted-foreground" />
+              <span className="truncate">writing…</span>
             </span>
           ) : (
-            <span
-              className={cn(
-                'truncate text-[15px] leading-5',
-                selected ? 'text-white/85' : 'text-muted-foreground',
-              )}
-            >
-              {prefix.length > 0 && (
-                <span className={selected ? 'text-white' : 'text-foreground'}>{prefix}</span>
-              )}
+            <span className="truncate text-[13px] leading-5 text-muted-foreground">
+              {prefix.length > 0 && <span className="text-[#d4d4d4]">{prefix}</span>}
               {body}
             </span>
           )}
           {chat.unread > 0 ? (
             <span
               className={cn(
-                'ml-auto shrink-0 rounded-full px-1.5 text-[12px] leading-[18px] font-semibold text-white',
-                chat.muted ? 'bg-badge-muted' : 'bg-accent',
+                'ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold',
+                chat.muted ? 'bg-badge-muted text-foreground' : 'key-primary',
               )}
               aria-label={`${chat.unread} unread`}
             >
@@ -99,12 +77,7 @@ export function ChatListItem({ chat, selected }: { chat: ChatSummary; selected: 
           ) : (
             own &&
             last !== undefined && (
-              <span
-                className={cn(
-                  'ml-auto flex shrink-0 items-center',
-                  selected ? 'text-white/80' : 'text-muted-foreground',
-                )}
-              >
+              <span className="ml-auto flex shrink-0 items-center text-subtle-foreground">
                 <MessageTicks status={last.status} />
               </span>
             )
