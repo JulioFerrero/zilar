@@ -261,3 +261,59 @@ test is ready to run once the stack is up.
   are outside my Allowed files.
 
 ## Review (written by Claude)
+
+**Verdict:** Round 1: changes requested
+
+Verified by the lead: scope is inside Allowed files; `format:check`, `lint`,
+`typecheck`, `build` pass; every named test from the spec exists and tests
+behavior, not the mock. The crypto (AES-256-GCM, per-blob salt and IV, fixed
+error strings), the owner check on every query, and 404-not-403 are correct.
+
+### Findings
+1. **The screen is not reachable from the app, and has no way back.** The spec
+   said "reachable from the app"; that was the lead's spec gap, since the menu
+   was outside your Allowed files. **You may now edit
+   `apps/web/src/components/ChatList.tsx`, only to add one `Connections`
+   menuitem** to the "Main menu", between "Invite a friend" and "Sign out", that
+   navigates to `/settings/connections`. In `ConnectionsPage.tsx`, add a back
+   button (arrow icon, `aria-label="Back"`) left of the "Connections" title that
+   goes to `/`, like a Telegram settings screen.
+   Tests: the menu item navigates to the page; Back returns to the chat list.
+2. **An unconfigured server gives a misleading error.** Without
+   `GALENA_KEY_ENCRYPTION_KEY` the routes are not mounted, so the page shows a
+   bare "Not found". Always mount the routes. When the key is absent, every
+   `/api/connections` route (after `requireSession`) returns **503**, code
+   `connections_unavailable`, message "Provider connections are not configured
+   on this server". Keep the env entry optional: your reasoning about
+   `test-support.ts` is right.
+   Tests: server returns that 503 when no cipher is configured; the page shows
+   that message in its error state.
+3. **`scryptSync` blocks the event loop on every encrypt/decrypt.** scrypt is a
+   password KDF. The master key is a random, high-entropy secret, so it adds
+   nothing except tens of milliseconds of blocked CPU per request. Use HKDF:
+   `hkdfSync('sha256', masterKey, salt, 'galena/provider-key/v1', 32)`, which
+   returns an `ArrayBuffer` (wrap it in `Buffer.from`). Keep the `v1` envelope
+   format (nothing is stored yet) and keep every crypto test passing.
+4. **The server must trim the key.** Pasted keys often carry a trailing newline.
+   The web form trims, but the API is the boundary: use
+   `z.string().trim().min(1).max(16384)` for `key`.
+   Test: creating with `"  fake-key\n"` stores a blob that decrypts to `"fake-key"`.
+5. **Remove fails silently, and deletes on one click.** `removeConnection` has no
+   error handling, so a failed DELETE is an unhandled rejection and the row just
+   stays. Make Remove two-step on the row: the trash button swaps the row's
+   actions for "Remove" (danger) and "Cancel"; on failure, show the server's
+   message on that row in `text-danger`. Do not use `window.confirm`.
+   Tests: nothing is deleted until the confirm; a failed delete shows the message
+   and keeps the row.
+6. **A 429 from the provider is reported as "unexpected response".** On
+   `/models` a 429 almost always means the key authenticated. Map it to
+   "The provider is rate-limiting this key. Try again in a minute." Test it in
+   `probe.test.ts`.
+
+*(No change needed.)*
+- No last-4 hint in the list: accepted, for the reason you gave.
+- `GALENA_KEY_ENCRYPTION_KEY` stays optional in `config.ts` (see finding 2).
+- The live integration test: **do not try to start a server.** After this round
+  the lead runs `GALENA_CONNECTIONS_INTEGRATION=1` against a server started from
+  this worktree. Make sure the test's README-style comment at the top says
+  exactly which env vars it needs.
