@@ -7,11 +7,13 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
+  addGroupAi,
   addGroupMembers,
   createGroup,
   getGroupDetail,
   getMembership,
   MAX_GROUP_MEMBERS,
+  removeGroupAi,
   removeGroupMember,
   type InviteLogger,
 } from './service';
@@ -37,6 +39,10 @@ const createGroupSchema = z.object({
 
 const addMembersSchema = z.object({
   userIds: z.array(z.string().min(1)).min(1).max(MAX_GROUP_MEMBERS),
+});
+
+const addAiSchema = z.object({
+  aiId: z.string().min(1, { message: 'aiId is required' }),
 });
 
 export function createGroupsRoutes({
@@ -113,6 +119,36 @@ export function createGroupsRoutes({
       actorId: user.id,
       targetUserId: c.req.param('userId'),
       domain,
+    });
+    return c.json(group);
+  });
+
+  routes.post('/groups/:id/ais', async (c) => {
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    const body = await c.req.json().catch(() => null);
+    const parsed = addAiSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpError(
+        400,
+        'invalid_request',
+        parsed.error.issues[0]?.message ?? 'Invalid request',
+      );
+    }
+
+    const group = await addGroupAi(db, adminClient, {
+      groupId: c.req.param('id'),
+      actorId: user.id,
+      aiId: parsed.data.aiId,
+    });
+    return c.json(group);
+  });
+
+  routes.delete('/groups/:id/ais/:aiId', async (c) => {
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    const group = await removeGroupAi(db, adminClient, {
+      groupId: c.req.param('id'),
+      actorId: user.id,
+      aiId: c.req.param('aiId'),
     });
     return c.json(group);
   });

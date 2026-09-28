@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import type {
   ChatKind,
   ChatMessage,
@@ -19,8 +19,23 @@ import type {
   VirtualKeyInfo,
 } from '../ai/litellm-client';
 import { createKeyCipher } from '../connections/crypto';
-import { aiLimits, ais, llmVirtualKeys, providerConnections, user } from '../db/schema';
-import { createTestContext, TEST_XMPP_DOMAIN, type TestContext } from '../test-support';
+import {
+  aiLimits,
+  ais,
+  groupAis,
+  groupMembers,
+  groups,
+  llmVirtualKeys,
+  providerConnections,
+  user,
+} from '../db/schema';
+import {
+  createTestContext,
+  TEST_XMPP_DOMAIN,
+  TEST_XMPP_MUC_DOMAIN,
+  type TestContext,
+} from '../test-support';
+import { emitGroupAi } from '../groups/events';
 import { localpartFor } from '../xmpp/provisioning';
 import { aiLocalpart, createAi, deleteAi, onAiLifecycle, type AiServiceDeps } from '../ais/service';
 import {
@@ -59,9 +74,13 @@ class FakeCore implements XmppCore {
   failConnect = false;
   failSend = false;
   failHistory = false;
-  sent: Array<{ to: string; kind: ChatKind; text: string }> = [];
+  failJoin = false;
+  failLeave = false;
+  sent: Array<{ to: string; kind: ChatKind; text: string; opts?: unknown }> = [];
   typing: Array<{ to: string; kind: ChatKind; state: 'composing' | 'paused' }> = [];
   displayed: Array<{ chatJid: string; kind: ChatKind; messageId: string }> = [];
+  joined: Array<{ roomJid: string; nick: string }> = [];
+  left: string[] = [];
   /** What MAM returns: every incoming message, archived on receipt. */
   archive: ChatMessage[] = [];
   private statusValue: ConnectionStatus = 'offline';
@@ -94,11 +113,19 @@ class FakeCore implements XmppCore {
     this.emit('status', 'offline');
   }
 
-  joinRoom(): Promise<void> {
+  joinRoom(roomJid: string, nick: string): Promise<void> {
+    if (this.failJoin) {
+      return Promise.reject(new Error('muc is down'));
+    }
+    this.joined.push({ roomJid, nick });
     return Promise.resolve();
   }
 
-  leaveRoom(): Promise<void> {
+  leaveRoom(roomJid: string): Promise<void> {
+    if (this.failLeave) {
+      return Promise.reject(new Error('muc is down'));
+    }
+    this.left.push(roomJid);
     return Promise.resolve();
   }
 
@@ -106,11 +133,16 @@ class FakeCore implements XmppCore {
     return [];
   }
 
-  async sendMessage(to: string, kind: ChatKind, text: string): Promise<{ id: string }> {
+  async sendMessage(
+    to: string,
+    kind: ChatKind,
+    text: string,
+    opts?: unknown,
+  ): Promise<{ id: string }> {
     if (this.failSend) {
       throw new Error('xmpp send is down');
     }
-    this.sent.push({ to, kind, text });
+    this.sent.push({ to, kind, text, opts });
     return { id: `sent-${this.sent.length}` };
   }
 
@@ -1694,6 +1726,391 @@ describe('agent gateway', () => {
       expect(core.sent).toEqual([
         { to: seeded.ownerJid, kind: 'chat', text: TRANSIENT_FAILURE_REPLY },
       ]);
+    });
+  });
+
+  describe('groups', () => {
+    const NOW = new Date('2026-09-28T12:00:00Z');
+
+    async function seedMember(name: string): Promise<{ userId: string; jid: string }> {
+      const userId = randomUUID();
+      await context.db.insert(user).values({ id: userId, name, email: `${userId}@example.com` });
+      return { userId, jid: `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}` };
+    }
+
+    async function seedGroup(input: {
+      ownerId: string;
+      aiId: string;
+      memberIds?: string[];
+    }): Promise<{ groupId: string; roomJid: string }> {
+      const groupId = randomUUID();
+      const roomLocalpart = `gtest${randomUUID().replace(/-/g, '').slice(0, 10)}`;
+      await context.db
+        .insert(groups)
+        .values({ id: groupId, roomLocalpart, title: 'Room', createdBy: input.ownerId });
+      await context.db.insert(groupMembers).values([
+        { groupId, userId: input.ownerId, role: 'owner' },
+        ...(input.memberIds ?? []).map((userId) => ({
+          groupId,
+          userId,
+          role: 'member' as const,
+        })),
+      ]);
+      await context.db
+        .insert(groupAis)
+        .values({ groupId, aiId: input.aiId, addedBy: input.ownerId });
+      return { groupId, roomJid: `${roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}` };
+    }
+
+    function roomMessage(
+      roomJid: string,
+      fromJid: string,
+      id: string,
+      body: string | undefined,
+      options: {
+        nick?: string;
+        mentions?: string[];
+        timestamp?: Date;
+        resolved?: boolean;
+        outgoing?: boolean;
+      } = {},
+    ): ChatMessage {
+      return {
+        id,
+        chatJid: roomJid,
+        kind: 'groupchat',
+        fromJid,
+        fromResolved: options.resolved ?? true,
+        ...(options.nick === undefined ? {} : { fromNick: options.nick }),
+        ...(body === undefined ? {} : { body }),
+        ...(options.mentions === undefined
+          ? {}
+          : { mentions: options.mentions.map((jid) => ({ jid })) }),
+        timestamp: options.timestamp ?? NOW,
+        outgoing: options.outgoing ?? false,
+      };
+    }
+
+    async function roomSetup(
+      input: {
+        fetch?: () => { fetchImpl: FetchLike; calls: Call[] };
+      } = {},
+    ): Promise<{
+      seeded: SeededAi;
+      member: { userId: string; jid: string };
+      groupId: string;
+      roomJid: string;
+      core: FakeCore;
+      calls: Call[];
+      logger: ReturnType<typeof captureLogger>;
+    }> {
+      const seeded = await seedAi(context);
+      const member = await seedMember('Ana');
+      const { groupId, roomJid } = await seedGroup({
+        ownerId: seeded.ownerId,
+        aiId: seeded.aiId,
+        memberIds: [member.userId],
+      });
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = (input.fetch ?? completionFetch)();
+      const { gateway: started, logger } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      return { seeded, member, groupId, roomJid, core, calls, logger };
+    }
+
+    function mention(seeded: SeededAi, member: { jid: string }, roomJid: string, id: string) {
+      return roomMessage(roomJid, member.jid, id, `hey, what do you think?`, {
+        nick: 'Ana',
+        mentions: [seeded.aiJid],
+      });
+    }
+
+    it('joins its rooms on connect with the AI name as nick', async () => {
+      const { seeded, roomJid, core } = await roomSetup();
+      expect(core.joined).toEqual([{ roomJid, nick: 'Gateway AI' }]);
+      expect(seeded.aiJid).toContain('ai-');
+    });
+
+    it('joins on the ai-added event and leaves on ai-removed', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = completionFetch();
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      expect(core.joined).toHaveLength(0);
+
+      const { groupId, roomJid } = await seedGroup({ ownerId: seeded.ownerId, aiId: seeded.aiId });
+      emitGroupAi({ type: 'ai-added', groupId, aiId: seeded.aiId });
+      await waitFor(() => core.joined.length === 1);
+      expect(core.joined).toEqual([{ roomJid, nick: 'Gateway AI' }]);
+
+      await context.db
+        .delete(groupAis)
+        .where(and(eq(groupAis.groupId, groupId), eq(groupAis.aiId, seeded.aiId)));
+      emitGroupAi({ type: 'ai-removed', groupId, aiId: seeded.aiId });
+      await waitFor(() => core.left.length === 1);
+      expect(core.left).toEqual([roomJid]);
+    });
+
+    it('retries a failed join on reconcile without breaking DMs', async () => {
+      const seeded = await seedAi(context);
+      const member = await seedMember('Ana');
+      const { groupId, roomJid } = await seedGroup({
+        ownerId: seeded.ownerId,
+        aiId: seeded.aiId,
+        memberIds: [member.userId],
+      });
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = completionFetch();
+      const { gateway: started, logger } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      expect(core.joined).toHaveLength(1);
+
+      // The AI leaves for real, then the re-add join fails once.
+      await context.db
+        .delete(groupAis)
+        .where(and(eq(groupAis.groupId, groupId), eq(groupAis.aiId, seeded.aiId)));
+      emitGroupAi({ type: 'ai-removed', groupId, aiId: seeded.aiId });
+      await waitFor(() => core.left.length === 1);
+      await context.db
+        .insert(groupAis)
+        .values({ groupId, aiId: seeded.aiId, addedBy: seeded.ownerId });
+      core.failJoin = true;
+      emitGroupAi({ type: 'ai-added', groupId, aiId: seeded.aiId });
+      await waitFor(() =>
+        logger.calls.some((call) => call.message === 'AI room join failed; reconcile will retry'),
+      );
+      expect(core.joined).toHaveLength(1);
+      const failures = logger.calls.filter(
+        (call) => call.message === 'AI room join failed; reconcile will retry',
+      );
+      expect(failures).toHaveLength(1);
+      expect(failures[0]?.fields['aiId']).toBe(seeded.aiId);
+      expect(failures[0]?.fields['groupId']).toBe(groupId);
+
+      core.failJoin = false;
+      await started.reconcile();
+      await waitFor(() => core.joined.length === 2);
+      expect(core.joined[1]).toEqual({ roomJid, nick: 'Gateway AI' });
+
+      // The AI's DMs kept working throughout.
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'are you there?'));
+      await waitFor(() => calls.length === 1);
+      expect(core.sent).toEqual([{ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' }]);
+    });
+
+    it('replies to a human mention with replyTo and a mention of the sender', async () => {
+      const { seeded, member, roomJid, core, calls } = await roomSetup();
+      core.receive(mention(seeded, member, roomJid, 'm-1'));
+      await waitFor(() => calls.length === 1);
+
+      const call = calls[0]!;
+      expect(call.url).toBe('http://litellm.test:4000/chat/completions');
+      expect(new Headers(call.init.headers).get('authorization')).toBe(`Bearer ${VIRTUAL_KEY}`);
+      expect(bodyOf(call).model).toBe(`ai-${seeded.aiId}`);
+      // No persona tools in groups.
+      expect((bodyOf(call) as { tools?: unknown }).tools).toBeUndefined();
+      const messages = (bodyOf(call) as { messages: Array<{ role: string; content: string }> })
+        .messages;
+      expect(messages[0]?.role).toBe('system');
+      expect(messages[0]?.content).toContain('talking in a group chat');
+      expect(messages.at(-1)).toEqual({ role: 'user', content: 'Ana: hey, what do you think?' });
+
+      expect(core.sent).toEqual([
+        {
+          to: roomJid,
+          kind: 'groupchat',
+          text: '@Ana AI says hi',
+          opts: {
+            replyTo: { id: 'm-1' },
+            mentions: [{ jid: member.jid, begin: 0, end: 4 }],
+          },
+        },
+      ]);
+      expect(core.typing).toEqual([
+        { to: roomJid, kind: 'groupchat', state: 'composing' },
+        { to: roomJid, kind: 'groupchat', state: 'paused' },
+      ]);
+      // No read markers in groups.
+      expect(core.displayed).toHaveLength(0);
+    });
+
+    it.each([
+      ['no mention', {}],
+      ['an empty body', { body: '   ' }],
+      ['its own reflection', { outgoing: true }],
+      ['a room it never joined', { otherRoom: true }],
+    ])('makes no LiteLLM call for %s', async (_label, options) => {
+      const { seeded, member, roomJid, core, calls } = await roomSetup();
+      const chatJid =
+        (options as { otherRoom?: boolean }).otherRoom === true ? 'other@rooms.x' : roomJid;
+      core.receive(
+        roomMessage(
+          chatJid,
+          member.jid,
+          'm-1',
+          (options as { body?: string }).body ?? 'hello everyone',
+          {
+            nick: 'Ana',
+            ...((options as { outgoing?: boolean }).outgoing === true
+              ? { outgoing: true as const }
+              : {}),
+          },
+        ),
+      );
+      await tick(150);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+      expect(seeded.aiJid).toContain('ai-');
+    });
+
+    it('makes no turn for another AI sender', async () => {
+      const { seeded, roomJid, core, calls } = await roomSetup();
+      core.receive(
+        roomMessage(roomJid, `ai-other@${TEST_XMPP_DOMAIN}`, 'm-1', 'hey helper', {
+          nick: 'Helper',
+          mentions: [seeded.aiJid],
+        }),
+      );
+      await tick(150);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+    });
+
+    it('makes no turn for an occupant whose real JID is unknown, even with an AI nick', async () => {
+      const { seeded, roomJid, core, calls } = await roomSetup();
+      core.receive(
+        roomMessage(roomJid, `${roomJid}/Helper`, 'm-1', 'hey helper', {
+          nick: 'Gateway AI',
+          resolved: false,
+          mentions: [seeded.aiJid],
+        }),
+      );
+      await tick(150);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+    });
+
+    it('makes no turn for delayed history replayed on join', async () => {
+      const { seeded, member, roomJid, core, calls } = await roomSetup();
+      core.receive(
+        roomMessage(roomJid, member.jid, 'm-old', 'hey, what do you think?', {
+          nick: 'Ana',
+          mentions: [seeded.aiJid],
+          timestamp: new Date('2026-09-28T11:00:00Z'),
+        }),
+      );
+      await tick(150);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+    });
+
+    it('makes no turn for a mention from a non-member', async () => {
+      const { seeded, roomJid, core, calls } = await roomSetup();
+      const outsider = await seedMember('Outsider');
+      core.receive(
+        roomMessage(roomJid, outsider.jid, 'm-1', 'hey, what do you think?', {
+          nick: 'Outsider',
+          mentions: [seeded.aiJid],
+        }),
+      );
+      await tick(150);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+    });
+
+    it('drops the 7th turn in 10 minutes with one log line', async () => {
+      const { seeded, member, roomJid, core, calls, logger, groupId } = await roomSetup();
+      for (let index = 1; index <= 6; index += 1) {
+        core.receive(mention(seeded, member, roomJid, `m-${index}`));
+        await waitFor(() => core.sent.length === index);
+      }
+      expect(calls).toHaveLength(6);
+
+      core.receive(mention(seeded, member, roomJid, 'm-7'));
+      await tick(200);
+      expect(calls).toHaveLength(6);
+      expect(core.sent).toHaveLength(6);
+      const limited = logger.calls.filter(
+        (call) => call.message === 'AI group rate limit reached; dropping the turn',
+      );
+      expect(limited).toHaveLength(1);
+      expect(limited[0]?.fields).toEqual({ aiId: seeded.aiId, groupId, messageId: 'm-7' });
+    });
+
+    it('coalesces a burst of mentions like DMs', async () => {
+      const seeded = await seedAi(context);
+      const member = await seedMember('Ana');
+      const { roomJid } = await seedGroup({
+        ownerId: seeded.ownerId,
+        aiId: seeded.aiId,
+        memberIds: [member.userId],
+      });
+      const cores: FakeCore[] = [];
+      const calls: Call[] = [];
+      const resolvers: Array<(response: Response) => void> = [];
+      const fetchImpl: FetchLike = (url, init) => {
+        calls.push({ url, init });
+        return new Promise<Response>((resolve) => {
+          resolvers.push(resolve);
+        });
+      };
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(mention(seeded, member, roomJid, 'm-1'));
+      await waitFor(() => calls.length === 1);
+      core.receive(mention(seeded, member, roomJid, 'm-2'));
+      core.receive(mention(seeded, member, roomJid, 'm-3'));
+      resolvers[0]!(completionResponse('reply one'));
+      await waitFor(() => calls.length === 2);
+      const secondMessages = (
+        bodyOf(calls[1]!) as { messages: Array<{ content: string }> }
+      ).messages.map((message) => message.content);
+      expect(secondMessages.join('\n')).toContain('hey, what do you think?');
+
+      resolvers[1]!(completionResponse('reply two'));
+      await waitFor(() => core.sent.length === 2);
+      expect(calls).toHaveLength(2);
+      expect(core.sent.map((message) => message.to)).toEqual([roomJid, roomJid]);
+    });
+
+    it('posts the spending-limit text in the room on 429 and leaks no secret', async () => {
+      const { seeded, member, roomJid, core, logger } = await roomSetup({
+        fetch: () => {
+          const calls: Call[] = [];
+          const fetchImpl: FetchLike = (url, init) => {
+            calls.push({ url, init });
+            return Promise.resolve(
+              jsonResponse({ error: { message: `provider echoed ${VIRTUAL_KEY}` } }, 429),
+            );
+          };
+          return { fetchImpl, calls };
+        },
+      });
+      core.receive(mention(seeded, member, roomJid, 'm-1'));
+      await waitFor(() => core.sent.length === 1);
+      expect(core.sent[0]?.text).toBe(`@Ana ${BUDGET_EXCEEDED_REPLY}`);
+      expect(core.sent[0]?.kind).toBe('groupchat');
+      const logged = loggedText(logger.calls);
+      expect(logged).not.toContain(VIRTUAL_KEY);
+      expect(logged).not.toContain(MASTER_KEY);
+      expect(logged).not.toContain(PROVIDER_KEY);
+      expect(JSON.stringify(core.sent)).not.toContain(VIRTUAL_KEY);
+    });
+
+    it('keeps answering owner DMs while in a group', async () => {
+      const { seeded, member, roomJid, core, calls } = await roomSetup();
+      core.receive(mention(seeded, member, roomJid, 'm-1'));
+      await waitFor(() => calls.length === 1);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'hello in dm'));
+      await waitFor(() => calls.length === 2);
+      expect(core.sent.map((message) => message.kind)).toEqual(['groupchat', 'chat']);
+      expect(core.sent[1]).toMatchObject({ to: seeded.ownerJid, text: 'AI says hi' });
     });
   });
 });

@@ -10,6 +10,7 @@ import {
   PROVIDER_KEY_REJECTED_REPLY,
   REPLY_MAX_TOKENS,
   runDmTurn,
+  runGroupTurn,
   TRANSIENT_FAILURE_REPLY,
   type ExecuteToolCall,
   type ValidToolCall,
@@ -829,5 +830,134 @@ describe('runDmTurn beforeFinalSend', () => {
     // Once, with the whole final text: never with the notice on its own.
     expect(harness.hooks).toEqual([full]);
     expect(harness.order).toEqual([`hook:${full}`, `send:${full}`]);
+  });
+});
+
+describe('runGroupTurn', () => {
+  const ROOM_JID = 'gtestroom@rooms.galena.localhost';
+  const SENDER_JID = 'ana@galena.localhost';
+
+  interface GroupSend {
+    to: string;
+    kind: ChatKind;
+    text: string;
+    opts: unknown;
+  }
+
+  function groupHarness(fetchImpl: FetchLike) {
+    const logger = captureLogger();
+    const sent: GroupSend[] = [];
+    const typing: Array<{ to: string; kind: ChatKind; state: 'composing' | 'paused' }> = [];
+    const run = () =>
+      runGroupTurn({
+        aiId: 'ai-1',
+        roomJid: ROOM_JID,
+        triggerId: 'm-9',
+        senderJid: SENDER_JID,
+        senderName: 'Ana',
+        messages: MESSAGES,
+        baseUrl: BASE_URL,
+        virtualKey: VIRTUAL_KEY,
+        model: MODEL,
+        fetchImpl,
+        sendMessage: (to, kind, text, opts) => {
+          sent.push({ to, kind, text, opts });
+          return Promise.resolve({ id: 'sent-1' });
+        },
+        sendTyping: (to, kind, state) => {
+          typing.push({ to, kind, state });
+        },
+        logger,
+        secrets: [MASTER_KEY],
+      });
+    return { logger, sent, typing, run };
+  }
+
+  function groupFetch(content = 'on it'): { fetchImpl: FetchLike; calls: Call[] } {
+    const { fetchImpl, calls } = createFetch(() => completionResponse(content));
+    return { fetchImpl, calls };
+  }
+
+  it('replies to the room with replyTo and a mention of the sender', async () => {
+    const { fetchImpl, calls } = groupFetch();
+    const harness = groupHarness(fetchImpl);
+    const outcome = await harness.run();
+
+    expect(outcome).toEqual({ kind: 'replied', text: '@Ana on it' });
+    expect(calls).toHaveLength(1);
+    expect(bodyOf(calls[0]!).tools).toBeUndefined();
+    expect(harness.sent).toEqual([
+      {
+        to: ROOM_JID,
+        kind: 'groupchat',
+        text: '@Ana on it',
+        opts: {
+          replyTo: { id: 'm-9' },
+          mentions: [{ jid: SENDER_JID, begin: 0, end: 4 }],
+        },
+      },
+    ]);
+    expect(harness.typing).toEqual([
+      { to: ROOM_JID, kind: 'groupchat', state: 'composing' },
+      { to: ROOM_JID, kind: 'groupchat', state: 'paused' },
+    ]);
+  });
+
+  it('offers no persona tools to the model', async () => {
+    const { fetchImpl, calls } = groupFetch();
+    await groupHarness(fetchImpl).run();
+    const body = bodyOf(calls[0]!);
+    expect(body.tools).toBeUndefined();
+    expect(body.tool_choice).toBeUndefined();
+  });
+
+  it('posts the honest failure text in the room on model failure', async () => {
+    const { fetchImpl } = createFetch(() =>
+      jsonResponse({ error: { message: 'over budget' } }, 429),
+    );
+    const harness = groupHarness(fetchImpl);
+    const outcome = await harness.run();
+
+    expect(outcome.kind).toBe('failed');
+    expect(harness.sent).toHaveLength(1);
+    expect(harness.sent[0]?.text).toBe(`@Ana ${BUDGET_EXCEEDED_REPLY}`);
+    expect(harness.sent[0]?.kind).toBe('groupchat');
+    expect(harness.typing.at(-1)).toMatchObject({ state: 'paused' });
+  });
+
+  it('logs a failed send redacted and reports the failure', async () => {
+    const { fetchImpl } = groupFetch();
+    const logger = captureLogger();
+    const outcome = await runGroupTurn({
+      aiId: 'ai-1',
+      roomJid: ROOM_JID,
+      triggerId: 'm-9',
+      senderJid: SENDER_JID,
+      senderName: 'Ana',
+      messages: MESSAGES,
+      baseUrl: BASE_URL,
+      virtualKey: VIRTUAL_KEY,
+      model: MODEL,
+      fetchImpl,
+      sendMessage: () => Promise.reject(new Error('xmpp is down')),
+      sendTyping: () => undefined,
+      logger,
+      secrets: [MASTER_KEY],
+    });
+
+    expect(outcome).toEqual({ kind: 'failed', text: '' });
+    expect(logger.calls.some((call) => call.fields['aiId'] === 'ai-1')).toBe(true);
+  });
+
+  it('leaks no secret into the logs', async () => {
+    const { fetchImpl } = createFetch(() =>
+      jsonResponse({ error: { message: `provider echoed ${VIRTUAL_KEY}` } }, 500),
+    );
+    const harness = groupHarness(fetchImpl);
+    await harness.run();
+    const logged = loggedText(harness.logger.calls);
+    expect(logged).not.toContain(VIRTUAL_KEY);
+    expect(logged).not.toContain(MASTER_KEY);
+    expect(JSON.stringify(harness.sent)).not.toContain(VIRTUAL_KEY);
   });
 });

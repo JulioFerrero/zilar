@@ -124,6 +124,26 @@ export const groupMembers = pgTable(
   (table) => [primaryKey({ columns: [table.groupId, table.userId] })],
 );
 
+// Which AIs belong to which groups (T-0054). An AI in a group is a real MUC
+// member (affiliation `member` under its own JID) whose gateway session joins
+// the room and answers @mentions. `added_by` is the user who added it.
+export const groupAis = pgTable(
+  'group_ais',
+  {
+    groupId: text('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    aiId: text('ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    addedBy: text('added_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.groupId, table.aiId] })],
+);
+
 // An AI an owner created. It is a real XMPP user (its own account and roster),
 // never a member of Better Auth: `owner` points at the user who owns it and
 // `localpart`/`jid` are the identity we registered in ejabberd. The persona and

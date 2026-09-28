@@ -57,6 +57,13 @@
       "when": 1790612333172,
       "tag": "0007_next_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790630773855,
+      "tag": "0008_sad_vulcan",
+      "breakpoints": true
     }
   ]
 }

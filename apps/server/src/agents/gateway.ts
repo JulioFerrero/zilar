@@ -24,8 +24,9 @@ import {
 } from '../ais/service';
 import type { KeyCipher } from '../connections/crypto';
 import type { ServerDatabase } from '../db/client';
-import { ais, llmVirtualKeys, user } from '../db/schema';
+import { ais, groupAis, groupMembers, groups, llmVirtualKeys, user } from '../db/schema';
 import { sharedDraftHub, type DraftHub } from '../drafts/hub';
+import { onGroupAi } from '../groups/events';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { XmppConfig } from '../xmpp/config';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -33,10 +34,12 @@ import { issueXmppToken } from '../xmpp/token';
 import {
   bareJid,
   buildDmMessages,
+  buildGroupMessages,
+  displayNameOf,
   DM_HISTORY_MESSAGE_LIMIT,
   type ChatCompletionMessage,
 } from './context';
-import { mapFailureToReply, runDmTurn, type ExecuteToolCall } from './reply';
+import { mapFailureToReply, runDmTurn, runGroupTurn, type ExecuteToolCall } from './reply';
 import { formatPersonaUpdatedLine, PERSONA_RESTORED_LINE, UPDATE_PERSONA_TOOL } from './tools';
 
 export interface GatewayLogger {
@@ -85,10 +88,42 @@ const XMPP_TOKEN_TTL_SECONDS = 300;
 // stands down (see the `replaced` handler): the newest gateway wins.
 export const GATEWAY_RESOURCE = 'gateway';
 
+// Privacy and cost rules for groups (T-0054, see the Report): any human
+// member may trigger an AI by @mentioning it, and the owner pays under the
+// AI's capped virtual key. The AI only sees room messages sent while it is a
+// member (plus the MAM history that membership grants). Every log line below
+// carries ids only: the AI id, the group id and the message id. Never bodies,
+// names or keys.
+
+// Per AI per room: at most this many turns in the sliding window below. The
+// rest are dropped with one log line.
+export const GROUP_TURNS_PER_WINDOW = 6;
+export const GROUP_RATE_WINDOW_MS = 10 * 60_000;
+
+// A live room message carries ~now as its timestamp, while history replayed
+// on join carries its original (older) stamp. Anything older than the join
+// minus this skew is treated as replayed history and never wakes the AI.
+export const GROUP_JOIN_SKEW_MS = 60_000;
+
 interface PendingMessage {
   id: string;
   body: string;
   fromJid: string;
+}
+
+interface RoomPendingMessage {
+  id: string;
+  body: string;
+  fromJid: string;
+  fromResolved: boolean;
+  fromNick?: string;
+  timestamp: Date;
+}
+
+interface RoomSubscription {
+  groupId: string;
+  joinedAtMs: number;
+  nick: string;
 }
 
 interface AiSession {
@@ -101,6 +136,14 @@ interface AiSession {
   retryAttempt: number;
   retryTimer: ReturnType<typeof setTimeout> | undefined;
   unsubs: Array<() => void>;
+  /** Rooms the AI currently holds a join for, keyed by bare room JID. */
+  rooms: Map<string, RoomSubscription>;
+  /** One coalescing queue per room, like the DM queue. */
+  roomPending: Map<string, RoomPendingMessage[]>;
+  /** Rooms with a turn in flight. */
+  roomBusy: Set<string>;
+  /** Turn timestamps (ms) per room for the rate limit. */
+  roomTurns: Map<string, number[]>;
 }
 
 export interface AgentGateway {
@@ -156,6 +199,46 @@ async function loadOwnerName(db: ServerDatabase, ownerId: string): Promise<strin
   return name === '' ? 'owner' : name;
 }
 
+// Every room an AI belongs to: its group_ais rows joined with groups.
+async function listAiRooms(
+  db: ServerDatabase,
+  aiId: string,
+): Promise<Array<{ groupId: string; roomLocalpart: string }>> {
+  return db
+    .select({ groupId: groupAis.groupId, roomLocalpart: groups.roomLocalpart })
+    .from(groupAis)
+    .innerJoin(groups, eq(groups.id, groupAis.groupId))
+    .where(eq(groupAis.aiId, aiId));
+}
+
+interface RoomGateState {
+  /** Bare JIDs of the current human members, lowercased. */
+  memberJids: Set<string>;
+}
+
+// The fresh gate for one group turn: who may trigger the AI, and which nicks
+// belong to AIs. Member JIDs are derived with the same `localpartFor` the
+// provisioning uses, so no extra mapping table is needed.
+async function loadRoomGateState(
+  db: ServerDatabase,
+  groupId: string,
+  domain: string,
+): Promise<RoomGateState | null> {
+  const [group] = await db.select({ id: groups.id }).from(groups).where(eq(groups.id, groupId));
+  if (!group) {
+    return null;
+  }
+  const members = await db
+    .select({ userId: groupMembers.userId })
+    .from(groupMembers)
+    .where(eq(groupMembers.groupId, groupId));
+  return {
+    memberJids: new Set(
+      members.map((row) => jidFor(localpartFor(row.userId), domain).toLowerCase()),
+    ),
+  };
+}
+
 // Agent gateway v0: keeps every active AI online over XMPP and replies to the
 // AI's owner in their DM. The AI id always comes from the gateway's own
 // connection map, never from message content. Reconnects are xmpp-core's own
@@ -179,7 +262,15 @@ export function createAgentGateway(
 
   let started = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let unsubscribe: (() => void) | undefined;
+  let unsubscribes: Array<() => void> = [];
+
+  function nowMs(): number {
+    return (deps.now ?? (() => new Date()))().getTime();
+  }
+
+  function roomJidFor(roomLocalpart: string): string {
+    return `${roomLocalpart}@${deps.xmpp.mucDomain}`.toLowerCase();
+  }
 
   function aiDeps(): AiServiceDeps {
     return {
@@ -284,6 +375,10 @@ export function createAgentGateway(
       retryAttempt: 0,
       retryTimer: undefined,
       unsubs: [],
+      rooms: new Map(),
+      roomPending: new Map(),
+      roomBusy: new Set(),
+      roomTurns: new Map(),
     };
     sessions.set(aiId, session);
     session.unsubs.push(
@@ -320,7 +415,11 @@ export function createAgentGateway(
     // a connection nobody owns any more.
     if (!started || session.stopped || sessions.get(aiId) !== session) {
       await disconnectAi(aiId).catch(() => undefined);
+      return;
     }
+    // Rooms never break DMs: a room sync failure is logged inside and the
+    // session stays up for DMs either way.
+    await syncAiRooms(session, record.name);
   }
 
   async function disconnectAi(aiId: string): Promise<void> {
@@ -350,6 +449,75 @@ export function createAgentGateway(
     logger.info({ aiId }, 'AI is offline');
   }
 
+  // Drifts the AI's room joins toward the database: joins every room the AI
+  // belongs to with the AI's name as nick, re-joins when the nick went stale,
+  // and leaves rooms the AI no longer belongs to. A join failure is logged
+  // (ids only) and retried by the next reconcile; it never throws and never
+  // breaks the AI's DMs.
+  async function syncAiRooms(session: AiSession, aiName: string): Promise<void> {
+    if (session.stopped || sessions.get(session.aiId) !== session) {
+      return;
+    }
+    let rooms: Array<{ groupId: string; roomLocalpart: string }>;
+    try {
+      rooms = await listAiRooms(deps.db, session.aiId);
+    } catch (error) {
+      logger.warn(
+        { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
+        'AI rooms lookup failed',
+      );
+      return;
+    }
+    const wanted = new Set<string>();
+    for (const room of rooms) {
+      const roomJid = roomJidFor(room.roomLocalpart);
+      wanted.add(roomJid);
+      const known = session.rooms.get(roomJid);
+      if (known !== undefined && known.nick === aiName) {
+        continue;
+      }
+      if (known !== undefined) {
+        await leaveRoomQuietly(session, roomJid, known.groupId);
+      }
+      try {
+        await session.core.joinRoom(roomJid, aiName);
+      } catch (error) {
+        logger.warn(
+          { err: toRedactedError(error, secretsFor()), aiId: session.aiId, groupId: room.groupId },
+          'AI room join failed; reconcile will retry',
+        );
+        continue;
+      }
+      session.rooms.set(roomJid, { groupId: room.groupId, joinedAtMs: nowMs(), nick: aiName });
+      logger.info({ aiId: session.aiId, groupId: room.groupId }, 'AI joined the room');
+    }
+    for (const [roomJid, sub] of session.rooms) {
+      if (!wanted.has(roomJid)) {
+        await leaveRoomQuietly(session, roomJid, sub.groupId);
+      }
+    }
+  }
+
+  async function leaveRoomQuietly(
+    session: AiSession,
+    roomJid: string,
+    groupId: string,
+  ): Promise<void> {
+    session.rooms.delete(roomJid);
+    session.roomPending.delete(roomJid);
+    session.roomBusy.delete(roomJid);
+    try {
+      await session.core.leaveRoom(roomJid);
+    } catch (error) {
+      logger.warn(
+        { err: toRedactedError(error, secretsFor()), aiId: session.aiId, groupId },
+        'AI room leave failed',
+      );
+      return;
+    }
+    logger.info({ aiId: session.aiId, groupId }, 'AI left the room');
+  }
+
   // Another gateway logged this AI in with the same resource and ejabberd
   // replaced this session: the newest gateway wins, so this process stands
   // down for the AI and never reconnects it until a restart. Pending
@@ -363,6 +531,7 @@ export function createAgentGateway(
     // The AI id only: never tokens, JIDs with tokens, or message bodies.
     logger.warn({ aiId: session.aiId }, 'AI session replaced by another gateway; standing down');
     session.pending.length = 0;
+    session.roomPending.clear();
     void disconnectAi(session.aiId).catch(() => undefined);
   }
 
@@ -377,7 +546,14 @@ export function createAgentGateway(
     const wanted = new Set(active.map((ai) => ai.id));
     for (const ai of active) {
       try {
-        await connectAi(ai);
+        const existing = sessions.get(ai.id);
+        if (existing === undefined) {
+          await connectAi(ai);
+        } else {
+          // Rooms drift without a reconnect: a missed group event, a failed
+          // join, or a stale nick is picked up here at the latest.
+          await syncAiRooms(existing, ai.name);
+        }
       } catch (error) {
         logger.warn(
           { err: toRedactedError(error, secretsFor()), aiId: ai.id },
@@ -403,6 +579,10 @@ export function createAgentGateway(
     if (session.stopped || sessions.get(session.aiId) !== session) {
       return;
     }
+    if (message.kind === 'groupchat') {
+      handleRoomIncoming(session, message);
+      return;
+    }
     // v0 answers DMs only. Groups, own messages and empty bodies are ignored
     // before any database or model work.
     if (message.kind !== 'chat' || message.outgoing) {
@@ -421,6 +601,242 @@ export function createAgentGateway(
         'AI pump failed',
       );
     });
+  }
+
+  // M2 rule 1 (§9.4): a person @mentions AIs, and only those AIs reply. Every
+  // check that needs no database runs here; the sender's membership and the
+  // rate limit are checked fresh at turn time.
+  function handleRoomIncoming(session: AiSession, message: ChatMessage): void {
+    if (message.outgoing) {
+      return;
+    }
+    const body = message.body?.trim() ?? '';
+    if (body === '') {
+      return;
+    }
+    const roomJid = bareJid(message.chatJid);
+    const room = session.rooms.get(roomJid);
+    if (room === undefined) {
+      // Not a room this AI joined: strangers' rooms are never answered.
+      return;
+    }
+    // History replayed on join carries its original stamp, far older than the
+    // join. Live messages carry ~now.
+    if (message.timestamp.getTime() < room.joinedAtMs - GROUP_JOIN_SKEW_MS) {
+      return;
+    }
+    const aiBare = bareJid(session.aiJid);
+    const mentioned = (message.mentions ?? []).some((mention) => mention.jid === aiBare);
+    if (!mentioned) {
+      // No mention, nobody replies (M2 rule 3).
+      return;
+    }
+    // No AI-to-AI turns in M2: any `ai-*` real JID never wakes the AI. An
+    // occupant whose real JID is unknown is decided at turn time by nick.
+    if (isAiSender(bareJid(message.fromJid))) {
+      return;
+    }
+    const queued = session.roomPending.get(roomJid) ?? [];
+    queued.push({
+      id: message.id,
+      body,
+      fromJid: message.fromJid,
+      fromResolved: message.fromResolved,
+      ...(message.fromNick === undefined ? {} : { fromNick: message.fromNick }),
+      timestamp: message.timestamp,
+    });
+    session.roomPending.set(roomJid, queued);
+    void pumpRoom(session, roomJid).catch((error: unknown) => {
+      logger.warn(
+        { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
+        'AI group pump failed',
+      );
+    });
+  }
+
+  // One turn at a time per (AI, room). Messages arriving during a turn are
+  // coalesced: when the turn ends, one more turn runs if new mentions came in.
+  async function pumpRoom(session: AiSession, roomJid: string): Promise<void> {
+    if (session.roomBusy.has(roomJid)) {
+      return;
+    }
+    session.roomBusy.add(roomJid);
+    try {
+      while (!session.stopped) {
+        const batch = session.roomPending.get(roomJid) ?? [];
+        if (batch.length === 0) {
+          break;
+        }
+        session.roomPending.set(roomJid, []);
+        await runGroupSessionTurn(session, roomJid, batch);
+      }
+    } finally {
+      session.roomBusy.delete(roomJid);
+    }
+  }
+
+  async function runGroupSessionTurn(
+    session: AiSession,
+    roomJid: string,
+    batch: RoomPendingMessage[],
+  ): Promise<void> {
+    // The AI id below is the gateway's own: it keyed this session, so nothing
+    // here can be aimed at an id taken from message content.
+    const ai = await loadActiveAi(deps.db, session.aiId).catch(() => null);
+    if (ai === null) {
+      await disconnectAi(session.aiId).catch(() => undefined);
+      return;
+    }
+    const room = session.rooms.get(roomJid);
+    if (room === undefined) {
+      return;
+    }
+    const gate = await loadRoomGateState(deps.db, room.groupId, deps.xmpp.domain).catch(() => null);
+    if (gate === null) {
+      logger.warn({ aiId: session.aiId, groupId: room.groupId }, 'AI group state lookup failed');
+      return;
+    }
+    const eligible: RoomPendingMessage[] = [];
+    for (const item of batch) {
+      const fromBare = bareJid(item.fromJid);
+      if (isAiSender(fromBare)) {
+        continue;
+      }
+      if (!item.fromResolved) {
+        // The real JID is unknown: never a turn. That covers both spec
+        // clauses at once — an occupant nick matching a room AI would be an
+        // AI-to-AI turn, and anything else can't pass the human-membership
+        // check below anyway.
+        continue;
+      }
+      // Only a current human member's mention triggers a reply. Members are
+      // people: every `ai-*` sender already returned above.
+      if (!gate.memberJids.has(fromBare)) {
+        continue;
+      }
+      eligible.push(item);
+    }
+    if (eligible.length === 0) {
+      return;
+    }
+    const trigger = eligible[eligible.length - 1] as RoomPendingMessage;
+
+    const atMs = nowMs();
+    const recent = (session.roomTurns.get(roomJid) ?? []).filter(
+      (stamp) => stamp > atMs - GROUP_RATE_WINDOW_MS,
+    );
+    if (recent.length >= GROUP_TURNS_PER_WINDOW) {
+      session.roomTurns.set(roomJid, recent);
+      logger.warn(
+        { aiId: session.aiId, groupId: room.groupId, messageId: trigger.id },
+        'AI group rate limit reached; dropping the turn',
+      );
+      return;
+    }
+    recent.push(atMs);
+    session.roomTurns.set(roomJid, recent);
+
+    const senderName = displayNameOf({ fromJid: trigger.fromJid, fromNick: trigger.fromNick });
+    let virtualKey: string | undefined;
+    try {
+      await ensureAiModel(aiDeps(), session.aiId);
+      const [keyRow] = await deps.db
+        .select({ encryptedKey: llmVirtualKeys.encryptedKey })
+        .from(llmVirtualKeys)
+        .where(eq(llmVirtualKeys.aiId, session.aiId))
+        .limit(1);
+      if (!keyRow) {
+        throw new Error(`AI ${session.aiId} has no virtual key`);
+      }
+      // Decrypted in memory only; never stored, logged or returned.
+      virtualKey = (deps.cipher as KeyCipher).decrypt(keyRow.encryptedKey);
+
+      let history: ChatMessage[] = [];
+      try {
+        const page = await session.core.loadHistory(roomJid, 'groupchat', {
+          max: DM_HISTORY_MESSAGE_LIMIT,
+        });
+        history = page.messages;
+      } catch (historyError) {
+        logger.warn(
+          { err: toRedactedError(historyError, secretsFor(virtualKey)), aiId: session.aiId },
+          'AI group history lookup failed; replying without history',
+        );
+      }
+
+      const now = (deps.now ?? (() => new Date()))();
+      const today = now.toISOString().slice(0, 10);
+      // The batch is newer than the archive may know: merge the eligible
+      // messages into the history (skipping ids MAM already returned) so a
+      // coalesced turn sees every mention that arrived, and the context
+      // builder below deduplicates the trigger by id.
+      const knownIds = new Set(history.map((message) => message.id));
+      const fresh: ChatMessage[] = eligible
+        .filter((item) => !knownIds.has(item.id))
+        .map((item) => ({
+          id: item.id,
+          chatJid: roomJid,
+          kind: 'groupchat' as const,
+          fromJid: item.fromJid,
+          fromResolved: item.fromResolved,
+          ...(item.fromNick === undefined ? {} : { fromNick: item.fromNick }),
+          body: item.body,
+          timestamp: item.timestamp,
+          outgoing: false,
+        }));
+      const messages: ChatCompletionMessage[] = buildGroupMessages({
+        aiName: ai.name,
+        persona: ai.persona,
+        senderName,
+        today,
+        aiJid: ai.jid,
+        history: [...history, ...fresh],
+        trigger: { id: trigger.id, body: trigger.body },
+      });
+
+      // No persona tools in groups and no drafts: the reply goes straight to
+      // the room with `composing`/`paused` chat states around it.
+      await runGroupTurn({
+        aiId: session.aiId,
+        roomJid,
+        triggerId: trigger.id,
+        senderJid: bareJid(trigger.fromJid),
+        senderName,
+        messages,
+        baseUrl: baseUrl,
+        virtualKey,
+        model: modelNameForAi(session.aiId),
+        ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
+        sendMessage: (to, kind, text, opts) => session.core.sendMessage(to, kind, text, opts),
+        sendTyping: (to, kind, state) => {
+          session.core.sendTyping(to, kind, state);
+        },
+        logger,
+        secrets: secretsFor(),
+      });
+    } catch (error) {
+      // ensureAiModel, the key lookup and anything else outside the turn: an
+      // honest short message in the room, never the raw error.
+      logger.warn(
+        { err: toRedactedError(error, secretsFor(virtualKey)), aiId: session.aiId },
+        'AI group turn failed',
+      );
+      const reply = mapFailureToReply(error);
+      const name = senderName.trim() === '' ? bareJid(trigger.fromJid) : senderName.trim();
+      try {
+        await session.core.sendMessage(roomJid, 'groupchat', `@${name} ${reply}`, {
+          replyTo: { id: trigger.id },
+          mentions: [{ jid: bareJid(trigger.fromJid), begin: 0, end: name.length + 1 }],
+        });
+      } catch {
+        // There is nobody left to tell when the send itself fails.
+      }
+      try {
+        session.core.sendTyping(roomJid, 'groupchat', 'paused');
+      } catch {
+        // Typing state is best-effort.
+      }
+    }
   }
 
   // One turn at a time per AI. Messages arriving during a turn are coalesced:
@@ -607,32 +1023,58 @@ export function createAgentGateway(
     started = true;
     superseded.clear();
     await reconcile();
-    unsubscribe = onAiLifecycle((event) => {
-      if (!started) {
-        return;
-      }
-      if (event.type === 'created') {
+    unsubscribes.push(
+      onAiLifecycle((event) => {
+        if (!started) {
+          return;
+        }
+        if (event.type === 'created') {
+          void loadActiveAi(deps.db, event.aiId)
+            .then((record) => {
+              if (record !== null) {
+                return connectAi(record);
+              }
+            })
+            .catch((error: unknown) => {
+              logger.warn(
+                { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
+                'AI post-create connect failed',
+              );
+            });
+        } else {
+          void disconnectAi(event.aiId).catch((error: unknown) => {
+            logger.warn(
+              { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
+              'AI post-delete disconnect failed',
+            );
+          });
+        }
+      }),
+      onGroupAi((event) => {
+        if (!started) {
+          return;
+        }
+        // A join or leave for a live session syncs right away; anything
+        // missed (an AI with no session yet) is picked up by `reconcile`.
+        // Only ids travel on the event.
+        const session = sessions.get(event.aiId);
+        if (session === undefined) {
+          return;
+        }
         void loadActiveAi(deps.db, event.aiId)
           .then((record) => {
-            if (record !== null) {
-              return connectAi(record);
+            if (record !== null && sessions.get(event.aiId) === session) {
+              return syncAiRooms(session, record.name);
             }
           })
           .catch((error: unknown) => {
             logger.warn(
               { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
-              'AI post-create connect failed',
+              'AI room sync failed',
             );
           });
-      } else {
-        void disconnectAi(event.aiId).catch((error: unknown) => {
-          logger.warn(
-            { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
-            'AI post-delete disconnect failed',
-          );
-        });
-      }
-    });
+      }),
+    );
     timer = setInterval(() => {
       if (started) {
         void reconcile();
@@ -647,14 +1089,14 @@ export function createAgentGateway(
       clearInterval(timer);
       timer = undefined;
     }
-    if (unsubscribe !== undefined) {
+    for (const unsub of unsubscribes) {
       try {
-        unsubscribe();
+        unsub();
       } catch {
         // Unsubscribing is best-effort during shutdown.
       }
-      unsubscribe = undefined;
     }
+    unsubscribes = [];
     for (const aiId of sessions.keys()) {
       try {
         await disconnectAi(aiId);

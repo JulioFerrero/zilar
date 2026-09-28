@@ -3,8 +3,12 @@ import type { ChatMessage } from '@galena/xmpp-core';
 import {
   bareJid,
   buildDmMessages,
+  buildGroupMessages,
+  buildGroupSystemMessage,
   buildSystemMessage,
   capHistoryByChars,
+  displayNameOf,
+  DM_HISTORY_CHAR_BUDGET,
   DM_HISTORY_MESSAGE_LIMIT,
 } from './context';
 
@@ -155,5 +159,157 @@ describe('capHistoryByChars', () => {
     expect(capHistoryByChars(turns, 100)).toEqual(turns);
     expect(capHistoryByChars(turns, 3)).toEqual([{ content: 'bb' }, { content: 'c' }]);
     expect(capHistoryByChars(turns, 0)).toEqual([]);
+  });
+});
+
+const ROOM_JID = 'gtestroom@rooms.galena.localhost';
+const MEMBER_JID = 'ana@galena.localhost';
+
+function room(
+  id: string,
+  fromJid: string,
+  body: string | undefined,
+  options: { nick?: string; outgoing?: boolean; resolved?: boolean } = {},
+): ChatMessage {
+  return {
+    id,
+    chatJid: ROOM_JID,
+    kind: 'groupchat',
+    fromJid,
+    fromResolved: options.resolved ?? true,
+    ...(options.nick === undefined ? {} : { fromNick: options.nick }),
+    ...(body === undefined ? {} : { body }),
+    timestamp: new Date('2026-09-28T12:00:00Z'),
+    outgoing: options.outgoing ?? false,
+  };
+}
+
+function groupInput(history: ChatMessage[] = []) {
+  return {
+    aiName: 'Dev-1',
+    persona: 'Senior TypeScript developer.',
+    senderName: 'Ana',
+    today: '2026-09-28',
+    aiJid: AI_JID,
+    history,
+    trigger: { id: 't-1', body: 'hey Dev, look at this' },
+  };
+}
+
+describe('buildGroupSystemMessage', () => {
+  it('carries the persona, the group line with the mentioner, and today', () => {
+    const system = buildGroupSystemMessage({
+      aiName: 'Dev-1',
+      persona: 'Senior TypeScript developer.',
+      senderName: 'Ana',
+      today: '2026-09-28',
+    });
+    expect(system).toContain('Senior TypeScript developer.');
+    expect(system).toContain('talking in a group chat');
+    expect(system).toContain('Ana mentioned you');
+    expect(system).toContain('Today is 2026-09-28.');
+  });
+
+  it('offers no persona tools in groups', () => {
+    const system = buildGroupSystemMessage({
+      aiName: 'Dev-1',
+      persona: 'Senior TypeScript developer.',
+      senderName: 'Ana',
+      today: '2026-09-28',
+    });
+    expect(system).not.toContain('update_persona');
+  });
+});
+
+describe('displayNameOf', () => {
+  it('prefers the nick and falls back to the bare JID', () => {
+    expect(displayNameOf({ fromJid: MEMBER_JID, fromNick: 'Ana' })).toBe('Ana');
+    expect(displayNameOf({ fromJid: MEMBER_JID })).toBe(MEMBER_JID);
+    expect(displayNameOf({ fromJid: MEMBER_JID, fromNick: '   ' })).toBe(MEMBER_JID);
+  });
+});
+
+describe('buildGroupMessages', () => {
+  it('prefixes user turns with the sender name and keeps AI turns as assistant', () => {
+    const messages = buildGroupMessages(
+      groupInput([
+        room('m-1', MEMBER_JID, 'first question', { nick: 'Ana' }),
+        room('m-2', AI_JID, 'my answer', { outgoing: true }),
+      ]),
+    );
+    expect(messages[0]?.role).toBe('system');
+    expect(messages.slice(1)).toEqual([
+      { role: 'user', content: 'Ana: first question' },
+      { role: 'assistant', content: 'my answer' },
+      { role: 'user', content: 'Ana: hey Dev, look at this' },
+    ]);
+  });
+
+  it('falls back to the bare JID when the nick is missing', () => {
+    const messages = buildGroupMessages(groupInput([room('m-1', MEMBER_JID, 'hello')]));
+    expect(messages.slice(1)).toEqual([
+      { role: 'user', content: `${MEMBER_JID}: hello` },
+      { role: 'user', content: 'Ana: hey Dev, look at this' },
+    ]);
+  });
+
+  it('does not duplicate the trigger when it is already the last history item', () => {
+    const messages = buildGroupMessages(
+      groupInput([
+        room('m-1', MEMBER_JID, 'first', { nick: 'Ana' }),
+        room('t-1', MEMBER_JID, 'hey Dev, look at this', { nick: 'Ana' }),
+      ]),
+    );
+    expect(messages.slice(1)).toEqual([
+      { role: 'user', content: 'Ana: first' },
+      { role: 'user', content: 'Ana: hey Dev, look at this' },
+    ]);
+  });
+
+  it('drops empty bodies and keeps other AIs as plain text', () => {
+    const messages = buildGroupMessages(
+      groupInput([
+        room('m-1', MEMBER_JID, 'keep me', { nick: 'Ana' }),
+        room('m-2', MEMBER_JID, '   ', { nick: 'Ana' }),
+        room('m-3', MEMBER_JID, undefined, { nick: 'Ana' }),
+        room('m-4', OTHER_AI_JID, 'bot chatter', { nick: 'Helper' }),
+      ]),
+    );
+    expect(messages.slice(1)).toEqual([
+      { role: 'user', content: 'Ana: keep me' },
+      { role: 'user', content: 'Helper: bot chatter' },
+      { role: 'user', content: 'Ana: hey Dev, look at this' },
+    ]);
+  });
+
+  it('looks back at most 30 messages but always includes the trigger', () => {
+    const history: ChatMessage[] = [];
+    for (let index = 0; index < DM_HISTORY_MESSAGE_LIMIT + 5; index += 1) {
+      history.push(room(`m-${index}`, MEMBER_JID, `message ${index}`, { nick: 'Ana' }));
+    }
+    const messages = buildGroupMessages({
+      ...groupInput(history),
+      trigger: { id: 't-9', body: 'new' },
+    });
+    expect(messages.filter((message) => message.role !== 'system')).toHaveLength(
+      DM_HISTORY_MESSAGE_LIMIT + 1,
+    );
+    expect(messages[1]).toEqual({ role: 'user', content: 'Ana: message 5' });
+    expect(messages.at(-1)).toEqual({ role: 'user', content: 'Ana: new' });
+  });
+
+  it('drops the oldest messages first under the character budget', () => {
+    const history = [
+      room('m-old', MEMBER_JID, `old ${'x'.repeat(DM_HISTORY_CHAR_BUDGET)}`, { nick: 'Ana' }),
+      room('m-new', MEMBER_JID, 'new and short', { nick: 'Ana' }),
+    ];
+    const messages = buildGroupMessages({
+      ...groupInput(history),
+      trigger: { id: 't-9', body: 'go' },
+    });
+    const contents = messages.map((message) => message.content);
+    expect(contents.some((content) => content.startsWith('Ana: old '))).toBe(false);
+    expect(contents).toContain('Ana: new and short');
+    expect(messages.at(-1)).toEqual({ role: 'user', content: 'Ana: go' });
   });
 });

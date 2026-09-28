@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { groupMembers, groups } from '../db/schema';
+import { aiLimits, ais, groupAis, groupMembers, groups, providerConnections } from '../db/schema';
+import { user } from '../auth/auth-schema';
+import { aiLocalpart } from '../ais/service';
 import {
   bootstrapUser,
   contactOf,
@@ -12,12 +15,15 @@ import {
   type TestContext,
 } from '../test-support';
 import { localpartFor } from '../xmpp/provisioning';
+import { onGroupAi, type GroupAiEvent } from './events';
+import { MAX_GROUP_MEMBERS } from './service';
 
 interface GroupDetailBody {
   id: string;
   title: string;
   createdBy: string;
   members: Array<{ userId: string; name: string; role: string }>;
+  ais: Array<{ aiId: string; jid: string; name: string; ownerId: string }>;
 }
 
 describe('groups', () => {
@@ -62,6 +68,58 @@ describe('groups', () => {
       throw new Error(`no group ${groupId}`);
     }
     return row.roomLocalpart;
+  }
+
+  async function seedAi(
+    ownerId: string,
+    name = 'Helper AI',
+  ): Promise<{ aiId: string; jid: string }> {
+    const aiId = randomUUID();
+    const connectionId = randomUUID();
+    await context.db.insert(providerConnections).values({
+      id: connectionId,
+      owner: ownerId,
+      provider: 'openai',
+      encryptedKey: 'sealed-placeholder',
+      label: null,
+    });
+    const localpart = aiLocalpart(aiId);
+    const jid = `${localpart}@${TEST_XMPP_DOMAIN}`;
+    await context.db.insert(ais).values({
+      id: aiId,
+      owner: ownerId,
+      name,
+      template: 'dev',
+      persona: 'A helpful persona.',
+      providerConnectionId: connectionId,
+      model: 'gpt-4o-mini',
+      localpart,
+      jid,
+      status: 'active',
+    });
+    await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+    return { aiId, jid };
+  }
+
+  function addAiRequest(cookie: string, groupId: string, body: unknown) {
+    return app.request(`${TEST_BASE_URL}/api/groups/${groupId}/ais`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify(body),
+    });
+  }
+
+  function removeAiRequest(cookie: string, groupId: string, aiId: string) {
+    return app.request(`${TEST_BASE_URL}/api/groups/${groupId}/ais/${aiId}`, {
+      method: 'DELETE',
+      headers: { cookie },
+    });
+  }
+
+  function groupDetailRequest(cookie: string, groupId: string) {
+    return app.request(`${TEST_BASE_URL}/api/groups/${groupId}`, {
+      headers: { cookie },
+    });
   }
 
   it('creates the room, sets affiliations and makes the creator the owner', async () => {
@@ -383,5 +441,207 @@ describe('groups', () => {
       method: 'DELETE',
     });
     expect(remove.status).toBe(401);
+
+    const addAi = await app.request(`${TEST_BASE_URL}/api/groups/x/ais`, { method: 'POST' });
+    expect(addAi.status).toBe(401);
+
+    const removeAi = await app.request(`${TEST_BASE_URL}/api/groups/x/ais/y`, {
+      method: 'DELETE',
+    });
+    expect(removeAi.status).toBe(401);
+  });
+
+  describe('AIs in groups', () => {
+    async function groupWithMember(): Promise<{
+      owner: Awaited<ReturnType<typeof bootstrapUser>>;
+      member: Awaited<ReturnType<typeof bootstrapUser>>;
+      groupId: string;
+    }> {
+      const owner = await bootstrapUser(context, app, 'owner@example.com');
+      const member = await contactOf(context, app, owner.id, 'member@example.com');
+      const created = await createGroupRequest(owner.cookie, {
+        title: 'Team',
+        memberIds: [member.id],
+      });
+      expect(created.status).toBe(201);
+      const { id: groupId } = (await created.json()) as GroupDetailBody;
+      return { owner, member, groupId };
+    }
+
+    it('lets an owner or admin add their own AI: affiliation, row, event', async () => {
+      const { owner, member, groupId } = await groupWithMember();
+      const ai = await seedAi(owner.id);
+      const seen: GroupAiEvent[] = [];
+      const unsub = onGroupAi((event) => {
+        seen.push(event);
+      });
+      try {
+        const response = await addAiRequest(owner.cookie, groupId, { aiId: ai.aiId });
+        expect(response.status).toBe(200);
+        const detail = (await response.json()) as GroupDetailBody;
+        expect(detail.ais).toEqual([
+          { aiId: ai.aiId, jid: ai.jid, name: 'Helper AI', ownerId: owner.id },
+        ]);
+        expect(detail.members.map((entry) => entry.userId)).toEqual(
+          expect.arrayContaining([owner.id, member.id]),
+        );
+      } finally {
+        unsub();
+      }
+
+      const roomLocalpart = await roomLocalpartOf(groupId);
+      expect(context.adminClient.affiliations).toEqual(
+        expect.arrayContaining([{ roomId: roomLocalpart, jid: ai.jid, affiliation: 'member' }]),
+      );
+      const rows = await context.db.select().from(groupAis);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ groupId, aiId: ai.aiId, addedBy: owner.id });
+      expect(seen).toEqual([{ type: 'ai-added', groupId, aiId: ai.aiId }]);
+    });
+
+    it('lets an admin with their own AI add it', async () => {
+      const { member, groupId } = await groupWithMember();
+      await context.db
+        .update(groupMembers)
+        .set({ role: 'admin' })
+        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, member.id)));
+      const ai = await seedAi(member.id);
+
+      const response = await addAiRequest(member.cookie, groupId, { aiId: ai.aiId });
+      expect(response.status).toBe(200);
+      expect(((await response.json()) as GroupDetailBody).ais).toHaveLength(1);
+    });
+
+    it('rejects members, non-members and foreign AIs, and validates the body', async () => {
+      const { owner, member, groupId } = await groupWithMember();
+      const stranger = await bootstrapUser(context, app, 'stranger@example.com');
+      const ownAi = await seedAi(owner.id);
+      const foreignAi = await seedAi(stranger.id);
+
+      expect((await addAiRequest(member.cookie, groupId, { aiId: ownAi.aiId })).status).toBe(403);
+      expect((await addAiRequest(stranger.cookie, groupId, { aiId: ownAi.aiId })).status).toBe(403);
+      // Someone else's AI answers the same 404 as a missing one.
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: foreignAi.aiId })).status).toBe(
+        404,
+      );
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: 'does-not-exist' })).status).toBe(
+        404,
+      );
+      expect(
+        (await addAiRequest(owner.cookie, 'does-not-exist', { aiId: ownAi.aiId })).status,
+      ).toBe(404);
+      expect((await addAiRequest(owner.cookie, groupId, {})).status).toBe(400);
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: '' })).status).toBe(400);
+      expect(await context.db.select().from(groupAis)).toHaveLength(0);
+    });
+
+    it('adds an AI idempotently', async () => {
+      const { owner, groupId } = await groupWithMember();
+      const ai = await seedAi(owner.id);
+
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: ai.aiId })).status).toBe(200);
+      const affiliationsBefore = context.adminClient.affiliations.length;
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: ai.aiId })).status).toBe(200);
+
+      expect(await context.db.select().from(groupAis)).toHaveLength(1);
+      expect(context.adminClient.affiliations).toHaveLength(affiliationsBefore);
+      expect((await groupDetailRequest(owner.cookie, groupId)).status).toBe(200);
+      expect(
+        ((await (await groupDetailRequest(owner.cookie, groupId)).json()) as GroupDetailBody).ais,
+      ).toHaveLength(1);
+    });
+
+    it('counts AIs toward the member cap in both directions', async () => {
+      const { owner, groupId } = await groupWithMember();
+      // Two people already; fill the rest with people straight in the db.
+      const extra = MAX_GROUP_MEMBERS - 2 - 1;
+      for (let index = 0; index < extra; index += 1) {
+        const id = `cap-user-${index}`;
+        await context.db
+          .insert(user)
+          .values({ id, name: `Cap ${index}`, email: `${id}@example.com` });
+        await context.db.insert(groupMembers).values({ groupId, userId: id, role: 'member' });
+      }
+      const first = await seedAi(owner.id);
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: first.aiId })).status).toBe(200);
+
+      // 50 of 50 now: one more AI is rejected...
+      const second = await seedAi(owner.id, 'Second AI');
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: second.aiId })).status).toBe(400);
+      // ...and so is one more person.
+      const late = await contactOf(context, app, owner.id, 'late@example.com');
+      expect((await addMembersRequest(owner.cookie, groupId, [late.id])).status).toBe(400);
+    });
+
+    it('removes an AI by the AI owner and by a group admin, and nobody else', async () => {
+      const { owner, member, groupId } = await groupWithMember();
+      const ai = await seedAi(member.id);
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: 'does-not-exist' })).status).toBe(
+        404,
+      );
+      // The group owner does not own this AI: 404, like a missing one.
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: ai.aiId })).status).toBe(404);
+
+      await context.db
+        .update(groupMembers)
+        .set({ role: 'admin' })
+        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, member.id)));
+      expect((await addAiRequest(member.cookie, groupId, { aiId: ai.aiId })).status).toBe(200);
+
+      const stranger = await bootstrapUser(context, app, 'stranger@example.com');
+      expect((await removeAiRequest(stranger.cookie, groupId, ai.aiId)).status).toBe(403);
+      expect((await removeAiRequest(member.cookie, groupId, 'does-not-exist')).status).toBe(404);
+
+      const seen: GroupAiEvent[] = [];
+      const unsub = onGroupAi((event) => {
+        seen.push(event);
+      });
+      try {
+        // The AI owner removes it even after leaving the group.
+        expect((await removeMemberRequest(member.cookie, groupId, member.id)).status).toBe(200);
+        const removed = await removeAiRequest(member.cookie, groupId, ai.aiId);
+        expect(removed.status).toBe(200);
+        expect(((await removed.json()) as GroupDetailBody).ais).toHaveLength(0);
+      } finally {
+        unsub();
+      }
+
+      const roomLocalpart = await roomLocalpartOf(groupId);
+      expect(context.adminClient.affiliations).toEqual(
+        expect.arrayContaining([{ roomId: roomLocalpart, jid: ai.jid, affiliation: 'none' }]),
+      );
+      expect(await context.db.select().from(groupAis)).toHaveLength(0);
+      expect(seen).toEqual([{ type: 'ai-removed', groupId, aiId: ai.aiId }]);
+    });
+
+    it('lets a group owner remove an AI they do not own', async () => {
+      const { owner, member, groupId } = await groupWithMember();
+      const ai = await seedAi(member.id);
+      await context.db
+        .update(groupMembers)
+        .set({ role: 'admin' })
+        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, member.id)));
+      expect((await addAiRequest(member.cookie, groupId, { aiId: ai.aiId })).status).toBe(200);
+
+      const removed = await removeAiRequest(owner.cookie, groupId, ai.aiId);
+      expect(removed.status).toBe(200);
+      expect(((await removed.json()) as GroupDetailBody).ais).toHaveLength(0);
+    });
+
+    it('lists the group AIs in the detail and hides the group from strangers', async () => {
+      const { owner, groupId } = await groupWithMember();
+      const ai = await seedAi(owner.id);
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: ai.aiId })).status).toBe(200);
+
+      const detail = (await (
+        await groupDetailRequest(owner.cookie, groupId)
+      ).json()) as GroupDetailBody;
+      expect(detail.ais).toEqual([
+        { aiId: ai.aiId, jid: ai.jid, name: 'Helper AI', ownerId: owner.id },
+      ]);
+
+      const stranger = await bootstrapUser(context, app, 'stranger@example.com');
+      expect((await groupDetailRequest(stranger.cookie, groupId)).status).toBe(404);
+    });
   });
 });
