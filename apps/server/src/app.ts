@@ -8,6 +8,8 @@ import type { Auth } from './auth/auth';
 import { createAuthRoutes } from './auth/routes';
 import { createChatsRoutes } from './chats/routes';
 import type { ServerConfig } from './config';
+import { createKeyCipher } from './connections/crypto';
+import { createConnectionsRoutes } from './connections/routes';
 import { createContactsRoutes } from './contacts/routes';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
@@ -93,6 +95,22 @@ export function createApp({
       ...(voiceMaxBytes === undefined ? {} : { maxBytes: voiceMaxBytes }),
     }),
   );
+
+  // Provider-key connections are only available when the envelope-encryption
+  // master key is configured. The key is validated at startup by the config
+  // schema; when it is absent the route is not mounted, mirroring how the AI
+  // module refuses to call LiteLLM without LITELLM_MASTER_KEY.
+  if (config.GALENA_KEY_ENCRYPTION_KEY !== undefined) {
+    app.route(
+      '/api',
+      createConnectionsRoutes({
+        auth,
+        db,
+        logger,
+        cipher: createKeyCipher(config.GALENA_KEY_ENCRYPTION_KEY),
+      }),
+    );
+  }
 
   app.get('/health', async (c) => {
     const up = await isDatabaseUp(db);

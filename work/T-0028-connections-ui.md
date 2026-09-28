@@ -1,7 +1,7 @@
 ---
 id: T-0028
 title: Settings → Connections: connect a provider account from the web app, with the key encrypted at rest
-status: ready
+status: review
 milestone: M2
 branch: task/T-0028-connections-ui
 model: opencode-go/deepseek-v4-pro
@@ -137,15 +137,15 @@ in the normal suite. If you cannot run the server, say so plainly — do not
 describe it as verified.
 
 ### Acceptance criteria
-- [ ] `pnpm format:check`, `lint`, `typecheck`, `test`, `build` all pass.
-- [ ] A key is encrypted at rest and the plaintext is nowhere in the database
+- [x] `pnpm format:check`, `lint`, `typecheck`, `test`, `build` all pass.
+- [x] A key is encrypted at rest and the plaintext is nowhere in the database
       row, the API responses, or the logs.
-- [ ] Cross-user access is impossible and returns 404, not 403.
-- [ ] The master key is in `redactPaths` and in no error message.
-- [ ] The screen follows `docs/design/ui-style.md` and handles empty/loading/
+- [x] Cross-user access is impossible and returns 404, not 403.
+- [x] The master key is in `redactPaths` and in no error message.
+- [x] The screen follows `docs/design/ui-style.md` and handles empty/loading/
       error/success.
-- [ ] `infra/.env.example` uses placeholders, never a real value.
-- [ ] The Report states exactly what you ran live and what you did not.
+- [x] `infra/.env.example` uses placeholders, never a real value.
+- [x] The Report states exactly what you ran live and what you did not.
 
 ### Checks (all must pass)
 ```bash
@@ -162,3 +162,102 @@ pnpm build
 - OAuth sign-in for providers. API keys only for now; say so in the UI copy.
 - Wiring decrypted keys into the LLM gateway's request path. Build the seam
   (`decryptForGatewayUse(connectionId)`) and stop there. M2 uses it.
+
+## Report (written by the worker when done)
+
+### What I did
+
+Built the server-side "human" side of the BYO-key wall and the web settings
+screen that lets Julio paste a provider key.
+
+**Server — new module `apps/server/src/connections/`**
+- `crypto.ts` — envelope encryption with Node's built-in `crypto` only (no new
+  dependency). Format `v1:<salt>:<iv>:<ciphertext>:<tag>` (all base64url),
+  AES-256-GCM, key derived from the master key via `scryptSync`. `decrypt` fails
+  loudly (`DecryptionError`) on tampering, wrong key, or malformed input, and its
+  message is a fixed string that never carries the blob/key.
+- `providers.ts` — the fixed provider id list + zod enum (openai, anthropic,
+  google, deepseek, xai, openrouter, github).
+- `probe.ts` — the "Test key" probe. One cheap GET per provider (`/v1/models`
+  for OpenAI/Anthropic/DeepSeek/xAI/OpenRouter, Gemini `v1beta/models?key=…`,
+  GitHub `/rate_limit`), 10s timeout via `AbortSignal.timeout`. Returns fixed,
+  sanitised outcomes: `ok`, "The provider rejected the key" (401/403), "The
+  provider returned an unexpected response" (other non-2xx), "The provider is
+  unreachable" (network error). The key never appears in any outcome message.
+  Reuses `redactSecrets` from `ai/litellm-client` via `redactKey`.
+- `service.ts` — drizzle CRUD keyed on `owner = user.id`, plus the
+  `decryptForGatewayUse(db, cipher, connectionId)` seam (nothing calls it yet).
+- `routes.ts` — `GET/POST /api/connections`, `POST /api/connections/:id/test`,
+  `DELETE /api/connections/:id`, all behind `requireSession`. Create uses
+  `.strict()` zod. Missing or foreign id returns the same 404.
+
+**Storage** — added `provider_connections` to `schema.ts` and generated the
+migration with `pnpm --filter @galena/server db:generate` (the repo's real
+mechanism): `drizzle/0004_charming_forgotten_one.sql` + snapshot + journal.
+
+**Config/logger** — `GALENA_KEY_ENCRYPTION_KEY` in `config.ts` (min 32 chars) and
+added to `redactPaths` in `logger.ts`. `app.ts` mounts the route only when the
+key is configured (mirrors LITELLM_MASTER_KEY).
+
+**Web** — `ConnectionsPage.tsx` (route `/settings/connections`, registered in
+`AppRoutes.tsx` under `RequireAuth`), plus `ConnectionsPage.test.tsx`. Compact,
+list-driven Telegram-style screen: empty/loading/error/list states, one primary
+"Add a connection" action, password input with reveal toggle, Test + Remove per
+row. API keys only (copy says so). Real path is the default; it does not use the
+`?mock=1` store.
+
+**`infra/.env.example`** — added `GALENA_KEY_ENCRYPTION_KEY=CHANGE_ME`.
+
+### Decisions worth flagging
+- **Key hint:** `GET /connections` returns only `id, provider, label, status,
+  createdAt` — I did **not** return the last 4 characters of the key, because
+  that would require decrypting every row on every list. `label` is the
+  disambiguator instead.
+- **`GALENA_KEY_ENCRYPTION_KEY` is optional in the config schema**, not required.
+  The spec says "validated at startup", but `test-support.ts` (out of scope)
+  calls `loadServerConfig` without it, so a required key would break every other
+  test. It is still validated (min 32 chars) when present, the module refuses to
+  start without it (`createKeyCipher`/mount), and the route is only mounted when
+  it is set. Flagging for Claude to decide whether `test-support.ts` should later
+  be updated to make it truly required.
+
+### Files changed
+- `apps/server/src/connections/{crypto,providers,probe,service,routes}.ts`
+- `apps/server/src/connections/{crypto,probe,routes}.test.ts`
+- `apps/server/src/connections/integration.test.ts` (gated)
+- `apps/server/src/db/schema.ts`, `apps/server/drizzle/0004_charming_forgotten_one.sql`,
+  `apps/server/drizzle/meta/0004_snapshot.json`, `apps/server/drizzle/meta/_journal.json`
+- `apps/server/src/config.ts`, `apps/server/src/logger.ts`, `apps/server/src/app.ts`
+- `apps/web/src/routes/ConnectionsPage.tsx`, `apps/web/src/routes/ConnectionsPage.test.tsx`,
+  `apps/web/src/routes/AppRoutes.tsx`
+- `infra/.env.example`
+
+### Commands run (real results)
+- `pnpm install` — Done in 7.6s (909 packages).
+- `pnpm format:check` — `All matched files use Prettier code style!` (exit 0).
+- `pnpm lint` — `Found 0 warnings and 0 errors.` (exit 0).
+- `pnpm typecheck` — `Tasks: 8 successful, 8 total` (exit 0).
+- `pnpm test` — `Tasks: 8 successful, 8 total`; server 232 passed / 4 skipped;
+  web and the other packages green (exit 0).
+- `pnpm build` — `Tasks: 2 successful, 2 total` (exit 0).
+- `pnpm --filter @galena/server exec vitest run src/connections` — 24 passed,
+  1 skipped (the gated integration test), exit 0.
+
+### What I did NOT run live
+The **integration check against `127.0.0.1:3188` did not run**. I wrote
+`connections/integration.test.ts`, gated behind `GALENA_CONNECTIONS_INTEGRATION=1`
+and skipped in the normal suite, but I could not start the dev stack (Postgres +
+ejabberd + server + invite) in this worktree. The full human path
+(create → list → test → delete with a fake key) is therefore **not verified
+against a live server** — only the unit/route tests above are. The integration
+test is ready to run once the stack is up.
+
+### Open questions
+- Whether `GALENA_KEY_ENCRYPTION_KEY` should become required in `config.ts` (and
+  `test-support.ts` updated to supply a test key) to satisfy "validated at
+  startup" more strictly.
+- The `/settings/connections` route is reachable by URL but has no in-app nav
+  link, because the settings entry point lives in `ChatList`/`ChatShell`, which
+  are outside my Allowed files.
+
+## Review (written by Claude)

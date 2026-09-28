@@ -53,6 +53,12 @@ const serverConfigSchema = z
     GITHUB_APP_ID: z.string().min(1).optional(),
     GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(),
     GITHUB_APP_INSTALLATION_ID: z.string().min(1).optional(),
+    // Envelope-encryption master key for provider keys stored in
+    // `provider_connections`. Optional so the server still boots without it;
+    // the connections module refuses to start when it is absent (mirrors how
+    // LITELLM_MASTER_KEY is handled by the AI module). At least 32 bytes, so a
+    // weak key fails validation at startup rather than encrypting at rest.
+    GALENA_KEY_ENCRYPTION_KEY: z.string().min(32).optional(),
   })
   .superRefine((value, ctx) => {
     const entries = [
