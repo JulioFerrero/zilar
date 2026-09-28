@@ -2,7 +2,9 @@ import { Navigate, Route, Routes, useLocation } from 'react-router';
 import type { ReactNode } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
 import { ChatShell } from './ChatShell';
+import { AisPage } from './AisPage';
 import { ConnectionsPage } from './ConnectionsPage';
+import { CreateAiPage } from './CreateAiPage';
 import { InvitePage } from './InvitePage';
 import { LoginPage } from './LoginPage';
 import { NamePage } from './NamePage';
@@ -78,6 +80,22 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <ConnectionsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/settings/ais"
+        element={
+          <RequireAuth>
+            <AisPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/settings/ais/new"
+        element={
+          <RequireAuth>
+            <CreateAiPage />
           </RequireAuth>
         }
       />

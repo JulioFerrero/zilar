@@ -172,3 +172,99 @@ export function getInvite(code: string): Promise<{ valid: boolean }> {
 export function getXmppToken(): Promise<XmppToken> {
   return request('/xmpp/token', xmppTokenSchema, { method: 'POST' });
 }
+
+// --- AIs (T-0032) --------------------------------------------------------
+// The wire contract lives in apps/server/src/ais/routes.ts and service.ts.
+// `ApiError` already carries the server's `code` and `status`, so callers can
+// branch without parsing the message again.
+
+const aiTemplateSchema = z.enum(['dev', 'marketing', 'fun', 'custom']);
+
+export type AiTemplate = z.infer<typeof aiTemplateSchema>;
+
+const aiLimitsSchema = z.object({
+  perDayUsd: z.number(),
+  perMonthUsd: z.number(),
+});
+
+export type AiLimits = z.infer<typeof aiLimitsSchema>;
+
+const publicAiSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  template: aiTemplateSchema,
+  persona: z.string(),
+  model: z.string(),
+  jid: z.string(),
+  status: z.enum(['active', 'disabled']),
+  providerConnectionId: z.string(),
+  limits: aiLimitsSchema,
+  createdAt: z.string(),
+});
+
+export type PublicAi = z.infer<typeof publicAiSchema>;
+
+const connectionSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  label: z.string().nullable(),
+  status: z.string(),
+  createdAt: z.string(),
+});
+
+export type Connection = z.infer<typeof connectionSchema>;
+
+export interface CreateAiInput {
+  name: string;
+  template: AiTemplate;
+  persona?: string;
+  providerConnectionId: string;
+  model: string;
+  limits: AiLimits;
+}
+
+export interface UpdateAiInput {
+  name?: string;
+  persona?: string;
+  limits?: AiLimits;
+}
+
+export function listAis(): Promise<PublicAi[]> {
+  return request('/ais', z.array(publicAiSchema));
+}
+
+export function getAi(id: string): Promise<PublicAi> {
+  return request(`/ais/${encodeURIComponent(id)}`, publicAiSchema);
+}
+
+export function createAi(input: CreateAiInput): Promise<PublicAi> {
+  const body = {
+    name: input.name,
+    template: input.template,
+    ...(input.persona === undefined ? {} : { persona: input.persona }),
+    providerConnectionId: input.providerConnectionId,
+    model: input.model,
+    limits: input.limits,
+  };
+  return request('/ais', publicAiSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateAi(id: string, input: UpdateAiInput): Promise<PublicAi> {
+  return request(`/ais/${encodeURIComponent(id)}`, publicAiSchema, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteAi(id: string): Promise<void> {
+  await request(`/ais/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
+}
+
+export function listConnections(): Promise<Connection[]> {
+  return request('/connections', z.array(connectionSchema));
+}
