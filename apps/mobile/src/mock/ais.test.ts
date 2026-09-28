@@ -1,0 +1,77 @@
+import { describe, expect, it } from 'vitest';
+
+import { aisMockScenario, createMockAisApi, mockAis } from './ais';
+
+describe('aisMockScenario', () => {
+  it('returns null without a mock request', () => {
+    expect(aisMockScenario({}, {})).toBeNull();
+    expect(aisMockScenario({ EXPO_PUBLIC_GALENA_MOCK: '0' }, {})).toBeNull();
+  });
+
+  it('uses the default scenario for ?mock=1', () => {
+    expect(aisMockScenario({}, { mock: '1' })).toBe('default');
+    expect(aisMockScenario({ EXPO_PUBLIC_GALENA_MOCK: '1' }, {})).toBe('default');
+  });
+
+  it('reads a named scenario from the param or the env default', () => {
+    expect(aisMockScenario({}, { mock: 'empty' })).toBe('empty');
+    expect(aisMockScenario({}, { mock: 'unavailable' })).toBe('unavailable');
+    expect(
+      aisMockScenario(
+        { EXPO_PUBLIC_GALENA_MOCK: '1', EXPO_PUBLIC_GALENA_MOCK_SCENARIO: 'error' },
+        {},
+      ),
+    ).toBe('error');
+  });
+
+  it('falls back to default for an unknown scenario', () => {
+    expect(aisMockScenario({}, { mock: 'nonsense' })).toBe('default');
+  });
+});
+
+describe('createMockAisApi', () => {
+  it('lists the seed AIs and only active connections', async () => {
+    const api = createMockAisApi();
+    await expect(api.listAis()).resolves.toHaveLength(mockAis.length);
+    const connections = await api.listConnections();
+    expect(connections.every((connection) => connection.status === 'active')).toBe(true);
+    expect(connections).toHaveLength(2);
+  });
+
+  it('returns an empty list in the empty scenario', async () => {
+    await expect(createMockAisApi('empty').listAis()).resolves.toEqual([]);
+  });
+
+  it('returns no connections in the no-connections scenario', async () => {
+    await expect(createMockAisApi('no-connections').listConnections()).resolves.toEqual([]);
+  });
+
+  it('throws a 503 in the unavailable scenario', async () => {
+    await expect(createMockAisApi('unavailable').listAis()).rejects.toMatchObject({
+      status: 503,
+      code: 'ais_unavailable',
+    });
+  });
+
+  it('throws a 500 in the error scenario', async () => {
+    await expect(createMockAisApi('error').listAis()).rejects.toMatchObject({ status: 500 });
+  });
+
+  it('creates, updates and deletes against the mutable state', async () => {
+    const api = createMockAisApi('empty');
+    const created = await api.createAi({
+      name: 'New AI',
+      template: 'dev',
+      providerConnectionId: 'conn-openai',
+      model: 'gpt-4o',
+      limits: { perDayUsd: 2, perMonthUsd: 20 },
+    });
+    await expect(api.listAis()).resolves.toHaveLength(1);
+
+    const updated = await api.updateAi(created.id, { name: 'Renamed' });
+    expect(updated.name).toBe('Renamed');
+
+    await api.deleteAi(created.id);
+    await expect(api.listAis()).resolves.toEqual([]);
+  });
+});

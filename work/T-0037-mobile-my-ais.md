@@ -1,7 +1,7 @@
 ---
 id: T-0037
 title: Mobile — My AIs list and Create-AI wizard (same /api/ais contract as the web)
-status: todo
+status: in-progress
 milestone: M2
 branch: task/T-0037-mobile-my-ais
 model: opencode-go/deepseek-v4.1-flash

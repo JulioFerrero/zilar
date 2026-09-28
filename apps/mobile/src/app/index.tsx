@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Search } from 'lucide-react-native';
+import { Bot, Search } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, TextInput, View } from 'react-native';
@@ -85,9 +85,14 @@ function ChatsList() {
       ) : (
         <View className="flex-row items-center justify-between px-4 pt-1">
           <Text className="text-[34px] font-bold leading-10 text-foreground">Chats</Text>
-          <IconButton label="Search" onPress={() => setSearchOpen(true)}>
-            <Search size={24} color={FOREGROUND[scheme]} />
-          </IconButton>
+          <View className="flex-row items-center">
+            <IconButton label="My AIs" onPress={() => router.push('/ais')}>
+              <Bot size={24} color={FOREGROUND[scheme]} />
+            </IconButton>
+            <IconButton label="Search" onPress={() => setSearchOpen(true)}>
+              <Search size={24} color={FOREGROUND[scheme]} />
+            </IconButton>
+          </View>
         </View>
       )}
       <FolderTabs activeFolder={activeFolder} counts={counts} onSelect={setActiveFolder} />
