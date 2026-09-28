@@ -176,7 +176,25 @@ pnpm build                                          # Tasks: 2 successful, 2 tot
 - **"No second typing indicator in the message list".** The message list never rendered a typing indicator before this task; typing lives in the chat list and the header. The draft bubble is therefore the only in-list cue and there is nothing to suppress; the test asserts the list contains the draft text and no `typing` text while both states are set.
 - **Invisible timestamp.** The draft's time is `visibility:hidden`, not absent from the DOM, so the bubble width already equals the final message's. It is visually absent (no ticks, no time). If a truly absent node is required, the no-jump guarantee needs a different spacer.
 - **Empty draft text.** A draft whose trimmed text is empty renders nothing (no empty bubble); the header/chat list still show `typing…`.
-- **Open question / risk.** Rule (a) removes the draft on *any* incoming AI message in the DM. If the runner ever sends a mid-turn card (progress/approval) as an XMPP message before the final reply, the draft would end early and later drafts for that turn would be ignored. The spec states rule (a) unconditionally, so I implemented it as written; flagging in case the lead wants it limited to text messages.
+- **Open question / risk.** Rule (a) now applies only to an incoming message from the AI's own JID (see Review fixes). If the runner ever sends a mid-turn card (progress/approval) from the AI's JID as an XMPP message before the final reply, the draft would still end early. The spec states rule (a) for "an incoming message from the AI", so this is implemented as written; flagging in case the lead wants it limited to text messages.
+
+### Review fixes (on top of 17e1960)
+1. **Only the AI's message finishes a draft** (`realStore.ts`, `handleMessage`): compute `const fromAi = message.fromJid === chatId && !isOwnSender(message.fromJid)` and only mark the turn finished / clear the draft when true. A message from my own JID (second device) and any other sender now leave the draft running and later drafts of the turn still apply. New test `keeps the draft when my own JID sends a message during the turn` asserts the draft survives an own-JID message and a later same-turn draft still applies.
+2. **Fixtures aligned with production** so the "nothing moves" path is real:
+   - `realStore.test.ts`: the AI messages in the draft tests now use `fromJid: CHAT` (the DM's own/AI JID) instead of a separate `ai@galena.test`, matching the draft's sender.
+   - `MessageList.test.tsx`: `hello()` now has `senderId: 'c-ana'` (the chat id the draft uses for the AI), and the swap test records the bubble's `className` before and after and asserts they are equal, in addition to "one bubble with the same text before and after".
+
+Re-run results after the fixes:
+```bash
+pnpm lint                                           # no output, exit 0
+pnpm typecheck                                      # Tasks: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/web   # Test Files 31 passed (31); Tests 179 passed (179)
+pnpm build                                          # Tasks: 2 successful, 2 total
+pnpm format:check                                   # my changed files pass (prettier --check on them is clean)
+```
+
+`pnpm format:check` (repo-wide) still reports one warning, `PREREVIEW.md`. That is the pre-reviewer's **untracked** working file, not in this task's Allowed files and not part of the commit, so I left it untouched; every file I changed is clean. (Remove or reformat `PREREVIEW.md`, or allow me to, and the repo-wide check is green.)
+
 
 ### Live check (for the lead, with Julio's permission)
 1. Open an AI DM and ask a question that needs a longer answer. The reply text should grow smoothly in an incoming bubble; when the final message arrives it must replace the draft with no jump, resize, gap or duplicate (same position, same bubble). Check both orderings happen naturally across a few turns.

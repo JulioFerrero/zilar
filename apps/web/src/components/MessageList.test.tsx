@@ -22,7 +22,9 @@ function hello(): UiMessage {
   return {
     id: 'm-1',
     chatId: 'c-ana',
-    senderId: 'u-ana',
+    // The AI's own message: same sender as the draft (ChatSummary.id), the
+    // way production renders the AI's bare JID.
+    senderId: 'c-ana',
     senderName: 'Ana',
     text: 'hello there',
     createdAt: new Date('2026-09-28T10:00:00Z'),
@@ -126,6 +128,7 @@ describe('MessageList AI reply drafts (T-0043)', () => {
   it('keeps exactly one bubble with the same text when the final message arrives', () => {
     const store = renderWithDraft({ messagesByChat: { 'c-ana': [] } }, 'hello there');
 
+    const bubbleBefore = document.querySelector('[data-message-id]');
     expect(screen.getAllByText('hello there')).toHaveLength(1);
     expect(document.querySelectorAll('[data-message-id]')).toHaveLength(1);
 
@@ -133,8 +136,12 @@ describe('MessageList AI reply drafts (T-0043)', () => {
       store.setState({ messagesByChat: { 'c-ana': [hello()] }, drafts: {} });
     });
 
+    const bubbleAfter = document.querySelector('[data-message-id]');
     expect(screen.getAllByText('hello there')).toHaveLength(1);
     expect(document.querySelectorAll('[data-message-id]')).toHaveLength(1);
+    // The final message groups exactly like the draft did, so the bubble keeps
+    // the same position/size instead of moving.
+    expect(bubbleAfter?.className).toBe(bubbleBefore?.className);
   });
 
   it('shows no second typing indicator in the list while a draft is shown', () => {

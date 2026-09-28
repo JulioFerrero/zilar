@@ -719,8 +719,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
       const active = get().activeChatId === chatId && isVisible();
       const isRead = active;
+      // Only the AI's own message in its DM finishes the draft. A message from
+      // my own JID (e.g. my second device) must leave the draft running.
+      const fromAi = message.fromJid === chatId && !isOwnSender(message.fromJid);
       const draft = get().drafts[chatId];
-      if (draft !== undefined) {
+      if (draft !== undefined && fromAi) {
         markTurnFinished(draft.turnId);
         clearDraftTimeout(chatId);
       }
@@ -742,7 +745,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         ),
         // The final message replaces the draft in one update: the bubble never
         // leaves the screen, so there is no gap and no duplicate.
-        drafts: draft === undefined ? state.drafts : withoutDraft(state.drafts, chatId),
+        drafts: draft !== undefined && fromAi ? withoutDraft(state.drafts, chatId) : state.drafts,
       }));
       if (isRead && core !== undefined) {
         const chat = get().chats.find((entry) => entry.id === chatId);

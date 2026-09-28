@@ -1028,7 +1028,7 @@ describe('AI reply drafts (T-0043)', () => {
         id: 'ai-1',
         chatJid: CHAT,
         body: 'Hello',
-        fromJid: 'ai@galena.test',
+        fromJid: CHAT,
         timestamp: new Date('2026-09-28T12:00:05Z'),
       }),
     );
@@ -1060,11 +1060,38 @@ describe('AI reply drafts (T-0043)', () => {
 
     expect(store.getState().drafts[CHAT]).toEqual({ turnId: TURN_ONE, text: 'Hi' });
 
+    xmpp.emit('message', message({ id: 'ai-2', chatJid: CHAT, body: 'Hi', fromJid: CHAT }));
+    expect(store.getState().drafts[CHAT]).toBeUndefined();
+  });
+
+  it('keeps the draft when my own JID sends a message during the turn', async () => {
+    const drafts = fakeDrafts();
+    const { store, xmpp } = await setup({}, undefined, { openDrafts: drafts.open });
+    drafts.emit(draft(CHAT, TURN_ONE, 'Half a sentence'));
+
+    // A message from my own JID (e.g. my second device) is not the AI's reply.
     xmpp.emit(
       'message',
-      message({ id: 'ai-2', chatJid: CHAT, body: 'Hi', fromJid: 'ai@galena.test' }),
+      message({
+        id: 'mine-1',
+        chatJid: CHAT,
+        body: 'note to self',
+        fromJid: 'me@galena.test',
+        timestamp: new Date('2026-09-28T12:00:05Z'),
+      }),
     );
-    expect(store.getState().drafts[CHAT]).toBeUndefined();
+
+    expect(store.getState().drafts[CHAT]).toEqual({
+      turnId: TURN_ONE,
+      text: 'Half a sentence',
+    });
+
+    // The turn is not finished: a later draft still applies.
+    drafts.emit(draft(CHAT, TURN_ONE, 'Half a sentence, then more'));
+    expect(store.getState().drafts[CHAT]).toEqual({
+      turnId: TURN_ONE,
+      text: 'Half a sentence, then more',
+    });
   });
 
   it('drops a finished draft after the fallback when no message arrives', async () => {
