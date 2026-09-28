@@ -8,7 +8,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| T-0034 | M2: AIs reply in their DM (log in as the AI, context from §9.2, LiteLLM call with the AI's capped key, budget-exceeded message) | planned | | T-0033 | Spec after T-0033 lands. Group @mentions come after AIs can join rooms. |
+| [T-0034](T-0034-ai-replies-dm.md) | M2: agent gateway v0 — AIs reply to their owner in DMs (XMPP as the AI, §9.2 context, LiteLLM with the AI's capped key, honest failure messages) | in progress | muse-spark-1.3 | T-0033 | Off by default (`AGENT_GATEWAY_ENABLED`). Live proof with a fake key = the "provider rejected the key" reply. A real reply needs Julio's real key. |
 | [T-0037](T-0037-mobile-my-ais.md) | Mobile: My AIs list + Create-AI wizard (same `/api/ais` contract as T-0032), screenshots of every state | in progress | deepseek-v4.1-flash | T-0032 | UI task on Flash (vision). Own simulator only; Julio's iPhone/iPad untouched. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
