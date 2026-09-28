@@ -29,7 +29,25 @@ export function MessageList({
   // first paint (before ChatView's openChat effect runs) must never flash
   // the empty state.
   const history = store.historyStateFor(chat.id);
-  const items = groupMessages(messages);
+  const draft = store.drafts[chat.id];
+  const draftText = draft?.text.trim() ?? '';
+  // The draft is rendered as the AI's next message, so grouping, styles and
+  // size are identical to the final message that replaces it.
+  const draftMessage: UiMessage | undefined =
+    draft !== undefined && draftText.length > 0
+      ? {
+          id: `draft-${draft.turnId}`,
+          chatId: chat.id,
+          senderId: chat.id,
+          senderName: chat.title,
+          text: draftText,
+          createdAt: new Date(
+            Math.max(new Date().getTime(), (messages.at(-1)?.createdAt.getTime() ?? 0) + 1),
+          ),
+          status: 'read',
+        }
+      : undefined;
+  const items = groupMessages(draftMessage === undefined ? messages : [...messages, draftMessage]);
   const [initialUnread] = useState(() => chat.unread);
   const dividerIndex = unreadDividerIndex(items, initialUnread);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -72,6 +90,21 @@ export function MessageList({
     }
   }, [messages.length, atBottom]);
 
+  // A growing draft keeps the view pinned to the bottom only when the user is
+  // already there; someone who scrolled up to read is never pulled down.
+  useEffect(() => {
+    if (draftText.length === 0) {
+      return;
+    }
+    const element = scrollRef.current;
+    if (element === null) {
+      return;
+    }
+    if (atBottom) {
+      element.scrollTop = element.scrollHeight;
+    }
+  }, [draftText, atBottom]);
+
   const handleScroll = (): void => {
     const element = scrollRef.current;
     if (element === null) {
@@ -101,7 +134,7 @@ export function MessageList({
   // Loading and empty are different states: the empty and error views only
   // appear once the first history page has settled. Live messages that
   // arrive while loading are shown immediately.
-  if (messages.length === 0) {
+  if (items.length === 0) {
     if (history === 'loading') {
       return (
         <div className="relative min-h-0 flex-1">
@@ -157,6 +190,7 @@ export function MessageList({
                   lastInGroup={item.lastInGroup}
                   currentUserId={store.currentUserId}
                   onReply={onReply}
+                  draft={item.message.id === draftMessage?.id}
                 />
               )}
             </Fragment>

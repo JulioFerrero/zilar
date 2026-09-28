@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent } from '@testing-library/react';
 import type { ChatSummary, UiMessage } from '@galena/chat-core';
@@ -100,5 +100,69 @@ describe('MessageList loading states', () => {
 
     expect(screen.getByText('hello there')).toBeTruthy();
     expect(screen.queryByText('No messages yet')).toBeNull();
+  });
+});
+
+describe('MessageList AI reply drafts (T-0043)', () => {
+  const TURN = 't1';
+
+  function renderWithDraft(seed: ChatStoreSeed, draftText: string) {
+    const store = renderMessages(seed);
+    act(() => {
+      store.setState({ drafts: { 'c-ana': { turnId: TURN, text: draftText } } });
+    });
+    return store;
+  }
+
+  it('renders the draft as the last bubble with trimmed text', () => {
+    renderWithDraft({ messagesByChat: { 'c-ana': [hello()] } }, '  writing now  ');
+
+    expect(screen.getByText('writing now')).toBeTruthy();
+    const bubbles = document.querySelectorAll('[data-message-id]');
+    expect(bubbles).toHaveLength(2);
+    expect(bubbles[1]?.getAttribute('data-message-id')).toBe(`draft-${TURN}`);
+  });
+
+  it('keeps exactly one bubble with the same text when the final message arrives', () => {
+    const store = renderWithDraft({ messagesByChat: { 'c-ana': [] } }, 'hello there');
+
+    expect(screen.getAllByText('hello there')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-message-id]')).toHaveLength(1);
+
+    act(() => {
+      store.setState({ messagesByChat: { 'c-ana': [hello()] }, drafts: {} });
+    });
+
+    expect(screen.getAllByText('hello there')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-message-id]')).toHaveLength(1);
+  });
+
+  it('shows no second typing indicator in the list while a draft is shown', () => {
+    const store = renderWithDraft({ messagesByChat: { 'c-ana': [hello()] } }, 'writing now');
+    act(() => {
+      store.setState({ typing: { 'c-ana': { names: ['Ana'] } } });
+    });
+
+    const list = screen.getByTestId('message-list');
+    expect(within(list).getByText('writing now')).toBeTruthy();
+    expect(within(list).queryByText(/typing/i)).toBeNull();
+  });
+
+  it('does not pull the view down when a draft grows while scrolled up', () => {
+    const store = renderWithDraft({ messagesByChat: { 'c-ana': [hello()] } }, 'first');
+
+    const list = screen.getByTestId('message-list');
+    Object.defineProperty(list, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(list, 'clientHeight', { value: 400, configurable: true });
+    Object.defineProperty(list, 'scrollTop', { value: 100, writable: true, configurable: true });
+
+    // The scroll listener sees a large distance from the bottom: not at bottom.
+    fireEvent.scroll(list);
+
+    act(() => {
+      store.setState({ drafts: { 'c-ana': { turnId: TURN, text: 'first, then much more text' } } });
+    });
+
+    expect(list.scrollTop).toBe(100);
   });
 });

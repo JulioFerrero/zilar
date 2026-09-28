@@ -1,7 +1,7 @@
 ---
 id: T-0043
 title: Web — show AI reply drafts from /api/drafts/stream as a growing bubble, replaced seamlessly by the final XMPP message
-status: planned
+status: review
 milestone: M2
 branch: task/T-0043-web-reply-drafts
 model: opencode-go/deepseek-v4.1-flash
@@ -127,5 +127,61 @@ pnpm build
 - A "stop generating" button.
 
 ## Report (written by the worker when done)
+
+### What I did
+
+**1. SSE client — `apps/web/src/lib/drafts.ts` (+ `drafts.test.ts`)**
+- `subscribeToDrafts(onEvent, createSource?) => close`. Opens `new EventSource('/api/drafts/stream')` (same origin, cookie sent by the browser), registers `addEventListener('draft'|'end')`, and returns `close` that calls `source.close()`. No retry loop (EventSource reconnects itself); a missing/undefined `EventSource` is caught and becomes a no-op.
+- Zod schemas mirror `apps/server/src/drafts/events.ts` exactly (`type`, `chatJid`, `turnId: uuid`, `text`; `end` adds `outcome`). Invalid JSON and wrong shapes are dropped silently. Heartbeats (`:`) never reach a listener.
+- Injected into the store through the new optional `RealStoreDeps.openDrafts`; tests pass a fake object, so no real `EventSource` is created in tests.
+
+**2. Store — `store.ts` / `realStore.ts`**
+- New state `drafts: Record<chatId, { turnId; text }>` on `ChatStore`; the mock store returns `{}`.
+- The stream opens in `boot()` right after `me` is set, guarded by `generation` and by "already open". `stop()` closes it, clears the fallback timers and the finished-turn set, and empties `drafts`; `signOut()` calls `stop()`. A `stop()` then `start()` opens exactly one new stream (tested).
+- `draft` sets `drafts[chatJid] = { turnId, text }` unless the turn is already finished. Text can shrink (tool call); the latest text always wins.
+- Finishing: (a) an incoming XMPP message in that DM removes the draft in the **same** `set` that adds the message and marks the turn finished, so no gap and no duplicate; (b) `end` marks the turn finished, keeps the draft and schedules a 5 s fallback (`DRAFT_END_FALLBACK_MS`) that removes it only if the same turn is still shown. Finished turn ids are capped at the last 50.
+- A new turn's draft cancels a previous turn's fallback and is never removed by it (tested with fake timers).
+
+**3. UI — `MessageList.tsx` / `MessageBubble.tsx`**
+- `MessageList` appends a synthetic draft message to the chat's messages and runs the existing `groupMessages`, so grouping flags (margin, tail) match the real final message. It is rendered with the same `MessageBubble`.
+- `MessageBubble` gained an optional `draft` prop: no actions button/menu, no ticks; the time is rendered `invisible` (visibility:hidden) to **reserve the exact width** the final message's time will take (it uses `tabular-nums`, so `HH:mm` width is constant), and a zero-layout-width blinking caret is added at the end of the text. This keeps the swap from moving or resizing the bubble.
+- Scrolling: a growing draft pins the view to the bottom only when `atBottom`; when the user scrolled up it never changes `scrollTop` (tested by mocking the scroll container in jsdom).
+- `ChatListItem` was left unchanged: it never showed draft text and keeps its normal typing label.
+
+### Files changed
+- `apps/web/src/lib/drafts.ts` (new), `apps/web/src/lib/drafts.test.ts` (new)
+- `apps/web/src/store/store.ts`, `apps/web/src/store/realStore.ts`, `apps/web/src/store/realStore.test.ts`
+- `apps/web/src/components/MessageList.tsx`, `apps/web/src/components/MessageBubble.tsx`, `apps/web/src/components/MessageList.test.tsx`
+- `work/T-0043-web-reply-drafts.md`
+
+No other files touched (`git status` confirms). No new dependencies.
+
+### Tests added
+- `lib/drafts.test.ts`: valid draft/end pass through; invalid JSON/shapes dropped; `close` closes the source; a throwing source factory is a no-op.
+- `realStore.test.ts` (8): stream opens after boot and grows; message **before** `end` replaces the draft in one update (no gap/no duplicate) and a late same-turn draft is ignored; message **after** `end` replaces a draft that stays in between; 5 s fallback with fake timers; shrinking text renders the latest; next turn replaces a finished draft and isn't removed by the stale fallback; `stop()` closes and a start-after-stop opens only one; `signOut()` closes.
+- `MessageList.test.tsx` (4): draft renders as the last bubble with trimmed text; swapping to the final message keeps exactly one bubble with the same text (before and after); no second typing indicator in the list while a draft is shown; a growing draft does not change `scrollTop` while scrolled up.
+
+### Commands (real results)
+```bash
+pnpm install                                        # Already up to date (910 packages on the first run)
+pnpm format:check                                   # All matched files use Prettier code style!
+pnpm lint                                           # no output, exit 0
+pnpm typecheck                                      # Tasks: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/web   # Test Files 31 passed (31); Tests 178 passed (178)
+pnpm build                                          # Tasks: 2 successful, 2 total; web built in 419ms
+```
+
+### Problems / notes
+- **Pre-existing flaky test.** `NewChatButton.test.tsx > creates a group from the dialog and opens it` uses `findByText` with the default 1 s timeout and is timing-sensitive. It failed intermittently (2/5 runs) **with my changes and also 2/5 runs with my changes stashed**, so it is not caused by T-0043. The required `turbo test --force` command passed (178/178) on the recorded run. Left untouched (out of scope, not an Allowed file).
+- **"No second typing indicator in the message list".** The message list never rendered a typing indicator before this task; typing lives in the chat list and the header. The draft bubble is therefore the only in-list cue and there is nothing to suppress; the test asserts the list contains the draft text and no `typing` text while both states are set.
+- **Invisible timestamp.** The draft's time is `visibility:hidden`, not absent from the DOM, so the bubble width already equals the final message's. It is visually absent (no ticks, no time). If a truly absent node is required, the no-jump guarantee needs a different spacer.
+- **Empty draft text.** A draft whose trimmed text is empty renders nothing (no empty bubble); the header/chat list still show `typing…`.
+- **Open question / risk.** Rule (a) removes the draft on *any* incoming AI message in the DM. If the runner ever sends a mid-turn card (progress/approval) as an XMPP message before the final reply, the draft would end early and later drafts for that turn would be ignored. The spec states rule (a) unconditionally, so I implemented it as written; flagging in case the lead wants it limited to text messages.
+
+### Live check (for the lead, with Julio's permission)
+1. Open an AI DM and ask a question that needs a longer answer. The reply text should grow smoothly in an incoming bubble; when the final message arrives it must replace the draft with no jump, resize, gap or duplicate (same position, same bubble). Check both orderings happen naturally across a few turns.
+2. Reload the page mid-answer. The draft should reappear from the next cumulative event (no history is replayed) and the final message should still replace it cleanly.
+3. Stop the server (or the draft route). No error UI appears; the message list keeps working, and after a restart the normal typing indicator (list/header) and drafts come back together.
+4. Note `AGENTS.md` gotcha 19: reload the live app inside a chat with real history before merging, since this touches store/loading code.
 
 ## Review (written by Claude)
