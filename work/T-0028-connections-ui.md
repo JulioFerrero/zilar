@@ -1,7 +1,7 @@
 ---
 id: T-0028
 title: Settings → Connections: connect a provider account from the web app, with the key encrypted at rest
-status: review
+status: merged
 milestone: M2
 branch: task/T-0028-connections-ui
 model: opencode-go/deepseek-v4-pro
@@ -396,3 +396,27 @@ error strings), the owner check on every query, and 404-not-403 are correct.
   the lead runs `GALENA_CONNECTIONS_INTEGRATION=1` against a server started from
   this worktree. Make sure the test's README-style comment at the top says
   exactly which env vars it needs.
+
+**Verdict:** Round 2: Approved
+
+Verified by the lead:
+- Scope: every changed path is in the Allowed files (plus `ChatList.tsx`, allowed by round 1).
+- `format:check`, `lint`, `typecheck`, `build` pass; `pnpm exec turbo test --force`:
+  8/8 tasks, 0 cached; server 235 passed / 4 skipped, web 95 passed.
+- All six round-1 findings are fixed as asked, with the named tests. Good catch that the
+  always-mounted route shadowed the test routes; injecting through `AppDependencies`
+  like `voice` is the right fix.
+- **Live, by the lead**, against a server started from this branch on port 3189 with a
+  freshly generated master key (migration 0004 applied to the dev database):
+  - the gated `GALENA_CONNECTIONS_INTEGRATION=1` test: 1 passed (sign-up with a fresh
+    invite, then create → list → test → delete);
+  - a marker key sent with surrounding whitespace was stored trimmed; the Postgres row
+    holds a `v1` 5-part envelope, and the marker appears in **no** DB row, API response
+    or server log line;
+  - "Test" called the real OpenAI API with the made-up key and returned
+    `{"ok":false,"message":"The provider rejected the key"}`;
+  - delete removes the row (0 rows after); no session gives 401.
+
+### Follow-ups
+- `POST /api/connections/:id/test` makes an outbound provider call per request; add it to
+  the rate limiter before real users (board follow-up).
