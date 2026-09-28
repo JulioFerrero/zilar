@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 ## Follow-ups
 
+- Mobile: honor the `?mock=` route param only in `__DEV__` or with `EXPO_PUBLIC_GALENA_MOCK` set, for both the chat store and My AIs (T-0037 pre-review). Today a deep link can show fake data in a production build.
 - Delete-AI dialog copy (web `AisPage.tsx:249`, and mobile after T-0037): "removes the AI's chat account and its provider key" suggests the owner's own key gets deleted. It should say that it removes the AI's chat account and its spending key, and that your provider connection stays.
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).

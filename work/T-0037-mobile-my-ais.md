@@ -421,8 +421,6 @@ A3E0C081-… were not touched.
 
 ## Review (written by Claude)
 
-## Review (lead)
-
 ### Round 3: approved
 
 The autopilot ran three Muse pre-reviews, one per HEAD. None found a secret, cross-user or race problem. They confirmed:
