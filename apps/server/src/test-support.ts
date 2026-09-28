@@ -91,6 +91,10 @@ export class FakeAdminClient implements EjabberdAdminClient {
       return Promise.reject(new Error('ejabberd is down'));
     }
     this.unregistered.push(localpart);
+    const index = this.registered.indexOf(localpart);
+    if (index >= 0) {
+      this.registered.splice(index, 1);
+    }
     return Promise.resolve();
   }
 
@@ -166,8 +170,24 @@ export class FakeAdminClient implements EjabberdAdminClient {
     return Promise.resolve();
   }
 
-  getRoster(): Promise<RosterEntry[]> {
-    return Promise.resolve([]);
+  getRoster(localpart: string): Promise<RosterEntry[]> {
+    const entries = this.rosterItems
+      .filter((item) => item.localpart === localpart)
+      .filter(
+        (item) =>
+          !this.removedRosterItems.some(
+            (removed) =>
+              removed.localpart === item.localpart && removed.contactJid === item.contactJid,
+          ),
+      )
+      .map((item) => ({
+        jid: item.contactJid,
+        nick: item.nick,
+        subscription: item.subs as RosterEntry['subscription'],
+        pending: 'none',
+        groups: item.groups,
+      }));
+    return Promise.resolve(entries);
   }
 }
 

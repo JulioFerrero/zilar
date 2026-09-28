@@ -325,6 +325,61 @@ No changes under `apps/web/**`, `apps/mobile/**`, `packages/**`, `infra/**`,
 
 - (none — status is review)
 
+### Round 2
+
+Fixed findings 1 and 2; 3 and 4 needed no change.
+
+**Finding 1 — teardown is now resumable** (`apps/server/src/ais/service.ts`,
+`deleteAi`):
+- After `revokeKey` succeeds, the `llm_virtual_keys` row is deleted immediately.
+  A retry then reads `litellmKeyId === null` and skips the revoke, so a key is
+  never revoked twice.
+- The owner's roster item is deleted only when `getRoster(owner)` still holds
+  it.
+- The AI account is checked with `userExists` before anything else on that
+  side; if it is gone the whole step is skipped. Only when it exists do we
+  `getRoster(ai)` (skip the owner item if absent) and then `unregisterUser`.
+  This also covers the crash case: a `disabled` AI with no key row and no XMPP
+  account deletes cleanly.
+- Any real gateway/ejabberd failure still answers 502 and keeps the row.
+
+To test this, the shared `FakeAdminClient` (already an accepted forced edit,
+see finding 3) now has `getRoster` return the items it tracks minus the ones it
+has removed, and `unregisterUser` removes the localpart from `registered` so
+`userExists` is accurate after a teardown. No production behaviour depends on
+the fake.
+
+**Finding 2 — `PATCH limits` keeps `llm_virtual_keys.budget_usd` in step**
+(`apps/server/src/ais/service.ts`): the same transaction that updates
+`ai_limits` now also sets `llm_virtual_keys.budget_usd` to the new monthly
+value. The existing `PATCH limits` test now asserts the stored `30.00`.
+
+**Tests added/changed** (`apps/server/src/ais/routes.test.ts`, now 16 tests):
+- `can retry a delete that failed part way, revoking the key exactly once` —
+  first delete revokes the key and fails at the roster step (502, key row
+  already gone, AI row kept), the retry succeeds, and `revokeKey` was called
+  exactly once in total.
+- `can delete a disabled AI left behind by a crash, with no key and no account`
+  — a `disabled` row with no `llm_virtual_keys` row and no XMPP account deletes
+  with 204 and no revoke.
+- `updates the virtual key cap on a limits patch` — extended to assert
+  `budgetUsd === '30.00'`.
+
+**Round 2 commands (all real, on the loaded machine):**
+- `pnpm --filter @galena/server test src/ais`: 16 passed, 1 skipped
+  (`integration.test.ts`), 38.9 s (test process under load; individual tests
+  0.5–7.8 s, no timeout).
+- `pnpm format:check`: `All matched files use Prettier code style!`
+- `pnpm lint`: `Found 0 warnings and 0 errors.` (308 files).
+- `pnpm typecheck`: `Tasks: 8 successful, 8 total`.
+- `pnpm exec turbo test --force`: `Tasks: 8 successful, 8 total` (uncached);
+  `@galena/server` 27 files passed, 4 skipped, **253 passed, 5 skipped**
+  (up from 251; the two new delete tests). No timeouts — the full run held
+  together under load, so no separate per-package re-run was needed.
+- `pnpm build`: `Tasks: 2 successful, 2 total`.
+
+Still not run: `GALENA_AIS_INTEGRATION=1` (the lead runs it).
+
 ---
 
 ## Review (written by Claude)

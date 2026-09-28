@@ -288,6 +288,12 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
           updatedAt: new Date(),
         })
         .where(eq(aiLimits.aiId, ai.id));
+      // Keep the key row's stored budget in step with the cap pushed to
+      // LiteLLM above, in the same transaction.
+      await tx
+        .update(llmVirtualKeys)
+        .set({ budgetUsd: usd(input.limits.perMonthUsd) })
+        .where(eq(llmVirtualKeys.aiId, ai.id));
     }
   });
 
@@ -299,15 +305,19 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
 }
 
 // Tears an AI down in reverse order: revoke the gateway key, remove both roster
-// items, unregister the XMPP account, then delete the rows. Any external
-// failure answers 502 and leaves the AI in place, so a retry can finish the
-// job; the row is never deleted before every external step has succeeded.
+// items, unregister the XMPP account, then delete the rows. Teardown is
+// resumable: every step skips work that is already done, so a delete that
+// failed part way (ejabberd or LiteLLM down) can be retried without revoking a
+// key twice or failing on an item that is already gone. The row is never
+// deleted before every external step has succeeded.
 export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string): Promise<void> {
   const ai = await findOwnedAi(deps.db, id, ownerId);
   if (!ai) {
     throw new HttpError(404, 'not_found', 'AI not found');
   }
 
+  // 1. Revoke the gateway key and drop its row immediately. A retry then sees
+  //    `litellmKeyId === null` and never calls revoke again.
   if (ai.litellmKeyId !== null) {
     try {
       await deps.litellm.revokeKey(ai.litellmKeyId);
@@ -315,14 +325,34 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
       deps.logger.warn({ err: error, aiId: ai.id }, 'could not revoke the AI virtual key');
       throw teardownFailed();
     }
+    await deps.db.delete(llmVirtualKeys).where(eq(llmVirtualKeys.aiId, ai.id));
   }
 
   const ownerLocalpart = localpartFor(ownerId);
   const ownerJid = jidFor(ownerLocalpart, deps.domain);
+
+  // 2. The owner's roster item for the AI. Skip it when it is already gone.
   try {
-    await deps.adminClient.deleteRosterItem(ownerLocalpart, ai.jid);
-    await deps.adminClient.deleteRosterItem(ai.localpart, ownerJid);
-    await deps.adminClient.unregisterUser(ai.localpart);
+    const roster = await deps.adminClient.getRoster(ownerLocalpart);
+    if (hasRosterItem(roster, ai.jid)) {
+      await deps.adminClient.deleteRosterItem(ownerLocalpart, ai.jid);
+    }
+  } catch (error) {
+    deps.logger.warn({ err: error, aiId: ai.id }, 'could not remove the AI from the owner roster');
+    throw teardownFailed();
+  }
+
+  // 3. The AI's own account. If it is already gone, there is nothing left on
+  //    that side; otherwise remove the owner's item from its roster first, then
+  //    unregister.
+  try {
+    if (await deps.adminClient.userExists(ai.localpart)) {
+      const roster = await deps.adminClient.getRoster(ai.localpart);
+      if (hasRosterItem(roster, ownerJid)) {
+        await deps.adminClient.deleteRosterItem(ai.localpart, ownerJid);
+      }
+      await deps.adminClient.unregisterUser(ai.localpart);
+    }
   } catch (error) {
     deps.logger.warn({ err: error, aiId: ai.id }, 'could not tear down the AI XMPP account');
     throw teardownFailed();
@@ -402,6 +432,12 @@ function resolvePersona(template: AiTemplate, persona: string | undefined): stri
 
 function isLlmProvider(provider: string): boolean {
   return provider !== 'github';
+}
+
+// Whether a roster already holds an item for `jid`, so teardown can skip a
+// delete that a previous attempt already performed.
+function hasRosterItem(entries: ReadonlyArray<{ jid: string }>, jid: string): boolean {
+  return entries.some((entry) => entry.jid === jid);
 }
 
 async function findUserName(db: ServerDatabase, userId: string): Promise<string> {

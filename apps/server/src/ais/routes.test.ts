@@ -519,6 +519,69 @@ describe('AI routes', () => {
     expect(context.adminClient.unregistered).toHaveLength(0);
   });
 
+  it('can retry a delete that failed part way, revoking the key exactly once', async () => {
+    const litellm = new FakeLitellm();
+    const app = mount({ litellm });
+    const user = await bootstrapUser(context, app, `retrydel${testCounter}@example.com`);
+    const connectionId = await addConnection(user.id);
+    const created = await postAi(app, user.cookie, createBody(connectionId));
+    const id = ((await created.json()) as { id: string }).id;
+    const keyRows = await context.db.select().from(llmVirtualKeys);
+    const localpart = aiLocalpart(id);
+
+    // First attempt: the key is revoked, then the roster delete fails.
+    context.adminClient.failRoster = true;
+    const failed = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      method: 'DELETE',
+      headers: { cookie: user.cookie },
+    });
+    expect(failed.status).toBe(502);
+    expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
+    // The key row is gone at once, so the retry will not revoke again.
+    expect(await context.db.select().from(llmVirtualKeys)).toHaveLength(0);
+    expect(await context.db.select().from(ais)).toHaveLength(1);
+
+    // Retry: the roster is removed, the account is unregistered, the row goes.
+    context.adminClient.failRoster = false;
+    const retried = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      method: 'DELETE',
+      headers: { cookie: user.cookie },
+    });
+    expect(retried.status).toBe(204);
+    expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
+    expect(context.adminClient.unregistered).toContain(localpart);
+    expect(await context.db.select().from(ais)).toHaveLength(0);
+  });
+
+  it('can delete a disabled AI left behind by a crash, with no key and no account', async () => {
+    const litellm = new FakeLitellm();
+    const app = mount({ litellm });
+    const user = await bootstrapUser(context, app, `crash${testCounter}@example.com`);
+    const aiId = randomUUID();
+    await context.db.insert(ais).values({
+      id: aiId,
+      owner: user.id,
+      name: 'Half-created',
+      template: 'dev',
+      persona: 'A persona',
+      providerConnectionId: await addConnection(user.id),
+      model: 'gpt-4o-mini',
+      localpart: `ai-${aiId}`,
+      jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
+      status: 'disabled',
+    });
+    await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+
+    const response = await app.request(`${TEST_BASE_URL}/api/ais/${aiId}`, {
+      method: 'DELETE',
+      headers: { cookie: user.cookie },
+    });
+    expect(response.status).toBe(204);
+    expect(litellm.revoked).toHaveLength(0);
+    expect(context.adminClient.unregistered).toHaveLength(0);
+    expect(await context.db.select().from(ais)).toHaveLength(0);
+  });
+
   it('updates the virtual key cap on a limits patch', async () => {
     const litellm = new FakeLitellm();
     const app = mount({ litellm });
@@ -539,6 +602,8 @@ describe('AI routes', () => {
       perDayUsd: 1,
       perMonthUsd: 30,
     });
+    const keyAfter = await context.db.select().from(llmVirtualKeys);
+    expect(keyAfter[0]!.budgetUsd).toBe('30.00');
   });
 
   it('updates the owner roster nickname when the AI is renamed', async () => {
