@@ -1,7 +1,7 @@
 ---
 id: T-0029
 title: Fix the three load-sensitive apps/web tests so a busy machine cannot turn CI red
-status: review
+status: merged
 milestone: M0
 branch: task/T-0029-flaky-web-tests
 model: opencode-go/deepseek-v4.1-flash
@@ -260,3 +260,22 @@ Test Files  18 passed (18)
 ### Blocked / needs a decision
 
 - Nothing blocked.
+
+## Review (written by Claude)
+
+**Verdict:** Approved
+
+Verified by the lead, not taken from the Report:
+- Scope: only the three allowed test files and this task file changed. No
+  component, config or setup file was touched.
+- `pnpm install --frozen-lockfile`, `format:check`, `lint`, `typecheck`, `build`: all pass.
+- Load proof: `pnpm exec turbo test --force` with a `yes > /dev/null` CPU burner,
+  twice in a row: both runs rc=0 (61 s and 53 s), every package executed (no cache replay).
+
+### Findings
+1. *(No change needed.)* The diagnosis holds: the three tests are synchronous, await
+   no timer, and are the first test in their file, so they pay the per-file warm-up
+   plus a full-app render. A per-test, commented timeout is the spec's third remedy
+   and is applied narrowly; the package's global 5 s timeout still catches regressions.
+2. *(No change needed.)* Good catch that the spec's literal proof command is replayed
+   from turbo cache on runs 2 and 3. Future load proofs in specs use `turbo test --force`.
