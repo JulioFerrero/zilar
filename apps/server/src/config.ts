@@ -48,6 +48,26 @@ const serverConfigSchema = z
     // when the master key is absent. The base URL has a default applied there.
     LITELLM_BASE_URL: z.url().optional(),
     LITELLM_MASTER_KEY: z.string().min(1).optional(),
+    // GitHub App (one App for the platform). Optional so the server still
+    // boots without git integration; all three must be set together.
+    GITHUB_APP_ID: z.string().min(1).optional(),
+    GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(),
+    GITHUB_APP_INSTALLATION_ID: z.string().min(1).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const entries = [
+      value.GITHUB_APP_ID,
+      value.GITHUB_APP_PRIVATE_KEY,
+      value.GITHUB_APP_INSTALLATION_ID,
+    ];
+    const present = entries.map((entry) => entry !== undefined);
+    if (present.some(Boolean) && !present.every(Boolean)) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY and GITHUB_APP_INSTALLATION_ID must be set together',
+      });
+    }
   })
   .transform((value) => ({
     ...value,
