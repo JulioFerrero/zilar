@@ -1,7 +1,7 @@
 ---
 id: T-0054
 title: "AIs in groups (server): add/remove an AI to a group, the gateway joins its rooms and replies when @mentioned"
-status: review
+status: merged
 milestone: M2
 branch: task/T-0054-ai-in-groups-server
 model: opencode-go/muse-spark-1.3-contributor
@@ -296,3 +296,12 @@ Commands and real results (round 2):
 - `pnpm exec turbo build --force`: pass (2 tasks, uncached).
 
 ## Review (written by Claude)
+
+**Verdict: approved, merged (with one lead fix).**
+
+- The round 1 pre-review had one should-fix: a stale `roomTurns` after a leave, so a re-added AI inherited its old rate budget. Round 2 fixed it, plus: idempotent concurrent adds (`onConflictDoNothing`, with a test), one lowercase bare-JID helper across the group path, and the plain-member removal test.
+- Round 2 nits:
+  - `removeGroupAi` answered 404 or 403 depending on whether the AI was in the group, which is a 1-bit oracle for non-members. **The lead fixed it:** authorization now runs before the membership lookup, with a new test ("answers 403 to an unauthorized remover whether or not the AI is in the group").
+  - XMPP affiliation and DB row not atomic: accepted. It's the same pattern as members, and it heals on retry.
+- Checks re-run by the lead after the fix: format and lint clean, typecheck 9/9, server tests 477 passed / 7 skipped, build OK.
+- Live: the server was restarted on main, and the migration was applied at startup. Adding Julio's AI to his real group changes what the other members see, so the end-to-end check (add the AI, @mention it, watch the reply) waits for Julio's OK, together with T-0055.

@@ -637,6 +637,17 @@ describe('groups', () => {
       expect(await context.db.select().from(groupAis)).toHaveLength(1);
     });
 
+    it('answers 403 to an unauthorized remover whether or not the AI is in the group', async () => {
+      const { owner, member, groupId } = await groupWithMember();
+      const inGroup = await seedAi(owner.id);
+      const notInGroup = await seedAi(owner.id);
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: inGroup.aiId })).status).toBe(200);
+
+      // Same answer both ways, so the status never reveals the group's AIs.
+      expect((await removeAiRequest(member.cookie, groupId, inGroup.aiId)).status).toBe(403);
+      expect((await removeAiRequest(member.cookie, groupId, notInGroup.aiId)).status).toBe(403);
+    });
+
     it('lets a group owner remove an AI they do not own', async () => {
       const { owner, member, groupId } = await groupWithMember();
       const ai = await seedAi(member.id);

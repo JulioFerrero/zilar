@@ -382,25 +382,15 @@ export async function removeGroupAi(
   input: RemoveGroupAiInput,
 ): Promise<GroupDetail> {
   const group = await requireGroup(db, input.groupId);
-  const [membership] = await db
-    .select({ aiId: groupAis.aiId })
-    .from(groupAis)
-    .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)))
-    .limit(1);
-  if (!membership) {
-    throw new HttpError(404, 'not_found', 'That AI is not in this group');
-  }
+  // Authorize before looking at the group's AIs, so someone who may not
+  // remove the AI can't learn whether it is in the group (404 vs 403).
   const [ai] = await db
     .select({ id: ais.id, jid: ais.jid, owner: ais.owner })
     .from(ais)
     .where(eq(ais.id, input.aiId))
     .limit(1);
-  if (!ai) {
-    throw new HttpError(404, 'not_found', 'That AI is not in this group');
-  }
-
   const actor = await getMembership(db, input.groupId, input.actorId);
-  const isAiOwner = ai.owner === input.actorId;
+  const isAiOwner = ai !== undefined && ai.owner === input.actorId;
   const isGroupManager = actor !== null && actor.role !== 'member';
   if (!isAiOwner && !isGroupManager) {
     throw new HttpError(
@@ -408,6 +398,15 @@ export async function removeGroupAi(
       'forbidden',
       'Only the AI owner or a group owner or admin can remove it',
     );
+  }
+
+  const [membership] = await db
+    .select({ aiId: groupAis.aiId })
+    .from(groupAis)
+    .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)))
+    .limit(1);
+  if (!membership || !ai) {
+    throw new HttpError(404, 'not_found', 'That AI is not in this group');
   }
 
   try {
