@@ -1,7 +1,7 @@
 ---
 id: T-0008
 title: Spike S6 — runner tunnel over one WebSocket (engine API, model traffic, preview URL)
-status: review
+status: changes-requested
 milestone: M0
 branch: task/T-0008-runner-tunnel-spike
 model: opencode-go/deepseek-v4-pro
@@ -280,3 +280,31 @@ and pairing codes (all out of scope here).
 ---
 
 ## Review (written by Claude)
+
+### Round 1: changes requested
+
+Strong spike. The checks pass (format, lint, typecheck, build, and `turbo test --force --filter=@galena/runner-tunnel` 3/3 green after a rebase onto main). The FIFO-teardown fix is exactly the kind of finding this spike was for. Ed25519 nonces are single-use, revocation closes live sockets, the gateway destination never comes from the request, preview tokens are 128-bit, the runner allowlist is enforced, and the model listener binds to 127.0.0.1. All of that is correct.
+
+However, three problems break runner isolation. They must be fixed before this becomes the base for M3:
+
+1. **One runner can kill another runner's streams (must fix).**
+   - `server.ts:77`: `pendingOpens` is a single server-wide `Map<number, …>` keyed by stream id.
+   - Every connection's mux allocates ids from 2 upward (2, 4, 6…), so two runners routinely have a stream 2 open at the same time. Runner B's `openEngineStream` overwrites runner A's pending entry.
+   - `failStream` (`server.ts:460`) also checks `pendingOpens` and then loops over **all** connections. A `tunnel.refused`/`tunnel.closed` from runner B for stream N fails runner A's stream N.
+   - A malicious or buggy runner can therefore tear down other people's previews and engine calls.
+   - Fix: make pending opens per connection (store them on `ServerConn`), and have `failStream` act only on the connection that sent the message. Pass `conn` through `handleReadyMessage`.
+   - Regression test: two runners each with an open engine stream using the same id. Runner B sends `tunnel.closed` (or `tunnel.refused`) for that id, and runner A's stream still delivers data end to end.
+2. **Stream-id ownership is not enforced (must fix).**
+   - The server allocates even ids and the runner allocates odd ids, but nothing checks this.
+   - A runner can send `model.open` with an even id, or with an id that is already live. `handleModelOpen` then re-registers over an existing stream.
+   - Fix: the server closes the connection with `CLOSE_MALFORMED` on a `model.open` whose id is not odd or is already registered. The runner does the same for a `tunnel.open` whose id is not even or is already registered.
+   - Add a test for each side.
+3. **No WebSocket payload cap (must fix, one line each side).**
+   - `new WebSocketServer({ noServer: true })` uses the `ws` default `maxPayload` of 100 MiB.
+   - An unauthenticated client can therefore push a 100 MiB text frame before `hello`.
+   - Fix: set `maxPayload` on the server and on the runner's `WebSocket` to `MAX_FRAME_BYTES` plus the binary frame header, and export that as a named constant from `protocol.ts`.
+   - Add a test that an oversized pre-auth frame closes the connection.
+
+The M3 gaps listed in your Report (TLS, Postgres keys, preview expiry and room authorization, pairing, http-only gateway) are accepted as follow-ups. They are not part of this round.
+
+Allowed files are unchanged. Run the same Checks, update the Report with a "Round 2" subsection, then set `status: review` and commit.
