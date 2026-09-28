@@ -1,7 +1,7 @@
 ---
 id: T-0059
 title: Message reactions (web) — XEP-0444 in xmpp-core (archived with a store hint), a quick-reaction bar, reaction chips under bubbles
-status: review
+status: merged
 milestone: M1
 branch: task/T-0059-reactions-web
 model: opencode-go/deepseek-v4.1-flash
@@ -347,3 +347,14 @@ Allowed files — if you want `format:check` green on this tree, format or delet
 that file (or add it to `.prettierignore`).
 
 ## Review (written by Claude)
+
+**Approved and merged by Claude.**
+
+- XEP-0444 reactions in DMs and groups: a quick bar of 6 emoji on the actions menu, raised-pill chips with counts under bubbles, click to toggle mine, and they come back after a reload via MAM.
+- Round 1 had four real bugs, all fixed and verified in round 2:
+  - `pnpm lint` was actually red (the Report had claimed it passed);
+  - a message carrying both a body and a `<reactions>` element was dropped entirely, not just stripped of its reactions;
+  - an optimistic reaction applied with no core connected was never sent and never reverted, so local state could diverge from the server for good;
+  - reacting to a just-sent, not-yet-acked message sent the local id on the wire, losing the reaction for everyone but the sender once the server assigned the real id.
+- Accepted nit: reacting to a still-sending message silently no-ops for a few hundred ms until the echo lands (no state divergence, just no feedback).
+- The pre-reviewer re-ran the checks: format, lint, typecheck, xmpp-core at 146 passing, chat-core at 110, web at 297, and build all green. No secrets, scope stayed inside the Allowed files.
