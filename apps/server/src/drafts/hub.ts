@@ -110,7 +110,9 @@ export function createDraftHub(): DraftHub {
         },
 
         flush(text: string): void {
-          if (ended) {
+          // Past the cap nothing is published, so a pending in-cap draft is
+          // left to go out on its timer.
+          if (ended || text.length > DRAFT_MAX_CHARS) {
             return;
           }
           if (timer !== undefined) {

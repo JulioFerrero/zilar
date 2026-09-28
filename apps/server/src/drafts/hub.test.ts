@@ -163,14 +163,31 @@ describe('draft hub', () => {
     publisher.flush('x'.repeat(DRAFT_MAX_CHARS + 1));
     vi.advanceTimersByTime(DRAFT_THROTTLE_MS * 2);
     publisher.end('sent');
-    // The over-cap text is recorded as latest but never published: `end`
-    // publishes only the outcome.
+    // The over-cap text is never published: `end` publishes only the outcome.
     expect(seen.filter((event) => event.type === 'draft')).toHaveLength(1);
     expect(seen.at(-1)).toMatchObject({ type: 'end', outcome: 'sent' });
 
     publisher.flush('too late');
     publisher.push('too late');
     expect(seen).toHaveLength(2);
+  });
+
+  it('an over-cap flush leaves a pending in-cap draft to go out on its timer', () => {
+    vi.useFakeTimers();
+    const hub = createDraftHub();
+    const seen: DraftHubEvent[] = [];
+    hub.subscribe(OWNER, (event) => seen.push(event));
+
+    const publisher = turn(hub);
+    publisher.push('first');
+    publisher.push('first and more');
+    publisher.flush('x'.repeat(DRAFT_MAX_CHARS + 1));
+    vi.advanceTimersByTime(DRAFT_THROTTLE_MS);
+
+    expect(seen.map((event) => (event.type === 'draft' ? event.text : event.type))).toEqual([
+      'first',
+      'first and more',
+    ]);
   });
 });
 

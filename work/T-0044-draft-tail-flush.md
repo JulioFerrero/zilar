@@ -1,7 +1,7 @@
 ---
 id: T-0044
 title: Server — publish the complete reply as a draft before sending the final XMPP message (no more tail arriving in one chunk)
-status: review
+status: merged
 milestone: M2
 branch: task/T-0044-draft-tail-flush
 model: opencode-go/muse-spark-1.3-contributor
@@ -139,3 +139,8 @@ git status                                          # only the 6 Allowed files +
 - None blocking. One suggestion for the lead: the live re-check described above to settle the burst question.
 
 ## Review (written by Claude)
+
+**Approved and merged.** Muse pre-review: approve. The `flush` hook runs before the final send only (not notices, not failures), with the call order asserted in tests. The gateway publishes the complete trimmed reply as a draft before the XMPP message.
+
+- **Lead fix:** an over-cap `flush` now returns before cancelling the throttle timer, so a pending in-cap draft still goes out (new hub test).
+- **Waived: the live tail-timing table.** The worker couldn't reach LiteLLM without the real key (honestly reported, with an analytical table instead). The T-0045 live check settles it: if drafts now reach the full text before the message lands, the structural cause was the whole story.
