@@ -8,7 +8,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0047](T-0047-redesign-chat-panel.md) | Web redesign (D24) part 2: chat panel — header, glossy/recessed bubbles, composer well, pills, cards | planned (after T-0045, T-0046) | deepseek-v4.1-flash | T-0045, T-0046 | Spec written; launch after T-0045 and T-0046 merge. |
+| [T-0047](T-0047-redesign-chat-panel.md) | Web redesign (D24) part 2: chat panel — header, glossy/recessed bubbles, composer well, pills, cards | in progress | deepseek-v4.1-flash | T-0045, T-0046 | In progress. |
 | T-0048 | Mobile redesign (D24) | planned (after T-0047) | deepseek-v4.1-flash | T-0047 | Spec to write. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 

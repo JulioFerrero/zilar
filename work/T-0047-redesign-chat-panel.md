@@ -30,6 +30,7 @@ Part 1 (T-0046, merged) gave the web app the D24 foundation: dark tokens, Geist,
 ### Allowed files
 - `apps/web/src/index.css`: bubble tokens, and new utilities for the three bubble looks
 - the components listed under "Read first", from `MessageBubble.tsx` through `TypingDots.tsx`, plus `routes/ChatView.tsx` (layout only), `components/EmptyState.tsx` (the "Select a chat" pill), plus their tests
+- `apps/web/src/lib/useSmoothText.ts`, plus its test: only for item 7
 - `work/T-0047-redesign-chat-panel.md` and `work/screenshots/T-0047/**`
 
 **Not allowed:** the sidebar components (T-0046 is done), `apps/mobile/**`, `apps/server/**`, `packages/**`, `docs/**`. Store logic can't change either: this is a visual task.
@@ -65,6 +66,8 @@ The reply bar above it is a well strip with a `#333` left bar. Keep all composer
 - **Reply quotes:** a `#333` bar, the name in `#d4d4d4`, the excerpt muted.
 - **Progress and approval cards:** the incoming-card look. **Approve** is a primary key and **Deny** an outline key (T-0046's `outline` Button variant).
 - **Message actions menu:** a `--surface` popover with a 1 px `--border-strong` border, 12 px radius and a soft drop shadow.
+
+**7. Background tabs.** The browser pauses `requestAnimationFrame` in hidden tabs, so a reply that arrived while the tab was hidden animates only when you come back. When the page becomes visible again (`visibilitychange`), the reveal must **snap** to the current text instead. This only concerns replies written while hidden; a reply still streaming keeps animating normally. Add a test with a fake visibility seam.
 
 **6. Reduced motion:** no pulsing, no caret blink, no press translation. The generating → finished change is instant.
 
