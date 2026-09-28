@@ -254,6 +254,64 @@ sends a composing chat-state while typing.
   are complete; if the lead provides the env I can run the integration and
   capture the screenshot.
 
+### Round 2 (findings 1-2)
+
+**Finding 1 — the gated integration test now mirrors the store's token flow.**
+The old test called `api.getXmppToken()` itself *and* fetched again inside the
+`getToken` handed to `createXmppCore`, so `connect()` made two network calls.
+`store/integration.test.ts` now does what `real-store.ts` does:
+- pre-fetch one token (`const firstToken = await api.getXmppToken()`, network
+  call 1),
+- `getToken` serves that value on the first call and only hits
+  `POST /api/xmpp/token` on later (re)connects,
+- assert `tokenNetworkCalls === 1` right after the initial `connect()`, and
+  `=== 2` after `disconnect()` + `connect()`.
+
+**Integration run (redacted), against the running stack:**
+```
+[mobile xmpp integration] sign-in through the real server → 200 →
+  GET /api/me → USER***@galena.localhost →
+  POST /api/groups → 201, room ROOM***@rooms.galena.localhost →
+  xmpp-core online as USER***@galena.localhost →
+  joined the room → sent and received a group message →
+  reconnect fetched a fresh token (getToken network calls: 2)
+
+ ✓ src/store/integration.test.ts (1 test) 911ms
+   ✓ mobile XMPP integration (real server) (1)
+     ✓ signs in, connects xmpp-core, joins a room, sends and receives, then reconnects
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+```
+The invite code, the 6-digit OTP and the room/user localparts are redacted; the
+test reads the OTP from the server's own log and never prints a token.
+
+**Finding 2 — the spike is deleted.**
+- Removed `apps/mobile/src/spike/` (`config.ts`, `fetch-token.ts`,
+  `polyfills.ts`, `spike-screen.tsx`, `spike.test.ts`) and
+  `apps/mobile/src/app/spike.tsx` (5 files + 1 route = 6 files).
+- `lib/polyfills.ts` is now the single copy of the two shims, so there is
+  nothing to drift.
+- Removed the dangling `spike/config.ts` pointer from the `lib/auth.ts` comment,
+  and reworded the two remaining mentions of "spike" in comments
+  (`lib/polyfills.ts`, `lib/xmpp-node-stubs/empty.js`). `grep -r spike
+  apps/mobile/src` now returns nothing.
+- `metro.config.js` is **untouched**; the stub it resolves
+  (`src/lib/xmpp-node-stubs/empty.js`) still exists and is unchanged. `pnpm build`
+  bundled iOS + Android after the deletion, so the bundle still resolves.
+- The mobile test count drops by the spike's 8 tests (102 → 94 passed).
+
+### Round 2 commands run and real results
+
+- `pnpm format:check`: PASS — "All matched files use Prettier code style!".
+- `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (285 files, 127 rules).
+- `pnpm typecheck`: PASS — turbo "8 successful, 8 total".
+- `pnpm test`: PASS — turbo "8 successful, 8 total"; `@galena/mobile`
+  **94 passed, 2 skipped** (the two gated integration files skipped by default).
+- `pnpm build`: PASS — 2/2 tasks; Expo exported the iOS and Android bundles.
+- `GALENA_MOBILE_XMPP=1 … pnpm --filter @galena/mobile test src/store/integration.test.ts`:
+  PASS — 1/1 (911 ms), output above.
+
+
 
 ---
 

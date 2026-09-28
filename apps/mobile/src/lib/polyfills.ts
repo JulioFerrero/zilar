@@ -1,5 +1,5 @@
-// Minimal global shims that xmpp.js needs on Hermes / React Native. The T-0004
-// spike proved exactly two are required: `process.nextTick` and
+// Minimal global shims that xmpp.js needs on Hermes / React Native. Task T-0004
+// proved exactly two are required: `process.nextTick` and
 // `crypto.randomUUID`. Both are installed only when the runtime lacks them, so
 // importing this is safe on any platform.
 //

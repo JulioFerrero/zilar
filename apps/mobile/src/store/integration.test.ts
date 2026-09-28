@@ -190,7 +190,6 @@ describe.skipIf(!ENABLED)('mobile XMPP integration (real server)', () => {
     steps.push('sign-in through the real server → 200');
 
     // 2. The production mobile API client, over a node:http transport.
-    let tokenCalls = 0;
     const api = createChatApi(
       () => Promise.resolve(sessionToken),
       nodeFetch as unknown as typeof fetch,
@@ -218,14 +217,21 @@ describe.skipIf(!ENABLED)('mobile XMPP integration (real server)', () => {
     expect(chatJid).not.toBe('');
     steps.push(`POST /api/groups → ${createResponse.status}, room ${chatJid}`);
 
-    // 4. Connect xmpp-core with a token from the real server.
-    const xmppToken = await api.getXmppToken();
-    tokenCalls += 1;
+    // 4. Connect xmpp-core the way the store does: pre-fetch one token, serve
+    //    the first `getToken` from it (no second network call) and fetch a
+    //    fresh one on every later (re)connect.
+    const firstToken = await api.getXmppToken();
+    let tokenNetworkCalls = 1;
+    let servedFirstToken = false;
     const core = createXmppCore({
-      service: xmppToken.service,
-      domain: xmppToken.domain,
+      service: firstToken.service,
+      domain: firstToken.domain,
       getToken: async () => {
-        tokenCalls += 1;
+        if (!servedFirstToken) {
+          servedFirstToken = true;
+          return { jid: firstToken.jid, token: firstToken.token };
+        }
+        tokenNetworkCalls += 1;
         const fresh = await api.getXmppToken();
         return { jid: fresh.jid, token: fresh.token };
       },
@@ -239,6 +245,7 @@ describe.skipIf(!ENABLED)('mobile XMPP integration (real server)', () => {
     try {
       await core.connect();
       expect(core.status()).toBe('online');
+      expect(tokenNetworkCalls).toBe(1);
       steps.push(`xmpp-core online as ${core.me() ?? ''}`);
 
       await core.joinRoom(chatJid, me.name.trim() || 'me');
@@ -256,12 +263,12 @@ describe.skipIf(!ENABLED)('mobile XMPP integration (real server)', () => {
       );
       steps.push('sent and received a group message');
 
-      expect(tokenCalls).toBe(1);
+      expect(tokenNetworkCalls).toBe(1);
       await core.disconnect();
       await core.connect();
       await sleep(500);
-      expect(tokenCalls).toBeGreaterThanOrEqual(2);
-      steps.push(`reconnect fetched a fresh token (getToken calls: ${tokenCalls})`);
+      expect(tokenNetworkCalls).toBe(2);
+      steps.push(`reconnect fetched a fresh token (getToken network calls: ${tokenNetworkCalls})`);
 
       console.log(`[mobile xmpp integration] ${steps.join(' → ')}`);
     } finally {
