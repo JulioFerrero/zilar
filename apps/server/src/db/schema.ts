@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   index,
   integer,
   numeric,
@@ -190,6 +191,23 @@ export const aiLimits = pgTable('ai_limits', {
   perMonthUsd: numeric('per_month_usd', { precision: 12, scale: 2 }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// The spend baseline for one AI on one UTC day (T-0058). LiteLLM's key spend
+// is cumulative over the key's 30-day budget window, so today's spend is the
+// current spend minus the spend at the start of today (UTC), stored here on
+// the first read of the day. Money is numeric, like the other money columns.
+export const aiDailySpend = pgTable(
+  'ai_daily_spend',
+  {
+    aiId: text('ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    day: date('day').notNull(),
+    baselineUsd: numeric('baseline_usd', { precision: 12, scale: 2 }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.aiId, table.day] })],
+);
 
 // The capped LiteLLM virtual key issued for one AI. `litellm_key_id` is the
 // token id we use to update or revoke the key; `encrypted_key` is the usable

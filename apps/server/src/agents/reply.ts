@@ -24,6 +24,13 @@ export const PROVIDER_KEY_REJECTED_REPLY =
   'My provider rejected the API key. Check it under Connections → Test.';
 export const TRANSIENT_FAILURE_REPLY = "I couldn't reply just now. Please try again in a minute.";
 
+// The daily-limit notice is fixed except for the formatted per-day cap, so it
+// is a function rather than a constant. It goes out at most once per AI per
+// chat per UTC day; further messages that day get no reply and no notice.
+export function dailyLimitReply(perDayUsd: number): string {
+  return `I've reached today's spending limit ($${perDayUsd.toFixed(2)}). I'll be back after 00:00 UTC.`;
+}
+
 // A failed `/chat/completions` call. The detail is redacted at construction:
 // it never carries the virtual key, whatever LiteLLM echoed back.
 export class ChatCompletionError extends Error {

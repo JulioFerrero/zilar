@@ -42,6 +42,7 @@ const ai = {
   status: 'active',
   providerConnectionId: 'c-1',
   limits: { perDayUsd: 2, perMonthUsd: 20 },
+  usage: { todayUsd: 0.5, windowUsd: 5 },
   createdAt: '2026-09-28T00:00:00.000Z',
 };
 
@@ -76,12 +77,14 @@ function patchesTo(fetchMock: ReturnType<typeof vi.fn>): unknown[][] {
 
 // The panel loads the AI list and the connections list; PATCH answers come
 // from `patch` (a body) or fail with `patchError`. A GET for one AI answers
-// `refetched`, the server truth after a partial save.
+// `refetched`, the server truth after a partial save. `listed` is the AI the
+// list answers, so usage states render per test.
 function mockPanelFetch(
   connections: unknown[] = [openaiConnection],
   patch: unknown = { ...ai },
   patchError?: { status: number; message: string },
   refetched: unknown = { ...ai },
+  listed: unknown = ai,
 ): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
     const target = String(url);
@@ -102,7 +105,7 @@ function mockPanelFetch(
     if (/\/ais\/[^/]+$/.test(target)) {
       return jsonResponse(200, refetched);
     }
-    return jsonResponse(200, [ai]);
+    return jsonResponse(200, [listed]);
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
@@ -139,6 +142,56 @@ describe('AiPanel', () => {
     expect(await screen.findByDisplayValue('Dev-1')).toBeTruthy();
     expect(screen.getByDisplayValue('You are a concise senior engineer.')).toBeTruthy();
     expect(screen.getByDisplayValue('gpt-4o')).toBeTruthy();
+  });
+
+  it('shows the usage block with meters above the limits', async () => {
+    mockPanelFetch();
+
+    renderPanel();
+
+    expect(await screen.findByText('Today $0.50 of $2.00')).toBeTruthy();
+    expect(screen.getByText('30-day window $5.00 of $20.00')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Spend updates within a minute or two; the daily limit may let a last reply through.',
+      ),
+    ).toBeTruthy();
+
+    const today = screen.getByRole('progressbar', { name: "Today's spend" });
+    expect(today.getAttribute('aria-valuenow')).toBe('25');
+    const fill = today.firstElementChild as HTMLElement | null;
+    expect(fill?.style.width).toBe('25%');
+    expect(fill?.className).not.toContain('bg-danger');
+
+    // The usage block sits above the per-day/per-month fields.
+    const usageHeading = screen.getByText('Usage');
+    const dayField = screen.getByLabelText('Per day amount');
+    expect(usageHeading.compareDocumentPosition(dayField)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('turns the meters danger at or above 100%', async () => {
+    const over = { ...ai, usage: { todayUsd: 2, windowUsd: 25 } };
+    mockPanelFetch([openaiConnection], over, undefined, over, over);
+
+    renderPanel();
+
+    expect(await screen.findByText('Today $2.00 of $2.00')).toBeTruthy();
+    expect(screen.getByText('30-day window $25.00 of $20.00')).toBeTruthy();
+    for (const name of ["Today's spend", '30-day window spend']) {
+      const meter = screen.getByRole('progressbar', { name });
+      expect(meter.getAttribute('aria-valuenow')).toBe('100');
+      expect(meter.firstElementChild?.className).toContain('bg-danger');
+    }
+  });
+
+  it('shows usage unavailable when the server has no spend', async () => {
+    const none = { ...ai, usage: null };
+    mockPanelFetch([openaiConnection], none, undefined, none, none);
+
+    renderPanel();
+
+    expect(await screen.findByText('Usage unavailable')).toBeTruthy();
+    expect(screen.queryByRole('progressbar')).toBeNull();
   });
 
   it('PATCHes only the changed fields', async () => {

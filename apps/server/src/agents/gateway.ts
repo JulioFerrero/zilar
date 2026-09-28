@@ -40,7 +40,14 @@ import {
   normBareJid,
   type ChatCompletionMessage,
 } from './context';
-import { mapFailureToReply, runDmTurn, runGroupTurn, type ExecuteToolCall } from './reply';
+import { getAiUsage } from '../ais/usage';
+import {
+  dailyLimitReply,
+  mapFailureToReply,
+  runDmTurn,
+  runGroupTurn,
+  type ExecuteToolCall,
+} from './reply';
 import { formatPersonaUpdatedLine, PERSONA_RESTORED_LINE, UPDATE_PERSONA_TOOL } from './tools';
 
 export interface GatewayLogger {
@@ -290,6 +297,69 @@ export function createAgentGateway(
       ...(virtualKey === undefined ? [] : [virtualKey]),
       ...(deps.masterKeyForRedaction === undefined ? [] : [deps.masterKeyForRedaction]),
     ];
+  }
+
+  // One fixed notice per AI per chat per UTC day, in memory only. After a
+  // restart the map is empty, so a limited AI may notify once more.
+  const dailyLimitNotices = new Map<string, string>();
+
+  function utcDay(): string {
+    return (deps.now ?? (() => new Date()))().toISOString().slice(0, 10);
+  }
+
+  // The soft daily-limit check (T-0058), shared by DM and group turns. It
+  // runs before any model call: a null usage fails open (the turn goes
+  // ahead — the monthly cap is still enforced by LiteLLM itself), while a
+  // reached limit sends the fixed notice at most once per AI per chat per UTC
+  // day and skips the turn. Returns true when the turn must stop. Only ids
+  // are ever logged: the usage read addresses the key by its token id, never
+  // by the secret.
+  async function checkDailyLimit(input: {
+    aiId: string;
+    chatKey: string;
+    sendNotice: (text: string) => Promise<unknown>;
+  }): Promise<boolean> {
+    if (deps.litellm === undefined) {
+      return false;
+    }
+    let usage;
+    try {
+      usage = await getAiUsage(
+        {
+          db: deps.db,
+          litellm: deps.litellm,
+          logger,
+          ...(deps.now === undefined ? {} : { now: deps.now }),
+        },
+        input.aiId,
+      );
+    } catch (error) {
+      logger.warn(
+        { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
+        'AI usage check failed; failing open',
+      );
+      return false;
+    }
+    if (usage === null || !usage.dailyLimitReached) {
+      return false;
+    }
+    const today = utcDay();
+    const key = `${input.aiId}:${input.chatKey}`;
+    if (dailyLimitNotices.get(key) === today) {
+      return true;
+    }
+    try {
+      await input.sendNotice(dailyLimitReply(usage.perDayUsd));
+    } catch (error) {
+      logger.warn(
+        { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
+        'AI daily-limit notice could not be sent',
+      );
+      return true;
+    }
+    dailyLimitNotices.set(key, today);
+    logger.info({ aiId: input.aiId }, 'AI daily spending limit reached; turn skipped');
+    return true;
   }
 
   // Runs one validated persona tool call against the gateway's own AI id. The
@@ -726,6 +796,18 @@ export function createAgentGateway(
     }
     const trigger = eligible[eligible.length - 1] as RoomPendingMessage;
 
+    // The soft daily limit is checked before the rate budget and any model
+    // call: a limited AI sends at most one fixed notice per room per UTC day
+    // (a plain room message, no mention) and further mentions get nothing.
+    const groupLimited = await checkDailyLimit({
+      aiId: session.aiId,
+      chatKey: `room:${roomJid}`,
+      sendNotice: (text) => session.core.sendMessage(roomJid, 'groupchat', text),
+    });
+    if (groupLimited) {
+      return;
+    }
+
     const atMs = nowMs();
     const recent = (session.roomTurns.get(roomJid) ?? []).filter(
       (stamp) => stamp > atMs - GROUP_RATE_WINDOW_MS,
@@ -898,6 +980,18 @@ export function createAgentGateway(
     // stanza id). Only owner messages are ever marked: strangers and other
     // AIs returned above, before this point.
     session.core.markDisplayed(ownerJid, 'chat', trigger.id);
+
+    // The soft daily limit holds even when the marker above already went out:
+    // a limited AI answers with at most one notice per day, and further
+    // messages that day get no reply and no notice.
+    const limited = await checkDailyLimit({
+      aiId: session.aiId,
+      chatKey: `dm:${ownerBare}`,
+      sendNotice: (text) => session.core.sendMessage(ownerJid, 'chat', text),
+    });
+    if (limited) {
+      return;
+    }
 
     // Each turn streams its drafts to the owner under one turn id. The
     // publisher throttles (150 ms); the complete reply is flushed as a draft

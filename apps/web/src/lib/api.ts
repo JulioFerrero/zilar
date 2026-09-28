@@ -223,6 +223,15 @@ const aiLimitsSchema = z.object({
 
 export type AiLimits = z.infer<typeof aiLimitsSchema>;
 
+// T-0058: the AI's spend summary. Optional (not just nullable) so responses
+// from older servers still parse; absent means "unavailable" like null.
+const aiUsageSchema = z.object({
+  todayUsd: z.number(),
+  windowUsd: z.number(),
+});
+
+export type AiUsage = z.infer<typeof aiUsageSchema>;
+
 const publicAiSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -233,6 +242,7 @@ const publicAiSchema = z.object({
   status: z.enum(['active', 'disabled']),
   providerConnectionId: z.string(),
   limits: aiLimitsSchema,
+  usage: aiUsageSchema.nullable().optional(),
   createdAt: z.string(),
 });
 

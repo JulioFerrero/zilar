@@ -17,7 +17,9 @@ import {
   updateAi,
   type AiLimits,
   type AiLogger,
+  type PublicAi,
 } from './service';
+import { getAiUsage } from './usage';
 import { AiTemplateSchema } from './templates';
 
 export interface AisRoutesDependencies {
@@ -31,6 +33,20 @@ export interface AisRoutesDependencies {
   litellm?: LitellmAdminClient;
   cipher?: KeyCipher;
 }
+
+// The spend summary the AI list and detail carry (T-0058). Null when LiteLLM
+// cannot be reached: the UI shows "unavailable" and turns fail open.
+export interface AiUsageSummary {
+  todayUsd: number;
+  windowUsd: number;
+}
+
+export type PublicAiWithUsage = PublicAi & { usage: AiUsageSummary | null };
+
+// One AI's usage read may hang with LiteLLM, so every read races this
+// timeout: on timeout the AI answers `usage: null` rather than holding the
+// whole list.
+export const USAGE_TIMEOUT_MS = 2_000;
 
 // The owner's limits. Both must be positive, the day must fit inside the
 // month, and the month is bounded by the server constant. `.strict()` so an
@@ -105,9 +121,29 @@ export function createAisRoutes({
     domain: config.xmpp.domain,
   });
 
+  // Reads one AI's usage with a per-AI timeout. Without a LiteLLM client, or
+  // on any failure or timeout, the AI answers `usage: null`: spend is
+  // best-effort decoration on the management API, never a reason to fail it.
+  const withUsage = async (ai: PublicAi): Promise<PublicAiWithUsage> => {
+    if (litellm === undefined) {
+      return { ...ai, usage: null };
+    }
+    const usage = await Promise.race([
+      getAiUsage({ db, litellm, logger }, ai.id).catch(() => null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), USAGE_TIMEOUT_MS)),
+    ]);
+    if (usage === null) {
+      return { ...ai, usage: null };
+    }
+    return { ...ai, usage: { todayUsd: usage.todayUsd, windowUsd: usage.windowUsd } };
+  };
+
   routes.get('/ais', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
-    return c.json(await listAis(db, user.id));
+    const ais = await listAis(db, user.id);
+    // Owner only, as today: every id here came from the owner's own listing.
+    // The reads run in parallel so one slow AI never holds the whole list.
+    return c.json(await Promise.all(ais.map((ai) => withUsage(ai))));
   });
 
   routes.get('/ais/:id', async (c) => {
@@ -116,7 +152,7 @@ export function createAisRoutes({
     if (!ai) {
       throw new HttpError(404, 'not_found', 'AI not found');
     }
-    return c.json(ai);
+    return c.json(await withUsage(ai));
   });
 
   routes.post('/ais', async (c) => {

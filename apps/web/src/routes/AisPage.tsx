@@ -13,6 +13,11 @@ import { templateLabel } from '@/components/ais/templates';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
+/** `$2` -> `$2.00`. Server amounts are plain USD numbers. */
+function formatUsd(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
 export function AisPage() {
   const navigate = useNavigate();
 
@@ -203,6 +208,11 @@ function AiRow({
           {templateLabel(ai.template)} · {ai.model}
           {providerName === undefined ? '' : ` · ${providerName}`}
         </p>
+        {ai.usage != null && (
+          <p className="font-mono text-[12px] text-muted-foreground">
+            Today {formatUsd(ai.usage.todayUsd)}
+          </p>
+        )}
         <p className="text-[13px] text-muted-foreground">
           {formatLimit(ai.limits.perDayUsd)}/day · {formatLimit(ai.limits.perMonthUsd)}/month
         </p>
