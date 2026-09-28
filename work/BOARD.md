@@ -14,6 +14,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 ## Follow-ups
 
+- Web: Retry on the chat-list error bar briefly swaps an already-loaded list for skeletons; keep the list visible during retry (T-0042 nit). Mobile has the same loading-vs-empty bugs T-0042 fixed on web.
 - Change an AI's model after creation (server + panel). `UpdateAiSchema` allows only name, persona and limits, and a new model means re-registering the AI's LiteLLM model `ai-<id>` (T-0039 review).
 - AI DMs: the AI should send a displayed (read) marker when it takes a message into a turn. Today the owner's messages keep a single tick forever. T-0034 passed its live check on 2026-09-28: the first real reply, `deepseek-chat` with Julio's key, in about 1 s.
 - Mobile: honor the `?mock=` route param only in `__DEV__` or with `EXPO_PUBLIC_GALENA_MOCK` set, for both the chat store and My AIs (T-0037 pre-review). Today a deep link can show fake data in a production build.
