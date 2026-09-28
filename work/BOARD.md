@@ -11,6 +11,7 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0010](T-0010-voice-spike.md) | Voice message spike: record on web, convert with ffmpeg to AAC/M4A, send and play | todo | v4-flash | T-0002 | Plan §6.7. No transcription: local Whisper is not installed |
+| [T-0026](T-0026-mobile-auth.md) | Mobile sign-in for real: invite, email code, name, persisted session. **First slice of mobile on real data** | todo | v4-flash | T-0015, T-0017, T-0024 | Unblocked by T-0004. Store stays on mock data in this task |
 | T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely. Queued: collides with T-0007/T-0009 on apps/server |
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | Queued: collides with T-0007 on apps/server |
 
