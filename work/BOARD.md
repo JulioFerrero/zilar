@@ -10,9 +10,9 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 |---|---|---|---|---|---|
 
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0027](T-0027-mobile-real-data.md) | Mobile on real data: real DMs and groups via xmpp-core, history, typing, receipts, live updates. **Last piece of M1** | todo | v4-flash | T-0004, T-0024, T-0025, T-0026 | Unblocked by T-0004 + T-0026. Must not touch metro.config.js |
-| [T-0009](T-0009-git-proxy.md) | Spike S8: GitHub App tokens + a git proxy that only allows `agent/<ai>/*` pushes | todo | v4-pro | T-0001 | M3. No real GitHub App available; pure logic spike. Branch restriction is the point |
-| T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely. Queued: collides with T-0007/T-0009 on apps/server |
+| T-0027 | Mobile on real data: real DMs and groups via xmpp-core, history, typing, receipts, live updates. **Last piece of M1** | done (merged `a1372f1`) | v4-flash | T-0004, T-0024, T-0025, T-0026 | **M1 complete.** Gated live integration verified by the lead, not just the worker. Spike deleted. |
+| T-0009 | Spike S8: GitHub App tokens + a git proxy that only allows `agent/<ai>/*` pushes | done (merged `c0256c0`) | v4-pro | T-0001 | Branch rule total and now fails closed on unparseable pushes (round 2). Real App wiring is a follow-up. |
+| T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely. `apps/server` is free again now that T-0007 and T-0009 are merged. |
 
 ## Follow-ups
 
