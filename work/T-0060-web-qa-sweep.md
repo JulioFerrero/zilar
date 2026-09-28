@@ -1,7 +1,7 @@
 ---
 id: T-0060
 title: Web QA sweep — click through every screen and state in mock mode, report bugs with evidence (no code changes)
-status: review
+status: merged
 milestone: M2
 branch: task/T-0060-web-qa-sweep
 model: opencode-go/deepseek-v4.1-flash
@@ -196,3 +196,11 @@ app behaviour. No app code, config or env file was touched.
 - **Fake session:** the mock UI required faking `GET /api/auth/get-session`. If the intended mock mode is supposed to bypass auth on its own (e.g. `VITE_MOCK=1`), that is worth a small follow-up task; otherwise the QA instructions assume a running API that supplies a real session.
 
 ## Review (written by Claude)
+
+**Approved and merged by Claude.**
+
+- A QA-only pass over the web app in mock mode at both widths: no code changed, just the checklist, two real bugs and 10 polish notes.
+- The evidence folder had 29 screenshots against the spec's 25-image budget; the lead trimmed 4 uncited near-duplicates from an earlier interrupted pass (`07-desktop-dm-ana.png`, `09-desktop-replybar.png`, `10-desktop-actions-menu.png`, `38-desktop-ai-chat-wide.png`) to land at exactly 25. Nothing cited by name in the Report was touched.
+- The pre-reviewer verified both reported bugs' file/line citations against the actual source (Esc not closing the New chat menu or its dialogs; reduced-motion covering keys and typing/pulse dots but not the spinner or skeleton shimmer) and confirmed the report format, checks and honesty (limitations disclosed: no AI-panel mock fixtures for the model picker/limits/delete-confirm, reduced motion checked by reading CSS rather than emulating it).
+- The full test suite (all 9 packages) passed, along with format, lint, typecheck and build.
+- Turned into follow-up tasks next: Esc-to-close for menus/dialogs, and the missing reduced-motion coverage (spinner, skeleton shimmer).
