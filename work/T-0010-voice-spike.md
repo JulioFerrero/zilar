@@ -316,10 +316,83 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** **approved**, merging — with one environment blocker that is Julio's
+to clear, not a code problem.
+
+### What the lead verified
+- **Checks.** My first `pnpm test` run FAILED: `apps/web` —
+  `MessageActions.test.tsx > opens on right-click and closes with Escape`
+  timed out at 5311 ms. I did not accept the Report and did not accept the
+  failure either; I isolated it:
+  - the file alone in this worktree: **5 passed**;
+  - the same file on `main`: **5 passed**;
+  - a clean full run: **8/8 tasks, web 85, xmpp-core 118 + 3 skipped,
+    server 161 + 3 skipped, protocol 134, mobile 27, chat-core 50,
+    agent-drivers 19, devtools 9**; `format:check`, `typecheck` and `build` PASS.
+  So it is a **load-sensitive flake**, not a regression from this task — see
+  Finding 3. T-0010 touched no file in that path.
+- **The screenshot**, opened: `voice-received.png` shows the voice bubble in the
+  Telegram-like style (play button, waveform, `0:18`, sender name) and the new
+  microphone button in the composer, consistent with `ui-style.md`. It is
+  `?mock=1` with a synthesised WAV, exactly as the Report says, so it is
+  **UI and playability evidence, not end-to-end audio evidence**. The real
+  end-to-end evidence is the gated integration run and the `ffprobe` output.
+- **The XEP-0363 finding is the most valuable thing here.** ejabberd's
+  `mod_http_upload` answers the slot request only for an IQ **`type="get"`** with
+  the modern `urn:xmpp:http:upload:0` namespace and **attributes**; an IQ `set`
+  is refused with `service-unavailable`. The XEP's own examples and most blog
+  posts say `set`. The worker hit the real failure, diagnosed it, and covered it
+  in the integration run. That is exactly the kind of protocol truth this
+  project has been burned by before (T-0016, T-0021), so it is worth keeping.
+- **Scope.** One file outside the Allowed list: `apps/server/src/app.ts`, four
+  small hunks to mount the route with optional `voice` / `voiceMaxBytes`
+  injection points. Disclosed in the Report, unavoidable, and structured for
+  tests. Accepted. No other out-of-list file.
+- I also confirmed that **my own Spec was wrong about the file layout**: I told
+  it `apps/web/src/components/chat/**` and `voice-message.tsx`, and the repo has
+  `apps/web/src/components/{Composer,VoiceMessage,MessageBubble}.tsx`. It
+  adapted to the real files rather than inventing the ones I named, which is the
+  right call. That error is mine, not the worker's.
+
+### I was wrong three times, and it matters
+The Report says ffmpeg is broken on this machine. **I had told the worker the
+opposite, and rejected its investigation three times** with "ffmpeg is at
+`/opt/homebrew/bin/ffmpeg`, use it, do not run brew". I was wrong. My check at
+01:51 ran `which ffmpeg` and piped `ffmpeg -version` with **stderr discarded**,
+so the `dyld` failure was invisible and I concluded it worked. It does not:
+
+```
+dyld: Library not loaded: /opt/homebrew/opt/x265/lib/libx265.215.dylib
+  /opt/homebrew/Cellar/ffmpeg/8.1/bin/ffmpeg
+```
+
+Homebrew's `x265` 4.2 ships `libx265.216.dylib`; ffmpeg 8.1 wants
+`libx265.215.dylib` and the `_x265_api_get_215` symbol is gone. So `ffmpeg` and
+`ffprobe` cannot start at all on this machine.
+
+The worker kept probing `brew list --versions ffmpeg x265` because it had found
+the real cause, and I pushed it away each time on the strength of a check I had
+not really performed. It then built a temporary forwarding dylib with `clang` to
+get genuine evidence, and **removed it afterwards, leaving the Homebrew prefix as
+it found it**. That was the right call under a bad instruction.
 
 ### Findings
--
+1. **Environment blocker, for Julio — not for this task.** `ffmpeg` is broken
+   system-wide, so `/api/voice` returns 500 on this machine until it is fixed.
+   The fix is `brew reinstall ffmpeg` (or `brew upgrade`). I have not run it:
+   installing system software is Julio's call, and he is asleep. **The voice
+   feature cannot be exercised until he runs it.** The code is unaffected and
+   merges now.
+2. *(No change needed.)* Using the real ffmpeg to produce the `ffprobe` evidence,
+   then removing the temporary dylib, was good judgement and was disclosed.
+   Editing `app.ts` to mount the route was necessary and kept small.
+3. **A load-sensitive test, on the board.** `MessageActions.test.tsx > opens on
+   right-click and closes with Escape` takes 5311 ms and fails when the machine
+   is busy. It is pre-existing and unrelated to this task, but it will make CI
+   flaky. Worth its own small task; not this task's problem to fix.
 
 ### Follow-ups
--
+- **`brew reinstall ffmpeg` — needs Julio.** Blocks using voice messages.
+- Flaky `MessageActions` right-click test under load.
+- Transcription remains out of scope and still needs a local Whisper; the plan's
+  "the AI reads them" is not addressed by this task.
