@@ -66,6 +66,14 @@ function BubbleMeta({
   );
 }
 
+/** Delivered/read ticks as glyphs, so they flow inline at the end of the text (as main did). */
+function outgoingTicks(status: UiMessage['status']): string {
+  if (status === 'sending') {
+    return ' ○';
+  }
+  return status === 'read' ? ' ✓✓' : ' ✓';
+}
+
 function BigEmoji({
   message,
   outgoing,
@@ -212,17 +220,14 @@ export function MessageBubble({
                       />
                     </>
                   ) : (
-                    <>
-                      <Text className="text-[15px] leading-5" color={textColor}>
-                        <LinkText text={message.text ?? ''} color={textColor} />
+                    <Text className="text-[15px] leading-5" color={textColor}>
+                      <LinkText text={message.text ?? ''} color={textColor} />
+                      <Text className="font-mono text-[10px]" color={metaColor}>
+                        {'  '}
+                        {formatTime(message.createdAt)}
+                        {outgoing ? outgoingTicks(message.status) : ''}
                       </Text>
-                      <BubbleMeta
-                        message={message}
-                        outgoing={outgoing}
-                        color={metaColor}
-                        className="mt-0.5 justify-end"
-                      />
-                    </>
+                    </Text>
                   )}
                 </Pressable>
               )}

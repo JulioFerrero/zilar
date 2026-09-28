@@ -321,4 +321,36 @@ pnpm --filter @galena/mobile build             # Exported: dist (ios + android b
 place and left it **untracked** (it is not in the commit). The capture-only mock auth bypass was
 reverted again — `git diff` for `RequireAuth.tsx` is empty.
 
+## Round 3 (review fixes)
+
+**A. Outgoing voice colors.** `voice-message.tsx` now picks the waveform per bubble side: in
+**outgoing** (white) bubbles the played bars are `#0a0a0a`, unplayed `#a3a3a3`, and the duration
+`#525252`; in **incoming** bubbles played stays `#ededed` and unplayed `#525252`. The duration is
+passed through the `color` prop (not `style`), so the base class cannot override it.
+`bubbleStyle('generating')` is left in place for the drafts follow-up.
+
+**B. Inline time + ticks.** The plain-text branch again puts the mono time and the ticks inside the
+same `<Text>`, at the end of the text, as round 1 and `main` did: `' ✓'` sent, `' ✓✓'` read,
+`' ○'` while sending, all `#525252` in outgoing bubbles (the same tone for sent and read, which is
+what `main` and the web do). No separate `View`, so short bubbles stay short.
+
+### Visual check (Round 3)
+New own simulator `Galena T-0048` (iPhone 17, `B53FE3DD-DCD6-4380-8AE4-A7BC0013120E`);
+`pnpm --filter @galena/mobile boot:ios --device <mine>` in mock mode: **PASS**. Retook only
+`apps/mobile/screenshots/T-0048/02-dm.png` — the DM shows the inline `time ✓` / `time ✓✓` meta at
+the end of each outgoing bubble and short bubbles again. Then I stopped my Metro, and shut down and
+deleted my simulator. Julio's `DB167CD4…` (shutdown) and Metro 8081 were untouched.
+
+### Checks (Round 3, real results)
+```bash
+pnpm format:check                              # All matched files use Prettier code style!
+pnpm lint                                      # oxlint: no findings
+pnpm typecheck                                 # turbo: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/mobile
+                                               # 172 passed, 2 skipped (174); 20 files passed
+pnpm --filter @galena/mobile build             # Exported: dist (ios + android bundles)
+```
+`PREREVIEW.md` (untracked) again needed `prettier --write` in place to keep `format:check` green; it
+is not committed. The capture-only mock auth bypass was reverted; `RequireAuth.tsx` has no diff.
+
 ## Review (written by Claude)

@@ -69,6 +69,10 @@ export function VoiceMessage({ voice, outgoing }: VoiceMessageProps) {
   const metaColor = outgoing
     ? BUBBLE_COLORS[scheme].outgoingMeta
     : BUBBLE_COLORS[scheme].incomingMeta;
+  // Played/unplayed bars follow the bubble they sit in (white outgoing).
+  const playedColor = outgoing ? '#0a0a0a' : '#ededed';
+  const idleColor = outgoing ? '#a3a3a3' : '#525252';
+  const durationColor = outgoing ? '#525252' : metaColor;
   const peak = Math.max(...bars, 1);
 
   return (
@@ -99,13 +103,13 @@ export function VoiceMessage({ voice, outgoing }: VoiceMessageProps) {
                 style={{
                   width: 2.5,
                   height: 4 + (value / peak) * 16,
-                  backgroundColor: played ? '#ededed' : '#525252',
+                  backgroundColor: played ? playedColor : idleColor,
                 }}
               />
             );
           })}
         </View>
-        <Text className="font-mono text-[12px]" style={{ color: metaColor }}>
+        <Text className="font-mono text-[12px]" color={durationColor}>
           {formatDuration(voice.duration_ms)}
         </Text>
         <Pressable
