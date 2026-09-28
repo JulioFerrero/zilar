@@ -1,6 +1,7 @@
 import {
   formatFullDateTime,
   formatTime,
+  isAiJid,
   isBigEmoji,
   shouldRenderMarkdown,
   type ChatSummary,
@@ -13,7 +14,6 @@ import { ApprovalCard } from './ApprovalCard';
 import { Avatar } from './Avatar';
 import { ImageMessage } from './ImageMessage';
 import { LinkText } from './LinkText';
-import { isAiMentionJid } from './MentionPicker';
 import { MarkdownText } from './MarkdownText';
 import { MessageActionsMenu } from './MessageActionsMenu';
 import { MessageTicks } from './MessageTicks';
@@ -168,7 +168,7 @@ export function MessageBubble({
   const showSender = !own && chat.kind === 'group' && firstInGroup && !bigEmoji;
   // In a group, an incoming AI reply (recognisable from its `ai-` JID) carries
   // the small AI badge next to its name (T-0055).
-  const senderIsAi = showSender && isAiMentionJid(message.senderId);
+  const senderIsAi = showSender && isAiJid(message.senderId);
   const imageOnly =
     message.image !== undefined &&
     !hasText &&

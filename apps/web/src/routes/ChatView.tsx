@@ -22,6 +22,14 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
   const [panel, setPanel] = useState<OpenPanel | undefined>(() =>
     initialPanel(searchParams.get('panel')),
   );
+  // Switching chats closes the open panel, unless the new URL still asks for
+  // one. ChatShell keys ChatView by chat id, but the reset is explicit so the
+  // panel can never leak from one chat to the next.
+  const [panelChatId, setPanelChatId] = useState(chat.id);
+  if (panelChatId !== chat.id) {
+    setPanelChatId(chat.id);
+    setPanel(initialPanel(searchParams.get('panel')));
+  }
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
 
   useEffect(() => {

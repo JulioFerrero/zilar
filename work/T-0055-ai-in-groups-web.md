@@ -246,8 +246,8 @@ authenticates and the mock store is used; this worktree's Vite ran on
   honest. The real store does the actual API calls; the store tests pin them.
 - Two new test files: `GroupPanel.test.tsx` and `MentionPicker.test.tsx` (the
   spec asks for a MentionPicker badge test and there was no MentionPicker test).
-- `MentionPicker.tsx` itself is unchanged: it already badges rows from the JID,
-  and the store now feeds it AI members.
+- `MentionPicker.tsx` badges rows from the JID; since Round 2 its check is the
+  shared `isAiJid` from `@galena/chat-core` (no local duplicate).
 - Mock groups use the fixed `galena.test` domain (as the previous mock members
   did); the real store builds JIDs from the signed-in user's domain.
 - The mock group member lists do not match every `mockChats.memberCount` (that
@@ -261,5 +261,48 @@ authenticates and the mock store is used; this worktree's Vite ran on
 - `memberCount` on the chat list still counts people only (T-0054's server
   leaves `listGroupsForUser` unchanged), so the header subtitle and the panel's
   "N members" can differ by the AI count. The panel counts people + AIs.
+
+### Round 2 (lead review fixes)
+
+Three fixes from the pre-review, no scope expansion.
+
+**1. One `ai-` rule.** New `packages/chat-core/src/ai.ts` exports `isAiJid(jid)`
+(strips `/resource` and `?query`, then checks the localpart), exported through
+`packages/chat-core/src/index.ts`. `markdown.ts` imports it for
+`shouldRenderMarkdown` and drops its private copy; `MentionPicker.tsx` imports
+it and its exported duplicate `isAiMentionJid` is gone; `MessageBubble.tsx`
+imports `isAiJid` from `@galena/chat-core` (it no longer imports the picker).
+Added `packages/chat-core/src/ai.test.ts` for the resource/query cases.
+
+**2. The tautological assertion is gone.** The realStore test now renders the
+store-produced group AI message through `MessageBubble` (body `**done**`) and
+asserts the sender name `Dev-1`, the `AI` badge and real Markdown
+(`<strong>done</strong>`). It no longer asserts `senderId.startsWith('ai-')`.
+
+**3. The panel resets on a chat change.** `ChatView` tracks the chat the open
+panel belongs to and, when `chat.id` changes, recomputes the panel from the
+current `?panel=` value, so switching chats closes it unless the URL still asks
+for one. New `apps/web/src/routes/ChatView.test.tsx`: `?panel=group` opens the
+panel; opening it via the header then switching away and back leaves it closed.
+I temporarily disabled the reset to confirm the test fails without it (1 failed)
+and passes with it.
+
+Round 2 checks:
+
+```
+pnpm format:check   # All matched files use Prettier code style!
+pnpm lint           # (no output) exit 0
+pnpm typecheck      # Tasks: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/chat-core --filter=@galena/web
+# chat-core: 8 files passed, 99 passed (99)  [ai.test.ts +2]
+# web:       38 files passed, 270 passed (270) [ChatView.test +2; realStore test rewritten]
+# Tasks: 2 successful, 2 total
+pnpm build          # Tasks: 2 successful, 2 total
+```
+
+Note: the checks run `prettier --check .`, which also looks at the untracked
+`PREREVIEW.md` (it is not in `.prettierignore`). I ran `prettier --write` on it
+(adds one blank line) so `format:check` passes; it stays untracked and
+unmodified in git, never committed.
 
 ## Review (written by Claude)

@@ -1,13 +1,5 @@
 import type { ChatSummary, UiMessage } from './types';
-
-// Our AIs are provisioned with an `ai-` localpart (`ai-<aiId>@<domain>`), so an
-// AI sender is recognisable from its bare JID. Kept local: only this rule needs
-// it, and the web app derives the same flag from the same JID.
-function isAiSenderId(senderId: string): boolean {
-  const bare = (senderId.split('/')[0] ?? senderId).split('?')[0] ?? senderId;
-  const localpart = bare.split('@')[0] ?? bare;
-  return localpart.startsWith('ai-');
-}
+import { isAiJid } from './ai';
 
 /**
  * Whether a message's text is rendered as Markdown. Incoming messages in AI
@@ -26,7 +18,7 @@ export function shouldRenderMarkdown(
   if (chat.isAI) {
     return true;
   }
-  return chat.kind === 'group' && isAiSenderId(message.senderId);
+  return chat.kind === 'group' && isAiJid(message.senderId);
 }
 
 const CODE_FENCE = /^\s*(```|~~~)/;

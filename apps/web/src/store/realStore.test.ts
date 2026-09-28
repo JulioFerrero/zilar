@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createElement } from 'react';
+import { render, screen } from '@testing-library/react';
 import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
+import { MessageBubble } from '@/components/MessageBubble';
 import type { DraftHubEvent } from '@/lib/drafts';
 import {
   CONNECT_RETRY_DELAYS_MS,
@@ -715,7 +718,7 @@ describe('createRealChatStore', () => {
     ]);
   });
 
-  it('names a group AI message from the group AIs and flags it with the ai- JID', async () => {
+  it('names a group AI message from the group AIs and renders it as AI Markdown', async () => {
     const getGroup = vi.fn(async () => ({
       id: 'g1',
       title: 'Team',
@@ -733,16 +736,33 @@ describe('createRealChatStore', () => {
       message({
         id: 'ai-msg-1',
         chatJid: 'team@rooms.galena.test',
-        body: 'done',
+        body: '**done**',
         fromJid: 'ai-dev-1@galena.test',
         timestamp: new Date('2026-09-28T12:01:00Z'),
       }),
     );
 
     const last = store.getState().messages('team@rooms.galena.test').at(-1);
+    const chat = store.getState().chats.find((entry) => entry.id === 'team@rooms.galena.test');
     expect(last?.senderName).toBe('Dev-1');
-    expect(last?.senderId).toBe('ai-dev-1@galena.test');
-    expect(last?.senderId.startsWith('ai-')).toBe(true);
+    if (last === undefined || chat === undefined) {
+      throw new Error('the group AI message was not stored');
+    }
+
+    const { container } = render(
+      createElement(MessageBubble, {
+        message: last,
+        chat,
+        firstInGroup: true,
+        lastInGroup: true,
+        currentUserId: 'u-me',
+        onReply: () => {},
+      }),
+    );
+
+    expect(screen.getByText('Dev-1')).toBeTruthy();
+    expect(screen.getByText('AI')).toBeTruthy();
+    expect(container.querySelector('strong')?.textContent).toBe('done');
   });
 
   it('passes outgoing mentions to the core', async () => {
