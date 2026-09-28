@@ -1,0 +1,200 @@
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { RealGitRunner } from './git';
+import { MergeError, mergeTask, type MergeOptions } from './merge';
+
+function git(cwd: string, args: string[]): void {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
+  }
+}
+
+const BOARD_FIXTURE = (task: string, file: string): string =>
+  [
+    '# Board',
+    '',
+    '## Active',
+    '',
+    '| ID | Title | Status |',
+    '|---|---|---|',
+    `| [${task}](${file}) | Demo | in-progress |`,
+    '',
+    '## Done',
+    '',
+    '| ID | Title | Merged |',
+    '|---|---|---|',
+    '| [T-0001](T-0001-x.md) | Old | 2026-09-27 |',
+    '',
+  ].join('\n');
+
+const TASK_FILE = (status: string): string =>
+  [
+    '---',
+    'id: T-0099',
+    'title: Demo',
+    `status: ${status}`,
+    'milestone: tooling',
+    'branch: task/T-0099-demo',
+    'model: opencode-go/muse-spark-1.3-contributor',
+    'depends_on: []',
+    'estimate: 1 day',
+    '---',
+    '',
+    '# T-0099',
+    '',
+  ].join('\n');
+
+interface Harness {
+  root: string;
+  origin: string;
+  worktree: string;
+  branch: string;
+  dropped: string[];
+}
+
+// A main checkout with an origin, a task branch in a linked worktree, and
+// INDEPENDENT task-file copies: main's says `mainStatus`, the branch's says
+// `branchStatus`. The merge must read the branch's copy.
+function setup(mainStatus: string, branchStatus: string): Harness {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-merge-'));
+  const origin = path.join(dir, 'origin.git');
+  const root = path.join(dir, 'root');
+  fs.mkdirSync(root, { recursive: true });
+  git(dir, ['init', '--bare', '-q', origin]);
+  git(root, ['init', '-b', 'main', '-q']);
+  git(root, ['config', 'user.email', 'test@example.com']);
+  git(root, ['config', 'user.name', 'Test']);
+  fs.mkdirSync(path.join(root, 'work'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'work', 'BOARD.md'), BOARD_FIXTURE('T-0099', 'T-0099-demo.md'));
+  fs.writeFileSync(path.join(root, 'work', 'T-0099-demo.md'), TASK_FILE(mainStatus));
+  fs.writeFileSync(path.join(root, 'file.txt'), 'v1\n');
+  git(root, ['add', '.']);
+  git(root, ['commit', '-qm', 'init']);
+  git(root, ['remote', 'add', 'origin', origin]);
+  git(root, ['push', '-q', 'origin', 'main']);
+  const branch = 'task/T-0099-demo';
+  const worktree = path.join(dir, 'galena-T-0099');
+  git(root, ['worktree', 'add', '-q', worktree, '-b', branch, 'main']);
+  git(worktree, ['config', 'user.email', 'test@example.com']);
+  git(worktree, ['config', 'user.name', 'Test']);
+  fs.writeFileSync(path.join(worktree, 'work', 'T-0099-demo.md'), TASK_FILE(branchStatus));
+  git(worktree, ['add', 'work/T-0099-demo.md']);
+  git(worktree, ['commit', '-qm', 'worker: status']);
+  return { root, origin, worktree, branch, dropped: [] };
+}
+
+function options(harness: Harness, summary = 'Demo summary'): MergeOptions {
+  return {
+    root: harness.root,
+    task: 'T-0099',
+    file: 'T-0099-demo.md',
+    worktree: harness.worktree,
+    branch: harness.branch,
+    summary,
+    today: '2026-09-29',
+    runner: new RealGitRunner(),
+    readText: (file) => fs.readFileSync(file, 'utf8'),
+    writeText: (file, text) => fs.writeFileSync(file, text),
+    dropFromState: (task) => {
+      harness.dropped.push(task);
+    },
+  };
+}
+
+describe('mergeTask pre-flight checks', () => {
+  it('refuses a dirty worktree', () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'dirty.txt'), 'x');
+    expect(() => mergeTask(options(harness))).toThrow(MergeError);
+    expect(() => mergeTask(options(harness))).toThrow(/worktree has uncommitted/);
+  });
+
+  it("refuses a task whose branch copy is not merged (even when main's copy is)", () => {
+    const harness = setup('merged', 'review');
+    expect(() => mergeTask(options(harness))).toThrow(/status is "review"/);
+  });
+
+  it("proceeds when the branch copy is merged even though main's copy is todo", () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    mergeTask(options(harness));
+    expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(true);
+  });
+
+  it('refuses when main has uncommitted changes', () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.root, 'uncommitted.txt'), 'x');
+    expect(() => mergeTask(options(harness))).toThrow(/main checkout has uncommitted/);
+  });
+});
+
+describe('mergeTask rebase conflicts', () => {
+  it('aborts and lists the conflicted files', () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'file.txt'), 'branch change\n');
+    git(harness.worktree, ['commit', '-qam', 'branch change']);
+    fs.writeFileSync(path.join(harness.root, 'file.txt'), 'main change\n');
+    git(harness.root, ['commit', '-qam', 'main change']);
+
+    let error: unknown;
+    try {
+      mergeTask(options(harness));
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(MergeError);
+    expect(String((error as Error).message)).toContain('file.txt');
+
+    // The rebase was aborted: the branch still holds its own commit.
+    const log = spawnSync('git', ['log', '--oneline', '-1'], {
+      cwd: harness.worktree,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(log).toContain('branch change');
+    // And nothing was pushed or board-edited.
+    expect(fs.readFileSync(path.join(harness.root, 'work', 'BOARD.md'), 'utf8')).toContain(
+      '| [T-0099](T-0099-demo.md) | Demo | in-progress |',
+    );
+    expect(harness.dropped).toEqual([]);
+  });
+});
+
+describe('mergeTask happy path', () => {
+  it('rebases, fast-forwards, boards, pushes, and cleans up', () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+
+    mergeTask(options(harness));
+
+    // Fast-forwarded: main holds the feature commit.
+    expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(true);
+    // Board: moved from Active to the end of Done.
+    const board = fs.readFileSync(path.join(harness.root, 'work', 'BOARD.md'), 'utf8');
+    expect(board).not.toContain('| [T-0099](T-0099-demo.md) | Demo | in-progress |');
+    expect(board).toContain('| [T-0099](T-0099-demo.md) | Demo summary | 2026-09-29 |');
+    const doneSection = board.split('## Done')[1] as string;
+    expect(doneSection.indexOf('T-0001')).toBeLessThan(doneSection.indexOf('T-0099'));
+    // Pushed: the origin sees the feature commit.
+    const originLog = spawnSync('git', ['log', '--format=%s', 'main'], {
+      cwd: harness.origin,
+      encoding: 'utf8',
+    }).stdout;
+    expect(originLog).toContain('feature');
+    // Cleaned up: worktree removed, branch deleted, state dropped.
+    expect(fs.existsSync(harness.worktree)).toBe(false);
+    const branches = spawnSync('git', ['branch', '--list', harness.branch], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(branches).toBe('');
+    expect(harness.dropped).toEqual(['T-0099']);
+  });
+});

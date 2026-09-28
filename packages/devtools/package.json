@@ -6,8 +6,12 @@
   "scripts": {
     "smoke": "tsx src/smoke.ts",
     "xmpp:e2e": "tsx src/xmpp-e2e.ts",
+    "lead": "tsx src/lead/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@xmpp/client": "^0.14.0",

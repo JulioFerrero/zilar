@@ -66,8 +66,8 @@ pick ─► spec ─► launch ─► watch ─► (permissions) ─► DONE ─
 
 1. **Pick.** Take the next tasks from the board that don't depend on unfinished work. Run up to 2–4 workers in parallel, **only if their Allowed files don't overlap** (see §5).
 2. **Spec.** Write `work/T-XXXX-name.md` from the template (§5). Commit it to `main` (`work: spec for T-XXXX (…)`), add the row to `BOARD.md`, and commit.
-3. **Launch.** Run `launch.py` (appendix A). It creates the worktree + branch from `main`, then an OpenCode session with the permission rules (appendix C) and the standard prompt (appendix D). Put any files the worker needs but can't create in its worktree, such as a copy of `infra/.env`. **Never print the file's contents.**
-4. **Watch.** Arm a Monitor running `oc-watch.py <session> <label>` (appendix B). It prints permission requests, reminds you after 3 minutes of pending, and prints `DONE` when the session goes idle. Monitors expire after 30 minutes, so re-arm them. One Monitor can wrap several watchers with `& … & wait`.
+3. **Launch.** Run `lead launch T-XXXX` (§6.1). The legacy fallback is `launch.py` (appendix A). It creates the worktree + branch from `main`, then an OpenCode session with the permission rules (appendix C) and the standard prompt (appendix D). Put any files the worker needs but can't create in its worktree, such as a copy of `infra/.env`. **Never print the file's contents.**
+4. **Watch.** Arm a Monitor on `lead autopilot` (§6.1). It answers routine permissions itself, resumes after quota errors, nudges stalls, starts the Muse pre-review, and prints one `LEAD:` line only when you are needed. The legacy fallback is a Monitor on `oc-watch.py <session> <label>` (appendix B). It prints permission requests, reminds you after 3 minutes of pending, and prints `DONE` when the session goes idle. Monitors expire after 30 minutes, so re-arm them. One Monitor can wrap several watchers with `& … & wait`.
 5. **Permissions.** Answer every request quickly, using the policy in §7. A worker blocks while a request is pending.
 6. **DONE.** Check the front matter status:
    - `review` → review it.
@@ -113,6 +113,7 @@ Julio set this on 2026-09-28. **Never use DeepSeek V4 Pro.**
 | Backend, protocol, security, infra-adjacent, tricky logic | `muse-spark-1.3-contributor` | The strongest worker so far. On T-0008 it found a real stream-ordering bug by itself, and its reports are honest. |
 | UI and visual work (web or mobile screens) | `deepseek-v4.1-flash` | Fast, and it has vision, so it can check its own screenshots. It misses bugs that the tests hide, so review it live. |
 | Small or mechanical jobs; trying new models | `mimo-v2.6-flash`, `space-bunny-free`, `longcat-2.5-preview-free` | Watch MiMo for the `question` tool (§15). |
+| Scouting, chores, a second-opinion check; the **fallback when OpenCode Go returns 402** | `minimax-coding-plan` / `MiniMax-M3` (Julio's own subscription) | $0 per call, with its own quota. Julio calls it "quite dumb", so never give it security or core logic. `opencode-go/minimax-m3` also exists but is pay-per-use. |
 
 - Set `model:` in the spec's front matter to match, and pass `MODEL_ID` on every launch. `launch.py` defaults to Flash.
 - **Parallelism:** run 2–3 workers at a time, and only on **independent** tracks, so they don't touch the same files, the live-stack data or migrations. There is one Docker stack. Heavy load (Xcode, several full test runs) makes tests time out, so don't run more than one iOS build at a time.
@@ -136,6 +137,28 @@ Facts (OpenCode v2.0.12):
   - Use **`once`**. Don't use `always`: it persists beyond this task.
   - A `reject` with a helpful `message` is how you steer the worker.
 - **Julio can watch any worker live** with `cd ../galena-T-XXXX && opencode2 -s <session>`. Put that line on the board.
+
+### 6.1 The lead tools (T-0038): use these first
+
+Run everything from `packages/devtools` as `pnpm exec tsx src/lead/cli.ts <command>` (or `pnpm --filter @galena/devtools lead <command>`, which prints pnpm banner lines on stdout). The state file lives in `~/.galena-lead/state.json` (or `$GALENA_LEAD_STATE`), outside the repo, and holds no secrets.
+
+- **`launch T-XXXX [--extra-rules f.json]`**: creates the worktree and branch from `main`, then the session with the model from the spec's `model:` (it refuses V4 Pro). It sends `prompts/worker.md` and records the task in the state file.
+- **`autopilot [--once] [--dry-run]`**: arm it as a Monitor on `… autopilot 2>>/tmp/galena-scratch/autopilot.err | grep --line-buffered '^LEAD:'`. Every event is a decision for you:
+  - a `PERMISSION` it couldn't classify;
+  - a `QUESTION`;
+  - `QUOTA` (at most hourly);
+  - `STALLED`, after 2 nudges;
+  - `BLOCKED`;
+  - `PACKET READY T-XXXX`: `PREREVIEW.md` is written, go review;
+  - `PRE-REVIEW STALLED`.
+
+  The policy (`src/lead/policy.ts`) is fail-closed: it allows only reads and own-worktree cleanup, rejects dangerous commands with a message, and escalates everything else. It never merges, pushes, or edits task files or the board.
+- **`prereview T-XXXX`**: starts a Muse pre-review by hand.
+- **`reply T-XXXX <prompt-file>`**: interrupts and re-prompts the worker. Use it to answer a question, or to send a review round.
+- **`merge T-XXXX --summary "…"`**: run it after you have set `status: merged` and written the Review on the task branch. It checks that the worktree and main are clean, rebases (stopping on any conflict), fast-forwards, moves the board row, pushes, removes the worktree and branch, and drops the task from the state file. **Re-run the checks yourself before setting `merged`.**
+- **`status`**: a compact table of tasks, sessions and the last escalation.
+- A task launched outside `lead launch` (e.g. relaunched in a new session) must be added to the state file with `newTaskRecord` and `saveState` from `src/lead/state.ts` and `types.ts`.
+- After merging anything that adds a dependency, run `pnpm install` in the main checkout **before** restarting the live server (gotcha 18).
 
 `launch.py` (appendix A) records `TASK SESSION WORKTREE` in `workers.txt` in your scratch folder. Keep that file: you need the session ids to send later rounds.
 
@@ -321,29 +344,32 @@ git worktree remove ../galena-T-XXXX && git branch -d task/T-XXXX-name
 
 15. **Workers can't `kill`.** The permission rules block `kill` and `pkill`. A worker that starts a CPU burner or a background server can't stop it, and asks you to (T-0036 left eight `yes` processes, load average 82, 2026-09-28). In any spec that uses background load or processes, require them to end on their own (`perl -e 'alarm 600; exec "yes"' > /dev/null &`). Before you kill anything a worker names, check the PIDs with `ps -o pid,comm -p …`. Machine load hurts every other worker's test runs, so re-run their checks yourself before trusting a timeout.
 16. **Julio's Vite listens on `[::1]:5173` only.** `127.0.0.1:5173` is a free port, and it is a trusted auth origin with its own cookies. For a live click-through as a test account, run a second Vite from main bound to `127.0.0.1` (Julio approved this on 2026-09-28), and stop it afterwards. Never sign in as someone else on `localhost:5173`: that replaces Julio's session.
+17. **A session can hold at most 30 images** (`provider.invalid-request`: "Too many images in request: 31 > 30"). Once past that, the session is dead for good. T-0037's Flash session hit it after screenshotting every state (2026-09-28). In UI specs, set an image budget of about 20: downscale with `sips -Z 900` before viewing, and capture each state once, after the code is final. To recover, relaunch in a new session in the same worktree (`relaunch.py`). Have it commit the uncommitted work first as "wip (takeover)".
+18. **Merges that add a dependency break the live server until `pnpm install` runs in main.** After T-0034 added `@galena/xmpp-core` to the server, the restart died with `ERR_MODULE_NOT_FOUND` and 3188 was down for about 45 s. The same thing happened to `lead` itself (zod). Run `pnpm install` in the main checkout after every merge, before any restart.
 
-## 16. State snapshot (2026-09-28, when this was written)
+## 16. State snapshot (2026-09-28, evening)
 
-- **Merged:**
-  - M0 foundations: monorepo, infra, XMPP accounts and rooms, protocol, the OpenCode driver, the server foundation, auth, xmpp-core, provisioning
-  - web and mobile chat shells, web polish
-  - the SM ack fix
-  - contacts, groups and chats
-  - **the web app on real data** (T-0024), which Julio has used live
-- **In flight:**
-  - **T-0023** mobile polish: round 1, fixing the double space in group previews.
-  - **T-0025** real-use fixes: the list status stuck on sending, XEP-0249 invites, roster pushes, live list refresh, the big-emoji sender name. Its round 2 must add two live bugs:
-    - Your own typing is shown to you in groups. Ignore `fromJid === me.jid` for typing and displayed markers.
-    - Names fall back to the raw JID localpart. Resolve names from group members and occupants, and fall back to "Someone".
-- **Next, after those** (the board's planned rows):
-  - the mobile app on real data (mirror T-0024)
-  - the LiteLLM spike (T-0007)
-  - the voice spike (T-0010)
-  - the GitHub App spike (T-0009)
-  - then M2: real AIs (gateway, listener, AI profiles, BYOK)
-- **Temporary things to remove eventually:**
-  - `zz-bridge.ts` / `zz-ana.ts` in `../galena-T-0024`
-  - that worktree itself, once the live stack no longer runs from it
+- **Merged today:**
+  - T-0008 (tunnel spike)
+  - T-0032 (web Create-AI wizard)
+  - T-0033 (per-AI LiteLLM models and keys)
+  - T-0034 (agent gateway v0: AIs reply to their owner in DMs)
+  - T-0035 (server follow-ups)
+  - T-0036 (web tests under load)
+  - T-0038 (the lead tools)
+- **Live stack:**
+  - server on 3188 with `AGENT_GATEWAY_ENABLED=true`
+  - Julio's Vite on `[::1]:5173`
+  - LiteLLM on 4000 with `store_model_in_db`
+  - Julio is testing the real AI reply flow with his own provider key.
+- **In flight:** T-0037 (mobile My AIs, Flash), relaunched in a new session after hitting the image cap (gotcha 17), and tracked by the autopilot.
+- **Julio's focus:** web and server first. Mobile follows.
+- **Next candidates (M2):**
+  - AIs in groups and @mentions
+  - budget reservation and the 80% warning
+  - streaming replies
+  - the listener (§9.3)
+- **Pending live check:** a real AI reply with Julio's key (T-0034).
 
 ---
 
