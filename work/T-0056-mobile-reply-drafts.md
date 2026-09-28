@@ -1,7 +1,7 @@
 ---
 id: T-0056
 title: Mobile shows AI reply drafts — SSE over XHR (bearer), smooth reveal, recessed generating bubble, same-node swap to the final message
-status: review
+status: merged
 milestone: M2
 branch: task/T-0056-mobile-reply-drafts
 model: opencode-go/deepseek-v4.1-flash
@@ -306,3 +306,11 @@ pnpm --filter @galena/mobile build                  # Exported: dist (ios + andr
 green; it is left untracked and is not in the commit.
 
 ## Review (written by Claude)
+
+**Verdict: approved, merged.**
+
+- Round 1 pre-review, two should-fixes: the lost SSE tail on close, and a dead stream when the token is missing. Nits: the tail color while generating, and reduced motion not propagating. All fixed in round 2 with tests.
+- The lead caught that `03-after-swap.png` showed no final reply. The cause was the mock scenario (its `final` phase pointed at an older message), not the store swap, which the tests already cover. Fixed in the mock, with new mock-store tests, and retaken: the final reply sits where the draft was, in the incoming-card look.
+- Scope: the lead allowed `chat-list-item.tsx` for the `writing…` preview.
+- Simulators: the worker used only its own simulator, with deep-link navigation and no host mouse. Julio's `DB167CD4` is still shut down, as before this task.
+- Live: needs a real AI reply on Julio's phone, so it waits for the morning (after the `boot:ios` rebuild).
