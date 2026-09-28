@@ -22,15 +22,21 @@ const rnAppState: AppStateLike = {
 };
 
 /**
- * Creates the real store (or the mock one in `?mock=1` dev mode) and starts it
- * once the session is authenticated. Stopping on sign-out tears the XMPP
- * connection down.
+ * Creates the real store (or the mock one when the mock gate allows `?mock=1`)
+ * and starts it once the session is authenticated. Stopping on sign-out tears
+ * the XMPP connection down.
  */
 export function ChatStoreProvider({ children }: { children: ReactNode }) {
   const params = useGlobalSearchParams();
   const { status } = useSession();
   const [store] = useState<StoreApi<ChatStoreState>>(() =>
-    isMockMode(params) ? createChatStore() : createRealChatStore({ appState: rnAppState }),
+    isMockMode(params, {
+      dev: __DEV__,
+      envMock: process.env.EXPO_PUBLIC_GALENA_MOCK,
+      nodeEnv: process.env.NODE_ENV,
+    })
+      ? createChatStore()
+      : createRealChatStore({ appState: rnAppState }),
   );
 
   useEffect(() => {

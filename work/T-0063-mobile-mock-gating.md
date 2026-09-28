@@ -1,7 +1,7 @@
 ---
 id: T-0063
 title: Mobile honors the `?mock=` route param only in dev builds (or with EXPO_PUBLIC_GALENA_MOCK), for the chat store and My AIs
-status: todo
+status: review
 milestone: M2
 branch: task/T-0063-mobile-mock-gating
 model: opencode-go/deepseek-v4.1-flash
@@ -66,19 +66,38 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Added one pure gate, `mockParamAllowed({ dev, envMock })` in `src/mock/gate.ts`, that is true in a dev build or when `EXPO_PUBLIC_GALENA_MOCK` is a non-empty value other than `'0'`/`'false'`.
+- `isMockMode` (chat store) now keeps the `NODE_ENV === 'test'` and `EXPO_PUBLIC_GALENA_MOCK === '1'` short-circuits, but only reads the `?mock=1` param when the gate is open. The build values are injected through a new optional `MockEnv` argument (`{ dev, envMock, nodeEnv }`), defaulting to the real `__DEV__` / `process.env` values. `__DEV__` is read as `typeof __DEV__ !== 'undefined' && __DEV__` so Vitest (which has no React Native global) does not throw.
+- `ChatStoreProvider` passes the real `__DEV__` and env values to `isMockMode`.
+- `aisMockScenario(env, params, paramAllowed = false)` ignores the route param when the gate is closed; the `EXPO_PUBLIC_GALENA_MOCK` path is unchanged. `useAisApi` computes `mockParamAllowed({ dev: __DEV__, envMock: process.env.EXPO_PUBLIC_GALENA_MOCK })` and passes it.
 
 ### Files changed
--
+- `apps/mobile/src/mock/gate.ts` (new): the gate.
+- `apps/mobile/src/mock/gate.test.ts` (new): dev on/off × env unset, `'1'`, `'default'`, `'0'`, `'false'`, `''`.
+- `apps/mobile/src/store/chat-store.ts`: `isMockMode(params, env)` gated, plus `MockEnv`/`currentMockEnv`.
+- `apps/mobile/src/store/chat-store.test.ts`: `isMockMode` tests (gate closed → false; dev / env default → true; `'false'`/`'0'` → false; test & `=1` modes stay on).
+- `apps/mobile/src/store/chat-store-provider.tsx`: passes real `dev`/`envMock`/`nodeEnv`.
+- `apps/mobile/src/mock/ais.ts`: new `paramAllowed` argument.
+- `apps/mobile/src/mock/ais.test.ts`: existing param cases pass `true` (smallest edit the new argument needs); added gate-closed → `null`, gate-open → scenario, and env-path-stays tests.
+- `apps/mobile/src/components/ais/use-ais-api.ts`: passes the gate result.
+- `work/T-0063-mobile-mock-gating.md`: status + this report.
 
 ### Commands run and real results
--
+- `pnpm install`: `Done`, 1010 packages, no changes to `pnpm-lock.yaml`.
+- `pnpm format:check`: **PASS** — "All matched files use Prettier code style!".
+- `pnpm lint`: **PASS** — oxlint, no output, exit 0.
+- `pnpm typecheck`: **PASS** — 9/9 turbo tasks successful.
+- `pnpm test`: **PASS** — 9/9 turbo tasks successful; `@galena/mobile`: 24 files passed, 2 skipped; 217 tests passed, 2 skipped. New: `gate.test.ts` 1, `chat-store.test.ts` 14 (incl. 4 `isMockMode`), `ais.test.ts` 15 (incl. 3 gating).
+- `pnpm build`: **PASS** — expo export produced iOS (7.5 MB) and Android (7.8 MB) Hermes bundles.
 
 ### Problems, deviations from the spec, open questions
--
+- Spec wrote `isMockMode(params)`; I added an optional second `env` argument so the store provider can pass the real build values (step 4) and so the gate is unit-testable without stubbing globals or mutating `process.env`. The default reproduces the real values, so behavior is unchanged for callers that omit it.
+- `aisMockScenario`'s new `paramAllowed` defaults to `false` (fail-closed); the existing tests were updated to pass `true`, which is the "smallest edit the new argument needs" the spec allows.
+- No other file under `apps/mobile` reads a `mock` route param (verified by grep on `apps/mobile/src` and the `src/app` router dir), so nothing extra to list.
 
 ### Blocked / needs a decision
--
+- None.
+
 
 ---
 

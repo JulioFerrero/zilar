@@ -13,6 +13,8 @@ import {
   TYPING_DURATION_MS,
   TYPING_START_MS,
   createChatStore,
+  isMockMode,
+  type MockEnv,
 } from './chat-store';
 
 describe('chat store', () => {
@@ -134,5 +136,33 @@ describe('chat store', () => {
     expect(store.getState().chats.find((chat) => chat.id === 'dev-ai')?.lastMessage?.id).toBe(
       MOCK_DRAFT_FINAL_MESSAGE_ID,
     );
+  });
+});
+
+describe('isMockMode', () => {
+  const env = (overrides: Partial<MockEnv> = {}): MockEnv => ({
+    dev: false,
+    envMock: undefined,
+    nodeEnv: 'production',
+    ...overrides,
+  });
+
+  it('ignores ?mock=1 when the gate is closed', () => {
+    expect(isMockMode({ mock: '1' }, env())).toBe(false);
+  });
+
+  it('honors ?mock=1 in a dev build or with EXPO_PUBLIC_GALENA_MOCK set', () => {
+    expect(isMockMode({ mock: '1' }, env({ dev: true }))).toBe(true);
+    expect(isMockMode({ mock: '1' }, env({ envMock: 'default' }))).toBe(true);
+  });
+
+  it('never enables mock mode with EXPO_PUBLIC_GALENA_MOCK=false or 0', () => {
+    expect(isMockMode({ mock: '1' }, env({ envMock: 'false' }))).toBe(false);
+    expect(isMockMode({ mock: '1' }, env({ envMock: '0' }))).toBe(false);
+  });
+
+  it('keeps the test and EXPO_PUBLIC_GALENA_MOCK=1 modes always on', () => {
+    expect(isMockMode({}, env({ nodeEnv: 'test' }))).toBe(true);
+    expect(isMockMode({}, env({ envMock: '1' }))).toBe(true);
   });
 });

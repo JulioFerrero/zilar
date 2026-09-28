@@ -87,13 +87,18 @@ export const mockAis: readonly PublicAi[] = [
  * default scenario and can be narrowed by `EXPO_PUBLIC_GALENA_MOCK_SCENARIO`.
  * Any other unrecognized value means the real API: a stray `?mock=` (or
  * `EXPO_PUBLIC_GALENA_MOCK=false`) must never silently serve fake data.
+ *
+ * `paramAllowed` is the `mockParamAllowed` gate: in a production build with no
+ * mock env the route param is ignored, while the `EXPO_PUBLIC_GALENA_MOCK` path
+ * (the bundle-time opt-in) always works.
  */
 export function aisMockScenario(
   env: Record<string, string | undefined>,
   params?: Record<string, string | string[] | undefined>,
+  paramAllowed = false,
 ): AisMockScenario | null {
   const rawParam = params?.['mock'];
-  const param = Array.isArray(rawParam) ? rawParam[0] : rawParam;
+  const param = paramAllowed ? (Array.isArray(rawParam) ? rawParam[0] : rawParam) : undefined;
   const requested = param !== undefined ? param : env['EXPO_PUBLIC_GALENA_MOCK'];
   if (requested === undefined || requested === '' || requested === '0') {
     return null;
