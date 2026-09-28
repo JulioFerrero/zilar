@@ -1,7 +1,7 @@
 ---
 id: T-0061
 title: Edit and delete for everyone (web) — XEP-0308 corrections, XEP-0424 retractions, an edit bar, "edited" labels and tombstones; the gateway ignores both
-status: review
+status: merged
 milestone: M1
 branch: task/T-0061-edit-delete-web
 model: opencode-go/deepseek-v4.1-flash
@@ -325,3 +325,20 @@ I looked at each one; the layouts hold at both sizes and nothing clips.
   re-checks the same rules before sending.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved.
+
+**Approved and merged by Claude.** Verified in the worktree: every changed path is inside Allowed files; `format:check`, `lint`, `typecheck`, `test` and `build` pass (web 325, xmpp-core 158 + 3 skipped, chat-core 133, server 494 + 7 skipped). The Muse pre-review found no must-fix or should-fix issues and re-ran the checks with the same numbers.
+
+**Live check (lead, against the dev ejabberd, throwaway users and room):** I added a gated test, `packages/xmpp-core/src/integration-edits.test.ts` (`GALENA_XMPP_INTEGRATION=1`), and it passes. In a DM and in a group: a correction arrives with the new body and the original's id, from the same sender/occupant; a retraction arrives with no fallback body (in the group it targets the room's stanza-id, read from history); and MAM replays both the corrections and the retractions to a client that connects later. This is the protocol truth that fakes cannot prove (playbook gotcha 19).
+
+Receiver-side authorization (`edits.ts` `isSameAuthor`): bare JID in DMs; real JID, else occupant-id, else nick in groups; a retraction wins for good. Read the code and the tests (foreign sender rejected in DM and group).
+
+### Findings
+1. *(No change needed.)* `Composer.tsx` `editLastMessage` uses wall-clock `new Date()` for the 48 h window while the store uses the injectable `now()`. No production effect; accepted.
+2. *(No change needed.)* `editMessage` relies on the Composer calling `cancelEdit()` afterwards. Accepted; revisit if a second caller appears.
+3. *(No change needed.)* The nick fallback in groups (no real JID and no occupant-id) is weaker than the other two, but only applies when neither is known, in members-only rooms.
+
+### Follow-ups
+- Mobile edit/delete (xmpp-core now has `sendCorrection`/`sendRetraction`): a new task.
+- Julio should try edit and delete once in his real chats (Helium) when he is up; the server gateway guard needs the restart I do right after this merge.
