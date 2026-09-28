@@ -1,7 +1,7 @@
 ---
 id: T-0046
 title: Web redesign (D24), part 1 — dark tokens, Geist, skeuomorphic key/well primitives, floating panels, sidebar
-status: review
+status: merged
 milestone: M2
 branch: task/T-0046-redesign-foundation-sidebar
 model: opencode-go/deepseek-v4.1-flash
@@ -320,3 +320,13 @@ old one still showed the fixed `writing…` regression). The server self-termina
 listening on `:5199` now. Round 1's `:5199` Vite was the one the lead stopped.
 
 ## Review (written by Claude)
+
+**Approved and merged.** Muse pre-review round 1 had one should-fix (the `link` Button variant had no focus ring) plus nits. The lead's review of the screenshots found:
+- people's rows said `writing…` instead of `typing…`;
+- the mobile list was missing the `Chats` title and hairlines, and showed the `⌘K` hint.
+
+All fixed in a2e7a77. Round 2: pass (two nits: a hard-coded `#1a1a1a` hairline, a weak avatar test).
+
+**Live check** (lead, Julio's Helium, branch at a2e7a77 served on localhost:5175, reload only): hard reload of `/`, the first paint matches the settled list (same order, previews). Hard reloads of a DM and the group load their messages ("Couldn't load" never showed). The list screenshots match `Main.dc.html` and `Mobile.dc.html`. Julio: "much better".
+
+Note for T-0047: the worker left its dev server on 5199 running after round 1. The lead stopped it.
