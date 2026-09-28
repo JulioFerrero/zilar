@@ -1,7 +1,7 @@
 ---
 id: T-0062
 title: Web QA fixes — Esc closes every menu and dialog, reduced motion covers the spinner and skeleton, a few cheap polish items
-status: review
+status: merged
 milestone: M2
 branch: task/T-0062-web-qa-fixes
 model: opencode-go/deepseek-v4.1-flash
@@ -235,3 +235,37 @@ affordance would need a different treatment — say so and I will adjust.
   call; the rest follows the spec.
 
 ## Review (written by Claude)
+
+**Approved and merged by Claude.**
+
+Shipped: Esc now closes the New chat menu (from either focus position) and
+every dialog (New group, New message, New AI, and — added in round 2 —
+Invite a friend), each returning focus to the control that opened it.
+Reduced motion now covers the skeleton and progress spinner (via marker
+classes forced into the Tailwind utilities layer with `@utility`, needed
+because a plain rule in the media block lost to the utility classes on
+source order) as well as, in round 2, `ChatList`'s retry spinner
+(`motion-reduce:animate-none`, matching Composer/MessageBubble). Plus the
+three polish items: an explicit 2px focus ring, `id`/`name` on the search
+input and composer textarea, and Approve/Deny disabled with a "coming
+soon" tooltip.
+
+Round 1 pre-review found one spec-scope mistake that was mine, not the
+worker's (`SearchBar.tsx`/`ApprovalCard.tsx` needed touching for the
+spec's own Polish 2/5 but weren't in the original Allowed-files list —
+fixed on main, commit `85555c8`) plus two real bugs, both fixed in round
+2: `InviteDialog` had no Esc handler at all, and `ChatList`'s retry
+spinner wasn't covered by the reduced-motion fix.
+
+Round 2 pre-review: no must-fix issues. Accepted nits, not fixed: (1) the
+branch's own copy of the Allowed-files line predates my main-branch
+amendment, harmless since merge keeps main's version; (2) `focusTrigger`/
+`closeDialog` are recreated each render, so the dialogs' Esc effects
+re-subscribe every render — no leak, just churn; (3) reduced motion is
+implemented two ways (JS marker classes for skeleton/spinner vs. pure-CSS
+`motion-reduce:` utility for the retry spinner) — both correct, just
+inconsistent style.
+
+Checks: `pnpm lint` clean, `pnpm typecheck` 9/9, `pnpm exec turbo test
+--force --filter=@galena/web` 315 passed/0 failed, `pnpm build` clean,
+built CSS spot-checked for both reduced-motion rules.
