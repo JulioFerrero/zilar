@@ -1,0 +1,395 @@
+import { z } from 'zod';
+import type { ServerConfig } from '../config';
+
+// The address the dev stack publishes LiteLLM on. Kept here rather than in the
+// env schema so an absent LITELLM_BASE_URL does not change the parsed config.
+export const DEFAULT_LITELLM_BASE_URL = 'http://127.0.0.1:4000';
+
+// Every failure coming from LiteLLM is wrapped in this type. The message is
+// redacted before construction: it never carries the master key or a provider
+// key, whatever the proxy echoed back.
+export class LitellmApiError extends Error {
+  readonly operation: string;
+  readonly status: number;
+
+  constructor(operation: string, status: number, detail: string) {
+    super(
+      status === 0
+        ? `LiteLLM "${operation}" request failed: ${detail}`
+        : `LiteLLM "${operation}" failed with HTTP ${status}: ${detail}`,
+    );
+    this.name = 'LitellmApiError';
+    this.operation = operation;
+    this.status = status;
+  }
+}
+
+export interface LitellmClientConfig {
+  baseUrl: string;
+  masterKey: string;
+}
+
+export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
+
+export interface GenerateVirtualKeyInput {
+  /** Model groups the key may call. At least one, and never empty. */
+  models: string[];
+  /** Hard spend cap in USD. Enforced by the proxy before every call. */
+  maxBudget?: number;
+  /** Reset window for the budget, e.g. "30d" or "1h". */
+  budgetDuration?: string;
+  tpmLimit?: number;
+  rpmLimit?: number;
+  keyAlias?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateVirtualKeyInput {
+  key: string;
+  maxBudget?: number;
+  tpmLimit?: number;
+  rpmLimit?: number;
+  blocked?: boolean;
+  /**
+   * Admin-only spend override. LiteLLM accepts it on /key/update; the spike's
+   * integration script uses it to cross a cap without a real provider. Never
+   * used by the app to *set* what a user spent.
+   */
+  spend?: number;
+}
+
+export interface VirtualKey {
+  /** LiteLLM's token id, the stable handle we store for a key. */
+  id: string;
+  /** The placeholder key handed to the client. */
+  key: string;
+  keyAlias: string | null;
+  maxBudget: number | null;
+  spend: number;
+  models: string[];
+}
+
+export interface VirtualKeyInfo {
+  keyAlias: string | null;
+  maxBudget: number | null;
+  spend: number;
+  tpmLimit: number | null;
+  rpmLimit: number | null;
+  blocked: boolean | null;
+  models: string[];
+}
+
+export interface LitellmAdminClient {
+  generateKey(input: GenerateVirtualKeyInput): Promise<VirtualKey>;
+  getKeyInfo(key: string): Promise<VirtualKeyInfo>;
+  updateKey(input: UpdateVirtualKeyInput): Promise<VirtualKeyInfo>;
+  revokeKey(key: string): Promise<void>;
+}
+
+const KeySchema = z.string().min(1).max(4096);
+const ModelsSchema = z.array(z.string().min(1).max(256)).min(1);
+const BudgetSchema = z.number().finite().nonnegative();
+const SpendSchema = z.number().finite();
+const LimitSchema = z.number().int().positive();
+const DurationSchema = z.string().min(1).max(64);
+const AliasSchema = z.string().min(1).max(256);
+
+const GeneratedKeySchema = z
+  .object({
+    key: KeySchema,
+    token_id: z.string().min(1).nullish(),
+    token: z.string().min(1).nullish(),
+    key_alias: z.string().nullish(),
+    max_budget: z.number().nullish(),
+    spend: z.number().optional(),
+    models: z.array(z.string()).optional(),
+  })
+  .refine((value) => (value.token_id ?? value.token) !== undefined, {
+    error: 'response has neither token_id nor token',
+  });
+
+const KeyInfoSchema = z.object({
+  key_alias: z.string().nullish(),
+  spend: z.number().default(0),
+  max_budget: z.number().nullish(),
+  tpm_limit: z.number().nullish(),
+  rpm_limit: z.number().nullish(),
+  blocked: z.boolean().nullish(),
+  models: z.array(z.string()).optional(),
+});
+
+const KeyInfoResponseSchema = z.object({
+  info: KeyInfoSchema,
+});
+
+const UpdateResponseSchema = z.object({
+  key_alias: z.string().nullish(),
+  spend: z.number().default(0),
+  max_budget: z.number().nullish(),
+  tpm_limit: z.number().nullish(),
+  rpm_limit: z.number().nullish(),
+  blocked: z.boolean().nullish(),
+  models: z.array(z.string()).optional(),
+});
+
+const DeleteResponseSchema = z.object({
+  deleted_keys: z.array(z.string()).optional(),
+});
+
+// Redacts any exact secret the caller names, then any credential-shaped token.
+// The sk- rule also catches virtual keys LiteLLM masks as "sk-...abcd".
+export function redactSecrets(text: string, secrets: readonly string[]): string {
+  let out = text;
+  for (const secret of secrets) {
+    if (secret.length >= 4) {
+      out = out.split(secret).join('[redacted]');
+    }
+  }
+  return out.replace(/sk-[A-Za-z0-9_-]{4,}/g, 'sk-***');
+}
+
+function errorDetail(body: unknown): string {
+  if (typeof body === 'string') {
+    return body === '' ? 'no response body' : body;
+  }
+  if (body !== null && typeof body === 'object') {
+    const error = (body as { error?: unknown }).error;
+    if (typeof error === 'string') {
+      return error;
+    }
+    if (error !== null && typeof error === 'object') {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === 'string') {
+        return message;
+      }
+    }
+    try {
+      return JSON.stringify(body);
+    } catch {
+      return 'unreadable response body';
+    }
+  }
+  return 'no response body';
+}
+
+function isErrorBody(body: unknown): boolean {
+  if (body === null || typeof body !== 'object') {
+    return false;
+  }
+  const error = (body as { error?: unknown }).error;
+  return typeof error === 'string' || (error !== null && typeof error === 'object');
+}
+
+// Response bodies are a network boundary, so a shape mismatch is an error.
+// The message is fixed: it never echoes the (possibly sensitive) body back.
+function parseResponse<T>(operation: string, schema: z.ZodType<T>, value: unknown): T {
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    throw new LitellmApiError(operation, 200, 'unexpected response shape');
+  }
+  return result.data;
+}
+
+function keyId(value: {
+  token_id?: string | null | undefined;
+  token?: string | null | undefined;
+}): string {
+  const id = value.token_id ?? value.token;
+  if (!id) {
+    throw new Error('LiteLLM key response carried no token id');
+  }
+  return id;
+}
+
+function toVirtualKey(value: z.infer<typeof GeneratedKeySchema>): VirtualKey {
+  return {
+    id: keyId(value),
+    key: value.key,
+    keyAlias: value.key_alias ?? null,
+    maxBudget: value.max_budget ?? null,
+    spend: value.spend ?? 0,
+    models: value.models ?? [],
+  };
+}
+
+function toKeyInfo(value: z.infer<typeof UpdateResponseSchema>): VirtualKeyInfo {
+  return {
+    keyAlias: value.key_alias ?? null,
+    maxBudget: value.max_budget ?? null,
+    spend: value.spend,
+    tpmLimit: value.tpm_limit ?? null,
+    rpmLimit: value.rpm_limit ?? null,
+    blocked: value.blocked ?? null,
+    models: value.models ?? [],
+  };
+}
+
+export function createLitellmAdminClient(
+  config: LitellmClientConfig,
+  fetchImpl: FetchLike = fetch,
+): LitellmAdminClient {
+  const baseUrl = config.baseUrl.replace(/\/+$/, '');
+  const { masterKey } = config;
+
+  async function request(
+    operation: string,
+    path: string,
+    init: RequestInit,
+    secrets: readonly string[],
+  ): Promise<unknown> {
+    const redacted = [masterKey, ...secrets];
+    let response: Response;
+    try {
+      response = await fetchImpl(`${baseUrl}${path}`, init);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'network error';
+      throw new LitellmApiError(operation, 0, redactSecrets(message, redacted));
+    }
+
+    const text = await response.text();
+    let body: unknown = null;
+    if (text !== '') {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = text;
+      }
+    }
+
+    if (!response.ok || isErrorBody(body)) {
+      throw new LitellmApiError(
+        operation,
+        response.status,
+        redactSecrets(errorDetail(body), redacted),
+      );
+    }
+    return body;
+  }
+
+  function headers(): Record<string, string> {
+    return {
+      'content-type': 'application/json',
+      authorization: `Bearer ${masterKey}`,
+    };
+  }
+
+  function post(operation: string, path: string, body: unknown, secrets: readonly string[] = []) {
+    return request(
+      operation,
+      path,
+      { method: 'POST', headers: headers(), body: JSON.stringify(body) },
+      secrets,
+    );
+  }
+
+  return {
+    async generateKey(input: GenerateVirtualKeyInput): Promise<VirtualKey> {
+      const body: Record<string, unknown> = { models: ModelsSchema.parse(input.models) };
+      if (input.maxBudget !== undefined) {
+        body['max_budget'] = BudgetSchema.parse(input.maxBudget);
+      }
+      if (input.budgetDuration !== undefined) {
+        body['budget_duration'] = DurationSchema.parse(input.budgetDuration);
+      }
+      if (input.tpmLimit !== undefined) {
+        body['tpm_limit'] = LimitSchema.parse(input.tpmLimit);
+      }
+      if (input.rpmLimit !== undefined) {
+        body['rpm_limit'] = LimitSchema.parse(input.rpmLimit);
+      }
+      if (input.keyAlias !== undefined) {
+        body['key_alias'] = AliasSchema.parse(input.keyAlias);
+      }
+      if (input.metadata !== undefined) {
+        body['metadata'] = input.metadata;
+      }
+
+      const parsed = parseResponse(
+        'key/generate',
+        GeneratedKeySchema,
+        await post('key/generate', '/key/generate', body),
+      );
+      return toVirtualKey(parsed);
+    },
+
+    async getKeyInfo(key: string): Promise<VirtualKeyInfo> {
+      const parsedKey = KeySchema.parse(key);
+      const parsed = parseResponse(
+        'key/info',
+        KeyInfoResponseSchema,
+        await request(
+          'key/info',
+          `/key/info?key=${encodeURIComponent(parsedKey)}`,
+          { method: 'GET', headers: headers() },
+          [parsedKey],
+        ),
+      );
+      return {
+        keyAlias: parsed.info.key_alias ?? null,
+        maxBudget: parsed.info.max_budget ?? null,
+        spend: parsed.info.spend,
+        tpmLimit: parsed.info.tpm_limit ?? null,
+        rpmLimit: parsed.info.rpm_limit ?? null,
+        blocked: parsed.info.blocked ?? null,
+        models: parsed.info.models ?? [],
+      };
+    },
+
+    async updateKey(input: UpdateVirtualKeyInput): Promise<VirtualKeyInfo> {
+      const key = KeySchema.parse(input.key);
+      const body: Record<string, unknown> = { key };
+      if (input.maxBudget !== undefined) {
+        body['max_budget'] = BudgetSchema.parse(input.maxBudget);
+      }
+      if (input.tpmLimit !== undefined) {
+        body['tpm_limit'] = LimitSchema.parse(input.tpmLimit);
+      }
+      if (input.rpmLimit !== undefined) {
+        body['rpm_limit'] = LimitSchema.parse(input.rpmLimit);
+      }
+      if (input.blocked !== undefined) {
+        body['blocked'] = input.blocked;
+      }
+      if (input.spend !== undefined) {
+        body['spend'] = SpendSchema.parse(input.spend);
+      }
+
+      const parsed = parseResponse(
+        'key/update',
+        UpdateResponseSchema,
+        await post('key/update', '/key/update', body, [key]),
+      );
+      return toKeyInfo(parsed);
+    },
+
+    async revokeKey(key: string): Promise<void> {
+      const parsedKey = KeySchema.parse(key);
+      const parsed = parseResponse(
+        'key/delete',
+        DeleteResponseSchema,
+        await post('key/delete', '/key/delete', { keys: [parsedKey] }, [parsedKey]),
+      );
+      if (parsed.deleted_keys !== undefined && !parsed.deleted_keys.includes(parsedKey)) {
+        throw new LitellmApiError('key/delete', 200, 'LiteLLM did not delete the key');
+      }
+    },
+  };
+}
+
+// Builds the client from the server config. Throws when the master key is not
+// configured, so a missing secret fails at startup rather than on first use.
+export function createLitellmAdminClientFromConfig(
+  config: Pick<ServerConfig, 'LITELLM_BASE_URL' | 'LITELLM_MASTER_KEY'>,
+  fetchImpl: FetchLike = fetch,
+): LitellmAdminClient {
+  if (!config.LITELLM_MASTER_KEY) {
+    throw new Error('LITELLM_MASTER_KEY is not configured');
+  }
+  return createLitellmAdminClient(
+    {
+      baseUrl: config.LITELLM_BASE_URL ?? DEFAULT_LITELLM_BASE_URL,
+      masterKey: config.LITELLM_MASTER_KEY,
+    },
+    fetchImpl,
+  );
+}

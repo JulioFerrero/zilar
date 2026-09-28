@@ -43,6 +43,11 @@ const serverConfigSchema = z
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url().optional(),
     WEB_ORIGINS: webOriginsSchema,
+    // LLM gateway (LiteLLM). Both are optional so the server still boots in
+    // environments without a gateway; the AI module refuses to call LiteLLM
+    // when the master key is absent. The base URL has a default applied there.
+    LITELLM_BASE_URL: z.url().optional(),
+    LITELLM_MASTER_KEY: z.string().min(1).optional(),
   })
   .transform((value) => ({
     ...value,
