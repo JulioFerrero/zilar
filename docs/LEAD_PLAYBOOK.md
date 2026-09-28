@@ -319,6 +319,9 @@ git worktree remove ../galena-T-XXXX && git branch -d task/T-XXXX-name
 13. **Start Vite with `GALENA_API_URL=http://localhost:3188`, never plain `pnpm dev`.** Without it the `/api` proxy falls back to `localhost:3000`, which is Julio's Next.js app: every API call 404s and the web app looks completely broken (2026-09-28, cost Julio a morning). Check with `curl -s -o /dev/null -w '%{http_code}' http://localhost:5173/api/me`: 401 is right, 404 is wrong.
 14. **Run the live server with the plain command in §12, not `pnpm dev` (`tsx watch`).** Under heavy load (a parallel Xcode build) `tsx watch` force-killed the server on a reload and never restarted it: 3188 was down for ~25 minutes before anyone noticed (2026-09-28). Restart it yourself after merging server changes, and keep a Monitor on `/health` and `localhost:5173/api/me` so an outage is reported, not discovered.
 
+15. **Workers can't `kill`.** The permission rules block `kill` and `pkill`. A worker that starts a CPU burner or a background server can't stop it, and asks you to (T-0036 left eight `yes` processes, load average 82, 2026-09-28). In any spec that uses background load or processes, require them to end on their own (`perl -e 'alarm 600; exec "yes"' > /dev/null &`). Before you kill anything a worker names, check the PIDs with `ps -o pid,comm -p …`. Machine load hurts every other worker's test runs, so re-run their checks yourself before trusting a timeout.
+16. **Julio's Vite listens on `[::1]:5173` only.** `127.0.0.1:5173` is a free port, and it is a trusted auth origin with its own cookies. For a live click-through as a test account, run a second Vite from main bound to `127.0.0.1` (Julio approved this on 2026-09-28), and stop it afterwards. Never sign in as someone else on `localhost:5173`: that replaces Julio's session.
+
 ## 16. State snapshot (2026-09-28, when this was written)
 
 - **Merged:**
