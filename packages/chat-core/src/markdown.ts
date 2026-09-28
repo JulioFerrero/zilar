@@ -31,7 +31,7 @@ function stripInline(text: string): string {
   out = out.replace(/(`+)(.+?)\1/g, '$2');
   out = out.replace(/\*\*\*(?=\S)([\s\S]*?\S)\*\*\*/g, '$1');
   out = out.replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '$1');
-  out = out.replace(/\*(?=\S)([^*\n]*?\S)\*/g, '$1');
+  out = out.replace(/(?<![\w*])\*(?=\S)([^*\n]*?\S)\*(?![\w*])/g, '$1');
   out = out.replace(/___(?=\S)([\s\S]*?\S)___/g, '$1');
   out = out.replace(/__(?=\S)([\s\S]*?\S)__/g, '$1');
   out = out.replace(/(?<![\w])_(?=\S)([^_\n]*?\S)_(?![\w])/g, '$1');

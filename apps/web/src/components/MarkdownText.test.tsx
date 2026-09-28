@@ -82,6 +82,12 @@ describe('MarkdownText', () => {
     expect(container.textContent).toBe('x');
   });
 
+  it('renders a vbscript: link as plain text', () => {
+    const container = renderMarkdown('[x](vbscript:msgbox(1))');
+    expect(container.querySelector('a')).toBeNull();
+    expect(container.textContent).toBe('x');
+  });
+
   it('renders a relative link as plain text', () => {
     const container = renderMarkdown('[home](/settings)');
     expect(container.querySelector('a')).toBeNull();

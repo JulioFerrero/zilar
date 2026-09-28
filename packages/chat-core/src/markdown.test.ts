@@ -82,8 +82,17 @@ describe('markdownToPlain', () => {
 
   it('leaves text that only contains a marker character alone', () => {
     expect(markdownToPlain('2 * 3')).toBe('2 * 3');
+    expect(markdownToPlain('2 * 3 * 4')).toBe('2 * 3 * 4');
     expect(markdownToPlain('a * b * c')).toBe('a * b * c');
     expect(markdownToPlain('snake_case_name')).toBe('snake_case_name');
+  });
+
+  it('does not treat an intra-word asterisk as emphasis', () => {
+    expect(markdownToPlain('foo*bar*baz')).toBe('foo*bar*baz');
+    expect(markdownToPlain('a*b*c')).toBe('a*b*c');
+    // Word-boundary emphasis still strips.
+    expect(markdownToPlain('say *hi* now')).toBe('say hi now');
+    expect(markdownToPlain('**bold** and *it*')).toBe('bold and it');
   });
 
   it('does not throw on partial Markdown', () => {

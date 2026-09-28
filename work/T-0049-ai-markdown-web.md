@@ -195,5 +195,44 @@ Both dev servers were stopped (`lsof -ti :5231`, `:4321` show no LISTEN).
 - The 404 console error in the browser is `/api/clipboard` from the mock store — pre-existing and unrelated.
 - No deviations from the acceptance criteria; no open questions.
 
+## Round 2 (review fixes)
+
+Applied the three items from the lead's pre-review. `PREREVIEW.md` is left untracked and uncommitted, as asked.
+
+**1. should-fix — `ChatListItem.tsx` own-message preview.** The preview now mirrors `shouldRenderMarkdown` exactly: it calls `markdownToPlain` only when `chat.isAI && last !== undefined && last.senderId !== store.currentUserId`. Your own `a **bold** word` in an AI chat now previews literally, as the bubble shows it.
+```tsx
+const body =
+  chat.isAI && last !== undefined && last.senderId !== store.currentUserId
+    ? markdownToPlain(rawBody)
+    : rawBody;
+```
+Tests: `ChatListItem.test.tsx` gained "keeps literal markers in your own AI-chat preview" (asserts `a **bold** word` is shown and `a bold word` is not), next to the existing incoming-AI and human-DM cases.
+
+**2. nit — `markdownToPlain` intra-word asterisks.** `stripInline`'s `*` rule is now `/(?<![\w*])\*(?=\S)([^*\n]*?\S)\*(?![\w*])/g`, the `_` rule's lookaround idea: an intra-word `*` is left literal, a word-boundary one still strips. Checked directly against `markdownToPlain`:
+```
+"foo*bar*baz"   -> "foo*bar*baz"
+"a*b*c"         -> "a*b*c"
+"2 * 3 * 4"     -> "2 * 3 * 4"
+"say *hi* now"  -> "say hi now"
+"**bold** and *it*" -> "bold and it"
+"snake_case_name"   -> "snake_case_name"
+```
+Tests: `markdown.test.ts` gained "does not treat an intra-word asterisk as emphasis" and a `2 * 3 * 4` case in the existing marker test.
+
+**3. nit — `vbscript:` link test.** `MarkdownText.test.tsx` gained "renders a vbscript: link as plain text" (`[x](vbscript:msgbox(1))` → no `<a>`, text `x`). Code was already correct.
+
+### Round 2 commands (real results)
+```bash
+pnpm format:check                                   # FAILS, and only on PREREVIEW.md: "[warn] PREREVIEW.md / Code style issues found". Every file I changed passes ("All matched files use Prettier code style!"). PREREVIEW.md is the lead's untracked pre-review artifact, outside the Allowed files; I left it as-is rather than reformat or ignore it. Fixing it would mean deleting/formatting the lead's file or editing .prettierignore (not allowed).
+pnpm lint                                           # no output, exit 0
+pnpm typecheck                                      # Tasks: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/web --filter=@galena/chat-core
+                                                    # chat-core: 6 files, 62 tests passed (was 61); web: 35 files, 228 tests passed (was 226); Tasks 2 successful
+pnpm build                                          # Tasks: 2 successful, 2 total
+```
+
+### Round 2 scope
+Only these five files changed, all Allowed: `apps/web/src/components/ChatListItem.tsx` + `.test.tsx`, `apps/web/src/components/MarkdownText.test.tsx`, `packages/chat-core/src/markdown.ts` + `.test.ts`, and this task file. `git status` shows no other tracked change and `PREREVIEW.md` stays untracked.
+
 ## Review (written by Claude)
 

@@ -28,8 +28,12 @@ export function ChatListItem({
   const options = { isGroup: chat.kind === 'group', currentUserId: store.currentUserId };
   const prefix = previewPrefix(last, options);
   const rawBody = previewBody(last);
-  // AI replies are Markdown; the list shows their plain text (T-0049).
-  const body = chat.isAI ? markdownToPlain(rawBody) : rawBody;
+  // Only an incoming AI reply is Markdown (shouldRenderMarkdown); your own
+  // message in an AI chat previews literally, exactly as its bubble shows it.
+  const body =
+    chat.isAI && last !== undefined && last.senderId !== store.currentUserId
+      ? markdownToPlain(rawBody)
+      : rawBody;
   const own = last !== undefined && last.senderId === store.currentUserId;
   const typing = typingLabel(chat, store.typing[chat.id]?.names ?? []);
   const hasDraft = store.drafts[chat.id] !== undefined;

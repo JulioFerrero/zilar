@@ -91,4 +91,27 @@ describe('ChatListItem', () => {
 
     expect(screen.getByText('a **bold** word')).toBeTruthy();
   });
+
+  it('keeps literal markers in your own AI-chat preview', () => {
+    renderApp('/', {
+      chats: [
+        {
+          ...aiChat,
+          lastMessage: {
+            id: 'm-3',
+            chatId: 'c-devai',
+            senderId: 'u-you',
+            senderName: 'You',
+            text: 'a **bold** word',
+            createdAt: new Date(2026, 8, 28, 10, 0),
+            status: 'sent',
+          },
+        },
+      ],
+      messagesByChat: {},
+    });
+
+    expect(screen.getByText('a **bold** word')).toBeTruthy();
+    expect(screen.queryByText('a bold word')).toBeNull();
+  });
 });
