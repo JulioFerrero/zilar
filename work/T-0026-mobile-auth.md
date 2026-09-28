@@ -197,10 +197,50 @@ sign-out → 200 → second sign-in without invite → 200 → GET /api/me after
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** **approved**. Merging.
+
+### What the lead verified
+- **Uncached** run of every check: `format:check`, `typecheck`, `test` (64 s),
+  `build` (24 s), `lint` (exit 0) — **all PASS**. mobile **77 passed / 1
+  skipped** across 12 files plus the gated integration file, server 186, web 78,
+  xmpp-core 115 + 3 skipped. The mobile counts match the Report exactly.
+- **Secrets, which is the thing that actually matters here.** I grepped the whole
+  diff for 6-digit literals: the only hits are test fixtures (`123456`,
+  `654321`, `12345`) and a colour `#707579`. No real OTP or invite code is
+  committed. The gated integration test redacts as it logs —
+  `code read from the server log → CODE=***` and `token TOKEN=***` — and the
+  Report shows the same redacted output. The screenshots show a synthetic
+  `…@example.test` address and no code at all.
+- **The session token goes to the OS keychain**, not plain storage:
+  `secure-session-storage.ts` uses `expo-secure-store` and says why in a comment
+  (`AsyncStorage` is unencrypted and readable by other apps' backups). This is
+  what the Spec asked for and it is the right call.
+- **The live flow is real, not mocked.** Against the running server on
+  `127.0.0.1:3188`: `send-code with invite → 200`, `sign-in with invite → 200`,
+  `GET /api/me → 200`, `PATCH /api/me → 200`, `sign-out → 200`, then
+  **`second sign-in without invite → 200`** and `GET /api/me after second sign-in
+  → 200`. That last pair is the one that proves the session survives a restart
+  and that an existing user does not need an invite.
+- **Both screenshots opened.** `auth-code.png` is the Telegram-like code screen
+  the style guide asks for: centred card, large title, six digit boxes with the
+  first focused, a live `Resend in 28s` countdown and "Use a different email".
+  `auth-signed-in.png` shows the guard letting a signed-in user through to the
+  chat list, still on mock data as scoped.
+- **Scope.** Only `apps/mobile/src/{auth,lib,app}/**`, the two dependencies the
+  Spec allowed (`better-auth@^1.7.6`, `expo-secure-store`), the lockfile and the
+  task file, plus the two screenshots the Spec asked for. `metro.config.js` is
+  **untouched**, as required after T-0004. The chat store is still the mock
+  store, as required.
+- The `guard` keeps the target route and only accepts relative in-app paths, so
+  it cannot be used as an open redirect. That was not asked for and it is right.
 
 ### Findings
--
+- None. Nothing outstanding.
 
-### Follow-ups
--
+### Note for the next task
+The next task can now assume a real session and a real profile name, and must
+still use the mock store only until it swaps in `xmpp-core`. Two things from
+tonight's other work travel with it: the T-0004 Metro stubs are already in place
+(do not touch `metro.config.js` again), and the client **must** reconnect on
+`AppState` `active` when the status is not `online`, because the simulator did not
+suspend the socket during the T-0004 probe and a real device will.
