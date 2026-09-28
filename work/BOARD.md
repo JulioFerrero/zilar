@@ -9,12 +9,12 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0061](T-0061-edit-delete-web.md) | Edit + delete for everyone (web): XEP-0308, XEP-0424, edit bar, tombstones; gateway ignores both | in progress | deepseek-v4.1-flash | T-0059 | Same files as T-0059, so it runs after. |
+| [T-0063](T-0063-mobile-mock-gating.md) | Mobile: `?mock=` honored only in dev builds or with `EXPO_PUBLIC_GALENA_MOCK` (chat store + My AIs) | in progress | deepseek-v4.1-flash | — | From the T-0037 pre-review. Mobile slot (80/20). |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
 
 - Mobile has the same loading-vs-empty bugs T-0042 fixed on web (after T-0056).
-- Mobile: honor the `?mock=` route param only in `__DEV__` or with `EXPO_PUBLIC_GALENA_MOCK` set, for both the chat store and My AIs (T-0037 pre-review). Today a deep link can show fake data in a production build.
 - Mobile: render Markdown in AI replies (web is T-0049; reuse `markdownToPlain` from chat-core).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
