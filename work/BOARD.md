@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0051](T-0051-lead-switch-model-and-merge-cleanup.md) | lead CLI: `switch-model` (quota fallback to MiniMax M3) + `merge` stops worktree processes | in progress | MiniMax-M3 | T-0038 | Chore; tests only. |
 | [T-0052](T-0052-change-ai-model.md) | Change an AI's model after creation (PATCH model/connection under the ensure lock, AI panel pickers) | in progress | muse-spark-1.3 | T-0033, T-0039 | Not the gateway (T-0050). |
 | [T-0053](T-0053-mentions-web.md) | @mentions in groups (web): XEP-0372 references, @ picker, mention chips | in progress | deepseek-v4.1-flash | T-0047, T-0049 | Step 1 of M2 "first AI in a room"; T-0054 (AI replies to mentions) next. |
+| [T-0054](T-0054-ai-in-groups-server.md) | AIs in groups (server): add/remove an AI, the gateway joins rooms and replies when @mentioned | planned (after T-0053) | muse-spark-1.3 | T-0050, T-0053 | Then T-0055: web UI (add AI, AIs in members and the picker). |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
