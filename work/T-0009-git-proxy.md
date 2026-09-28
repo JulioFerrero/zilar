@@ -173,10 +173,74 @@ Not proven / still needs a real App or git client:
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Round 2: changes requested. The branch rule and the credential
+handling are right, and you were honest enough to write down the problem I am
+going to ask you to fix — which is the best possible outcome here.
 
-### Findings
--
+### What the lead verified
+- **Checks.** Uncached run: `format:check`, `typecheck` PASS; `test` fails only
+  on `apps/web` `MessageActions.test.tsx > opens on right-click and closes with
+  Escape` at 5178 ms — the known load-sensitive test already on the board, in a
+  package this task never touches. The `git` module's own suite is
+  **19 passed / 3 files**, run directly. `build` PASS, `lint` exit 0. Not a
+  finding against this task.
+- **The branch rule is total and fails closed on the enumerated cases.** I read
+  `branches.ts`: `main`, `master`, `release/*`, `agent/<other-ai>/x`, `agent/`,
+  `agent/x`, `agent/alice/` and `refs/heads/agent/alice/feature` are all
+  rejected, and `agent/../../etc/passwd` and `agent/a/../../b` are rejected on
+  the `..` / leading-`/` check **before** the value is used for a path or a URL.
+  That is the right order and the comment says so.
+- **The credential never comes from the client.** `authorization` and
+  `proxy-authorization` are in the stripped-header list, and the proxy sets its
+  own `Bearer` outbound. A caller cannot smuggle a credential in.
+- **A rejected push never reaches GitHub.** The test asserts
+  `expect(calls).toHaveLength(0)` after a push to `main` returns 403. That is
+  the test that matters most, and it exists.
+
+### Finding
+1. **The proxy fails OPEN on a push it cannot parse** (`apps/server/src/git/proxy.ts`).
+   The guard is:
+   ```ts
+   const refs = parseRefUpdates(new Uint8Array(buffer));
+   for (const ref of refs) {
+     if (!isAllowedRef(aiName, ref)) {
+       throw new HttpError(403, 'push_rejected', ...);
+     }
+   }
+   body = buffer;   // ← forwarded
+   ```
+   If `parseRefUpdates` returns **zero** refs — a malformed pkt-line, a length
+   prefix the decoder dislikes, a body our parser walks past — the `for` loop
+   never executes, nothing is rejected, and the request is forwarded to GitHub
+   **with a valid installation token**.
+
+   That is a bypass of the entire control this task exists to prove. The AI
+   controls the request body. If it can produce a body our parser cannot read
+   but GitHub's can, it pushes to `main` and the branch rule never fires. The
+   Spec said the rule must fail closed; this path fails open.
+
+   You flagged this in the Report, which is why I am asking for a fix rather
+   than writing it up as a discovery. Do not leave it as a caveat — a caveat in
+   a Report is not a control.
+
+   - When the service is `receive-pack` and the parsed ref list is **empty**,
+     reject with `403 push_rejected` and a reason like `unparseable`. A push we
+     cannot enumerate is not a push we can allow.
+   - Also reject when the body yields a ref that is present but **malformed**;
+     the same reasoning applies.
+   - Tests: a `receive-pack` body with no readable refs is refused **and the
+     upstream is never called** (assert `calls` is empty, like the `main` test);
+     a body with one good and one malformed ref is refused too.
+   - One line of comment saying why an unreadable push is refused rather than
+     forwarded, so nobody "optimises" it back later.
+
+2. *(No change needed.)* The Report's "proven vs not proven" section is exactly
+   right, and "no account/App is available and none was created" is the correct
+   outcome for a spike. Buffering the whole receive-pack body is a real
+   limitation worth stating; it is not a defect at this stage.
 
 ### Follow-ups
--
+- The real-App wiring (create the App, confirm the JWT → installation token
+  exchange, and run a real `git` client through the proxy) needs Julio's GitHub
+  account, so it cannot be done by a worker. It is a small task once he is
+  awake and I have put it on the board.
