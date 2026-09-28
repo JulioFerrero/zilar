@@ -1,7 +1,7 @@
 ---
 id: T-0030
 title: M2 — AIs on the server: profiles, their own XMPP account, a capped LiteLLM virtual key
-status: review
+status: merged
 milestone: M2
 branch: task/T-0030-ais-server
 model: opencode-go/deepseek-v4.1-flash
@@ -474,3 +474,21 @@ ejabberd, LiteLLM and Postgres; migration 0005 applied):
    `try/finally` and, in `finally`, best-effort `DELETE /api/ais/:id` and
    `DELETE /api/connections/:id` for anything it created (ignore their errors; they
    must not mask the original failure).
+
+**Verdict:** Round 3: Approved
+
+Verified by the lead:
+- Findings 5 and 6 are fixed as asked (full-object key lookup; `try/finally` cleanup).
+- Full suite with the machine quiet: `pnpm exec turbo test --force`: 8/8, 0 cached; server
+  253 passed / 5 skipped, web 95 passed. `format:check`, `lint`, `typecheck`, `build` pass.
+- **Live, by the lead**, the gated `GALENA_AIS_INTEGRATION=1` test against a server from this
+  branch (real ejabberd, LiteLLM, Postgres): **1 passed**, and 0 `ais` rows were left.
+  Together with the manual run in round 2 (patch updates the cap in LiteLLM and Postgres;
+  delete removes the XMPP account, the key and the rows; a connection in use gives 409).
+- A first attempt hit the sign-in-code rate limit (3 per 10 minutes per IP): the limiter
+  working as designed, not a defect.
+
+### Follow-ups
+- The live server needs `LITELLM_MASTER_KEY` in `apps/server/.env` for `/api/ais` writes
+  (the lead adds it at merge).
+- The spec should have listed `test-support.ts` and `auth/cli-config.ts`.
