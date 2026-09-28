@@ -9,13 +9,12 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 
-| [T-0004](T-0004-expo-xmpp-spike.md) | Spike S2: `@xmpp/client` in Expo (connect, reconnect, background) | todo | v4-pro | T-0003 | Risky; Claude reviews closely. Gates the mobile app on real data |
+| [T-0004](T-0004-expo-xmpp-spike.md) | Spike S2: `@xmpp/client` in Expo (connect, reconnect, background) | **in-progress** | v4-pro | T-0003 | Risky; Claude reviews closely. Gates the mobile app on real data. Running on v4-pro, watch `cd ../galena-T-0004 && opencode2 -s ses_f1ac8d577ffe1zZNd1KZ6NaNOn` |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| T-0007 | Spike S5: LiteLLM virtual keys with budgets, adding a user's own key | planned | v4-flash | T-0002 | |
-| T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely |
-| T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | |
-| T-0010 | Voice message spike: record on web, convert with ffmpeg, local Whisper transcript | planned | v4-flash | T-0002 | Plan §6.7 |
-| [T-0025](T-0025-real-use-fixes-1.md) | Real-use fixes 1: list status stuck on sending, live list updates (XEP-0249 invites + roster pushes), big-emoji sender | **in-progress** | v4.1-flash | T-0024 | From Julio's first real use |
+| [T-0007](T-0007-litellm-virtual-keys.md) | Spike S5: LiteLLM virtual keys with budgets, adding a user's own key | todo | v4-flash | T-0002 | M2 gateway. LiteLLM is up on 127.0.0.1:4000 |
+| [T-0010](T-0010-voice-spike.md) | Voice message spike: record on web, convert with ffmpeg to AAC/M4A, send and play | todo | v4-flash | T-0002 | Plan §6.7. No transcription: local Whisper is not installed |
+| T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely. Queued: collides with T-0007/T-0009 on apps/server |
+| T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | Queued: collides with T-0007 on apps/server |
 
 ## Follow-ups
 
@@ -44,3 +43,4 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | [T-0020](T-0020-contacts-groups-chats.md) | Server: contacts from invites (roster, nick refresh), groups (MUC), `GET /api/chats` (2 rounds) | 2026-09-27 |
 | [T-0024](T-0024-web-real-data.md) | **Web on real data**: invite, email code, name; real DMs and groups via xmpp-core. **Julio used it live.** | 2026-09-28 |
 | [T-0023](T-0023-mobile-ui-polish.md) | Mobile polish: switch to `@galena/chat-core`, typing, unread divider, long-press menu + swipe to reply with haptics, big emoji, safe links (2 rounds) | 2026-09-28 |
+| [T-0025](T-0025-real-use-fixes-1.md) | Real-use fixes 1: list status stuck on sending, live list updates (XEP-0249 invites + roster pushes), big-emoji sender name; no JID localparts in names; own typing/markers ignored in groups (3 rounds) | 2026-09-28 |

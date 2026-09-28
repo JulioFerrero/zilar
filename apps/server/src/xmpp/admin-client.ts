@@ -53,6 +53,13 @@ export type AddRosterItemOptions = {
 
 export type CreatedResult = { created: boolean };
 
+export type SendDirectInvitationOptions = {
+  /** Invitation reason shown to the user, or omitted for none. */
+  reason?: string;
+  /** Room password, or omitted when the room has none. */
+  password?: string;
+};
+
 export type EjabberdAdminClient = {
   registerUser(localpart: string): Promise<CreatedResult>;
   userExists(localpart: string): Promise<boolean>;
@@ -61,6 +68,11 @@ export type EjabberdAdminClient = {
   setAffiliation(roomId: string, jid: string, affiliation: RoomAffiliation): Promise<void>;
   getAffiliations(roomId: string): Promise<RoomAffiliationEntry[]>;
   destroyRoom(roomId: string): Promise<void>;
+  sendDirectInvitation(
+    roomId: string,
+    users: string[],
+    options?: SendDirectInvitationOptions,
+  ): Promise<void>;
   addRosterItem(
     localpart: string,
     contactJid: string,
@@ -302,6 +314,23 @@ export function createEjabberdAdminClient(
       const room = parseName(roomId, 'roomId');
       const response = await call('destroy_room', { room, service: config.mucDomain });
       expectMutationResult('destroy_room', response);
+    },
+
+    async sendDirectInvitation(
+      roomId: string,
+      users: string[],
+      options: SendDirectInvitationOptions = {},
+    ): Promise<void> {
+      const room = parseName(roomId, 'roomId');
+      const targets = z.array(JidSchema).min(1).max(1000).parse(users);
+      const response = await call('send_direct_invitation', {
+        room,
+        service: config.mucDomain,
+        password: options.password ?? 'none',
+        reason: options.reason ?? 'none',
+        users: targets,
+      });
+      expectMutationResult('send_direct_invitation', response);
     },
 
     async addRosterItem(

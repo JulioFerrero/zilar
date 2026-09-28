@@ -176,6 +176,50 @@ describe('createEjabberdAdminClient', () => {
     ]);
   });
 
+  it('sends a direct invitation with the MUC service, targets and defaults', async () => {
+    const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
+    const client = createEjabberdAdminClient(config, fetchImpl);
+
+    await client.sendDirectInvitation('project-a', [
+      'alice@galena.localhost',
+      'bob@galena.localhost',
+    ]);
+
+    const call = calls[0]!;
+    expect(call.url).toBe('http://ejabberd.test/api/send_direct_invitation');
+    expect(bodyOf(call)).toEqual({
+      room: 'project-a',
+      service: 'rooms.galena.localhost',
+      password: 'none',
+      reason: 'none',
+      users: ['alice@galena.localhost', 'bob@galena.localhost'],
+    });
+  });
+
+  it('passes an invitation reason and password when given', async () => {
+    const { fetchImpl, calls } = createFetch(() => jsonResponse(''));
+    const client = createEjabberdAdminClient(config, fetchImpl);
+
+    await client.sendDirectInvitation('project-a', ['alice@galena.localhost'], {
+      reason: 'Join us',
+      password: 'secret',
+    });
+
+    expect(bodyOf(calls[0]!)).toMatchObject({ reason: 'Join us', password: 'secret' });
+  });
+
+  it('rejects invalid invitation targets before any request', async () => {
+    const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
+    const client = createEjabberdAdminClient(config, fetchImpl);
+
+    await expect(client.sendDirectInvitation('project-a', [])).rejects.toThrow();
+    await expect(
+      client.sendDirectInvitation('Bad/../Room', ['alice@galena.localhost']),
+    ).rejects.toThrow('roomId');
+    await expect(client.sendDirectInvitation('project-a', ['not-a-jid'])).rejects.toThrow();
+    expect(calls).toHaveLength(0);
+  });
+
   it('adds a roster item with both subscriptions and the Galena group', async () => {
     const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
     const client = createEjabberdAdminClient(config, fetchImpl);

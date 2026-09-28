@@ -7,6 +7,7 @@ import {
   CARBONS_NAMESPACE,
   CHAT_MARKERS_NAMESPACE,
   CHAT_STATES_NAMESPACE,
+  CONFERENCE_NAMESPACE,
   DELAY_NAMESPACE,
   FORWARD_NAMESPACE,
   MAM_NAMESPACE,
@@ -14,14 +15,19 @@ import {
   MUC_USER_NAMESPACE,
   OCCUPANT_ID_NAMESPACE,
   REPLY_NAMESPACE,
+  ROSTER_NAMESPACE,
   STANZA_ID_NAMESPACE,
+  STANZA_NAMESPACE,
 } from './namespaces';
 import type {
   ChatKind,
   ChatMessage,
   DisplayedEvent,
+  InvitedEvent,
   Occupant,
   PresenceEvent,
+  RosterEvent,
+  RosterSubscription,
   TypingEvent,
 } from './types';
 
@@ -112,6 +118,24 @@ export function buildAvailablePresence(): XmppElement {
 
 export function buildCarbonsEnable(id: string): XmppElement {
   return xml('iq', { type: 'set', id }, xml('enable', { xmlns: CARBONS_NAMESPACE }));
+}
+
+// RFC 6121 §2.1.6: a client acknowledges a roster push with an empty result.
+export function buildRosterResult(id: string, to?: string): XmppElement {
+  const attrs: Record<string, string> = { type: 'result', id };
+  if (to !== undefined) attrs['to'] = to;
+  return xml('iq', attrs);
+}
+
+// A roster push that did not come from our own server is rejected.
+export function buildRosterError(id: string, to?: string): XmppElement {
+  const attrs: Record<string, string> = { type: 'error', id };
+  if (to !== undefined) attrs['to'] = to;
+  return xml(
+    'iq',
+    attrs,
+    xml('error', { type: 'auth' }, xml('forbidden', { xmlns: STANZA_NAMESPACE })),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +291,98 @@ export function parseContactPresence(
   const jid = bareJid(from);
   if (!jid.includes('@')) return undefined;
   return { jid, available: type === undefined };
+}
+
+// A XEP-0249 direct invitation is a message with a `jabber:x:conference`
+// element naming the room. It is trusted only when the room is on our MUC
+// domain and the sender is on one of our domains, so another server cannot
+// point the client at an arbitrary room.
+export function parseDirectInvitation(
+  stanza: XmppElement,
+  domain: string,
+  mucDomain: string,
+): InvitedEvent | undefined {
+  if (!stanza.is('message')) return undefined;
+  const conference = stanza.getChild('x', CONFERENCE_NAMESPACE);
+  const roomJid = conference?.attrs['jid'];
+  if (conference === undefined || roomJid === undefined || roomJid === '') return undefined;
+  if (jidDomain(roomJid) !== mucDomain) return undefined;
+
+  const from = stanza.attrs['from'];
+  if (from === undefined) return undefined;
+  const fromDomain = jidDomain(from);
+  if (fromDomain !== domain && fromDomain !== mucDomain) return undefined;
+
+  const invited: InvitedEvent = { roomJid: bareJid(roomJid), fromJid: bareJid(from) };
+  const reason = conference.attrs['reason'];
+  if (reason !== undefined && reason !== '') invited.reason = reason;
+  return invited;
+}
+
+export type RosterPush = {
+  id: string;
+  from?: string;
+  /** True when the push came from our own server (no `from`, our JID or domain). */
+  trusted: boolean;
+  items: RosterEvent[];
+};
+
+const ROSTER_SUBSCRIPTIONS: ReadonlyArray<RosterSubscription> = [
+  'none',
+  'to',
+  'from',
+  'both',
+  'remove',
+];
+
+function parseRosterEvent(item: XmppElement): RosterEvent | undefined {
+  const jid = item.attrs['jid'];
+  if (jid === undefined || jid === '') return undefined;
+  const raw = item.attrs['subscription'];
+  const subscription = ROSTER_SUBSCRIPTIONS.includes(raw as RosterSubscription)
+    ? (raw as RosterSubscription)
+    : 'none';
+  const event: RosterEvent = { jid: bareJid(jid), subscription };
+  const name = item.attrs['name'];
+  if (name !== undefined && name !== '') event.name = name;
+  return event;
+}
+
+// RFC 6121 §2.1.6: a roster push is an `iq type="set"` with a roster query,
+// sent by our own server (no `from`), our own bare JID or our domain. Anything
+// else is a spoof and is answered with an error instead of being applied.
+export function parseRosterPush(
+  stanza: XmppElement,
+  domain: string,
+  me: string | undefined,
+): RosterPush | undefined {
+  if (!stanza.is('iq') || stanza.attrs['type'] !== 'set') return undefined;
+  const query = stanza.getChild('query', ROSTER_NAMESPACE);
+  if (query === undefined) return undefined;
+  const id = stanza.attrs['id'];
+  if (id === undefined || id === '') return undefined;
+
+  const from = stanza.attrs['from'];
+  const push: RosterPush = {
+    id,
+    trusted: isTrustedRosterFrom(from, domain, me),
+    items: query
+      .getChildren('item')
+      .map((item) => parseRosterEvent(item))
+      .filter((event): event is RosterEvent => event !== undefined),
+  };
+  if (from !== undefined) push.from = from;
+  return push;
+}
+
+function isTrustedRosterFrom(
+  from: string | undefined,
+  domain: string,
+  me: string | undefined,
+): boolean {
+  if (from === undefined) return true;
+  const bare = bareJid(from);
+  return bare === domain || (me !== undefined && bare === me);
 }
 
 function findOccupantByOccupantId(
@@ -476,10 +592,10 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
     decoded.message = message;
   }
 
-  const typing = parseTyping(inner, kind, from, ctx, sender.jid);
+  const typing = parseTyping(inner, kind, from, ctx, sender);
   if (typing !== undefined) decoded.typing = typing;
 
-  const displayed = parseDisplayed(inner, kind, from, ctx, sender.jid);
+  const displayed = parseDisplayed(inner, kind, from, ctx, sender);
   if (displayed !== undefined) decoded.displayed = displayed;
 
   return decoded;
@@ -490,7 +606,7 @@ function parseTyping(
   kind: ChatKind,
   from: string,
   ctx: ParseContext,
-  senderJid: string,
+  sender: SenderResolution,
 ): TypingEvent | undefined {
   const state = CHAT_STATES.find(
     (candidate) => stanza.getChild(candidate, CHAT_STATES_NAMESPACE) !== undefined,
@@ -498,8 +614,9 @@ function parseTyping(
   if (state === undefined) return undefined;
   return {
     chatJid: conversationJid(stanza, from, kind, ctx.me),
-    fromJid: senderJid,
+    fromJid: sender.jid,
     state,
+    outgoing: sender.outgoing,
   };
 }
 
@@ -508,14 +625,15 @@ function parseDisplayed(
   kind: ChatKind,
   from: string,
   ctx: ParseContext,
-  senderJid: string,
+  sender: SenderResolution,
 ): DisplayedEvent | undefined {
   const displayed = stanza.getChild('displayed', CHAT_MARKERS_NAMESPACE);
   const messageId = displayed?.attrs['id'];
   if (displayed === undefined || messageId === undefined) return undefined;
   return {
     chatJid: conversationJid(stanza, from, kind, ctx.me),
-    fromJid: senderJid,
+    fromJid: sender.jid,
     messageId,
+    outgoing: sender.outgoing,
   };
 }

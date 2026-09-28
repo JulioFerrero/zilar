@@ -12,7 +12,9 @@ import type {
   ChatMessage,
   ConnectionStatus,
   DisplayedEvent,
+  InvitedEvent,
   PresenceEvent,
+  RosterEvent,
   TypingEvent,
   XmppCore,
   XmppCoreOptions,
@@ -21,13 +23,16 @@ import {
   CARBONS_NAMESPACE,
   CHAT_MARKERS_NAMESPACE,
   CHAT_STATES_NAMESPACE,
+  CONFERENCE_NAMESPACE,
   DELAY_NAMESPACE,
   FORWARD_NAMESPACE,
   MAM_NAMESPACE,
   MUC_USER_NAMESPACE,
   OCCUPANT_ID_NAMESPACE,
   REPLY_NAMESPACE,
+  ROSTER_NAMESPACE,
   RSM_NAMESPACE,
+  STANZA_NAMESPACE,
 } from './namespaces';
 import type { OccupantsEvent } from './types';
 
@@ -664,6 +669,50 @@ describe('createXmppCore: messages and markers', () => {
 
     expect(messages).toHaveLength(0);
   });
+
+  it('marks a reflected chat state and marker of my own nick as outgoing', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const typing: TypingEvent[] = [];
+    const displayed: DisplayedEvent[] = [];
+    core.on('typing', (event) => typing.push(event));
+    core.on('displayed', (event) => displayed.push(event));
+
+    const reflectedRoom = 'project@rooms.galena.localhost';
+    const joining = core.joinRoom(reflectedRoom, 'bob');
+    await flush();
+    fake.emitStanza(xml('presence', { from: `${reflectedRoom}/bob` }));
+    await joining;
+
+    // An unresolved reflection: the sender stays the full room JID and the
+    // nick matches my own, so `outgoing` is the only signal.
+    fake.emitStanza(
+      xml(
+        'message',
+        { from: `${reflectedRoom}/bob`, type: 'groupchat' },
+        xml('composing', { xmlns: CHAT_STATES_NAMESPACE }),
+      ),
+    );
+    fake.emitStanza(
+      xml(
+        'message',
+        { from: `${reflectedRoom}/bob`, type: 'groupchat' },
+        xml('displayed', { xmlns: CHAT_MARKERS_NAMESPACE, id: 'm-1' }),
+      ),
+    );
+
+    expect(typing.at(-1)).toMatchObject({
+      chatJid: reflectedRoom,
+      fromJid: `${reflectedRoom}/bob`,
+      outgoing: true,
+    });
+    expect(displayed.at(-1)).toMatchObject({
+      chatJid: reflectedRoom,
+      fromJid: `${reflectedRoom}/bob`,
+      messageId: 'm-1',
+      outgoing: true,
+    });
+  });
 });
 
 describe('createXmppCore: contact presence', () => {
@@ -765,5 +814,107 @@ describe('createXmppCore: history', () => {
     );
 
     await expect(history).rejects.toThrow('forbidden');
+  });
+});
+
+describe('createXmppCore: invitations and roster pushes', () => {
+  function invitation(attrs: { from?: string; room: string; reason?: string }): XmppElement {
+    const stanzaAttrs: Record<string, string> = {};
+    if (attrs.from !== undefined) stanzaAttrs['from'] = attrs.from;
+    const conferenceAttrs: Record<string, string> = {
+      xmlns: CONFERENCE_NAMESPACE,
+      jid: attrs.room,
+    };
+    if (attrs.reason !== undefined) conferenceAttrs['reason'] = attrs.reason;
+    return xml('message', stanzaAttrs, xml('x', conferenceAttrs));
+  }
+
+  function rosterPush(attrs: { from?: string; id: string }): XmppElement {
+    const stanzaAttrs: Record<string, string> = { type: 'set', id: attrs.id };
+    if (attrs.from !== undefined) stanzaAttrs['from'] = attrs.from;
+    return xml(
+      'iq',
+      stanzaAttrs,
+      xml(
+        'query',
+        { xmlns: ROSTER_NAMESPACE },
+        xml('item', {
+          jid: 'alice@galena.localhost',
+          subscription: 'both',
+          name: 'Alice',
+        }),
+      ),
+    );
+  }
+
+  it('emits invited for a direct invitation from our domains', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const events: InvitedEvent[] = [];
+    core.on('invited', (event) => events.push(event));
+
+    fake.emitStanza(
+      invitation({
+        from: 'alice@galena.localhost',
+        room: 'project@rooms.galena.localhost',
+        reason: 'Join us',
+      }),
+    );
+
+    expect(events).toEqual([
+      {
+        roomJid: 'project@rooms.galena.localhost',
+        fromJid: 'alice@galena.localhost',
+        reason: 'Join us',
+      },
+    ]);
+  });
+
+  it('ignores an invitation whose room or sender is not on our domains', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const events: InvitedEvent[] = [];
+    core.on('invited', (event) => events.push(event));
+
+    fake.emitStanza(
+      invitation({ from: 'alice@galena.localhost', room: 'project@rooms.evil.example' }),
+    );
+    fake.emitStanza(
+      invitation({ from: 'mallory@evil.example', room: 'project@rooms.galena.localhost' }),
+    );
+
+    expect(events).toEqual([]);
+  });
+
+  it('emits roster and acknowledges a trusted push with an empty result', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const events: RosterEvent[] = [];
+    core.on('roster', (event) => events.push(event));
+
+    fake.emitStanza(rosterPush({ from: 'bob@galena.localhost', id: 'p1' }));
+    await flush();
+
+    expect(events).toEqual([
+      { jid: 'alice@galena.localhost', subscription: 'both', name: 'Alice' },
+    ]);
+    const reply = fake.sent.find((stanza) => stanza.attrs['id'] === 'p1');
+    expect(reply?.attrs).toMatchObject({ type: 'result', to: 'bob@galena.localhost' });
+    expect(reply?.getChild('query')).toBeUndefined();
+  });
+
+  it('rejects a spoofed roster push with an iq error and emits nothing', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const events: RosterEvent[] = [];
+    core.on('roster', (event) => events.push(event));
+
+    fake.emitStanza(rosterPush({ from: 'mallory@galena.localhost', id: 'p2' }));
+    await flush();
+
+    expect(events).toEqual([]);
+    const reply = fake.sent.find((stanza) => stanza.attrs['id'] === 'p2');
+    expect(reply?.attrs).toMatchObject({ type: 'error', to: 'mallory@galena.localhost' });
+    expect(reply?.getChild('error')?.getChild('forbidden', STANZA_NAMESPACE)).toBeDefined();
   });
 });

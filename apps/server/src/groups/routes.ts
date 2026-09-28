@@ -13,6 +13,7 @@ import {
   getMembership,
   MAX_GROUP_MEMBERS,
   removeGroupMember,
+  type InviteLogger,
 } from './service';
 
 export interface GroupsRoutesDependencies {
@@ -20,6 +21,7 @@ export interface GroupsRoutesDependencies {
   db: ServerDatabase;
   config: ServerConfig;
   adminClient: EjabberdAdminClient;
+  logger: InviteLogger;
 }
 
 const titleSchema = z
@@ -42,6 +44,7 @@ export function createGroupsRoutes({
   db,
   config,
   adminClient,
+  logger,
 }: GroupsRoutesDependencies): Hono {
   const routes = new Hono();
   const domain = config.xmpp.domain;
@@ -63,6 +66,7 @@ export function createGroupsRoutes({
       title: parsed.data.title,
       memberIds: parsed.data.memberIds,
       domain,
+      logger,
     });
     return c.json(group, 201);
   });
@@ -97,6 +101,7 @@ export function createGroupsRoutes({
       actorId: user.id,
       userIds: parsed.data.userIds,
       domain,
+      logger,
     });
     return c.json(group);
   });

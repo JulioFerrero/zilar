@@ -118,6 +118,39 @@ describe('groups', () => {
     );
   });
 
+  it('sends a direct invitation from the room to the new members, never the creator', async () => {
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    const member = await contactOf(context, app, owner.id, 'member@example.com');
+
+    const response = await createGroupRequest(owner.cookie, {
+      title: 'Weekend trip',
+      memberIds: [member.id],
+    });
+    const { id: groupId } = (await response.json()) as GroupDetailBody;
+    const roomLocalpart = await roomLocalpartOf(groupId);
+
+    expect(context.adminClient.directInvitations).toEqual([
+      {
+        roomId: roomLocalpart,
+        users: [`${localpartFor(member.id)}@${TEST_XMPP_DOMAIN}`],
+      },
+    ]);
+  });
+
+  it('never fails the request when the invitation cannot be sent, and logs a warning', async () => {
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    const member = await contactOf(context, app, owner.id, 'member@example.com');
+    context.adminClient.failDirectInvitation = true;
+
+    const response = await createGroupRequest(owner.cookie, {
+      title: 'Trip',
+      memberIds: [member.id],
+    });
+
+    expect(response.status).toBe(201);
+    expect(context.logOutput()).toContain('could not send the group invitations');
+  });
+
   it('rejects a member who is not a contact without naming them', async () => {
     const owner = await bootstrapUser(context, app, 'owner@example.com');
     const stranger = await bootstrapUser(context, app, 'stranger@example.com');
@@ -221,6 +254,29 @@ describe('groups', () => {
         },
       ]),
     );
+  });
+
+  it('invites only the newly added members, not existing members or the actor', async () => {
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    const member = await contactOf(context, app, owner.id, 'member@example.com');
+    const late = await contactOf(context, app, owner.id, 'late@example.com');
+
+    const created = await createGroupRequest(owner.cookie, {
+      title: 'Team',
+      memberIds: [member.id],
+    });
+    const { id: groupId } = (await created.json()) as GroupDetailBody;
+    const roomLocalpart = await roomLocalpartOf(groupId);
+    context.adminClient.directInvitations.length = 0;
+
+    const added = await addMembersRequest(owner.cookie, groupId, [late.id, member.id]);
+    expect(added.status).toBe(200);
+    expect(context.adminClient.directInvitations).toEqual([
+      {
+        roomId: roomLocalpart,
+        users: [`${localpartFor(late.id)}@${TEST_XMPP_DOMAIN}`],
+      },
+    ]);
   });
 
   it('lets an admin (not just the owner) add their contacts', async () => {

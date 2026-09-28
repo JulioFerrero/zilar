@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ChatMessage, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
+import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
 import { createRealChatStore, type ApiClient, type StorageLike } from './realStore';
 
 function memoryStorage(): StorageLike {
@@ -46,7 +46,7 @@ function fakeXmpp(): FakeXmpp {
     disconnect: vi.fn(async () => {}),
     joinRoom: vi.fn(async () => {}),
     leaveRoom: vi.fn(async () => {}),
-    occupants: () => [],
+    occupants: vi.fn((): Occupant[] => []),
     sendMessage: vi.fn(async () => ({ id: 'srv-1' })),
     loadHistory: vi.fn(
       async (chatJid: string, _kind: unknown, opts?: { before?: string; max?: number }) => {
@@ -110,6 +110,7 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       },
     ]),
     getContacts: vi.fn(async () => [{ userId: 'u-ana', name: 'Ana', jid: 'ana@galena.test' }]),
+    getGroup: vi.fn(async () => ({ id: 'g1', title: 'Team', createdBy: 'u-me', members: [] })),
     getXmppToken: vi.fn(async () => ({
       jid: 'me@galena.test',
       token: 'tok',
@@ -132,6 +133,12 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
 async function flush(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// The store debounces chat-list refreshes by 500 ms.
+async function waitForRefresh(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  await flush();
 }
 
 async function setup(overrides: Partial<ApiClient> = {}) {
@@ -270,6 +277,225 @@ describe('createRealChatStore', () => {
     expect(matches[0]?.id).toBe('srv-1');
   });
 
+  it('updates the list preview when the optimistic send is confirmed', async () => {
+    const { store } = await setup();
+
+    store.getState().sendText('ana@galena.test', 'hello there');
+    await flush();
+
+    const chat = store.getState().chats.find((entry) => entry.id === 'ana@galena.test');
+    const bubble = store.getState().messages('ana@galena.test').at(-1);
+    expect(chat?.lastMessage?.status).toBe('sent');
+    expect(bubble?.status).toBe('sent');
+  });
+
+  it('marks the bubble and the list read when a displayed marker arrives', async () => {
+    const { store, xmpp } = await setup();
+
+    store.getState().sendText('ana@galena.test', 'read me');
+    await flush();
+    // `sendMessage` resolves with the id the server echoes back.
+    xmpp.emit('displayed', {
+      chatJid: 'ana@galena.test',
+      fromJid: 'ana@galena.test',
+      messageId: 'srv-1',
+    });
+
+    const chat = store.getState().chats.find((entry) => entry.id === 'ana@galena.test');
+    const bubble = store.getState().messages('ana@galena.test').at(-1);
+    expect(chat?.lastMessage?.status).toBe('read');
+    expect(bubble?.status).toBe('read');
+  });
+
+  it('keeps the bubble and the list in agreement through sending and reading', async () => {
+    const { store, xmpp } = await setup();
+
+    store.getState().sendText('ana@galena.test', 'agree');
+    const sending = store.getState().messages('ana@galena.test').at(-1);
+    expect(sending?.status).toBe('sending');
+    expect(
+      store.getState().chats.find((entry) => entry.id === 'ana@galena.test')?.lastMessage?.status,
+    ).toBe('sending');
+
+    await flush();
+    expect(
+      store.getState().chats.find((entry) => entry.id === 'ana@galena.test')?.lastMessage?.status,
+    ).toBe('sent');
+
+    xmpp.emit('displayed', {
+      chatJid: 'ana@galena.test',
+      fromJid: 'ana@galena.test',
+      messageId: 'srv-1',
+    });
+    expect(
+      store
+        .getState()
+        .messages('ana@galena.test')
+        .find((item) => item.text === 'agree')?.status,
+    ).toBe('read');
+    expect(
+      store.getState().chats.find((entry) => entry.id === 'ana@galena.test')?.lastMessage?.status,
+    ).toBe('read');
+  });
+
+  it('keeps a message read when the server echo arrives after a displayed marker', async () => {
+    const { store, xmpp } = await setup();
+
+    store.getState().sendText('ana@galena.test', 'late echo');
+    await flush();
+    xmpp.emit('displayed', {
+      chatJid: 'ana@galena.test',
+      fromJid: 'ana@galena.test',
+      messageId: 'srv-1',
+    });
+    xmpp.emit(
+      'message',
+      message({
+        id: 'srv-1',
+        chatJid: 'ana@galena.test',
+        body: 'late echo',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        timestamp: new Date('2026-09-28T12:02:00Z'),
+      }),
+    );
+
+    const chat = store.getState().chats.find((entry) => entry.id === 'ana@galena.test');
+    const bubble = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((item) => item.text === 'late echo');
+    expect(bubble?.status).toBe('read');
+    expect(chat?.lastMessage?.status).toBe('read');
+  });
+
+  it('ignores my own typing reflected from a group', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit('typing', {
+      chatJid: 'team@rooms.galena.test',
+      fromJid: 'me@galena.test',
+      state: 'composing',
+    });
+    expect(store.getState().typing['team@rooms.galena.test']).toBeUndefined();
+
+    xmpp.emit('typing', {
+      chatJid: 'team@rooms.galena.test',
+      fromJid: 'ana@galena.test',
+      state: 'composing',
+    });
+    expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Ana']);
+  });
+
+  it('ignores my own displayed marker reflected from a group', async () => {
+    const { store, xmpp } = await setup();
+
+    store.getState().sendText('team@rooms.galena.test', 'mine');
+    await flush();
+
+    xmpp.emit('displayed', {
+      chatJid: 'team@rooms.galena.test',
+      fromJid: 'me@galena.test',
+      messageId: 'srv-1',
+    });
+    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.status).toBe('sent');
+    expect(
+      store.getState().chats.find((entry) => entry.id === 'team@rooms.galena.test')?.lastMessage
+        ?.status,
+    ).toBe('sent');
+
+    xmpp.emit('displayed', {
+      chatJid: 'team@rooms.galena.test',
+      fromJid: 'ana@galena.test',
+      messageId: 'srv-1',
+    });
+    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.status).toBe('read');
+  });
+
+  it('ignores an unresolved own typing reflection from a group', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit('typing', {
+      chatJid: 'team@rooms.galena.test',
+      fromJid: 'team@rooms.galena.test/mynick',
+      state: 'composing',
+      outgoing: true,
+    });
+
+    expect(store.getState().typing['team@rooms.galena.test']).toBeUndefined();
+  });
+
+  it('ignores an unresolved own displayed reflection from a group', async () => {
+    const { store, xmpp } = await setup();
+
+    store.getState().sendText('team@rooms.galena.test', 'mine');
+    await flush();
+
+    xmpp.emit('displayed', {
+      chatJid: 'team@rooms.galena.test',
+      fromJid: 'team@rooms.galena.test/mynick',
+      messageId: 'srv-1',
+      outgoing: true,
+    });
+
+    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.status).toBe('sent');
+    expect(
+      store.getState().chats.find((entry) => entry.id === 'team@rooms.galena.test')?.lastMessage
+        ?.status,
+    ).toBe('sent');
+  });
+
+  it('shows a group member name for typing when they are not a contact', async () => {
+    const getGroup = vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [{ userId: 'u-luis', name: 'Luis', role: 'member' as const }],
+    }));
+    const { store, xmpp } = await setup({ getGroup });
+    await flush();
+
+    xmpp.emit('typing', {
+      chatJid: 'team@rooms.galena.test',
+      fromJid: 'u-luis@galena.test',
+      state: 'composing',
+    });
+
+    expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Luis']);
+  });
+
+  it('shows Someone instead of a JID localpart for an unknown group sender', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit('typing', {
+      chatJid: 'team@rooms.galena.test',
+      fromJid: 'z9y8x7@galena.test',
+      state: 'composing',
+    });
+
+    expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Someone']);
+  });
+
+  it('uses the occupant nick when a group sender is not a known member', async () => {
+    const { store, xmpp } = await setup();
+    vi.mocked(xmpp.core.occupants).mockReturnValue([
+      {
+        jid: 'team@rooms.galena.test/pablo',
+        nick: 'Pablo',
+        available: true,
+        realJid: 'pablo@galena.test',
+      },
+    ]);
+
+    xmpp.emit('typing', {
+      chatJid: 'team@rooms.galena.test',
+      fromJid: 'pablo@galena.test',
+      state: 'composing',
+    });
+
+    expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Pablo']);
+  });
+
   it('paginates older messages on demand', async () => {
     const history = Array.from({ length: 60 }, (_, index) =>
       message({
@@ -366,5 +592,75 @@ describe('createRealChatStore', () => {
   it('returns the invite URL', async () => {
     const { store } = await setup();
     await expect(store.getState().createInvite()).resolves.toBe('http://x/invite/c');
+  });
+
+  it('refreshes the chat list on an invitation and joins the new group room', async () => {
+    const base = [
+      { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+    ];
+    const invited = {
+      kind: 'group' as const,
+      chatJid: 'new@rooms.galena.test',
+      title: 'New',
+      groupId: 'g2',
+      memberCount: 2,
+      role: 'member' as const,
+    };
+    let calls = 0;
+    const getChats = vi.fn(async () => {
+      calls += 1;
+      return calls === 1 ? base : [...base, invited];
+    });
+    const { store, xmpp } = await setup({ getChats });
+
+    xmpp.emit('invited', {
+      roomJid: 'new@rooms.galena.test',
+      fromJid: 'ana@galena.test',
+      reason: 'Join us',
+    });
+    await waitForRefresh();
+
+    expect(store.getState().chats[0]?.id).toBe('new@rooms.galena.test');
+    expect(xmpp.core.joinRoom).toHaveBeenCalledWith('new@rooms.galena.test', 'Me');
+    expect(xmpp.core.loadHistory).toHaveBeenCalledWith('new@rooms.galena.test', 'groupchat', {
+      max: 1,
+    });
+  });
+
+  it('refreshes the chat list on a roster push', async () => {
+    const base = [
+      { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+    ];
+    const added = [
+      ...base,
+      { kind: 'dm' as const, chatJid: 'carla@galena.test', title: 'Carla', userId: 'u-carla' },
+    ];
+    let calls = 0;
+    const getChats = vi.fn(async () => {
+      calls += 1;
+      return calls === 1 ? base : added;
+    });
+    const { store, xmpp } = await setup({ getChats });
+
+    xmpp.emit('roster', { jid: 'carla@galena.test', subscription: 'both', name: 'Carla' });
+    await waitForRefresh();
+
+    expect(store.getState().chats[0]?.id).toBe('carla@galena.test');
+  });
+
+  it('debounces repeated refresh events into a single refetch', async () => {
+    const base = [
+      { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+    ];
+    const getChats = vi.fn(async () => base);
+    const { xmpp } = await setup({ getChats });
+    getChats.mockClear();
+
+    xmpp.emit('invited', { roomJid: 'new@rooms.galena.test' });
+    xmpp.emit('roster', { jid: 'carla@galena.test', subscription: 'both' });
+    xmpp.emit('invited', { roomJid: 'other@rooms.galena.test' });
+    await waitForRefresh();
+
+    expect(getChats).toHaveBeenCalledTimes(1);
   });
 });

@@ -14,6 +14,11 @@ const ROOM_ROLES = { owner: 0, admin: 1, member: 2 } as const;
 
 export type GroupRole = 'owner' | 'admin' | 'member';
 
+// Minimal slice of pino's Logger the invite sending needs.
+export interface InviteLogger {
+  warn: (fields: Record<string, unknown>, message: string) => void;
+}
+
 export interface GroupMemberView {
   userId: string;
   name: string;
@@ -41,6 +46,7 @@ export interface CreateGroupInput {
   title: string;
   memberIds: string[];
   domain: string;
+  logger: InviteLogger;
 }
 
 export interface AddGroupMembersInput {
@@ -48,6 +54,7 @@ export interface AddGroupMembersInput {
   actorId: string;
   userIds: string[];
   domain: string;
+  logger: InviteLogger;
 }
 
 export interface RemoveGroupMemberInput {
@@ -127,6 +134,7 @@ export async function createGroup(
   if (!detail) {
     throw new Error('group disappeared right after creation');
   }
+  await inviteNewMembers(adminClient, roomLocalpart, memberIds, input.domain, input.logger);
   return detail;
 }
 
@@ -217,6 +225,7 @@ export async function addGroupMembers(
   if (!detail) {
     throw new Error('group disappeared while adding members');
   }
+  await inviteNewMembers(adminClient, group.roomLocalpart, toAdd, input.domain, input.logger);
   return detail;
 }
 
@@ -350,6 +359,29 @@ async function assertContacts(
   const known = new Set(rows.map((row) => row.id));
   if (memberIds.some((id) => !known.has(id))) {
     throw new HttpError(403, 'forbidden', 'All members must be your contacts');
+  }
+}
+
+// A XEP-0249 direct invitation is sent after the member can already join, so
+// it is best effort: a failure is logged and never fails the request.
+async function inviteNewMembers(
+  adminClient: EjabberdAdminClient,
+  roomLocalpart: string,
+  userIds: string[],
+  domain: string,
+  logger: InviteLogger,
+): Promise<void> {
+  if (userIds.length === 0) {
+    return;
+  }
+  const users = userIds.map((userId) => jidFor(localpartFor(userId), domain));
+  try {
+    await adminClient.sendDirectInvitation(roomLocalpart, users);
+  } catch (error) {
+    logger.warn(
+      { err: error, roomLocalpart, members: users.length },
+      'could not send the group invitations',
+    );
   }
 }
 

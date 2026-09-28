@@ -1,4 +1,4 @@
-import type { ChatSummary, ReplyRef, UiMessage } from '@galena/chat-core';
+import type { ChatSummary, MessageStatus, ReplyRef, UiMessage } from '@galena/chat-core';
 import {
   createXmppCore,
   type ChatMessage,
@@ -14,6 +14,7 @@ import {
   createInvite as createInviteRequest,
   getChats,
   getContacts,
+  getGroup,
   getMe,
   getXmppToken,
   type ChatEntry,
@@ -30,11 +31,13 @@ const LAST_READ_PREFIX = 'galena:lastRead:';
 const PREVIEW_HISTORY_MAX = 1;
 const PAGE_HISTORY_MAX = 50;
 const TYPING_CLEAR_MS = 5000;
+const CHAT_REFRESH_DEBOUNCE_MS = 500;
 
 export interface ApiClient {
   getMe(): Promise<Me>;
   getChats(): Promise<ChatEntry[]>;
   getContacts(): Promise<Contact[]>;
+  getGroup(groupId: string): Promise<GroupDetail>;
   getXmppToken(): Promise<XmppToken>;
   createGroup(input: { title: string; memberIds: string[] }): Promise<GroupDetail>;
   createInvite(): Promise<Invite>;
@@ -58,6 +61,7 @@ const realApi: ApiClient = {
   getMe,
   getChats,
   getContacts,
+  getGroup,
   getXmppToken,
   createGroup: createGroupRequest,
   createInvite: createInviteRequest,
@@ -173,8 +177,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     let lastReadUserId: string | undefined;
     let generation = 0;
     let firstToken: XmppToken | undefined;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const cursors: Record<string, string | undefined> = {};
     const pendingOutgoing = new Map<string, string[]>();
+    const messageAliases = new Map<string, string>();
+    const groupIds = new Map<string, string>();
+    // chatId -> (lowercased userId -> display name)
+    const groupMembers = new Map<string, Map<string, string>>();
+    const loadingGroupMembers = new Set<string>();
     const loadingOlder = new Set<string>();
 
     function persistLastRead(): void {
@@ -204,8 +214,129 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return `${chatId}|${body}|${replyTo?.id ?? ''}`;
     }
 
+    // A message may be known under its optimistic local id and later under its
+    // server id. The alias map keeps the two linked so a status change can be
+    // applied to whichever form is currently in the store.
+    function aliasRoot(id: string): string {
+      let current = id;
+      let next = messageAliases.get(current);
+      while (next !== undefined && next !== current) {
+        current = next;
+        next = messageAliases.get(current);
+      }
+      return current;
+    }
+
+    function linkMessageIds(left: string, right: string): void {
+      if (left === right) {
+        return;
+      }
+      const rootLeft = aliasRoot(left);
+      const rootRight = aliasRoot(right);
+      if (rootLeft !== rootRight) {
+        messageAliases.set(rootRight, rootLeft);
+      }
+    }
+
+    function sameMessage(left: string, right: string): boolean {
+      return aliasRoot(left) === aliasRoot(right);
+    }
+
+    // A status only moves forward: sending -> sent -> read. A late echo or
+    // send confirmation must never downgrade a message the peer already read.
+    const STATUS_RANK: Record<MessageStatus, number> = { sending: 0, sent: 1, read: 2 };
+
+    function advanceStatus(current: MessageStatus, next: MessageStatus): MessageStatus {
+      return STATUS_RANK[next] > STATUS_RANK[current] ? next : current;
+    }
+
+    // Updates a message's status in the open conversation and, when it is the
+    // same message, in the chat list preview, so the two always agree.
+    function updateMessageStatus(chatId: string, messageId: string, status: MessageStatus): void {
+      set((state) => {
+        const list = listFor(state, chatId);
+        const next = list.map((item) =>
+          sameMessage(item.id, messageId)
+            ? { ...item, status: advanceStatus(item.status, status) }
+            : item,
+        );
+        const last = state.chats.find((chat) => chat.id === chatId)?.lastMessage;
+        const lastMatches = last !== undefined && sameMessage(last.id, messageId);
+        return {
+          messagesByChat: { ...state.messagesByChat, [chatId]: next },
+          chats: lastMatches
+            ? state.chats.map((chat) =>
+                chat.id === chatId && chat.lastMessage !== undefined
+                  ? {
+                      ...chat,
+                      lastMessage: {
+                        ...chat.lastMessage,
+                        status: advanceStatus(chat.lastMessage.status, status),
+                      },
+                    }
+                  : chat,
+              )
+            : state.chats,
+        };
+      });
+    }
+
+    function myJid(): string | undefined {
+      const jid = get().me?.jid;
+      return jid === undefined || jid === null || jid === '' ? undefined : jid;
+    }
+
+    function isOwnSender(fromJid: string): boolean {
+      const jid = myJid();
+      return jid !== undefined && fromJid === jid;
+    }
+
+    // The localpart of a JID on our own domain, used only as a lookup key.
+    // It is never shown; the localpart of a user JID is the user id lowercased.
+    function userLocalpartOf(fromJid: string): string | undefined {
+      const mine = myJid();
+      if (mine === undefined) {
+        return undefined;
+      }
+      const domain = mine.slice(mine.indexOf('@') + 1);
+      const at = fromJid.indexOf('@');
+      if (at === -1) {
+        return undefined;
+      }
+      const local = fromJid.slice(0, at);
+      const host = fromJid.slice(at + 1);
+      return host === domain ? local.toLowerCase() : undefined;
+    }
+
+    function groupMemberNameFor(chatId: string, fromJid: string): string | undefined {
+      const members = groupMembers.get(chatId);
+      if (members === undefined) {
+        return undefined;
+      }
+      const localpart = userLocalpartOf(fromJid);
+      if (localpart === undefined) {
+        return undefined;
+      }
+      const name = members.get(localpart);
+      return name !== undefined && name !== '' ? name : undefined;
+    }
+
+    function occupantNameFor(chatId: string, fromJid: string): string | undefined {
+      if (core === undefined) {
+        return undefined;
+      }
+      const occupant = core
+        .occupants(chatId)
+        .find((item) => item.realJid === fromJid || item.jid === fromJid);
+      const nick = occupant?.nick;
+      return nick !== undefined && nick !== '' ? nick : undefined;
+    }
+
+    // Resolves a display name without ever falling back to a JID localpart.
+    // Order: me, contact, MUC nick, group member, room occupant, DM title,
+    // then "Someone".
     function senderNameFor(message: ChatMessage): string {
-      if (message.outgoing) {
+      if (message.outgoing || isOwnSender(message.fromJid)) {
         return 'You';
       }
       const contact = get().contacts.find((entry) => entry.jid === message.fromJid);
@@ -215,11 +346,52 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (message.fromNick !== undefined && message.fromNick !== '') {
         return message.fromNick;
       }
+      const member = groupMemberNameFor(message.chatJid, message.fromJid);
+      if (member !== undefined) {
+        return member;
+      }
+      const occupant = occupantNameFor(message.chatJid, message.fromJid);
+      if (occupant !== undefined) {
+        return occupant;
+      }
       const chat = get().chats.find((entry) => entry.id === message.chatJid);
       if (chat !== undefined && chat.kind === 'dm') {
         return chat.title;
       }
-      return message.fromJid.split('@')[0] ?? message.fromJid;
+      return 'Someone';
+    }
+
+    function rememberGroupIds(entries: ChatEntry[]): void {
+      for (const entry of entries) {
+        if (entry.kind === 'group') {
+          groupIds.set(entry.chatJid, entry.groupId);
+        }
+      }
+    }
+
+    // Loads the member names of a group once per chat, so a typing indicator
+    // or a message from a member who is not a contact can still show a name.
+    async function ensureGroupMembers(chatId: string): Promise<void> {
+      if (groupMembers.has(chatId) || loadingGroupMembers.has(chatId)) {
+        return;
+      }
+      const groupId = groupIds.get(chatId);
+      if (groupId === undefined) {
+        return;
+      }
+      loadingGroupMembers.add(chatId);
+      try {
+        const detail = await api.getGroup(groupId);
+        const members = new Map<string, string>();
+        for (const member of detail.members) {
+          members.set(member.userId.toLowerCase(), member.name);
+        }
+        groupMembers.set(chatId, members);
+      } catch {
+        // The name falls back to the occupant nick or "Someone".
+      } finally {
+        loadingGroupMembers.delete(chatId);
+      }
     }
 
     function toUiMessage(message: ChatMessage, meId: string): UiMessage {
@@ -289,17 +461,30 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (queue !== undefined && queue.length === 0) {
           pendingOutgoing.delete(signature);
         }
+        if (localId !== undefined) {
+          linkMessageIds(localId, ui.id);
+        }
         set((state) => {
           const existing = listFor(state, chatId);
+          const previous = existing.find((item) => sameMessage(item.id, ui.id));
+          const reconciled: UiMessage =
+            previous === undefined
+              ? ui
+              : { ...ui, status: advanceStatus(previous.status, ui.status) };
           const withoutLocal =
             localId === undefined ? existing : existing.filter((item) => item.id !== localId);
           return {
             messagesByChat: {
               ...state.messagesByChat,
-              [chatId]: sortMessages([...withoutLocal.filter((item) => item.id !== ui.id), ui]),
+              [chatId]: sortMessages([
+                ...withoutLocal.filter((item) => item.id !== reconciled.id),
+                reconciled,
+              ]),
             },
             chats: moveChatToTop(
-              state.chats.map((chat) => (chat.id === chatId ? { ...chat, lastMessage: ui } : chat)),
+              state.chats.map((chat) =>
+                chat.id === chatId ? { ...chat, lastMessage: reconciled } : chat,
+              ),
               chatId,
             ),
           };
@@ -335,8 +520,20 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    function handleTyping(event: { chatJid: string; fromJid: string; state: string }): void {
+    function handleTyping(event: {
+      chatJid: string;
+      fromJid: string;
+      state: string;
+      outgoing: boolean;
+    }): void {
+      // A MUC reflects my own chat states back to me. When the sender cannot be
+      // resolved to a real JID, xmpp-core marks the reflection `outgoing` and
+      // keeps the full room JID, so the JID check alone is not enough.
+      if (event.outgoing || isOwnSender(event.fromJid)) {
+        return;
+      }
       const chatId = event.chatJid;
+      void ensureGroupMembers(chatId);
       const name = senderNameFor({
         chatJid: chatId,
         fromJid: event.fromJid,
@@ -365,22 +562,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    function handleDisplayed(event: { chatJid: string; messageId: string }): void {
-      set((state) => ({
-        messagesByChat: {
-          ...state.messagesByChat,
-          [event.chatJid]: (state.messagesByChat[event.chatJid] ?? []).map((message) =>
-            message.id === event.messageId ? { ...message, status: 'read' } : message,
-          ),
-        },
-        chats: state.chats.map((chat) =>
-          chat.id === event.chatJid &&
-          chat.lastMessage !== undefined &&
-          chat.lastMessage.id === event.messageId
-            ? { ...chat, lastMessage: { ...chat.lastMessage, status: 'read' } }
-            : chat,
-        ),
-      }));
+    function handleDisplayed(event: {
+      chatJid: string;
+      fromJid: string;
+      messageId: string;
+      outgoing: boolean;
+    }): void {
+      // A reflected marker of my own message means I displayed it, not that a
+      // peer read it. `outgoing` covers the unresolved full-room-JID case.
+      if (event.outgoing || isOwnSender(event.fromJid)) {
+        return;
+      }
+      updateMessageStatus(event.chatJid, event.messageId, 'read');
     }
 
     function handleOccupants(event: { roomJid: string; occupants: Occupant[] }): void {
@@ -420,6 +613,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         current.on('displayed', handleDisplayed),
         current.on('occupants', handleOccupants),
         current.on('presence', handlePresence),
+        current.on('invited', handleInvited),
+        current.on('roster', handleRoster),
       ];
     }
 
@@ -436,10 +631,89 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (chat.kind !== 'group') {
           continue;
         }
+        void ensureGroupMembers(chat.id);
         try {
           await current.joinRoom(chat.id, nick(me));
         } catch {
           // A room can be joined later when the user opens it.
+        }
+      }
+    }
+
+    // A group invitation or a roster push means the chat list changed on the
+    // server. Refetch it, join any new group rooms and load their preview.
+    function handleInvited(): void {
+      scheduleChatsRefresh();
+    }
+
+    function handleRoster(): void {
+      scheduleChatsRefresh();
+    }
+
+    function scheduleChatsRefresh(): void {
+      if (refreshTimer !== undefined) {
+        clearTimeout(refreshTimer);
+      }
+      refreshTimer = setTimeout(() => {
+        refreshTimer = undefined;
+        void refreshChats();
+      }, CHAT_REFRESH_DEBOUNCE_MS);
+    }
+
+    async function refreshChats(): Promise<void> {
+      const gen = generation;
+      let entries: ChatEntry[];
+      try {
+        entries = await api.getChats();
+      } catch {
+        return;
+      }
+      if (gen !== generation) {
+        return;
+      }
+
+      const previous = get().chats;
+      const known = new Map(previous.map((chat) => [chat.id, chat]));
+      const fresh = entries.filter((entry) => !known.has(entry.chatJid)).map(summaryFor);
+      const kept = entries
+        .filter((entry) => known.has(entry.chatJid))
+        .map((entry) => {
+          const existing = known.get(entry.chatJid);
+          const summary = summaryFor(entry);
+          if (existing === undefined) {
+            return summary;
+          }
+          return {
+            ...summary,
+            ...(existing.lastMessage === undefined ? {} : { lastMessage: existing.lastMessage }),
+            unread: existing.unread,
+            ...(existing.online === undefined ? {} : { online: existing.online }),
+            ...(existing.onlineCount === undefined ? {} : { onlineCount: existing.onlineCount }),
+          };
+        });
+      // New chats appear at the top; the rest keep their recency order.
+      set({ chats: [...fresh, ...sortByRecency(kept)] });
+      rememberGroupIds(entries);
+
+      const current = core;
+      const me = get().me;
+      if (current === undefined || me === undefined) {
+        return;
+      }
+      for (const entry of entries) {
+        if (known.has(entry.chatJid) || entry.kind !== 'group') {
+          continue;
+        }
+        await current.joinRoom(entry.chatJid, nick(me)).catch(() => {});
+        void ensureGroupMembers(entry.chatJid);
+      }
+      for (const entry of entries) {
+        if (known.has(entry.chatJid)) {
+          continue;
+        }
+        const chat = get().chats.find((item) => item.id === entry.chatJid);
+        if (chat !== undefined) {
+          await loadPreview(current, chat);
         }
       }
     }
@@ -567,6 +841,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
       lastReadUserId = me.id;
       lastRead = readLastRead(storage, me.id);
+      rememberGroupIds(entries);
       set({
         me,
         currentUserId: me.id,
@@ -642,6 +917,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       openChat: (chatId) => {
         set({ activeChatId: chatId });
         recordRead(chatId, lastRead[chatId]);
+        void ensureGroupMembers(chatId);
         void openHistory(chatId);
       },
       loadOlder,
@@ -686,15 +962,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             trimmed,
             replyTo === undefined ? undefined : { replyTo: { id: replyTo.id } },
           )
-          .then(() => {
-            set((state) => ({
-              messagesByChat: {
-                ...state.messagesByChat,
-                [chatId]: (state.messagesByChat[chatId] ?? []).map((item) =>
-                  item.id === localId ? { ...item, status: 'sent' } : item,
-                ),
-              },
-            }));
+          .then((sent) => {
+            linkMessageIds(localId, sent.id);
+            updateMessageStatus(chatId, localId, 'sent');
           })
           .catch(() => {
             // The message stays marked as sending; a reconnect can resend later.
@@ -703,6 +973,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       createGroup: async (title, memberIds) => {
         const detail = await api.createGroup({ title, memberIds });
         const entries = await api.getChats();
+        rememberGroupIds(entries);
         const previous = get().chats;
         set({
           chats: sortByRecency(
@@ -732,6 +1003,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (core !== undefined && me !== undefined) {
           await core.joinRoom(created.chatJid, nick(me)).catch(() => {});
         }
+        void ensureGroupMembers(created.chatJid);
         await openHistory(created.chatJid);
         return created.chatJid;
       },
@@ -786,6 +1058,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           clearTimeout(timer);
         }
         typingTimers = {};
+        if (refreshTimer !== undefined) {
+          clearTimeout(refreshTimer);
+          refreshTimer = undefined;
+        }
         const current = core;
         core = undefined;
         if (current !== undefined) {

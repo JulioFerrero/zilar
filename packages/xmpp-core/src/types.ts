@@ -68,6 +68,8 @@ export interface TypingEvent {
   chatJid: string;
   fromJid: string;
   state: 'composing' | 'paused' | 'active';
+  /** True when the chat state is mine (a MUC reflection of my own state). */
+  outgoing: boolean;
 }
 
 /** A contact's (roster) availability, from a bare-JID presence stanza. */
@@ -81,6 +83,26 @@ export interface DisplayedEvent {
   chatJid: string;
   fromJid: string;
   messageId: string;
+  /** True when the marker is mine (a MUC reflection of my own marker). */
+  outgoing: boolean;
+}
+
+/** A direct MUC invitation (XEP-0249). */
+export interface InvitedEvent {
+  /** Bare JID of the room, on the MUC domain (`rooms.<domain>`). */
+  roomJid: string;
+  /** Bare JID of the sender, when the stanza carried one. */
+  fromJid?: string;
+  reason?: string;
+}
+
+export type RosterSubscription = 'none' | 'to' | 'from' | 'both' | 'remove';
+
+/** One item of a roster push from our own server (RFC 6121 §2.1.6). */
+export interface RosterEvent {
+  jid: string;
+  subscription: RosterSubscription;
+  name?: string;
 }
 
 export interface SendMessageOptions {
@@ -122,13 +144,20 @@ export interface XmppCore {
   on(event: 'message', cb: (m: ChatMessage) => void): () => void;
   on(
     event: 'typing',
-    cb: (e: { chatJid: string; fromJid: string; state: 'composing' | 'paused' | 'active' }) => void,
+    cb: (e: {
+      chatJid: string;
+      fromJid: string;
+      state: 'composing' | 'paused' | 'active';
+      outgoing: boolean;
+    }) => void,
   ): () => void;
   on(
     event: 'displayed',
-    cb: (e: { chatJid: string; fromJid: string; messageId: string }) => void,
+    cb: (e: { chatJid: string; fromJid: string; messageId: string; outgoing: boolean }) => void,
   ): () => void;
   on(event: 'occupants', cb: (e: { roomJid: string; occupants: Occupant[] }) => void): () => void;
   on(event: 'presence', cb: (e: PresenceEvent) => void): () => void;
+  on(event: 'invited', cb: (e: InvitedEvent) => void): () => void;
+  on(event: 'roster', cb: (e: RosterEvent) => void): () => void;
   on(event: 'error', cb: (e: { message: string }) => void): () => void;
 }

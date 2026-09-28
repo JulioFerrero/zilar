@@ -157,6 +157,10 @@ export function createGroup(input: { title: string; memberIds: string[] }): Prom
   });
 }
 
+export function getGroup(groupId: string): Promise<GroupDetail> {
+  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema);
+}
+
 export function createInvite(): Promise<Invite> {
   return request('/invites', inviteSchema, { method: 'POST' });
 }

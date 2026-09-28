@@ -74,7 +74,7 @@ export function createApp({
   app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
   app.route('/api', createAuthRoutes({ auth, db, config, adminClient, logger }));
   app.route('/api', createContactsRoutes({ auth, db, config }));
-  app.route('/api', createGroupsRoutes({ auth, db, config, adminClient }));
+  app.route('/api', createGroupsRoutes({ auth, db, config, adminClient, logger }));
   app.route('/api', createChatsRoutes({ auth, db, config }));
   app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));
 
