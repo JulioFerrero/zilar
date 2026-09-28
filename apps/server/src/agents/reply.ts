@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ChatKind } from '@galena/xmpp-core';
 import { LitellmApiError, redactSecrets, type FetchLike } from '../ai/litellm-client';
 import type { ChatCompletionMessage } from './context';
+import { ChatStreamInterruptedError, consumeChatCompletionStream } from './stream';
 import {
   PERSONA_TOOLS,
   REVERT_PERSONA_TOOL,
@@ -107,6 +108,8 @@ export interface CompleteChatInput {
   timeoutMs?: number;
   /** Extra secrets to redact from every error (e.g. the master key). */
   secrets?: readonly string[];
+  /** Called with the cumulative text every time the stream grows. */
+  onDelta?: (textSoFar: string) => void;
 }
 
 interface ChatCompletionResult {
@@ -147,7 +150,13 @@ function hasErrorBody(body: unknown): boolean {
 }
 
 // One model call for one turn, authenticated as the AI with its own capped
-// virtual key. Throws ChatCompletionError (redacted) on any failure.
+// virtual key. Every call streams (`stream: true`): text deltas are reported
+// through `onDelta` as they arrive, and the result has the same shape the
+// tool loop already understands. Throws ChatCompletionError (redacted) on any
+// failure. A stream that breaks midway or times out (the same per-call
+// timeout, now covering the whole stream) counts as a network failure. If the
+// provider ignores `stream` and answers plain JSON, that shape is parsed the
+// way it always was.
 async function requestCompletion(input: CompleteChatInput): Promise<ChatCompletionResult> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const timeoutMs = input.timeoutMs ?? LITELLM_CHAT_TIMEOUT_MS;
@@ -166,6 +175,7 @@ async function requestCompletion(input: CompleteChatInput): Promise<ChatCompleti
         model: input.model,
         messages: input.messages,
         max_tokens: REPLY_MAX_TOKENS,
+        stream: true,
         ...(input.tools === undefined ? {} : { tools: input.tools, tool_choice: 'auto' }),
       }),
       signal: AbortSignal.timeout(timeoutMs),
@@ -175,17 +185,43 @@ async function requestCompletion(input: CompleteChatInput): Promise<ChatCompleti
     throw new ChatCompletionError(0, redactSecrets(message, secrets));
   }
 
-  const text = await response.text();
-  let body: unknown = null;
-  if (text !== '') {
+  // HTTP errors surface before the stream starts and map exactly as before.
+  if (!response.ok) {
+    const text = await readBodyText(response);
+    throw new ChatCompletionError(
+      response.status,
+      redactSecrets(errorDetail(parseBody(text)), secrets),
+    );
+  }
+
+  const contentType = response.headers.get('content-type') ?? '';
+  if (contentType.includes('text/event-stream')) {
+    if (response.body === null) {
+      throw new ChatCompletionError(0, 'the stream had no body');
+    }
     try {
-      body = JSON.parse(text);
-    } catch {
-      body = text;
+      const streamed = await consumeChatCompletionStream(response.body, input.onDelta);
+      return {
+        content: streamed.content,
+        toolCalls: streamed.toolCalls.map((call) => ({
+          id: call.id,
+          name: call.name,
+          argsJson: call.argsJson,
+        })),
+      };
+    } catch (error) {
+      if (error instanceof ChatStreamInterruptedError) {
+        throw new ChatCompletionError(0, redactSecrets(error.message, secrets));
+      }
+      const message = error instanceof Error ? error.message : 'network error';
+      throw new ChatCompletionError(0, redactSecrets(message, secrets));
     }
   }
 
-  if (!response.ok || hasErrorBody(body)) {
+  const text = await readBodyText(response);
+  const body: unknown = parseBody(text);
+
+  if (hasErrorBody(body)) {
     throw new ChatCompletionError(response.status, redactSecrets(errorDetail(body), secrets));
   }
 
@@ -203,6 +239,25 @@ async function requestCompletion(input: CompleteChatInput): Promise<ChatCompleti
       argsJson: call.function.arguments,
     })),
   };
+}
+
+async function readBodyText(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch {
+    throw new ChatCompletionError(0, 'the response body could not be read');
+  }
+}
+
+function parseBody(text: string): unknown {
+  if (text === '') {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 // The plain text call: no tools, so any tool_calls the model improvised are
@@ -248,6 +303,8 @@ export interface DmTurnDeps {
   executeTool?: ExecuteToolCall;
   fetchImpl?: FetchLike;
   timeoutMs?: number;
+  /** Receives the cumulative reply text while the model writes (drafts). */
+  onDelta?: (textSoFar: string) => void;
   sendMessage: (to: string, kind: ChatKind, text: string) => Promise<unknown>;
   sendTyping: (to: string, kind: ChatKind, state: 'composing' | 'paused') => void;
   logger: {
@@ -275,6 +332,7 @@ export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
     ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
     ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }),
     ...(deps.secrets === undefined ? {} : { secrets: deps.secrets }),
+    ...(deps.onDelta === undefined ? {} : { onDelta: deps.onDelta }),
   };
   deps.sendTyping(deps.ownerJid, 'chat', 'composing');
   try {
@@ -333,6 +391,7 @@ async function runToolTurn(
     fetchImpl?: FetchLike;
     timeoutMs?: number;
     secrets?: readonly string[];
+    onDelta?: (textSoFar: string) => void;
   },
   first: ChatCompletionResult,
   secrets: string[],

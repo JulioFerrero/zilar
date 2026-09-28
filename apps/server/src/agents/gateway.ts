@@ -5,6 +5,7 @@ import {
   type XmppCoreOptions,
 } from '@galena/xmpp-core';
 import { and, eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_LITELLM_BASE_URL,
   redactSecrets,
@@ -24,6 +25,7 @@ import {
 import type { KeyCipher } from '../connections/crypto';
 import type { ServerDatabase } from '../db/client';
 import { ais, llmVirtualKeys, user } from '../db/schema';
+import { sharedDraftHub, type DraftHub } from '../drafts/hub';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { XmppConfig } from '../xmpp/config';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -57,6 +59,8 @@ export interface AgentGatewayDeps {
   createCore?: (options: XmppCoreOptions) => XmppCore;
   fetchImpl?: FetchLike;
   now?: () => Date;
+  /** Draft hub for live reply drafts. Defaults to the shared server hub. */
+  drafts?: { hub?: DraftHub };
 }
 
 export interface AgentGatewayConfig {
@@ -161,6 +165,7 @@ export function createAgentGateway(
   const retryBaseMs = config.retryBaseDelayMs ?? RETRY_BASE_DELAY_MS;
   const createCore = deps.createCore ?? createXmppCore;
   const baseUrl = deps.litellmBaseUrl ?? DEFAULT_LITELLM_BASE_URL;
+  const draftHub = deps.drafts?.hub ?? sharedDraftHub;
   const sessions = new Map<string, AiSession>();
 
   let started = false;
@@ -436,6 +441,11 @@ export function createAgentGateway(
     }
     const trigger = ownerMessages[ownerMessages.length - 1] as PendingMessage;
 
+    // Each turn streams its drafts to the owner under one turn id. The
+    // publisher throttles (150 ms) and flushes the latest text before `end`,
+    // so `end` always comes after the final XMPP message below. Typing
+    // indicators stay exactly as before, for clients without drafts.
+    const turnDrafts = draftHub.publishTurn(ai.owner, ai.jid, randomUUID());
     let virtualKey: string | undefined;
     try {
       await ensureAiModel(aiDeps(), session.aiId);
@@ -494,7 +504,9 @@ export function createAgentGateway(
         trigger,
       });
 
-      await runDmTurn({
+      // `end` always comes after the final XMPP message: `runDmTurn` sends
+      // it before resolving.
+      const outcome = await runDmTurn({
         aiId: session.aiId,
         ownerJid,
         messages,
@@ -503,6 +515,9 @@ export function createAgentGateway(
         model: modelNameForAi(session.aiId),
         executeTool: executePersonaTool(session.aiId),
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
+        onDelta: (textSoFar) => {
+          turnDrafts.push(textSoFar);
+        },
         sendMessage: (to, kind, text) => session.core.sendMessage(to, kind, text),
         sendTyping: (to, kind, state) => {
           session.core.sendTyping(to, kind, state);
@@ -510,6 +525,7 @@ export function createAgentGateway(
         logger,
         secrets: secretsFor(),
       });
+      turnDrafts.end(outcome.kind === 'replied' ? 'sent' : 'failed');
     } catch (error) {
       // ensureAiModel, the key lookup and anything else outside the turn: an
       // honest short message, never the raw error.
@@ -523,11 +539,14 @@ export function createAgentGateway(
       } catch {
         // There is nobody left to tell when the send itself fails.
       }
+      // The failed `end` goes out only after the failure text was sent (or
+      // its send was attempted): the contract promises `end` comes last.
       try {
         session.core.sendTyping(ownerJid, 'chat', 'paused');
       } catch {
         // Typing state is best-effort.
       }
+      turnDrafts.end('failed');
     }
   }
 

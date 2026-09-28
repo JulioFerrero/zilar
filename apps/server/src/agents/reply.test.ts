@@ -133,6 +133,7 @@ describe('completeChat', () => {
       model: MODEL,
       messages: MESSAGES,
       max_tokens: REPLY_MAX_TOKENS,
+      stream: true,
     });
   });
 
@@ -587,5 +588,158 @@ describe('runDmTurn with tools', () => {
     expect(logged).not.toContain(MASTER_KEY);
     expect(logged).not.toContain(first.persona);
     expect(logged).not.toContain(second.persona);
+  });
+});
+
+describe('runDmTurn with streaming', () => {
+  const encoder = new TextEncoder();
+
+  function sseResponse(chunks: string[]): Response {
+    const encoded = chunks.map((chunk) => encoder.encode(chunk));
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const part of encoded) {
+            controller.enqueue(part);
+          }
+          controller.close();
+        },
+      }),
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  }
+
+  function textChunk(content: string): string {
+    return `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`;
+  }
+
+  function toolSseResponse(callId: string, args: unknown): Response {
+    return sseResponse([
+      `data: ${JSON.stringify({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: callId,
+                  function: { name: 'update_persona', arguments: JSON.stringify(args) },
+                },
+              ],
+            },
+          },
+        ],
+      })}\n\n`,
+      'data: [DONE]\n\n',
+    ]);
+  }
+
+  function streamedHarness(fetchImpl: FetchLike, executeTool?: ExecuteToolCall) {
+    const logger = captureLogger();
+    const sent: Array<{ to: string; kind: ChatKind; text: string }> = [];
+    const deltas: string[] = [];
+    const run = () =>
+      runDmTurn({
+        aiId: 'ai-1',
+        ownerJid: OWNER_JID,
+        messages: MESSAGES,
+        baseUrl: BASE_URL,
+        virtualKey: VIRTUAL_KEY,
+        model: MODEL,
+        ...(executeTool === undefined ? {} : { executeTool }),
+        fetchImpl,
+        onDelta: (text) => {
+          deltas.push(text);
+        },
+        sendMessage: (to, kind, text) => {
+          sent.push({ to, kind, text });
+          return Promise.resolve({ id: `m-${sent.length}` });
+        },
+        sendTyping: () => undefined,
+        logger,
+        secrets: [MASTER_KEY],
+      });
+    return { logger, sent, deltas, run };
+  }
+
+  it('streams the reply: onDelta sees growing text, the DM equals the full text', async () => {
+    const { fetchImpl, calls } = createFetch(() =>
+      sseResponse([textChunk('Hello'), textChunk(', Ju'), textChunk('lio'), 'data: [DONE]\n\n']),
+    );
+    const harness = streamedHarness(fetchImpl);
+    const outcome = await harness.run();
+    expect(outcome).toEqual({ kind: 'replied', text: 'Hello, Julio' });
+    expect(harness.sent).toEqual([{ to: OWNER_JID, kind: 'chat', text: 'Hello, Julio' }]);
+    expect(harness.deltas).toEqual(['Hello', 'Hello, Ju', 'Hello, Julio']);
+    expect(bodyOf(calls[0]!).stream).toBe(true);
+  });
+
+  it('falls back to plain JSON when the provider ignores stream', async () => {
+    const { fetchImpl, calls } = createFetch(() => completionResponse('plain answer'));
+    const harness = streamedHarness(fetchImpl);
+    const outcome = await harness.run();
+    expect(outcome).toEqual({ kind: 'replied', text: 'plain answer' });
+    expect(harness.deltas).toEqual([]);
+    expect(bodyOf(calls[0]!).stream).toBe(true);
+  });
+
+  it('maps a stream broken midway to the transient text without leaking', async () => {
+    const broken = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode(textChunk('half ')));
+          controller.error(new Error(`socket reset, key was ${VIRTUAL_KEY}`));
+        },
+      }),
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+    const { fetchImpl } = createFetch(() => broken);
+    const harness = streamedHarness(fetchImpl);
+    const outcome = await harness.run();
+    expect(outcome).toEqual({ kind: 'failed', text: TRANSIENT_FAILURE_REPLY });
+    expect(harness.sent).toEqual([{ to: OWNER_JID, kind: 'chat', text: TRANSIENT_FAILURE_REPLY }]);
+    const logged = loggedText(harness.logger.calls);
+    expect(logged).not.toContain(VIRTUAL_KEY);
+    expect(logged).not.toContain(MASTER_KEY);
+    expect(JSON.stringify(harness.sent)).not.toContain('half');
+  });
+
+  it('maps 429 and 401 before the stream to the exact failure texts', async () => {
+    for (const [status, expected] of [
+      [429, BUDGET_EXCEEDED_REPLY],
+      [401, PROVIDER_KEY_REJECTED_REPLY],
+    ] as const) {
+      const { fetchImpl } = createFetch(() => jsonResponse({ error: { message: 'nope' } }, status));
+      const harness = streamedHarness(fetchImpl);
+      const outcome = await harness.run();
+      expect(outcome).toEqual({ kind: 'failed', text: expected });
+    }
+  });
+
+  it('streams the text call of a tool turn: drafts only from the text, notice appended', async () => {
+    const updateArgs = { persona: 'Answer in Spanish.', summary: 'Spanish answers' };
+    const scripted: Response[] = [
+      toolSseResponse('call-1', updateArgs),
+      sseResponse([textChunk('vale'), textChunk(', lo haré'), 'data: [DONE]\n\n']),
+    ];
+    let index = 0;
+    const streamingFetch: FetchLike = () => {
+      const response = scripted[Math.min(index, scripted.length - 1)]!;
+      index += 1;
+      return Promise.resolve(response.clone());
+    };
+    const executed: ValidToolCall[] = [];
+    const harness = streamedHarness(streamingFetch, async (call) => {
+      executed.push(call);
+      return { content: 'ok', notice: formatPersonaUpdatedLine('Spanish answers') };
+    });
+    const outcome = await harness.run();
+    expect(outcome).toEqual({
+      kind: 'replied',
+      text: 'vale, lo haré\n\n✏️ Persona updated: Spanish answers. Say "undo" to revert.',
+    });
+    expect(executed).toHaveLength(1);
+    expect(harness.deltas).toEqual(['vale', 'vale, lo haré']);
+    expect(harness.deltas.join('')).not.toContain('Answer in Spanish.');
   });
 });

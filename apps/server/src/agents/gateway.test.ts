@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import type {
   ChatKind,
@@ -24,6 +24,8 @@ import { createTestContext, TEST_XMPP_DOMAIN, type TestContext } from '../test-s
 import { localpartFor } from '../xmpp/provisioning';
 import { aiLocalpart, createAi, deleteAi, onAiLifecycle, type AiServiceDeps } from '../ais/service';
 import { createAgentGateway, type AgentGateway, type AgentGatewayDeps } from './gateway';
+import { createDraftHub, type DraftHub } from '../drafts/hub';
+import type { DraftHubEvent } from '../drafts/events';
 import {
   BUDGET_EXCEEDED_REPLY,
   PROVIDER_KEY_REJECTED_REPLY,
@@ -352,6 +354,7 @@ describe('agent gateway', () => {
       enabled?: boolean;
       retryBaseDelayMs?: number;
       failConnect?: (coreIndex: number) => boolean;
+      hub?: DraftHub;
     } = {},
   ): { gateway: AgentGateway; logger: ReturnType<typeof captureLogger> } {
     const logger = captureLogger();
@@ -375,6 +378,7 @@ describe('agent gateway', () => {
       },
       fetchImpl,
       now: () => new Date('2026-09-28T12:00:00Z'),
+      ...(config.hub === undefined ? {} : { drafts: { hub: config.hub } }),
     };
     const created = createAgentGateway(deps, {
       enabled: config.enabled ?? true,
@@ -1227,6 +1231,255 @@ describe('agent gateway', () => {
         persona: NEW_PERSONA,
         previousPersona: OLD_PERSONA,
       });
+    });
+  });
+
+  describe('streaming drafts', () => {
+    const encoder = new TextEncoder();
+
+    function sseResponse(chunks: string[]): Response {
+      const encoded = chunks.map((chunk) => encoder.encode(chunk));
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const part of encoded) {
+              controller.enqueue(part);
+            }
+            controller.close();
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }
+
+    function textChunk(content: string): string {
+      return `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`;
+    }
+
+    function toolChunk(callId: string, args: unknown): string {
+      return `data: ${JSON.stringify({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: callId,
+                  function: { name: 'update_persona', arguments: JSON.stringify(args) },
+                },
+              ],
+            },
+          },
+        ],
+      })}\n\n`;
+    }
+
+    const DONE = 'data: [DONE]\n\n';
+
+    function sseFetch(responses: Response[]): { fetchImpl: FetchLike; calls: Call[] } {
+      const calls: Call[] = [];
+      let index = 0;
+      const fetchImpl: FetchLike = (url, init) => {
+        calls.push({ url, init });
+        const response = responses[Math.min(index, responses.length - 1)]!;
+        index += 1;
+        return Promise.resolve(response.clone());
+      };
+      return { fetchImpl, calls };
+    }
+
+    async function draftsSetup(responses: Response[]): Promise<{
+      seeded: SeededAi;
+      core: FakeCore;
+      hub: DraftHub;
+      events: DraftHubEvent[];
+      strangerEvents: DraftHubEvent[];
+      logger: ReturnType<typeof captureLogger>;
+    }> {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const hub = createDraftHub();
+      const events: DraftHubEvent[] = [];
+      const strangerEvents: DraftHubEvent[] = [];
+      hub.subscribe(seeded.ownerId, (event) => events.push(event));
+      hub.subscribe('some-other-user', (event) => strangerEvents.push(event));
+      const { fetchImpl } = sseFetch(responses);
+      const { gateway: started, logger } = harness(cores, fetchImpl, new FakeLitellm(), { hub });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      return { seeded, core, hub, events, strangerEvents, logger };
+    }
+
+    function draftsOf(events: DraftHubEvent[]): DraftHubEvent[] {
+      return events.filter((event) => event.type === 'draft');
+    }
+
+    it('streams drafts while the model writes and ends sent after the DM', async () => {
+      const { seeded, core, events, strangerEvents } = await draftsSetup([
+        sseResponse([textChunk('Hello'), textChunk(', Julio'), DONE]),
+      ]);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => events.some((event) => event.type === 'end'));
+
+      // The final XMPP message is already out by the time `end` arrives.
+      expect(core.sent).toEqual([{ to: seeded.ownerJid, kind: 'chat', text: 'Hello, Julio' }]);
+      const turnId = events[0]?.type === 'draft' ? events[0].turnId : undefined;
+      expect(turnId).toBeDefined();
+      expect(events.at(-1)).toEqual({
+        type: 'end',
+        chatJid: seeded.aiJid,
+        turnId,
+        outcome: 'sent',
+      });
+      for (const event of events) {
+        expect(event.chatJid).toBe(seeded.aiJid);
+        if (event.type === 'draft' || event.type === 'end') {
+          expect(event.turnId).toBe(turnId);
+        }
+      }
+      const texts = draftsOf(events).map((event) => (event.type === 'draft' ? event.text : ''));
+      expect(texts.length).toBeGreaterThanOrEqual(1);
+      expect(texts.at(-1)).toBe('Hello, Julio');
+      expect(strangerEvents).toHaveLength(0);
+      // Typing still works for clients without drafts.
+      expect(core.typing).toEqual([
+        { to: seeded.ownerJid, kind: 'chat', state: 'composing' },
+        { to: seeded.ownerJid, kind: 'chat', state: 'paused' },
+      ]);
+    });
+
+    it('collapses a burst of deltas to at most 2 drafts, last equals the full text', async () => {
+      let full = '';
+      const chunks: string[] = [];
+      for (let i = 0; i < 50; i += 1) {
+        full += `word${i} `;
+        chunks.push(textChunk(`word${i} `));
+      }
+      chunks.push(DONE);
+      const { seeded, core, events } = await draftsSetup([sseResponse(chunks)]);
+
+      // Fake timers: the throttle is time-based, so virtual time keeps this
+      // deterministic instead of CI-speed-dependent. The turn itself is
+      // promise-driven and drains inside the first advances, well before the
+      // 150 ms throttle timer could fire a third draft.
+      vi.useFakeTimers();
+      try {
+        core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'tell me a story'));
+        for (let i = 0; i < 100 && !events.some((event) => event.type === 'end'); i += 1) {
+          await vi.advanceTimersByTimeAsync(10);
+        }
+        expect(events.some((event) => event.type === 'end')).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(core.sent[0]?.text).toBe(full.trim());
+      const drafts = draftsOf(events);
+      expect(drafts.length).toBeLessThanOrEqual(2);
+      const last = drafts.at(-1);
+      // Drafts carry the raw cumulative text (untrimmed); the DM is trimmed.
+      expect(last?.type === 'draft' ? last.text : '').toBe(full);
+      expect(events.at(-1)?.type).toBe('end');
+    });
+
+    it('never puts tool-call arguments in a draft', async () => {
+      const secretArgs = {
+        persona: `brand new persona nobody may see ${randomUUID()}`,
+        summary: 'Spanish answers',
+      };
+      const { seeded, core, events, logger } = await draftsSetup([
+        sseResponse([toolChunk('call-1', secretArgs), DONE]),
+        sseResponse([textChunk('vale'), DONE]),
+      ]);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'answer in Spanish'));
+      await waitFor(() => events.some((event) => event.type === 'end'));
+
+      expect(core.sent[0]?.text).toBe(
+        'vale\n\n✏️ Persona updated: Spanish answers. Say "undo" to revert.',
+      );
+      const draftText = draftsOf(events)
+        .map((event) => (event.type === 'draft' ? event.text : ''))
+        .join('\n');
+      expect(draftText).not.toContain(secretArgs.persona);
+      expect(draftText).not.toContain('update_persona');
+      const logged = loggedText(logger.calls);
+      expect(`${logged}\n${JSON.stringify(core.sent)}`).not.toContain(VIRTUAL_KEY);
+      expect(`${logged}\n${JSON.stringify(events)}`).not.toContain(secretArgs.persona);
+    });
+
+    it('sends the failure text and end failed when the stream breaks midway', async () => {
+      const broken = new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(textChunk('half ')));
+            controller.error(new Error(`socket reset, key was ${VIRTUAL_KEY}`));
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+      const { seeded, core, events, logger } = await draftsSetup([broken]);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => events.some((event) => event.type === 'end'));
+
+      expect(core.sent).toEqual([
+        { to: seeded.ownerJid, kind: 'chat', text: TRANSIENT_FAILURE_REPLY },
+      ]);
+      expect(events.at(-1)).toMatchObject({ type: 'end', outcome: 'failed' });
+      const logged = loggedText(logger.calls);
+      expect(logged).not.toContain(VIRTUAL_KEY);
+      expect(logged).not.toContain(MASTER_KEY);
+      expect(logged).not.toContain(PROVIDER_KEY);
+      expect(JSON.stringify(events)).not.toContain(VIRTUAL_KEY);
+    });
+
+    it('sends the limit text and end failed on a 429 before the stream', async () => {
+      const { seeded, core, events } = await draftsSetup([
+        jsonResponse({ error: { message: 'over budget' } }, 429),
+      ]);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => events.some((event) => event.type === 'end'));
+
+      expect(core.sent).toEqual([
+        { to: seeded.ownerJid, kind: 'chat', text: BUDGET_EXCEEDED_REPLY },
+      ]);
+      expect(draftsOf(events)).toHaveLength(0);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ type: 'end', outcome: 'failed' });
+    });
+
+    it('publishes end failed only after the failure DM is sent', async () => {
+      const seeded = await seedAi(context);
+      // No virtual key row: the turn fails before any model work.
+      await context.db.delete(llmVirtualKeys).where(eq(llmVirtualKeys.aiId, seeded.aiId));
+      const cores: FakeCore[] = [];
+      const hub = createDraftHub();
+      const order: string[] = [];
+      hub.subscribe(seeded.ownerId, (event) => {
+        if (event.type === 'end') {
+          order.push('end');
+        }
+      });
+      const { fetchImpl } = sseFetch([completionResponse('never used')]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm(), { hub });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      const send = core.sendMessage.bind(core);
+      core.sendMessage = async (to, kind, text) => {
+        order.push('send');
+        return send(to, kind, text);
+      };
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => order.length === 2);
+
+      expect(order).toEqual(['send', 'end']);
+      expect(core.sent).toEqual([
+        { to: seeded.ownerJid, kind: 'chat', text: TRANSIENT_FAILURE_REPLY },
+      ]);
     });
   });
 });

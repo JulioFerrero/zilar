@@ -3,33 +3,32 @@ import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { createXmppCore, type ChatMessage } from '@galena/xmpp-core';
-import { DEFAULT_LITELLM_BASE_URL, createLitellmAdminClient } from '../ai/litellm-client';
-import type { FetchLike } from '../ai/litellm-client';
-import { createKeyCipher } from '../connections/crypto';
-import { createDb } from '../db/client';
-import { createAgentGateway } from './gateway';
 import { PROVIDER_KEY_REJECTED_REPLY } from './reply';
-import { createEjabberdAdminClient } from '../xmpp/admin-client';
 import type { XmppConfig } from '../xmpp/config';
 import { localpartFor } from '../xmpp/provisioning';
 import { issueXmppToken } from '../xmpp/token';
 
 /**
- * The gated live check for the agent gateway (T-0034). Against the real
- * ejabberd, LiteLLM and Postgres — the way T-0033's integration test does it:
+ * The gated live check for streaming drafts (T-0041). Against the real
+ * ejabberd, LiteLLM and Postgres — the way T-0034's integration test does it:
  * your own branch server on another port, a made-up provider key, no
  * container restarts, and everything cleaned up.
  *
- * 1. Create a user and a connection with a made-up OpenAI key, then an AI.
- * 2. Start the gateway in-process.
+ * The branch server must run with `AGENT_GATEWAY_ENABLED=true` (plus the
+ * usual LiteLLM and key-cipher config): its own gateway answers the DM and
+ * publishes the draft events this test observes.
+ *
+ * 1. Create a user and a connection with a **made-up** OpenAI key, then an AI.
+ * 2. Open `/api/drafts/stream` as the owner (proves the endpoint's auth).
  * 3. As the owner (an xmpp-core client with the owner's token), send the AI
  *    a DM: "hello".
- * 4. Expect the AI's reply to be exactly the "provider rejected the API key"
- *    text. With a fake key, that proves the whole path: XMPP in, context,
- *    LiteLLM routing to OpenAI with the owner's key, the error mapped, XMPP
- *    out.
- * 5. Delete everything: the AI, the connection (the AI delete removes its
- *    model and key), and stop the gateway.
+ * 4. Expect both:
+ *    - the AI's reply in the DM is exactly the "provider rejected the API
+ *      key" text (XMPP in → streamed LiteLLM call → mapped error → XMPP out);
+ *    - an `end` event with `outcome: 'failed'` for that AI's `chatJid` on
+ *      the draft stream (the stream path and the endpoint's auth live).
+ * 5. Delete everything: the AI, the connection, and the test users if the
+ *    test support allows.
  *
  * Required env vars:
  *   GALENA_AGENT_INTEGRATION=1                  (turns the test on)
@@ -40,15 +39,11 @@ import { issueXmppToken } from '../xmpp/token';
  *   EJABBERD_API_URL=<url>                      (e.g. http://127.0.0.1:5280/api)
  *   EJABBERD_ADMIN_JID=<jid>                    (e.g. admin@galena.localhost)
  *   EJABBERD_ADMIN_PASSWORD=<password>
- *   LITELLM_MASTER_KEY=<key>                    (LiteLLM admin key)
- *   DATABASE_URL=<the same Postgres the server runs against>
- *   GALENA_KEY_ENCRYPTION_KEY=<the same key cipher the server runs with>
  *   GALENA_XMPP_JWT_SECRET=<the same JWT secret the server signs with>
  *
  * Optional:
  *   XMPP_DOMAIN       (default galena.localhost)
  *   XMPP_WS_URL       (default ws://127.0.0.1:5280/ws)
- *   LITELLM_BASE_URL  (default http://127.0.0.1:4000)
  *
  * A failure part way best-effort deletes whatever it created.
  */
@@ -122,6 +117,103 @@ function request(
   });
 }
 
+interface SseBlock {
+  event: string;
+  data: string;
+}
+
+interface DraftStream {
+  blocks: SseBlock[];
+  close: () => void;
+}
+
+// Opens the live draft stream. The request never ends on its own: the caller
+// closes it after the expected `end` arrives.
+function openDraftStream(baseUrl: string, token: string): Promise<DraftStream> {
+  const url = new URL(`${baseUrl}/api/drafts/stream`);
+  return new Promise((resolve, reject) => {
+    const stream: DraftStream = { blocks: [], close: () => undefined };
+    const req = http.request(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: `${url.pathname}${url.search}`,
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}`, accept: 'text/event-stream' },
+      },
+      (res) => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`draft stream answered ${res.statusCode ?? 0}, want 200`));
+          res.resume();
+          return;
+        }
+        let buffer = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk: string) => {
+          buffer += chunk;
+          for (;;) {
+            const end = buffer.indexOf('\n\n');
+            if (end < 0) {
+              break;
+            }
+            const block = buffer.slice(0, end);
+            buffer = buffer.slice(end + 2);
+            let event = '';
+            const data: string[] = [];
+            for (const line of block.split('\n')) {
+              if (line.startsWith('event:')) {
+                event = line.slice(6).trim();
+              } else if (line.startsWith('data:')) {
+                data.push(line.slice(5).trim());
+              }
+            }
+            if (event !== '') {
+              stream.blocks.push({ event, data: data.join('\n') });
+            }
+          }
+        });
+        stream.close = () => {
+          req.destroy();
+        };
+        resolve(stream);
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function waitForEnd(
+  stream: DraftStream,
+  chatJid: string,
+  timeoutMs: number,
+): Promise<Record<string, unknown>> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    for (const block of stream.blocks) {
+      if (block.event !== 'end') {
+        continue;
+      }
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(block.data) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      if (
+        typeof data['chatJid'] === 'string' &&
+        (data['chatJid'] as string).toLowerCase() === chatJid.toLowerCase()
+      ) {
+        return data;
+      }
+    }
+    if (Date.now() > deadline) {
+      throw new Error('timed out waiting for the draft end event');
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+}
+
 async function fileSize(path: string): Promise<number> {
   try {
     return (await stat(path)).size;
@@ -180,7 +272,7 @@ async function waitForReply(
 
 describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () => {
   it(
-    'owner DM in, provider-key rejection out',
+    'owner DM in, provider-key rejection out, failed end on the draft stream',
     { timeout: REPLY_TIMEOUT_MS + 60_000 },
     async () => {
       const baseUrl = requireEnv('GALENA_AIS_INTEGRATION_URL');
@@ -189,11 +281,6 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
       const email = requireEnv('GALENA_AIS_TEST_EMAIL');
       const domain = process.env['XMPP_DOMAIN'] ?? 'galena.localhost';
       const wsUrl = process.env['XMPP_WS_URL'] ?? 'ws://127.0.0.1:5280/ws';
-      const litellmBaseUrl = (process.env['LITELLM_BASE_URL'] ?? DEFAULT_LITELLM_BASE_URL).replace(
-        /\/+$/,
-        '',
-      );
-      const masterKey = requireEnv('LITELLM_MASTER_KEY');
       const xmppConfig: XmppConfig = {
         apiUrl: requireEnv('EJABBERD_API_URL').replace(/\/+$/, ''),
         adminJid: requireEnv('EJABBERD_ADMIN_JID'),
@@ -208,40 +295,7 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
       let connectionId: string | undefined;
       let aiId: string | undefined;
       let aiJid: string | undefined;
-      const directDb = createDb(requireEnv('DATABASE_URL'));
-      // The fake key can't produce a real tool call, so this only observes the
-      // request shape (tool names, never payloads) while the real request
-      // still goes out to LiteLLM untouched.
-      const toolNamesSeen: string[] = [];
-      const observingFetch: FetchLike = async (url, init) => {
-        try {
-          const payload = JSON.parse(String(init.body)) as {
-            tools?: Array<{ function?: { name?: string } }>;
-          };
-          for (const tool of payload.tools ?? []) {
-            if (typeof tool?.function?.name === 'string') {
-              toolNamesSeen.push(tool.function.name);
-            }
-          }
-        } catch {
-          // Not a chat payload; the real request still goes out below.
-        }
-        return fetch(url, init);
-      };
-      const gateway = createAgentGateway(
-        {
-          db: directDb.db,
-          xmpp: xmppConfig,
-          adminClient: createEjabberdAdminClient(xmppConfig),
-          litellm: createLitellmAdminClient({ baseUrl: litellmBaseUrl, masterKey }),
-          cipher: createKeyCipher(requireEnv('GALENA_KEY_ENCRYPTION_KEY')),
-          logger: { info: () => undefined, warn: () => undefined },
-          litellmBaseUrl,
-          masterKeyForRedaction: masterKey,
-          fetchImpl: observingFetch,
-        },
-        { enabled: true },
-      );
+      let drafts: DraftStream | undefined;
       const received: ChatMessage[] = [];
 
       try {
@@ -297,9 +351,13 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
         aiJid = created.jid;
         expect(JSON.stringify(createResponse.body)).not.toContain('sk-');
 
-        // 3. Start the gateway in-process: it logs the AI in over XMPP.
-        await gateway.start();
-        expect(gateway.aiIds()).toContain(aiId);
+        // 3. Open the draft stream as the owner, before the turn starts. A
+        // 200 here proves the endpoint's auth live.
+        drafts = await openDraftStream(baseUrl, token);
+
+        // Give the branch server's gateway a moment to log the new AI in.
+        // (If the DM beats it, ejabberd's offline storage delivers on login.)
+        await new Promise((resolve) => setTimeout(resolve, 3000));
 
         // 4. As the owner, send the AI a DM.
         const ownerToken = async () => {
@@ -315,19 +373,21 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
           await owned.sendMessage(aiJid, 'chat', 'hello');
 
           // 5. The AI's reply is exactly the provider-key rejection text:
-          //    the fake key proves XMPP in → context → LiteLLM routing with
-          //    the owner's key → mapped error → XMPP out.
+          //    the fake key proves XMPP in → streamed LiteLLM call →
+          //    mapped error → XMPP out.
           const reply = await waitForReply(received, aiJid.toLowerCase(), REPLY_TIMEOUT_MS);
           expect(reply.body).toBe(PROVIDER_KEY_REJECTED_REPLY);
           expect(JSON.stringify(reply)).not.toContain('sk-');
-          // The turn offered exactly the two persona tools with auto choice.
-          expect(toolNamesSeen).toContain('update_persona');
-          expect(toolNamesSeen).toContain('revert_persona');
+
+          // 6. The draft stream closes the turn with a failed end for this AI.
+          const end = await waitForEnd(drafts, aiJid, REPLY_TIMEOUT_MS);
+          expect(end['outcome']).toBe('failed');
+          expect(JSON.stringify(end)).not.toContain('sk-');
         } finally {
           await owned.disconnect().catch(() => undefined);
         }
 
-        // 6. Delete the AI (removes its model and key) and the connection.
+        // 7. Delete the AI (removes its model and key) and the connection.
         const deleteResponse = await request(baseUrl, `/api/ais/${aiId}`, {
           method: 'DELETE',
           headers: bearer(token),
@@ -342,7 +402,7 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
         connectionId = undefined;
       } finally {
         // Best-effort cleanup so a failed run leaves nothing behind.
-        await gateway.stop().catch(() => undefined);
+        drafts?.close();
         if (token !== undefined) {
           const headers = bearer(token);
           if (aiId !== undefined) {
@@ -357,7 +417,6 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
             }).catch(() => undefined);
           }
         }
-        await directDb.close();
       }
     },
   );

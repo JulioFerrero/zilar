@@ -11,6 +11,7 @@ import type { Auth } from './auth/auth';
 import { createAuthRoutes } from './auth/routes';
 import { createChatsRoutes } from './chats/routes';
 import type { ServerConfig } from './config';
+import { createDraftsRoutes } from './drafts/routes';
 import { createKeyCipher, type KeyCipher } from './connections/crypto';
 import type { ProviderProbe } from './connections/probe';
 import { createConnectionsRoutes, type ConnectionsLogger } from './connections/routes';
@@ -104,6 +105,7 @@ export function createApp({
   app.route('/api', createContactsRoutes({ auth, db, config }));
   app.route('/api', createGroupsRoutes({ auth, db, config, adminClient, logger }));
   app.route('/api', createChatsRoutes({ auth, db, config }));
+  app.route('/api', createDraftsRoutes({ auth }));
   app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));
   app.route(
     '/api',

@@ -8,6 +8,7 @@ import { loadServerConfigOrExit } from './config';
 import { createKeyCipher } from './connections/crypto';
 import { createDb } from './db/client';
 import { runMigrations } from './db/migrate';
+import { sharedDraftHub } from './drafts/hub';
 import { createLogger } from './logger';
 import { createEjabberdAdminClient } from './xmpp/admin-client';
 
@@ -53,6 +54,9 @@ const gateway = createAgentGateway(
     ...(config.LITELLM_MASTER_KEY === undefined
       ? {}
       : { masterKeyForRedaction: config.LITELLM_MASTER_KEY }),
+    // The shared in-process hub: the gateway publishes drafts here and the
+    // `/api/drafts/stream` route (mounted in app.ts) streams them out.
+    drafts: { hub: sharedDraftHub },
   },
   { enabled: config.AGENT_GATEWAY_ENABLED },
 );
