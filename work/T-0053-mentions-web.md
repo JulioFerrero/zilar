@@ -1,7 +1,7 @@
 ---
 id: T-0053
 title: "@mentions in groups (web): XEP-0372 references in xmpp-core, an @ picker in the composer, highlighted mentions in bubbles"
-status: review
+status: merged
 milestone: M2
 branch: task/T-0053-mentions-web
 model: opencode-go/deepseek-v4.1-flash
@@ -348,3 +348,14 @@ pnpm build
 `PREREVIEW.md` is the lead's pre-review artifact and was left untracked.
 
 ## Review (written by Claude)
+
+**Verdict: approved, merged.**
+
+- Scope exceptions granted by the lead: `packages/xmpp-core/src/client.ts` and `core.test.ts` (the `sendMessage` wire-up, which the worker correctly blocked on), and `apps/web/src/components/MessageList.tsx` (passing `meJid` through).
+- The round 1 pre-review had two should-fixes: mentions leaking across chats when you switch without sending, and the me-mention check using the localpart only. Both were fixed in round 2 with tests, plus send-side range validation and the cap. The remaining nits are accepted: case normalization is latent, member names can go stale until a reload, the echo signature ignores mentions, and the backspace test asserts only the text.
+- Offsets: UTF-16 in the app, code points on the wire, converted in `buildMessage` and the parse. Emoji round trips are tested.
+- Live check in Julio's Helium (branch on :5174, live server), in his "Galena amigos" group, with nothing sent:
+  - `@` opens the picker with the real members;
+  - `an` + Tab inserts `@Ana (test) `;
+  - backspace removes the whole mention;
+  - after a hard reload the history loads (8 bubbles, no "Couldn't load").
