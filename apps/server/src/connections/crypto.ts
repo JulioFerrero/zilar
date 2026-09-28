@@ -14,7 +14,7 @@ import {
 //   v1:<salt>:<iv>:<ciphertext>:<tag>
 //
 // where each part is base64url. The master key never leaves the server and is
-// derived into a per-blob AES-256-GCM key with scrypt and a random salt, so a
+// derived into a per-blob AES-256-GCM key with HKDF and a random salt, so a
 // later scheme change can bump the version without rewriting old rows.
 //
 // AES-256-GCM authenticates ciphertext, IV and tag together: any tampering with

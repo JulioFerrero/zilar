@@ -1,16 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createApp } from '../app';
 import { providerConnections } from '../db/schema';
-import {
-  bootstrapUser,
-  createTestContext,
-  TEST_BASE_URL,
-  testApp,
-  type TestContext,
-} from '../test-support';
+import { bootstrapUser, createTestContext, TEST_BASE_URL, type TestContext } from '../test-support';
 import { createKeyCipher } from './crypto';
 import type { ProbeOutcome, ProviderProbe } from './probe';
 import type { ProviderId } from './providers';
-import { createConnectionsRoutes } from './routes';
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
 const KEY = 'sk-test-provider-key-1234567890';
@@ -56,18 +50,25 @@ describe('connections routes', () => {
   });
 
   function mount(probe: ProviderProbe) {
-    const app = testApp(context);
-    app.route(
-      '/api',
-      createConnectionsRoutes({
-        auth: context.auth,
-        db: context.db,
-        logger: silentLogger(),
-        cipher: createKeyCipher(MASTER_KEY),
-        probe,
-      }),
-    );
-    return app;
+    return createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+      connections: { cipher: createKeyCipher(MASTER_KEY), probe },
+    });
+  }
+
+  // The real app shape with no master key configured: routes still mount.
+  function mountWithoutCipher() {
+    return createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+    });
   }
 
   async function createFor(app: ReturnType<typeof mount>, cookie: string, key = KEY) {
@@ -201,17 +202,14 @@ describe('connections routes', () => {
     const probe = new FakeProbe();
     probe.fail = true;
     const logger = captureLogger();
-    const app = testApp(context);
-    app.route(
-      '/api',
-      createConnectionsRoutes({
-        auth: context.auth,
-        db: context.db,
-        logger,
-        cipher: createKeyCipher(MASTER_KEY),
-        probe,
-      }),
-    );
+    const app = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+      connections: { cipher: createKeyCipher(MASTER_KEY), probe, logger },
+    });
     const user = await bootstrapUser(context, app, `boom${testCounter}@example.com`);
 
     const created = await createFor(app, user.cookie);
@@ -319,16 +317,7 @@ describe('connections routes', () => {
   });
 
   it('returns 503 connections_unavailable on every route when no cipher is configured', async () => {
-    const app = testApp(context);
-    app.route(
-      '/api',
-      createConnectionsRoutes({
-        auth: context.auth,
-        db: context.db,
-        logger: silentLogger(),
-        probe: new FakeProbe(),
-      }),
-    );
+    const app = mountWithoutCipher();
     const user = await bootstrapUser(context, app, `nocipher${testCounter}@example.com`);
 
     const list = await app.request(`${TEST_BASE_URL}/api/connections`, {
@@ -360,7 +349,3 @@ describe('connections routes', () => {
     expect(remove.status).toBe(503);
   });
 });
-
-function silentLogger(): { warn: () => void } {
-  return { warn: () => undefined };
-}

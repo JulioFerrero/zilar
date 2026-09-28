@@ -260,6 +260,85 @@ test is ready to run once the stack is up.
   link, because the settings entry point lives in `ChatList`/`ChatShell`, which
   are outside my Allowed files.
 
+### Round 2
+
+Fixes for the six review findings. I audited the interrupted "WIP round 2" commit
+edit by edit. The HKDF switch, the key trim, the 429 mapping, the always-mount,
+the Back button and the two-step Remove were all correct and are kept. Two things
+were wrong or missing and are fixed here: the always-mounted `/api/connections`
+route **shadowed the test-injected routes** (10 `routes.test.ts` tests returned
+503), and none of the new navigation/error/remove tests existed yet.
+
+**Finding 1 — reachable from the app, with a way back.** Kept the `Connections`
+`menuitem` in `ChatList.tsx` (between "Invite a friend" and "Sign out") and the
+arrow Back button (`aria-label="Back"`) in `ConnectionsPage.tsx`. Added both named
+tests: the menu item navigates to `/settings/connections` and the page renders, and
+Back returns to the chat list. They live in `ConnectionsPage.test.tsx` because the
+task widened access by exactly one file (`ChatList.tsx`); `ChatList.test.tsx` was
+not touched. The original open question about no in-app nav link is now resolved.
+
+**Finding 2 — unconfigured server gives 503, not a bare 404.** `app.ts` always
+mounts `createConnectionsRoutes`; `routes.ts` gained `requireCipher()`, which
+(after `requireSession`) throws `HttpError(503, 'connections_unavailable',
+'Provider connections are not configured on this server')` on every route. Server
+test asserts the 503 and code on list/create/test/delete through the real
+`createApp`; web test asserts the page shows that message in its error state.
+
+**Finding 3 — HKDF instead of scrypt.** `deriveKey` uses
+`hkdfSync('sha256', masterKey, salt, 'galena/provider-key/v1', 32)` wrapped in
+`Buffer.from`; the `v1` envelope is unchanged and all 8 crypto tests still pass.
+Fixed the stale "scrypt" line in the file comment.
+
+**Finding 4 — trim the key at the API boundary.** `key` is now
+`z.string().trim().min(1).max(16384)`. Test creates with `"  fake-key\n"` and
+asserts the stored blob decrypts to `"fake-key"`.
+
+**Finding 5 — two-step Remove.** The trash button swaps the row's actions for a
+danger `Remove` plus `Cancel`; `confirmRemove` catches failures and shows the
+server's message on that row in `text-danger` while keeping the row. No
+`window.confirm`. Tests: nothing is sent until the confirm (fetch stays at one
+call), and a failed DELETE shows the message and keeps the row.
+
+**Finding 6 — 429 means rate-limited, not unexpected.** `probe.ts` maps 429 to
+"The provider is rate-limiting this key. Try again in a minute." and
+`probe.test.ts` covers it.
+
+**One app.ts change beyond the WIP mount (flagged).** Because the real app now
+always owns `/api/connections`, a test that called `testApp` and then added its
+own handler got the app's 503 handler first. `routes.test.ts` now builds the app
+with `createApp` and injects the fixed master key, fake probe and a capturing
+logger through a new optional `connections` dependency on `AppDependencies` —
+the same injection pattern already used for `voice`/`voiceMaxBytes`. This keeps
+every route test running against the real app assembly and leaves
+`test-support.ts` (outside my Allowed files) untouched.
+
+**Files touched in round 2:** `apps/server/src/app.ts`,
+`apps/server/src/connections/crypto.ts` (comment only),
+`apps/server/src/connections/routes.test.ts`,
+`apps/web/src/routes/ConnectionsPage.test.tsx`. The WIP commit already carried the
+changes to `routes.ts`, `probe.ts`, `probe.test.ts`, `ChatList.tsx`,
+`ConnectionsPage.tsx` and the integration-test env-var comment (finding 2, 3, 4, 5,
+6, 1); those were verified and kept.
+
+**Commands run (real results, round 2)**
+- `pnpm install` — `Already up to date`, `Done in 815ms` (exit 0).
+- `pnpm format:check` — `All matched files use Prettier code style!` (exit 0).
+- `pnpm lint` — `Found 0 warnings and 0 errors.` (303 files, exit 0).
+- `pnpm typecheck` — `Tasks: 8 successful, 8 total` (web and server ran
+  uncached; exit 0).
+- `pnpm exec turbo test --force` — `Tasks: 8 successful, 8 total`, `Cached: 0`;
+  server `26 passed | 3 skipped` files and `235 passed | 4 skipped` tests.
+- `pnpm --filter @galena/web test` — `19 passed` files, `95 passed` tests.
+- `pnpm build` — `Tasks: 2 successful, 2 total` (web: 2325 modules, built).
+- `pnpm --filter @galena/server exec vitest run src/connections` — 3 passed
+  files, 1 skipped; `27 passed | 1 skipped` tests.
+- `pnpm --filter @galena/web exec vitest run src/routes/ConnectionsPage.test.tsx`
+  — `10 passed`.
+
+**Still not run live.** As instructed, I did not start a server or run
+`GALENA_CONNECTIONS_INTEGRATION=1`; the lead runs that after this round. The
+integration test's header now lists the exact env vars it needs.
+
 ## Review (written by Claude)
 
 **Verdict:** Round 1: changes requested
