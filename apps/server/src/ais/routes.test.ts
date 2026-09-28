@@ -114,6 +114,7 @@ class FakeLitellm implements LitellmAdminClient {
 
   updateKey(input: UpdateVirtualKeyInput): Promise<VirtualKeyInfo> {
     this.updated.push(input);
+    this.order.push('updateKey');
     if (this.failUpdate) {
       return Promise.reject(new Error('gateway down'));
     }
@@ -846,5 +847,189 @@ describe('AI routes', () => {
       headers: { cookie: user.cookie },
     });
     expect([patch.status, remove.status]).toEqual([503, 503]);
+  });
+
+  it('switches the model, replacing the LiteLLM model behind the same name', async () => {
+    const litellm = new FakeLitellm();
+    const app = mount({ litellm });
+    const user = await bootstrapUser(context, app, `modelswitch${testCounter}@example.com`);
+    const connectionId = await addConnection(user.id);
+    const created = await postAi(app, user.cookie, createBody(connectionId));
+    const id = ((await created.json()) as { id: string }).id;
+    const keyRows = await context.db.select().from(llmVirtualKeys);
+    const oldModelId = keyRows[0]!.litellmModelId;
+    const keyId = keyRows[0]!.litellmKeyId;
+    const callsBefore = litellm.addedModels.length + litellm.updated.length;
+    litellm.order.length = 0;
+
+    const response = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      method: 'PATCH',
+      headers: { cookie: user.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-4o' }),
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { model: string; providerConnectionId: string };
+    expect(body.model).toBe('gpt-4o');
+    expect(body.providerConnectionId).toBe(connectionId);
+    expect(JSON.stringify(body)).not.toContain('sk-virtual');
+
+    // Delete old → add new → re-assert the allowlist, all under `ai-<id>`.
+    expect(litellm.order).toEqual(['deleteModel', 'addModel', 'updateKey']);
+    expect(litellm.deletedModels).toEqual([oldModelId]);
+    expect(callsBefore).toBeGreaterThan(0);
+    expect(litellm.addedModels.at(-1)).toMatchObject({
+      modelName: `ai-${id}`,
+      litellmModel: 'openai/gpt-4o',
+      apiKey: PROVIDER_KEY,
+    });
+    expect(litellm.updated).toEqual([{ key: keyId, models: [`ai-${id}`] }]);
+
+    const [aiRow] = await context.db.select().from(ais);
+    expect(aiRow).toMatchObject({ model: 'gpt-4o', providerConnectionId: connectionId });
+    const [keyAfter] = await context.db.select().from(llmVirtualKeys);
+    expect(keyAfter!.litellmModelId).not.toBe(oldModelId);
+    expect(keyAfter!.litellmModelId).not.toBeNull();
+  });
+
+  it('switches the provider connection together with the model', async () => {
+    const litellm = new FakeLitellm();
+    const app = mount({ litellm });
+    const user = await bootstrapUser(context, app, `modelmove${testCounter}@example.com`);
+    const openaiConnection = await addConnection(user.id, { provider: 'openai' });
+    const anthropicConnection = await addConnection(user.id, { provider: 'anthropic' });
+    const created = await postAi(app, user.cookie, createBody(openaiConnection));
+    const id = ((await created.json()) as { id: string }).id;
+
+    const response = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      method: 'PATCH',
+      headers: { cookie: user.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ providerConnectionId: anthropicConnection, model: 'claude-sonnet-5' }),
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { model: string; providerConnectionId: string };
+    expect(body).toMatchObject({
+      model: 'claude-sonnet-5',
+      providerConnectionId: anthropicConnection,
+    });
+    expect(litellm.addedModels.at(-1)).toMatchObject({
+      modelName: `ai-${id}`,
+      litellmModel: 'anthropic/claude-sonnet-5',
+    });
+    const [aiRow] = await context.db.select().from(ais);
+    expect(aiRow).toMatchObject({
+      model: 'claude-sonnet-5',
+      providerConnectionId: anthropicConnection,
+    });
+  });
+
+  it('rejects a new connection without a model, a foreign connection and a bad model', async () => {
+    const litellm = new FakeLitellm();
+    const app = mount({ litellm });
+    const alice = await bootstrapUser(context, app, `modelowner${testCounter}@example.com`);
+    const bob = await bootstrapUser(context, app, `modelthief${testCounter}@example.com`);
+    const connectionId = await addConnection(alice.id);
+    const bobConnection = await addConnection(bob.id);
+    const githubConnection = await addConnection(alice.id, { provider: 'github' });
+    const created = await postAi(app, alice.cookie, createBody(connectionId));
+    const id = ((await created.json()) as { id: string }).id;
+    const callsBefore =
+      litellm.addedModels.length + litellm.updated.length + litellm.deletedModels.length;
+
+    async function patch(body: unknown) {
+      return app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+        method: 'PATCH',
+        headers: { cookie: alice.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    }
+
+    // A new provider needs an explicit model.
+    const missingModel = await patch({ providerConnectionId: connectionId });
+    expect(missingModel.status).toBe(400);
+
+    // Someone else's connection answers 404, never hinting it exists.
+    const foreign = await patch({ providerConnectionId: bobConnection, model: 'gpt-4o' });
+    expect(foreign.status).toBe(404);
+
+    // A model on a non-LLM connection is rejected, like at create time.
+    const notLlm = await patch({ providerConnectionId: githubConnection, model: 'gpt-4o' });
+    expect(notLlm.status).toBe(400);
+    expect(((await notLlm.json()) as { error: { code: string } }).error.code).toBe(
+      'connection_not_llm',
+    );
+
+    // An empty model is rejected by the schema.
+    const empty = await patch({ model: '  ' });
+    expect(empty.status).toBe(400);
+
+    // An unknown field is still rejected next to the new ones.
+    const unknown = await patch({ model: 'gpt-4o', role: 'boss' });
+    expect(unknown.status).toBe(400);
+
+    // None of the failures touched LiteLLM or the row.
+    expect(litellm.addedModels.length + litellm.updated.length + litellm.deletedModels.length).toBe(
+      callsBefore,
+    );
+    const [aiRow] = await context.db.select().from(ais);
+    expect(aiRow).toMatchObject({ model: 'gpt-4o-mini', providerConnectionId: connectionId });
+  });
+
+  it('leaves LiteLLM alone when the model is unchanged', async () => {
+    const litellm = new FakeLitellm();
+    const app = mount({ litellm });
+    const user = await bootstrapUser(context, app, `modelnoop${testCounter}@example.com`);
+    const connectionId = await addConnection(user.id);
+    const created = await postAi(app, user.cookie, createBody(connectionId));
+    const id = ((await created.json()) as { id: string }).id;
+    const callsBefore =
+      litellm.addedModels.length + litellm.updated.length + litellm.deletedModels.length;
+
+    const response = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      method: 'PATCH',
+      headers: { cookie: user.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-4o-mini', name: 'Same-1' }),
+    });
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { name: string }).name).toBe('Same-1');
+    expect(litellm.addedModels.length + litellm.updated.length + litellm.deletedModels.length).toBe(
+      callsBefore,
+    );
+  });
+
+  it('answers 502 and keeps a working AI when the model swap fails halfway', async () => {
+    const litellm = new FakeLitellm();
+    const logger = captureLogger();
+    const app = mount({ litellm, logger });
+    const user = await bootstrapUser(context, app, `modelswapfail${testCounter}@example.com`);
+    const connectionId = await addConnection(user.id);
+    const created = await postAi(app, user.cookie, createBody(connectionId));
+    const id = ((await created.json()) as { id: string }).id;
+    const keyRows = await context.db.select().from(llmVirtualKeys);
+    const oldModelId = keyRows[0]!.litellmModelId;
+    litellm.failAddModel = true;
+
+    const response = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      method: 'PATCH',
+      headers: { cookie: user.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-4o' }),
+    });
+    expect(response.status).toBe(502);
+    const text = await response.text();
+    expect((JSON.parse(text) as { error: { code: string } }).error.code).toBe('ai_update_failed');
+    expect(text).not.toContain(PROVIDER_KEY);
+
+    // The old model entry was deleted, so the stale id is cleared but the AI
+    // row still points at the old model and connection: the next gateway turn
+    // re-registers it.
+    expect(litellm.deletedModels).toEqual([oldModelId]);
+    const [aiRow] = await context.db.select().from(ais);
+    expect(aiRow).toMatchObject({ model: 'gpt-4o-mini', providerConnectionId: connectionId });
+    const [keyAfter] = await context.db.select().from(llmVirtualKeys);
+    expect(keyAfter!.litellmModelId).toBeNull();
+
+    // No key material reaches the log either.
+    const logged = loggedText(logger.calls);
+    expect(logged).not.toContain(PROVIDER_KEY);
+    expect(logged).not.toContain('sk-virtual');
   });
 });

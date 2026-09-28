@@ -60,14 +60,20 @@ const CreateAiSchema = z
   .strict();
 
 // PATCH may carry any subset; the service decides what actually changes. Only
-// these three fields are accepted, and an unknown one is a 400.
+// these fields are accepted, and an unknown one is a 400. A new provider
+// connection needs an explicit model, so the connection alone is a 400.
 const UpdateAiSchema = z
   .object({
     name: z.string().trim().min(1).max(64).optional(),
     persona: z.string().trim().max(4000).optional(),
     limits: LimitsSchema.optional(),
+    model: z.string().trim().min(1).max(256).optional(),
+    providerConnectionId: z.string().trim().min(1).max(128).optional(),
   })
-  .strict();
+  .strict()
+  .refine((value) => value.providerConnectionId === undefined || value.model !== undefined, {
+    error: 'A new provider connection needs an explicit model',
+  });
 
 export function createAisRoutes({
   auth,
@@ -145,6 +151,10 @@ export function createAisRoutes({
       ...(parsed.data.name === undefined ? {} : { name: parsed.data.name }),
       ...(parsed.data.persona === undefined ? {} : { persona: parsed.data.persona }),
       ...(parsed.data.limits === undefined ? {} : { limits: parsed.data.limits as AiLimits }),
+      ...(parsed.data.model === undefined ? {} : { model: parsed.data.model }),
+      ...(parsed.data.providerConnectionId === undefined
+        ? {}
+        : { providerConnectionId: parsed.data.providerConnectionId }),
     });
     return c.json(ai);
   });

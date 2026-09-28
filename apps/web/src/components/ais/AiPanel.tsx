@@ -2,14 +2,25 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { ChatSummary } from '@galena/chat-core';
 import { X } from 'lucide-react';
-import { deleteAi, listAis, updateAi, type PublicAi } from '@/lib/api';
+import {
+  deleteAi,
+  listAis,
+  listConnections,
+  updateAi,
+  type Connection,
+  type PublicAi,
+  type UpdateAiInput,
+} from '@/lib/api';
 import { AiBadge } from '@/components/AiBadge';
 import { Avatar } from '@/components/Avatar';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Button, FieldError } from './AiPageShell';
+import { ConnectionPicker } from './ConnectionPicker';
 import { describeAiError } from './errors';
 import { LimitsFields } from './LimitsFields';
 import { validateLimits } from './limits';
+import { ModelPicker } from './ModelPicker';
+import { defaultModelFor, modelSuggestionsFor } from './models';
 import { buildPatch } from './aiForm';
 
 type PanelStatus = 'loading' | 'ready' | 'missing' | 'error';
@@ -30,6 +41,9 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
   const [persona, setPersona] = useState('');
   const [day, setDay] = useState('');
   const [month, setMonth] = useState('');
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
+  const [modelDraft, setModelDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -54,6 +68,8 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
         setPersona(found.persona);
         setDay(String(found.limits.perDayUsd));
         setMonth(String(found.limits.perMonthUsd));
+        setSelectedConnectionId(found.providerConnectionId);
+        setModelDraft(found.model);
         setStatus('ready');
       })
       .catch((error: unknown) => {
@@ -68,8 +84,35 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     };
   }, [chat.id]);
 
+  useEffect(() => {
+    let active = true;
+    listConnections()
+      .then((list) => {
+        if (!active) {
+          return;
+        }
+        setConnections(list.filter((connection) => connection.status === 'active'));
+      })
+      .catch(() => {
+        // The model picker still works without connections: it just offers no
+        // provider suggestions, and the connection picker stays hidden.
+        if (active) {
+          setConnections([]);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const usableConnections = connections;
+  const effectiveConnection =
+    selectedConnectionId === null
+      ? null
+      : (usableConnections.find((connection) => connection.id === selectedConnectionId) ?? null);
+
   const limits = validateLimits(day, month);
-  const patch =
+  const basePatch =
     ai === null
       ? null
       : buildPatch({
@@ -80,12 +123,48 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
           limits: limits.limits,
           originalLimits: ai.limits,
         });
+  // The model and connection diffs ride the same patch: the server needs the
+  // model whenever the connection changes, so a connection change always
+  // carries both, while a model-only change carries just the model.
+  const modelTrimmed = modelDraft.trim();
+  const modelChanged = ai !== null && modelTrimmed !== '' && modelTrimmed !== ai.model;
+  const connectionChanged =
+    ai !== null &&
+    selectedConnectionId !== null &&
+    selectedConnectionId !== ai.providerConnectionId;
+  let patch: UpdateAiInput | null = basePatch;
+  if (connectionChanged || modelChanged) {
+    patch = {
+      ...patch,
+      model: modelTrimmed,
+      ...(connectionChanged && selectedConnectionId !== null
+        ? { providerConnectionId: selectedConnectionId }
+        : {}),
+    };
+  }
+  const switchingModel = patch !== null && ('model' in patch || 'providerConnectionId' in patch);
   const canSave =
-    ai !== null && name.trim() !== '' && limits.limits !== null && patch !== null && !busy;
+    ai !== null &&
+    name.trim() !== '' &&
+    modelTrimmed !== '' &&
+    limits.limits !== null &&
+    patch !== null &&
+    !busy;
 
   const markEdited = (): void => {
     setSaved(false);
     setSaveError('');
+  };
+
+  // Switching provider re-prefills that provider's default model, as in the
+  // create dialog: the old model name rarely fits the new provider.
+  const chooseConnection = (id: string): void => {
+    setSelectedConnectionId(id);
+    const next = usableConnections.find((connection) => connection.id === id) ?? null;
+    if (next !== null) {
+      setModelDraft(defaultModelFor(next.provider));
+    }
+    markEdited();
   };
 
   const save = async (): Promise<void> => {
@@ -101,6 +180,8 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
       setPersona(updated.persona);
       setDay(String(updated.limits.perDayUsd));
       setMonth(String(updated.limits.perMonthUsd));
+      setSelectedConnectionId(updated.providerConnectionId);
+      setModelDraft(updated.model);
       setSaved(true);
       storeApi.setState((state) => ({
         chats: state.chats.map((chatItem) =>
@@ -109,6 +190,9 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
       }));
     } catch (error) {
       setSaveError(describeAiError(error, 'Could not update the AI').message);
+      // Keep the old values shown: the failed model and connection never apply.
+      setSelectedConnectionId(ai.providerConnectionId);
+      setModelDraft(ai.model);
     } finally {
       setBusy(false);
     }
@@ -209,15 +293,31 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
                 />
               </label>
 
-              <div className="flex flex-col gap-1">
-                <span className="text-[14px] font-medium">Model</span>
-                <p className="rounded-lg border border-divider bg-muted px-3 py-2 text-[15px]">
-                  {ai.model}
-                </p>
-                <p className="text-[13px] text-muted-foreground">
-                  The model is set when the AI is created and can&apos;t be changed here yet.
-                </p>
-              </div>
+              {usableConnections.length > 1 && (
+                <div className="flex flex-col gap-2">
+                  <span className="text-[14px] font-medium">Provider</span>
+                  <ConnectionPicker
+                    connections={usableConnections}
+                    value={selectedConnectionId}
+                    onChange={chooseConnection}
+                  />
+                </div>
+              )}
+
+              <ModelPicker
+                provider={effectiveConnection?.provider ?? ''}
+                suggestions={
+                  effectiveConnection === null
+                    ? []
+                    : modelSuggestionsFor(effectiveConnection.provider)
+                }
+                value={modelDraft}
+                onChange={(next) => {
+                  setModelDraft(next);
+                  markEdited();
+                }}
+                inputId="ai-panel-model"
+              />
 
               <LimitsFields
                 day={day}
@@ -303,7 +403,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
               disabled={!canSave}
               onClick={() => void save()}
             >
-              {busy ? 'Saving…' : 'Save'}
+              {busy ? (switchingModel ? 'Switching model…' : 'Saving…') : 'Save'}
             </Button>
           </footer>
         )}
