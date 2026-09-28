@@ -1,7 +1,7 @@
 ---
 id: T-0041
 title: Server — stream AI reply drafts over SSE to the owner while the model writes (plan §6.4 "later"); the final message still goes through XMPP
-status: review
+status: merged
 milestone: M2
 branch: task/T-0041-streaming-replies-server
 model: opencode-go/muse-spark-1.3-contributor
@@ -312,3 +312,9 @@ The gated live integration test was not re-run (these fixes touch nothing on
 its path — unit-covered only); the live result stands.
 
 ## Review (written by Claude)
+
+**Approved and merged** (f46e262 + 27c94bc). Muse pre-review twice: first round found one should-fix (pre-turn `end:'failed'` published before the failure DM) plus two nits (residual stream buffer, real-timer burst test); all three fixed with tests in 27c94bc. Second round: approve.
+
+- Contract (`drafts/events.ts`), hub throttle/flush-before-end, owner-only keying and the SSE route (heartbeat, unsubscribe in `finally`, 401) match the spec. `onDelta` only ever sees `content`, never tool arguments; every error path is redacted.
+- Deferred to T-0043 (client side): the last `draft` is untrimmed while the DM is trimmed, so the client must compare/render trimmed text to avoid a one-space flicker when the XMPP message replaces the draft. When the model talks before a tool call, drafts can restart once (cumulative text shrinks); the client simply repaints.
+- Rejected nit: SSE lines with leading whitespace are not `data:` fields per the SSE spec, so ignoring them is correct.
