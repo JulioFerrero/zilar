@@ -1,7 +1,7 @@
 ---
 id: T-0033
 title: Register each AI's private model in LiteLLM (owner's key stays in the gateway) + list AIs in /api/chats
-status: review
+status: changes-requested
 milestone: M2
 branch: task/T-0033-ai-models-litellm
 model: opencode-go/deepseek-v4.1-flash
@@ -307,3 +307,44 @@ probe key and removes the AI, any orphan model and the connection.
 
 ## Review (written by Claude)
 
+
+### Round 1: changes requested
+
+Good work. The design is right:
+- the allowlist is exactly `['ai-<id>']`;
+- `addModel` runs before `generateKey`;
+- create stays all-or-nothing and delete stays resumable, both now including the model;
+- the provider key is redacted on every `addModel` error path, and the echo test proves it;
+- `/api/chats` is owner-scoped.
+
+A Muse pre-review (`PREREVIEW.md`, not committed) re-ran every check: 279 server tests passed, with 6 gated tests skipped. The lead verified each claim below in the code.
+
+**Must fix:**
+1. **The "no key in the logs" assertions on the failure paths prove nothing.**
+   - Where: `ais/routes.test.ts`, the key-failure and model-failure rollback tests, around lines 539 and 570.
+   - Why: `JSON.stringify(logger.calls)` turns an `Error` into `{}`, so `err.message` is never checked.
+   - Fix: assert on each call's `(fields.err as Error).message` (and `.stack`), or log through the real pino test logger the success path already uses.
+   - Prove the assertion bites: temporarily put the key into a thrown message and watch the test fail, then revert. Mention that in the Report.
+2. **`ensureAiModel` isn't safe when called twice at once.**
+   - T-0034 will call it before a first turn, and two messages can arrive together.
+   - Today both calls see `litellm_model_id === null`, both register `ai-<id>`, and one model is orphaned forever.
+   - Fix:
+     - serialize per AI, e.g. a Postgres advisory transaction lock keyed by the AI id, then **re-read** `litellm_model_id` after taking the lock;
+     - also reconcile by name: if LiteLLM already has a model named `ai-<id>` that isn't the stored one, delete the stray.
+   - Test: two concurrent calls lead to exactly one `addModel` and one stored id.
+3. **`revokeKey` must treat an already-deleted key as success, the way `deleteModel` does.**
+   - Otherwise, a crash between a successful revoke and clearing `litellm_key_id` makes every later delete retry fail with 502 forever.
+   - Check the real LiteLLM response for deleting an already-deleted key against `127.0.0.1:4000` (create a probe key, delete it twice), and write down what it returns.
+   - Match exactly that case. Any other error must still fail.
+   - Add a unit test for it.
+4. **Prove `updateKey({ models })` against the real LiteLLM.**
+   - Extend the gated integration test to cover the backfill path:
+     - null out `litellm_model_id` on a test AI;
+     - call `ensureAiModel`;
+     - re-read `/key/info`, and assert the allowlist is exactly `['ai-<id>']` and that the model exists.
+   - Run it and report the real result. The same rules apply as before: a made-up key only, everything cleaned up, no container restarts.
+
+**Accepted, no change:**
+- The 6-line `addModel`/`deleteModel` fake in `apps/server/src/ai/routes.test.ts` is blessed. The interface change forces it.
+- `ensureAiModel` has no owner check. That's by design: it's an internal gateway call keyed by the AI's own id, not by a request. **T-0034 must call it only with an AI id it resolved itself**, never with an id taken from a message. That goes in the T-0034 spec.
+- The lead clicks "Open chat" through live at the final review.
