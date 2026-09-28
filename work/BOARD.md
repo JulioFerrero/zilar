@@ -10,18 +10,17 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | [T-0048](T-0048-mobile-redesign.md) | Mobile redesign (D24): dark tokens, Geist, depth primitives, chat list and chat screen | in progress | deepseek-v4.1-flash | T-0047 | Own simulator + Metro 8082; image budget ~20. |
 | [T-0049](T-0049-ai-markdown-web.md) | Web renders Markdown in AI replies (safe subset, streaming), plain previews in the list | in progress | deepseek-v4.1-flash | T-0047 | Deps: react-markdown, remark-gfm. |
+| [T-0050](T-0050-gateway-resource-and-read-markers.md) | Gateway: fixed XMPP resource per AI (newest wins, old stands down) + read markers when the AI takes a message | in progress | muse-spark-1.3 | T-0034 | Touches xmpp-core. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
 
 - Web: Retry on the chat-list error bar briefly swaps an already-loaded list for skeletons; keep the list visible during retry (T-0042 nit). Mobile has the same loading-vs-empty bugs T-0042 fixed on web.
 - Change an AI's model after creation (server + panel). `UpdateAiSchema` allows only name, persona and limits, and a new model means re-registering the AI's LiteLLM model `ai-<id>` (T-0039 review).
-- AI DMs: the AI should send a displayed (read) marker when it takes a message into a turn. Today the owner's messages keep a single tick forever. T-0034 passed its live check on 2026-09-28: the first real reply, `deepseek-chat` with Julio's key, in about 1 s.
 - Mobile: honor the `?mock=` route param only in `__DEV__` or with `EXPO_PUBLIC_GALENA_MOCK` set, for both the chat store and My AIs (T-0037 pre-review). Today a deep link can show fake data in a production build.
 - Streaming drafts: a notice message from the AI just before the final reply ends the draft one message early (T-0043).
 - Mobile: render reply drafts (T-0043 did web only).
 - Mobile: render Markdown in AI replies (web is T-0049; reuse `markdownToPlain` from chat-core).
-- Agent gateway: connect each AI with a fixed XMPP resource, so a second gateway process replaces the old session instead of both replying (duplicate replies came from stale worker servers, 2026-09-28).
 - `lead merge`: stop the processes still running inside the task worktree (dev servers, Expo) before removing it (playbook gotcha 21).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
