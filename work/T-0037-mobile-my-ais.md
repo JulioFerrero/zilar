@@ -1,7 +1,7 @@
 ---
 id: T-0037
 title: Mobile — My AIs list and Create-AI wizard (same /api/ais contract as the web)
-status: review
+status: merged
 milestone: M2
 branch: task/T-0037-mobile-my-ais
 model: opencode-go/deepseek-v4.1-flash
@@ -420,3 +420,38 @@ The delete-dialog copy was not changed (web + mobile together, later), and
 A3E0C081-… were not touched.
 
 ## Review (written by Claude)
+
+## Review (lead)
+
+### Round 3: approved
+
+The autopilot ran three Muse pre-reviews, one per HEAD. None found a secret, cross-user or race problem. They confirmed:
+- the exact POST body and bearer header are asserted;
+- double submit is blocked by ref guards;
+- model suggestions are keyed by the connection's **provider**, so T-0032's bug is not repeated;
+- limit validation is identical to the web version.
+
+Round 2 fixed:
+- order-dependent mock tests (reset plus a shuffle-proof run);
+- an unknown mock value now means the real API;
+- the model input is capped at 256.
+
+Round 3 fixed the wizard progress bar, which the lead caught in the step 4 screenshot (3 short segments in the right half). It now renders 6 full-width segments, with a pure-helper test.
+
+Accepted as-is:
+- The `?mock=` route param still enables mock data in any build. The existing chat store does the same (`?mock=1`), and it only ever shows local seed data. Gating both behind `__DEV__` is a board follow-up.
+- `mock/ais.test.ts` in scope.
+- No zod, following the same idiom as `chat-api.ts` (zod isn't a mobile dependency).
+- Mock `deleteAi` has no 404, and step4 and step4-selected are duplicate screenshots. Both are nits.
+
+The delete-dialog copy ("…and its provider key") mirrors the web version and is misleading on both. That's a board follow-up to fix them together.
+
+The lead viewed list-rows, wizard-step4 (before and after the fix) and delete-confirm. The screens look native, and the safe areas and footer are correct. The worker deleted its simulators; Julio's were untouched.
+
+Lead re-ran every check after rebasing onto main:
+- format:check, lint, typecheck (9/9) and build pass;
+- `turbo test --force --filter=@galena/mobile`: 162 passed, 2 skipped;
+- scope is clean.
+
+Pending: a live check on Julio's iPhone against the real server. Julio is focused on web and server first; do it with him when he picks up mobile.
+
