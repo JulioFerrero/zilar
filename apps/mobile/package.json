@@ -14,6 +14,7 @@
   "dependencies": {
     "@galena/chat-core": "workspace:*",
     "@galena/protocol": "workspace:*",
+    "@galena/xmpp-core": "workspace:*",
     "@rn-primitives/portal": "^1.5.3",
     "@rn-primitives/slot": "^1.5.2",
     "class-variance-authority": "^0.7.1",
