@@ -47,6 +47,10 @@ export const CONNECT_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
 // happens (XMPP down), it is dropped after this long so it cannot stick.
 export const DRAFT_END_FALLBACK_MS = 5_000;
 
+// A draft that sees no further event for this long is stale (e.g. the server
+// restarted mid-turn); the idle timer drops it rather than leaving it forever.
+export const DRAFT_IDLE_MS = 60_000;
+
 // Finished turn ids are remembered only to ignore a late `draft`. The set is
 // capped so it cannot grow for the life of the tab.
 const FINISHED_TURNS_MAX = 50;
@@ -624,9 +628,30 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       finishedTurnOrder.length = 0;
     }
 
+    // (Re)arms the one removal timer of a chat, replacing any previous one.
+    // It removes the draft only when the same turn is still shown, so a newer
+    // turn's draft is never dropped by an older turn's timer.
+    function armDraftRemoval(chatJid: string, turnId: string, delay: number): void {
+      clearDraftTimeout(chatJid);
+      const timer = setTimeout(() => {
+        draftTimeouts.delete(chatJid);
+        markTurnFinished(turnId);
+        set((state) => {
+          const current = state.drafts[chatJid];
+          if (current === undefined || current.turnId !== turnId) {
+            return state;
+          }
+          return { drafts: withoutDraft(state.drafts, chatJid) };
+        });
+      }, delay);
+      draftTimeouts.set(chatJid, timer);
+    }
+
     // A draft disappears only once its final message is there, so the two
-    // never leave a gap. `end` schedules a fallback; the final XMPP message
-    // (a separate channel) removes the draft in the same update that adds it.
+    // never leave a gap. Each `draft` re-arms an idle timer (a dead turn, e.g.
+    // the server restarted mid-turn, would otherwise leave the bubble forever);
+    // `end` replaces it with the short fallback; the final XMPP message (a
+    // separate channel) removes the draft in the same update that adds it.
     function handleDraftEvent(event: DraftHubEvent): void {
       if (event.type === 'end') {
         handleDraftEnd(event);
@@ -635,11 +660,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (finishedTurns.has(event.turnId)) {
         return;
       }
-      // A new turn's draft replaces the previous one; its fallback is moot.
-      clearDraftTimeout(event.chatJid);
       set((state) => ({
         drafts: { ...state.drafts, [event.chatJid]: { turnId: event.turnId, text: event.text } },
       }));
+      armDraftRemoval(event.chatJid, event.turnId, DRAFT_IDLE_MS);
     }
 
     function handleDraftEnd(event: DraftEndEvent): void {
@@ -648,18 +672,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (shown === undefined || shown.turnId !== event.turnId) {
         return;
       }
-      clearDraftTimeout(event.chatJid);
-      const timer = setTimeout(() => {
-        draftTimeouts.delete(event.chatJid);
-        set((state) => {
-          const current = state.drafts[event.chatJid];
-          if (current === undefined || current.turnId !== event.turnId) {
-            return state;
-          }
-          return { drafts: withoutDraft(state.drafts, event.chatJid) };
-        });
-      }, DRAFT_END_FALLBACK_MS);
-      draftTimeouts.set(event.chatJid, timer);
+      armDraftRemoval(event.chatJid, event.turnId, DRAFT_END_FALLBACK_MS);
     }
 
     function startDraftStream(gen: number): void {

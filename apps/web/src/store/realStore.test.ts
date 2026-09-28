@@ -4,6 +4,7 @@ import type { DraftHubEvent } from '@/lib/drafts';
 import {
   CONNECT_RETRY_DELAYS_MS,
   DRAFT_END_FALLBACK_MS,
+  DRAFT_IDLE_MS,
   createRealChatStore,
   type ApiClient,
   type RealStoreDeps,
@@ -1107,6 +1108,48 @@ describe('AI reply drafts (T-0043)', () => {
       expect(store.getState().drafts[CHAT]).toBeDefined();
 
       vi.advanceTimersByTime(1);
+      expect(store.getState().drafts[CHAT]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('drops a draft that sees no further event for a minute', async () => {
+    const drafts = fakeDrafts();
+    const { store } = await setup({}, undefined, { openDrafts: drafts.open });
+    vi.useFakeTimers();
+    try {
+      drafts.emit(draft(CHAT, TURN_ONE, 'Hello'));
+
+      vi.advanceTimersByTime(DRAFT_IDLE_MS - 1);
+      expect(store.getState().drafts[CHAT]).toBeDefined();
+
+      vi.advanceTimersByTime(1);
+      expect(store.getState().drafts[CHAT]).toBeUndefined();
+
+      // The dead turn is finished: a late draft for it does not revive it.
+      drafts.emit(draft(CHAT, TURN_ONE, 'too late'));
+      expect(store.getState().drafts[CHAT]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a draft alive while it keeps being refreshed, then expires it', async () => {
+    const drafts = fakeDrafts();
+    const { store } = await setup({}, undefined, { openDrafts: drafts.open });
+    vi.useFakeTimers();
+    try {
+      drafts.emit(draft(CHAT, TURN_ONE, 'Hello'));
+      vi.advanceTimersByTime(50_000);
+      expect(store.getState().drafts[CHAT]).toBeDefined();
+
+      // The 50 s refresh re-arms the idle timer.
+      drafts.emit(draft(CHAT, TURN_ONE, 'Hello again'));
+      vi.advanceTimersByTime(50_000);
+      expect(store.getState().drafts[CHAT]?.text).toBe('Hello again');
+
+      vi.advanceTimersByTime(10_000);
       expect(store.getState().drafts[CHAT]).toBeUndefined();
     } finally {
       vi.useRealTimers();

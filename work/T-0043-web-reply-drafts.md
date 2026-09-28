@@ -183,17 +183,18 @@ pnpm build                                          # Tasks: 2 successful, 2 tot
 2. **Fixtures aligned with production** so the "nothing moves" path is real:
    - `realStore.test.ts`: the AI messages in the draft tests now use `fromJid: CHAT` (the DM's own/AI JID) instead of a separate `ai@galena.test`, matching the draft's sender.
    - `MessageList.test.tsx`: `hello()` now has `senderId: 'c-ana'` (the chat id the draft uses for the AI), and the swap test records the bubble's `className` before and after and asserts they are equal, in addition to "one bubble with the same text before and after".
+3. **Idle drafts expire** (`realStore.ts`): new exported `DRAFT_IDLE_MS = 60_000`, next to `DRAFT_END_FALLBACK_MS`. Every `draft` (re)arms one removal timer per chat through a new `armDraftRemoval(chatJid, turnId, delay)` helper, which reuses the existing `draftTimeouts` map and only removes the draft when that same turn is still shown (then marks the turn finished). `end` replaces the idle timer with the 5 s fallback via the same helper; a final message and `stop()` clear it as before. This covers a dead turn after a server restart mid-turn (SSE reconnects without replay) so the bubble cannot stick forever. New tests (fake timers): a draft with no further event disappears after 60 s and a late same-turn draft does not revive it; a draft refreshed at 50 s is still there at 100 s and gone 60 s after the refresh; the existing test still verifies the 5 s `end` fallback.
 
 Re-run results after the fixes:
 ```bash
 pnpm lint                                           # no output, exit 0
 pnpm typecheck                                      # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/web   # Test Files 31 passed (31); Tests 179 passed (179)
+pnpm exec turbo test --force --filter=@galena/web   # Test Files 31 passed (31); Tests 181 passed (181)
 pnpm build                                          # Tasks: 2 successful, 2 total
-pnpm format:check                                   # my changed files pass (prettier --check on them is clean)
+pnpm format:check                                   # All matched files use Prettier code style!
 ```
 
-`pnpm format:check` (repo-wide) still reports one warning, `PREREVIEW.md`. That is the pre-reviewer's **untracked** working file, not in this task's Allowed files and not part of the commit, so I left it untouched; every file I changed is clean. (Remove or reformat `PREREVIEW.md`, or allow me to, and the repo-wide check is green.)
+`pnpm format:check` is fully green now: the only earlier warning was the pre-reviewer's untracked `PREREVIEW.md`, which is no longer in the worktree; every file I changed was clean throughout.
 
 
 ### Live check (for the lead, with Julio's permission)
