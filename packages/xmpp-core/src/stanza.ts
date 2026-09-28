@@ -102,7 +102,20 @@ export function buildMessage(options: {
     children.push(xml('reply', attrs));
   }
 
+  let written = 0;
   for (const mention of options.mentions ?? []) {
+    if (written >= MAX_MENTIONS) break;
+    // Mirror the parse side: a range that does not describe a real slice of the
+    // body is dropped rather than written as a broken reference.
+    if (
+      !Number.isInteger(mention.begin) ||
+      !Number.isInteger(mention.end) ||
+      mention.begin < 0 ||
+      mention.begin >= mention.end ||
+      mention.end > options.text.length
+    ) {
+      continue;
+    }
     children.push(
       xml('reference', {
         xmlns: REFERENCE_NAMESPACE,
@@ -112,6 +125,7 @@ export function buildMessage(options: {
         end: String(codePointOffset(options.text, mention.end)),
       }),
     );
+    written += 1;
   }
 
   return xml('message', { type: options.kind, to: options.to, id: options.id }, ...children);

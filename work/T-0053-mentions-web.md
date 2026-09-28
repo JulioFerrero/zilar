@@ -220,12 +220,13 @@ the wire.
 Modified: `packages/xmpp-core/src/{stanza.ts,stanza.test.ts,types.ts,namespaces.ts,index.ts,client.ts,core.test.ts}`,
 `packages/chat-core/src/{types.ts,index.ts}`,
 `apps/web/src/store/{realStore.ts,realStore.test.ts,store.ts}`,
-`apps/web/src/components/{Composer.tsx,Composer.test.tsx,LinkText.tsx,MessageBubble.tsx,MessageContent.test.tsx}`,
+`apps/web/src/components/{Composer.tsx,Composer.test.tsx,LinkText.tsx,MessageBubble.tsx,MessageList.tsx,MessageContent.test.tsx}`,
 `apps/web/src/{index.css,mock/index.ts,mock/messages.ts}`.
 New: `packages/chat-core/src/{mentions.ts,mentions.test.ts}`,
 `apps/web/src/components/MentionPicker.tsx`, `apps/web/src/mock/members.ts`.
 `client.ts` and `core.test.ts` were added to scope by the lead (see
-"Resolved" below); nothing else outside the original list changed.
+"Resolved" below) and `MessageList.tsx` by the review (see Round 2); nothing
+else outside the original list changed.
 
 ### Commands and real results
 
@@ -295,5 +296,55 @@ buildMessage({ id, to, kind, text, payload: opts.payload, replyTo: opts.replyTo,
 and added `core.test.ts` → "sends the XEP-0372 reference elements for mentions":
 a sent `'hi 😀 @Ana'` with UTF-16 `[6,10]` carries a reference with code-point
 `begin/end` `5/9`. Nothing else in `client.ts` changed.
+
+### Round 2 (lead review fixes)
+
+**1. should-fix — mentions must not cross chats.** `Composer` now tracks the
+chat its mentions belong to and, when `chatId` changes, clears `mentions`,
+closes the picker and resets the active row during render (React's "adjust state
+when a prop changes"); the draft text itself stays, as before. I used a
+render-phase adjustment rather than a `useEffect` because `oxlint`'s
+`react(set-state-in-effect)` rejects setting state in an effect.
+Test: `Composer.test.tsx` → "clears a picked mention and closes the picker when
+the chat changes": pick Luis in `c-viernes`, rerender as `c-devteam`, send →
+text `@Luis`, `mentions` undefined.
+
+**2. should-fix — compare the exact `meJid`.** `MessageList` passes
+`store.me?.jid` to `MessageBubble`, which forwards it to `LinkText`;
+`isMentionOfMe(jid, meJid)` now compares the exact bare JID (resource/query
+stripped) and the localpart-only fallback is gone. The Composer uses the same
+function. The mock store's default `me` now carries
+`jid: 'u-you@galena.test'`, so mock mode still excludes/highlights me.
+Test: `MessageContent.test.tsx` → "does not highlight a same-named mention on
+another domain" (`u-you@other.domain` stays a plain `mention-chip`), next to the
+existing positive `u-you@galena.test` case. `MessageList.tsx` changed only for
+this one prop pass-through, as allowed.
+
+**3. nit — `buildMessage` range validation.** `buildMessage` now skips mentions
+whose `begin`/`end` are not integers, `begin < 0`, `begin >= end`, or
+`end > text.length`, and caps at 20, mirroring the parse side.
+Test: `stanza.test.ts` → "skips invalid ranges and caps at twenty mentions":
+five invalid ranges are dropped and 25 valid ones yield exactly 20 references
+(`u0`..`u19`).
+
+Round 2 checks:
+
+```
+pnpm format:check
+# All matched files use Prettier code style!
+pnpm lint
+# (no output) exit 0
+pnpm typecheck
+# Tasks: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/chat-core --filter=@galena/web
+# xmpp-core: 134 passed | 3 skipped (137)   [+1 build range/cap test]
+# chat-core: 95 passed (95)                 [isMentionOfMe tests updated]
+# web:       248 passed (248)               [+1 chat-switch, +1 foreign-domain chip]
+# Tasks: 3 successful, 3 total
+pnpm build
+# Tasks: 2 successful, 2 total (cold run, 20.1s)
+```
+
+`PREREVIEW.md` is the lead's pre-review artifact and was left untracked.
 
 ## Review (written by Claude)

@@ -174,14 +174,16 @@ export function filterMentionMembers(
   return members.filter((member) => fold(member.name).includes(needle));
 }
 
-/** True when a mention JID is the current user (by bare JID or localpart). */
-export function isMentionOfMe(jid: string, currentUserId: string, meJid?: string): boolean {
-  const bare = (jid.split('/')[0] ?? jid).split('?')[0] ?? jid;
-  if (meJid !== undefined && bare === meJid) {
-    return true;
+/**
+ * True when a mention JID is the current user: the bare JID must equal `meJid`
+ * exactly. A localpart that happens to match is not enough, so a mention of the
+ * same name on another domain is not confused with me.
+ */
+export function isMentionOfMe(jid: string, meJid: string | undefined): boolean {
+  if (meJid === undefined) {
+    return false;
   }
-  const localpart = bare.split('@')[0] ?? bare;
-  return localpart.toLowerCase() === currentUserId.toLowerCase();
+  return (jid.split('/')[0] ?? jid).split('?')[0] === meJid;
 }
 
 /**

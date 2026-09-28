@@ -189,16 +189,20 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
 
     scheduleTypingSimulation(set);
 
+    // The mock user's JID, so mention matching and the picker's "not me" filter
+    // work in mock mode exactly as they do against the real store.
+    const meUserId = seed.currentUserId ?? defaultCurrentUserId;
+
     return {
-      currentUserId: seed.currentUserId ?? defaultCurrentUserId,
+      currentUserId: meUserId,
       me:
         seed.me ??
         ({
-          id: seed.currentUserId ?? defaultCurrentUserId,
+          id: meUserId,
           email: 'you@galena.test',
           name: 'You',
           image: null,
-          jid: null,
+          jid: `${meUserId}@galena.test`,
         } satisfies Me),
       status: seed.status ?? 'online',
       // The mock store has no async loads, so its data is ready immediately.

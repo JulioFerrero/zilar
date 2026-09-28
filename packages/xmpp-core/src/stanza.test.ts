@@ -561,6 +561,34 @@ describe('decodeMessageStanza: XEP-0372 mentions', () => {
     expect(stanza.getChildren('reference', REFERENCE_NAMESPACE)).toHaveLength(0);
   });
 
+  it('skips invalid ranges and caps at twenty mentions', () => {
+    const text = 'hi there';
+    const invalid = [
+      { jid: 'a@galena.localhost', begin: -1, end: 2 },
+      { jid: 'b@galena.localhost', begin: 2, end: 2 },
+      { jid: 'c@galena.localhost', begin: 5, end: 3 },
+      { jid: 'd@galena.localhost', begin: 0, end: text.length + 1 },
+      { jid: 'e@galena.localhost', begin: 1.5, end: 3 },
+    ];
+    const valid = Array.from({ length: 25 }, (_, index) => ({
+      jid: `u${index}@galena.localhost`,
+      begin: 0,
+      end: 2,
+    }));
+    const stanza = buildMessage({
+      id: 'm-29',
+      to: 'project@rooms.galena.localhost',
+      kind: 'groupchat',
+      text,
+      mentions: [...invalid, ...valid],
+    });
+
+    const references = stanza.getChildren('reference', REFERENCE_NAMESPACE);
+    expect(references).toHaveLength(20);
+    expect(references[0]?.attrs['uri']).toBe('xmpp:u0@galena.localhost');
+    expect(references[19]?.attrs['uri']).toBe('xmpp:u19@galena.localhost');
+  });
+
   it('round trips mentions through build and parse', () => {
     const built = buildMessage({
       id: 'm-22',

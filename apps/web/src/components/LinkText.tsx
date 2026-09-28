@@ -2,18 +2,16 @@ import { isMentionOfMe, splitLinks, splitMentions, type UiMention } from '@galen
 
 /**
  * Renders message text: http/https URLs become safe external links and XEP-0372
- * mention ranges become chips. A mention of the current user gets the raised
- * look so it stands out.
+ * mention ranges become chips. A mention of the current user (an exact bare-JID
+ * match) gets the raised look so it stands out.
  */
 export function LinkText({
   text,
   mentions,
-  currentUserId,
   meJid,
 }: {
   text: string;
   mentions?: UiMention[] | undefined;
-  currentUserId?: string | undefined;
   meJid?: string | undefined;
 }) {
   const segments = splitMentions(text, mentions);
@@ -22,8 +20,7 @@ export function LinkText({
     <>
       {segments.map((segment, index) => {
         if (segment.kind === 'mention') {
-          const mine =
-            currentUserId !== undefined && isMentionOfMe(segment.jid, currentUserId, meJid);
+          const mine = isMentionOfMe(segment.jid, meJid);
           return (
             <span key={index} className={mine ? 'raised-pill mention-me' : 'mention-chip'}>
               {segment.text}

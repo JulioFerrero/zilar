@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { AuthProvider } from '@/auth/AuthProvider';
+import { ChatStoreProvider } from '@/store/ChatStoreProvider';
+import { createChatStore } from '@/store/store';
 import { renderApp } from '@/test/renderApp';
+import { Composer } from './Composer';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -165,5 +169,43 @@ describe('Composer mentions (T-0053)', () => {
     openPicker('@');
 
     expect(screen.queryByRole('listbox')).toBeNull();
+  });
+});
+
+describe('Composer chat switching (T-0053 review)', () => {
+  function renderComposer(initialChatId: string) {
+    const store = createChatStore();
+    const auth = {
+      status: 'authenticated' as const,
+      user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+      refetch: async () => {},
+    };
+    const tree = (chatId: string) => (
+      <AuthProvider value={auth}>
+        <ChatStoreProvider store={store}>
+          <Composer chatId={chatId} replyTo={undefined} onCancelReply={() => {}} />
+        </ChatStoreProvider>
+      </AuthProvider>
+    );
+    return { ...render(tree(initialChatId)), store, tree };
+  }
+
+  it('clears a picked mention and closes the picker when the chat changes', () => {
+    const { rerender, store, tree } = renderComposer('c-viernes');
+    const textarea = screen.getByLabelText('Message') as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: '@' } });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(textarea.value).toBe('@Luis ');
+    expect(screen.queryByRole('listbox')).toBeNull();
+
+    rerender(tree('c-devteam'));
+    expect(screen.queryByRole('listbox')).toBeNull();
+
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' });
+
+    const sent = store.getState().messages('c-devteam').at(-1);
+    expect(sent?.text).toBe('@Luis');
+    expect(sent?.mentions).toBeUndefined();
   });
 });

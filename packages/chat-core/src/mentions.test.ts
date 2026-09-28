@@ -164,17 +164,19 @@ describe('filterMentionMembers', () => {
 });
 
 describe('isMentionOfMe', () => {
-  it('matches by localpart', () => {
-    expect(isMentionOfMe('u-you@galena.test', 'u-you')).toBe(true);
-    expect(isMentionOfMe('u-ana@galena.test', 'u-you')).toBe(false);
+  it('matches the exact bare JID only', () => {
+    expect(isMentionOfMe('u-you@galena.test', 'u-you@galena.test')).toBe(true);
+    expect(isMentionOfMe('u-you@other.domain', 'u-you@galena.test')).toBe(false);
+    expect(isMentionOfMe('u-ana@galena.test', 'u-you@galena.test')).toBe(false);
   });
 
-  it('matches by the full bare JID when given', () => {
-    expect(isMentionOfMe('me@galena.test', 'u-me', 'me@galena.test')).toBe(true);
+  it('is false when there is no me JID', () => {
+    expect(isMentionOfMe('u-you@galena.test', undefined)).toBe(false);
   });
 
-  it('ignores the resource', () => {
-    expect(isMentionOfMe('u-you@galena.test/phone', 'u-you')).toBe(true);
+  it('ignores the resource and query', () => {
+    expect(isMentionOfMe('u-you@galena.test/phone', 'u-you@galena.test')).toBe(true);
+    expect(isMentionOfMe('u-you@galena.test?q=1', 'u-you@galena.test')).toBe(true);
   });
 });
 

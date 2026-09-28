@@ -50,6 +50,9 @@ export function Composer({
   const [mentions, setMentions] = useState<UiMention[]>([]);
   const [picker, setPicker] = useState<{ start: number; query: string } | undefined>(undefined);
   const [activeIndex, setActiveIndex] = useState(0);
+  // The chat the tracked mentions belong to. Kept in state so a chat switch can
+  // reset them during render (React's "adjust state when a prop changes").
+  const [trackedChatId, setTrackedChatId] = useState(chatId);
   const [recording, setRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [cancelArmed, setCancelArmed] = useState(false);
@@ -61,15 +64,22 @@ export function Composer({
   // Set when a pick or a mention deletion decides where the caret goes; applied
   // after the controlled value has been committed to the textarea.
   const pendingCaretRef = useRef<number | undefined>(undefined);
+  // A mention picked in one chat must never be sent into another: when the chat
+  // changes, drop the tracked mentions and any open picker during render. The
+  // draft text itself stays, as it did before.
+  if (trackedChatId !== chatId) {
+    setTrackedChatId(chatId);
+    setMentions([]);
+    setPicker(undefined);
+    setActiveIndex(0);
+  }
   const canSend = value.trim().length > 0;
   const title = store.chats.find((chat) => chat.id === chatId)?.title;
   const placeholder = title === undefined ? 'Message' : `Message ${title}`;
   const isGroup = store.chats.find((chat) => chat.id === chatId)?.kind === 'group';
   const meJid = store.me?.jid ?? undefined;
   const members = isGroup
-    ? store
-        .groupMembers(chatId)
-        .filter((member) => !isMentionOfMe(member.jid, store.currentUserId, meJid))
+    ? store.groupMembers(chatId).filter((member) => !isMentionOfMe(member.jid, meJid))
     : [];
   const candidates =
     picker === undefined

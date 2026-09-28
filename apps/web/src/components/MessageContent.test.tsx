@@ -249,6 +249,23 @@ describe('mention chips (T-0053)', () => {
     expect(chip.className).toContain('mention-me');
   });
 
+  it('does not highlight a same-named mention on another domain', () => {
+    renderGroup({
+      id: 'm2b',
+      chatId: 'g1',
+      senderId: 'u-ana',
+      senderName: 'Ana',
+      text: 'hi @You there',
+      createdAt: new Date(2026, 8, 27, 12, 41),
+      status: 'read',
+      mentions: [{ jid: 'u-you@other.domain', name: 'You', begin: 3, end: 7 }],
+    });
+
+    const chip = within(screen.getByTestId('message-list')).getByText('@You');
+    expect(chip.className).toContain('mention-chip');
+    expect(chip.className).not.toContain('mention-me');
+  });
+
   it('shows a me-mention in my own outgoing bubble', () => {
     renderGroup({
       id: 'm3',
