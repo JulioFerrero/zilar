@@ -1,7 +1,7 @@
 ---
 id: T-0058
 title: AI costs — show each AI's spend (today, and the 30-day window vs its cap) and enforce the per-day limit before a turn
-status: review
+status: merged
 milestone: M2
 branch: task/T-0058-ai-costs
 model: opencode-go/muse-spark-1.3-contributor
@@ -159,3 +159,13 @@ Deviations from the spec (all minor):
 Open questions: none. Mobile intentionally untouched (out of scope; its manual AI parser ignores the new `usage` key).
 
 ## Review (written by Claude)
+
+**Approved and merged by Claude.**
+
+- Shows what an AI spent today and over the 30-day window, in the panel and as a mono line on the AIs list row, and enforces the per-day limit before each turn (it was stored but never checked before). The key's own current spend minus a per-day baseline gives "today"; a spend below the baseline is treated as a window reset. Reads fail open on a LiteLLM error or timeout.
+- The limit notice fires once per AI per chat per UTC day, in both DMs and groups; DM read markers still go out while limited.
+- Accepted nits, not blocking:
+  - the per-AI usage timeout's timer isn't cleared on the winning race, so a slow read keeps ticking harmlessly in the background;
+  - the today/limit comparison goes through a string-to-float parse, so it carries sub-cent float epsilon;
+  - the window-reset row's `updatedAt` uses the wall clock instead of the injected clock, so a fake-clock test writes a real timestamp there (an informational column only).
+- The pre-reviewer re-ran the checks: format, lint, typecheck, server at 492 passing (7 skipped by design), web at 270 passing, and build all green. No secrets or cross-user leaks found.
