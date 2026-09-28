@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
 import type { KeyCipher } from '../connections/crypto';
-import { findOwnedConnection } from '../connections/service';
+import { decryptForGatewayUse, findOwnedConnection } from '../connections/service';
 import { ROSTER_GROUP } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
-import { aiLimits, ais, llmVirtualKeys, user } from '../db/schema';
+import { aiLimits, ais, llmVirtualKeys, providerConnections, user } from '../db/schema';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { ensureXmppAccount, jidFor, localpartFor } from '../xmpp/provisioning';
 import type { LitellmAdminClient } from '../ai/litellm-client';
+import { modelNameForAi } from '../ai/model-entry';
+import { isLlmProvider, litellmModelFor } from './litellm-model';
 import { defaultPersonaFor, type AiTemplate } from './templates';
 
 // The server ceiling on an AI's monthly budget. The plan's example is EUR 20 a
@@ -111,6 +113,21 @@ export async function findOwnedAi(
   return row ?? null;
 }
 
+// One AI by id, with its connection's provider, for the gateway-only paths
+// (`ensureAiModel`) that have no owner in hand. Not exported: no route may use
+// it.
+async function findAiForGateway(db: ServerDatabase, aiId: string): Promise<GatewayAiRecord | null> {
+  const [row] = await db
+    .select({ ...aiColumns, provider: providerConnections.provider })
+    .from(ais)
+    .innerJoin(aiLimits, eq(aiLimits.aiId, ais.id))
+    .leftJoin(llmVirtualKeys, eq(llmVirtualKeys.aiId, ais.id))
+    .innerJoin(providerConnections, eq(providerConnections.id, ais.providerConnectionId))
+    .where(eq(ais.id, aiId))
+    .limit(1);
+  return row ?? null;
+}
+
 // The public form of one owned AI, shaped for the API and the wizard.
 export async function getOwnedAi(
   db: ServerDatabase,
@@ -121,10 +138,11 @@ export async function getOwnedAi(
   return row ? toPublicAi(row) : null;
 }
 
-// Creates an AI: rows, XMPP account, both roster items, then a capped LiteLLM
-// key. All-or-nothing: any external failure rolls everything back and answers
-// 502. The AI is inserted `disabled` and only switched to `active` once every
-// step has succeeded, so a crash can never leave a usable-looking half AI.
+// Creates an AI: rows, XMPP account, both roster items, a private LiteLLM model
+// for the owner's key, then a capped virtual key that may call only it.
+// All-or-nothing: any external failure rolls everything back and answers 502.
+// The AI is inserted `disabled` and only switched to `active` once every step
+// has succeeded, so a crash can never leave a usable-looking half AI.
 export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promise<PublicAi> {
   const connection = await findOwnedConnection(deps.db, input.providerConnectionId, input.ownerId);
   if (!connection) {
@@ -180,6 +198,7 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
 
   let registered = false;
   let keyId: string | undefined;
+  let modelId: string | undefined;
   try {
     await deps.adminClient.registerUser(localpart);
     registered = true;
@@ -194,8 +213,20 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
       subs: 'both',
     });
 
+    // The provider key is decrypted once, in memory, and handed to LiteLLM as
+    // its own private model for this AI. It is never stored or returned here;
+    // LiteLLM keeps its own encrypted copy (`store_model_in_db`).
+    const modelName = modelNameForAi(id);
+    const providerKey = await decryptForGatewayUse(deps.db, deps.cipher, connection.id);
+    modelId = await deps.litellm.addModel({
+      modelName,
+      litellmModel: litellmModelFor(connection.provider, input.model),
+      apiKey: providerKey,
+      metadata: { ai_id: id },
+    });
+
     const issued = await deps.litellm.generateKey({
-      models: [input.model],
+      models: [modelName],
       maxBudget: input.limits.perMonthUsd,
       budgetDuration: VIRTUAL_KEY_BUDGET_DURATION,
       keyAlias: virtualKeyAlias(id),
@@ -205,6 +236,7 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
     await deps.db.insert(llmVirtualKeys).values({
       aiId: id,
       litellmKeyId: issued.id,
+      litellmModelId: modelId,
       encryptedKey: deps.cipher.encrypt(issued.key),
       budgetUsd: usd(input.limits.perMonthUsd),
       budgetDuration: VIRTUAL_KEY_BUDGET_DURATION,
@@ -224,6 +256,7 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
       ownerJid,
       registered,
       keyId,
+      modelId,
     });
     throw provisioningFailed();
   }
@@ -304,20 +337,21 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
   return toPublicAi(updated);
 }
 
-// Tears an AI down in reverse order: revoke the gateway key, remove both roster
-// items, unregister the XMPP account, then delete the rows. Teardown is
-// resumable: every step skips work that is already done, so a delete that
-// failed part way (ejabberd or LiteLLM down) can be retried without revoking a
-// key twice or failing on an item that is already gone. The row is never
-// deleted before every external step has succeeded.
+// Tears an AI down in reverse order: revoke the gateway key, delete the private
+// model it registered, remove both roster items, unregister the XMPP account,
+// then delete the rows. Teardown is resumable: every step skips work that is
+// already done, so a delete that failed part way (ejabberd or LiteLLM down) can
+// be retried without revoking a key twice, re-deleting a model or failing on an
+// item that is already gone. The key row goes only once both are gone.
 export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string): Promise<void> {
   const ai = await findOwnedAi(deps.db, id, ownerId);
   if (!ai) {
     throw new HttpError(404, 'not_found', 'AI not found');
   }
 
-  // 1. Revoke the gateway key and drop its row immediately. A retry then sees
-  //    `litellmKeyId === null` and never calls revoke again.
+  // 1. Revoke the gateway key and clear its id in place. A retry then sees
+  //    `litellmKeyId === null` and never calls revoke again, while the row (and
+  //    the model id it carries) survives until the model is gone too.
   if (ai.litellmKeyId !== null) {
     try {
       await deps.litellm.revokeKey(ai.litellmKeyId);
@@ -325,13 +359,32 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
       deps.logger.warn({ err: error, aiId: ai.id }, 'could not revoke the AI virtual key');
       throw teardownFailed();
     }
-    await deps.db.delete(llmVirtualKeys).where(eq(llmVirtualKeys.aiId, ai.id));
+    await deps.db
+      .update(llmVirtualKeys)
+      .set({ litellmKeyId: null })
+      .where(eq(llmVirtualKeys.aiId, ai.id));
   }
+
+  // 2. Delete the private model registered for this AI. `deleteModel` treats an
+  //    already-gone model as success; an AI created before this task has no
+  //    model id and is skipped.
+  if (ai.litellmModelId !== null) {
+    try {
+      await deps.litellm.deleteModel(ai.litellmModelId);
+    } catch (error) {
+      deps.logger.warn({ err: error, aiId: ai.id }, 'could not delete the AI private model');
+      throw teardownFailed();
+    }
+  }
+
+  // 3. Nothing is left to revoke or delete on the gateway side, so the key row
+  //    goes.
+  await deps.db.delete(llmVirtualKeys).where(eq(llmVirtualKeys.aiId, ai.id));
 
   const ownerLocalpart = localpartFor(ownerId);
   const ownerJid = jidFor(ownerLocalpart, deps.domain);
 
-  // 2. The owner's roster item for the AI. Skip it when it is already gone.
+  // 4. The owner's roster item for the AI. Skip it when it is already gone.
   try {
     const roster = await deps.adminClient.getRoster(ownerLocalpart);
     if (hasRosterItem(roster, ai.jid)) {
@@ -342,7 +395,7 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
     throw teardownFailed();
   }
 
-  // 3. The AI's own account. If it is already gone, there is nothing left on
+  // 5. The AI's own account. If it is already gone, there is nothing left on
   //    that side; otherwise remove the owner's item from its roster first, then
   //    unregister.
   try {
@@ -361,7 +414,47 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
   await deps.db.delete(ais).where(eq(ais.id, ai.id));
 }
 
-// The internal row: the public columns plus the identity and gateway key id
+// Backfills the private LiteLLM model on an AI created before this task, and
+// points an older virtual key's allowlist at it. Idempotent: once
+// `litellm_model_id` is stored the call does nothing, so T-0034 can call it
+// before every first turn. There is no route for it.
+export async function ensureAiModel(deps: AiServiceDeps, aiId: string): Promise<void> {
+  const ai = await findAiForGateway(deps.db, aiId);
+  if (!ai) {
+    throw new Error(`AI ${aiId} not found`);
+  }
+  if (ai.litellmModelId !== null) {
+    return;
+  }
+  if (ai.litellmKeyId === null) {
+    throw new Error(`AI ${aiId} has no virtual key`);
+  }
+
+  const modelName = modelNameForAi(ai.id);
+  const providerKey = await decryptForGatewayUse(deps.db, deps.cipher, ai.providerConnectionId);
+  const modelId = await deps.litellm.addModel({
+    modelName,
+    litellmModel: litellmModelFor(ai.provider, ai.model),
+    apiKey: providerKey,
+    metadata: { ai_id: ai.id },
+  });
+
+  // If the allowlist cannot be fixed, drop the model we just registered rather
+  // than leave an orphan no key can reach; the next call registers it again.
+  try {
+    await deps.litellm.updateKey({ key: ai.litellmKeyId, models: [modelName] });
+  } catch (error) {
+    await deps.litellm.deleteModel(modelId).catch(() => undefined);
+    throw error;
+  }
+
+  await deps.db
+    .update(llmVirtualKeys)
+    .set({ litellmModelId: modelId })
+    .where(eq(llmVirtualKeys.aiId, ai.id));
+}
+
+// The internal row: the public columns plus the identity and gateway handles
 // the routes must never answer with.
 interface AiRecord {
   id: string;
@@ -377,6 +470,13 @@ interface AiRecord {
   perDayUsd: string;
   perMonthUsd: string;
   litellmKeyId: string | null;
+  litellmModelId: string | null;
+}
+
+// The AI row plus its connection's provider, for the gateway-only paths that
+// need to build the provider-qualified model name.
+interface GatewayAiRecord extends AiRecord {
+  provider: string;
 }
 
 const publicAiColumns = {
@@ -397,9 +497,10 @@ const aiColumns = {
   ...publicAiColumns,
   localpart: ais.localpart,
   litellmKeyId: llmVirtualKeys.litellmKeyId,
+  litellmModelId: llmVirtualKeys.litellmModelId,
 };
 
-type PublicAiRow = Omit<AiRecord, 'localpart' | 'litellmKeyId'>;
+type PublicAiRow = Omit<AiRecord, 'localpart' | 'litellmKeyId' | 'litellmModelId'>;
 
 function toPublicAi(row: PublicAiRow): PublicAi {
   return {
@@ -430,10 +531,6 @@ function resolvePersona(template: AiTemplate, persona: string | undefined): stri
   return defaultPersonaFor(template);
 }
 
-function isLlmProvider(provider: string): boolean {
-  return provider !== 'github';
-}
-
 // Whether a roster already holds an item for `jid`, so teardown can skip a
 // delete that a previous attempt already performed.
 function hasRosterItem(entries: ReadonlyArray<{ jid: string }>, jid: string): boolean {
@@ -462,6 +559,7 @@ async function compensateCreate(
     ownerJid: string;
     registered: boolean;
     keyId: string | undefined;
+    modelId: string | undefined;
   },
 ): Promise<void> {
   if (context.keyId !== undefined) {
@@ -471,6 +569,16 @@ async function compensateCreate(
       deps.logger.warn(
         { err: error, aiId: context.id },
         'rollback could not revoke the AI virtual key',
+      );
+    }
+  }
+  if (context.modelId !== undefined) {
+    try {
+      await deps.litellm.deleteModel(context.modelId);
+    } catch (error) {
+      deps.logger.warn(
+        { err: error, aiId: context.id },
+        'rollback could not delete the AI private model',
       );
     }
   }

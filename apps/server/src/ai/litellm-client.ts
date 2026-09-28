@@ -46,6 +46,8 @@ export interface GenerateVirtualKeyInput {
 
 export interface UpdateVirtualKeyInput {
   key: string;
+  /** Replaces the model allowlist. At least one model when present. */
+  models?: string[];
   maxBudget?: number;
   tpmLimit?: number;
   rpmLimit?: number;
@@ -56,6 +58,20 @@ export interface UpdateVirtualKeyInput {
    * used by the app to *set* what a user spent.
    */
   spend?: number;
+}
+
+export interface AddModelInput {
+  /** The model group our AIs call, e.g. "ai-<aiId>". Unique per AI. */
+  modelName: string;
+  /** The provider-qualified model, e.g. "openai/gpt-4o-mini". */
+  litellmModel: string;
+  /**
+   * The owner's provider key. LiteLLM stores its own encrypted copy; the
+   * plaintext never leaves this request and is redacted from every error.
+   */
+  apiKey: string;
+  /** Extra metadata stored as LiteLLM's `model_info`, e.g. `{ ai_id }`. */
+  metadata?: Record<string, unknown>;
 }
 
 export interface VirtualKey {
@@ -84,6 +100,10 @@ export interface LitellmAdminClient {
   getKeyInfo(key: string): Promise<VirtualKeyInfo>;
   updateKey(input: UpdateVirtualKeyInput): Promise<VirtualKeyInfo>;
   revokeKey(key: string): Promise<void>;
+  /** Registers a private model group and returns LiteLLM's model id. */
+  addModel(input: AddModelInput): Promise<string>;
+  /** Deletes a registered model. A model that is already gone is not an error. */
+  deleteModel(modelId: string): Promise<void>;
 }
 
 const KeySchema = z.string().min(1).max(4096);
@@ -93,6 +113,20 @@ const SpendSchema = z.number().finite();
 const LimitSchema = z.number().int().positive();
 const DurationSchema = z.string().min(1).max(64);
 const AliasSchema = z.string().min(1).max(256);
+
+// A model group name and the provider-qualified model, matching the rules in
+// ai/model-entry.ts. The name is derived from an AI id, never user text.
+const ModelNameSchema = z
+  .string()
+  .regex(
+    /^[a-z0-9][a-z0-9._-]{0,63}$/,
+    'must be 1-64 characters of lowercase letters, digits, ".", "_" or "-"',
+  );
+const ProviderModelSchema = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9_-]*\/\S+$/i, 'must look like "provider/model"');
+const ApiKeySchema = z.string().min(1).max(4096);
+const ModelIdSchema = z.string().min(1).max(512);
 
 const GeneratedKeySchema = z
   .object({
@@ -135,6 +169,24 @@ const UpdateResponseSchema = z.object({
 const DeleteResponseSchema = z.object({
   deleted_keys: z.array(z.string()).optional(),
 });
+
+// `/model/new` returns the created row: at minimum `model_id`. Older shapes
+// nest the id under `model_info.id`, so both are accepted.
+const NewModelResponseSchema = z.object({
+  model_id: z.string().min(1).optional(),
+  model_info: z.object({ id: z.string().min(1).optional() }).optional(),
+});
+
+const DeleteModelResponseSchema = z.object({
+  message: z.string().optional(),
+});
+
+// LiteLLM answers a delete for a model that is already gone with a 400 whose
+// message says it was not found. That is the same state the caller wanted, so
+// `deleteModel` treats it as success and deletes stay idempotent.
+function modelAlreadyGone(error: LitellmApiError): boolean {
+  return error.status === 404 || /not found/i.test(error.message);
+}
 
 // Redacts any exact secret the caller names, then any credential-shaped token.
 // The sk- rule also catches virtual keys LiteLLM masks as "sk-...abcd".
@@ -338,6 +390,9 @@ export function createLitellmAdminClient(
     async updateKey(input: UpdateVirtualKeyInput): Promise<VirtualKeyInfo> {
       const key = KeySchema.parse(input.key);
       const body: Record<string, unknown> = { key };
+      if (input.models !== undefined) {
+        body['models'] = ModelsSchema.parse(input.models);
+      }
       if (input.maxBudget !== undefined) {
         body['max_budget'] = BudgetSchema.parse(input.maxBudget);
       }
@@ -371,6 +426,49 @@ export function createLitellmAdminClient(
       );
       if (parsed.deleted_keys !== undefined && !parsed.deleted_keys.includes(parsedKey)) {
         throw new LitellmApiError('key/delete', 200, 'LiteLLM did not delete the key');
+      }
+    },
+
+    async addModel(input: AddModelInput): Promise<string> {
+      const body: Record<string, unknown> = {
+        model_name: ModelNameSchema.parse(input.modelName),
+        litellm_params: {
+          model: ProviderModelSchema.parse(input.litellmModel),
+          api_key: ApiKeySchema.parse(input.apiKey),
+        },
+      };
+      if (input.metadata !== undefined) {
+        body['model_info'] = input.metadata;
+      }
+
+      // The provider key travels in this body, so it is named as a secret for
+      // the whole request: any error or log line redacts it.
+      const parsed = parseResponse(
+        'model/new',
+        NewModelResponseSchema,
+        await post('model/new', '/model/new', body, [input.apiKey]),
+      );
+      const modelId = parsed.model_id ?? parsed.model_info?.id;
+      if (modelId === undefined) {
+        throw new LitellmApiError('model/new', 200, 'unexpected response shape');
+      }
+      return modelId;
+    },
+
+    async deleteModel(modelId: string): Promise<void> {
+      const id = ModelIdSchema.parse(modelId);
+      try {
+        parseResponse(
+          'model/delete',
+          DeleteModelResponseSchema,
+          await post('model/delete', '/model/delete', { id }),
+        );
+      } catch (error) {
+        // Already gone is the state the caller asked for.
+        if (error instanceof LitellmApiError && modelAlreadyGone(error)) {
+          return;
+        }
+        throw error;
       }
     },
   };

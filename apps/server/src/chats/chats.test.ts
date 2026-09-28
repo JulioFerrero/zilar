@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { groups } from '../db/schema';
+import { randomUUID } from 'node:crypto';
+import { aiLimits, ais, groups, providerConnections } from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
@@ -25,6 +26,7 @@ interface ChatsBody {
     memberCount?: number;
     role?: string;
     avatarUrl?: string;
+    isAi?: boolean;
   }>;
 }
 
@@ -55,6 +57,39 @@ describe('GET /api/chats', () => {
     return (await response.json()) as { id: string };
   }
 
+  // Inserts an AI directly: the chat list only reads the rows, and the AI
+  // creation route needs a gateway this test does not mount.
+  async function addAi(
+    ownerId: string,
+    overrides: { name?: string; status?: 'active' | 'disabled' } = {},
+  ): Promise<{ id: string; jid: string }> {
+    const connectionId = randomUUID();
+    await context.db.insert(providerConnections).values({
+      id: connectionId,
+      owner: ownerId,
+      provider: 'openai',
+      encryptedKey: 'not-a-real-key',
+      label: null,
+    });
+
+    const id = randomUUID();
+    const jid = `ai-${id}@${TEST_XMPP_DOMAIN}`;
+    await context.db.insert(ais).values({
+      id,
+      owner: ownerId,
+      name: overrides.name ?? 'Helper AI',
+      template: 'dev',
+      persona: 'A persona',
+      providerConnectionId: connectionId,
+      model: 'gpt-4o-mini',
+      localpart: `ai-${id}`,
+      jid,
+      status: overrides.status ?? 'active',
+    });
+    await context.db.insert(aiLimits).values({ aiId: id, perDayUsd: '1.00', perMonthUsd: '20.00' });
+    return { id, jid };
+  }
+
   it('returns my DMs and groups with the right JIDs and member counts', async () => {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
     const bob = await contactOf(context, app, alice.id, 'bob@example.com');
@@ -71,6 +106,7 @@ describe('GET /api/chats', () => {
       chatJid: `${localpartFor(bob.id)}@${TEST_XMPP_DOMAIN}`,
       title: UNNAMED_CONTACT_NAME,
       userId: bob.id,
+      isAi: false,
     });
     expect(aliceChats.find((chat) => chat.kind === 'group')).toMatchObject({
       kind: 'group',
@@ -126,6 +162,34 @@ describe('GET /api/chats', () => {
     const response = await chatsFor(alice.cookie);
     const titles = ((await response.json()) as ChatsBody).chats.map((chat) => chat.title);
     expect(titles).toEqual(['Amy', 'Zoe']);
+  });
+
+  it("lists the caller's active AIs as AI DMs", async () => {
+    const alice = await bootstrapUser(context, app, 'alice@example.com');
+    const ai = await addAi(alice.id, { name: 'Dev-1' });
+
+    const response = await chatsFor(alice.cookie);
+    expect(response.status).toBe(200);
+    const chats = ((await response.json()) as ChatsBody).chats;
+    expect(chats).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'dm', chatJid: ai.jid, title: 'Dev-1', isAi: true }),
+      ]),
+    );
+    const entry = chats.find((chat) => chat.chatJid === ai.jid);
+    expect(entry?.userId).toBeUndefined();
+  });
+
+  it("does not list disabled AIs or another user's AIs", async () => {
+    const alice = await bootstrapUser(context, app, 'alice@example.com');
+    const bob = await bootstrapUser(context, app, 'bob@example.com');
+    await addAi(alice.id, { name: 'Paused', status: 'disabled' });
+    const bobs = await addAi(bob.id, { name: 'Bobs AI' });
+
+    const response = await chatsFor(alice.cookie);
+    const chats = ((await response.json()) as ChatsBody).chats;
+    expect(chats).toEqual([]);
+    expect(chats.some((chat) => chat.chatJid === bobs.jid)).toBe(false);
   });
 
   it('requires authentication', async () => {

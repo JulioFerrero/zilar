@@ -1,13 +1,22 @@
 import { Hono } from 'hono';
 import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
+import { listAis } from '../ais/service';
 import type { ServerConfig } from '../config';
 import { listContacts } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { listGroupsForUser, type GroupRole } from '../groups/service';
 
 export type ChatListEntry =
-  | { kind: 'dm'; chatJid: string; title: string; avatarUrl?: string; userId: string }
+  | {
+      kind: 'dm';
+      chatJid: string;
+      title: string;
+      avatarUrl?: string;
+      userId?: string;
+      /** True for an AI the caller owns, false for a human contact. */
+      isAi: boolean;
+    }
   | {
       kind: 'group';
       chatJid: string;
@@ -28,9 +37,10 @@ export function createChatsRoutes({ auth, db, config }: ChatsRoutesDependencies)
 
   routes.get('/chats', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
-    const [contacts, groups] = await Promise.all([
+    const [contacts, groups, ais] = await Promise.all([
       listContacts(db, user.id, config.xmpp.domain),
       listGroupsForUser(db, user.id),
+      listAis(db, user.id),
     ]);
 
     const chats: ChatListEntry[] = [
@@ -39,8 +49,20 @@ export function createChatsRoutes({ auth, db, config }: ChatsRoutesDependencies)
         chatJid: contact.jid,
         title: contact.name,
         userId: contact.userId,
+        isAi: false,
         ...(contact.avatarUrl ? { avatarUrl: contact.avatarUrl } : {}),
       })),
+      // Each active AI the caller owns is a DM with its own XMPP account, so
+      // "Open chat" from My AIs has somewhere to land. Disabled AIs and other
+      // people's AIs are left out.
+      ...ais
+        .filter((ai) => ai.status === 'active')
+        .map((ai): ChatListEntry => ({
+          kind: 'dm',
+          chatJid: ai.jid,
+          title: ai.name,
+          isAi: true,
+        })),
       ...groups.map((group): ChatListEntry => ({
         kind: 'group',
         chatJid: `${group.roomLocalpart}@${config.xmpp.mucDomain}`,

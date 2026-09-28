@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type {
+  AddModelInput,
   GenerateVirtualKeyInput,
   LitellmAdminClient,
   UpdateVirtualKeyInput,
@@ -51,13 +52,40 @@ class FakeLitellm implements LitellmAdminClient {
   readonly generated: GenerateVirtualKeyInput[] = [];
   readonly updated: UpdateVirtualKeyInput[] = [];
   readonly revoked: string[] = [];
+  readonly addedModels: AddModelInput[] = [];
+  readonly deletedModels: string[] = [];
+  /** Every gateway call in order, so tests can assert create/delete ordering. */
+  readonly order: string[] = [];
   failGenerate = false;
   failUpdate = false;
   failRevoke = false;
+  failAddModel = false;
+  failDeleteModel = false;
   private counter = 0;
+  private modelCounter = 0;
+
+  addModel(input: AddModelInput): Promise<string> {
+    this.addedModels.push(input);
+    this.order.push('addModel');
+    if (this.failAddModel) {
+      return Promise.reject(new Error('gateway down, master was sk-master-must-not-leak'));
+    }
+    this.modelCounter += 1;
+    return Promise.resolve(`model-${this.modelCounter}-do-not-leak`);
+  }
+
+  deleteModel(modelId: string): Promise<void> {
+    this.order.push('deleteModel');
+    if (this.failDeleteModel) {
+      return Promise.reject(new Error('gateway down'));
+    }
+    this.deletedModels.push(modelId);
+    return Promise.resolve();
+  }
 
   generateKey(input: GenerateVirtualKeyInput): Promise<VirtualKey> {
     this.generated.push(input);
+    this.order.push('generateKey');
     if (this.failGenerate) {
       return Promise.reject(new Error('gateway down, master was sk-master-must-not-leak'));
     }
@@ -208,10 +236,23 @@ describe('AI routes', () => {
     const createdText = JSON.stringify(ai);
     expect(createdText).not.toContain('sk-virtual');
     expect(createdText).not.toContain('tok-');
+    expect(createdText).not.toContain('model-1-do-not-leak');
     expect(createdText).not.toContain(PROVIDER_KEY);
     expect(createdText).not.toContain('encrypted');
 
-    // The key is sealed at rest and the cap was applied by the gateway.
+    // The private model is registered with the decrypted owner key before the
+    // key is issued, and the key may call only that model. The key is sealed at
+    // rest.
+    expect(litellm.addedModels).toEqual([
+      {
+        modelName: `ai-${ai['id'] as string}`,
+        litellmModel: 'openai/gpt-4o-mini',
+        apiKey: PROVIDER_KEY,
+        metadata: { ai_id: ai['id'] as string },
+      },
+    ]);
+    expect(litellm.order.slice(0, 2)).toEqual(['addModel', 'generateKey']);
+
     const keyRows = await context.db.select().from(llmVirtualKeys);
     expect(keyRows).toHaveLength(1);
     expect(keyRows[0]!.encryptedKey).not.toContain('sk-virtual');
@@ -220,9 +261,10 @@ describe('AI routes', () => {
     );
     expect(keyRows[0]!.budgetUsd).toBe('20.00');
     expect(keyRows[0]!.budgetDuration).toBe('30d');
+    expect(keyRows[0]!.litellmModelId).toBe('model-1-do-not-leak');
     expect(litellm.generated).toEqual([
       {
-        models: ['gpt-4o-mini'],
+        models: [`ai-${ai['id'] as string}`],
         maxBudget: 20,
         budgetDuration: '30d',
         keyAlias: `galena-ai-${ai['id'] as string}`,
@@ -296,6 +338,7 @@ describe('AI routes', () => {
     });
     expect(removed.status).toBe(204);
     expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
+    expect(litellm.deletedModels).toEqual([keyRows[0]!.litellmModelId]);
     expect(context.adminClient.unregistered).toContain(localpart);
     expect(await context.db.select().from(ais)).toHaveLength(0);
     expect(await context.db.select().from(aiLimits)).toHaveLength(0);
@@ -489,10 +532,44 @@ describe('AI routes', () => {
     expect(context.adminClient.unregistered).toHaveLength(1);
     expect(context.adminClient.removedRosterItems).toHaveLength(2);
     expect(litellm.revoked).toHaveLength(0);
+    // The model registered before the key is rolled back too.
+    expect(litellm.addedModels).toHaveLength(1);
+    expect(litellm.deletedModels).toEqual(['model-1-do-not-leak']);
     // The rollback logged the failure but never a key.
     const logged = JSON.stringify(logger.calls);
     expect(logged).not.toContain('sk-virtual');
     expect(logged).not.toContain('tok-');
+    expect(logged).not.toContain(PROVIDER_KEY);
+  });
+
+  it('rolls back the XMPP account and rows when the model cannot be registered', async () => {
+    const litellm = new FakeLitellm();
+    litellm.failAddModel = true;
+    const logger = captureLogger();
+    const app = mount({ litellm, logger });
+    const user = await bootstrapUser(context, app, `modelfail${testCounter}@example.com`);
+    const connectionId = await addConnection(user.id);
+
+    const response = await postAi(app, user.cookie, createBody(connectionId));
+    expect(response.status).toBe(502);
+    const text = await response.text();
+    expect((JSON.parse(text) as { error: { code: string } }).error.code).toBe(
+      'ai_provisioning_failed',
+    );
+    expect(text).not.toContain(PROVIDER_KEY);
+    expect(text).not.toContain('sk-master-must-not-leak');
+    expect(text).not.toContain('gateway down');
+
+    expect(await context.db.select().from(ais)).toHaveLength(0);
+    expect(await context.db.select().from(llmVirtualKeys)).toHaveLength(0);
+    expect(litellm.generated).toHaveLength(0);
+    expect(litellm.addedModels).toHaveLength(1);
+    expect(litellm.deletedModels).toHaveLength(0);
+    expect(context.adminClient.unregistered).toHaveLength(1);
+    expect(context.adminClient.removedRosterItems).toHaveLength(2);
+    const logged = JSON.stringify(logger.calls);
+    expect(logged).not.toContain(PROVIDER_KEY);
+    expect(logged).not.toContain('sk-master-must-not-leak');
   });
 
   it('returns 502 and keeps the AI when the gateway is down during delete', async () => {
@@ -517,6 +594,7 @@ describe('AI routes', () => {
     expect(await context.db.select().from(ais)).toHaveLength(1);
     expect(await context.db.select().from(llmVirtualKeys)).toHaveLength(1);
     expect(context.adminClient.unregistered).toHaveLength(0);
+    expect(litellm.deletedModels).toHaveLength(0);
   });
 
   it('can retry a delete that failed part way, revoking the key exactly once', async () => {
@@ -549,8 +627,66 @@ describe('AI routes', () => {
     });
     expect(retried.status).toBe(204);
     expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
+    expect(litellm.deletedModels).toEqual([keyRows[0]!.litellmModelId]);
     expect(context.adminClient.unregistered).toContain(localpart);
     expect(await context.db.select().from(ais)).toHaveLength(0);
+  });
+
+  it('can retry a delete that failed at the model, deleting the model exactly once', async () => {
+    const litellm = new FakeLitellm();
+    const app = mount({ litellm });
+    const user = await bootstrapUser(context, app, `retrymodel${testCounter}@example.com`);
+    const connectionId = await addConnection(user.id);
+    const created = await postAi(app, user.cookie, createBody(connectionId));
+    const id = ((await created.json()) as { id: string }).id;
+    const keyRows = await context.db.select().from(llmVirtualKeys);
+    const modelId = keyRows[0]!.litellmModelId;
+
+    // First attempt: the key is revoked (and its id cleared), the model delete
+    // fails and the key row survives so the retry can finish the job.
+    litellm.failDeleteModel = true;
+    const failed = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      method: 'DELETE',
+      headers: { cookie: user.cookie },
+    });
+    expect(failed.status).toBe(502);
+    expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
+    const afterFail = await context.db.select().from(llmVirtualKeys);
+    expect(afterFail).toHaveLength(1);
+    expect(afterFail[0]!.litellmKeyId).toBeNull();
+    expect(afterFail[0]!.litellmModelId).toBe(modelId);
+    expect(await context.db.select().from(ais)).toHaveLength(1);
+
+    // Retry: the model is deleted, the row goes, and the key is not revoked
+    // a second time.
+    litellm.failDeleteModel = false;
+    const retried = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      method: 'DELETE',
+      headers: { cookie: user.cookie },
+    });
+    expect(retried.status).toBe(204);
+    expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
+    expect(litellm.deletedModels).toEqual([modelId]);
+    expect(await context.db.select().from(ais)).toHaveLength(0);
+    expect(await context.db.select().from(llmVirtualKeys)).toHaveLength(0);
+  });
+
+  it('skips the model delete for an old AI that has no model id', async () => {
+    const litellm = new FakeLitellm();
+    const app = mount({ litellm });
+    const user = await bootstrapUser(context, app, `oldai${testCounter}@example.com`);
+    const connectionId = await addConnection(user.id);
+    const created = await postAi(app, user.cookie, createBody(connectionId));
+    const id = ((await created.json()) as { id: string }).id;
+    await context.db.update(llmVirtualKeys).set({ litellmModelId: null });
+
+    const removed = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      method: 'DELETE',
+      headers: { cookie: user.cookie },
+    });
+    expect(removed.status).toBe(204);
+    expect(litellm.deletedModels).toHaveLength(0);
+    expect(litellm.revoked).toHaveLength(1);
   });
 
   it('can delete a disabled AI left behind by a crash, with no key and no account', async () => {

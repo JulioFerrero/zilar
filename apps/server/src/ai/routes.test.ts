@@ -44,6 +44,14 @@ class FakeLitellmClient implements LitellmAdminClient {
   revokeKey(): Promise<void> {
     throw new Error('not used in this test');
   }
+
+  addModel(): Promise<string> {
+    throw new Error('not used in this test');
+  }
+
+  deleteModel(): Promise<void> {
+    throw new Error('not used in this test');
+  }
 }
 
 describe('POST /api/ai/virtual-keys', () => {
