@@ -1,7 +1,7 @@
 ---
 id: T-0063
 title: Mobile honors the `?mock=` route param only in dev builds (or with EXPO_PUBLIC_GALENA_MOCK), for the chat store and My AIs
-status: review
+status: merged
 milestone: M2
 branch: task/T-0063-mobile-mock-gating
 model: opencode-go/deepseek-v4.1-flash
@@ -103,10 +103,13 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved.
+
+**Approved and merged by Claude.** Verified in the worktree: scope is inside Allowed files (mobile `mock/`, `store/`, `components/ais/use-ais-api.ts`, the task file); `format:check`, `lint`, `typecheck`, `test` and `build` all pass, and the Report's mobile counts hold (217 passed, 2 skipped). One gate, `mockParamAllowed`, is used by both the chat store and My AIs. The `?mock=` route param is ignored unless the build is `__DEV__` or `EXPO_PUBLIC_GALENA_MOCK` is set to something other than empty, `0` or `false`. The `NODE_ENV=test` and `EXPO_PUBLIC_GALENA_MOCK=1` paths are unchanged. No other file reads the param (grep).
 
 ### Findings
--
+1. *(No change needed.)* `isMockMode` takes an optional second `env` argument and `aisMockScenario` a third `paramAllowed` argument (default false, fail closed). Both are the smallest way to make the gate testable; accepted.
+2. *(No change needed.)* `mockParamAllowed` treats any non-empty value other than `0` and `false` as open, exactly as the spec says.
 
 ### Follow-ups
--
+- None.
