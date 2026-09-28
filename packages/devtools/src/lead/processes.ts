@@ -16,7 +16,6 @@ export interface FindProcsDeps {
   parentPid: number;
 }
 
-const COMMAND_MAX = 80;
 const EXIT_WAIT_MS = 5_000;
 const EXIT_POLL_MS = 50;
 
@@ -63,12 +62,48 @@ function parseLsof(output: string, worktree: string): Map<number, string> {
   return map;
 }
 
-// Reads `ps -Ao pid=,command=` output. Each line is `<pid> <command>`. The
-// command field is truncated by ps on macOS, but is fine for our purposes.
-// A pid counts as "inside" only if its command line starts with the worktree
-// path (so build runners launched from the worktree are caught).
+// Strips `FOO=bar ` env assignments from the start of a command line, the
+// way the shell does before exec. Returns the rest so the caller can split
+// off the executable name without env-leak noise.
+function stripEnvAssignments(command: string): string {
+  let rest = command;
+  for (;;) {
+    const match = /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)/.exec(rest);
+    if (match === null) {
+      return rest;
+    }
+    rest = rest.slice(match[0].length);
+  }
+}
+
+// Returns the basename of the executable in a `ps` line: the first whitespace-
+// delimited token after env assignments, with any leading path stripped. We
+// never print the rest of the command line — arguments often carry secrets
+// (`--token=…`, `-e PASSWORD=…`, etc.) and there's no safe way to scrub them.
+// `node` running `/…/galena-T-0047/apps/server/src/index.ts` becomes `node`;
+// `…/galena-T-0047/node_modules/.bin/vite` becomes `vite`.
+export function executableBasename(command: string): string {
+  const cleaned = stripEnvAssignments(command).trim();
+  if (cleaned.length === 0) {
+    return '';
+  }
+  // The first token is the executable. Quote-aware split isn't needed: a
+  // basename with whitespace would already be unusable in the print line, and
+  // none of the worktree processes we care about use quoted paths.
+  const firstToken = cleaned.split(/\s+/)[0] ?? '';
+  const slash = firstToken.lastIndexOf('/');
+  return slash === -1 ? firstToken : firstToken.slice(slash + 1);
+}
+
+// Reads `ps -Ao pid=,command=` output. Each line is `<pid> <command>`. A pid
+// counts as "inside" when the command line contains the worktree path with a
+// trailing separator (`<worktree>/…`) anywhere in it. Exact-prefix matters:
+// `galena-T-0047` never matches `galena-T-00470`. This catches interpreter-
+// first commands (`node /…/galena-T-0047/apps/server/src/index.ts`) which
+// have no worktree path as their leading token.
 function parsePs(output: string, worktree: string): Map<number, string> {
   const map = new Map<number, string>();
+  const needle = worktree.endsWith('/') ? worktree : `${worktree}/`;
   for (const raw of output.split('\n')) {
     const line = raw.trim();
     if (line.length === 0) {
@@ -83,7 +118,7 @@ function parsePs(output: string, worktree: string): Map<number, string> {
     if (!Number.isFinite(pid)) {
       continue;
     }
-    if (isInsideWorktree(worktree, command)) {
+    if (command.includes(needle) || command === worktree) {
       if (!map.has(pid)) {
         map.set(pid, command);
       }
@@ -108,6 +143,15 @@ export function findProcessesInWorktree(worktree: string, deps: FindProcsDeps): 
     result.push({ pid, command });
   }
   return result;
+}
+
+// One entry in the result. `command` is the basename of the executable; we
+// never include argv. `survived` is true for the few cases where SIGKILL did
+// not end the process — the lead logs these as `could not stop`.
+export interface StoppedProcess {
+  pid: number;
+  command: string;
+  survived: boolean;
 }
 
 export interface StopProcessesDeps {
@@ -143,42 +187,37 @@ function defaultExited(pid: number): boolean {
   }
 }
 
-// Strips `FOO=bar ` env assignments from the start of a command line, the
-// way the shell does before exec. Anything left is the actual command, so the
-// stop message never reveals a user's environment to the lead.log file.
-function stripEnvAssignments(command: string): string {
-  let rest = command;
-  for (;;) {
-    const match = /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)/.exec(rest);
-    if (match === null) {
-      return rest;
-    }
-    rest = rest.slice(match[0].length);
-  }
-}
-
 // Stops every candidate with SIGTERM, waits up to EXIT_WAIT_MS for each, and
-// SIGKILLs the survivors. Returns one message per stopped process, ready to
-// print. The pid of each process is preserved in the message so the caller can
-// log it; the command is truncated to COMMAND_MAX characters and the message
-// never includes environment variables.
+// SIGKILLs the survivors. A pid is reported only when we observed it gone
+// afterwards: pids that were already gone before TERM (race) and pids that
+// survived SIGKILL are both filtered out. Survivors are returned with
+// `survived: true` so the caller can log `could not stop` separately.
 export async function stopWorktreeProcesses(
   candidates: CandidateProcess[],
   deps: StopProcessesDeps = {},
-): Promise<{ pid: number; command: string }[]> {
+): Promise<StoppedProcess[]> {
   const kill = deps.kill ?? defaultKill;
   const now = deps.now ?? Date.now;
   const sleep = deps.sleep ?? defaultSleep;
   const exited = deps.exited ?? defaultExited;
-  const stopped: { pid: number; command: string }[] = [];
+  const stopped: StoppedProcess[] = [];
   for (const candidate of candidates) {
-    const sanitized = stripEnvAssignments(candidate.command).slice(0, COMMAND_MAX);
+    const command = executableBasename(candidate.command);
+    // Probe before signaling: a pid that is already gone is not something we
+    // stopped. Report nothing rather than `stop <pid>` for a corpse.
+    if (exited(candidate.pid)) {
+      continue;
+    }
     try {
       kill(candidate.pid, 'SIGTERM');
     } catch {
-      // Already gone: the probe would have caught it, but a race can leave
-      // a dead pid between find and kill. Treat as stopped and move on.
-      stopped.push({ pid: candidate.pid, command: sanitized });
+      // The kill itself failed (ESRCH race or permission). If the pid is
+      // truly gone now, fall through to the post-probe below; if not, we
+      // count it as survived so the lead knows.
+      if (exited(candidate.pid)) {
+        continue;
+      }
+      stopped.push({ pid: candidate.pid, command, survived: true });
       continue;
     }
     const deadline = now() + EXIT_WAIT_MS;
@@ -195,7 +234,14 @@ export async function stopWorktreeProcesses(
         // Race: the process died between the probe and SIGKILL. Nothing to do.
       }
     }
-    stopped.push({ pid: candidate.pid, command: sanitized });
+    // Re-probe after SIGKILL: if the pid is still alive (a kernel-protected
+    // pid we can't kill, a process in uninterruptible sleep, etc.), report
+    // it as survived rather than as a clean stop.
+    if (exited(candidate.pid)) {
+      stopped.push({ pid: candidate.pid, command, survived: false });
+    } else {
+      stopped.push({ pid: candidate.pid, command, survived: true });
+    }
   }
   return stopped;
 }

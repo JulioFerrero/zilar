@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { FakeOpenCodeClient, type OpenCodeClient } from './client';
+import { FakeOpenCodeClient } from './client';
 import { launchTask } from './launch';
 import { promptsDir } from './prompts';
 import { loadState, saveState } from './state';
@@ -258,7 +258,7 @@ describe('switchModel', () => {
     ).rejects.toThrow(/V4 Pro/);
   });
 
-  it('ignores an interrupt error when the previous session is already idle', async () => {
+  it('proceeds when the previous session is already idle and records the interrupt attempt', async () => {
     const { repoRoot, worktree, statePath } = setupRepo();
     const client = new FakeOpenCodeClient();
     const { runner } = stubRunner();
@@ -270,36 +270,87 @@ describe('switchModel', () => {
       runner,
     });
     const oldSessionId = launched.sessionId;
-
-    // Swap the previous session's interrupt behavior for one that throws,
-    // simulating an already-idle session the API rejects with a 4xx.
-    // We can't spread `client` (its methods live on the prototype, not own
-    // properties), so we delegate every other method explicitly.
-    const throwingClient: OpenCodeClient = {
-      createSession: (options) => client.createSession(options),
-      promptDetached: (sessionId, text) => client.promptDetached(sessionId, text),
-      interrupt: async (sessionId: string): Promise<void> => {
-        if (sessionId === oldSessionId) {
-          throw new Error('session is idle');
-        }
-        await client.interrupt(sessionId);
-      },
-      listMessages: (sessionId, limit) => client.listMessages(sessionId, limit),
-      listPermissions: (sessionId) => client.listPermissions(sessionId),
-      replyPermission: (sessionId, requestId, decision, message) =>
-        client.replyPermission(sessionId, requestId, decision, message),
-    };
+    client.scriptInterrupt(oldSessionId, { kind: 'already_idle' });
 
     const result = await switchModel('T-0099', 'minimax-coding-plan/MiniMax-M3', undefined, {
       repoRoot,
-      client: throwingClient,
+      client,
       promptsDirPath: promptsDir(),
       statePath,
     });
     expect(result.sessionId).toBeTruthy();
-    expect(client.interrupted).not.toContain(oldSessionId);
-    // The new session was created despite the interrupt failure.
+    // The interrupt was attempted and the outcome was recorded as already_idle.
+    expect(client.interruptOutcomes).toContainEqual({
+      sessionId: oldSessionId,
+      outcome: { kind: 'already_idle' },
+    });
+    // The new session was created despite the idle interrupt.
     expect(client.created).toHaveLength(2);
     expect(client.created[1]?.options.directory).toBe(worktree);
+    // The lead.log mentions the idle session.
+    const log = fs.readFileSync(path.join(path.dirname(statePath), 'lead.log'), 'utf8');
+    expect(log).toMatch(/was already idle/);
+  });
+
+  it('proceeds when the previous session is not found and logs it', async () => {
+    const { repoRoot, worktree, statePath } = setupRepo();
+    const client = new FakeOpenCodeClient();
+    const { runner } = stubRunner();
+    const launched = await launchTask('T-0099', undefined, {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+      runner,
+    });
+    // Force the fake to report not_found on the previous session.
+    client.scriptInterrupt(launched.sessionId, { kind: 'not_found' });
+
+    const result = await switchModel('T-0099', 'minimax-coding-plan/MiniMax-M3', undefined, {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+    });
+    expect(result.sessionId).toBeTruthy();
+    expect(client.created).toHaveLength(2);
+    expect(client.created[1]?.options.directory).toBe(worktree);
+    const log = fs.readFileSync(path.join(path.dirname(statePath), 'lead.log'), 'utf8');
+    expect(log).toMatch(/is gone/);
+  });
+
+  it('aborts the switch and leaves no new session when the interrupt errors', async () => {
+    const { repoRoot, statePath } = setupRepo();
+    const client = new FakeOpenCodeClient();
+    const { runner } = stubRunner();
+    const launched = await launchTask('T-0099', undefined, {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+      runner,
+    });
+    client.scriptInterrupt(launched.sessionId, {
+      kind: 'error',
+      message: 'upstream timeout',
+    });
+    const stateBefore = loadState(statePath);
+
+    await expect(
+      switchModel('T-0099', 'minimax-coding-plan/MiniMax-M3', undefined, {
+        repoRoot,
+        client,
+        promptsDirPath: promptsDir(),
+        statePath,
+      }),
+    ).rejects.toThrow(/refusing to switch T-0099:.*upstream timeout/);
+
+    // No new session was created.
+    expect(client.created).toHaveLength(1);
+    // State was not touched by the failed switch.
+    const stateAfter = loadState(statePath);
+    expect(stateAfter.tasks['T-0099']).toEqual(stateBefore.tasks['T-0099']);
+    // The previous session is still on the record (no switchedAt stamp).
+    expect(stateAfter.tasks['T-0099']?.switchedAt).toBeUndefined();
   });
 });

@@ -2,7 +2,10 @@ import path from 'node:path';
 import { moveBoardRow } from './board.js';
 import { porcelainLines, type GitRunner } from './git.js';
 import {
+  defaultLsof,
+  defaultPs,
   findProcessesInWorktree,
+  leadProcessIds,
   stopWorktreeProcesses,
   type FindProcsDeps,
   type StopProcessesDeps,
@@ -29,18 +32,16 @@ export interface MergeOptions {
   readText: (file: string) => string;
   writeText: (file: string, text: string) => void;
   dropFromState: (task: string) => void;
-  // Injectable seams so tests can stub out lsof/ps/kill/clock. Production
-  // callers pass the real implementations; tests pass stubs that return no
-  // candidates and never kill anything. `findProcsDeps` is required in
-  // production because the lead must always identify its own pid/parent.
-  findProcs: (worktree: string, deps: FindProcsDeps) => { pid: number; command: string }[];
-  stopProcs: (
+  // Injectable seams so tests can stub out lsof/ps/kill/clock. All have real
+  // production defaults; tests typically pass stubs that no-op everything.
+  findProcs?: (worktree: string, deps: FindProcsDeps) => { pid: number; command: string }[];
+  stopProcs?: (
     candidates: { pid: number; command: string }[],
     deps: StopProcessesDeps,
-  ) => Promise<{ pid: number; command: string }[]>;
-  findProcsDeps: FindProcsDeps;
-  stopProcsDeps: StopProcessesDeps;
-  print: (line: string) => void;
+  ) => Promise<{ pid: number; command: string; survived: boolean }[]>;
+  findProcsDeps?: FindProcsDeps;
+  stopProcsDeps?: StopProcessesDeps;
+  print?: (line: string) => void;
 }
 
 function taskStatus(options: MergeOptions): string {
@@ -50,24 +51,44 @@ function taskStatus(options: MergeOptions): string {
   return parseFrontMatter(text)['status'] ?? '';
 }
 
-// Stops processes left in the worktree before the worktree is removed.
-// Dev servers, Metro, etc. survive `git worktree remove` and keep holding the
-// ports; printing every AI answer twice was the symptom. The default seams
-// reach for `lsof` and `ps`, but tests inject their own.
+// Default production seams: reach for the real lsof/ps, identify ourselves
+// with the actual lead pid/parent so we never kill the lead by accident, and
+// print to stdout so the line shows up in the same stream the user invokes
+// `lead merge` from.
+function defaultFindProcsDeps(): FindProcsDeps {
+  return { lsof: defaultLsof, ps: defaultPs, ...leadProcessIds() };
+}
+
+function defaultPrint(line: string): void {
+  console.log(line);
+}
+
+// Prints the outcome of stopping one process: `stop <pid> <exe>` for clean
+// stops, `could not stop <pid> <exe>` for survivors. Executable name only;
+// argv is never printed (it often carries `--token=…`, `-e PASSWORD=…`, etc.).
+function printStop(
+  outcome: { pid: number; command: string; survived: boolean },
+  print: (line: string) => void,
+): void {
+  if (outcome.survived) {
+    print(`could not stop ${outcome.pid} ${outcome.command}`);
+  } else {
+    print(`stop ${outcome.pid} ${outcome.command}`);
+  }
+}
+
+// Stops processes left in the worktree. Called only on the success path,
+// immediately before `git worktree remove`: a failed merge must not kill
+// the worker's dev servers (the spec calls this out). Survivors are reported
+// via `print` so the lead sees them.
 async function stopWorktreeProcessesForMerge(options: MergeOptions): Promise<void> {
   const find = options.findProcs ?? findProcessesInWorktree;
   const stop = options.stopProcs ?? stopWorktreeProcesses;
-  const findDeps = options.findProcsDeps;
-  if (findDeps === undefined) {
-    throw new MergeError(
-      'merge needs findProcsDeps (currentPid/parentPid); production callers must provide it',
-    );
-  }
-  const candidates = find(options.worktree, findDeps);
-  const stopped = await stop(candidates, options.stopProcsDeps ?? {});
-  const print = options.print ?? ((line: string): void => console.log(line));
-  for (const entry of stopped) {
-    print(`stop ${entry.pid} ${entry.command}`);
+  const findDeps = options.findProcsDeps ?? defaultFindProcsDeps();
+  const stopped = await stop(find(options.worktree, findDeps), options.stopProcsDeps ?? {});
+  const print = options.print ?? defaultPrint;
+  for (const outcome of stopped) {
+    printStop(outcome, print);
   }
 }
 
@@ -93,7 +114,6 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
       `refusing to merge: worktree has uncommitted changes (${worktreeDirty.join(', ')})`,
     );
   }
-  await stopWorktreeProcessesForMerge(options);
   const rebased = options.runner.run(options.worktree, ['rebase', 'main']);
   if (!rebased.ok) {
     const conflicted = options.runner
@@ -133,6 +153,10 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
   if (!pushed.ok) {
     throw new MergeError('push of main failed; the merge is local only');
   }
+  // Stop worktree processes right before the worktree is removed. Anything
+  // earlier (before the rebase, before the board commit) would risk killing
+  // the worker's dev servers on a failed merge — the spec calls this out.
+  await stopWorktreeProcessesForMerge(options);
   const removed = options.runner.run(options.root, ['worktree', 'remove', options.worktree]);
   if (!removed.ok) {
     throw new MergeError(`could not remove worktree ${options.worktree}; branch kept`);

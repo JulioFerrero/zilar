@@ -76,15 +76,56 @@ interface StartSessionResult {
   prompt: string;
 }
 
+// Builds the worker prompt for a task, with all placeholders filled in, and
+// asserts the rendered output contains every substituted value. Shared
+// between `startWorkerSession` and `switchModel` so the validation lives in
+// exactly one place. Throwing here means the caller never reaches
+// `createSession` — a broken template must not leave an orphan session
+// behind.
+export function renderWorkerPrompt(options: {
+  promptsDirPath: string;
+  task: string;
+  file: string;
+  worktree: string;
+  branch: string;
+  template: 'worker' | 'switch';
+}): string {
+  const templateFile = options.template === 'switch' ? 'switch' : 'worker';
+  const substitutions = {
+    TASK: options.task,
+    TASK_FILE: options.file,
+    WORKTREE: options.worktree,
+    BRANCH: options.branch,
+  };
+  const prompt = renderPrompt(loadPrompt(options.promptsDirPath, templateFile), substitutions);
+  // Catch two ways a template can be broken:
+  //  1. it still contains `{{NAME}}` after rendering (placeholder not in template);
+  //  2. it does not contain the substituted value (template dropped it).
+  const unfilled = unfilledPlaceholders(prompt).filter((name) =>
+    (Object.keys(substitutions) as (keyof typeof substitutions)[]).includes(name as never),
+  );
+  if (unfilled.length > 0) {
+    throw new Error(`${templateFile} prompt has unfilled placeholders: ${unfilled.join(', ')}`);
+  }
+  const missingValues = (Object.entries(substitutions) as [string, string][])
+    .filter(([, value]) => !prompt.includes(value))
+    .map(([name]) => name);
+  if (missingValues.length > 0) {
+    throw new Error(
+      `${templateFile} prompt is missing substituted values for: ${missingValues.join(', ')}`,
+    );
+  }
+  return prompt;
+}
+
 // Starts a session in the given worktree and sends the worker prompt with the
 // task placeholders filled in. Shared between launch (fresh worktree) and
-// switch-model (existing worktree, different model). Verifies the prompt has
-// no unfilled placeholders so a forgotten template edit doesn't ship a
-// "{{TASK}}" to the worker.
+// switch-model (existing worktree, different model). Validates the prompt
+// BEFORE createSession so a broken template never leaves an orphan session.
 export async function startWorkerSession(
   options: StartSessionOptions,
 ): Promise<StartSessionResult> {
-  const templateFile = options.template === 'switch' ? 'switch' : 'worker';
+  const prompt = renderWorkerPrompt(options);
   const sessionId = await options.client.createSession({
     title: options.title,
     agent: options.agent ?? 'build',
@@ -92,18 +133,6 @@ export async function startWorkerSession(
     directory: options.worktree,
     permissions: options.rules,
   });
-  const prompt = renderPrompt(loadPrompt(options.promptsDirPath, templateFile), {
-    TASK: options.task,
-    TASK_FILE: options.file,
-    WORKTREE: options.worktree,
-    BRANCH: options.branch,
-  });
-  const missing = unfilledPlaceholders(prompt).filter((name) =>
-    ['TASK', 'TASK_FILE', 'WORKTREE', 'BRANCH'].includes(name),
-  );
-  if (missing.length > 0) {
-    throw new Error(`${templateFile} prompt has unfilled placeholders: ${missing.join(', ')}`);
-  }
   options.client.promptDetached(sessionId, prompt);
   return { sessionId, prompt };
 }

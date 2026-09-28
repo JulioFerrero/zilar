@@ -5,13 +5,6 @@ import { OpencodeCliClient } from './client.js';
 import { RealGitRunner } from './git.js';
 import { findTaskFile, launchTask } from './launch.js';
 import { mergeTask } from './merge.js';
-import {
-  defaultLsof,
-  defaultPs,
-  findProcessesInWorktree,
-  leadProcessIds,
-  stopWorktreeProcesses,
-} from './processes.js';
 import { promptsDir } from './prompts.js';
 import { replyToWorker } from './reply.js';
 import { startPrereviewSession } from './start-prereview.js';
@@ -180,15 +173,6 @@ async function runMerge(positional: string[], args: string[]): Promise<void> {
       delete state.tasks[entry];
       saveState(statePath, state);
     },
-    findProcs: findProcessesInWorktree,
-    stopProcs: stopWorktreeProcesses,
-    findProcsDeps: {
-      lsof: defaultLsof,
-      ps: defaultPs,
-      ...leadProcessIds(),
-    },
-    stopProcsDeps: {},
-    print: (line) => console.log(line),
   });
   console.log(`${task} merged`);
 }

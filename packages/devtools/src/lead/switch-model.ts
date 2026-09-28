@@ -3,7 +3,7 @@ import path from 'node:path';
 import { type OpenCodeClient } from './client.js';
 import { readTaskFrontMatter, startWorkerSession, worktreeFor } from './launch.js';
 import { loadRulesFile } from './prompts.js';
-import { loadState, saveState } from './state.js';
+import { appendLog, loadState, saveState } from './state.js';
 import { assertNotV4Pro, splitModel } from './task-file.js';
 import type { TaskRecord } from './types.js';
 
@@ -85,14 +85,27 @@ export async function switchModel(
   const model = splitModel(newModel);
   const { file, branch } = readTaskFrontMatter(deps.repoRoot, task);
 
-  // Interrupt the previous session: a worker already on quota may be in
-  // any state. Ignore errors so an already-idle session doesn't block the
-  // switch (the API treats idle interrupts as a no-op or 4xx).
-  try {
-    await deps.client.interrupt(previous.sessionId);
-  } catch {
-    // Already idle, missing session, or any other transient state: we
-    // proceed regardless so the quota fallback always succeeds.
+  // Interrupt the previous session. We only proceed past this point when the
+  // outcome is one of: ok, already-idle, not-found. Any other failure aborts
+  // the switch before we open the new session — two writers in one worktree
+  // is worse than no switch at all. The lead's logger is informed of what
+  // was ignored so the audit trail is honest.
+  const outcome = await deps.client.tryInterrupt(previous.sessionId);
+  if (outcome.kind === 'error') {
+    throw new Error(
+      `refusing to switch ${task}: cannot interrupt the previous session (${previous.sessionId}): ${outcome.message}`,
+    );
+  }
+  if (outcome.kind === 'not_found') {
+    appendLog(
+      deps.statePath,
+      `switch-model ${task}: previous session ${previous.sessionId} is gone, proceeding`,
+    );
+  } else if (outcome.kind === 'already_idle') {
+    appendLog(
+      deps.statePath,
+      `switch-model ${task}: previous session ${previous.sessionId} was already idle, proceeding`,
+    );
   }
 
   const rules = loadRulesFile(path.join(deps.promptsDirPath, 'rules.json'));

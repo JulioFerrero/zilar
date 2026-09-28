@@ -106,7 +106,7 @@ The shared part of `launch.ts` (read rules, create the session, render the promp
 
 The new `prompts/switch.md` is the worker prompt with one extra paragraph: "the lead switched this task from another model … read `git status` / `git log` / `git diff` and continue."
 
-**`lead merge` stops worktree processes.** Before `git worktree remove`, the new `processes.ts` runs `lsof -a -d cwd -Fpn` and `ps -Ao pid=,command=` through injectable seams, picks the pids whose cwd or command line lives inside the worktree path (exact or `<worktree>/…`, never look-alikes like `galena-T-0047` matching `galena-T-00470`), drops the lead process and its parent, SIGTERMs each one, polls up to 5 s in 50 ms ticks, then SIGKILLs the survivors. It prints one `stop <pid> <command[:80]>` line per process; the command is stripped of any leading `KEY=value ` env assignments first, so a worker's secrets never reach `lead.log`.
+**`lead merge` stops worktree processes.** Right before `git worktree remove` (a failed merge must not kill the worker's dev servers), the new `processes.ts` runs `lsof -a -d cwd -Fpn` and `ps -Ao pid=,command=` through injectable seams, picks the pids whose cwd or command line lives inside the worktree path (exact-prefixed, so `galena-T-0047` never matches `galena-T-00470`), drops the lead process and its parent, SIGTERMs each one, polls up to 5 s in 50 ms ticks, then SIGKILLs the survivors. Each pid is re-probed after SIGKILL: clean stops print `stop <pid> <exe>`; survivors print `could not stop <pid> <exe>`. `<exe>` is just the basename of the executable (e.g. `stop 1234 node`) — never argv, so `--token=…` and other secrets never reach `lead.log`. A pid already gone before TERM is not reported at all.
 
 Production wires the seams in `cli.ts` (real `lsof`/`ps`, current pid/parent from `process.pid`/`process.ppid`); tests inject no-op stubs.
 
@@ -147,6 +147,56 @@ Production wires the seams in `cli.ts` (real `lsof`/`ps`, current pid/parent fro
 - I split `findProcessesInWorktree` from `stopWorktreeProcesses` (two seams, not one) because the spec asks for them to be tested independently: the path matching and look-alike safety live in the first, the TERM-then-KILL timing in the second. Combining them would have made the fake timers part of the matching tests too.
 - I strip `KEY=value ` prefixes from the printed command, not just truncate. Spec says "never print environment variables"; truncation alone leaves `FOO=secret` intact if the truncated prefix is still 80 chars or fewer.
 - `MergeTask` is now `async`. Every existing test got an `await`; no behavior change. The CLI's `runMerge` already awaits it.
+
+## Round 2 (review fixes)
+
+### What changed after the review
+
+Seven items from the lead's review. All Checks pass; see numbers below.
+
+1. **`switch-model` interrupt classifies the outcome.** New `OpenCodeClient.tryInterrupt` returns a discriminated `{ kind: 'ok' | 'not_found' | 'already_idle' | 'error' }`. Only `error` aborts the switch — it throws `refusing to switch <task>: cannot interrupt the previous session (<sessionId>): <message>` BEFORE we open the new session, so two writers never share a worktree. `not_found` and `already_idle` are logged to `lead.log` and we proceed. `OpencodeCliClient.interrupt` (the old entrypoint used by the autopilot) now delegates to `tryInterrupt` and re-throws on error, so the autopilot's existing call sites are unchanged.
+
+2. **Process printing is basename-only.** New `executableBasename(command)` strips leading `KEY=value ` env assignments, takes the first whitespace-delimited token, and returns its basename (`node /…/server.js` → `node`, `…/node_modules/.bin/vite dev` → `vite`). The full argv is dropped: a token like `--token=sk-abc` or `FOO=secret` cannot reach the print line, so there's no scrubbing failure mode to worry about. The merge `print` function now uses `survived` to choose between `stop <pid> <exe>` and `could not stop <pid> <exe>`.
+
+3. **Prompt is rendered and validated BEFORE `createSession`.** Extracted `renderWorkerPrompt` in `launch.ts`; `startWorkerSession` calls it first and only calls `client.createSession` once the prompt passes both checks:
+   - No `{{NAME}}` placeholder left in the four required keys (`TASK`, `TASK_FILE`, `WORKTREE`, `BRANCH`).
+   - Every substituted value is actually present in the rendered text.
+   
+   Two new tests cover this: a broken template with no placeholders, and an order-recording client that proves `createSession` is never called when the prompt fails validation.
+
+4. **`merge` stops worktree processes only after a successful merge, immediately before `git worktree remove`.** The rebase-conflict and pre-flight-refusal paths never reach the cleanup, so a failed merge leaves the worker's dev servers alone. A new `mergeTask process cleanup > does not run process cleanup when the rebase conflicts` test pins this; the order test pins the success path (`push → find → stop → print → worktree-remove`).
+
+5. **`MergeOptions` seams are optional with real defaults.** No more "required but defaulted" trap. `findProcs` defaults to the real `findProcessesInWorktree`; `stopProcs` to `stopWorktreeProcesses`; `findProcsDeps` to a fresh `defaultFindProcsDeps()` that wires `defaultLsof`/`defaultPs` plus the lead's `process.pid`/`process.ppid`; `stopProcsDeps` to `{}`; `print` to `console.log`. Tests pass stubs to avoid the real OS; production callers pass nothing. The CLI's `runMerge` is now back to its round-1 shape.
+
+6. **`parsePs` matches `<worktree>/` anywhere in the command line.** Interpreter-first invocations like `node /…/galena-T-0047/apps/server/src/index.ts` and even `/usr/local/bin/node --inspect /…/galena-T-0047/packages/x/server.js --port 8082` now match. Look-alike paths (`galena-T-00470`, `galena-T-0047subpath`) still do not, because the match is exact-prefixed on the worktree path plus a separator. Tests cover both: interpreter-first match, the look-alike negative case, and the original cwd match via `lsof`.
+
+7. **Re-probe after SIGKILL; survivors are explicit.** `stopWorktreeProcesses` now probes the pid before TERM (corpses are skipped, no `stop <pid>` for a dead pid) and re-probes after KILL. The return type is `{ pid, command, survived }`: `survived: true` means the lead saw a SIGKILL-resistant pid and gets a `could not stop` line. A pid already gone before TERM is not in the result at all.
+
+### Files changed in Round 2
+
+- `packages/devtools/src/lead/client.ts` — new `tryInterrupt` on the interface and both implementations (`OpencodeCliClient` + `FakeOpenCodeClient`); `OpencodeCliClient.interrupt` delegates to `tryInterrupt` and re-throws. The `FakeOpenCodeClient` gains `scriptInterrupt(sessionId, outcome)` so tests can queue outcomes.
+- `packages/devtools/src/lead/processes.ts` — `executableBasename`; pre-TERM probe; post-KILL re-probe; `StoppedProcess` type with `survived`; `parsePs` scans the full command line.
+- `packages/devtools/src/lead/launch.ts` — `renderWorkerPrompt` extracted, called before `createSession`.
+- `packages/devtools/src/lead/merge.ts` — `stopWorktreeProcessesForMerge` moves to right before `worktree-remove`; defaults wired for all four seams; `printStop` picks the right line based on `survived`.
+- `packages/devtools/src/lead/switch-model.ts` — uses `tryInterrupt` and only proceeds past it on `ok` / `not_found` / `already_idle`. Other failures throw before any new session is created; benign ones are logged to `lead.log`.
+- `packages/devtools/src/lead/cli.ts` — simpler `runMerge` again; the production seams are now inside `mergeTask`.
+- `packages/devtools/src/lead/client.test.ts` — 5 new `tryInterrupt` cases on `OpencodeCliClient` (ok, already_idle via `{"interrupted":false}`, not_found on 404, error on a 42 exit, `interrupt` re-throws), 3 new cases on `FakeOpenCodeClient`.
+- `packages/devtools/src/lead/launch.test.ts` — 2 new `startWorkerSession` tests: a placeholder-less prompt throws, and an order-recording client proves `createSession` is never called.
+- `packages/devtools/src/lead/processes.test.ts` — new `executableBasename` block (4 cases), interpreter-first + look-alike + later-position match cases for `parsePs`, post-KILL re-probe + survived + pre-TERM skip cases for `stopWorktreeProcesses`.
+- `packages/devtools/src/lead/merge.test.ts` — `stops worktree processes only after a successful merge, right before worktree-remove` rewritten to assert the full order and the worktree-still-exists invariant; new `prints "could not stop" for a pid that survived SIGKILL`, `does not run process cleanup when the rebase conflicts`, `does not leak argv into the printed command` (covers `--token=…`, env vars, paths, ports).
+- `packages/devtools/src/lead/switch-model.test.ts` — `proceeds when the previous session is already idle` rewritten to use `scriptInterrupt`, log assertion, and the interrupt-attempted check; new `proceeds when the previous session is not found and logs it`; new `aborts the switch and leaves no new session when the interrupt errors` (state-record unchanged, no new session in `client.created`).
+
+### Checks (Round 2, real results)
+
+- `pnpm format:check`: `All matched files use Prettier code style!`
+- `pnpm lint`: `oxlint .` clean, exit 0.
+- `pnpm typecheck`: `Tasks: 9 successful, 9 total`, devtools clean.
+- `pnpm exec turbo test --force --filter=@galena/devtools`:
+  ```
+  Test Files  14 passed (14)
+       Tests  291 passed (291)
+  ```
+  23 new tests since round 1 (268 → 291), covering each of the seven review items.
 
 ### Problems
 

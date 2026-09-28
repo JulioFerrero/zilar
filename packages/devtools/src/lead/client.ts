@@ -42,6 +42,18 @@ export interface OpenCodeClient {
   // autopilot and launch always send it detached.
   promptDetached(sessionId: string, text: string): void;
   interrupt(sessionId: string): Promise<void>;
+  // Returns a discriminated outcome instead of throwing so callers like
+  // `switch-model` can keep going on a 404 / already-idle session. Anything
+  // unexpected comes back as `{ kind: 'error', message }` and is the
+  // caller's call.
+  tryInterrupt(
+    sessionId: string,
+  ): Promise<
+    | { kind: 'ok' }
+    | { kind: 'not_found' }
+    | { kind: 'already_idle' }
+    | { kind: 'error'; message: string }
+  >;
   listMessages(sessionId: string, limit: number): Promise<unknown[]>;
   listPermissions(sessionId: string): Promise<unknown[]>;
   replyPermission(
@@ -67,6 +79,53 @@ export class OpencodeCliClient implements OpenCodeClient {
 
   constructor(binary = 'opencode2') {
     this.binary = binary;
+  }
+
+  // Runs the CLI, writes stdout to a temp file (the playbook gotcha: stdout
+  // is truncated on pipes), and returns the full exit record so callers can
+  // branch on 404 / already-idle instead of parsing error messages.
+  private callWithExit(
+    operation: string,
+    params: Record<string, string>,
+    body?: unknown,
+  ): { stdout: string; stderr: string; status: number | null; error: Error | undefined } {
+    const args = ['api', operation];
+    for (const [key, value] of Object.entries(params)) {
+      args.push('--param', `${key}=${value}`);
+    }
+    if (body !== undefined) {
+      args.push('-d', JSON.stringify(body));
+    }
+    const outFile = tempFile('opencode-api');
+    const fd = fs.openSync(outFile, 'w');
+    try {
+      const result = spawnSync(this.binary, args, {
+        stdio: ['ignore', fd, 'pipe'],
+        encoding: 'utf8',
+        timeout: 60_000,
+      });
+      const stderr = typeof result.stderr === 'string' ? result.stderr : '';
+      // Whether the CLI exited cleanly or not, the API may have written its
+      // body to stdout — read it back from the temp file in both cases.
+      let stdout = '';
+      try {
+        stdout = fs.readFileSync(outFile, 'utf8');
+      } catch {
+        // File may not exist if spawnSync never wrote anything.
+      }
+      return { stdout, stderr, status: result.status, error: result.error };
+    } finally {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // Already closed: nothing to do.
+      }
+      try {
+        fs.unlinkSync(outFile);
+      } catch {
+        // Missing temp file: nothing to clean.
+      }
+    }
   }
 
   // `session.interrupt` answers `{"interrupted":…}` with no `data` envelope,
@@ -142,7 +201,60 @@ export class OpencodeCliClient implements OpenCodeClient {
   }
 
   async interrupt(sessionId: string): Promise<void> {
-    this.call('session.interrupt', { sessionID: sessionId }, undefined, false);
+    const outcome = await this.tryInterrupt(sessionId);
+    if (outcome.kind === 'error') {
+      throw new Error(outcome.message);
+    }
+  }
+
+  // Classifies the CLI's exit into a discriminated outcome so callers can
+  // keep going on expected "the session is already idle / unknown" failures.
+  // 404-style exits and any "not busy" / "no active session" message in the
+  // payload or stderr are treated as benign; everything else surfaces as
+  // `error` with the raw message so a real failure is never silently swallowed.
+  async tryInterrupt(
+    sessionId: string,
+  ): Promise<
+    | { kind: 'ok' }
+    | { kind: 'not_found' }
+    | { kind: 'already_idle' }
+    | { kind: 'error'; message: string }
+  > {
+    const { stdout, stderr, status, error } = this.callWithExit('session.interrupt', {
+      sessionID: sessionId,
+    });
+    if (error !== undefined) {
+      return {
+        kind: 'error',
+        message: `opencode2 session.interrupt failed to start: ${String(error)}`,
+      };
+    }
+    // A 0 exit with `"interrupted":false` is the API's way of saying "I
+    // accepted your request but the session was idle": treat it as benign
+    // so the switch can move on.
+    const haystack = `${stdout}\n${stderr}`;
+    if (status === 0) {
+      if (/"interrupted"\s*:\s*false/.test(haystack)) {
+        return { kind: 'already_idle' };
+      }
+      return { kind: 'ok' };
+    }
+    const lower = haystack.toLowerCase();
+    if (status === 404 || /\bnot\s*found\b/.test(lower) || /\bunknown\s*session\b/.test(lower)) {
+      return { kind: 'not_found' };
+    }
+    if (
+      /\balready\s*idle\b/.test(lower) ||
+      /\bnot\s*busy\b/.test(lower) ||
+      /\bno\s*active\s*session\b/.test(lower)
+    ) {
+      return { kind: 'already_idle' };
+    }
+    const excerpt = `${stderr}`.slice(0, 300).trim();
+    return {
+      kind: 'error',
+      message: `opencode2 session.interrupt exited ${String(status)}: ${excerpt || stdout.slice(0, 300)}`,
+    };
   }
 
   async listMessages(sessionId: string, limit: number): Promise<unknown[]> {
@@ -182,6 +294,12 @@ export interface FakeSession {
   permissions: unknown[];
 }
 
+export type InterruptOutcome =
+  | { kind: 'ok' }
+  | { kind: 'not_found' }
+  | { kind: 'already_idle' }
+  | { kind: 'error'; message: string };
+
 export class FakeOpenCodeClient implements OpenCodeClient {
   readonly sessions = new Map<string, FakeSession>();
   readonly replied: {
@@ -192,11 +310,23 @@ export class FakeOpenCodeClient implements OpenCodeClient {
   }[] = [];
   readonly prompted: { sessionId: string; text: string }[] = [];
   readonly interrupted: string[] = [];
+  readonly interruptOutcomes: { sessionId: string; outcome: InterruptOutcome }[] = [];
+  // Per-session interrupt script: tests push a result to override the
+  // default `{ kind: 'ok' }`. Used to exercise idle / 404 / error paths.
+  private interruptScripts = new Map<string, InterruptOutcome[]>();
   created: { options: CreateSessionOptions; sessionId: string }[] = [];
   private nextId = 1;
 
   addSession(sessionId: string, session: FakeSession): void {
     this.sessions.set(sessionId, session);
+  }
+
+  // Queues an interrupt outcome for `sessionId`. Each call consumes the
+  // head of the queue; once empty, the fake returns `{ kind: 'ok' }`.
+  scriptInterrupt(sessionId: string, outcome: InterruptOutcome): void {
+    const queue = this.interruptScripts.get(sessionId) ?? [];
+    queue.push(outcome);
+    this.interruptScripts.set(sessionId, queue);
   }
 
   private get(sessionId: string): FakeSession {
@@ -221,8 +351,21 @@ export class FakeOpenCodeClient implements OpenCodeClient {
   }
 
   async interrupt(sessionId: string): Promise<void> {
-    this.get(sessionId);
-    this.interrupted.push(sessionId);
+    await this.tryInterrupt(sessionId);
+  }
+
+  async tryInterrupt(sessionId: string): Promise<InterruptOutcome> {
+    // A missing session is reported as `not_found` without recording an
+    // interrupt — the real client returns 404 before it touches state.
+    const queue = this.interruptScripts.get(sessionId);
+    const scripted = queue?.shift();
+    const outcome: InterruptOutcome =
+      scripted ?? (this.sessions.has(sessionId) ? { kind: 'ok' } : { kind: 'not_found' });
+    this.interruptOutcomes.push({ sessionId, outcome });
+    if (outcome.kind === 'ok') {
+      this.interrupted.push(sessionId);
+    }
+    return outcome;
   }
 
   async listMessages(sessionId: string, _limit: number): Promise<unknown[]> {
