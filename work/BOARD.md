@@ -10,7 +10,6 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 |---|---|---|---|---|---|
 
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0026](T-0026-mobile-auth.md) | Mobile sign-in for real: invite, email code, name, persisted session. **First slice of mobile on real data** | todo | v4-flash | T-0015, T-0017, T-0024 | Unblocked by T-0004. Store stays on mock data in this task |
 | T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely. Queued: collides with T-0007/T-0009 on apps/server |
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | Queued: collides with T-0007 on apps/server |
 
@@ -47,3 +46,4 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 - Flaky `MessageActions` right-click test: `apps/web` `MessageActions.test.tsx > opens on right-click and closes with Escape` takes 5.3 s and times out when the machine is busy (from the T-0010 review). Pre-existing, unrelated to T-0010, but it will make CI flaky.
 - M2 gateway needs `store_model_in_db` (or an equivalent config) so a user's own provider key can be **registered**, not only forwarded per request. Found by the T-0007 spike; it is an `infra/**` change and needs its own task.
 | [T-0007](T-0007-litellm-virtual-keys.md) | **Spike S5: LiteLLM hard-capped virtual keys work** — cap enforced pre-flight (429), revocation and user-key forwarding proven live; cap is server-owned (2 rounds) | 2026-09-28 |
+| [T-0026](T-0026-mobile-auth.md) | **Mobile sign-in for real**: invite, email code, name; session in the OS keychain. Verified live against the server with codes redacted. First slice of mobile on real data | 2026-09-28 |

@@ -1,7 +1,7 @@
 ---
 id: T-0026
 title: Mobile — real sign-in (invite, email code, name) and a session, so the phone is no longer mock-only
-status: review
+status: merged
 milestone: M1
 branch: task/T-0026-mobile-auth
 model: opencode-go/deepseek-v4.1-flash
