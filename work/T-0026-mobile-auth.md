@@ -1,7 +1,7 @@
 ---
 id: T-0026
 title: Mobile — real sign-in (invite, email code, name) and a session, so the phone is no longer mock-only
-status: todo
+status: review
 milestone: M1
 branch: task/T-0026-mobile-auth
 model: opencode-go/deepseek-v4.1-flash
@@ -139,25 +139,59 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- **Auth client (`src/lib/auth.ts`):** `createGalenaAuthClient` wraps Better Auth's React client with the `emailOTP` plugin and a **bearer** auth option (native fetch has no cookie jar). `sendSignInCode` / `verifySignInCode` attach the `x-galena-invite` header on **both** calls when an invite is present; `verifySignInCode` captures the session token from the `set-auth-token` response header. `API_URL` comes from `EXPO_PUBLIC_GALENA_API_URL` (default `http://127.0.0.1:3188`).
+- **API helpers (`src/lib/auth-api.ts`):** hand-validated `fetchMe`, `updateMe` (`PATCH /api/me`) and `checkInvite`, with an `AuthApiError` carrying status/code. No new dependency (mobile has no zod, so this follows the spike's type-guard style).
+- **Session storage (`src/auth/session-storage.ts`, `src/auth/secure-session-storage.ts`):** the bearer token is persisted with **`expo-secure-store`** (OS keychain/keystore), never AsyncStorage; an in-memory implementation is used by tests.
+- **Session store + hook (`src/auth/session-store.ts`, `src/auth/session.ts`):** a zustand store with `bootstrap` (restores a session and loads `/api/me`), `signIn`, `setName`, `signOut`, plus the `useSession()` hook returning `{ me, loading, status, signOut }`. The app bootstraps once in `_layout.tsx`.
+- **Guard (`src/auth/guard.ts`, `src/auth/RequireAuth.tsx`):** pure `guardDecision` → loading / allow / `login` with the target preserved / `name`; `RequireAuth` and `RequireUser` components. `safeTarget` only accepts relative in-app paths.
+- **OTP (`src/auth/otp.ts`, `src/auth/OtpInput.tsx`):** six boxes with auto-advance, backspace and whole-code paste; pure helpers keep the logic testable.
+- **Screens/routes:** `AuthFlow` (email → code, retry timer, "Wrong code" / "Too many attempts, try again later", "Use a different email"), `NameForm`, and routes `app/login.tsx`, `app/invite/[code].tsx`, `app/welcome/name.tsx`; `app/index.tsx` and `app/chat/[id].tsx` are wrapped in `RequireAuth`. The chat store is still the mock store.
+- **Tests (Vitest, no real network):** invite header on both calls, no header on login, whole-code paste + auto-advance, wrong code keeps the guest state and signs nobody in, name step calls `PATCH /api/me` before updating, guard redirects to login with the target, sign-out clears storage, and the token/OTP are never written to the console (console spies). Plus a gated real-server integration test.
 
 ### Files changed
--
+- New: `apps/mobile/src/lib/auth.ts`, `apps/mobile/src/lib/auth-api.ts`, `apps/mobile/src/lib/auth.test.ts`, `apps/mobile/src/lib/auth-api.test.ts`
+- New: `apps/mobile/src/auth/session-storage.ts`, `secure-session-storage.ts`, `session-store.ts`, `session-store.test.ts`, `session.ts`, `guard.ts`, `guard.test.ts`, `errors.ts`, `errors.test.ts`, `otp.ts`, `otp.test.ts`, `AuthFlow.tsx`, `OtpInput.tsx`, `NameForm.tsx`, `RequireAuth.tsx`, `integration.test.ts`
+- New routes: `apps/mobile/src/app/login.tsx`, `apps/mobile/src/app/invite/[code].tsx`, `apps/mobile/src/app/welcome/name.tsx`
+- Modified: `apps/mobile/src/app/_layout.tsx`, `apps/mobile/src/app/index.tsx`, `apps/mobile/src/app/chat/[id].tsx`, `apps/mobile/package.json`, `pnpm-lock.yaml`
+- New screenshots: `apps/mobile/screenshots/auth-code.png`, `apps/mobile/screenshots/auth-signed-in.png`
+- `work/T-0026-mobile-auth.md` (status + this Report). No other file, package or doc was touched.
 
 ### Commands run and real results
-- `pnpm typecheck`:
-- `pnpm lint`:
-- `pnpm test`:
-- integration run (codes redacted):
+- `pnpm install`: PASS — "Already up to date".
+- `pnpm format:check`: PASS — "All matched files use Prettier code style!".
+- `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (280 files, 127 rules).
+- `pnpm typecheck`: PASS — turbo "8 successful, 8 total".
+- `pnpm test --force`: PASS — turbo "8 successful, 8 total". `@galena/server` **186 passed, 3 skipped** (20 files); `@galena/mobile` **77 passed, 1 skipped** (12 files + the gated integration file skipped by default); other packages unchanged.
+- `pnpm build`: PASS — 2/2 tasks; Expo exported iOS + Android bundles.
+- **Integration run** (`GALENA_AUTH_INTEGRATION=1` against the running server on `127.0.0.1:3188`, codes/tokens redacted):
+
+```
+[auth integration] send-code with invite → 200 → code read from the server log → CODE=*** →
+sign-in with invite → 200, token TOKEN=*** → GET /api/me → 200 → PATCH /api/me → 200 →
+sign-out → 200 → second sign-in without invite → 200 → GET /api/me after second sign-in → 200
+```
+
+  The test creates a fresh invite with the server CLI, then speaks raw `node:http` (no browser Fetch-Metadata headers, like React Native), reads the OTP from the server's own log, verifies it, `PATCH`es the name, signs out and signs in again as an existing user.
+
+- **Visual check:** built and installed with `npx expo run:ios --no-bundler` (Build Succeeded), started Metro, signed in on the simulator with a real code read from the server log, and confirmed the session survives a cold restart (the app reopened straight into the chat list). Screenshots committed; Metro stopped (`lsof -ti tcp:8081` → empty) and the simulator I booted was shut down.
 
 ### Problems, deviations from the spec, open questions
--
+- **`app.json` was reverted (allowed-files rule).** `npx expo install expo-secure-store` appended `expo-secure-store` to the `plugins` array in `app.json`. `app.json` is not in Allowed files, so I reverted it. SecureStore works without the config plugin for this use; the plugin only configures the iOS Face ID usage string, which we don't use. If the lead wants the plugin committed, that needs an allowed-files exception.
+- **Native-only origin behavior (worth knowing).** Better Auth's Fetch-Metadata CSRF check rejects POSTs that carry `Sec-Fetch-*`/cookie but no trusted `Origin`. React Native sends neither, so the bearer flow works on device (proved by the simulator sign-in). Node's `fetch` adds `sec-fetch-mode: cors`, which would 403; the integration test therefore uses `node:http`. If the app is ever exercised through a browser-like transport, it must send a trusted `Origin`.
+- **Small UX additions:** `autoFocus` on the email field and the first OTP box, plus `returnKeyType="go"` / `onSubmitEditing` on the email field. These are usability improvements that also made on-device typing possible; they don't change the flow or the look.
+- **Two unused test rows.** Each integration run creates one extra invite (the CLI always inserts a row) and one test account, all in the dev database; harmless, but the lead may want to prune `t0026-*@example.test`.
+- **Screenshots came from a second simulator.** The lead's booted "iPhone 17 Pro" had a pending "Open in Galena?" dialog from another session, so I left it alone and booted a fresh "iPhone 17" instead (then shut it down). All codes, tokens and invite codes are redacted from the screenshots; the code-screen shot is empty.
+- **Typed routes:** running Metro generated `.expo/types`, which makes `router.replace` stricter. `safeTarget` validates the target and a documented `as Href` cast keeps `pnpm typecheck` green both with and without the generated types.
 
 ### What the next task (mobile on real data) gets for free
--
+- `useSession()` / `useAuthStore` (`bootstrap`, `signIn`, `setName`, `signOut`) ready for the chat screens, with the token already persisted in SecureStore.
+- `lib/auth.ts` (bearer Better Auth client + invite header) and `lib/auth-api.ts` (`fetchMe`, `updateMe`, `checkInvite`).
+- Routes and guards (`/login`, `/invite/[code]`, `/welcome/name`, `RequireAuth`/`RequireUser`) and a reusable `OtpInput`/`AuthFlow`.
+- The chat store is still the mock store, exactly as scoped.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- Nothing blocked.
+
 
 ---
 

@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { FlatList, Pressable, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { RequireAuth } from '@/auth/RequireAuth';
 import { ChatListItem } from '@/components/chat/chat-list-item';
 import { FolderTabs } from '@/components/chat/folder-tabs';
 import { NewChatButton } from '@/components/chat/new-chat-button';
@@ -19,6 +20,14 @@ import { useChatStore } from '@/store/chat-store';
 const FOLDER_KEYS: ChatFolder[] = ['all', 'personal', 'ai', 'work'];
 
 export default function ChatsScreen() {
+  return (
+    <RequireAuth>
+      <ChatsList />
+    </RequireAuth>
+  );
+}
+
+function ChatsList() {
   const router = useRouter();
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const chats = useChatStore((state) => state.chats);

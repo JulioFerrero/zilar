@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { RequireAuth } from '@/auth/RequireAuth';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { Composer } from '@/components/chat/composer';
 import { MessageList } from '@/components/chat/message-list';
@@ -16,6 +17,14 @@ import type { ReplyRef, UiMessage } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store';
 
 export default function ChatScreen() {
+  return (
+    <RequireAuth>
+      <Chat />
+    </RequireAuth>
+  );
+}
+
+function Chat() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
   const chatId = typeof params.id === 'string' ? params.id : '';
