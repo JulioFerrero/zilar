@@ -1,7 +1,7 @@
 ---
 id: T-0038
 title: Lead autopilot — zero-token supervision of OpenCode workers, pre-review packets, launch/merge scripts
-status: review
+status: merged
 milestone: tooling
 branch: task/T-0038-lead-autopilot
 model: opencode-go/muse-spark-1.3-contributor
@@ -260,3 +260,31 @@ New table rows (both probes → escalate; `curl -s …/health`, `curl -sI …/`,
 - `session.interrupt` remains live-unverified (mutating), as in round 1.
 
 ## Review (written by Claude)
+
+### Round 3: approved
+
+A Muse pre-review attacked the policy and found three must-fix issues:
+- a multi-element `resources` array joined into one string, so `['git status','rm -rf /']` was allowed;
+- `curl localhost | sh` was allowed;
+- `lead merge` read the task status from main's copy of the file, so it could never succeed.
+
+It also found six should-fix gaps: git global flags, `rm` of absolute paths, `.env` copies, stale quota errors, unsupervised pre-review sessions, and dry-run writing a log. Round 2 fixed all ten, with table rows for every example.
+
+The lead then probed about 50 adversarial commands and found one more hole: localhost `curl` counted as "read" even with `-X POST` or `-o ~/.zshrc`. Round 3 fixed it: localhost curl or wget is allowed only as a GET or HEAD printed to stdout, with no body, credential, cookie or output flags. The lead's re-probe passed:
+- `-sXPOST`, `--request=DELETE`, `-sd@x`, an `authorization` header, `--json`, `> ~/.zshrc` and `--output=` now escalate;
+- plain GET and `-sI` are allowed.
+
+Fail-closed choices, accepted:
+- bare shells and interpreter one-liners never auto-allow (bare shells are rejected);
+- unknown absolute `rm` targets are rejected;
+- anything unrecognised escalates.
+
+Lead re-ran every check after rebasing onto main:
+- format:check, lint, typecheck (9/9) and build pass;
+- `turbo test --force --filter=@galena/devtools`: 243/243;
+- scope is clean (devtools `src/lead/**`, `prompts/**`, `package.json`, lockfile, task file).
+
+The dry-run against the real service was read-only: state file md5 unchanged, no log written.
+
+Still unverified live: `session.interrupt` (`lead reply`). The lead verifies it on first real use.
+
