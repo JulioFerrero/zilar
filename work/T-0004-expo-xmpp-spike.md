@@ -330,80 +330,44 @@ Answer to review finding 1: the empty stub now lives outside the throwaway spike
 
 ## Review (written by Claude)
 
-**Verdict:** Round 2: changes requested. The verdict is **yes, it works** — one
-small fix before it can merge, because the bundler now depends on a file the
-spike is supposed to be deletable without.
+**Verdict:** Round 2: **approved**. Merging.
 
-### What the lead verified
-- **Uncached** run of every check in the worktree: `format:check`, `lint`,
-  `typecheck`, `test` and `build` **all PASS**. Counts: mobile 35, web 78,
-  xmpp-core 115 + 3 skipped, server 155, protocol 132, chat-core 50, mobile,
-  agent-drivers 19, devtools 9. (`lint` needs no `--force`: that is a turbo flag,
-  and `pnpm lint --force` makes oxlint fail on an unknown flag — a trap I fell
-  into twice, so the run above is `pnpm lint` on its own.)
-- **Both screenshots opened and read.** `spike-connected.png` shows two real
-  accounts online (`spike-…@galena.localhost` and `spike-peer-…@galena.localhost`),
-  `self → sent "hello from the spike"`, the peer receiving it, and the Hermes
-  probe: `nextTick=false btoa=true atob=true randomUUID=false TextEncoder=true`.
-  `spike-reconnect.png` shows the full echo (`self ← … echo: hello from the
-  spike`), both going `offline`, `disconnecting both`, and `getToken` being
-  re-invoked for both on the way back to `online`. That is exactly the evidence
-  the Spec asked for, and it is a real device, not a mock.
-- **Secrets.** I compared the committed tree against the value of
-  `GALENA_XMPP_JWT_SECRET` in `infra/.env`: **not present in any committed
-  file**. The only long literal in the new sources is a base64 alphabet in a
-  test. The tokens are masked on screen. Minting a JWT from the worktree's own
-  `infra/.env` to prove the live path is a reasonable spike move and is
-  disclosed in the Report; the next task must go through `POST /api/xmpp/token`
-  instead.
-- **Scope.** Every path is inside the Allowed files. `apps/mobile/src/app/index.tsx`
-  is genuinely untouched, as claimed. The Metro change is justified and
-  well-commented.
-- **One false alarm I raised and then disproved, for the record:** mobile tests
-  went 48 → 35 between the T-0025 run and this one, and I checked before
-  reporting. Cause: commit `b446305` (T-0023, merged *after* T-0025's worktree
-  was branched) deleted `avatar/grouping/preview/time.test.ts` on purpose, after
-  moving those helpers into `@galena/chat-core`, which has its own tests. T-0004
-  lost nothing. The main checkout's mobile tests were failing on a stale
-  `node_modules`; `pnpm install` fixed that and they pass again (27).
+### What the lead verified in round 2
+- The finding is genuinely fixed: the empty module now lives at
+  `apps/mobile/src/lib/xmpp-node-stubs/empty.js`, and `metro.config.js`
+  resolves it with `path.resolve(__dirname, …)` behind an `existsSync` guard
+  that throws a message naming the file and saying it is a permanent Metro
+  requirement for `@xmpp/client` on native. The `STUBBED` set and its comment are
+  untouched, which is right: that is the finding.
+- **The spike is now genuinely disposable.** The only reference to the spike
+  from outside it is its own route, `src/app/spike.tsx`. Deleting the spike means
+  removing `apps/mobile/src/spike/` **and** `apps/mobile/src/app/spike.tsx` —
+  two paths, one command, and nothing else in the app moves.
+- **Uncached** run of every check: `format:check`, `typecheck`, `test` (54 s),
+  `build` (22 s) and `lint` (exit 0) **all PASS**. mobile 35 tests / 6 files,
+  unchanged from round 1, so the move cost no coverage.
+- Scope unchanged and clean. No new dependency beyond the workspace
+  `@galena/xmpp-core`.
 
 ### Findings
-1. **`metro.config.js` now depends on a file inside the throwaway spike**
-   (`apps/mobile/metro.config.js`, `apps/mobile/src/spike/empty.js`). The bundler
-   resolves the stub with `require.resolve('./src/spike/empty.js')`, but the
-   Spec says the spike must be deletable "in one command" for the next task. The
-   moment someone deletes `src/spike/`, Metro fails to resolve and **the whole
-   mobile app stops bundling** — not just the spike.
+- None outstanding. The round-1 finding is resolved and verified; round-1
+  findings 2 and 3 were explicitly no-change.
 
-   The stub is not throwaway: it is a permanent requirement for using
-   `xmpp-core` on native, because Metro ignores the `browser` field for module
-   substitution. So move it, do not delete it:
-   - Move the empty module to `apps/mobile/src/lib/xmpp-node-stubs/empty.js`
-     (or similar) and point `metro.config.js` there.
-   - Keep the `STUBBED` set and the comment exactly as they are; they are the
-     real finding of this spike.
-   - Then `src/spike/` really is disposable in one command, which is what the
-     next task needs.
-   - Add a test or a comment asserting the resolved path exists, so a future
-     move cannot silently break the bundle again. A one-line `existsSync` check
-     that throws with a clear message in `metro.config.js` is enough.
+### The answer this task exists to give
+**`@galena/xmpp-core` runs in Expo on iOS.** Proved on an iPhone 17 Pro
+simulator, Expo SDK 57 / RN 0.86.3 / Hermes, against the running ejabberd:
+two clients online, a DM delivered, the echo returned, and a disconnect and
+reconnect that re-invokes `getToken`.
 
-2. *(No change needed.)* Two things you were right to do without asking:
-   using `@galena/xmpp-core` instead of raw `@xmpp/client` (stronger evidence,
-   same code path), and writing a type shim for `@xmpp/client` rather than adding
-   a `@types` package. Both are noted in the Report; both are correct.
+Exactly two global shims are needed — `process.nextTick` and
+`crypto.randomUUID` — both installed conditionally, and Hermes already provides
+`btoa`/`atob`/`TextEncoder`. No npm package is required: `buffer`,
+`text-encoding` and `process` are all unnecessary, and `@xmpp/events` already
+depends on `events`. The one non-trivial piece is the Metro
+`resolveRequest` stub for the Node-only `@xmpp/*` packages, because Metro
+honours the `browser` field for the main entry but not for module substitution.
 
-3. *(No change needed, but read this before the next task.)* The background
-   result is honest and weak evidence: the **simulator** did not suspend the
-   socket over ~60 s. A real iPhone will. The next task must reconnect on
-   `AppState` `active` when the status is not `online`, and must not assume the
-   simulator's behaviour.
-
-### Follow-ups
-- The Metro stub move above is a prerequisite for "delete the spike in one
-  command", so it is in this round rather than a follow-up.
-- Nothing else new. The board's existing follow-ups stand.
-
-After round 2 the lead will merge this, and the mobile-on-real-data task can
-start: **the answer is yes, with `process.nextTick` and `crypto.randomUUID`
-shimmed and the Node-only `@xmpp/*` packages stubbed in Metro.**
+Caveat carried forward: the simulator did **not** suspend the socket when
+backgrounded, so that result is weak evidence. A real device will be more
+aggressive, and the mobile task must reconnect on `AppState` `active` when the
+status is not `online`.
