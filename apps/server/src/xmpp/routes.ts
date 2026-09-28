@@ -4,6 +4,7 @@ import { requireSession } from '../auth/session';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { syncRoster } from '../contacts/service';
+import { createRateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from './admin-client';
 import type { XmppConfig } from './config';
 import { ensureXmppAccount } from './provisioning';
@@ -36,7 +37,11 @@ export function createXmppRoutes({
   now = Date.now,
 }: XmppRoutesDependencies): Hono {
   const routes = new Hono();
-  const limiter = createRateLimiter(now);
+  const limiter = createRateLimiter({
+    max: TOKEN_RATE_LIMIT_MAX,
+    windowMs: TOKEN_RATE_LIMIT_WINDOW_MS,
+    now,
+  });
 
   routes.post('/xmpp/token', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
@@ -79,25 +84,4 @@ export function createXmppRoutes({
   });
 
   return routes;
-}
-
-// Simple in-memory limiter keyed by user id. It is per process: with several
-// server processes a user could get the limit per process, which is acceptable
-// for the short-lived chat token.
-function createRateLimiter(now: () => number): { allow: (key: string) => boolean } {
-  const attempts = new Map<string, number[]>();
-
-  return {
-    allow(key: string): boolean {
-      const cutoff = now() - TOKEN_RATE_LIMIT_WINDOW_MS;
-      const recent = (attempts.get(key) ?? []).filter((time) => time > cutoff);
-      if (recent.length >= TOKEN_RATE_LIMIT_MAX) {
-        attempts.set(key, recent);
-        return false;
-      }
-      recent.push(now());
-      attempts.set(key, recent);
-      return true;
-    },
-  };
 }

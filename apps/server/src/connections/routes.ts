@@ -4,6 +4,7 @@ import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
+import { createRateLimiter } from '../rate-limit';
 import type { KeyCipher } from './crypto';
 import { redactKey, createProviderProbe, type ProviderProbe } from './probe';
 import { ProviderIdSchema, type ProviderId } from './providers';
@@ -15,6 +16,10 @@ import {
   listConnections,
 } from './service';
 
+// Each key test calls the provider with the stored key, so cap tests per user.
+export const CONNECTION_TEST_RATE_LIMIT_MAX = 5;
+export const CONNECTION_TEST_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
 export interface ConnectionsRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
@@ -24,6 +29,8 @@ export interface ConnectionsRoutesDependencies {
   cipher?: KeyCipher;
   /** Injected in tests so no request ever hits a real provider. */
   probe?: ProviderProbe;
+  /** Injected in tests so the rate-limit window can advance without waiting. */
+  now?: () => number;
 }
 
 export interface ConnectionsLogger {
@@ -48,9 +55,15 @@ export function createConnectionsRoutes({
   logger,
   cipher,
   probe,
+  now = Date.now,
 }: ConnectionsRoutesDependencies): Hono {
   const routes = new Hono();
   const probeImpl = probe ?? createProviderProbe();
+  const testLimiter = createRateLimiter({
+    max: CONNECTION_TEST_RATE_LIMIT_MAX,
+    windowMs: CONNECTION_TEST_RATE_LIMIT_WINDOW_MS,
+    now,
+  });
 
   const requireCipher = (): KeyCipher => {
     if (cipher === undefined) {
@@ -91,6 +104,10 @@ export function createConnectionsRoutes({
     const connection = await findOwnedConnection(db, c.req.param('id'), user.id);
     if (!connection) {
       throw new HttpError(404, 'not_found', 'Connection not found');
+    }
+
+    if (!testLimiter.allow(user.id)) {
+      throw new HttpError(429, 'rate_limited', 'Too many key tests, try again in a minute');
     }
 
     let key: string;

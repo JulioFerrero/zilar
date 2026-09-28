@@ -8,6 +8,10 @@ import { findInviteByCode } from '../auth/invites';
 // The XMPP roster group every Galena contact goes into.
 export const ROSTER_GROUP = 'Galena';
 
+// Shown for contacts who never set a display name. Never an email: a contact's
+// email must not leak into another user's chat list.
+export const UNNAMED_CONTACT_NAME = 'Unnamed user';
+
 export type ContactSource = 'invite' | 'manual';
 
 export interface Contact {
@@ -67,12 +71,21 @@ export async function listContacts(
     .where(eq(contacts.userId, userId))
     .orderBy(asc(user.name));
 
-  return rows.map((row) => ({
-    userId: row.userId,
-    name: row.name,
-    jid: row.jid ?? jidFor(localpartFor(row.userId), domain),
-    ...(row.image ? { avatarUrl: row.image } : {}),
+  const mapped = rows.map((row) => ({
+    contact: {
+      userId: row.userId,
+      name: row.name.trim() === '' ? UNNAMED_CONTACT_NAME : row.name,
+      jid: row.jid ?? jidFor(localpartFor(row.userId), domain),
+      ...(row.image ? { avatarUrl: row.image } : {}),
+    } satisfies Contact,
+    unnamed: row.name.trim() === '',
   }));
+
+  // The SQL order puts blank names first. Keep named contacts in their SQL
+  // order and move unnamed ones after, preserving relative order (stable).
+  return [...mapped.filter((row) => !row.unnamed), ...mapped.filter((row) => row.unnamed)].map(
+    (row) => row.contact,
+  );
 }
 
 export interface RosterSyncResult {
