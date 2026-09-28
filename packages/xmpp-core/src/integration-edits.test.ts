@@ -151,12 +151,12 @@ describe.skipIf(!integrationEnabled)('@galena/xmpp-core edits integration', () =
 
       // --- History: the archive replays both stanza kinds ---
       const bobDmHistory = await bob.loadHistory(aliceJid, 'chat');
-      expect(
-        bobDmHistory.messages.some((message) => message.correction?.targetId === dmId),
-      ).toBe(true);
-      expect(
-        bobDmHistory.messages.some((message) => message.retraction?.targetId === dmId),
-      ).toBe(true);
+      expect(bobDmHistory.messages.some((message) => message.correction?.targetId === dmId)).toBe(
+        true,
+      );
+      expect(bobDmHistory.messages.some((message) => message.retraction?.targetId === dmId)).toBe(
+        true,
+      );
       const bobRoomHistory = await bob.loadHistory(roomJid, 'groupchat');
       expect(
         bobRoomHistory.messages.some((message) => message.correction?.targetId === groupOriginId),
