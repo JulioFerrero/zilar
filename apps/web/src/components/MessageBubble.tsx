@@ -1,4 +1,6 @@
 import {
+  canDeleteMessage,
+  canEditMessage,
   formatFullDateTime,
   formatTime,
   isAiJid,
@@ -8,10 +10,11 @@ import {
   type UiMessage,
 } from '@galena/chat-core';
 import { MoreHorizontal } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { AiBadge } from './AiBadge';
 import { ApprovalCard } from './ApprovalCard';
 import { Avatar } from './Avatar';
+import { ConfirmDialog } from './ConfirmDialog';
 import { ImageMessage } from './ImageMessage';
 import { LinkText } from './LinkText';
 import { MarkdownText } from './MarkdownText';
@@ -41,10 +44,12 @@ function senderColor(id: string): string {
 function MessageMeta({
   message,
   showTicks,
+  edited = false,
   className,
 }: {
   message: UiMessage;
   showTicks: boolean;
+  edited?: boolean;
   className?: string;
 }) {
   return (
@@ -55,6 +60,7 @@ function MessageMeta({
         className,
       )}
     >
+      {edited && <span>edited</span>}
       {formatTime(message.createdAt)}
       {showTicks && <MessageTicks status={message.status} />}
     </span>
@@ -84,7 +90,11 @@ function BigEmoji({
           generating && 'invisible',
         )}
       >
-        <MessageMeta message={message} showTicks={own && !generating} />
+        <MessageMeta
+          message={message}
+          showTicks={own && !generating}
+          edited={message.edited === true}
+        />
       </span>
     </div>
   );
@@ -144,8 +154,11 @@ export function MessageBubble({
   revealTurnId,
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const storeApi = useChatStoreApi();
   const own = message.senderId === currentUserId;
+  const deleted = message.deleted === true;
   const markdown = shouldRenderMarkdown(chat, message, currentUserId);
   const hasText = message.text !== undefined && message.text.length > 0;
   const beyondDraft = revealTurnId !== undefined && !draft;
@@ -181,6 +194,43 @@ export function MessageBubble({
   const handleReact = (emoji: string): void => {
     storeApi.getState().react(chat.id, message.id, emoji);
   };
+
+  // Sender-side limits: Edit is for my own text messages under 48 h, Delete for
+  // everyone is for my own messages of any kind. Neither applies to a tombstone.
+  const canEdit = !generating && !deleted && canEditMessage(message, currentUserId, new Date());
+  const canDelete = !generating && !deleted && canDeleteMessage(message, currentUserId);
+
+  // A retracted message keeps its place as a slim tombstone and has no actions.
+  if (deleted) {
+    return (
+      <div
+        data-message-id={message.id}
+        className={cn(
+          'group relative flex items-end gap-1.5',
+          own ? 'flex-row-reverse' : 'flex-row',
+          firstInGroup ? 'mt-2' : 'mt-0.5',
+        )}
+      >
+        {!own &&
+          chat.kind === 'group' &&
+          (lastInGroup ? (
+            <Avatar id={message.senderId} name={message.senderName} size={34} />
+          ) : (
+            <span className="w-[34px] shrink-0" aria-hidden="true" />
+          ))}
+        <div className={cn('flex min-w-0 flex-col', own ? 'items-end' : 'items-start')}>
+          <div
+            className={cn(
+              'tombstone rounded-[14px] px-3 py-1.5 text-[13px] italic',
+              own ? 'rounded-br-[4px]' : 'rounded-bl-[4px]',
+            )}
+          >
+            {own ? 'You deleted this message' : 'This message was deleted'}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -285,6 +335,7 @@ export function MessageBubble({
                     <MessageMeta
                       message={message}
                       showTicks={own && !generating}
+                      edited={message.edited === true}
                       className={cn(
                         'float-right ml-1.5 translate-y-[4px]',
                         own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
@@ -309,6 +360,7 @@ export function MessageBubble({
                   <MessageMeta
                     message={message}
                     showTicks={own && !generating}
+                    edited={message.edited === true}
                     className={cn(
                       'float-right ml-1.5 translate-y-[4px]',
                       own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
@@ -336,6 +388,7 @@ export function MessageBubble({
 
           {!generating && (
             <button
+              ref={menuButtonRef}
               type="button"
               aria-label="Message actions"
               aria-haspopup="menu"
@@ -350,6 +403,8 @@ export function MessageBubble({
           {!generating && menuOpen && (
             <MessageActionsMenu
               canCopy={hasText}
+              canEdit={canEdit}
+              canDelete={canDelete}
               onReact={(emoji) => {
                 setMenuOpen(false);
                 handleReact(emoji);
@@ -358,12 +413,35 @@ export function MessageBubble({
                 setMenuOpen(false);
                 onReply(message);
               }}
+              onEdit={() => {
+                setMenuOpen(false);
+                storeApi.getState().startEdit(chat.id, message.id);
+              }}
               onCopy={() => {
                 setMenuOpen(false);
                 void copyText(message.text ?? '');
               }}
+              onDelete={() => {
+                setMenuOpen(false);
+                // Focus the opener so the dialog can restore it on close.
+                menuButtonRef.current?.focus();
+                setConfirmOpen(true);
+              }}
               onClose={() => setMenuOpen(false)}
               align={own ? 'right' : 'left'}
+            />
+          )}
+
+          {confirmOpen && (
+            <ConfirmDialog
+              title="Delete message?"
+              body="This deletes it for everyone in the chat."
+              confirmLabel="Delete"
+              onCancel={() => setConfirmOpen(false)}
+              onConfirm={() => {
+                setConfirmOpen(false);
+                storeApi.getState().deleteForEveryone(chat.id, message.id);
+              }}
             />
           )}
         </div>

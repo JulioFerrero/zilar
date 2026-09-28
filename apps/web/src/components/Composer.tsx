@@ -1,4 +1,5 @@
 import {
+  canEditMessage,
   filterMentionMembers,
   findMentionQuery,
   formatDuration,
@@ -17,6 +18,7 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { EditBar } from './EditBar';
 import { MentionPicker } from './MentionPicker';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
@@ -64,6 +66,20 @@ export function Composer({
   // Set when a pick or a mention deletion decides where the caret goes; applied
   // after the controlled value has been committed to the textarea.
   const pendingCaretRef = useRef<number | undefined>(undefined);
+  // The message being edited, in this chat only.
+  const editTarget = store.editTarget;
+  const editing =
+    editTarget !== undefined && editTarget.chatId === chatId
+      ? store.messages(chatId).find((message) => message.id === editTarget.messageId)
+      : undefined;
+  const editingId = editing?.id;
+  const editingText = editing?.text;
+  const editingMentions = editing?.mentions;
+  const lastEditingIdRef = useRef<string | undefined>(undefined);
+  const actionError =
+    store.actionError !== undefined && store.actionError.chatId === chatId
+      ? store.actionError.message
+      : undefined;
   // A mention picked in one chat must never be sent into another: when the chat
   // changes, drop the tracked mentions and any open picker during render. The
   // draft text itself stays, as it did before.
@@ -97,6 +113,30 @@ export function Composer({
     pendingCaretRef.current = undefined;
     textareaRef.current?.setSelectionRange(caret, caret);
   }, [value]);
+
+  // Entering edit mode prefills the composer with the message's text (caret at
+  // the end); leaving it clears the composer again.
+  useEffect(() => {
+    const previous = lastEditingIdRef.current;
+    lastEditingIdRef.current = editingId;
+    if (editingId === undefined) {
+      if (previous !== undefined) {
+        setValue('');
+        setMentions([]);
+        setPicker(undefined);
+      }
+      return;
+    }
+    if (editingId === previous) {
+      return;
+    }
+    const text = editingText ?? '';
+    setValue(text);
+    setMentions(editingMentions ?? []);
+    setPicker(undefined);
+    setActiveIndex(0);
+    pendingCaretRef.current = text.length;
+  }, [editingId, editingText, editingMentions]);
 
   const onChange = (next: string, caret: number): void => {
     setMentions((previous) => rebaseMentions(value, next, previous));
@@ -163,6 +203,30 @@ export function Composer({
     onCancelReply();
   };
 
+  // Enter saves the edit; an unchanged text just leaves edit mode, and an empty
+  // text never reaches here (the save key is disabled).
+  const saveEdit = (): void => {
+    if (editing === undefined || value.trim().length === 0) {
+      return;
+    }
+    if (value.trim() === (editing.text ?? '')) {
+      store.cancelEdit();
+      return;
+    }
+    store.editMessage(chatId, editing.id, value);
+    store.cancelEdit();
+  };
+
+  // ↑ in an empty composer edits my last editable message, as in Telegram.
+  const editLastMessage = (): void => {
+    const last = [...store.messages(chatId)]
+      .reverse()
+      .find((message) => canEditMessage(message, store.currentUserId, new Date()));
+    if (last !== undefined) {
+      store.startEdit(chatId, last.id);
+    }
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
     if (pickerActive) {
       if (event.key === 'ArrowDown' && candidates.length > 0) {
@@ -192,6 +256,14 @@ export function Composer({
       }
     }
 
+    if (event.key === 'ArrowUp' && editing === undefined && replyTo === undefined) {
+      if (value.length === 0) {
+        event.preventDefault();
+        editLastMessage();
+        return;
+      }
+    }
+
     // Backspace just after or inside a mention removes the whole `@Name` token.
     if (
       event.key === 'Backspace' &&
@@ -212,6 +284,13 @@ export function Composer({
       }
     }
 
+    if (event.key === 'Escape' && editing !== undefined) {
+      event.preventDefault();
+      // Keep the key from also closing the chat on a narrow layout.
+      event.stopPropagation();
+      store.cancelEdit();
+      return;
+    }
     if (event.key === 'Escape' && replyTo !== undefined) {
       event.preventDefault();
       onCancelReply();
@@ -219,7 +298,11 @@ export function Composer({
     }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      send();
+      if (editing !== undefined) {
+        saveEdit();
+      } else {
+        send();
+      }
     }
   };
 
@@ -315,32 +398,41 @@ export function Composer({
           onHover={setActiveIndex}
         />
       )}
-      {replyTo !== undefined && (
-        <Well className="mb-2 flex items-stretch overflow-hidden rounded-[10px]">
-          <span className="w-[3px] shrink-0 bg-[#333333]" aria-hidden="true" />
-          <div className="min-w-0 flex-1 px-2.5 py-1.5">
-            <div className="truncate text-[13px] leading-4 font-semibold text-[#d4d4d4]">
-              Reply to {replyTo.senderName}
-            </div>
-            {replyTo.text !== undefined && (
-              <div className="truncate text-[13px] leading-4 text-muted-foreground">
-                {replyTo.text}
+      {editing !== undefined ? (
+        <EditBar text={editing.text ?? ''} onCancel={() => store.cancelEdit()} />
+      ) : (
+        replyTo !== undefined && (
+          <Well className="mb-2 flex items-stretch overflow-hidden rounded-[10px]">
+            <span className="w-[3px] shrink-0 bg-[#333333]" aria-hidden="true" />
+            <div className="min-w-0 flex-1 px-2.5 py-1.5">
+              <div className="truncate text-[13px] leading-4 font-semibold text-[#d4d4d4]">
+                Reply to {replyTo.senderName}
               </div>
-            )}
-          </div>
-          <button
-            type="button"
-            aria-label="Cancel reply"
-            onClick={onCancelReply}
-            className="flex w-9 shrink-0 items-center justify-center text-muted-foreground hover:bg-surface-raised"
-          >
-            <X className="size-4" aria-hidden="true" />
-          </button>
-        </Well>
+              {replyTo.text !== undefined && (
+                <div className="truncate text-[13px] leading-4 text-muted-foreground">
+                  {replyTo.text}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              aria-label="Cancel reply"
+              onClick={onCancelReply}
+              className="flex w-9 shrink-0 items-center justify-center text-muted-foreground hover:bg-surface-raised"
+            >
+              <X className="size-4" aria-hidden="true" />
+            </button>
+          </Well>
+        )
       )}
       {voiceError !== undefined && (
         <div className="mb-1 px-1 text-[12px] text-danger" role="alert">
           {voiceError}
+        </div>
+      )}
+      {voiceError === undefined && actionError !== undefined && (
+        <div className="mb-1 px-1 text-[12px] text-danger" role="alert">
+          {actionError}
         </div>
       )}
       <Well className="flex items-end gap-2 rounded-[14px] p-2">
@@ -383,8 +475,17 @@ export function Composer({
         {canSend ? (
           <Button
             type="button"
-            aria-label="Send message"
-            onClick={send}
+            aria-label={editing !== undefined ? 'Save edit' : 'Send message'}
+            onClick={editing !== undefined ? saveEdit : send}
+            className="size-9 rounded-[10px] p-0"
+          >
+            <ArrowUp className="size-4" aria-hidden="true" />
+          </Button>
+        ) : editing !== undefined ? (
+          <Button
+            type="button"
+            aria-label="Save edit"
+            disabled
             className="size-9 rounded-[10px] p-0"
           >
             <ArrowUp className="size-4" aria-hidden="true" />

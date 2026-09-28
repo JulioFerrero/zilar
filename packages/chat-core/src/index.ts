@@ -8,5 +8,6 @@ export * from './links';
 export * from './markdown';
 export * from './mentions';
 export * from './reactions';
+export * from './edits';
 export * from './ai';
 export type { Payload, VoiceMeta } from '@galena/protocol';

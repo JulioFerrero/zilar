@@ -1,5 +1,6 @@
 import type {
   ChatSummary,
+  EditsState,
   MentionMember,
   MessageStatus,
   ReactionsState,
@@ -7,7 +8,12 @@ import type {
   UiMention,
   UiMessage,
 } from '@galena/chat-core';
-import { mentionsForTrimmedText } from '@galena/chat-core';
+import {
+  mentionsForTrimmedText,
+  rebaseMentions,
+  canEditMessage,
+  canDeleteMessage,
+} from '@galena/chat-core';
 import type { Contact, GroupDetail, Me, PublicAi } from '@/lib/api';
 import { sampleVoiceDataUrl } from '@/lib/voice';
 import type { StoreApi } from 'zustand/vanilla';
@@ -108,6 +114,27 @@ export interface ChatStore {
    * (XEP-0444). Optimistic; it reverts when the send fails.
    */
   react: (chatId: string, messageId: string, emoji: string) => void;
+  /**
+   * The message currently being edited, if any. The composer shows an edit bar
+   * for it and Enter saves the new text.
+   */
+  editTarget: { chatId: string; messageId: string } | undefined;
+  /** Starts editing a message (cancels any reply); the composer takes over. */
+  startEdit: (chatId: string, messageId: string) => void;
+  /** Leaves edit mode without saving. */
+  cancelEdit: () => void;
+  /**
+   * Saves an edit (XEP-0308): the new text is applied optimistically and sent,
+   * and reverted when the send fails. An unchanged or empty text sends nothing.
+   */
+  editMessage: (chatId: string, messageId: string, text: string) => void;
+  /**
+   * Deletes a message for everyone (XEP-0424). Optimistic, reverted on a send
+   * error.
+   */
+  deleteForEveryone: (chatId: string, messageId: string) => void;
+  /** The inline error of the last edit or delete that failed to send. */
+  actionError: { chatId: string; message: string } | undefined;
   sendTyping: (chatId: string) => void;
   createGroup: (title: string, memberIds: string[]) => Promise<string>;
   createInvite: () => Promise<string>;
@@ -127,6 +154,12 @@ export type ChatStoreState = ChatStore & {
    * message id. Kept even for targets that are not loaded yet.
    */
   reactions: Record<string, ReactionsState>;
+  /**
+   * XEP-0308/0424 edit state by chat id, keyed by the alias-resolved target
+   * message id. The mock store keeps the flags on the messages instead and
+   * leaves this empty.
+   */
+  edits: Record<string, EditsState>;
   activeChatId: string | undefined;
   historyComplete: Record<string, boolean>;
   /** Group details (people + AIs) by chat id, for the info panel. */
@@ -169,6 +202,20 @@ function withPlayableVoice(message: UiMessage): UiMessage {
 function withLastMessage(chats: ChatSummary[], chatId: string, message: UiMessage): ChatSummary[] {
   return chats.map((chat) =>
     chat.id === chatId ? { ...chat, lastMessage: message, unread: 0 } : chat,
+  );
+}
+
+// Replaces the chat-list preview only when it is the message that changed, so
+// editing or deleting an older message never moves the preview.
+function withReplacedLastMessage(
+  chats: ChatSummary[],
+  chatId: string,
+  message: UiMessage,
+): ChatSummary[] {
+  return chats.map((chat) =>
+    chat.id === chatId && chat.lastMessage?.id === message.id
+      ? { ...chat, lastMessage: message }
+      : chat,
   );
 }
 
@@ -294,6 +341,9 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       chats: seed.chats ?? mockChats,
       messagesByChat: cloneMessages(seed.messagesByChat ?? mockMessages),
       reactions: {},
+      edits: {},
+      editTarget: undefined,
+      actionError: undefined,
       activeChatId: undefined,
       historyComplete: {},
       groupInfos: { ...(seed.groupInfos ?? mockGroupDetails) },
@@ -374,6 +424,80 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
                 item.id === messageId ? withToggledReaction(item, emoji, 'You') : item,
               ),
             },
+          };
+        });
+      },
+      startEdit: (chatId, messageId) => {
+        set({ editTarget: { chatId, messageId }, actionError: undefined });
+      },
+      cancelEdit: () => {
+        set({ editTarget: undefined });
+      },
+      editMessage: (chatId, messageId, text) => {
+        const trimmed = text.trim();
+        if (trimmed.length === 0) {
+          return;
+        }
+        set((state) => {
+          const list = state.messagesByChat[chatId];
+          const message = list?.find((item) => item.id === messageId);
+          if (list === undefined || message === undefined) {
+            return state;
+          }
+          if (
+            !canEditMessage(message, state.currentUserId, new Date()) ||
+            message.text === trimmed
+          ) {
+            return state;
+          }
+          const mentions = mentionsForTrimmedText(
+            text,
+            trimmed,
+            rebaseMentions(message.text ?? '', text, message.mentions ?? []),
+          );
+          const edited: UiMessage = { ...message, text: trimmed, edited: true };
+          if (mentions.length === 0) {
+            delete edited.mentions;
+          } else {
+            edited.mentions = mentions;
+          }
+          return {
+            messagesByChat: {
+              ...state.messagesByChat,
+              [chatId]: list.map((item) => (item.id === messageId ? edited : item)),
+            },
+            chats: withReplacedLastMessage(state.chats, chatId, edited),
+            editTarget: state.editTarget?.messageId === messageId ? undefined : state.editTarget,
+          };
+        });
+      },
+      deleteForEveryone: (chatId, messageId) => {
+        set((state) => {
+          const list = state.messagesByChat[chatId];
+          const message = list?.find((item) => item.id === messageId);
+          if (list === undefined || message === undefined) {
+            return state;
+          }
+          if (!canDeleteMessage(message, state.currentUserId)) {
+            return state;
+          }
+          const deleted: UiMessage = { ...message, deleted: true };
+          delete deleted.text;
+          delete deleted.voice;
+          delete deleted.image;
+          delete deleted.card;
+          delete deleted.reactions;
+          delete deleted.mentions;
+          delete deleted.edited;
+          return {
+            messagesByChat: {
+              ...state.messagesByChat,
+              [chatId]: list.map((item) => (item.id === messageId ? deleted : item)),
+            },
+            chats: withReplacedLastMessage(state.chats, chatId, {
+              ...deleted,
+              text: 'Message deleted',
+            }),
           };
         });
       },

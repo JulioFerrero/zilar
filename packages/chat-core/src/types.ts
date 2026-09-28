@@ -51,6 +51,13 @@ export interface UiMessage {
   card?: Payload;
   /** XEP-0444 reaction chips, newest state first-used; empty/absent means none. */
   reactions?: UiReaction[];
+  /** True when the message was corrected (XEP-0308) after it was sent. */
+  edited?: boolean;
+  /**
+   * True when the message was retracted for everyone (XEP-0424). A deleted
+   * message carries no text, payload or reactions.
+   */
+  deleted?: boolean;
 }
 
 /** One reaction chip shown under a bubble: an emoji, its count and my state. */

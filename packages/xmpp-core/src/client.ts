@@ -11,11 +11,13 @@ import { installStreamManagementAck } from './stream-management';
 import {
   buildAvailablePresence,
   buildCarbonsEnable,
+  buildCorrection,
   buildDisplayed,
   buildJoinPresence,
   buildLeavePresence,
   buildMessage,
   buildReactions,
+  buildRetraction,
   buildRosterError,
   buildRosterResult,
   buildTyping,
@@ -46,6 +48,7 @@ import type {
   OccupantsEvent,
   PresenceEvent,
   RosterEvent,
+  SendCorrectionOptions,
   SendMessageOptions,
   TypingEvent,
   UploadRequest,
@@ -666,6 +669,33 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     await current.send(buildReactions({ id: generateId(), to: chatJid, kind, targetId, emojis }));
   }
 
+  async function sendCorrection(
+    chatJid: string,
+    kind: ChatKind,
+    originalId: string,
+    text: string,
+    opts: SendCorrectionOptions = {},
+  ): Promise<{ id: string }> {
+    const current = requireOnline();
+    const id = generateId();
+    await current.send(
+      buildCorrection({
+        id,
+        to: chatJid,
+        kind,
+        originalId,
+        text,
+        mentions: opts.mentions,
+      }),
+    );
+    return { id };
+  }
+
+  async function sendRetraction(chatJid: string, kind: ChatKind, targetId: string): Promise<void> {
+    const current = requireOnline();
+    await current.send(buildRetraction({ id: generateId(), to: chatJid, kind, targetId }));
+  }
+
   function sendTyping(to: string, kind: ChatKind, state: 'composing' | 'paused'): void {
     if (xmpp === undefined || currentStatus !== 'online') return;
     void xmpp.send(buildTyping({ to, kind, state })).catch((error: unknown) => {
@@ -775,6 +805,8 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     requestUploadSlot,
     sendTyping,
     sendReactions,
+    sendCorrection,
+    sendRetraction,
     markDisplayed,
     on: (event: EventName, listener: StoredListener) => addListener(event, listener),
   };

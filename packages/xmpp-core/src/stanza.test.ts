@@ -3,18 +3,24 @@ import { xml, type XmppElement } from '@xmpp/client';
 import { encodePayload, type Payload } from '@galena/protocol';
 import {
   buildCarbonsEnable,
+  buildCorrection,
   buildDisplayed,
   buildJoinPresence,
   buildLeavePresence,
   buildMessage,
   buildReactions,
+  buildRetraction,
   buildTyping,
   buildUploadSlotRequest,
   decodeMessageStanza,
   isMamResult,
   mamResultQueryId,
+  originIdOf,
+  parseCorrection,
   parseReactions,
+  parseRetraction,
   parseUploadSlot,
+  RETRACTION_FALLBACK_BODY,
   sanitizeReactions,
   type ParseContext,
 } from './stanza';
@@ -24,7 +30,9 @@ import {
   CARBONS_NAMESPACE,
   CHAT_MARKERS_NAMESPACE,
   CHAT_STATES_NAMESPACE,
+  CORRECTION_NAMESPACE,
   DELAY_NAMESPACE,
+  FALLBACK_NAMESPACE,
   FORWARD_NAMESPACE,
   HINTS_NAMESPACE,
   HTTP_UPLOAD_NAMESPACE,
@@ -34,6 +42,7 @@ import {
   REACTIONS_NAMESPACE,
   REFERENCE_NAMESPACE,
   REPLY_NAMESPACE,
+  RETRACTION_NAMESPACE,
   STANZA_ID_NAMESPACE,
 } from './namespaces';
 
@@ -965,5 +974,176 @@ describe('XEP-0444 reactions', () => {
     expect(message?.reactions).toEqual({ targetId: 'sid-1', emojis: ['❤️'] });
     expect(message?.fromJid).toBe('alice@galena.localhost');
     expect(message?.chatJid).toBe('project@rooms.galena.localhost');
+  });
+});
+
+describe('XEP-0308 corrections and XEP-0424 retractions', () => {
+  it('builds a correction: new body, replace id and rebuilt mentions', () => {
+    const stanza = buildCorrection({
+      id: 'm-c1',
+      to: 'project@rooms.galena.localhost',
+      kind: 'groupchat',
+      originalId: 'origin-1',
+      text: 'hi 😀 @Ana',
+      mentions: [{ jid: 'ana@galena.localhost', begin: 6, end: 10 }],
+    });
+
+    expect(stanza.attrs).toMatchObject({
+      type: 'groupchat',
+      to: 'project@rooms.galena.localhost',
+      id: 'm-c1',
+    });
+    expect(stanza.getChildText('body')).toBe('hi 😀 @Ana');
+    const replace = stanza.getChild('replace', CORRECTION_NAMESPACE);
+    expect(replace?.attrs['id']).toBe('origin-1');
+    const references = stanza.getChildren('reference', REFERENCE_NAMESPACE);
+    expect(references).toHaveLength(1);
+    // The emoji is one code point, not two UTF-16 units.
+    expect(references[0]?.attrs).toMatchObject({
+      type: 'mention',
+      uri: 'xmpp:ana@galena.localhost',
+      begin: '5',
+      end: '9',
+    });
+  });
+
+  it('builds a retraction with the target, the fallback and the store hint', () => {
+    const stanza = buildRetraction({
+      id: 'm-r1',
+      to: 'project@rooms.galena.localhost',
+      kind: 'groupchat',
+      targetId: 'sid-1',
+    });
+
+    expect(stanza.attrs).toMatchObject({
+      type: 'groupchat',
+      to: 'project@rooms.galena.localhost',
+      id: 'm-r1',
+    });
+    expect(stanza.getChild('retract', RETRACTION_NAMESPACE)?.attrs['id']).toBe('sid-1');
+    expect(stanza.getChild('fallback', FALLBACK_NAMESPACE)?.attrs['for']).toBe(
+      RETRACTION_NAMESPACE,
+    );
+    expect(stanza.getChildText('body')).toBe(RETRACTION_FALLBACK_BODY);
+    expect(stanza.getChild('store', HINTS_NAMESPACE)).toBeDefined();
+  });
+
+  it('parses a correction and keeps the new body', () => {
+    const stanza = xml(
+      'message',
+      { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-50' },
+      xml('body', {}, 'the new text'),
+      xml('replace', { xmlns: CORRECTION_NAMESPACE, id: 'm-1' }),
+    );
+
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.body).toBe('the new text');
+    expect(message?.correction).toEqual({ targetId: 'm-1' });
+    // The stanza's own id is the sender-generated origin id.
+    expect(message?.originId).toBe('m-50');
+  });
+
+  it('parses a retraction and drops the fallback body', () => {
+    const stanza = xml(
+      'message',
+      { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-51' },
+      xml('retract', { xmlns: RETRACTION_NAMESPACE, id: 'm-1' }),
+      xml('fallback', { xmlns: FALLBACK_NAMESPACE, for: RETRACTION_NAMESPACE }),
+      xml('body', {}, RETRACTION_FALLBACK_BODY),
+      xml('store', { xmlns: HINTS_NAMESPACE }),
+    );
+
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.body).toBeUndefined();
+    expect(message?.retraction).toEqual({ targetId: 'm-1' });
+  });
+
+  it('ignores a correction or a retraction without a target id', () => {
+    const correction = xml(
+      'message',
+      { from: 'alice@galena.localhost', type: 'chat', id: 'm-52' },
+      xml('body', {}, 'no target'),
+      xml('replace', { xmlns: CORRECTION_NAMESPACE }),
+    );
+    expect(parseCorrection(correction)).toBeUndefined();
+
+    const retraction = xml(
+      'message',
+      { from: 'alice@galena.localhost', type: 'chat', id: 'm-53' },
+      xml('retract', { xmlns: RETRACTION_NAMESPACE }),
+    );
+    expect(parseRetraction(retraction)).toBeUndefined();
+    expect(decodeMessageStanza(retraction, ctx).message).toBeUndefined();
+  });
+
+  it('prefers an origin-id over the stanza id', () => {
+    const stanza = xml(
+      'message',
+      { from: 'alice@galena.localhost', type: 'chat', id: 'm-54' },
+      xml('origin-id', { xmlns: STANZA_ID_NAMESPACE, id: 'origin-9' }),
+      xml('body', {}, 'hi'),
+    );
+    expect(originIdOf(stanza)).toBe('origin-9');
+    expect(decodeMessageStanza(stanza, ctx).message?.originId).toBe('origin-9');
+  });
+
+  it('parses a correction inside a received carbon', () => {
+    const stanza = xml(
+      'message',
+      { from: 'bob@galena.localhost/laptop', to: 'bob@galena.localhost/laptop', type: 'chat' },
+      xml(
+        'received',
+        { xmlns: CARBONS_NAMESPACE },
+        xml(
+          'forwarded',
+          { xmlns: FORWARD_NAMESPACE },
+          xml(
+            'message',
+            {
+              from: 'alice@galena.localhost',
+              to: 'bob@galena.localhost',
+              type: 'chat',
+              id: 'm-55',
+            },
+            xml('body', {}, 'fixed text'),
+            xml('replace', { xmlns: CORRECTION_NAMESPACE, id: 'm-1' }),
+          ),
+        ),
+      ),
+    );
+
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.body).toBe('fixed text');
+    expect(message?.correction).toEqual({ targetId: 'm-1' });
+  });
+
+  it('parses a group retraction inside a MAM result by its stanza-id target', () => {
+    const inner = xml(
+      'message',
+      { from: 'project@rooms.galena.localhost/alice', type: 'groupchat', id: 'm-56' },
+      xml('retract', { xmlns: RETRACTION_NAMESPACE, id: 'sid-1' }),
+      xml('body', {}, RETRACTION_FALLBACK_BODY),
+      mucUser('alice@galena.localhost'),
+    );
+    const stanza = xml(
+      'message',
+      { from: 'project@rooms.galena.localhost', to: 'bob@galena.localhost/laptop' },
+      xml(
+        'result',
+        { xmlns: MAM_NAMESPACE, queryid: 'q1', id: 'archive-3' },
+        xml(
+          'forwarded',
+          { xmlns: FORWARD_NAMESPACE },
+          xml('delay', { xmlns: DELAY_NAMESPACE, stamp: '2026-09-26T08:00:00.000Z' }),
+          inner,
+        ),
+      ),
+    );
+
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.id).toBe('archive-3');
+    expect(message?.body).toBeUndefined();
+    expect(message?.retraction).toEqual({ targetId: 'sid-1' });
+    expect(message?.fromJid).toBe('alice@galena.localhost');
   });
 });

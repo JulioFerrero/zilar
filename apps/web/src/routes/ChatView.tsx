@@ -31,12 +31,24 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
     setPanel(initialPanel(searchParams.get('panel')));
   }
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
+  const editTarget = store.editTarget;
+  // Edit mode and reply are exclusive: starting an edit clears the reply. The
+  // reset happens during render (React's "adjust state when a prop changes"),
+  // like the composer's chat-switch reset.
+  const [lastEditTarget, setLastEditTarget] = useState(editTarget);
+  if (editTarget !== lastEditTarget) {
+    setLastEditTarget(editTarget);
+    if (editTarget !== undefined) {
+      setReplyTo(undefined);
+    }
+  }
 
   useEffect(() => {
     storeApi.getState().openChat(chat.id);
   }, [storeApi, chat.id]);
 
   const startReply = (message: UiMessage): void => {
+    storeApi.getState().cancelEdit();
     setReplyTo(replyRef(message, store.currentUserId));
   };
 

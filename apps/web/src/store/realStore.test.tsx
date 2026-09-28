@@ -69,6 +69,60 @@ function reactionMessage(overrides: {
   return result;
 }
 
+function correctionMessage(overrides: {
+  id: string;
+  chatJid: string;
+  targetId: string;
+  text: string;
+  timestamp: Date;
+  fromJid?: string;
+  fromNick?: string;
+  occupantId?: string;
+  fromResolved?: boolean;
+  outgoing?: boolean;
+}): ChatMessage {
+  const result: ChatMessage = {
+    id: overrides.id,
+    chatJid: overrides.chatJid,
+    kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
+    fromJid: overrides.fromJid ?? 'ana@galena.test',
+    fromResolved: overrides.fromResolved ?? true,
+    timestamp: overrides.timestamp,
+    outgoing: overrides.outgoing ?? false,
+    body: overrides.text,
+    correction: { targetId: overrides.targetId },
+  };
+  if (overrides.fromNick !== undefined) result.fromNick = overrides.fromNick;
+  if (overrides.occupantId !== undefined) result.occupantId = overrides.occupantId;
+  return result;
+}
+
+function retractionMessage(overrides: {
+  id: string;
+  chatJid: string;
+  targetId: string;
+  timestamp: Date;
+  fromJid?: string;
+  fromNick?: string;
+  occupantId?: string;
+  fromResolved?: boolean;
+  outgoing?: boolean;
+}): ChatMessage {
+  const result: ChatMessage = {
+    id: overrides.id,
+    chatJid: overrides.chatJid,
+    kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
+    fromJid: overrides.fromJid ?? 'ana@galena.test',
+    fromResolved: overrides.fromResolved ?? true,
+    timestamp: overrides.timestamp,
+    outgoing: overrides.outgoing ?? false,
+    retraction: { targetId: overrides.targetId },
+  };
+  if (overrides.fromNick !== undefined) result.fromNick = overrides.fromNick;
+  if (overrides.occupantId !== undefined) result.occupantId = overrides.occupantId;
+  return result;
+}
+
 interface FakeXmpp {
   core: XmppCore;
   history: Record<string, ChatMessage[]>;
@@ -91,6 +145,8 @@ function fakeXmpp(): FakeXmpp {
     occupants: vi.fn((): Occupant[] => []),
     sendMessage: vi.fn(async () => ({ id: 'srv-1' })),
     sendReactions: vi.fn(async () => {}),
+    sendCorrection: vi.fn(async () => ({ id: 'edit-1' })),
+    sendRetraction: vi.fn(async () => {}),
     requestUploadSlot: vi.fn(async () => ({
       putUrl: 'http://upload.galena.test/put/1',
       getUrl: 'http://upload.galena.test/get/1/voice.m4a',
@@ -1296,6 +1352,448 @@ describe('createRealChatStore', () => {
 
     expect(xmpp.core.sendReactions).not.toHaveBeenCalled();
     expect(store.getState().messages('ana@galena.test').at(-1)?.reactions).toBeUndefined();
+  });
+});
+
+describe('message edits and deletes (T-0061)', () => {
+  it('edits my own message optimistically, sends the origin id and shows the new text', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    store.getState().sendText('ana@galena.test', 'hello');
+    await flush();
+    const local = store.getState().messages('ana@galena.test').at(-1)?.id;
+    if (local === undefined) {
+      throw new Error('the optimistic message was not stored');
+    }
+
+    store.getState().editMessage('ana@galena.test', local, 'hello there');
+
+    // A correction names the original by its sender-generated id (srv-1 is what
+    // sendMessage returned; xmpp-core's origin id).
+    expect(xmpp.core.sendCorrection).toHaveBeenCalledWith(
+      'ana@galena.test',
+      'chat',
+      'srv-1',
+      'hello there',
+      undefined,
+    );
+    const edited = store.getState().messages('ana@galena.test').at(-1);
+    expect(edited?.text).toBe('hello there');
+    expect(edited?.edited).toBe(true);
+  });
+
+  it('reverts an optimistic edit when the send fails', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.history['ana@galena.test'] = [
+      message({
+        id: 'ana-1',
+        chatJid: 'ana@galena.test',
+        body: 'older',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        originId: 'origin-older',
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+      }),
+    ];
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    vi.mocked(xmpp.core.sendCorrection).mockRejectedValueOnce(new Error('offline'));
+    store.getState().editMessage('ana@galena.test', 'ana-1', 'changed');
+    expect(store.getState().messages('ana@galena.test')[0]?.text).toBe('changed');
+
+    await flush();
+    const reverted = store.getState().messages('ana@galena.test')[0];
+    expect(reverted?.text).toBe('older');
+    expect(reverted?.edited).toBeUndefined();
+    expect(store.getState().actionError?.message).toContain('Could not save the edit');
+  });
+
+  it('deletes for everyone in a DM by the origin id and shows a tombstone', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.history['ana@galena.test'] = [
+      message({
+        id: 'ana-1',
+        chatJid: 'ana@galena.test',
+        body: 'older',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        originId: 'origin-older',
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+        reactions: { targetId: 'ana-1', emojis: ['👍'] },
+      }),
+      message({
+        id: 'ana-2',
+        chatJid: 'ana@galena.test',
+        body: 'newest',
+        timestamp: new Date('2026-09-28T10:00:00Z'),
+      }),
+    ];
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    store.getState().deleteForEveryone('ana@galena.test', 'ana-1');
+    expect(xmpp.core.sendRetraction).toHaveBeenCalledWith(
+      'ana@galena.test',
+      'chat',
+      'origin-older',
+    );
+    const deleted = store.getState().messages('ana@galena.test')[0];
+    expect(deleted?.deleted).toBe(true);
+    expect(deleted?.text).toBeUndefined();
+    expect(deleted?.reactions).toBeUndefined();
+  });
+
+  it('reverts an optimistic delete, restoring text and reactions', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.history['ana@galena.test'] = [
+      message({
+        id: 'ana-1',
+        chatJid: 'ana@galena.test',
+        body: 'older',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        originId: 'origin-older',
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+        reactions: { targetId: 'ana-1', emojis: ['👍'] },
+      }),
+    ];
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    vi.mocked(xmpp.core.sendRetraction).mockRejectedValueOnce(new Error('offline'));
+    store.getState().deleteForEveryone('ana@galena.test', 'ana-1');
+    expect(store.getState().messages('ana@galena.test')[0]?.deleted).toBe(true);
+
+    await flush();
+    const reverted = store.getState().messages('ana@galena.test')[0];
+    expect(reverted?.deleted).toBeUndefined();
+    expect(reverted?.text).toBe('older');
+    expect(store.getState().actionError?.message).toContain('Could not delete');
+  });
+
+  it('applies a live correction without adding a bubble', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+    const before = store.getState().messages('ana@galena.test').length;
+
+    xmpp.emit(
+      'message',
+      correctionMessage({
+        id: 'c-1',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-1',
+        text: 'corrected live',
+        fromJid: 'ana@galena.test',
+        timestamp: new Date('2026-09-28T12:05:00Z'),
+      }),
+    );
+
+    const list = store.getState().messages('ana@galena.test');
+    expect(list).toHaveLength(before);
+    const target = list.find((m) => m.id === 'ana-1');
+    expect(target?.text).toBe('corrected live');
+    expect(target?.edited).toBe(true);
+  });
+
+  it('resolves a correction that names the origin id of a message stored under its stanza-id', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.history['ana@galena.test'] = [
+      message({
+        id: 'stanza-1',
+        chatJid: 'ana@galena.test',
+        body: 'older',
+        fromJid: 'ana@galena.test',
+        originId: 'origin-1',
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+      }),
+    ];
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    xmpp.emit(
+      'message',
+      correctionMessage({
+        id: 'c-1',
+        chatJid: 'ana@galena.test',
+        targetId: 'origin-1',
+        text: 'matched by origin',
+        fromJid: 'ana@galena.test',
+        timestamp: new Date('2026-09-28T12:05:00Z'),
+      }),
+    );
+
+    const target = store.getState().messages('ana@galena.test')[0];
+    expect(target?.id).toBe('stanza-1');
+    expect(target?.text).toBe('matched by origin');
+    expect(target?.edited).toBe(true);
+  });
+
+  it('applies a live retraction, stripping the message and leaving its place', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+    const before = store.getState().messages('ana@galena.test').length;
+
+    xmpp.emit(
+      'message',
+      retractionMessage({
+        id: 'r-1',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-1',
+        fromJid: 'ana@galena.test',
+        timestamp: new Date('2026-09-28T12:05:00Z'),
+      }),
+    );
+
+    const list = store.getState().messages('ana@galena.test');
+    expect(list).toHaveLength(before);
+    const target = list.find((m) => m.id === 'ana-1');
+    expect(target?.deleted).toBe(true);
+    expect(target?.text).toBeUndefined();
+  });
+
+  it('ignores a correction or retraction from a foreign sender', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    xmpp.emit(
+      'message',
+      correctionMessage({
+        id: 'c-1',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-1',
+        text: 'hijacked',
+        fromJid: 'luis@galena.test',
+        timestamp: new Date('2026-09-28T12:05:00Z'),
+      }),
+    );
+    xmpp.emit(
+      'message',
+      retractionMessage({
+        id: 'r-1',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-2',
+        fromJid: 'luis@galena.test',
+        timestamp: new Date('2026-09-28T12:06:00Z'),
+      }),
+    );
+
+    const list = store.getState().messages('ana@galena.test');
+    expect(list.find((m) => m.id === 'ana-1')?.text).toBe('older');
+    expect(list.find((m) => m.id === 'ana-2')?.deleted).toBeUndefined();
+  });
+
+  it('applies history edits before and after the target', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.history['ana@galena.test'] = [
+      correctionMessage({
+        id: 'c-1',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-1',
+        text: 'corrected twice',
+        fromJid: 'ana@galena.test',
+        timestamp: new Date('2026-09-28T09:00:30Z'),
+      }),
+      message({
+        id: 'ana-1',
+        chatJid: 'ana@galena.test',
+        body: 'older',
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+      }),
+      retractionMessage({
+        id: 'r-1',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-2',
+        fromJid: 'ana@galena.test',
+        timestamp: new Date('2026-09-28T10:00:30Z'),
+      }),
+      message({
+        id: 'ana-2',
+        chatJid: 'ana@galena.test',
+        body: 'newest',
+        timestamp: new Date('2026-09-28T10:00:00Z'),
+      }),
+    ];
+
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    const list = store.getState().messages('ana@galena.test');
+    expect(list.map((m) => m.id)).toEqual(['ana-1', 'ana-2']);
+    expect(list[0]?.text).toBe('corrected twice');
+    expect(list[0]?.edited).toBe(true);
+    expect(list[1]?.deleted).toBe(true);
+    expect(list[1]?.text).toBeUndefined();
+  });
+
+  it('keeps a correction for a target that is not loaded yet and applies it later', async () => {
+    const history: ChatMessage[] = Array.from({ length: 60 }, (_, index) =>
+      message({
+        id: `ana-${index}`,
+        chatJid: 'ana@galena.test',
+        body: `msg ${index}`,
+        timestamp: new Date(Date.UTC(2026, 8, 28, 8, index)),
+      }),
+    );
+    history.push(
+      correctionMessage({
+        id: 'c-old',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-0',
+        text: 'fixed later',
+        fromJid: 'ana@galena.test',
+        timestamp: new Date(Date.UTC(2026, 8, 28, 8, 40)),
+      }),
+    );
+    const { store, xmpp } = await setup();
+    xmpp.history['ana@galena.test'] = history;
+
+    store.getState().openChat('ana@galena.test');
+    await flush();
+    expect(store.getState().messages('ana@galena.test')[0]?.id).toBe('ana-11');
+
+    store.getState().loadOlder('ana@galena.test');
+    await flush();
+
+    const first = store.getState().messages('ana@galena.test')[0];
+    expect(first?.id).toBe('ana-0');
+    expect(first?.text).toBe('fixed later');
+    expect(first?.edited).toBe(true);
+  });
+
+  it('updates the preview and reply quotes for edits and deletes', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.history['ana@galena.test'] = [
+      message({
+        id: 'ana-1',
+        chatJid: 'ana@galena.test',
+        body: 'older',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        originId: 'origin-1',
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+      }),
+      message({
+        id: 'ana-2',
+        chatJid: 'ana@galena.test',
+        body: 'reply to older',
+        timestamp: new Date('2026-09-28T10:00:00Z'),
+        replyTo: { id: 'ana-1' },
+      }),
+      message({
+        id: 'ana-3',
+        chatJid: 'ana@galena.test',
+        body: 'reply to the reply',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        originId: 'origin-3',
+        timestamp: new Date('2026-09-28T11:00:00Z'),
+        replyTo: { id: 'ana-2' },
+      }),
+    ];
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    xmpp.emit(
+      'message',
+      correctionMessage({
+        id: 'c-1',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-1',
+        text: 'corrected preview',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        timestamp: new Date('2026-09-28T12:00:00Z'),
+      }),
+    );
+
+    expect(
+      store
+        .getState()
+        .messages('ana@galena.test')
+        .find((m) => m.id === 'ana-2')?.replyTo?.text,
+    ).toBe('corrected preview');
+
+    xmpp.emit(
+      'message',
+      retractionMessage({
+        id: 'r-1',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-2',
+        timestamp: new Date('2026-09-28T12:01:00Z'),
+      }),
+    );
+
+    expect(
+      store
+        .getState()
+        .messages('ana@galena.test')
+        .find((m) => m.id === 'ana-3')?.replyTo?.text,
+    ).toBe('Deleted message');
+
+    xmpp.emit(
+      'message',
+      retractionMessage({
+        id: 'r-2',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-3',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        timestamp: new Date('2026-09-28T12:02:00Z'),
+      }),
+    );
+
+    expect(store.getState().chats.find((c) => c.id === 'ana@galena.test')?.lastMessage?.text).toBe(
+      'Message deleted',
+    );
+  });
+
+  it('targets a group delete by stanza-id and authorizes the sender by member name', async () => {
+    const getGroup = vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [{ userId: 'ana', name: 'Ana', role: 'member' as const }],
+      ais: [],
+    }));
+    const { store, xmpp } = await setup({ getGroup });
+    await flush();
+    store.getState().openChat('team@rooms.galena.test');
+    await flush();
+
+    store.getState().sendText('team@rooms.galena.test', 'hello room');
+    await flush();
+
+    const local = store.getState().messages('team@rooms.galena.test').at(-1)?.id;
+    if (local === undefined) {
+      throw new Error('the optimistic group message was not stored');
+    }
+
+    // The MUC echo assigns the stanza-id that a group retraction must name.
+    xmpp.emit(
+      'message',
+      message({
+        id: 'sid-1',
+        chatJid: 'team@rooms.galena.test',
+        body: 'hello room',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        timestamp: new Date('2026-09-28T12:06:00Z'),
+      }),
+    );
+    await flush();
+
+    store.getState().deleteForEveryone('team@rooms.galena.test', local);
+    expect(xmpp.core.sendRetraction).toHaveBeenCalledWith(
+      'team@rooms.galena.test',
+      'groupchat',
+      'sid-1',
+    );
   });
 });
 
