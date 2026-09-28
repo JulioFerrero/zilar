@@ -4,8 +4,12 @@
  *
  * - `stream`: `dev-ai` is mid-reply, so the chat shows the recessed generating
  *   bubble, the caret and label, and the header/list show `writing…`;
- * - `final`: the same turn has completed, so the final message renders normally.
+ * - `final`: the same turn has completed, so the final message (with the draft's
+ *   text) renders in the incoming-card look in the draft's place.
  */
+import type { UiMessage } from '../lib/types';
+import { at } from './time';
+
 export const MOCK_DRAFT_CHAT_ID = 'dev-ai';
 
 /** One UUID, matching the contract's `turnId`. */
@@ -15,8 +19,24 @@ export const MOCK_DRAFT_TURN_ID = '5f2b7c1e-9a3d-4e6f-8b1c-2d3e4f5a6b7c';
 export const MOCK_DRAFT_STREAM_TEXT =
   'I bisected the failure to the token expiry check. The fix is on the branch and the auth suite';
 
-/** The id of the final mock message that takes over the draft in the `final` phase. */
-export const MOCK_DRAFT_FINAL_MESSAGE_ID = 'dev-ai-09';
+/** The complete reply: the stream text plus the tail the reveal finishes with. */
+export const MOCK_DRAFT_FINAL_TEXT = `${MOCK_DRAFT_STREAM_TEXT} is green again and I pushed a regression test. Want me to redeploy staging?`;
+
+/** The final message that takes over the draft in the `final` phase. */
+export const MOCK_DRAFT_FINAL_MESSAGE_ID = 'dev-ai-draft-final';
+
+/** Builds the completed reply, placed right after the existing `dev-ai` history. */
+export function createMockDraftFinalMessage(): UiMessage {
+  return {
+    id: MOCK_DRAFT_FINAL_MESSAGE_ID,
+    chatId: MOCK_DRAFT_CHAT_ID,
+    senderId: MOCK_DRAFT_CHAT_ID,
+    senderName: 'Dev AI',
+    text: MOCK_DRAFT_FINAL_TEXT,
+    createdAt: at(0, 11, 6),
+    status: 'read',
+  };
+}
 
 export type MockDraftPhase = 'stream' | 'final';
 

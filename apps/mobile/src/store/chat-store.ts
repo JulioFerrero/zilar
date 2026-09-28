@@ -8,6 +8,7 @@ import {
   MOCK_DRAFT_FINAL_MESSAGE_ID,
   MOCK_DRAFT_STREAM_TEXT,
   MOCK_DRAFT_TURN_ID,
+  createMockDraftFinalMessage,
   readMockDraftPhase,
   type MockDraftPhase,
 } from '../mock/drafts';
@@ -49,6 +50,14 @@ function cloneMessages(): Record<string, UiMessage[]> {
 
 export function createInitialState(phase?: MockDraftPhase): ChatStoreData {
   const messagesByChat = cloneMessages();
+  // The `final` phase appends the completed reply, so the last message is the
+  // one that takes over the draft's place (same text position, incoming look).
+  if (phase === 'final') {
+    messagesByChat[MOCK_DRAFT_CHAT_ID] = [
+      ...(messagesByChat[MOCK_DRAFT_CHAT_ID] ?? []),
+      createMockDraftFinalMessage(),
+    ];
+  }
   const chats = mockChats.map((chat) => {
     const lastMessage = messagesByChat[chat.id]?.at(-1);
     return lastMessage ? { ...chat, lastMessage } : { ...chat };

@@ -243,8 +243,8 @@ pnpm --filter @galena/mobile build                  # Exported: dist (ios + andr
   - `02-draft-stream.png` — the Dev AI chat mid-reply: a **recessed** bubble (well background,
     inset shadow) with gray text, the blinking caret `▍`, and the mono `generating` label with
     its dot; the header shows `writing…`.
-  - `03-after-swap.png` — the same chat after the swap: `Tests pass. Merge?` renders as a
-    normal incoming card with no caret or `generating` label.
+  - `03-after-swap.png` — the same chat after the swap: the completed reply renders as a normal
+    incoming card, in the draft's place, with no caret or `generating` label.
 - What I could not verify by eye: the live frame-by-frame smoothness and the 400 ms fade (the
   mock scenario is static, not a real SSE stream), and the resume/foreground snap. Those are
   covered by the unit tests; a live check against a running server is the lead's step.
@@ -257,5 +257,52 @@ pnpm --filter @galena/mobile build                  # Exported: dist (ios + andr
    snap to the latest text (no fast-forward replay).
 3. Scroll up while it writes: nothing should pull the view down; scroll back to the bottom and
    it stays pinned.
+
+## Round 2 (review fixes)
+
+**1. `03-after-swap.png` was the wrong state — the mock scenario, not the store swap.**
+Investigation: the store swap is correct, and `real-store.test.ts` already covers it
+("replaces the draft with a message that arrives before end, in one update" asserts the
+final message replaces the draft in the same update, with no gap or duplicate). The
+screenshot was wrong because the mock `final` phase pointed `finishedDraftMessages` at
+`dev-ai-09` ("Tests pass. Merge?") — an **older** message — and never added a message with
+the draft's reply text, so no final reply existed to show. Fixed in `mock/drafts.ts` and
+`chat-store.ts`: the `final` phase now appends a completed `dev-ai` message whose text is
+the draft's full reply (`MOCK_DRAFT_FINAL_TEXT`, which extends the streamed
+`MOCK_DRAFT_STREAM_TEXT`) and records it as the draft's finishing message, so the final
+incoming message sits in the draft's exact place. New mock-store tests
+(`chat-store.test.ts`) cover the `stream` and `final` phases. Only `03-after-swap.png` was
+retaken; it now shows the completed reply in the incoming-card look.
+
+**2. `finish()` now flushes the tail.** `apps/mobile/src/lib/drafts.ts` calls `pump()`
+before closing the XHR, so a tail delivered only with readyState 4 / `onload` / `onerror`
+is parsed. Test: the fake XHR pushes a partial `draft` at readyState 3 and completes with
+the rest plus the `end` at readyState 4; both events are delivered.
+
+**3. `open()` retries without a token.** A missing token or a throwing `getToken()` now
+schedules the normal jittered backoff instead of going silent until an AppState cycle.
+Tests: token `undefined` then present (the second attempt connects, with the bearer
+header); `getToken()` throws then succeeds.
+
+**4. Generating tail colour.** `BubbleTail` uses `WELL_BACKGROUND` while generating, so
+the tail matches the recessed body instead of the darker incoming stop.
+
+**5. `use-smooth-text` option changes.** `SmoothTextReveal.setOptions({ animate, reducedMotion })`
+updates the reveal after construction, and `useSmoothText` applies it when those options
+change; the `active` subscription is now always installed (its `snap()` no-ops while
+animation is off). Tests: reduced motion turning on shows the target at once; animation
+turning on resumes the reveal for later growth.
+
+### Checks (Round 2, real results)
+```bash
+pnpm format:check                                   # All matched files use Prettier code style!
+pnpm lint                                           # no output, exit 0
+pnpm typecheck                                      # Tasks: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/mobile
+                                                    # Test Files 23 passed | 2 skipped (25); Tests 209 passed | 2 skipped (211)
+pnpm --filter @galena/mobile build                  # Exported: dist (ios + android)
+```
+`PREREVIEW.md` (untracked) needed `prettier --write` in place to keep `format:check`
+green; it is left untracked and is not in the commit.
 
 ## Review (written by Claude)

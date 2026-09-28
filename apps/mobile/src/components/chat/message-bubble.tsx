@@ -19,7 +19,7 @@ import { VoiceMessage } from '@/components/chat/voice-message';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { BUBBLE_COLORS } from '@/lib/colors';
-import { bubbleStyle, raisedPill, senderColor } from '@/lib/depth';
+import { WELL_BACKGROUND, bubbleStyle, raisedPill, senderColor } from '@/lib/depth';
 import { useSmoothText, type ActiveSource } from '@/lib/use-smooth-text';
 import { cn } from '@/lib/utils';
 import { useColorScheme } from 'nativewind';
@@ -373,8 +373,9 @@ export function MessageBubble({
               {isLastInGroup ? (
                 <BubbleTail
                   outgoing={outgoing}
-                  // The gradient's bottom stop, so the tail has no seam with the body.
-                  color={outgoing ? '#dedede' : '#161616'}
+                  // Match the body: the well colour while recessed/generating, and
+                  // the gradient's bottom stop once the incoming look is in.
+                  color={outgoing ? '#dedede' : generating ? WELL_BACKGROUND : '#161616'}
                 />
               ) : null}
             </View>

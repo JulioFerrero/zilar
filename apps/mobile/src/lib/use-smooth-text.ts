@@ -18,8 +18,13 @@ export interface FrameScheduler {
 }
 
 const defaultFrameScheduler: FrameScheduler = {
-  request: (callback) => requestAnimationFrame(callback),
-  cancel: (handle) => cancelAnimationFrame(handle),
+  request: (callback) =>
+    typeof requestAnimationFrame === 'function' ? requestAnimationFrame(callback) : 0,
+  cancel: (handle) => {
+    if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(handle);
+    }
+  },
 };
 
 /**
@@ -104,8 +109,7 @@ export class SmoothTextReveal {
     this.shown = this.animate ? (initial === 'full' ? target : '') : target;
     this.progress = this.shown.length;
     const active = options.active;
-    this.unsubscribeActive =
-      this.animate && active !== undefined ? active.subscribe(() => this.snap()) : undefined;
+    this.unsubscribeActive = active !== undefined ? active.subscribe(() => this.snap()) : undefined;
     this.schedule();
   }
 
@@ -115,6 +119,32 @@ export class SmoothTextReveal {
 
   get done(): boolean {
     return this.text.length >= this.target.length;
+  }
+
+  /**
+   * Applies `animate`/`reducedMotion` changes after construction. The bubble's
+   * props can change (reduced motion can resolve, or a message can stop being a
+   * draft). Turning animation off shows the target at once; turning it on
+   * resumes the reveal from the current text.
+   */
+  setOptions(options: { animate?: boolean; reducedMotion?: boolean }): void {
+    if (this.disposed) {
+      return;
+    }
+    const next = (options.animate ?? true) && !(options.reducedMotion ?? false);
+    if (next === this.animate) {
+      return;
+    }
+    this.animate = next;
+    if (!this.animate) {
+      this.cancelFrame();
+      this.velocity = 0;
+      this.progress = this.target.length;
+      this.shown = this.target;
+      this.onChange?.();
+      return;
+    }
+    this.schedule();
   }
 
   setTarget(target: string): void {
@@ -223,6 +253,10 @@ export function useSmoothText(
   const [, force] = useReducer((count: number) => count + 1, 0);
   // The reveal is created once; `force` re-renders on every text change.
   const [reveal] = useState(() => new SmoothTextReveal(target, { ...options, onChange: force }));
+
+  useLayoutEffect(() => {
+    reveal.setOptions({ animate: options.animate, reducedMotion: options.reducedMotion });
+  }, [reveal, options.animate, options.reducedMotion]);
 
   useLayoutEffect(() => {
     reveal.setTarget(target);

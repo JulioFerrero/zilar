@@ -194,6 +194,39 @@ describe('SmoothTextReveal', () => {
     runToDone(reveal, frames, 1000);
     expect(reveal.text).toBe('Hello, a reply arrived while the app was hidden and kept going');
   });
+
+  it('applies reduced motion when it turns on after construction', () => {
+    const frames = manualFrames();
+    const reveal = new SmoothTextReveal('', { frames: frames.scheduler, initial: 'zero' });
+    reveal.setTarget('Hello there');
+    expect(reveal.done).toBe(false);
+
+    reveal.setOptions({ reducedMotion: true });
+    expect(reveal.text).toBe('Hello there');
+    expect(reveal.done).toBe(true);
+    expect(frames.pending()).toBe(0);
+  });
+
+  it('animates when animation turns on after construction', () => {
+    const frames = manualFrames();
+    const reveal = new SmoothTextReveal('Hello', {
+      animate: false,
+      frames: frames.scheduler,
+      initial: 'zero',
+    });
+    expect(reveal.text).toBe('Hello');
+
+    reveal.setTarget('Hello there');
+    expect(reveal.text).toBe('Hello there');
+
+    reveal.setOptions({ animate: true });
+    expect(reveal.text).toBe('Hello there');
+
+    reveal.setTarget('Hello there, friend');
+    expect(reveal.done).toBe(false);
+    runToDone(reveal, frames);
+    expect(reveal.text).toBe('Hello there, friend');
+  });
 });
 
 describe('safeCut', () => {

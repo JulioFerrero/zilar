@@ -236,6 +236,10 @@ export function subscribeToDrafts(
     if (xhr === null) {
       return;
     }
+    // A tail (an `end`, or the final `draft`) that only arrives with the last
+    // readyState change / onload / onerror must still be parsed before the
+    // stream goes away.
+    pump();
     closeXhr();
     scheduleRetry();
   }
@@ -254,7 +258,9 @@ export function subscribeToDrafts(
       return;
     }
     if (token === undefined || token === '') {
-      // Not signed in: nothing to stream.
+      // A missing session (or a transient read failure) must not silence the
+      // stream until the next AppState cycle: retry with the normal backoff.
+      scheduleRetry();
       return;
     }
     const request = createXhr();

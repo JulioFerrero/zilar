@@ -50,6 +50,13 @@ class FakeXhr implements DraftXhr {
     this.onprogress?.();
   }
 
+  /** Appends the last chunk and completes without a progress event. */
+  complete(chunk: string): void {
+    this.responseText += chunk;
+    this.readyState = 4;
+    this.onreadystatechange?.();
+  }
+
   fail(): void {
     this.onerror?.();
   }
@@ -164,6 +171,26 @@ describe('subscribeToDrafts', () => {
     expect(events).toHaveLength(0);
   });
 
+  it('parses a tail that arrives only with readyState 4', async () => {
+    const { created, events } = setup();
+    await flush();
+    const xhr = created[0]!;
+
+    xhr.push(
+      `event: draft\ndata: {"type":"draft","chatJid":"ai@galena.test","turnId":"${TURN}","text":"Hel`,
+    );
+    expect(events).toHaveLength(0);
+
+    // The remaining frame (here the closing `end`) arrives only on completion.
+    xhr.complete(
+      `lo"}\n\nevent: end\ndata: {"type":"end","chatJid":"ai@galena.test","turnId":"${TURN}","outcome":"sent"}\n\n`,
+    );
+    expect(events).toEqual([
+      { type: 'draft', chatJid: 'ai@galena.test', turnId: TURN, text: 'Hello' },
+      { type: 'end', chatJid: 'ai@galena.test', turnId: TURN, outcome: 'sent' },
+    ]);
+  });
+
   it('reconnects with a growing jittered backoff after a drop', async () => {
     vi.useFakeTimers();
     const { created } = setup({ baseDelayMs: 1000, maxDelayMs: 30_000, random: () => 0 });
@@ -211,10 +238,66 @@ describe('subscribeToDrafts', () => {
     expect(created).toHaveLength(1);
   });
 
-  it('does not open without a session token', async () => {
-    const { created } = setup({ getToken: () => undefined });
-    await flush();
+  it('retries with backoff when the token is missing, then connects', async () => {
+    vi.useFakeTimers();
+    const tokens: Array<string | undefined> = [undefined, 'secret-token'];
+    let calls = 0;
+    const created: FakeXhr[] = [];
+    subscribeToDrafts(() => {}, {
+      url: 'http://test/api/drafts/stream',
+      getToken: () => tokens[calls++],
+      appState: fakeAppState(),
+      createXhr: () => {
+        const xhr = new FakeXhr();
+        created.push(xhr);
+        return xhr;
+      },
+      baseDelayMs: 1000,
+      maxDelayMs: 30_000,
+      random: () => 0,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toBe(1);
     expect(created).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(499);
+    expect(created).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(calls).toBe(2);
+    expect(created).toHaveLength(1);
+    expect(created[0]!.headers['Authorization']).toBe('Bearer secret-token');
+  });
+
+  it('retries with backoff when getToken throws', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    const created: FakeXhr[] = [];
+    subscribeToDrafts(() => {}, {
+      url: 'http://test/api/drafts/stream',
+      getToken: () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new Error('no secure storage');
+        }
+        return 'secret-token';
+      },
+      appState: fakeAppState(),
+      createXhr: () => {
+        const xhr = new FakeXhr();
+        created.push(xhr);
+        return xhr;
+      },
+      baseDelayMs: 1000,
+      maxDelayMs: 30_000,
+      random: () => 0,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toBe(1);
+    expect(created).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(calls).toBe(2);
+    expect(created).toHaveLength(1);
   });
 
   it('does not open while the app starts in the background', async () => {
