@@ -1,7 +1,7 @@
 ---
 id: T-0047
 title: Web redesign (D24), part 2 — chat panel: header, glossy/recessed bubbles, composer well, pills, voice/image/cards
-status: review
+status: merged
 milestone: M2
 branch: task/T-0047-redesign-chat-panel
 model: opencode-go/deepseek-v4.1-flash
@@ -205,3 +205,11 @@ Both dev servers were stopped (`lsof -ti :5230`, `:4319` show nothing).
 - One nuance: the generating → incoming CSS transition relies on the browser interpolating same-structure gradients and box-shadows (true in Chromium; it snaps in any browser that doesn't). The look itself is correct either way.
 
 ## Review (written by Claude)
+
+**Verdict: approved, merged.**
+
+- Pre-review (Muse): no blockers. Two optional nits kept as is: `transitioning` stays true after the swap (harmless, since the transition only runs on a class change), and the `visibility` option is compared by identity (callers don't pass it).
+- Scope: only allowed files changed. The depth looks reuse the T-0046 utilities (`bubble-out`, `bubble-in`, `bubble-gen`, `raised-pill`, `well`). T-0045's same-node swap tests still pass.
+- Screenshots match `Main.dc.html` closely: glossy outgoing bubbles, dark incoming cards, a recessed generating bubble with the mono label, the composer well with icon keys, and the raised date pill.
+- Live check in Julio's Helium (branch served on localhost:5174 against the live server): the DM, the group and the AI chat each render correctly after a hard reload, with no "Couldn't load". Sender names in the group are readable. The live "AI reply writing" check needs a sent message, so Julio will do it on 5173 after the merge.
+- Small note: `senderColor` has its own FNV hash rather than sharing the avatar hash. That's fine for now.
