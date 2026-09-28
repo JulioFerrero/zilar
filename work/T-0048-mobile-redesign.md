@@ -1,7 +1,7 @@
 ---
 id: T-0048
 title: Mobile redesign (D24): dark tokens, Geist, skeuomorphic primitives, chat list and chat screen
-status: review
+status: merged
 milestone: M2
 branch: task/T-0048-mobile-redesign
 model: opencode-go/deepseek-v4.1-flash
@@ -354,3 +354,14 @@ pnpm --filter @galena/mobile build             # Exported: dist (ios + android b
 is not committed. The capture-only mock auth bypass was reverted; `RequireAuth.tsx` has no diff.
 
 ## Review (written by Claude)
+
+**Verdict: approved, merged.**
+
+- There were three pre-review rounds:
+  - round 1: ticks missing in outgoing text bubbles (must-fix), the tail seam and the folder-tab radii (nits);
+  - round 2: outgoing voice legibility (should-fix). The lead also caught that round 2 had moved the time and ticks onto their own line;
+  - round 3: per-side voice colors, and the time and ticks back inline as text glyphs.
+  All fixed. The last pre-review has only nits: self-referential shadow tests (values checked by hand against §4) and the unused `bubbleStyle('generating')`, kept for mobile drafts.
+- The lead viewed the chat list and the DM in rounds 1–3. They match the web D24 look closely.
+- Simulators: the worker created, used, shut down and deleted only its own simulators. Its command history shows no command on Julio's devices. The lead noticed afterwards that Julio's iPad simulator `A3E0C081` is no longer listed and his iPhone `DB167CD4` is shut down. The cause isn't known, and it's reported to Julio. Metro 8081 is still running.
+- The worker drove the Simulator with `cliclick` (host mouse clicks) to navigate. That's acceptable at night, but the playbook should say so.
