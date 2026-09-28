@@ -8,8 +8,10 @@ import { ArrowDown } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { DateSeparator } from './DateSeparator';
 import { MessageBubble } from './MessageBubble';
+import { MessageListSkeleton } from './Skeleton';
 import { UnreadDivider } from './UnreadDivider';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { Button } from './ui/button';
+import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const NEAR_BOTTOM_PX = 80;
 
@@ -21,7 +23,9 @@ export function MessageList({
   onReply: (message: UiMessage) => void;
 }) {
   const store = useChatStore();
+  const storeApi = useChatStoreApi();
   const messages = store.messages(chat.id);
+  const history = store.historyState[chat.id] ?? 'ready';
   const items = groupMessages(messages);
   const [initialUnread] = useState(() => chat.unread);
   const dividerIndex = unreadDividerIndex(items, initialUnread);
@@ -90,6 +94,43 @@ export function MessageList({
     setAtBottom(true);
     setPending(0);
   };
+
+  // Loading and empty are different states: the empty and error views only
+  // appear once the first history page has settled. Live messages that
+  // arrive while loading are shown immediately.
+  if (messages.length === 0) {
+    if (history === 'loading') {
+      return (
+        <div className="relative min-h-0 flex-1">
+          <MessageListSkeleton />
+        </div>
+      );
+    }
+    if (history === 'error') {
+      return (
+        <div className="relative min-h-0 flex-1">
+          <div className="chat-background flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+            <p className="text-[15px] text-muted-foreground">{"Couldn't load messages"}</p>
+            <Button
+              type="button"
+              size="lg"
+              className="rounded-full px-5"
+              onClick={() => storeApi.getState().retryHistory(chat.id)}
+            >
+              Retry
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="relative min-h-0 flex-1">
+        <div className="chat-background flex h-full items-center justify-center p-8 text-center">
+          <p className="text-[15px] text-muted-foreground">No messages yet</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-0 flex-1">

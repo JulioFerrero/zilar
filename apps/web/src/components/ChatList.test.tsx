@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen } from '@testing-library/react';
 import { renderApp } from '@/test/renderApp';
 
@@ -82,5 +82,29 @@ describe('ChatList', () => {
   it('shows the waiting-for-network bar when offline', () => {
     renderApp('/', { status: 'offline' });
     expect(screen.getByText('Waiting for network…')).toBeTruthy();
+  });
+
+  it('shows skeletons and no empty state while chats load', () => {
+    renderApp('/', { chats: [], chatsState: 'loading' });
+
+    expect(screen.queryByText('No chats here yet')).toBeNull();
+    expect(screen.getByRole('status', { name: 'Loading chats' })).toBeTruthy();
+  });
+
+  it('shows the empty state only once ready and empty', () => {
+    renderApp('/', { chats: [], chatsState: 'ready' });
+
+    expect(screen.getByText('No chats here yet')).toBeTruthy();
+  });
+
+  it('shows an error with Retry when chats fail to load', () => {
+    const { store } = renderApp('/', { chats: [], chatsState: 'error' });
+
+    expect(screen.getByText("Couldn't load chats")).toBeTruthy();
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    const onRetry = vi.fn();
+    store.setState({ retryChats: onRetry });
+    fireEvent.click(retry);
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });

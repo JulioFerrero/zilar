@@ -1,7 +1,7 @@
 ---
 id: T-0042
 title: Web — loading vs empty states (no "No chats yet" flash on reload; a reloaded /c/<jid> loads its history)
-status: todo
+status: review
 milestone: M2
 branch: task/T-0042-web-loading-states
 model: opencode-go/muse-spark-1.3-contributor
@@ -121,5 +121,97 @@ pnpm build
 - Offline caching of chats or messages (e.g. IndexedDB).
 
 ## Report (written by the worker when done)
+
+### What I did
+Fixed both of Julio's bugs by separating "loading" from "empty" in the web store and views.
+
+**Store (`apps/web/src/store/`):**
+- `store.ts`: added `chatsState: 'loading' | 'ready' | 'error'` (list level),
+  `historyState: Record<string, 'loading' | 'ready' | 'error'>` (per-chat first
+  page; absent means `ready`), plus `retryChats()` and `retryHistory(chatId)`.
+  The mock store exposes all of them as `ready`/no-ops, seeded via
+  `ChatStoreSeed`, so `?mock=1` is unaffected.
+- `realStore.ts`:
+  - `boot` sets `chatsState: 'ready'` after the first successful `/api/chats`
+    merge, and `'error'` (+ `status: 'offline'`) when the first load fails.
+    `retryChats()` re-runs boot. Background `refreshChats` failures stay
+    silent, as before.
+  - `openHistory` no longer returns silently when `core` is undefined or the
+    chat is unknown: it records the chat as the pending open, marks its
+    `historyState: 'loading'`, and `flushPending()` runs it once the core is
+    connected and the chat is known. Only the latest pending chat counts; an
+    in-flight load dedupes repeat opens (no double load). Flush points: after
+    the first chat merge, after connect, after background refresh merges, and
+    on XMPP `status: 'online'` (covers reconnect). Live messages arriving
+    mid-load still merge via the existing `live` merge. First-page success →
+    `'ready'`, failure → `'error'` (keeps live messages; the view offers
+    Retry via `retryHistory`).
+  - Captured `core` in a local for the in-flight page load so `stop()`
+    mid-load can't throw on `core.markDisplayed`.
+
+**Views:**
+- `components/Skeleton.tsx` (new): `ChatListSkeleton` (avatar + two bars per
+  row, `role="status"` "Loading chats") and `MessageListSkeleton` (bubble
+  shapes on the chat background, "Loading messages"), using app tokens
+  (`bg-muted`, `bg-bubble-in/out`) and `animate-pulse`.
+- `components/ChatList.tsx`: skeleton while `chatsState === 'loading'`
+  (no more "No chats yet" flash), inline "Couldn't load chats" + Retry while
+  `'error'`, `EmptyState no-chats` only when ready and empty. Folder/search
+  filtering behavior unchanged. Retry calls `storeApi.getState().retryChats()`
+  (fresh state, not a render snapshot).
+- `components/MessageList.tsx`: skeleton while the first page is in flight
+  and there are no messages; "No messages yet" only after a loaded-but-empty
+  history; "Couldn't load messages" + Retry on error; live messages arriving
+  during load render immediately.
+
+### Failing tests first (both causes verified)
+- New `loading states (T-0042)` block in `realStore.test.ts` (7 tests) failed
+  before the fix (`historyState` undefined; `chatsState` undefined) and the
+  reload test failed with `expected [] to have a length of 1 but got +0`
+  (page load never requested) — confirming the lead's diagnosis of
+  `openHistory` returning silently.
+- New `ChatList` tests (skeleton/no-flash, ready+empty, error+Retry) and new
+  `MessageList.test.tsx` (4 tests) failed before the component changes
+  (empty state rendered while loading / never rendered at all).
+- After the fix all pass; pre-existing store/component tests pass unmodified.
+
+### Files changed (all inside Allowed files)
+- `apps/web/src/store/store.ts`, `realStore.ts`
+- `apps/web/src/store/realStore.test.ts`, `reload.test.tsx` (new),
+  `apps/web/src/components/ChatList.tsx`, `ChatList.test.tsx`,
+  `MessageList.tsx`, `MessageList.test.tsx` (new), `Skeleton.tsx` (new)
+- `work/T-0042-web-loading-states.md` (this report + status)
+- Not touched: `lib/api.ts` (no loading hook needed there),
+  `EmptyState.tsx`, `ChatView.tsx`/`ChatShell.tsx` (not allowed).
+
+### Commands (real results)
+- `pnpm install`: ok (6.5s).
+- `pnpm format:check`: pass (after `prettier --write` on `realStore.test.ts`).
+- `pnpm lint` (oxlint): pass.
+- `pnpm typecheck`: 9 successful.
+- `pnpm exec turbo test --force --filter=@galena/web`: 22 files, 132 tests,
+  all passed.
+- `pnpm build`: 2 tasks successful.
+
+### Deviations / decisions
+- Kept reload-on-every-open: reopening a loaded chat still refetches its
+  first page (today's behavior, keeps read markers fresh); dedupe applies to
+  in-flight loads and superseded pendings only.
+- `ChatShell` right pane still shows the "Select a chat to start messaging"
+  pill until the first chat merge on a `/c/<jid>` reload — fixing that needs
+  `ChatShell.tsx`, which is not in Allowed files (T-0039 area). Once chats
+  arrive, the view mounts and the pending history loads (covered by
+  `reload.test.tsx`). Suggested follow-up: let `ChatShell` render a loading
+  state while `chatsState === 'loading'` and the route has a `:chatJid`.
+
+### Live check steps (for the lead)
+1. Reload on `/` → skeleton rows, never "No chats here yet".
+2. Reload on an AI DM (`/c/<ai-jid>`) → messages come back.
+3. Reload on a group → messages come back.
+4. Stop the server briefly → list shows "Couldn't load chats" + Retry
+   (click Retry after restart → list loads), not "No chats yet".
+
+### Blocked / needs a decision
+Nothing. No new dependencies.
 
 ## Review (written by Claude)

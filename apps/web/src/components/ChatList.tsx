@@ -7,7 +7,9 @@ import { FolderTabs } from './FolderTabs';
 import { InviteDialog } from './InviteDialog';
 import { NewChatButton } from './NewChatButton';
 import { SearchBar } from './SearchBar';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { ChatListSkeleton } from './Skeleton';
+import { Button } from './ui/button';
+import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { visibleChats } from '@/store/store';
 
 function statusLabel(status: string): string | undefined {
@@ -24,6 +26,7 @@ function statusLabel(status: string): string | undefined {
 
 export function ChatList({ activeChatId }: { activeChatId: string | undefined }) {
   const store = useChatStore();
+  const storeApi = useChatStoreApi();
   const navigate = useNavigate();
   const chats = visibleChats(store);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -117,7 +120,21 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
       )}
       <FolderTabs />
       <nav aria-label="Chats" className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
-        {chats.length === 0 ? (
+        {store.chatsState === 'loading' ? (
+          <ChatListSkeleton />
+        ) : store.chatsState === 'error' ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+            <p className="text-[15px] text-muted-foreground">{"Couldn't load chats"}</p>
+            <Button
+              type="button"
+              size="lg"
+              className="rounded-full px-5"
+              onClick={() => storeApi.getState().retryChats()}
+            >
+              Retry
+            </Button>
+          </div>
+        ) : chats.length === 0 ? (
           <EmptyState variant="no-chats" onInvite={() => setInviteOpen(true)} />
         ) : (
           chats.map((chat) => (

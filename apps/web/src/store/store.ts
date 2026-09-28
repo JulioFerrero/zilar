@@ -9,6 +9,13 @@ export type FolderId = 'all' | 'personal' | 'ais' | 'work';
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
 
+/** Whether the chat list has arrived: `loading` until the first
+ * successful `/api/chats` merge, `error` when that first load fails. */
+export type ChatsState = 'loading' | 'ready' | 'error';
+
+/** Whether a chat's first history page has arrived. */
+export type HistoryState = 'loading' | 'ready' | 'error';
+
 export interface TypingState {
   names: string[];
 }
@@ -28,6 +35,14 @@ export interface ChatStore {
   currentUserId: string;
   me: Me | undefined;
   status: ConnectionStatus;
+  /** Loading state of the chat list itself. `ready` after the first merge. */
+  chatsState: ChatsState;
+  /** Per-chat loading state of the first history page. Absent means `ready`. */
+  historyState: Record<string, HistoryState>;
+  /** Re-runs the first chat-list load after a failure. */
+  retryChats: () => void;
+  /** Re-runs the first history-page load for one chat after a failure. */
+  retryHistory: (chatId: string) => void;
   chats: ChatSummary[];
   contacts: Contact[];
   messages: (chatId: string) => UiMessage[];
@@ -59,6 +74,8 @@ export interface ChatStoreSeed {
   currentUserId?: string;
   me?: Me;
   status?: ConnectionStatus;
+  chatsState?: ChatsState;
+  historyState?: Record<string, HistoryState>;
   contacts?: Contact[];
   chats?: ChatSummary[];
   messagesByChat?: Record<string, UiMessage[]>;
@@ -146,6 +163,11 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
           jid: null,
         } satisfies Me),
       status: seed.status ?? 'online',
+      // The mock store has no async loads, so its data is ready immediately.
+      chatsState: seed.chatsState ?? 'ready',
+      historyState: seed.historyState ?? {},
+      retryChats: () => {},
+      retryHistory: () => {},
       contacts: seed.contacts ?? [],
       chats: seed.chats ?? mockChats,
       messagesByChat: cloneMessages(seed.messagesByChat ?? mockMessages),
