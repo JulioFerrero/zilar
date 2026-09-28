@@ -95,6 +95,13 @@ export interface VirtualKeyInfo {
   models: string[];
 }
 
+export interface ModelListing {
+  /** LiteLLM's model id, the handle `/model/delete` needs. */
+  id: string;
+  /** The public group name, e.g. `ai-<aiId>`. */
+  name: string;
+}
+
 export interface LitellmAdminClient {
   generateKey(input: GenerateVirtualKeyInput): Promise<VirtualKey>;
   getKeyInfo(key: string): Promise<VirtualKeyInfo>;
@@ -104,6 +111,8 @@ export interface LitellmAdminClient {
   addModel(input: AddModelInput): Promise<string>;
   /** Deletes a registered model. A model that is already gone is not an error. */
   deleteModel(modelId: string): Promise<void>;
+  /** Lists the registered models. Entries without an id or a name are skipped. */
+  listModels(): Promise<ModelListing[]>;
 }
 
 const KeySchema = z.string().min(1).max(4096);
@@ -181,11 +190,38 @@ const DeleteModelResponseSchema = z.object({
   message: z.string().optional(),
 });
 
+// `GET /model/info` answers `{ data: [...] }`, one entry per registered model.
+// The id lives at the top level on some shapes and under `model_info.id` on
+// others (verified live: `/model/info` entries carry no top-level `model_id`),
+// so both are accepted. Entries with neither an id nor a name are skipped
+// rather than failing the whole listing.
+const ModelListResponseSchema = z.object({
+  data: z
+    .array(
+      z.object({
+        model_id: z.string().min(1).optional(),
+        model_name: z.string().min(1).optional(),
+        model_info: z.object({ id: z.string().min(1).optional() }).optional(),
+      }),
+    )
+    .optional(),
+});
+
 // LiteLLM answers a delete for a model that is already gone with a 400 whose
 // message says it was not found. That is the same state the caller wanted, so
 // `deleteModel` treats it as success and deletes stay idempotent.
 function modelAlreadyGone(error: LitellmApiError): boolean {
   return error.status === 404 || /not found/i.test(error.message);
+}
+
+// Deleting a key that is already gone answers 404
+// `{'error': 'No keys found'}`. That is the state the caller wanted, so
+// `revokeKey` treats exactly that as success and revokes stay idempotent.
+// Verified against the live gateway 2026-09-28: generate a key, delete it
+// twice — the second delete answers this 404, whether addressed by key or by
+// token id. Any other error still fails.
+function keyAlreadyGone(error: LitellmApiError): boolean {
+  return error.status === 404 && /no keys found/i.test(error.message);
 }
 
 // Redacts any exact secret the caller names, then any credential-shaped token.
@@ -419,13 +455,21 @@ export function createLitellmAdminClient(
 
     async revokeKey(key: string): Promise<void> {
       const parsedKey = KeySchema.parse(key);
-      const parsed = parseResponse(
-        'key/delete',
-        DeleteResponseSchema,
-        await post('key/delete', '/key/delete', { keys: [parsedKey] }, [parsedKey]),
-      );
-      if (parsed.deleted_keys !== undefined && !parsed.deleted_keys.includes(parsedKey)) {
-        throw new LitellmApiError('key/delete', 200, 'LiteLLM did not delete the key');
+      try {
+        const parsed = parseResponse(
+          'key/delete',
+          DeleteResponseSchema,
+          await post('key/delete', '/key/delete', { keys: [parsedKey] }, [parsedKey]),
+        );
+        if (parsed.deleted_keys !== undefined && !parsed.deleted_keys.includes(parsedKey)) {
+          throw new LitellmApiError('key/delete', 200, 'LiteLLM did not delete the key');
+        }
+      } catch (error) {
+        // Already gone is the state the caller asked for.
+        if (error instanceof LitellmApiError && keyAlreadyGone(error)) {
+          return;
+        }
+        throw error;
       }
     },
 
@@ -470,6 +514,20 @@ export function createLitellmAdminClient(
         }
         throw error;
       }
+    },
+
+    async listModels(): Promise<ModelListing[]> {
+      const parsed = parseResponse(
+        'model/info',
+        ModelListResponseSchema,
+        await request('model/info', '/model/info', { method: 'GET', headers: headers() }, []),
+      );
+      return (parsed.data ?? []).flatMap((entry) => {
+        const id = entry.model_id ?? entry.model_info?.id;
+        return id !== undefined && entry.model_name !== undefined
+          ? [{ id, name: entry.model_name }]
+          : [];
+      });
     },
   };
 }

@@ -2,11 +2,16 @@
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { createLitellmAdminClient, DEFAULT_LITELLM_BASE_URL } from '../ai/litellm-client';
+import { createKeyCipher } from '../connections/crypto';
+import { createDb } from '../db/client';
+import { llmVirtualKeys } from '../db/schema';
+import { FakeAdminClient } from '../test-support';
 import { createEjabberdAdminClient } from '../xmpp/admin-client';
 import type { XmppConfig } from '../xmpp/config';
 import { localpartFor } from '../xmpp/provisioning';
-import { aiLocalpart, virtualKeyAlias } from './service';
+import { aiLocalpart, ensureAiModel, virtualKeyAlias } from './service';
 
 /**
  * The gated live check for the server-side AI path. It drives the real dev
@@ -370,14 +375,21 @@ async function listModels(baseUrl: string, masterKey: string): Promise<ModelList
  *   3. a virtual key allowed to call it reaches the *provider*, which rejects
  *      the made-up key (proving the owner's key was used — T-0007's reasoning);
  *   4. deleting the AI removes both the model and the key.
++ * Between 3 and 4 it also covers the backfill path: it nulls out
++ * `litellm_model_id`, resets the allowlist to the raw model name, calls
++ * `ensureAiModel` against the live gateway, and asserts the allowlist is
++ * exactly [`ai-<aiId>`] with a registered model behind it.
  * A failure part way best-effort deletes whatever it created.
  *
  * Required env vars (the same as the AIs test, plus):
  *   GALENA_AI_MODELS_INTEGRATION=1
  *   LITELLM_MASTER_KEY=<key>
++ *   DATABASE_URL=<the same Postgres the server runs against>
++ *   GALENA_KEY_ENCRYPTION_KEY=<the same key cipher the server runs with>
  *
  * Optional:
  *   GALENA_AIS_INTEGRATION_URL (default http://127.0.0.1:3188)
++ *   XMPP_DOMAIN                (default galena.localhost)
  *   LITELLM_BASE_URL           (default http://127.0.0.1:4000)
  */
 describe.skipIf(!MODELS_ENABLED)('AI models integration (real server + LiteLLM)', () => {
@@ -386,6 +398,7 @@ describe.skipIf(!MODELS_ENABLED)('AI models integration (real server + LiteLLM)'
     const logPath = requireEnv('GALENA_AIS_INTEGRATION_LOG');
     const invite = requireEnv('GALENA_AIS_INVITE_CODE');
     const email = requireEnv('GALENA_AIS_TEST_EMAIL');
+    const domain = process.env['XMPP_DOMAIN'] ?? 'galena.localhost';
     const litellmBaseUrl = (process.env['LITELLM_BASE_URL'] ?? DEFAULT_LITELLM_BASE_URL).replace(
       /\/+$/,
       '',
@@ -478,6 +491,41 @@ describe.skipIf(!MODELS_ENABLED)('AI models integration (real server + LiteLLM)'
       expect(completion.status).toBe(401);
       const completionText = JSON.stringify(completion.body).toLowerCase();
       expect(completionText).toMatch(/authentication|incorrect api key|invalid api key/);
+
+      // 5b. Backfill path: pretend this AI predates T-0033 (no stored model
+      //     id, allowlist pointing at the raw model name), run `ensureAiModel`
+      //     against the live gateway, and prove the allowlist is fixed to
+      //     exactly [`ai-<id>`] with a registered model behind it. The direct
+      //     database handle points at the same Postgres the server runs
+      //     against; the key cipher matches the server's, so the stored
+      //     connection key decrypts.
+      const directDb = createDb(requireEnv('DATABASE_URL'));
+      try {
+        await directDb.db
+          .update(llmVirtualKeys)
+          .set({ litellmModelId: null })
+          .where(eq(llmVirtualKeys.aiId, created.id));
+        await litellm.updateKey({ key: keyToken, models: ['gpt-4o-mini'] });
+        expect((await litellm.getKeyInfo(keyToken)).models).toEqual(['gpt-4o-mini']);
+
+        await ensureAiModel(
+          {
+            db: directDb.db,
+            // Unused by `ensureAiModel`; the in-memory stand-in makes no calls.
+            adminClient: new FakeAdminClient(),
+            litellm,
+            cipher: createKeyCipher(requireEnv('GALENA_KEY_ENCRYPTION_KEY')),
+            logger: { warn: () => undefined },
+            domain,
+          },
+          created.id,
+        );
+
+        expect((await litellm.getKeyInfo(keyToken)).models).toEqual([modelName]);
+        expect((await litellm.listModels()).some((entry) => entry.name === modelName)).toBe(true);
+      } finally {
+        await directDb.close();
+      }
 
       // 6. Delete the AI: the model and the key are both gone.
       const deleteResponse = await request(baseUrl, `/api/ais/${created.id}`, {

@@ -10,6 +10,7 @@ import { createAiRoutes, DEFAULT_VIRTUAL_KEY_POLICY } from './routes';
 import type {
   GenerateVirtualKeyInput,
   LitellmAdminClient,
+  ModelListing,
   VirtualKey,
   VirtualKeyInfo,
 } from './litellm-client';
@@ -50,6 +51,10 @@ class FakeLitellmClient implements LitellmAdminClient {
   }
 
   deleteModel(): Promise<void> {
+    throw new Error('not used in this test');
+  }
+
+  listModels(): Promise<ModelListing[]> {
     throw new Error('not used in this test');
   }
 }

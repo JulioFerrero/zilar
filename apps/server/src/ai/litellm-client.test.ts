@@ -198,6 +198,40 @@ describe('createLitellmAdminClient', () => {
     await expect(client.revokeKey('sk-virtual-key-6666')).rejects.toBeInstanceOf(LitellmApiError);
   });
 
+  it('treats deleting an already-deleted key as success', async () => {
+    // The exact shape the live gateway returns for a double delete
+    // (verified 2026-09-28, by key and by token id alike).
+    const { fetchImpl, calls } = createFetch(() =>
+      jsonResponse(
+        {
+          error: {
+            message: "{'error': 'No keys found'}",
+            type: 'internal_server_error',
+            param: null,
+            code: '404',
+          },
+        },
+        404,
+      ),
+    );
+    const client = createLitellmAdminClient(config, fetchImpl);
+
+    await expect(client.revokeKey('tok-already-gone')).resolves.toBeUndefined();
+    expect(calls[0]!.url).toBe('http://litellm.test:4000/key/delete');
+  });
+
+  it('still fails a key delete that is not the already-gone case', async () => {
+    for (const [status, body] of [
+      [404, { error: { message: 'something else went wrong' } }],
+      [500, { error: { message: 'No keys found' } }],
+      [500, { error: { message: 'database is down' } }],
+    ] as const) {
+      const { fetchImpl } = createFetch(() => jsonResponse(body, status));
+      const client = createLitellmAdminClient(config, fetchImpl);
+      await expect(client.revokeKey('tok-1')).rejects.toBeInstanceOf(LitellmApiError);
+    }
+  });
+
   it('rejects invalid inputs before any request', async () => {
     const { fetchImpl, calls } = createFetch(() => jsonResponse({}));
     const client = createLitellmAdminClient(config, fetchImpl);
@@ -417,6 +451,52 @@ describe('createLitellmAdminClient model management', () => {
     await expect(client.updateKey({ key: 'sk-x', models: [] })).rejects.toThrow();
 
     expect(calls).toHaveLength(0);
+  });
+
+  it('lists the registered models with their ids and names', async () => {
+    const { fetchImpl, calls } = createFetch(() =>
+      jsonResponse({
+        data: [
+          { model_name: 'ai-abc', model_id: 'model-1', litellm_params: { model: 'openai/x' } },
+          { model_name: 'gpt-4o-mini', model_id: 'model-2' },
+        ],
+      }),
+    );
+    const client = createLitellmAdminClient(config, fetchImpl);
+
+    await expect(client.listModels()).resolves.toEqual([
+      { id: 'model-1', name: 'ai-abc' },
+      { id: 'model-2', name: 'gpt-4o-mini' },
+    ]);
+    expect(calls[0]!.url).toBe('http://litellm.test:4000/model/info');
+    expect(calls[0]!.init.method).toBe('GET');
+  });
+
+  it('skips model entries without an id or a name, and tolerates no data', async () => {
+    const { fetchImpl } = createFetch(() =>
+      jsonResponse({
+        data: [
+          { model_name: 'ai-abc' },
+          { model_id: 'model-2' },
+          {},
+          { model_name: 'ai-nested', model_info: { id: 'model-3' } },
+        ],
+      }),
+    );
+    const client = createLitellmAdminClient(config, fetchImpl);
+    await expect(client.listModels()).resolves.toEqual([{ id: 'model-3', name: 'ai-nested' }]);
+
+    const empty = createFetch(() => jsonResponse({}));
+    await expect(createLitellmAdminClient(config, empty.fetchImpl).listModels()).resolves.toEqual(
+      [],
+    );
+  });
+
+  it('rejects a model listing with an unexpected shape', async () => {
+    const { fetchImpl } = createFetch(() => jsonResponse({ data: 'nope' }));
+    const client = createLitellmAdminClient(config, fetchImpl);
+
+    await expect(client.listModels()).rejects.toBeInstanceOf(LitellmApiError);
   });
 });
 

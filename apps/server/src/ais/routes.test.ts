@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type {
-  AddModelInput,
-  GenerateVirtualKeyInput,
-  LitellmAdminClient,
-  UpdateVirtualKeyInput,
-  VirtualKey,
-  VirtualKeyInfo,
+import {
+  LitellmApiError,
+  type AddModelInput,
+  type GenerateVirtualKeyInput,
+  type LitellmAdminClient,
+  type ModelListing,
+  type UpdateVirtualKeyInput,
+  type VirtualKey,
+  type VirtualKeyInfo,
 } from '../ai/litellm-client';
 import { createApp } from '../app';
 import type { ProbeOutcome, ProviderProbe } from '../connections/probe';
@@ -68,7 +70,9 @@ class FakeLitellm implements LitellmAdminClient {
     this.addedModels.push(input);
     this.order.push('addModel');
     if (this.failAddModel) {
-      return Promise.reject(new Error('gateway down, master was sk-master-must-not-leak'));
+      // Shaped like the real client's errors: redacted before throwing, so a
+      // gateway that echoes keys back never reaches the service log.
+      return Promise.reject(new LitellmApiError('model/new', 400, 'gateway down [redacted]'));
     }
     this.modelCounter += 1;
     return Promise.resolve(`model-${this.modelCounter}-do-not-leak`);
@@ -81,6 +85,10 @@ class FakeLitellm implements LitellmAdminClient {
     }
     this.deletedModels.push(modelId);
     return Promise.resolve();
+  }
+
+  listModels(): Promise<ModelListing[]> {
+    return Promise.resolve([]);
   }
 
   generateKey(input: GenerateVirtualKeyInput): Promise<VirtualKey> {
@@ -140,6 +148,20 @@ function captureLogger(): {
     },
     calls,
   };
+}
+
+// JSON.stringify turns an Error into `{}`, so leak assertions must read the
+// message and stack off the logged error itself — stringifying the calls
+// proves nothing about what was logged.
+function loggedText(calls: Array<{ fields: Record<string, unknown>; message: string }>): string {
+  return calls
+    .map((call) => {
+      const err = call.fields['err'];
+      const detail =
+        err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : JSON.stringify(err);
+      return `${call.message}\n${detail}`;
+    })
+    .join('\n');
 }
 
 describe('AI routes', () => {
@@ -536,7 +558,7 @@ describe('AI routes', () => {
     expect(litellm.addedModels).toHaveLength(1);
     expect(litellm.deletedModels).toEqual(['model-1-do-not-leak']);
     // The rollback logged the failure but never a key.
-    const logged = JSON.stringify(logger.calls);
+    const logged = loggedText(logger.calls);
     expect(logged).not.toContain('sk-virtual');
     expect(logged).not.toContain('tok-');
     expect(logged).not.toContain(PROVIDER_KEY);
@@ -567,7 +589,7 @@ describe('AI routes', () => {
     expect(litellm.deletedModels).toHaveLength(0);
     expect(context.adminClient.unregistered).toHaveLength(1);
     expect(context.adminClient.removedRosterItems).toHaveLength(2);
-    const logged = JSON.stringify(logger.calls);
+    const logged = loggedText(logger.calls);
     expect(logged).not.toContain(PROVIDER_KEY);
     expect(logged).not.toContain('sk-master-must-not-leak');
   });

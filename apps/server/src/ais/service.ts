@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import type { KeyCipher } from '../connections/crypto';
 import { decryptForGatewayUse, findOwnedConnection } from '../connections/service';
 import { ROSTER_GROUP } from '../contacts/service';
@@ -415,43 +415,120 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
 }
 
 // Backfills the private LiteLLM model on an AI created before this task, and
-// points an older virtual key's allowlist at it. Idempotent: once
-// `litellm_model_id` is stored the call does nothing, so T-0034 can call it
-// before every first turn. There is no route for it.
+// points an older virtual key's allowlist at it. Safe to call concurrently:
+// an in-process mutex per AI plus a Postgres advisory transaction lock keyed
+// by the AI id serialize callers, the model id is re-read after taking the
+// lock, and a model named `ai-<id>` left behind by an earlier attempt is
+// reclaimed before registering again. There is no route for it.
 export async function ensureAiModel(deps: AiServiceDeps, aiId: string): Promise<void> {
-  const ai = await findAiForGateway(deps.db, aiId);
-  if (!ai) {
+  const known = await findAiForGateway(deps.db, aiId);
+  if (!known) {
     throw new Error(`AI ${aiId} not found`);
   }
-  if (ai.litellmModelId !== null) {
+  if (known.litellmModelId !== null) {
     return;
   }
-  if (ai.litellmKeyId === null) {
-    throw new Error(`AI ${aiId} has no virtual key`);
-  }
 
-  const modelName = modelNameForAi(ai.id);
-  const providerKey = await decryptForGatewayUse(deps.db, deps.cipher, ai.providerConnectionId);
-  const modelId = await deps.litellm.addModel({
-    modelName,
-    litellmModel: litellmModelFor(ai.provider, ai.model),
-    apiKey: providerKey,
-    metadata: { ai_id: ai.id },
-  });
+  return withAiEnsureLock(aiId, () =>
+    deps.db.transaction(async (tx) => {
+      // Cross-process serialization. The lock is held to the end of this
+      // transaction, so everything below runs exactly once per AI.
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${aiId}), ${ENSURE_MODEL_LOCK_SCOPE})`,
+      );
+      const [ai] = await tx
+        .select({ ...aiColumns, provider: providerConnections.provider })
+        .from(ais)
+        .innerJoin(aiLimits, eq(aiLimits.aiId, ais.id))
+        .leftJoin(llmVirtualKeys, eq(llmVirtualKeys.aiId, ais.id))
+        .innerJoin(providerConnections, eq(providerConnections.id, ais.providerConnectionId))
+        .where(eq(ais.id, aiId))
+        .limit(1);
+      if (!ai) {
+        throw new Error(`AI ${aiId} not found`);
+      }
+      if (ai.litellmModelId !== null) {
+        return;
+      }
+      if (ai.litellmKeyId === null) {
+        throw new Error(`AI ${aiId} has no virtual key`);
+      }
 
-  // If the allowlist cannot be fixed, drop the model we just registered rather
-  // than leave an orphan no key can reach; the next call registers it again.
+      const modelName = modelNameForAi(ai.id);
+      // A previous attempt may have registered `ai-<id>` without storing the
+      // id (a crash between `addModel` and the row update). Reclaim the name
+      // so the orphan is not left behind.
+      for (const stray of await deps.litellm.listModels()) {
+        if (stray.name === modelName) {
+          try {
+            await deps.litellm.deleteModel(stray.id);
+          } catch (error) {
+            deps.logger.warn({ err: error, aiId: ai.id }, 'could not delete a stray AI model');
+          }
+        }
+      }
+
+      const providerKey = await decryptForGatewayUse(
+        // The transaction's own connection: the unit-test database shares a
+        // single connection, so every read inside the lock must ride `tx`.
+        tx as unknown as typeof deps.db,
+        deps.cipher,
+        ai.providerConnectionId,
+      );
+      const modelId = await deps.litellm.addModel({
+        modelName,
+        litellmModel: litellmModelFor(ai.provider, ai.model),
+        apiKey: providerKey,
+        metadata: { ai_id: ai.id },
+      });
+
+      // If the allowlist cannot be fixed, drop the model we just registered
+      // rather than leave an orphan no key can reach; the next call registers
+      // it again.
+      try {
+        await deps.litellm.updateKey({ key: ai.litellmKeyId, models: [modelName] });
+      } catch (error) {
+        await deps.litellm.deleteModel(modelId).catch(() => undefined);
+        throw error;
+      }
+
+      await tx
+        .update(llmVirtualKeys)
+        .set({ litellmModelId: modelId })
+        .where(eq(llmVirtualKeys.aiId, ai.id));
+    }),
+  );
+}
+
+// Second advisory-lock key, so AI-model locks never collide with other
+// advisory-lock users in this database.
+const ENSURE_MODEL_LOCK_SCOPE = 730033;
+
+// One in-process mutex per AI. The Postgres advisory lock above serializes
+// across processes and hosts; this serializes the awaits inside this process,
+// which is also what makes the race unit-testable (the unit-test database
+// shares a single connection, on which advisory locks re-grant to the holder).
+const ensureModelLocks = new Map<string, Promise<void>>();
+
+async function withAiEnsureLock<T>(aiId: string, work: () => Promise<T>): Promise<T> {
+  const previous = ensureModelLocks.get(aiId) ?? Promise.resolve();
+  let release: () => void = () => undefined;
+  const turn = previous.then(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+  );
+  ensureModelLocks.set(aiId, turn);
+  await previous;
   try {
-    await deps.litellm.updateKey({ key: ai.litellmKeyId, models: [modelName] });
-  } catch (error) {
-    await deps.litellm.deleteModel(modelId).catch(() => undefined);
-    throw error;
+    return await work();
+  } finally {
+    release();
+    if (ensureModelLocks.get(aiId) === turn) {
+      ensureModelLocks.delete(aiId);
+    }
   }
-
-  await deps.db
-    .update(llmVirtualKeys)
-    .set({ litellmModelId: modelId })
-    .where(eq(llmVirtualKeys.aiId, ai.id));
 }
 
 // The internal row: the public columns plus the identity and gateway handles

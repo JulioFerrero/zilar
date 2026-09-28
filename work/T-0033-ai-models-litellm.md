@@ -1,7 +1,7 @@
 ---
 id: T-0033
 title: Register each AI's private model in LiteLLM (owner's key stays in the gateway) + list AIs in /api/chats
-status: changes-requested
+status: review
 milestone: M2
 branch: task/T-0033-ai-models-litellm
 model: opencode-go/deepseek-v4.1-flash
@@ -304,6 +304,90 @@ probe key and removes the AI, any orphan model and the connection.
   `NOT NULL`, delete would need a different resumability mechanism (e.g. making
   `revokeKey` idempotent for a missing key); I chose the column change as the
   smaller, more deterministic option.
+
+### Round 2 (worker — all 4 must-fix items from "Round 1: changes requested")
+
+**1. Log assertions that bite** (`apps/server/src/ais/routes.test.ts`).
+- Added `loggedText()` which reads `(fields.err as Error).message` + `.stack`
+  instead of `JSON.stringify` (which renders `Error` as `{}`).
+- Bite proof: temporarily made the fake's `addModel` failure contain the
+  provider key → the model-failure test failed as required; reverted.
+- The fixed assertions then caught a real artifact: the fake's failure message
+  itself contained an `sk-master-...` token, now visible in `err.message`. The
+  real client never throws unredacted errors (redaction happens in
+  `litellm-client.ts`), so the fake was unfaithful. It now throws
+  `LitellmApiError('model/new', 400, 'gateway down [redacted]')`, shaped like
+  the real client's errors. All 19 route tests pass.
+
+**2. Concurrent-safe `ensureAiModel`** (`apps/server/src/ais/service.ts`).
+- Per-AI in-process mutex (`withAiEnsureLock`) + Postgres advisory
+  transaction lock (`pg_advisory_xact_lock(hashtext(aiId), 730033)`) held across
+  the whole backfill, id re-read after taking the lock, and stray reclaim: any
+  LiteLLM model named `ai-<id>` is deleted before registering again.
+- New tests in `service.test.ts`: two concurrent calls → exactly one `addModel`,
+  one allowlist fix, one stored id; a planted stray is deleted and replaced.
+- Test-DB finding: PGlite shares a single connection, so any `db` query issued
+  while the transaction is open deadlocks (proved with a scratch test, then
+  removed). Every read inside the lock — including the `decryptForGatewayUse`
+  call — therefore rides the transaction's connection
+  (`tx as unknown as typeof deps.db`, still the sanctioned function, one
+  contained cast with a comment). No production-pool behavior changes.
+
+**3. Idempotent `revokeKey`** (`apps/server/src/ai/litellm-client.ts`).
+- Live probe against `127.0.0.1:4000` (probe key created and deleted, made-up
+  values only): first delete → `200 {"deleted_keys":[...]}`; second delete →
+  **`404 {"error":{"message":"{'error': 'No keys found'}","type":"internal_server_error","param":null,"code":"404"}}`**,
+  identical whether addressed by key string or by token id. `/key/info`
+  afterwards → `404 "Key not found in database"`.
+- `revokeKey` now treats exactly `404 + /no keys found/i` as success (mirroring
+  `modelAlreadyGone`); anything else still fails. Unit tests cover the exact
+  observed shape plus the negative cases (other 404, 500 with the same text,
+  500 other). Probe keys were deleted by the probe itself; verified gone.
+
+**4. Backfill proven live** (`apps/server/src/ais/integration.test.ts`).
+- New step 5b: nulls `litellm_model_id` through a direct DB handle to the same
+  Postgres, resets the allowlist to `['gpt-4o-mini']` via `updateKey`, calls
+  `ensureAiModel` in-process, then asserts `/key/info` lists exactly
+  `['ai-<id>']` and `listModels()` contains the model. Needs `DATABASE_URL` and
+  `GALENA_KEY_ENCRYPTION_KEY` (documented in the test header).
+- The first live run caught a real bug: `/model/info` entries carry **no
+  top-level `model_id`** — the id is under `model_info.id` — so `listModels()`
+  returned `[]` (step 5b allowlist assertions had already passed). Fixed the
+  client to accept both shapes + unit test for the nested shape.
+- The two failed runs each left one orphaned `ai-*` model (reconcile saw an
+  empty listing because of the bug). Both belonged to my already-deleted test
+  AIs (names matched the AI ids in my server log); I deleted both by exact
+  name via `/model/delete`.
+- Clean re-run (fresh invite, fresh email, branch server on 3199, no container
+  restarts): **1 passed, 1 skipped**. Post-run: `/model/info` holds only the
+  pre-existing `placeholder` model; no `t0033-*`/`galena-ai-*` keys remain; the
+  server log contains no `sk-` token and no made-up key. The extra server was
+  stopped afterwards; all three dev containers still healthy.
+- Live secrets were sourced from the main checkout's env files into process
+  env only — never printed, logged or committed. Scratch probe scripts lived
+  in `/tmp` (outside the repo) and are removed.
+- Side note, not a bug: my second run reused the first run's email, so it
+  signed in as the existing user without consuming an invite (invites gate
+  account creation only). Two throwaway dev users remain in the live DB, same
+  as round 1; all test connections were deleted via the API.
+
+**Files changed (round 2):**
+- `apps/server/src/ai/litellm-client.ts`, `.../litellm-client.test.ts`
+- `apps/server/src/ai/routes.test.ts` (fake gains `listModels`; blessed scope)
+- `apps/server/src/ais/service.ts`, `.../service.test.ts`, `.../routes.test.ts`,
+  `.../integration.test.ts`
+- `work/T-0033-ai-models-litellm.md` (this report; status → review)
+
+**Commands run and real results:**
+- `pnpm install` — done.
+- `pnpm format:check` — pass ("All matched files use Prettier code style!").
+- `pnpm lint` — pass (9 tasks successful).
+- `pnpm typecheck` — 9 tasks successful.
+- `pnpm exec turbo test --force` — 9 tasks successful. Server: **286 passed,
+  6 skipped** (the 6 gated integration tests; +7 tests vs round 1).
+- `pnpm exec turbo build --force` — 2 tasks successful, 0 cached.
+- Gated models integration test, live: **1 passed, 1 skipped** (full flow
+  including the new backfill step).
 
 ## Review (written by Claude)
 

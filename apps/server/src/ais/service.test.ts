@@ -4,6 +4,7 @@ import type {
   AddModelInput,
   GenerateVirtualKeyInput,
   LitellmAdminClient,
+  ModelListing,
   UpdateVirtualKeyInput,
   VirtualKey,
   VirtualKeyInfo,
@@ -20,6 +21,8 @@ class FakeLitellm implements LitellmAdminClient {
   readonly added: AddModelInput[] = [];
   readonly updated: UpdateVirtualKeyInput[] = [];
   readonly deleted: string[] = [];
+  /** Models `listModels` returns, so tests can plant a stray `ai-<id>`. */
+  listed: ModelListing[] = [];
   failUpdate = false;
   private modelCounter = 0;
 
@@ -32,6 +35,10 @@ class FakeLitellm implements LitellmAdminClient {
   deleteModel(modelId: string): Promise<void> {
     this.deleted.push(modelId);
     return Promise.resolve();
+  }
+
+  listModels(): Promise<ModelListing[]> {
+    return Promise.resolve([...this.listed]);
   }
 
   generateKey(_input: GenerateVirtualKeyInput): Promise<VirtualKey> {
@@ -194,6 +201,42 @@ describe('ensureAiModel', () => {
       await context.db.delete(llmVirtualKeys);
       await expect(ensureAiModel(deps, aiId)).rejects.toThrow('no virtual key');
       expect(litellm.added).toHaveLength(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('registers only one model when called twice at once', async () => {
+    const context = await createTestContext();
+    try {
+      const litellm = new FakeLitellm();
+      const aiId = await seedOldAi(context);
+      const deps = depsFor(context, litellm);
+
+      await Promise.all([ensureAiModel(deps, aiId), ensureAiModel(deps, aiId)]);
+
+      expect(litellm.added).toHaveLength(1);
+      expect(litellm.updated).toEqual([{ key: 'old-token-1', models: [`ai-${aiId}`] }]);
+      const [row] = await context.db.select().from(llmVirtualKeys);
+      expect(row?.litellmModelId).toBe('model-1');
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('deletes a stray model left behind by an earlier attempt', async () => {
+    const context = await createTestContext();
+    try {
+      const litellm = new FakeLitellm();
+      const aiId = await seedOldAi(context);
+      litellm.listed = [{ id: 'stray-model-9', name: `ai-${aiId}` }];
+
+      await ensureAiModel(depsFor(context, litellm), aiId);
+
+      expect(litellm.deleted).toEqual(['stray-model-9']);
+      expect(litellm.added).toHaveLength(1);
+      const [row] = await context.db.select().from(llmVirtualKeys);
+      expect(row?.litellmModelId).toBe('model-1');
     } finally {
       await context.close();
     }
