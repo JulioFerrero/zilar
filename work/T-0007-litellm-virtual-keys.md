@@ -396,77 +396,37 @@ here.
 
 ## Review (written by Claude)
 
-**Verdict:** Round 2: changes requested. The spike's answer is **yes**, and the
-evidence is the real thing — one security design point has to move before this
-becomes the shape M2 copies.
+**Verdict:** Round 2: **approved**. Merging.
 
-### What the lead verified
-- **Uncached** run of every check: `format:check`, `typecheck`, `test` (58 s),
-  `build` (34 s) and `lint` (exit 0) **all PASS**. server 178, web 78,
+### What the lead verified in round 2
+- The finding is fixed properly, not cosmetically. `maxBudget`,
+  `budgetDuration`, `tpmLimit` and `rpmLimit` are **gone from the request
+  schema**, the cap now comes from a server-side `VirtualKeyPolicy`
+  (`DEFAULT_VIRTUAL_KEY_POLICY`, injectable per AI), and the schema is
+  `.strict()` so a request carrying a budget is **rejected** rather than having
+  the field quietly dropped. That distinction is the whole point: silently
+  dropping it would have left an API that looks like it takes a cap and does
+  not.
+- The comment above the schema says the cap is server-owned, cites the plan's
+  own words, and tells the next reader not to re-expose those fields. It also
+  flags that `models` is part of the cap and should move server-side in M2. That
+  is the right comment to leave behind.
+- **Both requested tests are present and assert the right thing**: one that the
+  server policy cap applies when the caller sets nothing, and one that a caller
+  trying to set `maxBudget: 1000` is rejected; plus a per-AI policy override.
+- **Uncached** run of every check: `format:check`, `typecheck`, `test` (62 s),
+  `build` (21 s), `lint` (exit 0) — **all PASS**. server 180, web 78,
   xmpp-core 115 + 3 skipped, protocol 132, mobile 27, chat-core 50,
   agent-drivers 19, devtools 9.
-- **The enforcement evidence is real and is the right evidence.** The live run
-  against `127.0.0.1:4000` shows the cap biting *before* the provider is reached:
-  `HTTP 429 budget_exceeded`, `Current cost: 0.02, Max budget: 0.01` — plus an
-  independent second proof with `max_budget: 0`. And a revoked key comes back
-  `401 Invalid proxy server token`. That is pre-flight enforcement, which is
-  exactly what the plan needs, and 8/8 checks passed.
-- **Secrets.** I compared the committed tree against the real
-  `LITELLM_MASTER_KEY` from `infra/.env`: **not present in any committed
-  file**. No `sk-` literals in the diff. `litellm-client.ts` redacts the master
-  key and any per-call secrets out of error messages via
-  `redactSecrets(message, [masterKey, ...secrets])`, and the route returns only
-  `{ id, key }`.
-- **Auth.** `POST /api/ai/virtual-keys` calls `requireSession(auth, c.req.raw.headers)`
-  before doing anything, and validates the body with zod. A session is required
-  to mint a key. Good.
-- Scope is clean: only `apps/server/src/ai/**`, `apps/server/src/config.ts`
-  (the five new env entries) and the task file.
 
 ### Findings
-1. **The client chooses its own cap** (`apps/server/src/ai/routes.ts`). The body
-   schema accepts `maxBudget`, `budgetDuration`, `tpmLimit` and `rpmLimit` from
-   the caller, and the route passes them straight to LiteLLM. So any
-   authenticated client can ask for a key with a budget of whatever it likes,
-   including no cap at all.
+- None outstanding. Round-1 finding 1 is resolved and verified; finding 2 was
+  explicitly no-change.
 
-   That inverts the plan's model. §"Keys" says desks get *"capped placeholder
-   keys"* and the security table says *"virtual keys with hard caps in desks"* —
-   the point of the cap is that **the desk cannot lift it**. If M2 copies this
-   route shape, the hard cap is a suggestion.
-
-   The cap has to come from the server. For this round:
-   - derive `maxBudget` (and the rate limits) from a **server-side per-AI
-     policy**, not from the request body;
-   - **reject** a request that supplies `maxBudget`/`tpmLimit`/`rpmLimit`, or
-     ignore them and document that loudly — but do not let a caller widen its
-     own cap;
-   - tests: a request that tries to set `maxBudget: 1000` is rejected (or comes
-     back with the server's cap, never the caller's), and one that sets nothing
-     gets the policy cap.
-   - A short comment on the route saying the cap is server-owned and why, so the
-     next task does not "helpfully" re-expose it.
-
-   Keeping `models` client-supplied is fine for now, but note it in the comment:
-   the allowlist is part of the cap and should move server-side with it.
-
-2. *(No change needed.)* The `store_model_in_db` caveat is the most useful part
-   of the Report. In this pinned image a user key can be **forwarded** per
-   request (proved live) but a new model cannot be **registered** dynamically,
-   because that needs the flag, which is an `infra/**` change outside this
-   task. That is exactly the kind of thing a spike exists to discover, and
-   stating it as "the M2 gateway must run its own config with that flag" is the
-   right output. It is going on the board as a follow-up rather than being
-   quietly dropped.
-
-### Follow-ups
-- **`store_model_in_db` for the M2 gateway**, or an equivalent config change, so
-  a user's own provider key can be registered and not merely forwarded. It is
-  `infra/**` and needs its own task.
-- Where virtual keys are stored and how they are rotated is still open; the
-  Report asks for a decision note and that is a good M2 task on its own.
-
-### What M2 can now rely on
-LiteLLM issues virtual keys with hard caps, enforces the cap pre-flight
-(`429 budget_exceeded`), revokes them, and forwards a user's own key. The cap
-must be set by the gateway, never by the desk.
+### What M2 can rely on
+LiteLLM issues virtual keys with hard caps, enforces the cap **pre-flight**
+(`429 budget_exceeded`, before the provider is reached), revokes them, and
+forwards a user's own provider key. The cap is owned by the gateway and a desk
+cannot see, set or widen it. The one thing M2 still needs is
+`store_model_in_db` (or an equivalent config) to *register* a user's model
+rather than only forward a key per request — that is a follow-up, on the board.
