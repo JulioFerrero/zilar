@@ -1,7 +1,7 @@
 ---
 id: T-0004
 title: Spike S2 — can @xmpp/client (xmpp.js) connect and stay connected from Expo on iOS?
-status: review
+status: merged
 milestone: M1
 branch: task/T-0004-expo-xmpp-spike
 model: opencode-go/deepseek-v4-pro

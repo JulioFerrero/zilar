@@ -9,7 +9,6 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 
-| [T-0004](T-0004-expo-xmpp-spike.md) | Spike S2: `@xmpp/client` in Expo (connect, reconnect, background) | **in-progress** | v4-pro | T-0003 | Risky; Claude reviews closely. Gates the mobile app on real data. Running on v4-pro, watch `cd ../galena-T-0004 && opencode2 -s ses_f1ac8d577ffe1zZNd1KZ6NaNOn` |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0007](T-0007-litellm-virtual-keys.md) | Spike S5: LiteLLM virtual keys with budgets, adding a user's own key | todo | v4-flash | T-0002 | M2 gateway. LiteLLM is up on 127.0.0.1:4000 |
 | [T-0010](T-0010-voice-spike.md) | Voice message spike: record on web, convert with ffmpeg to AAC/M4A, send and play | todo | v4-flash | T-0002 | Plan §6.7. No transcription: local Whisper is not installed |
@@ -44,3 +43,4 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | [T-0024](T-0024-web-real-data.md) | **Web on real data**: invite, email code, name; real DMs and groups via xmpp-core. **Julio used it live.** | 2026-09-28 |
 | [T-0023](T-0023-mobile-ui-polish.md) | Mobile polish: switch to `@galena/chat-core`, typing, unread divider, long-press menu + swipe to reply with haptics, big emoji, safe links (2 rounds) | 2026-09-28 |
 | [T-0025](T-0025-real-use-fixes-1.md) | Real-use fixes 1: list status stuck on sending, live list updates (XEP-0249 invites + roster pushes), big-emoji sender name; no JID localparts in names; own typing/markers ignored in groups (3 rounds) | 2026-09-28 |
+| [T-0004](T-0004-expo-xmpp-spike.md) | **Spike S2: xmpp.js works in Expo on iOS** — proven on device with 2 inline shims + a Metro stub, no new packages. Unblocks mobile on real data (2 rounds) | 2026-09-28 |
