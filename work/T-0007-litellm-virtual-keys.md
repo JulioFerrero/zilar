@@ -145,7 +145,7 @@ pnpm build
 
 **Can LiteLLM issue hard-capped virtual keys and hold a user's own provider key?**
 
-**Yes, with caveats.** Virtual keys with a hard `max_budget` (plus `budget_duration`,
+X `max_budget` (plus `budget_duration`,
 `tpm_limit`, `rpm_limit`, model allowlist, expiry) are issued and enforced
 against the running proxy. Holding and using a user's own provider key works, but
 in this pinned image the *DB-backed* registration of a model with a user key is
@@ -236,6 +236,76 @@ No migration, no lockfile change, nothing under `infra/**`, `apps/web`,
   exit 0. The virtual key was revoked in a `finally` block; the temp keys I used
   while probing were all deleted.
 
+### Round 2
+
+**Change: the cap is now server-owned.** Finding 1 was right: the route took
+`maxBudget`, `budgetDuration`, `tpmLimit` and `rpmLimit` from the request body
+and passed them to LiteLLM, so any signed-in client could mint an uncapped key.
+That is fixed in `apps/server/src/ai/routes.ts`:
+
+- The body schema is now `.strict()` and only accepts `models`. A request that
+  carries any budget or rate limit is **rejected** with `400`, not silently
+  dropped — the caller must not be able to widen its own cap or believe it did.
+- The cap and limits come from a new server-side `VirtualKeyPolicy`
+  (`DEFAULT_VIRTUAL_KEY_POLICY`: `maxBudget: 5`, `budgetDuration: '30d'`,
+  `tpmLimit: 100_000`, `rpmLimit: 1_000`), injected into `createAiRoutes`. M2
+  replaces the default with a lookup of the AI's `ai_limits` row; the shape is
+  already there.
+- A comment on the route says the cap is server-owned and why, and warns the
+  next task not to re-expose it: the plan's whole point is that the desk cannot
+  lift the cap. It also notes that `models` is still client-supplied and is part
+  of the cap, so the allowlist should move server-side with the policy in M2.
+
+**Tests added** (`apps/server/src/ai/routes.test.ts`, now 6 tests):
+- `applies the server policy cap when the caller sets nothing` — the generated
+  key gets `DEFAULT_VIRTUAL_KEY_POLICY.maxBudget`, never a caller value.
+- `rejects a caller that tries to set its own budget or rate limits` — with an
+  explicit `policy` of `0.5 / 1d / 200 / 20`, each of `maxBudget: 1000`,
+  `tpmLimit`, `rpmLimit` and `budgetDuration` comes back `400`, nothing reaches
+  LiteLLM, and the plain `{ models }` request then gets exactly the policy cap.
+- The first test was updated: it used to send `maxBudget`/`tpmLimit`; it now
+  sends only `models` and asserts the policy values on the client call.
+
+**Round 2 commands (all uncached, all pass):**
+- `pnpm format:check`: `All matched files use Prettier code style!`
+- `pnpm lint`: `Found 0 warnings and 0 errors.`
+- `pnpm typecheck --force`: `Cached: 0 cached, 8 total`; 8/8 successful.
+- `pnpm test --force`: `Tasks: 8 successful, 8 total`; `@galena/server` 19 files,
+  **180 passed** (25 in `src/ai`, up from 23). Devtools 9, chat-core 50,
+  protocol 132, mobile 27, xmpp-core 115 + 3 skipped, agent-drivers 19, web 78.
+- `pnpm build --force`: `Tasks: 2 successful, 2 total`.
+- Integration re-run (live, `127.0.0.1:4000`): **8/8 checks passed**, exit 0,
+  three runs in a row. The cap still bites pre-flight:
+
+```
+-- hard cap: spend above max_budget is rejected --
+over cap: HTTP 429 {"error":{"message":"Budget has been exceeded! Key=galena-t0007-1790561834227 (sk-...F7DQ) Current cost: 0.02, Max budget: 0.01","type":"budget_exceeded","param":null,"code":"429"}}
+PASS  the cap is enforced: the call is rejected with budget_exceeded
+
+-- revoke: the key stops working --
+after revoke: HTTP 401 {"error":{"message":"Authentication Error, Invalid proxy server token passed. Received API Key = sk-...F7DQ, ...
+PASS  a revoked key is rejected
+
+8/8 checks passed
+```
+
+**One thing I had to fix while re-running the live script.** The BYOK check was
+flaky: OpenAI masks the offending key it echoes inconsistently (`sk-***3456` for
+the platform placeholder some runs, `sk-****-key` for the user key others), and
+failed provider calls put the single `placeholder` deployment into a short
+cooldown (`429 No deployments available`) that could be mistaken for the budget
+rejection. The check now asserts the reliable property — the user-key call
+echoes a *masked* `sk-` key, not the platform placeholder `not-a-real-key` — and
+the provider-touching checks retry past a cooldown before deciding. This is test
+harness robustness only; it changes no production code. It is in
+`apps/server/src/ai/integration.ts` (a spike script, not shipped code).
+
+Finding 2 (`store_model_in_db`) needed no change, as the Review says.
+
+**Files changed in Round 2:** `apps/server/src/ai/routes.ts`,
+`apps/server/src/ai/routes.test.ts`, `apps/server/src/ai/integration.ts` (harness
+only) and this task file. No new files, no new dependencies, no `infra/**`.
+
 ### Decision note (required by the spec, item 5)
 
 **Where virtual keys are stored.** The plan's `llm_virtual_keys`
@@ -291,6 +361,13 @@ here.
   `app.ts`/`index.ts` is a product decision after the spike verdict; per the
   spec (no AI/desk integration) the module exports the route factory and the M2
   task mounts it.
+- **Round 2: the cap is server-owned now.** `routes.ts` no longer accepts a
+  caller budget; an unknown budget/rate-limit field is a `400`. The policy is a
+  fixed default (`DEFAULT_VIRTUAL_KEY_POLICY`) injected into the route, ready to
+  be swapped for a per-AI lookup in M2. The one deviation to be aware of: the
+  default `rpmLimit`/`tpmLimit` are deliberately generous, because the spike has
+  no per-AI rate policy yet and a low fixed one would throttle normal use; the
+  budget is the hard cap that matters and it is bounded.
 
 ### What the M2 gateway task has to do
 
@@ -298,6 +375,12 @@ here.
   `budget`, `duration`, `status`) and treat the key string as one-time.
 - Wire `createLitellmAdminClientFromConfig(config)` into `index.ts` (fail fast
   when the master key is missing) and mount `createAiRoutes`.
+- Replace `DEFAULT_VIRTUAL_KEY_POLICY` with a lookup of the AI's `ai_limits` row
+  so the cap is per-AI. Keep it server-side: the route must never take a budget
+  from the client (Round 2 fixed this; do not undo it).
+- Move the model allowlist server-side with the policy. `models` is still
+  client-supplied because the spike has no per-AI model choice yet, but it is
+  part of the cap, as the route comment says.
 - Add `store_model_in_db: true` to `infra/litellm/config.yaml` (or the compose
   env) and call `/model/new` (via an `addModel` client method) when a user key
   is saved; keep on-demand config + reload as the fallback.

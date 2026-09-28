@@ -6,7 +6,7 @@ import {
   TEST_BASE_URL,
   type TestContext,
 } from '../test-support';
-import { createAiRoutes } from './routes';
+import { createAiRoutes, DEFAULT_VIRTUAL_KEY_POLICY } from './routes';
 import type {
   GenerateVirtualKeyInput,
   LitellmAdminClient,
@@ -68,7 +68,7 @@ describe('POST /api/ai/virtual-keys', () => {
     const response = await app.request(`${TEST_BASE_URL}/api/ai/virtual-keys`, {
       method: 'POST',
       headers: { cookie: user.cookie, 'content-type': 'application/json' },
-      body: JSON.stringify({ models: ['placeholder'], maxBudget: 1, tpmLimit: 100 }),
+      body: JSON.stringify({ models: ['placeholder'] }),
     });
 
     expect(response.status).toBe(200);
@@ -76,7 +76,75 @@ describe('POST /api/ai/virtual-keys', () => {
     expect(Object.keys(body).sort()).toEqual(['id', 'key']);
     expect(body).toEqual({ id: 'tok-1', key: 'sk-virtual-key-abc' });
 
-    expect(litellm.generated).toEqual([{ models: ['placeholder'], maxBudget: 1, tpmLimit: 100 }]);
+    expect(litellm.generated).toEqual([
+      {
+        models: ['placeholder'],
+        maxBudget: DEFAULT_VIRTUAL_KEY_POLICY.maxBudget,
+        budgetDuration: DEFAULT_VIRTUAL_KEY_POLICY.budgetDuration,
+        tpmLimit: DEFAULT_VIRTUAL_KEY_POLICY.tpmLimit,
+        rpmLimit: DEFAULT_VIRTUAL_KEY_POLICY.rpmLimit,
+      },
+    ]);
+  });
+
+  it('applies the server policy cap when the caller sets nothing', async () => {
+    const litellm = new FakeLitellmClient();
+    const app = testApp(context);
+    app.route('/api', createAiRoutes({ auth: context.auth, litellm, logger: silentLogger() }));
+    const user = await bootstrapUser(context, app, `policy${testCounter}@example.com`);
+
+    const response = await app.request(`${TEST_BASE_URL}/api/ai/virtual-keys`, {
+      method: 'POST',
+      headers: { cookie: user.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ models: ['placeholder'] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(litellm.generated).toHaveLength(1);
+    expect(litellm.generated[0]!.maxBudget).toBe(DEFAULT_VIRTUAL_KEY_POLICY.maxBudget);
+  });
+
+  it('rejects a caller that tries to set its own budget or rate limits', async () => {
+    const litellm = new FakeLitellmClient();
+    const policy = { maxBudget: 0.5, budgetDuration: '1d', tpmLimit: 200, rpmLimit: 20 };
+    const app = testApp(context);
+    app.route(
+      '/api',
+      createAiRoutes({ auth: context.auth, litellm, logger: silentLogger(), policy }),
+    );
+    const user = await bootstrapUser(context, app, `widen${testCounter}@example.com`);
+
+    for (const body of [
+      { models: ['placeholder'], maxBudget: 1000 },
+      { models: ['placeholder'], tpmLimit: 1_000_000 },
+      { models: ['placeholder'], rpmLimit: 1_000_000 },
+      { models: ['placeholder'], budgetDuration: '365d' },
+    ]) {
+      const response = await app.request(`${TEST_BASE_URL}/api/ai/virtual-keys`, {
+        method: 'POST',
+        headers: { cookie: user.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(400);
+    }
+
+    expect(litellm.generated).toHaveLength(0);
+
+    const allowed = await app.request(`${TEST_BASE_URL}/api/ai/virtual-keys`, {
+      method: 'POST',
+      headers: { cookie: user.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ models: ['placeholder'] }),
+    });
+    expect(allowed.status).toBe(200);
+    expect(litellm.generated).toEqual([
+      {
+        models: ['placeholder'],
+        maxBudget: 0.5,
+        budgetDuration: '1d',
+        tpmLimit: 200,
+        rpmLimit: 20,
+      },
+    ]);
   });
 
   it('requires a signed-in user', async () => {

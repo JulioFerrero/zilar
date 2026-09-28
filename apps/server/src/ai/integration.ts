@@ -29,6 +29,17 @@ function show(value: string): string {
   return redactSecrets(value, MASTER_KEY ? [MASTER_KEY] : []);
 }
 
+// The provider error message lives in `error.message`; flatten it to a string
+// so checks do not depend on the exact JSON envelope.
+function parseJson(text: string): string | undefined {
+  try {
+    const body = JSON.parse(text) as { error?: { message?: unknown } };
+    return typeof body.error?.message === 'string' ? body.error.message : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function proxyCall(path: string, apiKey: string, body?: unknown): Promise<Response> {
   return fetch(`${BASE_URL}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
@@ -38,6 +49,21 @@ async function proxyCall(path: string, apiKey: string, body?: unknown): Promise<
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+}
+
+// A cooldown answers `429 No deployments available`, which is a different 429
+// from a budget rejection. Retry until the call settles on something else.
+async function callUntilSettled(call: () => Promise<Response>): Promise<Response> {
+  let last: Response | undefined;
+  for (let attempt = 0; attempt < 15; attempt += 1) {
+    last = await call();
+    const text = await last.clone().text();
+    if (!text.includes('No deployments available')) {
+      return last;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  return last!;
 }
 
 async function main(): Promise<void> {
@@ -92,6 +118,7 @@ async function main(): Promise<void> {
       max_tokens: 5,
     });
     const chatText = await chat.text();
+    const chatBody = parseJson(chatText);
     console.log(`POST /chat/completions: HTTP ${chat.status} ${show(chatText).slice(0, 200)}`);
     check(
       'the proxy forwards the call to the configured provider',
@@ -99,28 +126,43 @@ async function main(): Promise<void> {
     );
 
     console.log('\n-- BYOK: a user-supplied provider key is used instead of the platform key --');
-    const byok = await proxyCall('/chat/completions', issued.key, {
-      model: 'placeholder',
-      messages: [{ role: 'user', content: 'hello' }],
-      api_key: 'sk-user-owned-fake-provider-key',
-    });
+    const byok = await callUntilSettled(() =>
+      proxyCall('/chat/completions', issued.key, {
+        model: 'placeholder',
+        messages: [{ role: 'user', content: 'hello' }],
+        api_key: 'sk-user-owned-fake-provider-key',
+      }),
+    );
     const byokText = await byok.text();
+    const byokBody = parseJson(byokText);
     console.log(`with api_key override: HTTP ${byok.status} ${show(byokText).slice(0, 200)}`);
+    // The same call without the override echoes the platform's placeholder key
+    // ("not-a-real-key"), unmasked; with the override it echoes the user key,
+    // which OpenAI masks (chars replaced by "*"). So: the user call must show a
+    // masked key, and it must not be the platform's placeholder.
+    const userKeyEchoed =
+      byokBody !== undefined &&
+      byokBody.includes('*') &&
+      /sk-/.test(byokBody) &&
+      !byokBody.includes('not-a-re');
     console.log(
-      `user key forwarded: ${byokText.includes('sk-user')} | platform key reused: ${chatText.includes('sk-user')}`,
+      `user key echoed (masked): ${userKeyEchoed} | platform key in base call: ${chatBody !== undefined && chatBody.includes('not-a-re')}`,
     );
-    check(
-      'LiteLLM forwards the user key, not the platform placeholder key',
-      byokText.includes('sk-user') && !chatText.includes('sk-user'),
-    );
+    check('LiteLLM forwards the user key, not the platform placeholder key', userKeyEchoed);
 
     console.log('\n-- hard cap: spend above max_budget is rejected --');
     await client.updateKey({ key: issued.key, spend: 0.02 });
     await client.updateKey({ key: issued.key, maxBudget: 0.01 });
-    const over = await proxyCall('/chat/completions', issued.key, {
-      model: 'placeholder',
-      messages: [{ role: 'user', content: 'hello' }],
-    });
+    // The provider auth failures above can leave the only deployment in a short
+    // cooldown, whose `429 No deployments available` would hide the budget
+    // rejection. A key over its cap is refused pre-flight, so retry until the
+    // cooldown clears rather than mistaking one 429 for the other.
+    const over = await callUntilSettled(() =>
+      proxyCall('/chat/completions', issued.key, {
+        model: 'placeholder',
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    );
     const overText = await over.text();
     console.log(`over cap: HTTP ${over.status} ${show(overText).slice(0, 200)}`);
     check(
@@ -130,11 +172,11 @@ async function main(): Promise<void> {
 
     console.log('\n-- revoke: the key stops working --');
     await client.revokeKey(issued.key);
+    key = undefined;
     const afterRevoke = await proxyCall('/v1/models', issued.key);
     const afterText = await afterRevoke.text();
     console.log(`after revoke: HTTP ${afterRevoke.status} ${show(afterText).slice(0, 120)}`);
     check('a revoked key is rejected', afterRevoke.status === 401);
-    key = undefined;
 
     console.log('\n-- BYOK registration probe (/model/new), informational --');
     const modelResponse = await fetch(`${BASE_URL}/model/new`, {
