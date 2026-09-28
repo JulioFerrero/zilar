@@ -12,7 +12,7 @@ Read it fully once. After that, use §4 (the loop) and §15 (gotchas) as your ch
 |---|---|---|
 | **Julio** (owner) | Decides product, style and architecture. Uses the app and reports bugs. Approves anything risky. | Is not your debugger. Don't make him run commands you can run yourself. |
 | **You** (lead Claude, Opus) | Plan, write task specs, launch and supervise workers, answer their permission requests, review, send fixes back, rebase, merge, push, keep the board, test live, report to Julio with screenshots. | Don't write the feature code yourself. Workers do the heavy lifting; you review. Small edits to docs, board and specs are fine. |
-| **Workers** (DeepSeek V4.1 Flash via OpenCode 2, provider `opencode-go`) | One task each, in their own git worktree, following `AGENTS.md`. They write the Report and commit to the task branch. | Don't push, merge, rebase, switch branches, run `gh`/`sudo`, or touch files outside the task's Allowed files. |
+| **Workers** (OpenCode 2, provider `opencode-go`; model per task, see §5.1) | One task each, in their own git worktree, following `AGENTS.md`. They write the Report and commit to the task branch. | Don't push, merge, rebase, switch branches, run `gh`/`sudo`, or touch files outside the task's Allowed files. |
 
 **Julio's standing authorization** (2026-09-27, verbatim): *"control opencode2 to the fullest, run the merges, spawn as many deepseek 4.1 flash as you like with opencodego, and handle the control, you are claude opus and can work with this, if there is any, style, problem or anything, stop and ask me"*.
 
@@ -103,6 +103,24 @@ Flash-class models are good at executing precise instructions and bad at guessin
 - Put shared logic in shared packages (`@galena/chat-core`, `@galena/protocol`, `@galena/xmpp-core`) and tell each app to consume it, not duplicate it.
 - Size: 1–2 days of human work at most. If a spec has more than ~6 build items, split it.
 - Don't let two parallel tasks touch the same package. Sequence them with `depends_on`.
+
+### 5.1 Which model, and the Muse pre-review
+
+Julio set this on 2026-09-28. **Never use DeepSeek V4 Pro.**
+
+| Task kind | Model (`MODEL_ID`) | Why |
+|---|---|---|
+| Backend, protocol, security, infra-adjacent, tricky logic | `muse-spark-1.3-contributor` | The strongest worker so far. On T-0008 it found a real stream-ordering bug by itself, and its reports are honest. |
+| UI and visual work (web or mobile screens) | `deepseek-v4.1-flash` | Fast, and it has vision, so it can check its own screenshots. It misses bugs that the tests hide, so review it live. |
+| Small or mechanical jobs; trying new models | `mimo-v2.6-flash`, `space-bunny-free`, `longcat-2.5-preview-free` | Watch MiMo for the `question` tool (§15). |
+
+- Set `model:` in the spec's front matter to match, and pass `MODEL_ID` on every launch. `launch.py` defaults to Flash.
+- **Parallelism:** run 2–3 workers at a time, and only on **independent** tracks, so they don't touch the same files, the live-stack data or migrations. There is one Docker stack. Heavy load (Xcode, several full test runs) makes tests time out, so don't run more than one iOS build at a time.
+- **Muse pre-review.** When a worker reports DONE on a non-trivial task, start a separate Muse session in the same worktree, before your own review:
+  - It re-runs the Checks.
+  - It reads the diff like an attacker and a skeptic: cross-user access, secrets in errors and logs, partial failures, races, and tests that pass for the wrong reason.
+  - It writes its findings to `PREREVIEW.md` at the worktree root, never committed, and changes nothing else.
+  - Then do your normal review (§8) with its findings as input. **You still own the verdict, the live check and the merge.** A pre-review is a second pair of eyes, not a boss.
 
 ## 6. Launching workers with OpenCode 2
 
@@ -300,6 +318,9 @@ git worktree remove ../galena-T-XXXX && git branch -d task/T-XXXX-name
 12. **Stash:** the git stash is shared across worktrees and sessions. Use WIP commits instead.
 13. **Start Vite with `GALENA_API_URL=http://localhost:3188`, never plain `pnpm dev`.** Without it the `/api` proxy falls back to `localhost:3000`, which is Julio's Next.js app: every API call 404s and the web app looks completely broken (2026-09-28, cost Julio a morning). Check with `curl -s -o /dev/null -w '%{http_code}' http://localhost:5173/api/me`: 401 is right, 404 is wrong.
 14. **Run the live server with the plain command in §12, not `pnpm dev` (`tsx watch`).** Under heavy load (a parallel Xcode build) `tsx watch` force-killed the server on a reload and never restarted it: 3188 was down for ~25 minutes before anyone noticed (2026-09-28). Restart it yourself after merging server changes, and keep a Monitor on `/health` and `localhost:5173/api/me` so an outage is reported, not discovered.
+
+15. **Workers can't `kill`.** The permission rules block `kill` and `pkill`. A worker that starts a CPU burner or a background server can't stop it, and asks you to (T-0036 left eight `yes` processes, load average 82, 2026-09-28). In any spec that uses background load or processes, require them to end on their own (`perl -e 'alarm 600; exec "yes"' > /dev/null &`). Before you kill anything a worker names, check the PIDs with `ps -o pid,comm -p …`. Machine load hurts every other worker's test runs, so re-run their checks yourself before trusting a timeout.
+16. **Julio's Vite listens on `[::1]:5173` only.** `127.0.0.1:5173` is a free port, and it is a trusted auth origin with its own cookies. For a live click-through as a test account, run a second Vite from main bound to `127.0.0.1` (Julio approved this on 2026-09-28), and stop it afterwards. Never sign in as someone else on `localhost:5173`: that replaces Julio's session.
 
 ## 16. State snapshot (2026-09-28, when this was written)
 
