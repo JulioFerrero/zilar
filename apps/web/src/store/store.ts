@@ -64,6 +64,11 @@ export interface ChatStore {
    * `/api/drafts/stream` (T-0043). Empty when no AI is writing.
    */
   drafts: Record<string, DraftState>;
+  /**
+   * Message id -> the draft turn it replaced (T-0045). The final message keeps
+   * rendering on the draft's key so its reveal continues instead of snapping.
+   */
+  finishedDraftMessages: Record<string, string>;
   openChat: (chatId: string) => void;
   loadOlder: (chatId: string) => void;
   hasMore: (chatId: string) => boolean;
@@ -195,6 +200,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       activeFolder: 'all',
       typing: {},
       drafts: {},
+      finishedDraftMessages: {},
       messages: (chatId) => get().messagesByChat[chatId] ?? [],
       openChat: (chatId) =>
         set((state) => ({

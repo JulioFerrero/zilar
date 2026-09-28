@@ -55,6 +55,23 @@ export const DRAFT_IDLE_MS = 60_000;
 // capped so it cannot grow for the life of the tab.
 const FINISHED_TURNS_MAX = 50;
 
+// Records which final message took over a draft's turn, capped like the
+// finished-turn set. Insertion order is the cap order.
+function rememberFinishedDraftMessage(
+  record: Record<string, string>,
+  messageId: string,
+  turnId: string,
+): Record<string, string> {
+  const next = { ...record, [messageId]: turnId };
+  const keys = Object.keys(next);
+  if (keys.length > FINISHED_TURNS_MAX) {
+    for (const key of keys.slice(0, keys.length - FINISHED_TURNS_MAX)) {
+      delete next[key];
+    }
+  }
+  return next;
+}
+
 export interface ApiClient {
   getMe(): Promise<Me>;
   getChats(): Promise<ChatEntry[]>;
@@ -760,6 +777,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         // The final message replaces the draft in one update: the bubble never
         // leaves the screen, so there is no gap and no duplicate.
         drafts: draft !== undefined && fromAi ? withoutDraft(state.drafts, chatId) : state.drafts,
+        // Remember the turn so the bubble keeps revealing on the draft's key.
+        finishedDraftMessages:
+          draft !== undefined && fromAi
+            ? rememberFinishedDraftMessage(state.finishedDraftMessages, ui.id, draft.turnId)
+            : state.finishedDraftMessages,
       }));
       if (isRead && core !== undefined) {
         const chat = get().chats.find((entry) => entry.id === chatId);
@@ -1259,6 +1281,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       activeFolder: 'all',
       typing: {},
       drafts: {},
+      finishedDraftMessages: {},
       messages: (chatId) => get().messagesByChat[chatId] ?? [],
       hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
       openChat: (chatId) => {
@@ -1455,6 +1478,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           historyComplete: {},
           typing: {},
           drafts: {},
+          finishedDraftMessages: {},
           search: '',
           activeFolder: 'all',
         });
@@ -1490,7 +1514,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         closeDraftStream?.();
         closeDraftStream = undefined;
         clearDraftState();
-        set({ drafts: {} });
+        set({ drafts: {}, finishedDraftMessages: {} });
         pendingOpenChatId = undefined;
         for (const unsubscribe of unsubscribers) {
           unsubscribe();

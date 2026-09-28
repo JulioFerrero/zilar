@@ -1166,6 +1166,60 @@ describe('AI reply drafts (T-0043)', () => {
     expect(store.getState().drafts[CHAT]?.text).toBe('Done');
   });
 
+  it('records which message finished the draft turn', async () => {
+    const drafts = fakeDrafts();
+    const { store, xmpp } = await setup({}, undefined, { openDrafts: drafts.open });
+    drafts.emit(draft(CHAT, TURN_ONE, 'Hello'));
+
+    xmpp.emit('message', message({ id: 'ai-1', chatJid: CHAT, body: 'Hello', fromJid: CHAT }));
+
+    expect(store.getState().finishedDraftMessages['ai-1']).toBe(TURN_ONE);
+  });
+
+  it('caps the finished-draft message record', async () => {
+    const drafts = fakeDrafts();
+    const { store, xmpp } = await setup({}, undefined, { openDrafts: drafts.open });
+
+    for (let index = 0; index < 51; index += 1) {
+      drafts.emit(draft(CHAT, `turn-${index}`, `text ${index}`));
+      xmpp.emit(
+        'message',
+        message({ id: `ai-${index}`, chatJid: CHAT, body: `text ${index}`, fromJid: CHAT }),
+      );
+    }
+
+    const record = store.getState().finishedDraftMessages;
+    expect(Object.keys(record)).toHaveLength(50);
+    expect(record['ai-0']).toBeUndefined();
+    expect(record['ai-50']).toBe('turn-50');
+  });
+
+  it('clears the finished-draft message record on stop and signOut', async () => {
+    const drafts = fakeDrafts();
+    const { store, xmpp } = await setup({}, undefined, { openDrafts: drafts.open });
+    drafts.emit(draft(CHAT, TURN_ONE, 'Hello'));
+    xmpp.emit('message', message({ id: 'ai-1', chatJid: CHAT, body: 'Hello', fromJid: CHAT }));
+    expect(store.getState().finishedDraftMessages['ai-1']).toBe(TURN_ONE);
+
+    store.getState().stop();
+    expect(store.getState().finishedDraftMessages).toEqual({});
+
+    store.getState().start();
+    await flush();
+    drafts.emit(draft(CHAT, TURN_TWO, 'Bye'));
+    xmpp.emit('message', message({ id: 'ai-2', chatJid: CHAT, body: 'Bye', fromJid: CHAT }));
+    expect(store.getState().finishedDraftMessages['ai-2']).toBe(TURN_TWO);
+
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign });
+    try {
+      await store.getState().signOut();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(store.getState().finishedDraftMessages).toEqual({});
+  });
+
   it('lets the next turn replace a finished draft without a stale fallback', async () => {
     const drafts = fakeDrafts();
     const { store } = await setup({}, undefined, { openDrafts: drafts.open });

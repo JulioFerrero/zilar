@@ -172,4 +172,91 @@ describe('MessageList AI reply drafts (T-0043)', () => {
 
     expect(list.scrollTop).toBe(100);
   });
+
+  function reply(text: string): UiMessage {
+    return { ...hello(), text };
+  }
+
+  function stubReducedMotion(reduce: boolean): void {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: reduce && query.includes('prefers-reduced-motion'),
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+  }
+
+  it('gives the draft bubble the generating look and a caret', () => {
+    renderWithDraft({ messagesByChat: { 'c-ana': [hello()] } }, 'writing now');
+
+    const draftBubble = document.querySelector('[data-draft-turn="t1"]');
+    expect(draftBubble).not.toBeNull();
+    expect(within(draftBubble as HTMLElement).getByText('writing now')).toBeTruthy();
+    expect(draftBubble?.querySelector('.text-bubble-in-generating')).not.toBeNull();
+    expect(draftBubble?.querySelector('.animate-pulse')).not.toBeNull();
+  });
+
+  it('keeps the same bubble revealing after the final message replaces the draft', async () => {
+    const store = renderWithDraft({ messagesByChat: { 'c-ana': [] } }, 'Hello');
+    const before = document.querySelector('[data-draft-turn="t1"]');
+    expect(before).not.toBeNull();
+    expect(before?.querySelector('.animate-pulse')).not.toBeNull();
+
+    act(() => {
+      store.setState({
+        messagesByChat: { 'c-ana': [reply('Hello there')] },
+        drafts: {},
+        finishedDraftMessages: { 'm-1': TURN },
+      });
+    });
+
+    // The same DOM node: the final message kept the draft's key.
+    const after = document.querySelector('[data-draft-turn="t1"]');
+    expect(after).toBe(before);
+    // Still revealing from where the draft was, still in the generating look.
+    expect(within(after as HTMLElement).getByText('Hello')).toBeTruthy();
+    expect(within(after as HTMLElement).queryByText('Hello there')).toBeNull();
+    expect(after?.querySelector('.text-bubble-in-generating')).not.toBeNull();
+    expect(after?.querySelector('.animate-pulse')).not.toBeNull();
+
+    expect(await within(after as HTMLElement).findByText('Hello there')).toBeTruthy();
+    expect(after?.querySelector('.animate-pulse')).toBeNull();
+    expect(after?.querySelector('.text-bubble-in-generating')).toBeNull();
+    expect(document.querySelector('[data-draft-turn="t1"]')).toBe(before);
+  });
+
+  it('never gives a message loaded from history the generating look', () => {
+    renderMessages({ messagesByChat: { 'c-ana': [hello()] } });
+
+    const bubble = document.querySelector('[data-message-id="m-1"]');
+    expect(bubble).not.toBeNull();
+    expect(bubble?.querySelector('.text-bubble-in-generating')).toBeNull();
+    expect(bubble?.querySelector('.animate-pulse')).toBeNull();
+    expect(document.querySelector('[data-draft-turn]')).toBeNull();
+  });
+
+  it('shows the final text at once with reduced motion', () => {
+    stubReducedMotion(true);
+    try {
+      const store = renderWithDraft({ messagesByChat: { 'c-ana': [] } }, 'Hello');
+      act(() => {
+        store.setState({
+          messagesByChat: { 'c-ana': [reply('Hello there')] },
+          drafts: {},
+          finishedDraftMessages: { 'm-1': TURN },
+        });
+      });
+
+      const bubble = document.querySelector('[data-draft-turn="t1"]');
+      expect(within(bubble as HTMLElement).getByText('Hello there')).toBeTruthy();
+      expect(bubble?.querySelector('.animate-pulse')).toBeNull();
+      expect(bubble?.querySelector('.text-bubble-in-generating')).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
