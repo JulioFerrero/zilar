@@ -817,6 +817,30 @@ describe('loading states (T-0042)', () => {
     expect(pageLoads(xmpp, 'ana@galena.test')).toBe(1);
   });
 
+  it('waits for the connection to be online before loading history', async () => {
+    // Julio's reload bug: `core` exists while `connect()` is still in flight,
+    // and a MAM query sent then fails with "Couldn't load messages".
+    const { store, xmpp } = unstartedStore();
+    let finishConnect: () => void = () => {};
+    vi.mocked(xmpp.core.connect).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishConnect = resolve;
+        }),
+    );
+
+    store.getState().start();
+    await waitForState(() => store.getState().chatsState === 'ready');
+    store.getState().openChat('ana@galena.test');
+    await flush();
+    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(0);
+    expect(store.getState().historyState['ana@galena.test']).toBe('loading');
+
+    finishConnect();
+    await waitForState(() => store.getState().historyState['ana@galena.test'] === 'ready');
+    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(1);
+  });
+
   it('only the latest pending chat loads', async () => {
     const { store, xmpp } = unstartedStore();
 

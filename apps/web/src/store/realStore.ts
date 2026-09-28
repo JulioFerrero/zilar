@@ -825,7 +825,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // first chat merge, a background refresh, and (re)connect.
     function flushPending(): void {
       const pending = pendingOpenChatId;
-      if (pending === undefined || core === undefined) {
+      if (pending === undefined || core === undefined || get().status !== 'online') {
         return;
       }
       if (get().chats.find((entry) => entry.id === pending) === undefined) {
@@ -838,7 +838,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     async function openHistory(chatId: string): Promise<void> {
       const chat = get().chats.find((entry) => entry.id === chatId);
       const current = core;
-      if (current === undefined || chat === undefined) {
+      // `core` is assigned before `connect()` resolves, so "ready" means
+      // online: a MAM query sent while still connecting fails.
+      if (current === undefined || chat === undefined || get().status !== 'online') {
         // The chat screen mounted before the data was there (e.g. a reload
         // of /c/<jid>). Remember it and load once both are ready.
         pendingOpenChatId = chatId;

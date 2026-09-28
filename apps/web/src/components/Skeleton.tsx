@@ -1,9 +1,25 @@
+import { useEffect, useState } from 'react';
+
 /** Quiet loading placeholders in the shape of the content they replace. */
 
+// Most loads finish in well under this. Showing placeholders only after it
+// avoids a skeleton that flashes for a frame and then vanishes.
+export const SKELETON_DELAY_MS = 300;
+
+function useDelayedVisible(delayMs: number): boolean {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), delayMs);
+    return () => clearTimeout(timer);
+  }, [delayMs]);
+  return visible;
+}
+
 export function ChatListSkeleton({ rows = 6 }: { rows?: number }) {
+  const visible = useDelayedVisible(SKELETON_DELAY_MS);
   return (
     <div role="status" aria-label="Loading chats" className="flex flex-col px-2.5 py-1">
-      {Array.from({ length: rows }, (_, index) => (
+      {Array.from({ length: visible ? rows : 0 }, (_, index) => (
         <div
           key={index}
           aria-hidden="true"
@@ -21,17 +37,20 @@ export function ChatListSkeleton({ rows = 6 }: { rows?: number }) {
 }
 
 export function MessageListSkeleton() {
+  const visible = useDelayedVisible(SKELETON_DELAY_MS);
   return (
     <div role="status" aria-label="Loading messages" className="chat-background h-full">
-      <div
-        aria-hidden="true"
-        className="mx-auto flex w-full max-w-[860px] animate-pulse flex-col gap-2 px-3 pt-3 pb-4"
-      >
-        <div className="h-12 w-2/3 rounded-2xl bg-bubble-in" />
-        <div className="h-10 w-1/2 self-end rounded-2xl bg-bubble-out" />
-        <div className="h-14 w-3/5 rounded-2xl bg-bubble-in" />
-        <div className="h-10 w-2/5 self-end rounded-2xl bg-bubble-out" />
-      </div>
+      {visible && (
+        <div
+          aria-hidden="true"
+          className="mx-auto flex w-full max-w-[860px] animate-pulse flex-col gap-2 px-3 pt-3 pb-4"
+        >
+          <div className="h-12 w-2/3 rounded-2xl bg-bubble-in" />
+          <div className="h-10 w-1/2 self-end rounded-2xl bg-bubble-out" />
+          <div className="h-14 w-3/5 rounded-2xl bg-bubble-in" />
+          <div className="h-10 w-2/5 self-end rounded-2xl bg-bubble-out" />
+        </div>
+      )}
     </div>
   );
 }
