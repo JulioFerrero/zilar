@@ -212,20 +212,25 @@ export function MessageBubble({
                       />
                     </>
                   ) : (
-                    <Text className="text-[15px] leading-5" color={textColor}>
-                      <LinkText text={message.text ?? ''} color={textColor} />
-                      <Text className="font-mono text-[10px]" color={metaColor}>
-                        {'  '}
-                        {formatTime(message.createdAt)}
+                    <>
+                      <Text className="text-[15px] leading-5" color={textColor}>
+                        <LinkText text={message.text ?? ''} color={textColor} />
                       </Text>
-                    </Text>
+                      <BubbleMeta
+                        message={message}
+                        outgoing={outgoing}
+                        color={metaColor}
+                        className="mt-0.5 justify-end"
+                      />
+                    </>
                   )}
                 </Pressable>
               )}
               {isLastInGroup ? (
                 <BubbleTail
                   outgoing={outgoing}
-                  color={outgoing ? colors.outgoing : colors.incoming}
+                  // The gradient's bottom stop, so the tail has no seam with the body.
+                  color={outgoing ? '#dedede' : '#161616'}
                 />
               ) : null}
             </View>

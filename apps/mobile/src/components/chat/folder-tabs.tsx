@@ -16,7 +16,7 @@ type FolderTabsProps = {
 export function FolderTabs({ activeFolder, counts, onSelect }: FolderTabsProps) {
   return (
     <View
-      className="mx-4 mb-2 flex-row gap-0.5 rounded-xl p-[3px]"
+      className="mx-4 mb-2 flex-row gap-0.5 rounded-[10px] p-[3px]"
       style={[well, { borderColor: '#1a1a1a' }]}
     >
       {CHAT_FOLDERS.map((folder) => {
@@ -29,7 +29,7 @@ export function FolderTabs({ activeFolder, counts, onSelect }: FolderTabsProps) 
             accessibilityState={{ selected }}
             accessibilityLabel={folder.label}
             onPress={() => onSelect(folder.key)}
-            className="h-[34px] flex-1 flex-row items-center justify-center gap-1 rounded-[9px]"
+            className="h-[34px] flex-1 flex-row items-center justify-center gap-1 rounded-[7px]"
             style={selected ? segment : undefined}
           >
             <Text
