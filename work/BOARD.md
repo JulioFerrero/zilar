@@ -8,14 +8,14 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| T-0033 | M2: AIs reply when @mentioned (agent gateway: XMPP login as the AI, context, LiteLLM call with the AI's virtual key) | planned | | T-0030 (merged) | Must decide how the owner's provider key reaches the provider (T-0007 follow-up). Must also list AIs in `/api/chats` so "Open chat" from My AIs opens the DM (found in the T-0032 live check). |
+| [T-0033](T-0033-ai-models-litellm.md) | M2: each AI's private model in LiteLLM (owner key stays in the gateway) + AIs in `/api/chats` | in progress | deepseek-v4.1-flash | T-0030, T-0032 | Julio decided: register per-AI models in LiteLLM (§8.3). Lead restarts LiteLLM with `store_model_in_db` + salt key and runs the gated integration at review. |
+| T-0034 | M2: AIs reply in their DM (log in as the AI, context from §9.2, LiteLLM call with the AI's capped key, budget-exceeded message) | planned | | T-0033 | Spec after T-0033 lands. Group @mentions come after AIs can join rooms. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
 
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
-- M2 gateway needs `store_model_in_db` (or an equivalent config) so a user's own provider key can be **registered**, not only forwarded per request. Found by the T-0007 spike; it is an `infra/**` change and needs its own task.
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
 - `POST /api/connections/:id/test` calls the provider on every request: put it behind the rate limiter before real users (from the T-0028 review).
 - **Load-sensitive web tests, broader than T-0029 fixed.** Under heavy load (load average 96, from a parallel Xcode build) three *other* first-in-file full-app renders timed out: `ChatList.test.tsx > filters chats by folder`, `Composer.test.tsx > shows the mic when empty…`, `NewChatButton.test.tsx > creates a group from the dialog…`. Per-test timeouts don't scale; needs a package-level fix (e.g. a shared lighter render helper, or one explicit `testTimeout` for `apps/web` with a comment). CI is green.
