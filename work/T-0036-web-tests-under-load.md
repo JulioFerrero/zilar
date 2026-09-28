@@ -1,7 +1,7 @@
 ---
 id: T-0036
 title: Make the apps/web test suite reliable under machine load (package-level fix)
-status: review
+status: merged
 milestone: M2
 branch: task/T-0036-web-tests-under-load
 model: opencode-go/muse-spark-1.3-contributor
@@ -186,3 +186,19 @@ from other workers, not burners).
 - Nothing blocked.
 
 ## Review (written by Claude)
+
+### Round 1: approved
+
+This is a model spike report:
+- It measured first. The cost is synchronous full-app render work, which inflates about 10x under CPU starvation; it isn't `findBy*` waits or cold imports.
+- It rejected the alternatives with reasons: warming in `setup.ts`, a lighter `renderApp`, and `isolate: false`.
+- It chose a single package-level `testTimeout: 15_000`, sized at about 3x the measured worst case (5.3 s), with the reason in a comment.
+- It removed T-0029's three per-test timeouts.
+- No assertion changed and there are no retries.
+- The before and after numbers include 3/3 forced full-suite runs under 8 burners.
+
+Lead re-ran every check after rebasing onto main, while two other workers were running tests (load average 12–56):
+- format:check, lint, typecheck and build pass;
+- `turbo test --force --filter=@galena/web` passed 2 runs out of 2, 117/117 each time.
+
+It also reported honestly that it couldn't `kill` its own burners. That's now a playbook gotcha.
