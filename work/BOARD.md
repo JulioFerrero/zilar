@@ -19,6 +19,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 - Mobile: honor the `?mock=` route param only in `__DEV__` or with `EXPO_PUBLIC_GALENA_MOCK` set, for both the chat store and My AIs (T-0037 pre-review). Today a deep link can show fake data in a production build.
 - Streaming drafts: a notice message from the AI just before the final reply ends the draft one message early (T-0043).
 - Mobile: render reply drafts (T-0043 did web only).
+- Web + mobile: render Markdown in AI replies (bold, lists, code, links). Today `**bold**` and `- lists` show as raw text (seen live after T-0047).
+- Agent gateway: connect each AI with a fixed XMPP resource, so a second gateway process replaces the old session instead of both replying (duplicate replies came from stale worker servers, 2026-09-28).
+- `lead merge`: stop the processes still running inside the task worktree (dev servers, Expo) before removing it (playbook gotcha 21).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
