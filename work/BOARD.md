@@ -10,6 +10,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | [T-0064](T-0064-mobile-markdown.md) | Mobile renders Markdown in AI replies (own parser, safe subset, plain list previews) | in progress | deepseek-v4.1-flash | T-0056 | Mobile slot (80/20). |
 | [T-0067](T-0067-mobile-loading-states.md) | Mobile loading ≠ empty: skeletons, inline errors with Retry, pending open flushed on ready (port of T-0042) | in progress | deepseek-v4.1-flash | T-0056 | Mobile slot (80/20). |
+| [T-0065](T-0065-attachments-web.md) | Attachments on web: images and files via XEP-0363 + `attachment` payload, preview bar, paste/drop, image and file bubbles, retry | in progress | deepseek-v4.1-flash | T-0061 | MVP list item (plan §21). |
+| [T-0066](T-0066-budget-warning.md) | AI budget warning at 80% (daily and 30-day), one notice per chat per UTC day, after the reply | in progress | muse-spark-1.3-contributor | T-0058, T-0061 | Plan §8.4. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
