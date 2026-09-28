@@ -300,4 +300,32 @@ client construction as the routes; it stays inert when either is missing.
   configured there) and restart it. A real successful model reply needs a real
   provider key — to be done with Julio per the spec.
 
+### Round 2 (worker — both lead fixes)
+1. **`index.ts`: gateway starts after listen, never blocks it.** `await
+   gateway.start()` (which reconciles — one sequential XMPP login per AI)
+   moved to after `serve()` as `void gateway.start().catch(...)`, so a slow or
+   down ejabberd can no longer delay the HTTP server. The catch logs through
+   `logger.error` with the message/stack redacted via `redactSecrets` and the
+   master key. Shutdown still awaits `gateway.stop()`; it is safe while a
+   start is in flight because `connectAi` drops sessions it no longer owns —
+   confirmed by the existing test "never keeps a login that finishes after
+   shutdown" (45 agents tests pass, including it).
+2. **Pump rejection handler.** `void pumpSession(session)` now carries a
+   `.catch` that logs with the AI id through `toRedactedError` + `secretsFor()`
+   (`busy` was already reset in `finally`). New test "logs a failed send
+   redacted and still answers the next message": a fake whose `sendMessage`
+   throws → the error is logged with the AI id and no virtual/master/provider
+   key in `err.message`/`err.stack`, zero DMs sent; with sending restored, the
+   next owner message gets its turn (the AI is not stuck).
+- Finding 1 (a disabled AI stays online up to 60 s) is accepted as-is: no API
+  can disable an AI today (`UpdateAiInput` has no status), so only delete
+  needs the notifier and the reconcile window never triggers in practice.
+
+**Round 2 checks (real results):** `pnpm format:check` pass; `pnpm lint` pass;
+`pnpm typecheck` 9/9; `pnpm exec turbo test --force` 9/9 (server: **344
+passed, 7 skipped** — the +1 is the new resilience test); `pnpm build` pass.
+The gated live integration test was not re-run (round 2 touches nothing on
+its path); round 1's live result stands: 1 passed with the exact
+provider-key-rejection reply, everything cleaned up.
+
 ## Review (written by Claude)

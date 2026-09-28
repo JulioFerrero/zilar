@@ -811,6 +811,35 @@ describe('agent gateway', () => {
     });
   });
 
+  describe('pump resilience', () => {
+    it('logs a failed send redacted and still answers the next message', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = completionFetch('back online');
+      const { gateway: started, logger } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      // The model answers but the DM send throws: the error is logged
+      // redacted with the AI id, and the pump must not get stuck.
+      const loggedBefore = logger.calls.length;
+      core.failSend = true;
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'are you there?'));
+      await waitFor(() => logger.calls.length > loggedBefore);
+      const logged = loggedText(logger.calls);
+      expect(logged).not.toContain(VIRTUAL_KEY);
+      expect(logged).not.toContain(MASTER_KEY);
+      expect(logged).not.toContain(PROVIDER_KEY);
+      expect(logger.calls.some((call) => call.fields['aiId'] === seeded.aiId)).toBe(true);
+      expect(core.sent).toHaveLength(0);
+
+      core.failSend = false;
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'are you there now?'));
+      await waitFor(() => core.sent.length === 1);
+      expect(core.sent).toEqual([{ to: seeded.ownerJid, kind: 'chat', text: 'back online' }]);
+    });
+  });
+
   describe('honest failures', () => {
     async function failedSetup(
       fetchImpl: FetchLike,

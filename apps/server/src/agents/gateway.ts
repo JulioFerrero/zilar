@@ -356,7 +356,14 @@ export function createAgentGateway(
       return;
     }
     session.pending.push({ id: message.id, body, fromJid: message.fromJid });
-    void pumpSession(session);
+    // `busy` is reset in the pump's `finally`, but a truly unexpected throw
+    // still needs a redacted log line rather than an unhandled rejection.
+    void pumpSession(session).catch((error: unknown) => {
+      logger.warn(
+        { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
+        'AI pump failed',
+      );
+    });
   }
 
   // One turn at a time per AI. Messages arriving during a turn are coalesced:

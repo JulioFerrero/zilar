@@ -1,5 +1,5 @@
 import { serve } from '@hono/node-server';
-import { createLitellmAdminClientFromConfig } from './ai/litellm-client';
+import { createLitellmAdminClientFromConfig, redactSecrets } from './ai/litellm-client';
 import { createAgentGateway } from './agents/gateway';
 import { createApp } from './app';
 import { createAuth } from './auth/auth';
@@ -56,9 +56,22 @@ const gateway = createAgentGateway(
   },
   { enabled: config.AGENT_GATEWAY_ENABLED },
 );
-await gateway.start();
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
   logger.info({ port: info.port }, 'galena-server listening');
+});
+
+// The gateway logs each AI in over XMPP, which can take a while when ejabberd
+// is slow or down: start it after the server is listening and never block on
+// it. Shutdown below still awaits `gateway.stop()`, which is safe while a
+// start is in flight (sessions it no longer owns are dropped on connect).
+void gateway.start().catch((error: unknown) => {
+  const secrets = config.LITELLM_MASTER_KEY === undefined ? [] : [config.LITELLM_MASTER_KEY];
+  const message = error instanceof Error ? error.message : String(error);
+  const err = new Error(redactSecrets(message, secrets));
+  if (error instanceof Error) {
+    err.stack = redactSecrets(error.stack ?? '', secrets);
+  }
+  logger.error({ err }, 'agent gateway failed to start');
 });
 
 let shuttingDown = false;
