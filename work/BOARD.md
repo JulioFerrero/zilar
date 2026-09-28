@@ -9,7 +9,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0042](T-0042-web-loading-states.md) | Web: loading ≠ empty (no "No chats yet" flash on reload; a reloaded `/c/<jid>` loads its history; per-chat message load and error states) | in progress | muse-spark-1.3 | — | Julio's live report (2026-09-28). Causes found by the lead: `openHistory` returns early before core and chats are ready; ChatList has no loading state. |
-| T-0041 | Streaming AI replies (plan §6.4 "later"): LiteLLM `stream: true` in the DM turn; draft text pushed over an authenticated SSE endpoint to viewers of that chat; web renders a growing bubble; the final message still goes through XMPP | planned (after T-0040) | muse-spark-1.3 (+ Flash for web) | T-0040 | Julio asked for this on 2026-09-28 and chose to follow the plan (SSE). It touches `agents/reply.ts`, so it waits for T-0040. |
+| [T-0041](T-0041-streaming-replies-server.md) | Server: stream AI reply drafts (LiteLLM `stream: true`, tool-call accumulation) over an authenticated SSE endpoint `/api/drafts/stream` to the owner; final message still via XMPP (plan §6.4) | in progress | muse-spark-1.3 | T-0040 | Julio asked for it on 2026-09-28. Drafts carry text only, never tool arguments. |
+| T-0043 | Web: render AI reply drafts from `/api/drafts/stream` as a growing bubble, replaced by the final XMPP message (T-0041 contract) | planned (after T-0041 and T-0042) | deepseek-v4.1-flash | T-0041, T-0042 | The web half of streaming. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
