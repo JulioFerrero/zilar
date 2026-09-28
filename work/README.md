@@ -1,12 +1,12 @@
 # How we work: Julio + Claude + DeepSeek
 
 ```
-Claude writes a task ──► Julio starts a DeepSeek worker ──► the worker does it and writes its Report
+Claude writes a task ──► Claude starts a worker ─────────► the worker does it and writes its Report
         ▲                                                                     │
-        └──── Claude reviews and writes its Review ◄── Julio: "review T-0001" ◄┘
+        └──── Claude reviews and writes its Review ◄──────────────────────────┘
                           │
-                          ├─ approved ──► Julio merges
-                          └─ changes requested ──► Julio restarts the worker on the same task
+                          ├─ approved ──► Claude merges
+                          └─ changes requested ──► Claude sends the worker a new round
 ```
 
 ## Files
@@ -62,4 +62,4 @@ When a task shows `status: review`, open Claude Code in the repo and say `review
 
 - **One task per worker.** Two workers never edit the same files. Claude plans the tasks so they don't overlap.
 - **If a worker is stuck,** it marks the task `blocked` and writes a question. Bring it to Claude.
-- **Merges happen only after an approved review,** and you're the one who merges.
+- **Merges happen only after an approved review.** Claude merges when its review finds no problems, bugs or open questions.

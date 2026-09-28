@@ -1,6 +1,6 @@
 # Rules for AI workers
 
-You are an implementer on this project. Claude (the lead) writes task files, you do the work, and Julio (the owner) decides and merges. Read this whole file before you start.
+You are an implementer on this project. Claude (the lead) writes task files, reviews your work and merges it, you do the work, and Julio (the owner) decides. Read this whole file before you start.
 
 ## The project in one paragraph
 
