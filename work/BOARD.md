@@ -9,7 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0046](T-0046-redesign-foundation-sidebar.md) | Web redesign (D24) part 1: dark tokens, Geist, skeuomorphic key/well primitives, floating panels, sidebar | in progress | deepseek-v4.1-flash | — | Julio approved the mockup: "omg so much better i love it". |
-| T-0047 | Web redesign (D24) part 2: chat panel — header, glossy/recessed bubbles, composer well, pills, cards | planned (after T-0045, T-0046) | deepseek-v4.1-flash | T-0045, T-0046 | Spec to write. |
+| [T-0047](T-0047-redesign-chat-panel.md) | Web redesign (D24) part 2: chat panel — header, glossy/recessed bubbles, composer well, pills, cards | planned (after T-0045, T-0046) | deepseek-v4.1-flash | T-0045, T-0046 | Spec written; launch after T-0045 and T-0046 merge. |
 | T-0048 | Mobile redesign (D24) | planned (after T-0047) | deepseek-v4.1-flash | T-0047 | Spec to write. |
 | [T-0045](T-0045-smooth-drafts.md) | Web: smooth draft reveal, gray/dim "generating" look until complete, continuing into the final message without a snap | in progress | deepseek-v4.1-flash | T-0043 | Julio: "gray if its not completly generated". |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
