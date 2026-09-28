@@ -1,12 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
+import type { DraftHubEvent } from '@/lib/drafts';
 import {
   CONNECT_RETRY_DELAYS_MS,
+  DRAFT_END_FALLBACK_MS,
+  DRAFT_IDLE_MS,
   createRealChatStore,
   type ApiClient,
   type RealStoreDeps,
   type StorageLike,
 } from './realStore';
+
+// Sign-out must not hit Better Auth over the network in a test.
+vi.mock('@/lib/auth', () => ({
+  authClient: { signOut: vi.fn(async () => ({})) },
+}));
 
 function memoryStorage(): StorageLike {
   const data = new Map<string, string>();
@@ -152,7 +160,11 @@ async function waitForRefresh(): Promise<void> {
   await flush();
 }
 
-async function setup(overrides: Partial<ApiClient> = {}, voice?: RealStoreDeps['voice']) {
+async function setup(
+  overrides: Partial<ApiClient> = {},
+  voice?: RealStoreDeps['voice'],
+  deps: Partial<RealStoreDeps> = {},
+) {
   const api = fakeApi(overrides);
   const xmpp = fakeXmpp();
   xmpp.history['ana@galena.test'] = [
@@ -189,6 +201,7 @@ async function setup(overrides: Partial<ApiClient> = {}, voice?: RealStoreDeps['
       return xmpp.core;
     },
     ...(voice === undefined ? {} : { voice }),
+    ...deps,
   });
   store.getState().start();
   await flush();
@@ -949,5 +962,260 @@ describe('loading states (T-0042)', () => {
     await waitForState(() => store.getState().messages('team@rooms.galena.test').length > 0);
     expect(pageLoads(xmpp, 'team@rooms.galena.test')).toBe(1);
     expect(pageLoads(xmpp, 'ana@galena.test')).toBe(0);
+  });
+});
+
+describe('AI reply drafts (T-0043)', () => {
+  const CHAT = 'ana@galena.test';
+  const TURN_ONE = '3f1a2b3c-4d5e-6f70-8a9b-0c1d2e3f4a5b';
+  const TURN_TWO = '11111111-2222-3333-4444-555555555555';
+
+  function draft(chatJid: string, turnId: string, text: string): DraftHubEvent {
+    return { type: 'draft', chatJid, turnId, text };
+  }
+
+  function end(
+    chatJid: string,
+    turnId: string,
+    outcome: 'sent' | 'failed' = 'sent',
+  ): DraftHubEvent {
+    return { type: 'end', chatJid, turnId, outcome };
+  }
+
+  function fakeDrafts() {
+    let listener: ((event: DraftHubEvent) => void) | undefined;
+    const close = vi.fn((): void => {
+      listener = undefined;
+    });
+    const open = vi.fn((onEvent: (event: DraftHubEvent) => void): (() => void) => {
+      listener = onEvent;
+      return close;
+    });
+    return {
+      open,
+      close,
+      emit: (event: DraftHubEvent): void => listener?.(event),
+    };
+  }
+
+  it('opens the stream after boot and grows the draft in place', async () => {
+    const drafts = fakeDrafts();
+    const { store } = await setup({}, undefined, { openDrafts: drafts.open });
+    expect(drafts.open).toHaveBeenCalledTimes(1);
+
+    drafts.emit(draft(CHAT, TURN_ONE, 'Hel'));
+    expect(store.getState().drafts[CHAT]).toEqual({ turnId: TURN_ONE, text: 'Hel' });
+
+    drafts.emit(draft(CHAT, TURN_ONE, 'Hello there'));
+    expect(store.getState().drafts[CHAT]).toEqual({ turnId: TURN_ONE, text: 'Hello there' });
+  });
+
+  it('replaces the draft with a message that arrives before end, in one update', async () => {
+    const drafts = fakeDrafts();
+    const { store, xmpp } = await setup({}, undefined, { openDrafts: drafts.open });
+    drafts.emit(draft(CHAT, TURN_ONE, 'Hello'));
+
+    const seen: Array<{ draft: boolean; message: boolean }> = [];
+    const unsubscribe = store.subscribe((state) => {
+      seen.push({
+        draft: state.drafts[CHAT] !== undefined,
+        message: state.messages(CHAT).some((item) => item.text === 'Hello'),
+      });
+    });
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'ai-1',
+        chatJid: CHAT,
+        body: 'Hello',
+        fromJid: CHAT,
+        timestamp: new Date('2026-09-28T12:00:05Z'),
+      }),
+    );
+    unsubscribe();
+
+    expect(store.getState().drafts[CHAT]).toBeUndefined();
+    expect(
+      store
+        .getState()
+        .messages(CHAT)
+        .some((item) => item.text === 'Hello'),
+    ).toBe(true);
+    // Exactly one of the two is on screen in every update: never both (a
+    // duplicate) and never neither (a gap).
+    for (const snapshot of seen) {
+      expect(snapshot.draft !== snapshot.message).toBe(true);
+    }
+
+    drafts.emit(draft(CHAT, TURN_ONE, 'Hello there'));
+    expect(store.getState().drafts[CHAT]).toBeUndefined();
+  });
+
+  it('keeps the draft after end until the message arrives', async () => {
+    const drafts = fakeDrafts();
+    const { store, xmpp } = await setup({}, undefined, { openDrafts: drafts.open });
+    drafts.emit(draft(CHAT, TURN_ONE, 'Hi'));
+    drafts.emit(end(CHAT, TURN_ONE));
+
+    expect(store.getState().drafts[CHAT]).toEqual({ turnId: TURN_ONE, text: 'Hi' });
+
+    xmpp.emit('message', message({ id: 'ai-2', chatJid: CHAT, body: 'Hi', fromJid: CHAT }));
+    expect(store.getState().drafts[CHAT]).toBeUndefined();
+  });
+
+  it('keeps the draft when my own JID sends a message during the turn', async () => {
+    const drafts = fakeDrafts();
+    const { store, xmpp } = await setup({}, undefined, { openDrafts: drafts.open });
+    drafts.emit(draft(CHAT, TURN_ONE, 'Half a sentence'));
+
+    // A message from my own JID (e.g. my second device) is not the AI's reply.
+    xmpp.emit(
+      'message',
+      message({
+        id: 'mine-1',
+        chatJid: CHAT,
+        body: 'note to self',
+        fromJid: 'me@galena.test',
+        timestamp: new Date('2026-09-28T12:00:05Z'),
+      }),
+    );
+
+    expect(store.getState().drafts[CHAT]).toEqual({
+      turnId: TURN_ONE,
+      text: 'Half a sentence',
+    });
+
+    // The turn is not finished: a later draft still applies.
+    drafts.emit(draft(CHAT, TURN_ONE, 'Half a sentence, then more'));
+    expect(store.getState().drafts[CHAT]).toEqual({
+      turnId: TURN_ONE,
+      text: 'Half a sentence, then more',
+    });
+  });
+
+  it('drops a finished draft after the fallback when no message arrives', async () => {
+    const drafts = fakeDrafts();
+    const { store } = await setup({}, undefined, { openDrafts: drafts.open });
+    vi.useFakeTimers();
+    try {
+      drafts.emit(draft(CHAT, TURN_ONE, 'Hi'));
+      drafts.emit(end(CHAT, TURN_ONE));
+      expect(store.getState().drafts[CHAT]).toBeDefined();
+
+      vi.advanceTimersByTime(DRAFT_END_FALLBACK_MS - 1);
+      expect(store.getState().drafts[CHAT]).toBeDefined();
+
+      vi.advanceTimersByTime(1);
+      expect(store.getState().drafts[CHAT]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('drops a draft that sees no further event for a minute', async () => {
+    const drafts = fakeDrafts();
+    const { store } = await setup({}, undefined, { openDrafts: drafts.open });
+    vi.useFakeTimers();
+    try {
+      drafts.emit(draft(CHAT, TURN_ONE, 'Hello'));
+
+      vi.advanceTimersByTime(DRAFT_IDLE_MS - 1);
+      expect(store.getState().drafts[CHAT]).toBeDefined();
+
+      vi.advanceTimersByTime(1);
+      expect(store.getState().drafts[CHAT]).toBeUndefined();
+
+      // An idle turn is not finished: if it resumes (a slow tool call), its
+      // next draft shows again.
+      drafts.emit(draft(CHAT, TURN_ONE, 'Hello, resumed'));
+      expect(store.getState().drafts[CHAT]?.text).toBe('Hello, resumed');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a draft alive while it keeps being refreshed, then expires it', async () => {
+    const drafts = fakeDrafts();
+    const { store } = await setup({}, undefined, { openDrafts: drafts.open });
+    vi.useFakeTimers();
+    try {
+      drafts.emit(draft(CHAT, TURN_ONE, 'Hello'));
+      vi.advanceTimersByTime(50_000);
+      expect(store.getState().drafts[CHAT]).toBeDefined();
+
+      // The 50 s refresh re-arms the idle timer.
+      drafts.emit(draft(CHAT, TURN_ONE, 'Hello again'));
+      vi.advanceTimersByTime(50_000);
+      expect(store.getState().drafts[CHAT]?.text).toBe('Hello again');
+
+      vi.advanceTimersByTime(10_000);
+      expect(store.getState().drafts[CHAT]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('renders the latest text when a turn shrinks (a tool call restarts it)', async () => {
+    const drafts = fakeDrafts();
+    const { store } = await setup({}, undefined, { openDrafts: drafts.open });
+
+    drafts.emit(draft(CHAT, TURN_ONE, 'Let me check that'));
+    drafts.emit(draft(CHAT, TURN_ONE, 'Done'));
+
+    expect(store.getState().drafts[CHAT]?.text).toBe('Done');
+  });
+
+  it('lets the next turn replace a finished draft without a stale fallback', async () => {
+    const drafts = fakeDrafts();
+    const { store } = await setup({}, undefined, { openDrafts: drafts.open });
+    drafts.emit(draft(CHAT, TURN_ONE, 'first'));
+    drafts.emit(end(CHAT, TURN_ONE));
+
+    vi.useFakeTimers();
+    try {
+      drafts.emit(draft(CHAT, TURN_TWO, 'second'));
+      expect(store.getState().drafts[CHAT]).toEqual({ turnId: TURN_TWO, text: 'second' });
+
+      vi.advanceTimersByTime(DRAFT_END_FALLBACK_MS + 1);
+      expect(store.getState().drafts[CHAT]?.turnId).toBe(TURN_TWO);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('closes the stream on stop and never leaves two open', async () => {
+    const drafts = fakeDrafts();
+    const { store } = await setup({}, undefined, { openDrafts: drafts.open });
+    expect(drafts.open).toHaveBeenCalledTimes(1);
+
+    store.getState().start();
+    await flush();
+    expect(drafts.open).toHaveBeenCalledTimes(1);
+
+    store.getState().stop();
+    expect(drafts.close).toHaveBeenCalledTimes(1);
+    expect(store.getState().drafts).toEqual({});
+
+    store.getState().start();
+    await flush();
+    expect(drafts.open).toHaveBeenCalledTimes(2);
+    expect(drafts.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the stream on signOut', async () => {
+    const drafts = fakeDrafts();
+    const { store } = await setup({}, undefined, { openDrafts: drafts.open });
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign });
+    try {
+      await store.getState().signOut();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(drafts.close).toHaveBeenCalledTimes(1);
+    expect(store.getState().drafts).toEqual({});
+    expect(assign).toHaveBeenCalledWith('/login');
   });
 });

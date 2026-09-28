@@ -40,14 +40,43 @@ function MessageMeta({
   );
 }
 
-function BigEmoji({ message, own }: { message: UiMessage; own: boolean }) {
+function BigEmoji({
+  message,
+  own,
+  draft = false,
+}: {
+  message: UiMessage;
+  own: boolean;
+  draft?: boolean;
+}) {
   return (
     <div className={cn('flex flex-col', own ? 'items-end' : 'items-start')}>
-      <span className="px-2 py-1 text-[48px] leading-none break-words">{message.text}</span>
-      <span className="mt-1 rounded-full bg-black/25 px-2 py-0.5 text-white backdrop-blur-sm">
-        <MessageMeta message={message} showTicks={own} />
+      <span className="px-2 py-1 text-[48px] leading-none break-words">
+        {message.text}
+        {draft && <DraftCaret />}
+      </span>
+      <span
+        className={cn(
+          'mt-1 rounded-full bg-black/25 px-2 py-0.5 text-white backdrop-blur-sm',
+          draft && 'invisible',
+        )}
+      >
+        <MessageMeta message={message} showTicks={own && !draft} />
       </span>
     </div>
+  );
+}
+
+/**
+ * A soft blinking caret at the end of a live draft. It has zero layout width
+ * and paints into the trailing space, so swapping the draft for the final
+ * message never moves the text.
+ */
+function DraftCaret() {
+  return (
+    <span aria-hidden="true" className="relative inline-block h-[1em] w-0 align-[-0.15em]">
+      <span className="absolute inset-y-0 left-0 w-0.5 animate-pulse bg-current" />
+    </span>
   );
 }
 
@@ -58,6 +87,8 @@ export interface MessageBubbleProps {
   lastInGroup: boolean;
   currentUserId: string;
   onReply: (message: UiMessage) => void;
+  /** A live AI draft: same bubble, but no menu, no time and a soft caret. */
+  draft?: boolean;
 }
 
 export function MessageBubble({
@@ -67,6 +98,7 @@ export function MessageBubble({
   lastInGroup,
   currentUserId,
   onReply,
+  draft = false,
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const own = message.senderId === currentUserId;
@@ -91,10 +123,14 @@ export function MessageBubble({
   return (
     <div
       data-message-id={message.id}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        setMenuOpen(true);
-      }}
+      onContextMenu={
+        draft
+          ? undefined
+          : (event) => {
+              event.preventDefault();
+              setMenuOpen(true);
+            }
+      }
       className={cn(
         'group relative flex items-end gap-1.5',
         own ? 'flex-row-reverse' : 'flex-row',
@@ -138,7 +174,7 @@ export function MessageBubble({
         )}
 
         {bigEmoji ? (
-          <BigEmoji message={message} own={own} />
+          <BigEmoji message={message} own={own} draft={draft} />
         ) : (
           <>
             {message.image !== undefined && (
@@ -172,12 +208,16 @@ export function MessageBubble({
             {hasText && (
               <p className="px-2.5 py-1.5 break-words whitespace-pre-wrap">
                 <LinkText text={message.text ?? ''} />
+                {draft && <DraftCaret />}
                 <MessageMeta
                   message={message}
-                  showTicks={own}
+                  showTicks={own && !draft}
                   className={cn(
                     'float-right ml-1.5 translate-y-[4px]',
                     own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
+                    // Keeps the width the final message will have, so the
+                    // swap does not move anything.
+                    draft && 'invisible',
                   )}
                 />
               </p>
@@ -195,18 +235,20 @@ export function MessageBubble({
           </>
         )}
 
-        <button
-          type="button"
-          aria-label="Message actions"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen(true)}
-          className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-background/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-        >
-          <MoreHorizontal className="size-4" aria-hidden="true" />
-        </button>
+        {!draft && (
+          <button
+            type="button"
+            aria-label="Message actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(true)}
+            className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-background/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+          >
+            <MoreHorizontal className="size-4" aria-hidden="true" />
+          </button>
+        )}
 
-        {menuOpen && (
+        {!draft && menuOpen && (
           <MessageActionsMenu
             canCopy={hasText}
             onReply={() => {

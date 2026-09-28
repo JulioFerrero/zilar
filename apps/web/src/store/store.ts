@@ -20,6 +20,12 @@ export interface TypingState {
   names: string[];
 }
 
+/** The live AI draft of one chat: the latest cumulative reply text. */
+export interface DraftState {
+  turnId: string;
+  text: string;
+}
+
 export interface SendTextOptions {
   replyTo?: ReplyRef;
 }
@@ -53,6 +59,11 @@ export interface ChatStore {
   contacts: Contact[];
   messages: (chatId: string) => UiMessage[];
   typing: Record<string, TypingState>;
+  /**
+   * Live AI reply drafts by chat id (the AI's bare JID), from
+   * `/api/drafts/stream` (T-0043). Empty when no AI is writing.
+   */
+  drafts: Record<string, DraftState>;
   openChat: (chatId: string) => void;
   loadOlder: (chatId: string) => void;
   hasMore: (chatId: string) => boolean;
@@ -183,6 +194,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       search: '',
       activeFolder: 'all',
       typing: {},
+      drafts: {},
       messages: (chatId) => get().messagesByChat[chatId] ?? [],
       openChat: (chatId) =>
         set((state) => ({
