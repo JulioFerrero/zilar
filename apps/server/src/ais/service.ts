@@ -95,6 +95,58 @@ export async function listAis(db: ServerDatabase, ownerId: string): Promise<Publ
   return rows.map(toPublicAi);
 }
 
+// Every active AI, for the agent gateway (T-0034). The gateway resolves the
+// AI id itself from this listing and never from message content.
+export interface ActiveAiForGateway {
+  id: string;
+  jid: string;
+  localpart: string;
+  owner: string;
+  name: string;
+  persona: string;
+}
+
+export async function listActiveAisForGateway(db: ServerDatabase): Promise<ActiveAiForGateway[]> {
+  return db
+    .select({
+      id: ais.id,
+      jid: ais.jid,
+      localpart: ais.localpart,
+      owner: ais.owner,
+      name: ais.name,
+      persona: ais.persona,
+    })
+    .from(ais)
+    .where(eq(ais.status, 'active'))
+    .orderBy(asc(ais.createdAt));
+}
+
+// In-process notifier so the gateway learns about created and deleted AIs
+// without polling. The gateway also reconciles periodically as a safety net,
+// so a missed event only delays a connect, never loses it.
+export type AiLifecycleEvent = { type: 'created' | 'deleted'; aiId: string };
+
+const aiLifecycleListeners = new Set<(event: AiLifecycleEvent) => void>();
+
+export function onAiLifecycle(listener: (event: AiLifecycleEvent) => void): () => void {
+  aiLifecycleListeners.add(listener);
+  return () => {
+    aiLifecycleListeners.delete(listener);
+  };
+}
+
+function emitAiLifecycle(event: AiLifecycleEvent): void {
+  // Deleting from a Set while iterating it is safe: a listener that
+  // unsubscribes mid-emit is simply not visited again.
+  for (const listener of aiLifecycleListeners) {
+    try {
+      listener(event);
+    } catch {
+      // A gateway listener must never break AI management.
+    }
+  }
+}
+
 // One AI owned by `ownerId`, or null for a missing id and a foreign one alike,
 // so existence is never leaked. The internal shape carries the gateway key id
 // and identity the public shape deliberately omits.
@@ -265,6 +317,7 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
   if (!created) {
     throw provisioningFailed();
   }
+  emitAiLifecycle({ type: 'created', aiId: id });
   return toPublicAi(created);
 }
 
@@ -412,6 +465,7 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
   }
 
   await deps.db.delete(ais).where(eq(ais.id, ai.id));
+  emitAiLifecycle({ type: 'deleted', aiId: ai.id });
 }
 
 // Backfills the private LiteLLM model on an AI created before this task, and

@@ -49,6 +49,7 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_SECRET: VALID_SECRET,
       BETTER_AUTH_URL: 'http://localhost:3000',
       WEB_ORIGINS: ['http://localhost:5173'],
+      AGENT_GATEWAY_ENABLED: false,
       xmpp: VALID_XMPP,
     });
   });
@@ -75,6 +76,7 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_SECRET: VALID_SECRET,
       BETTER_AUTH_URL: 'https://auth.example.com',
       WEB_ORIGINS: ['https://app.example.com', 'https://admin.example.com'],
+      AGENT_GATEWAY_ENABLED: false,
       xmpp: VALID_XMPP,
     });
   });
@@ -219,5 +221,17 @@ describe('loadServerConfig', () => {
     };
     expect(loadServerConfig({ ...base, PORT: '1' }).PORT).toBe(1);
     expect(loadServerConfig({ ...base, PORT: '65535' }).PORT).toBe(65535);
+  });
+
+  it('leaves the agent gateway off by default and enables it with one line', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig(base).AGENT_GATEWAY_ENABLED).toBe(false);
+    expect(loadServerConfig({ ...base, AGENT_GATEWAY_ENABLED: 'true' }).AGENT_GATEWAY_ENABLED).toBe(
+      true,
+    );
   });
 });

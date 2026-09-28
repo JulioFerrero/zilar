@@ -159,6 +159,9 @@ importers:
       '@galena/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@galena/xmpp-core':
+        specifier: workspace:*
+        version: link:../../packages/xmpp-core
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.9)

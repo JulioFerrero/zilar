@@ -8,13 +8,13 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0034](T-0034-ai-replies-dm.md) | M2: agent gateway v0 — AIs reply to their owner in DMs (XMPP as the AI, §9.2 context, LiteLLM with the AI's capped key, honest failure messages) | paused (OpenCode quota) | muse-spark-1.3 | T-0033 | Off by default (`AGENT_GATEWAY_ENABLED`). Live proof with a fake key = the "provider rejected the key" reply. A real reply needs Julio's real key. |
-| [T-0038](T-0038-lead-autopilot.md) | Tooling: lead autopilot (0-token supervision: permission policy, quota resume, nudges, auto pre-review, one-line escalations) + `lead launch/merge/status` | todo (launch at quota reset) | muse-spark-1.3 | — | Cuts the lead's Claude usage per task. The autopilot never merges; `lead merge` stops on any conflict. |
-| [T-0037](T-0037-mobile-my-ais.md) | Mobile: My AIs list + Create-AI wizard (same `/api/ais` contract as T-0032), screenshots of every state | paused (OpenCode quota) | deepseek-v4.1-flash | T-0032 | UI task on Flash (vision). Own simulator only; Julio's iPhone/iPad untouched. |
+| [T-0038](T-0038-lead-autopilot.md) | Tooling: lead autopilot (0-token supervision: permission policy, quota resume, nudges, auto pre-review, one-line escalations) + `lead launch/merge/status` | review round 2 | muse-spark-1.3 | — | Cuts the lead's Claude usage per task. The autopilot never merges; `lead merge` stops on any conflict. |
+| [T-0037](T-0037-mobile-my-ais.md) | Mobile: My AIs list + Create-AI wizard (same `/api/ais` contract as T-0032), screenshots of every state | in progress | deepseek-v4.1-flash | T-0032 | UI task on Flash (vision). Own simulator only; Julio's iPhone/iPad untouched. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
 
+- T-0038 policy: treat `node -e …process.kill…` (and other interpreter one-liners) like `kill`; T-0034's worker used it to stop its own server after `pkill` was rejected.
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
@@ -65,3 +65,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0036](T-0036-web-tests-under-load.md) | `apps/web` tests reliable under load: measured cause (render work ×10 under CPU starvation), one package-level 15 s `testTimeout`, T-0029's per-test timeouts removed; 3/3 forced full runs under 8 burners | 2026-09-28 |
 | [T-0035](T-0035-server-followups.md) | Server follow-ups: Test-key route rate-limited (5/min/user, before any provider call) via a shared limiter; `Unnamed user` for blank-name contacts (never the email) | 2026-09-28 |
 | [T-0033](T-0033-ai-models-litellm.md) | **M2: each AI's private LiteLLM model** (owner key decrypted once, stored only in LiteLLM encrypted with the salt key); virtual key limited to `ai-<id>`; concurrent-safe backfill; AIs in `/api/chats`. Muse pre-review found 5 issues; live-proven against LiteLLM (2 rounds) | 2026-09-28 |
+| [T-0034](T-0034-ai-replies-dm.md) | Agent gateway v0: every active AI online over XMPP; the owner's DMs get a reply via LiteLLM with the AI's capped key; coalesced turns; honest failure texts; keys redacted everywhere; off by default (`AGENT_GATEWAY_ENABLED`); live proof with a fake key | 2026-09-28 |

@@ -59,6 +59,13 @@ const serverConfigSchema = z
     // LITELLM_MASTER_KEY is handled by the AI module). At least 32 bytes, so a
     // weak key fails validation at startup rather than encrypting at rest.
     GALENA_KEY_ENCRYPTION_KEY: z.string().min(32).optional(),
+    // Agent gateway (T-0034): when true, the server keeps every active AI
+    // online over XMPP and replies to owner DMs. Off by default; enabling it
+    // is one env line.
+    AGENT_GATEWAY_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
   })
   .superRefine((value, ctx) => {
     const entries = [
