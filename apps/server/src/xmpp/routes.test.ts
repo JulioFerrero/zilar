@@ -186,7 +186,7 @@ describe('POST /api/xmpp/token', () => {
     }
   });
 
-  it('rate-limits a user to 30 requests per 10 minutes', async () => {
+  it('rate-limits a user to TOKEN_RATE_LIMIT_MAX requests per 10 minutes', async () => {
     const app = appFor(context);
     const { cookie } = await signIn(context, app, 'limited-token@example.com');
 

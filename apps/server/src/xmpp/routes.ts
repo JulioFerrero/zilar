@@ -11,7 +11,10 @@ import { ensureXmppAccount } from './provisioning';
 import { issueXmppToken } from './token';
 
 export const TOKEN_TTL_SECONDS = 300;
-export const TOKEN_RATE_LIMIT_MAX = 30;
+// Every page load, tab and reconnect mints one token. 30 per 10 min locked a
+// real user out after a morning of reloads (2026-09-28); 120 still stops a
+// runaway loop (one token every 5 s on average).
+export const TOKEN_RATE_LIMIT_MAX = 120;
 export const TOKEN_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
 export interface XmppRoutesDependencies {

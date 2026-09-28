@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
 import {
+  CONNECT_RETRY_DELAYS_MS,
   createRealChatStore,
   type ApiClient,
   type RealStoreDeps,
@@ -815,6 +816,35 @@ describe('loading states (T-0042)', () => {
         .map((item) => item.text),
     ).toContain('hello before ready');
     expect(pageLoads(xmpp, 'ana@galena.test')).toBe(1);
+  });
+
+  it('retries the connection after a failed token request instead of staying offline', async () => {
+    // Julio hit the token route's 429 and the app stayed on "Waiting for
+    // network…" until a reload.
+    vi.useFakeTimers();
+    try {
+      const { store, api, xmpp } = unstartedStore();
+      const original = api.getXmppToken.bind(api);
+      let calls = 0;
+      api.getXmppToken = async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new Error('rate_limited');
+        }
+        return original();
+      };
+
+      store.getState().start();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(store.getState().status).toBe('offline');
+      expect(xmpp.core.connect).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(CONNECT_RETRY_DELAYS_MS[0] ?? 0);
+      expect(xmpp.core.connect).toHaveBeenCalledTimes(1);
+      expect(store.getState().status).toBe('online');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('waits for the connection to be online before loading history', async () => {

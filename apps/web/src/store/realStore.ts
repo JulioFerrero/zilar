@@ -33,6 +33,8 @@ const PREVIEW_HISTORY_MAX = 1;
 const PAGE_HISTORY_MAX = 50;
 const TYPING_CLEAR_MS = 5000;
 const CHAT_REFRESH_DEBOUNCE_MS = 500;
+// Waits between XMPP connect attempts after a failed token or login.
+export const CONNECT_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
 
 export interface ApiClient {
   getMe(): Promise<Me>;
@@ -190,6 +192,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     let lastRead: Record<string, string> = {};
     let lastReadUserId: string | undefined;
     let generation = 0;
+    let connectRetryTimer: ReturnType<typeof setTimeout> | undefined;
+    let connectRetryAttempt = 0;
     let firstToken: XmppToken | undefined;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const cursors: Record<string, string | undefined> = {};
@@ -961,13 +965,35 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         chatsState: 'ready',
       });
       flushPending();
+      await connectXmpp(gen, me);
+    }
 
+    // After a failed token or login, try again with growing waits instead of
+    // staying offline until a reload (a 429 on the token route used to leave
+    // the app on "Waiting for network…" for good).
+    function scheduleConnectRetry(gen: number, me: Me): void {
+      if (gen !== generation || connectRetryTimer !== undefined) {
+        return;
+      }
+      const delay =
+        CONNECT_RETRY_DELAYS_MS[Math.min(connectRetryAttempt, CONNECT_RETRY_DELAYS_MS.length - 1)];
+      connectRetryAttempt += 1;
+      connectRetryTimer = setTimeout(() => {
+        connectRetryTimer = undefined;
+        if (gen === generation) {
+          void connectXmpp(gen, me);
+        }
+      }, delay);
+    }
+
+    async function connectXmpp(gen: number, me: Me): Promise<void> {
       let token: XmppToken;
       try {
         token = await api.getXmppToken();
       } catch {
         if (gen === generation) {
           set({ status: 'offline' });
+          scheduleConnectRetry(gen, me);
         }
         return;
       }
@@ -998,6 +1024,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       } catch {
         if (gen === generation) {
           set({ status: 'offline' });
+          for (const unsubscribe of unsubscribers) {
+            unsubscribe();
+          }
+          unsubscribers = [];
+          core = undefined;
+          void current.disconnect().catch(() => {});
+          scheduleConnectRetry(gen, me);
         }
         return;
       }
@@ -1005,6 +1038,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         void current.disconnect().catch(() => {});
         return;
       }
+      connectRetryAttempt = 0;
       set({ status: 'online' });
       flushPending();
       await joinGroups(current, me);
@@ -1259,6 +1293,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           clearTimeout(refreshTimer);
           refreshTimer = undefined;
         }
+        if (connectRetryTimer !== undefined) {
+          clearTimeout(connectRetryTimer);
+          connectRetryTimer = undefined;
+        }
+        connectRetryAttempt = 0;
         const current = core;
         core = undefined;
         if (current !== undefined) {
