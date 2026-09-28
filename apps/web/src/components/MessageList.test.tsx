@@ -32,7 +32,7 @@ function hello(): UiMessage {
   };
 }
 
-function renderMessages(seed: ChatStoreSeed) {
+function renderMessages(seed: ChatStoreSeed, activeChat: ChatSummary = chat) {
   const store = createChatStore(seed);
   render(
     <AuthProvider
@@ -43,7 +43,7 @@ function renderMessages(seed: ChatStoreSeed) {
       }}
     >
       <ChatStoreProvider store={store}>
-        <MessageList chat={chat} onReply={() => {}} />
+        <MessageList chat={activeChat} onReply={() => {}} />
       </ChatStoreProvider>
     </AuthProvider>,
   );
@@ -196,7 +196,7 @@ describe('MessageList AI reply drafts (T-0043)', () => {
     const draftBubble = document.querySelector('[data-draft-turn="t1"]');
     expect(draftBubble).not.toBeNull();
     expect(within(draftBubble as HTMLElement).getByText('writing now')).toBeTruthy();
-    expect(draftBubble?.querySelector('.text-bubble-in-generating')).not.toBeNull();
+    expect(draftBubble?.querySelector('[data-bubble-look="generating"]')).not.toBeNull();
     expect(draftBubble?.querySelector('.animate-pulse')).not.toBeNull();
   });
 
@@ -220,12 +220,12 @@ describe('MessageList AI reply drafts (T-0043)', () => {
     // Still revealing from where the draft was, still in the generating look.
     expect(within(after as HTMLElement).getByText('Hello')).toBeTruthy();
     expect(within(after as HTMLElement).queryByText('Hello there')).toBeNull();
-    expect(after?.querySelector('.text-bubble-in-generating')).not.toBeNull();
+    expect(after?.querySelector('[data-bubble-look="generating"]')).not.toBeNull();
     expect(after?.querySelector('.animate-pulse')).not.toBeNull();
 
     expect(await within(after as HTMLElement).findByText('Hello there')).toBeTruthy();
     expect(after?.querySelector('.animate-pulse')).toBeNull();
-    expect(after?.querySelector('.text-bubble-in-generating')).toBeNull();
+    expect(after?.querySelector('[data-bubble-look="generating"]')).toBeNull();
     expect(document.querySelector('[data-draft-turn="t1"]')).toBe(before);
   });
 
@@ -234,7 +234,7 @@ describe('MessageList AI reply drafts (T-0043)', () => {
 
     const bubble = document.querySelector('[data-message-id="m-1"]');
     expect(bubble).not.toBeNull();
-    expect(bubble?.querySelector('.text-bubble-in-generating')).toBeNull();
+    expect(bubble?.querySelector('[data-bubble-look="generating"]')).toBeNull();
     expect(bubble?.querySelector('.animate-pulse')).toBeNull();
     expect(document.querySelector('[data-draft-turn]')).toBeNull();
   });
@@ -254,9 +254,102 @@ describe('MessageList AI reply drafts (T-0043)', () => {
       const bubble = document.querySelector('[data-draft-turn="t1"]');
       expect(within(bubble as HTMLElement).getByText('Hello there')).toBeTruthy();
       expect(bubble?.querySelector('.animate-pulse')).toBeNull();
-      expect(bubble?.querySelector('.text-bubble-in-generating')).toBeNull();
+      expect(bubble?.querySelector('[data-bubble-look="generating"]')).toBeNull();
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('MessageBubble looks (T-0047)', () => {
+  function message(senderId: string, senderName: string, minute: number): UiMessage {
+    return {
+      id: `m-${minute}`,
+      chatId: 'c-ana',
+      senderId,
+      senderName,
+      text: `message ${minute}`,
+      createdAt: new Date(2026, 8, 28, 10, minute),
+      status: 'read',
+    };
+  }
+
+  it('gives outgoing and incoming bubbles their look', () => {
+    renderMessages({
+      currentUserId: 'u-you',
+      messagesByChat: { 'c-ana': [message('c-ana', 'Ana', 1), message('u-you', 'You', 2)] },
+    });
+
+    expect(document.querySelector('[data-bubble-look="incoming"]')).not.toBeNull();
+    expect(document.querySelector('[data-bubble-look="outgoing"]')).not.toBeNull();
+  });
+
+  it('gives a live draft the generating look', () => {
+    const store = renderMessages({
+      currentUserId: 'u-you',
+      messagesByChat: { 'c-ana': [message('c-ana', 'Ana', 1)] },
+    });
+    act(() => {
+      store.setState({ drafts: { 'c-ana': { turnId: 't-look', text: 'writing' } } });
+    });
+
+    const draft = document.querySelector('[data-draft-turn="t-look"]');
+    expect(draft?.querySelector('[data-bubble-look="generating"]')).not.toBeNull();
+  });
+});
+
+describe('MessageBubble grouping (T-0047)', () => {
+  const group: ChatSummary = {
+    id: 'g1',
+    title: 'Team',
+    kind: 'group',
+    isAI: false,
+    space: 'personal',
+    unread: 0,
+    muted: false,
+    memberCount: 3,
+  };
+
+  function groupMessage(
+    id: string,
+    senderId: string,
+    senderName: string,
+    minute: number,
+  ): UiMessage {
+    return {
+      id,
+      chatId: 'g1',
+      senderId,
+      senderName,
+      text: `${senderName} ${minute}`,
+      createdAt: new Date(2026, 8, 28, 10, minute),
+      status: 'read',
+    };
+  }
+
+  it('shows sender names once per group and the tail only on the last bubble', () => {
+    renderMessages(
+      {
+        currentUserId: 'u-you',
+        messagesByChat: {
+          g1: [
+            groupMessage('m1', 'u-bea', 'Bea', 1),
+            groupMessage('m2', 'u-bea', 'Bea', 2),
+            groupMessage('m3', 'u-carlos', 'Carlos', 3),
+          ],
+        },
+      },
+      group,
+    );
+
+    expect(screen.getAllByText('Bea')).toHaveLength(1);
+    expect(screen.getAllByText('Carlos')).toHaveLength(1);
+
+    const bubbleOf = (id: string): Element | null | undefined =>
+      document.querySelector(`[data-message-id="${id}"]`)?.querySelector('[data-bubble-look]');
+
+    expect(bubbleOf('m1')?.classList.contains('rounded-bl-[4px]')).toBe(false);
+    expect(bubbleOf('m2')?.classList.contains('rounded-bl-[4px]')).toBe(true);
+    expect(bubbleOf('m3')?.classList.contains('rounded-bl-[4px]')).toBe(true);
   });
 });

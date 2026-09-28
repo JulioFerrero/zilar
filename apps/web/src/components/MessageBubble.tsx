@@ -1,5 +1,4 @@
 import {
-  avatarGradient,
   formatFullDateTime,
   formatTime,
   isBigEmoji,
@@ -21,6 +20,18 @@ import { copyText } from '@/lib/clipboard';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
 
+/** Monochrome-friendly sender name colors (ui-style.md §5). */
+const SENDER_COLORS = ['#d4d4d4', '#a1a1a1', '#8a8a8a', '#ededed'] as const;
+
+function senderColor(id: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < id.length; index += 1) {
+    hash ^= id.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return SENDER_COLORS[(hash >>> 0) % SENDER_COLORS.length] ?? SENDER_COLORS[0];
+}
+
 function MessageMeta({
   message,
   showTicks,
@@ -33,7 +44,10 @@ function MessageMeta({
   return (
     <span
       title={formatFullDateTime(message.createdAt)}
-      className={cn('inline-flex items-center gap-0.5 text-[12px] tabular-nums', className)}
+      className={cn(
+        'font-mono inline-flex items-center gap-0.5 text-[10px] tabular-nums',
+        className,
+      )}
     >
       {formatTime(message.createdAt)}
       {showTicks && <MessageTicks status={message.status} />}
@@ -60,7 +74,7 @@ function BigEmoji({
       </span>
       <span
         className={cn(
-          'mt-1 rounded-full bg-black/25 px-2 py-0.5 text-white backdrop-blur-sm',
+          'raised-pill mt-1 rounded-full px-2 py-0.5 text-muted-foreground',
           generating && 'invisible',
         )}
       >
@@ -78,7 +92,17 @@ function BigEmoji({
 function DraftCaret() {
   return (
     <span aria-hidden="true" className="relative inline-block h-[1em] w-0 align-[-0.15em]">
-      <span className="absolute inset-y-0 left-0 w-0.5 animate-pulse bg-current motion-reduce:animate-none" />
+      <span className="absolute inset-y-0 left-0 w-0.5 animate-pulse bg-[#bdbdbd] motion-reduce:animate-none" />
+    </span>
+  );
+}
+
+/** The recessed `generating` label under a reply that is still being written. */
+function GeneratingLabel() {
+  return (
+    <span className="font-mono flex items-center gap-1.5 px-3 pt-1 pb-2 text-[11px] text-subtle-foreground">
+      <span className="pulse-dot size-1.5 rounded-full bg-subtle-foreground" aria-hidden="true" />
+      generating
     </span>
   );
 }
@@ -90,7 +114,7 @@ export interface MessageBubbleProps {
   lastInGroup: boolean;
   currentUserId: string;
   onReply: (message: UiMessage) => void;
-  /** A live AI draft: same bubble, but muted and dimmed while it is written. */
+  /** A live AI draft: same bubble, but recessed while it is written. */
   draft?: boolean;
   /**
    * The turn whose draft this final message continues (T-0045). The bubble
@@ -167,32 +191,34 @@ export function MessageBubble({
           <span className="w-[34px] shrink-0" aria-hidden="true" />
         ))}
       <div
+        data-bubble-look={
+          bigEmoji ? undefined : own ? 'outgoing' : generating ? 'generating' : 'incoming'
+        }
         className={cn(
-          'relative flex max-w-[480px] flex-col',
+          'relative flex flex-col',
+          own ? 'max-w-[520px]' : 'max-w-[560px]',
           bigEmoji
             ? undefined
             : cn(
-                'rounded-2xl bg-clip-padding text-[15px] leading-[19px]',
-                generating && !own ? 'text-bubble-in-generating' : 'text-foreground',
-                own ? 'bg-bubble-out' : generating ? 'bg-bubble-in/90' : 'bg-bubble-in',
+                'rounded-[14px] bg-clip-padding text-[14px] leading-[1.5]',
+                own ? 'bubble-out' : generating ? 'bubble-gen' : 'bubble-in',
                 transitioning &&
-                  'transition-[color,background-color] duration-[400ms] ease-out motion-reduce:transition-none',
-                lastInGroup &&
-                  (own ? 'bubble-tail-out rounded-br-none' : 'bubble-tail-in rounded-bl-none'),
+                  'transition-[color,background,box-shadow,border-color] duration-[400ms] ease-out motion-reduce:transition-none',
+                lastInGroup && (own ? 'rounded-br-[4px]' : 'rounded-bl-[4px]'),
               ),
         )}
       >
         {showSender && (
           <div
-            className="px-2.5 pt-1 text-[14px] leading-5 font-semibold"
-            style={{ color: avatarGradient(message.senderId).from }}
+            className="px-3 pt-2 text-[14px] leading-5 font-semibold"
+            style={{ color: senderColor(message.senderId) }}
           >
             {message.senderName}
           </div>
         )}
 
         {message.replyTo !== undefined && (
-          <div className="px-2.5 pt-1.5">
+          <div className="px-3 pt-2">
             <ReplyQuote quote={message.replyTo} />
           </div>
         )}
@@ -202,26 +228,26 @@ export function MessageBubble({
         ) : (
           <>
             {message.image !== undefined && (
-              <div className={cn('relative', hasText ? 'px-1 pt-1.5' : 'p-1')}>
+              <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
                 <ImageMessage image={message.image} alt="Photo" />
                 {imageOnly && (
                   <MessageMeta
                     message={message}
                     showTicks={own}
-                    className="absolute right-2.5 bottom-2.5 rounded-full bg-black/45 px-1.5 py-0.5 text-white/95 backdrop-blur-sm"
+                    className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
                   />
                 )}
               </div>
             )}
 
             {message.voice !== undefined && (
-              <div className="px-2.5 py-1.5">
+              <div className="px-3 py-1.5">
                 <VoiceMessage voice={message.voice} own={own} />
               </div>
             )}
 
             {message.card !== undefined && (
-              <div className="px-2.5 py-1.5">
+              <div className="px-3 py-1.5">
                 {message.card.type === 'progress' && <ProgressCard progress={message.card.data} />}
                 {message.card.type === 'approval.request' && (
                   <ApprovalCard request={message.card.data} />
@@ -230,7 +256,9 @@ export function MessageBubble({
             )}
 
             {hasText && (
-              <p className="px-2.5 py-1.5 break-words whitespace-pre-wrap">
+              <p
+                className={cn('break-words whitespace-pre-wrap', own ? 'px-3 py-2' : 'px-3 py-2.5')}
+              >
                 <LinkText text={text} />
                 {generating && <DraftCaret />}
                 <MessageMeta
@@ -247,8 +275,10 @@ export function MessageBubble({
               </p>
             )}
 
+            {generating && hasText && <GeneratingLabel />}
+
             {!hasText && (message.voice !== undefined || message.card !== undefined) && (
-              <div className="flex justify-end px-2.5 pb-1.5">
+              <div className="flex justify-end px-3 pb-2">
                 <MessageMeta
                   message={message}
                   showTicks={own}
@@ -266,7 +296,7 @@ export function MessageBubble({
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen(true)}
-            className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-background/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
           >
             <MoreHorizontal className="size-4" aria-hidden="true" />
           </button>

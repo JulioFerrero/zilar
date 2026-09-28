@@ -11,6 +11,27 @@ const defaultFrameScheduler: FrameScheduler = {
   cancel: (handle) => cancelAnimationFrame(handle),
 };
 
+/** A visibility seam so tests can fake a tab becoming visible again. */
+export interface VisibilitySource {
+  /** Calls `onVisible` whenever the page becomes visible. Returns an unsubscribe. */
+  subscribe: (onVisible: () => void) => () => void;
+}
+
+const defaultVisibility: VisibilitySource = {
+  subscribe: (onVisible) => {
+    if (typeof document === 'undefined') {
+      return () => {};
+    }
+    const handler = (): void => {
+      if (!document.hidden) {
+        onVisible();
+      }
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  },
+};
+
 /** Time the reveal takes to clear the whole backlog of one update. */
 export const SMOOTH_CATCH_UP_MS = 350;
 
@@ -42,6 +63,8 @@ export interface SmoothTextOptions {
   reducedMotion?: boolean;
   /** The frame scheduler; tests inject a manual one. */
   frames?: FrameScheduler;
+  /** The visibility source; tests inject a fake one. */
+  visibility?: VisibilitySource;
   /**
    * `'full'` paints the first target at once and animates only later growth,
    * so remounting a reply never replays its reveal. The chat UI uses it.
@@ -140,6 +163,31 @@ export function useSmoothText(
       }
     };
   }, [target, animate, frames]);
+
+  // Browsers pause `requestAnimationFrame` in a hidden tab, so a reply written
+  // while the tab was hidden would otherwise animate only once it comes back.
+  // Snap to the latest text on return; a reply still streaming then animates
+  // normally for every update that follows.
+  useEffect(() => {
+    if (!animate) {
+      return;
+    }
+    const source = options.visibility ?? defaultVisibility;
+    return source.subscribe(() => {
+      const current = targetRef.current;
+      if (progressRef.current >= current.length) {
+        return;
+      }
+      if (handleRef.current !== null) {
+        frames.cancel(handleRef.current);
+        handleRef.current = null;
+      }
+      velocityRef.current = 0;
+      progressRef.current = current.length;
+      shownRef.current = current;
+      setShown(current);
+    });
+  }, [animate, frames, options.visibility]);
 
   const text = animate ? shown : target;
   return { text, done: text.length >= target.length };

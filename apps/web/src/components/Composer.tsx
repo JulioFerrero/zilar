@@ -1,5 +1,5 @@
 import { formatDuration, type ReplyRef } from '@galena/chat-core';
-import { Mic, Paperclip, Send, Smile, X } from 'lucide-react';
+import { ArrowUp, Mic, Paperclip, Smile, X } from 'lucide-react';
 import {
   useEffect,
   useRef,
@@ -7,6 +7,9 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { Button } from './ui/button';
+import { IconButton } from './ui/icon-button';
+import { Well } from './ui/well';
 import { VOICE_MAX_BYTES, VOICE_MIN_MS, VoiceRecorder, computeWaveform } from '@/lib/voice';
 import { useChatStore } from '@/store/ChatStoreProvider';
 
@@ -40,6 +43,8 @@ export function Composer({
   const recorderRef = useRef<VoiceRecorder | null>(null);
   const pressRef = useRef<PressState | null>(null);
   const canSend = value.trim().length > 0;
+  const title = store.chats.find((chat) => chat.id === chatId)?.title;
+  const placeholder = title === undefined ? 'Message' : `Message ${title}`;
 
   const onChange = (next: string): void => {
     setValue(next);
@@ -176,12 +181,12 @@ export function Composer({
   };
 
   return (
-    <div className="chat-background shrink-0 px-3 py-2">
+    <div className="chat-background shrink-0 px-3 pt-2 pb-3 wide:px-8 wide:pt-3 wide:pb-5">
       {replyTo !== undefined && (
-        <div className="mb-2 flex items-stretch overflow-hidden rounded-lg bg-background/90 shadow-sm">
-          <span className="w-[3px] shrink-0 bg-accent" aria-hidden="true" />
-          <div className="min-w-0 flex-1 px-2.5 py-1">
-            <div className="truncate text-[13px] leading-4 font-semibold text-accent">
+        <Well className="mb-2 flex items-stretch overflow-hidden rounded-[10px]">
+          <span className="w-[3px] shrink-0 bg-[#333333]" aria-hidden="true" />
+          <div className="min-w-0 flex-1 px-2.5 py-1.5">
+            <div className="truncate text-[13px] leading-4 font-semibold text-[#d4d4d4]">
               Reply to {replyTo.senderName}
             </div>
             {replyTo.text !== undefined && (
@@ -194,73 +199,67 @@ export function Composer({
             type="button"
             aria-label="Cancel reply"
             onClick={onCancelReply}
-            className="flex w-9 shrink-0 items-center justify-center text-muted-foreground hover:bg-list-hover"
+            className="flex w-9 shrink-0 items-center justify-center text-muted-foreground hover:bg-surface-raised"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
-        </div>
+        </Well>
       )}
       {voiceError !== undefined && (
-        <div className="mb-1 px-1 text-[12px] text-red-500" role="alert">
+        <div className="mb-1 px-1 text-[12px] text-danger" role="alert">
           {voiceError}
         </div>
       )}
-      <div className="flex items-end gap-2">
+      <Well className="flex items-end gap-2 rounded-[14px] p-2">
         {recording ? (
-          <div className="flex h-[52px] min-w-0 flex-1 items-center gap-3 rounded-[22px] bg-background px-4 shadow-sm">
-            <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-red-500" />
+          <div className="flex h-9 min-w-0 flex-1 items-center gap-3 px-1">
+            <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-danger motion-reduce:animate-none" />
             <span className="shrink-0 text-[15px] tabular-nums">{formatDuration(elapsedMs)}</span>
             <span className="min-w-0 flex-1 truncate text-center text-[13px] text-muted-foreground">
               {cancelArmed ? 'Release to cancel' : 'Slide to cancel'}
             </span>
           </div>
         ) : (
-          <div className="flex min-w-0 flex-1 items-end rounded-[22px] bg-background px-1 py-1 shadow-sm focus-within:ring-2 focus-within:ring-accent/40">
-            <button
-              type="button"
-              aria-label="Attach a file"
-              className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
-            >
+          <>
+            <IconButton aria-label="Attach a file">
               <Paperclip className="size-5" aria-hidden="true" />
-            </button>
+            </IconButton>
             <textarea
               ref={textareaRef}
               rows={1}
               value={value}
               onChange={(event) => onChange(event.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Message"
+              placeholder={placeholder}
               aria-label="Message"
-              className="min-h-[22px] flex-1 resize-none bg-transparent px-1 py-1.5 text-[15px] leading-[22px] outline-none placeholder:text-muted-foreground"
+              className="min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1 py-[7px] text-[14px] leading-[22px] outline-none placeholder:text-muted-foreground"
             />
-            <button
-              type="button"
-              aria-label="Insert emoji"
-              className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
-            >
+            <IconButton aria-label="Insert emoji">
               <Smile className="size-5" aria-hidden="true" />
-            </button>
-          </div>
+            </IconButton>
+          </>
         )}
-        <button
-          type="button"
-          aria-label={
-            recording ? 'Cancel voice message' : canSend ? 'Send message' : 'Record voice message'
-          }
-          onClick={canSend ? send : undefined}
-          onPointerDown={canSend ? undefined : onMicPointerDown}
-          onPointerMove={canSend ? undefined : onMicPointerMove}
-          onPointerUp={canSend ? undefined : onMicPointerUp}
-          onPointerCancel={canSend ? undefined : onMicPointerUp}
-          className="flex size-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground transition-colors hover:bg-accent/90"
-        >
-          {canSend && !recording ? (
-            <Send className="size-5" aria-hidden="true" />
-          ) : (
+        {canSend ? (
+          <Button
+            type="button"
+            aria-label="Send message"
+            onClick={send}
+            className="size-9 rounded-[10px] p-0"
+          >
+            <ArrowUp className="size-4" aria-hidden="true" />
+          </Button>
+        ) : (
+          <IconButton
+            aria-label={recording ? 'Cancel voice message' : 'Record voice message'}
+            onPointerDown={onMicPointerDown}
+            onPointerMove={onMicPointerMove}
+            onPointerUp={onMicPointerUp}
+            onPointerCancel={onMicPointerUp}
+          >
             <Mic className="size-5" aria-hidden="true" />
-          )}
-        </button>
-      </div>
+          </IconButton>
+        )}
+      </Well>
     </div>
   );
 }

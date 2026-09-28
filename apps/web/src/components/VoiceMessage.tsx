@@ -59,7 +59,7 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
           aria-disabled={!playable}
           onClick={togglePlay}
           className={cn(
-            'flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground',
+            'key-primary flex size-10 shrink-0 items-center justify-center rounded-full',
             !playable && 'opacity-50',
           )}
         >
@@ -75,10 +75,7 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
             return (
               <span
                 key={index}
-                className={cn(
-                  'w-[2px] rounded-full',
-                  played ? 'bg-accent' : 'bg-muted-foreground/40',
-                )}
+                className={cn('w-[2px] rounded-full', played ? 'bg-[#ededed]' : 'bg-[#525252]')}
                 style={{ height: `${Math.max(3, Math.round((value / 255) * 28))}px` }}
               />
             );
@@ -98,11 +95,7 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
             aria-label={showTranscript ? 'Hide transcript' : 'Show transcript'}
             aria-pressed={showTranscript}
             onClick={() => setShowTranscript((value) => !value)}
-            className={cn(
-              'shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-bold',
-              own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
-              'hover:bg-black/5 dark:hover:bg-white/10',
-            )}
+            className="key-icon shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold"
           >
             Aa
           </button>

@@ -5,7 +5,7 @@ import { formatMoney } from '@/lib/format';
 
 export function ApprovalCard({ request }: { request: ApprovalRequest }) {
   return (
-    <div className="min-w-[260px] rounded-xl border border-divider bg-background/50 p-2.5">
+    <div className="bubble-in min-w-[260px] rounded-[12px] p-2.5">
       <div className="flex items-center gap-2">
         <ShieldAlert className="size-4 shrink-0 text-accent" aria-hidden="true" />
         <span className="text-[14px] font-semibold break-words">{request.action}</span>
@@ -23,7 +23,7 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
         <Button
           type="button"
           size="sm"
-          className="rounded-full px-3"
+          className="px-3"
           onClick={() => console.log('approve', request.id)}
         >
           Approve
@@ -31,8 +31,8 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
         <Button
           type="button"
           size="sm"
-          variant="destructive"
-          className="rounded-full px-3"
+          variant="outline"
+          className="px-3"
           onClick={() => console.log('deny', request.id)}
         >
           Deny
