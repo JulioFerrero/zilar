@@ -541,4 +541,51 @@ describe('runDmTurn with tools', () => {
     expect(logged).not.toContain(VIRTUAL_KEY);
     expect(logged).not.toContain(MASTER_KEY);
   });
+
+  it('keeps going when one tool call throws: first change stays, failed result, 2 calls', async () => {
+    const first = { persona: 'Primera persona, en español.', summary: 'First change' };
+    const second = { persona: 'Segunda persona, en español.', summary: 'Second change' };
+    const { fetchImpl, calls } = scriptedFetch([
+      toolCallResponse([
+        { id: 'call-1', name: 'update_persona', args: first },
+        { id: 'call-2', name: 'update_persona', args: second },
+      ]),
+      completionResponse('done'),
+    ]);
+    const store = new Map<string, string>();
+    const executeTool: ExecuteToolCall = async (call) => {
+      if (call.tool !== 'update_persona') {
+        throw new Error('unreachable in this test');
+      }
+      if (call.id === 'call-2') {
+        throw new Error(`the database is down, key was ${VIRTUAL_KEY}`);
+      }
+      store.set('persona', call.persona);
+      return { content: 'ok', notice: formatPersonaUpdatedLine(call.summary) };
+    };
+    const harness = toolHarness(fetchImpl, executeTool);
+    const outcome = await harness.run();
+
+    expect(calls).toHaveLength(2);
+    expect(store.get('persona')).toBe(first.persona);
+    const secondRequest = bodyOf(calls[1]!) as unknown as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(
+      secondRequest.messages.filter((message) => message.role === 'tool').map((m) => m.content),
+    ).toEqual(['ok', 'failed: could not save']);
+    expect(outcome).toEqual({
+      kind: 'replied',
+      text: 'done\n\n✏️ Persona updated: First change. Say "undo" to revert.',
+    });
+
+    const failure = harness.logger.calls.find((call) => call.fields['ok'] === false);
+    expect(failure?.fields['aiId']).toBe('ai-1');
+    expect(failure?.fields['tool']).toBe('update_persona');
+    const logged = loggedText(harness.logger.calls);
+    expect(logged).not.toContain(VIRTUAL_KEY);
+    expect(logged).not.toContain(MASTER_KEY);
+    expect(logged).not.toContain(first.persona);
+    expect(logged).not.toContain(second.persona);
+  });
 });

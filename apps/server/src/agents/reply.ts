@@ -7,6 +7,7 @@ import {
   REVERT_PERSONA_TOOL,
   UPDATE_PERSONA_TOOL,
   parseToolArguments,
+  safeToolName,
   type ChatToolDefinition,
 } from './tools';
 
@@ -343,7 +344,10 @@ async function runToolTurn(
     if (!parsed.ok) {
       // Never executed. The arguments stay out of the log entirely: only the
       // tool name travels with the AI id, never the persona text.
-      deps.logger.warn({ aiId: deps.aiId, tool: call.name }, 'AI tool call was not executed');
+      deps.logger.warn(
+        { aiId: deps.aiId, tool: safeToolName(call.name) },
+        'AI tool call was not executed',
+      );
       toolMessages.push({
         role: 'tool',
         content: `invalid: ${parsed.reason}`,
@@ -352,24 +356,49 @@ async function runToolTurn(
       continue;
     }
     if (deps.executeTool === undefined) {
-      deps.logger.warn({ aiId: deps.aiId, tool: call.name }, 'AI tool call was not executed');
+      deps.logger.warn(
+        { aiId: deps.aiId, tool: safeToolName(call.name) },
+        'AI tool call was not executed',
+      );
       toolMessages.push({
         role: 'tool',
-        content: `invalid: unknown tool: ${call.name}`,
+        content: `invalid: unknown tool: ${safeToolName(call.name)}`,
         tool_call_id: call.id,
       });
       continue;
     }
-    const execution = await deps.executeTool(
-      parsed.tool === UPDATE_PERSONA_TOOL
-        ? {
-            id: call.id,
-            tool: UPDATE_PERSONA_TOOL,
-            persona: parsed.persona,
-            summary: parsed.summary,
-          }
-        : { id: call.id, tool: REVERT_PERSONA_TOOL },
-    );
+    let execution: ToolExecution;
+    try {
+      execution = await deps.executeTool(
+        parsed.tool === UPDATE_PERSONA_TOOL
+          ? {
+              id: call.id,
+              tool: UPDATE_PERSONA_TOOL,
+              persona: parsed.persona,
+              summary: parsed.summary,
+            }
+          : { id: call.id, tool: REVERT_PERSONA_TOOL },
+      );
+    } catch (error) {
+      // One call failing must not drop the others or the notices already
+      // earned: the change (if any) stays, this call reports a failure, and
+      // the loop continues with the remaining calls.
+      deps.logger.warn(
+        {
+          aiId: deps.aiId,
+          tool: safeToolName(call.name),
+          ok: false,
+          err: redactError(error, secrets),
+        },
+        'AI tool call failed',
+      );
+      toolMessages.push({
+        role: 'tool',
+        content: 'failed: could not save',
+        tool_call_id: call.id,
+      });
+      continue;
+    }
     if (execution.notice !== undefined) {
       notices.push(execution.notice);
     }

@@ -265,4 +265,37 @@ through exactly two tools that only run in the owner's DM turn.
   DeepSeek key per the spec (fake keys can't trigger one). To enable live:
   `AGENT_GATEWAY_ENABLED=true` on the server and restart.
 
+### Round 2 (worker — all three pre-review findings)
+1. **Per-call guard in the tool loop (`agents/reply.ts`).** `executeTool` is
+   now wrapped in try/catch per call: a throw becomes that call's tool result
+   `"failed: could not save"`, logged as `{ aiId, tool, ok: false }` with the
+   error redacted via `redactError` (never the persona), the loop continues
+   with the remaining calls, and notices already earned are kept — including
+   into the failure text when the second model call later fails (same
+   `notices.join('')` path). New test: two `update_persona` calls where the
+   second executor throws → the first persona stays stored, the DM carries
+   its exact "Persona updated" line, the second tool message is
+   `"failed: could not save"`, still exactly 2 model calls, and no key or
+   persona text in any log line.
+2. **Capped tool names (`agents/tools.ts`, `agents/reply.ts`).** New
+   `safeToolName` (64 chars max, control chars stripped) applied wherever a
+   model-chosen name is logged or echoed back: the `unknown tool:` reason and
+   both `tool:` log fields plus the no-executor echo. New tests: a 10k-char
+   name is capped at 64 in the reason and `ab\x00cd\nef\x7f` + padding
+   collapses to exactly 64 clean chars.
+3. **`sanitizeSummary` bound once (`agents/tools.ts`).** `formatPersonaUpdatedLine`
+   calls it once into `clean`.
+
+**Round 2 checks (real results):** `pnpm install` pass; `pnpm format:check`
+passes on every tracked file I touched — the repo-wide command still reports
+`PREREVIEW.md`, which is the lead's untracked file I was told not to touch,
+commit or delete; `pnpm lint` pass; `pnpm typecheck` 9/9 pass;
+`pnpm exec turbo test --force --filter=@galena/server` — 34 files,
+**375 passed, 7 skipped** (+3: the two round-2 tests plus the established
+count); `pnpm build` pass, plus `turbo build --force
+--filter=@galena/server` → 0 tasks (the server package has no build script;
+correctness is covered by typecheck + tests, same as round 1). Gated live
+integration not re-run (round 2 touches nothing on its path); round 1's live
+result stands.
+
 ## Review (written by Claude)

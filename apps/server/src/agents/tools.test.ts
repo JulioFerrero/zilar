@@ -5,6 +5,7 @@ import {
   PERSONA_RESTORED_LINE,
   PERSONA_TOOLS,
   REVERT_PERSONA_TOOL,
+  safeToolName,
   sanitizeSummary,
   UPDATE_PERSONA_TOOL,
 } from './tools';
@@ -87,6 +88,18 @@ describe('parseToolArguments', () => {
     if (!parsed.ok) {
       expect(parsed.reason).not.toContain(secret);
     }
+  });
+});
+
+describe('safeToolName', () => {
+  it('caps a 10k-char name at 64 chars and strips control characters', () => {
+    expect(safeToolName(`ab\x00cd\nef\x7f${'x'.repeat(10_000)}`)).toBe(`abcdef${'x'.repeat(58)}`);
+    expect(safeToolName('update_persona')).toBe('update_persona');
+  });
+
+  it('caps the echoed unknown-tool reason', () => {
+    const parsed = parseToolArguments('y'.repeat(10_000), '{}');
+    expect(parsed).toEqual({ ok: false, reason: `unknown tool: ${'y'.repeat(64)}` });
   });
 });
 

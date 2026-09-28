@@ -23,13 +23,32 @@ export type ParsedToolArguments =
   | { ok: true; tool: typeof REVERT_PERSONA_TOOL }
   | { ok: false; reason: string };
 
+// Tool names ride into log lines and back to the model, so a model-chosen
+// name stays short and single-line: capped at 64 characters with control
+// characters stripped.
+export const TOOL_NAME_MAX_LENGTH = 64;
+
+export function safeToolName(name: string): string {
+  let out = '';
+  for (const char of name) {
+    const code = char.codePointAt(0) ?? 32;
+    if (code >= 32 && code !== 127) {
+      out += char;
+    }
+    if (out.length >= TOOL_NAME_MAX_LENGTH) {
+      break;
+    }
+  }
+  return out;
+}
+
 // Validates one raw tool call's `arguments` (a JSON string) with zod. Unknown
 // tool names and invalid arguments are never executed; the caller reports
 // `invalid: <reason>` back to the model. Reasons carry no argument values, so
 // the persona text can never leak through them.
 export function parseToolArguments(toolName: string, argsJson: string): ParsedToolArguments {
   if (toolName !== UPDATE_PERSONA_TOOL && toolName !== REVERT_PERSONA_TOOL) {
-    return { ok: false, reason: `unknown tool: ${toolName}` };
+    return { ok: false, reason: `unknown tool: ${safeToolName(toolName)}` };
   }
   if (typeof argsJson !== 'string') {
     return { ok: false, reason: 'arguments must be a JSON string' };
@@ -115,8 +134,8 @@ export const PERSONA_TOOLS: ChatToolDefinition[] = [
 // `update_persona`, so the owner sees what happened without relying on the
 // model to say it.
 export function formatPersonaUpdatedLine(summary: string): string {
-  const clean = sanitizeSummary(summary) === '' ? 'updated' : sanitizeSummary(summary);
-  return `\n\n✏️ Persona updated: ${clean}. Say "undo" to revert.`;
+  const clean = sanitizeSummary(summary);
+  return `\n\n✏️ Persona updated: ${clean === '' ? 'updated' : clean}. Say "undo" to revert.`;
 }
 
 export const PERSONA_RESTORED_LINE = '\n\n↩️ Persona restored.';
