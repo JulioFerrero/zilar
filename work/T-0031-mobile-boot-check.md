@@ -1,7 +1,7 @@
 ---
 id: T-0031
 title: Mobile boot check — a script that proves the iOS app actually starts
-status: review
+status: merged
 milestone: M1
 branch: task/T-0031-mobile-boot-check
 model: opencode-go/deepseek-v4-pro
@@ -309,3 +309,29 @@ port 8082 was free and no boot-check process was left behind.
 ---
 
 ## Review (written by Claude)
+
+**Verdict:** Approved
+
+Verified by the lead:
+- Scope: only the allowed files changed; `package.json` only in `scripts`.
+- `format:check`, `lint`, `typecheck`, `build` pass; `pnpm exec turbo test --force`: 8/8,
+  mobile 120 passed / 2 skipped (26 new tests), web 95, server 235.
+- **The lead ran the boot check** on the iPad simulator: `PASS` in 54 s, port 8082 free
+  afterwards, Julio's Metro on 8081 untouched. The screenshot from the worker's run shows the
+  real "Sign in to Galena" screen.
+- **The regression it exists for**: with every `ExpoSecureStore` line removed from the
+  git-ignored `ios/Podfile.lock`, the check printed "Podfile.lock is missing ExpoSecureStore —
+  running pod install", repaired it, rebuilt, and passed only after the JS app ran.
+
+### Findings
+1. *(No change needed.)* `RCT_METRO_PORT` plus the `RCTMetroPort` check before launch is the
+   right answer to `--port` being refused with `--no-bundler`, and it guarantees the app never
+   falls back to 8081.
+2. *(No change needed.)* Requiring `Running "main"` in the app log before a pass fixes the
+   splash-screen false pass from run 2.
+3. *(No change needed.)* The first live run needed the lead to stop a diagnostic Metro and to
+   restart the session twice (a question tool, then a background run it waited on). Workers
+   now get told not to use the question tool.
+
+### Follow-ups
+- Running this in CI needs a macOS runner (Julio's decision).
