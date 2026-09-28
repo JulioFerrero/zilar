@@ -96,6 +96,13 @@ describe('consumeChatCompletionStream', () => {
     expect(result.content).toBe('ab');
   });
 
+  it('accepts a final [DONE] without a trailing newline', async () => {
+    const result = await consumeChatCompletionStream(
+      sseBody([`${contentChunk('hi')}data: [DONE]`]),
+    );
+    expect(result.content).toBe('hi');
+  });
+
   it('rebuilds tool calls split across chunks: id and name first, arguments in 3 pieces', async () => {
     const args = JSON.stringify({ persona: 'Answer in Spanish.', summary: 'Spanish' });
     const third = Math.ceil(args.length / 3);

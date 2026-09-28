@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import type {
   ChatKind,
@@ -1359,8 +1359,20 @@ describe('agent gateway', () => {
       chunks.push(DONE);
       const { seeded, core, events } = await draftsSetup([sseResponse(chunks)]);
 
-      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'tell me a story'));
-      await waitFor(() => events.some((event) => event.type === 'end'));
+      // Fake timers: the throttle is time-based, so virtual time keeps this
+      // deterministic instead of CI-speed-dependent. The turn itself is
+      // promise-driven and drains inside the first advances, well before the
+      // 150 ms throttle timer could fire a third draft.
+      vi.useFakeTimers();
+      try {
+        core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'tell me a story'));
+        for (let i = 0; i < 100 && !events.some((event) => event.type === 'end'); i += 1) {
+          await vi.advanceTimersByTimeAsync(10);
+        }
+        expect(events.some((event) => event.type === 'end')).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
 
       expect(core.sent[0]?.text).toBe(full.trim());
       const drafts = draftsOf(events);
@@ -1437,6 +1449,37 @@ describe('agent gateway', () => {
       expect(draftsOf(events)).toHaveLength(0);
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({ type: 'end', outcome: 'failed' });
+    });
+
+    it('publishes end failed only after the failure DM is sent', async () => {
+      const seeded = await seedAi(context);
+      // No virtual key row: the turn fails before any model work.
+      await context.db.delete(llmVirtualKeys).where(eq(llmVirtualKeys.aiId, seeded.aiId));
+      const cores: FakeCore[] = [];
+      const hub = createDraftHub();
+      const order: string[] = [];
+      hub.subscribe(seeded.ownerId, (event) => {
+        if (event.type === 'end') {
+          order.push('end');
+        }
+      });
+      const { fetchImpl } = sseFetch([completionResponse('never used')]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm(), { hub });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      const send = core.sendMessage.bind(core);
+      core.sendMessage = async (to, kind, text) => {
+        order.push('send');
+        return send(to, kind, text);
+      };
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => order.length === 2);
+
+      expect(order).toEqual(['send', 'end']);
+      expect(core.sent).toEqual([
+        { to: seeded.ownerJid, kind: 'chat', text: TRANSIENT_FAILURE_REPLY },
+      ]);
     });
   });
 });

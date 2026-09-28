@@ -116,19 +116,24 @@ export async function consumeChatCompletionStream(
 
   // Lines are split on `\n` as bytes arrive; the trailing fragment stays in
   // the buffer until its line is complete.
+  const processLine = (line: string): void => {
+    if (line === '' || line.startsWith(':')) {
+      return;
+    }
+    // Only `data:` lines carry deltas; anything else (`event:`, `id:`)
+    // is legal SSE and is ignored.
+    if (line.startsWith('data:')) {
+      applyData(line.slice(5).trim());
+    }
+  };
+
   const feedText = (text: string): void => {
     buffer += text;
     let newline = buffer.indexOf('\n');
     while (newline >= 0) {
       const line = buffer.slice(0, newline).replace(/\r$/, '');
       buffer = buffer.slice(newline + 1);
-      if (line !== '' && !line.startsWith(':')) {
-        // Only `data:` lines carry deltas; anything else (`event:`, `id:`)
-        // is legal SSE and is ignored.
-        if (line.startsWith('data:')) {
-          applyData(line.slice(5).trim());
-        }
-      }
+      processLine(line);
       if (finished) {
         return;
       }
@@ -156,6 +161,11 @@ export async function consumeChatCompletionStream(
     }
   } finally {
     reader.releaseLock();
+  }
+  // A body may end without a trailing newline: process the residual line
+  // (typically the final `data: [DONE]`) instead of dropping it.
+  if (!finished && buffer.trim() !== '') {
+    processLine(buffer.replace(/\r$/, ''));
   }
   if (!finished) {
     throw new ChatStreamInterruptedError('the stream ended without [DONE]');

@@ -529,7 +529,6 @@ export function createAgentGateway(
     } catch (error) {
       // ensureAiModel, the key lookup and anything else outside the turn: an
       // honest short message, never the raw error.
-      turnDrafts.end('failed');
       logger.warn(
         { err: toRedactedError(error, secretsFor(virtualKey)), aiId: session.aiId },
         'AI turn failed',
@@ -540,11 +539,14 @@ export function createAgentGateway(
       } catch {
         // There is nobody left to tell when the send itself fails.
       }
+      // The failed `end` goes out only after the failure text was sent (or
+      // its send was attempted): the contract promises `end` comes last.
       try {
         session.core.sendTyping(ownerJid, 'chat', 'paused');
       } catch {
         // Typing state is best-effort.
       }
+      turnDrafts.end('failed');
     }
   }
 

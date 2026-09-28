@@ -283,4 +283,32 @@ unchanged, with typing indicators exactly as before.
   Julio's DeepSeek key per the spec — `curl -N` the endpoint with his session
   while his AI answers (drafts appear as `event: draft`, then `end`).
 
+### Review fixes (worker — all three lead findings)
+1. **Pre-turn `end:'failed'` ordering (`agents/gateway.ts`).**
+   `turnDrafts.end('failed')` moved to the end of the pre-turn `catch`, after
+   the failure-DM `sendMessage` attempt (and the best-effort typing reset),
+   so `failed` is published after the failure text is sent, per the frozen
+   contract. New test "publishes end failed only after the failure DM is
+   sent": an AI with no virtual-key row fails before any model work; a
+   recorded `['send', 'end']` order plus the exact transient DM text prove it.
+2. **Residual SSE buffer (`agents/stream.ts`).** Line processing was extracted
+   into `processLine`, and after the read loop a non-empty residual buffer is
+   processed instead of dropped — a body ending in `data: [DONE]` with no
+   trailing newline now completes instead of throwing
+   `ChatStreamInterruptedError`. New test covers exactly that body.
+3. **Deterministic burst test (`agents/gateway.test.ts`).** The 50-delta test
+   now runs on `vi.useFakeTimers()` (setup stays on real timers; the
+   promise-driven turn drains inside the first virtual advances, well before
+   the 150 ms throttle timer), asserting the same bounds (≤ 2 drafts, last ==
+   full text, `end` last). Ran the test 3× in isolation — passes every time.
+
+**Review-fix checks (real results):** `pnpm install` pass; repo-wide
+`pnpm format:check` still reports only the lead's untracked `PREREVIEW.md`
+(pre-existing, not mine, not touched — same as T-0040 round 2); every tracked
+file I touched passes `prettier --check`; `pnpm lint` pass; `pnpm typecheck`
+9/9 pass; `pnpm --filter @galena/server test` — 37 files passed, **406
+passed, 7 skipped** (+2: the order and no-newline tests); `pnpm build` pass.
+The gated live integration test was not re-run (these fixes touch nothing on
+its path — unit-covered only); the live result stands.
+
 ## Review (written by Claude)
