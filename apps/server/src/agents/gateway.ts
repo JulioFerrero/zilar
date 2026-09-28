@@ -649,6 +649,12 @@ export function createAgentGateway(
   }
 
   function handleIncoming(session: AiSession, message: ChatMessage): void {
+    // An edit or a retraction of a message is never a new turn, in a DM or in a
+    // room: the AI re-answering edits is out of scope. This is the first check,
+    // before any routing, pairing, database or model work.
+    if (message.correction !== undefined || message.retraction !== undefined) {
+      return;
+    }
     if (session.stopped || sessions.get(session.aiId) !== session) {
       return;
     }
@@ -680,6 +686,10 @@ export function createAgentGateway(
   // check that needs no database runs here; the sender's membership and the
   // rate limit are checked fresh at turn time.
   function handleRoomIncoming(session: AiSession, message: ChatMessage): void {
+    // An edit or a retraction in a room is never a mention: it starts no turn.
+    if (message.correction !== undefined || message.retraction !== undefined) {
+      return;
+    }
     if (message.outgoing) {
       return;
     }

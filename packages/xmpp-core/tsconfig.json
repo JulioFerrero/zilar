@@ -8,6 +8,7 @@
   "exclude": [
     "src/integration.test.ts",
     "src/integration-sm.test.ts",
-    "src/integration-invites.test.ts"
+    "src/integration-invites.test.ts",
+    "src/integration-edits.test.ts"
   ]
 }

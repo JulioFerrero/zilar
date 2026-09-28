@@ -21,6 +21,12 @@ export interface XmppCoreOptions {
 export interface ChatMessage {
   /** Archive stanza-id (XEP-0359) when known, else the message id. */
   id: string;
+  /**
+   * The sender-generated id: the stanza's `id` attribute or its `<origin-id/>`
+   * (XEP-0359). Kept so an edit can name the original by the id the sender
+   * chose (XEP-0308 requires it, in DMs and in groups).
+   */
+  originId?: string;
   /** Bare JID of the room, or of the DM peer. */
   chatJid: string;
   kind: ChatKind;
@@ -43,6 +49,16 @@ export interface ChatMessage {
    */
   reactions?: MessageReactions;
   /**
+   * XEP-0308 correction: the corrected message's id. `body` holds the new full
+   * text. Not a chat message of its own: it edits the target.
+   */
+  correction?: MessageCorrection;
+  /**
+   * XEP-0424 retraction: the retracted message's id. The fallback body is
+   * dropped, so `body` is undefined. Not a chat message of its own.
+   */
+  retraction?: MessageRetraction;
+  /**
    * XEP-0372 mentions. Offsets are in UTF-16 code units (JS string indices);
    * `buildMessage` converts them to the XEP-0372 code-point offsets on the
    * wire and the parser converts them back.
@@ -52,6 +68,18 @@ export interface ChatMessage {
   timestamp: Date;
   /** Sent by me, including room reflections and carbons. */
   outgoing: boolean;
+}
+
+/** One XEP-0308 correction: the target's origin id; the body is the new text. */
+export interface MessageCorrection {
+  /** The original message's sender-generated id (its `id` attribute). */
+  targetId: string;
+}
+
+/** One XEP-0424 retraction: the target's id (stanza-id in groups). */
+export interface MessageRetraction {
+  /** The original message's id: its origin id in DMs, its stanza-id in groups. */
+  targetId: string;
 }
 
 /** One XEP-0444 reaction update: the target's id and the reactor's set. */
@@ -154,6 +182,12 @@ export interface SendMessageOptions {
   mentions?: MentionInput[];
 }
 
+/** Options for an edit; mentions are rebuilt from the new text, as on a send. */
+export interface SendCorrectionOptions {
+  /** Offsets are UTF-16 code units; `buildCorrection` writes them as code points. */
+  mentions?: MentionInput[];
+}
+
 /** A file we want to upload through XEP-0363. */
 export interface UploadRequest {
   /** Original file name, shown in the download URL. */
@@ -207,6 +241,24 @@ export interface XmppCore {
    * is capped at six distinct reactions.
    */
   sendReactions(chatJid: string, kind: ChatKind, targetId: string, emojis: string[]): Promise<void>;
+  /**
+   * Sends a XEP-0308 correction: the new full body and a `<replace/>` naming the
+   * original message by its sender-generated id. Returns the new message id.
+   * Mentions are rebuilt from the new text and carried as XEP-0372 references.
+   */
+  sendCorrection(
+    chatJid: string,
+    kind: ChatKind,
+    originalId: string,
+    text: string,
+    opts?: SendCorrectionOptions,
+  ): Promise<{ id: string }>;
+  /**
+   * Sends a XEP-0424 retraction ("delete for everyone") with a fallback body
+   * and a store hint. `targetId` is the original's id in DMs, its stanza-id in
+   * groups.
+   */
+  sendRetraction(chatJid: string, kind: ChatKind, targetId: string): Promise<void>;
   loadHistory(chatJid: string, kind: ChatKind, opts?: LoadHistoryOptions): Promise<HistoryPage>;
   /** Asks the HTTP upload service for a slot to PUT a file to (XEP-0363). */
   requestUploadSlot(request: UploadRequest): Promise<UploadSlot>;

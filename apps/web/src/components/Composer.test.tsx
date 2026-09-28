@@ -184,6 +184,104 @@ describe('Composer mentions (T-0053)', () => {
   });
 });
 
+describe('Composer edit mode (T-0061)', () => {
+  function messageList() {
+    return within(screen.getByTestId('message-list'));
+  }
+
+  function startEdit(text = 'On my way') {
+    fireEvent.contextMenu(messageList().getByText(text));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
+  }
+
+  it('prefills the edit bar and saves with Enter', () => {
+    const { store } = renderApp('/c/c-viernes');
+
+    startEdit();
+    expect(screen.getByText('Edit message')).toBeTruthy();
+    const textarea = screen.getByLabelText('Message') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('On my way');
+
+    fireEvent.change(textarea, { target: { value: 'On my way now' } });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+
+    const edited = store
+      .getState()
+      .messages('c-viernes')
+      .find((m) => m.id === 'vie-22');
+    expect(edited?.text).toBe('On my way now');
+    expect(edited?.edited).toBe(true);
+    expect(screen.queryByText('Edit message')).toBeNull();
+  });
+
+  it('cancels an edit with Escape without saving', () => {
+    const { store } = renderApp('/c/c-viernes');
+
+    startEdit();
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'discarded' } });
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Escape' });
+
+    expect(screen.queryByText('Edit message')).toBeNull();
+    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('');
+    expect(
+      store
+        .getState()
+        .messages('c-viernes')
+        .find((m) => m.id === 'vie-22')?.text,
+    ).toBe('On my way');
+  });
+
+  it('sends nothing when the text did not change', () => {
+    const { store } = renderApp('/c/c-viernes');
+
+    startEdit();
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' });
+
+    expect(screen.queryByText('Edit message')).toBeNull();
+    const message = store
+      .getState()
+      .messages('c-viernes')
+      .find((m) => m.id === 'vie-22');
+    expect(message?.text).toBe('On my way');
+    expect(message?.edited).toBeUndefined();
+  });
+
+  it('disables the save key for an empty edit', () => {
+    renderApp('/c/c-viernes');
+
+    startEdit();
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: '   ' } });
+
+    expect((screen.getByLabelText('Save edit') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('edits my last editable message with ArrowUp in an empty composer', () => {
+    renderApp('/c/c-viernes');
+
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'ArrowUp' });
+
+    expect(screen.getByText('Edit message')).toBeTruthy();
+    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('On my way');
+  });
+
+  it('keeps edit and reply exclusive', () => {
+    renderApp('/c/c-viernes');
+
+    fireEvent.contextMenu(screen.getByText('Friday plans?'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reply' }));
+    expect(screen.getByText('Reply to Luis')).toBeTruthy();
+
+    startEdit();
+    expect(screen.queryByText('Reply to Luis')).toBeNull();
+    expect(screen.getByText('Edit message')).toBeTruthy();
+
+    fireEvent.contextMenu(screen.getByText('Friday plans?'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reply' }));
+    expect(screen.queryByText('Edit message')).toBeNull();
+    expect(screen.getByText('Reply to Luis')).toBeTruthy();
+  });
+});
+
 describe('Composer chat switching (T-0053 review)', () => {
   function renderComposer(initialChatId: string) {
     const store = createChatStore();

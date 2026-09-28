@@ -305,6 +305,13 @@
     0 1px 0 rgba(0, 0, 0, 0.9);
 }
 
+/* A retracted message's slim tombstone (XEP-0424, ui-style.md D24). */
+@utility tombstone {
+  background: linear-gradient(180deg, var(--well), var(--well));
+  border: 1px dashed var(--border);
+  color: var(--muted-foreground);
+}
+
 /*
  * The three bubble looks (ui-style.md §5). Outgoing is a glossy white key,
  * incoming a dark card, and a reply that is still being written is recessed

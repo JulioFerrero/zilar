@@ -24,7 +24,9 @@ import {
   CHAT_MARKERS_NAMESPACE,
   CHAT_STATES_NAMESPACE,
   CONFERENCE_NAMESPACE,
+  CORRECTION_NAMESPACE,
   DELAY_NAMESPACE,
+  FALLBACK_NAMESPACE,
   FORWARD_NAMESPACE,
   HINTS_NAMESPACE,
   MAM_NAMESPACE,
@@ -33,6 +35,7 @@ import {
   REACTIONS_NAMESPACE,
   REFERENCE_NAMESPACE,
   REPLY_NAMESPACE,
+  RETRACTION_NAMESPACE,
   ROSTER_NAMESPACE,
   RSM_NAMESPACE,
   STANZA_NAMESPACE,
@@ -682,6 +685,91 @@ describe('createXmppCore: messages and markers', () => {
     expect(messages).toHaveLength(1);
     expect(messages[0]?.body).toBeUndefined();
     expect(messages[0]?.reactions).toEqual({ targetId: 'm-1', emojis: ['👍'] });
+  });
+
+  it('sends a correction with the replace id, the new body and its mentions', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+
+    const { id } = await core.sendCorrection(
+      'project@rooms.galena.localhost',
+      'groupchat',
+      'origin-1',
+      'hi 😀 @Ana',
+      { mentions: [{ jid: 'ana@galena.localhost', begin: 6, end: 10 }] },
+    );
+
+    const sent = fake.sent.at(-1);
+    expect(sent?.attrs).toMatchObject({
+      type: 'groupchat',
+      to: 'project@rooms.galena.localhost',
+      id,
+    });
+    expect(sent?.getChildText('body')).toBe('hi 😀 @Ana');
+    expect(sent?.getChild('replace', CORRECTION_NAMESPACE)?.attrs['id']).toBe('origin-1');
+    expect(sent?.getChild('reference', REFERENCE_NAMESPACE)?.attrs['uri']).toBe(
+      'xmpp:ana@galena.localhost',
+    );
+  });
+
+  it('sends a retraction with the fallback and the store hint', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+
+    await core.sendRetraction('project@rooms.galena.localhost', 'groupchat', 'sid-1');
+
+    const sent = fake.sent.at(-1);
+    expect(sent?.attrs).toMatchObject({ type: 'groupchat', to: 'project@rooms.galena.localhost' });
+    expect(sent?.getChild('retract', RETRACTION_NAMESPACE)?.attrs['id']).toBe('sid-1');
+    expect(sent?.getChild('fallback', FALLBACK_NAMESPACE)).toBeDefined();
+    expect(sent?.getChild('body')).toBeDefined();
+    expect(sent?.getChild('store', HINTS_NAMESPACE)).toBeDefined();
+  });
+
+  it('rejects sending a correction or a retraction when offline', async () => {
+    const fake = createFakeClient();
+    const core = createCore(
+      options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+      {
+        createClient: () => fake,
+      },
+    );
+    await expect(
+      core.sendCorrection('alice@galena.localhost', 'chat', 'm-1', 'hi'),
+    ).rejects.toThrow('not online');
+    await expect(core.sendRetraction('alice@galena.localhost', 'chat', 'm-1')).rejects.toThrow(
+      'not online',
+    );
+  });
+
+  it('emits a correction and a retraction as messages', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const messages: ChatMessage[] = [];
+    core.on('message', (message) => messages.push(message));
+
+    fake.emitStanza(
+      xml(
+        'message',
+        { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-41' },
+        xml('body', {}, 'fixed'),
+        xml('replace', { xmlns: CORRECTION_NAMESPACE, id: 'm-1' }),
+      ),
+    );
+    fake.emitStanza(
+      xml(
+        'message',
+        { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-42' },
+        xml('retract', { xmlns: RETRACTION_NAMESPACE, id: 'm-2' }),
+        xml('body', {}, 'fallback'),
+      ),
+    );
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.correction).toEqual({ targetId: 'm-1' });
+    expect(messages[0]?.body).toBe('fixed');
+    expect(messages[1]?.retraction).toEqual({ targetId: 'm-2' });
+    expect(messages[1]?.body).toBeUndefined();
   });
 
   it('sends typing and displayed markers', async () => {

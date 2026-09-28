@@ -1,7 +1,7 @@
 ---
 id: T-0065
 title: Attachments on web — send and receive images and files (XEP-0363 upload, `attachment` payload), image bubbles, file cards, paste and drag-and-drop
-status: planned
+status: todo
 milestone: M1
 branch: task/T-0065-attachments-web
 model: opencode-go/deepseek-v4.1-flash

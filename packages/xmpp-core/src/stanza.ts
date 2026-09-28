@@ -8,7 +8,9 @@ import {
   CHAT_MARKERS_NAMESPACE,
   CHAT_STATES_NAMESPACE,
   CONFERENCE_NAMESPACE,
+  CORRECTION_NAMESPACE,
   DELAY_NAMESPACE,
+  FALLBACK_NAMESPACE,
   FORWARD_NAMESPACE,
   HINTS_NAMESPACE,
   HTTP_UPLOAD_NAMESPACE,
@@ -19,6 +21,7 @@ import {
   REACTIONS_NAMESPACE,
   REPLY_NAMESPACE,
   REFERENCE_NAMESPACE,
+  RETRACTION_NAMESPACE,
   ROSTER_NAMESPACE,
   STANZA_ID_NAMESPACE,
   STANZA_NAMESPACE,
@@ -30,7 +33,9 @@ import type {
   InvitedEvent,
   Mention,
   MentionInput,
+  MessageCorrection,
   MessageReactions,
+  MessageRetraction,
   Occupant,
   PresenceEvent,
   RosterEvent,
@@ -156,6 +161,78 @@ export function buildMessage(options: {
   }
 
   return xml('message', { type: options.kind, to: options.to, id: options.id }, ...children);
+}
+
+// XEP-0308: the new full body plus a `<replace/>` naming the original by the
+// sender-generated id. Mentions are rebuilt from the new text, as on a send.
+export function buildCorrection(options: {
+  id: string;
+  to: string;
+  kind: ChatKind;
+  originalId: string;
+  text: string;
+  mentions?: MentionInput[] | undefined;
+}): XmppElement {
+  const children: XmppElement[] = [
+    xml('body', {}, options.text),
+    xml('replace', { xmlns: CORRECTION_NAMESPACE, id: options.originalId }),
+  ];
+  pushMentionReferences(children, options.text, options.mentions);
+  return xml('message', { type: options.kind, to: options.to, id: options.id }, ...children);
+}
+
+/** The fallback body a peer without XEP-0424 support sees on a retraction. */
+export const RETRACTION_FALLBACK_BODY =
+  "This person attempted to retract a previous message, but it's unsupported by your client.";
+
+// XEP-0424: a `<retract/>` naming the target, a fallback, and the store hint so
+// the server archives it in MAM.
+export function buildRetraction(options: {
+  id: string;
+  to: string;
+  kind: ChatKind;
+  targetId: string;
+}): XmppElement {
+  return xml(
+    'message',
+    { type: options.kind, to: options.to, id: options.id },
+    xml('retract', { xmlns: RETRACTION_NAMESPACE, id: options.targetId }),
+    xml('fallback', { xmlns: FALLBACK_NAMESPACE, for: RETRACTION_NAMESPACE }),
+    xml('body', {}, RETRACTION_FALLBACK_BODY),
+    xml('store', { xmlns: HINTS_NAMESPACE }),
+  );
+}
+
+// Shared mention builder for a send and an edit: a range that does not
+// describe a real slice of the body is dropped rather than written broken.
+function pushMentionReferences(
+  children: XmppElement[],
+  text: string,
+  mentions: MentionInput[] | undefined,
+): void {
+  let written = 0;
+  for (const mention of mentions ?? []) {
+    if (written >= MAX_MENTIONS) break;
+    if (
+      !Number.isInteger(mention.begin) ||
+      !Number.isInteger(mention.end) ||
+      mention.begin < 0 ||
+      mention.begin >= mention.end ||
+      mention.end > text.length
+    ) {
+      continue;
+    }
+    children.push(
+      xml('reference', {
+        xmlns: REFERENCE_NAMESPACE,
+        type: 'mention',
+        uri: `xmpp:${mention.jid}`,
+        begin: String(codePointOffset(text, mention.begin)),
+        end: String(codePointOffset(text, mention.end)),
+      }),
+    );
+    written += 1;
+  }
 }
 
 export function buildTyping(options: {
@@ -742,6 +819,33 @@ export function parseReactions(stanza: XmppElement): MessageReactions | undefine
   return { targetId, emojis };
 }
 
+// XEP-0308: a `<replace/>` names the corrected message by its sender-generated
+// id. A missing or empty id is ignored.
+export function parseCorrection(stanza: XmppElement): MessageCorrection | undefined {
+  const replace = stanza.getChild('replace', CORRECTION_NAMESPACE);
+  const targetId = replace?.attrs['id'];
+  if (replace === undefined || targetId === undefined || targetId === '') return undefined;
+  return { targetId };
+}
+
+// XEP-0424: a `<retract/>` names the retracted message. A missing or empty id
+// is ignored. The retraction's fallback body is never a message body.
+export function parseRetraction(stanza: XmppElement): MessageRetraction | undefined {
+  const retract = stanza.getChild('retract', RETRACTION_NAMESPACE);
+  const targetId = retract?.attrs['id'];
+  if (retract === undefined || targetId === undefined || targetId === '') return undefined;
+  return { targetId };
+}
+
+// The id the sender generated: its `<origin-id/>` (XEP-0359) when present, else
+// the stanza's `id` attribute. Used to name the original in an edit.
+export function originIdOf(stanza: XmppElement): string | undefined {
+  const origin = stanza.getChild('origin-id', STANZA_ID_NAMESPACE)?.attrs['id'];
+  if (origin !== undefined && origin !== '') return origin;
+  const id = stanza.attrs['id'];
+  return id === undefined || id === '' ? undefined : id;
+}
+
 export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): DecodedStanza {
   const envelope = unwrapMessage(stanza);
   const inner = envelope.inner;
@@ -765,8 +869,14 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
   });
   const chatJid = conversationJid(inner, from, kind, ctx.me);
 
+  const correction = parseCorrection(inner);
+  const retraction = parseRetraction(inner);
+
   const bodyElement = inner.getChild('body');
-  const body = bodyElement === undefined ? undefined : capBody(bodyElement.text());
+  // A retraction carries a fallback body for clients without XEP-0424 support:
+  // it is not this message's text, so it is dropped.
+  const body =
+    retraction !== undefined || bodyElement === undefined ? undefined : capBody(bodyElement.text());
 
   const agent = inner.getChild('agent', AGENT_NAMESPACE);
   let payload: Payload | undefined;
@@ -779,7 +889,13 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
 
   const reactions = parseReactions(inner);
 
-  if (body !== undefined || payload !== undefined || reactions !== undefined) {
+  if (
+    body !== undefined ||
+    payload !== undefined ||
+    reactions !== undefined ||
+    correction !== undefined ||
+    retraction !== undefined
+  ) {
     const message: ChatMessage = {
       id: messageId(inner, envelope.archiveId, kind, chatJid, ctx.me),
       chatJid,
@@ -789,10 +905,14 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
       timestamp: timestamp(inner, envelope.forwardedDelay, ctx),
       outgoing: sender.outgoing,
     };
+    const originId = originIdOf(inner);
+    if (originId !== undefined) message.originId = originId;
     if (sender.occupantId !== undefined) message.occupantId = sender.occupantId;
     if (body !== undefined) message.body = body;
     if (payload !== undefined) message.payload = payload;
     if (reactions !== undefined) message.reactions = reactions;
+    if (correction !== undefined) message.correction = correction;
+    if (retraction !== undefined) message.retraction = retraction;
     if (kind === 'groupchat') {
       const nick = fromNick(inner, from, kind);
       if (nick !== undefined) message.fromNick = nick;

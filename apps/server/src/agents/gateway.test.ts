@@ -146,6 +146,18 @@ class FakeCore implements XmppCore {
     return { id: `sent-${this.sent.length}` };
   }
 
+  sendReactions(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  sendCorrection(): Promise<{ id: string }> {
+    return Promise.resolve({ id: 'sent-edit' });
+  }
+
+  sendRetraction(): Promise<void> {
+    return Promise.resolve();
+  }
+
   async loadHistory(
     _chatJid: string,
     _kind: ChatKind,
@@ -835,6 +847,20 @@ describe('agent gateway', () => {
       core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello without history'));
       await waitFor(() => calls.length === 1);
       expect(core.sent).toEqual([{ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' }]);
+    });
+
+    it('starts no turn for an edit to the AI in a DM', async () => {
+      const { seeded, core, calls } = await answeredSetup();
+      // A correction that @mentions nothing is a normal body for older
+      // clients; only the guard keeps the gateway from answering it.
+      const edit = incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'edited question');
+      edit.correction = { targetId: 'm-1' };
+      core.receive(edit);
+
+      await tick(150);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+      expect(core.typing).toHaveLength(0);
     });
   });
 
@@ -2080,6 +2106,23 @@ describe('agent gateway', () => {
       expect(calls).toHaveLength(0);
       expect(core.sent).toHaveLength(0);
       expect(seeded.aiJid).toContain('ai-');
+    });
+
+    it('starts no turn for a retraction in a room, even with a mention', async () => {
+      const { seeded, member, roomJid, core, calls } = await roomSetup();
+      // It mentions the AI and carries a body (the retraction fallback): only
+      // the guard keeps the gateway from answering it.
+      const retraction = roomMessage(roomJid, member.jid, 'm-1', 'fallback text', {
+        nick: 'Ana',
+        mentions: [seeded.aiJid],
+      });
+      retraction.retraction = { targetId: 'm-0' };
+      core.receive(retraction);
+
+      await tick(150);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+      expect(core.typing).toHaveLength(0);
     });
 
     it('makes no turn for another AI sender', async () => {

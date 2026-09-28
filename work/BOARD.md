@@ -8,9 +8,11 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0061](T-0061-edit-delete-web.md) | Edit + delete for everyone (web): XEP-0308, XEP-0424, edit bar, tombstones; gateway ignores both | in progress | deepseek-v4.1-flash | T-0059 | Same files as T-0059, so it runs after. |
 | [T-0064](T-0064-mobile-markdown.md) | Mobile renders Markdown in AI replies (own parser, safe subset, plain list previews) | in progress | deepseek-v4.1-flash | T-0056 | Mobile slot (80/20). |
 | [T-0067](T-0067-mobile-loading-states.md) | Mobile loading ≠ empty: skeletons, inline errors with Retry, pending open flushed on ready (port of T-0042) | in progress | deepseek-v4.1-flash | T-0056 | Mobile slot (80/20). |
+| [T-0065](T-0065-attachments-web.md) | Attachments on web: images and files via XEP-0363 + `attachment` payload, preview bar, paste/drop, image and file bubbles, retry | in progress | deepseek-v4.1-flash | T-0061 | MVP list item (plan §21). |
+| [T-0066](T-0066-budget-warning.md) | AI budget warning at 80% (daily and 30-day), one notice per chat per UTC day, after the reply | in progress | muse-spark-1.3-contributor | T-0058, T-0061 | Plan §8.4. |
+| [T-0068](T-0068-machines-registry.md) | Machines registry (M3, server): pairing codes, runner registration with proof of key possession, approve/deny/revoke, durable key registry | in progress | muse-spark-1.3-contributor | T-0008 | First M3 slice. Next: web Machines page, tunnel hub, runner app. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -92,3 +94,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0060](T-0060-web-qa-sweep.md) | Web QA sweep: prioritized bug list + screenshots, no code changes | 2026-09-28 |
 | [T-0062](T-0062-web-qa-fixes.md) | Esc closes every menu/dialog, reduced motion covers skeleton/spinner/retry-spinner, focus ring + id/name + disabled Approve/Deny polish | 2026-09-28 |
 | [T-0063](T-0063-mobile-mock-gating.md) | Mobile: ?mock= honored only in dev builds or with EXPO_PUBLIC_GALENA_MOCK (chat store + My AIs), one shared gate | 2026-09-28 |
+| [T-0061](T-0061-edit-delete-web.md) | Edit + delete for everyone (web): XEP-0308 corrections, XEP-0424 retractions, edit bar, tombstones, sender-only authorization; live-verified against ejabberd incl. MAM | 2026-09-28 |

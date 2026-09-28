@@ -1,7 +1,7 @@
 ---
 id: T-0066
 title: AI budget warning at 80% (daily and 30-day window) — one fixed notice per chat, sent with the turn that crossed it
-status: planned
+status: todo
 milestone: M2
 branch: task/T-0066-budget-warning
 model: opencode-go/muse-spark-1.3-contributor

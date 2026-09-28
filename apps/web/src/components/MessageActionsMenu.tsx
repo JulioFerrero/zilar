@@ -4,8 +4,14 @@ import { cn } from '@/lib/utils';
 
 export interface MessageActionsMenuProps {
   canCopy: boolean;
+  /** True when the message can be edited (my own text message under 48 h). */
+  canEdit: boolean;
+  /** True when the message can be deleted for everyone (my own message). */
+  canDelete: boolean;
   onReply: () => void;
   onCopy: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
   onReact: (emoji: string) => void;
   onClose: () => void;
   /** Which bubble edge the menu hangs from; incoming bubbles align left. */
@@ -14,11 +20,15 @@ export interface MessageActionsMenuProps {
 
 const ITEM_CLASS = 'flex w-full items-center px-3 py-2 text-left text-[15px]';
 
-/** Reply / Copy / Delete menu for a message bubble, opened by right-click or the ⋯ button. */
+/** Reaction bar / Reply / Edit / Copy / Delete menu for a message bubble. */
 export function MessageActionsMenu({
   canCopy,
+  canEdit,
+  canDelete,
   onReply,
   onCopy,
+  onEdit,
+  onDelete,
   onReact,
   onClose,
   align = 'right',
@@ -78,6 +88,19 @@ export function MessageActionsMenu({
         >
           Reply
         </button>
+        {canEdit && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={onEdit}
+            className={cn(
+              ITEM_CLASS,
+              'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
+            )}
+          >
+            Edit
+          </button>
+        )}
         <button
           type="button"
           role="menuitem"
@@ -90,8 +113,17 @@ export function MessageActionsMenu({
         >
           Copy text
         </button>
-        <button type="button" role="menuitem" disabled className={cn(ITEM_CLASS, 'opacity-50')}>
-          Delete
+        <button
+          type="button"
+          role="menuitem"
+          disabled={!canDelete}
+          onClick={onDelete}
+          className={cn(
+            ITEM_CLASS,
+            'text-danger hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none disabled:opacity-50',
+          )}
+        >
+          Delete for everyone
         </button>
       </div>
     </>
