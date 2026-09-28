@@ -1,7 +1,7 @@
 ---
 id: T-0039
 title: Web — quick "New AI" dialog (one screen, safe defaults) and an AI side panel in the chat, replacing the 6-step wizard and the edit page
-status: review
+status: merged
 milestone: M2
 branch: task/T-0039-quick-create-ai
 model: opencode-go/deepseek-v4.1-flash
@@ -321,3 +321,26 @@ Nothing blocked. Two questions for the review:
    (a server change, out of my Allowed files), or we keep it read-only.
 
 ## Review (written by Claude)
+
+### Round 1: approved
+
+A Muse pre-review found no defects. It checked:
+- the contract body;
+- persona omission;
+- PATCH with only the changed fields;
+- the double-submit guard;
+- the cross-user "no longer exists" state;
+- scope (the wizard, `WizardSteps`, `TemplateCards` and `/settings/ais/new` are fully removed).
+
+Two disclosed deviations, both accepted:
+- **The default template is Dev, not Custom.** Custom needs a persona, which would break the one-screen name → Create path. That was a mistake in the spec.
+- **The panel's model is read-only.** The server's `UpdateAiSchema` is `.strict()` over name, persona and limits, so a model PATCH returns 400. Also a spec mistake. Changing an AI's model means re-registering its LiteLLM model, which is a server follow-up.
+
+The suggestion-bug cause in the Report (connection id instead of provider) was real, but it was fixed in T-0032 round 2. It doesn't match Julio's live symptom: his screenshot showed the DeepSeek placeholder and DeepSeek suggestions, yet clicking one set nothing. `ModelPicker` survives, and a test now proves that a click sets the input in jsdom. The live check with Julio in Chrome will confirm it. If it still fails there, reopen it as a browser-specific bug (e.g. the `<datalist>` popup intercepting the click).
+
+Nit, not fixed: the create and update tests don't assert the URL.
+
+Lead re-ran every check after rebasing onto main:
+- format:check, lint, typecheck (9/9) and build pass;
+- `turbo test --force --filter=@galena/web`: 128/128.
+
