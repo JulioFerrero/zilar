@@ -1,7 +1,7 @@
 ---
 id: T-0055
 title: "AIs in groups (web): group info panel with members and AIs, add or remove my AI, AIs in the @ picker, AI replies rendered as AI"
-status: planned
+status: review
 milestone: M2
 branch: task/T-0055-ai-in-groups-web
 model: opencode-go/deepseek-v4.1-flash
@@ -108,5 +108,158 @@ pnpm build
 - Streaming drafts in groups.
 
 ## Report (written by the worker when done)
+
+### Summary
+
+Implemented the web side of "AIs in groups": a group info panel (members and
+AIs, add my AI, remove an AI), the store plumbing behind it, AIs in the `@`
+picker, and AI replies in a group rendered with the `AI` badge and Markdown.
+Mock data and eight screenshots come with it. Every Check passes and only the
+Allowed files changed.
+
+### What I did
+
+**1. chat-core — `shouldRenderMarkdown` (markdown.ts).** An incoming message
+renders as Markdown when: it is in an AI chat (unchanged), **or** it is a group
+message whose sender is an AI (`ai-` localpart). Your own message and a human
+group message stay plain. The `ai-` check is a small private helper in the file.
+
+**2. API (`lib/api.ts`).** `groupDetailSchema` now carries
+`ais: [{ aiId, jid, name, ownerId }]` (the T-0054 detail shape). Added
+`addGroupAi(groupId, aiId)` → `POST /groups/:id/ais` and
+`removeGroupAi(groupId, aiId)` → `DELETE /groups/:id/ais/:aiId`, both returning
+the fresh `GroupDetail`.
+
+**3. Store (`store.ts`, `realStore.ts`).** New members on `ChatStore`:
+- `groupInfo(chatId)` — the cached group detail (people + AIs);
+- `refreshGroupInfo(chatId)` — reloads it (the panel calls this on open);
+- `addGroupAi(chatId, aiId)` / `removeGroupAi(chatId, aiId)` — call the API and
+  refresh both the detail and the mention members; they reject so the panel can
+  show the error inline;
+- `listMyAis()` — the AIs the user owns, for the add picker.
+
+The real store caches the whole `GroupDetail` per chat and rebuilds the mention
+member map from it, so **`groupMembers` now includes the group's AIs** (their
+real `ai-<id>@<domain>` JID and name). The AI name therefore comes from `ais`,
+which is what "messages from an AI get the AI's name (from `ais`)" asked for.
+The mock store seeds `groupInfos` from the new mock groups and mutates them on
+add/remove, so the panel is fully usable in `?mock=1`.
+
+**4. Group panel (`components/GroupPanel.tsx`, new).** A right side panel on
+wide screens, full screen on narrow ones, opened with `?panel=group`. It shows
+the title + member count, the members (owner/admin role pills), then the AIs
+(avatar, name + `AI` badge, "Added by <owner>", a `Remove` outline button). The
+**Add my AI** primary button appears only for an owner/admin who owns at least
+one active AI that is not already in the group; it opens a small picker of those
+AIs. Remove has a two-step inline confirm. Errors show inline; pending states
+disable the buttons. Esc closes (document capture phase so it beats ChatShell's
+narrow-layout window handler), and on narrow layouts a Tab focus trap keeps focus
+inside the panel.
+
+**5. Header / route wiring (`ChatHeader.tsx`, `ChatView.tsx`).** In a group the
+header title and the Chat menu button open the panel; the AI DM wiring is
+unchanged. `ChatView` reads `?panel=ai`/`?panel=group` on mount.
+
+**6. Bubbles (`MessageBubble.tsx`).** In a group, an AI sender's name now shows
+the small `AI` badge next to it. Markdown for those replies comes from the
+extended `shouldRenderMarkdown`. `MentionPicker.tsx` needed no change: it
+already derives the badge from the JID.
+
+**7. Mock (`mock/**`).** New `mock/groups.ts` with the detail (people + AIs) of
+every mock group and the owned AIs; `mock/members.ts` now derives from it; one
+AI Markdown reply was added to `Dev team` (before `Tests pass. Merge?`, which
+several existing tests assert as the last message).
+
+### AI-sender flag: the choice
+
+`packages/chat-core/src/types.ts` is **not** in the Allowed files, so I could not
+add a `UiMessage.senderIsAi` field. I used the spec's alternative, "a lookup the
+bubble can use": AI-ness comes from the sender's `ai-` JID. `MessageBubble`
+reuses the existing `isAiMentionJid` helper from `MentionPicker`, and
+`shouldRenderMarkdown` has its own private copy (no cross-package import). The
+store test asserts both halves for a group AI message: `senderName` is the name
+from `ais` and `senderId` is the `ai-...` JID (the flag).
+
+### Files changed (all Allowed)
+
+Modified: `packages/chat-core/src/{markdown.ts,markdown.test.ts}`,
+`apps/web/src/lib/api.ts`,
+`apps/web/src/store/{store.ts,realStore.ts,realStore.test.ts,reload.test.tsx}`,
+`apps/web/src/components/{ChatHeader.tsx,MessageBubble.tsx}`,
+`apps/web/src/routes/ChatView.tsx`,
+`apps/web/src/mock/{index.ts,members.ts,messages.ts}`,
+`work/T-0055-ai-in-groups-web.md`.
+New: `apps/web/src/components/{GroupPanel.tsx,GroupPanel.test.tsx,MentionPicker.test.tsx}`,
+`apps/web/src/mock/groups.ts`, `work/screenshots/T-0055/*`.
+
+### Commands and real results
+
+```
+pnpm install
+# Already up to date; Done in 840ms using pnpm v10.32.1
+
+pnpm format:check
+# All matched files use Prettier code style!
+
+pnpm lint
+# (no output) exit 0
+
+pnpm typecheck
+# Tasks: 9 successful, 9 total
+
+pnpm exec turbo test --force --filter=@galena/chat-core --filter=@galena/web
+# chat-core: 7 files passed, 97 passed (97)   [markdown.test.ts +2 cases]
+# web:       37 files passed, 268 passed (268) [GroupPanel 8, MentionPicker 1,
+#            realStore +4; +6 files over T-0053's 246/248]
+# Tasks: 2 successful, 2 total
+
+pnpm build
+# Tasks: 2 successful, 2 total
+```
+
+### Visual check (mock mode, `?mock=1`)
+
+`GALENA_API_URL` pointed at a throwaway Python server (in the approved temp
+dir, not committed) that answers `/api/auth/get-session`, so the app
+authenticates and the mock store is used; this worktree's Vite ran on
+`localhost:5242`. Both were stopped afterwards. Eight PNGs at 1440×900 and
+390×844 are in `work/screenshots/T-0055/`:
+
+- `group-panel-1440x900.png` / `group-panel-390x844.png` — "Dev team",
+  "6 members", You (owner), Ana (admin), Luis, Marco; Dev-1 and QA-1 with the
+  `AI` badge and "Added by You"; the **Add my AI** key.
+- `add-ai-picker-1440x900.png` / `add-ai-picker-390x844.png` — the picker with
+  the two eligible AIs, Marketing AI and Researcher (Dev-1/QA-1 are correctly
+  excluded as already in the group), each with the badge.
+- `mention-picker-1440x900.png` / `mention-picker-390x844.png` — typing `@`
+  opens the picker with Ana, Luis, Marco and the AI rows Dev-1 and QA-1, badged.
+- `ai-markdown-reply-1440x900.png` / `ai-markdown-reply-390x844.png` — Dev-1's
+  reply with the `AI` badge and rendering Markdown (heading, bold, inline code,
+  bullet list).
+
+### Deviations
+
+- **The panel is store-driven** (`store.groupInfo`, `store.listMyAis`,
+  `store.addGroupAi`, `store.removeGroupAi`) instead of calling `listAis` and the
+  API functions directly as `AiPanel` does. That is what makes the panel work in
+  `?mock=1` (there is no mock fetch layer), and it keeps the visual check
+  honest. The real store does the actual API calls; the store tests pin them.
+- Two new test files: `GroupPanel.test.tsx` and `MentionPicker.test.tsx` (the
+  spec asks for a MentionPicker badge test and there was no MentionPicker test).
+- `MentionPicker.tsx` itself is unchanged: it already badges rows from the JID,
+  and the store now feeds it AI members.
+- Mock groups use the fixed `galena.test` domain (as the previous mock members
+  did); the real store builds JIDs from the signed-in user's domain.
+- The mock group member lists do not match every `mockChats.memberCount` (that
+  mismatch predates this task); the panel counts from the loaded detail.
+
+### Open questions / notes
+
+- If the group detail request fails in the real store, the panel stays on
+  "Loading…". A retry/error state could be a later touch, but it is outside the
+  spec's error list (which is about add/remove).
+- `memberCount` on the chat list still counts people only (T-0054's server
+  leaves `listGroupsForUser` unchanged), so the header subtitle and the panel's
+  "N members" can differ by the AI count. The panel counts people + AIs.
 
 ## Review (written by Claude)

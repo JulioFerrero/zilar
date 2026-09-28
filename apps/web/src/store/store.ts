@@ -7,15 +7,17 @@ import type {
   UiMessage,
 } from '@galena/chat-core';
 import { mentionsForTrimmedText } from '@galena/chat-core';
-import type { Contact, Me } from '@/lib/api';
+import type { Contact, GroupDetail, Me, PublicAi } from '@/lib/api';
 import { sampleVoiceDataUrl } from '@/lib/voice';
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
 import {
   currentUserId as defaultCurrentUserId,
   mockChats,
+  mockGroupDetails,
   mockGroupMembers,
   mockMessages,
+  mockOwnedAis,
 } from '@/mock';
 
 export type FolderId = 'all' | 'personal' | 'ais' | 'work';
@@ -74,6 +76,16 @@ export interface ChatStore {
   messages: (chatId: string) => UiMessage[];
   /** Members of a group chat, loaded from the server on open; empty for DMs. */
   groupMembers: (chatId: string) => MentionMember[];
+  /** A group's people and AIs, for the info panel; undefined until loaded. */
+  groupInfo: (chatId: string) => GroupDetail | undefined;
+  /** Reloads a group's people and AIs (the info panel refreshes when it opens). */
+  refreshGroupInfo: (chatId: string) => void;
+  /** Adds one of my AIs to the group and refreshes. Rejects on failure. */
+  addGroupAi: (chatId: string, aiId: string) => Promise<void>;
+  /** Removes an AI from the group and refreshes. Rejects on failure. */
+  removeGroupAi: (chatId: string, aiId: string) => Promise<void>;
+  /** The AIs I own, for the group panel's add picker. */
+  listMyAis: () => Promise<PublicAi[]>;
   typing: Record<string, TypingState>;
   /**
    * Live AI reply drafts by chat id (the AI's bare JID), from
@@ -106,6 +118,8 @@ export type ChatStoreState = ChatStore & {
   messagesByChat: Record<string, UiMessage[]>;
   activeChatId: string | undefined;
   historyComplete: Record<string, boolean>;
+  /** Group details (people + AIs) by chat id, for the info panel. */
+  groupInfos: Record<string, GroupDetail>;
 };
 
 export interface ChatStoreSeed {
@@ -117,6 +131,10 @@ export interface ChatStoreSeed {
   contacts?: Contact[];
   chats?: ChatSummary[];
   messagesByChat?: Record<string, UiMessage[]>;
+  /** Group details for the mock store; falls back to the bundled mock groups. */
+  groupInfos?: Record<string, GroupDetail>;
+  /** The AIs the mock user owns, for the add picker; falls back to the bundle. */
+  ownedAis?: PublicAi[];
 }
 
 function cloneMessages(source: Record<string, UiMessage[]>): Record<string, UiMessage[]> {
@@ -141,6 +159,18 @@ function withLastMessage(chats: ChatSummary[], chatId: string, message: UiMessag
   return chats.map((chat) =>
     chat.id === chatId ? { ...chat, lastMessage: message, unread: 0 } : chat,
   );
+}
+
+// The people and AIs of a group as mention members. The mock domain is fixed;
+// the real store builds each JID from the signed-in user's domain.
+function mentionMembersFor(detail: GroupDetail): MentionMember[] {
+  return [
+    ...detail.members.map((member) => ({
+      jid: `${member.userId.toLowerCase()}@galena.test`,
+      name: member.name,
+    })),
+    ...detail.ais.map((ai) => ({ jid: ai.jid, name: ai.name })),
+  ];
 }
 
 const TYPING_START_MS = 2000;
@@ -192,6 +222,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
     // The mock user's JID, so mention matching and the picker's "not me" filter
     // work in mock mode exactly as they do against the real store.
     const meUserId = seed.currentUserId ?? defaultCurrentUserId;
+    const ownedAis = seed.ownedAis ?? mockOwnedAis;
 
     return {
       currentUserId: meUserId,
@@ -216,13 +247,58 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       messagesByChat: cloneMessages(seed.messagesByChat ?? mockMessages),
       activeChatId: undefined,
       historyComplete: {},
+      groupInfos: { ...(seed.groupInfos ?? mockGroupDetails) },
       search: '',
       activeFolder: 'all',
       typing: {},
       drafts: {},
       finishedDraftMessages: {},
       messages: (chatId) => get().messagesByChat[chatId] ?? [],
-      groupMembers: (chatId) => mockGroupMembers[chatId] ?? [],
+      groupMembers: (chatId) => {
+        const detail = get().groupInfos[chatId];
+        return detail === undefined ? (mockGroupMembers[chatId] ?? []) : mentionMembersFor(detail);
+      },
+      groupInfo: (chatId) => get().groupInfos[chatId],
+      refreshGroupInfo: () => {},
+      listMyAis: async () => ownedAis,
+      addGroupAi: async (chatId, aiId) => {
+        const ai = ownedAis.find((item) => item.id === aiId);
+        if (ai === undefined) {
+          throw new Error('That AI no longer exists.');
+        }
+        set((state) => {
+          const detail = state.groupInfos[chatId];
+          if (detail === undefined || detail.ais.some((item) => item.aiId === aiId)) {
+            return state;
+          }
+          return {
+            groupInfos: {
+              ...state.groupInfos,
+              [chatId]: {
+                ...detail,
+                ais: [
+                  ...detail.ais,
+                  { aiId: ai.id, jid: ai.jid, name: ai.name, ownerId: get().currentUserId },
+                ],
+              },
+            },
+          };
+        });
+      },
+      removeGroupAi: async (chatId, aiId) => {
+        set((state) => {
+          const detail = state.groupInfos[chatId];
+          if (detail === undefined || !detail.ais.some((item) => item.aiId === aiId)) {
+            return state;
+          }
+          return {
+            groupInfos: {
+              ...state.groupInfos,
+              [chatId]: { ...detail, ais: detail.ais.filter((item) => item.aiId !== aiId) },
+            },
+          };
+        });
+      },
       openChat: (chatId) =>
         set((state) => ({
           activeChatId: chatId,

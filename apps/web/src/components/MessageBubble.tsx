@@ -8,10 +8,12 @@ import {
 } from '@galena/chat-core';
 import { MoreHorizontal } from 'lucide-react';
 import { useState } from 'react';
+import { AiBadge } from './AiBadge';
 import { ApprovalCard } from './ApprovalCard';
 import { Avatar } from './Avatar';
 import { ImageMessage } from './ImageMessage';
 import { LinkText } from './LinkText';
+import { isAiMentionJid } from './MentionPicker';
 import { MarkdownText } from './MarkdownText';
 import { MessageActionsMenu } from './MessageActionsMenu';
 import { MessageTicks } from './MessageTicks';
@@ -164,6 +166,9 @@ export function MessageBubble({
   // A big-emoji message is shown without its bubble, so the sender name would
   // float on its own; Telegram shows only the avatar in that case.
   const showSender = !own && chat.kind === 'group' && firstInGroup && !bigEmoji;
+  // In a group, an incoming AI reply (recognisable from its `ai-` JID) carries
+  // the small AI badge next to its name (T-0055).
+  const senderIsAi = showSender && isAiMentionJid(message.senderId);
   const imageOnly =
     message.image !== undefined &&
     !hasText &&
@@ -216,10 +221,11 @@ export function MessageBubble({
       >
         {showSender && (
           <div
-            className="px-3 pt-2 text-[14px] leading-5 font-semibold"
+            className="flex items-center gap-1.5 px-3 pt-2 text-[14px] leading-5 font-semibold"
             style={{ color: senderColor(message.senderId) }}
           >
-            {message.senderName}
+            <span className="truncate">{message.senderName}</span>
+            {senderIsAi && <AiBadge />}
           </div>
         )}
 

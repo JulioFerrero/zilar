@@ -1,16 +1,32 @@
 import type { ChatSummary, UiMessage } from './types';
 
+// Our AIs are provisioned with an `ai-` localpart (`ai-<aiId>@<domain>`), so an
+// AI sender is recognisable from its bare JID. Kept local: only this rule needs
+// it, and the web app derives the same flag from the same JID.
+function isAiSenderId(senderId: string): boolean {
+  const bare = (senderId.split('/')[0] ?? senderId).split('?')[0] ?? senderId;
+  const localpart = bare.split('@')[0] ?? bare;
+  return localpart.startsWith('ai-');
+}
+
 /**
- * Whether a message's text is rendered as Markdown. Only incoming messages in
- * AI chats qualify: a human DM, a group, or your own message always stays
- * plain text, even when it contains `**`, `` ` `` or `#`.
+ * Whether a message's text is rendered as Markdown. Incoming messages in AI
+ * chats qualify, as do incoming AI replies in a group (T-0055). A human DM, a
+ * human group message, or your own message always stays plain text, even when
+ * it contains `**`, `` ` `` or `#`.
  */
 export function shouldRenderMarkdown(
   chat: ChatSummary,
   message: UiMessage,
   currentUserId: string,
 ): boolean {
-  return chat.isAI && message.senderId !== currentUserId;
+  if (message.senderId === currentUserId) {
+    return false;
+  }
+  if (chat.isAI) {
+    return true;
+  }
+  return chat.kind === 'group' && isAiSenderId(message.senderId);
 }
 
 const CODE_FENCE = /^\s*(```|~~~)/;

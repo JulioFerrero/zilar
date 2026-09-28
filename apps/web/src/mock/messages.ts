@@ -627,6 +627,23 @@ const devTeamMessages: UiMessage[] = [
     mentions: [{ jid: 'u-you@galena.test', name: 'You', begin: 0, end: 4 }],
   }),
   message({
+    id: 'dev-32',
+    chatId: 'c-devteam',
+    senderId: dev1.id,
+    senderName: dev1.name,
+    text: [
+      '## Checkout fix ready',
+      '',
+      'I pushed **PR #42** with a `safe-area` guard. Summary:',
+      '',
+      '- iOS 17: button reachable',
+      '- Android: unchanged',
+      '',
+      'Run it with `pnpm test:e2e`.',
+    ].join('\n'),
+    createdAt: atHour(0, 11, 1),
+  }),
+  message({
     id: 'dev-30',
     chatId: 'c-devteam',
     senderId: dev1.id,

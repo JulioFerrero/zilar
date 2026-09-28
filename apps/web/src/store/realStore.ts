@@ -20,6 +20,7 @@ import {
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
 import {
+  addGroupAi as addGroupAiRequest,
   createGroup as createGroupRequest,
   createInvite as createInviteRequest,
   getChats,
@@ -27,11 +28,14 @@ import {
   getGroup,
   getMe,
   getXmppToken,
+  listAis as listAisRequest,
+  removeGroupAi as removeGroupAiRequest,
   type ChatEntry,
   type Contact,
   type GroupDetail,
   type Invite,
   type Me,
+  type PublicAi,
   type XmppToken,
 } from '@/lib/api';
 import { authClient } from '@/lib/auth';
@@ -89,6 +93,9 @@ export interface ApiClient {
   getXmppToken(): Promise<XmppToken>;
   createGroup(input: { title: string; memberIds: string[] }): Promise<GroupDetail>;
   createInvite(): Promise<Invite>;
+  listAis(): Promise<PublicAi[]>;
+  addGroupAi(groupId: string, aiId: string): Promise<GroupDetail>;
+  removeGroupAi(groupId: string, aiId: string): Promise<GroupDetail>;
 }
 
 export interface StorageLike {
@@ -117,6 +124,9 @@ const realApi: ApiClient = {
   getXmppToken,
   createGroup: createGroupRequest,
   createInvite: createInviteRequest,
+  listAis: listAisRequest,
+  addGroupAi: addGroupAiRequest,
+  removeGroupAi: removeGroupAiRequest,
 };
 
 function readLastRead(storage: StorageLike | null, userId: string): Record<string, string> {
@@ -305,6 +315,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const groupIds = new Map<string, string>();
     // chatId -> (lowercased user id -> member)
     const groupMembers = new Map<string, Map<string, MentionMember>>();
+    // chatId -> the last group detail (people + AIs), for the info panel.
+    const groupInfos = new Map<string, GroupDetail>();
     const loadingGroupMembers = new Set<string>();
     const loadingOlder = new Set<string>();
     // First-page history loads currently in flight, by chat id.
@@ -518,11 +530,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    // Loads the member names of a group once per chat, so a typing indicator
+    // Loads the members of a group once per chat, so a typing indicator
     // or a message from a member who is not a contact can still show a name.
-    // The mention picker reads the same list.
-    async function ensureGroupMembers(chatId: string): Promise<void> {
-      if (groupMembers.has(chatId) || loadingGroupMembers.has(chatId)) {
+    // The mention picker and the group panel read the same list. The AIs the
+    // group holds (T-0054) ride along, keyed by their `ai-` localpart.
+    async function ensureGroupMembers(chatId: string, force = false): Promise<void> {
+      if (loadingGroupMembers.has(chatId)) {
+        return;
+      }
+      if (!force && groupInfos.has(chatId)) {
         return;
       }
       const groupId = groupIds.get(chatId);
@@ -530,25 +546,33 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (groupId === undefined || mine === undefined) {
         return;
       }
-      const at = mine.indexOf('@');
-      if (at === -1) {
-        return;
-      }
-      const domain = mine.slice(at + 1);
+      const domain = mine.slice(mine.indexOf('@') + 1);
       loadingGroupMembers.add(chatId);
       try {
         const detail = await api.getGroup(groupId);
-        const members = new Map<string, MentionMember>();
-        for (const member of detail.members) {
-          const localpart = member.userId.toLowerCase();
-          members.set(localpart, { jid: `${localpart}@${domain}`, name: member.name });
-        }
-        groupMembers.set(chatId, members);
+        applyGroupDetail(chatId, detail, domain);
       } catch {
         // The name falls back to the occupant nick or "Someone".
       } finally {
         loadingGroupMembers.delete(chatId);
       }
+    }
+
+    // Caches a group detail and rebuilds the mention members from it, so the
+    // picker and the panel agree after a load, an add or a remove.
+    function applyGroupDetail(chatId: string, detail: GroupDetail, domain: string): void {
+      const members = new Map<string, MentionMember>();
+      for (const member of detail.members) {
+        const localpart = member.userId.toLowerCase();
+        members.set(localpart, { jid: `${localpart}@${domain}`, name: member.name });
+      }
+      for (const ai of detail.ais) {
+        const localpart = (ai.jid.split('@')[0] ?? ai.jid).toLowerCase();
+        members.set(localpart, { jid: ai.jid, name: ai.name });
+      }
+      groupMembers.set(chatId, members);
+      groupInfos.set(chatId, detail);
+      set((state) => ({ groupInfos: { ...state.groupInfos, [chatId]: detail } }));
     }
 
     // Maps the usable mentions of a message to names: the known group member,
@@ -1325,6 +1349,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       messagesByChat: {},
       activeChatId: undefined,
       historyComplete: {},
+      groupInfos: {},
       search: '',
       activeFolder: 'all',
       typing: {},
@@ -1332,6 +1357,31 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       finishedDraftMessages: {},
       messages: (chatId) => get().messagesByChat[chatId] ?? [],
       groupMembers: (chatId) => [...(groupMembers.get(chatId)?.values() ?? [])],
+      groupInfo: (chatId) => get().groupInfos[chatId],
+      refreshGroupInfo: (chatId) => {
+        void ensureGroupMembers(chatId, true);
+      },
+      listMyAis: () => api.listAis(),
+      addGroupAi: async (chatId, aiId) => {
+        const groupId = groupIds.get(chatId);
+        const mine = myJid();
+        if (groupId === undefined || mine === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const domain = mine.slice(mine.indexOf('@') + 1);
+        const detail = await api.addGroupAi(groupId, aiId);
+        applyGroupDetail(chatId, detail, domain);
+      },
+      removeGroupAi: async (chatId, aiId) => {
+        const groupId = groupIds.get(chatId);
+        const mine = myJid();
+        if (groupId === undefined || mine === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const domain = mine.slice(mine.indexOf('@') + 1);
+        const detail = await api.removeGroupAi(groupId, aiId);
+        applyGroupDetail(chatId, detail, domain);
+      },
       hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
       openChat: (chatId) => {
         set({ activeChatId: chatId });
@@ -1533,12 +1583,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           messagesByChat: {},
           activeChatId: undefined,
           historyComplete: {},
+          groupInfos: {},
           typing: {},
           drafts: {},
           finishedDraftMessages: {},
           search: '',
           activeFolder: 'all',
         });
+        groupMembers.clear();
+        groupInfos.clear();
         try {
           await authClient.signOut();
         } catch {

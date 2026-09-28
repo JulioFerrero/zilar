@@ -34,7 +34,13 @@ function fakeApi(): ApiClient {
       { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
     ]),
     getContacts: vi.fn(async () => [{ userId: 'u-ana', name: 'Ana', jid: 'ana@galena.test' }]),
-    getGroup: vi.fn(async () => ({ id: 'g1', title: 'Team', createdBy: 'u-me', members: [] })),
+    getGroup: vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [],
+      ais: [],
+    })),
     getXmppToken: vi.fn(async () => ({
       jid: 'me@galena.test',
       token: 'tok',
@@ -48,8 +54,24 @@ function fakeApi(): ApiClient {
       title: 'New',
       createdBy: 'u-me',
       members: [],
+      ais: [],
     })),
     createInvite: vi.fn(async () => ({ code: 'c', url: 'http://x/invite/c' })),
+    listAis: vi.fn(async () => []),
+    addGroupAi: vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [],
+      ais: [],
+    })),
+    removeGroupAi: vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [],
+      ais: [],
+    })),
   };
 }
 

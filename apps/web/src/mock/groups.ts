@@ -1,0 +1,94 @@
+import type { GroupAi, GroupDetail, GroupMember, PublicAi } from '@/lib/api';
+
+const DOMAIN = 'galena.test';
+const OWNER = 'u-you';
+
+function member(userId: string, name: string, role: GroupMember['role']): GroupMember {
+  return { userId, name, role };
+}
+
+// AIs are provisioned as `ai-<aiId>`; the id is the localpart without the
+// `ai-` prefix, so `dev-1` becomes `ai-dev-1@galena.test`.
+function ai(aiId: string, name: string, ownerId: string): GroupAi {
+  return { aiId, jid: `ai-${aiId}@${DOMAIN}`, name, ownerId };
+}
+
+function ownedAi(id: string, name: string, template: PublicAi['template']): PublicAi {
+  return {
+    id,
+    name,
+    template,
+    persona: `${name} is a helpful assistant.`,
+    model: 'gpt-4o',
+    jid: `ai-${id}@${DOMAIN}`,
+    status: 'active',
+    providerConnectionId: 'conn-mock',
+    limits: { perDayUsd: 2, perMonthUsd: 20 },
+    createdAt: '2026-09-20T10:00:00.000Z',
+  };
+}
+
+/** The group detail (people + AIs) of every mock group, keyed by chat id. */
+export const mockGroupDetails: Record<string, GroupDetail> = {
+  'c-devteam': {
+    id: 'g-devteam',
+    title: 'Dev team',
+    createdBy: OWNER,
+    members: [
+      member('u-you', 'You', 'owner'),
+      member('u-ana', 'Ana', 'admin'),
+      member('u-luis', 'Luis', 'member'),
+      member('u-marco', 'Marco', 'member'),
+    ],
+    ais: [ai('dev-1', 'Dev-1', OWNER), ai('qa-1', 'QA-1', OWNER)],
+  },
+  'c-viernes': {
+    id: 'g-viernes',
+    title: 'Viernes 🍻',
+    createdBy: 'u-luis',
+    members: [
+      member('u-luis', 'Luis', 'owner'),
+      member('u-you', 'You', 'member'),
+      member('u-marta', 'Marta', 'member'),
+      member('u-ana', 'Ana', 'member'),
+      member('u-marco', 'Marco', 'member'),
+    ],
+    ais: [],
+  },
+  'c-familia': {
+    id: 'g-familia',
+    title: 'Familia',
+    createdBy: OWNER,
+    members: [member('u-you', 'You', 'owner'), member('u-sofia', 'Sofía', 'member')],
+    ais: [],
+  },
+  'c-qa': {
+    id: 'g-qa',
+    title: 'QA squad',
+    createdBy: 'u-luis',
+    members: [member('u-luis', 'Luis', 'owner'), member('u-you', 'You', 'admin')],
+    ais: [ai('qa-1', 'QA-1', OWNER)],
+  },
+  'c-gym': {
+    id: 'g-gym',
+    title: 'Gym buddies',
+    createdBy: 'u-marco',
+    members: [member('u-marco', 'Marco', 'owner'), member('u-you', 'You', 'member')],
+    ais: [],
+  },
+  'c-product': {
+    id: 'g-product',
+    title: 'Product',
+    createdBy: OWNER,
+    members: [member('u-you', 'You', 'owner'), member('u-ana', 'Ana', 'member')],
+    ais: [],
+  },
+};
+
+/** The AIs the mock user owns, for the group panel's add picker. */
+export const mockOwnedAis: PublicAi[] = [
+  ownedAi('dev-1', 'Dev-1', 'dev'),
+  ownedAi('qa-1', 'QA-1', 'dev'),
+  ownedAi('marketing', 'Marketing AI', 'marketing'),
+  ownedAi('research-1', 'Researcher', 'custom'),
+];
