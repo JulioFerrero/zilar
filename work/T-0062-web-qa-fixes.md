@@ -24,7 +24,7 @@ T-0060's QA sweep (`work/T-0060-web-qa-sweep.md`) found two real bugs and some c
 - `apps/web/src/components/NewChatButton.tsx`, `NewGroupDialog.tsx`, `ais/NewAiDialog.tsx`, `Skeleton.tsx`, `ProgressCard.tsx`, `index.css`, `MessageActionsMenu.tsx`
 
 ### Allowed files
-- `apps/web/src/components/NewChatButton.tsx`, `NewGroupDialog.tsx`, `ais/NewAiDialog.tsx`, `Skeleton.tsx`, `ProgressCard.tsx`, `index.css`, `MessageActionsMenu.tsx`, `Composer.tsx`
+- `apps/web/src/components/NewChatButton.tsx`, `NewGroupDialog.tsx`, `ais/NewAiDialog.tsx`, `InviteDialog.tsx`, `Skeleton.tsx`, `ProgressCard.tsx`, `ChatList.tsx`, `SearchBar.tsx`, `ApprovalCard.tsx`, `index.css`, `MessageActionsMenu.tsx`, `Composer.tsx`
 - Their test files
 - `work/T-0062-web-qa-fixes.md` and `work/screenshots/T-0062/**`
 
