@@ -1,7 +1,7 @@
 ---
 id: T-0009
 title: Spike S8 — a GitHub App token and a git proxy that only allows `agent/<ai>/*` pushes
-status: todo
+status: review
 milestone: M3
 branch: task/T-0009-git-proxy
 model: opencode-go/deepseek-v4-pro
@@ -119,28 +119,55 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Built a new `apps/server/src/git/` module with the three pieces the spec asks for:
+  - `branches.ts` — a pure, total, side-effect-free `isPushAllowed(aiName, branch)` that allows only `agent/<ai>/*`. It rejects path-traversal (`..`, a leading `/`, empty or `.` segments) *before* the value is used anywhere, rejects full refs (`refs/…`), and rejects reserved/other-AI branches. Comparison is case-sensitive and documented.
+  - `token.ts` — `createGitHubAppTokenClient` that signs an RS256 App JWT (`jose`, already a dependency) and POSTs to `POST /app/installations/{id}/access_tokens`, caches the token, re-mints inside a 5-minute refresh window, and validates the response with zod. Every mint failure is a `GitTokenError` whose message never carries the App private key or the installation id. Also added `createGitHubAppTokenClientFromConfig`.
+  - `proxy.ts` + `routes.ts` — a git smart-HTTP forward proxy. It detects a receive-pack push, parses the refs out of the pkt-line body, runs the branch check *before* forwarding, strips inbound `Authorization` (plus the other hop-by-hop headers), and injects the token. It never reads a token, remote URL or credential from the client.
+- Added optional GitHub App env entries to `config.ts` (`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_INSTALLATION_ID`) with all-or-nothing validation.
+- Wrote 19 tests (7 branch + 7 token + 5 proxy) using fake `fetch` only; no real GitHub calls and no real credentials.
 
 ### The verdict
-**Can we hold a GitHub credential the AI can never see, and restrict it to `agent/<ai>/*`?** Yes / No / Yes with caveats
--
+**Can we hold a GitHub credential the AI can never see, and restrict it to `agent/<ai>/*`?** Yes with caveats
+- The two halves are proven separately with fakes: the credential lives only in the server (the AI never sees it), and the branch rule is total and fails closed. What is *not* proven is anything against a real GitHub App or a real `git` client, because no account/App is available (and none was created).
 
 ### What is proven, and what is not
--
+Proven (with fakes):
+- A cached token is reused; a token inside the refresh window is re-minted; a mint failure produces a clear error that never leaks the private key or the installation id.
+- The branch rule rejects the full enumerated list (`main`, `master`, `release/*`, `agent/<other-ai>/x`, `agent/`, `agent/x`, `refs/heads/agent/x/y`, `..`, leading `/`) and rejects `agent/../../etc/passwd` / `agent/a/../../b` before any path or URL is built.
+- The proxy forwards an allowed push with the injected token, refuses `main` / other-AI / tag pushes *without calling upstream*, and allows `git-upload-pack` (clone/fetch).
+
+Not proven / still needs a real App or git client:
+- That GitHub accepts the App JWT and mints the installation token (the endpoint, expiry and error shapes are only faked).
+- The pkt-line/ref parsing against a real `git` client (tests use synthetic receive-pack bodies).
+- Streaming and fail-closed parsing: the proxy buffers the whole receive-pack body, and an empty/unparseable ref list is currently forwarded rather than rejected.
 
 ### Files changed
--
+- `apps/server/src/git/branches.ts` (new)
+- `apps/server/src/git/branches.test.ts` (new)
+- `apps/server/src/git/token.ts` (new)
+- `apps/server/src/git/token.test.ts` (new)
+- `apps/server/src/git/proxy.ts` (new)
+- `apps/server/src/git/proxy.test.ts` (new)
+- `apps/server/src/git/routes.ts` (new)
+- `apps/server/src/config.ts` (env entries only)
+- `work/T-0009-git-proxy.md`
 
 ### Commands run and real results
-- `pnpm typecheck`:
-- `pnpm lint`:
-- `pnpm test`:
+- `pnpm install`: "Done in 10.6s using pnpm v10.32.1", exit 0.
+- `pnpm format:check`: first run flagged the 5 new source/test files; after `pnpm exec prettier --write apps/server/src/git apps/server/src/config.ts` it reports "All matched files use Prettier code style!", exit 0.
+- `pnpm lint`: "Found 0 warnings and 0 errors.", exit 0.
+- `pnpm typecheck`: "Tasks: 8 successful, 8 total", exit 0.
+- `pnpm test`: "Tasks: 8 successful, 8 total"; the server suite alone: "23 passed | 2 skipped (25), Tests 205 passed | 3 skipped (208)"; the git module alone: "3 passed (3), Tests 19 passed (19)".
+- `pnpm build`: "Tasks: 2 successful, 2 total", exit 0.
 
 ### Problems, deviations from the spec, open questions
--
+- The proxy is **not** mounted in `app.ts` because `apps/server/src/app.ts` is not in the Allowed files. Wiring it needs a decision on the AI-name binding and the route prefix; the module exposes `createGitRoutes` and `createGitHubAppTokenClientFromConfig` ready for that wiring.
+- `GITHUB_APP_PRIVATE_KEY` is not in the logger's `redactPaths` (`apps/server/src/logger.ts` is out of scope). My code never logs it, but the future wiring should add it to the redaction list.
+- Dependency choice: plain `fetch` plus the already-present `jose` (no Octokit). Justification: keeps the tests simple and adds no dependency.
+- The proxy buffers the whole receive-pack body to parse refs rather than streaming the pack; a production proxy should stream the pack section and fail closed when refs cannot be parsed.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- (none)
 
 ---
 
