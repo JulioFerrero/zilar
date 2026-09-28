@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage, XmppCore } from '@galena/xmpp-core';
 import { AuthProvider } from '@/auth/AuthProvider';
+import { MessageList } from '@/components/MessageList';
 import { AppRoutes } from '@/routes/AppRoutes';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { createRealChatStore, type ApiClient, type StorageLike } from './realStore';
@@ -52,7 +53,11 @@ function fakeApi(): ApiClient {
   };
 }
 
-function fakeXmpp(): { core: XmppCore; history: Record<string, ChatMessage[]> } {
+function fakeXmpp(): {
+  core: XmppCore;
+  history: Record<string, ChatMessage[]>;
+  emit: (event: string, payload: unknown) => void;
+} {
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
   const history: Record<string, ChatMessage[]> = {
     'ana@galena.test': [
@@ -96,10 +101,36 @@ function fakeXmpp(): { core: XmppCore; history: Record<string, ChatMessage[]> } 
       };
     }) as unknown as XmppCore['on'],
   } as unknown as XmppCore;
-  return { core, history };
+  return {
+    core,
+    history,
+    emit: (event, payload) => {
+      for (const callback of listeners.get(event) ?? []) {
+        callback(payload);
+      }
+    },
+  };
 }
 
 describe('reload on /c/<jid> (T-0042)', () => {
+  async function waitForState(check: () => boolean, timeoutMs = 5000): Promise<void> {
+    const start = Date.now();
+    for (;;) {
+      if (check()) {
+        return;
+      }
+      if (Date.now() - start > timeoutMs) {
+        throw new Error('timed out waiting for store state');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+
+  function pageLoadCount(xmpp: { core: XmppCore }, chatJid: string): number {
+    return vi
+      .mocked(xmpp.core.loadHistory)
+      .mock.calls.filter(([jid, , options]) => jid === chatJid && options?.max === 50).length;
+  }
   it('requests history and renders the messages once the store becomes ready', async () => {
     const api = fakeApi();
     const xmpp = fakeXmpp();
@@ -131,9 +162,75 @@ describe('reload on /c/<jid> (T-0042)', () => {
 
     const messageList = await screen.findByTestId('message-list');
     expect(await within(messageList).findByText('hello after reload')).toBeTruthy();
-    const pageLoads = vi
-      .mocked(xmpp.core.loadHistory)
-      .mock.calls.filter(([jid, , options]) => jid === 'ana@galena.test' && options?.max === 50);
-    expect(pageLoads).toHaveLength(1);
+    expect(pageLoadCount(xmpp, 'ana@galena.test')).toBe(1);
+  });
+
+  it('shows loading on first paint when history was never requested', async () => {
+    const api = fakeApi();
+    const xmpp = fakeXmpp();
+    const store = createRealChatStore({
+      api,
+      storage: memoryStorage(),
+      createXmpp: () => xmpp.core,
+    });
+    store.getState().start();
+    await waitForState(() => store.getState().chatsState === 'ready');
+    const chat = store.getState().chats.find((entry) => entry.id === 'ana@galena.test');
+    if (chat === undefined) {
+      throw new Error('expected Ana in the chat list');
+    }
+
+    // Render the message list directly, without opening the chat: this is the
+    // first paint ChatView produces before its openChat effect runs.
+    render(
+      <AuthProvider
+        value={{
+          status: 'authenticated',
+          user: { id: 'u-me', name: 'Me', email: 'me@galena.test' },
+          refetch: async () => {},
+        }}
+      >
+        <ChatStoreProvider store={store}>
+          <MessageList chat={chat} onReply={() => {}} />
+        </ChatStoreProvider>
+      </AuthProvider>,
+    );
+
+    expect(screen.getByRole('status', { name: 'Loading messages' })).toBeTruthy();
+    expect(screen.queryByText('No messages yet')).toBeNull();
+  });
+
+  it('loads the pending chat when the connection comes online (reconnect)', async () => {
+    const api = fakeApi();
+    const xmpp = fakeXmpp();
+    let releaseConnect!: () => void;
+    const connectGate = new Promise<void>((resolve) => {
+      releaseConnect = resolve;
+    });
+    vi.mocked(xmpp.core.connect).mockImplementationOnce(() => connectGate);
+    const store = createRealChatStore({
+      api,
+      storage: memoryStorage(),
+      createXmpp: () => xmpp.core,
+    });
+
+    store.getState().openChat('ana@galena.test');
+    store.getState().start();
+    // The chats merged but the connection is still down: nothing loads yet.
+    await waitForState(() => store.getState().chatsState === 'ready');
+    expect(pageLoadCount(xmpp, 'ana@galena.test')).toBe(0);
+
+    // The reconnect completes: the pending open runs exactly once.
+    xmpp.emit('status', 'online');
+    await waitForState(() => store.getState().messages('ana@galena.test').length > 0);
+    await waitForState(() => pageLoadCount(xmpp, 'ana@galena.test') === 1);
+    expect(
+      store
+        .getState()
+        .messages('ana@galena.test')
+        .map((item) => item.text),
+    ).toContain('hello after reload');
+
+    releaseConnect();
   });
 });

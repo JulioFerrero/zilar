@@ -858,4 +858,20 @@ describe('loading states (T-0042)', () => {
     store.getState().openChat('ana@galena.test');
     await waitForState(() => store.getState().historyState['ana@galena.test'] === 'error');
   });
+
+  it('clears the loading marker of a superseded pending chat', async () => {
+    const { store, xmpp } = unstartedStore();
+
+    store.getState().openChat('ana@galena.test');
+    expect(store.getState().historyState['ana@galena.test']).toBe('loading');
+
+    store.getState().openChat('team@rooms.galena.test');
+    expect(store.getState().historyState['ana@galena.test']).toBeUndefined();
+    expect(store.getState().historyState['team@rooms.galena.test']).toBe('loading');
+
+    store.getState().start();
+    await waitForState(() => store.getState().messages('team@rooms.galena.test').length > 0);
+    expect(pageLoads(xmpp, 'team@rooms.galena.test')).toBe(1);
+    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(0);
+  });
 });

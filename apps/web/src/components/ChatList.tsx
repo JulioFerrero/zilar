@@ -122,7 +122,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
       <nav aria-label="Chats" className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
         {store.chatsState === 'loading' ? (
           <ChatListSkeleton />
-        ) : store.chatsState === 'error' ? (
+        ) : store.chatsState === 'error' && store.chats.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
             <p className="text-[15px] text-muted-foreground">{"Couldn't load chats"}</p>
             <Button
@@ -134,12 +134,30 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
               Retry
             </Button>
           </div>
-        ) : chats.length === 0 ? (
-          <EmptyState variant="no-chats" onInvite={() => setInviteOpen(true)} />
         ) : (
-          chats.map((chat) => (
-            <ChatListItem key={chat.id} chat={chat} selected={chat.id === activeChatId} />
-          ))
+          <>
+            {store.chatsState === 'error' && (
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-divider px-3 py-2">
+                <p className="text-[13px] text-muted-foreground">{"Couldn't load chats"}</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={() => storeApi.getState().retryChats()}
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
+            {chats.length === 0 ? (
+              <EmptyState variant="no-chats" onInvite={() => setInviteOpen(true)} />
+            ) : (
+              chats.map((chat) => (
+                <ChatListItem key={chat.id} chat={chat} selected={chat.id === activeChatId} />
+              ))
+            )}
+          </>
         )}
       </nav>
       <NewChatButton />

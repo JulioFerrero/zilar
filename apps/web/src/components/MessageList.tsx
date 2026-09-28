@@ -25,7 +25,10 @@ export function MessageList({
   const store = useChatStore();
   const storeApi = useChatStoreApi();
   const messages = store.messages(chat.id);
-  const history = store.historyState[chat.id] ?? 'ready';
+  // Unknown means never requested, which the real store reports as loading:
+  // first paint (before ChatView's openChat effect runs) must never flash
+  // the empty state.
+  const history = store.historyStateFor(chat.id);
   const items = groupMessages(messages);
   const [initialUnread] = useState(() => chat.unread);
   const dividerIndex = unreadDividerIndex(items, initialUnread);

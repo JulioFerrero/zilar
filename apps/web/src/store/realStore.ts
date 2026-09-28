@@ -493,6 +493,23 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       set((previous) => ({ historyState: { ...previous.historyState, [chatId]: state } }));
     }
 
+    // Drops the 'loading' marker of a pending chat that was superseded before
+    // it ever loaded, so no ownerless entry stays behind. Settled entries and
+    // in-flight loads are left alone.
+    function clearSupersededMarker(chatId: string): void {
+      if (loadingHistory.has(chatId)) {
+        return;
+      }
+      set((previous) => {
+        if (previous.historyState[chatId] !== 'loading') {
+          return previous;
+        }
+        const next = { ...previous.historyState };
+        delete next[chatId];
+        return { historyState: next };
+      });
+    }
+
     function handleMessage(message: ChatMessage): void {
       const meId = get().currentUserId;
       const chatId = message.chatJid;
@@ -1001,6 +1018,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       status: 'offline',
       chatsState: 'loading',
       historyState: {},
+      // Unknown means never requested, and the real store never has data
+      // without requesting it: that is still loading, never empty.
+      historyStateFor: (chatId) => get().historyState[chatId] ?? 'loading',
       chats: [],
       contacts: [],
       messagesByChat: {},
@@ -1015,6 +1035,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         set({ activeChatId: chatId });
         recordRead(chatId, lastRead[chatId]);
         void ensureGroupMembers(chatId);
+        if (pendingOpenChatId !== undefined && pendingOpenChatId !== chatId) {
+          clearSupersededMarker(pendingOpenChatId);
+        }
         pendingOpenChatId = chatId;
         void openHistory(chatId);
       },

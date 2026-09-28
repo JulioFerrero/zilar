@@ -214,4 +214,36 @@ Fixed both of Julio's bugs by separating "loading" from "empty" in the web store
 ### Blocked / needs a decision
 Nothing. No new dependencies.
 
+### Round 2 (lead pre-review findings, all 4 fixed)
+1. **First-paint "No messages yet" flash (must-fix):** `MessageList` used
+   `historyState[chat.id] ?? 'ready'`, but `openChat` (which sets `'loading'`)
+   runs in `ChatView`'s effect after first paint. Fixed store-side, inside
+   Allowed files: new `historyStateFor(chatId)` selector on the store.
+   The real store reports unknown (never requested) as `'loading'`; the mock
+   store reports `'ready'` unless seeded, so `?mock=1` is unchanged.
+   `MessageList` now uses the selector. Test (`reload.test.tsx`): real store
+   ready, `MessageList` rendered without opening the chat → loading status
+   present, "No messages yet" absent. Failed before, passes now.
+2. **Superseded pending marker:** `openChat` now clears the previous pending
+   chat's `'loading'` entry (via `clearSupersededMarker`, sparing in-flight
+   and settled entries) when a newer pending replaces it. Test: open A then B
+   pre-ready → A's entry gone, B `'loading'`, only B page-loads. Failed
+   before, passes now.
+3. **Error with loaded chats:** `ChatList` keeps the list and shows an inline
+   "Couldn't load chats" + Retry bar above it; the full error state appears
+   only when there are no chats. Test: seeded chats + `chatsState: 'error'` →
+   list, bar, working Retry, no skeleton, no empty state. Failed before,
+   passes now.
+4. **Reconnect path pinned:** new test gates `connect`, opens a chat
+   (pending), waits for chats ready (0 page loads), emits `status: 'online'`
+   → history loads exactly once. Failed before (`pending` never flushed),
+   passes now.
+
+Round 2 commands (real results): `pnpm format:check` pass (after
+`prettier --write` on `reload.test.tsx`); `pnpm lint` pass;
+`pnpm typecheck` 9 successful; `pnpm exec turbo test --force
+--filter=@galena/web` 22 files / 136 tests passed (+4 new);
+`pnpm build` 2 successful. Scope rechecked: only Allowed files + task file;
+`PREREVIEW.md` left untracked and uncommitted.
+
 ## Review (written by Claude)

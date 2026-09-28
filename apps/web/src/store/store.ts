@@ -39,6 +39,12 @@ export interface ChatStore {
   chatsState: ChatsState;
   /** Per-chat loading state of the first history page. Absent means `ready`. */
   historyState: Record<string, HistoryState>;
+  /**
+   * Effective first-page state for one chat. The real store reports
+   * `loading` when the page was never requested (e.g. first paint before
+   * `openChat` runs); the mock store reports `ready` unless seeded otherwise.
+   */
+  historyStateFor: (chatId: string) => HistoryState;
   /** Re-runs the first chat-list load after a failure. */
   retryChats: () => void;
   /** Re-runs the first history-page load for one chat after a failure. */
@@ -166,6 +172,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       // The mock store has no async loads, so its data is ready immediately.
       chatsState: seed.chatsState ?? 'ready',
       historyState: seed.historyState ?? {},
+      historyStateFor: (chatId) => get().historyState[chatId] ?? 'ready',
       retryChats: () => {},
       retryHistory: () => {},
       contacts: seed.contacts ?? [],

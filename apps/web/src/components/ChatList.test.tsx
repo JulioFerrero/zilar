@@ -107,4 +107,18 @@ describe('ChatList', () => {
     fireEvent.click(retry);
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps loaded chats with an inline error bar when a refresh fails', async () => {
+    const { store } = renderApp('/');
+    store.setState({ chatsState: 'error' });
+
+    expect(screen.getByText('Ana')).toBeTruthy();
+    expect(await screen.findByText("Couldn't load chats")).toBeTruthy();
+    expect(screen.queryByText('No chats here yet')).toBeNull();
+    expect(screen.queryByRole('status', { name: 'Loading chats' })).toBeNull();
+    const onRetry = vi.fn();
+    store.setState({ retryChats: onRetry });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
 });
