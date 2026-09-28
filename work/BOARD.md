@@ -8,8 +8,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0033](T-0033-ai-models-litellm.md) | M2: each AI's private model in LiteLLM (owner key stays in the gateway) + AIs in `/api/chats` | in progress | deepseek-v4.1-flash | T-0030, T-0032 | Julio decided: register per-AI models in LiteLLM (§8.3). Lead restarts LiteLLM with `store_model_in_db` + salt key and runs the gated integration at review. |
+| [T-0033](T-0033-ai-models-litellm.md) | M2: each AI's private model in LiteLLM (owner key stays in the gateway) + AIs in `/api/chats` | review (Muse pre-review running) | deepseek-v4.1-flash | T-0030, T-0032 | Julio decided: register per-AI models in LiteLLM (§8.3). Lead restarts LiteLLM with `store_model_in_db` + salt key and runs the gated integration at review. |
 | T-0034 | M2: AIs reply in their DM (log in as the AI, context from §9.2, LiteLLM call with the AI's capped key, budget-exceeded message) | planned | | T-0033 | Spec after T-0033 lands. Group @mentions come after AIs can join rooms. |
+| [T-0035](T-0035-server-followups.md) | Server follow-ups: rate-limit the Test-key route (5/min/user, before any provider call); `Unnamed user` for blank-name contacts (never the email) | in progress | muse-spark-1.3 | T-0028 | Independent of T-0033 (no chats/ais/db files). |
+| [T-0036](T-0036-web-tests-under-load.md) | `apps/web` tests reliable under load: measure, one package-level fix, 3/3 forced full runs with a CPU burner | in progress | muse-spark-1.3 | T-0029 | Tests/config only. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -17,8 +19,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
-- `POST /api/connections/:id/test` calls the provider on every request: put it behind the rate limiter before real users (from the T-0028 review).
-- **Load-sensitive web tests, broader than T-0029 fixed.** Under heavy load (load average 96, from a parallel Xcode build) three *other* first-in-file full-app renders timed out: `ChatList.test.tsx > filters chats by folder`, `Composer.test.tsx > shows the mic when empty…`, `NewChatButton.test.tsx > creates a group from the dialog…`. Per-test timeouts don't scale; needs a package-level fix (e.g. a shared lighter render helper, or one explicit `testTimeout` for `apps/web` with a comment). CI is green.
 - `apps/mobile/ios/` is generated and gitignored: run `pnpm --filter @galena/mobile boot:ios --device <udid>` after any native dependency change (T-0031). Running it in CI needs a macOS runner (Julio's decision).
 
 - **M3 tunnel hardening (from the T-0008 spike):**
@@ -28,7 +28,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
   - an https gateway upstream (today it is http-only);
   - a durable runner registry.
 
-- **Users with an empty name show as blank rows in the chat list** (4 old test accounts, seen during the T-0032 live check). `/api/chats` should fall back to something readable (e.g. the email's local part), and sign-up should require a name.
 
 ## Done
 
