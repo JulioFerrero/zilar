@@ -2,6 +2,7 @@ import {
   formatFullDateTime,
   formatTime,
   isBigEmoji,
+  shouldRenderMarkdown,
   type ChatSummary,
   type UiMessage,
 } from '@galena/chat-core';
@@ -11,6 +12,7 @@ import { ApprovalCard } from './ApprovalCard';
 import { Avatar } from './Avatar';
 import { ImageMessage } from './ImageMessage';
 import { LinkText } from './LinkText';
+import { MarkdownText } from './MarkdownText';
 import { MessageActionsMenu } from './MessageActionsMenu';
 import { MessageTicks } from './MessageTicks';
 import { ProgressCard } from './ProgressCard';
@@ -136,6 +138,7 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const own = message.senderId === currentUserId;
+  const markdown = shouldRenderMarkdown(chat, message, currentUserId);
   const hasText = message.text !== undefined && message.text.length > 0;
   const beyondDraft = revealTurnId !== undefined && !draft;
   const animate = draft || beyondDraft;
@@ -255,7 +258,27 @@ export function MessageBubble({
               </div>
             )}
 
-            {hasText && (
+            {hasText && markdown && (
+              <div className={cn('md break-words', own ? 'px-3 py-2' : 'px-3 py-2.5')}>
+                <MarkdownText text={text} />
+                <span className="md-tail">
+                  {generating && <DraftCaret />}
+                  <MessageMeta
+                    message={message}
+                    showTicks={own && !generating}
+                    className={cn(
+                      'float-right ml-1.5 translate-y-[4px]',
+                      own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
+                      // Keeps the width the final message will have, so the
+                      // swap does not move anything.
+                      generating && 'invisible',
+                    )}
+                  />
+                </span>
+              </div>
+            )}
+
+            {hasText && !markdown && (
               <p
                 className={cn('break-words whitespace-pre-wrap', own ? 'px-3 py-2' : 'px-3 py-2.5')}
               >

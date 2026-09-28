@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent } from '@testing-library/react';
 import type { ChatSummary, UiMessage } from '@galena/chat-core';
@@ -351,5 +351,59 @@ describe('MessageBubble grouping (T-0047)', () => {
     expect(bubbleOf('m1')?.classList.contains('rounded-bl-[4px]')).toBe(false);
     expect(bubbleOf('m2')?.classList.contains('rounded-bl-[4px]')).toBe(true);
     expect(bubbleOf('m3')?.classList.contains('rounded-bl-[4px]')).toBe(true);
+  });
+});
+
+describe('MessageList Markdown drafts (T-0049)', () => {
+  const aiChat: ChatSummary = {
+    id: 'c-ai',
+    title: 'Dev AI',
+    kind: 'ai',
+    isAI: true,
+    space: 'work',
+    unread: 0,
+    muted: false,
+  };
+
+  it('keeps the same bubble when a Markdown draft becomes the final message', async () => {
+    const store = renderMessages({ messagesByChat: { 'c-ai': [] } }, aiChat);
+    act(() => {
+      store.setState({ drafts: { 'c-ai': { turnId: 'tm', text: '**Hello**' } } });
+    });
+
+    const before = document.querySelector('[data-draft-turn="tm"]');
+    expect(before).not.toBeNull();
+    expect(before?.querySelector('strong')?.textContent).toBe('Hello');
+    expect(before?.querySelector('[data-bubble-look="generating"]')).not.toBeNull();
+
+    act(() => {
+      store.setState({
+        messagesByChat: {
+          'c-ai': [
+            {
+              id: 'm-md',
+              chatId: 'c-ai',
+              senderId: 'ai-dev-1',
+              senderName: 'Dev-1',
+              text: '**Hello there**',
+              createdAt: new Date('2026-09-28T10:00:00Z'),
+              status: 'read',
+            },
+          ],
+        },
+        drafts: {},
+        finishedDraftMessages: { 'm-md': 'tm' },
+      });
+    });
+
+    // The same DOM node: the final message kept the draft's key, and it keeps
+    // revealing the Markdown in the generating look.
+    const after = document.querySelector('[data-draft-turn="tm"]');
+    expect(after).toBe(before);
+    expect(after?.querySelector('[data-bubble-look="generating"]')).not.toBeNull();
+    await waitFor(() => {
+      expect(after?.querySelector('strong')?.textContent).toBe('Hello there');
+    });
+    expect(after?.querySelector('[data-bubble-look="generating"]')).toBeNull();
   });
 });

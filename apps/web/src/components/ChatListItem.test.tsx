@@ -46,4 +46,72 @@ describe('ChatListItem', () => {
     expect(screen.getByText('typing…')).toBeTruthy();
     expect(screen.queryByText('writing…')).toBeNull();
   });
+
+  it('shows a plain preview for a Markdown AI reply', () => {
+    renderApp('/', {
+      chats: [
+        {
+          ...aiChat,
+          lastMessage: {
+            id: 'm-1',
+            chatId: 'c-devai',
+            senderId: 'ai-dev-1',
+            senderName: 'Dev-1',
+            text: '**Deployed** to `staging`',
+            createdAt: new Date(2026, 8, 28, 10, 0),
+            status: 'read',
+          },
+        },
+      ],
+      messagesByChat: {},
+    });
+
+    expect(screen.getByText('Deployed to staging')).toBeTruthy();
+    expect(screen.queryByText('**Deployed** to `staging`')).toBeNull();
+  });
+
+  it('keeps literal markers in a human chat preview', () => {
+    renderApp('/', {
+      chats: [
+        {
+          ...personChat,
+          lastMessage: {
+            id: 'm-2',
+            chatId: 'c-ana',
+            senderId: 'u-ana',
+            senderName: 'Ana',
+            text: 'a **bold** word',
+            createdAt: new Date(2026, 8, 28, 10, 0),
+            status: 'read',
+          },
+        },
+      ],
+      messagesByChat: {},
+    });
+
+    expect(screen.getByText('a **bold** word')).toBeTruthy();
+  });
+
+  it('keeps literal markers in your own AI-chat preview', () => {
+    renderApp('/', {
+      chats: [
+        {
+          ...aiChat,
+          lastMessage: {
+            id: 'm-3',
+            chatId: 'c-devai',
+            senderId: 'u-you',
+            senderName: 'You',
+            text: 'a **bold** word',
+            createdAt: new Date(2026, 8, 28, 10, 0),
+            status: 'sent',
+          },
+        },
+      ],
+      messagesByChat: {},
+    });
+
+    expect(screen.getByText('a **bold** word')).toBeTruthy();
+    expect(screen.queryByText('a bold word')).toBeNull();
+  });
 });

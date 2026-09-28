@@ -136,3 +136,60 @@ describe('message content', () => {
     expect(bubble?.getAttribute('data-bubble-look')).toBe('incoming');
   });
 });
+
+describe('AI reply Markdown (T-0049)', () => {
+  const aiChat: ChatSummary = {
+    id: 'c-ai',
+    title: 'Dev AI',
+    kind: 'ai',
+    isAI: true,
+    space: 'work',
+    unread: 0,
+    muted: false,
+  };
+
+  function renderAi(text: string, senderId = 'ai-dev-1') {
+    return renderApp('/c/c-ai', {
+      currentUserId: 'u-you',
+      chats: [aiChat],
+      messagesByChat: {
+        'c-ai': [
+          {
+            id: 'm1',
+            chatId: 'c-ai',
+            senderId,
+            senderName: senderId === 'u-you' ? 'You' : 'Dev-1',
+            text,
+            createdAt: new Date(2026, 8, 27, 12, 41),
+            status: 'read',
+          },
+        ],
+      },
+    });
+  }
+
+  it('renders an incoming AI reply as Markdown', () => {
+    const { container } = renderAi('**bold** and `code` and [a link](https://x.com)');
+
+    const list = screen.getByTestId('message-list');
+    expect(within(list).getByText('bold').tagName).toBe('STRONG');
+    expect(within(list).getByText('code').tagName).toBe('CODE');
+    expect(within(list).getByRole('link').getAttribute('href')).toBe('https://x.com');
+    expect(container.querySelector('[data-bubble-look="incoming"]')).not.toBeNull();
+  });
+
+  it('keeps Markdown markers literal in a human DM', () => {
+    const { container } = render('a **bold** word');
+
+    const list = screen.getByTestId('message-list');
+    expect(within(list).getByText('a **bold** word')).toBeTruthy();
+    expect(container.querySelector('strong')).toBeNull();
+  });
+
+  it('keeps Markdown markers literal in your own AI-chat message', () => {
+    const { container } = renderAi('a **bold** word', 'u-you');
+
+    expect(screen.getByText('a **bold** word')).toBeTruthy();
+    expect(container.querySelector('strong')).toBeNull();
+  });
+});

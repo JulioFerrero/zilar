@@ -1,7 +1,7 @@
 ---
 id: T-0049
 title: Web renders Markdown in AI replies (safe subset, streaming-friendly), plain previews in the chat list
-status: planned
+status: merged
 milestone: M2
 branch: task/T-0049-ai-markdown-web
 model: opencode-go/deepseek-v4.1-flash
@@ -123,4 +123,123 @@ pnpm build
 
 ## Report (written by the worker when done)
 
+### What I did
+
+**1. Where Markdown renders — `packages/chat-core/src/markdown.ts`**
+- Added `shouldRenderMarkdown(chat, message, currentUserId)`, the single decision point: `chat.isAI && message.senderId !== currentUserId`. `MessageBubble` calls it; everything else (human DMs, groups, your own messages) still goes through `LinkText`. The draft uses the same path (its `senderId` is `chat.id`, and the AI's own messages use that id, so it is never "own").
+
+**2. `MarkdownText` — `apps/web/src/components/MarkdownText.tsx` (new)**
+- `react-markdown` 10.1.0 + `remark-gfm` 4.0.1. Wrapped in `React.memo`, so a reveal frame with unchanged text does not re-parse.
+- Safety: no `rehype-raw` (raw HTML is skipped by default); `urlTransform` returns `''` unless the URL parses with `http:`, `https:` or `mailto:`, so `javascript:`, `data:`, `vbscript:` and relative links render as plain text; a custom `a` renderer adds `target="_blank" rel="noopener noreferrer"`; `img` renders the alt text (never an `<img>`).
+
+**3. `MessageBubble` — `apps/web/src/components/MessageBubble.tsx`**
+- Incoming AI text renders `<div class="md …"><MarkdownText text={text} /><span class="md-tail">caret + meta</span></div>`; every other message keeps the existing `<p><LinkText/>…</p>` (unchanged). The generating caret and the `visible`/`invisible` meta float live in `md-tail`, so the same-node swap and the reveal keep working.
+
+**4. Styles — `apps/web/src/index.css`**
+- One `.md` block: body 14/1.5, paragraphs 8 px apart, links `--foreground` underlined, inline code Geist Mono 12.5 px on `--well` with a 1 px `--edge` border, 4 px radius, 1/4 px padding; code blocks are the well look (Geist Mono 12.5, 10 px radius, 10/12 px padding, `overflow-x: auto`, `white-space: pre`), blockquote a `#333` 2 px bar with muted text, tables 1 px `--border` cells with a `--surface` header inside a `display: block; overflow-x: auto` wrapper, lists a 20 px indent with 2 px between items, headings 16/15/14 px at 600. Tokens are used where they exist; the two literals (`#333` bar) match ui-style.md §5's own values.
+
+**5. Chat list preview — `ChatListItem.tsx` + `markdownToPlain`**
+- `markdownToPlain(text)` in `chat-core` is pure and dependency-free: it drops fenced-code fences (keeping the code literally), heading `#`s, quote and list markers, horizontal rules, emphasis/strike markers, inline-code backticks, keeps link text, drops link URLs, and collapses whitespace to one line. `ChatListItem` applies it to `previewBody(last)` only when `chat.isAI`. Rules that don't match are left alone, so `2 * 3`, `snake_case` and a partial `**bold` survive.
+
+**6. Same-node swap** kept: no key or ordering changes; `MessageList`'s `draft-${turnId}` key is untouched. Added a test where both the draft and the final text contain Markdown.
+
+**7. Mock data — `apps/web/src/mock/messages.ts`**
+- `c-devai` gained one Markdown-rich AI reply (`dai-7`): an h2 and h3, bold, inline code, a nested list, a fenced bash block wider than the bubble, a GFM table, a blockquote and a link. `c-ana`'s `ana-3` now reads `Amazing. Which **entrance**?` so a human DM shows literal `**`.
+
+### Files changed
+- `packages/chat-core/src/markdown.ts` (new), `markdown.test.ts` (new), `index.ts` (one export line)
+- `apps/web/src/components/MarkdownText.tsx` (new), `MarkdownText.test.tsx` (new)
+- `apps/web/src/components/MessageBubble.tsx`, `MessageContent.test.tsx`, `MessageList.test.tsx`
+- `apps/web/src/components/ChatListItem.tsx`, `ChatListItem.test.tsx`
+- `apps/web/src/index.css`, `apps/web/src/mock/messages.ts`
+- `apps/web/package.json` + root `pnpm-lock.yaml` (the two allowed dependencies)
+- `work/T-0049-ai-markdown-web.md`, `work/screenshots/T-0049/**`
+
+`git status` shows no other tracked file changed.
+
+### Tests added
+- `MarkdownText.test.tsx` (14): paragraphs/bold/italic/strike, inline + fenced code, ordered/unordered/nested lists, blockquote/headings/hr, GFM table, read-only disabled task checkboxes, links with `target`/`rel`, `mailto:` allowed, `javascript:`/`data:`/relative rendered as plain text, a Markdown image as alt text with no `<img>`, raw `<script>`/`<img onerror>` not rendered, and partial Markdown not throwing.
+- `markdown.test.ts` (11): `shouldRenderMarkdown` (AI incoming true; own/human/group false) and every `markdownToPlain` rule, plus `2 * 3`, `snake_case`, partial `**bold`, an unclosed fence and an unterminated link.
+- `MessageContent.test.tsx` (3): an incoming AI reply renders Markdown tags; a human DM and your own AI-chat message keep literal `**`.
+- `MessageList.test.tsx` (1): a Markdown draft → final message keeps the same DOM node, keeps the generating look while revealing, and ends with the completed `<strong>`.
+- `ChatListItem.test.tsx` (2): an AI preview shows `Deployed to staging`; a human preview keeps `a **bold** word`.
+
+### Commands (real results)
+```bash
+pnpm install                                        # Done in 3.5s; +96 packages (pnpm 10.32.1). Peer warning: apps/mobile @types/react-dom 19.3.0 wants @types/react ^19.3.0, found 19.2.18 (pre-existing, in mobile, untouched)
+pnpm format:check                                   # All matched files use Prettier code style!
+pnpm lint                                           # no output, exit 0
+pnpm typecheck                                      # Tasks: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/web --filter=@galena/chat-core
+                                                    # chat-core: 6 files, 61 tests passed; web: 35 files, 226 tests passed; Tasks 2 successful
+pnpm build                                          # Tasks: 2 successful, 2 total; web built in ~0.9s
+```
+
+### Streaming cost (measured, as asked)
+Temporary harness (deleted afterwards), `MarkdownText` on a 3,591-character reply with a fenced code block, rendered 30 times after 5 warm-ups in jsdom on this machine:
+- parse + render per update: **5.2–5.7 ms** (repeated runs: 5.72 ms, 5.24 ms).
+- A reply of that size is revealed in ~45 `useSmoothText` updates, so a full reveal costs roughly 0.23–0.26 s of main-thread work spread over ~1.5 s. **One update is over the ~4 ms bar**, and I did not invent an optimization. The per-update cost is dominated by the parse of the whole cumulative text, which `React.memo` cannot skip because the text genuinely changes each frame. Worth a follow-up if it shows on real hardware; in jsdom the number is pessimistic, so I would measure the real app before optimizing.
+
+### Visual check
+Served this worktree's Vite on `localhost:5231` with a throwaway mock auth server (in the approved temp dir, outside the repo) answering `/api/auth/get-session`, and opened the app with `?mock=1` in Chrome through the DevTools MCP. Screenshots in `work/screenshots/T-0049/`, all looked at:
+- `ai-markdown-1440.png` — Dev AI at 1440×900: heading, bold, inline code, nested list, the code block **clipped with horizontal scroll inside the bubble** (the bubble does not grow), the GFM table, the quote and the link. The list preview reads `Review summary I read both PRs and left n…` (plain).
+- `ai-markdown-390.png` — the same chat at 390×844: fits the max width, scrolls inside the code block and the table.
+- `human-dm-literal-1440.png` — Ana (a human DM): the message text is literal; the DOM for `Amazing. Which **entrance**?` is `<span>Amazing. Which **entrance**?</span>` with no `<strong>` (the line is in the scrolled-up part of the history, so I asserted it in the DOM rather than the viewport).
+- `generating-390.png`, `generating-1440.png` — a live Markdown draft set through the same store seam the tests use (`store.setState({ drafts … })`, reached through the React root; no repo file was edited for it). The bubble is recessed, the caret sits right after the last block (the code block) with the `generating` label below, and the list shows `writing…`.
+
+Both dev servers were stopped (`lsof -ti :5231`, `:4321` show no LISTEN).
+
+### Notes and choices
+- **Caret placement.** When the reply ends in a paragraph, the floated time/meta sit on that paragraph's last line (a CSS `p:has(+ .md-tail) { display: inline }` plus the `md-tail` span). When it ends in a list, table or code block, the caret and the time sit on the row right after the last block; the spec allows that. In the generated `ai-markdown-1440.png` the time is on the row after the final link paragraph, which is the small layout difference I chose to keep.
+- **`previewText` unchanged.** The spec says `ChatListItem` uses `markdownToPlain`; `previewText` (used by mobile and tests) is untouched, so this stays a web-only change.
+- The 404 console error in the browser is `/api/clipboard` from the mock store — pre-existing and unrelated.
+- No deviations from the acceptance criteria; no open questions.
+
+## Round 2 (review fixes)
+
+Applied the three items from the lead's pre-review. `PREREVIEW.md` is left untracked and uncommitted, as asked.
+
+**1. should-fix — `ChatListItem.tsx` own-message preview.** The preview now mirrors `shouldRenderMarkdown` exactly: it calls `markdownToPlain` only when `chat.isAI && last !== undefined && last.senderId !== store.currentUserId`. Your own `a **bold** word` in an AI chat now previews literally, as the bubble shows it.
+```tsx
+const body =
+  chat.isAI && last !== undefined && last.senderId !== store.currentUserId
+    ? markdownToPlain(rawBody)
+    : rawBody;
+```
+Tests: `ChatListItem.test.tsx` gained "keeps literal markers in your own AI-chat preview" (asserts `a **bold** word` is shown and `a bold word` is not), next to the existing incoming-AI and human-DM cases.
+
+**2. nit — `markdownToPlain` intra-word asterisks.** `stripInline`'s `*` rule is now `/(?<![\w*])\*(?=\S)([^*\n]*?\S)\*(?![\w*])/g`, the `_` rule's lookaround idea: an intra-word `*` is left literal, a word-boundary one still strips. Checked directly against `markdownToPlain`:
+```
+"foo*bar*baz"   -> "foo*bar*baz"
+"a*b*c"         -> "a*b*c"
+"2 * 3 * 4"     -> "2 * 3 * 4"
+"say *hi* now"  -> "say hi now"
+"**bold** and *it*" -> "bold and it"
+"snake_case_name"   -> "snake_case_name"
+```
+Tests: `markdown.test.ts` gained "does not treat an intra-word asterisk as emphasis" and a `2 * 3 * 4` case in the existing marker test.
+
+**3. nit — `vbscript:` link test.** `MarkdownText.test.tsx` gained "renders a vbscript: link as plain text" (`[x](vbscript:msgbox(1))` → no `<a>`, text `x`). Code was already correct.
+
+### Round 2 commands (real results)
+```bash
+pnpm format:check                                   # FAILS, and only on PREREVIEW.md: "[warn] PREREVIEW.md / Code style issues found". Every file I changed passes ("All matched files use Prettier code style!"). PREREVIEW.md is the lead's untracked pre-review artifact, outside the Allowed files; I left it as-is rather than reformat or ignore it. Fixing it would mean deleting/formatting the lead's file or editing .prettierignore (not allowed).
+pnpm lint                                           # no output, exit 0
+pnpm typecheck                                      # Tasks: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/web --filter=@galena/chat-core
+                                                    # chat-core: 6 files, 62 tests passed (was 61); web: 35 files, 228 tests passed (was 226); Tasks 2 successful
+pnpm build                                          # Tasks: 2 successful, 2 total
+```
+
+### Round 2 scope
+Only these five files changed, all Allowed: `apps/web/src/components/ChatListItem.tsx` + `.test.tsx`, `apps/web/src/components/MarkdownText.test.tsx`, `packages/chat-core/src/markdown.ts` + `.test.ts`, and this task file. `git status` shows no other tracked change and `PREREVIEW.md` stays untracked.
+
 ## Review (written by Claude)
+
+
+**Verdict: approved, merged.**
+
+- The round 1 pre-review had one should-fix (preview stripping on your own messages) and two nits (intra-word `*`, a `vbscript:` test). All three were fixed in round 2 with tests. I accept the round 2 nits: the dead `own` ternary in the Markdown branch, task-list and table markers kept in previews, and the edited `MessageContent` / `MessageList` tests, which is where the swap tests already lived.
+- Safety: no `rehype-raw`, links limited to http, https and mailto (anything else renders as text), Markdown images shown as alt text only, raw HTML not rendered. The tests cover all of it.
+- Live check (branch on localhost:5174 in Julio's Helium, against the live server): his real "deep test" replies render headings, bold, nested lists and paragraphs in the D24 look, and the list preview is plain text. After Vite's one-time dependency bundling, a hard reload paints in about 1.2 s. Switching chats has no long tasks, and scrolling up (loading history) had one 60 ms task.
+- Streaming cost: 5 ms per update in jsdom; accepted. The live streaming look needs a sent message, so it waits for Julio.

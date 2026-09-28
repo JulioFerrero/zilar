@@ -1,4 +1,10 @@
-import { formatListTime, previewBody, previewPrefix, type ChatSummary } from '@galena/chat-core';
+import {
+  formatListTime,
+  markdownToPlain,
+  previewBody,
+  previewPrefix,
+  type ChatSummary,
+} from '@galena/chat-core';
 import { VolumeX } from 'lucide-react';
 import { Link } from 'react-router';
 import { AiBadge } from './AiBadge';
@@ -21,7 +27,13 @@ export function ChatListItem({
   const last = chat.lastMessage;
   const options = { isGroup: chat.kind === 'group', currentUserId: store.currentUserId };
   const prefix = previewPrefix(last, options);
-  const body = previewBody(last);
+  const rawBody = previewBody(last);
+  // Only an incoming AI reply is Markdown (shouldRenderMarkdown); your own
+  // message in an AI chat previews literally, exactly as its bubble shows it.
+  const body =
+    chat.isAI && last !== undefined && last.senderId !== store.currentUserId
+      ? markdownToPlain(rawBody)
+      : rawBody;
   const own = last !== undefined && last.senderId === store.currentUserId;
   const typing = typingLabel(chat, store.typing[chat.id]?.names ?? []);
   const hasDraft = store.drafts[chat.id] !== undefined;
