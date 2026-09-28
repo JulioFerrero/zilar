@@ -3,6 +3,15 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import { CURRENT_USER_ID, CURRENT_USER_NAME } from '../lib/types';
 import { mockChats, mockMessagesByChat } from '../mock';
+import {
+  MOCK_DRAFT_CHAT_ID,
+  MOCK_DRAFT_FINAL_MESSAGE_ID,
+  MOCK_DRAFT_STREAM_TEXT,
+  MOCK_DRAFT_TURN_ID,
+  createMockDraftFinalMessage,
+  readMockDraftPhase,
+  type MockDraftPhase,
+} from '../mock/drafts';
 import type { ChatStoreState } from './types';
 
 /** Simulated send states, from T-0018 step 5. */
@@ -39,8 +48,16 @@ function cloneMessages(): Record<string, UiMessage[]> {
   );
 }
 
-export function createInitialState(): ChatStoreData {
+export function createInitialState(phase?: MockDraftPhase): ChatStoreData {
   const messagesByChat = cloneMessages();
+  // The `final` phase appends the completed reply, so the last message is the
+  // one that takes over the draft's place (same text position, incoming look).
+  if (phase === 'final') {
+    messagesByChat[MOCK_DRAFT_CHAT_ID] = [
+      ...(messagesByChat[MOCK_DRAFT_CHAT_ID] ?? []),
+      createMockDraftFinalMessage(),
+    ];
+  }
   const chats = mockChats.map((chat) => {
     const lastMessage = messagesByChat[chat.id]?.at(-1);
     return lastMessage ? { ...chat, lastMessage } : { ...chat };
@@ -57,6 +74,12 @@ export function createInitialState(): ChatStoreData {
     activeChatId: null,
     historyComplete: {},
     typing: {},
+    drafts:
+      phase === 'stream'
+        ? { [MOCK_DRAFT_CHAT_ID]: { turnId: MOCK_DRAFT_TURN_ID, text: MOCK_DRAFT_STREAM_TEXT } }
+        : {},
+    finishedDraftMessages:
+      phase === 'final' ? { [MOCK_DRAFT_FINAL_MESSAGE_ID]: MOCK_DRAFT_TURN_ID } : {},
   };
 }
 
@@ -76,7 +99,9 @@ function scheduleTypingSimulation(set: (partial: Partial<ChatStoreState>) => voi
 let messageCounter = 0;
 
 /** The mock store kept for `?mock=1` dev mode and unit tests. */
-export function createChatStore(): UseBoundStore<StoreApi<ChatStoreState>> {
+export function createChatStore(
+  phase: MockDraftPhase | undefined = readMockDraftPhase(),
+): UseBoundStore<StoreApi<ChatStoreState>> {
   return create<ChatStoreState>()((set, get) => {
     const setStatus = (chatId: string, messageId: string, status: MessageStatus) => {
       set((state) => {
@@ -104,7 +129,7 @@ export function createChatStore(): UseBoundStore<StoreApi<ChatStoreState>> {
     scheduleTypingSimulation(set);
 
     return {
-      ...createInitialState(),
+      ...createInitialState(phase),
       messages: (chatId) => get().messagesByChat[chatId] ?? NO_MESSAGES,
       hasMore: () => false,
       loadOlder: () => {},

@@ -2,6 +2,12 @@ import { groupMessages, unreadDividerIndex } from '@galena/chat-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  MOCK_DRAFT_FINAL_MESSAGE_ID,
+  MOCK_DRAFT_FINAL_TEXT,
+  MOCK_DRAFT_STREAM_TEXT,
+  MOCK_DRAFT_TURN_ID,
+} from '../mock/drafts';
+import {
   READ_DELAY_MS,
   SENT_DELAY_MS,
   TYPING_DURATION_MS,
@@ -105,5 +111,28 @@ describe('chat store', () => {
     expect(store.getState().chats).toHaveLength(10);
     expect(store.getState().messages('ana').length).toBeGreaterThan(10);
     expect(store.getState().messages('dev-ai').at(-1)?.text).toBe('Tests pass. Merge?');
+  });
+
+  it('seeds the stream phase with an active dev-ai draft', () => {
+    const store = createChatStore('stream');
+    expect(store.getState().drafts['dev-ai']).toEqual({
+      turnId: MOCK_DRAFT_TURN_ID,
+      text: MOCK_DRAFT_STREAM_TEXT,
+    });
+    expect(store.getState().finishedDraftMessages).toEqual({});
+  });
+
+  it('seeds the final phase with the completed reply where the draft was', () => {
+    const store = createChatStore('final');
+    const last = store.getState().messages('dev-ai').at(-1);
+    expect(last?.id).toBe(MOCK_DRAFT_FINAL_MESSAGE_ID);
+    expect(last?.text).toBe(MOCK_DRAFT_FINAL_TEXT);
+    expect(store.getState().drafts).toEqual({});
+    expect(store.getState().finishedDraftMessages[MOCK_DRAFT_FINAL_MESSAGE_ID]).toBe(
+      MOCK_DRAFT_TURN_ID,
+    );
+    expect(store.getState().chats.find((chat) => chat.id === 'dev-ai')?.lastMessage?.id).toBe(
+      MOCK_DRAFT_FINAL_MESSAGE_ID,
+    );
   });
 });

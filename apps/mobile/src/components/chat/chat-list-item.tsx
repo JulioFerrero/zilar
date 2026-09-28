@@ -43,9 +43,10 @@ function UnreadBadge({ count, muted }: { count: number; muted: boolean }) {
 export function ChatListItem({ chat, onPress }: ChatListItemProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const names = useChatStore((state) => state.typing[chat.id]?.names);
+  const hasDraft = useChatStore((state) => state.drafts[chat.id] !== undefined);
   const last = chat.lastMessage;
   const typing = typingLabel(chat, names ?? []);
-  const label = chat.isAI && typing !== undefined ? 'writing…' : typing;
+  const label = chat.isAI && (typing !== undefined || hasDraft) ? 'writing…' : typing;
   const preview = previewParts(last, {
     isGroup: chat.kind === 'group',
     currentUserId: CURRENT_USER_ID,

@@ -12,11 +12,18 @@ import { DateSeparator } from '@/components/chat/date-separator';
 import { MessageBubble } from '@/components/chat/message-bubble';
 import { UnreadDivider } from '@/components/chat/unread-divider';
 import { useChatStore } from '@/store/chat-store-provider';
+import { draftEntryKey } from '@/store/types';
 
 type ListEntry =
   | { type: 'divider'; key: string }
   | { type: 'separator'; key: string; date: Date }
-  | { type: 'message'; key: string; item: MessageItem };
+  | {
+      type: 'message';
+      key: string;
+      item: MessageItem;
+      isDraft: boolean;
+      revealTurnId: string | undefined;
+    };
 
 type MessageListProps = {
   chat: ChatSummary;
@@ -30,9 +37,33 @@ type MessageListProps = {
 export function MessageList({ chat, onReply }: MessageListProps) {
   const currentUserId = useChatStore((state) => state.currentUserId);
   const messages = useChatStore((state) => state.messages(chat.id));
+  const draft = useChatStore((state) => state.drafts[chat.id]);
+  const finishedDraftMessages = useChatStore((state) => state.finishedDraftMessages);
   const loadOlder = useChatStore((state) => state.loadOlder);
   const hasMore = useChatStore((state) => state.hasMore(chat.id));
-  const items = useMemo(() => groupMessages(messages), [messages]);
+  const draftText = draft?.text.trim() ?? '';
+  // The draft is rendered as the AI's next message, so grouping, styles and size
+  // are identical to the final message that replaces it.
+  const draftMessage = useMemo<UiMessage | undefined>(() => {
+    if (draft === undefined || draftText.length === 0) {
+      return undefined;
+    }
+    return {
+      id: `draft-${draft.turnId}`,
+      chatId: chat.id,
+      senderId: chat.id,
+      senderName: chat.title,
+      text: draftText,
+      createdAt: new Date(
+        Math.max(new Date().getTime(), (messages.at(-1)?.createdAt.getTime() ?? 0) + 1),
+      ),
+      status: 'read',
+    };
+  }, [draft, draftText, chat.id, chat.title, messages]);
+  const items = useMemo(
+    () => groupMessages(draftMessage === undefined ? messages : [...messages, draftMessage]),
+    [messages, draftMessage],
+  );
   // The divider position is fixed when the chat opens, before `openChat` clears
   // the unread count, so it does not move as new messages arrive.
   const [dividerIndex] = useState(() => unreadDividerIndex(items, chat.unread));
@@ -43,17 +74,30 @@ export function MessageList({ chat, onReply }: MessageListProps) {
       if (dividerIndex === index) {
         list.push({ type: 'divider', key: 'unread-divider' });
       }
-      list.push(
-        item.kind === 'separator'
-          ? { type: 'separator', key: item.id, date: item.date }
-          : { type: 'message', key: item.message.id, item },
-      );
+      if (item.kind === 'separator') {
+        list.push({ type: 'separator', key: item.id, date: item.date });
+        return;
+      }
+      const isDraft = item.message.id === draftMessage?.id;
+      // The final message keeps the draft's key so the bubble (and its reveal)
+      // is reused instead of snapping in as a new message.
+      const revealTurnId = isDraft ? draft?.turnId : finishedDraftMessages[item.message.id];
+      list.push({
+        type: 'message',
+        key: draftEntryKey(item.message.id, finishedDraftMessages),
+        item,
+        isDraft,
+        revealTurnId,
+      });
     });
     return list;
-  }, [items, dividerIndex]);
+  }, [items, dividerIndex, draftMessage, draft, finishedDraftMessages]);
 
   const listRef = useRef<FlatList<ListEntry>>(null);
   const previousCount = useRef(messages.length);
+  // True while the user is at (or near) the bottom, so a growing draft or a new
+  // message keeps the view pinned; someone reading older messages is not moved.
+  const atBottomRef = useRef(true);
 
   // Scroll after mount and again a few times while images and the list settle.
   useEffect(() => {
@@ -101,9 +145,19 @@ export function MessageList({ chat, onReply }: MessageListProps) {
       contentContainerStyle={{ paddingVertical: 8 }}
       showsVerticalScrollIndicator={false}
       scrollEventThrottle={16}
+      onContentSizeChange={() => {
+        // Frame-by-frame reveal growth raises the content height; keep the view
+        // pinned only while the user is already at the bottom.
+        if (atBottomRef.current) {
+          listRef.current?.scrollToEnd({ animated: false });
+        }
+      }}
       onScroll={(event) => {
+        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+        atBottomRef.current =
+          contentSize.height - (contentOffset.y + layoutMeasurement.height) < 40;
         // Scrolling to the top asks for the previous page of history.
-        if (hasMore && event.nativeEvent.contentOffset.y <= 24) {
+        if (hasMore && contentOffset.y <= 24) {
           loadOlder(chat.id);
         }
       }}
@@ -122,6 +176,8 @@ export function MessageList({ chat, onReply }: MessageListProps) {
             isLastInGroup={item.item.lastInGroup}
             currentUserId={currentUserId}
             onReply={onReply}
+            draft={item.isDraft}
+            revealTurnId={item.revealTurnId}
           />
         );
       }}
