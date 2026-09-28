@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0046](T-0046-redesign-foundation-sidebar.md) | Web redesign (D24) part 1: dark tokens, Geist, skeuomorphic key/well primitives, floating panels, sidebar | in progress | deepseek-v4.1-flash | — | Julio approved the mockup: "omg so much better i love it". |
 | [T-0047](T-0047-redesign-chat-panel.md) | Web redesign (D24) part 2: chat panel — header, glossy/recessed bubbles, composer well, pills, cards | planned (after T-0045, T-0046) | deepseek-v4.1-flash | T-0045, T-0046 | Spec written; launch after T-0045 and T-0046 merge. |
 | T-0048 | Mobile redesign (D24) | planned (after T-0047) | deepseek-v4.1-flash | T-0047 | Spec to write. |
-| [T-0045](T-0045-smooth-drafts.md) | Web: smooth draft reveal, gray/dim "generating" look until complete, continuing into the final message without a snap | in progress | deepseek-v4.1-flash | T-0043 | Julio: "gray if its not completly generated". |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -81,3 +80,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0041](T-0041-streaming-replies-server.md) | Server streams AI reply drafts over SSE (/api/drafts/stream) to the owner; final message still via XMPP | 2026-09-28 |
 | [T-0043](T-0043-web-reply-drafts.md) | Web shows AI reply drafts from /api/drafts/stream as a growing bubble, replaced by the final XMPP message without a jump | 2026-09-28 |
 | [T-0044](T-0044-draft-tail-flush.md) | Server publishes the complete reply as a draft before the final XMPP message | 2026-09-28 |
+| [T-0045](T-0045-smooth-drafts.md) | Web reveals AI drafts smoothly, gray until complete, continuing into the final message without a snap | 2026-09-28 |

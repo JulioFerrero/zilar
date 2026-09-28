@@ -51,11 +51,17 @@ export function MessageList({
   const [initialUnread] = useState(() => chat.unread);
   const dividerIndex = unreadDividerIndex(items, initialUnread);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const dividerRef = useRef<HTMLDivElement>(null);
   const previousCount = useRef(messages.length);
   const prependScrollHeight = useRef<number | undefined>(undefined);
   const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(atBottom);
   const [pending, setPending] = useState(0);
+
+  useEffect(() => {
+    atBottomRef.current = atBottom;
+  }, [atBottom]);
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -104,6 +110,28 @@ export function MessageList({
       element.scrollTop = element.scrollHeight;
     }
   }, [draftText, atBottom]);
+
+  // The reveal grows the text frame by frame, so the per-event pin above is
+  // not enough: the observer keeps the view at the bottom on every height
+  // change, as long as the user is there.
+  const hasContent = items.length > 0;
+  useEffect(() => {
+    const element = scrollRef.current;
+    const content = contentRef.current;
+    if (!hasContent || element === null || content === null) {
+      return;
+    }
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const observer = new ResizeObserver(() => {
+      if (atBottomRef.current) {
+        element.scrollTop = element.scrollHeight;
+      }
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [hasContent]);
 
   const handleScroll = (): void => {
     const element = scrollRef.current;
@@ -176,25 +204,43 @@ export function MessageList({
         data-testid="message-list"
         className="chat-background scrollbar-thin h-full overflow-y-auto"
       >
-        <div className="mx-auto flex w-full max-w-[860px] flex-col px-3 pt-3 pb-4">
-          {items.map((item, index) => (
-            <Fragment key={item.kind === 'separator' ? item.id : item.message.id}>
-              {dividerIndex === index && <UnreadDivider ref={dividerRef} />}
-              {item.kind === 'separator' ? (
-                <DateSeparator date={item.date} />
-              ) : (
-                <MessageBubble
-                  message={item.message}
-                  chat={chat}
-                  firstInGroup={item.firstInGroup}
-                  lastInGroup={item.lastInGroup}
-                  currentUserId={store.currentUserId}
-                  onReply={onReply}
-                  draft={item.message.id === draftMessage?.id}
-                />
-              )}
-            </Fragment>
-          ))}
+        <div ref={contentRef} className="mx-auto flex w-full max-w-[860px] flex-col px-3 pt-3 pb-4">
+          {items.map((item, index) => {
+            const isDraft = item.kind === 'message' && item.message.id === draftMessage?.id;
+            // The final message keeps the draft's key so React reuses the same
+            // bubble and its reveal carries on instead of snapping.
+            const revealTurnId =
+              item.kind === 'separator'
+                ? undefined
+                : isDraft
+                  ? draft?.turnId
+                  : store.finishedDraftMessages[item.message.id];
+            const key =
+              item.kind === 'separator'
+                ? item.id
+                : revealTurnId === undefined
+                  ? item.message.id
+                  : `draft-${revealTurnId}`;
+            return (
+              <Fragment key={key}>
+                {dividerIndex === index && <UnreadDivider ref={dividerRef} />}
+                {item.kind === 'separator' ? (
+                  <DateSeparator date={item.date} />
+                ) : (
+                  <MessageBubble
+                    message={item.message}
+                    chat={chat}
+                    firstInGroup={item.firstInGroup}
+                    lastInGroup={item.lastInGroup}
+                    currentUserId={store.currentUserId}
+                    onReply={onReply}
+                    draft={isDraft}
+                    {...(revealTurnId === undefined ? {} : { revealTurnId })}
+                  />
+                )}
+              </Fragment>
+            );
+          })}
         </div>
       </div>
       {!atBottom && (

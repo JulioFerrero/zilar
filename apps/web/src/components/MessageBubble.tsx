@@ -18,6 +18,7 @@ import { ProgressCard } from './ProgressCard';
 import { ReplyQuote } from './ReplyQuote';
 import { VoiceMessage } from './VoiceMessage';
 import { copyText } from '@/lib/clipboard';
+import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
 
 function MessageMeta({
@@ -42,26 +43,28 @@ function MessageMeta({
 
 function BigEmoji({
   message,
+  text,
   own,
-  draft = false,
+  generating = false,
 }: {
   message: UiMessage;
+  text: string;
   own: boolean;
-  draft?: boolean;
+  generating?: boolean;
 }) {
   return (
     <div className={cn('flex flex-col', own ? 'items-end' : 'items-start')}>
       <span className="px-2 py-1 text-[48px] leading-none break-words">
-        {message.text}
-        {draft && <DraftCaret />}
+        {text}
+        {generating && <DraftCaret />}
       </span>
       <span
         className={cn(
           'mt-1 rounded-full bg-black/25 px-2 py-0.5 text-white backdrop-blur-sm',
-          draft && 'invisible',
+          generating && 'invisible',
         )}
       >
-        <MessageMeta message={message} showTicks={own && !draft} />
+        <MessageMeta message={message} showTicks={own && !generating} />
       </span>
     </div>
   );
@@ -75,7 +78,7 @@ function BigEmoji({
 function DraftCaret() {
   return (
     <span aria-hidden="true" className="relative inline-block h-[1em] w-0 align-[-0.15em]">
-      <span className="absolute inset-y-0 left-0 w-0.5 animate-pulse bg-current" />
+      <span className="absolute inset-y-0 left-0 w-0.5 animate-pulse bg-current motion-reduce:animate-none" />
     </span>
   );
 }
@@ -87,8 +90,14 @@ export interface MessageBubbleProps {
   lastInGroup: boolean;
   currentUserId: string;
   onReply: (message: UiMessage) => void;
-  /** A live AI draft: same bubble, but no menu, no time and a soft caret. */
+  /** A live AI draft: same bubble, but muted and dimmed while it is written. */
   draft?: boolean;
+  /**
+   * The turn whose draft this final message continues (T-0045). The bubble
+   * keeps revealing from the shown length and only becomes a normal message
+   * once the reveal is done.
+   */
+  revealTurnId?: string | undefined;
 }
 
 export function MessageBubble({
@@ -99,10 +108,21 @@ export function MessageBubble({
   currentUserId,
   onReply,
   draft = false,
+  revealTurnId,
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const own = message.senderId === currentUserId;
   const hasText = message.text !== undefined && message.text.length > 0;
+  const beyondDraft = revealTurnId !== undefined && !draft;
+  const animate = draft || beyondDraft;
+  const { text, done } = useSmoothText(message.text ?? '', {
+    animate,
+    initial: 'full',
+  });
+  const generating = draft || (beyondDraft && !done);
+  // Keep the 400 ms transition on any bubble that was ever written live, so
+  // the change to the normal look fades instead of jumping.
+  const transitioning = draft || revealTurnId !== undefined;
   const isSending = own && message.status === 'sending';
   const bigEmoji =
     hasText &&
@@ -123,8 +143,9 @@ export function MessageBubble({
   return (
     <div
       data-message-id={message.id}
+      data-draft-turn={revealTurnId}
       onContextMenu={
-        draft
+        generating
           ? undefined
           : (event) => {
               event.preventDefault();
@@ -151,8 +172,11 @@ export function MessageBubble({
           bigEmoji
             ? undefined
             : cn(
-                'rounded-2xl bg-clip-padding text-[15px] leading-[19px] text-foreground',
-                own ? 'bg-bubble-out' : 'bg-bubble-in',
+                'rounded-2xl bg-clip-padding text-[15px] leading-[19px]',
+                generating && !own ? 'text-bubble-in-generating' : 'text-foreground',
+                own ? 'bg-bubble-out' : generating ? 'bg-bubble-in/90' : 'bg-bubble-in',
+                transitioning &&
+                  'transition-[color,background-color] duration-[400ms] ease-out motion-reduce:transition-none',
                 lastInGroup &&
                   (own ? 'bubble-tail-out rounded-br-none' : 'bubble-tail-in rounded-bl-none'),
               ),
@@ -174,7 +198,7 @@ export function MessageBubble({
         )}
 
         {bigEmoji ? (
-          <BigEmoji message={message} own={own} draft={draft} />
+          <BigEmoji message={message} text={text} own={own} generating={generating} />
         ) : (
           <>
             {message.image !== undefined && (
@@ -207,17 +231,17 @@ export function MessageBubble({
 
             {hasText && (
               <p className="px-2.5 py-1.5 break-words whitespace-pre-wrap">
-                <LinkText text={message.text ?? ''} />
-                {draft && <DraftCaret />}
+                <LinkText text={text} />
+                {generating && <DraftCaret />}
                 <MessageMeta
                   message={message}
-                  showTicks={own && !draft}
+                  showTicks={own && !generating}
                   className={cn(
                     'float-right ml-1.5 translate-y-[4px]',
                     own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
                     // Keeps the width the final message will have, so the
                     // swap does not move anything.
-                    draft && 'invisible',
+                    generating && 'invisible',
                   )}
                 />
               </p>
@@ -235,7 +259,7 @@ export function MessageBubble({
           </>
         )}
 
-        {!draft && (
+        {!generating && (
           <button
             type="button"
             aria-label="Message actions"
@@ -248,7 +272,7 @@ export function MessageBubble({
           </button>
         )}
 
-        {!draft && menuOpen && (
+        {!generating && menuOpen && (
           <MessageActionsMenu
             canCopy={hasText}
             onReply={() => {
