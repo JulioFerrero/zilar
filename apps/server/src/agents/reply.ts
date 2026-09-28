@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ChatKind } from '@galena/xmpp-core';
+import type { ChatKind, SendMessageOptions } from '@galena/xmpp-core';
 import { LitellmApiError, redactSecrets, type FetchLike } from '../ai/litellm-client';
 import type { ChatCompletionMessage } from './context';
 import { ChatStreamInterruptedError, consumeChatCompletionStream } from './stream';
@@ -531,4 +531,93 @@ function redactError(error: unknown, secrets: readonly string[]): Error {
     return redacted;
   }
   return new Error(redactSecrets(String(error), secrets));
+}
+
+export interface GroupTurnDeps {
+  aiId: string;
+  /** Bare JID of the room the reply goes to. */
+  roomJid: string;
+  /** The room message that mentioned the AI; the reply points at it. */
+  triggerId: string;
+  /** Bare JID of the mentioning person, carried on the reply mention. */
+  senderJid: string;
+  /** Display name of the mentioner, prefixing the reply text. */
+  senderName: string;
+  messages: ChatCompletionMessage[];
+  baseUrl: string;
+  virtualKey: string;
+  model: string;
+  fetchImpl?: FetchLike;
+  timeoutMs?: number;
+  sendMessage: (
+    to: string,
+    kind: ChatKind,
+    text: string,
+    opts: SendMessageOptions,
+  ) => Promise<unknown>;
+  sendTyping: (to: string, kind: ChatKind, state: 'composing' | 'paused') => void;
+  logger: {
+    warn: (fields: Record<string, unknown>, message: string) => void;
+  };
+  /** Extra secrets to redact from every log line (e.g. the master key). */
+  secrets?: readonly string[];
+}
+
+// Runs one group turn: typing on, one plain model call, reply into the room,
+// typing off. No persona tools in groups: only the owner may reshape the AI,
+// and only in the DM. The reply points at the triggering message and mentions
+// the sender (`@Name text`, with the mention offsets on the `@Name` span). A
+// model failure posts the same honest failure text DMs use, in the room —
+// never the raw error. XMPP send failures are logged, never thrown.
+export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> {
+  const secrets = [deps.virtualKey, ...(deps.secrets ?? [])];
+  // The mention needs a non-empty name for its offsets: fall back to the
+  // sender's JID when no display name is known.
+  const name = deps.senderName.trim() === '' ? deps.senderJid : deps.senderName.trim();
+  const wire = (text: string): { text: string; opts: SendMessageOptions } => ({
+    text: `@${name} ${text}`,
+    opts: {
+      replyTo: { id: deps.triggerId },
+      mentions: [{ jid: deps.senderJid.toLowerCase(), begin: 0, end: name.length + 1 }],
+    },
+  });
+  deps.sendTyping(deps.roomJid, 'groupchat', 'composing');
+  try {
+    const text = await completeChat({
+      baseUrl: deps.baseUrl,
+      virtualKey: deps.virtualKey,
+      model: deps.model,
+      messages: deps.messages,
+      ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
+      ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }),
+      ...(deps.secrets === undefined ? {} : { secrets: deps.secrets }),
+    });
+    const outgoing = wire(text);
+    try {
+      await deps.sendMessage(deps.roomJid, 'groupchat', outgoing.text, outgoing.opts);
+    } catch (error) {
+      deps.logger.warn(
+        { err: redactError(error, secrets), aiId: deps.aiId },
+        'AI group reply could not be sent',
+      );
+      return { kind: 'failed', text: '' };
+    }
+    return { kind: 'replied', text: outgoing.text };
+  } catch (error) {
+    const reply = mapFailureToReply(error);
+    deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
+    const outgoing = wire(reply);
+    try {
+      await deps.sendMessage(deps.roomJid, 'groupchat', outgoing.text, outgoing.opts);
+    } catch (sendError) {
+      deps.logger.warn(
+        { err: redactError(sendError, secrets), aiId: deps.aiId },
+        'AI failure reply could not be sent',
+      );
+      return { kind: 'failed', text: '' };
+    }
+    return { kind: 'failed', text: outgoing.text };
+  } finally {
+    deps.sendTyping(deps.roomJid, 'groupchat', 'paused');
+  }
 }

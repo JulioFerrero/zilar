@@ -1,10 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, count, eq, inArray } from 'drizzle-orm';
+import { findOwnedAi } from '../ais/service';
 import type { ServerDatabase } from '../db/client';
-import { contacts, groupMembers, groups, user } from '../db/schema';
+import { ais, contacts, groupAis, groupMembers, groups, user } from '../db/schema';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
+import { emitGroupAi } from './events';
 
 export const MAX_GROUP_MEMBERS = 50;
 export const ROOM_LOCALPART_LENGTH = 16;
@@ -31,6 +33,14 @@ export interface GroupDetail {
   createdBy: string;
   createdAt: Date;
   members: GroupMemberView[];
+  ais: GroupAiView[];
+}
+
+export interface GroupAiView {
+  aiId: string;
+  jid: string;
+  name: string;
+  ownerId: string;
 }
 
 export interface ChatGroup {
@@ -62,6 +72,18 @@ export interface RemoveGroupMemberInput {
   actorId: string;
   targetUserId: string;
   domain: string;
+}
+
+export interface AddGroupAiInput {
+  groupId: string;
+  actorId: string;
+  aiId: string;
+}
+
+export interface RemoveGroupAiInput {
+  groupId: string;
+  actorId: string;
+  aiId: string;
 }
 
 // `g` followed by 16 random lowercase base32 characters. Never derived from the
@@ -147,12 +169,14 @@ export async function getGroupDetail(
     return null;
   }
   const members = await listGroupMembers(db, groupId);
+  const aiViews = await listGroupAis(db, groupId);
   return {
     id: group.id,
     title: group.title,
     createdBy: group.createdBy,
     createdAt: group.createdAt,
     members,
+    ais: aiViews,
   };
 }
 
@@ -194,7 +218,12 @@ export async function addGroupMembers(
   const toAdd = targets.filter((id) => !existingIds.has(id));
 
   if (toAdd.length > 0) {
-    if (existingIds.size + toAdd.length > MAX_GROUP_MEMBERS) {
+    // People and AIs share the same cap.
+    const aiRows = await db
+      .select({ aiId: groupAis.aiId })
+      .from(groupAis)
+      .where(eq(groupAis.groupId, input.groupId));
+    if (existingIds.size + aiRows.length + toAdd.length > MAX_GROUP_MEMBERS) {
       throw new HttpError(
         400,
         'invalid_request',
@@ -276,6 +305,129 @@ export async function removeGroupMember(
   return detail;
 }
 
+// Adds an AI to a group: the actor must own or administer the group and own
+// the AI (a foreign AI answers the same 404 as a missing one, so AI ids
+// cannot be probed). Adding an AI that is already there is a no-op returning
+// the detail. People and AIs share MAX_GROUP_MEMBERS.
+export async function addGroupAi(
+  db: ServerDatabase,
+  adminClient: EjabberdAdminClient,
+  input: AddGroupAiInput,
+): Promise<GroupDetail> {
+  const group = await requireGroup(db, input.groupId);
+  const actor = await getMembership(db, input.groupId, input.actorId);
+  if (!actor) {
+    throw new HttpError(403, 'forbidden', 'Not a member of this group');
+  }
+  if (actor.role === 'member') {
+    throw new HttpError(403, 'forbidden', 'Only owners and admins can add members');
+  }
+  const ai = await findOwnedAi(db, input.aiId, input.actorId);
+  if (!ai) {
+    throw new HttpError(404, 'not_found', 'AI not found');
+  }
+
+  const [existing] = await db
+    .select({ aiId: groupAis.aiId })
+    .from(groupAis)
+    .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)))
+    .limit(1);
+  if (existing) {
+    const detail = await getGroupDetail(db, input.groupId);
+    if (!detail) {
+      throw new Error('group disappeared while adding an AI');
+    }
+    return detail;
+  }
+
+  const memberRows = await db
+    .select({ userId: groupMembers.userId })
+    .from(groupMembers)
+    .where(eq(groupMembers.groupId, input.groupId));
+  const aiRows = await db
+    .select({ aiId: groupAis.aiId })
+    .from(groupAis)
+    .where(eq(groupAis.groupId, input.groupId));
+  if (memberRows.length + aiRows.length + 1 > MAX_GROUP_MEMBERS) {
+    throw new HttpError(400, 'invalid_request', `A group has at most ${MAX_GROUP_MEMBERS} members`);
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      await adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'member');
+      // Two concurrent adds both pass the check above: the loser lands here
+      // and still answers 200, keeping the add idempotent.
+      await tx
+        .insert(groupAis)
+        .values({ groupId: input.groupId, aiId: input.aiId, addedBy: input.actorId })
+        .onConflictDoNothing({ target: [groupAis.groupId, groupAis.aiId] });
+    });
+  } catch (error) {
+    throw mapXmppError(error);
+  }
+
+  emitGroupAi({ type: 'ai-added', groupId: input.groupId, aiId: input.aiId });
+  const detail = await getGroupDetail(db, input.groupId);
+  if (!detail) {
+    throw new Error('group disappeared while adding an AI');
+  }
+  return detail;
+}
+
+// Removes an AI from a group: allowed for the AI's owner, or a group owner or
+// admin. The AI owner need not still be a group member.
+export async function removeGroupAi(
+  db: ServerDatabase,
+  adminClient: EjabberdAdminClient,
+  input: RemoveGroupAiInput,
+): Promise<GroupDetail> {
+  const group = await requireGroup(db, input.groupId);
+  // Authorize before looking at the group's AIs, so someone who may not
+  // remove the AI can't learn whether it is in the group (404 vs 403).
+  const [ai] = await db
+    .select({ id: ais.id, jid: ais.jid, owner: ais.owner })
+    .from(ais)
+    .where(eq(ais.id, input.aiId))
+    .limit(1);
+  const actor = await getMembership(db, input.groupId, input.actorId);
+  const isAiOwner = ai !== undefined && ai.owner === input.actorId;
+  const isGroupManager = actor !== null && actor.role !== 'member';
+  if (!isAiOwner && !isGroupManager) {
+    throw new HttpError(
+      403,
+      'forbidden',
+      'Only the AI owner or a group owner or admin can remove it',
+    );
+  }
+
+  const [membership] = await db
+    .select({ aiId: groupAis.aiId })
+    .from(groupAis)
+    .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)))
+    .limit(1);
+  if (!membership || !ai) {
+    throw new HttpError(404, 'not_found', 'That AI is not in this group');
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      await adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'none');
+      await tx
+        .delete(groupAis)
+        .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)));
+    });
+  } catch (error) {
+    throw mapXmppError(error);
+  }
+
+  emitGroupAi({ type: 'ai-removed', groupId: input.groupId, aiId: input.aiId });
+  const detail = await getGroupDetail(db, input.groupId);
+  if (!detail) {
+    throw new Error('group disappeared while removing an AI');
+  }
+  return detail;
+}
+
 // Groups the user belongs to, with the data the chat list needs.
 export async function listGroupsForUser(db: ServerDatabase, userId: string): Promise<ChatGroup[]> {
   const memberships = await db
@@ -332,6 +484,18 @@ async function listGroupMembers(db: ServerDatabase, groupId: string): Promise<Gr
         a.name.localeCompare(b.name) ||
         a.userId.localeCompare(b.userId),
     );
+}
+
+async function listGroupAis(db: ServerDatabase, groupId: string): Promise<GroupAiView[]> {
+  const rows = await db
+    .select({ aiId: groupAis.aiId, jid: ais.jid, name: ais.name, ownerId: ais.owner })
+    .from(groupAis)
+    .innerJoin(ais, eq(ais.id, groupAis.aiId))
+    .where(eq(groupAis.groupId, groupId));
+
+  return rows
+    .map((row) => ({ aiId: row.aiId, jid: row.jid, name: row.name, ownerId: row.ownerId }))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.aiId.localeCompare(b.aiId));
 }
 
 async function requireGroup(db: ServerDatabase, groupId: string) {

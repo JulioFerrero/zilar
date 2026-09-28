@@ -1,7 +1,7 @@
 ---
 id: T-0054
 title: "AIs in groups (server): add/remove an AI to a group, the gateway joins its rooms and replies when @mentioned"
-status: planned
+status: merged
 milestone: M2
 branch: task/T-0054-ai-in-groups-server
 model: opencode-go/muse-spark-1.3-contributor
@@ -139,4 +139,169 @@ pnpm build
 
 ## Report (written by the worker when done)
 
+Implemented the server side of AIs in groups: `group_ais` membership, add/remove
+routes, gateway room joins, and @mention-triggered group replies.
+
+### What I did
+
+**1. Data (`apps/server/src/db/schema.ts`, `drizzle/0008_sad_vulcan.sql`).**
+New `group_ais` table: `(group_id, ai_id)` PK, `added_by` (FK user,
+`onDelete: cascade` like the other membership FKs), `added_at`. Generated with
+`pnpm --filter @galena/server db:generate`; a re-run reports "No schema
+changes". Prettier `--write` applied to the generated journal/snapshot exactly
+like the previously committed ones.
+
+**2. Groups service/routes (`apps/server/src/groups/`).**
+- New `apps/server/src/groups/events.ts`: in-process `onGroupAi` /
+  `emitGroupAi` notifier (`ai-added` / `ai-removed`, ids only), mirroring
+  `onAiLifecycle` in `ais/service.ts`.
+- `service.ts`: `GroupDetail` gains `ais: [{ aiId, jid, name, ownerId }]`
+  (sorted by name); `members` unchanged. `addGroupAi` (owner/admin of the group
+  + owner of the AI via `findOwnedAi`, foreign AI answers the same 404 as a
+  missing one; duplicate is a 200 no-op; `setAffiliation(room, aiJid,
+  'member')` + row insert in one transaction; emits `ai-added`) and
+  `removeGroupAi` (allowed for the AI owner even when no longer a group member,
+  or a group owner/admin; affiliation `none` + row delete; emits `ai-removed`).
+  People and AIs share `MAX_GROUP_MEMBERS`: `addGroupAi` counts both, and I
+  also added the AI count to the `addGroupMembers` cap check, otherwise the
+  "together" cap would only hold in one direction.
+- `routes.ts`: `POST /api/groups/:id/ais` (`{ aiId }`, zod) and `DELETE
+  /api/groups/:id/ais/:aiId`, same error style as the member routes.
+
+**3. Gateway rooms (`apps/server/src/agents/gateway.ts`).**
+- Each session tracks `rooms` (bare room JID -> `{ groupId, joinedAtMs, nick
+  }`), per-room coalescing queues/busy flags, and per-room turn timestamps.
+- `syncAiRooms` joins every room from `group_ais`+`groups` with the AI's name
+  as nick, re-joins on a stale nick, leaves rooms no longer in the DB. Called
+  after connect, on `ai-added`/`ai-removed` events, and in `reconcile` for
+  already-connected sessions. Join failures log `{ aiId, groupId }` and are
+  retried by `reconcile`; they never throw and never affect DMs.
+- `replaced` clears room queues too; `stop` unsubscribes both notifiers.
+
+**4. Group replies.** A `groupchat` message takes a turn only if: not
+`outgoing`, non-empty, from a joined room, newer than join-minus-60s skew
+(delayed replay carries its original stamp, live messages carry ~now), mentions
+this AI's bare JID, sender is not `ai-*`, sender is `fromResolved`, and the
+sender's JID is a current `group_members` JID (derived with the same
+`localpartFor` provisioning uses). Unresolved senders are always skipped, which
+covers both spec clauses (AI nick behind an occupant JID, and the
+must-be-a-member rule). Per (AI, room): coalesced single-flight pump, max 6
+turns per 10-min sliding window (7th+ dropped with one warn carrying aiId,
+groupId, messageId), context via new `buildGroupMessages` (last 30 MAM
+`groupchat` messages, same 24k budget helpers, `Name: body` prefixes, AI's own
+as assistant, trigger always included), same LiteLLM path with the AI's capped
+key, **no persona tools**, reply as `@Name text` `groupchat` with `replyTo` +
+XEP-0372 mention of the sender, `composing`/`paused` states, same honest
+failure texts posted in the room, no drafts, no read markers.
+
+**Privacy/cost (also as code comments in `gateway.ts`):** any human member can
+trigger the AI; the owner pays under the AI's capped key. The AI sees only
+room traffic from while it is a member plus granted MAM history. All new log
+lines carry ids only (aiId, groupId, messageId) — verified by leak assertions
+in the tests.
+
+### Files changed
+- `apps/server/src/db/schema.ts`, `apps/server/drizzle/0008_sad_vulcan.sql`,
+  `drizzle/meta/0008_snapshot.json`, `drizzle/meta/_journal.json`
+- `apps/server/src/groups/service.ts`, `routes.ts`, `events.ts` (new),
+  `groups.test.ts`
+- `apps/server/src/agents/gateway.ts`, `context.ts`, `reply.ts`,
+  `gateway.test.ts`, `context.test.ts`, `reply.test.ts`
+- `work/T-0054-ai-in-groups-server.md` (this report + status)
+
+### Commands and real results
+- `pnpm install`: ok (6.9s).
+- `pnpm format:check`: pass (after `prettier --write` on touched files).
+- `pnpm lint` (oxlint): pass, no warnings.
+- `pnpm typecheck` (turbo, 9 tasks): pass. (One `exactOptionalPropertyTypes`
+  error on `displayNameOf` fixed by widening its parameter type.)
+- `pnpm exec turbo test --force --filter=@galena/server`: **37 files passed,
+  5 skipped files; 472 tests passed, 7 skipped, 0 failed** (~2m18s). Includes
+  10 new groups-route tests, 13 new gateway group tests, 8 context tests, 5
+  `runGroupTurn` tests. One test bug of mine fixed along the way (owner adding
+  someone else's AI is 404, not 403).
+- `pnpm build`: pass (2 tasks).
+- `pnpm --filter @galena/server db:generate`: "No schema changes, nothing to
+  migrate".
+
+### Deviations / decisions (spec was silent)
+- `added_by` FK is `onDelete: cascade`, consistent with the other membership
+  FKs. If the adder's account is deleted, the row goes with it.
+- Disabled AIs can be added to a group (no status check on add); the gateway
+  only joins rooms for `active` AIs, so a disabled AI just stays silent until
+  re-enabled (a later `reconcile` picks it up).
+- Room replies prepend `@Name ` so the XEP-0372 mention has a text span to
+  point at (offsets are UTF-16 units, converted by xmpp-core on the wire).
+- No `app.ts` change was needed: the gateway subscribes to `onGroupAi`
+  internally, no new dependencies.
+
+### Live proof steps (for the lead, do NOT run against :3188 data)
+1. Start a scratch stack (empty DB + local ejabberd), create two users A and B
+   as contacts, have A create an AI and a group with B.
+2. `POST /api/groups/:id/ais { aiId }` as A -> 200, `ais` lists the AI;
+   check ejabberd MUC affiliation of the AI JID is `member`.
+3. As B, send a group message `@AI-name hello` with an XEP-0372 mention of the
+   AI's bare JID -> the AI replies in the room mentioning B with `replyTo`.
+4. Repeat without a mention -> silence; repeat from a non-member JID ->
+   silence; send 7 mentions in 10 min -> 6 replies, 7th dropped.
+5. `DELETE /api/groups/:id/ais/:aiId` as A -> 200, affiliation `none`.
+
+### Blocked / needs a decision
+Nothing blocking. One question for review: the spec's AI-sender rule names
+"nick matches an AI of the room" for unknown-JID occupants, but the very next
+rule skips every unknown real JID anyway, so I implemented a single
+skip-unresolved with a comment citing both clauses. Say the word if you want
+the nick check split out explicitly.
+
+### Round 2 — review fixes (lead review, 2026-09-28)
+
+All four items fixed, no other behavior changed.
+
+1. **should-fix — rate budget reset on leave.** `leaveRoomQuietly` in
+   `apps/server/src/agents/gateway.ts` now also clears `roomTurns` for that
+   room, so a removed-then-re-added AI starts with a fresh 6-per-10-min budget.
+   New test `starts a re-added AI with a fresh rate budget`: 6 turns, DB
+   remove + `ai-removed`, DB re-insert + `ai-added`, 7th mention in the same
+   10 minutes replies instead of dropping (7 calls, 7 sends).
+2. **nit — concurrent duplicate POST /ais.** The `group_ais` insert in
+   `addGroupAi` (`apps/server/src/groups/service.ts`) is now
+   `.onConflictDoNothing({ target: [groupId, aiId] })`, so two concurrent adds
+   that both pass the pre-check both answer 200 with one row (affiliation set
+   is idempotent, as before). New test `answers 200 to two concurrent adds
+   with a single row` via `Promise.all`.
+3. **nit — one JID normalizer for the group path.** New exported
+   `normBareJid` in `apps/server/src/agents/context.ts` (bare + lowercase;
+   `bareJid` already did both, the alias names the guarantee). The whole group
+   path in `gateway.ts` runs through it now: `roomJidFor`, room lookup keys,
+   AI-bare-JID, mention-JID comparison (mixed-case mentions previously missed),
+   `isAiSender` input, member-JID set construction and check, `senderJid` and
+   the catch-path mention. New test `answers a mixed-case mention in a
+   mixed-case room JID`. DM path untouched (`bareJid` as before).
+4. **nit — plain-member removal.** New test `rejects AI removal by a plain
+   member`: a member who is neither admin nor AI owner gets 403 and the row
+   survives. (Stranger → 403 was already covered.)
+
+Files changed in round 2: `apps/server/src/agents/context.ts`,
+`gateway.ts`, `gateway.test.ts`, `apps/server/src/groups/service.ts`,
+`groups.test.ts`, plus this report.
+
+Commands and real results (round 2):
+- `pnpm install`: ok.
+- `pnpm format:check`: all tracked files pass; the single remaining warning
+  is the lead's untracked `PREREVIEW.md`, left untouched per instructions.
+- `pnpm lint` (oxlint): pass.
+- `pnpm typecheck` (turbo, 9 tasks): pass.
+- `pnpm exec turbo test --force --filter=@galena/server`: **37 files passed,
+  476 tests passed, 7 skipped, 0 failed** (round 1 was 472 passed; +4 new).
+- `pnpm exec turbo build --force`: pass (2 tasks, uncached).
+
 ## Review (written by Claude)
+
+**Verdict: approved, merged (with one lead fix).**
+
+- The round 1 pre-review had one should-fix: a stale `roomTurns` after a leave, so a re-added AI inherited its old rate budget. Round 2 fixed it, plus: idempotent concurrent adds (`onConflictDoNothing`, with a test), one lowercase bare-JID helper across the group path, and the plain-member removal test.
+- Round 2 nits:
+  - `removeGroupAi` answered 404 or 403 depending on whether the AI was in the group, which is a 1-bit oracle for non-members. **The lead fixed it:** authorization now runs before the membership lookup, with a new test ("answers 403 to an unauthorized remover whether or not the AI is in the group").
+  - XMPP affiliation and DB row not atomic: accepted. It's the same pattern as members, and it heals on retry.
+- Checks re-run by the lead after the fix: format and lint clean, typecheck 9/9, server tests 477 passed / 7 skipped, build OK.
+- Live: the server was restarted on main, and the migration was applied at startup. Adding Julio's AI to his real group changes what the other members see, so the end-to-end check (add the AI, @mention it, watch the reply) waits for Julio's OK, together with T-0055.
