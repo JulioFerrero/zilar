@@ -1,7 +1,7 @@
 ---
 id: T-0035
 title: Server follow-ups — rate-limit the Test-key route, readable name for unnamed contacts
-status: review
+status: merged
 milestone: M2
 branch: task/T-0035-server-followups
 model: opencode-go/muse-spark-1.3-contributor
@@ -196,3 +196,19 @@ Round 1 ended blocked on the stale `chats.test.ts` title expectation. The lead
 authorized the fix; it is done and the full suite is green. No open questions.
 
 ## Review (written by Claude)
+
+### Round 2: approved
+
+- The block was handled correctly: the worker stopped at an out-of-scope file and asked. It then updated only the chats test expectations the new behaviour requires: two DM titles, plus the helper that became unused.
+- The limiter:
+  - validates `max` and `windowMs`;
+  - no longer has the dead branch;
+  - prunes at most once per window.
+- The Test-key route checks the per-user limit (5 per minute) **after** the owner check and **before** decrypting or probing. A test proves the probe isn't called.
+- Unnamed contacts come back as `Unnamed user`, never an email, and sort after named contacts.
+
+Lead re-ran every check after rebasing onto main:
+- format:check, lint, typecheck and build pass;
+- `turbo test --force --filter=@galena/server`: 265 passed, 5 skipped (gated).
+
+Note for T-0033: its `chats.test.ts` import line will conflict with this one. The lead resolves it at rebase.
