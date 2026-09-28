@@ -15,13 +15,13 @@ describe('aisMockScenario', () => {
   });
 
   it('uses the default scenario for ?mock=1', () => {
-    expect(aisMockScenario({}, { mock: '1' })).toBe('default');
+    expect(aisMockScenario({}, { mock: '1' }, true)).toBe('default');
     expect(aisMockScenario({ EXPO_PUBLIC_GALENA_MOCK: '1' }, {})).toBe('default');
   });
 
   it('reads a named scenario from the param or the env default', () => {
-    expect(aisMockScenario({}, { mock: 'empty' })).toBe('empty');
-    expect(aisMockScenario({}, { mock: 'unavailable' })).toBe('unavailable');
+    expect(aisMockScenario({}, { mock: 'empty' }, true)).toBe('empty');
+    expect(aisMockScenario({}, { mock: 'unavailable' }, true)).toBe('unavailable');
     expect(
       aisMockScenario(
         { EXPO_PUBLIC_GALENA_MOCK: '1', EXPO_PUBLIC_GALENA_MOCK_SCENARIO: 'error' },
@@ -31,8 +31,8 @@ describe('aisMockScenario', () => {
   });
 
   it('returns null for an unknown value instead of mocking', () => {
-    expect(aisMockScenario({}, { mock: 'nonsense' })).toBeNull();
-    expect(aisMockScenario({}, { mock: 'foo' })).toBeNull();
+    expect(aisMockScenario({}, { mock: 'nonsense' }, true)).toBeNull();
+    expect(aisMockScenario({}, { mock: 'foo' }, true)).toBeNull();
     expect(aisMockScenario({ EXPO_PUBLIC_GALENA_MOCK: 'false' }, {})).toBeNull();
   });
 
@@ -43,6 +43,22 @@ describe('aisMockScenario', () => {
         {},
       ),
     ).toBe('default');
+  });
+
+  it('ignores the ?mock param when the gate is closed', () => {
+    expect(aisMockScenario({}, { mock: 'default' }, false)).toBeNull();
+    expect(aisMockScenario({}, { mock: '1' }, false)).toBeNull();
+  });
+
+  it('honors the ?mock param when the gate is open', () => {
+    expect(aisMockScenario({}, { mock: 'default' }, true)).toBe('default');
+    expect(aisMockScenario({}, { mock: 'empty' }, true)).toBe('empty');
+  });
+
+  it('keeps the EXPO_PUBLIC_GALENA_MOCK path when the gate is closed', () => {
+    expect(aisMockScenario({ EXPO_PUBLIC_GALENA_MOCK: '1' }, { mock: 'empty' }, false)).toBe(
+      'default',
+    );
   });
 });
 

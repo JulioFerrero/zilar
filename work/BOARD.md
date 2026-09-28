@@ -9,13 +9,12 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0061](T-0061-edit-delete-web.md) | Edit + delete for everyone (web): XEP-0308, XEP-0424, edit bar, tombstones; gateway ignores both | in progress | deepseek-v4.1-flash | T-0059 | Same files as T-0059, so it runs after. |
-| [T-0063](T-0063-mobile-mock-gating.md) | Mobile: `?mock=` honored only in dev builds or with `EXPO_PUBLIC_GALENA_MOCK` (chat store + My AIs) | in progress | deepseek-v4.1-flash | — | From the T-0037 pre-review. Mobile slot (80/20). |
 | [T-0064](T-0064-mobile-markdown.md) | Mobile renders Markdown in AI replies (own parser, safe subset, plain list previews) | in progress | deepseek-v4.1-flash | T-0056 | Mobile slot (80/20). |
+| [T-0067](T-0067-mobile-loading-states.md) | Mobile loading ≠ empty: skeletons, inline errors with Retry, pending open flushed on ready (port of T-0042) | in progress | deepseek-v4.1-flash | T-0056 | Mobile slot (80/20). |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
 
-- Mobile has the same loading-vs-empty bugs T-0042 fixed on web (after T-0056).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
@@ -92,3 +91,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0059](T-0059-reactions-web.md) | Reactions (web): XEP-0444 quick bar, chips, MAM persistence, DMs and groups | 2026-09-28 |
 | [T-0060](T-0060-web-qa-sweep.md) | Web QA sweep: prioritized bug list + screenshots, no code changes | 2026-09-28 |
 | [T-0062](T-0062-web-qa-fixes.md) | Esc closes every menu/dialog, reduced motion covers skeleton/spinner/retry-spinner, focus ring + id/name + disabled Approve/Deny polish | 2026-09-28 |
+| [T-0063](T-0063-mobile-mock-gating.md) | Mobile: ?mock= honored only in dev builds or with EXPO_PUBLIC_GALENA_MOCK (chat store + My AIs), one shared gate | 2026-09-28 |

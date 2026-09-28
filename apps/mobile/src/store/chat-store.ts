@@ -3,6 +3,7 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import { CURRENT_USER_ID, CURRENT_USER_NAME } from '../lib/types';
 import { mockChats, mockMessagesByChat } from '../mock';
+import { mockParamAllowed } from '../mock/gate';
 import {
   MOCK_DRAFT_CHAT_ID,
   MOCK_DRAFT_FINAL_MESSAGE_ID,
@@ -176,13 +177,37 @@ export function createChatStore(
   });
 }
 
+/** The build environment the mock gate needs, injected so it stays testable. */
+export interface MockEnv {
+  dev: boolean;
+  envMock: string | undefined;
+  nodeEnv: string | undefined;
+}
+
+/** The real build values: `__DEV__` is a React Native global, absent in tests. */
+function currentMockEnv(): MockEnv {
+  return {
+    dev: typeof __DEV__ !== 'undefined' && __DEV__,
+    envMock: process.env.EXPO_PUBLIC_GALENA_MOCK,
+    nodeEnv: process.env.NODE_ENV,
+  };
+}
+
 /**
  * `?mock=1` (or `EXPO_PUBLIC_GALENA_MOCK=1`) selects the mock store for local
  * UI work. Vitest also runs on the mock store. The real store is the default.
+ * The route param is honored only when `mockParamAllowed` opens the gate, so a
+ * production deep link cannot switch a real user to fake data.
  */
-export function isMockMode(params?: Record<string, string | string[] | undefined>): boolean {
-  if (process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_GALENA_MOCK === '1') {
+export function isMockMode(
+  params?: Record<string, string | string[] | undefined>,
+  env: MockEnv = currentMockEnv(),
+): boolean {
+  if (env.nodeEnv === 'test' || env.envMock === '1') {
     return true;
+  }
+  if (!mockParamAllowed({ dev: env.dev, envMock: env.envMock })) {
+    return false;
   }
   const value = params?.['mock'];
   return value === '1' || (Array.isArray(value) && value.includes('1'));
