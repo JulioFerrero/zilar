@@ -7,6 +7,7 @@
     "start": "expo start",
     "ios": "expo run:ios",
     "android": "expo run:android",
+    "boot:ios": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/boot-check.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "expo export --platform ios --platform android --output-dir dist"
