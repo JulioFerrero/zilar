@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0051](T-0051-lead-switch-model-and-merge-cleanup.md) | lead CLI: `switch-model` (quota fallback to MiniMax M3) + `merge` stops worktree processes | in progress | MiniMax-M3 | T-0038 | Chore; tests only. |
 | [T-0054](T-0054-ai-in-groups-server.md) | AIs in groups (server): add/remove an AI, the gateway joins rooms and replies when @mentioned | in progress | muse-spark-1.3 | T-0050, T-0053 | Then T-0055: web UI (add AI, AIs in members and the picker). |
 | [T-0055](T-0055-ai-in-groups-web.md) | AIs in groups (web): group panel, add/remove my AI, AIs in the @ picker, AI replies as AI with Markdown | planned (after T-0054) | deepseek-v4.1-flash | T-0053, T-0054 | M2 demo: @mention the AI in a group. |
 | [T-0056](T-0056-mobile-reply-drafts.md) | Mobile AI reply drafts: SSE over XHR (bearer), smooth reveal, recessed generating bubble, same-node swap | in progress | deepseek-v4.1-flash | T-0045, T-0048 | Own simulator; no host mouse automation. |
@@ -86,3 +85,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0052](T-0052-change-ai-model.md) | Change an AI's model after creation: PATCH model/connection under the ensure locks (no orphans, failed swap keeps a working AI), AI panel pickers | 2026-09-28 |
 | [T-0048](T-0048-mobile-redesign.md) | Mobile redesign (D24): dark-only tokens, Geist, depth primitives (depth.ts), chat list and chat screen, rich messages | 2026-09-28 |
 | [T-0053](T-0053-mentions-web.md) | @mentions in groups (web): XEP-0372 references (code-point offsets), @ picker, mention chips, me-mention highlight | 2026-09-28 |
+| [T-0051](T-0051-lead-switch-model-and-merge-cleanup.md) | lead CLI: switch-model (quota fallback, validates before interrupting) + merge stops the worktree's processes (exact path match, TERM/KILL, name-only output) | 2026-09-28 |

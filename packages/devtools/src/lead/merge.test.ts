@@ -5,6 +5,38 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { RealGitRunner } from './git';
 import { MergeError, mergeTask, type MergeOptions } from './merge';
+import {
+  executableBasename,
+  stopWorktreeProcesses,
+  type FindProcsDeps,
+  type StopProcessesDeps,
+} from './processes';
+
+// A no-op process-stopping seam: tests pass these to keep `mergeTask` from
+// touching the real `lsof`/`ps`/`process.kill`. The rebase-conflict and
+// happy-path tests then override them to assert what was stopped. The
+// signature must match `stopWorktreeProcesses` exactly: each candidate
+// becomes a `survived: false` entry, so default tests don't see "could not
+// stop" lines. The seams are typed as their non-optional shape because
+// passing `undefined` would fail under `exactOptionalPropertyTypes`.
+type FindProcsFn = NonNullable<MergeOptions['findProcs']>;
+type StopProcsFn = NonNullable<MergeOptions['stopProcs']>;
+type PrintFn = NonNullable<MergeOptions['print']>;
+const noFindProcs: FindProcsFn = () => [];
+const noStopProcs: StopProcsFn = async (candidates) =>
+  candidates.map((entry) => ({
+    pid: entry.pid,
+    command: executableBasename(entry.command),
+    survived: false,
+  }));
+const noFindProcsDeps: FindProcsDeps = {
+  lsof: () => '',
+  ps: () => '',
+  currentPid: 0,
+  parentPid: 0,
+};
+const noStopProcsDeps: StopProcessesDeps = {};
+const noPrint: PrintFn = () => undefined;
 
 function git(cwd: string, args: string[]): void {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
@@ -102,40 +134,49 @@ function options(harness: Harness, summary = 'Demo summary'): MergeOptions {
     dropFromState: (task) => {
       harness.dropped.push(task);
     },
+    // Override the production lsof/ps defaults so the tests don't touch the
+    // real process table. `stopProcs` returns everything as `survived: false`
+    // so the pre-flight, rebase, and happy-path tests don't see "could not
+    // stop" lines.
+    findProcs: noFindProcs,
+    stopProcs: noStopProcs,
+    findProcsDeps: noFindProcsDeps,
+    stopProcsDeps: noStopProcsDeps,
+    print: noPrint,
   };
 }
 
 describe('mergeTask pre-flight checks', () => {
-  it('refuses a dirty worktree', () => {
+  it('refuses a dirty worktree', async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'dirty.txt'), 'x');
-    expect(() => mergeTask(options(harness))).toThrow(MergeError);
-    expect(() => mergeTask(options(harness))).toThrow(/worktree has uncommitted/);
+    await expect(mergeTask(options(harness))).rejects.toThrow(MergeError);
+    await expect(mergeTask(options(harness))).rejects.toThrow(/worktree has uncommitted/);
   });
 
-  it("refuses a task whose branch copy is not merged (even when main's copy is)", () => {
+  it("refuses a task whose branch copy is not merged (even when main's copy is)", async () => {
     const harness = setup('merged', 'review');
-    expect(() => mergeTask(options(harness))).toThrow(/status is "review"/);
+    await expect(mergeTask(options(harness))).rejects.toThrow(/status is "review"/);
   });
 
-  it("proceeds when the branch copy is merged even though main's copy is todo", () => {
+  it("proceeds when the branch copy is merged even though main's copy is todo", async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
     git(harness.worktree, ['add', '.']);
     git(harness.worktree, ['commit', '-qam', 'feature']);
-    mergeTask(options(harness));
+    await mergeTask(options(harness));
     expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(true);
   });
 
-  it('refuses when main has uncommitted changes', () => {
+  it('refuses when main has uncommitted changes', async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.root, 'uncommitted.txt'), 'x');
-    expect(() => mergeTask(options(harness))).toThrow(/main checkout has uncommitted/);
+    await expect(mergeTask(options(harness))).rejects.toThrow(/main checkout has uncommitted/);
   });
 });
 
 describe('mergeTask rebase conflicts', () => {
-  it('aborts and lists the conflicted files', () => {
+  it('aborts and lists the conflicted files', async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'file.txt'), 'branch change\n');
     git(harness.worktree, ['commit', '-qam', 'branch change']);
@@ -144,7 +185,7 @@ describe('mergeTask rebase conflicts', () => {
 
     let error: unknown;
     try {
-      mergeTask(options(harness));
+      await mergeTask(options(harness));
     } catch (caught) {
       error = caught;
     }
@@ -166,13 +207,13 @@ describe('mergeTask rebase conflicts', () => {
 });
 
 describe('mergeTask happy path', () => {
-  it('rebases, fast-forwards, boards, pushes, and cleans up', () => {
+  it('rebases, fast-forwards, boards, pushes, and cleans up', async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
     git(harness.worktree, ['add', '.']);
     git(harness.worktree, ['commit', '-qam', 'feature']);
 
-    mergeTask(options(harness));
+    await mergeTask(options(harness));
 
     // Fast-forwarded: main holds the feature commit.
     expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(true);
@@ -196,5 +237,177 @@ describe('mergeTask happy path', () => {
     }).stdout.trim();
     expect(branches).toBe('');
     expect(harness.dropped).toEqual(['T-0099']);
+  });
+});
+
+describe('mergeTask process cleanup', () => {
+  it('stops worktree processes only after a successful merge, right before worktree-remove', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    const order: string[] = [];
+    const candidate = { pid: 4242, command: `${harness.worktree}/node server.js` };
+    // Track which pids are still alive so the pre-TERM probe says yes, and
+    // the kill transition makes them gone before the post-probe.
+    const alive = new Set<number>([4242]);
+    await mergeTask({
+      ...options(harness),
+      findProcs: () => {
+        order.push('find');
+        return [candidate];
+      },
+      // Delegate to the real stopWorktreeProcesses so the basename logic
+      // runs: tests assert that only `node` is printed, never the full path
+      // or argv.
+      stopProcs: async (candidates) => {
+        order.push('stop');
+        return stopWorktreeProcesses(candidates, {
+          kill: (pid) => {
+            alive.delete(pid);
+          },
+          now: () => 0,
+          sleep: async () => undefined,
+          exited: (pid) => !alive.has(pid),
+        });
+      },
+      print: (line) => {
+        order.push(`print:${line}`);
+      },
+      runner: new (class extends RealGitRunner {
+        override run(cwd: string, args: string[]): { ok: boolean; stdout: string } {
+          // The exact operation order matters: stop happens after the push
+          // and before the worktree-remove, so a failed merge never kills
+          // the worker's dev servers.
+          if (args[0] === 'push') {
+            order.push('push');
+          }
+          if (args[0] === 'worktree' && args[1] === 'remove') {
+            order.push('worktree-remove');
+            // Stop happens before the worktree is gone.
+            expect(fs.existsSync(harness.worktree)).toBe(true);
+          }
+          return super.run(cwd, args);
+        }
+      })(),
+    });
+    expect(order).toEqual(['push', 'find', 'stop', 'print:stop 4242 node', 'worktree-remove']);
+  });
+
+  it('prints "could not stop" for a pid that survived SIGKILL', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    const lines: string[] = [];
+    await mergeTask({
+      ...options(harness),
+      findProcs: () => [
+        { pid: 11, command: '/bin/bash' },
+        { pid: 22, command: `${harness.worktree}/node_modules/.bin/vite dev` },
+      ],
+      stopProcs: async (candidates) =>
+        candidates.map((entry) => ({
+          pid: entry.pid,
+          command: executableBasename(entry.command),
+          survived: entry.pid === 22,
+        })),
+      print: (line) => lines.push(line),
+    });
+    expect(lines).toEqual(['stop 11 bash', 'could not stop 22 vite']);
+  });
+
+  it('does not run process cleanup when the rebase conflicts', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'file.txt'), 'branch change\n');
+    git(harness.worktree, ['commit', '-qam', 'branch change']);
+    fs.writeFileSync(path.join(harness.root, 'file.txt'), 'main change\n');
+    git(harness.root, ['commit', '-qam', 'main change']);
+    let findCalled = false;
+    await expect(
+      mergeTask({
+        ...options(harness),
+        findProcs: () => {
+          findCalled = true;
+          return [];
+        },
+      }),
+    ).rejects.toThrow(/rebase conflicted/);
+    // A failed merge must not touch the worker's processes.
+    expect(findCalled).toBe(false);
+  });
+
+  it('does not leak argv into the printed command', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    const lines: string[] = [];
+    await mergeTask({
+      ...options(harness),
+      findProcs: () => [
+        {
+          pid: 31,
+          command: `FOO=secret node --token=sk-abc ${harness.worktree}/apps/server/src/index.ts --port 8082`,
+        },
+      ],
+      print: (line) => lines.push(line),
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toBe('stop 31 node');
+    expect(lines[0]).not.toContain('FOO=secret');
+    expect(lines[0]).not.toContain('sk-abc');
+    expect(lines[0]).not.toContain('apps/server');
+    expect(lines[0]).not.toContain('8082');
+  });
+
+  it('prints "stop <pid> ?" when the executable name is empty (no trailing space)', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    const lines: string[] = [];
+    await mergeTask({
+      ...options(harness),
+      // An empty executable name (e.g. ps truncated it or a kernel thread).
+      findProcs: () => [{ pid: 41, command: '' }],
+      stopProcs: async (candidates) =>
+        candidates.map((entry) => ({
+          pid: entry.pid,
+          command: executableBasename(entry.command),
+          survived: false,
+        })),
+      print: (line) => lines.push(line),
+    });
+    expect(lines).toEqual(['stop 41 ?']);
+    expect(lines[0]).not.toMatch(/ $/);
+  });
+
+  it('prints a clear line (no throw) when the process probe fails', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    const lines: string[] = [];
+    let stopCalled = false;
+    await expect(
+      mergeTask({
+        ...options(harness),
+        findProcs: () => {
+          throw new Error('lsof not found');
+        },
+        stopProcs: async () => {
+          stopCalled = true;
+          return [];
+        },
+        print: (line) => lines.push(line),
+      }),
+    ).resolves.toBeUndefined();
+    // One line, not a throw. The lead can read it and re-run.
+    expect(lines).toEqual([
+      'could not list worktree processes: lsof not found; re-run `lead merge T-0099` to finish removal',
+    ]);
+    // We didn't even try to stop anything: probe failed first.
+    expect(stopCalled).toBe(false);
   });
 });

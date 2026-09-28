@@ -44,6 +44,7 @@ export function loadState(statePath: string): StateFile {
       model: value.model,
       role: value.role,
       startedAt: value.startedAt,
+      switchedAt: value.switchedAt,
       nudgesSent: value.nudgesSent,
       lastQuotaRetryAt: value.lastQuotaRetryAt,
       lastQuotaEscalatedAt: value.lastQuotaEscalatedAt,

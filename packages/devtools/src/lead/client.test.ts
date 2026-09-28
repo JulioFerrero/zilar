@@ -37,12 +37,13 @@ describe('FakeOpenCodeClient', () => {
 });
 
 describe('OpencodeCliClient', () => {
-  // A stand-in `opencode2` that prints what the real service printed for
-  // `session.interrupt`: an object with no `data` envelope.
-  function fakeBinary(output: string): string {
+  // A stand-in `opencode2` that prints `output` and exits with `code`.
+  // Mimics how the real CLI responds for `session.interrupt` (no envelope)
+  // and how it might respond to other exit codes.
+  function fakeBinary(output: string, code = '0'): string {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-bin-'));
     const bin = path.join(dir, 'opencode2');
-    fs.writeFileSync(bin, `#!/bin/sh\nprintf '%s' '${output}'\n`, { mode: 0o755 });
+    fs.writeFileSync(bin, `#!/bin/sh\nprintf '%s' '${output}'\nexit ${code}\n`, { mode: 0o755 });
     return bin;
   }
 
@@ -54,5 +55,104 @@ describe('OpencodeCliClient', () => {
   it('still rejects a missing envelope where data is needed', async () => {
     const client = new OpencodeCliClient(fakeBinary('{"interrupted":false}'));
     await expect(client.listMessages('ses_1', 2)).rejects.toThrow('no data envelope');
+  });
+
+  it('tryInterrupt returns ok for a 0 exit', async () => {
+    const client = new OpencodeCliClient(fakeBinary('{"interrupted":true}'));
+    await expect(client.tryInterrupt('ses_1')).resolves.toEqual({ kind: 'ok' });
+  });
+
+  it('tryInterrupt returns already_idle for {"interrupted":false}', async () => {
+    const client = new OpencodeCliClient(fakeBinary('{"interrupted":false}'));
+    await expect(client.tryInterrupt('ses_1')).resolves.toEqual({ kind: 'already_idle' });
+  });
+
+  it('tryInterrupt returns not_found for an exit-404 with "not found" stderr', async () => {
+    const client = new OpencodeCliClient(fakeBinary('{"error":"session not found"}', '404'));
+    await expect(client.tryInterrupt('ses_1')).resolves.toEqual({ kind: 'not_found' });
+  });
+
+  it('tryInterrupt returns error for an unexpected non-zero exit', async () => {
+    // sh's `exit N` returns `N mod 256`, so pick a value below that to land
+    // exactly where we want. 500 maps to 244 on the kernel side.
+    const client = new OpencodeCliClient(fakeBinary('{"error":"upstream timeout"}', '42'));
+    const outcome = await client.tryInterrupt('ses_1');
+    expect(outcome.kind).toBe('error');
+    if (outcome.kind === 'error') {
+      expect(outcome.message).toContain('42');
+      expect(outcome.message).toContain('upstream timeout');
+    }
+  });
+
+  it('interrupt re-throws an error outcome so old call sites still see the failure', async () => {
+    const client = new OpencodeCliClient(fakeBinary('{"error":"upstream timeout"}', '42'));
+    await expect(client.interrupt('ses_1')).rejects.toThrow(/42/);
+  });
+});
+
+describe('FakeOpenCodeClient.tryInterrupt', () => {
+  it('records an ok outcome for known sessions', async () => {
+    const client = new FakeOpenCodeClient();
+    client.addSession('ses_1', { messages: [], permissions: [] });
+    await expect(client.tryInterrupt('ses_1')).resolves.toEqual({ kind: 'ok' });
+    expect(client.interrupted).toEqual(['ses_1']);
+    expect(client.interruptOutcomes).toEqual([{ sessionId: 'ses_1', outcome: { kind: 'ok' } }]);
+  });
+
+  it('returns not_found for unknown sessions without recording an interrupt', async () => {
+    const client = new FakeOpenCodeClient();
+    await expect(client.tryInterrupt('ses_missing')).resolves.toEqual({ kind: 'not_found' });
+    expect(client.interrupted).toEqual([]);
+    expect(client.interruptOutcomes).toEqual([
+      { sessionId: 'ses_missing', outcome: { kind: 'not_found' } },
+    ]);
+  });
+
+  it('returns scripted outcomes in queue order', async () => {
+    const client = new FakeOpenCodeClient();
+    client.addSession('ses_1', { messages: [], permissions: [] });
+    client.scriptInterrupt('ses_1', { kind: 'already_idle' });
+    client.scriptInterrupt('ses_1', {
+      kind: 'error',
+      message: 'boom',
+    });
+    await expect(client.tryInterrupt('ses_1')).resolves.toEqual({ kind: 'already_idle' });
+    await expect(client.tryInterrupt('ses_1')).resolves.toEqual({
+      kind: 'error',
+      message: 'boom',
+    });
+    // The error outcome must not have pushed to `interrupted`.
+    expect(client.interrupted).toEqual([]);
+  });
+});
+
+describe('FakeOpenCodeClient.interrupt (strict)', () => {
+  // `interrupt` mirrors OpencodeCliClient.interrupt exactly: it throws on
+  // any non-ok outcome so old call sites (lead reply, autopilot) fail
+  // fast when a session is gone.
+  it('throws on a scripted error outcome', async () => {
+    const client = new FakeOpenCodeClient();
+    client.addSession('ses_1', { messages: [], permissions: [] });
+    client.scriptInterrupt('ses_1', { kind: 'error', message: 'upstream timeout' });
+    await expect(client.interrupt('ses_1')).rejects.toThrow(/upstream timeout/);
+  });
+
+  it('throws on a scripted already_idle outcome (real strict method would too)', async () => {
+    const client = new FakeOpenCodeClient();
+    client.addSession('ses_1', { messages: [], permissions: [] });
+    client.scriptInterrupt('ses_1', { kind: 'already_idle' });
+    await expect(client.interrupt('ses_1')).rejects.toThrow(/already_idle/);
+  });
+
+  it('throws on a not_found outcome for an unknown session id', async () => {
+    const client = new FakeOpenCodeClient();
+    await expect(client.interrupt('ses_missing')).rejects.toThrow(/not_found/);
+  });
+
+  it('resolves only on an ok outcome', async () => {
+    const client = new FakeOpenCodeClient();
+    client.addSession('ses_1', { messages: [], permissions: [] });
+    await expect(client.interrupt('ses_1')).resolves.toBeUndefined();
+    expect(client.interrupted).toEqual(['ses_1']);
   });
 });

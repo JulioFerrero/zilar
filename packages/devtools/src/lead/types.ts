@@ -40,6 +40,7 @@ export interface TaskRecord {
   model: string;
   role: 'worker' | 'prereview';
   startedAt: string;
+  switchedAt: string | undefined;
   nudgesSent: number;
   lastQuotaRetryAt: number | undefined;
   lastQuotaEscalatedAt: number | undefined;
@@ -66,6 +67,7 @@ const taskRecordSchema = z.object({
   model: z.string(),
   role: z.enum(['worker', 'prereview']),
   startedAt: z.string(),
+  switchedAt: z.string().optional(),
   nudgesSent: z.number().int().nonnegative().default(0),
   lastQuotaRetryAt: z.number().optional(),
   lastQuotaEscalatedAt: z.number().optional(),
@@ -99,6 +101,7 @@ export function newTaskRecord(init: {
 }): TaskRecord {
   return {
     ...init,
+    switchedAt: undefined,
     nudgesSent: 0,
     lastQuotaRetryAt: undefined,
     lastQuotaEscalatedAt: undefined,

@@ -1,12 +1,25 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { FakeOpenCodeClient } from './client';
-import { launchTask } from './launch';
+import { afterEach, describe, expect, it } from 'vitest';
+import { FakeOpenCodeClient, type OpenCodeClient } from './client';
+import { launchTask, startWorkerSession } from './launch';
 import type { GitRunner } from './git';
 import { promptsDir } from './prompts';
 import { loadState } from './state';
+
+// The order test stubs only the methods `startWorkerSession` calls; declare
+// the shape here so the test doesn't have to duplicate the full interface.
+type OpenCodeClientLike = Pick<
+  OpenCodeClient,
+  | 'createSession'
+  | 'promptDetached'
+  | 'interrupt'
+  | 'tryInterrupt'
+  | 'listMessages'
+  | 'listPermissions'
+  | 'replyPermission'
+>;
 
 const TASK_MD = (model: string): string =>
   [
@@ -140,5 +153,76 @@ describe('launchTask', () => {
         runner: stubRunner([]),
       }),
     ).rejects.toThrow(/model/);
+  });
+});
+
+describe('startWorkerSession', () => {
+  // Swap the worker prompt for a broken one that leaves a placeholder
+  // unfilled, then assert no session was created: the prompt is validated
+  // BEFORE createSession, so a typo can't leave an orphan session.
+  const original = fs.readFileSync(path.join(promptsDir(), 'worker.md'), 'utf8');
+
+  afterEach(() => {
+    fs.writeFileSync(path.join(promptsDir(), 'worker.md'), original);
+  });
+
+  it('does not call createSession when the prompt has unfilled placeholders', async () => {
+    // Replace the prompt with one that does not consume the four required
+    // placeholders. The renderer will not know to fill any of them, the
+    // validator will refuse, and createSession must not run.
+    fs.writeFileSync(path.join(promptsDir(), 'worker.md'), 'A prompt without placeholders.\n');
+    const client = new FakeOpenCodeClient();
+    await expect(
+      startWorkerSession({
+        client,
+        promptsDirPath: promptsDir(),
+        task: 'T-0099',
+        file: 'T-0099-demo.md',
+        worktree: '/tmp/galena-T-0099',
+        branch: 'task/T-0099-demo',
+        title: 'T-0099',
+        model: { providerID: 'opencode-go', id: 'muse-spark-1.3-contributor' },
+        rules: [],
+        template: 'worker',
+      }),
+    ).rejects.toThrow(/unfilled placeholders|missing substituted/);
+    // No orphan session was created.
+    expect(client.created).toEqual([]);
+  });
+
+  it('throws on unfilled placeholders BEFORE createSession', async () => {
+    // Use an injectable client that records the call order. The renderer
+    // runs first and throws, so createSession is never called.
+    fs.writeFileSync(path.join(promptsDir(), 'worker.md'), 'Static text with no placeholders.\n');
+    const order: string[] = [];
+    const client: OpenCodeClientLike = {
+      createSession: () => {
+        order.push('createSession');
+        return Promise.resolve('ses_should_not_be_created');
+      },
+      promptDetached: () => {
+        order.push('promptDetached');
+      },
+      interrupt: () => Promise.resolve(),
+      tryInterrupt: () => Promise.resolve({ kind: 'ok' }),
+      listMessages: () => Promise.resolve([]),
+      listPermissions: () => Promise.resolve([]),
+      replyPermission: () => Promise.resolve(),
+    };
+    await expect(
+      startWorkerSession({
+        client,
+        promptsDirPath: promptsDir(),
+        task: 'T-0099',
+        file: 'T-0099-demo.md',
+        worktree: '/tmp/galena-T-0099',
+        branch: 'task/T-0099-demo',
+        title: 'T-0099',
+        model: { providerID: 'opencode-go', id: 'muse-spark-1.3-contributor' },
+        rules: [],
+        template: 'worker',
+      }),
+    ).rejects.toThrow(/unfilled placeholders|missing substituted/);
+    expect(order).toEqual([]);
   });
 });
