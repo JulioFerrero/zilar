@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0028](T-0028-connections-ui.md) | Connections: provider API keys encrypted at rest, `/api/connections`, Settings → Connections screen | changes requested (round 2 running) | v4.1-flash | T-0007 | Round 1: menu entry + back button, honest 503 when unconfigured, HKDF instead of scrypt, trim keys, safe Remove, 429 mapping. Lead runs the gated live test after round 2. Watch: `cd ../galena-T-0028 && opencode2 -s ses_f18ca6a9affeWKUC4q5RKlN6Ty` |
-| [T-0029](T-0029-flaky-web-tests.md) | Fix the three load-sensitive `apps/web` tests | **approved, waiting for Julio to merge** | v4.1-flash | | Per-test commented timeouts; verified by the lead with 2 forced full-suite runs under a CPU burner. |
 | [T-0008](T-0008-runner-tunnel-spike.md) | Spike S6: runner tunnel over one WebSocket (engine API, model traffic, preview URL) | in progress | muse-spark-1.3 | T-0006 | New package `packages/runner-tunnel` only. Decides the M3 design. Watch: `cd ../galena-T-0008 && opencode2 -s ses_f18ca69fbffeB8AWtuJJ4Bp5mb` |
 | [T-0031](T-0031-mobile-boot-check.md) | Mobile boot check: build, launch and watch the iOS app; fail on native/bundle errors | in progress | mimo-v2.6-flash | | Would have caught the T-0026 `ExpoSecureStore` crash. Uses the iPad simulator + Metro 8082. Watch: `cd ../galena-T-0031 && opencode2 -s ses_f18ca6963ffeD4I0UTRes2oAWy` |
 | T-0030 | M2: Create-AI wizard (reserved by the T-0028 spec) | planned | | T-0028 | Spec after T-0028 merges; it touches the same server files. |
@@ -51,3 +50,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0026](T-0026-mobile-auth.md) | **Mobile sign-in for real**: invite, email code, name; session in the OS keychain. Verified live against the server with codes redacted. First slice of mobile on real data | 2026-09-28 |
 | [T-0027](T-0027-mobile-real-data.md) | **Mobile on real data** — real DMs and groups via xmpp-core; gated live integration verified by the lead. **M1 complete** | 2026-09-28 |
 | [T-0009](T-0009-git-proxy.md) | Spike S8: GitHub App tokens + git proxy allowing only `agent/<ai>/*` pushes; fails closed on unparseable pushes (2 rounds) | 2026-09-28 |
+| [T-0029](T-0029-flaky-web-tests.md) | Load-sensitive `apps/web` tests: commented per-test timeouts on the three first-in-file full-app renders; verified with forced full-suite runs under a CPU burner | 2026-09-28 |
