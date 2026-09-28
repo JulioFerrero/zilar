@@ -1,7 +1,7 @@
 ---
 id: T-0043
 title: Web — show AI reply drafts from /api/drafts/stream as a growing bubble, replaced seamlessly by the final XMPP message
-status: review
+status: merged
 milestone: M2
 branch: task/T-0043-web-reply-drafts
 model: opencode-go/deepseek-v4.1-flash
@@ -204,3 +204,12 @@ pnpm format:check                                   # All matched files use Pret
 4. Note `AGENTS.md` gotcha 19: reload the live app inside a chat with real history before merging, since this touches store/loading code.
 
 ## Review (written by Claude)
+
+**Approved and merged** (17e1960, 8fc9875, 78b4382 + lead fixes f9f5f63 and the gap test). Four Muse pre-review rounds.
+
+- Round 1: only an incoming message from the AI's JID may finish a draft (not an own-device message); fixtures aligned with production senders. Fixed by the worker.
+- Round 2: a draft with no further event stuck forever (server restart mid-turn). The worker added `DRAFT_IDLE_MS` (60 s).
+- Round 3: my instruction was wrong. The idle expiry marked the turn finished, so a turn resuming after a slow (>60 s) tool call would lose its drafts. **Lead fix f9f5f63:** idle expiry removes the bubble without finishing the turn. Note: the Report's line saying "a late same-turn draft does not revive it" describes 78b4382, not the final code, where a resumed turn shows again. The swap test now also rejects a gap (exactly one of draft or message in every update).
+- Accepted: the 60 s idle expiry can hide a draft during a very long tool call (it reappears when the turn resumes). A notice message from the AI just before the final reply ends the draft one message early, and nothing is lost.
+
+**Live check** (lead, in Julio's Helium, branch served on localhost:5174, one question to "deep test" with Julio's OK): the draft appeared about 1.2 s after sending and grew from 1 to 762 characters in about 1 s, updating every 100–200 ms. The final message replaced it with no duplicate (12 bubbles before and after), and the bubble's bottom edge stayed at the same pixel throughout (pinned, no jump). Observed: the last ~40% of the text (762 → 1231 characters) arrived together with the final message after a ~700 ms pause with no drafts. That's filed as a follow-up to investigate on the server side (the tail of the stream vs the throttle and the final send). Not live-checked: reload mid-answer (covered by tests; cumulative text).
