@@ -1,7 +1,7 @@
 ---
 id: T-0058
 title: AI costs — show each AI's spend (today, and the 30-day window vs its cap) and enforce the per-day limit before a turn
-status: planned
+status: merged
 milestone: M2
 branch: task/T-0058-ai-costs
 model: opencode-go/muse-spark-1.3-contributor
@@ -122,4 +122,50 @@ pnpm build
 
 ## Report (written by the worker when done)
 
+Implemented the spend display and the soft daily-limit enforcement.
+
+What was built:
+- Data: new `ai_daily_spend` table (`ai_id`, `day`, `baseline_usd`, `updated_at`, PK `(ai_id, day)`, FK cascade) in `apps/server/src/db/schema.ts`, plus generated migration `drizzle/0009_premium_payback.sql` (+ `meta/`).
+- `apps/server/src/ais/usage.ts`: `getAiUsage(deps, aiId)` returning `todayUsd`, `windowUsd`, `perDayUsd`, `perMonthUsd`, `dailyLimitReached`. First read of a UTC day records the baseline (`ON CONFLICT DO NOTHING`) and answers today 0; a spend below the baseline is treated as a 30-day window reset (baseline replaced, today 0). The key is addressed by its token id, so the `sk-...` secret is never read or logged (ids only). A LiteLLM failure returns null and callers fail open; the lag-softness is documented in a comment.
+- API: `GET /api/ais` and `GET /ais/:id` now answer `usage: { todayUsd, windowUsd } | null`. Reads run in parallel with a 2 s per-AI timeout (`USAGE_TIMEOUT_MS`) → null. Owner-only as before (ids come from the owner's own listing/detail check); without a LiteLLM client usage is null.
+- Gateway (`gateway.ts`, `reply.ts`): `checkDailyLimit` runs before any model call in DM (`runSessionTurn`) and group (`runGroupSessionTurn`) turns. On a reached limit it sends the fixed notice at most once per AI per chat per UTC day (in-memory map; a restart may notify once more) and skips the turn; further messages that day get nothing, while DM read markers still go out. `dailyLimitReply(perDayUsd)` lives next to the other fixed replies.
+- Web: `AiPanel` has a Usage block above the limits (`Today $X of $Y`, `30-day window $X of $Y`, thin well-track meters with `#ededed` fill → `bg-danger` at/above 100%, "Usage unavailable" when null, plus the lag help text). The AIs page row shows `Today $X` in mono under the model name (hidden when unavailable). `PublicAi.usage` is optional+nullable client-side (see deviations).
+- Tests: `usage.test.ts` (8: first-read baseline, delta, cap reached, window reset, concurrent first reads, LiteLLM failure, missing AI/no key, UTC day boundary with injected clock); gateway +4 (DM notice-once-then-silence with markers incl. next-day re-notify, under-limit normal, fail-open, group notice-then-silence); routes +3 (list+detail usage and owner-only, failure → null, hang → null after timeout); web +5 (panel numbers/meters/order, danger at/over 100%, unavailable, row spend mono, row hidden when null).
+- Visual: `work/screenshots/T-0058/usage-states.png` (1440×900 headless Chrome over a vite dev page rendering the real `UsageBlock`: normal, over-limit, unavailable). Dev server stopped, temp preview files deleted.
+
+Files changed:
+- `apps/server/src/db/schema.ts`, `apps/server/drizzle/0009_premium_payback.sql`, `apps/server/drizzle/meta/0009_snapshot.json`, `apps/server/drizzle/meta/_journal.json`
+- `apps/server/src/ais/usage.ts` (new), `apps/server/src/ais/usage.test.ts` (new)
+- `apps/server/src/ais/routes.ts`, `apps/server/src/ais/routes.test.ts`
+- `apps/server/src/agents/gateway.ts`, `apps/server/src/agents/reply.ts`, `apps/server/src/agents/gateway.test.ts`
+- `apps/web/src/lib/api.ts`, `apps/web/src/components/ais/AiPanel.tsx`, `apps/web/src/routes/AisPage.tsx`, `apps/web/src/components/ais/AiPanel.test.tsx`, `apps/web/src/components/ais/AisPage.test.tsx`
+- `work/screenshots/T-0058/usage-states.png`
+
+Commands and real results:
+- `pnpm install`: ok (1010 packages).
+- `pnpm format:check`: pass (after prettier-ing the two drizzle-generated JSON files, which only lacked a trailing newline).
+- `pnpm lint` (oxlint): pass, no warnings.
+- `pnpm typecheck` (turbo, 9 tasks): pass.
+- `pnpm exec turbo test --force --filter=@galena/server --filter=@galena/web`: server 38 files passed / 5 skipped files, 492 tests passed / 7 skipped; web 35 files, 270 tests passed.
+- `pnpm build`: pass (2 tasks).
+- Screenshot: `vite --port 5199` + headless Chrome `--screenshot --window-size=1440,900`; server stopped afterwards.
+
+Deviations from the spec (all minor):
+- The notice is an exported function `dailyLimitReply(perDayUsd)`, not a constant: the text is fixed except for the formatted `$X.XX` cap, which a constant cannot carry.
+- Web `usage` is `.nullable().optional()` rather than required: `NewAiDialog.test.tsx` (not in my allowed files) fixtures AIs without `usage`, and older servers omit it. Absent is treated exactly like null ("Usage unavailable" / row line hidden).
+- The group notice is a plain room message (no @mention, no replyTo): the spec fixes the text only.
+- Baseline stored as `numeric(12,2)` per spec; sub-cent rounding differences are absorbed by the reset rule and are invisible at the displayed 2-decimal precision.
+
+Open questions: none. Mobile intentionally untouched (out of scope; its manual AI parser ignores the new `usage` key).
+
 ## Review (written by Claude)
+
+**Approved and merged by Claude.**
+
+- Shows what an AI spent today and over the 30-day window, in the panel and as a mono line on the AIs list row, and enforces the per-day limit before each turn (it was stored but never checked before). The key's own current spend minus a per-day baseline gives "today"; a spend below the baseline is treated as a window reset. Reads fail open on a LiteLLM error or timeout.
+- The limit notice fires once per AI per chat per UTC day, in both DMs and groups; DM read markers still go out while limited.
+- Accepted nits, not blocking:
+  - the per-AI usage timeout's timer isn't cleared on the winning race, so a slow read keeps ticking harmlessly in the background;
+  - the today/limit comparison goes through a string-to-float parse, so it carries sub-cent float epsilon;
+  - the window-reset row's `updatedAt` uses the wall clock instead of the injected clock, so a fake-clock test writes a real timestamp there (an informational column only).
+- The pre-reviewer re-ran the checks: format, lint, typecheck, server at 492 passing (7 skipped by design), web at 270 passing, and build all green. No secrets or cross-user leaks found.

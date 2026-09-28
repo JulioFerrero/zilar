@@ -38,6 +38,7 @@ const createdAi = {
   status: 'active',
   providerConnectionId: 'c-1',
   limits: { perDayUsd: 2, perMonthUsd: 20 },
+  usage: { todayUsd: 0.5, windowUsd: 5 },
   createdAt: '2026-09-28T00:00:00.000Z',
 };
 
@@ -105,6 +106,48 @@ describe('AisPage', () => {
     expect(screen.getByText('Loading…')).toBeTruthy();
     expect(await screen.findByText('Dev-1')).toBeTruthy();
     expect(screen.getByText('$2/day · $20/month')).toBeTruthy();
+  });
+
+  it("shows today's spend in mono under the model name", async () => {
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([
+        { method: 'GET', path: '/api/ais', respond: () => jsonResponse(200, [createdAi]) },
+        {
+          method: 'GET',
+          path: '/api/connections',
+          respond: () => jsonResponse(200, [activeConnection]),
+        },
+      ]),
+    );
+
+    renderAisPage();
+
+    const spend = await screen.findByText('Today $0.50');
+    expect(spend.className).toContain('font-mono');
+  });
+
+  it('hides the spend line when usage is unavailable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([
+        {
+          method: 'GET',
+          path: '/api/ais',
+          respond: () => jsonResponse(200, [{ ...createdAi, usage: null }]),
+        },
+        {
+          method: 'GET',
+          path: '/api/connections',
+          respond: () => jsonResponse(200, [activeConnection]),
+        },
+      ]),
+    );
+
+    renderAisPage();
+
+    expect(await screen.findByText('Dev-1')).toBeTruthy();
+    expect(screen.queryByText(/Today \$/)).toBeNull();
   });
 
   it('shows the empty state with a Create call to action', async () => {

@@ -58,6 +58,10 @@ class FakeLitellm implements LitellmAdminClient {
   readonly deletedModels: string[] = [];
   /** Every gateway call in order, so tests can assert create/delete ordering. */
   readonly order: string[] = [];
+  /** Key spend `getKeyInfo` answers, by token id. Unset keys spend 0. */
+  readonly spendByKey = new Map<string, number>();
+  failKeyInfo = false;
+  hangKeyInfo = false;
   failGenerate = false;
   failUpdate = false;
   failRevoke = false;
@@ -108,8 +112,22 @@ class FakeLitellm implements LitellmAdminClient {
     });
   }
 
-  getKeyInfo(): Promise<VirtualKeyInfo> {
-    return Promise.reject(new Error('getKeyInfo is not used by the AI routes'));
+  getKeyInfo(key: string): Promise<VirtualKeyInfo> {
+    if (this.hangKeyInfo) {
+      return new Promise<VirtualKeyInfo>(() => undefined);
+    }
+    if (this.failKeyInfo) {
+      return Promise.reject(new Error('LiteLLM is down'));
+    }
+    return Promise.resolve({
+      keyAlias: null,
+      maxBudget: null,
+      spend: this.spendByKey.get(key) ?? 0,
+      tpmLimit: null,
+      rpmLimit: null,
+      blocked: null,
+      models: [],
+    });
   }
 
   updateKey(input: UpdateVirtualKeyInput): Promise<VirtualKeyInfo> {
@@ -994,6 +1012,90 @@ describe('AI routes', () => {
     expect(litellm.addedModels.length + litellm.updated.length + litellm.deletedModels.length).toBe(
       callsBefore,
     );
+  });
+
+  it('answers usage on the list and the detail, owner only', async () => {
+    const litellm = new FakeLitellm();
+    const app = mount({ litellm });
+    const alice = await bootstrapUser(context, app, `usage${testCounter}@example.com`);
+    const bob = await bootstrapUser(context, app, `usagebob${testCounter}@example.com`);
+    const connectionId = await addConnection(alice.id);
+    const created = await postAi(app, alice.cookie, createBody(connectionId));
+    const id = ((await created.json()) as { id: string }).id;
+    const keyRows = await context.db.select().from(llmVirtualKeys);
+    const keyId = keyRows[0]!.litellmKeyId as string;
+    litellm.spendByKey.set(keyId, 1.5);
+
+    // The first read of the day records the baseline: today 0.
+    const list = await app.request(`${TEST_BASE_URL}/api/ais`, {
+      headers: { cookie: alice.cookie },
+    });
+    expect(list.status).toBe(200);
+    const listBody = (await list.json()) as Array<Record<string, unknown>>;
+    expect(listBody).toHaveLength(1);
+    expect(listBody[0]).toMatchObject({ id, usage: { todayUsd: 0, windowUsd: 1.5 } });
+
+    // A later read answers the delta.
+    litellm.spendByKey.set(keyId, 2.5);
+    const detail = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      headers: { cookie: alice.cookie },
+    });
+    expect(detail.status).toBe(200);
+    expect(await detail.json()).toMatchObject({ id, usage: { todayUsd: 1, windowUsd: 2.5 } });
+
+    // Bob sees neither the AI nor its spend.
+    const bobList = await app.request(`${TEST_BASE_URL}/api/ais`, {
+      headers: { cookie: bob.cookie },
+    });
+    expect(await bobList.json()).toEqual([]);
+    const bobDetail = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      headers: { cookie: bob.cookie },
+    });
+    expect(bobDetail.status).toBe(404);
+  });
+
+  it('answers usage null when the spend lookup fails', async () => {
+    const litellm = new FakeLitellm();
+    litellm.failKeyInfo = true;
+    const app = mount({ litellm });
+    const user = await bootstrapUser(context, app, `usagefail${testCounter}@example.com`);
+    const connectionId = await addConnection(user.id);
+    const created = await postAi(app, user.cookie, createBody(connectionId));
+    const id = ((await created.json()) as { id: string }).id;
+
+    const list = await app.request(`${TEST_BASE_URL}/api/ais`, {
+      headers: { cookie: user.cookie },
+    });
+    expect(list.status).toBe(200);
+    expect(await list.json()).toMatchObject([{ id, usage: null }]);
+
+    const detail = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      headers: { cookie: user.cookie },
+    });
+    expect(detail.status).toBe(200);
+    expect(await detail.json()).toMatchObject({ id, usage: null });
+  });
+
+  it('answers usage null when the spend lookup hangs past the timeout', async () => {
+    const litellm = new FakeLitellm();
+    litellm.hangKeyInfo = true;
+    const app = mount({ litellm });
+    const user = await bootstrapUser(context, app, `usagetimeout${testCounter}@example.com`);
+    const connectionId = await addConnection(user.id);
+    const created = await postAi(app, user.cookie, createBody(connectionId));
+    const id = ((await created.json()) as { id: string }).id;
+
+    const list = await app.request(`${TEST_BASE_URL}/api/ais`, {
+      headers: { cookie: user.cookie },
+    });
+    expect(list.status).toBe(200);
+    expect(await list.json()).toMatchObject([{ id, usage: null }]);
+
+    const detail = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
+      headers: { cookie: user.cookie },
+    });
+    expect(detail.status).toBe(200);
+    expect(await detail.json()).toMatchObject({ id, usage: null });
   });
 
   it('answers 502 and keeps a working AI when the model swap fails halfway', async () => {

@@ -210,6 +210,9 @@ class FakeCore implements XmppCore {
 class FakeLitellm implements LitellmAdminClient {
   readonly added: AddModelInput[] = [];
   readonly updated: UpdateVirtualKeyInput[] = [];
+  /** Key spend `getKeyInfo` answers, by token id. Unset keys spend 0. */
+  readonly spendByKey = new Map<string, number>();
+  failKeyInfo = false;
   private modelCounter = 0;
   private keyCounter = 0;
 
@@ -239,8 +242,19 @@ class FakeLitellm implements LitellmAdminClient {
     });
   }
 
-  getKeyInfo(): Promise<VirtualKeyInfo> {
-    throw new Error('getKeyInfo is not used by the gateway');
+  getKeyInfo(key: string): Promise<VirtualKeyInfo> {
+    if (this.failKeyInfo) {
+      return Promise.reject(new Error('LiteLLM is down'));
+    }
+    return Promise.resolve({
+      keyAlias: null,
+      maxBudget: 20,
+      spend: this.spendByKey.get(key) ?? 0,
+      tpmLimit: null,
+      rpmLimit: null,
+      blocked: null,
+      models: [],
+    });
   }
 
   updateKey(input: UpdateVirtualKeyInput): Promise<VirtualKeyInfo> {
@@ -397,6 +411,7 @@ describe('agent gateway', () => {
       retryBaseDelayMs?: number;
       failConnect?: (coreIndex: number) => boolean;
       hub?: DraftHub;
+      now?: () => Date;
     } = {},
   ): { gateway: AgentGateway; logger: ReturnType<typeof captureLogger> } {
     const logger = captureLogger();
@@ -419,7 +434,9 @@ describe('agent gateway', () => {
         return core;
       },
       fetchImpl,
-      now: () => new Date('2026-09-28T12:00:00Z'),
+      ...(config.now === undefined
+        ? { now: () => new Date('2026-09-28T12:00:00Z') }
+        : { now: config.now }),
       ...(config.hub === undefined ? {} : { drafts: { hub: config.hub } }),
     };
     const created = createAgentGateway(deps, {
@@ -1101,6 +1118,102 @@ describe('agent gateway', () => {
         await waitFor(() => core.sent.length === 1);
         expect(core.sent[0]?.text).toBe(TRANSIENT_FAILURE_REPLY);
       }
+    });
+  });
+
+  describe('daily spending limit', () => {
+    const LIMIT_NOTICE =
+      "I've reached today's spending limit ($1.00). I'll be back after 00:00 UTC.";
+
+    async function limitedSetup(): Promise<{
+      seeded: SeededAi;
+      core: FakeCore;
+      calls: Call[];
+      litellm: FakeLitellm;
+      setNow: (iso: string) => void;
+    }> {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = completionFetch();
+      const litellm = new FakeLitellm();
+      litellm.spendByKey.set('tok-1', 0.5);
+      let current = new Date('2026-09-28T12:00:00Z');
+      const { gateway: started } = harness(cores, fetchImpl, litellm, { now: () => current });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      return {
+        seeded,
+        core,
+        calls,
+        litellm,
+        setNow: (iso: string) => {
+          current = new Date(iso);
+        },
+      };
+    }
+
+    it('runs a normal turn under the limit', async () => {
+      const { seeded, core, calls } = await limitedSetup();
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+      expect(core.sent).toEqual([{ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' }]);
+    });
+
+    it('fails open when the spend lookup fails', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = completionFetch();
+      const litellm = new FakeLitellm();
+      litellm.failKeyInfo = true;
+      const { gateway: started } = harness(cores, fetchImpl, litellm);
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+      expect(core.sent).toEqual([{ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' }]);
+    });
+
+    it('sends one notice per DM per day, then stays silent but keeps marking read', async () => {
+      const { seeded, core, calls, litellm, setNow } = await limitedSetup();
+
+      // The first turn records the 0.5 baseline and replies normally.
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+      expect(core.sent).toEqual([{ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' }]);
+
+      // Spend climbs past the $1/day cap: the notice goes out, no model call.
+      litellm.spendByKey.set('tok-1', 2);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'are you there?'));
+      await waitFor(() => core.sent.length === 2);
+      expect(core.sent[1]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: LIMIT_NOTICE });
+      expect(calls).toHaveLength(1);
+
+      // A third message the same day: no reply and no second notice...
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-3', 'still there?'));
+      await tick(200);
+      expect(core.sent).toHaveLength(2);
+      expect(calls).toHaveLength(1);
+
+      // ...but the owner's messages still get their read markers.
+      expect(core.displayed).toEqual([
+        { chatJid: seeded.ownerJid, kind: 'chat', messageId: 'm-1' },
+        { chatJid: seeded.ownerJid, kind: 'chat', messageId: 'm-2' },
+        { chatJid: seeded.ownerJid, kind: 'chat', messageId: 'm-3' },
+      ]);
+
+      // The next UTC day starts a fresh baseline, so the AI answers again and
+      // then notifies once more when the new day's spend crosses the cap.
+      setNow('2026-09-29T00:30:00Z');
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-4', 'morning'));
+      await waitFor(() => calls.length === 2);
+      expect(core.sent).toHaveLength(3);
+
+      litellm.spendByKey.set('tok-1', 3.5);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-5', 'again?'));
+      await waitFor(() => core.sent.length === 4);
+      expect(core.sent[3]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: LIMIT_NOTICE });
+      expect(calls).toHaveLength(2);
     });
   });
 
@@ -1802,6 +1915,7 @@ describe('agent gateway', () => {
       roomJid: string;
       core: FakeCore;
       calls: Call[];
+      litellm: FakeLitellm;
       logger: ReturnType<typeof captureLogger>;
     }> {
       const seeded = await seedAi(context);
@@ -1813,10 +1927,11 @@ describe('agent gateway', () => {
       });
       const cores: FakeCore[] = [];
       const { fetchImpl, calls } = (input.fetch ?? completionFetch)();
-      const { gateway: started, logger } = harness(cores, fetchImpl, new FakeLitellm());
+      const litellm = new FakeLitellm();
+      const { gateway: started, logger } = harness(cores, fetchImpl, litellm);
       await started.start();
       const core = await coreFor(cores, seeded.aiJid);
-      return { seeded, member, groupId, roomJid, core, calls, logger };
+      return { seeded, member, groupId, roomJid, core, calls, litellm, logger };
     }
 
     function mention(seeded: SeededAi, member: { jid: string }, roomJid: string, id: string) {
@@ -2149,6 +2264,30 @@ describe('agent gateway', () => {
       await waitFor(() => calls.length === 2);
       expect(core.sent.map((message) => message.kind)).toEqual(['groupchat', 'chat']);
       expect(core.sent[1]).toMatchObject({ to: seeded.ownerJid, text: 'AI says hi' });
+    });
+
+    it('enforces the daily limit in rooms: one plain notice, then silence', async () => {
+      const { seeded, member, roomJid, core, calls, litellm } = await roomSetup();
+      const notice = "I've reached today's spending limit ($1.00). I'll be back after 00:00 UTC.";
+
+      // The first mention records the 0.5 baseline and replies normally.
+      litellm.spendByKey.set('tok-1', 0.5);
+      core.receive(mention(seeded, member, roomJid, 'm-1'));
+      await waitFor(() => calls.length === 1);
+      expect(core.sent).toHaveLength(1);
+
+      // Past the $1/day cap: one plain notice, no model call, no mention.
+      litellm.spendByKey.set('tok-1', 2);
+      core.receive(mention(seeded, member, roomJid, 'm-2'));
+      await waitFor(() => core.sent.length === 2);
+      expect(core.sent[1]).toEqual({ to: roomJid, kind: 'groupchat', text: notice });
+      expect(calls).toHaveLength(1);
+
+      // A further mention the same day gets nothing.
+      core.receive(mention(seeded, member, roomJid, 'm-3'));
+      await tick(200);
+      expect(core.sent).toHaveLength(2);
+      expect(calls).toHaveLength(1);
     });
   });
 });
