@@ -1,7 +1,7 @@
 ---
 id: T-0057
 title: Web polish — chat-list Retry keeps the loaded list visible; model picker clearly separates the input from the suggestions (D24)
-status: review
+status: merged
 milestone: M2
 branch: task/T-0057-web-polish
 model: opencode-go/deepseek-v4.1-flash
@@ -154,3 +154,8 @@ Note on `pnpm format:check`: it fails on `PREREVIEW.md`, an **untracked** file t
 Scope rechecked: only Allowed files changed plus the task file and `work/screenshots/T-0057/`; `PREREVIEW.md` left untracked and uncommitted.
 
 ## Review (written by Claude)
+
+**Verdict: approved, merged.**
+
+- The round 1 pre-review had one latent should-fix: `retryingChats` was never reset. Round 2 fixed it, and also removed the duplicate native `<datalist>`, set `aria-busy` to undefined when idle, and added keyboard tests. The round 2 pre-review is clean.
+- The lead viewed `model-picker-ai-panel-1440.png`: the input is a well, then the `SUGGESTED` caption, then raised rows with a check on the selected one. It reads clearly as suggestions now.
