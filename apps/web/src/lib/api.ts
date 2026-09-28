@@ -42,8 +42,10 @@ const dmEntrySchema = z.object({
   kind: z.literal('dm'),
   chatJid: z.string(),
   title: z.string(),
-  userId: z.string(),
+  userId: z.string().optional(),
   avatarUrl: z.string().optional(),
+  /** Set on the caller's AIs; absent or false for human contacts. */
+  isAi: z.boolean().optional(),
 });
 
 const groupEntrySchema = z.object({

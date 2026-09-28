@@ -43,6 +43,13 @@
       "when": 1790587735398,
       "tag": "0005_clean_frightful_four",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790594595125,
+      "tag": "0006_military_sleepwalker",
+      "breakpoints": true
     }
   ]
 }

@@ -2,11 +2,16 @@
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { createLitellmAdminClient, DEFAULT_LITELLM_BASE_URL } from '../ai/litellm-client';
+import { createKeyCipher } from '../connections/crypto';
+import { createDb } from '../db/client';
+import { llmVirtualKeys } from '../db/schema';
+import { FakeAdminClient } from '../test-support';
 import { createEjabberdAdminClient } from '../xmpp/admin-client';
 import type { XmppConfig } from '../xmpp/config';
 import { localpartFor } from '../xmpp/provisioning';
-import { aiLocalpart, virtualKeyAlias } from './service';
+import { aiLocalpart, ensureAiModel, virtualKeyAlias } from './service';
 
 /**
  * The gated live check for the server-side AI path. It drives the real dev
@@ -46,6 +51,7 @@ import { aiLocalpart, virtualKeyAlias } from './service';
  */
 
 const ENABLED = process.env['GALENA_AIS_INTEGRATION'] === '1';
+const MODELS_ENABLED = process.env['GALENA_AI_MODELS_INTEGRATION'] === '1';
 
 const FAKE_PROVIDER_KEY = 'sk-fake-integration-key-000000000000';
 const OTP_TIMEOUT_MS = 20_000;
@@ -328,6 +334,242 @@ describe.skipIf(!ENABLED)('AIs integration (real server)', () => {
           await request(baseUrl, `/api/ais/${aiId}`, { method: 'DELETE', headers }).catch(
             () => undefined,
           );
+        }
+        if (connectionId !== undefined) {
+          await request(baseUrl, `/api/connections/${connectionId}`, {
+            method: 'DELETE',
+            headers,
+          }).catch(() => undefined);
+        }
+      }
+    }
+  });
+});
+
+// One entry from `GET /model/info`. `model_name` is the public group name;
+// `model_id` is the generated id `/model/delete` needs.
+interface ModelListEntry {
+  model_id?: string;
+  model_name?: string;
+  model_info?: Record<string, unknown>;
+}
+
+async function listModels(baseUrl: string, masterKey: string): Promise<ModelListEntry[]> {
+  const response = await request(baseUrl, '/model/info', {
+    method: 'GET',
+    headers: { authorization: `Bearer ${masterKey}` },
+  });
+  if (response.status !== 200) {
+    throw new Error(`GET /model/info failed with HTTP ${response.status}`);
+  }
+  const body = response.body as { data?: ModelListEntry[] } | null;
+  return body?.data ?? [];
+}
+
+/**
+ * The gated live check for T-0033's private models. It drives the real dev
+ * server (no mocks) through sign-up, then create an AI whose connection holds a
+ * made-up provider key, and checks:
+ *   1. LiteLLM has a model named `ai-<aiId>`;
+ *   2. the AI's virtual key lists only that model;
+ *   3. a virtual key allowed to call it reaches the *provider*, which rejects
+ *      the made-up key (proving the owner's key was used — T-0007's reasoning);
+ *   4. deleting the AI removes both the model and the key.
++ * Between 3 and 4 it also covers the backfill path: it nulls out
++ * `litellm_model_id`, resets the allowlist to the raw model name, calls
++ * `ensureAiModel` against the live gateway, and asserts the allowlist is
++ * exactly [`ai-<aiId>`] with a registered model behind it.
+ * A failure part way best-effort deletes whatever it created.
+ *
+ * Required env vars (the same as the AIs test, plus):
+ *   GALENA_AI_MODELS_INTEGRATION=1
+ *   LITELLM_MASTER_KEY=<key>
++ *   DATABASE_URL=<the same Postgres the server runs against>
++ *   GALENA_KEY_ENCRYPTION_KEY=<the same key cipher the server runs with>
+ *
+ * Optional:
+ *   GALENA_AIS_INTEGRATION_URL (default http://127.0.0.1:3188)
++ *   XMPP_DOMAIN                (default galena.localhost)
+ *   LITELLM_BASE_URL           (default http://127.0.0.1:4000)
+ */
+describe.skipIf(!MODELS_ENABLED)('AI models integration (real server + LiteLLM)', () => {
+  it('registers a private model, routes it to the owner key, and deletes both', async () => {
+    const baseUrl = process.env['GALENA_AIS_INTEGRATION_URL'] ?? 'http://127.0.0.1:3188';
+    const logPath = requireEnv('GALENA_AIS_INTEGRATION_LOG');
+    const invite = requireEnv('GALENA_AIS_INVITE_CODE');
+    const email = requireEnv('GALENA_AIS_TEST_EMAIL');
+    const domain = process.env['XMPP_DOMAIN'] ?? 'galena.localhost';
+    const litellmBaseUrl = (process.env['LITELLM_BASE_URL'] ?? DEFAULT_LITELLM_BASE_URL).replace(
+      /\/+$/,
+      '',
+    );
+    const masterKey = requireEnv('LITELLM_MASTER_KEY');
+    const litellm = createLitellmAdminClient({ baseUrl: litellmBaseUrl, masterKey });
+
+    let token: string | undefined;
+    let connectionId: string | undefined;
+    let aiId: string | undefined;
+    let modelName: string | undefined;
+    let probeKey: string | undefined;
+
+    try {
+      // 1. Sign up through the invite, reading the OTP from the server log.
+      const before = await fileSize(logPath);
+      const sendResponse = await request(baseUrl, '/api/auth/email-otp/send-verification-otp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+        body: { email, type: 'sign-in' },
+      });
+      expect(sendResponse.status).toBe(200);
+
+      const otp = await readOtpFromLog(logPath, email, before);
+      expect(otp).toBeDefined();
+      if (otp === undefined) return;
+
+      const signInResponse = await request(baseUrl, '/api/auth/sign-in/email-otp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+        body: { email, otp },
+      });
+      expect(signInResponse.status).toBe(200);
+      const sessionToken = signInResponse.headers['set-auth-token'];
+      expect(typeof sessionToken).toBe('string');
+      if (typeof sessionToken !== 'string') return;
+      token = sessionToken;
+
+      // 2. A connection whose key is made up: no real provider call succeeds.
+      const connectionResponse = await request(baseUrl, '/api/connections', {
+        method: 'POST',
+        headers: { ...bearer(token), 'content-type': 'application/json' },
+        body: { provider: 'openai', key: FAKE_PROVIDER_KEY, label: 'AI models integration' },
+      });
+      expect(connectionResponse.status).toBe(201);
+      connectionId = (connectionResponse.body as { id: string }).id;
+
+      // 3. Create the AI. The server decrypts the connection key once and
+      //    registers a private `ai-<id>` model for it.
+      const createResponse = await request(baseUrl, '/api/ais', {
+        method: 'POST',
+        headers: { ...bearer(token), 'content-type': 'application/json' },
+        body: {
+          name: 'Models Integration AI',
+          template: 'dev',
+          providerConnectionId: connectionId,
+          model: 'gpt-4o-mini',
+          limits: { perDayUsd: 1, perMonthUsd: 3 },
+        },
+      });
+      expect(createResponse.status).toBe(201);
+      const created = createResponse.body as { id: string; jid: string };
+      aiId = created.id;
+      modelName = `ai-${created.id}`;
+      expect(JSON.stringify(createResponse.body)).not.toContain('sk-');
+
+      // 4. LiteLLM has the model, and the AI's key lists only that model.
+      const models = await listModels(litellmBaseUrl, masterKey);
+      expect(models.some((entry) => entry.model_name === modelName)).toBe(true);
+
+      const alias = virtualKeyAlias(created.id);
+      const keyToken = await findKeyToken(litellmBaseUrl, masterKey, alias);
+      const info = await litellm.getKeyInfo(keyToken);
+      expect(info.models).toEqual([modelName]);
+
+      // 5. A virtual key allowed to call the model reaches the provider, which
+      //    rejects the owner's made-up key. That is the routing proof.
+      const issued = await litellm.generateKey({
+        models: [modelName],
+        maxBudget: 1,
+        budgetDuration: '1d',
+        keyAlias: 't0033-models-probe',
+      });
+      probeKey = issued.key;
+      const completion = await request(litellmBaseUrl, '/chat/completions', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${issued.key}`, 'content-type': 'application/json' },
+        body: { model: modelName, messages: [{ role: 'user', content: 'ping' }] },
+      });
+      expect(completion.status).toBe(401);
+      const completionText = JSON.stringify(completion.body).toLowerCase();
+      expect(completionText).toMatch(/authentication|incorrect api key|invalid api key/);
+
+      // 5b. Backfill path: pretend this AI predates T-0033 (no stored model
+      //     id, allowlist pointing at the raw model name), run `ensureAiModel`
+      //     against the live gateway, and prove the allowlist is fixed to
+      //     exactly [`ai-<id>`] with a registered model behind it. The direct
+      //     database handle points at the same Postgres the server runs
+      //     against; the key cipher matches the server's, so the stored
+      //     connection key decrypts.
+      const directDb = createDb(requireEnv('DATABASE_URL'));
+      try {
+        await directDb.db
+          .update(llmVirtualKeys)
+          .set({ litellmModelId: null })
+          .where(eq(llmVirtualKeys.aiId, created.id));
+        await litellm.updateKey({ key: keyToken, models: ['gpt-4o-mini'] });
+        expect((await litellm.getKeyInfo(keyToken)).models).toEqual(['gpt-4o-mini']);
+
+        await ensureAiModel(
+          {
+            db: directDb.db,
+            // Unused by `ensureAiModel`; the in-memory stand-in makes no calls.
+            adminClient: new FakeAdminClient(),
+            litellm,
+            cipher: createKeyCipher(requireEnv('GALENA_KEY_ENCRYPTION_KEY')),
+            logger: { warn: () => undefined },
+            domain,
+          },
+          created.id,
+        );
+
+        expect((await litellm.getKeyInfo(keyToken)).models).toEqual([modelName]);
+        expect((await litellm.listModels()).some((entry) => entry.name === modelName)).toBe(true);
+      } finally {
+        await directDb.close();
+      }
+
+      // 6. Delete the AI: the model and the key are both gone.
+      const deleteResponse = await request(baseUrl, `/api/ais/${created.id}`, {
+        method: 'DELETE',
+        headers: bearer(token),
+      });
+      expect(deleteResponse.status).toBe(204);
+      aiId = undefined;
+      expect(await isKeyPresent(litellmBaseUrl, masterKey, alias)).toBe(false);
+      const afterDelete = await listModels(litellmBaseUrl, masterKey);
+      expect(afterDelete.some((entry) => entry.model_name === modelName)).toBe(false);
+      modelName = undefined;
+
+      // 7. Clean up the connection we created.
+      const removeConnection = await request(baseUrl, `/api/connections/${connectionId}`, {
+        method: 'DELETE',
+        headers: bearer(token),
+      });
+      expect(removeConnection.status).toBe(204);
+      connectionId = undefined;
+    } finally {
+      // Best-effort cleanup so a failed run leaves nothing behind: the probe
+      // key, then the AI (which removes its model and key), then any orphan
+      // model left by a failed server-side delete, then the connection.
+      if (probeKey !== undefined) {
+        await litellm.revokeKey(probeKey).catch(() => undefined);
+      }
+      if (token !== undefined) {
+        const headers = bearer(token);
+        if (aiId !== undefined) {
+          await request(baseUrl, `/api/ais/${aiId}`, { method: 'DELETE', headers }).catch(
+            () => undefined,
+          );
+        }
+        if (modelName !== undefined) {
+          try {
+            const remaining = await listModels(litellmBaseUrl, masterKey);
+            const orphan = remaining.find((entry) => entry.model_name === modelName);
+            if (orphan?.model_id !== undefined) {
+              await litellm.deleteModel(orphan.model_id);
+            }
+          } catch {
+            // The model is already gone or LiteLLM is unreachable.
+          }
         }
         if (connectionId !== undefined) {
           await request(baseUrl, `/api/connections/${connectionId}`, {

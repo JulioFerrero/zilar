@@ -161,6 +161,7 @@ function summaryFor(entry: ChatEntry): ChatSummary {
     return {
       ...base,
       kind: 'dm',
+      isAI: entry.isAi === true,
       ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
       online: false,
     };

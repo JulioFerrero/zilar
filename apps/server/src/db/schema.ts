@@ -171,11 +171,15 @@ export const aiLimits = pgTable('ai_limits', {
 // token id we use to update or revoke the key; `encrypted_key` is the usable
 // `sk-...` string sealed with the T-0028 KeyCipher, because T-0033 must call
 // LiteLLM *as the AI* for the cap to apply. Neither ever reaches a response.
+// `litellm_model_id` is the private model registered for this AI (nullable,
+// because AIs created before T-0033 have none). Both ids are nullable so a
+// resumable delete can clear them one at a time while the row survives.
 export const llmVirtualKeys = pgTable('llm_virtual_keys', {
   aiId: text('ai_id')
     .primaryKey()
     .references(() => ais.id, { onDelete: 'cascade' }),
-  litellmKeyId: text('litellm_key_id').notNull(),
+  litellmKeyId: text('litellm_key_id'),
+  litellmModelId: text('litellm_model_id'),
   encryptedKey: text('encrypted_key').notNull(),
   budgetUsd: numeric('budget_usd', { precision: 12, scale: 2 }).notNull(),
   budgetDuration: text('budget_duration').notNull(),
