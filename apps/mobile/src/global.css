@@ -2,77 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Galena design tokens, from docs/design/ui-style.md §2. */
+/*
+ * Galena design tokens, from docs/design/ui-style.md §2 (D24). The app is dark
+ * only, so the D24 palette lives in `:root` and the `dark:` variant is inert.
+ * The legacy shadcn names are kept and mapped onto the D24 values so the My
+ * AIs, wizard and auth screens restyle themselves.
+ */
 @layer base {
   :root {
-    --background: #ffffff;
-    --foreground: #000000;
-    --card: #ffffff;
-    --card-foreground: #000000;
-    --popover: #ffffff;
-    --popover-foreground: #000000;
-    --primary: #3390ec;
-    --primary-foreground: #ffffff;
-    --secondary: #f4f4f5;
-    --secondary-foreground: #000000;
-    --muted: #f4f4f5;
-    --muted-foreground: #707579;
-    --accent: #3390ec;
-    --accent-foreground: #ffffff;
-    --destructive: #e53935;
-    --destructive-foreground: #ffffff;
-    --border: #dfe1e5;
-    --input: #dfe1e5;
-    --ring: #3390ec;
-    --radius: 0.625rem;
-    --chat-background: #d8e8f0;
-    --chat-background-from: #c9dfc5;
-    --chat-background-to: #d8e8f0;
-    --bubble-in: #ffffff;
-    --bubble-out: #eeffde;
-    --bubble-in-meta: #a0acb6;
-    --bubble-out-meta: #4fae4e;
-    --list-hover: #f4f4f5;
-    --list-active: #3390ec;
-    --badge-muted: #c4c9cc;
-    --divider: #dfe1e5;
-    --danger: #e53935;
-    --online: #4dcd5e;
-  }
+    --page: #000000;
+    --panel: #0a0a0a;
+    --surface: #111111;
+    --surface-raised: #171717;
+    --well: #0c0c0c;
+    --border: #1f1f1f;
+    --border-strong: #262626;
+    --edge: #050505;
 
-  .dark:root {
-    --background: #17212b;
-    --foreground: #f5f5f5;
-    --card: #182533;
-    --card-foreground: #f5f5f5;
-    --popover: #182533;
-    --popover-foreground: #f5f5f5;
-    --primary: #5288c1;
-    --primary-foreground: #ffffff;
-    --secondary: #202b36;
-    --secondary-foreground: #f5f5f5;
-    --muted: #202b36;
-    --muted-foreground: #708499;
-    --accent: #5288c1;
-    --accent-foreground: #ffffff;
-    --destructive: #ef5350;
+    --foreground: #ededed;
+    --muted-foreground: #a1a1a1;
+    --subtle-foreground: #8a8a8a;
+    --generating-foreground: #8f8f8f;
+
+    --accent: #ededed;
+    --accent-foreground: #0a0a0a;
+    --online: #22c55e;
+    --danger: #ef4444;
+
+    /* shadcn aliases mapped onto the D24 palette. */
+    --background: #0a0a0a;
+    --card: #0a0a0a;
+    --card-foreground: #ededed;
+    --popover: #111111;
+    --popover-foreground: #ededed;
+    --primary: #ededed;
+    --primary-foreground: #0a0a0a;
+    --secondary: #111111;
+    --secondary-foreground: #ededed;
+    --muted: #111111;
+    --destructive: #ef4444;
     --destructive-foreground: #ffffff;
-    --border: #0e1621;
-    --input: #0e1621;
-    --ring: #5288c1;
-    --radius: 0.625rem;
-    --chat-background: #0e1621;
-    --chat-background-from: #0e1621;
-    --chat-background-to: #0e1621;
-    --bubble-in: #182533;
-    --bubble-out: #2b5278;
-    --bubble-in-meta: #6d7f8f;
-    --bubble-out-meta: #7da8d3;
-    --list-hover: #202b36;
-    --list-active: #2b5278;
-    --badge-muted: #3e546a;
-    --divider: #0e1621;
-    --danger: #ef5350;
-    --online: #4dcd5e;
+    --input: #262626;
+    --ring: #a1a1a1;
+    --divider: #1f1f1f;
+    --list-hover: #171717;
+    --list-active: #171717;
+    --badge-muted: #333333;
+
+    --chat-background: #0a0a0a;
+    --bubble-in: #161616;
+    --bubble-out: #dedede;
+    --bubble-in-meta: #8a8a8a;
+    --bubble-out-meta: #525252;
+
+    --radius: 0.75rem;
   }
 }

@@ -27,7 +27,7 @@ export function TemplateCards({
             onPress={() => onChange(option.id)}
             className={cn(
               'w-[48%] rounded-xl border px-3 py-3 active:opacity-80',
-              selected ? 'border-accent bg-accent/10' : 'border-divider bg-background',
+              selected ? 'border-accent bg-surface-raised' : 'border-divider bg-background',
             )}
           >
             <Text className="text-[16px] font-semibold text-foreground">{option.label}</Text>

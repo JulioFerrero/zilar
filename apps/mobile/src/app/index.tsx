@@ -12,8 +12,9 @@ import { NewChatButton } from '@/components/chat/new-chat-button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
-import { FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
+import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { connectionLabel } from '@/lib/connection';
+import { well } from '@/lib/depth';
 import { filterChats, unreadCount } from '@/lib/filter';
 import type { ChatFolder } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -61,9 +62,9 @@ function ChatsList() {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       {searchOpen ? (
-        <View className="flex-row items-center gap-3 px-4 pt-1">
-          <View className="h-9 flex-1 flex-row items-center gap-2 rounded-full bg-muted px-3">
-            <Search size={16} color={MUTED_FOREGROUND[scheme]} />
+        <View className="flex-row items-center gap-3 px-4 py-2">
+          <View className="h-10 flex-1 flex-row items-center gap-2 rounded-xl px-3" style={well}>
+            <Search size={16} color="#8a8a8a" />
             <TextInput
               autoFocus
               value={search}
@@ -71,7 +72,7 @@ function ChatsList() {
               placeholder="Search"
               placeholderTextColor={MUTED_FOREGROUND[scheme]}
               accessibilityLabel="Search chats"
-              className="flex-1 text-[16px] text-foreground"
+              className="flex-1 text-[15px] text-foreground"
             />
           </View>
           <Pressable
@@ -79,18 +80,20 @@ function ChatsList() {
             accessibilityLabel="Cancel search"
             onPress={closeSearch}
           >
-            <Text className="text-[16px] text-accent">Cancel</Text>
+            <Text className="text-[15px] text-foreground">Cancel</Text>
           </Pressable>
         </View>
       ) : (
-        <View className="flex-row items-center justify-between px-4 pt-1">
-          <Text className="text-[34px] font-bold leading-10 text-foreground">Chats</Text>
-          <View className="flex-row items-center">
+        <View className="flex-row items-center justify-between px-4 py-2">
+          <Text className="text-[28px] font-semibold leading-9 tracking-[-0.02em] text-foreground">
+            Chats
+          </Text>
+          <View className="flex-row items-center gap-2">
             <IconButton label="My AIs" onPress={() => router.push('/ais')}>
-              <Bot size={24} color={FOREGROUND[scheme]} />
+              <Bot size={20} color={ICON[scheme]} />
             </IconButton>
             <IconButton label="Search" onPress={() => setSearchOpen(true)}>
-              <Search size={24} color={FOREGROUND[scheme]} />
+              <Search size={20} color={ICON[scheme]} />
             </IconButton>
           </View>
         </View>

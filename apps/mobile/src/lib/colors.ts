@@ -3,10 +3,11 @@ import type { ColorScheme } from './color-scheme';
 /**
  * Literal colors that cannot go through NativeWind class names: SVG fills and
  * native props like `ActivityIndicator color`. Keep in sync with `global.css`.
+ * The app is dark only (D24), so both schemes resolve to the same values.
  */
 export const CHAT_BACKGROUND: Record<ColorScheme, readonly [string, string]> = {
-  light: ['#c9dfc5', '#d8e8f0'],
-  dark: ['#0e1621', '#0e1621'],
+  light: ['#000000', '#000000'],
+  dark: ['#000000', '#000000'],
 };
 
 export const BUBBLE_COLORS: Record<
@@ -14,30 +15,40 @@ export const BUBBLE_COLORS: Record<
   { incoming: string; outgoing: string; incomingMeta: string; outgoingMeta: string }
 > = {
   light: {
-    incoming: '#ffffff',
-    outgoing: '#eeffde',
-    incomingMeta: '#a0acb6',
-    outgoingMeta: '#4fae4e',
+    incoming: '#161616',
+    outgoing: '#dedede',
+    incomingMeta: '#8a8a8a',
+    outgoingMeta: '#525252',
   },
   dark: {
-    incoming: '#182533',
-    outgoing: '#2b5278',
-    incomingMeta: '#6d7f8f',
-    outgoingMeta: '#7da8d3',
+    incoming: '#161616',
+    outgoing: '#dedede',
+    incomingMeta: '#8a8a8a',
+    outgoingMeta: '#525252',
   },
 };
 
 export const ACCENT: Record<ColorScheme, string> = {
-  light: '#3390ec',
-  dark: '#5288c1',
+  light: '#ededed',
+  dark: '#ededed',
 };
 
 export const MUTED_FOREGROUND: Record<ColorScheme, string> = {
-  light: '#707579',
-  dark: '#708499',
+  light: '#a1a1a1',
+  dark: '#a1a1a1',
 };
 
 export const FOREGROUND: Record<ColorScheme, string> = {
-  light: '#000000',
-  dark: '#f5f5f5',
+  light: '#ededed',
+  dark: '#ededed',
 };
+
+/** The icon-key glyph color from ui-style.md §4. */
+export const ICON: Record<ColorScheme, string> = {
+  light: '#d4d4d4',
+  dark: '#d4d4d4',
+};
+
+/** Monochrome accents used by the depth recipes and bubbles. */
+export const EDGE = '#050505';
+export const DANGER = '#ef4444';

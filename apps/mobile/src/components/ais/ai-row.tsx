@@ -31,10 +31,10 @@ export function AiRow({
       onPress={onPress}
       className={cn(
         'flex-row items-center gap-3 rounded-xl border px-3 py-2.5 active:bg-list-hover',
-        highlighted ? 'border-accent bg-accent/5' : 'border-transparent',
+        highlighted ? 'border-accent bg-surface-raised' : 'border-transparent',
       )}
     >
-      <Avatar id={ai.id} name={ai.name} size={44} />
+      <Avatar id={ai.id} name={ai.name} size={44} ai />
       <View className="min-w-0 flex-1">
         <View className="flex-row items-center gap-1.5">
           <Text numberOfLines={1} className="shrink text-[16px] font-semibold text-foreground">

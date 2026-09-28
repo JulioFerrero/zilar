@@ -9,10 +9,19 @@ module.exports = {
     extend: {
       colors: {
         border: 'var(--border)',
+        'border-strong': 'var(--border-strong)',
+        edge: 'var(--edge)',
         input: 'var(--input)',
         ring: 'var(--ring)',
         background: 'var(--background)',
         foreground: 'var(--foreground)',
+        page: 'var(--page)',
+        panel: 'var(--panel)',
+        surface: 'var(--surface)',
+        'surface-raised': 'var(--surface-raised)',
+        well: 'var(--well)',
+        'subtle-foreground': 'var(--subtle-foreground)',
+        'generating-foreground': 'var(--generating-foreground)',
         primary: {
           DEFAULT: 'var(--primary)',
           foreground: 'var(--primary-foreground)',
@@ -52,6 +61,20 @@ module.exports = {
         divider: 'var(--divider)',
         danger: 'var(--danger)',
         online: 'var(--online)',
+      },
+      /*
+       * React Native has no style inheritance, and each bundled font weight is
+       * its own family. The keys below give the core weight classes
+       * (`font-medium`, `font-semibold`, `font-bold`) a Geist family to point
+       * at; `font-sans` and `font-mono` cover the rest.
+       */
+      fontFamily: {
+        sans: ['Geist_400Regular'],
+        medium: ['Geist_500Medium'],
+        semibold: ['Geist_600SemiBold'],
+        bold: ['Geist_600SemiBold'],
+        mono: ['GeistMono_400Regular'],
+        'mono-medium': ['GeistMono_500Medium'],
       },
       borderRadius: {
         lg: 'var(--radius)',

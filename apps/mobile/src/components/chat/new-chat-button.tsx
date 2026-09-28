@@ -1,13 +1,18 @@
-import { SquarePen } from 'lucide-react-native';
+import { Plus } from 'lucide-react-native';
 import { useState } from 'react';
 import { Modal, Pressable, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
+import { useKeyPress } from '@/components/ui/use-key-press';
+import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 
 type NewChatAction = 'group' | 'message';
 
-/** Round pencil button with a "New group" / "New message" menu. */
+/** The 56 px primary FAB with a "New group" / "New message" menu. */
 export function NewChatButton() {
+  const insets = useSafeAreaInsets();
+  const { pressed, reduceMotion, setPressed } = useKeyPress();
   const [menuOpen, setMenuOpen] = useState(false);
   const [action, setAction] = useState<NewChatAction | undefined>(undefined);
 
@@ -23,9 +28,16 @@ export function NewChatButton() {
         accessibilityLabel="New chat"
         accessibilityState={{ expanded: menuOpen }}
         onPress={() => setMenuOpen(true)}
-        className="absolute bottom-6 right-5 h-14 w-14 items-center justify-center rounded-full bg-accent shadow-lg active:bg-accent/90"
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        className="absolute right-5 h-14 w-14 items-center justify-center rounded-[18px]"
+        style={[
+          primaryKey,
+          pressStyle(pressed, KEY_PRIMARY_PRESSED_SHADOW, reduceMotion),
+          { bottom: Math.max(insets.bottom, 20) + 14 },
+        ]}
       >
-        <SquarePen size={24} color="#ffffff" />
+        <Plus size={24} color={ACCENT_FOREGROUND} />
       </Pressable>
 
       <Modal
@@ -39,12 +51,15 @@ export function NewChatButton() {
           onPress={() => setMenuOpen(false)}
           className="flex-1 justify-end bg-black/40 px-2 pb-4"
         >
-          <Pressable onPress={() => {}} className="overflow-hidden rounded-2xl bg-background">
+          <Pressable
+            onPress={() => {}}
+            className="overflow-hidden rounded-2xl border border-border-strong bg-surface"
+          >
             <Pressable
               accessibilityRole="menuitem"
               accessibilityLabel="New group"
               onPress={() => openDialog('group')}
-              className="border-b border-divider px-4 py-3.5 active:bg-list-hover"
+              className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
             >
               <Text className="text-[16px] text-foreground">New group</Text>
             </Pressable>
@@ -52,7 +67,7 @@ export function NewChatButton() {
               accessibilityRole="menuitem"
               accessibilityLabel="New message"
               onPress={() => openDialog('message')}
-              className="px-4 py-3.5 active:bg-list-hover"
+              className="px-4 py-3.5 active:bg-surface-raised"
             >
               <Text className="text-[16px] text-foreground">New message</Text>
             </Pressable>
@@ -71,7 +86,10 @@ export function NewChatButton() {
           onPress={() => setAction(undefined)}
           className="flex-1 items-center justify-center bg-black/40 p-4"
         >
-          <Pressable onPress={() => {}} className="w-full max-w-xs rounded-2xl bg-background p-4">
+          <Pressable
+            onPress={() => {}}
+            className="w-full max-w-xs rounded-2xl border border-border-strong bg-surface p-4"
+          >
             <Text className="text-[16px] font-semibold text-foreground">
               {action === 'group' ? 'New group' : 'New message'}
             </Text>
@@ -81,7 +99,7 @@ export function NewChatButton() {
                 accessibilityRole="button"
                 accessibilityLabel="Close"
                 onPress={() => setAction(undefined)}
-                className="rounded-full bg-accent px-4 py-1.5 active:bg-accent/90"
+                className="rounded-full bg-accent px-4 py-1.5 active:opacity-90"
               >
                 <Text className="text-[15px] font-medium text-accent-foreground">Close</Text>
               </Pressable>

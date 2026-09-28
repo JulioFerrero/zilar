@@ -13,6 +13,8 @@
     "build": "expo export --platform ios --platform android --output-dir dist"
   },
   "dependencies": {
+    "@expo-google-fonts/geist": "^0.4.2",
+    "@expo-google-fonts/geist-mono": "^0.4.3",
     "@galena/chat-core": "workspace:*",
     "@galena/protocol": "workspace:*",
     "@galena/xmpp-core": "workspace:*",
@@ -24,6 +26,7 @@
     "expo": "~57.0.25",
     "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.19",
+    "expo-font": "~57.0.4",
     "expo-haptics": "~57.0.3",
     "expo-linear-gradient": "~57.0.2",
     "expo-linking": "~57.0.11",
