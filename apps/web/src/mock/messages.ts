@@ -154,6 +154,7 @@ const anaMessages: UiMessage[] = [
     senderName: ME.name,
     text: 'Deal',
     createdAt: atHour(0, 8, 22),
+    reactions: [{ emoji: '👍', count: 1, mine: false, reactors: ['Ana'] }],
   }),
   message({
     id: 'ana-18',
@@ -186,6 +187,10 @@ const anaMessages: UiMessage[] = [
     senderName: ana.name,
     text: 'See you tonight ❤️',
     createdAt: atHour(0, 12, 41),
+    reactions: [
+      { emoji: '❤️', count: 2, mine: true, reactors: ['Ana', 'You'] },
+      { emoji: '👍', count: 1, mine: false, reactors: ['Ana'] },
+    ],
   }),
 ];
 
@@ -279,6 +284,7 @@ const viernesMessages: UiMessage[] = [
     senderName: ana.name,
     text: '😂😂',
     createdAt: atHour(2, 17, 17),
+    reactions: [{ emoji: '😂', count: 2, mine: false, reactors: ['Luis', 'Marta'] }],
   }),
   message({
     id: 'vie-12',
@@ -327,6 +333,10 @@ const viernesMessages: UiMessage[] = [
     senderName: ana.name,
     text: 'MVP 🏆',
     createdAt: atHour(1, 13, 2),
+    reactions: [
+      { emoji: '🏆', count: 3, mine: false, reactors: ['Luis', 'Marta', 'Marco'] },
+      { emoji: '👍', count: 1, mine: true, reactors: ['You'] },
+    ],
   }),
   message({
     id: 'vie-18',
@@ -368,6 +378,7 @@ const viernesMessages: UiMessage[] = [
     text: 'On my way',
     createdAt: atHour(0, 19, 10),
     status: 'read',
+    reactions: [{ emoji: '🚀', count: 2, mine: true, reactors: ['You', 'Ana'] }],
   }),
 ];
 

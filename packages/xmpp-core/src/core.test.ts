@@ -26,9 +26,11 @@ import {
   CONFERENCE_NAMESPACE,
   DELAY_NAMESPACE,
   FORWARD_NAMESPACE,
+  HINTS_NAMESPACE,
   MAM_NAMESPACE,
   MUC_USER_NAMESPACE,
   OCCUPANT_ID_NAMESPACE,
+  REACTIONS_NAMESPACE,
   REFERENCE_NAMESPACE,
   REPLY_NAMESPACE,
   ROSTER_NAMESPACE,
@@ -635,6 +637,51 @@ describe('createXmppCore: messages and markers', () => {
     await expect(core.sendMessage('alice@galena.localhost', 'chat', 'hi')).rejects.toThrow(
       'not online',
     );
+  });
+
+  it('sends a body-less reactions stanza with the store hint', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+
+    await core.sendReactions('project@rooms.galena.localhost', 'groupchat', 'sid-1', ['👍']);
+
+    const sent = fake.sent.at(-1);
+    expect(sent?.attrs).toMatchObject({ type: 'groupchat', to: 'project@rooms.galena.localhost' });
+    expect(sent?.getChild('body')).toBeUndefined();
+    expect(sent?.getChild('reactions', REACTIONS_NAMESPACE)?.attrs['id']).toBe('sid-1');
+    expect(sent?.getChild('store', HINTS_NAMESPACE)).toBeDefined();
+  });
+
+  it('rejects sending reactions when offline', async () => {
+    const fake = createFakeClient();
+    const core = createCore(
+      options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+      {
+        createClient: () => fake,
+      },
+    );
+    await expect(
+      core.sendReactions('alice@galena.localhost', 'chat', 'm-1', ['👍']),
+    ).rejects.toThrow('not online');
+  });
+
+  it('emits a body-less reaction update as a message', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+    const messages: ChatMessage[] = [];
+    core.on('message', (message) => messages.push(message));
+
+    fake.emitStanza(
+      xml(
+        'message',
+        { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-40' },
+        xml('reactions', { xmlns: REACTIONS_NAMESPACE, id: 'm-1' }, xml('reaction', {}, '👍')),
+      ),
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.body).toBeUndefined();
+    expect(messages[0]?.reactions).toEqual({ targetId: 'm-1', emojis: ['👍'] });
   });
 
   it('sends typing and displayed markers', async () => {

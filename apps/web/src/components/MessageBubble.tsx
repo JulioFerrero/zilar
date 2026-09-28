@@ -18,11 +18,13 @@ import { MarkdownText } from './MarkdownText';
 import { MessageActionsMenu } from './MessageActionsMenu';
 import { MessageTicks } from './MessageTicks';
 import { ProgressCard } from './ProgressCard';
+import { ReactionChips } from './ReactionChips';
 import { ReplyQuote } from './ReplyQuote';
 import { VoiceMessage } from './VoiceMessage';
 import { copyText } from '@/lib/clipboard';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
+import { useChatStoreApi } from '@/store/ChatStoreProvider';
 
 /** Monochrome-friendly sender name colors (ui-style.md §5). */
 const SENDER_COLORS = ['#d4d4d4', '#a1a1a1', '#8a8a8a', '#ededed'] as const;
@@ -142,6 +144,7 @@ export function MessageBubble({
   revealTurnId,
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const storeApi = useChatStoreApi();
   const own = message.senderId === currentUserId;
   const markdown = shouldRenderMarkdown(chat, message, currentUserId);
   const hasText = message.text !== undefined && message.text.length > 0;
@@ -175,6 +178,10 @@ export function MessageBubble({
     message.card === undefined &&
     message.voice === undefined;
 
+  const handleReact = (emoji: string): void => {
+    storeApi.getState().react(chat.id, message.id, emoji);
+  };
+
   return (
     <div
       data-message-id={message.id}
@@ -201,76 +208,103 @@ export function MessageBubble({
         ) : (
           <span className="w-[34px] shrink-0" aria-hidden="true" />
         ))}
-      <div
-        data-bubble-look={
-          bigEmoji ? undefined : own ? 'outgoing' : generating ? 'generating' : 'incoming'
-        }
-        className={cn(
-          'relative flex flex-col',
-          own ? 'max-w-[520px]' : 'max-w-[560px]',
-          bigEmoji
-            ? undefined
-            : cn(
-                'rounded-[14px] bg-clip-padding text-[14px] leading-[1.5]',
-                own ? 'bubble-out' : generating ? 'bubble-gen' : 'bubble-in',
-                transitioning &&
-                  'transition-[color,background,box-shadow,border-color] duration-[400ms] ease-out motion-reduce:transition-none',
-                lastInGroup && (own ? 'rounded-br-[4px]' : 'rounded-bl-[4px]'),
-              ),
-        )}
-      >
-        {showSender && (
-          <div
-            className="flex items-center gap-1.5 px-3 pt-2 text-[14px] leading-5 font-semibold"
-            style={{ color: senderColor(message.senderId) }}
-          >
-            <span className="truncate">{message.senderName}</span>
-            {senderIsAi && <AiBadge />}
-          </div>
-        )}
+      <div className={cn('flex min-w-0 flex-col', own ? 'items-end' : 'items-start')}>
+        <div
+          data-bubble-look={
+            bigEmoji ? undefined : own ? 'outgoing' : generating ? 'generating' : 'incoming'
+          }
+          className={cn(
+            'relative flex flex-col',
+            own ? 'max-w-[520px]' : 'max-w-[560px]',
+            bigEmoji
+              ? undefined
+              : cn(
+                  'rounded-[14px] bg-clip-padding text-[14px] leading-[1.5]',
+                  own ? 'bubble-out' : generating ? 'bubble-gen' : 'bubble-in',
+                  transitioning &&
+                    'transition-[color,background,box-shadow,border-color] duration-[400ms] ease-out motion-reduce:transition-none',
+                  lastInGroup && (own ? 'rounded-br-[4px]' : 'rounded-bl-[4px]'),
+                ),
+          )}
+        >
+          {showSender && (
+            <div
+              className="flex items-center gap-1.5 px-3 pt-2 text-[14px] leading-5 font-semibold"
+              style={{ color: senderColor(message.senderId) }}
+            >
+              <span className="truncate">{message.senderName}</span>
+              {senderIsAi && <AiBadge />}
+            </div>
+          )}
 
-        {message.replyTo !== undefined && (
-          <div className="px-3 pt-2">
-            <ReplyQuote quote={message.replyTo} />
-          </div>
-        )}
+          {message.replyTo !== undefined && (
+            <div className="px-3 pt-2">
+              <ReplyQuote quote={message.replyTo} />
+            </div>
+          )}
 
-        {bigEmoji ? (
-          <BigEmoji message={message} text={text} own={own} generating={generating} />
-        ) : (
-          <>
-            {message.image !== undefined && (
-              <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
-                <ImageMessage image={message.image} alt="Photo" />
-                {imageOnly && (
-                  <MessageMeta
-                    message={message}
-                    showTicks={own}
-                    className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
-                  />
-                )}
-              </div>
-            )}
+          {bigEmoji ? (
+            <BigEmoji message={message} text={text} own={own} generating={generating} />
+          ) : (
+            <>
+              {message.image !== undefined && (
+                <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
+                  <ImageMessage image={message.image} alt="Photo" />
+                  {imageOnly && (
+                    <MessageMeta
+                      message={message}
+                      showTicks={own}
+                      className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
+                    />
+                  )}
+                </div>
+              )}
 
-            {message.voice !== undefined && (
-              <div className="px-3 py-1.5">
-                <VoiceMessage voice={message.voice} own={own} />
-              </div>
-            )}
+              {message.voice !== undefined && (
+                <div className="px-3 py-1.5">
+                  <VoiceMessage voice={message.voice} own={own} />
+                </div>
+              )}
 
-            {message.card !== undefined && (
-              <div className="px-3 py-1.5">
-                {message.card.type === 'progress' && <ProgressCard progress={message.card.data} />}
-                {message.card.type === 'approval.request' && (
-                  <ApprovalCard request={message.card.data} />
-                )}
-              </div>
-            )}
+              {message.card !== undefined && (
+                <div className="px-3 py-1.5">
+                  {message.card.type === 'progress' && (
+                    <ProgressCard progress={message.card.data} />
+                  )}
+                  {message.card.type === 'approval.request' && (
+                    <ApprovalCard request={message.card.data} />
+                  )}
+                </div>
+              )}
 
-            {hasText && markdown && (
-              <div className={cn('md break-words', own ? 'px-3 py-2' : 'px-3 py-2.5')}>
-                <MarkdownText text={text} />
-                <span className="md-tail">
+              {hasText && markdown && (
+                <div className={cn('md break-words', own ? 'px-3 py-2' : 'px-3 py-2.5')}>
+                  <MarkdownText text={text} />
+                  <span className="md-tail">
+                    {generating && <DraftCaret />}
+                    <MessageMeta
+                      message={message}
+                      showTicks={own && !generating}
+                      className={cn(
+                        'float-right ml-1.5 translate-y-[4px]',
+                        own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
+                        // Keeps the width the final message will have, so the
+                        // swap does not move anything.
+                        generating && 'invisible',
+                      )}
+                    />
+                  </span>
+                </div>
+              )}
+
+              {hasText && !markdown && (
+                <p
+                  className={cn(
+                    'break-words whitespace-pre-wrap',
+                    own ? 'px-3 py-2' : 'px-3 py-2.5',
+                  )}
+                >
+                  <LinkText text={text} mentions={message.mentions} meJid={meJid} />
                   {generating && <DraftCaret />}
                   <MessageMeta
                     message={message}
@@ -283,70 +317,58 @@ export function MessageBubble({
                       generating && 'invisible',
                     )}
                   />
-                </span>
-              </div>
-            )}
+                </p>
+              )}
 
-            {hasText && !markdown && (
-              <p
-                className={cn('break-words whitespace-pre-wrap', own ? 'px-3 py-2' : 'px-3 py-2.5')}
-              >
-                <LinkText text={text} mentions={message.mentions} meJid={meJid} />
-                {generating && <DraftCaret />}
-                <MessageMeta
-                  message={message}
-                  showTicks={own && !generating}
-                  className={cn(
-                    'float-right ml-1.5 translate-y-[4px]',
-                    own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
-                    // Keeps the width the final message will have, so the
-                    // swap does not move anything.
-                    generating && 'invisible',
-                  )}
-                />
-              </p>
-            )}
+              {generating && hasText && <GeneratingLabel />}
 
-            {generating && hasText && <GeneratingLabel />}
+              {!hasText && (message.voice !== undefined || message.card !== undefined) && (
+                <div className="flex justify-end px-3 pb-2">
+                  <MessageMeta
+                    message={message}
+                    showTicks={own}
+                    className={own ? 'text-bubble-out-meta' : 'text-bubble-in-meta'}
+                  />
+                </div>
+              )}
+            </>
+          )}
 
-            {!hasText && (message.voice !== undefined || message.card !== undefined) && (
-              <div className="flex justify-end px-3 pb-2">
-                <MessageMeta
-                  message={message}
-                  showTicks={own}
-                  className={own ? 'text-bubble-out-meta' : 'text-bubble-in-meta'}
-                />
-              </div>
-            )}
-          </>
-        )}
+          {!generating && (
+            <button
+              type="button"
+              aria-label="Message actions"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen(true)}
+              className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            >
+              <MoreHorizontal className="size-4" aria-hidden="true" />
+            </button>
+          )}
 
-        {!generating && (
-          <button
-            type="button"
-            aria-label="Message actions"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen(true)}
-            className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-          >
-            <MoreHorizontal className="size-4" aria-hidden="true" />
-          </button>
-        )}
-
-        {!generating && menuOpen && (
-          <MessageActionsMenu
-            canCopy={hasText}
-            onReply={() => {
-              setMenuOpen(false);
-              onReply(message);
-            }}
-            onCopy={() => {
-              setMenuOpen(false);
-              void copyText(message.text ?? '');
-            }}
-            onClose={() => setMenuOpen(false)}
-          />
+          {!generating && menuOpen && (
+            <MessageActionsMenu
+              canCopy={hasText}
+              onReact={(emoji) => {
+                setMenuOpen(false);
+                handleReact(emoji);
+              }}
+              onReply={() => {
+                setMenuOpen(false);
+                onReply(message);
+              }}
+              onCopy={() => {
+                setMenuOpen(false);
+                void copyText(message.text ?? '');
+              }}
+              onClose={() => setMenuOpen(false)}
+              align={own ? 'right' : 'left'}
+            />
+          )}
+        </div>
+        {!generating && message.reactions !== undefined && message.reactions.length > 0 && (
+          <ReactionChips reactions={message.reactions} own={own} onToggle={handleReact} />
         )}
       </div>
     </div>

@@ -12,6 +12,7 @@ export type {
   LoadHistoryOptions,
   Mention,
   MentionInput,
+  MessageReactions,
   Occupant,
   OccupantsEvent,
   PresenceEvent,

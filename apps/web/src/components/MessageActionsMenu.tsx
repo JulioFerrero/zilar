@@ -1,3 +1,4 @@
+import { QUICK_REACTIONS } from '@galena/chat-core';
 import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -5,13 +6,23 @@ export interface MessageActionsMenuProps {
   canCopy: boolean;
   onReply: () => void;
   onCopy: () => void;
+  onReact: (emoji: string) => void;
   onClose: () => void;
+  /** Which bubble edge the menu hangs from; incoming bubbles align left. */
+  align?: 'left' | 'right';
 }
 
 const ITEM_CLASS = 'flex w-full items-center px-3 py-2 text-left text-[15px]';
 
 /** Reply / Copy / Delete menu for a message bubble, opened by right-click or the ⋯ button. */
-export function MessageActionsMenu({ canCopy, onReply, onCopy, onClose }: MessageActionsMenuProps) {
+export function MessageActionsMenu({
+  canCopy,
+  onReply,
+  onCopy,
+  onReact,
+  onClose,
+  align = 'right',
+}: MessageActionsMenuProps) {
   const firstItemRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -36,10 +47,27 @@ export function MessageActionsMenu({ canCopy, onReply, onCopy, onClose }: Messag
             onClose();
           }
         }}
-        className="absolute top-6 right-0 z-30 min-w-[160px] rounded-[12px] border border-border-strong bg-surface py-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.9)]"
+        className={cn(
+          'absolute top-6 z-30 min-w-[196px] rounded-[12px] border border-border-strong bg-surface py-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.9)]',
+          align === 'right' ? 'right-0' : 'left-0',
+        )}
       >
+        <div className="flex items-center justify-between gap-0.5 px-2 pb-1">
+          {QUICK_REACTIONS.map((emoji, index) => (
+            <button
+              key={emoji}
+              ref={index === 0 ? firstItemRef : undefined}
+              type="button"
+              role="menuitem"
+              aria-label={`React with ${emoji}`}
+              onClick={() => onReact(emoji)}
+              className="key-icon flex size-7 items-center justify-center rounded-full text-[17px] leading-none focus-visible:outline-none"
+            >
+              <span aria-hidden="true">{emoji}</span>
+            </button>
+          ))}
+        </div>
         <button
-          ref={firstItemRef}
           type="button"
           role="menuitem"
           onClick={onReply}

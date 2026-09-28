@@ -49,6 +49,18 @@ export interface UiMessage {
   voice?: VoiceMeta;
   image?: UiImage;
   card?: Payload;
+  /** XEP-0444 reaction chips, newest state first-used; empty/absent means none. */
+  reactions?: UiReaction[];
+}
+
+/** One reaction chip shown under a bubble: an emoji, its count and my state. */
+export interface UiReaction {
+  emoji: string;
+  count: number;
+  /** True when my own reaction is one of them. */
+  mine: boolean;
+  /** Display names of the reactors, in first-reacted order. */
+  reactors: string[];
 }
 
 export interface ChatSummary {

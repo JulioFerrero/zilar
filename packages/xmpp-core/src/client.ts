@@ -15,6 +15,7 @@ import {
   buildJoinPresence,
   buildLeavePresence,
   buildMessage,
+  buildReactions,
   buildRosterError,
   buildRosterResult,
   buildTyping,
@@ -655,6 +656,16 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     return { id };
   }
 
+  async function sendReactions(
+    chatJid: string,
+    kind: ChatKind,
+    targetId: string,
+    emojis: string[],
+  ): Promise<void> {
+    const current = requireOnline();
+    await current.send(buildReactions({ id: generateId(), to: chatJid, kind, targetId, emojis }));
+  }
+
   function sendTyping(to: string, kind: ChatKind, state: 'composing' | 'paused'): void {
     if (xmpp === undefined || currentStatus !== 'online') return;
     void xmpp.send(buildTyping({ to, kind, state })).catch((error: unknown) => {
@@ -763,6 +774,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     loadHistory,
     requestUploadSlot,
     sendTyping,
+    sendReactions,
     markDisplayed,
     on: (event: EventName, listener: StoredListener) => addListener(event, listener),
   };

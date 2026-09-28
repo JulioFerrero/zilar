@@ -253,6 +253,40 @@
 }
 
 /*
+ * XEP-0444 reaction chips (ui-style.md D24): a raised pill, and the pressed /
+ * active segment look on my own reaction.
+ */
+@utility reaction-chip {
+  background: linear-gradient(180deg, #1f1f1f, #121212);
+  border: 1px solid var(--edge);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 2px 4px rgba(0, 0, 0, 0.6);
+  transition:
+    transform 80ms,
+    box-shadow 80ms;
+
+  &:active {
+    transform: translateY(1px);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.9);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--muted-foreground);
+    outline-offset: 2px;
+  }
+}
+
+@utility reaction-chip-mine {
+  background: linear-gradient(180deg, #333333, #1c1c1c);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 1px 0 rgba(0, 0, 0, 0.9);
+}
+
+/*
  * The three bubble looks (ui-style.md §5). Outgoing is a glossy white key,
  * incoming a dark card, and a reply that is still being written is recessed
  * (the well look). They share a gradient's stop count and a box-shadow's
@@ -538,12 +572,14 @@
 
 @media (prefers-reduced-motion: reduce) {
   .key-primary,
-  .key-icon {
+  .key-icon,
+  .reaction-chip {
     transition: none;
   }
 
   .key-primary:active,
-  .key-icon:active {
+  .key-icon:active,
+  .reaction-chip:active {
     transform: none;
   }
 

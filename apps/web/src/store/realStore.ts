@@ -2,12 +2,20 @@ import type {
   ChatSummary,
   MentionMember,
   MessageStatus,
+  ReactionsState,
   ReplyRef,
   UiMention,
   UiMessage,
+  UiReaction,
   VoiceMeta,
 } from '@galena/chat-core';
-import { mentionsForTrimmedText } from '@galena/chat-core';
+import {
+  applyReaction,
+  emptyReactions,
+  mergeTargets,
+  mentionsForTrimmedText,
+  summarize,
+} from '@galena/chat-core';
 import { clearChatListCache, readChatListCache, writeChatListCache } from './chatListCache';
 import {
   createXmppCore,
@@ -374,6 +382,30 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       const rootRight = aliasRoot(right);
       if (rootLeft !== rootRight) {
         messageAliases.set(rootRight, rootLeft);
+        // Reactions were stored under whichever id was known when they
+        // arrived; move them onto the surviving root so the alias-aware
+        // lookup finds them.
+        migrateReactionTargets(rootRight, rootLeft);
+      }
+    }
+
+    function migrateReactionTargets(from: string, to: string): void {
+      const state = get();
+      let changed = false;
+      const next: Record<string, ReactionsState> = { ...state.reactions };
+      for (const [chatId, chatState] of Object.entries(state.reactions)) {
+        if (chatState.targets[from] === undefined) {
+          continue;
+        }
+        next[chatId] = mergeTargets(chatState, from, to);
+        changed = true;
+      }
+      if (!changed) {
+        return;
+      }
+      set({ reactions: next });
+      for (const chatId of Object.keys(next)) {
+        refreshReactions(chatId);
       }
     }
 
@@ -522,6 +554,144 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return 'Someone';
     }
 
+    // A reactor's display name: "You" for me, the DM title for a DM, else the
+    // group member, the room occupant, or "Someone".
+    function reactorName(chatId: string, reactorJid: string): string {
+      const mine = myJid();
+      if (mine !== undefined && reactorJid === mine) {
+        return 'You';
+      }
+      const chat = get().chats.find((entry) => entry.id === chatId);
+      if (chat !== undefined && chat.kind === 'dm') {
+        return chat.title;
+      }
+      return (
+        groupMemberNameFor(chatId, reactorJid) ?? occupantNameFor(chatId, reactorJid) ?? 'Someone'
+      );
+    }
+
+    // The chips of a message, from the stored reaction updates. The lookup is
+    // alias-aware, like `sameMessage`: an optimistic id and the server id of
+    // the same message resolve to one target.
+    function reactionChips(
+      state: ReactionsState | undefined,
+      chatId: string,
+      messageId: string,
+    ): UiReaction[] | undefined {
+      if (state === undefined) {
+        return undefined;
+      }
+      const summary = summarize(state, aliasRoot(messageId), myJid() ?? '');
+      if (summary.length === 0) {
+        return undefined;
+      }
+      return summary.map((entry) => ({
+        emoji: entry.emoji,
+        count: entry.count,
+        mine: entry.mine,
+        reactors: entry.reactors.map((reactor) => reactorName(chatId, reactor)),
+      }));
+    }
+
+    function reactionsEqual(
+      left: UiReaction[] | undefined,
+      right: UiReaction[] | undefined,
+    ): boolean {
+      if (left === undefined || right === undefined) {
+        return left === right;
+      }
+      if (left.length !== right.length) {
+        return false;
+      }
+      return left.every((entry, index) => {
+        const other = right[index];
+        return (
+          other !== undefined &&
+          entry.emoji === other.emoji &&
+          entry.count === other.count &&
+          entry.mine === other.mine &&
+          entry.reactors.join('\u0000') === other.reactors.join('\u0000')
+        );
+      });
+    }
+
+    // Re-attaches the current chips to every loaded message of a chat after a
+    // reaction update changed the derived state.
+    function refreshReactions(chatId: string): void {
+      const state = get();
+      const list = state.messagesByChat[chatId];
+      const reactions = state.reactions[chatId];
+      if (list === undefined || reactions === undefined) {
+        return;
+      }
+      let changed = false;
+      const next = list.map((message) => {
+        const chips = reactionChips(reactions, chatId, message.id);
+        if (reactionsEqual(message.reactions, chips)) {
+          return message;
+        }
+        changed = true;
+        if (chips === undefined) {
+          const withoutReactions: UiMessage = { ...message };
+          delete withoutReactions.reactions;
+          return withoutReactions;
+        }
+        return { ...message, reactions: chips };
+      });
+      if (!changed) {
+        return;
+      }
+      set((previous) => ({ messagesByChat: { ...previous.messagesByChat, [chatId]: next } }));
+    }
+
+    // Applies one reaction update and refreshes the loaded messages. The target
+    // is canonicalised through the alias map so it matches whatever id the
+    // message is currently known by.
+    function applyReactionUpdate(
+      chatId: string,
+      targetId: string,
+      reactorJid: string,
+      emojis: string[],
+      order: number,
+    ): void {
+      set((state) => ({
+        reactions: {
+          ...state.reactions,
+          [chatId]: applyReaction(state.reactions[chatId] ?? emptyReactions(), {
+            targetId: aliasRoot(targetId),
+            reactorJid,
+            emojis,
+            order,
+          }),
+        },
+      }));
+      refreshReactions(chatId);
+    }
+
+    // A reaction update is not a chat message: it only changes reaction state,
+    // so it never becomes a bubble or bumps the preview or unread count.
+    function ingestReaction(message: ChatMessage): void {
+      const reactions = message.reactions;
+      if (reactions === undefined) {
+        return;
+      }
+      const mine = myJid();
+      const reactorJid = message.outgoing && mine !== undefined ? mine : message.fromJid;
+      applyReactionUpdate(
+        message.chatJid,
+        reactions.targetId,
+        reactorJid,
+        reactions.emojis,
+        message.timestamp.getTime(),
+      );
+    }
+
+    function ingestHistoryReactions(messages: readonly ChatMessage[]): void {
+      for (const message of messages) {
+        ingestReaction(message);
+      }
+    }
+
     function rememberGroupIds(entries: ChatEntry[]): void {
       for (const entry of entries) {
         if (entry.kind === 'group') {
@@ -624,6 +794,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
       if (message.payload !== undefined && message.payload.type === 'voice') {
         ui.voice = message.payload.data;
+      }
+      const reactions = reactionChips(
+        get().reactions[message.chatJid],
+        message.chatJid,
+        message.id,
+      );
+      if (reactions !== undefined) {
+        ui.reactions = reactions;
       }
       return ui;
     }
@@ -773,6 +951,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     }
 
     function handleMessage(message: ChatMessage): void {
+      // A reaction update is a body-less message that only changes reactions:
+      // it must never render as a bubble or move the chat list preview.
+      if (message.reactions !== undefined) {
+        ingestReaction(message);
+        return;
+      }
       const meId = get().currentUserId;
       const chatId = message.chatJid;
       const ui = toUiMessage(message, meId);
@@ -1073,7 +1257,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         const page = await current.loadHistory(chat.id, coreKind(chat), {
           max: PREVIEW_HISTORY_MAX,
         });
-        const last = page.messages.at(-1);
+        ingestHistoryReactions(page.messages);
+        const last = page.messages.filter((message) => message.reactions === undefined).at(-1);
         if (last === undefined) {
           return;
         }
@@ -1146,7 +1331,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       setHistoryState(chatId, 'loading');
       try {
         const page = await current.loadHistory(chatId, coreKind(chat), { max: PAGE_HISTORY_MAX });
-        const loaded = page.messages.map((message) => toUiMessage(message, get().currentUserId));
+        ingestHistoryReactions(page.messages);
+        const loaded = page.messages
+          .filter((message) => message.reactions === undefined)
+          .map((message) => toUiMessage(message, get().currentUserId));
         const newest = loaded.at(-1);
         set((state) => {
           const live = listFor(state, chatId).filter(
@@ -1197,7 +1385,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       void core
         .loadHistory(chatId, coreKind(chat), { before: cursor, max: PAGE_HISTORY_MAX })
         .then((page) => {
-          const older = page.messages.map((message) => toUiMessage(message, get().currentUserId));
+          ingestHistoryReactions(page.messages);
+          const older = page.messages
+            .filter((message) => message.reactions === undefined)
+            .map((message) => toUiMessage(message, get().currentUserId));
           set((state) => ({
             messagesByChat: {
               ...state.messagesByChat,
@@ -1347,6 +1538,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       chats: [],
       contacts: [],
       messagesByChat: {},
+      reactions: {},
       activeChatId: undefined,
       historyComplete: {},
       groupInfos: {},
@@ -1403,6 +1595,30 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         void openHistory(chatId);
       },
       loadOlder,
+      react: (chatId, messageId, emoji) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const mine = myJid();
+        if (chat === undefined || mine === undefined) {
+          return;
+        }
+        const targetId = aliasRoot(messageId);
+        const current = get().reactions[chatId]?.targets[targetId]?.[mine]?.emojis ?? [];
+        const next = current.includes(emoji)
+          ? current.filter((entry) => entry !== emoji)
+          : [...current, emoji];
+        const apply = (emojis: string[]): void => {
+          applyReactionUpdate(chatId, targetId, mine, emojis, now().getTime());
+        };
+        apply(next);
+        const currentCore = core;
+        if (currentCore === undefined) {
+          return;
+        }
+        currentCore.sendReactions(chatId, coreKind(chat), messageId, next).catch(() => {
+          // The send failed: undo the optimistic toggle.
+          apply(current);
+        });
+      },
       sendTyping: (chatId) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
         if (core !== undefined && chat !== undefined) {
@@ -1581,6 +1797,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           chats: [],
           contacts: [],
           messagesByChat: {},
+          reactions: {},
           activeChatId: undefined,
           historyComplete: {},
           groupInfos: {},

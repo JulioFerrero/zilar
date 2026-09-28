@@ -10,11 +10,13 @@ import {
   CONFERENCE_NAMESPACE,
   DELAY_NAMESPACE,
   FORWARD_NAMESPACE,
+  HINTS_NAMESPACE,
   HTTP_UPLOAD_NAMESPACE,
   MAM_NAMESPACE,
   MUC_NAMESPACE,
   MUC_USER_NAMESPACE,
   OCCUPANT_ID_NAMESPACE,
+  REACTIONS_NAMESPACE,
   REPLY_NAMESPACE,
   REFERENCE_NAMESPACE,
   ROSTER_NAMESPACE,
@@ -28,6 +30,7 @@ import type {
   InvitedEvent,
   Mention,
   MentionInput,
+  MessageReactions,
   Occupant,
   PresenceEvent,
   RosterEvent,
@@ -45,6 +48,30 @@ const CHAT_STATES: ReadonlyArray<'composing' | 'paused' | 'active'> = [
 // XEP-0372 references are capped so a hostile message cannot force unbounded
 // work or memory.
 const MAX_MENTIONS = 20;
+
+// XEP-0444: a reaction is one emoji grapheme of at most eight code points, and
+// a reactor may hold at most six distinct reactions on one message.
+const MAX_REACTIONS = 6;
+const MAX_REACTION_CODE_POINTS = 8;
+const EMOJI_GRAPHEME =
+  /^(?:\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?|\p{Regional_Indicator}{2})(?:\u200D(?:\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?|\p{Regional_Indicator}{2}))*$/u;
+
+function isReactionEmoji(value: string): boolean {
+  const codePoints = Array.from(value).length;
+  return codePoints >= 1 && codePoints <= MAX_REACTION_CODE_POINTS && EMOJI_GRAPHEME.test(value);
+}
+
+// Keeps only valid, distinct reactions in first-seen order, capped at six. Used
+// on both sides so a hostile or buggy peer cannot make us store or send junk.
+export function sanitizeReactions(emojis: readonly string[]): string[] {
+  const result: string[] = [];
+  for (const emoji of emojis) {
+    if (result.length >= MAX_REACTIONS) break;
+    if (!isReactionEmoji(emoji) || result.includes(emoji)) continue;
+    result.push(emoji);
+  }
+  return result;
+}
 
 export type ReplyRef = { id: string; to?: string };
 
@@ -152,6 +179,28 @@ export function buildDisplayed(options: {
     'message',
     { type: options.kind, to: options.chatJid },
     xml('displayed', { xmlns: CHAT_MARKERS_NAMESPACE, id: options.messageId }),
+  );
+}
+
+// XEP-0444: a body-less message carrying my complete reaction set for a target,
+// with the store hint so the server archives it in MAM without a body.
+export function buildReactions(options: {
+  id: string;
+  to: string;
+  kind: ChatKind;
+  targetId: string;
+  emojis: string[];
+}): XmppElement {
+  const reactions = xml(
+    'reactions',
+    { xmlns: REACTIONS_NAMESPACE, id: options.targetId },
+    ...sanitizeReactions(options.emojis).map((emoji) => xml('reaction', {}, emoji)),
+  );
+  return xml(
+    'message',
+    { type: options.kind, to: options.to, id: options.id },
+    reactions,
+    xml('store', { xmlns: HINTS_NAMESPACE }),
   );
 }
 
@@ -678,6 +727,21 @@ function parseMentions(stanza: XmppElement, body: string | undefined): Mention[]
   return mentions.length === 0 ? undefined : mentions;
 }
 
+// XEP-0444: a `reactions` element names the target and lists the reactor's
+// complete current set. Invalid reactions are dropped and the set is capped;
+// an element with no reactions clears the set. Without a target id it is
+// ignored.
+export function parseReactions(stanza: XmppElement): MessageReactions | undefined {
+  const element = stanza.getChild('reactions', REACTIONS_NAMESPACE);
+  if (element === undefined) return undefined;
+  const targetId = element.attrs['id'];
+  if (targetId === undefined || targetId === '') return undefined;
+  const emojis = sanitizeReactions(
+    element.getChildren('reaction').map((reaction) => reaction.text().trim()),
+  );
+  return { targetId, emojis };
+}
+
 export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): DecodedStanza {
   const envelope = unwrapMessage(stanza);
   const inner = envelope.inner;
@@ -713,7 +777,9 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
     }
   }
 
-  if (body !== undefined || payload !== undefined) {
+  const reactions = parseReactions(inner);
+
+  if (body !== undefined || payload !== undefined || reactions !== undefined) {
     const message: ChatMessage = {
       id: messageId(inner, envelope.archiveId, kind, chatJid, ctx.me),
       chatJid,
@@ -726,6 +792,7 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
     if (sender.occupantId !== undefined) message.occupantId = sender.occupantId;
     if (body !== undefined) message.body = body;
     if (payload !== undefined) message.payload = payload;
+    if (reactions !== undefined) message.reactions = reactions;
     if (kind === 'groupchat') {
       const nick = fromNick(inner, from, kind);
       if (nick !== undefined) message.fromNick = nick;
