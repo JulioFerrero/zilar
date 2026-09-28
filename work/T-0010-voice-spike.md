@@ -1,7 +1,7 @@
 ---
 id: T-0010
 title: Voice message spike — record on web, convert with ffmpeg to AAC/M4A, send and play in a chat
-status: review
+status: merged
 milestone: M1
 branch: task/T-0010-voice-spike
 model: opencode-go/deepseek-v4.1-flash
