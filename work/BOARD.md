@@ -8,7 +8,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| T-0048 | Mobile redesign (D24) | planned (after T-0047) | deepseek-v4.1-flash | T-0047 | Spec to write. |
+| [T-0048](T-0048-mobile-redesign.md) | Mobile redesign (D24): dark tokens, Geist, depth primitives, chat list and chat screen | in progress | deepseek-v4.1-flash | T-0047 | Own simulator + Metro 8082; image budget ~20. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
