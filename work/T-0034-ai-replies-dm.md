@@ -1,7 +1,7 @@
 ---
 id: T-0034
 title: Agent gateway v0 — AIs reply to their owner in DMs (XMPP login as the AI, context, LiteLLM call with the AI's capped key)
-status: review
+status: merged
 milestone: M2
 branch: task/T-0034-ai-replies-dm
 model: opencode-go/muse-spark-1.3-contributor
@@ -329,3 +329,32 @@ its path); round 1's live result stands: 1 passed with the exact
 provider-key-rejection reply, everything cleaned up.
 
 ## Review (written by Claude)
+
+### Round 2: approved
+
+A Muse pre-review ran first. It found no must-fix issues and cleared:
+- owner-only gating on a DB-derived bare JID;
+- dropping own echoes, carbons, other `ai-*` senders and groups;
+- the AI id always coming from the gateway's own session map;
+- coalescing, with `busy` reset in `finally`;
+- key redaction on every path, with log assertions on `err.message`/`err.stack`;
+- the three failure texts, verbatim.
+
+Round 2 fixed the two lead findings:
+- The gateway now starts in the background once the HTTP server is listening, so a slow ejabberd can no longer delay startup.
+- The reply pump has a redacted `.catch`, with a test proving the AI still answers the next message after an unexpected throw.
+
+Accepted as-is:
+- "A disabled AI stays online up to 60 s": no API can disable an AI today (`UpdateAiInput` has no status).
+- `apps/server/tsconfig.json` and `config.test.ts`: small, disclosed, and required for typecheck and tests.
+
+Note: the worker stopped its own branch server with `node … process.kill` after `pkill` was rejected. It was its own process, so this is acceptable, but T-0038's policy must treat `node -e`/`process.kill` like `kill`.
+
+Lead re-ran every check after rebasing onto main:
+- format:check, lint, typecheck (9/9) and build pass;
+- `turbo test --force --filter=@galena/server`: 344 passed, 7 skipped (gated).
+
+The gated live integration test passed in round 1 (reply = the exact "provider rejected the API key" text, everything cleaned up). Round 2 doesn't touch that path.
+
+To enable live: `AGENT_GATEWAY_ENABLED=true` in `apps/server/.env`, then restart the server.
+
