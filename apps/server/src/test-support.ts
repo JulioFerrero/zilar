@@ -46,6 +46,7 @@ export class TestMailer {
 // In-memory stand-in for the ejabberd admin API. Tests never touch the network.
 export class FakeAdminClient implements EjabberdAdminClient {
   readonly registered: string[] = [];
+  readonly unregistered: string[] = [];
   readonly roomsCreated: string[] = [];
   readonly roomOptions: Array<{ roomId: string } & CreateRoomOptions> = [];
   readonly affiliations: Array<{ roomId: string; jid: string; affiliation: RoomAffiliation }> = [];
@@ -66,6 +67,7 @@ export class FakeAdminClient implements EjabberdAdminClient {
   readonly removedRosterItems: Array<{ localpart: string; contactJid: string }> = [];
 
   failRegister = false;
+  failUnregister = false;
   failRoom = false;
   failAffiliation = false;
   failDirectInvitation = false;
@@ -82,6 +84,18 @@ export class FakeAdminClient implements EjabberdAdminClient {
 
   userExists(localpart: string): Promise<boolean> {
     return Promise.resolve(this.registered.includes(localpart));
+  }
+
+  unregisterUser(localpart: string): Promise<void> {
+    if (this.failUnregister) {
+      return Promise.reject(new Error('ejabberd is down'));
+    }
+    this.unregistered.push(localpart);
+    const index = this.registered.indexOf(localpart);
+    if (index >= 0) {
+      this.registered.splice(index, 1);
+    }
+    return Promise.resolve();
   }
 
   changePassword(): Promise<void> {
@@ -156,8 +170,24 @@ export class FakeAdminClient implements EjabberdAdminClient {
     return Promise.resolve();
   }
 
-  getRoster(): Promise<RosterEntry[]> {
-    return Promise.resolve([]);
+  getRoster(localpart: string): Promise<RosterEntry[]> {
+    const entries = this.rosterItems
+      .filter((item) => item.localpart === localpart)
+      .filter(
+        (item) =>
+          !this.removedRosterItems.some(
+            (removed) =>
+              removed.localpart === item.localpart && removed.contactJid === item.contactJid,
+          ),
+      )
+      .map((item) => ({
+        jid: item.contactJid,
+        nick: item.nick,
+        subscription: item.subs as RosterEntry['subscription'],
+        pending: 'none',
+        groups: item.groups,
+      }));
+    return Promise.resolve(entries);
   }
 }
 

@@ -83,6 +83,18 @@ describe('createEjabberdAdminClient', () => {
     await expect(client.registerUser('alice')).resolves.toEqual({ created: false });
   });
 
+  it('unregisters a user through unregister', async () => {
+    const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
+    const client = createEjabberdAdminClient(config, fetchImpl);
+
+    await client.unregisterUser('alice');
+
+    const call = calls[0]!;
+    expect(call.url).toBe('http://ejabberd.test/api/unregister');
+    expect(call.init.method).toBe('POST');
+    expect(bodyOf(call)).toEqual({ user: 'alice', host: 'galena.localhost' });
+  });
+
   it('maps userExists from check_account (0 means the account exists)', async () => {
     const exists = createFetch(() => jsonResponse(0));
     await expect(
@@ -341,6 +353,7 @@ describe('createEjabberdAdminClient', () => {
     await expect(client.registerUser('../x')).rejects.toThrow('localpart');
     await expect(client.registerUser('Alice')).rejects.toThrow('localpart');
     await expect(client.registerUser('')).rejects.toThrow('localpart');
+    await expect(client.unregisterUser('Alice')).rejects.toThrow('localpart');
     await expect(client.createRoom('Bad/../Room')).rejects.toThrow('roomId');
     await expect(client.getAffiliations('')).rejects.toThrow('roomId');
     await expect(client.setAffiliation('project-a', 'not-a-jid', 'member')).rejects.toThrow('jid');

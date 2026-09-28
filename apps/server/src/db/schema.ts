@@ -1,4 +1,13 @@
-import { boolean, index, integer, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  integer,
+  numeric,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+} from 'drizzle-orm/pg-core';
 import { user } from '../auth/auth-schema';
 
 export * from '../auth/auth-schema';
@@ -114,3 +123,61 @@ export const groupMembers = pgTable(
   },
   (table) => [primaryKey({ columns: [table.groupId, table.userId] })],
 );
+
+// An AI an owner created. It is a real XMPP user (its own account and roster),
+// never a member of Better Auth: `owner` points at the user who owns it and
+// `localpart`/`jid` are the identity we registered in ejabberd. The persona and
+// model live here; the spend cap is in `ai_limits`, the gateway key in
+// `llm_virtual_keys`. `provider_connection_id` is RESTRICT, so a connection an
+// AI uses cannot be deleted out from under it.
+export const ais = pgTable(
+  'ais',
+  {
+    id: text('id').primaryKey(),
+    owner: text('owner')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    template: text('template', { enum: ['dev', 'marketing', 'fun', 'custom'] }).notNull(),
+    persona: text('persona').notNull(),
+    providerConnectionId: text('provider_connection_id')
+      .notNull()
+      .references(() => providerConnections.id, { onDelete: 'restrict' }),
+    model: text('model').notNull(),
+    localpart: text('localpart').notNull().unique(),
+    jid: text('jid').notNull().unique(),
+    status: text('status', { enum: ['active', 'disabled'] })
+      .notNull()
+      .default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('ais_owner_idx').on(table.owner)],
+);
+
+// The owner's hard limits for one AI. `per_month_usd` is the LiteLLM key's
+// budget; `per_day_usd` is kept for the daily ledger a later task builds (see
+// the comment in ais/service.ts). Money is numeric, never a float.
+export const aiLimits = pgTable('ai_limits', {
+  aiId: text('ai_id')
+    .primaryKey()
+    .references(() => ais.id, { onDelete: 'cascade' }),
+  perDayUsd: numeric('per_day_usd', { precision: 12, scale: 2 }).notNull(),
+  perMonthUsd: numeric('per_month_usd', { precision: 12, scale: 2 }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// The capped LiteLLM virtual key issued for one AI. `litellm_key_id` is the
+// token id we use to update or revoke the key; `encrypted_key` is the usable
+// `sk-...` string sealed with the T-0028 KeyCipher, because T-0033 must call
+// LiteLLM *as the AI* for the cap to apply. Neither ever reaches a response.
+export const llmVirtualKeys = pgTable('llm_virtual_keys', {
+  aiId: text('ai_id')
+    .primaryKey()
+    .references(() => ais.id, { onDelete: 'cascade' }),
+  litellmKeyId: text('litellm_key_id').notNull(),
+  encryptedKey: text('encrypted_key').notNull(),
+  budgetUsd: numeric('budget_usd', { precision: 12, scale: 2 }).notNull(),
+  budgetDuration: text('budget_duration').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

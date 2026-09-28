@@ -62,6 +62,7 @@ export type SendDirectInvitationOptions = {
 
 export type EjabberdAdminClient = {
   registerUser(localpart: string): Promise<CreatedResult>;
+  unregisterUser(localpart: string): Promise<void>;
   userExists(localpart: string): Promise<boolean>;
   changePassword(localpart: string, password: string): Promise<void>;
   createRoom(roomId: string, options?: CreateRoomOptions): Promise<CreatedResult>;
@@ -225,6 +226,12 @@ export function createEjabberdAdminClient(
         return { created: false };
       }
       return fail('register', response);
+    },
+
+    async unregisterUser(localpart: string): Promise<void> {
+      const user = parseName(localpart, 'localpart');
+      const response = await call('unregister', { user, host: config.domain });
+      expectMutationResult('unregister', response);
     },
 
     async userExists(localpart: string): Promise<boolean> {
