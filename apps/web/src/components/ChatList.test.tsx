@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { renderApp } from '@/test/renderApp';
 
 const ALL_TITLES = [
@@ -123,5 +123,37 @@ describe('ChatList', () => {
     store.setState({ retryChats: onRetry });
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the loaded rows while a retry is in flight and clears the bar on success', async () => {
+    const { store } = renderApp('/');
+    store.setState({ chatsState: 'error' });
+    expect(await screen.findByText("Couldn't load chats")).toBeTruthy();
+
+    // The mock store's retryChats is a no-op; mirror the real store, whose
+    // retry sets `loading`, so the pending state can be observed.
+    store.setState({ retryChats: () => store.setState({ chatsState: 'loading' }) });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(screen.getByText('Ana')).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'Loading chats' })).toBeNull();
+    const pending = screen.getByRole('button', { name: /Retrying/ }) as HTMLButtonElement;
+    expect(pending.disabled).toBe(true);
+    expect(pending.getAttribute('aria-busy')).toBe('true');
+
+    act(() => store.setState({ chatsState: 'ready' }));
+    expect(screen.queryByText("Couldn't load chats")).toBeNull();
+    expect(screen.queryByRole('button', { name: /Retrying/ })).toBeNull();
+  });
+
+  it('shows skeletons when a list that never loaded is retried', async () => {
+    const { store } = renderApp('/', { chats: [], chatsState: 'error' });
+    expect(await screen.findByText("Couldn't load chats")).toBeTruthy();
+
+    store.setState({ retryChats: () => store.setState({ chatsState: 'loading' }) });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(screen.getByRole('status', { name: 'Loading chats' })).toBeTruthy();
+    expect(screen.queryByText("Couldn't load chats")).toBeNull();
   });
 });
