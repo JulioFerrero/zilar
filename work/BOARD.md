@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0008](T-0008-runner-tunnel-spike.md) | Spike S6: runner tunnel over one WebSocket (engine API, model traffic, preview URL) | in progress | muse-spark-1.3 | T-0006 | New package `packages/runner-tunnel` only. Decides the M3 design. Watch: `cd ../galena-T-0008 && opencode2 -s ses_f18ca69fbffeB8AWtuJJ4Bp5mb` |
-| [T-0031](T-0031-mobile-boot-check.md) | Mobile boot check: build, launch and watch the iOS app; fail on native/bundle errors | in progress | mimo-v2.6-flash | | Would have caught the T-0026 `ExpoSecureStore` crash. Uses the iPad simulator + Metro 8082. Watch: `cd ../galena-T-0031 && opencode2 -s ses_f18ca6963ffeD4I0UTRes2oAWy` |
 | [T-0030](T-0030-ais-server.md) | **M2: AIs on the server**: `ais`/`ai_limits`/`llm_virtual_keys`, `/api/ais`, own XMPP account + roster, capped LiteLLM virtual key, all-or-nothing create/delete | in progress | v4.1-flash | T-0028 | Server only. |
 | T-0032 | M2: web Create-AI wizard + My AIs list (§20.2) | planned | | T-0030 | Builds on the `/api/ais` shapes. |
 | T-0033 | M2: AIs reply when @mentioned (agent gateway: XMPP login as the AI, context, LiteLLM call with the AI's virtual key) | planned | | T-0030 | Must decide how the owner's provider key reaches the provider (T-0007 follow-up). |
@@ -23,7 +22,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
 - `POST /api/connections/:id/test` calls the provider on every request: put it behind the rate limiter before real users (from the T-0028 review).
 - **Load-sensitive web tests, broader than T-0029 fixed.** Under heavy load (load average 96, from a parallel Xcode build) three *other* first-in-file full-app renders timed out: `ChatList.test.tsx > filters chats by folder`, `Composer.test.tsx > shows the mic when empty…`, `NewChatButton.test.tsx > creates a group from the dialog…`. Per-test timeouts don't scale; needs a package-level fix (e.g. a shared lighter render helper, or one explicit `testTimeout` for `apps/web` with a comment). CI is green.
-- `apps/mobile/ios/` is generated and gitignored: after any native dependency change, run `pod install` (T-0031 automates the check).
+- `apps/mobile/ios/` is generated and gitignored: run `pnpm --filter @galena/mobile boot:ios --device <udid>` after any native dependency change (T-0031). Running it in CI needs a macOS runner (Julio's decision).
 
 ## Done
 
@@ -55,3 +54,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0009](T-0009-git-proxy.md) | Spike S8: GitHub App tokens + git proxy allowing only `agent/<ai>/*` pushes; fails closed on unparseable pushes (2 rounds) | 2026-09-28 |
 | [T-0029](T-0029-flaky-web-tests.md) | Load-sensitive `apps/web` tests: commented per-test timeouts on the three first-in-file full-app renders; verified with forced full-suite runs under a CPU burner | 2026-09-28 |
 | [T-0028](T-0028-connections-ui.md) | **Connections**: provider API keys encrypted at rest (AES-256-GCM, HKDF, `v1` envelope), `/api/connections`, Settings → Connections screen with Test/Remove; live-verified by the lead (2 rounds) | 2026-09-28 |
+| [T-0031](T-0031-mobile-boot-check.md) | **Mobile boot check** `boot:ios`: pods vs autolinking (auto `pod install`), stale-deps check, own Metro on 8082, passes only after the JS app runs; caught the SecureStore regression live | 2026-09-28 |
