@@ -8,12 +8,13 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
+| [T-0039](T-0039-quick-create-ai.md) | Web: one-screen "New AI" dialog (safe defaults, lands in the chat) + AI side panel in the chat (persona/model/limits/delete); the 6-step wizard is removed | in progress | deepseek-v4.1-flash | T-0032, T-0034 | Julio: "we need to be faster to create", and the wizard's model suggestions didn't select. Also fixes the delete wording. |
+| [T-0040](T-0040-persona-by-chat.md) | Server: the owner shapes an AI by talking to it (`update_persona`/`revert_persona` tools in the DM turn, one-step undo, at most 2 model calls) | in progress | muse-spark-1.3 | T-0034 | Julio's idea (2026-09-28). Only the persona can change, and only from the owner's DM. A real tool call is verified live with Julio's DeepSeek key. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
 
 - Mobile: honor the `?mock=` route param only in `__DEV__` or with `EXPO_PUBLIC_GALENA_MOCK` set, for both the chat store and My AIs (T-0037 pre-review). Today a deep link can show fake data in a production build.
-- Delete-AI dialog copy (web `AisPage.tsx:249`, and mobile after T-0037): "removes the AI's chat account and its provider key" suggests the owner's own key gets deleted. It should say that it removes the AI's chat account and its spending key, and that your provider connection stays.
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
