@@ -71,6 +71,26 @@ describe('useSmoothText', () => {
     expect(result.current.done).toBe(true);
   });
 
+  it('never shows half of an emoji', () => {
+    const frames = manualFrames();
+    const target = '👋🙂🎉 ok 🚀✨';
+    const { result, rerender } = renderHook(
+      ({ value }: { value: string }) =>
+        useSmoothText(value, { frames: frames.scheduler, initial: 'zero' }),
+      { initialProps: { value: '' } },
+    );
+    rerender({ value: target });
+
+    for (let frame = 0; frame <= 400 && !result.current.done; frame += 1) {
+      act(() => {
+        frames.run(frame * 3);
+      });
+      const last = result.current.text.charCodeAt(result.current.text.length - 1);
+      expect(last >= 0xd800 && last <= 0xdbff).toBe(false);
+    }
+    expect(result.current.text).toBe(target);
+  });
+
   it('clears a backlog within the catch-up window', () => {
     const frames = manualFrames();
     const target = 'x'.repeat(500);

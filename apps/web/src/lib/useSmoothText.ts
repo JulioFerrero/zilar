@@ -125,7 +125,7 @@ export function useSmoothText(
       const advance = (velocityRef.current * elapsed) / 1000;
       const nextProgress = Math.min(current.length, progressRef.current + advance);
       progressRef.current = nextProgress;
-      shownRef.current = current.slice(0, nextProgress);
+      shownRef.current = current.slice(0, safeCut(current, nextProgress));
       setShown(shownRef.current);
       if (nextProgress < current.length) {
         handleRef.current = frames.request(step);
@@ -143,4 +143,12 @@ export function useSmoothText(
 
   const text = animate ? shown : target;
   return { text, done: text.length >= target.length };
+}
+
+// Never cut between the two halves of a surrogate pair (most emoji): a half
+// renders as a replacement glyph for a frame.
+function safeCut(text: string, progress: number): number {
+  const end = Math.floor(progress);
+  const last = text.charCodeAt(end - 1);
+  return end > 0 && end < text.length && last >= 0xd800 && last <= 0xdbff ? end + 1 : end;
 }
