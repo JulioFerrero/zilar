@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createElement } from 'react';
+import { render, screen } from '@testing-library/react';
 import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
+import { MessageBubble } from '@/components/MessageBubble';
 import type { DraftHubEvent } from '@/lib/drafts';
 import {
   CONNECT_RETRY_DELAYS_MS,
@@ -129,7 +132,13 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       },
     ]),
     getContacts: vi.fn(async () => [{ userId: 'u-ana', name: 'Ana', jid: 'ana@galena.test' }]),
-    getGroup: vi.fn(async () => ({ id: 'g1', title: 'Team', createdBy: 'u-me', members: [] })),
+    getGroup: vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [],
+      ais: [],
+    })),
     getXmppToken: vi.fn(async () => ({
       jid: 'me@galena.test',
       token: 'tok',
@@ -143,8 +152,24 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       title: 'New',
       createdBy: 'u-me',
       members: [],
+      ais: [],
     })),
     createInvite: vi.fn(async () => ({ code: 'c', url: 'http://x/invite/c' })),
+    listAis: vi.fn(async () => []),
+    addGroupAi: vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [],
+      ais: [],
+    })),
+    removeGroupAi: vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [],
+      ais: [],
+    })),
     ...overrides,
   };
 }
@@ -519,6 +544,7 @@ describe('createRealChatStore', () => {
       title: 'Team',
       createdBy: 'u-me',
       members: [{ userId: 'u-luis', name: 'Luis', role: 'member' as const }],
+      ais: [],
     }));
     const { store, xmpp } = await setup({ getGroup });
     await flush();
@@ -538,6 +564,7 @@ describe('createRealChatStore', () => {
       title: 'Team',
       createdBy: 'u-me',
       members: [{ userId: 'u-ana', name: 'Ana', role: 'member' as const }],
+      ais: [],
     }));
     const { store, xmpp } = await setup({ getGroup });
     await flush();
@@ -603,6 +630,7 @@ describe('createRealChatStore', () => {
         { userId: 'u-me', name: 'Me', role: 'owner' as const },
         { userId: 'u-ana', name: 'Ana', role: 'member' as const },
       ],
+      ais: [],
     }));
     const { store } = await setup({ getGroup });
     await flush();
@@ -613,6 +641,128 @@ describe('createRealChatStore', () => {
       { jid: 'u-me@galena.test', name: 'Me' },
       { jid: 'u-ana@galena.test', name: 'Ana' },
     ]);
+  });
+
+  it('includes the group AIs in groupMembers', async () => {
+    const getGroup = vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [{ userId: 'u-me', name: 'Me', role: 'owner' as const }],
+      ais: [{ aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-me' }],
+    }));
+    const { store } = await setup({ getGroup });
+    await flush();
+    store.getState().openChat('team@rooms.galena.test');
+    await flush();
+
+    expect(store.getState().groupMembers('team@rooms.galena.test')).toEqual([
+      { jid: 'u-me@galena.test', name: 'Me' },
+      { jid: 'ai-dev-1@galena.test', name: 'Dev-1' },
+    ]);
+    expect(store.getState().groupInfo('team@rooms.galena.test')?.ais).toEqual([
+      { aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-me' },
+    ]);
+  });
+
+  it('adds an AI through the API and refreshes the members', async () => {
+    const before = {
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [{ userId: 'u-me', name: 'Me', role: 'owner' as const }],
+      ais: [],
+    };
+    const after = {
+      ...before,
+      ais: [{ aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-me' }],
+    };
+    const getGroup = vi.fn(async () => before);
+    const addGroupAi = vi.fn(async () => after);
+    const { store } = await setup({ getGroup, addGroupAi });
+    await flush();
+    store.getState().openChat('team@rooms.galena.test');
+    await flush();
+
+    await store.getState().addGroupAi('team@rooms.galena.test', 'dev-1');
+
+    expect(addGroupAi).toHaveBeenCalledWith('g1', 'dev-1');
+    expect(store.getState().groupMembers('team@rooms.galena.test')).toContainEqual({
+      jid: 'ai-dev-1@galena.test',
+      name: 'Dev-1',
+    });
+    expect(store.getState().groupInfo('team@rooms.galena.test')?.ais).toHaveLength(1);
+  });
+
+  it('removes an AI through the API and refreshes the members', async () => {
+    const before = {
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [{ userId: 'u-me', name: 'Me', role: 'owner' as const }],
+      ais: [{ aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-me' }],
+    };
+    const after = { ...before, ais: [] };
+    const getGroup = vi.fn(async () => before);
+    const removeGroupAi = vi.fn(async () => after);
+    const { store } = await setup({ getGroup, removeGroupAi });
+    await flush();
+    store.getState().openChat('team@rooms.galena.test');
+    await flush();
+
+    await store.getState().removeGroupAi('team@rooms.galena.test', 'dev-1');
+
+    expect(removeGroupAi).toHaveBeenCalledWith('g1', 'dev-1');
+    expect(store.getState().groupMembers('team@rooms.galena.test')).toEqual([
+      { jid: 'u-me@galena.test', name: 'Me' },
+    ]);
+  });
+
+  it('names a group AI message from the group AIs and renders it as AI Markdown', async () => {
+    const getGroup = vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [{ userId: 'u-me', name: 'Me', role: 'owner' as const }],
+      ais: [{ aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-me' }],
+    }));
+    const { store, xmpp } = await setup({ getGroup });
+    await flush();
+    store.getState().openChat('team@rooms.galena.test');
+    await flush();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'ai-msg-1',
+        chatJid: 'team@rooms.galena.test',
+        body: '**done**',
+        fromJid: 'ai-dev-1@galena.test',
+        timestamp: new Date('2026-09-28T12:01:00Z'),
+      }),
+    );
+
+    const last = store.getState().messages('team@rooms.galena.test').at(-1);
+    const chat = store.getState().chats.find((entry) => entry.id === 'team@rooms.galena.test');
+    expect(last?.senderName).toBe('Dev-1');
+    if (last === undefined || chat === undefined) {
+      throw new Error('the group AI message was not stored');
+    }
+
+    const { container } = render(
+      createElement(MessageBubble, {
+        message: last,
+        chat,
+        firstInGroup: true,
+        lastInGroup: true,
+        currentUserId: 'u-me',
+        onReply: () => {},
+      }),
+    );
+
+    expect(screen.getByText('Dev-1')).toBeTruthy();
+    expect(screen.getByText('AI')).toBeTruthy();
+    expect(container.querySelector('strong')?.textContent).toBe('done');
   });
 
   it('passes outgoing mentions to the core', async () => {

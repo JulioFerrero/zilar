@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0055](T-0055-ai-in-groups-web.md) | AIs in groups (web): group panel, add/remove my AI, AIs in the @ picker, AI replies as AI with Markdown | in progress | deepseek-v4.1-flash | T-0053, T-0054 | M2 demo: @mention the AI in a group. |
 | [T-0058](T-0058-ai-costs.md) | AI costs: spend today / 30-day window in the panel, soft per-day limit enforced before each turn | in progress | muse-spark-1.3 | T-0054 | The per-day limit was stored but never enforced. |
 | [T-0059](T-0059-reactions-web.md) | Reactions (web): XEP-0444 with a store hint, quick bar, chips | planned (after T-0055) | deepseek-v4.1-flash | T-0053, T-0055 | Then: edit + delete for everyone (web). |
 | [T-0060](T-0060-web-qa-sweep.md) | Web QA sweep (mock mode, both widths, a11y, console): prioritized bug list, no code changes | in progress | deepseek-v4.1-flash | T-0057 | Feeds the next polish tasks. |
@@ -90,3 +89,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0054](T-0054-ai-in-groups-server.md) | AIs in groups (server): group_ais, add/remove routes, the gateway joins rooms and replies to @mentions from human members (rate-limited, no AI-to-AI) | 2026-09-28 |
 | [T-0056](T-0056-mobile-reply-drafts.md) | Mobile AI reply drafts: bearer SSE over XHR, smooth reveal, recessed generating bubble, same-node swap to the final message | 2026-09-28 |
 | [T-0057](T-0057-web-polish-retry-models.md) | Web polish: Retry keeps the loaded chat list (pending button only); model picker suggestions as raised rows with a SUGGESTED caption | 2026-09-28 |
+| [T-0055](T-0055-ai-in-groups-web.md) | AIs in groups (web): group panel, add/remove my AI, AIs in the @ picker, AI replies with badge and Markdown | 2026-09-28 |

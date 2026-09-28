@@ -11,9 +11,11 @@ import { useChatStore } from '@/store/ChatStoreProvider';
 export function ChatHeader({
   chat,
   onOpenAiPanel,
+  onOpenGroupPanel,
 }: {
   chat: ChatSummary;
   onOpenAiPanel?: () => void;
+  onOpenGroupPanel?: () => void;
 }) {
   const navigate = useNavigate();
   const store = useChatStore();
@@ -23,6 +25,8 @@ export function ChatHeader({
   const writing = chat.isAI && store.drafts[chat.id] !== undefined;
   const working = chat.isAI && chat.aiStatus === 'working';
   const subtitle = writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date()));
+  const openPanel = onOpenAiPanel ?? onOpenGroupPanel;
+  const panelLabel = chat.isAI ? `Open ${chat.title} settings` : `Open ${chat.title} info`;
 
   const title = (
     <>
@@ -50,11 +54,11 @@ export function ChatHeader({
         online={chat.online === true}
         ai={chat.isAI}
       />
-      {chat.isAI && onOpenAiPanel !== undefined ? (
+      {openPanel !== undefined ? (
         <button
           type="button"
-          aria-label={`Open ${chat.title} settings`}
-          onClick={onOpenAiPanel}
+          aria-label={panelLabel}
+          onClick={openPanel}
           className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
           {title}
@@ -65,7 +69,10 @@ export function ChatHeader({
       <IconButton aria-label="Search in chat">
         <Search className="size-5" aria-hidden="true" />
       </IconButton>
-      <IconButton aria-label="Chat menu">
+      <IconButton
+        aria-label="Chat menu"
+        {...(openPanel === undefined ? {} : { onClick: openPanel })}
+      >
         <MoreVertical className="size-5" aria-hidden="true" />
       </IconButton>
     </header>

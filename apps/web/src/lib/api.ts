@@ -63,15 +63,29 @@ export type ChatEntry = z.infer<typeof chatEntrySchema>;
 
 const chatsSchema = z.object({ chats: z.array(chatEntrySchema) });
 
+const groupMemberSchema = z.object({
+  userId: z.string(),
+  name: z.string(),
+  role: z.enum(['owner', 'admin', 'member']),
+});
+
+const groupAiSchema = z.object({
+  aiId: z.string(),
+  jid: z.string(),
+  name: z.string(),
+  ownerId: z.string(),
+});
+
 const groupDetailSchema = z.object({
   id: z.string(),
   title: z.string(),
   createdBy: z.string(),
-  members: z.array(
-    z.object({ userId: z.string(), name: z.string(), role: z.enum(['owner', 'admin', 'member']) }),
-  ),
+  members: z.array(groupMemberSchema),
+  ais: z.array(groupAiSchema),
 });
 
+export type GroupMember = z.infer<typeof groupMemberSchema>;
+export type GroupAi = z.infer<typeof groupAiSchema>;
 export type GroupDetail = z.infer<typeof groupDetailSchema>;
 
 const inviteSchema = z.object({
@@ -161,6 +175,24 @@ export function createGroup(input: { title: string; memberIds: string[] }): Prom
 
 export function getGroup(groupId: string): Promise<GroupDetail> {
   return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema);
+}
+
+// T-0054: an owner or admin adds their own AI to a group, and its owner or a
+// group manager removes it. Both answer the fresh group detail.
+export function addGroupAi(groupId: string, aiId: string): Promise<GroupDetail> {
+  return request(`/groups/${encodeURIComponent(groupId)}/ais`, groupDetailSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ aiId }),
+  });
+}
+
+export function removeGroupAi(groupId: string, aiId: string): Promise<GroupDetail> {
+  return request(
+    `/groups/${encodeURIComponent(groupId)}/ais/${encodeURIComponent(aiId)}`,
+    groupDetailSchema,
+    { method: 'DELETE' },
+  );
 }
 
 export function createInvite(): Promise<Invite> {
