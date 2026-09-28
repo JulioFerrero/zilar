@@ -8,6 +8,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
+| [T-0044](T-0044-draft-tail-flush.md) | Server: publish the complete reply as a draft before the final XMPP message (tail no longer arrives in one chunk) | in progress | muse-spark-1.3 | T-0041 | Julio: "needs to be smoother". |
+| [T-0045](T-0045-smooth-drafts.md) | Web: smooth draft reveal, gray/dim "generating" look until complete, continuing into the final message without a snap | in progress | deepseek-v4.1-flash | T-0043 | Julio: "gray if its not completly generated". |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -16,7 +18,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 - Change an AI's model after creation (server + panel). `UpdateAiSchema` allows only name, persona and limits, and a new model means re-registering the AI's LiteLLM model `ai-<id>` (T-0039 review).
 - AI DMs: the AI should send a displayed (read) marker when it takes a message into a turn. Today the owner's messages keep a single tick forever. T-0034 passed its live check on 2026-09-28: the first real reply, `deepseek-chat` with Julio's key, in about 1 s.
 - Mobile: honor the `?mock=` route param only in `__DEV__` or with `EXPO_PUBLIC_GALENA_MOCK` set, for both the chat store and My AIs (T-0037 pre-review). Today a deep link can show fake data in a production build.
-- Streaming drafts: in the T-0043 live check the last ~40% of a reply (762 → 1231 chars) arrived at once with the final message after a ~700 ms pause with no drafts. Check on the server whether the stream's tail reaches the hub before the final XMPP send (throttle flush vs `end`), or whether the provider bursts the tail. Also: a notice message from the AI just before the final reply ends the draft one message early.
+- Streaming drafts: a notice message from the AI just before the final reply ends the draft one message early (T-0043).
 - Mobile: render reply drafts (T-0043 did web only).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
