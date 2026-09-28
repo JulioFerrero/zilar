@@ -298,6 +298,7 @@ git worktree remove ../galena-T-XXXX && git branch -d task/T-XXXX-name
 10. **Better Auth behind a proxy:** it needs `advanced.ipAddress` configured (a board follow-up for deployment).
 11. **Hashes on tiny samples cluster.** Don't file a "colors are broken" bug without computing the distribution first.
 12. **Stash:** the git stash is shared across worktrees and sessions. Use WIP commits instead.
+13. **Start Vite with `GALENA_API_URL=http://localhost:3188`, never plain `pnpm dev`.** Without it the `/api` proxy falls back to `localhost:3000`, which is Julio's Next.js app: every API call 404s and the web app looks completely broken (2026-09-28, cost Julio a morning). Check with `curl -s -o /dev/null -w '%{http_code}' http://localhost:5173/api/me`: 401 is right, 404 is wrong.
 
 ## 16. State snapshot (2026-09-28, when this was written)
 
