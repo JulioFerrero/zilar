@@ -19,7 +19,11 @@ describe('Avatar', () => {
   });
 
   it('gives the same id the same shade', () => {
-    expect(avatarShade('c-ana')).toEqual(avatarShade('c-ana'));
+    const first = render(<Avatar id="c-ana" name="Ana" />);
+    const second = render(<Avatar id="c-ana" name="Ana" />);
+    const firstCircle = first.container.querySelector('span[aria-hidden="true"]') as HTMLElement;
+    const secondCircle = second.container.querySelector('span[aria-hidden="true"]') as HTMLElement;
+    expect(firstCircle.style.backgroundColor).toBe(secondCircle.style.backgroundColor);
   });
 
   it('gives AIs the light avatar', () => {

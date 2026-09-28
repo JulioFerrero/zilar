@@ -9,10 +9,12 @@ import { NewChatButton } from './NewChatButton';
 import { SearchBar } from './SearchBar';
 import { ChatListSkeleton } from './Skeleton';
 import { useDelayed } from '@/lib/useDelayed';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { visibleChats } from '@/store/store';
+import { cn } from '@/lib/utils';
 
 // A normal (re)connect takes well under this; only a slow one gets a banner.
 const CONNECTION_BANNER_DELAY_MS = 1500;
@@ -36,6 +38,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const chats = visibleChats(store);
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const isWide = useMediaQuery('(min-width: 900px)');
   const connection = useDelayed(statusLabel(store.status), CONNECTION_BANNER_DELAY_MS);
 
   const signOut = (): void => {
@@ -43,79 +46,97 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
     void store.signOut();
   };
 
+  const menu = (
+    <div className="relative">
+      <IconButton
+        aria-label="Open menu"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        size={isWide ? 36 : 40}
+        radius={isWide ? 10 : 12}
+        onClick={() => setMenuOpen((value) => !value)}
+      >
+        <Menu className="size-[18px]" aria-hidden="true" />
+      </IconButton>
+      {menuOpen && (
+        <>
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="Close menu"
+            onClick={() => setMenuOpen(false)}
+            className="fixed inset-0 z-10 cursor-default"
+          />
+          <div
+            role="menu"
+            aria-label="Main menu"
+            className="absolute top-full right-0 z-20 mt-1 min-w-[180px] rounded-xl border border-border bg-popover py-1 shadow-lg wide:left-0 wide:right-auto"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                setInviteOpen(true);
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+            >
+              Invite a friend
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                navigate('/settings/connections');
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+            >
+              Connections
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                navigate('/settings/ais');
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+            >
+              My AIs
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={signOut}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] text-danger hover:bg-surface-raised"
+            >
+              Sign out
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-panel">
-      <div className="flex shrink-0 items-center gap-2 px-3 pt-3 pb-2">
-        <div className="relative">
-          <IconButton
-            aria-label="Open menu"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((value) => !value)}
-          >
-            <Menu className="size-[18px]" aria-hidden="true" />
-          </IconButton>
-          {menuOpen && (
-            <>
-              <button
-                type="button"
-                tabIndex={-1}
-                aria-label="Close menu"
-                onClick={() => setMenuOpen(false)}
-                className="fixed inset-0 z-10 cursor-default"
-              />
-              <div
-                role="menu"
-                aria-label="Main menu"
-                className="absolute top-full left-0 z-20 mt-1 min-w-[180px] rounded-xl border border-border bg-popover py-1 shadow-lg"
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setInviteOpen(true);
-                  }}
-                  className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-                >
-                  Invite a friend
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    navigate('/settings/connections');
-                  }}
-                  className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-                >
-                  Connections
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    navigate('/settings/ais');
-                  }}
-                  className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-                >
-                  My AIs
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={signOut}
-                  className="flex w-full items-center px-3 py-2 text-left text-[15px] text-danger hover:bg-surface-raised"
-                >
-                  Sign out
-                </button>
-              </div>
-            </>
-          )}
+      {isWide ? (
+        <div className="flex shrink-0 items-center gap-2 px-3 pt-3 pb-2">
+          {menu}
+          <SearchBar />
         </div>
-        <SearchBar />
-      </div>
+      ) : (
+        <>
+          <div className="flex shrink-0 items-center justify-between px-4 py-2">
+            <h1 className="text-[28px] leading-8 font-semibold tracking-[-0.02em]">Chats</h1>
+            {menu}
+          </div>
+          <div className="shrink-0 px-4 pt-1 pb-2.5">
+            <SearchBar />
+          </div>
+        </>
+      )}
       {connection !== undefined && (
         <div className="shrink-0 border-b border-border px-3 py-1 text-center text-[12px] text-muted-foreground">
           {connection}
@@ -124,7 +145,10 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
       <FolderTabs />
       <nav
         aria-label="Chats"
-        className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2"
+        className={cn(
+          'scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto',
+          isWide ? 'gap-0.5 px-2' : 'gap-0',
+        )}
       >
         {store.chatsState === 'loading' ? (
           <ChatListSkeleton />
@@ -160,7 +184,12 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
               <EmptyState variant="no-chats" onInvite={() => setInviteOpen(true)} />
             ) : (
               chats.map((chat) => (
-                <ChatListItem key={chat.id} chat={chat} selected={chat.id === activeChatId} />
+                <ChatListItem
+                  key={chat.id}
+                  chat={chat}
+                  selected={chat.id === activeChatId}
+                  isWide={isWide}
+                />
               ))
             )}
           </>

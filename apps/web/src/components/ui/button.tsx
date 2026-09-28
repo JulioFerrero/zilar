@@ -20,7 +20,7 @@ const buttonVariants = cva(
         secondary: cn('bg-surface text-secondary-foreground hover:bg-surface-raised', PLAIN_FOCUS),
         ghost: cn('hover:bg-surface-raised hover:text-foreground', PLAIN_FOCUS),
         destructive: cn('bg-danger/10 text-danger hover:bg-danger/20', PLAIN_FOCUS),
-        link: 'text-primary underline-offset-4 hover:underline',
+        link: cn('text-primary underline-offset-4 hover:underline', PLAIN_FOCUS),
       },
       size: {
         default: 'h-8 gap-1.5 px-2.5',

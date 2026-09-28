@@ -1,5 +1,6 @@
 import type { KeyboardEvent } from 'react';
 import { useRef } from 'react';
+import { Well } from './ui/well';
 import { folderUnread, type FolderId } from '@/store/store';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
@@ -41,10 +42,10 @@ export function FolderTabs() {
   };
 
   return (
-    <div
+    <Well
       role="tablist"
       aria-label="Chat folders"
-      className="well-surface mx-3 mt-1 mb-2 grid shrink-0 grid-cols-4 gap-0.5 rounded-[10px] p-[3px]"
+      className="mx-3 mt-1 mb-2 grid shrink-0 grid-cols-4 gap-0.5 rounded-[10px] p-[3px]"
       style={{ borderColor: '#1a1a1a' }}
     >
       {FOLDERS.map((folder, index) => {
@@ -83,6 +84,6 @@ export function FolderTabs() {
           </button>
         );
       })}
-    </div>
+    </Well>
   );
 }

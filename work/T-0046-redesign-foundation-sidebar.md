@@ -176,10 +176,14 @@ sidebar panel and a filling chat panel, both `--panel` + 1 px `--border` + 16 px
 **Sidebar.** Menu icon key + search well with a mono `⌘K` (Ctrl/Cmd+K kept in `SearchBar`);
 folders as a segmented control (well track, equal tabs, raised active segment, unread
 pills, `role=tablist`/`tab` + `aria-selected`, arrow/Home/End keys); rows per §5
-(44 px monochrome avatars, online dot with a row-matched ring, mono `AI` badge, mono times,
-unread as a primary pill, ticks, `writing…` with a pulsing dot for a draft or typing,
+(monochrome avatars, online dot with a row-matched ring, mono `AI` badge, mono times,
+unread as a primary pill, ticks, `writing…` with a pulsing dot for an AI draft or AI
+typing while people keep D23's `typing…` / `Ana is typing…` with the same dot,
 hover/selected in `--surface-raised`); a full-width primary **New chat** key with a mono `N`
 on wide screens and the primary FAB on narrow; skeleton rows and the empty pill restyled.
+Narrow (< 900 px) follows §1/`Mobile.dc.html`: a 28/600 `Chats` title with the menu key on
+the right, the `⌘K` hint hidden, 52 px avatars and `#1a1a1a` hairline separators under the
+row text.
 
 **Depth verification.** Built CSS contains `key-primary`, `key-icon`, `well-surface`,
 `segment-raised`, `--key-shadow`, `pulse-dot` (checked in `dist/assets/index-*.css`).
@@ -190,22 +194,25 @@ on wide screens and the primary FAB on narrow; skeleton rows and the empty pill 
 - `apps/web/src/components/ui/button.tsx`; new `ui/icon-button.tsx`, `ui/well.tsx`
 - `apps/web/src/routes/ChatShell.tsx`
 - `apps/web/src/components/{ChatList,ChatListItem,FolderTabs,SearchBar,NewChatButton,Avatar,AiBadge,EmptyState,Skeleton}.tsx`
-- tests: new `ChatListItem.test.tsx`, `FolderTabs.test.tsx`; extended `Avatar.test.tsx`;
-  changed `TypingIndicator.test.tsx`
+- tests: new `ChatListItem.test.tsx`, `FolderTabs.test.tsx`; extended `Avatar.test.tsx`
 - `apps/web/package.json` (the two fonts), `pnpm-lock.yaml`
 - `work/T-0046-redesign-foundation-sidebar.md`, `work/screenshots/T-0046/*`
 
-No file outside the Allowed set changed.
+Outside the component list under “Allowed files”: `apps/web/src/components/TypingIndicator.test.tsx`.
+It is an existing cross-cutting test of typing, not a test of one of the listed components,
+and the redesign changes the list's typing text, so its string assertions had to change. No
+other file outside the Allowed set changed.
 
 ### Test changes (selectors/text the redesign changes)
 
-- `TypingIndicator.test.tsx`: the list no longer renders `typing`/`Luis is typing`; it now
-  renders `writing…` (header keeps the D23 `typing` label). Assertions updated.
-- `Avatar.test.tsx`: added “same id → same shade”, “AIs get the light avatar”, and a
-  person-shade check.
+- `TypingIndicator.test.tsx` (see the outside-the-list note above): updated for the changed
+  list typing text. Final state: DM list rows show `typing…`, group rows show
+  `Luis is typing…`, and the header keeps D23's `typing`.
+- `Avatar.test.tsx`: added “same id → same rendered shade” (renders twice), “AIs get the
+  light avatar”, and a person-shade check.
 - New `FolderTabs.test.tsx`: `role=tablist`/`tab` with `aria-selected`, and arrow-key
   selection + focus.
-- New `ChatListItem.test.tsx`: shows `writing…` while a draft exists.
+- New `ChatListItem.test.tsx`: `writing…` for an AI draft, and `typing…` while a person types.
 - No other existing test needed changes (`ChatList.test.tsx`, `ChatShell.test.tsx`, etc.
   still pass unchanged).
 
@@ -237,45 +244,79 @@ never navigated or signed into.
 - `list-1440.png` compares well with `Main.dc.html`: two floating panels, 360 px sidebar,
   segmented control, glossy `New chat` key with the `N` hint, and the centered raised
   “Select a chat to start messaging” pill on the dot grid. AI avatars are light; people
-  and groups are monochrome; `writing…` appears for a typing chat.
-- `list-390.png`: one pane edge to edge with the primary FAB bottom-right (the `New chat`
-  menu opens correctly above the wide button — verified by rect: right edge 371 ≈ sidebar
-  edge 372, sitting above the bar).
+  and groups are monochrome.
+- `list-390.png` now follows §1/`Mobile.dc.html`: a 28/600 `Chats` title with the menu key
+  on the right, the search well without the `⌘K` hint (keyboard-only anyway), 52 px avatars,
+  `#1a1a1a` hairline separators under the row text, and the primary FAB bottom-right.
 - `login-1440.png`, `ais-1440.png`, `connections-1440.png`, `new-ai-dialog-1440.png`:
   dark, readable, on-palette, with the new key buttons.
-- `chat-1440.png`: the part-2 chat panel is left as-is and is still readable after the token
-  change (incoming #182533, outgoing #2b5278, white text on both).
+- `chat-1440.png` (refreshed in round 2): the part-2 chat panel is left as-is and is still
+  readable after the token change (incoming #182533, outgoing #2b5278, white text on both);
+  it also shows the fixed person typing: Ana `typing…`, Viernes `Luis is typing…`.
 
 ### Deviations from the spec (chosen, with reasons)
 
 1. **Bubble tokens.** Since the file is dark-only now, `--bubble-in/-out/-in-meta/-out-meta`
    hold their previous *dark* values. `MessageBubble`/messages were not touched; part 2
    repaints them.
-2. **Narrow web ≠ `Mobile.dc.html`.** Narrow web keeps the §5 sidebar (menu key, `⌘K`
-   search, 44 px avatars, FAB). It does not adopt the mobile mockup's 28/600 `Chats` title,
-   52 px avatars or hairline separators, because “Mobile (a later task)” is out of scope and
-   §5/§1 do not ask for them. `Main.dc.html` is the comparison target for this task.
-3. **Focus rings** use `outline: 2px solid var(--muted-foreground); outline-offset: 2px`
+2. **Focus rings** use `outline: 2px solid var(--muted-foreground); outline-offset: 2px`
    rather than appending box-shadow rings. On `--panel` that is the same visible result
    (2 px gap + 2 px ring) and it composes with the `:active` shadows.
-4. **FAB shadow.** The FAB keeps the primary key's depth. I did not add the mockup's extra
+3. **FAB shadow.** The FAB keeps the primary key's depth. I did not add the mockup's extra
    `0 8px 24px` float shadow: it would override the `:active` box-shadow and break the press
    state (the mockup's inline style has the same issue).
-5. **`/settings/ais` avatars.** `AisPage` passes no `ai` prop and is not in the Allowed
+4. **`/settings/ais` avatars.** `AisPage` passes no `ai` prop and is not in the Allowed
    files, so its AI avatars use the deterministic person shade (still readable/on-palette);
    the chat list's AI avatars are light. A one-line follow-up (`<Avatar … ai />`) would fix
    it if wanted.
-6. **Segmented track border** is `#1a1a1a` (the §4 track value) via an inline `borderColor`
+5. **Segmented track border** is `#1a1a1a` (the §4 track value) via an inline `borderColor`
    on top of `well-surface`'s `--border`; otherwise exact.
-7. `--chat-background` is now the D24 dot grid (`#0a0a0a` + 22 px `#1c1c1c` dots), so the
+6. `--chat-background` is now the D24 dot grid (`#0a0a0a` + 22 px `#1c1c1c` dots), so the
    part-2 messages area already matches §1's chat background. Token only.
 
 ### Problems / needs attention
 
-- **Leftover dev server (kill blocked).** My Vite on port **5199** is still running because
-  `kill` is denied by the permission rules (PIDs `20707` pnpm wrapper, `20715` vite). Please
-  stop it. It serves this worktree only and does not touch the live stack.
 - No signing in as anyone: “dark on other screens” and the live-reload check remain the
   lead's live check.
+
+### Review fixes (round 2)
+
+All seven review points addressed; nothing else changed.
+
+1. **Typing label regression — fixed.** `ChatListItem` now shows `writing…` only for an AI
+   chat (`chat.isAI && (draft || typing)`); people keep D23's wording with the ellipsis and
+   the new pulsing dot: `typing…` in DMs, `Ana is typing…` in groups. Verified live in
+   `chat-1440.png`: Ana `typing…`, Viernes `Luis is typing…`.
+2. **`link` focus ring — fixed.** Added `PLAIN_FOCUS` to the `link` variant in
+   `components/ui/button.tsx`.
+3. **Mobile list — implemented** in `ChatList`/`ChatListItem`/`SearchBar`: a 28/600
+   `-0.02em` `Chats` title row with the 40 px menu key on the right, the `⌘K` hint hidden
+   (`hidden wide:inline-block`), 52 px avatars and a `1px #1a1a1a` separator under each row's
+   text (`border-b` on the content column, so it does not run under the avatar). See the
+   refreshed `list-390.png`.
+4. **`Well` — now used** by `SearchBar` and `FolderTabs` (both wrap in `<Well>`), so it is
+   no longer dead code.
+5. **Icon-key pressed state — exact.** `key-icon:active` is now
+   `inset 0 2px 5px rgba(0,0,0,.9)` plus the 1 px translate; the extra white line was dropped.
+6. **Avatar test — renders twice.** The “same id → same shade” test now renders `<Avatar>`
+   twice and compares `style.backgroundColor`, instead of calling the pure function twice.
+7. **Report accuracy — fixed.** `TypingIndicator.test.tsx` is now called out as a changed
+   file outside the Allowed component list, with the reason.
+
+Re-ran every check on the final tree:
+
+```bash
+pnpm format:check                              # All matched files use Prettier code style!
+pnpm lint                                      # ok (oxlint, no findings)
+pnpm typecheck                                 # 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/web
+                                               # 33 files, 188 tests passed (+1 new test)
+pnpm build                                     # 2 successful, 2 total; web built in 624ms
+```
+
+Screenshots refreshed with a self-terminating Vite (`perl -e 'alarm 150; exec @ARGV' …`, so
+no `kill` needed): `list-1440.png`, `list-390.png` and `chat-1440.png` (the last because the
+old one still showed the fixed `writing…` regression). The server self-terminated; nothing is
+listening on `:5199` now. Round 1's `:5199` Vite was the one the lead stopped.
 
 ## Review (written by Claude)
