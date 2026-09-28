@@ -54,7 +54,6 @@
   --color-bubble-in-meta: var(--bubble-in-meta);
   --color-bubble-out-meta: var(--bubble-out-meta);
   --color-online: var(--online);
-  --color-bubble-in-generating: var(--bubble-in-generating);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -112,13 +111,13 @@
   --list-active-foreground: var(--foreground);
   --badge-muted: #333333;
 
-  /* Bubble tokens stay on their previous dark values: part 2 (T-0047)
-   * repaints the bubbles, part 1 only has to keep them readable. */
-  --bubble-in: #182533;
-  --bubble-out: #2b5278;
-  --bubble-in-meta: #6d7f8f;
-  --bubble-out-meta: #7da8d3;
-  --bubble-in-generating: #8ba0b2;
+  /* Bubble tokens (ui-style.md §5). The `--bubble-in`/`--bubble-out` colors
+   * are still used by the loading skeleton; the live bubbles use the
+   * `bubble-in`/`bubble-out`/`bubble-gen` utilities below. */
+  --bubble-in: #161616;
+  --bubble-out: #dedede;
+  --bubble-in-meta: var(--subtle-foreground);
+  --bubble-out-meta: #525252;
 
   --radius: 0.75rem;
   --chat-background: radial-gradient(#1c1c1c 1px, transparent 1px) 0 0 / 22px 22px var(--panel);
@@ -253,29 +252,60 @@
   text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.7);
 }
 
+/*
+ * The three bubble looks (ui-style.md §5). Outgoing is a glossy white key,
+ * incoming a dark card, and a reply that is still being written is recessed
+ * (the well look). They share a gradient's stop count and a box-shadow's
+ * inset pattern so the generating -> incoming change transitions smoothly.
+ */
+@utility bubble-out {
+  background: linear-gradient(180deg, #ffffff, #dedede);
+  color: #0a0a0a;
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    inset 0 -3px 6px rgba(0, 0, 0, 0.08),
+    0 1px 0 rgba(0, 0, 0, 0.95),
+    0 4px 10px -3px rgba(0, 0, 0, 0.85);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+@utility bubble-in {
+  background: linear-gradient(180deg, #252525, #161616);
+  border: 1px solid var(--edge);
+  color: var(--foreground);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(0, 0, 0, 0.95),
+    0 4px 10px -3px rgba(0, 0, 0, 0.85);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.7);
+}
+
+@utility bubble-gen {
+  background: linear-gradient(180deg, var(--well), var(--well));
+  border: 1px solid #1a1a1a;
+  color: var(--generating-foreground);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.9),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 1px 0 rgba(255, 255, 255, 0.06),
+    0 2px 6px -2px rgba(0, 0, 0, 0.5);
+}
+
+/* Links follow the bubble they sit in (ui-style.md §5). */
+.bubble-out a {
+  color: #0a0a0a;
+  text-decoration: underline;
+}
+
+.bubble-in a,
+.bubble-gen a {
+  color: #ededed;
+  text-decoration: underline;
+}
+
 .chat-background {
   background: var(--chat-background);
-}
-
-.bubble-tail-out::after,
-.bubble-tail-in::after {
-  position: absolute;
-  bottom: 0;
-  width: 8px;
-  height: 14px;
-  content: '';
-}
-
-.bubble-tail-out::after {
-  right: -7px;
-  background: var(--bubble-out);
-  clip-path: path('M0 0 C0 7 3 12 8 14 L0 14 Z');
-}
-
-.bubble-tail-in::after {
-  left: -7px;
-  background: var(--bubble-in);
-  clip-path: path('M8 0 C8 7 5 12 0 14 L8 14 Z');
 }
 
 .scrollbar-thin {

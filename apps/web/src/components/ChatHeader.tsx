@@ -4,9 +4,9 @@ import { useNavigate } from 'react-router';
 import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
 import { TypingDots } from './TypingDots';
+import { IconButton } from './ui/icon-button';
 import { chatSubtitle, typingLabel } from '@/lib/format';
 import { useChatStore } from '@/store/ChatStoreProvider';
-import { cn } from '@/lib/utils';
 
 export function ChatHeader({
   chat,
@@ -19,43 +19,36 @@ export function ChatHeader({
   const store = useChatStore();
   const names = store.typing[chat.id]?.names ?? [];
   const typing = typingLabel(chat, names);
-  const subtitle = typing ?? chatSubtitle(chat, new Date());
+  // An AI draft in flight reads `writing…`, the D24 wording (ui-style.md §5).
+  const writing = chat.isAI && store.drafts[chat.id] !== undefined;
   const working = chat.isAI && chat.aiStatus === 'working';
+  const subtitle = writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date()));
 
   const title = (
     <>
       <div className="flex items-center gap-1.5">
-        <span className="truncate text-[16px] leading-5 font-semibold">{chat.title}</span>
+        <span className="truncate text-[15px] leading-5 font-semibold">{chat.title}</span>
         {chat.isAI && <AiBadge />}
       </div>
-      <div
-        className={cn(
-          'flex items-center gap-1 text-[14px] leading-5 text-muted-foreground',
-          typing !== undefined && 'text-accent',
-        )}
-      >
+      <div className="flex items-center gap-1 text-[12px] leading-4 text-muted-foreground">
         <span className="truncate">{subtitle}</span>
-        {(working || typing !== undefined) && <TypingDots />}
+        {(working || typing !== undefined) && !writing && <TypingDots />}
       </div>
     </>
   );
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-divider bg-background px-2">
-      <button
-        type="button"
-        aria-label="Back to chats"
-        onClick={() => navigate('/')}
-        className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover wide:hidden"
-      >
+    <header className="flex h-16 shrink-0 items-center gap-2.5 border-b border-divider bg-panel/85 px-4">
+      <IconButton aria-label="Back to chats" onClick={() => navigate('/')} className="wide:hidden">
         <ArrowLeft className="size-5" aria-hidden="true" />
-      </button>
+      </IconButton>
       <Avatar
         id={chat.id}
         name={chat.title}
         avatarUrl={chat.avatarUrl}
-        size={42}
+        size={36}
         online={chat.online === true}
+        ai={chat.isAI}
       />
       {chat.isAI && onOpenAiPanel !== undefined ? (
         <button
@@ -69,20 +62,12 @@ export function ChatHeader({
       ) : (
         <div className="min-w-0 flex-1">{title}</div>
       )}
-      <button
-        type="button"
-        aria-label="Search in chat"
-        className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
-      >
+      <IconButton aria-label="Search in chat">
         <Search className="size-5" aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        aria-label="Chat menu"
-        className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
-      >
+      </IconButton>
+      <IconButton aria-label="Chat menu">
         <MoreVertical className="size-5" aria-hidden="true" />
-      </button>
+      </IconButton>
     </header>
   );
 }

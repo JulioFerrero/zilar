@@ -4,6 +4,7 @@ import {
   SMOOTH_CATCH_UP_MS,
   SMOOTH_MIN_CHARS_PER_SECOND,
   type FrameScheduler,
+  type VisibilitySource,
   useSmoothText,
 } from './useSmoothText';
 
@@ -201,5 +202,46 @@ describe('useSmoothText', () => {
       });
     }
     expect(result.current.text).toBe('Hello there');
+  });
+
+  it('snaps to the current text when the page becomes visible again', () => {
+    const frames = manualFrames();
+    const listeners: Array<() => void> = [];
+    const visibility: VisibilitySource = {
+      subscribe: (onVisible) => {
+        listeners.push(onVisible);
+        return () => {};
+      },
+    };
+    const { result, rerender } = renderHook(
+      ({ value }: { value: string }) =>
+        useSmoothText(value, { frames: frames.scheduler, initial: 'full', visibility }),
+      { initialProps: { value: 'Hello' } },
+    );
+
+    // The tab is hidden, so `requestAnimationFrame` is paused and the backlog
+    // of the reply that arrived is never revealed frame by frame.
+    rerender({ value: 'Hello, a reply arrived while the tab was hidden' });
+    expect(result.current.done).toBe(false);
+
+    act(() => {
+      for (const listener of listeners) {
+        listener();
+      }
+    });
+    expect(result.current.text).toBe('Hello, a reply arrived while the tab was hidden');
+    expect(result.current.done).toBe(true);
+
+    // A reply that keeps streaming after the return animates normally again.
+    rerender({ value: 'Hello, a reply arrived while the tab was hidden and kept going' });
+    expect(result.current.done).toBe(false);
+    for (let frame = 0; frame <= 200 && !result.current.done; frame += 1) {
+      act(() => {
+        frames.run(1000 + frame * 16);
+      });
+    }
+    expect(result.current.text).toBe(
+      'Hello, a reply arrived while the tab was hidden and kept going',
+    );
   });
 });

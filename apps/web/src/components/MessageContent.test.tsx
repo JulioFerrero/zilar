@@ -37,8 +37,7 @@ describe('message content', () => {
     render('😂😂');
 
     const emoji = screen.getByText('😂😂');
-    expect(emoji.closest('.bg-bubble-in')).toBeNull();
-    expect(emoji.closest('.bg-bubble-out')).toBeNull();
+    expect(emoji.closest('[data-bubble-look]')).toBeNull();
   });
 
   it('links http and https URLs with target and rel', () => {
@@ -133,5 +132,7 @@ describe('message content', () => {
     });
 
     expect(screen.getByText('Bea')).toBeTruthy();
+    const bubble = screen.getByText('hello').closest('[data-bubble-look]');
+    expect(bubble?.getAttribute('data-bubble-look')).toBe('incoming');
   });
 });

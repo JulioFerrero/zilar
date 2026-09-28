@@ -36,7 +36,7 @@ export function MessageActionsMenu({ canCopy, onReply, onCopy, onClose }: Messag
             onClose();
           }
         }}
-        className="absolute top-6 right-0 z-30 min-w-[160px] rounded-xl border border-divider bg-popover py-1 shadow-lg"
+        className="absolute top-6 right-0 z-30 min-w-[160px] rounded-[12px] border border-border-strong bg-surface py-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.9)]"
       >
         <button
           ref={firstItemRef}

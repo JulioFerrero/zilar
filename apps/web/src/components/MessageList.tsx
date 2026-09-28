@@ -11,6 +11,7 @@ import { MessageBubble } from './MessageBubble';
 import { MessageListSkeleton } from './Skeleton';
 import { UnreadDivider } from './UnreadDivider';
 import { Button } from './ui/button';
+import { IconButton } from './ui/icon-button';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const NEAR_BOTTOM_PX = 80;
@@ -204,7 +205,10 @@ export function MessageList({
         data-testid="message-list"
         className="chat-background scrollbar-thin h-full overflow-y-auto"
       >
-        <div ref={contentRef} className="mx-auto flex w-full max-w-[860px] flex-col px-3 pt-3 pb-4">
+        <div
+          ref={contentRef}
+          className="mx-auto flex w-full max-w-[860px] flex-col px-3 py-4 wide:px-8 wide:py-6"
+        >
           {items.map((item, index) => {
             const isDraft = item.kind === 'message' && item.message.id === draftMessage?.id;
             // The final message keeps the draft's key so React reuses the same
@@ -244,21 +248,20 @@ export function MessageList({
         </div>
       </div>
       {!atBottom && (
-        <button
-          type="button"
+        <IconButton
           aria-label={
             pending > 0 ? `Scroll to bottom, ${pending} new messages` : 'Scroll to bottom'
           }
           onClick={scrollToBottom}
-          className="absolute right-4 bottom-4 flex size-11 items-center justify-center rounded-full bg-background shadow-lg"
+          className="absolute right-4 bottom-4"
         >
-          <ArrowDown className="size-5 text-muted-foreground" aria-hidden="true" />
+          <ArrowDown className="size-5" aria-hidden="true" />
           {pending > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-5 rounded-full bg-accent px-1 text-center text-[11px] font-semibold text-accent-foreground">
+            <span className="key-primary absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold">
               {pending}
             </span>
           )}
-        </button>
+        </IconButton>
       )}
     </div>
   );
