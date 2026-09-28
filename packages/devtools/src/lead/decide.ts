@@ -17,6 +17,7 @@ export interface DecideInput {
   questionText: string;
   questionIds: string[];
   permissions: PermissionRequest[];
+  prereviewPermissions: PermissionRequest[];
   taskStatus: string;
   taskFilePresent: boolean;
   blockedText: string;
@@ -29,6 +30,7 @@ export interface DecideInput {
 export type Action =
   | {
       kind: 'reply-permission';
+      session: 'worker' | 'prereview';
       requestId: string;
       decision: 'once' | 'reject';
       message?: string | undefined;
@@ -43,6 +45,7 @@ export interface RecordPatch {
   lastQuotaRetryAt?: number;
   lastQuotaEscalatedAt?: number;
   packetReadyForHead?: string;
+  prereviewStalledEscalated?: boolean;
   addEscalatedPermissionIds?: string[];
   addEscalatedQuestionIds?: string[];
   stalledEscalated?: boolean;
@@ -71,27 +74,43 @@ export function decide(input: DecideInput): Action[] {
   };
 
   // 1. Permissions: answer what the policy settles, escalate the rest once.
-  for (const request of input.permissions) {
-    const result = classifyPermission(request, { worktree: input.worktree, task: input.task });
-    if (result.verdict === 'allow') {
-      actions.push({ kind: 'reply-permission', requestId: request.id, decision: 'once' });
-    } else if (result.verdict === 'reject') {
-      actions.push({
-        kind: 'reply-permission',
-        requestId: request.id,
-        decision: 'reject',
-        message: result.message,
-      });
-    } else if (!input.record.escalatedPermissionIds.includes(request.id)) {
-      escalate(
-        `LEAD: PERMISSION ${input.task} ${request.id} ${request.action} ${oneLine(request.command, 160)}`,
-      );
-      actions.push({
-        kind: 'record',
-        patch: { addEscalatedPermissionIds: [request.id] },
-      });
+  // The pre-reviewer's requests go through the same policy; without this a
+  // blocked pre-reviewer would stall silently.
+  const answerPermissions = (
+    requests: PermissionRequest[],
+    session: 'worker' | 'prereview',
+  ): void => {
+    const tag = session === 'worker' ? '' : 'pre-review ';
+    for (const request of requests) {
+      const result = classifyPermission(request, { worktree: input.worktree, task: input.task });
+      if (result.verdict === 'allow') {
+        actions.push({
+          kind: 'reply-permission',
+          session,
+          requestId: request.id,
+          decision: 'once',
+        });
+      } else if (result.verdict === 'reject') {
+        actions.push({
+          kind: 'reply-permission',
+          session,
+          requestId: request.id,
+          decision: 'reject',
+          message: result.message,
+        });
+      } else if (!input.record.escalatedPermissionIds.includes(request.id)) {
+        escalate(
+          `LEAD: PERMISSION ${input.task} ${tag}${request.id} ${request.action} ${oneLine(request.commands.join(' | '), 160)}`,
+        );
+        actions.push({
+          kind: 'record',
+          patch: { addEscalatedPermissionIds: [request.id] },
+        });
+      }
     }
-  }
+  };
+  answerPermissions(input.permissions, 'worker');
+  answerPermissions(input.prereviewPermissions, 'prereview');
 
   // 2. The question tool: a running call means the worker waits on input.
   // There is no API to answer it directly; the lead replies with
@@ -115,6 +134,7 @@ export function decide(input: DecideInput): Action[] {
   }
 
   // 4. Review: start one pre-review per HEAD, then report the packet once.
+  // A pre-review that goes idle without writing PREREVIEW.md failed; say so once.
   if (input.taskStatus === 'review' && input.sessionState === 'idle') {
     if (input.head !== undefined && input.record.prereview?.head !== input.head) {
       actions.push({ kind: 'start-prereview', head: input.head });
@@ -124,12 +144,17 @@ export function decide(input: DecideInput): Action[] {
       input.head !== undefined &&
       input.record.prereview !== undefined &&
       input.record.prereview.head === input.head &&
-      input.prereviewSessionState === 'idle' &&
-      input.prereviewFilePresent &&
-      input.record.packetReadyForHead !== input.head
+      input.prereviewSessionState === 'idle'
     ) {
-      escalate(`LEAD: PACKET READY ${input.task} (${oneLine(input.prereviewVerdict, 160)})`);
-      actions.push({ kind: 'record', patch: { packetReadyForHead: input.head } });
+      if (input.prereviewFilePresent) {
+        if (input.record.packetReadyForHead !== input.head) {
+          escalate(`LEAD: PACKET READY ${input.task} (${oneLine(input.prereviewVerdict, 160)})`);
+          actions.push({ kind: 'record', patch: { packetReadyForHead: input.head } });
+        }
+      } else if (!input.record.prereviewStalledEscalated) {
+        escalate(`LEAD: PRE-REVIEW STALLED ${input.task} (idle, no PREREVIEW.md)`);
+        actions.push({ kind: 'record', patch: { prereviewStalledEscalated: true } });
+      }
     }
     return actions;
   }
@@ -181,6 +206,7 @@ export function applyRecordPatch(record: TaskRecord, patch: RecordPatch): TaskRe
     lastQuotaRetryAt: patch.lastQuotaRetryAt ?? record.lastQuotaRetryAt,
     lastQuotaEscalatedAt: patch.lastQuotaEscalatedAt ?? record.lastQuotaEscalatedAt,
     packetReadyForHead: patch.packetReadyForHead ?? record.packetReadyForHead,
+    prereviewStalledEscalated: patch.prereviewStalledEscalated ?? record.prereviewStalledEscalated,
     escalatedPermissionIds: [...merged],
     escalatedQuestionIds: [...questions],
     stalledEscalated: patch.stalledEscalated ?? record.stalledEscalated,

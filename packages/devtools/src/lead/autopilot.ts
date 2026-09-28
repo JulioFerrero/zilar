@@ -5,7 +5,12 @@ import { applyRecordPatch, decide, type Action } from './decide.js';
 import { currentHead, type GitRunner } from './git.js';
 import { findTaskFile } from './launch.js';
 import { loadPrompt, renderPrompt } from './prompts.js';
-import { parsePermission, summarizeSession, type SessionState } from './session.js';
+import {
+  parsePermission,
+  summarizeSession,
+  type ParsedPermission,
+  type SessionState,
+} from './session.js';
 import { startPrereviewSession } from './start-prereview.js';
 import { appendLog, loadState, saveState } from './state.js';
 import { extractBlockedText, parseFrontMatter } from './task-file.js';
@@ -96,13 +101,15 @@ async function applyActions(
       continue;
     }
     if (action.kind === 'reply-permission') {
-      await deps.client.replyPermission(
-        current.sessionId,
-        action.requestId,
-        action.decision,
-        action.message,
+      const target = action.session === 'worker' ? current.sessionId : current.prereview?.sessionId;
+      if (target === undefined) {
+        continue;
+      }
+      await deps.client.replyPermission(target, action.requestId, action.decision, action.message);
+      appendLog(
+        deps.statePath,
+        `${task} replied ${action.decision} to ${action.requestId} (${action.session})`,
       );
-      appendLog(deps.statePath, `${task} replied ${action.decision} to ${action.requestId}`);
     } else if (action.kind === 'send-prompt') {
       const prompt = renderPrompt(loadPrompt(deps.promptsDirPath, action.template), {
         TASK: task,
@@ -125,6 +132,7 @@ async function applyActions(
       current = {
         ...current,
         prereview: { sessionId, head: action.head, startedAt: new Date().toISOString() },
+        prereviewStalledEscalated: false,
       };
       appendLog(deps.statePath, `${task} started pre-review ${sessionId} for ${action.head}`);
     }
@@ -158,13 +166,18 @@ export async function tickOnce(
       const info = readTaskInfo(record.worktree, task);
       if (info === null) {
         const line = `${task}: task file is gone (worktree removed?); skipping`;
-        appendLog(deps.statePath, line);
+        if (options.dryRun) {
+          console.error(`DRY: ${line}`);
+        } else {
+          appendLog(deps.statePath, line);
+        }
         result.errors.push(line);
         continue;
       }
       const head = currentHead(deps.runner, record.worktree);
       const review = prereviewInfo(record.worktree);
       let prereviewSessionState: SessionState | 'none' = 'none';
+      let prereviewPermissions: ParsedPermission[] = [];
       if (record.prereview !== undefined) {
         try {
           prereviewSessionState = summarizeSession(
@@ -172,6 +185,13 @@ export async function tickOnce(
           ).state;
         } catch {
           prereviewSessionState = 'unknown';
+        }
+        try {
+          prereviewPermissions = (await deps.client.listPermissions(record.prereview.sessionId))
+            .map((entry) => parsePermission(entry))
+            .filter((entry) => entry !== null);
+        } catch {
+          prereviewPermissions = [];
         }
       }
       const actions = decide({
@@ -185,6 +205,7 @@ export async function tickOnce(
         questionText: summary.questionText,
         questionIds: summary.questionIds,
         permissions,
+        prereviewPermissions,
         taskStatus: info.status,
         taskFilePresent: true,
         blockedText: info.blockedText,
@@ -199,7 +220,7 @@ export async function tickOnce(
             console.log(`DRY: would escalate: ${action.line}`);
           } else if (action.kind === 'reply-permission') {
             console.log(
-              `DRY: would reply ${action.decision} to ${action.requestId}${action.message === undefined ? '' : ` (${action.message.slice(0, 80)})`}`,
+              `DRY: would reply ${action.decision} to ${action.requestId} (${action.session})${action.message === undefined ? '' : ` (${action.message.slice(0, 80)})`}`,
             );
           } else if (action.kind === 'send-prompt') {
             console.log(`DRY: would send ${action.template} prompt to ${task}`);
@@ -212,10 +233,14 @@ export async function tickOnce(
       state.tasks[task] = await applyActions(task, record, actions, deps, false, result);
     } catch (error) {
       const line = `${task}: autopilot error: ${error instanceof Error ? error.message : String(error)}`;
-      try {
-        appendLog(deps.statePath, line);
-      } catch {
-        // Logging must never break the loop.
+      if (options.dryRun) {
+        console.error(`DRY: ${line}`);
+      } else {
+        try {
+          appendLog(deps.statePath, line);
+        } catch {
+          // Logging must never break the loop.
+        }
       }
       result.errors.push(line);
     }

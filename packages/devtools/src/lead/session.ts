@@ -1,4 +1,4 @@
-import { extractCommand } from './policy.js';
+import { extractCommands } from './policy.js';
 
 export type SessionState = 'idle' | 'running' | 'unknown';
 
@@ -14,7 +14,7 @@ export interface SessionSummary {
 export interface ParsedPermission {
   id: string;
   action: string;
-  command: string;
+  commands: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -48,6 +48,22 @@ function containsQuotaError(value: unknown, depth: number): boolean {
     return true;
   }
   return Object.values(value).some((entry) => containsQuotaError(entry, depth + 1));
+}
+
+// Quota counts as active only while no newer message proves recovery: walk
+// newest-first, and stop at the first assistant or error message that is not
+// itself a quota failure. An old 402 followed by a normal reply is cleared;
+// a run that ended on the quota error stays active.
+function isQuotaActive(sortedDesc: unknown[]): boolean {
+  for (const message of sortedDesc) {
+    if (containsQuotaError(message, 0)) {
+      return true;
+    }
+    if (isRecord(message) && (message['type'] === 'assistant' || message['type'] === 'error')) {
+      return false;
+    }
+  }
+  return false;
 }
 
 function collectQuestions(value: unknown, found: { id: string; text: string }[]): void {
@@ -122,7 +138,7 @@ export function summarizeSession(messages: unknown[]): SessionSummary {
   return {
     state,
     outcome,
-    quotaError: sorted.some((message) => containsQuotaError(message, 0)),
+    quotaError: isQuotaActive(sorted),
     questionRunning: questionIds.length > 0,
     questionText: found
       .map((entry) => entry.text)
@@ -143,5 +159,5 @@ export function parsePermission(entry: unknown): ParsedPermission | null {
   if (typeof id !== 'string' || typeof action !== 'string') {
     return null;
   }
-  return { id, action, command: extractCommand(entry['resources']) };
+  return { id, action, commands: extractCommands(entry['resources']) };
 }

@@ -12,7 +12,11 @@ export interface Classification {
 export interface PermissionRequest {
   id: string;
   action: string;
-  command: string;
+  // One entry per element of the request's `resources`. OpenCode splits a
+  // piped command into one pattern per pipeline segment
+  // (e.g. ["npx expo run:ios --help", "grep -iE \"port|device\"", "head"]),
+  // so every element is classified on its own and the worst verdict wins.
+  commands: string[];
 }
 
 export interface PolicyContext {
@@ -38,13 +42,67 @@ function normalize(command: string): string {
   return command.replace(/\s+/g, ' ').trim();
 }
 
-// Splits `a && b; c || d` into segments so one dangerous segment can't hide
-// behind a harmless one. Pipes are kept intact: `curl … | grep …` is one unit.
+// Splits `a && b; c || d | e` into segments so one dangerous segment can't
+// hide behind a harmless one. Quote-aware: `grep -iE "port|device"` stays
+// whole. `$(…)` and backticks stay inside their segment, but the substring
+// rules below still see them, since substitution executes.
 function splitSegments(command: string): string[] {
-  return command
-    .split(/&&|\|\||;|\n/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
+  const parts: string[] = [];
+  let current = '';
+  let quote: string | null = null;
+  const push = (): void => {
+    if (current.trim().length > 0) {
+      parts.push(current.trim());
+    }
+    current = '';
+  };
+  let i = 0;
+  while (i < command.length) {
+    const ch = command[i] as string;
+    if (quote !== null) {
+      current += ch;
+      if (ch === '\\' && i + 1 < command.length) {
+        current += command[i + 1] as string;
+        i += 2;
+        continue;
+      }
+      if (ch === quote) {
+        quote = null;
+      }
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === '\\' && i + 1 < command.length) {
+      current += ch + (command[i + 1] as string);
+      i += 2;
+      continue;
+    }
+    if (ch === '\n' || ch === ';') {
+      push();
+      i += 1;
+      continue;
+    }
+    if (ch === '&' && command[i + 1] === '&') {
+      push();
+      i += 2;
+      continue;
+    }
+    if (ch === '|') {
+      push();
+      i += command[i + 1] === '|' ? 2 : 1;
+      continue;
+    }
+    current += ch;
+    i += 1;
+  }
+  push();
+  return parts;
 }
 
 // Strips a leading `VAR=x` / `VAR="x"` env assignments and `command`/`env`.
@@ -93,28 +151,83 @@ function rmTargets(segment: string): string[] {
   return targets;
 }
 
-function mentionsEnvFile(segment: string): boolean {
-  return /(^|[\s"'`])[^|\s]*\.env(\b|$)/i.test(segment) || /(^|\s)\.env(\b|$)/.test(segment);
+// A `.env` file (other than the checked-in `.env.example` template) anywhere
+// in the segment — as a read, copy, archive, or encode operand. The only
+// sanctioned use is passing it to a process via `--env-file=` without
+// printing it, so that flag form is exempt.
+function mentionsSecretEnv(segment: string): boolean {
+  if (/--env-file=/.test(segment)) {
+    return false;
+  }
+  return /\.env(?!\.example)\b/i.test(segment);
 }
 
-function isEnvRead(segment: string): boolean {
-  const head = firstWord(segment);
-  if (
-    head === 'cat' ||
-    head === 'less' ||
-    head === 'more' ||
-    head === 'head' ||
-    head === 'tail' ||
-    head === 'grep' ||
-    head === 'rg' ||
-    head === 'printenv' ||
-    head === 'sed' ||
-    head === 'awk'
-  ) {
-    return mentionsEnvFile(segment);
+// The remainder of a git invocation after the `git` global flags
+// (`-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=…`, `--work-tree=…`),
+// so `git -C /elsewhere push` can't dodge the subcommand rules. Null when
+// the segment is not a git invocation at all.
+function gitRest(segment: string): string | null {
+  const tokens = stripEnvPrefix(segment)
+    .split(' ')
+    .filter((token) => token.length > 0);
+  if (tokens[0] !== 'git') {
+    return null;
   }
-  // `<file` redirection into anything also reads the file.
-  return /<\s*\S*\.env\b/i.test(segment);
+  let i = 1;
+  while (i < tokens.length) {
+    const token = tokens[i] as string;
+    if (token === '-C' || token === '-c' || token === '--git-dir' || token === '--work-tree') {
+      i += 2;
+      continue;
+    }
+    if (
+      token.startsWith('-C') ||
+      token.startsWith('-c') ||
+      token.startsWith('--git-dir=') ||
+      token.startsWith('--work-tree=') ||
+      token.startsWith('--namespace=')
+    ) {
+      i += 1;
+      continue;
+    }
+    if (
+      token === '--no-pager' ||
+      token === '--paginate' ||
+      token === '--no-paginate' ||
+      token === '--bare' ||
+      token === '--no-replace-objects'
+    ) {
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  return tokens.slice(i).join(' ');
+}
+
+function gitMatches(segment: string, pattern: RegExp): boolean {
+  const rest = gitRest(segment);
+  return rest !== null && pattern.test(rest);
+}
+
+// A bare shell or interpreter as the whole segment: the pipe-to-shell
+// pattern (`curl … | sh`, `… | xargs …`) or a wrapper hiding the real
+// command (`sh -c …`, `bash -s`, `eval …`, `source …`). Never allowed:
+// the lead cannot review code it never sees as text.
+function isBareShell(segment: string): boolean {
+  const head = firstWord(segment).toLowerCase();
+  return (
+    head === 'sh' ||
+    head === 'bash' ||
+    head === 'zsh' ||
+    head === 'dash' ||
+    head === 'fish' ||
+    head === 'ksh' ||
+    head === 'xargs' ||
+    head === 'eval' ||
+    head === 'source' ||
+    head === '.'
+  );
 }
 
 function containsJulioUdid(segment: string): boolean {
@@ -178,24 +291,17 @@ function classifyRmRf(segment: string, ctx: PolicyContext): Classification | nul
       }
       continue;
     }
-    // Outside the worker's own checkout: another worktree, the lead's
-    // scratch, a .env file, or SSH material is never allowed.
-    if (
-      /galena-t-\d+/i.test(target) ||
-      /galena-scratch/.test(lower) ||
-      /\.env(\b|$)/i.test(target) ||
-      lower.includes('.ssh')
-    ) {
-      return {
-        verdict: 'reject',
-        message: `rm outside your own worktree (${target}) is blocked. Clean only inside ${ctx.worktree}, and never touch another worktree, .env files, SSH keys, or scratch folders.`,
-      };
-    }
     if (isOwnTemp(target, ctx.task)) {
       continue;
     }
-    // Somewhere else entirely, but not recognizably dangerous: the lead decides.
-    return { verdict: 'escalate' };
+    // Anything absolute, or escaping with `..`, that is neither the worker's
+    // own checkout nor its own temp folder: the main checkout, another
+    // worktree, home, or anywhere else. Playbook §7 says rm outside the
+    // worktree is rejected, not merely escalated.
+    return {
+      verdict: 'reject',
+      message: `rm outside your own worktree (${target}) is blocked. Clean only inside ${ctx.worktree} or your own temp folder.`,
+    };
   }
   return { verdict: 'allow' };
 }
@@ -213,6 +319,12 @@ const REJECT_RULES: Rule[] = [
     test: (segment) => /(^|\s)--no-verify(\s|$)/.test(segment),
     verdict: 'reject',
     message: 'Never bypass git hooks with --no-verify. Fix the failing check instead.',
+  },
+  {
+    test: (segment) => isBareShell(segment),
+    verdict: 'reject',
+    message:
+      'A bare shell (sh, bash, xargs, eval, source, …) executes code the lead cannot review. Invoke the underlying command directly instead of wrapping it or piping into it.',
   },
   {
     test: (segment) => /(^|\s)(sudo|doas)(\s|$)/.test(segment),
@@ -233,48 +345,47 @@ const REJECT_RULES: Rule[] = [
       "Workers can't kill processes (you couldn't restart what you stop). List the PIDs and the reason in your Report and keep working on something else.",
   },
   {
-    test: (segment) => /(^|\s)git\s+push(\s|$)/.test(segment),
+    test: (segment) => gitMatches(segment, /^push(\s|$)/),
     verdict: 'reject',
     message:
       "Pushing is the lead's job after review. Commit on your branch and set status: review.",
   },
   {
-    test: (segment) => /(^|\s)git\s+merge(\s|$)/.test(segment),
+    test: (segment) => gitMatches(segment, /^merge(\s|$)/),
     verdict: 'reject',
     message: "Merging is the lead's job. Stay on your branch.",
   },
   {
-    test: (segment) => /(^|\s)git\s+rebase(\s|$)/.test(segment),
+    test: (segment) => gitMatches(segment, /^rebase(\s|$)/),
     verdict: 'reject',
     message: "Rebasing is the lead's job. Stay on your branch.",
   },
   {
-    test: (segment) => /(^|\s)git\s+reset\s+--hard(\s|$)/.test(segment),
+    test: (segment) => gitMatches(segment, /^reset\s+--hard(\s|$)/),
     verdict: 'reject',
     message: 'Never reset --hard: it destroys work. Use a WIP commit instead.',
   },
   {
     test: (segment) =>
-      /(^|\s)git\s+checkout(\s|$)/.test(segment) &&
-      !/(^|\s)git\s+checkout\s+--(\s|$)/.test(segment),
+      gitMatches(segment, /^checkout(\s|$)/) && !gitMatches(segment, /^checkout\s+--(\s|$)/),
     verdict: 'reject',
     message:
       "Don't switch or create branches; branch operations are the lead's job at merge. To restore a file, ask the lead.",
   },
   {
-    test: (segment) => /(^|\s)git\s+switch(\s|$)/.test(segment),
+    test: (segment) => gitMatches(segment, /^switch(\s|$)/),
     verdict: 'reject',
     message: "Don't switch branches. Stay on your branch.",
   },
   {
     test: (segment) =>
-      /(^|\s)git\s+branch\s+(-D|--delete|-m|--move)(\s|$)/.test(segment) ||
-      /(^|\s)git\s+worktree\s+(add|remove|prune|move|lock|unlock|repair)(\s|$)/.test(segment),
+      gitMatches(segment, /^branch\s+(-D|--delete|-m|--move)(\s|$)/) ||
+      gitMatches(segment, /^worktree\s+(add|remove|prune|move|lock|unlock|repair)(\s|$)/),
     verdict: 'reject',
     message: "Branch and worktree operations are the lead's job. Stay on your branch.",
   },
   {
-    test: (segment) => /(^|\s)git\s+(remote|config|clean)(\s|$)/.test(segment),
+    test: (segment) => gitMatches(segment, /^(remote|config|clean)(\s|$)/),
     verdict: 'reject',
     message:
       'That git operation is blocked (remotes, config and clean can escape the worktree or wipe ignored files like infra/.env). Ask the lead.',
@@ -345,10 +456,10 @@ const REJECT_RULES: Rule[] = [
       "Port 3000 is Julio's own app. Never bind it; the Galena server uses 3188 and Vite 5173.",
   },
   {
-    test: (segment) => isEnvRead(segment),
+    test: (segment) => mentionsSecretEnv(segment),
     verdict: 'reject',
     message:
-      "Don't read .env files or print their values. The lead copied what you need into your own worktree; use it as-is via --env-file and never print it.",
+      "Don't read, copy, archive, or encode .env files, and never print their values. The lead copied what you need into your own worktree; use it as-is via --env-file and never print it. (.env.example is fine to read.)",
   },
   {
     test: (segment) => /(^|[\s"'`])~\/\.ssh(\/|$)/.test(segment) || /\.ssh\//.test(segment),
@@ -358,17 +469,18 @@ const REJECT_RULES: Rule[] = [
 ];
 
 const ALLOW_PATTERNS: RegExp[] = [
-  // Read-only git inspection.
-  /^(git\s+(status|diff|log|show|rev-parse|stash\s+list|branch(\s+(-a|--all|-vv?))?|ls-files|grep)(\s|$))/,
   // Local health checks against the dev stack (but never Julio's port 3000).
   /^(curl|wget)\b.*\b(127\.0\.0\.1|localhost)\b(?!.*:3000\b)/,
   // Read-only observability.
   /^(ls|pwd|whoami|uptime|ps|pgrep|df|du|wc|file|which|command|node\s+--version|pnpm\s+--version)(\s|$)/,
-  // Reading and counting files (env reads are rejected above).
+  // Reading and counting files (secret env files are rejected above).
   /^(cat|head|tail|less|more|wc|sort|uniq|tr|cut|jq)(\s|$)/,
   // Scaffolding inside the worker's own checkout is harmless.
   /^mkdir(\s|$)/,
 ];
+
+const GIT_ALLOW_PATTERN =
+  /^(status|diff|log|show|rev-parse|stash\s+list|branch(\s+(-a|--all|-vv?))?|ls-files|grep)(\s|$)/;
 
 function isLocalhostRead(segment: string, ctx: PolicyContext): boolean {
   void ctx;
@@ -415,6 +527,12 @@ function classifySegment(segment: string, ctx: PolicyContext): Classification {
     }
     return { verdict: 'allow' };
   }
+  // Read-only git inspection, after the same global-flag stripping as the
+  // reject rules, so `git --no-pager status` stays allowed.
+  const rest = gitRest(normalized);
+  if (rest !== null) {
+    return GIT_ALLOW_PATTERN.test(rest) ? { verdict: 'allow' } : { verdict: 'escalate' };
+  }
   for (const pattern of ALLOW_PATTERNS) {
     if (pattern.test(stripEnvPrefix(normalized))) {
       return { verdict: 'allow' };
@@ -426,46 +544,51 @@ function classifySegment(segment: string, ctx: PolicyContext): Classification {
 // Classifies one pending permission request. `allow` means the autopilot
 // answers `once` itself; `reject` means it answers `reject` with the message;
 // `escalate` means it prints a LEAD: line and leaves the request pending.
+// Every element is classified on its own and the worst verdict wins
+// (reject > escalate > allow), so one dangerous pipeline segment can never
+// hide behind a harmless one.
 export function classifyPermission(request: PermissionRequest, ctx: PolicyContext): Classification {
   if (request.action !== SHELL_ACTION) {
     return { verdict: 'escalate' };
   }
-  const segments = splitSegments(request.command);
-  if (segments.length === 0) {
+  if (request.commands.length === 0) {
     return { verdict: 'escalate' };
   }
   let sawEscalate = false;
-  for (const segment of segments) {
-    const result = classifySegment(segment, ctx);
-    if (result.verdict === 'reject') {
-      return result;
-    }
-    if (result.verdict === 'escalate') {
+  for (const command of request.commands) {
+    const segments = splitSegments(command);
+    if (segments.length === 0) {
       sawEscalate = true;
+      continue;
+    }
+    for (const segment of segments) {
+      const result = classifySegment(segment, ctx);
+      if (result.verdict === 'reject') {
+        return result;
+      }
+      if (result.verdict === 'escalate') {
+        sawEscalate = true;
+      }
     }
   }
   return sawEscalate ? { verdict: 'escalate' } : { verdict: 'allow' };
 }
 
-// Pulls the shell command text out of an OpenCode permission request's
-// resources, whatever shape they arrive in.
-export function extractCommand(resources: unknown): string {
+// Pulls one shell command per element out of an OpenCode permission
+// request's resources, whatever shape they arrive in.
+export function extractCommands(resources: unknown): string[] {
   if (typeof resources === 'string') {
-    return resources;
+    return resources.trim().length > 0 ? [resources] : [];
   }
   if (Array.isArray(resources)) {
-    return resources
-      .map((entry) => extractCommand(entry))
-      .filter(Boolean)
-      .join(' ');
+    return resources.flatMap((entry) => extractCommands(entry));
   }
   if (typeof resources === 'object' && resources !== null) {
-    return Object.values(resources)
-      .map((value) => (typeof value === 'string' ? value : ''))
-      .filter(Boolean)
-      .join(' ');
+    return Object.values(resources).flatMap((value) =>
+      typeof value === 'string' && value.trim().length > 0 ? [value] : [],
+    );
   }
-  return '';
+  return [];
 }
 
 export function tmpdir(): string {

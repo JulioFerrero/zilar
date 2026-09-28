@@ -49,6 +49,7 @@ export function loadState(statePath: string): StateFile {
       lastQuotaEscalatedAt: value.lastQuotaEscalatedAt,
       prereview: value.prereview,
       packetReadyForHead: value.packetReadyForHead,
+      prereviewStalledEscalated: value.prereviewStalledEscalated,
       escalatedPermissionIds: value.escalatedPermissionIds,
       escalatedQuestionIds: value.escalatedQuestionIds,
       stalledEscalated: value.stalledEscalated,

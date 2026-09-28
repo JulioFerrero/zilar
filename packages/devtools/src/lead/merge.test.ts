@@ -56,9 +56,10 @@ interface Harness {
   dropped: string[];
 }
 
-// A main checkout with an origin, a task branch in a linked worktree, the
-// task file at status `status`, and a board with the task Active.
-function setup(taskStatus: string): Harness {
+// A main checkout with an origin, a task branch in a linked worktree, and
+// INDEPENDENT task-file copies: main's says `mainStatus`, the branch's says
+// `branchStatus`. The merge must read the branch's copy.
+function setup(mainStatus: string, branchStatus: string): Harness {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-merge-'));
   const origin = path.join(dir, 'origin.git');
   const root = path.join(dir, 'root');
@@ -69,7 +70,7 @@ function setup(taskStatus: string): Harness {
   git(root, ['config', 'user.name', 'Test']);
   fs.mkdirSync(path.join(root, 'work'), { recursive: true });
   fs.writeFileSync(path.join(root, 'work', 'BOARD.md'), BOARD_FIXTURE('T-0099', 'T-0099-demo.md'));
-  fs.writeFileSync(path.join(root, 'work', 'T-0099-demo.md'), TASK_FILE(taskStatus));
+  fs.writeFileSync(path.join(root, 'work', 'T-0099-demo.md'), TASK_FILE(mainStatus));
   fs.writeFileSync(path.join(root, 'file.txt'), 'v1\n');
   git(root, ['add', '.']);
   git(root, ['commit', '-qm', 'init']);
@@ -80,6 +81,9 @@ function setup(taskStatus: string): Harness {
   git(root, ['worktree', 'add', '-q', worktree, '-b', branch, 'main']);
   git(worktree, ['config', 'user.email', 'test@example.com']);
   git(worktree, ['config', 'user.name', 'Test']);
+  fs.writeFileSync(path.join(worktree, 'work', 'T-0099-demo.md'), TASK_FILE(branchStatus));
+  git(worktree, ['add', 'work/T-0099-demo.md']);
+  git(worktree, ['commit', '-qm', 'worker: status']);
   return { root, origin, worktree, branch, dropped: [] };
 }
 
@@ -103,19 +107,28 @@ function options(harness: Harness, summary = 'Demo summary'): MergeOptions {
 
 describe('mergeTask pre-flight checks', () => {
   it('refuses a dirty worktree', () => {
-    const harness = setup('merged');
+    const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'dirty.txt'), 'x');
     expect(() => mergeTask(options(harness))).toThrow(MergeError);
     expect(() => mergeTask(options(harness))).toThrow(/worktree has uncommitted/);
   });
 
-  it('refuses a task whose status is not merged', () => {
-    const harness = setup('review');
+  it("refuses a task whose branch copy is not merged (even when main's copy is)", () => {
+    const harness = setup('merged', 'review');
     expect(() => mergeTask(options(harness))).toThrow(/status is "review"/);
   });
 
+  it("proceeds when the branch copy is merged even though main's copy is todo", () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    mergeTask(options(harness));
+    expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(true);
+  });
+
   it('refuses when main has uncommitted changes', () => {
-    const harness = setup('merged');
+    const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.root, 'uncommitted.txt'), 'x');
     expect(() => mergeTask(options(harness))).toThrow(/main checkout has uncommitted/);
   });
@@ -123,7 +136,7 @@ describe('mergeTask pre-flight checks', () => {
 
 describe('mergeTask rebase conflicts', () => {
   it('aborts and lists the conflicted files', () => {
-    const harness = setup('merged');
+    const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'file.txt'), 'branch change\n');
     git(harness.worktree, ['commit', '-qam', 'branch change']);
     fs.writeFileSync(path.join(harness.root, 'file.txt'), 'main change\n');
@@ -154,7 +167,7 @@ describe('mergeTask rebase conflicts', () => {
 
 describe('mergeTask happy path', () => {
   it('rebases, fast-forwards, boards, pushes, and cleans up', () => {
-    const harness = setup('merged');
+    const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
     git(harness.worktree, ['add', '.']);
     git(harness.worktree, ['commit', '-qam', 'feature']);

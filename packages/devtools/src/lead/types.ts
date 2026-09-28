@@ -45,6 +45,7 @@ export interface TaskRecord {
   lastQuotaEscalatedAt: number | undefined;
   prereview: PrereviewRecord | undefined;
   packetReadyForHead: string | undefined;
+  prereviewStalledEscalated: boolean;
   escalatedPermissionIds: string[];
   escalatedQuestionIds: string[];
   stalledEscalated: boolean;
@@ -70,6 +71,7 @@ const taskRecordSchema = z.object({
   lastQuotaEscalatedAt: z.number().optional(),
   prereview: prereviewRecordSchema.optional(),
   packetReadyForHead: z.string().optional(),
+  prereviewStalledEscalated: z.boolean().default(false),
   escalatedPermissionIds: z.array(z.string()).default([]),
   escalatedQuestionIds: z.array(z.string()).default([]),
   stalledEscalated: z.boolean().default(false),
@@ -102,6 +104,7 @@ export function newTaskRecord(init: {
     lastQuotaEscalatedAt: undefined,
     prereview: undefined,
     packetReadyForHead: undefined,
+    prereviewStalledEscalated: false,
     escalatedPermissionIds: [],
     escalatedQuestionIds: [],
     stalledEscalated: false,

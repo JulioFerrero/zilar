@@ -38,6 +38,7 @@ function base(overrides: Partial<DecideInput> = {}): DecideInput {
     questionText: '',
     questionIds: [],
     permissions: [],
+    prereviewPermissions: [],
     taskStatus: 'in-progress',
     taskFilePresent: true,
     blockedText: '',
@@ -66,11 +67,12 @@ describe('decide permissions', () => {
   it('replies once to an allowed command', () => {
     const actions = decide(
       base({
-        permissions: [{ id: 'per_1', action: 'shell', command: 'rm -rf dist' }],
+        permissions: [{ id: 'per_1', action: 'shell', commands: ['rm -rf dist'] }],
       }),
     );
     expect(actions).toContainEqual({
       kind: 'reply-permission',
+      session: 'worker',
       requestId: 'per_1',
       decision: 'once',
     });
@@ -80,7 +82,7 @@ describe('decide permissions', () => {
   it('rejects a push with a message', () => {
     const actions = decide(
       base({
-        permissions: [{ id: 'per_2', action: 'shell', command: 'git push --force' }],
+        permissions: [{ id: 'per_2', action: 'shell', commands: ['git push --force'] }],
       }),
     );
     const reply = actions.find((action) => action.kind === 'reply-permission');
@@ -91,7 +93,7 @@ describe('decide permissions', () => {
 
   it('escalates an unknown command once, then stays quiet', () => {
     const first = decide(
-      base({ permissions: [{ id: 'per_3', action: 'shell', command: 'npx expo install x' }] }),
+      base({ permissions: [{ id: 'per_3', action: 'shell', commands: ['npx expo install x'] }] }),
     );
     const lines = escalations(first);
     expect(lines).toHaveLength(1);
@@ -101,7 +103,7 @@ describe('decide permissions', () => {
     const second = decide(
       base({
         record: updated,
-        permissions: [{ id: 'per_3', action: 'shell', command: 'npx expo install x' }],
+        permissions: [{ id: 'per_3', action: 'shell', commands: ['npx expo install x'] }],
       }),
     );
     expect(escalations(second)).toEqual([]);
@@ -277,5 +279,64 @@ describe('decide blocked', () => {
 describe('decide misc', () => {
   it('returns nothing without a task file', () => {
     expect(decide(base({ taskFilePresent: false })).length).toBe(0);
+  });
+});
+
+describe('decide pre-review sessions', () => {
+  const reviewed = (overrides: Partial<DecideInput> = {}): DecideInput =>
+    base({
+      taskStatus: 'review',
+      sessionState: 'idle',
+      head: 'deadbee',
+      record: record({
+        prereview: { sessionId: 'ses_pre', head: 'deadbee', startedAt: 'x' },
+      }),
+      prereviewSessionState: 'running',
+      ...overrides,
+    });
+
+  it('answers a pre-review allow with the pre-review session', () => {
+    const actions = decide(
+      reviewed({
+        prereviewPermissions: [{ id: 'per_pre', action: 'shell', commands: ['rm -rf dist'] }],
+      }),
+    );
+    expect(actions).toContainEqual({
+      kind: 'reply-permission',
+      session: 'prereview',
+      requestId: 'per_pre',
+      decision: 'once',
+    });
+  });
+
+  it('escalates a pre-review unknown once, tagged as pre-review', () => {
+    const permission = { id: 'per_pre', action: 'shell', commands: ['npx foo'] };
+    const first = decide(reviewed({ prereviewPermissions: [permission] }));
+    const lines = escalations(first);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^LEAD: PERMISSION T-0038 pre-review per_pre/);
+    const updated = applyAll(reviewed().record, first);
+    expect(
+      escalations(decide(reviewed({ record: updated, prereviewPermissions: [permission] }))),
+    ).toEqual([]);
+  });
+
+  it('escalates a pre-review that sits idle without PREREVIEW.md, once', () => {
+    const first = decide(reviewed({ prereviewSessionState: 'idle', prereviewFilePresent: false }));
+    const lines = escalations(first);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('PRE-REVIEW STALLED T-0038');
+    const updated = applyAll(reviewed().record, first);
+    expect(
+      escalations(
+        decide(
+          reviewed({ record: updated, prereviewSessionState: 'idle', prereviewFilePresent: false }),
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it('does not stall-escalate while the pre-review is still running', () => {
+    expect(escalations(decide(reviewed({ prereviewFilePresent: false })))).toEqual([]);
   });
 });

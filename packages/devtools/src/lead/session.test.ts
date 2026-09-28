@@ -47,6 +47,37 @@ describe('summarizeSession', () => {
     expect(summarizeSession(messages).quotaError).toBe(false);
   });
 
+  it('clears quota once a newer assistant message exists', () => {
+    const messages = [
+      {
+        id: 'new',
+        type: 'assistant',
+        content: [{ type: 'text', text: 'done' }],
+        time: { created: 3000 },
+      },
+      {
+        id: 'e',
+        type: 'error',
+        error: { status: 402, message: 'quota spent' },
+        time: { created: 1000 },
+      },
+    ];
+    expect(summarizeSession(messages).quotaError).toBe(false);
+  });
+
+  it('keeps quota active when the run ended on the quota error', () => {
+    const messages = [
+      { id: 'i', type: 'idle', outcome: 'failed', time: { created: 2000 } },
+      {
+        id: 'e',
+        type: 'error',
+        error: { status: 402, message: 'quota spent' },
+        time: { created: 1000 },
+      },
+    ];
+    expect(summarizeSession(messages).quotaError).toBe(true);
+  });
+
   it('detects a running question tool call with its text', () => {
     const messages = [
       {
@@ -96,8 +127,14 @@ describe('parsePermission', () => {
     expect(parsePermission({ id: 'per_1', action: 'shell', resources: 'git push' })).toEqual({
       id: 'per_1',
       action: 'shell',
-      command: 'git push',
+      commands: ['git push'],
     });
+  });
+
+  it('keeps multi-element resources separate', () => {
+    expect(
+      parsePermission({ id: 'per_1', action: 'shell', resources: ['git status', 'rm -rf /'] }),
+    ).toEqual({ id: 'per_1', action: 'shell', commands: ['git status', 'rm -rf /'] });
   });
 
   it('returns null for unshaped entries', () => {

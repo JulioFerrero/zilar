@@ -26,7 +26,9 @@ export interface MergeOptions {
 }
 
 function taskStatus(options: MergeOptions): string {
-  const text = options.readText(path.join(options.root, 'work', options.file));
+  // The worker's `review`/`merged` status lives on the task branch, so read
+  // the worktree's copy. Main's copy still says `todo` until the merge.
+  const text = options.readText(path.join(options.worktree, 'work', options.file));
   return parseFrontMatter(text)['status'] ?? '';
 }
 
@@ -69,15 +71,16 @@ export function mergeTask(options: MergeOptions): void {
     throw new MergeError(`fast-forward merge of ${options.branch} failed`);
   }
   const boardFile = path.join(options.root, 'work', 'BOARD.md');
-  const moved = moveBoardRow(
-    options.readText(boardFile),
-    options.task,
-    options.file,
-    options.summary,
-    options.today,
+  options.writeText(
+    boardFile,
+    moveBoardRow(
+      options.readText(boardFile),
+      options.task,
+      options.file,
+      options.summary,
+      options.today,
+    ).text,
   );
-  void moved;
-  options.writeText(boardFile, moved.text);
   const committed = options.runner.run(options.root, [
     'commit',
     '-qam',
