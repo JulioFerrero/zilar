@@ -74,14 +74,17 @@ describe('ChatList', () => {
     expect(document.activeElement).toBe(input);
   });
 
-  it('shows the connecting bar while the XMPP connection is not online', () => {
+  it('shows the connecting bar only when connecting takes a while', async () => {
     renderApp('/', { status: 'connecting' });
-    expect(screen.getByText('Connecting…')).toBeTruthy();
+    // A fast connect never paints the bar.
+    expect(screen.queryByText('Connecting…')).toBeNull();
+    expect(await screen.findByText('Connecting…', {}, { timeout: 2500 })).toBeTruthy();
   });
 
-  it('shows the waiting-for-network bar when offline', () => {
+  it('shows the waiting-for-network bar when offline for a while', async () => {
     renderApp('/', { status: 'offline' });
-    expect(screen.getByText('Waiting for network…')).toBeTruthy();
+    expect(screen.queryByText('Waiting for network…')).toBeNull();
+    expect(await screen.findByText('Waiting for network…', {}, { timeout: 2500 })).toBeTruthy();
   });
 
   it('shows skeletons and no empty state while chats load', () => {

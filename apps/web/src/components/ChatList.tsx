@@ -8,9 +8,13 @@ import { InviteDialog } from './InviteDialog';
 import { NewChatButton } from './NewChatButton';
 import { SearchBar } from './SearchBar';
 import { ChatListSkeleton } from './Skeleton';
+import { useDelayed } from '@/lib/useDelayed';
 import { Button } from './ui/button';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { visibleChats } from '@/store/store';
+
+// A normal (re)connect takes well under this; only a slow one gets a banner.
+const CONNECTION_BANNER_DELAY_MS = 1500;
 
 function statusLabel(status: string): string | undefined {
   switch (status) {
@@ -31,7 +35,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const chats = visibleChats(store);
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const connection = statusLabel(store.status);
+  const connection = useDelayed(statusLabel(store.status), CONNECTION_BANNER_DELAY_MS);
 
   const signOut = (): void => {
     setMenuOpen(false);

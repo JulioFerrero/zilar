@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useDelayed } from '@/lib/useDelayed';
 
 /** Quiet loading placeholders in the shape of the content they replace. */
 
@@ -6,17 +6,8 @@ import { useEffect, useState } from 'react';
 // avoids a skeleton that flashes for a frame and then vanishes.
 export const SKELETON_DELAY_MS = 300;
 
-function useDelayedVisible(delayMs: number): boolean {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setVisible(true), delayMs);
-    return () => clearTimeout(timer);
-  }, [delayMs]);
-  return visible;
-}
-
 export function ChatListSkeleton({ rows = 6 }: { rows?: number }) {
-  const visible = useDelayedVisible(SKELETON_DELAY_MS);
+  const visible = useDelayed(true, SKELETON_DELAY_MS) === true;
   return (
     <div role="status" aria-label="Loading chats" className="flex flex-col px-2.5 py-1">
       {Array.from({ length: visible ? rows : 0 }, (_, index) => (
@@ -37,7 +28,7 @@ export function ChatListSkeleton({ rows = 6 }: { rows?: number }) {
 }
 
 export function MessageListSkeleton() {
-  const visible = useDelayedVisible(SKELETON_DELAY_MS);
+  const visible = useDelayed(true, SKELETON_DELAY_MS) === true;
   return (
     <div role="status" aria-label="Loading messages" className="chat-background h-full">
       {visible && (

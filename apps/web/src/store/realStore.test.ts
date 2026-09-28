@@ -871,6 +871,28 @@ describe('loading states (T-0042)', () => {
     expect(pageLoads(xmpp, 'ana@galena.test')).toBe(1);
   });
 
+  it('loads a group history only after the room is joined', async () => {
+    // Julio's reload bug on groups: MUC MAM before the join fails.
+    const { store, xmpp } = unstartedStore();
+    let finishJoin: () => void = () => {};
+    vi.mocked(xmpp.core.joinRoom).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishJoin = resolve;
+        }),
+    );
+
+    store.getState().openChat('team@rooms.galena.test');
+    store.getState().start();
+    await waitForState(() => store.getState().status === 'online');
+    await flush();
+    expect(pageLoads(xmpp, 'team@rooms.galena.test')).toBe(0);
+
+    finishJoin();
+    await waitForState(() => store.getState().historyState['team@rooms.galena.test'] === 'ready');
+    expect(pageLoads(xmpp, 'team@rooms.galena.test')).toBe(1);
+  });
+
   it('only the latest pending chat loads', async () => {
     const { store, xmpp } = unstartedStore();
 

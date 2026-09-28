@@ -1,4 +1,5 @@
 import type { ChatSummary, MessageStatus, ReplyRef, UiMessage, VoiceMeta } from '@galena/chat-core';
+import { clearChatListCache, readChatListCache, writeChatListCache } from './chatListCache';
 import {
   createXmppCore,
   type ChatMessage,
@@ -150,6 +151,36 @@ function moveChatToTop(chats: ChatSummary[], chatId: string): ChatSummary[] {
   return next;
 }
 
+/**
+ * Fresh server entries merged over what is already painted (the cached list
+ * from the last visit): each chat keeps its preview and unread count, so rows
+ * don't lose their second line or jump while XMPP catches up. A cached list
+ * that belongs to another user is dropped.
+ */
+export function mergeWithPainted(
+  painted: readonly ChatSummary[],
+  fresh: ChatSummary[],
+  paintedIsSameUser: boolean,
+): ChatSummary[] {
+  if (!paintedIsSameUser || painted.length === 0) {
+    return fresh;
+  }
+  const byId = new Map(painted.map((chat) => [chat.id, chat]));
+  return sortByRecency(
+    fresh.map((chat) => {
+      const previous = byId.get(chat.id);
+      if (previous === undefined) {
+        return chat;
+      }
+      const merged: ChatSummary = { ...chat, unread: previous.unread };
+      if (previous.lastMessage !== undefined) {
+        merged.lastMessage = previous.lastMessage;
+      }
+      return merged;
+    }),
+  );
+}
+
 function summaryFor(entry: ChatEntry): ChatSummary {
   const base = {
     id: entry.chatJid,
@@ -194,6 +225,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     let generation = 0;
     let connectRetryTimer: ReturnType<typeof setTimeout> | undefined;
     let connectRetryAttempt = 0;
+    // Group history (MUC MAM) only works once the room is joined, which
+    // happens after the connection is online.
+    let groupsJoined = false;
+    // The user whose cached chat list was painted on start, if any.
+    let cachedUserId: string | undefined;
+
+    function saveChatList(): void {
+      const state = get();
+      if (state.chatsState === 'ready') {
+        writeChatListCache(storage, state.currentUserId, state.chats);
+      }
+    }
     let firstToken: XmppToken | undefined;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const cursors: Record<string, string | undefined> = {};
@@ -829,14 +872,21 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // first chat merge, a background refresh, and (re)connect.
     function flushPending(): void {
       const pending = pendingOpenChatId;
-      if (pending === undefined || core === undefined || get().status !== 'online') {
+      if (pending === undefined) {
         return;
       }
-      if (get().chats.find((entry) => entry.id === pending) === undefined) {
+      const chat = get().chats.find((entry) => entry.id === pending);
+      if (chat === undefined || !canLoadHistory(chat)) {
         return;
       }
       pendingOpenChatId = undefined;
       void openHistory(pending);
+    }
+
+    function canLoadHistory(chat: ChatSummary): boolean {
+      return (
+        core !== undefined && get().status === 'online' && (chat.kind !== 'group' || groupsJoined)
+      );
     }
 
     async function openHistory(chatId: string): Promise<void> {
@@ -844,7 +894,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       const current = core;
       // `core` is assigned before `connect()` resolves, so "ready" means
       // online: a MAM query sent while still connecting fails.
-      if (current === undefined || chat === undefined || get().status !== 'online') {
+      if (current === undefined || chat === undefined || !canLoadHistory(chat)) {
         // The chat screen mounted before the data was there (e.g. a reload
         // of /c/<jid>). Remember it and load once both are ready.
         pendingOpenChatId = chatId;
@@ -960,7 +1010,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       set({
         me,
         currentUserId: me.id,
-        chats: entries.map(summaryFor),
+        chats: mergeWithPainted(get().chats, entries.map(summaryFor), cachedUserId === me.id),
         contacts,
         chatsState: 'ready',
       });
@@ -1042,9 +1092,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       set({ status: 'online' });
       flushPending();
       await joinGroups(current, me);
+      if (gen === generation) {
+        groupsJoined = true;
+        flushPending();
+      }
       await Promise.all(get().chats.map((chat) => loadPreview(current, chat)));
       if (gen === generation) {
         set((state) => ({ chats: sortByRecency(state.chats) }));
+        saveChatList();
       }
     }
 
@@ -1238,6 +1293,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       signOut: async () => {
         get().stop();
+        clearChatListCache(storage);
+        cachedUserId = undefined;
         lastRead = {};
         if (storage !== null && lastReadUserId !== undefined) {
           try {
@@ -1274,7 +1331,17 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       start: () => {
         generation += 1;
         if (get().chats.length === 0) {
-          set({ chatsState: 'loading' });
+          const cached = readChatListCache(storage);
+          if (cached === null) {
+            set({ chatsState: 'loading' });
+          } else {
+            // Paint the last list at once; boot replaces it with fresh data.
+            cachedUserId = cached.userId;
+            set({ chats: cached.chats, chatsState: 'ready' });
+          }
+        }
+        if (typeof window !== 'undefined') {
+          window.addEventListener('pagehide', saveChatList);
         }
         void boot(generation);
       },
@@ -1298,6 +1365,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           connectRetryTimer = undefined;
         }
         connectRetryAttempt = 0;
+        groupsJoined = false;
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('pagehide', saveChatList);
+        }
         const current = core;
         core = undefined;
         if (current !== undefined) {
