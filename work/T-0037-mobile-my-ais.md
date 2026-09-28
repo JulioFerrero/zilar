@@ -354,4 +354,69 @@ No `apps/web/**`, `apps/server/**`, `packages/**`, `docs/**`, other mobile file
 or screenshot changed. `PREREVIEW.md` was read only: not staged, not committed,
 not modified.
 
+## Round 3
+
+One visual bug, from `wizard-step4-selected.png`: the progress bar showed only
+three short segments in the right half on "Step 4 of 6".
+
+**Root cause — it was not the width.** The row was already full width and the six
+segments equal. Sampling the delivered `wizard-step1.png` (step 1 has no "done"
+cells) found segment 1 solid accent at x=132 and segments 2–6 pending at
+x=321…1073: all six present, full width. On step 4 only the active and pending
+cells rendered; the three "done" cells were pure white (`srgba(255,255,255,1)`
+at x=60…500). They used `bg-accent/40`, and the semantic colours in
+`tailwind.config.js` are plain `var(--accent)` with no `<alpha-value>` channel,
+so NativeWind drops the `/40` background entirely. The same silent drop affects
+`bg-accent/10` (OptionRow, TemplateCards), `bg-accent/5` (AiRow) and the
+`active:bg-accent/NN` press states — flagged for the lead, not fixed here, as
+this round was scoped to the progress bar.
+
+**Fix (`components/ais/wizard-steps.tsx`).**
+- The row is now explicitly `w-full`, as suggested (it was already stretching).
+- The done colour is `bg-accent opacity-40` instead of `bg-accent/40`, which
+  renders against the plain `var(--accent)`.
+- The per-step state is now a pure helper, `wizardSegmentState(step, current)` in
+  the new `components/ais/wizard-progress.ts` (with `WIZARD_STEP_LABELS`), so the
+  fill logic is unit-tested instead of inline.
+
+**Proof.** `wizard-step1.png` and `wizard-step4*.png` were re-shot on a fresh
+simulator ("Galena T-0037b", `E4C29E5A-…`) in mock mode on Metro 8082. A
+programmatic segment scan of the bar shows:
+- step 1 — 6 visible segments, each 14% of the width, 1 active + 5 pending;
+- step 4 — 6 visible segments, 3 done + 1 active + 2 pending.
+
+That is the expected "6 equal segments spanning the content width, filled
+1..current". I re-viewed only the one crop of the old bug; the fix was verified
+by the pixel scan rather than another screenshot view.
+
+Note: the scripted model-typing for the "selected" variant did not take on this
+capture, so `wizard-step4.png` and `wizard-step4-selected.png` are byte-identical
+(same md5). Both show the fixed bar; drop one if you prefer.
+
+### Checks (Round 3, real results)
+
+- `pnpm install` — up to date, 0.8s.
+- `pnpm format:check` — PASS ("All matched files use Prettier code style!").
+- `pnpm lint` — PASS (oxlint, no output).
+- `pnpm typecheck` — 9 tasks successful (8 cached).
+- `pnpm exec turbo test --force --filter=@galena/mobile` — **19 files passed,
+  162 tests passed, 2 skipped (164)**: +2 for `wizardSegmentState`.
+- `pnpm build` — 2 tasks successful.
+
+### Files changed (Round 3)
+
+- `apps/mobile/src/components/ais/wizard-steps.tsx` — `w-full`, `opacity-40`
+  done colour, uses the helper.
+- `apps/mobile/src/components/ais/wizard-progress.ts` (new) — labels +
+  `wizardSegmentState`.
+- `apps/mobile/src/components/ais/ais.test.ts` — 2 `wizardSegmentState` tests.
+- `apps/mobile/screenshots/T-0037/wizard-step1.png`, `wizard-step4.png`,
+  `wizard-step4-selected.png` — re-shot.
+- `work/T-0037-mobile-my-ais.md` — this section.
+
+The delete-dialog copy was not changed (web + mobile together, later), and
+`PREREVIEW.md` was left alone (not staged, not committed, not modified). The
+"Galena T-0037b" simulator was shut down and deleted by its UDID; DB167CD4-… and
+A3E0C081-… were not touched.
+
 ## Review (written by Claude)
