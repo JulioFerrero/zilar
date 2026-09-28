@@ -1042,11 +1042,10 @@ describe('AI reply drafts (T-0043)', () => {
         .messages(CHAT)
         .some((item) => item.text === 'Hello'),
     ).toBe(true);
-    // The draft never disappears without the message in the same update, and
-    // the two are never shown together.
+    // Exactly one of the two is on screen in every update: never both (a
+    // duplicate) and never neither (a gap).
     for (const snapshot of seen) {
-      expect(snapshot.draft && !snapshot.message).toBe(false);
-      expect(snapshot.draft && snapshot.message).toBe(false);
+      expect(snapshot.draft !== snapshot.message).toBe(true);
     }
 
     drafts.emit(draft(CHAT, TURN_ONE, 'Hello there'));
