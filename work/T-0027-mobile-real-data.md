@@ -394,3 +394,44 @@ that by running the thing you could not.
   session on a build with `ExpoSecureStore`. If the code merges first, the next
   task can capture it; the unit and live tests are the stronger evidence and
   they now pass.
+
+### Round 2 review (2026-09-28 09:28) — **approved, merged**
+
+Both findings are fixed. I verified the code and then ran the gated test myself,
+because the whole point of the finding was that this test had never been
+executed.
+
+### What the lead verified
+- **The integration test now passes live, on my own run** — not on the worker's
+  word. I minted a fresh invite (the previous one had been consumed) and ran it
+  against the running stack on `127.0.0.1:3188`:
+  `apps/mobile/src/store/integration.test.ts` → **1 passed (1)**, not skipped.
+  That covers sign-in, `GET /api/me`, `POST /api/groups`, xmpp-core coming
+  online, joining the room, a group message going out and coming back, and the
+  reconnect fetching a fresh token. The assertion that failed at
+  `integration.test.ts:259` in round 1 is gone, and the token call is now
+  counted the way the store actually makes it.
+- **The spike is deleted.** `apps/mobile/src/spike/` and
+  `apps/mobile/src/app/spike.tsx` are both absent. The only remaining mention of
+  the word anywhere under `apps/mobile` is a comment in `metro.config.js:31`
+  explaining that the node-stub is permanent and guarded by `existsSync` — which
+  is the fix I made in T-0004 and must not be undone. `metro.config.js` itself
+  was not touched, as required.
+- **The four T-0025 fixes all carried over correctly** and I re-checked them in
+  the diff rather than assuming: the `outgoing` flag (not a JID compare) gates
+  own typing/markers; the localpart is only a lookup key and the name ladder ends
+  at `'Someone'`; `updateMessageStatus` advances both the bubble and
+  `chat.lastMessage`; `advanceStatus` is monotonic.
+- The three `apps/web` timeouts were load sensitivity, not a regression — already
+  isolated by the worker and already broadened on the board.
+
+### Accepted as stated
+- `lastRead` is in-memory only for now. The Spec listed no storage dependency and
+  the session token is deliberately keychain-only, so this is the right size of
+  change. It is a real follow-up, not a defect.
+
+### Follow-ups carried to the board
+- Screenshot of a real conversation on a SecureStore build — the remaining
+  acceptance item, and the next task can take it with a free simulator.
+- `apps/web` load-sensitive tests (`MessageActions`, `TypingIndicator`,
+  `ChatShell`) — needs fake timers or an explicit longer timeout, not a retry.
