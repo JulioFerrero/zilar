@@ -1,7 +1,7 @@
 ---
 id: T-0033
 title: Register each AI's private model in LiteLLM (owner's key stays in the gateway) + list AIs in /api/chats
-status: review
+status: merged
 milestone: M2
 branch: task/T-0033-ai-models-litellm
 model: opencode-go/deepseek-v4.1-flash
@@ -432,3 +432,23 @@ A Muse pre-review (`PREREVIEW.md`, not committed) re-ran every check: 279 server
 - The 6-line `addModel`/`deleteModel` fake in `apps/server/src/ai/routes.test.ts` is blessed. The interface change forces it.
 - `ensureAiModel` has no owner check. That's by design: it's an internal gateway call keyed by the AI's own id, not by a request. **T-0034 must call it only with an AI id it resolved itself**, never with an id taken from a message. That goes in the T-0034 spec.
 - The lead clicks "Open chat" through live at the final review.
+
+### Round 2: approved
+
+All four items are fixed and verified in the code:
+1. The log assertions now read `err.message` and `err.stack`. The worker proved they catch a leak (a temporary key in the message made the test fail), and they exposed an unfaithful fake, which is now fixed.
+2. `ensureAiModel`:
+   - it takes an in-process mutex, then a Postgres advisory transaction lock, then re-reads the id;
+   - it cleans up a stray `ai-<id>` model by name;
+   - a test proves two concurrent calls lead to exactly one `addModel`.
+   - The `tx` cast is contained and commented, and it's needed for the single-connection PGlite test DB.
+3. `revokeKey` treats **exactly** LiteLLM's live-probed double-delete response (`404` with "No keys found") as success. Negative cases are tested.
+4. The backfill (`updateKey({ models })`) is proven against the real LiteLLM, and that run caught a real client bug: `/model/info` puts the id under `model_info.id`. It's fixed and has a unit test.
+
+Lead review and checks:
+- Rebased onto main, including T-0035. The lead resolved the one expected conflict in `chats.test.ts` imports: T-0033's imports minus `user`, which became unused.
+- format:check, lint, typecheck and build pass.
+- `pnpm exec turbo test --force`: 9/9 packages, with server at 298 passed and 6 skipped (gated).
+- The live LiteLLM holds only `placeholder` afterwards, so the worker's runs left no orphans.
+
+Accepted: a failed stray delete is logged, not fatal, and is cleaned up by name on the next call. Follow-up for T-0034: call `ensureAiModel` only with an AI id the gateway resolved itself.
