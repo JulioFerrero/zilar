@@ -8,13 +8,37 @@ import { chatSubtitle, typingLabel } from '@/lib/format';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 
-export function ChatHeader({ chat }: { chat: ChatSummary }) {
+export function ChatHeader({
+  chat,
+  onOpenAiPanel,
+}: {
+  chat: ChatSummary;
+  onOpenAiPanel?: () => void;
+}) {
   const navigate = useNavigate();
   const store = useChatStore();
   const names = store.typing[chat.id]?.names ?? [];
   const typing = typingLabel(chat, names);
   const subtitle = typing ?? chatSubtitle(chat, new Date());
   const working = chat.isAI && chat.aiStatus === 'working';
+
+  const title = (
+    <>
+      <div className="flex items-center gap-1.5">
+        <span className="truncate text-[16px] leading-5 font-semibold">{chat.title}</span>
+        {chat.isAI && <AiBadge />}
+      </div>
+      <div
+        className={cn(
+          'flex items-center gap-1 text-[14px] leading-5 text-muted-foreground',
+          typing !== undefined && 'text-accent',
+        )}
+      >
+        <span className="truncate">{subtitle}</span>
+        {(working || typing !== undefined) && <TypingDots />}
+      </div>
+    </>
+  );
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-divider bg-background px-2">
@@ -33,21 +57,18 @@ export function ChatHeader({ chat }: { chat: ChatSummary }) {
         size={42}
         online={chat.online === true}
       />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-[16px] leading-5 font-semibold">{chat.title}</span>
-          {chat.isAI && <AiBadge />}
-        </div>
-        <div
-          className={cn(
-            'flex items-center gap-1 text-[14px] leading-5 text-muted-foreground',
-            typing !== undefined && 'text-accent',
-          )}
+      {chat.isAI && onOpenAiPanel !== undefined ? (
+        <button
+          type="button"
+          aria-label={`Open ${chat.title} settings`}
+          onClick={onOpenAiPanel}
+          className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
-          <span className="truncate">{subtitle}</span>
-          {(working || typing !== undefined) && <TypingDots />}
-        </div>
-      </div>
+          {title}
+        </button>
+      ) : (
+        <div className="min-w-0 flex-1">{title}</div>
+      )}
       <button
         type="button"
         aria-label="Search in chat"

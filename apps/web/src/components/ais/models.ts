@@ -13,3 +13,8 @@ const MODEL_SUGGESTIONS: Record<string, readonly string[]> = {
 export function modelSuggestionsFor(provider: string): readonly string[] {
   return MODEL_SUGGESTIONS[provider] ?? [];
 }
+
+/** The first suggestion for a provider, used to prefill the model field. */
+export function defaultModelFor(provider: string): string {
+  return modelSuggestionsFor(provider)[0] ?? '';
+}

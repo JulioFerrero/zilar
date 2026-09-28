@@ -1,5 +1,7 @@
 import type { ChatSummary, ReplyRef, UiMessage } from '@galena/chat-core';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
+import { AiPanel } from '@/components/ais/AiPanel';
 import { ChatHeader } from '@/components/ChatHeader';
 import { Composer } from '@/components/Composer';
 import { MessageList } from '@/components/MessageList';
@@ -9,6 +11,8 @@ import { replyRef } from '@/lib/format';
 export function ChatView({ chat }: { chat: ChatSummary }) {
   const storeApi = useChatStoreApi();
   const store = useChatStore();
+  const [searchParams] = useSearchParams();
+  const [panelOpen, setPanelOpen] = useState(() => searchParams.get('panel') === 'ai');
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
 
   useEffect(() => {
@@ -25,9 +29,10 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <ChatHeader chat={chat} />
+      <ChatHeader chat={chat} {...(chat.isAI ? { onOpenAiPanel: () => setPanelOpen(true) } : {})} />
       <MessageList key={chat.id} chat={chat} onReply={startReply} />
       <Composer chatId={chat.id} replyTo={replyTo} onCancelReply={cancelReply} />
+      {panelOpen && chat.isAI && <AiPanel chat={chat} onClose={() => setPanelOpen(false)} />}
     </div>
   );
 }

@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import type { ChatSummary } from '@galena/chat-core';
 import { renderApp } from '@/test/renderApp';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('NewChatButton', () => {
   it('creates a group from the dialog and opens it', async () => {
@@ -49,5 +53,22 @@ describe('NewChatButton', () => {
 
     fireEvent.click(screen.getByLabelText('Copy invite link'));
     await waitFor(() => expect(screen.getByText('Copied')).toBeTruthy());
+  });
+
+  it('has a New AI entry that opens the quick-create dialog', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => [],
+      } as Response),
+    );
+    renderApp('/');
+
+    fireEvent.click(screen.getByLabelText('New chat'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New AI' }));
+
+    expect(await screen.findByRole('dialog', { name: 'New AI' })).toBeTruthy();
   });
 });
