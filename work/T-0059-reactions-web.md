@@ -254,4 +254,96 @@ pressed look, and the quick bar fits at 390 px.
   target uses the UI's message id (the same limitation `replyTo` already has).
   In practice the echo lands in milliseconds.
 
+### Round 2 fixes (after PREREVIEW)
+
+**F1 (must-fix) — `pnpm lint` red.** You were right and Round 1's Report was
+wrong: the two `createElement(..., { children })` calls tripped
+`react/no-children-prop`. The variadic `createElement(type, props, child)` form
+does **not** typecheck against these React 19 types (a function component whose
+props declare `children: ReactNode` requires `children` inside `props`), so I
+renamed `apps/web/src/store/realStore.test.ts` → `realStore.test.tsx` and nested
+the providers/bubble as JSX children, and dropped the `createElement` import.
+Confirmed for real: `pnpm lint` → `oxlint .`, no findings, exit 0. I also
+checked the rule is live by linting a scratch file with a `children` prop
+(`react(no-children-prop)` fires), so the exit 0 is meaningful. The rename is
+the only way to keep both oxlint and `tsc` happy in this file.
+
+**F2 (should-fix) — body/payload + reactions.** Added
+`isReactionOnly(message)` (reactions present **and** no `body` **and** no
+`payload`). `handleMessage` now ingests reactions for any message that carries
+them and returns early only for `isReactionOnly`; the preview/open/older filters
+use `!isReactionOnly`. So `<message><body>hello</body><reactions/></message>`
+renders "hello" and shows the reactions. New store test:
+"renders a message that carries both a body and reactions".
+
+**F3 (should-fix) — no core.** `react` now resolves the wire target and reads
+`core` *before* it touches state; if either is missing it returns without
+applying the optimistic toggle, so local state can never diverge with nothing to
+revert it.
+
+**F4 (should-fix) — wire target.** I chose **resolve to the linked server id,
+else disable reacting**. Note that in this store the alias root is the *local*
+id (`linkMessageIds(local, server)` stores `server -> local`), so
+`aliasRoot(messageId)` is **not** a usable wire id. I added
+`messageServerIds` (local id → server id, filled wherever `linkMessageIds` links
+a local id to a server/echo id) and `wireTargetFor(messageId)`: it returns the
+server id when known, the id itself when it was never local (history/received
+messages, stanza-ids), and `undefined` for a still-unacked `local-*` id.
+`react` sends `wireTarget` and stores under `aliasRoot(messageId)`. New store
+test "does not react to a message whose server id is not known yet" (no send, no
+chip); the existing alias test now also asserts the send carries `srv-1`, not
+`local-1`.
+
+**F5 (optional) — mock preview jump.** Fixed, it was cheap. The mock store's
+`react` no longer writes `chats`/`lastMessage`, so reacting to an old message
+does not move the chat-list preview or reorder the list. New UI test
+"does not jump the chat-list preview when reacting to an older message".
+
+### Checks (re-run in full, real output)
+
+```bash
+$ pnpm format:check
+> prettier --check .
+Checking formatting...
+[warn] PREREVIEW.md
+[warn] Code style issues found in the above file. Run Prettier with --write to fix.
+ ELIFECYCLE  Command failed with exit code 1.
+
+$ pnpm lint
+> oxlint .
+$ echo $?
+0
+
+$ pnpm typecheck
+ Tasks:    9 successful, 9 total
+$ echo $?
+0
+
+$ pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/chat-core --filter=@galena/web
+@galena/chat-core:test:  Test Files  9 passed (9)
+@galena/chat-core:test:       Tests  110 passed (110)
+@galena/xmpp-core:test:  Test Files  6 passed | 3 skipped (9)
+@galena/xmpp-core:test:       Tests  146 passed | 3 skipped (149)
+@galena/web:test:  Test Files  39 passed (39)
+@galena/web:test:       Tests  297 passed (297)
+ Tasks:    3 successful, 3 total
+$ echo $?
+0
+
+$ pnpm build
+ Tasks:    2 successful, 2 total
+$ echo $?
+0
+```
+
+**`pnpm install`** was not re-run: no dependency changed.
+
+**`pnpm format:check` caveat.** It now fails on exactly one file: the
+**untracked** `PREREVIEW.md` at the repo root, which you created after my last
+commit (it is not in Allowed files). Every file I touched passes:
+`pnpm exec prettier --check <my files>` → "All matched files use Prettier code
+style!". I did not format `PREREVIEW.md` because it is your artifact and outside
+Allowed files — if you want `format:check` green on this tree, format or delete
+that file (or add it to `.prettierignore`).
+
 ## Review (written by Claude)

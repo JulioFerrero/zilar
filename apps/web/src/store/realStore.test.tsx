@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createElement } from 'react';
 import { render, screen } from '@testing-library/react';
 import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
 import { AuthProvider } from '@/auth/AuthProvider';
@@ -777,24 +776,24 @@ describe('createRealChatStore', () => {
     }
 
     const { container } = render(
-      createElement(AuthProvider, {
-        value: {
-          status: 'authenticated' as const,
+      <AuthProvider
+        value={{
+          status: 'authenticated',
           user: { id: 'u-me', name: 'Me', email: 'me@galena.test' },
           refetch: async () => {},
-        },
-        children: createElement(ChatStoreProvider, {
-          store,
-          children: createElement(MessageBubble, {
-            message: last,
-            chat,
-            firstInGroup: true,
-            lastInGroup: true,
-            currentUserId: 'u-me',
-            onReply: () => {},
-          }),
-        }),
-      }),
+        }}
+      >
+        <ChatStoreProvider store={store}>
+          <MessageBubble
+            message={last}
+            chat={chat}
+            firstInGroup
+            lastInGroup
+            currentUserId="u-me"
+            onReply={() => {}}
+          />
+        </ChatStoreProvider>
+      </AuthProvider>,
     );
 
     expect(screen.getByText('Dev-1')).toBeTruthy();
@@ -1141,6 +1140,31 @@ describe('createRealChatStore', () => {
     );
   });
 
+  it('renders a message that carries both a body and reactions', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+    const before = store.getState().messages('ana@galena.test').length;
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'ana-3',
+        chatJid: 'ana@galena.test',
+        body: 'text plus a reaction',
+        timestamp: new Date('2026-09-28T12:07:00Z'),
+        reactions: { targetId: 'ana-1', emojis: ['🎉'] },
+      }),
+    );
+
+    const list = store.getState().messages('ana@galena.test');
+    expect(list).toHaveLength(before + 1);
+    expect(list.find((m) => m.id === 'ana-3')?.text).toBe('text plus a reaction');
+    expect(list.find((m) => m.id === 'ana-1')?.reactions).toEqual([
+      { emoji: '🎉', count: 1, mine: false, reactors: ['Ana'] },
+    ]);
+  });
+
   it('keeps a reaction for a message that is not loaded yet and shows it later', async () => {
     const history: ChatMessage[] = Array.from({ length: 60 }, (_, index) =>
       message({
@@ -1227,6 +1251,9 @@ describe('createRealChatStore', () => {
     expect(local).toBe('local-1');
 
     store.getState().react('ana@galena.test', local, '👍');
+    expect(xmpp.core.sendReactions).toHaveBeenCalledWith('ana@galena.test', 'chat', 'srv-1', [
+      '👍',
+    ]);
 
     xmpp.emit(
       'message',
@@ -1246,6 +1273,29 @@ describe('createRealChatStore', () => {
       .messages('ana@galena.test')
       .find((m) => m.id === 'srv-1');
     expect(echoed?.reactions).toEqual([{ emoji: '👍', count: 1, mine: true, reactors: ['You'] }]);
+  });
+
+  it('does not react to a message whose server id is not known yet', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    // The send never resolves, so the optimistic message keeps its local id
+    // and has no server id to name: reacting must change nothing.
+    vi.mocked(xmpp.core.sendMessage).mockImplementationOnce(
+      () => new Promise<{ id: string }>(() => {}),
+    );
+    store.getState().sendText('ana@galena.test', 'still sending');
+    const local = store.getState().messages('ana@galena.test').at(-1)?.id;
+    if (local === undefined) {
+      throw new Error('the optimistic message was not stored');
+    }
+    expect(local.startsWith('local-')).toBe(true);
+
+    store.getState().react('ana@galena.test', local, '👍');
+
+    expect(xmpp.core.sendReactions).not.toHaveBeenCalled();
+    expect(store.getState().messages('ana@galena.test').at(-1)?.reactions).toBeUndefined();
   });
 });
 

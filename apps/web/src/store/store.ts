@@ -364,20 +364,16 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
           if (list === undefined) {
             return state;
           }
-          let updated: UiMessage | undefined;
-          const next = list.map((item) => {
-            if (item.id !== messageId) {
-              return item;
-            }
-            updated = withToggledReaction(item, emoji, 'You');
-            return updated;
-          });
-          if (updated === undefined) {
+          if (!list.some((item) => item.id === messageId)) {
             return state;
           }
           return {
-            messagesByChat: { ...state.messagesByChat, [chatId]: next },
-            chats: withLastMessage(state.chats, chatId, updated),
+            messagesByChat: {
+              ...state.messagesByChat,
+              [chatId]: list.map((item) =>
+                item.id === messageId ? withToggledReaction(item, emoji, 'You') : item,
+              ),
+            },
           };
         });
       },

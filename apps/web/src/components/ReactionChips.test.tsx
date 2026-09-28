@@ -94,4 +94,19 @@ describe('reactions in a chat (mock store)', () => {
     fireEvent.click(mine);
     expect(scope.getByRole('button', { name: '🚀 1' }).getAttribute('aria-pressed')).toBe('false');
   });
+
+  it('does not jump the chat-list preview when reacting to an older message', () => {
+    renderApp('/c/c-viernes');
+
+    const list = screen.getByTestId('message-list');
+    const row = within(list).getByText('MVP 🏆').closest('[data-message-id]');
+    expect(row).not.toBeNull();
+
+    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: '🏆 3' }));
+
+    // The list still previews the newest message, not the reacted one.
+    const item = screen.getByRole('link', { name: /Viernes/ });
+    expect(item.textContent).toContain('On my way');
+    expect(item.textContent).not.toContain('MVP');
+  });
 });

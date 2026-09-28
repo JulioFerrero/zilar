@@ -320,6 +320,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const cursors: Record<string, string | undefined> = {};
     const pendingOutgoing = new Map<string, string[]>();
     const messageAliases = new Map<string, string>();
+    // Local optimistic id -> the server id it resolved to, once known.
+    const messageServerIds = new Map<string, string>();
     const groupIds = new Map<string, string>();
     // chatId -> (lowercased user id -> member)
     const groupMembers = new Map<string, Map<string, MentionMember>>();
@@ -411,6 +413,37 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     function sameMessage(left: string, right: string): boolean {
       return aliasRoot(left) === aliasRoot(right);
+    }
+
+    // Remembers the server id that a local optimistic id resolved to, so a
+    // reaction sent after the echo can name the target everyone else knows.
+    function linkLocalToServer(localId: string, serverId: string): void {
+      if (localId !== serverId) {
+        messageServerIds.set(localId, serverId);
+      }
+    }
+
+    // The id to put on the wire for a message: the server (or archive) id when
+    // it is known, else the message id itself. A still-unacked `local-*` id has
+    // no server id yet and cannot be named, so it resolves to undefined.
+    function wireTargetFor(messageId: string): string | undefined {
+      const root = aliasRoot(messageId);
+      const server = messageServerIds.get(root);
+      if (server !== undefined) {
+        return server;
+      }
+      return root.startsWith('local-') ? undefined : root;
+    }
+
+    // A reactions message is swallowed only when it is truly body-less and
+    // payload-less: one that also carries a body or a payload is a normal
+    // message that happens to update reactions too.
+    function isReactionOnly(message: ChatMessage): boolean {
+      return (
+        message.reactions !== undefined &&
+        message.body === undefined &&
+        message.payload === undefined
+      );
     }
 
     // A status only moves forward: sending -> sent -> read. A late echo or
@@ -951,11 +984,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     }
 
     function handleMessage(message: ChatMessage): void {
-      // A reaction update is a body-less message that only changes reactions:
-      // it must never render as a bubble or move the chat list preview.
+      // A reactions message that is only that (no body, no payload) must never
+      // render as a bubble or move the chat list preview. A message that also
+      // carries a body or payload is a normal message: its reactions are
+      // ingested and it is rendered as usual.
       if (message.reactions !== undefined) {
         ingestReaction(message);
-        return;
+        if (isReactionOnly(message)) {
+          return;
+        }
       }
       const meId = get().currentUserId;
       const chatId = message.chatJid;
@@ -975,6 +1012,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
         if (localId !== undefined) {
           linkMessageIds(localId, ui.id);
+          linkLocalToServer(localId, ui.id);
         }
         set((state) => {
           const existing = listFor(state, chatId);
@@ -1258,7 +1296,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           max: PREVIEW_HISTORY_MAX,
         });
         ingestHistoryReactions(page.messages);
-        const last = page.messages.filter((message) => message.reactions === undefined).at(-1);
+        const last = page.messages.filter((message) => !isReactionOnly(message)).at(-1);
         if (last === undefined) {
           return;
         }
@@ -1333,7 +1371,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         const page = await current.loadHistory(chatId, coreKind(chat), { max: PAGE_HISTORY_MAX });
         ingestHistoryReactions(page.messages);
         const loaded = page.messages
-          .filter((message) => message.reactions === undefined)
+          .filter((message) => !isReactionOnly(message))
           .map((message) => toUiMessage(message, get().currentUserId));
         const newest = loaded.at(-1);
         set((state) => {
@@ -1387,7 +1425,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         .then((page) => {
           ingestHistoryReactions(page.messages);
           const older = page.messages
-            .filter((message) => message.reactions === undefined)
+            .filter((message) => !isReactionOnly(message))
             .map((message) => toUiMessage(message, get().currentUserId));
           set((state) => ({
             messagesByChat: {
@@ -1601,7 +1639,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (chat === undefined || mine === undefined) {
           return;
         }
+        // The local key is alias-resolved; the wire target must be the server
+        // id everyone else knows. An unacked message has none yet, so reacting
+        // would send a target nobody could match: do nothing until it has one.
         const targetId = aliasRoot(messageId);
+        const wireTarget = wireTargetFor(messageId);
+        const currentCore = core;
+        if (wireTarget === undefined || currentCore === undefined) {
+          return;
+        }
         const current = get().reactions[chatId]?.targets[targetId]?.[mine]?.emojis ?? [];
         const next = current.includes(emoji)
           ? current.filter((entry) => entry !== emoji)
@@ -1610,11 +1656,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           applyReactionUpdate(chatId, targetId, mine, emojis, now().getTime());
         };
         apply(next);
-        const currentCore = core;
-        if (currentCore === undefined) {
-          return;
-        }
-        currentCore.sendReactions(chatId, coreKind(chat), messageId, next).catch(() => {
+        currentCore.sendReactions(chatId, coreKind(chat), wireTarget, next).catch(() => {
           // The send failed: undo the optimistic toggle.
           apply(current);
         });
@@ -1670,6 +1712,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           })
           .then((sent) => {
             linkMessageIds(localId, sent.id);
+            linkLocalToServer(localId, sent.id);
             updateMessageStatus(chatId, localId, 'sent');
           })
           .catch(() => {
@@ -1728,6 +1771,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
               ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
             });
             linkMessageIds(localId, sent.id);
+            linkLocalToServer(localId, sent.id);
             updateMessageStatus(chatId, localId, 'sent');
           } catch {
             // The optimistic bubble keeps its local audio and stays "sending";
