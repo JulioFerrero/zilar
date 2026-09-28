@@ -22,6 +22,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 - M2 gateway needs `store_model_in_db` (or an equivalent config) so a user's own provider key can be **registered**, not only forwarded per request. Found by the T-0007 spike; it is an `infra/**` change and needs its own task.
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
 - `POST /api/connections/:id/test` calls the provider on every request: put it behind the rate limiter before real users (from the T-0028 review).
+- **Load-sensitive web tests, broader than T-0029 fixed.** Under heavy load (load average 96, from a parallel Xcode build) three *other* first-in-file full-app renders timed out: `ChatList.test.tsx > filters chats by folder`, `Composer.test.tsx > shows the mic when empty…`, `NewChatButton.test.tsx > creates a group from the dialog…`. Per-test timeouts don't scale; needs a package-level fix (e.g. a shared lighter render helper, or one explicit `testTimeout` for `apps/web` with a comment). CI is green.
 - `apps/mobile/ios/` is generated and gitignored: after any native dependency change, run `pod install` (T-0031 automates the check).
 
 ## Done
