@@ -259,10 +259,80 @@ sends a composing chat-state while typing.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Round 2: changes requested. The code is good and the four carried-over
+bugs are genuinely fixed. **The live integration test fails**, and the lead found
+that by running the thing you could not.
+
+### What the lead verified
+- **I ran your gated integration test against the live stack**, which you could
+  not, and it **fails in 370 ms**:
+  ```
+  AssertionError: expected 2 to be 1 // Object.is equality
+    ❯ src/store/integration.test.ts:259:26
+      259|       expect(tokenCalls).toBe(1);
+  ```
+  Everything before it passed: it signed in, created a group through
+  `POST /api/groups` and got a room. So the live path works; the assertion is
+  wrong. See Finding 1.
+- **All four T-0025 fixes are present and correct.** I read them rather than
+  trusting the Report:
+  1. `real-store.ts:285,398` use the `outgoing` flag for own typing/markers, not
+     a JID comparison — so the unresolved-MUC-sender case is handled.
+  2. The localpart is used **only as a lookup key** (lines 240–266, with a
+     comment saying it is never shown) and the ladder ends at `'Someone'`
+     (line 307). No JID localpart can reach the screen.
+  3. `updateMessageStatus` applies `advanceStatus` to the message **and** to
+     `chat.lastMessage` when they match, so the row and the bubble cannot
+     disagree.
+  4. `advanceStatus` makes the ladder monotonic, so a late echo cannot downgrade
+     a message the peer already read.
+- **Unit checks.** My first `pnpm test` FAILED with three `apps/web` timeouts
+  (`MessageActions` 5420 ms, `TypingIndicator` 5591 ms, `ChatShell` 6399 ms) in
+  a package this task never touches. I isolated it rather than reporting it as
+  yours: `apps/web` alone is **85/85**, and those three files together are
+  **9/9**. They are load-sensitive timeouts from the full parallel suite, the
+  same class as the one the T-0010 review filed. I have broadened that board
+  follow-up from one test to three. Not a finding against this task.
+  `format:check`, `typecheck` and `build` PASS; `lint` exits 0.
+- **The two things you could not do, and why I accept them:** the simulator was
+  genuinely unavailable (only the iPhone 17 Pro was booted, with a pending system
+  dialog and an older build lacking `ExpoSecureStore`) — refusing to take it was
+  the right call, and it is in the Spec. `lastRead` in memory only is disclosed
+  and reasonable: the Spec did not list a storage dependency, and the session
+  token is keychain-only by design.
 
 ### Findings
--
+1. **The gated integration test is wrong and would fail for anyone who ran it**
+   (`apps/mobile/src/store/integration.test.ts`). You counted the token endpoint
+   twice: once for your own `await api.getXmppToken()` at line 222, and again
+   inside the `getToken` you hand to `createXmppCore`, which `connect()` calls
+   immediately. So `tokenCalls` is already 2 at line 259.
 
-### Follow-ups
--
+   Worse, the test does not exercise what the store actually does. The real
+   `real-store.ts:810` pre-fetches one token and hands it back from
+   `getToken` without a second network call — the store is right and the test
+   does not model it. Fix the test to mirror the store: pre-fetch once, serve
+   the first `getToken` from that value, and assert **exactly one** network call
+   for the initial connect, then that the reconnect fetches a fresh one. Then
+   run it and paste the output. A gated test that has never been executed is
+   worse than no test, because it looks like evidence.
+2. **Delete the spike now** (`apps/mobile/src/spike/**`). You had to re-implement
+   the two shims in `lib/polyfills.ts` because the spike is outside the Allowed
+   files, so the app now carries **two copies** of the same shims that will drift.
+   The spike has done its job — T-0004 is merged and this task is the real thing.
+   Delete `src/spike/` **and** `src/app/spike.tsx`, and say in the Report what you
+   deleted. Nothing may reference them afterwards; check that the bundle still
+   resolves, because `metro.config.js` must not be touched to achieve it.
+3. *(No change needed.)* `?mock=1` read from expo-router's global params, with
+   `EXPO_PUBLIC_GALENA_MOCK=1` as the native equivalent and the real store as
+   the default. Correct, and the mock does not ship as the default.
+4. *(No change needed.)* The `MessageList`/`Composer` changes for pagination and
+   typing chat-state, with components otherwise only swapping their
+   `useChatStore` import. That is the right size of change.
+
+### Follow-up for the lead, not this task
+- The remaining acceptance item is a screenshot of a real conversation. I can
+  take the simulator now that I know it is free, but it needs a signed-in
+  session on a build with `ExpoSecureStore`. If the code merges first, the next
+  task can capture it; the unit and live tests are the stronger evidence and
+  they now pass.
