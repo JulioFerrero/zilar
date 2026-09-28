@@ -2,6 +2,7 @@ import type {
   ChatSummary,
   MentionMember,
   MessageStatus,
+  ReactionsState,
   ReplyRef,
   UiMention,
   UiMessage,
@@ -102,6 +103,11 @@ export interface ChatStore {
   hasMore: (chatId: string) => boolean;
   sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
   sendVoice: (chatId: string, recording: VoiceRecording, options?: SendTextOptions) => void;
+  /**
+   * Toggles my reaction of `emoji` on a message and sends my complete set
+   * (XEP-0444). Optimistic; it reverts when the send fails.
+   */
+  react: (chatId: string, messageId: string, emoji: string) => void;
   sendTyping: (chatId: string) => void;
   createGroup: (title: string, memberIds: string[]) => Promise<string>;
   createInvite: () => Promise<string>;
@@ -116,6 +122,11 @@ export interface ChatStore {
 
 export type ChatStoreState = ChatStore & {
   messagesByChat: Record<string, UiMessage[]>;
+  /**
+   * XEP-0444 reaction updates by chat id, keyed by the alias-resolved target
+   * message id. Kept even for targets that are not loaded yet.
+   */
+  reactions: Record<string, ReactionsState>;
   activeChatId: string | undefined;
   historyComplete: Record<string, boolean>;
   /** Group details (people + AIs) by chat id, for the info panel. */
@@ -159,6 +170,43 @@ function withLastMessage(chats: ChatSummary[], chatId: string, message: UiMessag
   return chats.map((chat) =>
     chat.id === chatId ? { ...chat, lastMessage: message, unread: 0 } : chat,
   );
+}
+
+// Toggles my reaction on a mock message. Mock data carries the chips directly
+// instead of a separate reaction state, so this works on the message itself.
+function withToggledReaction(message: UiMessage, emoji: string, name: string): UiMessage {
+  const reactions = (message.reactions ?? []).map((reaction) => ({ ...reaction }));
+  const index = reactions.findIndex((reaction) => reaction.emoji === emoji);
+  if (index === -1) {
+    reactions.push({ emoji, count: 1, mine: true, reactors: [name] });
+  } else {
+    const reaction = reactions[index];
+    if (reaction !== undefined) {
+      if (reaction.mine) {
+        const count = reaction.count - 1;
+        const reactors = reaction.reactors.filter((reactor) => reactor !== name);
+        if (count <= 0) {
+          reactions.splice(index, 1);
+        } else {
+          reactions[index] = { ...reaction, count, mine: false, reactors };
+        }
+      } else {
+        reactions[index] = {
+          ...reaction,
+          count: reaction.count + 1,
+          mine: true,
+          reactors: [...reaction.reactors, name],
+        };
+      }
+    }
+  }
+  const next: UiMessage = { ...message };
+  if (reactions.length === 0) {
+    delete next.reactions;
+  } else {
+    next.reactions = reactions;
+  }
+  return next;
 }
 
 // The people and AIs of a group as mention members. The mock domain is fixed;
@@ -245,6 +293,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       contacts: seed.contacts ?? [],
       chats: seed.chats ?? mockChats,
       messagesByChat: cloneMessages(seed.messagesByChat ?? mockMessages),
+      reactions: {},
       activeChatId: undefined,
       historyComplete: {},
       groupInfos: { ...(seed.groupInfos ?? mockGroupDetails) },
@@ -309,6 +358,25 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       loadOlder: () => {},
       hasMore: () => false,
       sendTyping: () => {},
+      react: (chatId, messageId, emoji) => {
+        set((state) => {
+          const list = state.messagesByChat[chatId];
+          if (list === undefined) {
+            return state;
+          }
+          if (!list.some((item) => item.id === messageId)) {
+            return state;
+          }
+          return {
+            messagesByChat: {
+              ...state.messagesByChat,
+              [chatId]: list.map((item) =>
+                item.id === messageId ? withToggledReaction(item, emoji, 'You') : item,
+              ),
+            },
+          };
+        });
+      },
       createGroup: async () => {
         throw new Error('createGroup is not available in the mock store');
       },

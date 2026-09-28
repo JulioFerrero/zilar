@@ -7,12 +7,15 @@ import {
   buildJoinPresence,
   buildLeavePresence,
   buildMessage,
+  buildReactions,
   buildTyping,
   buildUploadSlotRequest,
   decodeMessageStanza,
   isMamResult,
   mamResultQueryId,
+  parseReactions,
   parseUploadSlot,
+  sanitizeReactions,
   type ParseContext,
 } from './stanza';
 import { MAX_BODY_BYTES, capBody, utf8ByteLength } from './text';
@@ -23,10 +26,12 @@ import {
   CHAT_STATES_NAMESPACE,
   DELAY_NAMESPACE,
   FORWARD_NAMESPACE,
+  HINTS_NAMESPACE,
   HTTP_UPLOAD_NAMESPACE,
   MAM_NAMESPACE,
   MUC_NAMESPACE,
   MUC_USER_NAMESPACE,
+  REACTIONS_NAMESPACE,
   REFERENCE_NAMESPACE,
   REPLY_NAMESPACE,
   STANZA_ID_NAMESPACE,
@@ -797,5 +802,168 @@ describe('decodeMessageStanza: hostile input', () => {
     expect(utf8ByteLength(capped)).toBeLessThanOrEqual(MAX_BODY_BYTES);
     expect(capped).not.toContain('\uFFFD');
     expect([...capped].every((character) => character === '😀')).toBe(true);
+  });
+});
+
+describe('XEP-0444 reactions', () => {
+  function reactionUpdate(targetId: string, emojis: string[]): XmppElement {
+    return xml(
+      'reactions',
+      { xmlns: REACTIONS_NAMESPACE, id: targetId },
+      ...emojis.map((emoji) => xml('reaction', {}, emoji)),
+    );
+  }
+
+  it('builds a body-less reactions message with the store hint', () => {
+    const stanza = buildReactions({
+      id: 'm-r1',
+      to: 'project@rooms.galena.localhost',
+      kind: 'groupchat',
+      targetId: 'sid-1',
+      emojis: ['👍', '❤️'],
+    });
+
+    expect(stanza.attrs).toMatchObject({
+      type: 'groupchat',
+      to: 'project@rooms.galena.localhost',
+      id: 'm-r1',
+    });
+    expect(stanza.getChild('body')).toBeUndefined();
+    const reactions = stanza.getChild('reactions', REACTIONS_NAMESPACE);
+    expect(reactions?.attrs['id']).toBe('sid-1');
+    expect(reactions?.getChildren('reaction').map((element) => element.text())).toEqual([
+      '👍',
+      '❤️',
+    ]);
+    expect(stanza.getChild('store', HINTS_NAMESPACE)).toBeDefined();
+  });
+
+  it('builds an empty element that clears my set', () => {
+    const stanza = buildReactions({
+      id: 'm-r2',
+      to: 'alice@galena.localhost',
+      kind: 'chat',
+      targetId: 'm-1',
+      emojis: [],
+    });
+    const reactions = stanza.getChild('reactions', REACTIONS_NAMESPACE);
+    expect(reactions?.attrs['id']).toBe('m-1');
+    expect(reactions?.getChildren('reaction')).toHaveLength(0);
+    expect(stanza.getChild('store', HINTS_NAMESPACE)).toBeDefined();
+  });
+
+  it('drops non-emoji, dedupes and caps the set at six', () => {
+    expect(
+      sanitizeReactions(['👍', 'hello', '👍', '😀', '😂', '😮', '😢', '🙏', '❤️', '1']),
+    ).toEqual(['👍', '😀', '😂', '😮', '😢', '🙏']);
+
+    const stanza = buildReactions({
+      id: 'm-r3',
+      to: 'alice@galena.localhost',
+      kind: 'chat',
+      targetId: 'm-1',
+      emojis: ['nope', '👍'],
+    });
+    const reactions = stanza.getChild('reactions', REACTIONS_NAMESPACE);
+    expect(reactions?.getChildren('reaction').map((element) => element.text())).toEqual(['👍']);
+  });
+
+  it('parses a body-less reaction update with its target', () => {
+    const stanza = xml(
+      'message',
+      { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-30' },
+      reactionUpdate('m-1', ['👍']),
+      xml('store', { xmlns: HINTS_NAMESPACE }),
+    );
+
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.body).toBeUndefined();
+    expect(message?.payload).toBeUndefined();
+    expect(message?.reactions).toEqual({ targetId: 'm-1', emojis: ['👍'] });
+  });
+
+  it('parses an empty element as a clear', () => {
+    expect(parseReactions(xml('message', {}, reactionUpdate('m-1', [])))).toEqual({
+      targetId: 'm-1',
+      emojis: [],
+    });
+  });
+
+  it('drops invalid reactions and caps the parsed set at six', () => {
+    const stanza = xml(
+      'message',
+      { from: 'alice@galena.localhost', type: 'chat', id: 'm-31' },
+      reactionUpdate('m-2', ['hi', '👍', '👍', '😀', '😂', '😮', '😢', '🙏', '❤️']),
+    );
+    expect(decodeMessageStanza(stanza, ctx).message?.reactions).toEqual({
+      targetId: 'm-2',
+      emojis: ['👍', '😀', '😂', '😮', '😢', '🙏'],
+    });
+  });
+
+  it('ignores a reactions element without a target id', () => {
+    const stanza = xml(
+      'message',
+      { from: 'alice@galena.localhost', type: 'chat', id: 'm-32' },
+      xml('reactions', { xmlns: REACTIONS_NAMESPACE }, xml('reaction', {}, '👍')),
+    );
+    expect(parseReactions(stanza)).toBeUndefined();
+    expect(decodeMessageStanza(stanza, ctx).message).toBeUndefined();
+  });
+
+  it('parses reactions inside a received carbon', () => {
+    const stanza = xml(
+      'message',
+      { from: 'bob@galena.localhost/laptop', to: 'bob@galena.localhost/laptop', type: 'chat' },
+      xml(
+        'received',
+        { xmlns: CARBONS_NAMESPACE },
+        xml(
+          'forwarded',
+          { xmlns: FORWARD_NAMESPACE },
+          xml(
+            'message',
+            {
+              from: 'alice@galena.localhost',
+              to: 'bob@galena.localhost',
+              type: 'chat',
+              id: 'm-33',
+            },
+            reactionUpdate('m-1', ['👍']),
+          ),
+        ),
+      ),
+    );
+
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.reactions).toEqual({ targetId: 'm-1', emojis: ['👍'] });
+  });
+
+  it('parses a group reaction inside a MAM result by its target id', () => {
+    const inner = xml(
+      'message',
+      { from: 'project@rooms.galena.localhost/alice', type: 'groupchat', id: 'm-34' },
+      reactionUpdate('sid-1', ['❤️']),
+      mucUser('alice@galena.localhost'),
+    );
+    const stanza = xml(
+      'message',
+      { from: 'project@rooms.galena.localhost', to: 'bob@galena.localhost/laptop' },
+      xml(
+        'result',
+        { xmlns: MAM_NAMESPACE, queryid: 'q1', id: 'archive-2' },
+        xml(
+          'forwarded',
+          { xmlns: FORWARD_NAMESPACE },
+          xml('delay', { xmlns: DELAY_NAMESPACE, stamp: '2026-09-26T07:00:00.000Z' }),
+          inner,
+        ),
+      ),
+    );
+
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.reactions).toEqual({ targetId: 'sid-1', emojis: ['❤️'] });
+    expect(message?.fromJid).toBe('alice@galena.localhost');
+    expect(message?.chatJid).toBe('project@rooms.galena.localhost');
   });
 });

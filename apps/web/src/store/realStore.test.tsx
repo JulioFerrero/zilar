@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createElement } from 'react';
 import { render, screen } from '@testing-library/react';
 import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
+import { AuthProvider } from '@/auth/AuthProvider';
 import { MessageBubble } from '@/components/MessageBubble';
+import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import type { DraftHubEvent } from '@/lib/drafts';
 import {
   CONNECT_RETRY_DELAYS_MS,
@@ -44,6 +45,30 @@ function message(overrides: Partial<ChatMessage> & { chatJid: string; body: stri
   };
 }
 
+function reactionMessage(overrides: {
+  id: string;
+  chatJid: string;
+  targetId: string;
+  emojis: string[];
+  timestamp: Date;
+  fromJid?: string;
+  fromNick?: string;
+  outgoing?: boolean;
+}): ChatMessage {
+  const result: ChatMessage = {
+    id: overrides.id,
+    chatJid: overrides.chatJid,
+    kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
+    fromJid: overrides.fromJid ?? 'ana@galena.test',
+    fromResolved: true,
+    timestamp: overrides.timestamp,
+    outgoing: overrides.outgoing ?? false,
+    reactions: { targetId: overrides.targetId, emojis: overrides.emojis },
+  };
+  if (overrides.fromNick !== undefined) result.fromNick = overrides.fromNick;
+  return result;
+}
+
 interface FakeXmpp {
   core: XmppCore;
   history: Record<string, ChatMessage[]>;
@@ -65,6 +90,7 @@ function fakeXmpp(): FakeXmpp {
     leaveRoom: vi.fn(async () => {}),
     occupants: vi.fn((): Occupant[] => []),
     sendMessage: vi.fn(async () => ({ id: 'srv-1' })),
+    sendReactions: vi.fn(async () => {}),
     requestUploadSlot: vi.fn(async () => ({
       putUrl: 'http://upload.galena.test/put/1',
       getUrl: 'http://upload.galena.test/get/1/voice.m4a',
@@ -750,14 +776,24 @@ describe('createRealChatStore', () => {
     }
 
     const { container } = render(
-      createElement(MessageBubble, {
-        message: last,
-        chat,
-        firstInGroup: true,
-        lastInGroup: true,
-        currentUserId: 'u-me',
-        onReply: () => {},
-      }),
+      <AuthProvider
+        value={{
+          status: 'authenticated',
+          user: { id: 'u-me', name: 'Me', email: 'me@galena.test' },
+          refetch: async () => {},
+        }}
+      >
+        <ChatStoreProvider store={store}>
+          <MessageBubble
+            message={last}
+            chat={chat}
+            firstInGroup
+            lastInGroup
+            currentUserId="u-me"
+            onReply={() => {}}
+          />
+        </ChatStoreProvider>
+      </AuthProvider>,
     );
 
     expect(screen.getByText('Dev-1')).toBeTruthy();
@@ -981,6 +1017,285 @@ describe('createRealChatStore', () => {
     await waitForRefresh();
 
     expect(getChats).toHaveBeenCalledTimes(1);
+  });
+
+  it('toggles my reaction, sends the set and shows the chip', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    store.getState().react('ana@galena.test', 'ana-1', '👍');
+    await flush();
+
+    expect(xmpp.core.sendReactions).toHaveBeenCalledWith('ana@galena.test', 'chat', 'ana-1', [
+      '👍',
+    ]);
+    expect(
+      store
+        .getState()
+        .messages('ana@galena.test')
+        .find((m) => m.id === 'ana-1')?.reactions,
+    ).toEqual([{ emoji: '👍', count: 1, mine: true, reactors: ['You'] }]);
+
+    store.getState().react('ana@galena.test', 'ana-1', '👍');
+    await flush();
+
+    expect(xmpp.core.sendReactions).toHaveBeenLastCalledWith(
+      'ana@galena.test',
+      'chat',
+      'ana-1',
+      [],
+    );
+    expect(
+      store
+        .getState()
+        .messages('ana@galena.test')
+        .find((m) => m.id === 'ana-1')?.reactions,
+    ).toBeUndefined();
+  });
+
+  it('reverts my optimistic reaction when the send fails', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    vi.mocked(xmpp.core.sendReactions).mockRejectedValueOnce(new Error('offline'));
+    store.getState().react('ana@galena.test', 'ana-1', '👍');
+    expect(
+      store
+        .getState()
+        .messages('ana@galena.test')
+        .find((m) => m.id === 'ana-1')?.reactions,
+    ).toEqual([{ emoji: '👍', count: 1, mine: true, reactors: ['You'] }]);
+
+    await flush();
+    expect(
+      store
+        .getState()
+        .messages('ana@galena.test')
+        .find((m) => m.id === 'ana-1')?.reactions,
+    ).toBeUndefined();
+  });
+
+  it('applies history reactions before and after the target message', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.history['ana@galena.test'] = [
+      reactionMessage({
+        id: 'r-1',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-1',
+        emojis: ['👍'],
+        timestamp: new Date('2026-09-28T09:01:00Z'),
+      }),
+      message({
+        id: 'ana-1',
+        chatJid: 'ana@galena.test',
+        body: 'older',
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+      }),
+      reactionMessage({
+        id: 'r-2',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-1',
+        emojis: ['👍', '❤️'],
+        timestamp: new Date('2026-09-28T09:02:00Z'),
+      }),
+    ];
+
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    const list = store.getState().messages('ana@galena.test');
+    expect(list.map((m) => m.id)).toEqual(['ana-1']);
+    expect(list[0]?.reactions).toEqual([
+      { emoji: '👍', count: 1, mine: false, reactors: ['Ana'] },
+      { emoji: '❤️', count: 1, mine: false, reactors: ['Ana'] },
+    ]);
+  });
+
+  it('applies a live reaction message without adding a bubble', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+    const before = store.getState().messages('ana@galena.test').length;
+
+    xmpp.emit(
+      'message',
+      reactionMessage({
+        id: 'r-live',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-1',
+        emojis: ['❤️'],
+        timestamp: new Date('2026-09-28T12:05:00Z'),
+      }),
+    );
+
+    const list = store.getState().messages('ana@galena.test');
+    expect(list).toHaveLength(before);
+    expect(list.find((m) => m.id === 'ana-1')?.reactions).toEqual([
+      { emoji: '❤️', count: 1, mine: false, reactors: ['Ana'] },
+    ]);
+    expect(store.getState().chats.find((c) => c.id === 'ana@galena.test')?.lastMessage?.id).toBe(
+      'ana-2',
+    );
+  });
+
+  it('renders a message that carries both a body and reactions', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+    const before = store.getState().messages('ana@galena.test').length;
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'ana-3',
+        chatJid: 'ana@galena.test',
+        body: 'text plus a reaction',
+        timestamp: new Date('2026-09-28T12:07:00Z'),
+        reactions: { targetId: 'ana-1', emojis: ['🎉'] },
+      }),
+    );
+
+    const list = store.getState().messages('ana@galena.test');
+    expect(list).toHaveLength(before + 1);
+    expect(list.find((m) => m.id === 'ana-3')?.text).toBe('text plus a reaction');
+    expect(list.find((m) => m.id === 'ana-1')?.reactions).toEqual([
+      { emoji: '🎉', count: 1, mine: false, reactors: ['Ana'] },
+    ]);
+  });
+
+  it('keeps a reaction for a message that is not loaded yet and shows it later', async () => {
+    const history: ChatMessage[] = Array.from({ length: 60 }, (_, index) =>
+      message({
+        id: `ana-${index}`,
+        chatJid: 'ana@galena.test',
+        body: `msg ${index}`,
+        timestamp: new Date(Date.UTC(2026, 8, 28, 8, index)),
+      }),
+    );
+    history.push(
+      reactionMessage({
+        id: 'r-old',
+        chatJid: 'ana@galena.test',
+        targetId: 'ana-0',
+        emojis: ['👍'],
+        timestamp: new Date(Date.UTC(2026, 8, 28, 8, 40)),
+      }),
+    );
+    const { store, xmpp } = await setup();
+    xmpp.history['ana@galena.test'] = history;
+
+    store.getState().openChat('ana@galena.test');
+    await flush();
+    expect(store.getState().messages('ana@galena.test')[0]?.id).toBe('ana-11');
+
+    store.getState().loadOlder('ana@galena.test');
+    await flush();
+
+    const first = store.getState().messages('ana@galena.test')[0];
+    expect(first?.id).toBe('ana-0');
+    expect(first?.reactions).toEqual([{ emoji: '👍', count: 1, mine: false, reactors: ['Ana'] }]);
+  });
+
+  it('targets group reactions by stanza-id and names the group member', async () => {
+    const getGroup = vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [{ userId: 'ana', name: 'Ana', role: 'member' as const }],
+      ais: [],
+    }));
+    const { store, xmpp } = await setup({ getGroup });
+    await flush();
+    store.getState().openChat('team@rooms.galena.test');
+    await flush();
+
+    xmpp.emit(
+      'message',
+      reactionMessage({
+        id: 'r-g',
+        chatJid: 'team@rooms.galena.test',
+        targetId: 'team-1',
+        emojis: ['👍'],
+        fromJid: 'ana@galena.test',
+        fromNick: 'ana',
+        timestamp: new Date('2026-09-28T12:02:00Z'),
+      }),
+    );
+
+    expect(store.getState().messages('team@rooms.galena.test')[0]?.reactions).toEqual([
+      { emoji: '👍', count: 1, mine: false, reactors: ['Ana'] },
+    ]);
+
+    store.getState().react('team@rooms.galena.test', 'team-1', '❤️');
+    expect(xmpp.core.sendReactions).toHaveBeenCalledWith(
+      'team@rooms.galena.test',
+      'groupchat',
+      'team-1',
+      ['❤️'],
+    );
+  });
+
+  it('matches a reaction to my optimistic message through the id alias', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    store.getState().sendText('ana@galena.test', 'hello');
+    await flush();
+    const local = store.getState().messages('ana@galena.test').at(-1)?.id;
+    if (local === undefined) {
+      throw new Error('the optimistic message was not stored');
+    }
+    expect(local).toBe('local-1');
+
+    store.getState().react('ana@galena.test', local, '👍');
+    expect(xmpp.core.sendReactions).toHaveBeenCalledWith('ana@galena.test', 'chat', 'srv-1', [
+      '👍',
+    ]);
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'srv-1',
+        chatJid: 'ana@galena.test',
+        body: 'hello',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        timestamp: new Date('2026-09-28T12:06:00Z'),
+      }),
+    );
+    await flush();
+
+    const echoed = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'srv-1');
+    expect(echoed?.reactions).toEqual([{ emoji: '👍', count: 1, mine: true, reactors: ['You'] }]);
+  });
+
+  it('does not react to a message whose server id is not known yet', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    // The send never resolves, so the optimistic message keeps its local id
+    // and has no server id to name: reacting must change nothing.
+    vi.mocked(xmpp.core.sendMessage).mockImplementationOnce(
+      () => new Promise<{ id: string }>(() => {}),
+    );
+    store.getState().sendText('ana@galena.test', 'still sending');
+    const local = store.getState().messages('ana@galena.test').at(-1)?.id;
+    if (local === undefined) {
+      throw new Error('the optimistic message was not stored');
+    }
+    expect(local.startsWith('local-')).toBe(true);
+
+    store.getState().react('ana@galena.test', local, '👍');
+
+    expect(xmpp.core.sendReactions).not.toHaveBeenCalled();
+    expect(store.getState().messages('ana@galena.test').at(-1)?.reactions).toBeUndefined();
   });
 });
 

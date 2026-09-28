@@ -37,6 +37,12 @@ export interface ChatMessage {
   payload?: Payload;
   replyTo?: { id: string; to?: string };
   /**
+   * XEP-0444 reactions carried by a body-less message: the target message id
+   * and the reactor's complete current set (empty clears it). Present only on
+   * a reaction update; it is not a chat message for display.
+   */
+  reactions?: MessageReactions;
+  /**
    * XEP-0372 mentions. Offsets are in UTF-16 code units (JS string indices);
    * `buildMessage` converts them to the XEP-0372 code-point offsets on the
    * wire and the parser converts them back.
@@ -46,6 +52,14 @@ export interface ChatMessage {
   timestamp: Date;
   /** Sent by me, including room reflections and carbons. */
   outgoing: boolean;
+}
+
+/** One XEP-0444 reaction update: the target's id and the reactor's set. */
+export interface MessageReactions {
+  /** The target message id: its stanza-id in groups, the message id in DMs. */
+  targetId: string;
+  /** The reactor's complete current set; empty means the reaction was cleared. */
+  emojis: string[];
 }
 
 /** One XEP-0372 mention reference, with offsets when they are usable. */
@@ -187,6 +201,12 @@ export interface XmppCore {
     text: string,
     opts?: SendMessageOptions,
   ): Promise<{ id: string }>;
+  /**
+   * Sends my complete XEP-0444 reaction set for a message (XEP-0444). An empty
+   * `emojis` array clears my reactions. Invalid emoji are dropped and the set
+   * is capped at six distinct reactions.
+   */
+  sendReactions(chatJid: string, kind: ChatKind, targetId: string, emojis: string[]): Promise<void>;
   loadHistory(chatJid: string, kind: ChatKind, opts?: LoadHistoryOptions): Promise<HistoryPage>;
   /** Asks the HTTP upload service for a slot to PUT a file to (XEP-0363). */
   requestUploadSlot(request: UploadRequest): Promise<UploadSlot>;

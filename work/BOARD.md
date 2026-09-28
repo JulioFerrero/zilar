@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0059](T-0059-reactions-web.md) | Reactions (web): XEP-0444 with a store hint, quick bar, chips | in progress | deepseek-v4.1-flash | T-0053, T-0055 | Then: edit + delete for everyone (web). |
 | [T-0060](T-0060-web-qa-sweep.md) | Web QA sweep (mock mode, both widths, a11y, console): prioritized bug list, no code changes | in progress | deepseek-v4.1-flash | T-0057 | Feeds the next polish tasks. |
 | [T-0061](T-0061-edit-delete-web.md) | Edit + delete for everyone (web): XEP-0308, XEP-0424, edit bar, tombstones; gateway ignores both | planned (after T-0059) | deepseek-v4.1-flash | T-0059 | Same files as T-0059, so it runs after. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
@@ -91,3 +90,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0057](T-0057-web-polish-retry-models.md) | Web polish: Retry keeps the loaded chat list (pending button only); model picker suggestions as raised rows with a SUGGESTED caption | 2026-09-28 |
 | [T-0055](T-0055-ai-in-groups-web.md) | AIs in groups (web): group panel, add/remove my AI, AIs in the @ picker, AI replies with badge and Markdown | 2026-09-28 |
 | [T-0058](T-0058-ai-costs.md) | AI costs: today/30-day spend in the panel and AIs list, soft per-day limit enforced before each turn | 2026-09-28 |
+| [T-0059](T-0059-reactions-web.md) | Reactions (web): XEP-0444 quick bar, chips, MAM persistence, DMs and groups | 2026-09-28 |
