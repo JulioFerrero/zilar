@@ -10,6 +10,7 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 |---|---|---|---|---|---|
 
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0027](T-0027-mobile-real-data.md) | Mobile on real data: real DMs and groups via xmpp-core, history, typing, receipts, live updates. **Last piece of M1** | todo | v4-flash | T-0004, T-0024, T-0025, T-0026 | Unblocked by T-0004 + T-0026. Must not touch metro.config.js |
 | T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely. Queued: collides with T-0007/T-0009 on apps/server |
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | Queued: collides with T-0007 on apps/server |
 
