@@ -66,27 +66,43 @@ function defaultPrint(line: string): void {
 // Prints the outcome of stopping one process: `stop <pid> <exe>` for clean
 // stops, `could not stop <pid> <exe>` for survivors. Executable name only;
 // argv is never printed (it often carries `--token=…`, `-e PASSWORD=…`, etc.).
+// When the executable name is empty (ps truncated it or it was a kernel
+// thread) we print `?` rather than a trailing space.
 function printStop(
   outcome: { pid: number; command: string; survived: boolean },
   print: (line: string) => void,
 ): void {
+  const name = outcome.command.length === 0 ? '?' : outcome.command;
   if (outcome.survived) {
-    print(`could not stop ${outcome.pid} ${outcome.command}`);
+    print(`could not stop ${outcome.pid} ${name}`);
   } else {
-    print(`stop ${outcome.pid} ${outcome.command}`);
+    print(`stop ${outcome.pid} ${name}`);
   }
 }
 
 // Stops processes left in the worktree. Called only on the success path,
 // immediately before `git worktree remove`: a failed merge must not kill
 // the worker's dev servers (the spec calls this out). Survivors are reported
-// via `print` so the lead sees them.
+// via `print` so the lead sees them. A failure of the lsof/ps probe (e.g.
+// the binary missing on this host) is reported as one line and we move on:
+// leaving a stale dev server behind is recoverable by re-running
+// `lead merge`, but a hard throw here would leave the merge half-applied.
 async function stopWorktreeProcessesForMerge(options: MergeOptions): Promise<void> {
   const find = options.findProcs ?? findProcessesInWorktree;
   const stop = options.stopProcs ?? stopWorktreeProcesses;
   const findDeps = options.findProcsDeps ?? defaultFindProcsDeps();
-  const stopped = await stop(find(options.worktree, findDeps), options.stopProcsDeps ?? {});
   const print = options.print ?? defaultPrint;
+  let candidates;
+  try {
+    candidates = find(options.worktree, findDeps);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    print(
+      `could not list worktree processes: ${reason}; re-run \`lead merge ${options.task}\` to finish removal`,
+    );
+    return;
+  }
+  const stopped = await stop(candidates, options.stopProcsDeps ?? {});
   for (const outcome of stopped) {
     printStop(outcome, print);
   }

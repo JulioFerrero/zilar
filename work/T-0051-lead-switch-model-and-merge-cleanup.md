@@ -198,6 +198,30 @@ Seven items from the lead's review. All Checks pass; see numbers below.
   ```
   23 new tests since round 1 (268 → 291), covering each of the seven review items.
 
+## Round 3 (strict interrupt)
+
+Round 3 fix-up: round-2 made `interrupt` too lenient (it returned void on already_idle/not_found, which broke `lead reply`'s fail-fast contract). Tightened back to round-1 strict semantics, kept `tryInterrupt` for the switch-model path only, and added two nits.
+
+1. **`OpencodeCliClient.interrupt` is strict again.** Calls `this.call()` and re-throws on any non-zero exit, exactly as it did in round 1. The `{"interrupted":false}` exit-0 case still resolves (round-1 behavior). `tryInterrupt` keeps the lenient classification; only `switchModel` uses it. `lead reply` (`reply.ts:32`) and any future autopilot caller of `interrupt` now fail fast on a dead session, as the spec requires.
+
+2. **`FakeOpenCodeClient.interrupt` mirrors the strict real one.** Throws on `error`, `already_idle`, and `not_found` outcomes; resolves only on `ok`. The fake's `tryInterrupt` still returns the discriminated outcome (used by `switchModel`). Four new tests pin this: scripted-error-throws, scripted-already_idle-throws, unknown-session-throws, ok-resolves.
+
+3. **`stop <pid> ?` for empty executable names.** `printStop` now substitutes `?` when `executableBasename` returns `''` (ps truncated the command, or it was a kernel thread). No trailing space. New merge test pins it.
+
+4. **Probe failure prints a clear line, not a throw.** `stopWorktreeProcessesForMerge` wraps `find(options.worktree, findDeps)` in try/catch. On failure it prints `could not list worktree processes: <reason>; re-run \`lead merge <task>\` to finish removal` and returns — leaving the merge half-applied via a hard throw would be worse than a stale dev server. New merge test pins it.
+
+### Checks (Round 3, real results)
+
+- `pnpm exec prettier --check 'packages/**/*.ts' 'work/T-0051*.md'`: `All matched files use Prettier code style!` (the only `format:check` warning is on the untracked `PREREVIEW.md`, which is the lead's file).
+- `pnpm lint`: `oxlint .` clean, exit 0.
+- `pnpm typecheck`: `Tasks: 9 successful, 9 total`, devtools clean.
+- `pnpm exec turbo test --force --filter=@galena/devtools`:
+  ```
+  Test Files  14 passed (14)
+       Tests  297 passed (297)
+  ```
+  6 new tests since round 2 (291 → 297): 4 on `FakeOpenCodeClient.interrupt` (strict), 1 on `stop <pid> ?`, 1 on probe-failure print.
+
 ### Problems
 
 None open. The `lead switch-model` test had one initial hiccup where I tried to spread a `FakeOpenCodeClient` instance to override one method; that loses prototype methods. The fix was to build an explicit `OpenCodeClient` literal in the test — same number of lines, no spread trick.

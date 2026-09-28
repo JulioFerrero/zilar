@@ -125,3 +125,34 @@ describe('FakeOpenCodeClient.tryInterrupt', () => {
     expect(client.interrupted).toEqual([]);
   });
 });
+
+describe('FakeOpenCodeClient.interrupt (strict)', () => {
+  // `interrupt` mirrors OpencodeCliClient.interrupt exactly: it throws on
+  // any non-ok outcome so old call sites (lead reply, autopilot) fail
+  // fast when a session is gone.
+  it('throws on a scripted error outcome', async () => {
+    const client = new FakeOpenCodeClient();
+    client.addSession('ses_1', { messages: [], permissions: [] });
+    client.scriptInterrupt('ses_1', { kind: 'error', message: 'upstream timeout' });
+    await expect(client.interrupt('ses_1')).rejects.toThrow(/upstream timeout/);
+  });
+
+  it('throws on a scripted already_idle outcome (real strict method would too)', async () => {
+    const client = new FakeOpenCodeClient();
+    client.addSession('ses_1', { messages: [], permissions: [] });
+    client.scriptInterrupt('ses_1', { kind: 'already_idle' });
+    await expect(client.interrupt('ses_1')).rejects.toThrow(/already_idle/);
+  });
+
+  it('throws on a not_found outcome for an unknown session id', async () => {
+    const client = new FakeOpenCodeClient();
+    await expect(client.interrupt('ses_missing')).rejects.toThrow(/not_found/);
+  });
+
+  it('resolves only on an ok outcome', async () => {
+    const client = new FakeOpenCodeClient();
+    client.addSession('ses_1', { messages: [], permissions: [] });
+    await expect(client.interrupt('ses_1')).resolves.toBeUndefined();
+    expect(client.interrupted).toEqual(['ses_1']);
+  });
+});

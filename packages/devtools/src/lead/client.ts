@@ -200,11 +200,12 @@ export class OpencodeCliClient implements OpenCodeClient {
     child.unref();
   }
 
+  // Throws on any non-zero exit. `lead reply` and the autopilot use this and
+  // must fail fast when a session is gone — they don't have a quota-fallback
+  // path that can tolerate a dead session. Only `lead switch-model` uses the
+  // lenient `tryInterrupt` below.
   async interrupt(sessionId: string): Promise<void> {
-    const outcome = await this.tryInterrupt(sessionId);
-    if (outcome.kind === 'error') {
-      throw new Error(outcome.message);
-    }
+    this.call('session.interrupt', { sessionID: sessionId }, undefined, false);
   }
 
   // Classifies the CLI's exit into a discriminated outcome so callers can
@@ -350,8 +351,19 @@ export class FakeOpenCodeClient implements OpenCodeClient {
     this.prompted.push({ sessionId, text });
   }
 
+  // Mirrors the real OpencodeCliClient.interrupt exactly: any non-ok
+  // outcome (including a scripted error, an idle session, or an unknown
+  // session id) throws. The lenient `tryInterrupt` below is reserved for
+  // `lead switch-model`'s quota-fallback path.
   async interrupt(sessionId: string): Promise<void> {
-    await this.tryInterrupt(sessionId);
+    const outcome = await this.tryInterrupt(sessionId);
+    if (outcome.kind !== 'ok') {
+      throw new Error(
+        outcome.kind === 'error'
+          ? outcome.message
+          : `session.interrupt ${sessionId} returned ${outcome.kind}`,
+      );
+    }
   }
 
   async tryInterrupt(sessionId: string): Promise<InterruptOutcome> {

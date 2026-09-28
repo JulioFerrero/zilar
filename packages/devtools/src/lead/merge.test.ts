@@ -360,4 +360,54 @@ describe('mergeTask process cleanup', () => {
     expect(lines[0]).not.toContain('apps/server');
     expect(lines[0]).not.toContain('8082');
   });
+
+  it('prints "stop <pid> ?" when the executable name is empty (no trailing space)', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    const lines: string[] = [];
+    await mergeTask({
+      ...options(harness),
+      // An empty executable name (e.g. ps truncated it or a kernel thread).
+      findProcs: () => [{ pid: 41, command: '' }],
+      stopProcs: async (candidates) =>
+        candidates.map((entry) => ({
+          pid: entry.pid,
+          command: executableBasename(entry.command),
+          survived: false,
+        })),
+      print: (line) => lines.push(line),
+    });
+    expect(lines).toEqual(['stop 41 ?']);
+    expect(lines[0]).not.toMatch(/ $/);
+  });
+
+  it('prints a clear line (no throw) when the process probe fails', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    const lines: string[] = [];
+    let stopCalled = false;
+    await expect(
+      mergeTask({
+        ...options(harness),
+        findProcs: () => {
+          throw new Error('lsof not found');
+        },
+        stopProcs: async () => {
+          stopCalled = true;
+          return [];
+        },
+        print: (line) => lines.push(line),
+      }),
+    ).resolves.toBeUndefined();
+    // One line, not a throw. The lead can read it and re-run.
+    expect(lines).toEqual([
+      'could not list worktree processes: lsof not found; re-run `lead merge T-0099` to finish removal',
+    ]);
+    // We didn't even try to stop anything: probe failed first.
+    expect(stopCalled).toBe(false);
+  });
 });
