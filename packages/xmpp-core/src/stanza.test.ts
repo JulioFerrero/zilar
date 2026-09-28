@@ -27,6 +27,7 @@ import {
   MAM_NAMESPACE,
   MUC_NAMESPACE,
   MUC_USER_NAMESPACE,
+  REFERENCE_NAMESPACE,
   REPLY_NAMESPACE,
   STANZA_ID_NAMESPACE,
 } from './namespaces';
@@ -512,6 +513,221 @@ describe('decodeMessageStanza: archived results', () => {
   it('prefers the archive stanza-id over the result id', () => {
     const stanza = archived({ queryId: 'q1', archiveId: 'archive-1', withStanzaId: true });
     expect(decodeMessageStanza(stanza, ctx).message?.id).toBe('sid-1');
+  });
+});
+
+describe('decodeMessageStanza: XEP-0372 mentions', () => {
+  function reference(attrs: Record<string, string>): XmppElement {
+    return xml('reference', { xmlns: REFERENCE_NAMESPACE, ...attrs });
+  }
+
+  it('builds one reference per mention with code-point offsets', () => {
+    const stanza = buildMessage({
+      id: 'm-20',
+      to: 'project@rooms.galena.localhost',
+      kind: 'groupchat',
+      text: 'hi 😀 @Ana and @Luis',
+      mentions: [
+        { jid: 'ana@galena.localhost', begin: 6, end: 10 },
+        { jid: 'luis@galena.localhost', begin: 15, end: 20 },
+      ],
+    });
+
+    const references = stanza.getChildren('reference', REFERENCE_NAMESPACE);
+    expect(references).toHaveLength(2);
+    // The emoji is one code point, so each offset is two lower than the UTF-16
+    // index the caller passed.
+    expect(references[0]?.attrs).toMatchObject({
+      type: 'mention',
+      uri: 'xmpp:ana@galena.localhost',
+      begin: '5',
+      end: '9',
+    });
+    expect(references[1]?.attrs).toMatchObject({
+      type: 'mention',
+      uri: 'xmpp:luis@galena.localhost',
+      begin: '14',
+      end: '19',
+    });
+  });
+
+  it('builds no references without mentions', () => {
+    const stanza = buildMessage({
+      id: 'm-21',
+      to: 'project@rooms.galena.localhost',
+      kind: 'groupchat',
+      text: 'plain',
+    });
+    expect(stanza.getChildren('reference', REFERENCE_NAMESPACE)).toHaveLength(0);
+  });
+
+  it('skips invalid ranges and caps at twenty mentions', () => {
+    const text = 'hi there';
+    const invalid = [
+      { jid: 'a@galena.localhost', begin: -1, end: 2 },
+      { jid: 'b@galena.localhost', begin: 2, end: 2 },
+      { jid: 'c@galena.localhost', begin: 5, end: 3 },
+      { jid: 'd@galena.localhost', begin: 0, end: text.length + 1 },
+      { jid: 'e@galena.localhost', begin: 1.5, end: 3 },
+    ];
+    const valid = Array.from({ length: 25 }, (_, index) => ({
+      jid: `u${index}@galena.localhost`,
+      begin: 0,
+      end: 2,
+    }));
+    const stanza = buildMessage({
+      id: 'm-29',
+      to: 'project@rooms.galena.localhost',
+      kind: 'groupchat',
+      text,
+      mentions: [...invalid, ...valid],
+    });
+
+    const references = stanza.getChildren('reference', REFERENCE_NAMESPACE);
+    expect(references).toHaveLength(20);
+    expect(references[0]?.attrs['uri']).toBe('xmpp:u0@galena.localhost');
+    expect(references[19]?.attrs['uri']).toBe('xmpp:u19@galena.localhost');
+  });
+
+  it('round trips mentions through build and parse', () => {
+    const built = buildMessage({
+      id: 'm-22',
+      to: 'project@rooms.galena.localhost',
+      kind: 'groupchat',
+      text: 'hi 😀 @Ana',
+      mentions: [{ jid: 'ana@galena.localhost', begin: 6, end: 10 }],
+    });
+    const stanza = xml(
+      'message',
+      {
+        from: 'project@rooms.galena.localhost/alice',
+        to: 'bob@galena.localhost',
+        type: 'groupchat',
+        id: 'm-22',
+      },
+      ...built.children,
+      mucUser('alice@galena.localhost'),
+    );
+
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.mentions).toEqual([{ jid: 'ana@galena.localhost', begin: 6, end: 10 }]);
+  });
+
+  it('parses a mention and lowers the bare JID, dropping resource and query', () => {
+    const stanza = xml(
+      'message',
+      { from: 'alice@galena.localhost', type: 'chat', id: 'm-23' },
+      xml('body', {}, 'hey @Ana'),
+      reference({
+        type: 'mention',
+        uri: 'xmpp:ANA@Galena.Localhost/resource?query=1',
+        begin: '4',
+        end: '8',
+      }),
+    );
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.mentions).toEqual([{ jid: 'ana@galena.localhost', begin: 4, end: 8 }]);
+  });
+
+  it('keeps the JID and drops out-of-range or reversed offsets', () => {
+    const cases: Array<Record<string, string>> = [
+      { begin: '3', end: '3' },
+      { begin: '9', end: '20' },
+      { begin: 'x', end: '8' },
+      { begin: '4' },
+    ];
+    for (const offsets of cases) {
+      const stanza = xml(
+        'message',
+        { from: 'alice@galena.localhost', type: 'chat', id: 'm-24' },
+        xml('body', {}, 'hey @Ana'),
+        reference({ type: 'mention', uri: 'xmpp:ana@galena.localhost', ...offsets }),
+      );
+      const { message } = decodeMessageStanza(stanza, ctx);
+      expect(message?.mentions).toEqual([{ jid: 'ana@galena.localhost' }]);
+    }
+  });
+
+  it('drops a bad URI, a non-xmpp URI and a wrong reference type', () => {
+    const stanza = xml(
+      'message',
+      { from: 'alice@galena.localhost', type: 'chat', id: 'm-25' },
+      xml('body', {}, 'hey'),
+      reference({ type: 'mention', uri: 'xmpp:not-a-jid', begin: '0', end: '3' }),
+      reference({ type: 'mention', uri: 'https://example.com', begin: '0', end: '3' }),
+      reference({ type: 'reply', uri: 'xmpp:ana@galena.localhost', begin: '0', end: '3' }),
+    );
+    expect(decodeMessageStanza(stanza, ctx).message?.mentions).toBeUndefined();
+  });
+
+  it('caps a message at twenty mentions', () => {
+    const references = Array.from({ length: 25 }, (_, index) =>
+      reference({ type: 'mention', uri: `xmpp:u${index}@galena.localhost` }),
+    );
+    const stanza = xml(
+      'message',
+      { from: 'alice@galena.localhost', type: 'chat', id: 'm-26' },
+      xml('body', {}, 'many'),
+      ...references,
+    );
+    const mentions = decodeMessageStanza(stanza, ctx).message?.mentions ?? [];
+    expect(mentions).toHaveLength(20);
+    expect(mentions[0]?.jid).toBe('u0@galena.localhost');
+    expect(mentions[19]?.jid).toBe('u19@galena.localhost');
+  });
+
+  it('parses mentions inside a forwarded carbon', () => {
+    const stanza = xml(
+      'message',
+      { from: 'bob@galena.localhost/laptop', type: 'chat' },
+      xml(
+        'received',
+        { xmlns: CARBONS_NAMESPACE },
+        xml(
+          'forwarded',
+          { xmlns: FORWARD_NAMESPACE },
+          xml(
+            'message',
+            {
+              from: 'alice@galena.localhost',
+              to: 'bob@galena.localhost',
+              type: 'chat',
+              id: 'm-27',
+            },
+            xml('body', {}, 'hey @Ana'),
+            reference({ type: 'mention', uri: 'xmpp:ana@galena.localhost', begin: '4', end: '8' }),
+          ),
+        ),
+      ),
+    );
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.mentions).toEqual([{ jid: 'ana@galena.localhost', begin: 4, end: 8 }]);
+  });
+
+  it('parses mentions inside a MAM result', () => {
+    const inner = xml(
+      'message',
+      { from: 'project@rooms.galena.localhost/alice', type: 'groupchat', id: 'm-28' },
+      xml('body', {}, 'hey @Ana'),
+      reference({ type: 'mention', uri: 'xmpp:ana@galena.localhost', begin: '4', end: '8' }),
+      mucUser('alice@galena.localhost'),
+    );
+    const stanza = xml(
+      'message',
+      { from: 'project@rooms.galena.localhost', to: 'bob@galena.localhost/laptop' },
+      xml(
+        'result',
+        { xmlns: MAM_NAMESPACE, queryid: 'q1', id: 'archive-1' },
+        xml(
+          'forwarded',
+          { xmlns: FORWARD_NAMESPACE },
+          xml('delay', { xmlns: DELAY_NAMESPACE, stamp: '2026-09-26T07:00:00.000Z' }),
+          inner,
+        ),
+      ),
+    );
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.mentions).toEqual([{ jid: 'ana@galena.localhost', begin: 4, end: 8 }]);
   });
 });
 

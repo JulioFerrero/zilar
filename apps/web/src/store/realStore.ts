@@ -1,4 +1,13 @@
-import type { ChatSummary, MessageStatus, ReplyRef, UiMessage, VoiceMeta } from '@galena/chat-core';
+import type {
+  ChatSummary,
+  MentionMember,
+  MessageStatus,
+  ReplyRef,
+  UiMention,
+  UiMessage,
+  VoiceMeta,
+} from '@galena/chat-core';
+import { mentionsForTrimmedText } from '@galena/chat-core';
 import { clearChatListCache, readChatListCache, writeChatListCache } from './chatListCache';
 import {
   createXmppCore,
@@ -160,6 +169,12 @@ function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
   return chat.kind === 'group' ? 'groupchat' : 'chat';
 }
 
+function mentionLocalpart(jid: string): string {
+  const bare = jid.split('/')[0] ?? jid;
+  const at = bare.indexOf('@');
+  return at === -1 ? bare : bare.slice(0, at);
+}
+
 function sortMessages(messages: UiMessage[]): UiMessage[] {
   return [...messages].sort(
     (left, right) =>
@@ -288,8 +303,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const pendingOutgoing = new Map<string, string[]>();
     const messageAliases = new Map<string, string>();
     const groupIds = new Map<string, string>();
-    // chatId -> (lowercased userId -> display name)
-    const groupMembers = new Map<string, Map<string, string>>();
+    // chatId -> (lowercased user id -> member)
+    const groupMembers = new Map<string, Map<string, MentionMember>>();
     const loadingGroupMembers = new Set<string>();
     const loadingOlder = new Set<string>();
     // First-page history loads currently in flight, by chat id.
@@ -451,8 +466,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (localpart === undefined) {
         return undefined;
       }
-      const name = members.get(localpart);
-      return name !== undefined && name !== '' ? name : undefined;
+      const member = members.get(localpart);
+      return member !== undefined && member.name !== '' ? member.name : undefined;
     }
 
     function occupantNameFor(chatId: string, fromJid: string): string | undefined {
@@ -505,20 +520,28 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     // Loads the member names of a group once per chat, so a typing indicator
     // or a message from a member who is not a contact can still show a name.
+    // The mention picker reads the same list.
     async function ensureGroupMembers(chatId: string): Promise<void> {
       if (groupMembers.has(chatId) || loadingGroupMembers.has(chatId)) {
         return;
       }
       const groupId = groupIds.get(chatId);
-      if (groupId === undefined) {
+      const mine = myJid();
+      if (groupId === undefined || mine === undefined) {
         return;
       }
+      const at = mine.indexOf('@');
+      if (at === -1) {
+        return;
+      }
+      const domain = mine.slice(at + 1);
       loadingGroupMembers.add(chatId);
       try {
         const detail = await api.getGroup(groupId);
-        const members = new Map<string, string>();
+        const members = new Map<string, MentionMember>();
         for (const member of detail.members) {
-          members.set(member.userId.toLowerCase(), member.name);
+          const localpart = member.userId.toLowerCase();
+          members.set(localpart, { jid: `${localpart}@${domain}`, name: member.name });
         }
         groupMembers.set(chatId, members);
       } catch {
@@ -526,6 +549,27 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       } finally {
         loadingGroupMembers.delete(chatId);
       }
+    }
+
+    // Maps the usable mentions of a message to names: the known group member,
+    // else the text the range covers, else the JID's localpart.
+    function mentionsFor(message: ChatMessage): UiMention[] {
+      const body = message.body;
+      if (body === undefined || message.mentions === undefined) {
+        return [];
+      }
+      const mentions: UiMention[] = [];
+      for (const mention of message.mentions) {
+        const { begin, end } = mention;
+        if (begin === undefined || end === undefined) continue;
+        if (begin < 0 || begin >= end || end > body.length) continue;
+        const textAtRange = body.slice(begin, end);
+        const name =
+          groupMemberNameFor(message.chatJid, mention.jid) ??
+          (textAtRange !== '' ? textAtRange : mentionLocalpart(mention.jid));
+        mentions.push({ jid: mention.jid, name, begin, end });
+      }
+      return mentions;
     }
 
     function toUiMessage(message: ChatMessage, meId: string): UiMessage {
@@ -549,6 +593,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           senderName: referenced?.senderName ?? '',
           ...(referenced?.text === undefined ? {} : { text: referenced.text }),
         };
+      }
+      const mentions = mentionsFor(message);
+      if (mentions.length > 0) {
+        ui.mentions = mentions;
       }
       if (message.payload !== undefined && message.payload.type === 'voice') {
         ui.voice = message.payload.data;
@@ -1283,6 +1331,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       drafts: {},
       finishedDraftMessages: {},
       messages: (chatId) => get().messagesByChat[chatId] ?? [],
+      groupMembers: (chatId) => [...(groupMembers.get(chatId)?.values() ?? [])],
       hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
       openChat: (chatId) => {
         set({ activeChatId: chatId });
@@ -1316,6 +1365,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (trimmed.length === 0 || chat === undefined) {
           return;
         }
+        const mentions = mentionsForTrimmedText(text, trimmed, options?.mentions ?? []);
         sequence += 1;
         const localId = `local-${sequence}`;
         const replyTo = options?.replyTo;
@@ -1327,6 +1377,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           text: trimmed,
           createdAt: now(),
           status: 'sending',
+          ...(mentions.length === 0 ? {} : { mentions }),
           ...(replyTo === undefined ? {} : { replyTo }),
         };
         const signature = signatureFor(chatId, trimmed, replyTo);
@@ -1339,12 +1390,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           return;
         }
         core
-          .sendMessage(
-            chatId,
-            coreKind(chat),
-            trimmed,
-            replyTo === undefined ? undefined : { replyTo: { id: replyTo.id } },
-          )
+          .sendMessage(chatId, coreKind(chat), trimmed, {
+            ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+            ...(mentions.length === 0
+              ? {}
+              : {
+                  mentions: mentions.map((mention) => ({
+                    jid: mention.jid,
+                    begin: mention.begin,
+                    end: mention.end,
+                  })),
+                }),
+          })
           .then((sent) => {
             linkMessageIds(localId, sent.id);
             updateMessageStatus(chatId, localId, 'sent');

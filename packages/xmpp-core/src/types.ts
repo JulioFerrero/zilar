@@ -36,10 +36,33 @@ export interface ChatMessage {
   /** Decoded with `decodePayload`; invalid payloads are dropped. */
   payload?: Payload;
   replyTo?: { id: string; to?: string };
+  /**
+   * XEP-0372 mentions. Offsets are in UTF-16 code units (JS string indices);
+   * `buildMessage` converts them to the XEP-0372 code-point offsets on the
+   * wire and the parser converts them back.
+   */
+  mentions?: Mention[];
   /** From `<delay/>` or the archive; receive time when neither is present. */
   timestamp: Date;
   /** Sent by me, including room reflections and carbons. */
   outgoing: boolean;
+}
+
+/** One XEP-0372 mention reference, with offsets when they are usable. */
+export interface Mention {
+  /** Bare JID of the mentioned account, lowercased. */
+  jid: string;
+  /** Start offset in UTF-16 code units, when the reference carried one. */
+  begin?: number;
+  /** End offset (exclusive) in UTF-16 code units, when it carried one. */
+  end?: number;
+}
+
+/** A mention to put on an outgoing message. */
+export interface MentionInput {
+  jid: string;
+  begin: number;
+  end: number;
 }
 
 /** One present occupant of a room, tracked from that room's MUC presence. */
@@ -113,6 +136,8 @@ export interface RosterEvent {
 export interface SendMessageOptions {
   payload?: Payload;
   replyTo?: { id: string; to?: string };
+  /** Offsets are UTF-16 code units; `buildMessage` writes them as code points. */
+  mentions?: MentionInput[];
 }
 
 /** A file we want to upload through XEP-0363. */

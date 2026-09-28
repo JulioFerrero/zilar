@@ -1,4 +1,14 @@
-import { formatDuration, type ReplyRef } from '@galena/chat-core';
+import {
+  filterMentionMembers,
+  findMentionQuery,
+  formatDuration,
+  insertMention,
+  isMentionOfMe,
+  rebaseMentions,
+  type MentionMember,
+  type ReplyRef,
+  type UiMention,
+} from '@galena/chat-core';
 import { ArrowUp, Mic, Paperclip, Smile, X } from 'lucide-react';
 import {
   useEffect,
@@ -7,6 +17,7 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { MentionPicker } from './MentionPicker';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { Well } from './ui/well';
@@ -16,6 +27,8 @@ import { useChatStore } from '@/store/ChatStoreProvider';
 const LINE_HEIGHT = 22;
 const MAX_LINES = 6;
 const SLIDE_CANCEL_PX = 60;
+const MENTION_MAX_ROWS = 6;
+const MENTION_PICKER_ID = 'mention-picker';
 
 interface PressState {
   startX: number;
@@ -34,6 +47,12 @@ export function Composer({
 }) {
   const store = useChatStore();
   const [value, setValue] = useState('');
+  const [mentions, setMentions] = useState<UiMention[]>([]);
+  const [picker, setPicker] = useState<{ start: number; query: string } | undefined>(undefined);
+  const [activeIndex, setActiveIndex] = useState(0);
+  // The chat the tracked mentions belong to. Kept in state so a chat switch can
+  // reset them during render (React's "adjust state when a prop changes").
+  const [trackedChatId, setTrackedChatId] = useState(chatId);
   const [recording, setRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [cancelArmed, setCancelArmed] = useState(false);
@@ -42,12 +61,48 @@ export function Composer({
   const lastTypingRef = useRef(0);
   const recorderRef = useRef<VoiceRecorder | null>(null);
   const pressRef = useRef<PressState | null>(null);
+  // Set when a pick or a mention deletion decides where the caret goes; applied
+  // after the controlled value has been committed to the textarea.
+  const pendingCaretRef = useRef<number | undefined>(undefined);
+  // A mention picked in one chat must never be sent into another: when the chat
+  // changes, drop the tracked mentions and any open picker during render. The
+  // draft text itself stays, as it did before.
+  if (trackedChatId !== chatId) {
+    setTrackedChatId(chatId);
+    setMentions([]);
+    setPicker(undefined);
+    setActiveIndex(0);
+  }
   const canSend = value.trim().length > 0;
   const title = store.chats.find((chat) => chat.id === chatId)?.title;
   const placeholder = title === undefined ? 'Message' : `Message ${title}`;
+  const isGroup = store.chats.find((chat) => chat.id === chatId)?.kind === 'group';
+  const meJid = store.me?.jid ?? undefined;
+  const members = isGroup
+    ? store.groupMembers(chatId).filter((member) => !isMentionOfMe(member.jid, meJid))
+    : [];
+  const candidates =
+    picker === undefined
+      ? []
+      : filterMentionMembers(members, picker.query).slice(0, MENTION_MAX_ROWS);
+  const pickerActive = isGroup && picker !== undefined;
+  const pickerOpen = pickerActive && candidates.length > 0;
+  const activeRow = pickerOpen ? Math.min(activeIndex, candidates.length - 1) : 0;
 
-  const onChange = (next: string): void => {
+  useEffect(() => {
+    const caret = pendingCaretRef.current;
+    if (caret === undefined) {
+      return;
+    }
+    pendingCaretRef.current = undefined;
+    textareaRef.current?.setSelectionRange(caret, caret);
+  }, [value]);
+
+  const onChange = (next: string, caret: number): void => {
+    setMentions((previous) => rebaseMentions(value, next, previous));
     setValue(next);
+    setPicker(isGroup ? findMentionQuery(next, caret) : undefined);
+    setActiveIndex(0);
     const timestamp = Date.now();
     if (next.trim().length > 0 && timestamp - lastTypingRef.current > 2000) {
       lastTypingRef.current = timestamp;
@@ -78,16 +133,85 @@ export function Composer({
     return () => window.clearInterval(timer);
   }, [recording]);
 
+  const pickMention = (member: MentionMember): void => {
+    const caret = textareaRef.current?.selectionStart ?? value.length;
+    const inserted = insertMention(value, caret, member);
+    if (inserted === undefined) {
+      return;
+    }
+    setMentions((previous) => [
+      ...rebaseMentions(value, inserted.text, previous),
+      inserted.mention,
+    ]);
+    setValue(inserted.text);
+    setPicker(undefined);
+    setActiveIndex(0);
+    pendingCaretRef.current = inserted.caret;
+  };
+
   const send = (): void => {
     if (!canSend) {
       return;
     }
-    store.sendText(chatId, value, replyTo === undefined ? undefined : { replyTo });
+    store.sendText(chatId, value, {
+      ...(replyTo === undefined ? {} : { replyTo }),
+      ...(mentions.length === 0 ? {} : { mentions }),
+    });
     setValue('');
+    setMentions([]);
+    setPicker(undefined);
     onCancelReply();
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (pickerActive) {
+      if (event.key === 'ArrowDown' && candidates.length > 0) {
+        event.preventDefault();
+        setActiveIndex((index) => (index + 1) % candidates.length);
+        return;
+      }
+      if (event.key === 'ArrowUp' && candidates.length > 0) {
+        event.preventDefault();
+        setActiveIndex((index) => (index - 1 + candidates.length) % candidates.length);
+        return;
+      }
+      if ((event.key === 'Enter' || event.key === 'Tab') && candidates.length > 0) {
+        event.preventDefault();
+        const member = candidates[activeRow];
+        if (member !== undefined) {
+          pickMention(member);
+        }
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        // Keep the key from also closing the chat on a narrow layout.
+        event.stopPropagation();
+        setPicker(undefined);
+        return;
+      }
+    }
+
+    // Backspace just after or inside a mention removes the whole `@Name` token.
+    if (
+      event.key === 'Backspace' &&
+      mentions.length > 0 &&
+      event.currentTarget.selectionStart === event.currentTarget.selectionEnd
+    ) {
+      const caret = event.currentTarget.selectionStart ?? 0;
+      const mention = mentions.find((item) => caret > item.begin && caret <= item.end);
+      if (mention !== undefined) {
+        event.preventDefault();
+        const next = value.slice(0, mention.begin) + value.slice(mention.end);
+        setMentions((previous) => rebaseMentions(value, next, previous));
+        setValue(next);
+        setPicker(isGroup ? findMentionQuery(next, mention.begin) : undefined);
+        setActiveIndex(0);
+        pendingCaretRef.current = mention.begin;
+        return;
+      }
+    }
+
     if (event.key === 'Escape' && replyTo !== undefined) {
       event.preventDefault();
       onCancelReply();
@@ -181,7 +305,16 @@ export function Composer({
   };
 
   return (
-    <div className="chat-background shrink-0 px-3 pt-2 pb-3 wide:px-8 wide:pt-3 wide:pb-5">
+    <div className="chat-background relative shrink-0 px-3 pt-2 pb-3 wide:px-8 wide:pt-3 wide:pb-5">
+      {pickerOpen && (
+        <MentionPicker
+          id={MENTION_PICKER_ID}
+          members={candidates}
+          activeIndex={activeRow}
+          onSelect={pickMention}
+          onHover={setActiveIndex}
+        />
+      )}
       {replyTo !== undefined && (
         <Well className="mb-2 flex items-stretch overflow-hidden rounded-[10px]">
           <span className="w-[3px] shrink-0 bg-[#333333]" aria-hidden="true" />
@@ -228,10 +361,16 @@ export function Composer({
               ref={textareaRef}
               rows={1}
               value={value}
-              onChange={(event) => onChange(event.target.value)}
+              onChange={(event) => onChange(event.target.value, event.target.selectionStart ?? 0)}
               onKeyDown={onKeyDown}
               placeholder={placeholder}
               aria-label="Message"
+              aria-autocomplete="list"
+              aria-expanded={pickerOpen}
+              {...(pickerOpen ? { 'aria-controls': MENTION_PICKER_ID } : {})}
+              {...(pickerOpen && candidates[activeRow] !== undefined
+                ? { 'aria-activedescendant': `mention-option-${candidates[activeRow].jid}` }
+                : {})}
               className="min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1 py-[7px] text-[14px] leading-[22px] outline-none placeholder:text-muted-foreground"
             />
             <IconButton aria-label="Insert emoji">

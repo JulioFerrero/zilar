@@ -642,7 +642,15 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     const current = requireOnline();
     const id = generateId();
     await current.send(
-      buildMessage({ id, to, kind, text, payload: opts.payload, replyTo: opts.replyTo }),
+      buildMessage({
+        id,
+        to,
+        kind,
+        text,
+        payload: opts.payload,
+        replyTo: opts.replyTo,
+        mentions: opts.mentions,
+      }),
     );
     return { id };
   }

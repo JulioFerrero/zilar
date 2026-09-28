@@ -532,6 +532,107 @@ describe('createRealChatStore', () => {
     expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Luis']);
   });
 
+  it('maps a received mention to the member name', async () => {
+    const getGroup = vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [{ userId: 'u-ana', name: 'Ana', role: 'member' as const }],
+    }));
+    const { store, xmpp } = await setup({ getGroup });
+    await flush();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'team-2',
+        chatJid: 'team@rooms.galena.test',
+        body: 'hi @Ana',
+        fromJid: 'u-ana@galena.test',
+        mentions: [{ jid: 'u-ana@galena.test', begin: 3, end: 7 }],
+      }),
+    );
+
+    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.mentions).toEqual([
+      { jid: 'u-ana@galena.test', name: 'Ana', begin: 3, end: 7 },
+    ]);
+  });
+
+  it('falls back to the text at the range for an unknown mention', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'team-3',
+        chatJid: 'team@rooms.galena.test',
+        body: 'hi @Zed',
+        fromJid: 'u-zed@galena.test',
+        mentions: [{ jid: 'zed@galena.test', begin: 3, end: 7 }],
+      }),
+    );
+
+    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.mentions).toEqual([
+      { jid: 'zed@galena.test', name: '@Zed', begin: 3, end: 7 },
+    ]);
+  });
+
+  it('ignores a mention without usable offsets', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'team-4',
+        chatJid: 'team@rooms.galena.test',
+        body: 'hi @Ana',
+        fromJid: 'u-ana@galena.test',
+        mentions: [{ jid: 'u-ana@galena.test' }],
+      }),
+    );
+
+    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.mentions).toBeUndefined();
+  });
+
+  it('exposes the group members with their JIDs', async () => {
+    const getGroup = vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [
+        { userId: 'u-me', name: 'Me', role: 'owner' as const },
+        { userId: 'u-ana', name: 'Ana', role: 'member' as const },
+      ],
+    }));
+    const { store } = await setup({ getGroup });
+    await flush();
+    store.getState().openChat('team@rooms.galena.test');
+    await flush();
+
+    expect(store.getState().groupMembers('team@rooms.galena.test')).toEqual([
+      { jid: 'u-me@galena.test', name: 'Me' },
+      { jid: 'u-ana@galena.test', name: 'Ana' },
+    ]);
+  });
+
+  it('passes outgoing mentions to the core', async () => {
+    const { store, xmpp } = await setup();
+
+    store.getState().sendText('team@rooms.galena.test', 'hi @Ana', {
+      mentions: [{ jid: 'u-ana@galena.test', name: 'Ana', begin: 3, end: 7 }],
+    });
+
+    expect(xmpp.core.sendMessage).toHaveBeenCalledWith(
+      'team@rooms.galena.test',
+      'groupchat',
+      'hi @Ana',
+      { mentions: [{ jid: 'u-ana@galena.test', begin: 3, end: 7 }] },
+    );
+    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.mentions).toEqual([
+      { jid: 'u-ana@galena.test', name: 'Ana', begin: 3, end: 7 },
+    ]);
+  });
+
   it('shows Someone instead of a JID localpart for an unknown group sender', async () => {
     const { store, xmpp } = await setup();
 

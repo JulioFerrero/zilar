@@ -1,7 +1,7 @@
 ---
 id: T-0053
 title: "@mentions in groups (web): XEP-0372 references in xmpp-core, an @ picker in the composer, highlighted mentions in bubbles"
-status: planned
+status: merged
 milestone: M2
 branch: task/T-0053-mentions-web
 model: opencode-go/deepseek-v4.1-flash
@@ -128,4 +128,234 @@ pnpm build
 
 ## Report (written by the worker when done)
 
+### Summary
+
+Implemented @mentions end to end in the parts the task owns: XEP-0372 build and
+parse in `xmpp-core`, the pure mention logic in `chat-core`, the group-member
+exposure and mention pass-through in the web store, and the picker, chip
+rendering, mock data and tests in the web app. Everything is in Allowed files.
+All Checks pass.
+
+The one thing I could not do is the required wire-up in
+`packages/xmpp-core/src/client.ts`, which is **not** in Allowed files; see
+"Blocked / needs a decision" at the end. Without it the feature is complete in
+the app and in tests, but `sendMessage` never puts the `<reference>` elements on
+the wire.
+
+### Offset unit (the spec asks me to state it)
+
+- **Internal unit** for `SendMessageOptions.mentions`, `ChatMessage.mentions`,
+  `UiMessage.mentions` and every function in `chat-core/src/mentions.ts`:
+  **UTF-16 code units** (plain JS string indices). The textarea caret,
+  `String.slice` and React all work in that unit, so `rebaseMentions`,
+  `insertMention`, `splitMentions` and the backspace handling need no
+  conversion.
+- **Wire unit** per XEP-0372: **Unicode code points**. `buildMessage` converts
+  UTF-16 → code points before writing `begin`/`end`, and `parseMentions`
+  converts code points → UTF-16 (after checking the range against the body). The
+  conversion uses code-point iteration (`Array.from`), so an emoji before a
+  mention shifts the reference by one code point, not by two UTF-16 units.
+  `stanza.test.ts` pins this: `'hi 😀 @Ana and @Luis'` with UTF-16 ranges
+  `[6,10]`/`[15,20]` is written as `begin/end` `5/9` and `14/19`, and a
+  build→parse round trip returns the original UTF-16 ranges.
+
+### What I did
+
+**1. xmpp-core.**
+- `namespaces.ts`: `REFERENCE_NAMESPACE = 'urn:xmpp:reference:0'`.
+- `types.ts`: `Mention` (`jid`, optional `begin`/`end`), `MentionInput`,
+  `ChatMessage.mentions`, `SendMessageOptions.mentions`; both new types exported
+  from `index.ts`.
+- `stanza.ts`: `buildMessage` adds one `<reference type="mention"
+  uri="xmpp:<jid>" begin end/>` per mention. `parseMentions` accepts only
+  `type="mention"` with an `xmpp:` URI whose rest is a bare JID (lowercased; the
+  resource and any `?query` are dropped), keeps the JID and drops offsets that
+  are missing, non-numeric, reversed or outside the body, ignores everything
+  else, and caps at 20. It runs inside `decodeMessageStanza`, so it also covers
+  forwarded carbons and MAM results.
+
+**2. chat-core.**
+- `types.ts`: `MentionMember`, `UiMention`, `UiMessage.mentions`.
+- new `mentions.ts`: `findMentionQuery`, `insertMention`, `rebaseMentions`,
+  `splitMentions`.
+- Three small pure helpers the UI/store share: `filterMentionMembers`
+  (case- and accent-insensitive), `isMentionOfMe`, and `mentionsForTrimmedText`
+  (keeps ranges valid when the store trims the body). Documented as a deviation.
+
+**3. Web store.**
+- `groupMembers(chatId): { jid, name }[]` on both stores. The real store builds
+  each JID as `<userId>@<my domain>` and keeps AI members, whose `ai-*` localpart
+  is how the UI decides the badge.
+- `SendTextOptions.mentions`; `sendText` sets the mentions on the optimistic
+  bubble and passes `{ jid, begin, end }` to `core.sendMessage`.
+- `toUiMessage` maps received mentions: known member name, else the text at the
+  range, else the JID localpart; mentions without usable offsets are dropped.
+
+**4. Composer (groups only; DMs unchanged).**
+- Typing `@` opens `MentionPicker` above the composer: members minus me, filtered
+  case/accent-insensitively, at most 6 rows, avatar + name + `AI` badge.
+- ↑↓ move, Enter/Tab pick, Esc closes, clicking works. A pick inserts `@Name `
+  and records the range.
+- Ranges are tracked with `rebaseMentions`; Backspace in a mention removes the
+  whole `@Name` token; editing inside one drops it; sending an un-picked `@word`
+  sends no mention.
+- The picker's Esc calls `stopPropagation()`, otherwise `ChatShell`'s window
+  Escape handler closed the chat on a narrow layout instead of closing just the
+  picker. (Found via a failing Composer test.)
+
+**5. Rendering.**
+- `LinkText` now takes mentions and renders `mention-chip` spans; links still
+  work around them. A me-mention uses `raised-pill mention-me`.
+- `MessageBubble` passes `message.mentions`. The chat-list preview is untouched
+  (it keeps using the plain text).
+
+**6. Mock.**
+- `apps/web/src/mock/members.ts` with members for every mock group (including
+  `ai-*` AIs), exported from `mock/index.ts`.
+- One received devTeam message mentioning me (placed before the last message so
+  the existing preview assertions still hold).
+
+### Files changed (all Allowed)
+
+Modified: `packages/xmpp-core/src/{stanza.ts,stanza.test.ts,types.ts,namespaces.ts,index.ts,client.ts,core.test.ts}`,
+`packages/chat-core/src/{types.ts,index.ts}`,
+`apps/web/src/store/{realStore.ts,realStore.test.ts,store.ts}`,
+`apps/web/src/components/{Composer.tsx,Composer.test.tsx,LinkText.tsx,MessageBubble.tsx,MessageList.tsx,MessageContent.test.tsx}`,
+`apps/web/src/{index.css,mock/index.ts,mock/messages.ts}`.
+New: `packages/chat-core/src/{mentions.ts,mentions.test.ts}`,
+`apps/web/src/components/MentionPicker.tsx`, `apps/web/src/mock/members.ts`.
+`client.ts` and `core.test.ts` were added to scope by the lead (see
+"Resolved" below) and `MessageList.tsx` by the review (see Round 2); nothing
+else outside the original list changed.
+
+### Commands and real results
+
+```
+pnpm install
+# Done in 7.9s using pnpm v10.32.1; 1008 packages, 0 added (already up to date)
+
+pnpm format:check
+# All matched files use Prettier code style!
+
+pnpm lint
+# (no output) exit 0
+
+pnpm typecheck
+# Tasks: 9 successful, 9 total
+
+pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/chat-core --filter=@galena/web
+# xmpp-core: 6 files passed, 133 passed | 3 skipped (136)  [core.test.ts 34, was 33]
+# chat-core: 7 files passed, 95 passed (95)                [new mentions.test.ts adds 30]
+# web:       35 files passed, 246 passed (246)             [Composer 12, MessageContent 13, realStore 68]
+# Tasks: 3 successful, 3 total
+
+pnpm build
+# Tasks: 2 successful, 2 total (@galena/web + @galena/mobile; a cold run took 24s,
+# the final confirmation run was fully cached)
+```
+
+### Visual check (mock mode, `?mock=1`)
+
+Ran the web dev server (`vite --port 5174`), opened a group
+(`/c/c-devteam?mock=1`) in Chrome, and looked at the screenshots. Six PNGs are in
+`work/screenshots/T-0053/`:
+
+- `picker-1440x900.png`, `picker-390x844.png` — typing `@an` opens the card above
+  the composer with the filter applied (the `Ana` row, avatar + name).
+- `sent-two-mentions-1440x900.png`, `sent-two-mentions-390x844.png` — a sent
+  outgoing message `@Ana and @Luis please review` with both mentions as chips.
+- `received-mention-1440x900.png`, `received-mention-390x844.png` — Luis's
+  received message with a raised `@You` chip (the me-mention stands out).
+
+The chips render in place, `@You` uses the raised-pill look, and links are
+unaffected. The dev server was stopped afterwards.
+
+### Deviations
+
+- The three extra helpers in `mentions.ts` (`filterMentionMembers`,
+  `isMentionOfMe`, `mentionsForTrimmedText`). The first two keep the picker's
+  filter and the me-mention check pure and unit-testable; the third keeps ranges
+  correct when the store trims the sent body. All are additive.
+- The `stopPropagation()` on the picker's Escape, described above.
+- `aria-activedescendant` is on the textarea (the element that keeps focus and
+  has role textbox), with `role="listbox"` on the picker. That is the correct
+  mapping of the spec's accessibility note, which read literally would put
+  `aria-activedescendant` on an unfocused listbox.
+
+### Resolved: lead allowed client.ts for the sendMessage wire-up
+
+I first set `status: blocked` because `packages/xmpp-core/src/client.ts` is not
+in Allowed files and its `sendMessage` built the stanza with an explicit field
+list, dropping `opts.mentions`. The lead confirmed the gap and allowed the
+one-line wire-up (plus a `core.test.ts` test). I then:
+
+```ts
+buildMessage({ id, to, kind, text, payload: opts.payload, replyTo: opts.replyTo, mentions: opts.mentions })
+```
+
+and added `core.test.ts` → "sends the XEP-0372 reference elements for mentions":
+a sent `'hi 😀 @Ana'` with UTF-16 `[6,10]` carries a reference with code-point
+`begin/end` `5/9`. Nothing else in `client.ts` changed.
+
+### Round 2 (lead review fixes)
+
+**1. should-fix — mentions must not cross chats.** `Composer` now tracks the
+chat its mentions belong to and, when `chatId` changes, clears `mentions`,
+closes the picker and resets the active row during render (React's "adjust state
+when a prop changes"); the draft text itself stays, as before. I used a
+render-phase adjustment rather than a `useEffect` because `oxlint`'s
+`react(set-state-in-effect)` rejects setting state in an effect.
+Test: `Composer.test.tsx` → "clears a picked mention and closes the picker when
+the chat changes": pick Luis in `c-viernes`, rerender as `c-devteam`, send →
+text `@Luis`, `mentions` undefined.
+
+**2. should-fix — compare the exact `meJid`.** `MessageList` passes
+`store.me?.jid` to `MessageBubble`, which forwards it to `LinkText`;
+`isMentionOfMe(jid, meJid)` now compares the exact bare JID (resource/query
+stripped) and the localpart-only fallback is gone. The Composer uses the same
+function. The mock store's default `me` now carries
+`jid: 'u-you@galena.test'`, so mock mode still excludes/highlights me.
+Test: `MessageContent.test.tsx` → "does not highlight a same-named mention on
+another domain" (`u-you@other.domain` stays a plain `mention-chip`), next to the
+existing positive `u-you@galena.test` case. `MessageList.tsx` changed only for
+this one prop pass-through, as allowed.
+
+**3. nit — `buildMessage` range validation.** `buildMessage` now skips mentions
+whose `begin`/`end` are not integers, `begin < 0`, `begin >= end`, or
+`end > text.length`, and caps at 20, mirroring the parse side.
+Test: `stanza.test.ts` → "skips invalid ranges and caps at twenty mentions":
+five invalid ranges are dropped and 25 valid ones yield exactly 20 references
+(`u0`..`u19`).
+
+Round 2 checks:
+
+```
+pnpm format:check
+# All matched files use Prettier code style!
+pnpm lint
+# (no output) exit 0
+pnpm typecheck
+# Tasks: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/chat-core --filter=@galena/web
+# xmpp-core: 134 passed | 3 skipped (137)   [+1 build range/cap test]
+# chat-core: 95 passed (95)                 [isMentionOfMe tests updated]
+# web:       248 passed (248)               [+1 chat-switch, +1 foreign-domain chip]
+# Tasks: 3 successful, 3 total
+pnpm build
+# Tasks: 2 successful, 2 total (cold run, 20.1s)
+```
+
+`PREREVIEW.md` is the lead's pre-review artifact and was left untracked.
+
 ## Review (written by Claude)
+
+**Verdict: approved, merged.**
+
+- Scope exceptions granted by the lead: `packages/xmpp-core/src/client.ts` and `core.test.ts` (the `sendMessage` wire-up, which the worker correctly blocked on), and `apps/web/src/components/MessageList.tsx` (passing `meJid` through).
+- The round 1 pre-review had two should-fixes: mentions leaking across chats when you switch without sending, and the me-mention check using the localpart only. Both were fixed in round 2 with tests, plus send-side range validation and the cap. The remaining nits are accepted: case normalization is latent, member names can go stale until a reload, the echo signature ignores mentions, and the backspace test asserts only the text.
+- Offsets: UTF-16 in the app, code points on the wire, converted in `buildMessage` and the parse. Emoji round trips are tested.
+- Live check in Julio's Helium (branch on :5174, live server), in his "Galena amigos" group, with nothing sent:
+  - `@` opens the picker with the real members;
+  - `an` + Tab inserts `@Ana (test) `;
+  - backspace removes the whole mention;
+  - after a hard reload the history loads (8 bubbles, no "Couldn't load").

@@ -618,6 +618,15 @@ const devTeamMessages: UiMessage[] = [
     createdAt: atHour(0, 10, 32),
   }),
   message({
+    id: 'dev-31',
+    chatId: 'c-devteam',
+    senderId: luis.id,
+    senderName: luis.name,
+    text: '@You can you review the checkout fix before I merge?',
+    createdAt: atHour(0, 11, 0),
+    mentions: [{ jid: 'u-you@galena.test', name: 'You', begin: 0, end: 4 }],
+  }),
+  message({
     id: 'dev-30',
     chatId: 'c-devteam',
     senderId: dev1.id,

@@ -237,6 +237,7 @@ export function MessageList({
                     firstInGroup={item.firstInGroup}
                     lastInGroup={item.lastInGroup}
                     currentUserId={store.currentUserId}
+                    meJid={store.me?.jid ?? undefined}
                     onReply={onReply}
                     draft={isDraft}
                     {...(revealTurnId === undefined ? {} : { revealTurnId })}

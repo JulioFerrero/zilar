@@ -115,6 +115,8 @@ export interface MessageBubbleProps {
   firstInGroup: boolean;
   lastInGroup: boolean;
   currentUserId: string;
+  /** My bare JID, for highlighting a mention of me. */
+  meJid?: string | undefined;
   onReply: (message: UiMessage) => void;
   /** A live AI draft: same bubble, but recessed while it is written. */
   draft?: boolean;
@@ -132,6 +134,7 @@ export function MessageBubble({
   firstInGroup,
   lastInGroup,
   currentUserId,
+  meJid,
   onReply,
   draft = false,
   revealTurnId,
@@ -282,7 +285,7 @@ export function MessageBubble({
               <p
                 className={cn('break-words whitespace-pre-wrap', own ? 'px-3 py-2' : 'px-3 py-2.5')}
               >
-                <LinkText text={text} />
+                <LinkText text={text} mentions={message.mentions} meJid={meJid} />
                 {generating && <DraftCaret />}
                 <MessageMeta
                   message={message}

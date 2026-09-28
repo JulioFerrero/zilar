@@ -10,6 +10,8 @@ export type {
   HistoryPage,
   InvitedEvent,
   LoadHistoryOptions,
+  Mention,
+  MentionInput,
   Occupant,
   OccupantsEvent,
   PresenceEvent,
