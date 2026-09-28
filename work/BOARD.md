@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0055](T-0055-ai-in-groups-web.md) | AIs in groups (web): group panel, add/remove my AI, AIs in the @ picker, AI replies as AI with Markdown | planned (after T-0054) | deepseek-v4.1-flash | T-0053, T-0054 | M2 demo: @mention the AI in a group. |
 | [T-0056](T-0056-mobile-reply-drafts.md) | Mobile AI reply drafts: SSE over XHR (bearer), smooth reveal, recessed generating bubble, same-node swap | in progress | deepseek-v4.1-flash | T-0045, T-0048 | Own simulator; no host mouse automation. |
 | [T-0057](T-0057-web-polish-retry-models.md) | Web polish: Retry keeps the loaded chat list; model picker suggestions as raised segments | in progress | deepseek-v4.1-flash | T-0042, T-0052 | Small. |
+| [T-0058](T-0058-ai-costs.md) | AI costs: spend today / 30-day window in the panel, soft per-day limit enforced before each turn | planned (after T-0054) | muse-spark-1.3 | T-0054 | The per-day limit was stored but never enforced. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
