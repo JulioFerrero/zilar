@@ -1,4 +1,4 @@
-import { boolean, integer, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
 import { user } from '../auth/auth-schema';
 
 export * from '../auth/auth-schema';
@@ -75,6 +75,30 @@ export const groups = pgTable('groups', {
     .references(() => user.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// A provider API key a user pasted in Settings → Connections. The key is stored
+// only as an encrypted envelope (see connections/crypto.ts); the plaintext is
+// never written here. `owner` is the authenticated user for now — workspace
+// ownership arrives with the workspaces table. `provider` is one of the fixed
+// ids in connections/providers.ts and is validated at the route boundary.
+export const providerConnections = pgTable(
+  'provider_connections',
+  {
+    id: text('id').primaryKey(),
+    owner: text('owner')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    encryptedKey: text('encrypted_key').notNull(),
+    label: text('label'),
+    status: text('status', { enum: ['active', 'revoked'] })
+      .notNull()
+      .default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('provider_connections_owner_idx').on(table.owner)],
+);
 
 export const groupMembers = pgTable(
   'group_members',

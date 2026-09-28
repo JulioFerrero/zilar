@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router';
 import type { ReactNode } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
 import { ChatShell } from './ChatShell';
+import { ConnectionsPage } from './ConnectionsPage';
 import { InvitePage } from './InvitePage';
 import { LoginPage } from './LoginPage';
 import { NamePage } from './NamePage';
@@ -69,6 +70,14 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <ChatShell />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/settings/connections"
+        element={
+          <RequireAuth>
+            <ConnectionsPage />
           </RequireAuth>
         }
       />

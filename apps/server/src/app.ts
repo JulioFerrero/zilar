@@ -8,6 +8,9 @@ import type { Auth } from './auth/auth';
 import { createAuthRoutes } from './auth/routes';
 import { createChatsRoutes } from './chats/routes';
 import type { ServerConfig } from './config';
+import { createKeyCipher, type KeyCipher } from './connections/crypto';
+import type { ProviderProbe } from './connections/probe';
+import { createConnectionsRoutes, type ConnectionsLogger } from './connections/routes';
 import { createContactsRoutes } from './contacts/routes';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
@@ -28,6 +31,12 @@ export interface AppDependencies {
   voice?: VoiceEngine;
   /** Overrides the upload size cap; tests use a small one. */
   voiceMaxBytes?: number;
+  /** Overrides the connections routes; tests inject a fake probe and key. */
+  connections?: {
+    cipher?: KeyCipher;
+    probe?: ProviderProbe;
+    logger?: ConnectionsLogger;
+  };
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -41,6 +50,7 @@ export function createApp({
   adminClient,
   voice,
   voiceMaxBytes,
+  connections,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
 
@@ -91,6 +101,27 @@ export function createApp({
       auth,
       ...(voice === undefined ? {} : { engine: voice }),
       ...(voiceMaxBytes === undefined ? {} : { maxBytes: voiceMaxBytes }),
+    }),
+  );
+
+  // Provider-key connections always mount: with no envelope-encryption master
+  // key configured, each route answers 503 (`connections_unavailable`) rather
+  // than disappearing into a bare 404. The key is validated at startup by the
+  // config schema when present. Tests override the cipher and probe so no
+  // request ever reaches a real provider.
+  const connectionsCipher =
+    connections?.cipher ??
+    (config.GALENA_KEY_ENCRYPTION_KEY === undefined
+      ? undefined
+      : createKeyCipher(config.GALENA_KEY_ENCRYPTION_KEY));
+  app.route(
+    '/api',
+    createConnectionsRoutes({
+      auth,
+      db,
+      logger: connections?.logger ?? logger,
+      ...(connectionsCipher === undefined ? {} : { cipher: connectionsCipher }),
+      ...(connections?.probe === undefined ? {} : { probe: connections.probe }),
     }),
   );
 

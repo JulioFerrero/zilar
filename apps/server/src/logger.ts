@@ -10,6 +10,7 @@ export const redactPaths: string[] = [
   'req.headers.cookie',
   'DATABASE_URL',
   'BETTER_AUTH_SECRET',
+  'GALENA_KEY_ENCRYPTION_KEY',
 ];
 
 export function createLogger(config: ServerConfig, destination?: DestinationStream): Logger {

@@ -1,5 +1,6 @@
 import { Menu } from 'lucide-react';
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { ChatListItem } from './ChatListItem';
 import { EmptyState } from './EmptyState';
 import { FolderTabs } from './FolderTabs';
@@ -23,6 +24,7 @@ function statusLabel(status: string): string | undefined {
 
 export function ChatList({ activeChatId }: { activeChatId: string | undefined }) {
   const store = useChatStore();
+  const navigate = useNavigate();
   const chats = visibleChats(store);
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -71,6 +73,17 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                   className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-list-hover"
                 >
                   Invite a friend
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    navigate('/settings/connections');
+                  }}
+                  className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-list-hover"
+                >
+                  Connections
                 </button>
                 <button
                   type="button"
