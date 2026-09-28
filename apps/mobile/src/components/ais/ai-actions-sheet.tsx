@@ -1,4 +1,5 @@
 import { Modal, Pressable, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/chat/avatar';
 import { Text } from '@/components/ui/text';
@@ -19,12 +20,14 @@ export function AiActionsSheet({
   onDelete: () => void;
   onClose: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   return (
     <Modal visible={ai !== null} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable
         accessibilityLabel="Close AI actions"
         onPress={onClose}
-        className="flex-1 justify-end bg-black/40 px-2 pb-4"
+        className="flex-1 justify-end bg-black/40 px-2"
+        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
       >
         <Pressable onPress={() => {}} className="overflow-hidden rounded-2xl bg-background">
           {ai !== null ? (

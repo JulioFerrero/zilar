@@ -1,7 +1,7 @@
 import { ChevronLeft } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
 import { IconButton } from '@/components/ui/icon-button';
@@ -32,18 +32,19 @@ export function AisScreenShell({
   children,
 }: AisScreenShellProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
+  const insets = useSafeAreaInsets();
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="flex-row items-center px-1.5 py-1">
+      <View className="flex-row items-center gap-1 px-2 py-2">
         <IconButton label="Back" onPress={onBack}>
           <ChevronLeft size={26} color={FOREGROUND[scheme]} />
         </IconButton>
-        <View className="ml-0.5 flex-1">
-          <Text numberOfLines={1} className="text-[20px] font-semibold text-foreground">
+        <View className="min-w-0 flex-1">
+          <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">
             {title}
           </Text>
           {subtitle !== undefined ? (
-            <Text numberOfLines={1} className="text-[14px] text-muted-foreground">
+            <Text numberOfLines={1} className="mt-0.5 text-[14px] leading-5 text-muted-foreground">
               {subtitle}
             </Text>
           ) : null}
@@ -55,6 +56,8 @@ export function AisScreenShell({
           className="flex-1"
           contentContainerStyle={{ paddingBottom: 32 }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
         >
           <View className="p-4">{children}</View>
         </ScrollView>
@@ -62,7 +65,10 @@ export function AisScreenShell({
         <View className="flex-1 p-4">{children}</View>
       )}
       {footer !== undefined ? (
-        <View className="flex-row items-center gap-2 border-t border-divider px-4 py-3">
+        <View
+          className="flex-row items-center gap-2 border-t border-divider px-4 pt-3"
+          style={{ paddingBottom: Math.max(insets.bottom, 12) }}
+        >
           {footer}
         </View>
       ) : null}

@@ -124,8 +124,20 @@ function cloneAi(ai: PublicAi): PublicAi {
 }
 
 // Kept at module scope so mutations survive navigation between the list, the
-// wizard and the edit screen.
-let state: PublicAi[] = mockAis.map(cloneAi);
+// wizard and the edit screen. One list per scenario, so opening the `empty`
+// scenario never wipes the AIs the `default` scenario created.
+const states = new Map<AisMockScenario, PublicAi[]>();
+
+function stateFor(scenario: AisMockScenario): PublicAi[] {
+  const existing = states.get(scenario);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const created = scenario === 'empty' ? [] : mockAis.map(cloneAi);
+  states.set(scenario, created);
+  return created;
+}
+
 let sequence = 0;
 
 /** An `AisApi` backed by the mock data, for offline UI work and screenshots. */
@@ -135,9 +147,7 @@ export function createMockAisApi(scenario: AisMockScenario = 'default'): AisApi 
   };
   const activeConnections = (): Connection[] =>
     mockConnections.filter((connection) => connection.status === 'active');
-  if (scenario === 'empty') {
-    state = [];
-  }
+  const state = stateFor(scenario);
 
   return {
     async listAis() {
@@ -163,7 +173,7 @@ export function createMockAisApi(scenario: AisMockScenario = 'default'): AisApi 
         limits: cloneLimits(input.limits),
         createdAt: new Date().toISOString(),
       };
-      state = [created, ...state];
+      state.unshift(created);
       return cloneAi(created);
     },
     async updateAi(id: string, input: UpdateAiInput) {
@@ -178,12 +188,15 @@ export function createMockAisApi(scenario: AisMockScenario = 'default'): AisApi 
         ...(input.persona === undefined ? {} : { persona: input.persona }),
         ...(input.limits === undefined ? {} : { limits: cloneLimits(input.limits) }),
       };
-      state = state.map((ai) => (ai.id === id ? updated : ai));
+      state[state.indexOf(existing)] = updated;
       return cloneAi(updated);
     },
     async deleteAi(id: string) {
       if (scenario === 'unavailable') unavailable();
-      state = state.filter((ai) => ai.id !== id);
+      const index = state.findIndex((ai) => ai.id === id);
+      if (index !== -1) {
+        state.splice(index, 1);
+      }
     },
     async listConnections() {
       if (scenario === 'unavailable') unavailable();

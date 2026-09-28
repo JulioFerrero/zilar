@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Plus, RefreshCw, Zap } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
@@ -43,6 +43,9 @@ function AisList() {
   const [confirmAi, setConfirmAi] = useState<PublicAi | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  // Guards against a double tap landing before React re-renders the disabled
+  // button, so one confirm can never send two DELETEs.
+  const deletingRef = useRef(false);
 
   const reload = useCallback(() => {
     setStatus('loading');
@@ -78,9 +81,10 @@ function AisList() {
   };
 
   const confirmDelete = (): void => {
-    if (confirmAi === null) {
+    if (confirmAi === null || deletingRef.current) {
       return;
     }
+    deletingRef.current = true;
     setDeleting(true);
     setDeleteError('');
     void api
@@ -92,7 +96,10 @@ function AisList() {
       .catch((error: unknown) => {
         setDeleteError(describeAisError(error, 'Could not delete the AI').message);
       })
-      .finally(() => setDeleting(false));
+      .finally(() => {
+        deletingRef.current = false;
+        setDeleting(false);
+      });
   };
 
   return (
@@ -101,6 +108,7 @@ function AisList() {
         title="My AIs"
         subtitle="Your AIs, their model and their spending limits."
         onBack={() => router.back()}
+        scroll
         right={
           <IconButton label="Create AI" onPress={() => router.push('/ais/new')}>
             <Plus size={24} color={FOREGROUND[scheme]} />

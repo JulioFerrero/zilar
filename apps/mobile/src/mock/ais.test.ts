@@ -74,4 +74,19 @@ describe('createMockAisApi', () => {
     await api.deleteAi(created.id);
     await expect(api.listAis()).resolves.toEqual([]);
   });
+
+  it('keeps each scenario separate, so empty never wipes default', async () => {
+    const defaults = createMockAisApi('default');
+    const empty = createMockAisApi('empty');
+    await empty.createAi({
+      name: 'Only in empty',
+      template: 'dev',
+      providerConnectionId: 'conn-openai',
+      model: 'gpt-4o',
+      limits: { perDayUsd: 2, perMonthUsd: 20 },
+    });
+
+    await expect(defaults.listAis()).resolves.toHaveLength(mockAis.length);
+    await expect(empty.listAis()).resolves.toHaveLength(1);
+  });
 });

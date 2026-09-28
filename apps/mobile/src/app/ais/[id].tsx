@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
@@ -41,6 +41,9 @@ function EditAi() {
   const [month, setMonth] = useState('20');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Guards against a double tap landing before React re-renders the disabled
+  // button, so one Save can never PATCH twice.
+  const savingRef = useRef(false);
 
   const load = useCallback(() => {
     void api
@@ -78,7 +81,7 @@ function EditAi() {
   const canSave = loaded !== null && name.trim() !== '' && limits.limits !== null && !saving;
 
   const save = (): void => {
-    if (loaded === null || saving) {
+    if (loaded === null || savingRef.current) {
       return;
     }
     const patch = buildPatch({
@@ -92,12 +95,14 @@ function EditAi() {
     if (name.trim() === '' || limits.limits === null || patch === null) {
       return;
     }
+    savingRef.current = true;
     setSaving(true);
     setError('');
     void api
       .updateAi(loaded.id, patch)
       .then(() => router.back())
       .catch((cause: unknown) => {
+        savingRef.current = false;
         setError(describeAisError(cause, 'Could not update the AI').message);
         setSaving(false);
       });

@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { Plus, Zap } from 'lucide-react-native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
@@ -56,6 +56,9 @@ function CreateAiWizard() {
   const [loadError, setLoadError] = useState<AisErrorInfo>({ message: '', unavailable: false });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  // Guards against a double tap landing before React re-renders the disabled
+  // button, so one Create can never POST twice.
+  const submittingRef = useRef(false);
 
   const loadConnections = useCallback(() => {
     void api
@@ -118,7 +121,7 @@ function CreateAiWizard() {
   };
 
   const submit = (): void => {
-    if (submitting) {
+    if (submittingRef.current) {
       return;
     }
     const input = buildCreateInput(form, limits.limits);
@@ -126,6 +129,7 @@ function CreateAiWizard() {
       setStep(5);
       return;
     }
+    submittingRef.current = true;
     setSubmitting(true);
     setSubmitError('');
     void api
@@ -134,6 +138,7 @@ function CreateAiWizard() {
         router.replace({ pathname: '/ais', params: { highlight: created.id } });
       })
       .catch((error: unknown) => {
+        submittingRef.current = false;
         setSubmitError(describeAisError(error, 'Could not create the AI').message);
         setSubmitting(false);
       });
