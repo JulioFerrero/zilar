@@ -353,4 +353,32 @@ describe('switchModel', () => {
     // The previous session is still on the record (no switchedAt stamp).
     expect(stateAfter.tasks['T-0099']?.switchedAt).toBeUndefined();
   });
+
+  it('validates the rules and the prompt before touching the old session', async () => {
+    const { repoRoot, statePath } = setupRepo();
+    const client = new FakeOpenCodeClient();
+    const { runner } = stubRunner();
+    await launchTask('T-0099', undefined, {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+      runner,
+    });
+    const stateBefore = loadState(statePath);
+
+    await expect(
+      switchModel('T-0099', 'minimax-coding-plan/MiniMax-M3', '/nonexistent/extra-rules.json', {
+        repoRoot,
+        client,
+        promptsDirPath: promptsDir(),
+        statePath,
+      }),
+    ).rejects.toThrow();
+
+    // The typo failed before any interrupt: the old worker keeps running.
+    expect(client.interruptOutcomes).toHaveLength(0);
+    expect(client.created).toHaveLength(1);
+    expect(loadState(statePath).tasks['T-0099']).toEqual(stateBefore.tasks['T-0099']);
+  });
 });

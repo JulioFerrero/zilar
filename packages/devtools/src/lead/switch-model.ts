@@ -1,7 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { type OpenCodeClient } from './client.js';
-import { readTaskFrontMatter, startWorkerSession, worktreeFor } from './launch.js';
+import {
+  readTaskFrontMatter,
+  renderWorkerPrompt,
+  startWorkerSession,
+  worktreeFor,
+} from './launch.js';
 import { loadRulesFile } from './prompts.js';
 import { appendLog, loadState, saveState } from './state.js';
 import { assertNotV4Pro, splitModel } from './task-file.js';
@@ -85,6 +90,21 @@ export async function switchModel(
   const model = splitModel(newModel);
   const { file, branch } = readTaskFrontMatter(deps.repoRoot, task);
 
+  const rules = loadRulesFile(path.join(deps.promptsDirPath, 'rules.json'));
+  if (extraRulesFile !== undefined) {
+    rules.push(...loadRulesFile(extraRulesFile));
+  }
+  // Every local check (rules files, the prompt template) runs before the
+  // interrupt, so a typo never stops the old worker without a replacement.
+  renderWorkerPrompt({
+    promptsDirPath: deps.promptsDirPath,
+    task,
+    file,
+    worktree,
+    branch,
+    template: 'switch',
+  });
+
   // Interrupt the previous session. We only proceed past this point when the
   // outcome is one of: ok, already-idle, not-found. Any other failure aborts
   // the switch before we open the new session — two writers in one worktree
@@ -108,10 +128,6 @@ export async function switchModel(
     );
   }
 
-  const rules = loadRulesFile(path.join(deps.promptsDirPath, 'rules.json'));
-  if (extraRulesFile !== undefined) {
-    rules.push(...loadRulesFile(extraRulesFile));
-  }
   const { sessionId } = await startWorkerSession({
     client: deps.client,
     promptsDirPath: deps.promptsDirPath,

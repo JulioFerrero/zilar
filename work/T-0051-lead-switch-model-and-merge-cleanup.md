@@ -1,7 +1,7 @@
 ---
 id: T-0051
 title: lead CLI — `switch-model` to move a task to another model (quota fallback), and `merge` stops processes left in the worktree
-status: review
+status: merged
 milestone: M2
 branch: task/T-0051-lead-switch-model
 model: minimax-coding-plan/MiniMax-M3
@@ -231,3 +231,14 @@ None open. The `lead switch-model` test had one initial hiccup where I tried to 
 None. The branch-switch, prereview, autopilot code paths all consume `TaskRecord` through the same `loadState`/`saveState` I extended; the only new field is `switchedAt`, which is optional and defaults to `undefined`, so older state files load unchanged.
 
 ## Review (written by Claude)
+
+**Verdict: approved, merged (with one lead fix).**
+
+- Round 1 pre-review, three should-fixes:
+  - an over-broad interrupt swallow;
+  - an env-redaction overclaim (printing is now `stop <pid> <exe>` only);
+  - the session created before the prompt was validated.
+  Also from round 1: stop the processes right before `worktree remove`, match interpreter-first commands, re-probe after KILL.
+- Round 2 pre-review: the shared `interrupt` had become lenient, and the fake diverged from the real client. Both were fixed in round 3.
+- Round 3 pre-review: rules and prompt validation ran after the interrupt, so a typo in `--extra-rules` would stop the old worker with no replacement. **The lead fixed it** (`switch-model.ts`): the rules and `renderWorkerPrompt` run before `tryInterrupt`. There's a new test ("validates the rules and the prompt before touching the old session"). The checks were re-run by the lead: format and lint clean, typecheck 9/9, devtools tests 298 passed.
+- MiniMax M3 did this task. It needed three rounds, but the result is solid.
