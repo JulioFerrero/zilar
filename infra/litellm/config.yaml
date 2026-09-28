@@ -24,3 +24,7 @@ model_list:
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL
+  # Each AI gets a private model (`ai-<id>`) registered at runtime with its
+  # owner's provider key (/model/new). LiteLLM stores it encrypted with
+  # LITELLM_SALT_KEY. See work/T-0033-ai-models-litellm.md.
+  store_model_in_db: true

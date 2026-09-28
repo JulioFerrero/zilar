@@ -88,6 +88,7 @@ services:
     environment:
       DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD is required in infra/.env}@postgres:5432/litellm
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY is required in infra/.env}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?LITELLM_SALT_KEY is required in infra/.env}
       PLACEHOLDER_API_KEY: ${PLACEHOLDER_API_KEY:-CHANGE_ME}
     volumes:
       - ./litellm/config.yaml:/app/config.yaml:ro
