@@ -80,4 +80,47 @@ describe('ModelPicker', () => {
     expect(document.activeElement).toBe(second);
     expect((screen.getByLabelText('Model') as HTMLInputElement).value).toBe('gpt-4o-mini');
   });
+
+  it('wraps backwards from the first option to the last with ArrowUp', () => {
+    render(<Harness suggestions={['gpt-4o', 'gpt-4o-mini', 'o3']} />);
+    const group = screen.getByRole('radiogroup', { name: 'Model suggestion' });
+    const first = within(group).getByRole('radio', { name: 'gpt-4o' });
+
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowUp' });
+
+    const last = within(group).getByRole('radio', { name: 'o3' });
+    expect(last.getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(last);
+  });
+
+  it('wraps forwards from the last option to the first with ArrowDown', () => {
+    render(<Harness suggestions={['gpt-4o', 'gpt-4o-mini', 'o3']} />);
+    const group = screen.getByRole('radiogroup', { name: 'Model suggestion' });
+    const last = within(group).getByRole('radio', { name: 'o3' });
+
+    last.focus();
+    fireEvent.keyDown(last, { key: 'ArrowDown' });
+
+    const first = within(group).getByRole('radio', { name: 'gpt-4o' });
+    expect(first.getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(first);
+  });
+
+  it('jumps to the first and last option with Home and End', () => {
+    render(<Harness suggestions={['gpt-4o', 'gpt-4o-mini', 'o3']} />);
+    const group = screen.getByRole('radiogroup', { name: 'Model suggestion' });
+    const middle = within(group).getByRole('radio', { name: 'gpt-4o-mini' });
+
+    middle.focus();
+    fireEvent.keyDown(middle, { key: 'End' });
+    const last = within(group).getByRole('radio', { name: 'o3' });
+    expect(last.getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(last);
+
+    fireEvent.keyDown(last, { key: 'Home' });
+    const first = within(group).getByRole('radio', { name: 'gpt-4o' });
+    expect(first.getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(first);
+  });
 });

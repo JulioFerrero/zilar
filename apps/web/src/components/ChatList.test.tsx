@@ -156,4 +156,27 @@ describe('ChatList', () => {
     expect(screen.getByRole('status', { name: 'Loading chats' })).toBeTruthy();
     expect(screen.queryByText("Couldn't load chats")).toBeNull();
   });
+
+  it('drops the pending button once the retry settles, so a later load cannot leave it stuck', async () => {
+    const { store } = renderApp('/');
+    store.setState({ chatsState: 'error' });
+    expect(await screen.findByText("Couldn't load chats")).toBeTruthy();
+
+    store.setState({ retryChats: () => store.setState({ chatsState: 'loading' }) });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(screen.getByRole('button', { name: /Retrying/ })).toBeTruthy();
+
+    // The retry fails again: the bar settles back to a plain, enabled Retry.
+    act(() => store.setState({ chatsState: 'error' }));
+    const settled = screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement;
+    expect(settled.disabled).toBe(false);
+    expect(settled.getAttribute('aria-busy')).toBeNull();
+
+    // A later background load with rows on screen must not bring the pending
+    // state back; the rows stay and no stuck spinner is left behind.
+    act(() => store.setState({ chatsState: 'loading' }));
+    expect(screen.getByText('Ana')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Retrying/ })).toBeNull();
+    expect(screen.queryByRole('status', { name: 'Loading chats' })).toBeNull();
+  });
 });

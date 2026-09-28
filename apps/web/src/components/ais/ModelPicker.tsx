@@ -54,7 +54,6 @@ export function ModelPicker({
         <span className="text-[14px] font-medium">Model</span>
         <input
           id={inputId}
-          list="ai-model-suggestions"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={`${providerLabel(provider)} model name`}
@@ -63,11 +62,6 @@ export function ModelPicker({
           className="well-surface rounded-lg px-3 py-2 text-[15px] outline-none"
         />
       </label>
-      <datalist id="ai-model-suggestions">
-        {suggestions.map((model) => (
-          <option key={model} value={model} />
-        ))}
-      </datalist>
 
       {suggestions.length > 0 && (
         <div className="flex flex-col gap-1.5">

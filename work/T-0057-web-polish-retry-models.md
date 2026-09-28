@@ -135,4 +135,22 @@ Dev server: `pnpm --filter @galena/web dev --port 5199 --strictPort`, driven wit
 ### Blocked / needs a decision
 Nothing. No new dependencies.
 
+### Round 2 (lead review fixes)
+
+All four review items fixed.
+
+1. **ChatList: reset `retryingChats` when the retry settles.** A manual retry set `retryingChats` to `true` and nothing cleared it, so a later `loading` with rows could leave the button pending. The flag now resets when `chatsState` leaves `loading`, tracked with a `lastChatsState` and adjusted **during render** (an effect tripped oxlint's `react(set-state-in-effect)`; deriving during render is what the rule asks for and avoids a cascading render). New test: manual retry → pending → `error` (retry failed again) → the button is a plain, enabled `Retry` with no `aria-busy`; then a background `loading` with rows on screen keeps the rows and shows no `Retrying…` spinner.
+
+2. **ModelPicker: removed the native `<datalist>`.** The pills replace it and its fixed `id="ai-model-suggestions"` could collide when two pickers are mounted. The `list` attribute on the input is gone too.
+
+3. **`aria-busy`: `undefined` when not retrying.** Was `aria-busy={retrying}` (rendered `aria-busy="false"`); now `aria-busy={retrying || undefined}`, so the attribute is absent unless pending. The Round 2 ChatList test asserts it is `null` after the retry settles.
+
+4. **ModelPicker keyboard tests.** Added ArrowUp wrap (first → last), ArrowDown wrap (last → first), and Home/End (jump to first/last), each asserting `aria-checked`, focus and the filled input. `Home`/`End` were already implemented; the tests now pin them. `ArrowDown` already had a test.
+
+Round 2 commands (real results): `pnpm lint` pass (fixed a `react(set-state-in-effect)` error by moving the reset to render); `pnpm typecheck` `9 successful`; `pnpm exec turbo test --force --filter=@galena/web` **35 files / 265 tests passed** (261 → 265, +4 new keyboard tests); `pnpm build` `2 successful`.
+
+Note on `pnpm format:check`: it fails on `PREREVIEW.md`, an **untracked** file the lead added; it is neither mine nor in Allowed files, and the instruction is to leave it untracked, so I did not touch it. Every file I changed passes: `prettier --check` on the four source/test files reports `All matched files use Prettier code style!`.
+
+Scope rechecked: only Allowed files changed plus the task file and `work/screenshots/T-0057/`; `PREREVIEW.md` left untracked and uncommitted.
+
 ## Review (written by Claude)

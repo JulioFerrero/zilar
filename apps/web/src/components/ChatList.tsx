@@ -1,4 +1,4 @@
-import { Loader2, Menu } from 'lucide-react';
+import { Menu, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ChatListItem } from './ChatListItem';
@@ -47,6 +47,15 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   // Set on a manual retry so the button can show a pending state. A keep-alive
   // refresh never sets it, so background loading does not disable the button.
   const [retryingChats, setRetryingChats] = useState(false);
+  // Reset during render (not in an effect) when the retry settles, so a later
+  // background `loading` with rows cannot leave the button stuck pending.
+  const [lastChatsState, setLastChatsState] = useState(store.chatsState);
+  if (store.chatsState !== lastChatsState) {
+    setLastChatsState(store.chatsState);
+    if (retryingChats && store.chatsState !== 'loading') {
+      setRetryingChats(false);
+    }
+  }
   const retrying = retryingChats && store.chatsState === 'loading';
   const retryChats = (): void => {
     setRetryingChats(true);
@@ -184,7 +193,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                   variant="outline"
                   className="rounded-full"
                   disabled={retrying}
-                  aria-busy={retrying}
+                  aria-busy={retrying || undefined}
                   onClick={retryChats}
                 >
                   {retrying && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
