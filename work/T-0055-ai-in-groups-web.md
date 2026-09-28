@@ -1,7 +1,7 @@
 ---
 id: T-0055
 title: "AIs in groups (web): group info panel with members and AIs, add or remove my AI, AIs in the @ picker, AI replies rendered as AI"
-status: review
+status: merged
 milestone: M2
 branch: task/T-0055-ai-in-groups-web
 model: opencode-go/deepseek-v4.1-flash
@@ -306,3 +306,17 @@ Note: the checks run `prettier --check .`, which also looks at the untracked
 unmodified in git, never committed.
 
 ## Review (written by Claude)
+
+**Approved and merged by Claude.**
+
+- Round 1 delivered the group panel (members with roles, an AIs section, Add my AI and Remove), AIs in the @ picker, and group AI replies with the badge and Markdown. The store-driven panel deviation is accepted, since it's what makes `?mock=1` work.
+- Round 2 fixed all three review items:
+  - one shared `isAiJid` in `@galena/chat-core`, used by the Markdown rule, MentionPicker and MessageBubble;
+  - a real MessageBubble render test (the badge plus `<strong>`);
+  - the ChatView panel resets on a chat change, with a test shown to fail without the fix.
+- Scope: `chat-core/src/ai.ts`, its test and the `index.ts` export, plus `ChatView.test.tsx`, were added at the lead's request in round 2. They're approved.
+- Accepted nits, not blocking:
+  - in the room, the occupant nick wins over the `ais` name;
+  - the dropped `@` guard in the member-JID builder can't be reached;
+  - there's no retry when the group detail fails to load (disclosed).
+- The pre-reviewer re-ran the checks: format, lint, typecheck, chat-core at 99 passing, web at 270 passing, and build all green.
