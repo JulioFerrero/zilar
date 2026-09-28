@@ -8,8 +8,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0008](T-0008-runner-tunnel-spike.md) | Spike S6: runner tunnel over one WebSocket (engine API, model traffic, preview URL) | in progress | muse-spark-1.3 | T-0006 | New package `packages/runner-tunnel` only. Decides the M3 design. Watch: `cd ../galena-T-0008 && opencode2 -s ses_f18ca69fbffeB8AWtuJJ4Bp5mb` |
-| T-0032 | M2: web Create-AI wizard + My AIs list (§20.2) | planned | | T-0030 | T-0030 merged: ready to spec. |
+| [T-0008](T-0008-runner-tunnel-spike.md) | Spike S6: runner tunnel over one WebSocket (engine API, model traffic, preview URL) | changes requested (round 2) | muse-spark-1.3 | T-0006 | New package `packages/runner-tunnel` only. Decides the M3 design. Round 1: runner isolation (per-conn stream state), stream-id parity, WS maxPayload. Watch: `cd ../galena-T-0008 && opencode2 -s ses_f18ca69fbffeB8AWtuJJ4Bp5mb` |
+| [T-0032](T-0032-create-ai-wizard.md) | M2: web Create-AI wizard + My AIs list (§20.2) | in progress | deepseek-v4.1-flash | T-0028, T-0030 | Web only. Lead does the live click-through at review. |
 | T-0033 | M2: AIs reply when @mentioned (agent gateway: XMPP login as the AI, context, LiteLLM call with the AI's virtual key) | planned | | T-0030 (merged) | Must decide how the owner's provider key reaches the provider (T-0007 follow-up). |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
