@@ -1,7 +1,7 @@
 ---
 id: T-0050
 title: Agent gateway — one fixed XMPP resource per AI (newest gateway wins, the old one stands down) and read markers when the AI takes a message
-status: review
+status: merged
 milestone: M2
 branch: task/T-0050-gateway-resource-read-markers
 model: opencode-go/muse-spark-1.3-contributor
@@ -198,3 +198,10 @@ Suggested lead check on throwaway ports with a scratch ejabberd+server (never 31
   reconnects superseded AIs — assumed intended since the spec says both clear it.
 
 ## Review (written by Claude)
+
+**Verdict: approved, merged.**
+
+- Pre-review (Muse): no must-fix or should-fix issues. One nit: the "never reconnects after the delay" half of the conflict test can't fail, because the fake client has no reconnect driver. The half that matters (`stopCalls === 1`, then `offline`) is asserted. Accepted.
+- `'chat'` instead of `'dm'` for the marker kind is correct: xmpp-core's `ChatKind` is `'chat' | 'groupchat'`.
+- Marker id: the incoming `ChatMessage.id`, which the web copies verbatim and matches alias-aware (`sameMessage`). Verified in the pre-review and by reading the code.
+- Live proof: the lead does it after the merge, against a second server instance (see the board or the playbook note).
