@@ -10,7 +10,7 @@ export const SET_AUTH_TOKEN_HEADER = 'set-auth-token';
 
 export const DEFAULT_API_URL = 'http://127.0.0.1:3188';
 
-/** Build-time server URL, read from `EXPO_PUBLIC_GALENA_API_URL` (see `spike/config.ts`). */
+/** Build-time server URL, read from `EXPO_PUBLIC_GALENA_API_URL`. */
 export function resolveApiUrl(env: Record<string, string | undefined>): string {
   const value = env['EXPO_PUBLIC_GALENA_API_URL'];
   return typeof value === 'string' && value !== '' ? value : DEFAULT_API_URL;

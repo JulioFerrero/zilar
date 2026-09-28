@@ -12,7 +12,7 @@ import { ACCENT, FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
 import { typingLabel } from '@/lib/format';
 import type { ChatSummary } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { useChatStore } from '@/store/chat-store';
+import { useChatStore } from '@/store/chat-store-provider';
 import { useColorScheme } from 'nativewind';
 
 type ChatHeaderProps = {

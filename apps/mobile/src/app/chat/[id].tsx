@@ -14,7 +14,7 @@ import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
 import { replyRef } from '@/lib/format';
 import type { ReplyRef, UiMessage } from '@/lib/types';
-import { useChatStore } from '@/store/chat-store';
+import { useChatStore } from '@/store/chat-store-provider';
 
 export default function ChatScreen() {
   return (
@@ -32,6 +32,7 @@ function Chat() {
   const chat = useChatStore((state) => state.chats.find((item) => item.id === chatId));
   const openChat = useChatStore((state) => state.openChat);
   const sendText = useChatStore((state) => state.sendText);
+  const sendTyping = useChatStore((state) => state.sendTyping);
   const currentUserId = useChatStore((state) => state.currentUserId);
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
 
@@ -75,6 +76,7 @@ function Chat() {
           }}
           replyTo={replyTo}
           onCancelReply={cancelReply}
+          onTyping={() => sendTyping(chat.id)}
         />
       </KeyboardAvoidingView>
     </View>

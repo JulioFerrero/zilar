@@ -1,3 +1,4 @@
+import '@/lib/polyfills';
 import '@/global.css';
 
 import { PortalHost } from '@rn-primitives/portal';
@@ -10,6 +11,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useAuthStore } from '@/auth/session';
 import { NAV_THEME } from '@/lib/theme';
+import { ChatStoreProvider } from '@/store/chat-store-provider';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -32,7 +34,9 @@ export default function RootLayout() {
       <ThemeProvider value={NAV_THEME[colorScheme ?? 'light']}>
         <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
         <SessionBootstrap />
-        <Stack screenOptions={{ headerShown: false }} />
+        <ChatStoreProvider>
+          <Stack screenOptions={{ headerShown: false }} />
+        </ChatStoreProvider>
         <PortalHost />
       </ThemeProvider>
     </GestureHandlerRootView>

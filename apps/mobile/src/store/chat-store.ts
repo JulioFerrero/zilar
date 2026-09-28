@@ -1,8 +1,9 @@
-import type { ChatSummary, MessageStatus, ReplyRef, UiMessage } from '@galena/chat-core';
+import type { MessageStatus, UiMessage } from '@galena/chat-core';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
-import { CURRENT_USER_ID, CURRENT_USER_NAME, type ChatFolder } from '../lib/types';
+import { CURRENT_USER_ID, CURRENT_USER_NAME } from '../lib/types';
 import { mockChats, mockMessagesByChat } from '../mock';
+import type { ChatStoreState } from './types';
 
 /** Simulated send states, from T-0018 step 5. */
 export const SENT_DELAY_MS = 300;
@@ -12,34 +13,21 @@ export const READ_DELAY_MS = 1500;
 export const TYPING_START_MS = 2000;
 export const TYPING_DURATION_MS = 4000;
 
-export type TypingState = {
-  names: string[];
-};
-
-export type SendTextOptions = {
-  replyTo?: ReplyRef;
-};
-
 const NO_MESSAGES: UiMessage[] = [];
 
-export type ChatStore = {
-  currentUserId: string;
-  chats: ChatSummary[];
-  messagesByChat: Record<string, UiMessage[]>;
-  search: string;
-  activeFolder: ChatFolder;
-  activeChatId: string | null;
-  typing: Record<string, TypingState>;
-  messages: (chatId: string) => UiMessage[];
-  openChat: (chatId: string) => void;
-  sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
-  setSearch: (search: string) => void;
-  setActiveFolder: (folder: ChatFolder) => void;
-};
-
-type ChatStoreState = Omit<
-  ChatStore,
-  'messages' | 'openChat' | 'sendText' | 'setSearch' | 'setActiveFolder'
+/** The data fields of the store, without the actions. */
+type ChatStoreData = Omit<
+  ChatStoreState,
+  | 'messages'
+  | 'openChat'
+  | 'loadOlder'
+  | 'hasMore'
+  | 'sendText'
+  | 'sendTyping'
+  | 'setSearch'
+  | 'setActiveFolder'
+  | 'start'
+  | 'stop'
 >;
 
 function cloneMessages(): Record<string, UiMessage[]> {
@@ -51,7 +39,7 @@ function cloneMessages(): Record<string, UiMessage[]> {
   );
 }
 
-export function createInitialState(): ChatStoreState {
+export function createInitialState(): ChatStoreData {
   const messagesByChat = cloneMessages();
   const chats = mockChats.map((chat) => {
     const lastMessage = messagesByChat[chat.id]?.at(-1);
@@ -59,11 +47,15 @@ export function createInitialState(): ChatStoreState {
   });
   return {
     currentUserId: CURRENT_USER_ID,
+    me: undefined,
+    status: 'online',
     chats,
+    contacts: [],
     messagesByChat,
     search: '',
     activeFolder: 'all',
     activeChatId: null,
+    historyComplete: {},
     typing: {},
   };
 }
@@ -83,8 +75,9 @@ function scheduleTypingSimulation(set: (partial: Partial<ChatStoreState>) => voi
 
 let messageCounter = 0;
 
-export function createChatStore(): UseBoundStore<StoreApi<ChatStore>> {
-  return create<ChatStore>()((set, get) => {
+/** The mock store kept for `?mock=1` dev mode and unit tests. */
+export function createChatStore(): UseBoundStore<StoreApi<ChatStoreState>> {
+  return create<ChatStoreState>()((set, get) => {
     const setStatus = (chatId: string, messageId: string, status: MessageStatus) => {
       set((state) => {
         const messages = state.messagesByChat[chatId];
@@ -113,6 +106,11 @@ export function createChatStore(): UseBoundStore<StoreApi<ChatStore>> {
     return {
       ...createInitialState(),
       messages: (chatId) => get().messagesByChat[chatId] ?? NO_MESSAGES,
+      hasMore: () => false,
+      loadOlder: () => {},
+      sendTyping: () => {},
+      start: () => {},
+      stop: () => {},
       openChat: (chatId) => {
         set((state) => ({
           activeChatId: chatId,
@@ -153,4 +151,14 @@ export function createChatStore(): UseBoundStore<StoreApi<ChatStore>> {
   });
 }
 
-export const useChatStore = createChatStore();
+/**
+ * `?mock=1` (or `EXPO_PUBLIC_GALENA_MOCK=1`) selects the mock store for local
+ * UI work. Vitest also runs on the mock store. The real store is the default.
+ */
+export function isMockMode(params?: Record<string, string | string[] | undefined>): boolean {
+  if (process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_GALENA_MOCK === '1') {
+    return true;
+  }
+  const value = params?.['mock'];
+  return value === '1' || (Array.isArray(value) && value.includes('1'));
+}

@@ -1624,7 +1624,7 @@ Rough estimates for **one developer working full time with an AI coding assistan
 
 | Who | Does |
 |---|---|
-| **Julio** | Product owner. Answers questions, tests on real devices, approves merges, invites friends to the pilot. |
+| **Julio** | Product owner. Answers questions, tests on real devices, invites friends to the pilot. |
 | **Claude** (Claude Code) | Architect and lead: <ul><li>keeps this plan up to date</li><li>writes specs</li><li>breaks milestones into small tasks</li><li>builds the risky and security-critical parts (spikes, protocols, auth, proxy, runner core)</li><li>reviews every PR</li></ul> |
 | **DeepSeek agents** | Implementers, doing the heavy lifting. Each takes one well-scoped task, works in its own git worktree and branch, runs the checks and writes a report. **Julio launches them himself.** |
 
@@ -1653,7 +1653,7 @@ Rough estimates for **one developer working full time with an AI coding assistan
    OpenCode 1.18.25 is already installed on Julio's Mac. `deepseek/deepseek-v4-pro` and `deepseek/deepseek-v4-flash` are available.
 3. CI runs typecheck, lint and tests, which must pass.
 4. Claude reviews the diff against the acceptance criteria. It either requests fixes, which go back to the worker, or approves.
-5. Julio merges. This is the same rule the platform will enforce for its own AIs.
+5. Claude merges once its review finds no problems, bugs or open questions.
 
 In short: Claude plans and reviews, DeepSeek builds, Julio decides.
 
