@@ -1,7 +1,7 @@
 ---
 id: T-0032
 title: Web "Create an AI" wizard and a My AIs page, on top of /api/ais
-status: review
+status: changes-requested
 milestone: M2
 branch: task/T-0032-create-ai-wizard
 model: opencode-go/deepseek-v4.1-flash
@@ -258,3 +258,44 @@ Nothing blocked. The API is enough to build steps 1–5 (all that T-0032 asks fo
 
 ## Review (written by Claude)
 
+
+### Round 1: changes requested (one bug, found live)
+
+Good work. The checks pass on the lead's re-run:
+- format:check, lint, typecheck and build;
+- `turbo test --force --filter=@galena/web`: 116/116.
+
+The lead clicked through the wizard live in Chrome, as the throwaway test account, against the real server:
+
+| Step | Result |
+|---|---|
+| Menu → My AIs → empty state | works |
+| Wizard, name and template | works |
+| Persona prefill; unchanged, so the server default applied | works |
+| Provider (the active connection) | works |
+| Limits: 30/20 shows an inline error and disables Next | works |
+| Review summary | works |
+| **Double-click** Create | exactly **one** POST, 201 |
+| Land on My AIs with the new row highlighted | works |
+| Edit name and month limit | PATCH 200 |
+| Delete: two-step confirm with a warning | DELETE 204, empty state |
+| No horizontal scroll at 500 px (Chrome's minimum window) | works |
+
+After the delete, the database had no AI row and no key row.
+
+**Bug (must fix): model suggestions never appear.**
+- `CreateAiPage.tsx` passes `selectedProviderId={selectedConnection?.id ?? null}` into the model step. That is the connection's UUID, not its provider.
+- The effects:
+  - `modelSuggestionsFor()` gets `c31a71e2-…` and returns `[]`, so the `<datalist>` is empty;
+  - the placeholder reads "c31a71e2-cada-40e3-8705-2fc42929bce7 model name".
+- The tests missed it because their fixture connection seems to use provider-like values.
+- Fix:
+  - pass `selectedConnection.provider`, and rename the prop so an id can't be passed by mistake;
+  - the placeholder should use the provider's label (e.g. "OpenAI model name").
+- Regression test: a connection with `id: 'c-123'` and `provider: 'openai'`. The model step offers `gpt-4o-mini` (datalist options or your suggestion rows), and the placeholder doesn't contain the id.
+
+**Also in this round (small):** the Anthropic suggestions are out of date. Use `claude-opus-5-5`, `claude-sonnet-5` and `claude-haiku-4-5-20251001`.
+
+**Not your bug, for the record:** Open chat navigates correctly to `/c/<jid>`, but the chat shell shows "Select a chat". `/api/chats` doesn't list AIs yet; it only lists human contacts and groups. That is server work and belongs to T-0033. Keep the button as it is.
+
+Allowed files are unchanged. Run the same Checks, add a "Round 2" subsection to the Report, then set `status: review` and commit.
