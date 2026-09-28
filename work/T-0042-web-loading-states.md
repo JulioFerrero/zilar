@@ -1,7 +1,7 @@
 ---
 id: T-0042
 title: Web — loading vs empty states (no "No chats yet" flash on reload; a reloaded /c/<jid> loads its history)
-status: review
+status: merged
 milestone: M2
 branch: task/T-0042-web-loading-states
 model: opencode-go/muse-spark-1.3-contributor
@@ -247,3 +247,26 @@ Round 2 commands (real results): `pnpm format:check` pass (after
 `PREREVIEW.md` left untracked and uncommitted.
 
 ## Review (written by Claude)
+
+### Round 2: approved
+
+Both of Julio's bugs were reproduced by failing tests first, then fixed:
+1. `openHistory` before core or the chats were ready is now queued, keeping only the latest chat, and flushed once both are ready and on reconnect.
+2. `ChatList` shows skeleton rows while loading, "No chats yet" only when the list is ready and empty, and an error with Retry.
+
+The round 1 pre-review found the same flash one level down: `MessageList` treated an unknown history state as ready, so it showed "No messages yet" on first paint before `openChat` ran. Round 2 fixed it, plus:
+- the superseded pending-chat state;
+- the error bar over already-loaded chats;
+- a reconnect test.
+
+The round 2 pre-review found two nits, accepted:
+- Retry briefly shows the skeleton over an already-loaded list (board follow-up);
+- `stop()` leaves per-chat `historyState` across a logout, which recovers on reopen.
+
+Lead re-ran every check after rebasing onto main:
+- format:check, lint, typecheck (9/9) and build pass;
+- `turbo test --force --filter=@galena/web`: 147/147;
+- scope is clean.
+
+Live check: Julio's reload scenarios, next time he uses the web app.
+
