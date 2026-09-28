@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
 import {
+  CONNECT_RETRY_DELAYS_MS,
   createRealChatStore,
   type ApiClient,
   type RealStoreDeps,
@@ -716,5 +717,237 @@ describe('createRealChatStore', () => {
     await waitForRefresh();
 
     expect(getChats).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('loading states (T-0042)', () => {
+  async function waitForState(check: () => boolean, timeoutMs = 2000): Promise<void> {
+    const start = Date.now();
+    for (;;) {
+      if (check()) {
+        return;
+      }
+      if (Date.now() - start > timeoutMs) {
+        throw new Error('timed out waiting for store state');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+
+  function pageLoads(xmpp: FakeXmpp, chatJid: string): number {
+    return vi
+      .mocked(xmpp.core.loadHistory)
+      .mock.calls.filter(([jid, , options]) => jid === chatJid && options?.max === 50).length;
+  }
+
+  function unstartedStore(overrides: Partial<ApiClient> = {}): {
+    store: ReturnType<typeof createRealChatStore>;
+    api: ApiClient;
+    xmpp: FakeXmpp;
+  } {
+    const api = fakeApi(overrides);
+    const xmpp = fakeXmpp();
+    xmpp.history['ana@galena.test'] = [
+      message({
+        id: 'ana-1',
+        chatJid: 'ana@galena.test',
+        body: 'hello before ready',
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+      }),
+    ];
+    xmpp.history['team@rooms.galena.test'] = [
+      message({
+        id: 'team-1',
+        chatJid: 'team@rooms.galena.test',
+        body: 'group hello',
+        fromJid: 'ana@galena.test',
+        fromNick: 'ana',
+        timestamp: new Date('2026-09-28T11:00:00Z'),
+      }),
+    ];
+    const store = createRealChatStore({
+      api,
+      storage: memoryStorage(),
+      createXmpp: () => xmpp.core,
+    });
+    return { store, api, xmpp };
+  }
+
+  it('exposes chatsState loading before boot and ready after', async () => {
+    const { store } = unstartedStore();
+    expect(store.getState().chatsState).toBe('loading');
+
+    store.getState().start();
+    await waitForState(() => store.getState().chatsState === 'ready');
+
+    expect(store.getState().chats.map((chat) => chat.id)).toContain('ana@galena.test');
+  });
+
+  it('goes loading -> error -> retry -> ready when /api/chats fails first', async () => {
+    const chats = [
+      { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+    ];
+    const getChats = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('server down'))
+      .mockResolvedValue(chats);
+    const { store } = unstartedStore({ getChats });
+    expect(store.getState().chatsState).toBe('loading');
+
+    store.getState().start();
+    await waitForState(() => store.getState().chatsState === 'error');
+
+    store.getState().retryChats();
+    await waitForState(() => store.getState().chatsState === 'ready');
+    expect(store.getState().chats.map((chat) => chat.id)).toEqual(['ana@galena.test']);
+  });
+
+  it('loads history for a chat opened before the core and chats are ready', async () => {
+    const { store, xmpp } = unstartedStore();
+
+    store.getState().openChat('ana@galena.test');
+    store.getState().start();
+    await waitForState(() => store.getState().messages('ana@galena.test').length > 0);
+
+    expect(
+      store
+        .getState()
+        .messages('ana@galena.test')
+        .map((item) => item.text),
+    ).toContain('hello before ready');
+    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(1);
+  });
+
+  it('retries the connection after a failed token request instead of staying offline', async () => {
+    // Julio hit the token route's 429 and the app stayed on "Waiting for
+    // network…" until a reload.
+    vi.useFakeTimers();
+    try {
+      const { store, api, xmpp } = unstartedStore();
+      const original = api.getXmppToken.bind(api);
+      let calls = 0;
+      api.getXmppToken = async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new Error('rate_limited');
+        }
+        return original();
+      };
+
+      store.getState().start();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(store.getState().status).toBe('offline');
+      expect(xmpp.core.connect).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(CONNECT_RETRY_DELAYS_MS[0] ?? 0);
+      expect(xmpp.core.connect).toHaveBeenCalledTimes(1);
+      expect(store.getState().status).toBe('online');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for the connection to be online before loading history', async () => {
+    // Julio's reload bug: `core` exists while `connect()` is still in flight,
+    // and a MAM query sent then fails with "Couldn't load messages".
+    const { store, xmpp } = unstartedStore();
+    let finishConnect: () => void = () => {};
+    vi.mocked(xmpp.core.connect).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishConnect = resolve;
+        }),
+    );
+
+    store.getState().start();
+    await waitForState(() => store.getState().chatsState === 'ready');
+    store.getState().openChat('ana@galena.test');
+    await flush();
+    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(0);
+    expect(store.getState().historyState['ana@galena.test']).toBe('loading');
+
+    finishConnect();
+    await waitForState(() => store.getState().historyState['ana@galena.test'] === 'ready');
+    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(1);
+  });
+
+  it('loads a group history only after the room is joined', async () => {
+    // Julio's reload bug on groups: MUC MAM before the join fails.
+    const { store, xmpp } = unstartedStore();
+    let finishJoin: () => void = () => {};
+    vi.mocked(xmpp.core.joinRoom).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishJoin = resolve;
+        }),
+    );
+
+    store.getState().openChat('team@rooms.galena.test');
+    store.getState().start();
+    await waitForState(() => store.getState().status === 'online');
+    await flush();
+    expect(pageLoads(xmpp, 'team@rooms.galena.test')).toBe(0);
+
+    finishJoin();
+    await waitForState(() => store.getState().historyState['team@rooms.galena.test'] === 'ready');
+    expect(pageLoads(xmpp, 'team@rooms.galena.test')).toBe(1);
+  });
+
+  it('only the latest pending chat loads', async () => {
+    const { store, xmpp } = unstartedStore();
+
+    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('team@rooms.galena.test');
+    store.getState().start();
+    await waitForState(() => store.getState().messages('team@rooms.galena.test').length > 0);
+    await flush();
+
+    expect(pageLoads(xmpp, 'team@rooms.galena.test')).toBe(1);
+    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(0);
+  });
+
+  it('does not load the same chat history twice', async () => {
+    const { store, xmpp } = await setup();
+
+    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@galena.test');
+    await waitForState(() => store.getState().messages('ana@galena.test').length > 0);
+    await flush();
+
+    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(1);
+  });
+
+  it('marks per-chat history loading, then ready', async () => {
+    const { store } = unstartedStore();
+
+    store.getState().openChat('ana@galena.test');
+    expect(store.getState().historyState['ana@galena.test']).toBe('loading');
+
+    store.getState().start();
+    await waitForState(() => store.getState().historyState['ana@galena.test'] === 'ready');
+  });
+
+  it('marks per-chat history error when the page load fails', async () => {
+    const { store, xmpp } = await setup();
+    vi.mocked(xmpp.core.loadHistory).mockRejectedValueOnce(new Error('mam failed'));
+
+    store.getState().openChat('ana@galena.test');
+    await waitForState(() => store.getState().historyState['ana@galena.test'] === 'error');
+  });
+
+  it('clears the loading marker of a superseded pending chat', async () => {
+    const { store, xmpp } = unstartedStore();
+
+    store.getState().openChat('ana@galena.test');
+    expect(store.getState().historyState['ana@galena.test']).toBe('loading');
+
+    store.getState().openChat('team@rooms.galena.test');
+    expect(store.getState().historyState['ana@galena.test']).toBeUndefined();
+    expect(store.getState().historyState['team@rooms.galena.test']).toBe('loading');
+
+    store.getState().start();
+    await waitForState(() => store.getState().messages('team@rooms.galena.test').length > 0);
+    expect(pageLoads(xmpp, 'team@rooms.galena.test')).toBe(1);
+    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(0);
   });
 });

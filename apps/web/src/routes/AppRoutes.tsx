@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router';
 import type { ReactNode } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
+import { SKELETON_DELAY_MS } from '@/components/Skeleton';
+import { useDelayed } from '@/lib/useDelayed';
 import { ChatShell } from './ChatShell';
 import { AisPage } from './AisPage';
 import { ConnectionsPage } from './ConnectionsPage';
@@ -8,10 +10,13 @@ import { InvitePage } from './InvitePage';
 import { LoginPage } from './LoginPage';
 import { NamePage } from './NamePage';
 
+// The session check usually answers within a frame or two; the text only
+// shows when it is slow, so a reload doesn't flash a "Loading…" page.
 function LoadingScreen() {
+  const slow = useDelayed(true, SKELETON_DELAY_MS) === true;
   return (
     <div className="chat-background flex min-h-dvh items-center justify-center text-[15px] text-muted-foreground">
-      Loading…
+      {slow ? 'Loading…' : null}
     </div>
   );
 }

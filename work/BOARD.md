@@ -8,13 +8,13 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0042](T-0042-web-loading-states.md) | Web: loading ≠ empty (no "No chats yet" flash on reload; a reloaded `/c/<jid>` loads its history; per-chat message load and error states) | in progress | muse-spark-1.3 | — | Julio's live report (2026-09-28). Causes found by the lead: `openHistory` returns early before core and chats are ready; ChatList has no loading state. |
 | [T-0041](T-0041-streaming-replies-server.md) | Server: stream AI reply drafts (LiteLLM `stream: true`, tool-call accumulation) over an authenticated SSE endpoint `/api/drafts/stream` to the owner; final message still via XMPP (plan §6.4) | in progress | muse-spark-1.3 | T-0040 | Julio asked for it on 2026-09-28. Drafts carry text only, never tool arguments. |
 | T-0043 | Web: render AI reply drafts from `/api/drafts/stream` as a growing bubble, replaced by the final XMPP message (T-0041 contract) | planned (after T-0041 and T-0042) | deepseek-v4.1-flash | T-0041, T-0042 | The web half of streaming. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
 
+- Web: Retry on the chat-list error bar briefly swaps an already-loaded list for skeletons; keep the list visible during retry (T-0042 nit). Mobile has the same loading-vs-empty bugs T-0042 fixed on web.
 - Change an AI's model after creation (server + panel). `UpdateAiSchema` allows only name, persona and limits, and a new model means re-registering the AI's LiteLLM model `ai-<id>` (T-0039 review).
 - AI DMs: the AI should send a displayed (read) marker when it takes a message into a turn. Today the owner's messages keep a single tick forever. T-0034 passed its live check on 2026-09-28: the first real reply, `deepseek-chat` with Julio's key, in about 1 s.
 - Mobile: honor the `?mock=` route param only in `__DEV__` or with `EXPO_PUBLIC_GALENA_MOCK` set, for both the chat store and My AIs (T-0037 pre-review). Today a deep link can show fake data in a production build.
@@ -73,3 +73,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0037](T-0037-mobile-my-ais.md) | Mobile My AIs: list (limits, AI badge, actions sheet), 6-step Create-AI wizard (provider-keyed model suggestions, web-identical limit validation, single POST), edit via PATCH of changed fields, two-step delete; mock scenarios; 18 screenshots | 2026-09-28 |
 | [T-0039](T-0039-quick-create-ai.md) | Web one-screen New AI dialog (name → Create, defaults: provider auto, defaultModelFor, $1/$10; lands in the chat) + in-chat AI panel (name/persona/limits/delete, honest delete copy); 6-step wizard removed | 2026-09-28 |
 | [T-0040](T-0040-persona-by-chat.md) | The owner shapes an AI by chat: update_persona/revert_persona tools in the DM turn (≤2 model calls, per-call guards, one-step undo toggle via ais.previous_persona), fixed 'Persona updated' / 'Persona restored' lines, persona never logged | 2026-09-28 |
+| [T-0042](T-0042-web-loading-states.md) | Web loading ≠ empty: chats/history load states with skeletons, inline errors + Retry; a reloaded /c/<jid> loads its history (pending open flushed on ready/reconnect); no 'No chats yet' / 'No messages yet' flash | 2026-09-28 |

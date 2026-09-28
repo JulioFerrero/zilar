@@ -372,6 +372,10 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
 
   function attachHandlers(current: XmppClient): void {
     current.on('status', (raw) => {
+      // xmpp.js reports the `online` status just before the `online` event
+      // that carries the bound JID. Going online here would let a listener
+      // query history with no identity yet, so only that event goes online.
+      if (raw === 'online') return;
       applyRawStatus(raw);
     });
 

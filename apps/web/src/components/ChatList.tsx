@@ -7,8 +7,14 @@ import { FolderTabs } from './FolderTabs';
 import { InviteDialog } from './InviteDialog';
 import { NewChatButton } from './NewChatButton';
 import { SearchBar } from './SearchBar';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { ChatListSkeleton } from './Skeleton';
+import { useDelayed } from '@/lib/useDelayed';
+import { Button } from './ui/button';
+import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { visibleChats } from '@/store/store';
+
+// A normal (re)connect takes well under this; only a slow one gets a banner.
+const CONNECTION_BANNER_DELAY_MS = 1500;
 
 function statusLabel(status: string): string | undefined {
   switch (status) {
@@ -24,11 +30,12 @@ function statusLabel(status: string): string | undefined {
 
 export function ChatList({ activeChatId }: { activeChatId: string | undefined }) {
   const store = useChatStore();
+  const storeApi = useChatStoreApi();
   const navigate = useNavigate();
   const chats = visibleChats(store);
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const connection = statusLabel(store.status);
+  const connection = useDelayed(statusLabel(store.status), CONNECTION_BANNER_DELAY_MS);
 
   const signOut = (): void => {
     setMenuOpen(false);
@@ -117,12 +124,44 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
       )}
       <FolderTabs />
       <nav aria-label="Chats" className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
-        {chats.length === 0 ? (
-          <EmptyState variant="no-chats" onInvite={() => setInviteOpen(true)} />
+        {store.chatsState === 'loading' ? (
+          <ChatListSkeleton />
+        ) : store.chatsState === 'error' && store.chats.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+            <p className="text-[15px] text-muted-foreground">{"Couldn't load chats"}</p>
+            <Button
+              type="button"
+              size="lg"
+              className="rounded-full px-5"
+              onClick={() => storeApi.getState().retryChats()}
+            >
+              Retry
+            </Button>
+          </div>
         ) : (
-          chats.map((chat) => (
-            <ChatListItem key={chat.id} chat={chat} selected={chat.id === activeChatId} />
-          ))
+          <>
+            {store.chatsState === 'error' && (
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-divider px-3 py-2">
+                <p className="text-[13px] text-muted-foreground">{"Couldn't load chats"}</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={() => storeApi.getState().retryChats()}
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
+            {chats.length === 0 ? (
+              <EmptyState variant="no-chats" onInvite={() => setInviteOpen(true)} />
+            ) : (
+              chats.map((chat) => (
+                <ChatListItem key={chat.id} chat={chat} selected={chat.id === activeChatId} />
+              ))
+            )}
+          </>
         )}
       </nav>
       <NewChatButton />

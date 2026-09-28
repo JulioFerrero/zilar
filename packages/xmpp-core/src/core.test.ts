@@ -223,6 +223,26 @@ describe('createXmppCore: connection lifecycle', () => {
     ).toBe(true);
   });
 
+  it('knows its own JID by the time listeners see online', async () => {
+    const fake = createFakeClient();
+    const core = createCore(
+      options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+      {
+        createClient: () => fake,
+      },
+    );
+    const seen: (string | undefined)[] = [];
+    core.on('status', (status) => {
+      if (status === 'online') seen.push(core.me());
+    });
+
+    const connecting = core.connect();
+    fake.emitOnline('bob@galena.localhost');
+    await connecting;
+
+    expect(seen).toEqual(['bob@galena.localhost']);
+  });
+
   it('goes back to online and reports reconnecting after a dropped connection', async () => {
     const fake = createFakeClient();
     const core = await connectedCore(fake);
