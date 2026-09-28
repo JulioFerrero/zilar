@@ -1,6 +1,12 @@
 import path from 'node:path';
 import { moveBoardRow } from './board.js';
 import { porcelainLines, type GitRunner } from './git.js';
+import {
+  findProcessesInWorktree,
+  stopWorktreeProcesses,
+  type FindProcsDeps,
+  type StopProcessesDeps,
+} from './processes.js';
 import { parseFrontMatter } from './task-file.js';
 
 export class MergeError extends Error {
@@ -23,6 +29,18 @@ export interface MergeOptions {
   readText: (file: string) => string;
   writeText: (file: string, text: string) => void;
   dropFromState: (task: string) => void;
+  // Injectable seams so tests can stub out lsof/ps/kill/clock. Production
+  // callers pass the real implementations; tests pass stubs that return no
+  // candidates and never kill anything. `findProcsDeps` is required in
+  // production because the lead must always identify its own pid/parent.
+  findProcs: (worktree: string, deps: FindProcsDeps) => { pid: number; command: string }[];
+  stopProcs: (
+    candidates: { pid: number; command: string }[],
+    deps: StopProcessesDeps,
+  ) => Promise<{ pid: number; command: string }[]>;
+  findProcsDeps: FindProcsDeps;
+  stopProcsDeps: StopProcessesDeps;
+  print: (line: string) => void;
 }
 
 function taskStatus(options: MergeOptions): string {
@@ -32,10 +50,31 @@ function taskStatus(options: MergeOptions): string {
   return parseFrontMatter(text)['status'] ?? '';
 }
 
+// Stops processes left in the worktree before the worktree is removed.
+// Dev servers, Metro, etc. survive `git worktree remove` and keep holding the
+// ports; printing every AI answer twice was the symptom. The default seams
+// reach for `lsof` and `ps`, but tests inject their own.
+async function stopWorktreeProcessesForMerge(options: MergeOptions): Promise<void> {
+  const find = options.findProcs ?? findProcessesInWorktree;
+  const stop = options.stopProcs ?? stopWorktreeProcesses;
+  const findDeps = options.findProcsDeps;
+  if (findDeps === undefined) {
+    throw new MergeError(
+      'merge needs findProcsDeps (currentPid/parentPid); production callers must provide it',
+    );
+  }
+  const candidates = find(options.worktree, findDeps);
+  const stopped = await stop(candidates, options.stopProcsDeps ?? {});
+  const print = options.print ?? ((line: string): void => console.log(line));
+  for (const entry of stopped) {
+    print(`stop ${entry.pid} ${entry.command}`);
+  }
+}
+
 // Everything `lead merge` does after the lead approves. All mechanical, no
 // judgment: on a rebase conflict it aborts and reports the conflicted files,
 // and it never resolves anything automatically.
-export function mergeTask(options: MergeOptions): void {
+export async function mergeTask(options: MergeOptions): Promise<void> {
   const mainDirty = porcelainLines(options.runner, options.root);
   if (mainDirty.length > 0) {
     throw new MergeError(
@@ -54,6 +93,7 @@ export function mergeTask(options: MergeOptions): void {
       `refusing to merge: worktree has uncommitted changes (${worktreeDirty.join(', ')})`,
     );
   }
+  await stopWorktreeProcessesForMerge(options);
   const rebased = options.runner.run(options.worktree, ['rebase', 'main']);
   if (!rebased.ok) {
     const conflicted = options.runner

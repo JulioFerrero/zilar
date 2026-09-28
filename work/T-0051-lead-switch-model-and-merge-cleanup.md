@@ -1,7 +1,7 @@
 ---
 id: T-0051
 title: lead CLI — `switch-model` to move a task to another model (quota fallback), and `merge` stops processes left in the worktree
-status: planned
+status: review
 milestone: M2
 branch: task/T-0051-lead-switch-model
 model: minimax-coding-plan/MiniMax-M3
@@ -92,8 +92,68 @@ Don't run `lead launch`, `lead merge`, `lead switch-model` or the autopilot agai
 - [ ] Every check above passes.
 - [ ] `switch-model` works as specified, shares code with `launch`, and doesn't touch git or task files.
 - [ ] `merge` stops only the worktree's processes, before removing it, with the safety tests.
-- [ ] Only the Allowed files changed.
+- [x] Only the Allowed files changed.
 
 ## Report (written by the worker when done)
+
+### What I did
+
+Two gaps in `packages/devtools/src/lead/`, sharing one helper.
+
+**`lead switch-model <T-XXXX> <provider/model> [--extra-rules <file>]`** (new). Opens a fresh OpenCode session in the worker's existing worktree, on the new model, sends the new `prompts/switch.md`, and points the state record at it. Interrupts the previous session first and ignores a 4xx if the session is already idle.
+
+The shared part of `launch.ts` (read rules, create the session, render the prompt template with `TASK` / `TASK_FILE` / `WORKTREE` / `BRANCH`, send it, assert no unfilled placeholders) is now `startWorkerSession` in `launch.ts`. Both `launchTask` and `switchModel` call it. The new `switchModel` resets every per-session counter (nudges, quota retry/escalate, stalled/escalated, pre-review markers, packet, escalated ids, blocked text, lastEscalation) and adds `switchedAt`, keeping the original `startedAt`. `switch-model` does not edit the task file and does not touch git — the lead updates `model:` in the spec separately.
+
+The new `prompts/switch.md` is the worker prompt with one extra paragraph: "the lead switched this task from another model … read `git status` / `git log` / `git diff` and continue."
+
+**`lead merge` stops worktree processes.** Before `git worktree remove`, the new `processes.ts` runs `lsof -a -d cwd -Fpn` and `ps -Ao pid=,command=` through injectable seams, picks the pids whose cwd or command line lives inside the worktree path (exact or `<worktree>/…`, never look-alikes like `galena-T-0047` matching `galena-T-00470`), drops the lead process and its parent, SIGTERMs each one, polls up to 5 s in 50 ms ticks, then SIGKILLs the survivors. It prints one `stop <pid> <command[:80]>` line per process; the command is stripped of any leading `KEY=value ` env assignments first, so a worker's secrets never reach `lead.log`.
+
+Production wires the seams in `cli.ts` (real `lsof`/`ps`, current pid/parent from `process.pid`/`process.ppid`); tests inject no-op stubs.
+
+### Files changed
+
+**New**
+- `packages/devtools/prompts/switch.md`
+- `packages/devtools/src/lead/processes.ts`
+- `packages/devtools/src/lead/processes.test.ts`
+- `packages/devtools/src/lead/switch-model.ts`
+- `packages/devtools/src/lead/switch-model.test.ts`
+
+**Modified**
+- `packages/devtools/src/lead/launch.ts` — extracted `worktreeFor`, `readTaskFrontMatter`, and `startWorkerSession` (the session-create + prompt-send helper used by both launch and switch-model).
+- `packages/devtools/src/lead/merge.ts` — added the async process-stopping step before rebase, and made `mergeTask` async. New injectable seams: `findProcs`, `stopProcs`, `findProcsDeps`, `stopProcsDeps`, `print`. Production callers pass the real ones; tests pass stubs.
+- `packages/devtools/src/lead/merge.test.ts` — every existing test is now `async`; added `mergeTask process cleanup > stops processes inside the worktree before removing it` which asserts the order (`find → stop → print → worktree-remove`) and that the worktree is still on disk when the worktree-remove fires.
+- `packages/devtools/src/lead/cli.ts` — new `runSwitchModel`, new help line, wires the production seams into `runMerge`, `await`s the now-async `mergeTask`.
+- `packages/devtools/src/lead/prompts.ts` — `PromptName` now includes `'switch'`.
+- `packages/devtools/src/lead/prompts.test.ts` — exercises the new `switch.md` template and asserts every placeholder is filled.
+- `packages/devtools/src/lead/state.ts` and `types.ts` — `TaskRecord` carries the new `switchedAt` timestamp; preserved through `loadState`/`saveState` and seeded to `undefined` by `newTaskRecord`.
+
+### Checks (real command results)
+
+- `pnpm install`: `Lockfile is up to date … Done in 8.3s`.
+- `pnpm format:check`: `All matched files use Prettier code style!`
+- `pnpm lint`: `oxlint .` → `Command exited with code 0`, no findings.
+- `pnpm typecheck`: `Tasks: 9 successful, 9 total`, `@galena/devtools` passes (`tsc --noEmit` clean).
+- `pnpm exec turbo test --force --filter=@galena/devtools`:
+  ```
+  Test Files  14 passed (14)
+       Tests  268 passed (268)
+  ```
+  New: 7 `switchModel` tests + 14 `findProcessesInWorktree` / `stopWorktreeProcesses` tests + 1 `mergeTask process cleanup` test = 22 new tests.
+
+### Deviations / decisions worth flagging
+
+- I switched `MergeOptions` to use **required** seam fields (not optional `T?`) so the production caller is forced to supply `findProcsDeps`/`print`. Otherwise `exactOptionalPropertyTypes: true` lets a caller pass `undefined` and silently lose the print/lead-pid exclusion. Required seams = a misuse in the CLI is a compile error.
+- I split `findProcessesInWorktree` from `stopWorktreeProcesses` (two seams, not one) because the spec asks for them to be tested independently: the path matching and look-alike safety live in the first, the TERM-then-KILL timing in the second. Combining them would have made the fake timers part of the matching tests too.
+- I strip `KEY=value ` prefixes from the printed command, not just truncate. Spec says "never print environment variables"; truncation alone leaves `FOO=secret` intact if the truncated prefix is still 80 chars or fewer.
+- `MergeTask` is now `async`. Every existing test got an `await`; no behavior change. The CLI's `runMerge` already awaits it.
+
+### Problems
+
+None open. The `lead switch-model` test had one initial hiccup where I tried to spread a `FakeOpenCodeClient` instance to override one method; that loses prototype methods. The fix was to build an explicit `OpenCodeClient` literal in the test — same number of lines, no spread trick.
+
+### Open questions
+
+None. The branch-switch, prereview, autopilot code paths all consume `TaskRecord` through the same `loadState`/`saveState` I extended; the only new field is `switchedAt`, which is optional and defaults to `undefined`, so older state files load unchanged.
 
 ## Review (written by Claude)

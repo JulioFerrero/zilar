@@ -1,0 +1,125 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { type OpenCodeClient } from './client.js';
+import { readTaskFrontMatter, startWorkerSession, worktreeFor } from './launch.js';
+import { loadRulesFile } from './prompts.js';
+import { loadState, saveState } from './state.js';
+import { assertNotV4Pro, splitModel } from './task-file.js';
+import type { TaskRecord } from './types.js';
+
+export interface SwitchModelDeps {
+  repoRoot: string;
+  client: OpenCodeClient;
+  promptsDirPath: string;
+  statePath: string;
+}
+
+// Resets the per-session bookkeeping so the autopilot treats this session as a
+// fresh start: the new model has not seen this worker's nudges or quota
+// errors, and any stalled state from the previous model must not carry over.
+// `startedAt` is preserved (the task started on the same worktree), and we
+// record `switchedAt` so the audit trail shows when the handover happened.
+function resetRecordForSwitch(
+  record: TaskRecord,
+  sessionId: string,
+  model: string,
+  worktree: string,
+  startedAt: string,
+  switchedAt: string,
+): TaskRecord {
+  return {
+    ...record,
+    sessionId,
+    model,
+    worktree,
+    startedAt,
+    switchedAt,
+    nudgesSent: 0,
+    lastQuotaRetryAt: undefined,
+    lastQuotaEscalatedAt: undefined,
+    stalledEscalated: false,
+    blockedEscalatedText: undefined,
+    lastEscalation: undefined,
+    escalatedPermissionIds: [],
+    escalatedQuestionIds: [],
+    prereviewStalledEscalated: false,
+    packetReadyForHead: undefined,
+    prereview: undefined,
+  };
+}
+
+export interface SwitchModelResult {
+  sessionId: string;
+  model: string;
+}
+
+// Re-targets a tracked task's worker session onto a new model. The lead runs
+// this when the previous model hit a quota error: we open a fresh session in
+// the same worktree so the work so far (committed or not) is preserved, and
+// point the state record at the new session. We must not edit the task file
+// (the lead does that) and must not touch git.
+export async function switchModel(
+  task: string,
+  newModel: string,
+  extraRulesFile: string | undefined,
+  deps: SwitchModelDeps,
+): Promise<SwitchModelResult> {
+  if (!/^T-\d+$/.test(task)) {
+    throw new Error(`task must look like T-0038, got ${JSON.stringify(task)}`);
+  }
+  const state = loadState(deps.statePath);
+  const previous = state.tasks[task];
+  if (previous === undefined) {
+    throw new Error(`unknown task ${task}: no session in the state file`);
+  }
+  if (previous.role !== 'worker') {
+    throw new Error(`task ${task} is a ${previous.role} session, not a worker`);
+  }
+  // The worktree path is the same in the main checkout and in the worker's
+  // worktree; the lead passes repoRoot.
+  const worktree = worktreeFor(deps.repoRoot, task);
+  if (!fs.existsSync(worktree)) {
+    throw new Error(`worktree is missing for ${task}: ${worktree}`);
+  }
+  assertNotV4Pro(newModel);
+  const model = splitModel(newModel);
+  const { file, branch } = readTaskFrontMatter(deps.repoRoot, task);
+
+  // Interrupt the previous session: a worker already on quota may be in
+  // any state. Ignore errors so an already-idle session doesn't block the
+  // switch (the API treats idle interrupts as a no-op or 4xx).
+  try {
+    await deps.client.interrupt(previous.sessionId);
+  } catch {
+    // Already idle, missing session, or any other transient state: we
+    // proceed regardless so the quota fallback always succeeds.
+  }
+
+  const rules = loadRulesFile(path.join(deps.promptsDirPath, 'rules.json'));
+  if (extraRulesFile !== undefined) {
+    rules.push(...loadRulesFile(extraRulesFile));
+  }
+  const { sessionId } = await startWorkerSession({
+    client: deps.client,
+    promptsDirPath: deps.promptsDirPath,
+    task,
+    file,
+    worktree,
+    branch,
+    title: `${task} (${file}) [${newModel}]`,
+    model,
+    rules,
+    template: 'switch',
+  });
+  const now = new Date().toISOString();
+  state.tasks[task] = resetRecordForSwitch(
+    previous,
+    sessionId,
+    newModel,
+    worktree,
+    previous.startedAt,
+    now,
+  );
+  saveState(deps.statePath, state);
+  return { sessionId, model: newModel };
+}

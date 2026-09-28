@@ -5,9 +5,17 @@ import { OpencodeCliClient } from './client.js';
 import { RealGitRunner } from './git.js';
 import { findTaskFile, launchTask } from './launch.js';
 import { mergeTask } from './merge.js';
+import {
+  defaultLsof,
+  defaultPs,
+  findProcessesInWorktree,
+  leadProcessIds,
+  stopWorktreeProcesses,
+} from './processes.js';
 import { promptsDir } from './prompts.js';
 import { replyToWorker } from './reply.js';
 import { startPrereviewSession } from './start-prereview.js';
+import { switchModel } from './switch-model.js';
 import { collectStatus, formatStatus } from './status.js';
 import { currentHead } from './git.js';
 import { loadState, saveState, stateFilePath } from './state.js';
@@ -17,12 +25,14 @@ const HELP = `lead — zero-token supervision of OpenCode workers
 
 Usage: lead <command> [options]
 
-  launch <T-XXXX> [--extra-rules <file>]  create the worktree and worker session
-  autopilot [--once] [--dry-run]          watch sessions, answer permissions, nudge, pre-review
-  prereview <T-XXXX>                      start a Muse pre-review manually
-  reply <T-XXXX> <prompt-file>            interrupt the worker and re-prompt it
-  merge <T-XXXX> --summary "<one line>"   rebase, fast-forward main, board, push, clean up
-  status                                  compact table of every tracked task
+  launch <T-XXXX> [--extra-rules <file>]                    create the worktree and worker session
+  switch-model <T-XXXX> <provider/model> [--extra-rules <file>]
+                                                            move a tracked worker onto a new model (quota fallback)
+  autopilot [--once] [--dry-run]                            watch sessions, answer permissions, nudge, pre-review
+  prereview <T-XXXX>                                        start a Muse pre-review manually
+  reply <T-XXXX> <prompt-file>                              interrupt the worker and re-prompt it
+  merge <T-XXXX> --summary "<one line>"                     rebase, fast-forward main, board, push, clean up
+  status                                                    compact table of every tracked task
 
 State lives outside the repo at ~/.galena-lead/state.json (or GALENA_LEAD_STATE).
 Escalations print as one LEAD: line each on stdout; everything else goes to lead.log.
@@ -122,6 +132,23 @@ async function runReply(positional: string[]): Promise<void> {
   console.log(`${task} replied`);
 }
 
+async function runSwitchModel(positional: string[], args: string[]): Promise<void> {
+  const task = positional[0];
+  const model = positional[1];
+  if (task === undefined || model === undefined) {
+    throw new Error('usage: lead switch-model <T-XXXX> <provider/model> [--extra-rules <file>]');
+  }
+  const extraRules = flagValue(args, '--extra-rules');
+  const root = findRepoRoot();
+  const { sessionId, model: chosen } = await switchModel(task, model, extraRules, {
+    repoRoot: root,
+    client: new OpencodeCliClient(),
+    promptsDirPath: promptsDir(),
+    statePath: stateFilePath(),
+  });
+  console.log(`${task} ${sessionId} ${chosen}`);
+}
+
 function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -137,7 +164,7 @@ async function runMerge(positional: string[], args: string[]): Promise<void> {
   const frontMatter = parseTaskFrontMatter(fs.readFileSync(path.join(root, 'work', file), 'utf8'));
   const worktree = path.join(path.dirname(path.resolve(root)), `galena-${task}`);
   const statePath = stateFilePath();
-  mergeTask({
+  await mergeTask({
     root,
     task,
     file,
@@ -153,6 +180,15 @@ async function runMerge(positional: string[], args: string[]): Promise<void> {
       delete state.tasks[entry];
       saveState(statePath, state);
     },
+    findProcs: findProcessesInWorktree,
+    stopProcs: stopWorktreeProcesses,
+    findProcsDeps: {
+      lsof: defaultLsof,
+      ps: defaultPs,
+      ...leadProcessIds(),
+    },
+    stopProcsDeps: {},
+    print: (line) => console.log(line),
   });
   console.log(`${task} merged`);
 }
@@ -174,6 +210,8 @@ export async function main(argv: string[]): Promise<void> {
   }
   if (command === 'launch') {
     await runLaunch(positional, rest);
+  } else if (command === 'switch-model') {
+    await runSwitchModel(positional, rest);
   } else if (command === 'autopilot') {
     await runAutopilotCommand(positional, rest);
   } else if (command === 'prereview') {

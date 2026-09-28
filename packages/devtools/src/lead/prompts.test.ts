@@ -10,7 +10,7 @@ import {
   type PromptName,
 } from './prompts';
 
-const NAMES: PromptName[] = ['worker', 'resume', 'nudge', 'prereview', 'scout', 'qa'];
+const NAMES: PromptName[] = ['worker', 'switch', 'resume', 'nudge', 'prereview', 'scout', 'qa'];
 
 describe('prompt templates', () => {
   it('ships every template the CLI needs', () => {
@@ -47,6 +47,20 @@ describe('prompt templates', () => {
     );
     expect(unfilledPlaceholders(renderPrompt(loadPrompt(promptsDir(), 'nudge'), vars))).toEqual([]);
     expect(renderPrompt(loadPrompt(promptsDir(), 'resume'), vars)).toMatch(/quota/i);
+  });
+
+  it('renders the switch prompt with no placeholders left', () => {
+    const rendered = renderPrompt(loadPrompt(promptsDir(), 'switch'), {
+      TASK: 'T-0051',
+      TASK_FILE: 'T-0051-lead-switch-model-and-merge-cleanup.md',
+      WORKTREE: '/tmp/galena-T-0051',
+      BRANCH: 'task/T-0051-lead-switch-model',
+    });
+    expect(unfilledPlaceholders(rendered)).toEqual([]);
+    expect(rendered).toContain('T-0051');
+    expect(rendered).toContain('work/T-0051-lead-switch-model-and-merge-cleanup.md');
+    expect(rendered).toContain('AGENTS.md');
+    expect(rendered).toContain('status: review');
   });
 
   it('keeps the pre-review short-format contract', () => {

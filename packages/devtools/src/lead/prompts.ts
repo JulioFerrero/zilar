@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { permissionRulesSchema, type PermissionRule } from './types.js';
 
-export type PromptName = 'worker' | 'resume' | 'nudge' | 'prereview' | 'scout' | 'qa';
+export type PromptName = 'worker' | 'switch' | 'resume' | 'nudge' | 'prereview' | 'scout' | 'qa';
 
 export function promptsDir(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));

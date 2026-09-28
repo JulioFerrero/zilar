@@ -5,6 +5,21 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { RealGitRunner } from './git';
 import { MergeError, mergeTask, type MergeOptions } from './merge';
+import type { FindProcsDeps, StopProcessesDeps } from './processes';
+
+// A no-op process-stopping seam: tests pass these to keep `mergeTask` from
+// touching the real `lsof`/`ps`/`process.kill`. The rebase-conflict and
+// happy-path tests then override them to assert what was stopped.
+const noFindProcs: MergeOptions['findProcs'] = () => [];
+const noStopProcs: MergeOptions['stopProcs'] = async (candidates) => candidates;
+const noFindProcsDeps: FindProcsDeps = {
+  lsof: () => '',
+  ps: () => '',
+  currentPid: 0,
+  parentPid: 0,
+};
+const noStopProcsDeps: StopProcessesDeps = {};
+const noPrint: MergeOptions['print'] = () => undefined;
 
 function git(cwd: string, args: string[]): void {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
@@ -102,40 +117,45 @@ function options(harness: Harness, summary = 'Demo summary'): MergeOptions {
     dropFromState: (task) => {
       harness.dropped.push(task);
     },
+    findProcs: noFindProcs,
+    stopProcs: noStopProcs,
+    findProcsDeps: noFindProcsDeps,
+    stopProcsDeps: noStopProcsDeps,
+    print: noPrint,
   };
 }
 
 describe('mergeTask pre-flight checks', () => {
-  it('refuses a dirty worktree', () => {
+  it('refuses a dirty worktree', async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'dirty.txt'), 'x');
-    expect(() => mergeTask(options(harness))).toThrow(MergeError);
-    expect(() => mergeTask(options(harness))).toThrow(/worktree has uncommitted/);
+    await expect(mergeTask(options(harness))).rejects.toThrow(MergeError);
+    await expect(mergeTask(options(harness))).rejects.toThrow(/worktree has uncommitted/);
   });
 
-  it("refuses a task whose branch copy is not merged (even when main's copy is)", () => {
+  it("refuses a task whose branch copy is not merged (even when main's copy is)", async () => {
     const harness = setup('merged', 'review');
-    expect(() => mergeTask(options(harness))).toThrow(/status is "review"/);
+    await expect(mergeTask(options(harness))).rejects.toThrow(/status is "review"/);
   });
 
-  it("proceeds when the branch copy is merged even though main's copy is todo", () => {
+  it("proceeds when the branch copy is merged even though main's copy is todo", async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
     git(harness.worktree, ['add', '.']);
     git(harness.worktree, ['commit', '-qam', 'feature']);
-    mergeTask(options(harness));
+    await mergeTask(options(harness));
     expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(true);
   });
 
-  it('refuses when main has uncommitted changes', () => {
+  it('refuses when main has uncommitted changes', async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.root, 'uncommitted.txt'), 'x');
-    expect(() => mergeTask(options(harness))).toThrow(/main checkout has uncommitted/);
+    await expect(mergeTask(options(harness))).rejects.toThrow(/main checkout has uncommitted/);
   });
 });
 
 describe('mergeTask rebase conflicts', () => {
-  it('aborts and lists the conflicted files', () => {
+  it('aborts and lists the conflicted files', async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'file.txt'), 'branch change\n');
     git(harness.worktree, ['commit', '-qam', 'branch change']);
@@ -144,7 +164,7 @@ describe('mergeTask rebase conflicts', () => {
 
     let error: unknown;
     try {
-      mergeTask(options(harness));
+      await mergeTask(options(harness));
     } catch (caught) {
       error = caught;
     }
@@ -166,13 +186,13 @@ describe('mergeTask rebase conflicts', () => {
 });
 
 describe('mergeTask happy path', () => {
-  it('rebases, fast-forwards, boards, pushes, and cleans up', () => {
+  it('rebases, fast-forwards, boards, pushes, and cleans up', async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
     git(harness.worktree, ['add', '.']);
     git(harness.worktree, ['commit', '-qam', 'feature']);
 
-    mergeTask(options(harness));
+    await mergeTask(options(harness));
 
     // Fast-forwarded: main holds the feature commit.
     expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(true);
@@ -196,5 +216,47 @@ describe('mergeTask happy path', () => {
     }).stdout.trim();
     expect(branches).toBe('');
     expect(harness.dropped).toEqual(['T-0099']);
+  });
+});
+
+describe('mergeTask process cleanup', () => {
+  it('stops processes inside the worktree before removing it', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    const order: string[] = [];
+    const candidate = { pid: 4242, command: `${harness.worktree}/node server.js` };
+    const opts = options(harness);
+    await mergeTask({
+      ...opts,
+      findProcs: () => {
+        order.push('find');
+        return [candidate];
+      },
+      stopProcs: async (candidates) => {
+        order.push('stop');
+        return candidates.map((entry) => ({ pid: entry.pid, command: entry.command }));
+      },
+      print: (line) => {
+        order.push(`print:${line}`);
+      },
+      runner: new (class extends RealGitRunner {
+        override run(cwd: string, args: string[]): { ok: boolean; stdout: string } {
+          if (args[0] === 'worktree' && args[1] === 'remove') {
+            order.push('worktree-remove');
+            // Stop happens before the worktree is gone; assert it exists.
+            expect(fs.existsSync(harness.worktree)).toBe(true);
+          }
+          return super.run(cwd, args);
+        }
+      })(),
+    });
+    expect(order).toEqual([
+      'find',
+      'stop',
+      `print:stop 4242 ${harness.worktree}/node server.js`.slice(0, 1000),
+      'worktree-remove',
+    ]);
   });
 });
