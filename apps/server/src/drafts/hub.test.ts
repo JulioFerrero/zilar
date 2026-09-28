@@ -124,6 +124,71 @@ describe('draft hub', () => {
     publisher.push('too late');
     expect(seen).toHaveLength(1);
   });
+
+  it('flush publishes now inside the throttle window and end does not repeat it', () => {
+    vi.useFakeTimers();
+    const hub = createDraftHub();
+    const seen: DraftHubEvent[] = [];
+    hub.subscribe(OWNER, (event) => seen.push(event));
+
+    const publisher = turn(hub);
+    publisher.push('Hello');
+    expect(seen.filter((event) => event.type === 'draft')).toHaveLength(1);
+    publisher.push('Hello, Ju');
+    publisher.flush('Hello, Julio, the whole reply');
+    const drafts = seen.filter((event) => event.type === 'draft');
+    expect(drafts).toHaveLength(2);
+    expect(drafts.at(-1)).toMatchObject({ text: 'Hello, Julio, the whole reply' });
+
+    // The pending throttle timer was cancelled: nothing more arrives.
+    vi.advanceTimersByTime(DRAFT_THROTTLE_MS * 3);
+    expect(seen.filter((event) => event.type === 'draft')).toHaveLength(2);
+
+    publisher.end('sent');
+    expect(seen.filter((event) => event.type === 'draft')).toHaveLength(2);
+    expect(seen.at(-1)).toMatchObject({ type: 'end', outcome: 'sent' });
+  });
+
+  it('flush skips identical and over-cap text and does nothing after end', () => {
+    vi.useFakeTimers();
+    const hub = createDraftHub();
+    const seen: DraftHubEvent[] = [];
+    hub.subscribe(OWNER, (event) => seen.push(event));
+
+    const publisher = turn(hub);
+    publisher.push('same');
+    publisher.flush('same');
+    expect(seen.filter((event) => event.type === 'draft')).toHaveLength(1);
+
+    publisher.flush('x'.repeat(DRAFT_MAX_CHARS + 1));
+    vi.advanceTimersByTime(DRAFT_THROTTLE_MS * 2);
+    publisher.end('sent');
+    // The over-cap text is never published: `end` publishes only the outcome.
+    expect(seen.filter((event) => event.type === 'draft')).toHaveLength(1);
+    expect(seen.at(-1)).toMatchObject({ type: 'end', outcome: 'sent' });
+
+    publisher.flush('too late');
+    publisher.push('too late');
+    expect(seen).toHaveLength(2);
+  });
+
+  it('an over-cap flush leaves a pending in-cap draft to go out on its timer', () => {
+    vi.useFakeTimers();
+    const hub = createDraftHub();
+    const seen: DraftHubEvent[] = [];
+    hub.subscribe(OWNER, (event) => seen.push(event));
+
+    const publisher = turn(hub);
+    publisher.push('first');
+    publisher.push('first and more');
+    publisher.flush('x'.repeat(DRAFT_MAX_CHARS + 1));
+    vi.advanceTimersByTime(DRAFT_THROTTLE_MS);
+
+    expect(seen.map((event) => (event.type === 'draft' ? event.text : event.type))).toEqual([
+      'first',
+      'first and more',
+    ]);
+  });
 });
 
 describe('draft event contract', () => {

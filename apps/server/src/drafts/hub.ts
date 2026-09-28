@@ -12,11 +12,13 @@ export const DRAFT_MAX_CHARS = 8000;
 export type DraftListener = (event: DraftHubEvent) => void;
 
 // One turn's throttled writer. `push` records the cumulative text and
-// publishes at most every `DRAFT_THROTTLE_MS`; `end` flushes the latest text
-// (when it is new and within the cap) and then publishes the outcome. Both
-// are idempotent after `end`.
+// publishes at most every `DRAFT_THROTTLE_MS`; `flush` publishes the given
+// text now (the complete reply, right before the final XMPP send); `end`
+// flushes the latest text (when it is new and within the cap) and then
+// publishes the outcome. All are idempotent after `end`.
 export interface DraftTurnPublisher {
   push(text: string): void;
+  flush(text: string): void;
   end(outcome: 'sent' | 'failed'): void;
 }
 
@@ -72,7 +74,7 @@ export function createDraftHub(): DraftHub {
       let timer: ReturnType<typeof setTimeout> | undefined;
       let ended = false;
 
-      const flush = (): void => {
+      const flushLatest = (): void => {
         timer = undefined;
         if (latest === undefined || latest === latestSent) {
           return;
@@ -98,13 +100,27 @@ export function createDraftHub(): DraftHub {
             return;
           }
           // The first draft of a quiet turn goes out immediately; a burst
-          // schedules one flush with the latest text. `end` below flushes
-          // synchronously, so ordering with `end` stays exact.
+          // schedules one flush with the latest text. `flush` and `end` below
+          // publish synchronously, so ordering with `end` stays exact.
           if (Date.now() - lastSentAt >= DRAFT_THROTTLE_MS) {
-            flush();
+            flushLatest();
           } else {
-            timer = setTimeout(flush, DRAFT_THROTTLE_MS - (Date.now() - lastSentAt));
+            timer = setTimeout(flushLatest, DRAFT_THROTTLE_MS - (Date.now() - lastSentAt));
           }
+        },
+
+        flush(text: string): void {
+          // Past the cap nothing is published, so a pending in-cap draft is
+          // left to go out on its timer.
+          if (ended || text.length > DRAFT_MAX_CHARS) {
+            return;
+          }
+          if (timer !== undefined) {
+            clearTimeout(timer);
+            timer = undefined;
+          }
+          latest = text;
+          flushLatest();
         },
 
         end(outcome: 'sent' | 'failed'): void {
@@ -116,7 +132,7 @@ export function createDraftHub(): DraftHub {
             clearTimeout(timer);
             timer = undefined;
           }
-          flush();
+          flushLatest();
           publish(ownerUserId, { type: 'end', chatJid, turnId, outcome });
         },
       };

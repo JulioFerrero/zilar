@@ -1,189 +1,202 @@
-# Galena UI style: close to Telegram
+# Galena UI style: Telegram's layout, Vercel-dark look, skeuomorphic depth
 
-> **Decision D23 (Julio, 2026-09-27):** "for the UI we need to be closer to what Telegram is". Julio will give more detail after he uses the app, so this document will change. Web (`apps/web`) and mobile (`apps/mobile`) both follow it.
+> **Decision D24 (Julio, 2026-09-28), which supersedes the colors and type of D23:** keep Telegram's layout and patterns, but in a Vercel style ("blacks, shadcn, uber") with real, skeuomorphic depth on buttons and bubbles ("more Skeuomorphism, the buttons, bubbles").
 >
-> **What "close to Telegram" means for us:** the same layout, patterns and feel (chat list, bubbles, folders, composer). **Never** Telegram's logo, name, wallpaper images or other brand assets. Our brand is **Galena**.
+> The approved mockup is in `docs/design/mockups/` (`Main.dc.html` for desktop, `Mobile.dc.html` for the mobile chat list). Its markup holds the exact values. Where this document and the mockup disagree, the mockup wins.
+>
+> **D23 still holds for layout and behavior:** chat list, folders, bubbles grouping, composer, typing, unread divider and so on. **Never** use Telegram's logo, name, wallpaper or other brand assets. Our brand is **Galena**.
+
+**Dark only for now.** The app is always dark, whatever the system setting. A light theme comes later, as its own decision.
+
+Web (`apps/web`) follows this first. Mobile (`apps/mobile`) follows in a later task.
 
 ## 1. Layout
 
 ### Desktop / wide web (≥ 900 px)
+The page background is pure black (`#000`). It holds **two floating panels** with a 12 px gap and a 12 px margin all around:
+- **Sidebar panel**, 360 px wide:
+  - a top row with a raised menu key and an inset search field (`⌘K` hint);
+  - a folder **segmented control**: a recessed track with the active tab raised;
+  - the chat list;
+  - a full-width **New chat** primary button at the bottom, above a 1 px divider.
+- **Chat panel**, the rest of the width:
+  - a header (64 px, bottom border);
+  - the messages, on a subtle dot-grid background;
+  - the composer well.
+
+Both panels are `#0a0a0a`, with a 1 px `#1f1f1f` border, 16 px radius and `overflow: hidden`. With no chat selected, the chat panel shows a centered raised pill: "Select a chat to start messaging".
+
 ```
-┌──────────────── 360px ────────────────┬────────────────────────── rest ──────────────────────────┐
-│ ☰  [ 🔍 Search                    ]   │ (avatar) Name                          🔍  ⋮             │
-│ All · Personal · AIs · Work           │          online / last seen … / 3 members / AI · working │
-├───────────────────────────────────────┼──────────────────────────────────────────────────────────┤
-│ (●) Ana                        12:41  │                                                          │
-│     See you tonight ❤️            (2) │        ┌──────────────┐                                  │
-│ (●) Dev team            AI     11:02  │        │ incoming      │                                 │
-│     Dev-1: PR #42 is ready        ✓✓  │        └──────────────┘                                  │
-│ (●) Dev AI              AI    Yesterd │                         ┌─────────────────────┐          │
-│     Tests pass. Merge?                │                         │ outgoing      12:40 ✓✓│         │
-│ …                                     │                         └─────────────────────┘          │
-│                                       │ [📎] [ Message                        ] [😊] [🎤/➤]      │
-└───────────────────────────────────────┴──────────────────────────────────────────────────────────┘
+ ┌── 360 ───────────────────┐ ┌───────────────────────────────────────────────┐
+ │ [≡] [ ⌕ Search      ⌘K ] │ │ (DT) deep test [AI]                  [⌕] [⋮]  │
+ │ ((All)| Personal|AIs|Work)│ │      writing…                                 │
+ │ (DT) deep test [AI] 20:28│ ├───────────────────────────────────────────────┤
+ │      • writing…          │ │ · · · · · · · · ( Today ) · · · · · · · · · · │
+ │ (GA) Galena amigos  00:30│ │                        ┌───────────────────┐  │
+ │      Claude: Good…    (2)│ │                        │ outgoing (white)  │  │
+ │ …                        │ │ ┌──────────────────┐   └───────────────────┘  │
+ │                          │ │ │ incoming (dark)  │                          │
+ ├──────────────────────────┤ │ └──────────────────┘                          │
+ │ [ + New chat        N  ] │ │ [📎] [ Message deep test          ] [🎤] [↑]  │
+ └──────────────────────────┘ └───────────────────────────────────────────────┘
 ```
-- The **left column** is 360 px (resizable later), with a white or dark sidebar background:
-  - A top bar with a menu button and a rounded search field.
-  - **Folder tabs** below the top bar: `All`, `Personal`, `AIs`, and one tab per workspace (e.g. `Work`). The active tab has an accent-colored underline and text. There are unread counters on tabs.
-  - The chat list scrolls.
-- The **right side** is the open chat. With no chat selected, it shows the chat background with a centered pill: "Select a chat to start messaging".
 
 ### Narrow web and mobile (< 900 px)
-- One pane at a time. The **chat list** is the home screen, and tapping a chat pushes the **chat screen**, with a back arrow in the header.
-- On mobile, the search icon sits in the header and a compose (pencil) floating button is at the bottom right of the list.
+- One pane at a time, as in D23. The list is the home screen, and tapping a chat pushes the chat screen.
+- The mobile list has:
+  - a large title (`Chats`, 28/600);
+  - an inset search field;
+  - the segmented control;
+  - rows with 52 px avatars and hairline separators (`#1a1a1a`);
+  - a raised primary **+** floating button (56 px, 18 px radius) at the bottom right.
 
 ## 2. Colors (design tokens)
 
-Both apps use these semantic tokens. The values are close to Telegram's classic light and "night blue" themes.
+| Token | Value | Use |
+|---|---|---|
+| `--page` | `#000000` | Behind the panels |
+| `--panel` | `#0a0a0a` | Sidebar and chat panels |
+| `--surface` | `#111111` | Plain surfaces inside panels |
+| `--surface-raised` | `#171717` | Hover and selected chat row |
+| `--well` | `#0c0c0c` | Recessed fields: search, composer, segment track |
+| `--border` | `#1f1f1f` | Panel borders, dividers |
+| `--border-strong` | `#262626` | Field borders |
+| `--edge` | `#050505` | Near-black outline of raised keys and bubbles |
+| `--foreground` | `#ededed` | Primary text |
+| `--muted-foreground` | `#a1a1a1` | Previews, subtitles |
+| `--subtle-foreground` | `#8a8a8a` | Times, hints (still ≥ 4.5:1 on `--panel`) |
+| `--generating-foreground` | `#8f8f8f` | Text of a reply that is still being written |
+| `--accent` | `#ededed` | Primary buttons, unread badge, send. Text on it is `#0a0a0a` |
+| `--online` | `#22c55e` | The online dot |
+| `--danger` | `#ef4444` | Destructive actions |
 
-| Token | Light | Dark | Use |
-|---|---|---|---|
-| `--background` | `#ffffff` | `#17212b` | Sidebar / list background |
-| `--foreground` | `#000000` | `#f5f5f5` | Primary text |
-| `--muted-foreground` | `#707579` | `#708499` | Secondary text: previews, times, subtitles |
-| `--accent` | `#3390ec` | `#5288c1` | Links, active tab, unread badge, send button, "online" |
-| `--accent-foreground` | `#ffffff` | `#ffffff` | Text on accent |
-| `--chat-background` | gradient `#c9dfc5 → #d8e8f0` (135°) | `#0e1621` | Behind messages |
-| `--bubble-in` | `#ffffff` | `#182533` | Incoming bubble |
-| `--bubble-out` | `#eeffde` | `#2b5278` | Outgoing bubble |
-| `--bubble-out-meta` | `#4fae4e` | `#7da8d3` | Time and ticks inside outgoing bubbles |
-| `--bubble-in-meta` | `#a0acb6` | `#6d7f8f` | Time inside incoming bubbles |
-| `--list-hover` | `#f4f4f5` | `#202b36` | Chat list item hover |
-| `--list-active` | `#3390ec` (text white) | `#2b5278` | Selected chat in the list (desktop) |
-| `--badge-muted` | `#c4c9cc` | `#3e546a` | Unread badge of muted chats |
-| `--divider` | `#dfe1e5` | `#0e1621` | Thin separators |
-| `--danger` | `#e53935` | `#ef5350` | Destructive actions |
-| `--online` | `#4dcd5e` | `#4dcd5e` | The online dot on avatars (always green, on both web and mobile) |
-
-- **Light or dark** follows the system setting (`prefers-color-scheme`, or the phone's setting).
-- **Avatars** without a photo get a **gradient circle with initials**. Pick one of 7 gradients, deterministically from a hash of the chat or user id:
-  - red `#ff885e→#ff516a`
-  - orange `#ffcd6a→#ffa85c`
-  - violet `#82b1ff→#665fff`
-  - green `#a0de7e→#54cb68`
-  - cyan `#53edd6→#28c9b7`
-  - blue `#72d5fd→#2a9ef1`
-  - pink `#e0a2f3→#d669ed`
-
-  Initials are white, semibold, up to 2 letters.
+- **Accent:** white by default. Blue (`#0070f3` or Uber `#276ef1`, with white text) is a planned user setting, so every accent use must go through the tokens.
+- **Chat background:** `--panel`, with a dot grid (`radial-gradient(#1c1c1c 1px, transparent 1px)`, 22 px).
+- **Avatars:** monochrome, not colored gradients.
+  - AIs: a light `#ededed` circle with dark initials.
+  - People and groups: `#262626` with light initials.
+  - Some contacts: `#1a1a1a` with a `#333` ring.
+  - Initials are 600 weight, up to 2 letters. Choose the shade deterministically from the id.
+- **`AI` badge:** Geist Mono 10 px, `#a1a1a1` text, 1 px `#333` border, 5 px radius.
 
 ## 3. Typography
 
-- **Font:** the system UI stack: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`. On mobile, use the platform default.
+- **Geist** for UI text, **Geist Mono** for times, keyboard hints, the `AI` badge and the `generating` label. Both are bundled with the app, never loaded from a CDN (the app is self-hosted).
 - **Sizes (web):**
-  - list name 16/600
-  - list preview and messages 15/400
-  - time 12
-  - header name 16/600
-  - header subtitle 14
-  - folder tabs 15/500
-- Mobile uses the same scale, adapted to the platform (e.g. 17 for names on iOS).
+  - list name 14/600
+  - list preview 13
+  - messages 14/1.5
+  - header name 15/600
+  - header subtitle 12
+  - times 10–11 mono
+  - segment tabs 13/500
+  - buttons 14/600
+- Titles get slightly tight tracking (`-0.02em`).
 
-## 4. Components
+## 4. Depth: the skeuomorphic recipes
 
-### Chat list item (height 72 px web / 76 mobile)
-- **Avatar:** a 54 px circle, with a green "online" dot (`--online`, 12 px, with a 2 px border in the background color) for people who are online.
-- **Row 1:** the name (bold, one line, ellipsis).
-  - AI chats and AI members show a small **`AI` badge**: a rounded pill with accent-colored outline text, 11 px.
-  - A mute icon if muted.
-  - The **time** is right-aligned: `HH:mm` today, the weekday within 7 days, otherwise `dd.MM.yy`.
-- **Row 2:** the last message preview (muted, one line).
-  - In groups, the sender's first name comes first, in foreground color: `Ana: ok!`.
-  - For your own messages, the prefix is `You:`.
-  - Voice notes read `🎤 Voice message (0:12)`, and images `🖼 Photo`.
-- **Right side of row 2:**
-  - an **unread badge**: an accent pill with a white count, grey for muted chats
-  - or, for your own last message, **ticks**: `✓` sent, `✓✓` read
-- **States:** hover background; selected = accent background with white text (desktop).
+Four surface kinds, and every interactive element is one of them. These are the exact shadows from the mockup; implement them once as utilities or component variants, never ad hoc.
+
+**Primary (accent) button, badge and FAB.** A glossy key:
+- background: `linear-gradient(180deg, rgba(255,255,255,.40), rgba(255,255,255,.08) 48%, rgba(0,0,0,0) 52%, rgba(0,0,0,.14)), var(--accent)`;
+- shadow: `inset 0 1px 0 rgba(255,255,255,.85), inset 0 -2px 0 rgba(0,0,0,.2), inset 0 0 0 1px rgba(255,255,255,.12), 0 1px 0 rgba(0,0,0,.95), 0 2px 3px rgba(0,0,0,.7), 0 10px 18px -8px rgba(0,0,0,.95)`;
+- text-shadow: `0 1px 0 rgba(255,255,255,.7)` on a light accent, or `0 -1px 0 rgba(0,0,0,.35)` on a dark one;
+- **pressed:** `translateY(1px)` and `inset 0 2px 5px rgba(0,0,0,.35), 0 1px 0 rgba(0,0,0,.95)`, over an 80 ms transition.
+
+**Icon button.** A dark key:
+- background: `linear-gradient(180deg, #2c2c2c, #151515)`;
+- a 1 px `--edge` border, 10 px radius (12 on mobile), and icon color `#d4d4d4`;
+- shadow: `inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(0,0,0,.65), 0 1px 0 rgba(0,0,0,.95), 0 3px 6px -1px rgba(0,0,0,.75)`;
+- the icon gets `drop-shadow(0 1px 0 rgba(0,0,0,.95))`;
+- **pressed:** `translateY(1px)` and `inset 0 2px 5px rgba(0,0,0,.9)`.
+
+**Well** (search, composer, segment track). Recessed:
+- a `--well` background with a 1 px border (`#1f1f1f`, or `#1a1a1a` for the track);
+- shadow: `inset 0 2px 6px rgba(0,0,0,.9), inset 0 1px 1px rgba(0,0,0,.8), inset 0 0 0 1px rgba(0,0,0,.4), 0 1px 0 rgba(255,255,255,.06)`.
+
+**Raised segment / pill** (active folder tab, date pill):
+- background: `linear-gradient(180deg, #333, #1c1c1c)` (the date pill uses `#1f1f1f → #121212` with an `--edge` border);
+- shadow: `inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(0,0,0,.6), 0 1px 0 rgba(0,0,0,.9), 0 2px 4px rgba(0,0,0,.7)`;
+- text-shadow: `0 -1px 0 rgba(0,0,0,.7)`.
+
+**Focus:** every key and well shows a visible focus ring (`0 0 0 2px #0a0a0a, 0 0 0 4px #a1a1a1`) on keyboard focus, in addition to its shadows.
+
+## 5. Components
+
+### Chat list item
+- 10 px padding, 12 px radius, 2 px gap between rows. Hover and selected use `--surface-raised`, and selected also gets `inset 0 1px 0 rgba(255,255,255,.04)`.
+- The avatar is 44 px (52 on mobile), with the online dot (10 px, a 2 px ring in the row color).
+- **Row 1:** the name, the `AI` badge, then the time pushed right (mono 11, `--subtle-foreground`).
+- **Row 2:** the preview (muted, ellipsis). A group sender prefix is in `#d4d4d4`, and your own messages are prefixed `You:`.
+  - It ends with either the **unread badge** (a primary key pill, 20 px high, 11/600) or ticks (`--subtle-foreground`).
+  - **While an AI writes:** `writing…` with a pulsing 6 px dot replaces the preview.
+- Time formats, voice and photo previews and mute are as in D23.
 
 ### Chat header
-- The avatar is 42 px, next to the name (with the `AI` badge where relevant).
-- The subtitle is one of:
-  - `online`
-  - `last seen 5 minutes ago`
-  - `3 members, 1 online`
-  - for AIs: `AI · idle` or `AI · working…` (animated dots)
-- On the right: search and a ⋮ menu. The back arrow is only on narrow screens.
+64 px high, a `rgba(10,10,10,.85)` background and a bottom border. It holds:
+- a 36 px avatar;
+- the name (15/600) with the `AI` badge;
+- the subtitle (12, muted);
+- on the right, the icon keys (search, more).
 
-### Messages
-- **Bubbles:**
-  - max width 480 px web / 80 % mobile
-  - radius 16 px, with a **tail** on the last bubble of a group:
-    - outgoing: bottom-right corner squared, plus a small curved tail
-    - incoming: bottom-left
-  - 6/10 px padding
-- **Consecutive messages** from the same sender within 5 minutes form a **group**: 2 px gap inside a group, 8 px between groups. Only the last bubble has the tail.
-- **In groups:**
-  - Incoming messages show the **sender's name** in the sender's avatar color (bold 14) on the first bubble of a group.
-  - The **sender avatar** (34 px) sits beside the last bubble of the group.
-- **Meta:** the time (and ticks for outgoing) sits inside the bubble at the bottom right, inline after the text, like Telegram (`12:40 ✓✓`).
-- **Date separators:** a centered translucent pill: `Today`, `Yesterday`, `September 25`.
-- **Replies:** a quoted block at the top of the bubble, with a colored left bar, the sender name and a one-line excerpt.
-- **Voice message bubble:**
-  - a play/pause circle button in the accent color
-  - a waveform (bars from the `waveform` array; played part in the accent color, rest muted)
-  - the duration
-  - a small "Aa" button for **transcript**, which expands the transcript text below
-- **Image bubble:** the image with rounded corners, and the time overlaid on a dark translucent pill.
-- **AI cards** (placeholders for now):
-  - **progress card:** stage text with a small spinner
-  - **approval card:** title, summary, cost, and **Approve** / **Deny** buttons
+The subtitles are the same as in D23. While an AI writes, the subtitle is `writing…`.
 
-  They're rendered from `@galena/protocol` payload types. For now they're static, with mock data.
+### Messages (bubbles)
+- The radius is 14 px, with the tail corner 4 px (outgoing bottom-right, incoming bottom-left). Padding is 8–10/12. Max width is 520–560 px.
+- **Outgoing:** a glossy white bubble.
+  - background: `linear-gradient(180deg, #ffffff, #dedede)`, text `#0a0a0a`;
+  - shadow: `inset 0 1px 0 #fff, inset 0 -3px 6px rgba(0,0,0,.08), 0 1px 0 rgba(0,0,0,.95), 0 4px 10px -3px rgba(0,0,0,.85)`;
+  - text-shadow: `0 1px 0 rgba(255,255,255,.8)`;
+  - meta (mono 10) in `#525252`.
+- **Incoming:** a dark card.
+  - background: `linear-gradient(180deg, #252525, #161616)`, a 1 px `--edge` border, text `--foreground`;
+  - shadow: `inset 0 1px 0 rgba(255,255,255,.12), inset 0 -1px 0 rgba(0,0,0,.6), 0 1px 0 rgba(0,0,0,.95), 0 4px 10px -3px rgba(0,0,0,.85)`;
+  - text-shadow: `0 -1px 0 rgba(0,0,0,.7)`;
+  - meta in `--subtle-foreground`.
+- **Generating (an AI reply still being written or revealed):** **recessed, not raised.** It isn't "pressed out" yet.
+  - `--well` background, a 1 px `#1a1a1a` border, the well shadow, and text in `--generating-foreground`;
+  - a blinking 2 px caret (`#bdbdbd`) and a mono `generating` label with a pulsing dot;
+  - when complete, it transitions over 400 ms to the incoming look: color, background and shadow.
+- Grouping, tails, sender names in groups, replies, voice, images, big emoji, links and the unread divider behave as in D23, restyled with these tokens. The unread divider is a well strip with muted text. Reply quotes use a `#333` left bar.
+- **Date separator:** the raised pill (12 px, muted).
 
 ### Composer
-- A bottom bar on the chat background, containing a rounded input "pill":
-  - 📎 attach button, on the left inside the pill
-  - an auto-growing textarea, placeholder `Message`, 1–6 lines
-  - 😊 emoji button, on the right inside the pill
-- **Outside the pill on the right,** a round **56 px** accent button:
-  - a **🎤 mic** when the input is empty (press to record: later)
-  - a **➤ send** when there's text
-- **Enter** sends, **Shift+Enter** adds a newline (web).
+A well (`--well`, 14 px radius, 8 px padding) holding:
+- the attach icon key;
+- an auto-growing textarea (placeholder `Message <name>`);
+- the mic icon key;
+- the **send** primary key (36 px, 10 px radius, an arrow-up icon).
+
+Enter and Shift+Enter work as in D23.
 
 ### Folder tabs
-- Horizontal and scrollable. The active tab has accent text and a 3 px rounded underline. Unread counts appear as small pills next to tab names.
+A **segmented control**:
+- a well track with 3 px padding and 10 px radius, and equal-width tabs 30 px high (34 on mobile) with 7 px radius;
+- the active tab is the raised segment, and inactive tabs are muted text on the track;
+- unread counts are small pills beside the tab name.
+
+### New chat
+- **Desktop:** a full-width primary key (40 px) at the bottom of the sidebar: `+ New chat`, with a mono `N` hint.
+- **Mobile:** the primary FAB.
+
+It opens the same menu as today (New group, New message, New AI).
 
 ### Empty states
-- **No chats:** a friendly illustration-free message plus an **"Invite a friend"** button (invite links from T-0015).
-- **No chat selected** (desktop): the pill described in §1.
+As in D23, restyled. The empty-chat pill is the raised pill.
 
+## 6. Motion and feel
 
-### Added after the first screenshots (2026-09-27)
-- **New-chat button:** a round accent pencil button (56 px).
-  - Web: bottom right of the chat list column.
-  - Mobile: bottom right of the list screen (it's already there).
-  - It opens a small menu: **New group** and **New message**.
-- **Mute icon:** a 16 px gap from the name. Keep it vertically centered with the name.
-- **Unread divider:** opening a chat with unread messages shows a full-width bar reading **"Unread messages"** above the first unread one, with a translucent background and muted text. The view scrolls there instead of to the bottom. The bar disappears the next time the chat is opened.
-- **Typing:**
-  - In the list preview, **`typing…`** in accent color with 3 animated dots replaces the last-message preview. In groups it reads `Ana is typing…`.
-  - In the header subtitle, the same text replaces `online` / `members`.
-- **Message actions** (right-click on web, long-press on mobile): a small menu with **Reply**, **Copy text**, and **Delete** (disabled for now).
-  - On mobile, a light haptic on long-press.
-  - **Swipe right to reply** on mobile.
-- **Reply bar:** when replying, a bar appears above the input with:
-  - a colored left bar
-  - "Reply to Ana" in accent color
-  - a one-line excerpt
-  - an **×** to cancel
+- Chat switch is instant. A new message slides up and fades in over 150 ms. Autoscroll works as in D23.
+- Keys press down 1 px over 80 ms. There are no bouncy animations.
+- The AI draft reveal is smooth, frame by frame (T-0045). The generating → finished transition takes 400 ms.
+- Honor `prefers-reduced-motion`: no reveal animation, no pulsing, no press translation.
 
-  The sent message carries `replyTo`.
-- **Big emoji:** a message that's only 1–3 emoji (and no other text) renders **without a bubble**, at about 48 px, with its time in a small translucent pill below.
-- **Links:** `http://` and `https://` URLs in text become links in the accent color, underlined on hover. On web they open with `target="_blank" rel="noopener noreferrer"`. **Never** linkify other schemes (`javascript:`, `data:` and so on).
-- **Full time on hover** (web): hovering a bubble's time shows the full date and time as a tooltip.
+## 7. Accessibility
 
-## 5. Motion and feel
-
-- **Chat switch:** instant. No page transitions on desktop, and the native push animation on mobile.
-- **New message:** a subtle slide-up and fade over 150 ms. The list auto-scrolls to the bottom only if the user is already near the bottom. Otherwise it shows a round "↓" button with an unread count.
-- Hover states on desktop, and native press feedback on mobile.
-
-## 6. Accessibility
-
-- Every icon button has an `aria-label` / `accessibilityLabel`.
-- Color contrast is at least 4.5:1 for text (check muted text on bubbles).
+- Every icon key has an `aria-label` / `accessibilityLabel`.
+- Text contrast is ≥ 4.5:1: `#8a8a8a` is the darkest allowed text on `#0a0a0a`, and `#525252` only on the white bubble.
 - Keyboard (web):
-  - Tab reaches the list, header actions and composer.
-  - `Esc` closes the open chat on narrow layouts.
+  - Tab reaches the list, header keys, the segmented control and the composer;
+  - there is a visible focus ring (§4);
+  - `Esc` closes the open chat on narrow layouts;
   - `Ctrl/Cmd+K` focuses search.

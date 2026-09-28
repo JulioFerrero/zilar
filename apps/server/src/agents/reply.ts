@@ -305,6 +305,9 @@ export interface DmTurnDeps {
   timeoutMs?: number;
   /** Receives the cumulative reply text while the model writes (drafts). */
   onDelta?: (textSoFar: string) => void;
+  /** Called with the exact final reply text right before its XMPP send. Never
+   * called for notices on their own or for failure texts. */
+  beforeFinalSend?: (text: string) => void;
   sendMessage: (to: string, kind: ChatKind, text: string) => Promise<unknown>;
   sendTyping: (to: string, kind: ChatKind, state: 'composing' | 'paused') => void;
   logger: {
@@ -368,6 +371,10 @@ export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
 
 async function sendReply(deps: DmTurnDeps, text: string): Promise<DmTurnOutcome> {
   const secrets = [deps.virtualKey, ...(deps.secrets ?? [])];
+  // The complete text goes out as a draft first, so the last `draft` carries
+  // the final text before the XMPP message lands. A hook failure is a turn
+  // failure, not a send failure, so it runs before the send's try.
+  deps.beforeFinalSend?.(text);
   try {
     await deps.sendMessage(deps.ownerJid, 'chat', text);
   } catch (error) {

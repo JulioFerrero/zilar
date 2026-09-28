@@ -442,9 +442,11 @@ export function createAgentGateway(
     const trigger = ownerMessages[ownerMessages.length - 1] as PendingMessage;
 
     // Each turn streams its drafts to the owner under one turn id. The
-    // publisher throttles (150 ms) and flushes the latest text before `end`,
-    // so `end` always comes after the final XMPP message below. Typing
-    // indicators stay exactly as before, for clients without drafts.
+    // publisher throttles (150 ms); the complete reply is flushed as a draft
+    // right before the final XMPP send (`beforeFinalSend`), so the last
+    // `draft` carries the final text; `end` always comes after the final XMPP
+    // message below. Typing indicators stay exactly as before, for clients
+    // without drafts.
     const turnDrafts = draftHub.publishTurn(ai.owner, ai.jid, randomUUID());
     let virtualKey: string | undefined;
     try {
@@ -517,6 +519,9 @@ export function createAgentGateway(
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
         onDelta: (textSoFar) => {
           turnDrafts.push(textSoFar);
+        },
+        beforeFinalSend: (text) => {
+          turnDrafts.flush(text);
         },
         sendMessage: (to, kind, text) => session.core.sendMessage(to, kind, text),
         sendTyping: (to, kind, state) => {
