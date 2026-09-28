@@ -1,4 +1,4 @@
-import { formatListTime } from '@galena/chat-core';
+import { formatListTime, markdownToPlain, shouldRenderMarkdown } from '@galena/chat-core';
 import { VolumeX } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
@@ -51,6 +51,12 @@ export function ChatListItem({ chat, onPress }: ChatListItemProps) {
     isGroup: chat.kind === 'group',
     currentUserId: CURRENT_USER_ID,
   });
+  // An incoming AI reply previews as plain text, exactly like the web list; a
+  // human message or your own stays literal.
+  const body =
+    last !== undefined && shouldRenderMarkdown(chat, last, CURRENT_USER_ID)
+      ? markdownToPlain(preview.body)
+      : preview.body;
   const showTicks = chat.unread === 0 && last?.senderId === CURRENT_USER_ID;
   return (
     <Pressable
@@ -91,7 +97,7 @@ export function ChatListItem({ chat, onPress }: ChatListItemProps) {
             ) : (
               <Text numberOfLines={1} className="mr-2 flex-1 text-[14px] text-muted-foreground">
                 {preview.prefix ? <Text color="#d4d4d4">{preview.prefix}</Text> : null}
-                {preview.body}
+                {body}
               </Text>
             )}
             {chat.unread > 0 ? (

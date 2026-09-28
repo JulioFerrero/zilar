@@ -1,4 +1,4 @@
-import { formatTime, isBigEmoji, type UiMessage } from '@galena/chat-core';
+import { formatTime, isBigEmoji, shouldRenderMarkdown, type UiMessage } from '@galena/chat-core';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
@@ -9,6 +9,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Avatar } from '@/components/chat/avatar';
 import { ImageMessage } from '@/components/chat/image-message';
 import { LinkText } from '@/components/chat/link-text';
+import { MarkdownText } from '@/components/chat/markdown-text';
 import { MessageActionsSheet } from '@/components/chat/message-actions-sheet';
 import { PayloadCard } from '@/components/chat/payload-card';
 import { ReplyQuote } from '@/components/chat/reply-quote';
@@ -22,6 +23,7 @@ import { BUBBLE_COLORS } from '@/lib/colors';
 import { WELL_BACKGROUND, bubbleStyle, raisedPill, senderColor } from '@/lib/depth';
 import { useSmoothText, type ActiveSource } from '@/lib/use-smooth-text';
 import { cn } from '@/lib/utils';
+import { useChatStore } from '@/store/chat-store-provider';
 import { useColorScheme } from 'nativewind';
 
 const TAIL_WIDTH = 9;
@@ -205,6 +207,12 @@ export function MessageBubble({
   const reduceMotion = useReducedMotion();
   const [menuOpen, setMenuOpen] = useState(false);
   const outgoing = message.senderId === currentUserId;
+  // `MessageBubble` has no chat prop, so the shared Markdown rule is evaluated
+  // against the store's chat for this message (AI DMs and AI group replies).
+  const rendersMarkdown = useChatStore((state) => {
+    const chat = state.chats.find((item) => item.id === message.chatId);
+    return chat !== undefined && shouldRenderMarkdown(chat, message, currentUserId);
+  });
   const metaColor = outgoing ? colors.outgoingMeta : colors.incomingMeta;
   const hasText = message.text !== undefined && message.text.length > 0;
   const beyondDraft = revealTurnId !== undefined && !draft;
@@ -349,6 +357,23 @@ export function MessageBubble({
                         color={metaColor}
                         className="mt-1 justify-end"
                       />
+                    </>
+                  ) : rendersMarkdown ? (
+                    <>
+                      <MarkdownText text={text} color={textColor} />
+                      <Text className="text-[15px] leading-5" color={textColor}>
+                        {generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
+                        <Text
+                          className="font-mono text-[10px]"
+                          color={metaColor}
+                          style={generating ? { opacity: 0 } : undefined}
+                        >
+                          {'  '}
+                          {formatTime(message.createdAt)}
+                          {outgoing ? outgoingTicks(message.status) : ''}
+                        </Text>
+                      </Text>
+                      {generating ? <GeneratingLabel /> : null}
                     </>
                   ) : (
                     <>

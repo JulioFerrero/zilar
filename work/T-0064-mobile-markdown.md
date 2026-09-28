@@ -1,7 +1,7 @@
 ---
 id: T-0064
 title: Mobile renders Markdown in AI replies (safe subset, no new dependency), plain previews in the chat list
-status: todo
+status: review
 milestone: M2
 branch: task/T-0064-mobile-markdown
 model: opencode-go/deepseek-v4.1-flash
@@ -88,19 +88,102 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+**1. The parser — `apps/mobile/src/lib/markdown.ts` (+ `markdown.test.ts`)**
+- `parseMarkdown(text): Block[]` and `parseInline(text): InlineNode[]`, pure and total
+  (the fuzz loop never throws). Blocks: paragraph, heading 1–6, fenced code (``` and
+  `~~~`; an unclosed fence at the end is a code block), blockquote, bullet list,
+  numbered list (the source number is kept), horizontal rule.
+- Inline: text, bold, italic, strike, inline code, links (`[label](url)` and bare
+  `https://…`) and image alt text. Raw HTML stays plain text.
+- Safety: a link only passes when `new URL(...)` parses it with an `http:`, `https:` or
+  `mailto:` protocol, so `javascript:`, `data:`, `vbscript:` and relative links stay
+  text. An unmatched marker (a lone `*` in `2 * 3`, a partial `**bold`) stays literal.
+  Inputs over 20,000 characters come back as one plain paragraph, so a runaway draft is
+  never parsed.
+
+**2. The renderer — `apps/mobile/src/components/chat/markdown-text.tsx` (+ test)**
+- `MarkdownText({ text, color })` renders with RN `Text`/`View` only, wrapped in
+  `React.memo` on `text` and `color`. Body 15/20 Geist in `color`; bold
+  `Geist_600SemiBold`; italic via `fontStyle`; strike via `textDecorationLine`; inline
+  code in Geist Mono on a `#0c0c0c` chip; code blocks in the `well` recipe (from
+  `lib/depth.ts`) inside a horizontal `ScrollView` (no wrapping); quotes with a `#333`
+  left bar; aligned list markers; 6 px block gap; headings ≤ 20 px.
+- Links open through `safeLinkTarget` + `Linking.openURL`, like `LinkText`.
+
+**3. Wiring**
+- `message-bubble.tsx`: when `shouldRenderMarkdown(chat, message, currentUserId)` is
+  true, the body renders `MarkdownText`; the generating caret, recessed color,
+  `generating` label and the T-0056 same-node swap are untouched, and the caret/meta
+  follow the last block. Human and own messages keep `LinkText`.
+- `chat-list-item.tsx`: the preview body runs through `markdownToPlain` when
+  `shouldRenderMarkdown` is true for the last message.
+- Mock: added a rich Markdown AI reply (heading, bold, italic, list, code, quote, link)
+  to the `marketing-ai` DM, and made the T-0056 draft/final text Markdown so the
+  generating bubble also exercises the renderer.
 
 ### Files changed
--
+- `apps/mobile/src/lib/markdown.ts` (new), `apps/mobile/src/lib/markdown.test.ts` (new)
+- `apps/mobile/src/components/chat/markdown-text.tsx` (new),
+  `apps/mobile/src/components/chat/markdown-text.test.tsx` (new)
+- `apps/mobile/src/components/chat/message-bubble.tsx`, `chat-list-item.tsx`
+- `apps/mobile/src/mock/messages.ts`, `apps/mobile/src/mock/drafts.ts`
+- `work/T-0064-mobile-markdown.md`
+
+No other files changed; no dependencies added; no `any`, no `@ts-ignore`.
 
 ### Commands run and real results
--
+```
+pnpm install                     # Done in 7.3s using pnpm v10.32.1
+pnpm format:check                # All matched files use Prettier code style!
+pnpm lint                        # exit 0
+pnpm typecheck                   # Tasks: 9 successful, 9 total
+pnpm test                        # Test Files 25 passed | 2 skipped (27)
+                                 # Tests 244 passed | 2 skipped (246)
+                                 # (new: markdown.test.ts 26, markdown-text.test.tsx 9)
+pnpm build                       # Tasks: 2 successful, 2 total; Exported iOS + Android bundles
+```
+The T-0056 reveal tests (`use-smooth-text.test.ts`, 11) still pass. The first two check
+runs surfaced an unused test helper and an unused renderer parameter in `lint` (fixed);
+no check was ever bypassed.
 
 ### Problems, deviations from the spec, open questions
--
+- **Where `shouldRenderMarkdown` is decided.** `MessageBubble` gets no `chat` prop and
+  `message-list.tsx` is not in the Allowed files, so the rule is evaluated inside
+  `message-bubble.tsx` against the store's chat for `message.chatId` (a boolean zustand
+  selector, so it does not re-render on unrelated store updates). It calls the shared
+  `shouldRenderMarkdown` as the spec asks without editing a file outside the list.
+  If you prefer an `isAiChat` prop passed from `MessageList`, that needs `message-list.tsx`
+  allowed.
+- **Component test approach.** The mobile package has no React Native testing library
+  and Vitest has no `@/` alias, so `markdown-text.tsx` uses relative imports
+  (`../lib/...`, as `lib/format.ts` already does) and the test stubs `react-native`,
+  then walks the resolved element tree by calling `MarkdownText.type({ text, color })`.
+  That exercises the real component without a new dependency or a simulator. `LinkText`
+  and the other chat components keep the `@/` alias.
+- **`mailto:` links.** The parser accepts `mailto:` as the spec says, but the mobile
+  `safeLinkTarget` only opens http/https. A `mailto:` link therefore renders as plain
+  text (no dead tap target); changing that would need `lib/links.ts`, which is not in
+  the Allowed files.
+- **Group AI previews.** The list preview also converts an incoming AI group reply
+  (what `shouldRenderMarkdown` covers, the spec's "AI group replies"). The web list's
+  own condition is only `chat.isAI`; for AI chats the result is identical.
+- **Inline nesting.** Emphasis is a flat leaf model, so `**a *b* c**` keeps the inner
+  markers literal. The spec's nesting cases (bold inside a list item, a link inside a
+  quote) are supported.
+- **Visual check: no simulator run, no screenshots.** `screenshots/T-0064/` was not
+  created and no images were faked. The only available simulator is Julio's
+  `iPhone 17 Pro (DB167CD4-…)`, which the task forbids touching; a new device needs a
+  full native prebuild/`pod install`/`expo run:ios`, and the chat screen still sits
+  behind `RequireAuth`, so reaching it needs a temporary auth bypass in files outside
+  this task's Allowed files (what T-0056 did and reverted). I relied on the component
+  tests, which the spec allows. To check by eye: `pnpm --filter @galena/mobile start`
+  with `EXPO_PUBLIC_GALENA_MOCK=1` (add `EXPO_PUBLIC_GALENA_MOCK_DRAFT=stream|final`
+  for the generating/final reply) and open the `marketing-ai` DM or `dev-ai`.
 
 ### Blocked / needs a decision
--
+- None. The one design note is above: if you want the bubble to receive the chat as a
+  prop instead of reading the store, allow `message-list.tsx`.
 
 ---
 

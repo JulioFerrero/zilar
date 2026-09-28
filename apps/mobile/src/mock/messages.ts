@@ -205,6 +205,27 @@ export const mockMessagesByChat: Record<string, UiMessage[]> = {
       text: 'I scheduled the post for Monday at 9:00.',
     }),
     message('marketing-ai', 'marketing-ai-05', ME, at(1, 17, 20), { text: 'Thanks! 👌' }),
+    // A rich AI reply for the Markdown rendering check (T-0064): heading, bold,
+    // italic, bullet list, code block, quote and a link.
+    message('marketing-ai', 'marketing-ai-06', MARKETING_AI, at(0, 9, 30), {
+      text: [
+        '## Launch checklist',
+        '',
+        'Here is the **short version** — the *hero* copy is the only open item:',
+        '',
+        '- finalise the tagline',
+        '- review the landing page',
+        '- schedule the post',
+        '',
+        '```ts',
+        'export const launch = () => "go";',
+        '```',
+        '',
+        '> Reply with a ✅ once you are happy.',
+        '',
+        'Full brief: https://galena.test/launch',
+      ].join('\n'),
+    }),
   ],
   family: [
     message('family', 'family-01', PAPA, at(3, 12, 0), {
