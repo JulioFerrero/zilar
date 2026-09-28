@@ -1,3 +1,6 @@
+const { existsSync } = require('node:fs');
+const path = require('node:path');
+
 const { getDefaultConfig } = require('expo/metro-config');
 const { withNativeWind } = require('nativewind/metro');
 
@@ -25,7 +28,17 @@ const STUBBED = new Set([
   'node:https',
 ]);
 
-const emptyModule = require.resolve('./src/spike/empty.js');
+// The stub is permanent (it is not part of the throwaway spike), so guard that
+// it still resolves: a future move must fail here with a clear message rather
+// than silently breaking every bundle the moment the file is gone.
+const emptyModule = path.resolve(__dirname, 'src/lib/xmpp-node-stubs/empty.js');
+if (!existsSync(emptyModule)) {
+  throw new Error(
+    `The XMPP Node stub is missing at ${emptyModule}. It is a permanent Metro ` +
+      'requirement for @xmpp/client on native; restore it before bundling.',
+  );
+}
+
 const previousResolveRequest = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform, realModuleName) => {

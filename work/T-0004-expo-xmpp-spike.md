@@ -203,7 +203,7 @@ so Hermes already provides `btoa`/`atob`/`TextEncoder`; only `process.nextTick` 
 ### Files changed
 
 - **New:** `apps/mobile/src/spike/{polyfills,config,fetch-token,spike-screen}.ts`,
-  `apps/mobile/src/spike/spike.test.ts`, `apps/mobile/src/spike/empty.js`,
+  `apps/mobile/src/spike/spike.test.ts`, `apps/mobile/src/lib/xmpp-node-stubs/empty.js`,
   `apps/mobile/src/app/spike.tsx`, `apps/mobile/src/types/xmpp.d.ts`,
   `apps/mobile/screenshots/spike-connected.png`, `apps/mobile/screenshots/spike-reconnect.png`.
 - **Modified:** `apps/mobile/metro.config.js`, `apps/mobile/package.json`,
@@ -300,6 +300,31 @@ LOG [spike] reconnect demo: done
 - Nothing blocked. Two small things the lead may want to confirm: (a) the
   `@galena/xmpp-core` workspace dependency (subject of the spike, adds no external
   package), and (b) the duplicated `@xmpp/client` ambient types under `apps/mobile`.
+
+### Round 2
+
+Answer to review finding 1: the empty stub now lives outside the throwaway spike.
+
+- Moved `empty.js` from `apps/mobile/src/spike/empty.js` to
+  `apps/mobile/src/lib/xmpp-node-stubs/empty.js`, so deleting `src/spike/` no
+  longer breaks the bundle. The `STUBBED` set and its comment are unchanged.
+- `apps/mobile/metro.config.js` now resolves the stub at
+  `path.resolve(__dirname, 'src/lib/xmpp-node-stubs/empty.js')` and guards it with
+  an `existsSync` check that throws a clear message if the file is ever moved or
+  deleted again, so a future move fails loudly instead of silently breaking every
+  bundle.
+- Finding 2 (use `@galena/xmpp-core`, ship a local `@xmpp/client` type shim) and
+  finding 3 (real devices suspend sockets; reconnect on `AppState` `active`) need
+  no change.
+
+**Checks (real results, after the move):**
+
+- `pnpm format:check`: PASS — "All matched files use Prettier code style!".
+- `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (243 files, 127 rules).
+- `pnpm typecheck`: PASS — turbo "8 successful, 8 total".
+- `pnpm test`: PASS — turbo "8 successful, 8 total".
+- Sanity: `node -e "require('./apps/mobile/metro.config.js')"` loads with
+  `resolver.resolveRequest` set (the `existsSync` guard passes).
 
 ---
 
