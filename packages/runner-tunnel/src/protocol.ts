@@ -20,6 +20,13 @@ export const FRAME_HEADER_BYTES = 5;
 /** Largest single binary payload we put on the wire; bigger writes are chunked. */
 export const MAX_FRAME_BYTES = 256 * 1024;
 
+/**
+ * Largest WebSocket message either side accepts. Control frames are small JSON
+ * and stream frames are capped at MAX_FRAME_BYTES plus the header, so anything
+ * bigger is an attack or a bug, not traffic.
+ */
+export const MAX_WS_PAYLOAD_BYTES = MAX_FRAME_BYTES + FRAME_HEADER_BYTES;
+
 /** Receive window per stream: beyond this the receiver asks the sender to pause. */
 export const STREAM_WINDOW_BYTES = 256 * 1024;
 

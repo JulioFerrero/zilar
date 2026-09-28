@@ -30,7 +30,12 @@ protocol version is rejected (4402); an unknown key or bad signature is
 refused (4403). Nonces are single-use, so a signature over other bytes fails
 as a replay.
 
-Stream ids are split by parity (server even, runner odd). Flow control is
+Stream ids are split by parity (server even, runner odd), and each side closes
+the connection (4400) on an id with the wrong parity or an already-live id, so
+a buggy or hostile peer cannot hijack another stream. Pending engine opens are
+tracked per connection, so one runner can never fail another runner's streams.
+WebSocket messages are capped at 256 KiB plus the frame header on both sides.
+Flow control is
 ` tunnel.pause` / `tunnel.resume` per stream, plus a high-water mark on the
 WebSocket buffer: a slow reader makes the sender stop reading its source, so
 memory stays bounded.

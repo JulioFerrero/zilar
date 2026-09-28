@@ -1,7 +1,7 @@
 ---
 id: T-0008
 title: Spike S6 — runner tunnel over one WebSocket (engine API, model traffic, preview URL)
-status: changes-requested
+status: review
 milestone: M0
 branch: task/T-0008-runner-tunnel-spike
 model: opencode-go/deepseek-v4-pro
@@ -199,7 +199,7 @@ pnpm build
 - `packages/runner-tunnel/src/http-agent.ts` — `TunnelHttpAgent` (async `createConnection`
   override) + `createLoopbackPair`, so node's HTTP stack only sees real sockets.
 - `packages/runner-tunnel/src/demo.ts`, `src/test-harness.ts` (fakes + `RawRunner` raw-socket
-  client), 8 test files (44 tests).
+  client), 9 test files (51 tests: +7 in round 2, see below).
 - `pnpm-lock.yaml` (added `ws`/`@types/ws` entries for the new package).
 - `work/T-0008-runner-tunnel-spike.md` (this Report + status).
 
@@ -273,6 +273,39 @@ reconnect-with-backoff all proven by tests. The one design correction: teardown 
 ordered behind queued stream data (fixed + regression-tested). M3 can build on this
 package directly; it must still add TLS, Postgres keys, preview authorization/expiry,
 and pairing codes (all out of scope here).
+
+### Round 2 (review follow-ups — runner isolation, stream ids, payload cap)
+
+All three round-1 items are fixed, each with regression tests (51 tests total, was 44).
+Every new test was validated by temporarily reintroducing the old behavior and watching
+it fail (isolation: global kill loop; parity both sides: check disabled), then restored.
+
+1. **Per-connection pending opens and failStream** (`src/server.ts`). `pendingOpens` moved
+   from server-wide to `ServerConn`; `failStream(conn, …)` now only touches the pending map
+   and mux of the connection that sent the message (previously it looped over all
+   connections, so runner B's `tunnel.refused`/`tunnel.closed` could kill runner A's same-
+   numbered stream). Regression test (`src/engine.test.ts`, "isolates runners"): runners A
+   and B each hold an open engine stream with server id 2; a third connection sends
+   `tunnel.closed` for id 2; A's SSE still delivers all 4 events end to end.
+2. **Stream-id parity and duplicate checks both sides** (`src/server.ts`, `src/runner.ts`,
+   `StreamMux.hasStream`). Server closes (4400) on `model.open` with an even or already-
+   live id; runner closes (4400) on `tunnel.open` with an odd or already-live id.
+   Regression tests: two in `src/auth.test.ts` (even id; duplicate id via a raw client),
+   two in new `src/runner.test.ts` (odd id; duplicate id — the first open is proven
+   accepted by observing the runner dial a real local port, so the second is a true
+   duplicate) against a fake hostile platform built on the `ws` server.
+3. **WebSocket maxPayload cap** (`src/protocol.ts`: `MAX_WS_PAYLOAD_BYTES = MAX_FRAME_BYTES
+   + FRAME_HEADER_BYTES`, exported). Set on the server's `WebSocketServer` and on the
+   runner's `WebSocket`. Regression tests: oversized pre-auth text frame → server closes
+   with 1009 (`src/auth.test.ts`); 300 KiB inbound binary frame → runner closes with 1009
+   (`src/runner.test.ts`, observed by the fake platform).
+- Round-2 commands, real results: `pnpm --filter @galena/runner-tunnel test` 51/51;
+  `pnpm exec turbo test --force` pass 9/9 exit 0 (incl. web 95, server 253, runner-tunnel
+  51); `pnpm format:check` / `lint` / `typecheck` / `build` pass; demo unchanged (overhead
+  0.18 ms this run); gated LiteLLM still `200 "I'm alive!"` through the tunnel.
+- No deviations from the review instructions; no new dependencies; only allowed files
+  touched (`packages/runner-tunnel/**`, this task file; `pnpm-lock.yaml` untouched this
+  round).
 
 ### Blocked / needs a decision
 - None. Status is review, work is committed on the task branch, not pushed.

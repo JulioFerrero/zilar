@@ -84,6 +84,10 @@ export class StreamMux {
     this.streams.set(streamId, sink);
   }
 
+  hasStream(streamId: number): boolean {
+    return this.streams.has(streamId);
+  }
+
   /** Returns false when the stream was already gone (teardown is idempotent). */
   unregisterStream(streamId: number): boolean {
     this.locallyPaused.delete(streamId);

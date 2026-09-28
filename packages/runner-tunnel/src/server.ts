@@ -11,6 +11,7 @@ import {
   CLOSE_REVOKED,
   CLOSE_UNKNOWN_TYPE,
   CLOSE_VERSION,
+  MAX_WS_PAYLOAD_BYTES,
   PROTOCOL_VERSION,
   parseControlMessage,
   type ControlMessage,
@@ -52,6 +53,8 @@ interface ServerConn {
   mux: StreamMux | null;
   lastPongAt: number;
   handshakeTimer: NodeJS.Timeout | null;
+  /** Engine streams this connection opened but the runner has not settled yet. */
+  pendingOpens: Map<number, PendingOpen>;
 }
 
 interface PendingOpen {
@@ -74,7 +77,6 @@ export class TunnelServer {
   private readonly conns = new Set<ServerConn>();
   private readonly live = new Map<string, ServerConn>();
   private readonly previews = new Map<string, { runnerId: string; port: number }>();
-  private readonly pendingOpens = new Map<number, PendingOpen>();
   private readonly heartbeatTimer: NodeJS.Timeout;
   private readonly unsubscribeRevoke: () => void;
   private closed = false;
@@ -103,7 +105,7 @@ export class TunnelServer {
         this.wsServer.emit('connection', ws, req);
       });
     });
-    this.wsServer = new WebSocketServer({ noServer: true });
+    this.wsServer = new WebSocketServer({ noServer: true, maxPayload: MAX_WS_PAYLOAD_BYTES });
     this.wsServer.on('connection', (ws: WebSocket) => {
       this.handleConnection(ws);
     });
@@ -225,7 +227,7 @@ export class TunnelServer {
       },
     });
     const fail = (err: Error): void => {
-      this.pendingOpens.delete(streamId);
+      conn.pendingOpens.delete(streamId);
       mux.unregisterStream(streamId);
       if (!client.destroyed) {
         client.destroy(err);
@@ -234,9 +236,9 @@ export class TunnelServer {
         bridge.destroy();
       }
     };
-    this.pendingOpens.set(streamId, { client, bridge, fail });
+    conn.pendingOpens.set(streamId, { client, bridge, fail });
     bridge.on('close', () => {
-      this.pendingOpens.delete(streamId);
+      conn.pendingOpens.delete(streamId);
     });
     try {
       mux.sendControl({ type: 'tunnel.open', stream_id: streamId, port });
@@ -279,6 +281,7 @@ export class TunnelServer {
       mux: null,
       lastPongAt: Date.now(),
       handshakeTimer: null,
+      pendingOpens: new Map(),
     };
     this.conns.add(conn);
     conn.handshakeTimer = setTimeout(() => {
@@ -434,13 +437,13 @@ export class TunnelServer {
     }
     switch (message.type) {
       case 'model.open':
-        this.handleModelOpen(mux, message.stream_id);
+        this.handleModelOpen(conn, mux, message.stream_id);
         break;
       case 'tunnel.refused':
-        this.failStream(message.stream_id, `tunnel refused: ${message.reason}`);
+        this.failStream(conn, message.stream_id, `tunnel refused: ${message.reason}`);
         break;
       case 'tunnel.closed':
-        this.failStream(message.stream_id, `tunnel closed by runner: ${message.reason}`);
+        this.failStream(conn, message.stream_id, `tunnel closed by runner: ${message.reason}`);
         break;
       case 'tunnel.pause':
         mux.handlePause(message.stream_id);
@@ -457,20 +460,26 @@ export class TunnelServer {
     }
   }
 
-  private failStream(streamId: number, reason: string): void {
-    const pending = this.pendingOpens.get(streamId);
+  private failStream(conn: ServerConn, streamId: number, reason: string): void {
+    // Only the connection that sent the message is affected: stream ids are
+    // allocated per connection, so another runner routinely uses the same id.
+    const pending = conn.pendingOpens.get(streamId);
     if (pending !== undefined) {
       pending.fail(new TunnelClosedError(reason));
       return;
     }
-    for (const conn of this.conns) {
-      if (conn.mux !== null && conn.mux.failStream(streamId, new TunnelClosedError(reason))) {
-        return;
-      }
+    if (conn.mux !== null) {
+      conn.mux.failStream(streamId, new TunnelClosedError(reason));
     }
   }
 
-  private handleModelOpen(mux: StreamMux, streamId: number): void {
+  private handleModelOpen(conn: ServerConn, mux: StreamMux, streamId: number): void {
+    // Stream ids are split by parity: the server opens even ids, the runner
+    // odd ones. An even or already-live id is a buggy or hostile runner.
+    if (streamId % 2 === 0 || mux.hasStream(streamId)) {
+      this.closeWith(conn, CLOSE_MALFORMED, `bad model.open stream id ${streamId}`);
+      return;
+    }
     // The bytes are piped to the one configured gateway, whatever they say:
     // absolute-form URLs and foreign Host headers still land on the gateway
     // because the destination never comes from the request.

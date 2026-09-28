@@ -7,6 +7,7 @@ import {
   CLOSE_REVOKED,
   CLOSE_UNKNOWN_TYPE,
   CLOSE_VERSION,
+  MAX_WS_PAYLOAD_BYTES,
   PROTOCOL_VERSION,
   parseControlMessage,
   type ControlMessage,
@@ -284,7 +285,7 @@ export class RunnerClient {
   }
 
   private async connectOnce(): Promise<void> {
-    const ws = new WebSocket(this.serverUrl);
+    const ws = new WebSocket(this.serverUrl, { maxPayload: MAX_WS_PAYLOAD_BYTES });
     this.ws = ws;
     try {
       await new Promise<void>((resolve, reject) => {
@@ -482,6 +483,16 @@ export class RunnerClient {
   }
 
   private handleTunnelOpen(mux: StreamMux, streamId: number, port: number): void {
+    // Stream ids are split by parity: the server opens even ids, this runner
+    // odd ones. An odd or already-live id is a buggy or hostile server.
+    if (streamId % 2 !== 0 || mux.hasStream(streamId)) {
+      try {
+        this.ws?.close(CLOSE_MALFORMED, `bad tunnel.open stream id ${streamId}`);
+      } catch {
+        // Already dying.
+      }
+      return;
+    }
     if (!this.exposedPorts.includes(port)) {
       try {
         mux.sendControl({

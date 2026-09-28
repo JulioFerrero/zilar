@@ -144,4 +144,45 @@ describe('runner identity over the wire', () => {
     expect((pair?.server.unknownStreamsDropped ?? 0) - before).toBeGreaterThanOrEqual(1);
     raw.destroy();
   });
+
+  it('closes a model.open with an even stream id (server ids only)', async () => {
+    pair = await startTunnelPair();
+    const keypair = generateRunnerKeypair();
+    pair.registry.approve('raw-5', keypair.publicKey);
+    const raw = await rawHandshake(pair.server, 'raw-5', (nonce) =>
+      signNonce(keypair.privateKey, nonce),
+    );
+    await waitFor(() => raw.texts.length > 1 || raw.closed, 5000, 'ready');
+    expect(raw.closed).toBe(false);
+    raw.sendText(JSON.stringify({ type: 'model.open', stream_id: 2 }));
+    await waitFor(() => raw.closed, 5000, 'even id rejection');
+    expect(raw.closeCode).toBe(CLOSE_MALFORMED);
+    raw.destroy();
+  });
+
+  it('closes a model.open with an already-live stream id', async () => {
+    pair = await startTunnelPair();
+    const keypair = generateRunnerKeypair();
+    pair.registry.approve('raw-6', keypair.publicKey);
+    const raw = await rawHandshake(pair.server, 'raw-6', (nonce) =>
+      signNonce(keypair.privateKey, nonce),
+    );
+    await waitFor(() => raw.texts.length > 1 || raw.closed, 5000, 'ready');
+    expect(raw.closed).toBe(false);
+    raw.sendText(JSON.stringify({ type: 'model.open', stream_id: 1 }));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(raw.closed).toBe(false);
+    raw.sendText(JSON.stringify({ type: 'model.open', stream_id: 1 }));
+    await waitFor(() => raw.closed, 5000, 'duplicate id rejection');
+    expect(raw.closeCode).toBe(CLOSE_MALFORMED);
+    raw.destroy();
+  });
+
+  it('closes an oversized pre-auth frame', async () => {
+    pair = await startTunnelPair();
+    const { code } = await wsCloseCode(pair.server, (ws: WebSocket) => {
+      ws.send('x'.repeat(300 * 1024));
+    });
+    expect(code).toBe(1009);
+  });
 });

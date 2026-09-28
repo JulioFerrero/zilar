@@ -1,11 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import http from 'node:http';
+import { InMemoryKeyRegistry, generateRunnerKeypair, signNonce } from './keys.ts';
+import { RunnerClient } from './runner.ts';
+import { TunnelServer } from './server.ts';
 import {
   closeTunnelPair,
   httpThrough,
   patternBytes,
+  rawHandshake,
   sha256Hex,
+  startFakeDesk,
+  startFakeGateway,
   startTunnelPair,
+  waitFor,
   type TunnelPair,
 } from './test-harness.ts';
 
@@ -130,5 +137,65 @@ describe('engine API through the tunnel (server to runner)', () => {
     await pair.runner.stop();
     await expect(pending).rejects.toBeInstanceOf(Error);
     await expect(pending).rejects.toThrow(/tunnel closed/);
+  });
+
+  it('isolates runners: one runner cannot kill another runner\u2019s stream', async () => {
+    const gateway = await startFakeGateway();
+    const desk = await startFakeDesk();
+    const registry = new InMemoryKeyRegistry();
+    const keyA = generateRunnerKeypair();
+    const keyB = generateRunnerKeypair();
+    const keyRaw = generateRunnerKeypair();
+    registry.approve('runner-a', keyA.publicKey);
+    registry.approve('runner-b', keyB.publicKey);
+    registry.approve('runner-raw', keyRaw.publicKey);
+    const server = await TunnelServer.start({ registry, gatewayUrl: gateway.url }, 0);
+    const runnerA = new RunnerClient({
+      serverUrl: server.wsUrl,
+      runnerId: 'runner-a',
+      keypair: keyA,
+      exposedPorts: [desk.port],
+    });
+    const runnerB = new RunnerClient({
+      serverUrl: server.wsUrl,
+      runnerId: 'runner-b',
+      keypair: keyB,
+      exposedPorts: [desk.port],
+    });
+    const raw = await rawHandshake(server, 'runner-raw', (nonce) =>
+      signNonce(keyRaw.privateKey, nonce),
+    );
+    try {
+      await runnerA.start();
+      await runnerB.start();
+      // Runner A streams SSE (server stream id 2 on conn A) while runner B
+      // holds its own engine stream (server stream id 2 on conn B): same id,
+      // different connections.
+      const agentA = server.engineAgent('runner-a');
+      const sse = getSseEvents(`${desk.url}/sse`, agentA);
+      await waitFor(() => desk.requests >= 1, 5000, 'desk request arrival');
+      const bSock = await server.openEngineStream('runner-b', desk.port);
+      try {
+        // Runner "B" (raw, hostile or buggy) kills stream 2. It must only
+        // affect B's own connection, never A's live SSE.
+        raw.sendText(JSON.stringify({ type: 'tunnel.closed', stream_id: 2, reason: 'oops' }));
+        const events = await sse;
+        expect(events.map((e) => JSON.parse(e.data))).toEqual([
+          { n: 0 },
+          { n: 1 },
+          { n: 2 },
+          { n: 3 },
+        ]);
+      } finally {
+        bSock.destroy();
+      }
+    } finally {
+      raw.destroy();
+      await runnerA.stop().catch(() => undefined);
+      await runnerB.stop().catch(() => undefined);
+      await server.close().catch(() => undefined);
+      await desk.close().catch(() => undefined);
+      await gateway.close().catch(() => undefined);
+    }
   });
 });
