@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Hono } from 'hono';
 import { createApp } from '../app';
 import { ais, providerConnections } from '../db/schema';
+import { HttpError } from '../errors';
 import {
   bootstrapUser,
   createTestContext,
@@ -12,6 +14,11 @@ import {
 import { createKeyCipher } from './crypto';
 import type { ProbeOutcome, ProviderProbe } from './probe';
 import type { ProviderId } from './providers';
+import {
+  CONNECTION_TEST_RATE_LIMIT_MAX,
+  CONNECTION_TEST_RATE_LIMIT_WINDOW_MS,
+  createConnectionsRoutes,
+} from './routes';
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
 const KEY = 'sk-test-provider-key-1234567890';
@@ -359,6 +366,123 @@ describe('connections routes', () => {
     const rows = await context.db.select().from(providerConnections);
     expect(rows).toHaveLength(1);
     expect(createKeyCipher(MASTER_KEY).decrypt(rows[0]!.encryptedKey)).toBe('fake-key');
+  });
+
+  it('rate-limits key tests without calling the provider once over the limit', async () => {
+    const probe = new FakeProbe();
+    const app = mount(probe);
+    const user = await bootstrapUser(context, app, `limited${testCounter}@example.com`);
+
+    const created = await createFor(app, user.cookie);
+    const id = ((await created.json()) as { id: string }).id;
+
+    async function testKey() {
+      return app.request(`${TEST_BASE_URL}/api/connections/${id}/test`, {
+        method: 'POST',
+        headers: { cookie: user.cookie, 'content-type': 'application/json' },
+        body: '{}',
+      });
+    }
+
+    for (let attempt = 0; attempt < CONNECTION_TEST_RATE_LIMIT_MAX; attempt += 1) {
+      const response = await testKey();
+      expect(response.status).toBe(200);
+    }
+    expect(probe.calls).toHaveLength(CONNECTION_TEST_RATE_LIMIT_MAX);
+
+    const blocked = await testKey();
+    expect(blocked.status).toBe(429);
+    const body = (await blocked.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('rate_limited');
+    expect(body.error.message).toBe('Too many key tests, try again in a minute');
+    expect(probe.calls).toHaveLength(CONNECTION_TEST_RATE_LIMIT_MAX);
+  });
+
+  it('rate-limits key tests per user, so rotating connections does not help', async () => {
+    const probe = new FakeProbe();
+    const app = mount(probe);
+    const alice = await bootstrapUser(context, app, `rlalice${testCounter}@example.com`);
+    const bob = await bootstrapUser(context, app, `rlbob${testCounter}@example.com`);
+
+    const firstId = (
+      (await (await createFor(app, alice.cookie, 'sk-alice-1')).json()) as {
+        id: string;
+      }
+    ).id;
+    const secondId = (
+      (await (await createFor(app, alice.cookie, 'sk-alice-2')).json()) as {
+        id: string;
+      }
+    ).id;
+    const bobId = (
+      (await (await createFor(app, bob.cookie, 'sk-bob-1')).json()) as {
+        id: string;
+      }
+    ).id;
+
+    async function testKey(cookie: string, id: string) {
+      return app.request(`${TEST_BASE_URL}/api/connections/${id}/test`, {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: '{}',
+      });
+    }
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      expect((await testKey(alice.cookie, firstId)).status).toBe(200);
+    }
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      expect((await testKey(alice.cookie, secondId)).status).toBe(200);
+    }
+    // The 6th test across both of Alice's connections is blocked.
+    expect((await testKey(alice.cookie, firstId)).status).toBe(429);
+
+    // Bob is unaffected.
+    expect((await testKey(bob.cookie, bobId)).status).toBe(200);
+  });
+
+  it('allows key tests again after the window', async () => {
+    const probe = new FakeProbe();
+    const setup = mount(probe);
+    const user = await bootstrapUser(context, setup, `rlwindow${testCounter}@example.com`);
+    const created = await createFor(setup, user.cookie);
+    const id = ((await created.json()) as { id: string }).id;
+
+    let now = Date.now();
+    const limited = new Hono();
+    limited.onError((error, c) => {
+      if (error instanceof HttpError) {
+        return c.json({ error: { code: error.code, message: error.message } }, error.status);
+      }
+      throw error;
+    });
+    limited.route(
+      '/api',
+      createConnectionsRoutes({
+        auth: context.auth,
+        db: context.db,
+        logger: context.logger,
+        cipher: createKeyCipher(MASTER_KEY),
+        probe,
+        now: () => now,
+      }),
+    );
+
+    async function testKey() {
+      return limited.request(`/api/connections/${id}/test`, {
+        method: 'POST',
+        headers: { cookie: user.cookie, 'content-type': 'application/json' },
+        body: '{}',
+      });
+    }
+
+    for (let attempt = 0; attempt < CONNECTION_TEST_RATE_LIMIT_MAX; attempt += 1) {
+      expect((await testKey()).status).toBe(200);
+    }
+    expect((await testKey()).status).toBe(429);
+
+    now += CONNECTION_TEST_RATE_LIMIT_WINDOW_MS + 1;
+    expect((await testKey()).status).toBe(200);
   });
 
   it('returns 503 connections_unavailable on every route when no cipher is configured', async () => {

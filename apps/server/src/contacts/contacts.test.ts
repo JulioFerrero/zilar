@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { createInvite } from '../auth/invites';
 import { contacts, user, userInvites } from '../db/schema';
 import {
@@ -14,6 +15,7 @@ import {
   type TestContext,
 } from '../test-support';
 import { localpartFor } from '../xmpp/provisioning';
+import { UNNAMED_CONTACT_NAME } from './service';
 
 describe('contacts from invites', () => {
   let context: TestContext;
@@ -179,6 +181,54 @@ describe('contacts from invites', () => {
     });
     const bobList = (await bobResponse.json()) as Array<{ userId: string }>;
     expect(bobList.map((contact) => contact.userId)).toEqual([alice.id]);
+  });
+
+  it('names blank contacts "Unnamed user", sorts them last, and never leaks email', async () => {
+    const alice = await bootstrapUser(context, app, 'alice-blank@example.com');
+    const empty = await contactOf(context, app, alice.id, 'empty-blank@example.com');
+    const spaces = await contactOf(context, app, alice.id, 'spaces-blank@example.com');
+    const zara = await contactOf(context, app, alice.id, 'zara-blank@example.com');
+    const amy = await contactOf(context, app, alice.id, 'amy-blank@example.com');
+    await setDisplayName(zara.cookie, 'Zara');
+    await setDisplayName(amy.cookie, 'Amy');
+    await context.db.update(user).set({ name: '   ' }).where(eq(user.id, spaces.id));
+
+    const response = await app.request(`${TEST_BASE_URL}/api/contacts`, {
+      headers: { cookie: alice.cookie },
+    });
+    expect(response.status).toBe(200);
+    const list = (await response.json()) as Array<{
+      userId: string;
+      name: string;
+      jid: string;
+      avatarUrl?: string;
+    }>;
+
+    expect(list.map((contact) => contact.name)).toEqual([
+      'Amy',
+      'Zara',
+      UNNAMED_CONTACT_NAME,
+      UNNAMED_CONTACT_NAME,
+    ]);
+    expect(list.slice(0, 2).map((contact) => contact.userId)).toEqual([amy.id, zara.id]);
+    expect(
+      list
+        .slice(2)
+        .map((contact) => contact.userId)
+        .sort(),
+    ).toEqual([empty.id, spaces.id].sort());
+
+    const text = JSON.stringify(list);
+    for (const email of [
+      'alice-blank@example.com',
+      'empty-blank@example.com',
+      'spaces-blank@example.com',
+      'zara-blank@example.com',
+      'amy-blank@example.com',
+    ]) {
+      expect(text).not.toContain(email);
+    }
+    expect(list.every((contact) => !('email' in contact))).toBe(true);
   });
 
   it('updates the nickname in every contact roster when the name changes', async () => {
