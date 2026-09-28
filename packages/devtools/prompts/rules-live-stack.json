@@ -1,0 +1,11 @@
+[
+  { "action": "shell", "resource": "docker compose * logs*", "effect": "allow" },
+  { "action": "shell", "resource": "docker ps*", "effect": "allow" },
+  { "action": "shell", "resource": "docker compose * up*", "effect": "deny" },
+  { "action": "shell", "resource": "docker compose * down*", "effect": "deny" },
+  { "action": "shell", "resource": "docker compose * stop*", "effect": "deny" },
+  { "action": "shell", "resource": "docker compose * restart*", "effect": "deny" },
+  { "action": "shell", "resource": "pnpm infra:*", "effect": "deny" },
+  { "action": "shell", "resource": "kill *", "effect": "deny" },
+  { "action": "shell", "resource": "pkill *", "effect": "deny" }
+]
