@@ -1,7 +1,7 @@
 ---
 id: T-0049
 title: Web renders Markdown in AI replies (safe subset, streaming-friendly), plain previews in the chat list
-status: review
+status: merged
 milestone: M2
 branch: task/T-0049-ai-markdown-web
 model: opencode-go/deepseek-v4.1-flash
@@ -236,3 +236,10 @@ Only these five files changed, all Allowed: `apps/web/src/components/ChatListIte
 
 ## Review (written by Claude)
 
+
+**Verdict: approved, merged.**
+
+- The round 1 pre-review had one should-fix (preview stripping on your own messages) and two nits (intra-word `*`, a `vbscript:` test). All three were fixed in round 2 with tests. I accept the round 2 nits: the dead `own` ternary in the Markdown branch, task-list and table markers kept in previews, and the edited `MessageContent` / `MessageList` tests, which is where the swap tests already lived.
+- Safety: no `rehype-raw`, links limited to http, https and mailto (anything else renders as text), Markdown images shown as alt text only, raw HTML not rendered. The tests cover all of it.
+- Live check (branch on localhost:5174 in Julio's Helium, against the live server): his real "deep test" replies render headings, bold, nested lists and paragraphs in the D24 look, and the list preview is plain text. After Vite's one-time dependency bundling, a hard reload paints in about 1.2 s. Switching chats has no long tasks, and scrolling up (loading history) had one 60 ms task.
+- Streaming cost: 5 ms per update in jsdom; accepted. The live streaming look needs a sent message, so it waits for Julio.
