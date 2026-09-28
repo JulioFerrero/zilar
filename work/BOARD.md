@@ -11,11 +11,12 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0054](T-0054-ai-in-groups-server.md) | AIs in groups (server): add/remove an AI, the gateway joins rooms and replies when @mentioned | in progress | muse-spark-1.3 | T-0050, T-0053 | Then T-0055: web UI (add AI, AIs in members and the picker). |
 | [T-0055](T-0055-ai-in-groups-web.md) | AIs in groups (web): group panel, add/remove my AI, AIs in the @ picker, AI replies as AI with Markdown | planned (after T-0054) | deepseek-v4.1-flash | T-0053, T-0054 | M2 demo: @mention the AI in a group. |
 | [T-0056](T-0056-mobile-reply-drafts.md) | Mobile AI reply drafts: SSE over XHR (bearer), smooth reveal, recessed generating bubble, same-node swap | in progress | deepseek-v4.1-flash | T-0045, T-0048 | Own simulator; no host mouse automation. |
+| [T-0057](T-0057-web-polish-retry-models.md) | Web polish: Retry keeps the loaded chat list; model picker suggestions as raised segments | in progress | deepseek-v4.1-flash | T-0042, T-0052 | Small. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
 
-- Web: Retry on the chat-list error bar briefly swaps an already-loaded list for skeletons; keep the list visible during retry (T-0042 nit). Mobile has the same loading-vs-empty bugs T-0042 fixed on web.
+- Mobile has the same loading-vs-empty bugs T-0042 fixed on web (after T-0056).
 - Mobile: honor the `?mock=` route param only in `__DEV__` or with `EXPO_PUBLIC_GALENA_MOCK` set, for both the chat store and My AIs (T-0037 pre-review). Today a deep link can show fake data in a production build.
 - Mobile: render Markdown in AI replies (web is T-0049; reuse `markdownToPlain` from chat-core).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
