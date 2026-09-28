@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0048](T-0048-mobile-redesign.md) | Mobile redesign (D24): dark tokens, Geist, depth primitives, chat list and chat screen | in progress | deepseek-v4.1-flash | T-0047 | Own simulator + Metro 8082; image budget ~20. |
 | [T-0051](T-0051-lead-switch-model-and-merge-cleanup.md) | lead CLI: `switch-model` (quota fallback to MiniMax M3) + `merge` stops worktree processes | in progress | MiniMax-M3 | T-0038 | Chore; tests only. |
 | [T-0053](T-0053-mentions-web.md) | @mentions in groups (web): XEP-0372 references, @ picker, mention chips | in progress | deepseek-v4.1-flash | T-0047, T-0049 | Step 1 of M2 "first AI in a room"; T-0054 (AI replies to mentions) next. |
 | [T-0054](T-0054-ai-in-groups-server.md) | AIs in groups (server): add/remove an AI, the gateway joins rooms and replies when @mentioned | planned (after T-0053) | muse-spark-1.3 | T-0050, T-0053 | Then T-0055: web UI (add AI, AIs in members and the picker). |
@@ -86,3 +85,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0049](T-0049-ai-markdown-web.md) | Web renders Markdown in AI replies (safe subset: http/https/mailto links, no HTML/images), plain previews in the list | 2026-09-28 |
 | [T-0050](T-0050-gateway-resource-and-read-markers.md) | Gateway: fixed XMPP resource per AI (newest gateway wins, the replaced one stands down, no reconnect loop) + read markers when the AI takes a message | 2026-09-28 |
 | [T-0052](T-0052-change-ai-model.md) | Change an AI's model after creation: PATCH model/connection under the ensure locks (no orphans, failed swap keeps a working AI), AI panel pickers | 2026-09-28 |
+| [T-0048](T-0048-mobile-redesign.md) | Mobile redesign (D24): dark-only tokens, Geist, depth primitives (depth.ts), chat list and chat screen, rich messages | 2026-09-28 |
