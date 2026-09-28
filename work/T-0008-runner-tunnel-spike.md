@@ -1,7 +1,7 @@
 ---
 id: T-0008
 title: Spike S6 — runner tunnel over one WebSocket (engine API, model traffic, preview URL)
-status: todo
+status: review
 milestone: M0
 branch: task/T-0008-runner-tunnel-spike
 model: opencode-go/deepseek-v4-pro
@@ -155,19 +155,127 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Built the new `packages/runner-tunnel` package (`@galena/runner-tunnel`): server side
+  (`src/server.ts`), runner side (`src/runner.ts`), shared protocol (`src/protocol.ts`),
+  ed25519 identity + in-memory registry (`src/keys.ts`), stream multiplexing with
+  backpressure (`src/mux.ts`), a loopback-bridged `http.Agent` (`src/http-agent.ts`), and
+  the demo (`src/demo.ts`). No root config changes were needed: `pnpm-workspace.yaml`
+  already covers `packages/*` and turbo picks up the package's `typecheck`/`test` scripts
+  automatically, so the new tests run as part of `pnpm test`.
+- Proved every item 1–6 with real localhost sockets (44 tests, all passing, no external
+  network): protocol close codes, ed25519 challenge/response with replay refusal and
+  revocation kill, engine HTTP+SSE+5 MB+20-concurrent through a custom agent, model
+  traffic pinned to one gateway URL, preview tokens with 404s, ping/pong death detection,
+  in-flight failure on drop, reconnect with capped backoff + re-auth, and a 50 MB slow-
+  reader run with bounded heap.
+- Ran the demo (`pnpm --filter @galena/runner-tunnel demo`) and the gated LiteLLM check
+  (`GALENA_TUNNEL_INTEGRATION=1`): real LiteLLM `GET /health/liveliness` through the
+  tunnel returned `200 "I'm alive!"`. No key used or printed. The running stack was never
+  touched (no `infra:*` commands; everything on port 0, everything closed afterwards).
+- Found and fixed a real protocol bug during stress testing (see Problems): a FIN could
+  overtake stream data parked in backpressure, truncating bodies. Fix is per-stream FIFO
+  teardown plus a deterministic regression test that fails on the old behavior.
 
 ### Files changed
--
+- `packages/runner-tunnel/package.json` (deps: `ws ^8.22.0`, `zod ^4.6.5`; devDep:
+  `@types/ws ^8.18.1`), `tsconfig.json` (extends base + `allowImportingTsExtensions`, see
+  deviation 1), `README.md`.
+- `packages/runner-tunnel/src/protocol.ts` — zod control schemas, close codes
+  4400/4401/4402/4403/4404, 5-byte binary header (stream id + kind), direction-checked
+  parsing that never throws.
+- `packages/runner-tunnel/src/keys.ts` — ed25519 (SPKI/PKCS8 DER, base64), single-use
+  32-byte nonces, `InMemoryKeyRegistry` with revoke listeners.
+- `packages/runner-tunnel/src/mux.ts` — `StreamMux` (even/odd stream ids, pause/resume
+  flow control, 1 MiB high-water mark on `bufferedAmount`, unknown-stream drop counter),
+  FIFO send/teardown queue per stream, `attachSocketToStream` bridge,
+  `TunnelClosedError`.
+- `packages/runner-tunnel/src/server.ts` — hello/challenge/auth/ready handshake, `openEngineStream`,
+  `engineAgent()`, model forwarding to the one configured gateway (http only, see M3 notes),
+  `GET /preview/<token>/...` (unknown token or gone runner → 404), configurable ping/pong
+  heartbeats, revocation kill, `disconnectRunner` kill switch.
+- `packages/runner-tunnel/src/runner.ts` — dial-out only, port allowlist (`tunnel.refused`
+  otherwise), 127.0.0.1-only model listener, reconnect with capped exponential backoff
+  (`computeBackoff`), re-auth per attempt, no retry on 44xx.
+- `packages/runner-tunnel/src/http-agent.ts` — `TunnelHttpAgent` (async `createConnection`
+  override) + `createLoopbackPair`, so node's HTTP stack only sees real sockets.
+- `packages/runner-tunnel/src/demo.ts`, `src/test-harness.ts` (fakes + `RawRunner` raw-socket
+  client), 8 test files (44 tests).
+- `pnpm-lock.yaml` (added `ws`/`@types/ws` entries for the new package).
+- `work/T-0008-runner-tunnel-spike.md` (this Report + status).
 
 ### Commands run and real results
-- `pnpm test`:
+- `pnpm install`: ok (12s first, 3.8s after adding deps).
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint` (`oxlint .`, 308 files): 0 warnings, 0 errors.
+- `pnpm typecheck` (turbo, 9 tasks): all pass.
+- `pnpm exec turbo test --force`: **pass, 9/9 packages, exit 0** — devtools 9, chat-core 50,
+  protocol 134, agent-drivers 19, xmpp-core 118 (+3 skipped), mobile 94 (+2 skipped),
+  web 85, **runner-tunnel 44**, server 208 (+3 skipped). (During the work, parallel runs
+  intermittently hit the known load-sensitive web trio from T-0029's area and one real
+  race in my tests; both addressed below. Final full run is green.)
+- `pnpm build`: pass.
+- `pnpm --filter @galena/runner-tunnel test`: 44/44 green repeatedly (8 solo runs + 7
+  scoped/full parallel runs after the FIFO fix).
+- `pnpm --filter @galena/runner-tunnel demo` output (real, 2026-09-28):
+  `engine JSON round-trip ok (status 200)`, `engine SSE stream ok (~1010 ms end to end)`,
+  `engine 5 MB byte-identical ok (5 MB hashed)`, `engine 20 concurrent ok (one WebSocket)`,
+  `preview page load ok`, `model traffic to gateway ok (/v1/chat)`,
+  `latency median of 50: 0.31 ms direct vs 0.55 ms tunnel (overhead 0.24 ms)`
+  (overhead measured 0.13–0.65 ms across runs),
+  `50 MB to a slow reader, bounded memory ok (peak heap +0.0 MB in demo; +2.0 MB in the
+  test run, bound asserted < 64 MB)`.
+- Gated (`GALENA_TUNNEL_INTEGRATION=1`): `LiteLLM /health/liveliness through the tunnel:
+  ok status 200 body "I'm alive!"`.
+- SSE incrementality (test): 4 events sent 200 ms apart; arrival span asserted ≥ 400 ms
+  with every inter-event gap ≥ 30 ms (a buffered-until-end delivery would show ~ms gaps).
 
 ### Problems, deviations from the spec, open questions
--
+- **Real bug found (the spike working as intended): FIN could overtake parked data.**
+  `attachSocketToStream` sent FIN immediately on socket end while a `sendStreamData` for
+  the same stream was still parked in backpressure; the peer then dropped the trailing
+  bytes as "unknown stream" and big bodies arrived truncated (`Error: aborted` on ~1/6
+  loaded runs, always near 100%). Fix: per-stream FIFO in `StreamMux` (`sendStreamData`
+  chains behind the previous send; `enqueueTeardown` runs after all queued data).
+  `src/mux.test.ts` reproduces it deterministically (fails on immediate-FIN semantics,
+  verified by temporarily reintroducing them) and passes with the fix. 9/9 green runs
+  since. This is the one thing in §11.8 that would have bitten M3 silently.
+- **Two test races fixed (mine, not implementation):** the runner observes a revoke/close
+  before the server processes its own `close` event, so `isRunnerLive` assertions now use
+  `waitFor` (revoke test, preview-gone test).
+- **Deviations:** (1) relative imports use explicit `.ts` extensions (repo style is
+  extensionless) — required so `node src/demo.ts` runs on Node 24 type-stripping without
+  adding `tsx` (forbidden by Allowed dependencies); accepted by tsc
+  (`allowImportingTsExtensions`), vitest and node. (2) No TS parameter properties (Node
+  strip-only mode rejects them). (3) `TunnelHttpAgent` overrides async `createConnection`
+  instead of `createSocket` (the latter is not in @types/node; the former is the
+  documented extension point). (4) Refused-port test targets `desk.port + 1` (unexposed
+  and closed; refusal precedes any dial). (5) Added `disconnectRunner()` (admin kill
+  switch; doubles for §15.5).
+- **Surprises:** `ws` 8.x delivers text frames as `Buffer` with `isBinary=false`, never as
+  `string` (all handlers use the flag); the loopback HTTP client half-closes its write
+  side after the request (harmless: the FIN echo path handles it); Node JWK import of a
+  private OKP key requires the public half too, so keys are SPKI/PKCS8 DER instead;
+  `ws` auto-pongs, which is what makes server-side death detection sound.
+- **Open for M3:** gateway is http-only (LiteLLM is http; https needs an `https.Agent`
+  equivalent); preview tokens never expire and the token is the whole capability (no
+  room-member authorization — must add); registry is in-memory (needs Postgres +
+  `store_model_in_db`-style ownership); no TLS on the tunnel itself (M3 terminates
+  TLS/wss at the platform); heartbeats tune for WAN, not localhost (defaults 15 s/45 s).
+
+### Verdict on §11.8 as written: YES — no WireGuard needed for the proven scope
+One outbound WebSocket per runner carries engine API (HTTP incl. incremental SSE),
+model traffic, and previews, with the runner only dialing out. Measured cost on
+localhost: **median +0.24 ms per request** (0.13–0.65 across runs) and **+2.0 MB peak
+heap while streaming 50 MB to a 10 ms/64 KiB slow reader** (bound 64 MB). Identity
+(ed25519 challenge/response, revocation kill), allowlist enforcement, gateway pinning
+(incl. absolute-form/foreign-Host attacks), death detection, fail-fast (never hang) and
+reconnect-with-backoff all proven by tests. The one design correction: teardown must be
+ordered behind queued stream data (fixed + regression-tested). M3 can build on this
+package directly; it must still add TLS, Postgres keys, preview authorization/expiry,
+and pairing codes (all out of scope here).
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None. Status is review, work is committed on the task branch, not pushed.
 
 ---
 
