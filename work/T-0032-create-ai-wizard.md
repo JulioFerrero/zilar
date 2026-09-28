@@ -1,7 +1,7 @@
 ---
 id: T-0032
 title: Web "Create an AI" wizard and a My AIs page, on top of /api/ais
-status: changes-requested
+status: review
 milestone: M2
 branch: task/T-0032-create-ai-wizard
 model: opencode-go/deepseek-v4.1-flash
@@ -256,6 +256,36 @@ Things to look for: the POST body has no extra keys and no `persona` when the pe
 ### Blocked / needs a decision
 Nothing blocked. The API is enough to build steps 1–5 (all that T-0032 asks for).
 
+### Round 2
+
+**1. Model step got the connection id, not the provider (the bug).**
+- `CreateAiPage.tsx` passed `selectedProviderId={selectedConnection?.id ?? null}` into the model step. I now pass `selectedConnection?.provider ?? null`.
+- I renamed the prop to `selectedProvider` (and the `ModelPickerStep` prop from `providerId` to `provider`) so a connection id cannot be passed by mistake again.
+- The `ModelPicker` placeholder already used `providerLabel(provider)`, so with a real provider it now reads e.g. "OpenAI model name" instead of the UUID.
+- File: `apps/web/src/routes/CreateAiPage.tsx`.
+
+**2. Anthropic suggestions updated.**
+- `apps/web/src/components/ais/models.ts` now lists `claude-opus-5-5`, `claude-sonnet-5`, `claude-haiku-4-5-20251001` for `anthropic`.
+
+**Regression test.** Added `shows provider suggestions and a label placeholder on the model step` to `CreateAiPage.test.tsx`. Its connection fixture has `id: 'c31a71e2-cada-40e3-8705-2fc42929bce7'` and `provider: 'openai'`. It asserts:
+- the model input's placeholder is exactly `OpenAI model name` and does **not** contain the connection id;
+- the `#ai-model-suggestions` datalist contains `gpt-4o-mini`;
+- the clickable suggestion row `gpt-4o-mini` is present.
+
+I confirmed the test fails against the old wiring: temporarily reverting the prop to `selectedConnection?.id` gives `AssertionError: expected 'c31a71e2-cada-40e3-8705-2fc42929bce7 …' to be 'OpenAI model name'`. With the fix it passes.
+
+**Commands run (Round 2, real results).**
+- `pnpm install` — up to date, done in 1s.
+- `pnpm format:check` — "All matched files use Prettier code style!"
+- `pnpm lint` — clean, no output.
+- `pnpm typecheck` — 9 tasks successful (8 cached).
+- `pnpm exec turbo test --force --filter=@galena/web` — **20 files, 117 tests, all passed** (`CreateAiPage.test.tsx` now 22).
+- `pnpm build` — 2 tasks successful.
+
+**Files changed in Round 2.** `apps/web/src/routes/CreateAiPage.tsx`, `apps/web/src/routes/CreateAiPage.test.tsx`, `apps/web/src/components/ais/models.ts`. No other file changed.
+
+**Notes.** I did not re-run a live click-through (no desktop browser is connected to this session); the regression test covers the exact symptom. The "Open chat shows 'Select a chat'" note is T-0033 server work; the button is unchanged.
+
 ## Review (written by Claude)
 
 
@@ -299,3 +329,4 @@ After the delete, the database had no AI row and no key row.
 **Not your bug, for the record:** Open chat navigates correctly to `/c/<jid>`, but the chat shell shows "Select a chat". `/api/chats` doesn't list AIs yet; it only lists human contacts and groups. That is server work and belongs to T-0033. Keep the button as it is.
 
 Allowed files are unchanged. Run the same Checks, add a "Round 2" subsection to the Report, then set `status: review` and commit.
+

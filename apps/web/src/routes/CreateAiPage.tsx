@@ -215,7 +215,7 @@ export function CreateAiWizard() {
         canAdvance={canAdvance}
         submitting={submitting}
         submitError={submitError}
-        selectedProviderId={selectedConnection?.id ?? null}
+        selectedProvider={selectedConnection?.provider ?? null}
         setForm={setForm}
         goBack={goBack}
         goNext={goNext}
@@ -258,7 +258,7 @@ interface SimplifiedWizardProps {
   canAdvance: boolean;
   submitting: boolean;
   submitError: string;
-  selectedProviderId: string | null;
+  selectedProvider: string | null;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   goBack: () => void;
   goNext: () => void;
@@ -273,7 +273,7 @@ function SimplifiedWizard({
   canAdvance,
   submitting,
   submitError,
-  selectedProviderId,
+  selectedProvider,
   setForm,
   goBack,
   goNext,
@@ -369,7 +369,7 @@ function SimplifiedWizard({
 
       {step === 4 && (
         <ModelPickerStep
-          providerId={selectedProviderId}
+          provider={selectedProvider}
           model={form.model}
           onModelChange={(model) => setForm((previous) => ({ ...previous, model }))}
         />
@@ -430,18 +430,18 @@ function SimplifiedWizard({
 }
 
 function ModelPickerStep({
-  providerId,
+  provider,
   model,
   onModelChange,
 }: {
-  providerId: string | null;
+  provider: string | null;
   model: string;
   onModelChange: (model: string) => void;
 }) {
   return (
     <ModelPicker
-      provider={providerId ?? ''}
-      suggestions={providerId === null ? [] : modelSuggestionsFor(providerId)}
+      provider={provider ?? ''}
+      suggestions={provider === null ? [] : modelSuggestionsFor(provider)}
       value={model}
       onChange={onModelChange}
     />

@@ -3,7 +3,7 @@
 // scope for this task.
 const MODEL_SUGGESTIONS: Record<string, readonly string[]> = {
   openai: ['gpt-4o', 'gpt-4o-mini', 'o3', 'o4-mini'],
-  anthropic: ['claude-opus-4-1', 'claude-sonnet-4-5', 'claude-haiku-4-5'],
+  anthropic: ['claude-opus-5-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'],
   google: ['gemini-2.5-pro', 'gemini-2.5-flash'],
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
   xai: ['grok-4', 'grok-3', 'grok-3-mini'],

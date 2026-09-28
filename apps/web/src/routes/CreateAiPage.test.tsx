@@ -301,6 +301,42 @@ describe('CreateAiPage wizard', () => {
     expect((next as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('shows provider suggestions and a label placeholder on the model step', async () => {
+    // Regression for the round-1 bug: the model step received the connection's
+    // UUID instead of its provider, so suggestions vanished and the placeholder
+    // showed the UUID.
+    const uuidConnection = {
+      id: 'c31a71e2-cada-40e3-8705-2fc42929bce7',
+      provider: 'openai',
+      label: 'Work',
+      status: 'active',
+      createdAt: '2026-09-28T00:00:00.000Z',
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, [uuidConnection])));
+
+    renderWizard();
+    await screen.findByRole('radio', { name: /Dev/ });
+    fireEvent.change(screen.getByPlaceholderText('Dev-1'), { target: { value: 'Dev-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /OpenAI/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+    const input = (await screen.findByLabelText('Model')) as HTMLInputElement;
+    expect(input.placeholder).toBe('OpenAI model name');
+    expect(input.placeholder).not.toContain(uuidConnection.id);
+
+    // The datalist carries the provider's suggestions. jsdom does not resolve
+    // `list`, so read the options directly.
+    const options = Array.from(document.querySelectorAll('#ai-model-suggestions option')).map(
+      (option) => option.getAttribute('value'),
+    );
+    expect(options).toContain('gpt-4o-mini');
+
+    // The clickable suggestion rows are the visible half of the same data.
+    expect(screen.getByRole('radio', { name: 'gpt-4o-mini' })).toBeTruthy();
+  });
+
   it('sends only one request when Create is double-clicked', async () => {
     let resolvePost: ((response: Response) => void) | undefined;
     const fetchMock = vi
