@@ -304,6 +304,178 @@
   text-decoration: underline;
 }
 
+/*
+ * Markdown content inside AI reply bubbles (T-0049), scoped to `.md`. The
+ * colors come from the D24 tokens; the bubble sets the 14px/1.5 body already.
+ */
+.md {
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md p {
+  margin: 0 0 8px;
+}
+
+.md a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--well);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.md pre {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  max-width: 100%;
+  overflow-x: auto;
+  background: var(--well);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.9),
+    inset 0 1px 1px rgba(0, 0, 0, 0.8),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.md pre code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  white-space: pre;
+}
+
+.md blockquote {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 2px solid #333;
+  color: var(--muted-foreground);
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.md h1 {
+  font-size: 16px;
+}
+
+.md h2 {
+  font-size: 15px;
+}
+
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  font-size: 14px;
+}
+
+.md ul,
+.md ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.md ul {
+  list-style: disc;
+}
+
+.md ol {
+  list-style: decimal;
+}
+
+.md ul ul {
+  list-style: circle;
+}
+
+.md li {
+  margin: 0 0 2px;
+}
+
+.md li:last-child {
+  margin-bottom: 0;
+}
+
+.md li.task-list-item {
+  list-style: none;
+}
+
+.md input[type='checkbox'] {
+  margin-right: 6px;
+  accent-color: var(--muted-foreground);
+}
+
+.md table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 8px;
+  border-collapse: collapse;
+}
+
+.md th,
+.md td {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.md th {
+  font-weight: 600;
+  background: var(--surface);
+}
+
+.md hr {
+  margin: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/*
+ * The generating caret and the floated time follow the Markdown content. When
+ * the reply ends in a paragraph, keep that paragraph inline so they sit on its
+ * last line; a trailing list, table or code block leaves them on the row right
+ * after it. The zero-width space gives that row a line box to sit on.
+ */
+.md p:has(+ .md-tail) {
+  display: inline;
+}
+
+.md-tail {
+  display: inline;
+  line-height: 1.5;
+}
+
+.md-tail::before {
+  content: '\200B';
+}
+
 .chat-background {
   background: var(--chat-background);
 }
