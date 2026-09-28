@@ -59,6 +59,9 @@ describe('buildSystemMessage', () => {
       'You are Dev-1, an AI in the Galena chat app, talking in a private chat with Julio. Reply in plain text; keep it concise unless asked.',
     );
     expect(system).toContain('Today is 2026-09-28.');
+    expect(system).toContain(
+      'You can change your own persona with update_persona when your owner asks you to change how you behave from now on.',
+    );
   });
 });
 

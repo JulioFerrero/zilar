@@ -11,7 +11,10 @@ import {
   REPLY_MAX_TOKENS,
   runDmTurn,
   TRANSIENT_FAILURE_REPLY,
+  type ExecuteToolCall,
+  type ValidToolCall,
 } from './reply';
+import { formatPersonaUpdatedLine } from './tools';
 
 const VIRTUAL_KEY = 'sk-virtual-turn-test-key-aaaa';
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
@@ -298,5 +301,291 @@ describe('runDmTurn', () => {
     });
     expect(outcome).toEqual({ kind: 'failed', text: '' });
     expect(logger.calls).toHaveLength(1);
+  });
+});
+
+describe('runDmTurn with tools', () => {
+  const UPDATE_ARGS = {
+    persona: 'Answer in Spanish and keep it short.',
+    summary: 'Spanish answers',
+  };
+
+  function toolCallResponse(
+    calls: Array<{ id: string; name: string; args: unknown }>,
+    content: string | null = null,
+  ): Response {
+    return jsonResponse({
+      choices: [
+        {
+          message: {
+            content,
+            tool_calls: calls.map((call) => ({
+              id: call.id,
+              type: 'function',
+              function: { name: call.name, arguments: JSON.stringify(call.args) },
+            })),
+          },
+        },
+      ],
+    });
+  }
+
+  function rawArgsResponse(args: string, name = 'update_persona'): Response {
+    return jsonResponse({
+      choices: [
+        {
+          message: {
+            content: null,
+            tool_calls: [{ id: 'call-1', type: 'function', function: { name, arguments: args } }],
+          },
+        },
+      ],
+    });
+  }
+
+  function scriptedFetch(responses: Response[]): { fetchImpl: FetchLike; calls: Call[] } {
+    const calls: Call[] = [];
+    let index = 0;
+    const fetchImpl: FetchLike = (url, init) => {
+      calls.push({ url, init });
+      const response = responses[Math.min(index, responses.length - 1)]!;
+      index += 1;
+      return Promise.resolve(response.clone());
+    };
+    return { fetchImpl, calls };
+  }
+
+  function toolHarness(
+    fetchImpl: FetchLike,
+    executeTool?: ExecuteToolCall,
+  ): {
+    logger: ReturnType<typeof captureLogger>;
+    sent: Array<{ to: string; kind: ChatKind; text: string }>;
+    executed: ValidToolCall[];
+    run: () => Promise<{ kind: string; text: string }>;
+  } {
+    const logger = captureLogger();
+    const sent: Array<{ to: string; kind: ChatKind; text: string }> = [];
+    const executed: ValidToolCall[] = [];
+    const run = () =>
+      runDmTurn({
+        aiId: 'ai-1',
+        ownerJid: OWNER_JID,
+        messages: MESSAGES,
+        baseUrl: BASE_URL,
+        virtualKey: VIRTUAL_KEY,
+        model: MODEL,
+        executeTool:
+          executeTool ??
+          (async (call) => {
+            executed.push(call);
+            return { content: 'ok', notice: formatPersonaUpdatedLine(UPDATE_ARGS.summary) };
+          }),
+        fetchImpl,
+        sendMessage: (to, kind, text) => {
+          sent.push({ to, kind, text });
+          return Promise.resolve({ id: `m-${sent.length}` });
+        },
+        sendTyping: () => undefined,
+        logger,
+        secrets: [MASTER_KEY],
+      });
+    return { logger, sent, executed, run };
+  }
+
+  it('sends tools with tool_choice auto on the turn', async () => {
+    const { fetchImpl, calls } = scriptedFetch([
+      toolCallResponse([{ id: 'call-1', name: 'update_persona', args: UPDATE_ARGS }]),
+      completionResponse('vale, lo haré'),
+    ]);
+    const harness = toolHarness(fetchImpl);
+    await harness.run();
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      const body = bodyOf(call) as Record<string, unknown> & {
+        tools: Array<{ function: { name: string } }>;
+        tool_choice: string;
+      };
+      expect(body.tool_choice).toBe('auto');
+      expect(body.tools.map((tool) => tool.function.name).sort()).toEqual([
+        'revert_persona',
+        'update_persona',
+      ]);
+      expect(body.max_tokens).toBe(REPLY_MAX_TOKENS);
+    }
+  });
+
+  it('runs update_persona in exactly 2 calls and appends the exact line', async () => {
+    const { fetchImpl, calls } = scriptedFetch([
+      toolCallResponse([{ id: 'call-1', name: 'update_persona', args: UPDATE_ARGS }]),
+      completionResponse('vale, lo haré'),
+    ]);
+    const harness = toolHarness(fetchImpl);
+    const outcome = await harness.run();
+    expect(outcome).toEqual({
+      kind: 'replied',
+      text: 'vale, lo haré\n\n✏️ Persona updated: Spanish answers. Say "undo" to revert.',
+    });
+    expect(calls).toHaveLength(2);
+    expect(harness.executed).toEqual([
+      {
+        id: 'call-1',
+        tool: 'update_persona',
+        persona: UPDATE_ARGS.persona,
+        summary: UPDATE_ARGS.summary,
+      },
+    ]);
+
+    const second = bodyOf(calls[1]!) as unknown as {
+      messages: Array<{
+        role: string;
+        content: string;
+        tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
+        tool_call_id?: string;
+      }>;
+    };
+    const assistant = second.messages.find((message) => message.tool_calls !== undefined);
+    expect(assistant?.tool_calls).toEqual([
+      {
+        id: 'call-1',
+        type: 'function',
+        function: { name: 'update_persona', arguments: JSON.stringify(UPDATE_ARGS) },
+      },
+    ]);
+    const toolMessage = second.messages.find((message) => message.role === 'tool');
+    expect(toolMessage).toMatchObject({ content: 'ok', tool_call_id: 'call-1' });
+    expect(harness.sent).toHaveLength(1);
+  });
+
+  it('sends invalid back for bad arguments, logs with the ai id, executes nothing', async () => {
+    const persona = 'persona text that must never appear in a log 12345';
+    const { fetchImpl, calls } = scriptedFetch([
+      rawArgsResponse(JSON.stringify({ persona })),
+      completionResponse('noted'),
+    ]);
+    const harness = toolHarness(fetchImpl);
+    const outcome = await harness.run();
+    expect(outcome.kind).toBe('replied');
+    expect(harness.executed).toHaveLength(0);
+
+    const second = bodyOf(calls[1]!) as unknown as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const toolMessage = second.messages.find((message) => message.role === 'tool');
+    expect(toolMessage?.content.startsWith('invalid:')).toBe(true);
+
+    const logged = loggedText(harness.logger.calls);
+    expect(harness.logger.calls.some((call) => call.fields['aiId'] === 'ai-1')).toBe(true);
+    expect(JSON.stringify(harness.logger.calls)).not.toContain(persona);
+    expect(logged).not.toContain(persona);
+    expect(logged).not.toContain(VIRTUAL_KEY);
+    expect(logged).not.toContain(MASTER_KEY);
+  });
+
+  it('never executes an unknown tool', async () => {
+    const { fetchImpl, calls } = scriptedFetch([
+      rawArgsResponse('{}', 'self_destruct'),
+      completionResponse('noted'),
+    ]);
+    const harness = toolHarness(fetchImpl);
+    await harness.run();
+    expect(harness.executed).toHaveLength(0);
+    const second = bodyOf(calls[1]!) as unknown as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(second.messages.find((message) => message.role === 'tool')?.content).toMatch(
+      /^invalid: /,
+    );
+  });
+
+  it('ignores tools the second response asks for: still 2 calls', async () => {
+    const { fetchImpl, calls } = scriptedFetch([
+      toolCallResponse([{ id: 'call-1', name: 'update_persona', args: UPDATE_ARGS }]),
+      toolCallResponse(
+        [{ id: 'call-2', name: 'update_persona', args: UPDATE_ARGS }],
+        'final answer',
+      ),
+    ]);
+    const harness = toolHarness(fetchImpl);
+    const outcome = await harness.run();
+    expect(calls).toHaveLength(2);
+    expect(harness.executed).toHaveLength(1);
+    expect(outcome.text.startsWith('final answer')).toBe(true);
+  });
+
+  it('uses the fallback text when the second response has no text', async () => {
+    const { fetchImpl } = scriptedFetch([
+      toolCallResponse([{ id: 'call-1', name: 'update_persona', args: UPDATE_ARGS }]),
+      jsonResponse({ choices: [{ message: { content: null } }] }),
+    ]);
+    const harness = toolHarness(fetchImpl);
+    const outcome = await harness.run();
+    expect(outcome.text).toBe(
+      `${TRANSIENT_FAILURE_REPLY}\n\n✏️ Persona updated: Spanish answers. Say "undo" to revert.`,
+    );
+  });
+
+  it('keeps the persona change on a second-call 429 and says so', async () => {
+    const { fetchImpl } = scriptedFetch([
+      toolCallResponse([{ id: 'call-1', name: 'update_persona', args: UPDATE_ARGS }]),
+      jsonResponse({ error: { message: 'over budget' } }, 429),
+    ]);
+    const harness = toolHarness(fetchImpl);
+    const outcome = await harness.run();
+    expect(outcome).toEqual({
+      kind: 'failed',
+      text: `${BUDGET_EXCEEDED_REPLY}\n\n✏️ Persona updated: Spanish answers. Say "undo" to revert.`,
+    });
+    expect(harness.executed).toHaveLength(1);
+    const logged = loggedText(harness.logger.calls);
+    expect(logged).not.toContain(VIRTUAL_KEY);
+    expect(logged).not.toContain(MASTER_KEY);
+  });
+
+  it('keeps going when one tool call throws: first change stays, failed result, 2 calls', async () => {
+    const first = { persona: 'Primera persona, en español.', summary: 'First change' };
+    const second = { persona: 'Segunda persona, en español.', summary: 'Second change' };
+    const { fetchImpl, calls } = scriptedFetch([
+      toolCallResponse([
+        { id: 'call-1', name: 'update_persona', args: first },
+        { id: 'call-2', name: 'update_persona', args: second },
+      ]),
+      completionResponse('done'),
+    ]);
+    const store = new Map<string, string>();
+    const executeTool: ExecuteToolCall = async (call) => {
+      if (call.tool !== 'update_persona') {
+        throw new Error('unreachable in this test');
+      }
+      if (call.id === 'call-2') {
+        throw new Error(`the database is down, key was ${VIRTUAL_KEY}`);
+      }
+      store.set('persona', call.persona);
+      return { content: 'ok', notice: formatPersonaUpdatedLine(call.summary) };
+    };
+    const harness = toolHarness(fetchImpl, executeTool);
+    const outcome = await harness.run();
+
+    expect(calls).toHaveLength(2);
+    expect(store.get('persona')).toBe(first.persona);
+    const secondRequest = bodyOf(calls[1]!) as unknown as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(
+      secondRequest.messages.filter((message) => message.role === 'tool').map((m) => m.content),
+    ).toEqual(['ok', 'failed: could not save']);
+    expect(outcome).toEqual({
+      kind: 'replied',
+      text: 'done\n\n✏️ Persona updated: First change. Say "undo" to revert.',
+    });
+
+    const failure = harness.logger.calls.find((call) => call.fields['ok'] === false);
+    expect(failure?.fields['aiId']).toBe('ai-1');
+    expect(failure?.fields['tool']).toBe('update_persona');
+    const logged = loggedText(harness.logger.calls);
+    expect(logged).not.toContain(VIRTUAL_KEY);
+    expect(logged).not.toContain(MASTER_KEY);
+    expect(logged).not.toContain(first.persona);
+    expect(logged).not.toContain(second.persona);
   });
 });

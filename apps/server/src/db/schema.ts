@@ -140,6 +140,10 @@ export const ais = pgTable(
     name: text('name').notNull(),
     template: text('template', { enum: ['dev', 'marketing', 'fun', 'custom'] }).notNull(),
     persona: text('persona').notNull(),
+    // The persona before the latest chat-driven change (`setPersonaFromChat`).
+    // One level deep: `revertPersonaFromChat` swaps the two, so a second undo
+    // re-applies the change. Null until the owner first shapes the AI by chat.
+    previousPersona: text('previous_persona'),
     providerConnectionId: text('provider_connection_id')
       .notNull()
       .references(() => providerConnections.id, { onDelete: 'restrict' }),

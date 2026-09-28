@@ -1,0 +1,1 @@
+ALTER TABLE "ais" ADD COLUMN "previous_persona" text;

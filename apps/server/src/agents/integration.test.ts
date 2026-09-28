@@ -4,6 +4,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { createXmppCore, type ChatMessage } from '@galena/xmpp-core';
 import { DEFAULT_LITELLM_BASE_URL, createLitellmAdminClient } from '../ai/litellm-client';
+import type { FetchLike } from '../ai/litellm-client';
 import { createKeyCipher } from '../connections/crypto';
 import { createDb } from '../db/client';
 import { createAgentGateway } from './gateway';
@@ -208,6 +209,25 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
       let aiId: string | undefined;
       let aiJid: string | undefined;
       const directDb = createDb(requireEnv('DATABASE_URL'));
+      // The fake key can't produce a real tool call, so this only observes the
+      // request shape (tool names, never payloads) while the real request
+      // still goes out to LiteLLM untouched.
+      const toolNamesSeen: string[] = [];
+      const observingFetch: FetchLike = async (url, init) => {
+        try {
+          const payload = JSON.parse(String(init.body)) as {
+            tools?: Array<{ function?: { name?: string } }>;
+          };
+          for (const tool of payload.tools ?? []) {
+            if (typeof tool?.function?.name === 'string') {
+              toolNamesSeen.push(tool.function.name);
+            }
+          }
+        } catch {
+          // Not a chat payload; the real request still goes out below.
+        }
+        return fetch(url, init);
+      };
       const gateway = createAgentGateway(
         {
           db: directDb.db,
@@ -218,6 +238,7 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
           logger: { info: () => undefined, warn: () => undefined },
           litellmBaseUrl,
           masterKeyForRedaction: masterKey,
+          fetchImpl: observingFetch,
         },
         { enabled: true },
       );
@@ -299,6 +320,9 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
           const reply = await waitForReply(received, aiJid.toLowerCase(), REPLY_TIMEOUT_MS);
           expect(reply.body).toBe(PROVIDER_KEY_REJECTED_REPLY);
           expect(JSON.stringify(reply)).not.toContain('sk-');
+          // The turn offered exactly the two persona tools with auto choice.
+          expect(toolNamesSeen).toContain('update_persona');
+          expect(toolNamesSeen).toContain('revert_persona');
         } finally {
           await owned.disconnect().catch(() => undefined);
         }
