@@ -26,7 +26,7 @@ This task is the web side, so Julio can do the M2 demo: open a group, add his AI
 - `AGENTS.md` (mandatory)
 - `work/T-0054-ai-in-groups-server.md`: the API and the rules (who may add and remove)
 - `work/T-0053-mentions-web.md`: the picker and `groupMembers(chatId)` in the store
-- `apps/server/src/groups/routes.ts` (read only): the exact response shapes after T-0054
+- `apps/server/src/groups/routes.ts` and `service.ts` **as on the T-0054 branch** (read only; T-0054 isn't merged yet, but its API is final): `git show task/T-0054-ai-in-groups-server:apps/server/src/groups/routes.ts` (and `service.ts`) for the exact response shapes
 - `apps/web/src/lib/api.ts` (`groupDetailSchema`, `getGroup`, `listAis`), `store/realStore.ts` (`groupMembers`, the group-member loading, `toUiMessage` sender names), `store/store.ts`
 - `apps/web/src/components/ChatHeader.tsx` (the unused "Chat menu" button), `ais/AiPanel.tsx` (the side panel pattern to copy), `routes/ChatView.tsx` (how the AI panel opens with `?panel=ai`), `MentionPicker.tsx`, `MessageBubble.tsx`, `AiBadge.tsx`, `Avatar.tsx`
 - `packages/chat-core/src/markdown.ts` (`shouldRenderMarkdown`)
