@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0055](T-0055-ai-in-groups-web.md) | AIs in groups (web): group panel, add/remove my AI, AIs in the @ picker, AI replies as AI with Markdown | in progress | deepseek-v4.1-flash | T-0053, T-0054 | M2 demo: @mention the AI in a group. |
-| [T-0057](T-0057-web-polish-retry-models.md) | Web polish: Retry keeps the loaded chat list; model picker suggestions as raised segments | in progress | deepseek-v4.1-flash | T-0042, T-0052 | Small. |
 | [T-0058](T-0058-ai-costs.md) | AI costs: spend today / 30-day window in the panel, soft per-day limit enforced before each turn | planned (after T-0054) | muse-spark-1.3 | T-0054 | The per-day limit was stored but never enforced. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
@@ -88,3 +87,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0051](T-0051-lead-switch-model-and-merge-cleanup.md) | lead CLI: switch-model (quota fallback, validates before interrupting) + merge stops the worktree's processes (exact path match, TERM/KILL, name-only output) | 2026-09-28 |
 | [T-0054](T-0054-ai-in-groups-server.md) | AIs in groups (server): group_ais, add/remove routes, the gateway joins rooms and replies to @mentions from human members (rate-limited, no AI-to-AI) | 2026-09-28 |
 | [T-0056](T-0056-mobile-reply-drafts.md) | Mobile AI reply drafts: bearer SSE over XHR, smooth reveal, recessed generating bubble, same-node swap to the final message | 2026-09-28 |
+| [T-0057](T-0057-web-polish-retry-models.md) | Web polish: Retry keeps the loaded chat list (pending button only); model picker suggestions as raised rows with a SUGGESTED caption | 2026-09-28 |

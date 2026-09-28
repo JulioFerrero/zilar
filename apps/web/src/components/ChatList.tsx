@@ -1,4 +1,4 @@
-import { Menu } from 'lucide-react';
+import { Menu, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ChatListItem } from './ChatListItem';
@@ -40,6 +40,27 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const [inviteOpen, setInviteOpen] = useState(false);
   const isWide = useMediaQuery('(min-width: 900px)');
   const connection = useDelayed(statusLabel(store.status), CONNECTION_BANNER_DELAY_MS);
+  // A retry keeps the list that is already painted: the store's `loading` flag
+  // means "pending" there, not "nothing to show". Only a list that has never
+  // arrived is blanked with skeletons.
+  const hasAnyChats = store.chats.length > 0;
+  // Set on a manual retry so the button can show a pending state. A keep-alive
+  // refresh never sets it, so background loading does not disable the button.
+  const [retryingChats, setRetryingChats] = useState(false);
+  // Reset during render (not in an effect) when the retry settles, so a later
+  // background `loading` with rows cannot leave the button stuck pending.
+  const [lastChatsState, setLastChatsState] = useState(store.chatsState);
+  if (store.chatsState !== lastChatsState) {
+    setLastChatsState(store.chatsState);
+    if (retryingChats && store.chatsState !== 'loading') {
+      setRetryingChats(false);
+    }
+  }
+  const retrying = retryingChats && store.chatsState === 'loading';
+  const retryChats = (): void => {
+    setRetryingChats(true);
+    storeApi.getState().retryChats();
+  };
 
   const signOut = (): void => {
     setMenuOpen(false);
@@ -150,33 +171,33 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
           isWide ? 'gap-0.5 px-2' : 'gap-0',
         )}
       >
-        {store.chatsState === 'loading' ? (
+        {store.chatsState === 'loading' && !hasAnyChats ? (
           <ChatListSkeleton />
-        ) : store.chatsState === 'error' && store.chats.length === 0 ? (
+        ) : store.chatsState === 'error' && !hasAnyChats ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
             <p className="text-[15px] text-muted-foreground">{"Couldn't load chats"}</p>
-            <Button
-              type="button"
-              size="lg"
-              className="rounded-full px-5"
-              onClick={() => storeApi.getState().retryChats()}
-            >
+            <Button type="button" size="lg" className="rounded-full px-5" onClick={retryChats}>
               Retry
             </Button>
           </div>
         ) : (
           <>
-            {store.chatsState === 'error' && (
+            {(store.chatsState === 'error' || retrying) && (
               <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-                <p className="text-[13px] text-muted-foreground">{"Couldn't load chats"}</p>
+                <p className="text-[13px] text-muted-foreground">
+                  {retrying ? 'Retrying…' : "Couldn't load chats"}
+                </p>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   className="rounded-full"
-                  onClick={() => storeApi.getState().retryChats()}
+                  disabled={retrying}
+                  aria-busy={retrying || undefined}
+                  onClick={retryChats}
                 >
-                  Retry
+                  {retrying && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
+                  {retrying ? 'Retrying…' : 'Retry'}
                 </Button>
               </div>
             )}
