@@ -24,8 +24,9 @@ export function ChatHeader({ chat, onBack }: ChatHeaderProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const iconColor = ICON[scheme];
   const names = useChatStore((state) => state.typing[chat.id]?.names);
+  const hasDraft = useChatStore((state) => state.drafts[chat.id] !== undefined);
   const typing = typingLabel(chat, names ?? []);
-  const writing = typing !== undefined && chat.isAI;
+  const writing = chat.isAI && (typing !== undefined || hasDraft);
   const subtitle = writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date()));
   const working = chat.isAI && chat.aiStatus === 'working';
   return (
@@ -45,7 +46,7 @@ export function ChatHeader({ chat, onBack }: ChatHeaderProps) {
           <Text numberOfLines={1} className="shrink text-[12px] text-muted-foreground">
             {subtitle}
           </Text>
-          {working || typing !== undefined ? <TypingDots color={MUTED_FOREGROUND[scheme]} /> : null}
+          {working || writing ? <TypingDots color={MUTED_FOREGROUND[scheme]} /> : null}
         </View>
       </View>
       <IconButton label="Search in chat">

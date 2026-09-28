@@ -14,6 +14,25 @@ export type SendTextOptions = {
   replyTo?: ReplyRef;
 };
 
+/** The live AI draft of one chat: the latest cumulative reply text. */
+export type DraftState = {
+  turnId: string;
+  text: string;
+};
+
+/**
+ * The list key of a message (T-0056). A message that finished a draft keeps the
+ * draft's `draft-<turnId>` key, so the bubble component is reused and its reveal
+ * carries over instead of snapping in as a new message.
+ */
+export function draftEntryKey(
+  messageId: string,
+  finishedDraftMessages: Record<string, string>,
+): string {
+  const turnId = finishedDraftMessages[messageId];
+  return turnId === undefined ? messageId : `draft-${turnId}`;
+}
+
 /**
  * The state and actions the mobile screens use. Both the mock store and the
  * real store implement it, so the components do not care which one is running.
@@ -30,6 +49,16 @@ export interface ChatStoreState {
   activeChatId: string | null;
   historyComplete: Record<string, boolean>;
   typing: Record<string, TypingState>;
+  /**
+   * Live AI reply drafts by chat id (the AI's bare JID), from
+   * `/api/drafts/stream` (T-0056). Empty when no AI is writing.
+   */
+  drafts: Record<string, DraftState>;
+  /**
+   * Message id -> the draft turn it replaced (T-0056). The final message keeps
+   * rendering on the draft's key so its reveal continues instead of snapping.
+   */
+  finishedDraftMessages: Record<string, string>;
   messages: (chatId: string) => UiMessage[];
   hasMore: (chatId: string) => boolean;
   openChat: (chatId: string) => void;

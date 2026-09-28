@@ -1,7 +1,7 @@
 ---
 id: T-0056
 title: Mobile shows AI reply drafts — SSE over XHR (bearer), smooth reveal, recessed generating bubble, same-node swap to the final message
-status: planned
+status: review
 milestone: M2
 branch: task/T-0056-mobile-reply-drafts
 model: opencode-go/deepseek-v4.1-flash
@@ -117,5 +117,145 @@ pnpm --filter @galena/mobile build
 - Push notifications.
 
 ## Report (written by the worker when done)
+
+### What I did
+
+**1. SSE client — `apps/mobile/src/lib/drafts.ts` (+ `drafts.test.ts`)**
+- `subscribeToDrafts(onEvent, options) => close` reads the SSE stream from
+  `XMLHttpRequest.responseText` (React Native has no `EventSource`, and its `fetch`
+  does not stream bodies). It keeps a parsed-character `offset` plus a frame buffer, so
+  frames split across chunks and several frames in one chunk both parse correctly;
+  `:` heartbeat lines are ignored.
+- Every `data:` payload is validated against the server contract (the same shapes as
+  `apps/server/src/drafts/events.ts`). The mobile app has no `zod` and this task forbids
+  new dependencies, so it is a hand-written validator in the style of `chat-api.ts` /
+  `auth-api.ts`. Bad JSON and wrong shapes are dropped silently; nothing throws.
+- Sends `Authorization: Bearer <token>` (from `getSessionToken`) and
+  `Accept: text/event-stream`. The token and draft text are never logged.
+- Follows the injected `AppState` seam: the stream closes on background and reopens on
+  `active`; a dropped connection reconnects with a jittered `1 s -> 30 s` backoff while
+  signed in and active, and the backoff resets once a partial response arrives.
+
+**2. Store — `store/types.ts`, `store/real-store.ts`, `store/chat-store.ts`**
+- Ports the web draft logic exactly: `drafts[chatJid] = { turnId, text }`,
+  `DRAFT_IDLE_MS = 60_000` (re-armed by every draft; removes the bubble **without**
+  finishing the turn, so a resumed tool call shows again), `DRAFT_END_FALLBACK_MS = 5_000`
+  on `end`, a finished-turn set capped at 50, and late drafts for a finished turn ignored.
+- The AI's final XMPP message replaces the draft in the **same** `set` and records
+  `finishedDraftMessages[messageId] = turnId`. The new `draftEntryKey` helper
+  (`store/types.ts`) gives that message the same `draft-<turnId>` key the synthetic draft
+  used, so the bubble and its reveal are reused. A message from my own JID (a second
+  device) does not end the draft.
+- `start()` opens the stream once after boot; `stop()` closes it, clears the timers and
+  finished turns, and empties `drafts`/`finishedDraftMessages`. `RealStoreDeps.openDrafts`
+  is the test seam, as in the web store. The mock store gained the same state plus a
+  screenshot scenario (`mock/drafts.ts`, `EXPO_PUBLIC_GALENA_MOCK_DRAFT=stream|final`).
+
+**3. UI**
+- `lib/use-smooth-text.ts`: a port of the web reveal as a testable `SmoothTextReveal`
+  class (the hook is a thin wrapper). Same catch-up (~350 ms), the 60 chars/s floor, the
+  longest-common-prefix restart, the surrogate-pair-safe cut, reduced motion, and the
+  `active` snap.
+- `components/chat/message-bubble.tsx`: the recessed `bubbleStyle('generating')` look with
+  `--generating-foreground` text, a blinking caret (static with reduced motion) and the
+  mono `generating` label with a pulsing dot. Time and ticks stay on screen invisible while
+  generating (width reserved). On the swap the incoming look fades in over the recessed
+  shell over 400 ms (instant with reduced motion); the text never replays.
+- `components/chat/message-list.tsx`: appends the trimmed draft as the last item, keys it
+  and the final message `draft-<turnId>`, and pins to the bottom via `onContentSizeChange`
+  only while the user is at the bottom.
+- `components/chat/chat-header.tsx` and `components/chat/chat-list-item.tsx`: show
+  `writing…` while a draft is active in that chat.
+
+### Files changed
+- `apps/mobile/src/lib/drafts.ts` (new), `apps/mobile/src/lib/drafts.test.ts` (new)
+- `apps/mobile/src/lib/use-smooth-text.ts` (new), `apps/mobile/src/lib/use-smooth-text.test.ts` (new)
+- `apps/mobile/src/store/types.ts`, `types.test.ts` (new), `real-store.ts`, `real-store.test.ts`,
+  `chat-store.ts`
+- `apps/mobile/src/mock/drafts.ts` (new)
+- `apps/mobile/src/components/chat/message-bubble.tsx`, `message-list.tsx`, `chat-header.tsx`,
+  `chat-list-item.tsx` (lead-allowed extra file; see below)
+- `work/T-0056-mobile-reply-drafts.md`
+
+No other files changed; no dependencies added; no host input automation.
+
+### Tests added
+- `lib/drafts.test.ts` (7): the bearer header and URL; a frame split across chunks; several
+  frames plus a heartbeat in one chunk; invalid JSON/shapes/heartbeats dropped; reconnect
+  with a growing jittered backoff (fake timers); close on background and reopen on active;
+  `close()` aborts and stops reconnecting; no open without a token or while starting in the
+  background.
+- `lib/use-smooth-text.test.ts` (9): monotonic prefix growth; no half emoji; catch-up within
+  the window; the minimum speed; restart at the common prefix on a shrink; reduced motion
+  shows the target at once; `initial: 'full'` paints the first target then animates growth;
+  the `active` snap (fake `ActiveSource`); `safeCut`.
+- `store/types.test.ts` (3): `draftEntryKey` keeps a plain id, keeps the draft key for the
+  finishing message, and is stable across the swap.
+- `store/real-store.test.ts` (+13): opens the stream after boot; draft->message swap in one
+  update with no gap/duplicate and a late draft ignored; the draft survives a message from my
+  own JID; the `end` fallback; the idle expiry does not finish the turn (and a resume shows);
+  a refresh re-arms the idle timer; latest text on a shrink; a new turn is not dropped by a
+  stale fallback; the finished-message record and its 50 cap; stop closes the stream, clears
+  the state and leaves no second stream.
+
+### Commands (real results)
+```bash
+pnpm install                                        # Done in 7s using pnpm v10.32.1
+pnpm format:check                                   # All matched files use Prettier code style!
+pnpm lint                                           # no output, exit 0
+pnpm typecheck                                      # Tasks: 9 successful, 9 total
+pnpm exec turbo test --force --filter=@galena/mobile
+                                                    # Test Files 23 passed | 2 skipped (25); Tests 203 passed | 2 skipped (205)
+pnpm --filter @galena/mobile build                  # Exported: dist (ios + android bundles)
+```
+
+### Problems / deviations
+- **No `zod` on mobile.** The spec asked for zod validation, but the mobile package has no
+  zod and the task forbids new dependencies, so `drafts.ts` validates by hand, matching the
+  existing `chat-api.ts` convention. The shapes are identical to the web's.
+- **Two lead-allowed files.** Chat-list `writing…` needs
+  `components/chat/chat-list-item.tsx`, which was not in the original Allowed list; the lead
+  approved the one-line edit during the run.
+- **The 400 ms swap is an opacity crossfade.** React Native has no CSS transitions, so the
+  recessed shell is kept and the incoming background/border/shadow fade in over it with an
+  `Animated` opacity (native driver), instant with reduced motion. The text color switches
+  with `generating`, which is one frame rather than interpolated.
+- **The list key is tested through `draftEntryKey`.** The component render tree is not
+  unit-tested (the mobile app has no React Native testing library, and the task's Tests
+  section lists only the client, the store and the reveal), so the "same key across the
+  swap" is asserted on the pure helper the list uses.
+- **Visual check:** done on my own simulator (see below). Because the app requires a
+  session to reach the chat screen, I used the same capture-only, uncommitted mock auth
+  bypass T-0048 used, plus a mock-only redirect from the list to `/chat/dev-ai`
+  (`xcrun simctl openurl` on iOS 26 raises an "Open in Galena?" confirmation that cannot be
+  answered without host input). Both temporary edits were reverted before this commit.
+
+### Visual check (mine)
+- Own simulator: created `Galena T-0056` (iPhone 17, `8929DF41-5296-496D-A83D-78AE441BBDD3`),
+  Metro on **8082**, mock mode (`EXPO_PUBLIC_GALENA_MOCK=1`,
+  `EXPO_PUBLIC_GALENA_MOCK_DRAFT=stream|final`). `boot:ios`: **PASS** (bundle loaded, JS ran,
+  no errors). At the end I stopped my Metro and shut down and **deleted** only my simulator.
+  Julio's `DB167CD4` stayed shut down and was never booted; Metro 8081 was untouched (its
+  process is still listening).
+- Screenshots in `apps/mobile/screenshots/T-0056/`:
+  - `01-chat-list-writing.png` — the chat list; the **Dev AI** row shows `writing…` with the
+    pulsing dot.
+  - `02-draft-stream.png` — the Dev AI chat mid-reply: a **recessed** bubble (well background,
+    inset shadow) with gray text, the blinking caret `▍`, and the mono `generating` label with
+    its dot; the header shows `writing…`.
+  - `03-after-swap.png` — the same chat after the swap: `Tests pass. Merge?` renders as a
+    normal incoming card with no caret or `generating` label.
+- What I could not verify by eye: the live frame-by-frame smoothness and the 400 ms fade (the
+  mock scenario is static, not a real SSE stream), and the resume/foreground snap. Those are
+  covered by the unit tests; a live check against a running server is the lead's step.
+
+### Steps for the lead (live check, with Julio's permission)
+1. Open an AI DM and ask a question that needs a longer answer: the reply should grow smoothly
+   in a recessed gray bubble with a caret and a `generating` label, the header should read
+   `writing…`, and the final message should replace it with no jump or replay.
+2. Background the app mid-reply and return: the stream should reopen and the reveal should
+   snap to the latest text (no fast-forward replay).
+3. Scroll up while it writes: nothing should pull the view down; scroll back to the bottom and
+   it stays pinned.
 
 ## Review (written by Claude)

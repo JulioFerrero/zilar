@@ -16,14 +16,51 @@ import {
   type Contact,
   type Me,
 } from '../lib/chat-api';
+import { API_URL } from '../lib/auth';
+import {
+  DRAFT_STREAM_PATH,
+  subscribeToDrafts,
+  type DraftEndEvent,
+  type DraftHubEvent,
+  type OpenDraftStream,
+} from '../lib/drafts';
 import { getSessionToken } from '../lib/session-token';
 import { CURRENT_USER_ID } from '../lib/types';
-import type { ChatStoreState, ConnectionStatus } from './types';
+import type { ChatStoreState, ConnectionStatus, DraftState } from './types';
 
 const PREVIEW_HISTORY_MAX = 1;
 const PAGE_HISTORY_MAX = 50;
 const TYPING_CLEAR_MS = 5000;
 const CHAT_REFRESH_DEBOUNCE_MS = 500;
+
+// A finished draft is kept until its final XMPP message arrives. If that never
+// happens (XMPP down), it is dropped after this long so it cannot stick.
+export const DRAFT_END_FALLBACK_MS = 5_000;
+
+// A draft that sees no further event for this long is stale (e.g. the server
+// restarted mid-turn); the idle timer drops it rather than leaving it forever.
+export const DRAFT_IDLE_MS = 60_000;
+
+// Finished turn ids are remembered only to ignore a late `draft`. The set is
+// capped so it cannot grow for the life of the app session.
+const FINISHED_TURNS_MAX = 50;
+
+// Records which final message took over a draft's turn, capped like the
+// finished-turn set. Insertion order is the cap order.
+function rememberFinishedDraftMessage(
+  record: Record<string, string>,
+  messageId: string,
+  turnId: string,
+): Record<string, string> {
+  const next = { ...record, [messageId]: turnId };
+  const keys = Object.keys(next);
+  if (keys.length > FINISHED_TURNS_MAX) {
+    for (const key of keys.slice(0, keys.length - FINISHED_TURNS_MAX)) {
+      delete next[key];
+    }
+  }
+  return next;
+}
 
 /** The slice of React Native's `AppState` the store listens to. */
 export interface AppStateLike {
@@ -36,6 +73,8 @@ export interface RealStoreDeps {
   createXmpp?: (options: XmppCoreOptions) => XmppCore;
   now?: () => Date;
   appState?: AppStateLike;
+  /** The AI draft SSE stream; tests inject a fake. */
+  openDrafts?: OpenDraftStream;
 }
 
 function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
@@ -120,12 +159,27 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
   const now = deps.now ?? ((): Date => new Date());
   const appState = deps.appState ?? alwaysActive;
   const createXmpp = deps.createXmpp ?? ((options: XmppCoreOptions) => createXmppCore(options));
+  const openDrafts =
+    deps.openDrafts ??
+    ((onEvent) =>
+      subscribeToDrafts(onEvent, {
+        url: `${API_URL}${DRAFT_STREAM_PATH}`,
+        getToken: getSessionToken,
+        appState,
+      }));
 
   return createStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
     let unsubscribers: Array<() => void> = [];
     let removeAppState: (() => void) | undefined;
     let typingTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+    // Closes the draft stream once opened; undefined means it is not open.
+    let closeDraftStream: (() => void) | undefined;
+    // Idle/fallback removal of a draft, keyed by chat id.
+    const draftTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+    // Turn ids whose draft is done, so a late `draft` is ignored.
+    const finishedTurns = new Set<string>();
+    const finishedTurnOrder: string[] = [];
     let sequence = 0;
     let lastRead: Record<string, string> = {};
     let generation = 0;
@@ -390,6 +444,104 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return state.messagesByChat[chatId] ?? [];
     }
 
+    function markTurnFinished(turnId: string): void {
+      if (finishedTurns.has(turnId)) {
+        return;
+      }
+      finishedTurns.add(turnId);
+      finishedTurnOrder.push(turnId);
+      while (finishedTurnOrder.length > FINISHED_TURNS_MAX) {
+        const oldest = finishedTurnOrder.shift();
+        if (oldest !== undefined) {
+          finishedTurns.delete(oldest);
+        }
+      }
+    }
+
+    function withoutDraft(
+      drafts: Record<string, DraftState>,
+      chatId: string,
+    ): Record<string, DraftState> {
+      if (drafts[chatId] === undefined) {
+        return drafts;
+      }
+      const next = { ...drafts };
+      delete next[chatId];
+      return next;
+    }
+
+    function clearDraftTimeout(chatId: string): void {
+      const timer = draftTimeouts.get(chatId);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        draftTimeouts.delete(chatId);
+      }
+    }
+
+    function clearDraftState(): void {
+      for (const timer of draftTimeouts.values()) {
+        clearTimeout(timer);
+      }
+      draftTimeouts.clear();
+      finishedTurns.clear();
+      finishedTurnOrder.length = 0;
+    }
+
+    // (Re)arms the one removal timer of a chat, replacing any previous one. It
+    // removes the draft only when the same turn is still shown, so a newer
+    // turn's draft is never dropped by an older turn's timer.
+    function armDraftRemoval(chatJid: string, turnId: string, delay: number): void {
+      clearDraftTimeout(chatJid);
+      const timer = setTimeout(() => {
+        draftTimeouts.delete(chatJid);
+        // Not marked finished here: an idle turn (e.g. a slow tool call) may
+        // resume, and its next draft must show again. `end` marks it itself.
+        set((state) => {
+          const current = state.drafts[chatJid];
+          if (current === undefined || current.turnId !== turnId) {
+            return state;
+          }
+          return { drafts: withoutDraft(state.drafts, chatJid) };
+        });
+      }, delay);
+      draftTimeouts.set(chatJid, timer);
+    }
+
+    // A draft disappears only once its final message is there, so the two never
+    // leave a gap. Each `draft` re-arms an idle timer (a dead turn, e.g. the
+    // server restarted mid-turn, would otherwise leave the bubble forever);
+    // `end` replaces it with the short fallback; the final XMPP message (a
+    // separate channel) removes the draft in the same update that adds it.
+    function handleDraftEvent(event: DraftHubEvent): void {
+      if (event.type === 'end') {
+        handleDraftEnd(event);
+        return;
+      }
+      if (finishedTurns.has(event.turnId)) {
+        return;
+      }
+      set((state) => ({
+        drafts: { ...state.drafts, [event.chatJid]: { turnId: event.turnId, text: event.text } },
+      }));
+      armDraftRemoval(event.chatJid, event.turnId, DRAFT_IDLE_MS);
+    }
+
+    function handleDraftEnd(event: DraftEndEvent): void {
+      markTurnFinished(event.turnId);
+      const shown = get().drafts[event.chatJid];
+      if (shown === undefined || shown.turnId !== event.turnId) {
+        return;
+      }
+      armDraftRemoval(event.chatJid, event.turnId, DRAFT_END_FALLBACK_MS);
+    }
+
+    function startDraftStream(gen: number): void {
+      if (gen !== generation || closeDraftStream !== undefined) {
+        return;
+      }
+      closeDraftStream = openDrafts(handleDraftEvent);
+    }
+
     function handleMessage(message: ChatMessage): void {
       const meId = get().currentUserId;
       const chatId = message.chatJid;
@@ -439,6 +591,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
 
       const active = get().activeChatId === chatId && isVisible();
+      // Only the AI's own message in its DM finishes the draft. A message from
+      // my own JID (e.g. my second device) must leave the draft running.
+      const fromAi = message.fromJid === chatId && !isOwnSender(message.fromJid);
+      const draft = get().drafts[chatId];
+      if (draft !== undefined && fromAi) {
+        markTurnFinished(draft.turnId);
+        clearDraftTimeout(chatId);
+      }
       set((state) => ({
         messagesByChat: {
           ...state.messagesByChat,
@@ -455,6 +615,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           ),
           chatId,
         ),
+        // The final message replaces the draft in one update: the bubble never
+        // leaves the screen, so there is no gap and no duplicate.
+        drafts: draft !== undefined && fromAi ? withoutDraft(state.drafts, chatId) : state.drafts,
+        // Remember the turn so the bubble keeps revealing on the draft's key.
+        finishedDraftMessages:
+          draft !== undefined && fromAi
+            ? rememberFinishedDraftMessage(state.finishedDraftMessages, ui.id, draft.turnId)
+            : state.finishedDraftMessages,
       }));
       if (active && core !== undefined) {
         const chat = get().chats.find((entry) => entry.id === chatId);
@@ -791,6 +959,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         chats: entries.map(summaryFor),
         contacts,
       });
+      startDraftStream(gen);
 
       let token: { jid: string; token: string; service: string; domain: string };
       try {
@@ -881,6 +1050,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       search: '',
       activeFolder: 'all',
       typing: {},
+      drafts: {},
+      finishedDraftMessages: {},
       messages: (chatId) => get().messagesByChat[chatId] ?? [],
       hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
       openChat: (chatId) => {
@@ -974,6 +1145,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           clearTimeout(refreshTimer);
           refreshTimer = undefined;
         }
+        closeDraftStream?.();
+        closeDraftStream = undefined;
+        clearDraftState();
+        set({ drafts: {}, finishedDraftMessages: {} });
         const current = core;
         core = undefined;
         if (current !== undefined) {
