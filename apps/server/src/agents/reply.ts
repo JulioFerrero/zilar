@@ -31,6 +31,17 @@ export function dailyLimitReply(perDayUsd: number): string {
   return `I've reached today's spending limit ($${perDayUsd.toFixed(2)}). I'll be back after 00:00 UTC.`;
 }
 
+// The 80% heads-ups go out after the AI's reply for the turn that crossed
+// them, at most once per kind per AI per chat per UTC day. Fixed text except
+// for the formatted spend and cap.
+export function dailyWarningReply(todayUsd: number, perDayUsd: number): string {
+  return `Heads up: I've used $${todayUsd.toFixed(2)} of my $${perDayUsd.toFixed(2)} daily limit. I'll pause for the day when it runs out.`;
+}
+
+export function monthlyWarningReply(windowUsd: number, perMonthUsd: number): string {
+  return `Heads up: I've used $${windowUsd.toFixed(2)} of my $${perMonthUsd.toFixed(2)} limit for this period. You can raise it in My AIs.`;
+}
+
 // A failed `/chat/completions` call. The detail is redacted at construction:
 // it never carries the virtual key, whatever LiteLLM echoed back.
 export class ChatCompletionError extends Error {

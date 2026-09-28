@@ -1243,6 +1243,194 @@ describe('agent gateway', () => {
     });
   });
 
+  describe('budget warnings at 80%', () => {
+    const DAILY_WARNING =
+      "Heads up: I've used $0.80 of my $1.00 daily limit. I'll pause for the day when it runs out.";
+
+    async function warningSetup(): Promise<{
+      seeded: SeededAi;
+      core: FakeCore;
+      calls: Call[];
+      litellm: FakeLitellm;
+      logger: ReturnType<typeof captureLogger>;
+      setNow: (iso: string) => void;
+    }> {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = completionFetch();
+      const litellm = new FakeLitellm();
+      litellm.spendByKey.set('tok-1', 0.5);
+      let current = new Date('2026-09-28T12:00:00Z');
+      const { gateway: started, logger } = harness(cores, fetchImpl, litellm, {
+        now: () => current,
+      });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      return {
+        seeded,
+        core,
+        calls,
+        litellm,
+        logger,
+        setNow: (iso: string) => {
+          current = new Date(iso);
+        },
+      };
+    }
+
+    it('sends the reply first, then one daily warning, and no second warning the same day', async () => {
+      const { seeded, core, calls, litellm, logger } = await warningSetup();
+
+      // First turn records the 0.5 baseline and replies with no warning.
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+      await waitFor(() => core.sent.length === 1);
+      expect(core.sent[0]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' });
+
+      // Spend climbs to exactly 80% of the $1/day cap: reply, then warning.
+      litellm.spendByKey.set('tok-1', 1.3);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'are you there?'));
+      await waitFor(() => core.sent.length === 3);
+      expect(calls).toHaveLength(2);
+      expect(core.sent[1]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' });
+      expect(core.sent[2]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: DAILY_WARNING });
+
+      // A third message the same day gets a reply but no second warning.
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-3', 'still there?'));
+      await waitFor(() => calls.length === 3);
+      await waitFor(() => core.sent.length === 4);
+      expect(core.sent[3]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' });
+      expect(core.sent.filter((message) => message.text === DAILY_WARNING)).toHaveLength(1);
+
+      // Nothing new logs amounts, keys or message text.
+      const logged = loggedText(logger.calls);
+      expect(logged).not.toContain('$0.80');
+      expect(logged).not.toContain('$1.00');
+      expect(logged).not.toContain(VIRTUAL_KEY);
+      expect(logged).not.toContain(MASTER_KEY);
+      expect(logged).not.toContain('are you there?');
+    });
+
+    it('warns again on the next UTC day', async () => {
+      const { seeded, core, calls, litellm, setNow } = await warningSetup();
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+      litellm.spendByKey.set('tok-1', 1.3);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'again?'));
+      await waitFor(() => core.sent.length === 3);
+      expect(core.sent[2]?.text).toBe(DAILY_WARNING);
+
+      // The next UTC day starts a fresh baseline: the first turn replies
+      // without a warning...
+      setNow('2026-09-29T00:30:00Z');
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-3', 'morning'));
+      await waitFor(() => calls.length === 3);
+      await waitFor(() => core.sent.length === 4);
+      expect(core.sent[3]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' });
+
+      // ...and the turn that crosses 80% of the new day warns again.
+      litellm.spendByKey.set('tok-1', 2.2);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-4', 'later'));
+      await waitFor(() => core.sent.length === 6);
+      expect(core.sent[4]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' });
+      expect(core.sent[5]?.text).toContain('of my $1.00 daily limit');
+    });
+
+    it('sends both warnings once each when daily and monthly cross together', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = completionFetch();
+      const litellm = new FakeLitellm();
+      // Baseline just below the monthly 80% line ($16 of $20).
+      litellm.spendByKey.set('tok-1', 15.5);
+      const { gateway: started } = harness(cores, fetchImpl, litellm);
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+      await waitFor(() => core.sent.length === 1);
+
+      // Today $0.90 of $1.00 and window $16.40 of $20.00: both cross 80%.
+      litellm.spendByKey.set('tok-1', 16.4);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'again?'));
+      await waitFor(() => core.sent.length === 4);
+      expect(calls).toHaveLength(2);
+      expect(core.sent[1]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' });
+      expect(core.sent[2]?.text).toContain('daily limit');
+      expect(core.sent[3]?.text).toContain('for this period');
+      expect(core.sent[2]?.text).not.toBe(core.sent[3]?.text);
+
+      // Next turn: reply only, each warning was once.
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-3', 'once more'));
+      await waitFor(() => calls.length === 3);
+      await waitFor(() => core.sent.length === 5);
+      expect(core.sent[4]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' });
+    });
+
+    it('sends the existing notice and no warning at 100%', async () => {
+      const { seeded, core, calls, litellm } = await warningSetup();
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+
+      litellm.spendByKey.set('tok-1', 2);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'are you there?'));
+      await waitFor(() => core.sent.length === 2);
+      expect(core.sent[1]?.text).toContain("I've reached today's spending limit");
+      expect(core.sent.some((message) => message.text.startsWith('Heads up'))).toBe(false);
+      expect(calls).toHaveLength(1);
+    });
+
+    it('sends no warning when usage is unavailable', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = completionFetch();
+      const litellm = new FakeLitellm();
+      litellm.failKeyInfo = true;
+      const { gateway: started } = harness(cores, fetchImpl, litellm);
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+      await waitFor(() => core.sent.length === 1);
+      expect(core.sent).toEqual([{ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' }]);
+    });
+
+    it('a failing warning send never breaks the turn or the next one', async () => {
+      const { seeded, core, calls, litellm } = await warningSetup();
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+      await waitFor(() => core.sent.length === 1);
+
+      litellm.spendByKey.set('tok-1', 1.3);
+      const send = core.sendMessage.bind(core);
+      let failWarnings = true;
+      core.sendMessage = (to, kind, text, opts) => {
+        if (failWarnings && text.startsWith('Heads up')) {
+          return Promise.reject(new Error('xmpp send is down'));
+        }
+        return send(to, kind, text, opts);
+      };
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'again?'));
+      await waitFor(() => calls.length === 2);
+      await waitFor(() => core.sent.length === 2);
+      // The reply went out; the warning failed quietly.
+      expect(core.sent[1]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' });
+
+      // The next turn retries the warning and delivers it after the reply.
+      failWarnings = false;
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-3', 'once more'));
+      await waitFor(() => calls.length === 3);
+      await waitFor(() => core.sent.length === 4);
+      expect(core.sent[2]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' });
+      expect(core.sent[3]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: DAILY_WARNING });
+    });
+  });
+
   describe('service additions', () => {
     it('create and delete emit lifecycle events the gateway observes', async () => {
       const seen: Array<{ type: string; aiId: string }> = [];
@@ -2331,6 +2519,40 @@ describe('agent gateway', () => {
       await tick(200);
       expect(core.sent).toHaveLength(2);
       expect(calls).toHaveLength(1);
+    });
+
+    it('warns in the room after the reply, once per day, and never for skipped turns', async () => {
+      const { seeded, member, roomJid, core, calls, litellm } = await roomSetup();
+      const warning =
+        "Heads up: I've used $0.80 of my $1.00 daily limit. I'll pause for the day when it runs out.";
+
+      litellm.spendByKey.set('tok-1', 0.5);
+      core.receive(mention(seeded, member, roomJid, 'm-1'));
+      await waitFor(() => calls.length === 1);
+      await waitFor(() => core.sent.length === 1);
+
+      // Crossing 80%: the room reply first, then the plain warning.
+      litellm.spendByKey.set('tok-1', 1.3);
+      core.receive(mention(seeded, member, roomJid, 'm-2'));
+      await waitFor(() => core.sent.length === 3);
+      expect(calls).toHaveLength(2);
+      expect(core.sent[1]?.kind).toBe('groupchat');
+      expect(core.sent[1]?.text).toContain('@Ana');
+      expect(core.sent[2]).toEqual({ to: roomJid, kind: 'groupchat', text: warning });
+
+      // A further mention the same day gets a reply but no second warning.
+      core.receive(mention(seeded, member, roomJid, 'm-3'));
+      await waitFor(() => calls.length === 3);
+      await waitFor(() => core.sent.length === 4);
+      expect(core.sent.filter((message) => message.text === warning)).toHaveLength(1);
+
+      // A mention with no trigger (a plain message, no @mention) starts no
+      // turn and sends no warning.
+      const sentBefore = core.sent.length;
+      core.receive(roomMessage(roomJid, member.jid, 'm-4', 'hello everyone', { nick: 'Ana' }));
+      await tick(200);
+      expect(core.sent).toHaveLength(sentBefore);
+      expect(calls).toHaveLength(3);
     });
   });
 });

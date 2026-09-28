@@ -6,7 +6,9 @@ import {
   BUDGET_EXCEEDED_REPLY,
   ChatCompletionError,
   completeChat,
+  dailyWarningReply,
   mapFailureToReply,
+  monthlyWarningReply,
   PROVIDER_KEY_REJECTED_REPLY,
   REPLY_MAX_TOKENS,
   runDmTurn,
@@ -186,6 +188,20 @@ describe('completeChat', () => {
       expect(error).toBeInstanceOf(ChatCompletionError);
       expect((error as ChatCompletionError).message).not.toContain(VIRTUAL_KEY);
     }
+  });
+});
+
+describe('budget warning replies', () => {
+  it('formats the daily warning with the spend and the cap', () => {
+    expect(dailyWarningReply(1.62, 2)).toBe(
+      "Heads up: I've used $1.62 of my $2.00 daily limit. I'll pause for the day when it runs out.",
+    );
+  });
+
+  it('formats the monthly warning with the spend and the cap', () => {
+    expect(monthlyWarningReply(16.3, 20)).toBe(
+      "Heads up: I've used $16.30 of my $20.00 limit for this period. You can raise it in My AIs.",
+    );
   });
 });
 
