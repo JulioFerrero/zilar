@@ -24,7 +24,7 @@ export function EmptyState({
 
   return (
     <div className="chat-background flex h-full items-center justify-center">
-      <span className="rounded-full bg-black/25 px-4 py-2 text-[15px] text-white backdrop-blur-sm">
+      <span className="raised-pill rounded-full px-4 py-2 text-[15px] text-muted-foreground">
         Select a chat to start messaging
       </span>
     </div>

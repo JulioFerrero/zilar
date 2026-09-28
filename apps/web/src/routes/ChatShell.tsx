@@ -37,10 +37,10 @@ export function ChatShell() {
   }, [isWide, chatId, navigate]);
 
   return (
-    <div className="flex h-dvh w-full overflow-hidden bg-background">
+    <div className="flex h-dvh w-full overflow-hidden bg-page wide:gap-3 wide:p-3">
       <aside
         className={cn(
-          'h-full w-full min-w-0 flex-col border-r border-divider wide:w-[360px] wide:shrink-0',
+          'h-full w-full min-w-0 flex-col bg-panel wide:w-[360px] wide:shrink-0 wide:overflow-hidden wide:rounded-2xl wide:border wide:border-border',
           chatId === undefined ? 'flex' : 'hidden wide:flex',
         )}
       >
@@ -48,7 +48,7 @@ export function ChatShell() {
       </aside>
       <main
         className={cn(
-          'h-full min-w-0 flex-1 flex-col',
+          'h-full min-w-0 flex-1 flex-col bg-panel wide:overflow-hidden wide:rounded-2xl wide:border wide:border-border',
           chatId === undefined ? 'hidden wide:flex' : 'flex',
         )}
       >

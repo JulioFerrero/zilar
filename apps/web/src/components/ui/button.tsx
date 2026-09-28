@@ -3,17 +3,24 @@ import { Slot } from 'radix-ui';
 import type * as React from 'react';
 import { cn } from '@/lib/utils';
 
+// The primary key and the icon key carry their own focus ring (ui-style.md §4);
+// the other variants use a plain ring.
+const PLAIN_FOCUS = 'focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none';
+
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 select-none items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 select-none items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        outline: 'border-border bg-background hover:bg-muted hover:text-foreground',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        ghost: 'hover:bg-muted hover:text-foreground',
-        destructive: 'bg-danger/10 text-danger hover:bg-danger/20',
-        link: 'text-primary underline-offset-4 hover:underline',
+        default: 'key-primary',
+        outline: cn(
+          'border-border-strong bg-surface text-foreground hover:bg-surface-raised',
+          PLAIN_FOCUS,
+        ),
+        secondary: cn('bg-surface text-secondary-foreground hover:bg-surface-raised', PLAIN_FOCUS),
+        ghost: cn('hover:bg-surface-raised hover:text-foreground', PLAIN_FOCUS),
+        destructive: cn('bg-danger/10 text-danger hover:bg-danger/20', PLAIN_FOCUS),
+        link: cn('text-primary underline-offset-4 hover:underline', PLAIN_FOCUS),
       },
       size: {
         default: 'h-8 gap-1.5 px-2.5',

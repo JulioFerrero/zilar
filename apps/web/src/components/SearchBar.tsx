@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { Well } from './ui/well';
 import { useChatStore } from '@/store/ChatStoreProvider';
 
 export function SearchBar() {
@@ -18,11 +19,8 @@ export function SearchBar() {
   }, []);
 
   return (
-    <div className="relative min-w-0 flex-1">
-      <Search
-        className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-        aria-hidden="true"
-      />
+    <Well className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[10px] px-2.5">
+      <Search className="size-[15px] shrink-0 text-subtle-foreground" aria-hidden="true" />
       <input
         ref={inputRef}
         type="search"
@@ -30,8 +28,11 @@ export function SearchBar() {
         onChange={(event) => store.setSearch(event.target.value)}
         placeholder="Search"
         aria-label="Search chats"
-        className="h-9 w-full rounded-full bg-muted pr-3 pl-9 text-[15px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-accent"
+        className="h-full min-w-0 flex-1 bg-transparent text-[14px] text-foreground outline-none placeholder:text-subtle-foreground"
       />
-    </div>
+      <kbd className="font-mono hidden shrink-0 rounded-md border border-border-strong px-1.5 py-px text-[11px] leading-4 text-subtle-foreground wide:inline-block">
+        ⌘K
+      </kbd>
+    </Well>
   );
 }
