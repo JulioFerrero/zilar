@@ -328,3 +328,39 @@ No changes under `apps/web/**`, `apps/mobile/**`, `packages/**`, `infra/**`,
 ---
 
 ## Review (written by Claude)
+
+**Verdict:** Round 1: changes requested
+
+Verified by the lead: scope (see finding 3), `format:check`, `lint`, `typecheck`,
+`build` pass. The test run on this machine was not usable (load average 96–166 from a
+parallel Xcode build: every failure was a timeout, in files this task does not touch);
+the lead re-runs the full suite after round 2. The design is right: rows start
+`disabled`, compensation runs in reverse, messages are fixed strings, and the key is
+sealed with the T-0028 cipher.
+
+### Findings
+1. **A partly failed delete can never be retried.** `deleteAi` revokes the key first.
+   If a later step fails (ejabberd down), the AI stays, which is right, but the retry
+   calls `revokeKey` on a key LiteLLM already deleted, `revokeKey` throws (it checks
+   `deleted_keys`), and the AI is stuck forever. The same happens to an AI left
+   `disabled` by a crash mid-create. Make teardown **resumable**; each step skips work
+   that is already done:
+   - after `revokeKey` succeeds, delete the `llm_virtual_keys` row straight away, so a
+     retry sees no key and skips the revoke;
+   - before `unregisterUser`, check `userExists` and skip it if the account is gone;
+   - for the two roster items, check `getRoster` and skip an item that is not there.
+   Tests: (a) delete fails at the roster step, the retry succeeds, and `revokeKey` was
+   called exactly once in total; (b) a `disabled` AI with no key row and no XMPP
+   account (the crash case) can be deleted.
+2. **`PATCH limits` leaves `llm_virtual_keys.budget_usd` stale.** The transaction
+   updates `ai_limits` only. Update `budget_usd` in the same transaction. Extend the
+   existing `PATCH limits` test to assert the new value.
+3. *(No change needed.)* The one-line stubs in `test-support.ts` and
+   `auth/cli-config.ts` are forced by the allowed `unregisterUser` change; the spec
+   should have listed them. Accepted.
+4. *(No change needed.)* `ai_update_failed` / `ai_teardown_failed`, reads working
+   without a gateway, the `PATCH` ordering note, and relying on the LiteLLM client's
+   redaction: all accepted as reported.
+
+The lead runs `GALENA_AIS_INTEGRATION=1` against a server from this branch after round 2.
+Do not start a server yourself.
