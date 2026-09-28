@@ -1,7 +1,7 @@
 ---
 id: T-0035
 title: Server follow-ups — rate-limit the Test-key route, readable name for unnamed contacts
-status: blocked
+status: review
 milestone: M2
 branch: task/T-0035-server-followups
 model: opencode-go/muse-spark-1.3-contributor
@@ -105,7 +105,8 @@ pnpm build
 1. **Shared limiter** (`apps/server/src/rate-limit.ts`, new): moved the sliding-window
    `createRateLimiter` here as `createRateLimiter({ max, windowMs, now })`, keeping the
    per-process comment. It calls `now()` once per `allow()` and prunes keys whose entries
-   all fell out of the window on every call, so the map can't grow forever.
+   all fell out of the window at most once per window, so the map can't grow forever.
+   Invalid `max`/`windowMs` throw at creation.
 2. **`apps/server/src/xmpp/routes.ts`**: deleted its local limiter, imports the shared one
    with the same constants (`30` per `10 min`). Behaviour unchanged.
 3. **`apps/server/src/connections/routes.ts`**: added `CONNECTION_TEST_RATE_LIMIT_MAX = 5`
@@ -139,6 +140,8 @@ The only 429-specific UI mapping in web is auth-only (`AuthFlow.tsx`).
 - `apps/server/src/xmpp/routes.ts` (import shared limiter only)
 - `apps/server/src/connections/routes.ts` + `routes.test.ts` (limit + 3 tests)
 - `apps/server/src/contacts/service.ts` + `contacts.test.ts` (unnamed fallback + 1 test)
+- `apps/server/src/chats/chats.test.ts` (Round 2, lead-authorized: stale DM title
+  expectations → `UNNAMED_CONTACT_NAME`; dead `names()` helper removed)
 
 ### Command results (real)
 - `pnpm install`: ok (32.8 s).
@@ -159,14 +162,37 @@ The only 429-specific UI mapping in web is auth-only (`AuthFlow.tsx`).
   turbo run, so they are parallel-PGlite flakes, except the deterministic chats one.
 - `pnpm build`: pass (2 tasks successful; `@galena/server` has no build script).
 
-### Blocked / needs a decision
-`GET /api/chats` builds DM titles directly from `listContacts` (`chats/routes.ts:37-43`),
-so the spec's own goal ("`/api/chats` gives them `title: ''`") is fixed by my change —
-but `chats/chats.test.ts:73-78` still expects the old blank title via the stored name.
-That file is under `apps/server/src/chats/**`, which is **not allowed** for me (T-0033 is
-changing it). Question for the lead: **may I update that one stale expectation
-(`title: ''` → `'Unnamed user'`), or will you / T-0033 handle it at merge?** I changed
-nothing under `chats/**`. Until that line is updated, the `turbo test` check cannot go
-fully green through no fault of the in-scope code.
+### Round 2 (unblocked by the lead)
+- The lead authorized editing `apps/server/src/chats/chats.test.ts` for the stale DM
+  title expectation. I changed the assertion the lead named (Alice's view of Bob,
+  `title: nameById.get(bob.id)` → `title: UNNAMED_CONTACT_NAME`, imported from
+  `../contacts/service`, no hard-coded string) **and** the identical assertion for
+  Bob's view of Alice in the same test: Alice never sets a display name either, so
+  that line failed deterministically with the same `''` vs `'Unnamed user'` mismatch
+  once the first was fixed. Same test, same one-line pattern, nothing else in
+  `chats/**` touched. Removing the expectation orphaned the `names()` helper,
+  `nameById`, and the `user` import, which `noUnusedLocals` rejects, so those three
+  dead lines went too.
+- `rate-limit.ts` per the lead's two notes: (1) `createRateLimiter` now throws on
+  `max < 1` / `windowMs <= 0` and the unreachable `recent.length === 0` branch is
+  gone; (2) pruning runs at most once per window (`lastPrune`, initialized so the
+  first call prunes). New tests: constructor validation, and a size-based test proving
+  an expired entry survives a call made less than a window after the last prune and
+  is collected on the next window. The original pruning test passes unchanged.
+
+### Round 2 command results (real, machine no longer loaded)
+- `pnpm install`: ok. `pnpm format:check`: "All matched files use Prettier code
+  style!". `pnpm lint` (oxlint): pass. `pnpm typecheck` (turbo, 9 tasks): pass.
+- Targeted `vitest run src/rate-limit.test.ts src/chats/chats.test.ts`: 2 files,
+  13/13 tests pass (8 limiter + 5 chats).
+- `pnpm exec turbo test --force --filter=@galena/server`: **28 files passed,
+  265 tests passed, 5 skipped, 0 failed**. Round 1's scattered hook timeouts in
+  unrelated files did not recur (no re-runs needed); they were parallel-PGlite load
+  flakes as reported.
+- `pnpm build`: pass (2 tasks successful; `@galena/server` has no build script).
+
+### Blocked / needs a decision (resolved in Round 2)
+Round 1 ended blocked on the stale `chats.test.ts` title expectation. The lead
+authorized the fix; it is done and the full suite is green. No open questions.
 
 ## Review (written by Claude)

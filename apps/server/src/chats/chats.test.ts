@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { groups, user } from '../db/schema';
+import { groups } from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
@@ -13,6 +13,7 @@ import {
   type TestContext,
 } from '../test-support';
 import { localpartFor } from '../xmpp/provisioning';
+import { UNNAMED_CONTACT_NAME } from '../contacts/service';
 
 interface ChatsBody {
   chats: Array<{
@@ -40,10 +41,6 @@ describe('GET /api/chats', () => {
     await context.close();
   });
 
-  async function names(): Promise<Map<string, string>> {
-    return new Map((await context.db.select().from(user)).map((row) => [row.id, row.name]));
-  }
-
   async function chatsFor(cookie: string): Promise<Response> {
     return app.request(`${TEST_BASE_URL}/api/chats`, { headers: { cookie } });
   }
@@ -63,7 +60,6 @@ describe('GET /api/chats', () => {
     const bob = await contactOf(context, app, alice.id, 'bob@example.com');
     const group = await createGroup(alice.cookie, 'Trip', [bob.id]);
     const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, group.id));
-    const nameById = await names();
 
     const aliceResponse = await chatsFor(alice.cookie);
     expect(aliceResponse.status).toBe(200);
@@ -73,7 +69,7 @@ describe('GET /api/chats', () => {
     expect(aliceChats.find((chat) => chat.kind === 'dm')).toMatchObject({
       kind: 'dm',
       chatJid: `${localpartFor(bob.id)}@${TEST_XMPP_DOMAIN}`,
-      title: nameById.get(bob.id),
+      title: UNNAMED_CONTACT_NAME,
       userId: bob.id,
     });
     expect(aliceChats.find((chat) => chat.kind === 'group')).toMatchObject({
@@ -89,7 +85,7 @@ describe('GET /api/chats', () => {
     const bobChats = ((await bobResponse.json()) as ChatsBody).chats;
     expect(bobChats.find((chat) => chat.kind === 'dm')).toMatchObject({
       chatJid: `${localpartFor(alice.id)}@${TEST_XMPP_DOMAIN}`,
-      title: nameById.get(alice.id),
+      title: UNNAMED_CONTACT_NAME,
       userId: alice.id,
     });
     expect(bobChats.find((chat) => chat.kind === 'group')).toMatchObject({
