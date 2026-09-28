@@ -54,10 +54,11 @@ type ComposerProps = {
   onSend: (text: string) => void;
   replyTo?: ReplyRef;
   onCancelReply: () => void;
+  onTyping?: () => void;
 };
 
 /** Bottom composer: attach, auto-growing input, emoji, and mic/send button. */
-export function Composer({ onSend, replyTo, onCancelReply }: ComposerProps) {
+export function Composer({ onSend, replyTo, onCancelReply, onTyping }: ComposerProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
@@ -74,6 +75,13 @@ export function Composer({ onSend, replyTo, onCancelReply }: ComposerProps) {
     setInputHeight(MIN_INPUT_HEIGHT);
   };
 
+  const handleChange = (value: string) => {
+    setText(value);
+    if (value.trim().length > 0) {
+      onTyping?.();
+    }
+  };
+
   return (
     <View className="px-2 pt-1.5" style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
       {replyTo !== undefined ? (
@@ -86,7 +94,7 @@ export function Composer({ onSend, replyTo, onCancelReply }: ComposerProps) {
           </IconButton>
           <TextInput
             value={text}
-            onChangeText={setText}
+            onChangeText={handleChange}
             multiline
             placeholder="Message"
             placeholderTextColor={mutedColor}

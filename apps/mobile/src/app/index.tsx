@@ -13,9 +13,10 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
+import { connectionLabel } from '@/lib/connection';
 import { filterChats, unreadCount } from '@/lib/filter';
 import type { ChatFolder } from '@/lib/types';
-import { useChatStore } from '@/store/chat-store';
+import { useChatStore } from '@/store/chat-store-provider';
 
 const FOLDER_KEYS: ChatFolder[] = ['all', 'personal', 'ai', 'work'];
 
@@ -35,6 +36,8 @@ function ChatsList() {
   const setSearch = useChatStore((state) => state.setSearch);
   const activeFolder = useChatStore((state) => state.activeFolder);
   const setActiveFolder = useChatStore((state) => state.setActiveFolder);
+  const status = useChatStore((state) => state.status);
+  const connection = connectionLabel(status);
   const [searchOpen, setSearchOpen] = useState(false);
 
   const visibleChats = useMemo(
@@ -88,6 +91,11 @@ function ChatsList() {
         </View>
       )}
       <FolderTabs activeFolder={activeFolder} counts={counts} onSelect={setActiveFolder} />
+      {connection !== undefined ? (
+        <View className="border-b border-divider px-3 py-1">
+          <Text className="text-center text-[12px] text-muted-foreground">{connection}</Text>
+        </View>
+      ) : null}
       <FlatList
         className="flex-1"
         data={visibleChats}

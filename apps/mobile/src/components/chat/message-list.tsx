@@ -11,7 +11,7 @@ import { FlatList } from 'react-native';
 import { DateSeparator } from '@/components/chat/date-separator';
 import { MessageBubble } from '@/components/chat/message-bubble';
 import { UnreadDivider } from '@/components/chat/unread-divider';
-import { useChatStore } from '@/store/chat-store';
+import { useChatStore } from '@/store/chat-store-provider';
 
 type ListEntry =
   | { type: 'divider'; key: string }
@@ -30,6 +30,8 @@ type MessageListProps = {
 export function MessageList({ chat, onReply }: MessageListProps) {
   const currentUserId = useChatStore((state) => state.currentUserId);
   const messages = useChatStore((state) => state.messages(chat.id));
+  const loadOlder = useChatStore((state) => state.loadOlder);
+  const hasMore = useChatStore((state) => state.hasMore(chat.id));
   const items = useMemo(() => groupMessages(messages), [messages]);
   // The divider position is fixed when the chat opens, before `openChat` clears
   // the unread count, so it does not move as new messages arrive.
@@ -98,6 +100,13 @@ export function MessageList({ chat, onReply }: MessageListProps) {
       }}
       contentContainerStyle={{ paddingVertical: 8 }}
       showsVerticalScrollIndicator={false}
+      scrollEventThrottle={16}
+      onScroll={(event) => {
+        // Scrolling to the top asks for the previous page of history.
+        if (hasMore && event.nativeEvent.contentOffset.y <= 24) {
+          loadOlder(chat.id);
+        }
+      }}
       renderItem={({ item }) => {
         if (item.type === 'divider') {
           return <UnreadDivider />;
