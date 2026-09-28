@@ -230,7 +230,29 @@ Read-only proof: md5 of the temp state file identical before/after (`34e933e…`
   Both lines went to stdout/stderr only: state-file md5 identical before/after (`03f83599…`), no `lead.log` created. Notes: the T-0034 worktree no longer exists (`ls` → no such directory; removed since round 1), so "gone" is correct; T-0037's live session is idle with status `in-progress`, so a nudge is the correct classification (sent by no one — dry-run).
 - CLI error paths re-verified: unknown-task `prereview` and summary-less `merge` exit 1.
 
-### Round 2 deviations / open questions
+### Round 3 (worker — the localhost-curl hole)
+
+The lead probed two `allow`s that must not be: `curl -s -X POST http://127.0.0.1:4000/key/delete` (mutates LiteLLM) and `curl http://127.0.0.1:3188/health -o ~/.zshrc` (writes outside the worktree). The old localhost exception allowed any curl to 127.0.0.1/localhost.
+
+Fix (`policy.ts`): the exception now means a read-only GET that prints to stdout. New quote-aware argv tokenizer (`splitArgs`) plus two validators. `isReadOnlyCurl` escalates on: `-X/--request` other than GET/HEAD, `-d/--data*/--json`, `-F/--form*`, `-T/--upload-file`, `-o/--output` to anything but `-`, `-O/--remote-name*`/`--output-dir`, `-K/--config`, `-u/--user`, `-H/--header` with Authorization/Cookie (case-insensitive), `-b/--cookie`, `-c/--cookie-jar`, plus `-n/--netrc*` and `--cert/--key/--pass` (same credential class), unknown flags, a lone `-`, and any non-localhost positional URL. Combined shorts (`-sXPOST`, `-sd@x`) and `--opt=value` are parsed. A small enumerated set of harmless flags/valued options (e.g. `-sSILf`, `--max-time`, `--user-agent`) stays allowed. `isReadOnlyWget` closes the symmetric hole (`--post-*`, non-GET `--method`, `-O`/output to a file). Julio's `:3000` still escalates first.
+
+New table rows (both probes → escalate; `curl -s …/health`, `curl -sI …/`, `curl -s -X GET …`, `curl -s --request HEAD …`, `curl -s -o - …`, plain `Accept` header → allow; one body/config/cred/output/cookie/method case per flag → escalate), plus the five lock-in escalate rows (`node -e process.kill`, `python3 -c os.kill`, `echo hi > ~/.zshrc`, `/usr/bin/git push`, `docker rm -f galena-dev-postgres-1`).
+
+### Round 3 commands and real results
+
+- Scoped `prettier --check` on all Allowed files: PASS (full-repo `format:check` still fails only on the untracked `PREREVIEW.md`, not mine).
+- `pnpm lint`: PASS. `pnpm typecheck`: PASS (9/9).
+- `pnpm exec turbo test --force --filter=@galena/devtools`: PASS — 12 files, **243 tests** (was 213; policy table now ~120 rows).
+- `pnpm exec turbo build --force`: PASS.
+- Live check (read-only, instructed temp state with real T-0037 + T-0034 sessions): rc=0, output `DRY: T-0034: task file is gone (worktree removed?); skipping` and `DRY: would send nudge prompt to T-0037`. State-file md5 identical before/after, no `lead.log` created.
+
+### Round 3 deviations
+
+- `-o -` (stdout) is the one output exemption; `-o /dev/null` escalates — strict reading of the spec list, since only `-` literally "prints to stdout".
+- `wget` got the parallel minimal treatment (POST-ish/output flags); `--load/--save-cookies` left alone as out of scope.
+- `/usr/bin/git push` stays escalate (locked in per instruction), not reject.
+
+### Round 2 deviations / open questions (kept)
 
 - Bare shells are **rejected**, not escalated (findings allowed either; fail-closed wins for an auto-answering tool). A worker wrapping commands in `sh -c` will be told to invoke them directly.
 - `rm` of unknown absolute paths is now reject (finding 5 asked for it); the old `escalate` case in the table was updated.
