@@ -304,6 +304,28 @@
   text-decoration: underline;
 }
 
+/* XEP-0372 mention chips (ui-style.md §5). */
+.mention-chip {
+  color: #ededed;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+.bubble-out .mention-chip {
+  color: #0a0a0a;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* A mention of me uses the raised-pill recipe so it stands out in any bubble. */
+.mention-me {
+  color: #ededed;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
 /*
  * Markdown content inside AI reply bubbles (T-0049), scoped to `.md`. The
  * colors come from the D24 tokens; the bubble sets the 14px/1.5 body already.

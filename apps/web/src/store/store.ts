@@ -1,9 +1,22 @@
-import type { ChatSummary, MessageStatus, ReplyRef, UiMessage } from '@galena/chat-core';
+import type {
+  ChatSummary,
+  MentionMember,
+  MessageStatus,
+  ReplyRef,
+  UiMention,
+  UiMessage,
+} from '@galena/chat-core';
+import { mentionsForTrimmedText } from '@galena/chat-core';
 import type { Contact, Me } from '@/lib/api';
 import { sampleVoiceDataUrl } from '@/lib/voice';
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
-import { currentUserId as defaultCurrentUserId, mockChats, mockMessages } from '@/mock';
+import {
+  currentUserId as defaultCurrentUserId,
+  mockChats,
+  mockGroupMembers,
+  mockMessages,
+} from '@/mock';
 
 export type FolderId = 'all' | 'personal' | 'ais' | 'work';
 
@@ -28,6 +41,7 @@ export interface DraftState {
 
 export interface SendTextOptions {
   replyTo?: ReplyRef;
+  mentions?: UiMention[];
 }
 
 /** A finished recording on its way to the server and then to XEP-0363. */
@@ -58,6 +72,8 @@ export interface ChatStore {
   chats: ChatSummary[];
   contacts: Contact[];
   messages: (chatId: string) => UiMessage[];
+  /** Members of a group chat, loaded from the server on open; empty for DMs. */
+  groupMembers: (chatId: string) => MentionMember[];
   typing: Record<string, TypingState>;
   /**
    * Live AI reply drafts by chat id (the AI's bare JID), from
@@ -202,6 +218,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       drafts: {},
       finishedDraftMessages: {},
       messages: (chatId) => get().messagesByChat[chatId] ?? [],
+      groupMembers: (chatId) => mockGroupMembers[chatId] ?? [],
       openChat: (chatId) =>
         set((state) => ({
           activeChatId: chatId,
@@ -226,6 +243,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         if (trimmed.length === 0) {
           return;
         }
+        const mentions = mentionsForTrimmedText(text, trimmed, options?.mentions ?? []);
         sequence += 1;
         const message: UiMessage = {
           id: `out-${sequence}`,
@@ -235,6 +253,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
           text: trimmed,
           createdAt: new Date(),
           status: 'sending',
+          ...(mentions.length === 0 ? {} : { mentions }),
           ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
         };
         set((state) => ({

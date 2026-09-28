@@ -55,3 +55,115 @@ describe('Composer', () => {
     expect(store.getState().messages('c-ana')).toHaveLength(before);
   });
 });
+
+describe('Composer mentions (T-0053)', () => {
+  function openPicker(value: string, caret = value.length) {
+    const textarea = screen.getByLabelText('Message') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value, selectionStart: caret } });
+    return textarea;
+  }
+
+  it('opens the member picker when @ is typed in a group', () => {
+    renderApp('/c/c-viernes');
+
+    expect(screen.queryByRole('listbox')).toBeNull();
+    openPicker('@');
+
+    const listbox = screen.getByRole('listbox');
+    expect(within(listbox).getByText('Luis')).toBeTruthy();
+    // The current user is never offered.
+    expect(within(listbox).queryByText('You')).toBeNull();
+  });
+
+  it('filters members by the query, ignoring case and accents', () => {
+    renderApp('/c/c-viernes');
+
+    openPicker('@ma');
+    const listbox = screen.getByRole('listbox');
+    expect(within(listbox).getByText('Marta')).toBeTruthy();
+    expect(within(listbox).getByText('Marco')).toBeTruthy();
+    expect(within(listbox).queryByText('Ana')).toBeNull();
+    expect(within(listbox).queryByText('Luis')).toBeNull();
+  });
+
+  it('moves the selection with the arrow keys and picks with Enter', () => {
+    renderApp('/c/c-viernes');
+    const textarea = openPicker('@');
+
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+
+    expect(textarea.value).toBe('@Marta ');
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('picks with Tab and sends the mention with the message', () => {
+    const { store } = renderApp('/c/c-viernes');
+    const textarea = openPicker('@lu');
+
+    fireEvent.keyDown(textarea, { key: 'Tab' });
+    expect(textarea.value).toBe('@Luis ');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+
+    const sent = store.getState().messages('c-viernes').at(-1);
+    expect(sent?.text).toBe('@Luis');
+    expect(sent?.mentions).toEqual([{ jid: 'u-luis@galena.test', name: 'Luis', begin: 0, end: 5 }]);
+  });
+
+  it('closes the picker with Escape without changing the text', () => {
+    renderApp('/c/c-viernes');
+    const textarea = openPicker('@an');
+
+    fireEvent.keyDown(textarea, { key: 'Escape' });
+
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(textarea.value).toBe('@an');
+  });
+
+  it('removes the whole mention when Backspace lands in it', () => {
+    renderApp('/c/c-viernes');
+    const textarea = openPicker('@');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(textarea.value).toBe('@Luis ');
+
+    textarea.setSelectionRange(5, 5);
+    fireEvent.keyDown(textarea, { key: 'Backspace' });
+
+    expect(textarea.value).toBe(' ');
+  });
+
+  it('drops a mention when it is edited', () => {
+    const { store } = renderApp('/c/c-viernes');
+    const textarea = openPicker('@');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(textarea.value).toBe('@Luis ');
+
+    fireEvent.change(textarea, { target: { value: '@LuiX ' } });
+    fireEvent.change(textarea, { target: { value: '@LuiX hello' } });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+
+    const sent = store.getState().messages('c-viernes').at(-1);
+    expect(sent?.text).toBe('@LuiX hello');
+    expect(sent?.mentions).toBeUndefined();
+  });
+
+  it('sends plain @word text with no mention when nothing was picked', () => {
+    const { store } = renderApp('/c/c-viernes');
+    const textarea = openPicker('@something');
+
+    fireEvent.keyDown(textarea, { key: 'Escape' });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+
+    const sent = store.getState().messages('c-viernes').at(-1);
+    expect(sent?.text).toBe('@something');
+    expect(sent?.mentions).toBeUndefined();
+  });
+
+  it('does not open the picker in a DM', () => {
+    renderApp('/c/c-ana');
+
+    openPicker('@');
+
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+});

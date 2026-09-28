@@ -282,7 +282,7 @@ export function MessageBubble({
               <p
                 className={cn('break-words whitespace-pre-wrap', own ? 'px-3 py-2' : 'px-3 py-2.5')}
               >
-                <LinkText text={text} />
+                <LinkText text={text} mentions={message.mentions} currentUserId={currentUserId} />
                 {generating && <DraftCaret />}
                 <MessageMeta
                   message={message}

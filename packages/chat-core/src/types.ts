@@ -20,6 +20,22 @@ export interface ReplyRef {
   text?: string;
 }
 
+/** A member who can be mentioned in a group: a bare JID and a display name. */
+export interface MentionMember {
+  jid: string;
+  name: string;
+}
+
+/** One rendered mention on a message, with offsets into its text. */
+export interface UiMention {
+  jid: string;
+  name: string;
+  /** Start offset in UTF-16 code units. */
+  begin: number;
+  /** End offset (exclusive) in UTF-16 code units. */
+  end: number;
+}
+
 export interface UiMessage {
   id: string;
   chatId: string;
@@ -29,6 +45,7 @@ export interface UiMessage {
   createdAt: Date;
   status: MessageStatus;
   replyTo?: ReplyRef;
+  mentions?: UiMention[];
   voice?: VoiceMeta;
   image?: UiImage;
   card?: Payload;

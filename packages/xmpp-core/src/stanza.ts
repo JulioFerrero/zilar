@@ -16,6 +16,7 @@ import {
   MUC_USER_NAMESPACE,
   OCCUPANT_ID_NAMESPACE,
   REPLY_NAMESPACE,
+  REFERENCE_NAMESPACE,
   ROSTER_NAMESPACE,
   STANZA_ID_NAMESPACE,
   STANZA_NAMESPACE,
@@ -25,6 +26,8 @@ import type {
   ChatMessage,
   DisplayedEvent,
   InvitedEvent,
+  Mention,
+  MentionInput,
   Occupant,
   PresenceEvent,
   RosterEvent,
@@ -39,7 +42,35 @@ const CHAT_STATES: ReadonlyArray<'composing' | 'paused' | 'active'> = [
   'active',
 ];
 
+// XEP-0372 references are capped so a hostile message cannot force unbounded
+// work or memory.
+const MAX_MENTIONS = 20;
+
 export type ReplyRef = { id: string; to?: string };
+
+// XEP-0372 counts offsets in Unicode code points, while JS strings are UTF-16.
+// The helpers convert one unit into the other across a body. `Array.from` on a
+// string counts code points (a surrogate pair is one entry).
+function codePointLength(text: string): number {
+  return Array.from(text).length;
+}
+
+function codePointOffset(text: string, utf16Index: number): number {
+  return codePointLength(text.slice(0, utf16Index));
+}
+
+function utf16Offset(text: string, codePointIndex: number): number {
+  let index = 0;
+  let count = 0;
+  for (const character of text) {
+    if (count >= codePointIndex) {
+      return index;
+    }
+    index += character.length;
+    count += 1;
+  }
+  return index;
+}
 
 // ---------------------------------------------------------------------------
 // Outgoing stanzas
@@ -52,6 +83,7 @@ export function buildMessage(options: {
   text: string;
   payload?: Payload | undefined;
   replyTo?: ReplyRef | undefined;
+  mentions?: MentionInput[] | undefined;
 }): XmppElement {
   const children: XmppElement[] = [xml('body', {}, options.text)];
 
@@ -68,6 +100,18 @@ export function buildMessage(options: {
       attrs['to'] = options.replyTo.to;
     }
     children.push(xml('reply', attrs));
+  }
+
+  for (const mention of options.mentions ?? []) {
+    children.push(
+      xml('reference', {
+        xmlns: REFERENCE_NAMESPACE,
+        type: 'mention',
+        uri: `xmpp:${mention.jid}`,
+        begin: String(codePointOffset(options.text, mention.begin)),
+        end: String(codePointOffset(options.text, mention.end)),
+      }),
+    );
   }
 
   return xml('message', { type: options.kind, to: options.to, id: options.id }, ...children);
@@ -576,6 +620,50 @@ function parseReply(stanza: XmppElement): ReplyRef | undefined {
   return to === undefined ? { id } : { id, to };
 }
 
+// XEP-0372: the URI is `xmpp:<bare-jid>`. Anything else is ignored. The bare
+// JID loses its resource and any query and is lowercased for a stable key.
+function mentionJidFromUri(uri: string | undefined): string | undefined {
+  if (uri === undefined || !uri.startsWith('xmpp:')) return undefined;
+  const rest = uri.slice('xmpp:'.length).split('?')[0] ?? '';
+  const bare = bareJid(rest).toLowerCase();
+  return /^[^@\s/]+@[^@\s/]+$/.test(bare) ? bare : undefined;
+}
+
+function parseOffset(value: string | undefined): number | undefined {
+  if (value === undefined || !/^\d+$/.test(value)) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+// Fills the mentions of a message from its XEP-0372 references. Only
+// `type="mention"` references with an `xmpp:` bare JID count; an offset that is
+// missing, reversed or outside the body is dropped while the JID is kept.
+function parseMentions(stanza: XmppElement, body: string | undefined): Mention[] | undefined {
+  const references = stanza.getChildren('reference', REFERENCE_NAMESPACE);
+  if (references.length === 0) return undefined;
+
+  const length = body === undefined ? 0 : codePointLength(body);
+  const mentions: Mention[] = [];
+  for (const reference of references) {
+    if (mentions.length >= MAX_MENTIONS) break;
+    if (reference.attrs['type'] !== 'mention') continue;
+    const jid = mentionJidFromUri(reference.attrs['uri']);
+    if (jid === undefined) continue;
+
+    const mention: Mention = { jid };
+    if (body !== undefined) {
+      const begin = parseOffset(reference.attrs['begin']);
+      const end = parseOffset(reference.attrs['end']);
+      if (begin !== undefined && end !== undefined && begin < end && end <= length) {
+        mention.begin = utf16Offset(body, begin);
+        mention.end = utf16Offset(body, end);
+      }
+    }
+    mentions.push(mention);
+  }
+  return mentions.length === 0 ? undefined : mentions;
+}
+
 export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): DecodedStanza {
   const envelope = unwrapMessage(stanza);
   const inner = envelope.inner;
@@ -630,6 +718,8 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
     }
     const replyTo = parseReply(inner);
     if (replyTo !== undefined) message.replyTo = replyTo;
+    const mentions = parseMentions(inner, body);
+    if (mentions !== undefined) message.mentions = mentions;
     decoded.message = message;
   }
 

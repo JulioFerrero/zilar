@@ -29,6 +29,7 @@ import {
   MAM_NAMESPACE,
   MUC_USER_NAMESPACE,
   OCCUPANT_ID_NAMESPACE,
+  REFERENCE_NAMESPACE,
   REPLY_NAMESPACE,
   ROSTER_NAMESPACE,
   RSM_NAMESPACE,
@@ -602,6 +603,25 @@ describe('createXmppCore: messages and markers', () => {
     expect(sent?.attrs).toMatchObject({ type: 'chat', to: 'alice@galena.localhost', id });
     expect(sent?.getChildText('body')).toBe('hello');
     expect(sent?.getChild('reply', REPLY_NAMESPACE)?.attrs['id']).toBe('m-0');
+  });
+
+  it('sends the XEP-0372 reference elements for mentions', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+
+    await core.sendMessage('project@rooms.galena.localhost', 'groupchat', 'hi 😀 @Ana', {
+      mentions: [{ jid: 'ana@galena.localhost', begin: 6, end: 10 }],
+    });
+
+    const references = fake.sent.at(-1)?.getChildren('reference', REFERENCE_NAMESPACE) ?? [];
+    expect(references).toHaveLength(1);
+    // The emoji is one code point, not two UTF-16 units.
+    expect(references[0]?.attrs).toMatchObject({
+      type: 'mention',
+      uri: 'xmpp:ana@galena.localhost',
+      begin: '5',
+      end: '9',
+    });
   });
 
   it('rejects sending when offline', async () => {

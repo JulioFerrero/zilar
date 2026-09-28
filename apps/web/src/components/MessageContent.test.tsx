@@ -193,3 +193,93 @@ describe('AI reply Markdown (T-0049)', () => {
     expect(container.querySelector('strong')).toBeNull();
   });
 });
+
+describe('mention chips (T-0053)', () => {
+  const group: ChatSummary = {
+    id: 'g1',
+    title: 'Team',
+    kind: 'group',
+    isAI: false,
+    space: 'personal',
+    unread: 0,
+    muted: false,
+    memberCount: 3,
+  };
+
+  function renderGroup(message: UiMessage) {
+    return renderApp('/c/g1', {
+      currentUserId: 'u-you',
+      chats: [group],
+      messagesByChat: { g1: [message] },
+    });
+  }
+
+  it('renders a mention chip in place, after an emoji', () => {
+    renderGroup({
+      id: 'm1',
+      chatId: 'g1',
+      senderId: 'u-ana',
+      senderName: 'Ana',
+      text: '😀 @Ana hello',
+      createdAt: new Date(2026, 8, 27, 12, 41),
+      status: 'read',
+      mentions: [{ jid: 'u-ana@galena.test', name: 'Ana', begin: 3, end: 7 }],
+    });
+
+    const list = screen.getByTestId('message-list');
+    const chip = within(list).getByText('@Ana');
+    expect(chip.className).toContain('mention-chip');
+    expect(list.querySelector('p')?.textContent).toContain('😀 @Ana hello');
+  });
+
+  it('makes a mention of me stand out', () => {
+    renderGroup({
+      id: 'm2',
+      chatId: 'g1',
+      senderId: 'u-ana',
+      senderName: 'Ana',
+      text: 'hi @You there',
+      createdAt: new Date(2026, 8, 27, 12, 41),
+      status: 'read',
+      mentions: [{ jid: 'u-you@galena.test', name: 'You', begin: 3, end: 7 }],
+    });
+
+    const chip = within(screen.getByTestId('message-list')).getByText('@You');
+    expect(chip.className).toContain('raised-pill');
+    expect(chip.className).toContain('mention-me');
+  });
+
+  it('shows a me-mention in my own outgoing bubble', () => {
+    renderGroup({
+      id: 'm3',
+      chatId: 'g1',
+      senderId: 'u-you',
+      senderName: 'You',
+      text: 'noted @You',
+      createdAt: new Date(2026, 8, 27, 12, 41),
+      status: 'read',
+      mentions: [{ jid: 'u-you@galena.test', name: 'You', begin: 6, end: 10 }],
+    });
+
+    const chip = within(screen.getByTestId('message-list')).getByText('@You');
+    expect(chip.className).toContain('mention-me');
+    expect(chip.closest('[data-bubble-look]')?.getAttribute('data-bubble-look')).toBe('outgoing');
+  });
+
+  it('keeps links working next to a mention', () => {
+    renderGroup({
+      id: 'm4',
+      chatId: 'g1',
+      senderId: 'u-ana',
+      senderName: 'Ana',
+      text: '@Ana see https://x.com/a',
+      createdAt: new Date(2026, 8, 27, 12, 41),
+      status: 'read',
+      mentions: [{ jid: 'u-ana@galena.test', name: 'Ana', begin: 0, end: 4 }],
+    });
+
+    const list = screen.getByTestId('message-list');
+    expect(within(list).getByText('@Ana').className).toContain('mention-chip');
+    expect(within(list).getByRole('link').getAttribute('href')).toBe('https://x.com/a');
+  });
+});

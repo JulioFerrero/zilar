@@ -6,4 +6,5 @@ export * from './text';
 export * from './emoji';
 export * from './links';
 export * from './markdown';
+export * from './mentions';
 export type { Payload, VoiceMeta } from '@galena/protocol';
