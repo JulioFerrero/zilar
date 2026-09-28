@@ -24,6 +24,8 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
           type="button"
           size="sm"
           className="px-3"
+          disabled
+          title="Approvals are coming soon"
           onClick={() => console.log('approve', request.id)}
         >
           Approve
@@ -33,6 +35,8 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
           size="sm"
           variant="outline"
           className="px-3"
+          disabled
+          title="Approvals are coming soon"
           onClick={() => console.log('deny', request.id)}
         >
           Deny

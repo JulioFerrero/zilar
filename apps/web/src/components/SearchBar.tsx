@@ -23,6 +23,8 @@ export function SearchBar() {
       <Search className="size-[15px] shrink-0 text-subtle-foreground" aria-hidden="true" />
       <input
         ref={inputRef}
+        id="chat-search"
+        name="chat-search"
         type="search"
         value={store.search}
         onChange={(event) => store.setSearch(event.target.value)}

@@ -72,6 +72,17 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
+  // Esc closes the dialog from any focus position, same as Cancel or the overlay.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   const effectiveConnection =
     connections.length === 1
       ? connections[0]!

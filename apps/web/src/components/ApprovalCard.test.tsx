@@ -17,22 +17,28 @@ const request = ApprovalRequestSchema.parse({
 });
 
 describe('ApprovalCard', () => {
-  it('renders Approve and Deny buttons', () => {
+  it('renders the Approve and Deny buttons as disabled coming-soon affordances', () => {
     render(<ApprovalCard request={request} />);
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
+    const approve = screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement;
+    const deny = screen.getByRole('button', { name: 'Deny' }) as HTMLButtonElement;
+
+    expect(approve.disabled).toBe(true);
+    expect(deny.disabled).toBe(true);
+    expect(approve.getAttribute('title')).toBe('Approvals are coming soon');
+    expect(deny.getAttribute('title')).toBe('Approvals are coming soon');
     expect(screen.getByText('Worst case: €0.40')).toBeTruthy();
   });
 
-  it('logs the decision to the console', () => {
+  it('keeps the console stub on the decision buttons', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     render(<ApprovalCard request={request} />);
 
+    // `disabled` blocks a real click, but the stub must not fire either: the
+    // buttons are a coming-soon affordance, not a decision.
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
-    expect(spy).toHaveBeenCalledWith('approve', 'apr-42');
-
     fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
-    expect(spy).toHaveBeenCalledWith('deny', 'apr-42');
+
+    expect(spy).not.toHaveBeenCalled();
 
     spy.mockRestore();
   });

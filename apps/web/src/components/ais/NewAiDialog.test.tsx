@@ -271,4 +271,15 @@ describe('NewAiDialog', () => {
       "AI management isn't configured on this server.",
     );
   });
+
+  it('closes on Escape', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, [openai])));
+
+    const { onClose } = renderDialog();
+    await screen.findByLabelText('Name');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

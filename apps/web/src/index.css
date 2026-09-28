@@ -146,12 +146,31 @@
   button {
     font: inherit;
   }
+
+  /* ui-style.md §4: every key and well shows an explicit focus ring on
+   * keyboard focus. Components may still override it; a plain `outline` is a
+   * weaker declaration than the utilities layer, so opt-outs and custom rings
+   * win. */
+  :focus-visible {
+    outline: 2px solid var(--muted-foreground);
+    outline-offset: 2px;
+  }
 }
 
 /*
  * The four depth recipes from ui-style.md §4. Implemented once here and reused
  * through the components.
  */
+
+/* Reduced-motion markers declared in the utilities layer, next to the Tailwind
+ * animations they stop (index.css' reduced-motion block also matches them). */
+@utility skeleton-reduced {
+  animation: none;
+}
+
+@utility spinner-reduced {
+  animation: none;
+}
 
 /* Primary (accent) button, badge and FAB: a glossy key. */
 @utility key-primary {
@@ -585,6 +604,17 @@
 
   .typing-dot,
   .pulse-dot {
+    animation: none;
+  }
+
+  /*
+   * The skeleton shimmer and the progress spinner: the components keep the
+   * loading meaning and only stop the motion. The marker classes are declared
+   * in the same block as the utilities (`@utility` in index.css), so the
+   * matching `animation: none` here wins by source order.
+   */
+  .skeleton-reduced,
+  .spinner-reduced {
     animation: none;
   }
 }
