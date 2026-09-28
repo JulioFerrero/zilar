@@ -419,3 +419,29 @@ sealed with the T-0028 cipher.
 
 The lead runs `GALENA_AIS_INTEGRATION=1` against a server from this branch after round 2.
 Do not start a server yourself.
+
+**Verdict:** Round 2: changes requested (test only; the product code is approved)
+
+Round 2's fixes are right: teardown is resumable and `budget_usd` follows the cap.
+
+**Live, by the lead**, against a server started from this branch on port 3189 (real
+ejabberd, LiteLLM and Postgres; migration 0005 applied):
+- by hand: create (201, Fun persona, no key material in the body) → XMPP account
+  exists → `PATCH` name + limits (200; `budget_usd` 7.00 in Postgres **and**
+  `max_budget` 7.0 in LiteLLM) → deleting the connection in use gives 409
+  `connection_in_use` → `DELETE` (204) → the XMPP account is gone, LiteLLM
+  `/key/info` gives 404, and no rows remain.
+- the gated `GALENA_AIS_INTEGRATION=1` test **failed in its own lookup**: "no LiteLLM
+  key with alias galena-ai-…". The key did exist with that alias, a $3 cap, `30d`, the
+  model allowlist and the `ai_id` metadata. `/key/list` without
+  `return_full_object=true` returns bare token strings on this LiteLLM, so the alias
+  never matches. The aborted run also left the AI behind (the lead cleaned it up).
+
+### Findings
+5. **Fix the key lookup in `ais/integration.test.ts`.** Call
+   `/key/list?return_full_object=true&size=100`, and match `key_alias` on the full
+   objects.
+6. **The integration test must clean up even when it fails.** Wrap the body in
+   `try/finally` and, in `finally`, best-effort `DELETE /api/ais/:id` and
+   `DELETE /api/connections/:id` for anything it created (ignore their errors; they
+   must not mask the original failure).
