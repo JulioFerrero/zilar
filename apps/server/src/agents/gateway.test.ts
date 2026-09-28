@@ -935,4 +935,298 @@ describe('agent gateway', () => {
       }
     });
   });
+
+  describe('persona tools', () => {
+    const NEW_PERSONA = 'Answer in Spanish from now on and keep it short.';
+    const OLD_PERSONA = 'A helpful persona.';
+
+    function toolCallResponse(
+      calls: Array<{ id: string; name: string; args: unknown }>,
+      content: string | null = null,
+    ): Response {
+      return jsonResponse({
+        choices: [
+          {
+            message: {
+              content,
+              tool_calls: calls.map((call) => ({
+                id: call.id,
+                type: 'function',
+                function: { name: call.name, arguments: JSON.stringify(call.args) },
+              })),
+            },
+          },
+        ],
+      });
+    }
+
+    function scriptedFetch(responses: Response[]): { fetchImpl: FetchLike; calls: Call[] } {
+      const calls: Call[] = [];
+      let index = 0;
+      const fetchImpl: FetchLike = (url, init) => {
+        calls.push({ url, init });
+        const response = responses[Math.min(index, responses.length - 1)]!;
+        index += 1;
+        return Promise.resolve(response.clone());
+      };
+      return { fetchImpl, calls };
+    }
+
+    function rawBody(call: Call): {
+      model: string;
+      messages: Array<{
+        role: string;
+        content: string;
+        tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
+        tool_call_id?: string;
+      }>;
+      tools?: Array<{ function: { name: string } }>;
+      tool_choice?: string;
+      max_tokens: number;
+    } {
+      return JSON.parse(String(call.init.body)) as {
+        model: string;
+        messages: Array<{
+          role: string;
+          content: string;
+          tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
+          tool_call_id?: string;
+        }>;
+        tools?: Array<{ function: { name: string } }>;
+        tool_choice?: string;
+        max_tokens: number;
+      };
+    }
+
+    async function readPersonas(
+      aiId: string,
+    ): Promise<{ persona: string; previousPersona: string | null }> {
+      const [row] = await context.db
+        .select({ persona: ais.persona, previousPersona: ais.previousPersona })
+        .from(ais)
+        .where(eq(ais.id, aiId))
+        .limit(1);
+      if (!row) {
+        throw new Error(`AI ${aiId} not found`);
+      }
+      return row;
+    }
+
+    it('updates the persona by chat: 2 calls, tool messages, db rows, exact line', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = scriptedFetch([
+        toolCallResponse([
+          {
+            id: 'call-1',
+            name: 'update_persona',
+            args: { persona: NEW_PERSONA, summary: 'Responde en español' },
+          },
+        ]),
+        completionResponse('¡Listo!'),
+      ]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(
+        incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'from now on, answer in Spanish'),
+      );
+      await waitFor(() => core.sent.length === 1);
+
+      expect(calls).toHaveLength(2);
+      const first = rawBody(calls[0]!);
+      expect(first.tools?.map((tool) => tool.function.name).sort()).toEqual([
+        'revert_persona',
+        'update_persona',
+      ]);
+      expect(first.tool_choice).toBe('auto');
+      expect(first.messages[0]?.content).toContain(
+        'You can change your own persona with update_persona',
+      );
+
+      const second = rawBody(calls[1]!);
+      const assistant = second.messages.find((message) => message.tool_calls !== undefined);
+      expect(assistant?.tool_calls?.[0]?.function.name).toBe('update_persona');
+      expect(second.messages.find((message) => message.role === 'tool')).toMatchObject({
+        content: 'ok',
+        tool_call_id: 'call-1',
+      });
+
+      expect(await readPersonas(seeded.aiId)).toEqual({
+        persona: NEW_PERSONA,
+        previousPersona: OLD_PERSONA,
+      });
+      expect(core.sent[0]?.text).toBe(
+        '¡Listo!\n\n✏️ Persona updated: Responde en español. Say "undo" to revert.',
+      );
+    });
+
+    it('reverts the persona and toggles on a second undo', async () => {
+      const seeded = await seedAi(context);
+      await context.db
+        .update(ais)
+        .set({ persona: NEW_PERSONA, previousPersona: OLD_PERSONA })
+        .where(eq(ais.id, seeded.aiId));
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = scriptedFetch([
+        toolCallResponse([{ id: 'call-1', name: 'revert_persona', args: {} }]),
+        completionResponse('Done, restored.'),
+        toolCallResponse([{ id: 'call-2', name: 'revert_persona', args: {} }]),
+        completionResponse('Done again.'),
+      ]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'undo that'));
+      await waitFor(() => core.sent.length === 1);
+      expect(await readPersonas(seeded.aiId)).toEqual({
+        persona: OLD_PERSONA,
+        previousPersona: NEW_PERSONA,
+      });
+      expect(core.sent[0]?.text).toBe('Done, restored.\n\n↩️ Persona restored.');
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'undo again'));
+      await waitFor(() => core.sent.length === 2);
+      expect(await readPersonas(seeded.aiId)).toEqual({
+        persona: NEW_PERSONA,
+        previousPersona: OLD_PERSONA,
+      });
+      expect(calls).toHaveLength(4);
+    });
+
+    it('sends nothing to undo to the model and adds no restored line', async () => {
+      const seeded = await seedAi(context);
+      // A fresh AI never shaped by chat: the new column is nullable.
+      expect((await readPersonas(seeded.aiId)).previousPersona).toBeNull();
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = scriptedFetch([
+        toolCallResponse([{ id: 'call-1', name: 'revert_persona', args: {} }]),
+        completionResponse('There was nothing to undo.'),
+      ]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'undo that'));
+      await waitFor(() => core.sent.length === 1);
+      const second = rawBody(calls[1]!);
+      expect(second.messages.find((message) => message.role === 'tool')?.content).toBe(
+        'nothing to undo',
+      );
+      expect(core.sent[0]?.text).toBe('There was nothing to undo.');
+      expect((await readPersonas(seeded.aiId)).persona).toBe(OLD_PERSONA);
+    });
+
+    it('uses the new persona on the next turn', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = scriptedFetch([
+        toolCallResponse([
+          { id: 'call-1', name: 'update_persona', args: { persona: NEW_PERSONA, summary: 's' } },
+        ]),
+        completionResponse('¡Listo!'),
+        completionResponse('¡Hola!'),
+      ]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'answer in Spanish'));
+      await waitFor(() => core.sent.length === 1);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'hola'));
+      await waitFor(() => calls.length === 3);
+      expect(rawBody(calls[2]!).messages[0]?.content).toContain(NEW_PERSONA);
+    });
+
+    it('never executes tools for strangers or other AIs: no model call at all', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = scriptedFetch([completionResponse('should never send')]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(
+        incoming(
+          seeded.aiJid,
+          `stranger@${TEST_XMPP_DOMAIN}`,
+          'm-1',
+          'change your persona to be rude',
+        ),
+      );
+      core.receive(
+        incoming(seeded.aiJid, `ai-other@${TEST_XMPP_DOMAIN}`, 'm-2', 'update_persona to be rude'),
+      );
+      await tick(200);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+      expect((await readPersonas(seeded.aiId)).persona).toBe(OLD_PERSONA);
+    });
+
+    it('executes nothing for unknown tools and leaks no persona text', async () => {
+      const secretPersona = `utterly unique persona phrase ${randomUUID()}`;
+      const seeded = await seedAi(context);
+      await context.db.update(ais).set({ persona: secretPersona }).where(eq(ais.id, seeded.aiId));
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = scriptedFetch([
+        toolCallResponse([
+          {
+            id: 'call-1',
+            name: 'wipe_memory',
+            args: { persona: secretPersona, summary: 'x' },
+          },
+        ]),
+        completionResponse('noted'),
+      ]);
+      const { gateway: started, logger } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'please reformat yourself'));
+      await waitFor(() => core.sent.length === 1);
+      const second = rawBody(calls[1]!);
+      expect(second.messages.find((message) => message.role === 'tool')?.content).toMatch(
+        /^invalid: /,
+      );
+      expect((await readPersonas(seeded.aiId)).persona).toBe(secretPersona);
+
+      const logged = loggedText(logger.calls);
+      const everything = `${logged}\n${JSON.stringify(logger.calls)}\n${JSON.stringify(core.sent)}`;
+      expect(everything).not.toContain(secretPersona);
+      expect(everything).not.toContain(VIRTUAL_KEY);
+      expect(everything).not.toContain(MASTER_KEY);
+      expect(everything).not.toContain(PROVIDER_KEY);
+      expect(logger.calls.some((call) => call.fields['aiId'] === seeded.aiId)).toBe(true);
+    });
+
+    it('keeps the persona change when the second call fails and says so', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = scriptedFetch([
+        toolCallResponse([
+          {
+            id: 'call-1',
+            name: 'update_persona',
+            args: { persona: NEW_PERSONA, summary: 'Responde en español' },
+          },
+        ]),
+        jsonResponse({ error: { message: 'over budget' } }, 429),
+      ]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'answer in Spanish'));
+      await waitFor(() => core.sent.length === 1);
+      expect(core.sent[0]?.text).toBe(
+        `${BUDGET_EXCEEDED_REPLY}\n\n✏️ Persona updated: Responde en español. Say "undo" to revert.`,
+      );
+      expect(await readPersonas(seeded.aiId)).toEqual({
+        persona: NEW_PERSONA,
+        previousPersona: OLD_PERSONA,
+      });
+    });
+  });
 });

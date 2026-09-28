@@ -16,6 +16,8 @@ import {
   ensureAiModel,
   listActiveAisForGateway,
   onAiLifecycle,
+  revertPersonaFromChat,
+  setPersonaFromChat,
   type ActiveAiForGateway,
   type AiServiceDeps,
 } from '../ais/service';
@@ -32,7 +34,8 @@ import {
   DM_HISTORY_MESSAGE_LIMIT,
   type ChatCompletionMessage,
 } from './context';
-import { mapFailureToReply, runDmTurn } from './reply';
+import { mapFailureToReply, runDmTurn, type ExecuteToolCall } from './reply';
+import { formatPersonaUpdatedLine, PERSONA_RESTORED_LINE, UPDATE_PERSONA_TOOL } from './tools';
 
 export interface GatewayLogger {
   info: (fields: Record<string, unknown>, message: string) => void;
@@ -181,6 +184,26 @@ export function createAgentGateway(
       ...(virtualKey === undefined ? [] : [virtualKey]),
       ...(deps.masterKeyForRedaction === undefined ? [] : [deps.masterKeyForRedaction]),
     ];
+  }
+
+  // Runs one validated persona tool call against the gateway's own AI id. The
+  // id comes from the session, never from the model's arguments, and only
+  // `ais.persona` and `ais.previous_persona` can change. Log lines carry the
+  // AI id, the tool name and the outcome only: never the persona text.
+  function executePersonaTool(aiId: string): ExecuteToolCall {
+    return async (call) => {
+      if (call.tool === UPDATE_PERSONA_TOOL) {
+        await setPersonaFromChat(deps.db, aiId, call.persona);
+        logger.info({ aiId, tool: call.tool, ok: true }, 'AI persona updated by chat');
+        return { content: 'ok', notice: formatPersonaUpdatedLine(call.summary) };
+      }
+      const outcome = await revertPersonaFromChat(deps.db, aiId);
+      logger.info({ aiId, tool: call.tool, ok: true }, 'AI persona revert by chat');
+      if (outcome === 'nothing to undo') {
+        return { content: 'nothing to undo' };
+      }
+      return { content: 'ok', notice: PERSONA_RESTORED_LINE };
+    };
   }
 
   function scheduleRetry(session: AiSession): void {
@@ -478,6 +501,7 @@ export function createAgentGateway(
         baseUrl: baseUrl,
         virtualKey,
         model: modelNameForAi(session.aiId),
+        executeTool: executePersonaTool(session.aiId),
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
         sendMessage: (to, kind, text) => session.core.sendMessage(to, kind, text),
         sendTyping: (to, kind, state) => {

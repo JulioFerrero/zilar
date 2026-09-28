@@ -50,6 +50,13 @@
       "when": 1790594595125,
       "tag": "0006_military_sleepwalker",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790612333172,
+      "tag": "0007_next_dagger",
+      "breakpoints": true
     }
   ]
 }

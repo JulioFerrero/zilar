@@ -390,6 +390,69 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
   return toPublicAi(updated);
 }
 
+// The persona ceiling the API enforces (`CreateAiSchema`), repeated here so a
+// chat-driven change can never store more than the routes accept.
+export const CHAT_PERSONA_MAX_LENGTH = 4000;
+
+// Shapes an AI's persona from its DM, for the gateway only. The AI id always
+// comes from the gateway's own session, never from the model's arguments, and
+// only `persona`/`previous_persona` change: the model, limits, keys and name
+// are untouched. In one transaction the current persona is kept as
+// `previous_persona` and the new one stored. Returns the stored persona.
+export async function setPersonaFromChat(
+  db: ServerDatabase,
+  aiId: string,
+  persona: string,
+): Promise<string> {
+  const trimmed = persona.trim().slice(0, CHAT_PERSONA_MAX_LENGTH);
+  if (trimmed === '') {
+    throw new Error('persona must not be empty');
+  }
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ persona: ais.persona })
+      .from(ais)
+      .where(eq(ais.id, aiId))
+      .limit(1);
+    if (!row) {
+      throw new Error(`AI ${aiId} not found`);
+    }
+    await tx
+      .update(ais)
+      .set({ previousPersona: row.persona, persona: trimmed, updatedAt: new Date() })
+      .where(eq(ais.id, aiId));
+  });
+  return trimmed;
+}
+
+// Undoes the latest chat-driven persona change, for the gateway only. When
+// there is nothing to undo it returns `"nothing to undo"` and stores nothing.
+// Otherwise it swaps the two, so a second undo re-applies the change (a
+// toggle, one level deep).
+export async function revertPersonaFromChat(
+  db: ServerDatabase,
+  aiId: string,
+): Promise<'restored' | 'nothing to undo'> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ persona: ais.persona, previousPersona: ais.previousPersona })
+      .from(ais)
+      .where(eq(ais.id, aiId))
+      .limit(1);
+    if (!row) {
+      throw new Error(`AI ${aiId} not found`);
+    }
+    if (row.previousPersona === null) {
+      return 'nothing to undo';
+    }
+    await tx
+      .update(ais)
+      .set({ persona: row.previousPersona, previousPersona: row.persona, updatedAt: new Date() })
+      .where(eq(ais.id, aiId));
+    return 'restored';
+  });
+}
+
 // Tears an AI down in reverse order: revoke the gateway key, delete the private
 // model it registered, remove both roster items, unregister the XMPP account,
 // then delete the rows. Teardown is resumable: every step skips work that is

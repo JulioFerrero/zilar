@@ -49,7 +49,12 @@ export function buildSystemMessage(input: {
   const platform =
     `You are ${input.aiName}, an AI in the Galena chat app, talking in a private chat ` +
     `with ${input.ownerName}. Reply in plain text; keep it concise unless asked.`;
-  const parts = [persona, platform, `Today is ${input.today}.`].filter((part) => part !== '');
+  const parts = [
+    persona,
+    platform,
+    `Today is ${input.today}.`,
+    'You can change your own persona with update_persona when your owner asks you to change how you behave from now on.',
+  ].filter((part) => part !== '');
   return parts.join('\n');
 }
 
