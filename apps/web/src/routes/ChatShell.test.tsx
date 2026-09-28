@@ -29,6 +29,12 @@ function seededMessage(
 }
 
 describe('ChatShell', () => {
+  // This is the first test in the file, so it pays the one-time jsdom/React
+  // warm-up *and* renders the whole app with the default mock store, including
+  // the 30-message Dev team chat. That is ~190 ms idle, but 4.5-6.4 s once the
+  // full monorepo suite is competing for the CPU, which is past vitest's 5 s
+  // default. The test is synchronous and awaits no timer, so there is no delay
+  // to fake; the cost is real render work, so this test alone gets room for it.
   it('shows the header subtitle, date separators and grouped bubbles', () => {
     renderApp('/c/c-devteam');
     const messageList = screen.getByTestId('message-list');
@@ -37,7 +43,7 @@ describe('ChatShell', () => {
     expect(screen.getByText('Today')).toBeTruthy();
     expect(screen.getByText('Yesterday')).toBeTruthy();
     expect(within(messageList).getByText('Tests pass. Merge?')).toBeTruthy();
-  });
+  }, 15_000);
 
   it('shows the sender name only on the first bubble of a group', () => {
     const chat: ChatSummary = {

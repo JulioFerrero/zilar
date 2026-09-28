@@ -7,6 +7,12 @@ afterEach(() => {
 });
 
 describe('message actions', () => {
+  // This is the first test in the file, so it pays the one-time jsdom/React
+  // warm-up *and* renders the whole app with the default mock store (11 chats,
+  // 22 messages in this chat). That is ~220 ms idle, but 4.2-5.3 s once the full
+  // monorepo suite is competing for the CPU, which is past vitest's 5 s default.
+  // The test is synchronous and awaits no timer, so there is no delay to fake;
+  // the cost is real render work, so this test alone gets room for it.
   it('opens on right-click and closes with Escape', () => {
     renderApp('/c/c-viernes');
 
@@ -20,7 +26,7 @@ describe('message actions', () => {
 
     fireEvent.keyDown(menu, { key: 'Escape' });
     expect(screen.queryByRole('menu', { name: 'Message actions' })).toBeNull();
-  });
+  }, 15_000);
 
   it('shows the reply bar and cancels it with the × button', () => {
     renderApp('/c/c-viernes');
