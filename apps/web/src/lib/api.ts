@@ -229,6 +229,8 @@ export interface UpdateAiInput {
   name?: string;
   persona?: string;
   limits?: AiLimits;
+  model?: string;
+  providerConnectionId?: string;
 }
 
 export function listAis(): Promise<PublicAi[]> {
