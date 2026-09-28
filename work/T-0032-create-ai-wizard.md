@@ -1,7 +1,7 @@
 ---
 id: T-0032
 title: Web "Create an AI" wizard and a My AIs page, on top of /api/ais
-status: review
+status: merged
 milestone: M2
 branch: task/T-0032-create-ai-wizard
 model: opencode-go/deepseek-v4.1-flash
@@ -330,3 +330,20 @@ After the delete, the database had no AI row and no key row.
 
 Allowed files are unchanged. Run the same Checks, add a "Round 2" subsection to the Report, then set `status: review` and commit.
 
+
+### Round 2: approved
+
+- The model step now receives `selectedConnection.provider`. The prop is renamed to `selectedProvider`, so an id can't be passed by mistake again.
+- The placeholder uses the provider's label.
+- The Anthropic suggestions are updated.
+- The regression test uses a UUID connection id with provider `openai`, which is exactly the live symptom. It asserts the label placeholder, the datalist option and the suggestion row, and the Report says it was confirmed to fail on the old wiring.
+
+Lead's re-run after rebasing onto main:
+- format:check, lint, typecheck and build pass;
+- `turbo test --force --filter=@galena/web`: 117/117.
+
+Round 1's full live click-through still covers create, edit, delete, double-submit and layout. Round 2 was **not** re-clicked live because the Chrome extension disconnected. The change is a one-line prop fix, and the test reproduces the live symptom.
+
+Follow-ups, on the board:
+- AIs must appear in `/api/chats` so Open chat works (T-0033);
+- users with an empty name show as blank chat rows.
