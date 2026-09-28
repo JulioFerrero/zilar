@@ -11,6 +11,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0048](T-0048-mobile-redesign.md) | Mobile redesign (D24): dark tokens, Geist, depth primitives, chat list and chat screen | in progress | deepseek-v4.1-flash | T-0047 | Own simulator + Metro 8082; image budget ~20. |
 | [T-0049](T-0049-ai-markdown-web.md) | Web renders Markdown in AI replies (safe subset, streaming), plain previews in the list | in progress | deepseek-v4.1-flash | T-0047 | Deps: react-markdown, remark-gfm. |
 | [T-0050](T-0050-gateway-resource-and-read-markers.md) | Gateway: fixed XMPP resource per AI (newest wins, old stands down) + read markers when the AI takes a message | in progress | muse-spark-1.3 | T-0034 | Touches xmpp-core. |
+| [T-0051](T-0051-lead-switch-model-and-merge-cleanup.md) | lead CLI: `switch-model` (quota fallback to MiniMax M3) + `merge` stops worktree processes | in progress | MiniMax-M3 | T-0038 | Chore; tests only. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -21,7 +22,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 - Streaming drafts: a notice message from the AI just before the final reply ends the draft one message early (T-0043).
 - Mobile: render reply drafts (T-0043 did web only).
 - Mobile: render Markdown in AI replies (web is T-0049; reuse `markdownToPlain` from chat-core).
-- `lead merge`: stop the processes still running inside the task worktree (dev servers, Expo) before removing it (playbook gotcha 21).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
