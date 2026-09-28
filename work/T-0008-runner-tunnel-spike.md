@@ -1,7 +1,7 @@
 ---
 id: T-0008
 title: Spike S6 — runner tunnel over one WebSocket (engine API, model traffic, preview URL)
-status: review
+status: merged
 milestone: M0
 branch: task/T-0008-runner-tunnel-spike
 model: opencode-go/deepseek-v4-pro
@@ -341,3 +341,23 @@ However, three problems break runner isolation. They must be fixed before this b
 The M3 gaps listed in your Report (TLS, Postgres keys, preview expiry and room authorization, pairing, http-only gateway) are accepted as follow-ups. They are not part of this round.
 
 Allowed files are unchanged. Run the same Checks, update the Report with a "Round 2" subsection, then set `status: review` and commit.
+
+### Round 2: approved
+
+All three items are fixed the way the review asked:
+- Pending opens now live on `ServerConn`, and `failStream` touches only the connection that sent the message.
+- Stream-id parity and duplicate checks are enforced on both sides, and both close with 4400.
+- `MAX_WS_PAYLOAD_BYTES` is set on both the server's `WebSocketServer` and the runner's `WebSocket`.
+
+Every fix has a regression test, and the Report says each one was confirmed to fail against the old code.
+
+Lead re-ran every check in the worktree:
+- format:check, lint, typecheck and build all pass;
+- `turbo test --force --filter=@galena/runner-tunnel` passed 3 runs out of 3, with 51/51 tests each time.
+
+Verdict: the one-WebSocket tunnel design (§11.8) is confirmed for M3. These follow-ups go on the board:
+- TLS/wss;
+- runner public keys stored in Postgres, plus pairing codes;
+- preview-token expiry and room-member authorization;
+- a gateway that isn't http-only (an https upstream);
+- a durable registry.
