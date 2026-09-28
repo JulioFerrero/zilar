@@ -10,7 +10,6 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 |---|---|---|---|---|---|
 
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0007](T-0007-litellm-virtual-keys.md) | Spike S5: LiteLLM virtual keys with budgets, adding a user's own key | todo | v4-flash | T-0002 | M2 gateway. LiteLLM is up on 127.0.0.1:4000 |
 | [T-0010](T-0010-voice-spike.md) | Voice message spike: record on web, convert with ffmpeg to AAC/M4A, send and play | todo | v4-flash | T-0002 | Plan §6.7. No transcription: local Whisper is not installed |
 | T-0008 | Spike S6: runner tunnel prototype over one WebSocket (engine API, model traffic, preview URL) | planned | v4-pro | T-0006 | Risky; Claude reviews closely. Queued: collides with T-0007/T-0009 on apps/server |
 | T-0009 | Spike S8: GitHub App tokens and a git proxy that only allows `agent/<ai>/*` pushes | planned | v4-pro | T-0001 | Queued: collides with T-0007 on apps/server |
@@ -46,3 +45,5 @@ Claude runs the DeepSeek V4.1 Flash workers through OpenCode 2 (Julio's authoriz
 | [T-0004](T-0004-expo-xmpp-spike.md) | **Spike S2: xmpp.js works in Expo on iOS** — proven on device with 2 inline shims + a Metro stub, no new packages. Unblocks mobile on real data (2 rounds) | 2026-09-28 |
 - **`brew reinstall ffmpeg` — needed from Julio (from the T-0010 review).** Homebrew's ffmpeg 8.1 is linked against a `libx265.215.dylib` that no longer exists, so `ffmpeg` and `ffprobe` cannot start on this machine and `/api/voice` returns 500. The code is merged and fine; voice messages cannot be exercised until this is run.
 - Flaky `MessageActions` right-click test: `apps/web` `MessageActions.test.tsx > opens on right-click and closes with Escape` takes 5.3 s and times out when the machine is busy (from the T-0010 review). Pre-existing, unrelated to T-0010, but it will make CI flaky.
+- M2 gateway needs `store_model_in_db` (or an equivalent config) so a user's own provider key can be **registered**, not only forwarded per request. Found by the T-0007 spike; it is an `infra/**` change and needs its own task.
+| [T-0007](T-0007-litellm-virtual-keys.md) | **Spike S5: LiteLLM hard-capped virtual keys work** — cap enforced pre-flight (429), revocation and user-key forwarding proven live; cap is server-owned (2 rounds) | 2026-09-28 |

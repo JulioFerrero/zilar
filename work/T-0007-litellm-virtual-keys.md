@@ -1,7 +1,7 @@
 ---
 id: T-0007
 title: Spike S5 — LiteLLM virtual keys with hard budgets, and adding a user's own provider key (BYOK)
-status: review
+status: merged
 milestone: M2
 branch: task/T-0007-litellm-virtual-keys
 model: opencode-go/deepseek-v4.1-flash
