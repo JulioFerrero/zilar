@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { InviteDialog } from './InviteDialog';
 import { NewAiDialog } from './ais/NewAiDialog';
 import { NewGroupDialog } from './NewGroupDialog';
@@ -17,13 +17,59 @@ export function NewChatButton() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog | undefined>(undefined);
   const isWide = useMediaQuery('(min-width: 900px)');
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const toggleMenu = (): void => setMenuOpen((value) => !value);
+
+  const focusTrigger = (): void => triggerRef.current?.focus();
+
+  const closeMenu = (): void => {
+    setMenuOpen(false);
+    focusTrigger();
+  };
+
+  const closeDialog = (): void => {
+    setDialog(undefined);
+    focusTrigger();
+  };
 
   const openDialog = (next: Dialog): void => {
     setMenuOpen(false);
     setDialog(next);
   };
+
+  // Esc must close the menu wherever focus is, including on the trigger button
+  // (whose own keydown never reaches the menu). A document listener while the
+  // menu is open covers both focus positions.
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+        focusTrigger();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [menuOpen]);
+
+  // The inline "New message" dialog lives here, so Esc closes it and returns
+  // focus to the trigger the same way the extracted dialogs do.
+  useEffect(() => {
+    if (dialog !== 'message') {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setDialog(undefined);
+        focusTrigger();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [dialog]);
 
   return (
     <div
@@ -38,17 +84,12 @@ export function NewChatButton() {
             type="button"
             tabIndex={-1}
             aria-label="Close new chat menu"
-            onClick={() => setMenuOpen(false)}
+            onClick={closeMenu}
             className="fixed inset-0 z-10 cursor-default"
           />
           <div
             role="menu"
             aria-label="New chat actions"
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                setMenuOpen(false);
-              }
-            }}
             className="absolute right-0 bottom-full z-20 mb-2 min-w-[180px] rounded-xl border border-border bg-popover py-1 shadow-lg"
           >
             <button
@@ -82,6 +123,7 @@ export function NewChatButton() {
       {isWide ? (
         <Button
           type="button"
+          ref={triggerRef}
           aria-label="New chat"
           aria-haspopup="menu"
           aria-expanded={menuOpen}
@@ -97,6 +139,7 @@ export function NewChatButton() {
       ) : (
         <button
           type="button"
+          ref={triggerRef}
           aria-label="New chat"
           aria-haspopup="menu"
           aria-expanded={menuOpen}
@@ -107,15 +150,15 @@ export function NewChatButton() {
         </button>
       )}
 
-      {dialog === 'group' && <NewGroupDialog onClose={() => setDialog(undefined)} />}
-      {dialog === 'ai' && <NewAiDialog onClose={() => setDialog(undefined)} />}
-      {dialog === 'invite' && <InviteDialog onClose={() => setDialog(undefined)} />}
+      {dialog === 'group' && <NewGroupDialog onClose={closeDialog} />}
+      {dialog === 'ai' && <NewAiDialog onClose={closeDialog} />}
+      {dialog === 'invite' && <InviteDialog onClose={closeDialog} />}
       {dialog === 'message' && (
         <div
           role="dialog"
           aria-modal="true"
           aria-label="New message"
-          onClick={() => setDialog(undefined)}
+          onClick={closeDialog}
           className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
         >
           <div

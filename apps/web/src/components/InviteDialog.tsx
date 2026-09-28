@@ -30,6 +30,17 @@ export function InviteDialog({ onClose }: { onClose: () => void }) {
     };
   }, [storeApi]);
 
+  // Esc closes the dialog from any focus position, same as Close or the overlay.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   const copy = (): void => {
     if (url === undefined) {
       return;

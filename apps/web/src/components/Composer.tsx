@@ -359,6 +359,8 @@ export function Composer({
             </IconButton>
             <textarea
               ref={textareaRef}
+              id="message-composer"
+              name="message"
               rows={1}
               value={value}
               onChange={(event) => onChange(event.target.value, event.target.selectionStart ?? 0)}

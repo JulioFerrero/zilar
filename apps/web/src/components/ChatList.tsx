@@ -196,7 +196,12 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                   aria-busy={retrying || undefined}
                   onClick={retryChats}
                 >
-                  {retrying && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
+                  {retrying && (
+                    <Loader2
+                      className="size-3.5 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                  )}
                   {retrying ? 'Retrying…' : 'Retry'}
                 </Button>
               </div>

@@ -21,6 +21,18 @@ describe('Composer', () => {
 
     expect(screen.getByLabelText('Send message')).toBeTruthy();
     expect(screen.queryByLabelText('Record voice message')).toBeNull();
+
+    const textarea = screen.getByLabelText('Message') as HTMLTextAreaElement;
+    expect(textarea.id).toBe('message-composer');
+    expect(textarea.getAttribute('name')).toBe('message');
+  });
+
+  it('gives the chat search input an id and name', () => {
+    renderApp('/');
+
+    const search = screen.getByLabelText('Search chats') as HTMLInputElement;
+    expect(search.id).toBe('chat-search');
+    expect(search.getAttribute('name')).toBe('chat-search');
   });
 
   it('sends on Enter and moves the message from sending to sent to read', () => {

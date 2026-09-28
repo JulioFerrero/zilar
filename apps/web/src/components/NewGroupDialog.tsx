@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,17 @@ export function NewGroupDialog({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+
+  // Esc closes the dialog from any focus position, same as Cancel or the overlay.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   const toggle = (userId: string): void => {
     setSelected((current) =>
