@@ -635,7 +635,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       clearDraftTimeout(chatJid);
       const timer = setTimeout(() => {
         draftTimeouts.delete(chatJid);
-        markTurnFinished(turnId);
+        // Not marked finished here: an idle turn (e.g. a slow tool call) may
+        // resume, and its next draft must show again. `end` marks it itself.
         set((state) => {
           const current = state.drafts[chatJid];
           if (current === undefined || current.turnId !== turnId) {

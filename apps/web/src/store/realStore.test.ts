@@ -1127,9 +1127,10 @@ describe('AI reply drafts (T-0043)', () => {
       vi.advanceTimersByTime(1);
       expect(store.getState().drafts[CHAT]).toBeUndefined();
 
-      // The dead turn is finished: a late draft for it does not revive it.
-      drafts.emit(draft(CHAT, TURN_ONE, 'too late'));
-      expect(store.getState().drafts[CHAT]).toBeUndefined();
+      // An idle turn is not finished: if it resumes (a slow tool call), its
+      // next draft shows again.
+      drafts.emit(draft(CHAT, TURN_ONE, 'Hello, resumed'));
+      expect(store.getState().drafts[CHAT]?.text).toBe('Hello, resumed');
     } finally {
       vi.useRealTimers();
     }
