@@ -69,7 +69,14 @@ export class OpencodeCliClient implements OpenCodeClient {
     this.binary = binary;
   }
 
-  private call(operation: string, params: Record<string, string>, body?: unknown): unknown {
+  // `session.interrupt` answers `{"interrupted":…}` with no `data` envelope,
+  // so callers that ignore the result pass `expectData: false`.
+  private call(
+    operation: string,
+    params: Record<string, string>,
+    body?: unknown,
+    expectData = true,
+  ): unknown {
     const args = ['api', operation];
     for (const [key, value] of Object.entries(params)) {
       args.push('--param', `${key}=${value}`);
@@ -94,7 +101,7 @@ export class OpencodeCliClient implements OpenCodeClient {
           `opencode2 ${operation} exited ${String(result.status)}: ${stderr.slice(0, 300)}`,
         );
       }
-      return readDataPayload(outFile);
+      return expectData ? readDataPayload(outFile) : undefined;
     } finally {
       try {
         fs.closeSync(fd);
@@ -135,7 +142,7 @@ export class OpencodeCliClient implements OpenCodeClient {
   }
 
   async interrupt(sessionId: string): Promise<void> {
-    this.call('session.interrupt', { sessionID: sessionId });
+    this.call('session.interrupt', { sessionID: sessionId }, undefined, false);
   }
 
   async listMessages(sessionId: string, limit: number): Promise<unknown[]> {

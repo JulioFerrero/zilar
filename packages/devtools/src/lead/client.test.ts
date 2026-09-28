@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { FakeOpenCodeClient, readDataPayload } from './client';
+import { FakeOpenCodeClient, OpencodeCliClient, readDataPayload } from './client';
 
 describe('readDataPayload', () => {
   it('returns the data property of the opencode2 envelope', () => {
@@ -33,5 +33,26 @@ describe('FakeOpenCodeClient', () => {
       { sessionId: 'ses_1', requestId: 'per_1', decision: 'reject', message: 'no pushing' },
     ]);
     expect(await client.listPermissions('ses_1')).toEqual([]);
+  });
+});
+
+describe('OpencodeCliClient', () => {
+  // A stand-in `opencode2` that prints what the real service printed for
+  // `session.interrupt`: an object with no `data` envelope.
+  function fakeBinary(output: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-bin-'));
+    const bin = path.join(dir, 'opencode2');
+    fs.writeFileSync(bin, `#!/bin/sh\nprintf '%s' '${output}'\n`, { mode: 0o755 });
+    return bin;
+  }
+
+  it('interrupts a session whose reply has no data envelope', async () => {
+    const client = new OpencodeCliClient(fakeBinary('{"interrupted":false}'));
+    await expect(client.interrupt('ses_1')).resolves.toBeUndefined();
+  });
+
+  it('still rejects a missing envelope where data is needed', async () => {
+    const client = new OpencodeCliClient(fakeBinary('{"interrupted":false}'));
+    await expect(client.listMessages('ses_1', 2)).rejects.toThrow('no data envelope');
   });
 });
