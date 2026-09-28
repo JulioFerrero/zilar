@@ -1,7 +1,7 @@
 ---
 id: T-0052
 title: Change an AI's model after creation — PATCH `model` (and optionally the provider connection), re-register the AI's LiteLLM model safely, model picker in the AI panel
-status: review
+status: merged
 milestone: M2
 branch: task/T-0052-change-ai-model
 model: opencode-go/muse-spark-1.3-contributor
@@ -190,3 +190,10 @@ pnpm build                                          # Tasks: 2 successful, 2 tot
 `PREREVIEW.md` left untracked. No screenshot change (panel visuals unchanged; error path verified by test).
 
 ## Review (written by Claude)
+
+**Verdict: approved, merged.**
+
+- Round 1 pre-review: one should-fix. `deleteAi` didn't take the ensure locks, so a delete racing a model switch could orphan an `ai-<id>` model. Fixed in round 2: the delete runs under the same locks, with a race test. Also fixed in round 2: the panel re-fetches the AI after a failed save, and the recovery transaction has the owner check.
+- Round 2 pre-review: approved, checks pass.
+- The swap reuses `ensureAiModel`'s proven LiteLLM pattern (delete strays, add under the same name, re-assert the key allowlist). A failed swap leaves the old model and connection in the row with `litellmModelId = null`, so the next turn re-registers the old model.
+- Live: the panel was checked read-only in Julio's Helium after the merge. Actually switching his AI's model is a settings change, so it waits for his OK.
