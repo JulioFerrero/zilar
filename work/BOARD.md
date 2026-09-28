@@ -11,12 +11,12 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0048](T-0048-mobile-redesign.md) | Mobile redesign (D24): dark tokens, Geist, depth primitives, chat list and chat screen | in progress | deepseek-v4.1-flash | T-0047 | Own simulator + Metro 8082; image budget ~20. |
 | [T-0050](T-0050-gateway-resource-and-read-markers.md) | Gateway: fixed XMPP resource per AI (newest wins, old stands down) + read markers when the AI takes a message | in progress | muse-spark-1.3 | T-0034 | Touches xmpp-core. |
 | [T-0051](T-0051-lead-switch-model-and-merge-cleanup.md) | lead CLI: `switch-model` (quota fallback to MiniMax M3) + `merge` stops worktree processes | in progress | MiniMax-M3 | T-0038 | Chore; tests only. |
+| [T-0052](T-0052-change-ai-model.md) | Change an AI's model after creation (PATCH model/connection under the ensure lock, AI panel pickers) | in progress | muse-spark-1.3 | T-0033, T-0039 | Not the gateway (T-0050). |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
 
 - Web: Retry on the chat-list error bar briefly swaps an already-loaded list for skeletons; keep the list visible during retry (T-0042 nit). Mobile has the same loading-vs-empty bugs T-0042 fixed on web.
-- Change an AI's model after creation (server + panel). `UpdateAiSchema` allows only name, persona and limits, and a new model means re-registering the AI's LiteLLM model `ai-<id>` (T-0039 review).
 - Mobile: honor the `?mock=` route param only in `__DEV__` or with `EXPO_PUBLIC_GALENA_MOCK` set, for both the chat store and My AIs (T-0037 pre-review). Today a deep link can show fake data in a production build.
 - Streaming drafts: a notice message from the AI just before the final reply ends the draft one message early (T-0043).
 - Mobile: render reply drafts (T-0043 did web only).
