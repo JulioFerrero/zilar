@@ -17,6 +17,8 @@ export type {
   RosterSubscription,
   SendMessageOptions,
   TypingEvent,
+  UploadRequest,
+  UploadSlot,
   XmppCore,
   XmppCoreOptions,
 } from './types';

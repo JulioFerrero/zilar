@@ -1,5 +1,6 @@
 import type { ChatSummary, MessageStatus, ReplyRef, UiMessage } from '@galena/chat-core';
 import type { Contact, Me } from '@/lib/api';
+import { sampleVoiceDataUrl } from '@/lib/voice';
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
 import { currentUserId as defaultCurrentUserId, mockChats, mockMessages } from '@/mock';
@@ -16,6 +17,13 @@ export interface SendTextOptions {
   replyTo?: ReplyRef;
 }
 
+/** A finished recording on its way to the server and then to XEP-0363. */
+export interface VoiceRecording {
+  blob: Blob;
+  durationMs: number;
+  waveform: number[];
+}
+
 export interface ChatStore {
   currentUserId: string;
   me: Me | undefined;
@@ -28,6 +36,7 @@ export interface ChatStore {
   loadOlder: (chatId: string) => void;
   hasMore: (chatId: string) => boolean;
   sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
+  sendVoice: (chatId: string, recording: VoiceRecording, options?: SendTextOptions) => void;
   sendTyping: (chatId: string) => void;
   createGroup: (title: string, memberIds: string[]) => Promise<string>;
   createInvite: () => Promise<string>;
@@ -57,8 +66,20 @@ export interface ChatStoreSeed {
 
 function cloneMessages(source: Record<string, UiMessage[]>): Record<string, UiMessage[]> {
   return Object.fromEntries(
-    Object.entries(source).map(([chatId, messages]) => [chatId, [...messages]]),
+    Object.entries(source).map(([chatId, messages]) => [chatId, messages.map(withPlayableVoice)]),
   );
+}
+
+// The mock data has no real audio. Give every voice message a synthesized tone
+// so the player in the bubble is genuinely usable during UI work and screenshots.
+function withPlayableVoice(message: UiMessage): UiMessage {
+  if (message.voice === undefined || message.voice.url !== undefined) {
+    return message;
+  }
+  return {
+    ...message,
+    voice: { ...message.voice, url: sampleVoiceDataUrl(message.voice.duration_ms) },
+  };
 }
 
 function withLastMessage(chats: ChatSummary[], chatId: string, message: UiMessage): ChatSummary[] {
@@ -167,6 +188,36 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
           text: trimmed,
           createdAt: new Date(),
           status: 'sending',
+          ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
+        };
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: [...(state.messagesByChat[chatId] ?? []), message],
+          },
+          chats: withLastMessage(state.chats, chatId, message),
+        }));
+        window.setTimeout(() => setStatus(chatId, message.id, 'sent'), 300);
+        window.setTimeout(() => setStatus(chatId, message.id, 'read'), 1500);
+      },
+      sendVoice: (chatId, recording, options) => {
+        if (recording.blob.size === 0) {
+          return;
+        }
+        sequence += 1;
+        const message: UiMessage = {
+          id: `out-${sequence}`,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: 'You',
+          createdAt: new Date(),
+          status: 'sending',
+          voice: {
+            duration_ms: Math.max(1, recording.durationMs),
+            mime: 'audio/mp4',
+            waveform: recording.waveform.length > 0 ? recording.waveform : [12],
+            url: sampleVoiceDataUrl(recording.durationMs),
+          },
           ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
         };
         set((state) => ({

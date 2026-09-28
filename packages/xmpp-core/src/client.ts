@@ -18,6 +18,7 @@ import {
   buildRosterError,
   buildRosterResult,
   buildTyping,
+  buildUploadSlotRequest,
   decodeMessageStanza,
   isMamResult,
   mamResultQueryId,
@@ -25,6 +26,7 @@ import {
   parseMucPresence,
   parseContactPresence,
   parseRosterPush,
+  parseUploadSlot,
   stanzaErrorCondition,
   type MucPresence,
   type ParseContext,
@@ -45,6 +47,8 @@ import type {
   RosterEvent,
   SendMessageOptions,
   TypingEvent,
+  UploadRequest,
+  UploadSlot,
   XmppCore,
   XmppCoreOptions,
 } from './types';
@@ -52,6 +56,7 @@ import type {
 const CONNECT_TIMEOUT_MS = 15_000;
 const JOIN_TIMEOUT_MS = 15_000;
 const HISTORY_TIMEOUT_MS = 30_000;
+const UPLOAD_TIMEOUT_MS = 15_000;
 
 export type ClientOptions = {
   service: string;
@@ -92,6 +97,12 @@ type PendingQuery = {
   iqId: string;
   messages: ChatMessage[];
   resolve: (page: HistoryPage) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+type PendingIq = {
+  resolve: (stanza: XmppElement) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 };
@@ -153,6 +164,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   const rosters = new Map<string, Map<string, Occupant>>();
   const pendingJoins = new Map<string, PendingJoin>();
   const pendingQueries = new Map<string, PendingQuery>();
+  const pendingIqs = new Map<string, PendingIq>();
 
   function addListener(event: EventName, listener: StoredListener): () => void {
     let set = listeners.get(event);
@@ -298,6 +310,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     setStatus('offline');
     meJid = undefined;
     clearAllRosters();
+    rejectPendingIqs('the XMPP connection failed');
     const current = xmpp;
     if (current !== undefined) {
       try {
@@ -305,6 +318,14 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       } catch {
         // The stream is already failing; nothing useful to report.
       }
+    }
+  }
+
+  function rejectPendingIqs(reason: string): void {
+    for (const [id, pending] of pendingIqs) {
+      pendingIqs.delete(id);
+      clearTimeout(pending.timer);
+      pending.reject(new Error(reason));
     }
   }
 
@@ -453,13 +474,27 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   }
 
   function handleIq(stanza: XmppElement): void {
+    const id = stanza.attrs['id'];
+    if (id !== undefined) {
+      const pending = pendingIqs.get(id);
+      if (pending !== undefined) {
+        pendingIqs.delete(id);
+        clearTimeout(pending.timer);
+        if (stanza.attrs['type'] === 'error') {
+          pending.reject(new Error(`the request failed: ${stanzaErrorCondition(stanza)}`));
+        } else {
+          pending.resolve(stanza);
+        }
+        return;
+      }
+    }
+
     const rosterPush = parseRosterPush(stanza, options.domain, meJid);
     if (rosterPush !== undefined) {
       handleRosterPush(rosterPush);
       return;
     }
 
-    const id = stanza.attrs['id'];
     if (id === undefined) return;
     for (const [queryId, pending] of pendingQueries) {
       if (pending.iqId !== id) continue;
@@ -523,6 +558,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     setStatus('offline');
     finishConnect(new Error('the XMPP client was disconnected'));
     clearAllRosters();
+    rejectPendingIqs('the XMPP client was disconnected');
     const current = xmpp;
     if (current !== undefined) {
       try {
@@ -635,6 +671,46 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     });
   }
 
+  async function requestUploadSlot(request: UploadRequest): Promise<UploadSlot> {
+    const current = requireOnline();
+    const id = generateId();
+    const service = `upload.${options.domain}`;
+    const stanza = buildUploadSlotRequest({
+      id,
+      service,
+      filename: request.filename,
+      size: request.size,
+      contentType: request.contentType,
+    });
+
+    return new Promise<UploadSlot>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingIqs.delete(id);
+        reject(new Error('timed out requesting an upload slot'));
+      }, UPLOAD_TIMEOUT_MS);
+      pendingIqs.set(id, {
+        resolve: (reply) => {
+          const slot = parseUploadSlot(reply);
+          if (slot === undefined) {
+            reject(new Error('the upload service returned an invalid slot'));
+            return;
+          }
+          resolve(slot);
+        },
+        reject,
+        timer,
+      });
+
+      current.send(stanza).catch((error: unknown) => {
+        const pending = pendingIqs.get(id);
+        if (pending === undefined) return;
+        pendingIqs.delete(id);
+        clearTimeout(pending.timer);
+        reject(new Error(`could not request an upload slot: ${errorMessage(error)}`));
+      });
+    });
+  }
+
   return {
     status: () => currentStatus,
     me: () => meJid,
@@ -645,6 +721,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     occupants: occupantsFor,
     sendMessage,
     loadHistory,
+    requestUploadSlot,
     sendTyping,
     markDisplayed,
     on: (event: EventName, listener: StoredListener) => addListener(event, listener),

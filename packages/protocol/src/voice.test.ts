@@ -27,6 +27,21 @@ describe('VoiceMetaSchema', () => {
     ).toBe(true);
   });
 
+  it('accepts a download url', () => {
+    const result = VoiceMetaSchema.safeParse({
+      ...voice,
+      url: 'https://upload.galena.localhost/upload/abc.m4a',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.url).toBe('https://upload.galena.localhost/upload/abc.m4a');
+    }
+  });
+
+  it('rejects a url that is not a url', () => {
+    expect(VoiceMetaSchema.safeParse({ ...voice, url: 'not a url' }).success).toBe(false);
+  });
+
   it('rejects a zero duration', () => {
     expect(VoiceMetaSchema.safeParse({ ...voice, duration_ms: 0 }).success).toBe(false);
   });

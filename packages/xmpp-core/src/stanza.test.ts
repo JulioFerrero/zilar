@@ -8,9 +8,11 @@ import {
   buildLeavePresence,
   buildMessage,
   buildTyping,
+  buildUploadSlotRequest,
   decodeMessageStanza,
   isMamResult,
   mamResultQueryId,
+  parseUploadSlot,
   type ParseContext,
 } from './stanza';
 import { MAX_BODY_BYTES, capBody, utf8ByteLength } from './text';
@@ -21,6 +23,7 @@ import {
   CHAT_STATES_NAMESPACE,
   DELAY_NAMESPACE,
   FORWARD_NAMESPACE,
+  HTTP_UPLOAD_NAMESPACE,
   MAM_NAMESPACE,
   MUC_NAMESPACE,
   MUC_USER_NAMESPACE,
@@ -123,6 +126,55 @@ describe('buildTyping, buildDisplayed, presence and carbons', () => {
     const stanza = buildCarbonsEnable('iq-1');
     expect(stanza.attrs).toMatchObject({ type: 'set', id: 'iq-1' });
     expect(stanza.getChild('enable', CARBONS_NAMESPACE)).toBeDefined();
+  });
+});
+
+describe('buildUploadSlotRequest and parseUploadSlot', () => {
+  it('asks the upload service for a slot with the file details', () => {
+    const stanza = buildUploadSlotRequest({
+      id: 'iq-up-1',
+      service: 'upload.galena.localhost',
+      filename: 'voice.m4a',
+      size: 4096,
+      contentType: 'audio/mp4',
+    });
+    expect(stanza.attrs).toMatchObject({
+      type: 'get',
+      id: 'iq-up-1',
+      to: 'upload.galena.localhost',
+    });
+    const request = stanza.getChild('request', HTTP_UPLOAD_NAMESPACE);
+    expect(request?.attrs).toMatchObject({
+      filename: 'voice.m4a',
+      size: '4096',
+      'content-type': 'audio/mp4',
+    });
+  });
+
+  it('parses the put and get urls with the put headers', () => {
+    const reply = xml(
+      'iq',
+      { type: 'result', id: 'iq-up-1' },
+      xml(
+        'slot',
+        { xmlns: HTTP_UPLOAD_NAMESPACE },
+        xml(
+          'put',
+          { url: 'https://upload.example.com/put/abc' },
+          xml('header', { name: 'X-Token' }, 'secret'),
+        ),
+        xml('get', { url: 'https://upload.example.com/get/abc' }),
+      ),
+    );
+    expect(parseUploadSlot(reply)).toEqual({
+      putUrl: 'https://upload.example.com/put/abc',
+      getUrl: 'https://upload.example.com/get/abc',
+      headers: { 'X-Token': 'secret' },
+    });
+  });
+
+  it('returns undefined when the reply is not a slot', () => {
+    expect(parseUploadSlot(xml('iq', { type: 'result', id: 'iq-up-2' }))).toBeUndefined();
   });
 });
 
