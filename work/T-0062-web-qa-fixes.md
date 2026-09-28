@@ -84,8 +84,13 @@ and T-0060's Bug 1, Bug 2 and polish items 1, 2 and 5 first.
 - `NewGroupDialog.tsx`, `ais/NewAiDialog.tsx`: a document-level Escape listener
   that calls `onClose()` (same as Cancel / the overlay).
 - The inline "New message" dialog (owned by `NewChatButton`) got its own
-  document-level Escape listener. `InviteDialog` was left as-is: it was not in
-  the spec list and its close paths already matched the others.
+  document-level Escape listener.
+- **Round 2:** `InviteDialog.tsx` also got a document-level Escape listener
+  (closes via `onClose`). It was the one dialog still missing it: `openDialog`
+  replaces `dialog` state, so choosing "Invite a friend" unmounts the New
+  message dialog's listener and there is no dialog underneath for Esc to fall
+  through to. It now closes on Esc and focus returns to the New chat trigger
+  (via `closeDialog` in `NewChatButton`).
 
 **Bug 2 — reduced motion covers all animation.**
 - The skeleton and the spinner keep the Tailwind `animate-pulse`/`animate-spin`
@@ -105,6 +110,11 @@ and T-0060's Bug 1, Bug 2 and polish items 1, 2 and 5 first.
   `pulse`/`spin`, marked ones compute `animation: none`. The skeleton falls back
   to a static mute fill and the spinner to a static icon, so both stay legible
   as "in progress".
+- **Round 2:** the `ChatList` retry spinner (`ChatList.tsx:199`) uses a plain
+  `animate-spin` that the marker-class approach could not reach, so it now also
+  carries `motion-reduce:animate-none`, matching `Composer` and `MessageBubble`.
+  The built CSS contains
+  `@media (prefers-reduced-motion:reduce){.motion-reduce\:animate-none{animation:none}}`.
 
 **Polish.**
 1. `index.css`: an explicit `:focus-visible { outline: 2px solid
@@ -121,17 +131,35 @@ and T-0060's Bug 1, Bug 2 and polish items 1, 2 and 5 first.
 ### Files changed
 
 - `apps/web/src/components/NewChatButton.tsx`, `NewGroupDialog.tsx`,
-  `ais/NewAiDialog.tsx`, `Skeleton.tsx`, `ProgressCard.tsx`, `SearchBar.tsx`,
-  `ApprovalCard.tsx`, `Composer.tsx`, `index.css`
-- Tests: `NewChatButton.test.tsx`, `ais/NewAiDialog.test.tsx`,
-  `Skeleton.test.tsx`, `ApprovalCard.test.tsx`, `Composer.test.tsx`,
-  `ProgressCard.test.tsx` (new)
+  `ais/NewAiDialog.tsx`, `InviteDialog.tsx`, `ChatList.tsx`, `Skeleton.tsx`,
+  `ProgressCard.tsx`, `SearchBar.tsx`, `ApprovalCard.tsx`, `Composer.tsx`,
+  `index.css`
+- Tests: `NewChatButton.test.tsx`, `ChatList.test.tsx`,
+  `ais/NewAiDialog.test.tsx`, `Skeleton.test.tsx`, `ApprovalCard.test.tsx`,
+  `Composer.test.tsx`, `ProgressCard.test.tsx` (new)
 - `work/T-0062-web-qa-fixes.md`, `work/screenshots/T-0062/**`
 
 ### Commands I ran (real results)
 
+**Round 2 (after the pre-review fixes).**
+
+- `pnpm exec turbo test --force --filter=@galena/web`: **315 passed** across 40
+  files, 0 failed (`Test Files 40 passed (40)`, `Tests 315 passed (315)`,
+  29.96 s). The 2 new tests are the Invite-dialog Esc test
+  (`NewChatButton.test.tsx`) and the retry-spinner reduced-motion test
+  (`ChatList.test.tsx`).
+- `pnpm lint`: PASS — oxlint clean (no output).
+- `pnpm build`: PASS — `2 successful, 2 total`, `built in 928ms`. Built CSS
+  contains `@media (prefers-reduced-motion:reduce){.motion-reduce\:animate-none{animation:none}}`.
+- `pnpm typecheck`: PASS — 9 successful, 9 total.
+- Live check (mock mode, port 5262): the Invite dialog opened via New chat →
+  New message → "Invite a friend", Esc closed it (`inviteDialog:false`,
+  `document.activeElement` = "New chat"); console clean (Vite connect + React
+  DevTools hint only). Vite and the stub are stopped (`5262`/`5263` free).
+
+**Round 1.**
+
 - `pnpm install`: "Already up to date", 6.9 s.
-- `pnpm format:check`: "All matched files use Prettier code style!"
 - `pnpm lint`: clean (oxlint, no output).
 - `pnpm typecheck`: 9 successful, 9 total (8 cached).
 - `pnpm exec turbo test --force --filter=@galena/web`: **313 passed** across
@@ -164,6 +192,14 @@ and T-0060's Bug 1, Bug 2 and polish items 1, 2 and 5 first.
 - **My Vite and the stub are stopped**: `lsof -nP -iTCP:5262/-5263 -sTCP:LISTEN`
   is empty for both.
 
+### Note on `pnpm format:check`
+
+`pnpm format:check` currently fails on `PREREVIEW.md` — the pre-reviewer's
+untracked artifact in this worktree, not a file I created or touched, and not in
+the task's Allowed files. I left it untracked and did not commit it. Running
+Prettier over just my changed files passes ("All matched files use Prettier code
+style!"). For completeness I also ran `pnpm typecheck` in round 2: PASS.
+
 ### Behaviour change worth noting
 
 Approve/Deny are now `disabled`, so the `console.log('approve'/'deny', id)` stub
@@ -188,9 +224,10 @@ affordance would need a different treatment — say so and I will adjust.
   overriding `window.matchMedia` via a navigation init script (the available
   browser tooling cannot set the CDP media feature), which is the same approach
   T-0060 used; the built CSS and the unit tests are the primary evidence.
-- I did not touch `InviteDialog.tsx` (not listed in the spec's dialog list), so
-  Esc over it closes the "New message" dialog underneath via propagation, then
-  the trigger still receives focus.
+- The retry spinner's `motion-reduce:animate-none` is verified by the unit test
+  (class present on the spinner) and the built CSS rule; the retry bar's
+  `error` state is not reachable from the mock store at runtime, so it was not
+  captured in a screenshot.
 
 ### Open questions
 

@@ -150,4 +150,20 @@ describe('NewChatButton Escape handling (T-0062)', () => {
     expect(screen.queryByRole('dialog', { name: 'New AI' })).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
+
+  it('closes the Invite dialog with Escape and returns focus to the trigger', async () => {
+    renderApp('/');
+
+    const trigger = screen.getByLabelText('New chat');
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New message' }));
+    // "Invite a friend" replaces the New message dialog with the Invite dialog.
+    fireEvent.click(screen.getByRole('button', { name: 'Invite a friend' }));
+    expect(await screen.findByRole('dialog', { name: 'Invite a friend' })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Invite a friend' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
 });

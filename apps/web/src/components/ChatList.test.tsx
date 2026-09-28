@@ -146,6 +146,20 @@ describe('ChatList', () => {
     expect(screen.queryByRole('button', { name: /Retrying/ })).toBeNull();
   });
 
+  it('gives the retry spinner a reduced-motion opt-out', async () => {
+    const { store } = renderApp('/');
+    store.setState({ chatsState: 'error' });
+    expect(await screen.findByText("Couldn't load chats")).toBeTruthy();
+
+    store.setState({ retryChats: () => store.setState({ chatsState: 'loading' }) });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    const pending = screen.getByRole('button', { name: /Retrying/ });
+    const spinner = pending.querySelector('svg');
+    expect(spinner?.classList.contains('animate-spin')).toBe(true);
+    expect(spinner?.classList.contains('motion-reduce:animate-none')).toBe(true);
+  });
+
   it('shows skeletons when a list that never loaded is retried', async () => {
     const { store } = renderApp('/', { chats: [], chatsState: 'error' });
     expect(await screen.findByText("Couldn't load chats")).toBeTruthy();
