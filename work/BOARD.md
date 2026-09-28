@@ -8,8 +8,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0032](T-0032-create-ai-wizard.md) | M2: web Create-AI wizard + My AIs list (§20.2) | in progress | deepseek-v4.1-flash | T-0028, T-0030 | Web only. Lead does the live click-through at review. |
-| T-0033 | M2: AIs reply when @mentioned (agent gateway: XMPP login as the AI, context, LiteLLM call with the AI's virtual key) | planned | | T-0030 (merged) | Must decide how the owner's provider key reaches the provider (T-0007 follow-up). |
+| [T-0032](T-0032-create-ai-wizard.md) | M2: web Create-AI wizard + My AIs list (§20.2) | changes requested (round 2) | deepseek-v4.1-flash | T-0028, T-0030 | Web only. Lead clicked through live: all flows work; round 2 fixes model suggestions (keyed by connection id instead of provider). |
+| T-0033 | M2: AIs reply when @mentioned (agent gateway: XMPP login as the AI, context, LiteLLM call with the AI's virtual key) | planned | | T-0030 (merged) | Must decide how the owner's provider key reaches the provider (T-0007 follow-up). Must also list AIs in `/api/chats` so "Open chat" from My AIs opens the DM (found in the T-0032 live check). |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -28,6 +28,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
   - preview-token expiry and room-member authorization;
   - an https gateway upstream (today it is http-only);
   - a durable runner registry.
+
+- **Users with an empty name show as blank rows in the chat list** (4 old test accounts, seen during the T-0032 live check). `/api/chats` should fall back to something readable (e.g. the email's local part), and sign-up should require a name.
 
 ## Done
 
