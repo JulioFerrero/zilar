@@ -49,12 +49,21 @@ function pktLine(text: string): string {
   return (text.length + 4).toString(16).padStart(4, '0') + text;
 }
 
+const OLD_OID = '0000000000000000000000000000000000000000';
+const NEW_OID = '1111111111111111111111111111111111111111';
+
+function commandLine(ref: string, withCapabilities: boolean): string {
+  const line = `${OLD_OID} ${NEW_OID} ${ref}`;
+  return withCapabilities ? `${line}\0report-status side-band-64k ofs-delta` : line;
+}
+
 function receivePackBody(refs: string[]): Uint8Array {
-  const commands = refs.map((ref, index) => {
-    const line =
-      '0000000000000000000000000000000000000000 1111111111111111111111111111111111111111 ' + ref;
-    return index === 0 ? `${line}\0report-status side-band-64k ofs-delta` : line;
-  });
+  const commands = refs.map((ref, index) => commandLine(ref, index === 0));
+  const body = commands.map((command) => pktLine(command)).join('') + '0000PACK';
+  return new TextEncoder().encode(body);
+}
+
+function receivePackBodyFromCommands(commands: string[]): Uint8Array {
   const body = commands.map((command) => pktLine(command)).join('') + '0000PACK';
   return new TextEncoder().encode(body);
 }
@@ -119,6 +128,52 @@ describe('git proxy', () => {
       method: 'POST',
       headers: { 'content-type': 'application/x-git-receive-pack-request' },
       body: receivePackBody(['refs/tags/v1.0.0']),
+    });
+
+    expect(res.status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses an unreadable receive-pack body and never calls the upstream', async () => {
+    const { fetchImpl, calls } = createFetch(() => new Response('nope', { status: 200 }));
+    const app = buildApp(fetchImpl);
+
+    const res = await app.request(`${BASE}/git/acme/repo.git/git-receive-pack`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-git-receive-pack-request' },
+      body: new TextEncoder().encode('not a pkt-line'),
+    });
+
+    expect(res.status).toBe(403);
+    expect(calls).toHaveLength(0);
+    expect(await res.json()).toMatchObject({ error: { code: 'push_rejected' } });
+  });
+
+  it('refuses a receive-pack body that yields no refs', async () => {
+    const { fetchImpl, calls } = createFetch(() => new Response('nope', { status: 200 }));
+    const app = buildApp(fetchImpl);
+
+    const res = await app.request(`${BASE}/git/acme/repo.git/git-receive-pack`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-git-receive-pack-request' },
+      body: new TextEncoder().encode('0000PACK'),
+    });
+
+    expect(res.status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a body with one good and one malformed ref', async () => {
+    const { fetchImpl, calls } = createFetch(() => new Response('nope', { status: 200 }));
+    const app = buildApp(fetchImpl);
+
+    const res = await app.request(`${BASE}/git/acme/repo.git/git-receive-pack`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-git-receive-pack-request' },
+      body: receivePackBodyFromCommands([
+        commandLine('refs/heads/agent/alice/feature', true),
+        `${OLD_OID} ${NEW_OID}`,
+      ]),
     });
 
     expect(res.status).toBe(403);

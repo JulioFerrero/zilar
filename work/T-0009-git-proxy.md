@@ -169,6 +169,18 @@ Not proven / still needs a real App or git client:
 ### Blocked / needs a decision
 - (none)
 
+### Round 2 (review finding 1 fixed)
+- `parseRefUpdates` now returns `{ refs, malformed }` and reports a body as malformed when a pkt-line length is invalid, a command line is not exactly `<old-oid> <new-oid> <ref>`, the length runs past the body, or the body ends without a flush packet.
+- The handler now refuses a receive-pack whose parsed ref list is empty or malformed with `403 push_rejected` ("push is unparseable") before anything is forwarded, with a comment explaining why an unreadable push is refused rather than forwarded.
+- Added three tests: an unreadable body is refused and the upstream is never called; a body that yields no refs is refused; a body with one good and one malformed ref is refused. All assert `calls` is empty.
+
+#### Commands run and real results (Round 2)
+- `pnpm format:check`: "All matched files use Prettier code style!", exit 0.
+- `pnpm lint`: "Found 0 warnings and 0 errors.", exit 0.
+- `pnpm typecheck`: "Tasks: 8 successful, 8 total", exit 0.
+- `pnpm test`: "Tasks: 8 successful, 8 total"; server suite "208 passed | 3 skipped (211)"; git module alone "22 passed (22)".
+- `pnpm build`: "Tasks: 2 successful, 2 total", exit 0.
+
 ---
 
 ## Review (written by Claude)

@@ -78,32 +78,44 @@ function isAllowedRef(aiName: string, ref: string): boolean {
   return isPushAllowed(aiName, branch).allowed;
 }
 
+type ParseResult = { refs: string[]; malformed: boolean };
+
 // Extracts ref names from a receive-pack request body. The body is a sequence
 // of pkt-lines, each `old-oid SP new-oid SP ref-name` (the first carrying
 // capabilities after a NUL), then a flush packet and the pack data. Parsing
-// stops at the flush packet, before the binary pack.
-function parseRefUpdates(body: Uint8Array): string[] {
+// stops at the flush packet, before the binary pack. Any body that is not a
+// clean, complete sequence of ref commands is reported as malformed, so the
+// caller can fail closed rather than guess.
+function parseRefUpdates(body: Uint8Array): ParseResult {
   const refs: string[] = [];
   let offset = 0;
+  let sawFlush = false;
+
   while (offset + 4 <= body.length) {
     const length = Number.parseInt(packetDecoder.decode(body.subarray(offset, offset + 4)), 16);
-    if (Number.isNaN(length) || length === 0) {
+    if (Number.isNaN(length)) {
+      return { refs, malformed: true };
+    }
+    if (length === 0) {
+      sawFlush = true;
+      offset += 4;
       break;
     }
-    if (length < 4) {
-      offset += 4;
-      continue;
+    if (length < 4 || offset + length > body.length) {
+      return { refs, malformed: true };
     }
     const payload = packetDecoder.decode(body.subarray(offset + 4, offset + length));
     const command = payload.split('\0')[0] ?? '';
     const fields = command.split(' ');
     const ref = fields[2];
-    if (ref !== undefined && ref.length > 0) {
-      refs.push(ref);
+    if (fields.length !== 3 || ref === undefined || ref.length === 0) {
+      return { refs, malformed: true };
     }
+    refs.push(ref);
     offset += length;
   }
-  return refs;
+
+  return sawFlush ? { refs, malformed: false } : { refs, malformed: true };
 }
 
 function buildUpstreamUrl(baseUrl: string, inbound: URL, pathPrefix: string): URL {
@@ -134,8 +146,14 @@ export function createGitProxyHandler(deps: GitProxyDependencies): Handler {
     let body: ArrayBuffer | ReadableStream<Uint8Array> | null;
     if (isReceivePackPost) {
       const buffer = await c.req.raw.arrayBuffer();
-      const refs = parseRefUpdates(new Uint8Array(buffer));
-      for (const ref of refs) {
+      const parsed = parseRefUpdates(new Uint8Array(buffer));
+      // A push we cannot enumerate is not a push we can allow: refuse an
+      // unreadable or empty body rather than forwarding a write that GitHub
+      // might act on but our branch rule never saw.
+      if (parsed.malformed || parsed.refs.length === 0) {
+        throw new HttpError(403, 'push_rejected', 'push is unparseable');
+      }
+      for (const ref of parsed.refs) {
         if (!isAllowedRef(aiName, ref)) {
           throw new HttpError(403, 'push_rejected', 'push to this branch is not allowed');
         }
