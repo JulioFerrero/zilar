@@ -80,6 +80,12 @@ export function createProviderProbe(fetchImpl: FetchLike = fetch): ProviderProbe
       if (response.status === 401 || response.status === 403) {
         return { ok: false, message: 'The provider rejected the key' };
       }
+      if (response.status === 429) {
+        return {
+          ok: false,
+          message: 'The provider is rate-limiting this key. Try again in a minute.',
+        };
+      }
       if (response.ok) {
         return { ok: true };
       }

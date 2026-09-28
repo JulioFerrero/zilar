@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff, Link, Trash2, Zap } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { ArrowLeft, Eye, EyeOff, Link, Trash2, Zap } from 'lucide-react';
 import { z } from 'zod';
 import { API_BASE } from '@/lib/api';
 
@@ -63,11 +64,14 @@ async function loadConnections(): Promise<Connection[]> {
 }
 
 export function ConnectionsPage() {
+  const navigate = useNavigate();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState('');
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message?: string }>>(
     {},
   );
@@ -136,16 +140,37 @@ export function ConnectionsPage() {
     }
   };
 
-  const removeConnection = async (id: string) => {
-    await request(`/connections/${id}`, { method: 'DELETE' });
-    setConnections((previous) => previous.filter((connection) => connection.id !== id));
+  const confirmRemove = async (id: string) => {
+    setRemoveError('');
+    try {
+      await request(`/connections/${id}`, { method: 'DELETE' });
+      setConnections((previous) => previous.filter((connection) => connection.id !== id));
+      setConfirmingId(null);
+    } catch (error) {
+      setRemoveError(error instanceof Error ? error.message : 'Could not remove the connection');
+    }
+  };
+
+  const cancelRemove = () => {
+    setConfirmingId(null);
+    setRemoveError('');
   };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="shrink-0 border-b border-divider px-4 py-3">
-        <h1 className="text-[20px] leading-7 font-semibold">Connections</h1>
-        <p className="text-[14px] text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="Back"
+            onClick={() => navigate('/')}
+            className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
+          >
+            <ArrowLeft className="size-5" aria-hidden="true" />
+          </button>
+          <h1 className="text-[20px] leading-7 font-semibold">Connections</h1>
+        </div>
+        <p className="mt-1 text-[14px] text-muted-foreground">
           Connect a provider account to use its models. API keys only for now.
         </p>
       </header>
@@ -228,25 +253,54 @@ export function ConnectionsPage() {
                             : testResults[connection.id]!.message}
                         </p>
                       )}
+                      {confirmingId === connection.id && removeError !== '' && (
+                        <p role="alert" className="text-[13px] text-danger">
+                          {removeError}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        disabled={testingId === connection.id}
-                        aria-label={`Test ${providerLabel(connection.provider)} key`}
-                        onClick={() => void testConnection(connection.id)}
-                        className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-                      >
-                        <Zap className="size-4" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Remove ${providerLabel(connection.provider)} connection`}
-                        onClick={() => void removeConnection(connection.id)}
-                        className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
+                      {confirmingId === connection.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void confirmRemove(connection.id)}
+                            className="rounded-full bg-danger px-3 py-1.5 text-[14px] font-medium text-white hover:bg-danger/90"
+                          >
+                            Remove
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelRemove}
+                            className="rounded-full px-3 py-1.5 text-[14px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            disabled={testingId === connection.id}
+                            aria-label={`Test ${providerLabel(connection.provider)} key`}
+                            onClick={() => void testConnection(connection.id)}
+                            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                          >
+                            <Zap className="size-4" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${providerLabel(connection.provider)} connection`}
+                            onClick={() => {
+                              setConfirmingId(connection.id);
+                              setRemoveError('');
+                            }}
+                            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </li>
                 ))}

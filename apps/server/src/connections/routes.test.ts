@@ -301,6 +301,64 @@ describe('connections routes', () => {
     });
     expect(await list.json()).toEqual([]);
   });
+
+  it('trims whitespace from a pasted key', async () => {
+    const app = mount(new FakeProbe());
+    const user = await bootstrapUser(context, app, `trim${testCounter}@example.com`);
+
+    const response = await app.request(`${TEST_BASE_URL}/api/connections`, {
+      method: 'POST',
+      headers: { cookie: user.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'openai', key: '  fake-key\n', label: 'Work' }),
+    });
+
+    expect(response.status).toBe(201);
+    const rows = await context.db.select().from(providerConnections);
+    expect(rows).toHaveLength(1);
+    expect(createKeyCipher(MASTER_KEY).decrypt(rows[0]!.encryptedKey)).toBe('fake-key');
+  });
+
+  it('returns 503 connections_unavailable on every route when no cipher is configured', async () => {
+    const app = testApp(context);
+    app.route(
+      '/api',
+      createConnectionsRoutes({
+        auth: context.auth,
+        db: context.db,
+        logger: silentLogger(),
+        probe: new FakeProbe(),
+      }),
+    );
+    const user = await bootstrapUser(context, app, `nocipher${testCounter}@example.com`);
+
+    const list = await app.request(`${TEST_BASE_URL}/api/connections`, {
+      headers: { cookie: user.cookie },
+    });
+    expect(list.status).toBe(503);
+    expect(((await list.json()) as { error: { code: string } }).error.code).toBe(
+      'connections_unavailable',
+    );
+
+    const create = await app.request(`${TEST_BASE_URL}/api/connections`, {
+      method: 'POST',
+      headers: { cookie: user.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'openai', key: KEY }),
+    });
+    expect(create.status).toBe(503);
+
+    const test = await app.request(`${TEST_BASE_URL}/api/connections/whatever/test`, {
+      method: 'POST',
+      headers: { cookie: user.cookie, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(test.status).toBe(503);
+
+    const remove = await app.request(`${TEST_BASE_URL}/api/connections/whatever`, {
+      method: 'DELETE',
+      headers: { cookie: user.cookie },
+    });
+    expect(remove.status).toBe(503);
+  });
 });
 
 function silentLogger(): { warn: () => void } {

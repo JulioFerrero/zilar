@@ -1,8 +1,8 @@
 import {
   createCipheriv,
   createDecipheriv,
+  hkdfSync,
   randomBytes,
-  scryptSync,
   type CipherGCM,
   type DecipherGCM,
 } from 'node:crypto';
@@ -22,7 +22,6 @@ import {
 // instead of returning garbage.
 
 const VERSION = 'v1';
-const KEY_BYTES = 32;
 const SALT_BYTES = 16;
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
@@ -44,7 +43,7 @@ export interface KeyCipher {
 }
 
 function deriveKey(masterKey: string, salt: Buffer): Buffer {
-  return scryptSync(masterKey, salt, KEY_BYTES);
+  return Buffer.from(hkdfSync('sha256', masterKey, salt, 'galena/provider-key/v1', 32));
 }
 
 function encryptOnce(masterKey: string, plaintext: string): string {

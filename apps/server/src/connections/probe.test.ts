@@ -36,6 +36,14 @@ describe('provider probe', () => {
     });
   });
 
+  it('reports rate-limiting when the provider answers 429', async () => {
+    const probe = createProviderProbe(fakeFetch(429));
+    expect(await probe.testKey('openai', 'sk-fake-1234')).toEqual({
+      ok: false,
+      message: 'The provider is rate-limiting this key. Try again in a minute.',
+    });
+  });
+
   it('reports unreachable without echoing the key from a network error', async () => {
     const fetchImpl = vi.fn(async () => {
       throw new Error('ECONNREFUSED https://generativelanguage.googleapis.com?key=sk-fake-1234');

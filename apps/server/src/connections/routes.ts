@@ -18,7 +18,9 @@ export interface ConnectionsRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
   logger: ConnectionsLogger;
-  cipher: KeyCipher;
+  /** Absent when GALENA_KEY_ENCRYPTION_KEY is not configured: every route then
+   * answers 503 instead of touching keys. */
+  cipher?: KeyCipher;
   /** Injected in tests so no request ever hits a real provider. */
   probe?: ProviderProbe;
 }
@@ -29,11 +31,12 @@ export interface ConnectionsLogger {
 
 // The only fields a caller may send. `.strict()` is load-bearing: a key that
 // arrives with an unexpected field (say a provider it is not entitled to, or a
-// status it wants to set) is rejected rather than silently dropped.
+// status it wants to set) is rejected rather than silently dropped. The key is
+// trimmed because pasted keys often carry a trailing newline.
 const CreateConnectionSchema = z
   .object({
     provider: ProviderIdSchema,
-    key: z.string().min(1).max(16384),
+    key: z.string().trim().min(1).max(16384),
     label: z.string().trim().min(1).max(256).optional(),
   })
   .strict();
@@ -48,13 +51,26 @@ export function createConnectionsRoutes({
   const routes = new Hono();
   const probeImpl = probe ?? createProviderProbe();
 
+  const requireCipher = (): KeyCipher => {
+    if (cipher === undefined) {
+      throw new HttpError(
+        503,
+        'connections_unavailable',
+        'Provider connections are not configured on this server',
+      );
+    }
+    return cipher;
+  };
+
   routes.get('/connections', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
+    requireCipher();
     return c.json(await listConnections(db, user.id));
   });
 
   routes.post('/connections', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
+    const keyCipher = requireCipher();
     const parsed = CreateConnectionSchema.safeParse(await readJson(c));
     if (!parsed.success) {
       throw new HttpError(400, 'invalid_request', 'Invalid connection request');
@@ -62,7 +78,7 @@ export function createConnectionsRoutes({
     const connection = await createConnectionRow(db, {
       owner: user.id,
       provider: parsed.data.provider,
-      encryptedKey: cipher.encrypt(parsed.data.key),
+      encryptedKey: keyCipher.encrypt(parsed.data.key),
       label: parsed.data.label ?? null,
     });
     return c.json(connection, 201);
@@ -70,6 +86,7 @@ export function createConnectionsRoutes({
 
   routes.post('/connections/:id/test', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
+    const keyCipher = requireCipher();
     const connection = await findOwnedConnection(db, c.req.param('id'), user.id);
     if (!connection) {
       throw new HttpError(404, 'not_found', 'Connection not found');
@@ -77,7 +94,7 @@ export function createConnectionsRoutes({
 
     let key: string;
     try {
-      key = cipher.decrypt(connection.encryptedKey);
+      key = keyCipher.decrypt(connection.encryptedKey);
     } catch {
       logger.warn(
         { userId: user.id, connectionId: connection.id },
@@ -108,6 +125,7 @@ export function createConnectionsRoutes({
 
   routes.delete('/connections/:id', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
+    requireCipher();
     const deleted = await deleteConnectionRow(db, c.req.param('id'), user.id);
     if (!deleted) {
       throw new HttpError(404, 'not_found', 'Connection not found');

@@ -6,7 +6,15 @@ import { describe, expect, it } from 'vitest';
 /**
  * The gated live check for the human connections path. It drives the real dev
  * server (no mocks) through sign-up, then create → list → test → delete a
- * provider connection with a made-up key. No real provider key is used:
+ * provider connection with a made-up key. No real provider key is used.
+ *
+ * Required env vars:
+ *   GALENA_CONNECTIONS_INTEGRATION=1            (turns the test on)
+ *   GALENA_CONNECTIONS_INTEGRATION_LOG=<file>   (server log, to read the OTP)
+ *   GALENA_CONNECTIONS_INVITE_CODE=<invite>     (a fresh, unused invite code)
+ *   GALENA_CONNECTIONS_TEST_EMAIL=<email>       (a brand-new test email)
+ *
+ * Optional: GALENA_CONNECTIONS_INTEGRATION_URL (default http://127.0.0.1:3188).
  *
  *   GALENA_CONNECTIONS_INTEGRATION=1 \
  *   GALENA_CONNECTIONS_INTEGRATION_LOG=<server log file> \
