@@ -1,12 +1,13 @@
 import { Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { InviteDialog } from './InviteDialog';
+import { NewAiDialog } from './ais/NewAiDialog';
 import { NewGroupDialog } from './NewGroupDialog';
 
 const MENU_ITEM_CLASS =
   'flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none';
 
-type Dialog = 'group' | 'message' | 'invite';
+type Dialog = 'group' | 'message' | 'invite' | 'ai';
 
 /** Round pencil button at the bottom right of the chat list, with a small menu. */
 export function NewChatButton() {
@@ -55,6 +56,14 @@ export function NewChatButton() {
             >
               New message
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={MENU_ITEM_CLASS}
+              onClick={() => openDialog('ai')}
+            >
+              New AI
+            </button>
           </div>
         </>
       )}
@@ -71,6 +80,7 @@ export function NewChatButton() {
       </button>
 
       {dialog === 'group' && <NewGroupDialog onClose={() => setDialog(undefined)} />}
+      {dialog === 'ai' && <NewAiDialog onClose={() => setDialog(undefined)} />}
       {dialog === 'invite' && <InviteDialog onClose={() => setDialog(undefined)} />}
       {dialog === 'message' && (
         <div

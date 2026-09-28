@@ -1,40 +1,30 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { MessageSquare, Pencil, Plus, Trash2, Zap } from 'lucide-react';
-import {
-  deleteAi,
-  listAis,
-  listConnections,
-  updateAi,
-  type AiLimits,
-  type PublicAi,
-  type UpdateAiInput,
-} from '@/lib/api';
+import { deleteAi, listAis, listConnections, type PublicAi } from '@/lib/api';
 import { AiBadge } from '@/components/AiBadge';
 import { Avatar } from '@/components/Avatar';
 import { AiPageShell, Button, FieldError } from '@/components/ais/AiPageShell';
 import { providerLabel } from '@/components/ais/ConnectionPicker';
 import { describeAiError } from '@/components/ais/errors';
-import { LimitsFields } from '@/components/ais/LimitsFields';
-import { formatLimit, validateLimits } from '@/components/ais/limits';
+import { formatLimit } from '@/components/ais/limits';
+import { NewAiDialog } from '@/components/ais/NewAiDialog';
 import { templateLabel } from '@/components/ais/templates';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
 export function AisPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const highlightId = readHighlightId(location.state);
 
   const [ais, setAis] = useState<PublicAi[]>([]);
   const [providers, setProviders] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<PageStatus>('loading');
   const [errorMessage, setErrorMessage] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
-  const [editing, setEditing] = useState<PublicAi | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -91,11 +81,6 @@ export function AisPage() {
     }
   };
 
-  const saveEdit = async (ai: PublicAi, input: UpdateAiInput): Promise<void> => {
-    const updated = await updateAi(ai.id, input);
-    setAis((previous) => previous.map((item) => (item.id === updated.id ? updated : item)));
-  };
-
   return (
     <AiPageShell
       title="My AIs"
@@ -126,7 +111,7 @@ export function AisPage() {
               type="button"
               size="lg"
               className="rounded-full px-5"
-              onClick={() => navigate('/settings/ais/new')}
+              onClick={() => setCreating(true)}
             >
               Create an AI
             </Button>
@@ -139,7 +124,7 @@ export function AisPage() {
               type="button"
               size="lg"
               className="self-start rounded-full px-5"
-              onClick={() => navigate('/settings/ais/new')}
+              onClick={() => setCreating(true)}
             >
               <Plus aria-hidden="true" />
               Create AI
@@ -148,46 +133,32 @@ export function AisPage() {
             <ul className="flex flex-col gap-1">
               {ais.map((ai) => (
                 <li key={ai.id}>
-                  {editing?.id === ai.id ? (
-                    <EditAiForm
-                      ai={ai}
-                      onCancel={() => {
-                        setEditing(null);
-                        setActionError('');
-                      }}
-                      onSave={(input) => saveEdit(ai, input)}
-                      onSaved={() => setEditing(null)}
-                    />
-                  ) : (
-                    <AiRow
-                      ai={ai}
-                      providerName={providers[ai.providerConnectionId]}
-                      highlighted={ai.id === highlightId}
-                      confirming={confirmingId === ai.id}
-                      deleting={deletingId === ai.id}
-                      actionError={confirmingId === ai.id ? actionError : ''}
-                      onOpenChat={() => navigate(`/c/${encodeURIComponent(ai.jid)}`)}
-                      onEdit={() => {
-                        setActionError('');
-                        setEditing(ai);
-                      }}
-                      onAskDelete={() => {
-                        setActionError('');
-                        setConfirmingId(ai.id);
-                      }}
-                      onCancelDelete={() => {
-                        setActionError('');
-                        setConfirmingId(null);
-                      }}
-                      onConfirmDelete={() => void confirmDelete(ai.id)}
-                    />
-                  )}
+                  <AiRow
+                    ai={ai}
+                    providerName={providers[ai.providerConnectionId]}
+                    confirming={confirmingId === ai.id}
+                    deleting={deletingId === ai.id}
+                    actionError={confirmingId === ai.id ? actionError : ''}
+                    onOpenChat={() => navigate(`/c/${encodeURIComponent(ai.jid)}`)}
+                    onEdit={() => navigate(`/c/${encodeURIComponent(ai.jid)}?panel=ai`)}
+                    onAskDelete={() => {
+                      setActionError('');
+                      setConfirmingId(ai.id);
+                    }}
+                    onCancelDelete={() => {
+                      setActionError('');
+                      setConfirmingId(null);
+                    }}
+                    onConfirmDelete={() => void confirmDelete(ai.id)}
+                  />
                 </li>
               ))}
             </ul>
           </>
         )}
       </div>
+
+      {creating && <NewAiDialog onClose={() => setCreating(false)} />}
     </AiPageShell>
   );
 }
@@ -195,7 +166,6 @@ export function AisPage() {
 function AiRow({
   ai,
   providerName,
-  highlighted,
   confirming,
   deleting,
   actionError,
@@ -207,7 +177,6 @@ function AiRow({
 }: {
   ai: PublicAi;
   providerName: string | undefined;
-  highlighted: boolean;
   confirming: boolean;
   deleting: boolean;
   actionError: string;
@@ -218,13 +187,7 @@ function AiRow({
   onConfirmDelete: () => void;
 }) {
   return (
-    <div
-      className={
-        highlighted
-          ? 'flex items-start gap-3 rounded-xl border border-accent bg-accent/5 px-3 py-2.5 transition-colors'
-          : 'flex items-start gap-3 rounded-xl border border-transparent px-3 py-2.5 transition-colors hover:bg-list-hover'
-      }
-    >
+    <div className="flex items-start gap-3 rounded-xl border border-transparent px-3 py-2.5 transition-colors hover:bg-list-hover">
       <Avatar id={ai.id} name={ai.name} size={44} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -246,7 +209,7 @@ function AiRow({
         {confirming && (
           <>
             <p className="mt-1 text-[13px] text-danger">
-              This removes the AI's chat account and its provider key.
+              This removes the AI and its chat. Your provider connection stays.
             </p>
             {actionError !== '' && <FieldError>{actionError}</FieldError>}
           </>
@@ -303,147 +266,6 @@ function AiRow({
       </div>
     </div>
   );
-}
-
-function EditAiForm({
-  ai,
-  onCancel,
-  onSave,
-  onSaved,
-}: {
-  ai: PublicAi;
-  onCancel: () => void;
-  onSave: (input: UpdateAiInput) => Promise<void>;
-  onSaved: () => void;
-}) {
-  const [name, setName] = useState(ai.name);
-  const [persona, setPersona] = useState(ai.persona);
-  const [day, setDay] = useState(String(ai.limits.perDayUsd));
-  const [month, setMonth] = useState(String(ai.limits.perMonthUsd));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
-  const limits = validateLimits(day, month);
-
-  const submit = async (): Promise<void> => {
-    const patch = buildPatch({
-      name,
-      originalName: ai.name,
-      persona,
-      originalPersona: ai.persona,
-      limits: limits.limits,
-      originalLimits: ai.limits,
-    });
-    if (name.trim() === '' || limits.limits === null || patch === null) {
-      return;
-    }
-    setBusy(true);
-    setError('');
-    try {
-      await onSave(patch);
-      onSaved();
-    } catch (cause) {
-      setError(describeAiError(cause, 'Could not update the AI').message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-3 rounded-xl border border-divider bg-background p-4">
-      <h2 className="text-[16px] font-semibold">Edit {ai.name}</h2>
-
-      <label className="flex flex-col gap-1">
-        <span className="text-[14px] font-medium">Name</span>
-        <input
-          value={name}
-          maxLength={64}
-          onChange={(event) => setName(event.target.value)}
-          className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-        />
-      </label>
-
-      <label className="flex flex-col gap-1">
-        <span className="text-[14px] font-medium">Persona</span>
-        <textarea
-          rows={5}
-          maxLength={4000}
-          value={persona}
-          onChange={(event) => setPersona(event.target.value)}
-          className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-        />
-      </label>
-
-      <LimitsFields
-        day={day}
-        month={month}
-        dayError={limits.dayError}
-        monthError={limits.monthError}
-        onDayChange={setDay}
-        onMonthChange={setMonth}
-      />
-
-      {error !== '' && <FieldError>{error}</FieldError>}
-
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          size="lg"
-          className="rounded-full px-4"
-          disabled={busy || name.trim() === '' || limits.limits === null}
-          onClick={() => void submit()}
-        >
-          {busy ? 'Saving…' : 'Save'}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="lg"
-          className="rounded-full px-4"
-          disabled={busy}
-          onClick={onCancel}
-        >
-          Cancel
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/** PATCH carries only the fields that actually changed; null means nothing did. */
-export function buildPatch(input: {
-  name: string;
-  originalName: string;
-  persona: string;
-  originalPersona: string;
-  limits: AiLimits | null;
-  originalLimits: AiLimits;
-}): UpdateAiInput | null {
-  const patch: UpdateAiInput = {};
-  if (input.name.trim() !== input.originalName) {
-    patch.name = input.name.trim();
-  }
-  if (input.persona.trim() !== input.originalPersona) {
-    patch.persona = input.persona.trim();
-  }
-  if (
-    input.limits !== null &&
-    (input.limits.perDayUsd !== input.originalLimits.perDayUsd ||
-      input.limits.perMonthUsd !== input.originalLimits.perMonthUsd)
-  ) {
-    patch.limits = input.limits;
-  }
-  return Object.keys(patch).length === 0 ? null : patch;
-}
-
-function readHighlightId(state: unknown): string | null {
-  if (state !== null && typeof state === 'object' && 'highlightId' in state) {
-    const value = (state as { highlightId?: unknown }).highlightId;
-    if (typeof value === 'string') {
-      return value;
-    }
-  }
-  return null;
 }
 
 // The provider name is decoration on a row, never a reason to fail the page.

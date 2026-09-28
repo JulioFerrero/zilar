@@ -4,7 +4,6 @@ import { useAuth } from '@/auth/AuthProvider';
 import { ChatShell } from './ChatShell';
 import { AisPage } from './AisPage';
 import { ConnectionsPage } from './ConnectionsPage';
-import { CreateAiPage } from './CreateAiPage';
 import { InvitePage } from './InvitePage';
 import { LoginPage } from './LoginPage';
 import { NamePage } from './NamePage';
@@ -88,14 +87,6 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <AisPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings/ais/new"
-        element={
-          <RequireAuth>
-            <CreateAiPage />
           </RequireAuth>
         }
       />
