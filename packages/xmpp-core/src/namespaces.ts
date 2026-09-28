@@ -6,6 +6,7 @@ export const CHAT_STATES_NAMESPACE = 'http://jabber.org/protocol/chatstates';
 export const DATA_FORMS_NAMESPACE = 'jabber:x:data';
 export const DELAY_NAMESPACE = 'urn:xmpp:delay';
 export const FORWARD_NAMESPACE = 'urn:xmpp:forward:0';
+export const HTTP_UPLOAD_NAMESPACE = 'urn:xmpp:http:upload:0';
 export const MAM_NAMESPACE = 'urn:xmpp:mam:2';
 export const MUC_NAMESPACE = 'http://jabber.org/protocol/muc';
 export const MUC_USER_NAMESPACE = 'http://jabber.org/protocol/muc#user';

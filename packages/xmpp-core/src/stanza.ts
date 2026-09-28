@@ -10,6 +10,7 @@ import {
   CONFERENCE_NAMESPACE,
   DELAY_NAMESPACE,
   FORWARD_NAMESPACE,
+  HTTP_UPLOAD_NAMESPACE,
   MAM_NAMESPACE,
   MUC_NAMESPACE,
   MUC_USER_NAMESPACE,
@@ -29,6 +30,7 @@ import type {
   RosterEvent,
   RosterSubscription,
   TypingEvent,
+  UploadSlot,
 } from './types';
 
 const CHAT_STATES: ReadonlyArray<'composing' | 'paused' | 'active'> = [
@@ -118,6 +120,45 @@ export function buildAvailablePresence(): XmppElement {
 
 export function buildCarbonsEnable(id: string): XmppElement {
   return xml('iq', { type: 'set', id }, xml('enable', { xmlns: CARBONS_NAMESPACE }));
+}
+
+// XEP-0363 §4: a slot request addressed to the upload service component.
+export function buildUploadSlotRequest(options: {
+  id: string;
+  service: string;
+  filename: string;
+  size: number;
+  contentType: string;
+}): XmppElement {
+  return xml(
+    'iq',
+    { type: 'get', id: options.id, to: options.service },
+    xml('request', {
+      xmlns: HTTP_UPLOAD_NAMESPACE,
+      filename: options.filename,
+      size: String(options.size),
+      'content-type': options.contentType,
+    }),
+  );
+}
+
+// The slot response carries the PUT url (with headers) and the GET url.
+export function parseUploadSlot(stanza: XmppElement): UploadSlot | undefined {
+  const slot = stanza.getChild('slot', HTTP_UPLOAD_NAMESPACE);
+  if (slot === undefined) return undefined;
+  const putUrl = slot.getChild('put')?.attrs['url'];
+  const getUrl = slot.getChild('get')?.attrs['url'];
+  if (putUrl === undefined || putUrl === '' || getUrl === undefined || getUrl === '') {
+    return undefined;
+  }
+  const headers: Record<string, string> = {};
+  for (const header of slot.getChild('put')?.getChildren('header') ?? []) {
+    const name = header.attrs['name'];
+    if (name !== undefined && name !== '') {
+      headers[name] = header.text();
+    }
+  }
+  return { putUrl, getUrl, headers };
 }
 
 // RFC 6121 §2.1.6: a client acknowledges a roster push with an empty result.

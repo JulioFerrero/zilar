@@ -6,46 +6,62 @@ import { cn } from '@/lib/utils';
 const TICK_MS = 100;
 
 export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [showTranscript, setShowTranscript] = useState(false);
-  const progressRef = useRef(0);
+  const playable = voice.url !== undefined && voice.url !== '';
 
   useEffect(() => {
     if (!playing) {
       return;
     }
-    const startedAt = Date.now() - progressRef.current * voice.duration_ms;
     const timer = window.setInterval(() => {
-      const next = (Date.now() - startedAt) / voice.duration_ms;
-      if (next >= 1) {
-        progressRef.current = 0;
-        setProgress(0);
-        setPlaying(false);
+      const audio = audioRef.current;
+      if (audio === null || !Number.isFinite(audio.duration) || audio.duration <= 0) {
         return;
       }
-      progressRef.current = next;
-      setProgress(next);
+      setProgress(Math.min(1, audio.currentTime / audio.duration));
     }, TICK_MS);
     return () => window.clearInterval(timer);
-  }, [playing, voice.duration_ms]);
+  }, [playing]);
 
   const togglePlay = (): void => {
-    if (!playing && progressRef.current >= 1) {
-      progressRef.current = 0;
+    const audio = audioRef.current;
+    if (audio === null) {
+      return;
+    }
+    if (playing) {
+      audio.pause();
+      setPlaying(false);
+      return;
+    }
+    if (audio.ended || (audio.duration > 0 && audio.currentTime >= audio.duration)) {
+      audio.currentTime = 0;
       setProgress(0);
     }
-    setPlaying((value) => !value);
+    try {
+      void Promise.resolve(audio.play())
+        .then(() => setPlaying(true))
+        .catch(() => setPlaying(false));
+    } catch {
+      setPlaying(false);
+    }
   };
 
   return (
     <div className="min-w-[190px]">
+      {voice.url !== undefined && <audio ref={audioRef} src={voice.url} preload="metadata" />}
       <div className="flex items-center gap-2">
         <button
           type="button"
           aria-label={playing ? 'Pause voice message' : 'Play voice message'}
+          aria-disabled={!playable}
           onClick={togglePlay}
-          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground"
+          className={cn(
+            'flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground',
+            !playable && 'opacity-50',
+          )}
         >
           {playing ? (
             <Pause className="size-4" aria-hidden="true" />

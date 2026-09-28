@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
-import { createRealChatStore, type ApiClient, type StorageLike } from './realStore';
+import {
+  createRealChatStore,
+  type ApiClient,
+  type RealStoreDeps,
+  type StorageLike,
+} from './realStore';
 
 function memoryStorage(): StorageLike {
   const data = new Map<string, string>();
@@ -48,6 +53,11 @@ function fakeXmpp(): FakeXmpp {
     leaveRoom: vi.fn(async () => {}),
     occupants: vi.fn((): Occupant[] => []),
     sendMessage: vi.fn(async () => ({ id: 'srv-1' })),
+    requestUploadSlot: vi.fn(async () => ({
+      putUrl: 'http://upload.galena.test/put/1',
+      getUrl: 'http://upload.galena.test/get/1/voice.m4a',
+      headers: {},
+    })),
     loadHistory: vi.fn(
       async (chatJid: string, _kind: unknown, opts?: { before?: string; max?: number }) => {
         const list = history[chatJid] ?? [];
@@ -141,7 +151,7 @@ async function waitForRefresh(): Promise<void> {
   await flush();
 }
 
-async function setup(overrides: Partial<ApiClient> = {}) {
+async function setup(overrides: Partial<ApiClient> = {}, voice?: RealStoreDeps['voice']) {
   const api = fakeApi(overrides);
   const xmpp = fakeXmpp();
   xmpp.history['ana@galena.test'] = [
@@ -177,6 +187,7 @@ async function setup(overrides: Partial<ApiClient> = {}) {
       xmpp.options.current = options;
       return xmpp.core;
     },
+    ...(voice === undefined ? {} : { voice }),
   });
   store.getState().start();
   await flush();
@@ -275,6 +286,49 @@ describe('createRealChatStore', () => {
       .filter((item) => item.text === 'hello there');
     expect(matches).toHaveLength(1);
     expect(matches[0]?.id).toBe('srv-1');
+  });
+
+  it('sends a voice message with the server duration and the uploaded url', async () => {
+    const voice = {
+      convert: vi.fn(async () => ({
+        audio: new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/mp4' }),
+        durationMs: 4321,
+      })),
+      upload: vi.fn(async () => 'http://upload.galena.test/get/1/voice.m4a'),
+    };
+    const { store, xmpp } = await setup({}, voice);
+
+    store.getState().sendVoice('ana@galena.test', {
+      blob: new Blob([new Uint8Array([1, 2])], { type: 'audio/webm' }),
+      // The client's own duration must not reach the payload.
+      durationMs: 9999,
+      waveform: [1, 2, 3],
+    });
+
+    const optimistic = store.getState().messages('ana@galena.test').at(-1);
+    expect(optimistic?.voice?.duration_ms).toBe(9999);
+    expect(optimistic?.status).toBe('sending');
+
+    await flush();
+
+    expect(voice.convert).toHaveBeenCalledTimes(1);
+    expect(voice.upload).toHaveBeenCalledTimes(1);
+    expect(xmpp.core.sendMessage).toHaveBeenCalledWith('ana@galena.test', 'chat', '', {
+      payload: {
+        v: 0,
+        type: 'voice',
+        data: {
+          duration_ms: 4321,
+          mime: 'audio/mp4',
+          waveform: [1, 2, 3],
+          url: 'http://upload.galena.test/get/1/voice.m4a',
+        },
+      },
+    });
+    const sent = store.getState().messages('ana@galena.test').at(-1);
+    expect(sent?.voice?.duration_ms).toBe(4321);
+    expect(sent?.voice?.url).toBe('http://upload.galena.test/get/1/voice.m4a');
+    expect(sent?.status).toBe('sent');
   });
 
   it('updates the list preview when the optimistic send is confirmed', async () => {

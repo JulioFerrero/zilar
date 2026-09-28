@@ -13,6 +13,8 @@ import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
 import { serverVersion } from './version';
+import type { VoiceEngine } from './voice/engine';
+import { createVoiceRoutes } from './voice/routes';
 import type { EjabberdAdminClient } from './xmpp/admin-client';
 import { createXmppRoutes } from './xmpp/routes';
 
@@ -22,6 +24,10 @@ export interface AppDependencies {
   config: ServerConfig;
   auth: Auth;
   adminClient: EjabberdAdminClient;
+  /** Overrides the ffmpeg engine; tests inject a fake. */
+  voice?: VoiceEngine;
+  /** Overrides the upload size cap; tests use a small one. */
+  voiceMaxBytes?: number;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -33,6 +39,8 @@ export function createApp({
   config,
   auth,
   adminClient,
+  voice,
+  voiceMaxBytes,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
 
@@ -77,6 +85,14 @@ export function createApp({
   app.route('/api', createGroupsRoutes({ auth, db, config, adminClient, logger }));
   app.route('/api', createChatsRoutes({ auth, db, config }));
   app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));
+  app.route(
+    '/api',
+    createVoiceRoutes({
+      auth,
+      ...(voice === undefined ? {} : { engine: voice }),
+      ...(voiceMaxBytes === undefined ? {} : { maxBytes: voiceMaxBytes }),
+    }),
+  );
 
   app.get('/health', async (c) => {
     const up = await isDatabaseUp(db);

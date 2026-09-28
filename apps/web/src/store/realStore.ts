@@ -1,4 +1,4 @@
-import type { ChatSummary, MessageStatus, ReplyRef, UiMessage } from '@galena/chat-core';
+import type { ChatSummary, MessageStatus, ReplyRef, UiMessage, VoiceMeta } from '@galena/chat-core';
 import {
   createXmppCore,
   type ChatMessage,
@@ -25,6 +25,7 @@ import {
   type XmppToken,
 } from '@/lib/api';
 import { authClient } from '@/lib/auth';
+import { defaultVoicePort, type VoicePort } from '@/lib/voice';
 import type { ChatStoreState, ConnectionStatus } from './store';
 
 const LAST_READ_PREFIX = 'galena:lastRead:';
@@ -55,6 +56,8 @@ export interface RealStoreDeps {
   storage?: StorageLike | null;
   now?: () => Date;
   documentVisible?: () => boolean;
+  /** Conversion + XEP-0363 upload; tests inject fakes. */
+  voice?: VoicePort;
 }
 
 const realApi: ApiClient = {
@@ -102,6 +105,15 @@ function defaultStorage(): StorageLike | null {
 
 function defaultVisible(): boolean {
   return typeof document === 'undefined' || document.visibilityState === 'visible';
+}
+
+// `URL.createObjectURL` is missing in some test environments.
+function objectUrlFor(blob: Blob): string | undefined {
+  try {
+    return URL.createObjectURL(blob);
+  } catch {
+    return undefined;
+  }
 }
 
 function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
@@ -167,6 +179,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
   const now = deps.now ?? ((): Date => new Date());
   const isVisible = deps.documentVisible ?? defaultVisible;
   const createXmpp = deps.createXmpp ?? ((options: XmppCoreOptions) => createXmppCore(options));
+  const voicePort = deps.voice ?? defaultVoicePort;
 
   return createStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
@@ -274,6 +287,28 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
                         status: advanceStatus(chat.lastMessage.status, status),
                       },
                     }
+                  : chat,
+              )
+            : state.chats,
+        };
+      });
+    }
+
+    // Swaps the placeholder voice metadata of an optimistic message for the
+    // server's duration, waveform and upload URL.
+    function updateMessageVoice(chatId: string, messageId: string, voice: VoiceMeta): void {
+      set((state) => {
+        const list = listFor(state, chatId).map((item) =>
+          sameMessage(item.id, messageId) ? { ...item, voice } : item,
+        );
+        const last = state.chats.find((chat) => chat.id === chatId)?.lastMessage;
+        const lastMatches = last !== undefined && sameMessage(last.id, messageId);
+        return {
+          messagesByChat: { ...state.messagesByChat, [chatId]: list },
+          chats: lastMatches
+            ? state.chats.map((chat) =>
+                chat.id === chatId && chat.lastMessage !== undefined
+                  ? { ...chat, lastMessage: { ...chat.lastMessage, voice } }
                   : chat,
               )
             : state.chats,
@@ -415,6 +450,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           senderName: referenced?.senderName ?? '',
           ...(referenced?.text === undefined ? {} : { text: referenced.text }),
         };
+      }
+      if (message.payload !== undefined && message.payload.type === 'voice') {
+        ui.voice = message.payload.data;
       }
       return ui;
     }
@@ -969,6 +1007,65 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           .catch(() => {
             // The message stays marked as sending; a reconnect can resend later.
           });
+      },
+      sendVoice: (chatId, recording, options) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (chat === undefined || recording.blob.size === 0) {
+          return;
+        }
+        sequence += 1;
+        const localId = `local-${sequence}`;
+        const replyTo = options?.replyTo;
+        const localUrl = objectUrlFor(recording.blob);
+        const waveform = recording.waveform.length > 0 ? recording.waveform : [12];
+        const message: UiMessage = {
+          id: localId,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: 'You',
+          createdAt: now(),
+          status: 'sending',
+          voice: {
+            duration_ms: Math.max(1, recording.durationMs),
+            mime: 'audio/mp4',
+            waveform,
+            ...(localUrl === undefined ? {} : { url: localUrl }),
+          },
+          ...(replyTo === undefined ? {} : { replyTo }),
+        };
+        const signature = signatureFor(chatId, '', replyTo);
+        const queue = pendingOutgoing.get(signature) ?? [];
+        queue.push(localId);
+        pendingOutgoing.set(signature, queue);
+        setChatMessage(chatId, message, true);
+
+        const current = core;
+        if (current === undefined) {
+          return;
+        }
+
+        void (async () => {
+          try {
+            const converted = await voicePort.convert(recording.blob);
+            const url = await voicePort.upload(current, converted.audio);
+            const voice: VoiceMeta = {
+              duration_ms: converted.durationMs,
+              mime: 'audio/mp4',
+              waveform,
+              url,
+            };
+            updateMessageVoice(chatId, localId, voice);
+            const sent = await current.sendMessage(chatId, coreKind(chat), '', {
+              payload: { v: 0, type: 'voice', data: voice },
+              ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+            });
+            linkMessageIds(localId, sent.id);
+            updateMessageStatus(chatId, localId, 'sent');
+          } catch {
+            // The optimistic bubble keeps its local audio and stays "sending";
+            // the next attempt would resend after a reconnect.
+          }
+        })();
       },
       createGroup: async (title, memberIds) => {
         const detail = await api.createGroup({ title, memberIds });

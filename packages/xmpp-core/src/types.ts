@@ -110,6 +110,26 @@ export interface SendMessageOptions {
   replyTo?: { id: string; to?: string };
 }
 
+/** A file we want to upload through XEP-0363. */
+export interface UploadRequest {
+  /** Original file name, shown in the download URL. */
+  filename: string;
+  /** Exact byte size the client is about to PUT. */
+  size: number;
+  /** MIME type of the bytes. */
+  contentType: string;
+}
+
+/** The slot the upload service hands back (XEP-0363 §4). */
+export interface UploadSlot {
+  /** URL to PUT the bytes to. */
+  putUrl: string;
+  /** URL the receiver GETs the bytes from; this is what goes in the message. */
+  getUrl: string;
+  /** Extra headers the PUT must carry. */
+  headers: Record<string, string>;
+}
+
 export interface LoadHistoryOptions {
   /** Archive id to page before. */
   before?: string;
@@ -138,6 +158,8 @@ export interface XmppCore {
     opts?: SendMessageOptions,
   ): Promise<{ id: string }>;
   loadHistory(chatJid: string, kind: ChatKind, opts?: LoadHistoryOptions): Promise<HistoryPage>;
+  /** Asks the HTTP upload service for a slot to PUT a file to (XEP-0363). */
+  requestUploadSlot(request: UploadRequest): Promise<UploadSlot>;
   sendTyping(to: string, kind: ChatKind, state: 'composing' | 'paused'): void;
   markDisplayed(chatJid: string, kind: ChatKind, messageId: string): void;
   on(event: 'status', cb: (s: ConnectionStatus) => void): () => void;
