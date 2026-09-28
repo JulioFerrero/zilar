@@ -1378,9 +1378,44 @@ describe('agent gateway', () => {
       const drafts = draftsOf(events);
       expect(drafts.length).toBeLessThanOrEqual(2);
       const last = drafts.at(-1);
-      // Drafts carry the raw cumulative text (untrimmed); the DM is trimmed.
-      expect(last?.type === 'draft' ? last.text : '').toBe(full);
+      // The flush before the final send publishes the exact trimmed reply,
+      // so the last draft equals the DM text (not the raw untrimmed tail).
+      expect(last?.type === 'draft' ? last.text : '').toBe(full.trim());
       expect(events.at(-1)?.type).toBe('end');
+    });
+
+    it('flushes the complete text as a draft before the final XMPP send', async () => {
+      // Every delta lands in one synchronous burst, so the tail is still
+      // sitting in the throttle window when the turn ends.
+      const parts = ['Hello, ', 'Julio, ', 'here is ', 'the whole tail.'];
+      const full = parts.join('');
+      const { seeded, core, hub, events } = await draftsSetup([
+        sseResponse([...parts.map((part) => textChunk(part)), DONE]),
+      ]);
+      const order: string[] = [];
+      hub.subscribe(seeded.ownerId, (event) => {
+        order.push(event.type === 'draft' ? `draft:${event.text}` : `end:${event.outcome}`);
+      });
+      const send = core.sendMessage.bind(core);
+      core.sendMessage = async (to, kind, text) => {
+        order.push(`send:${text}`);
+        return send(to, kind, text);
+      };
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'tell me everything'));
+      await waitFor(() => order.some((entry) => entry.startsWith('end:')));
+
+      expect(core.sent).toEqual([{ to: seeded.ownerJid, kind: 'chat', text: full }]);
+      const sendIndex = order.findIndex((entry) => entry.startsWith('send:'));
+      const lastDraftIndex = order.reduce(
+        (last, entry, index) => (entry.startsWith('draft:') ? index : last),
+        -1,
+      );
+      expect(lastDraftIndex).toBeGreaterThanOrEqual(0);
+      expect(lastDraftIndex).toBeLessThan(sendIndex);
+      expect(order[lastDraftIndex]).toBe(`draft:${full}`);
+      expect(order.at(-1)).toBe('end:sent');
+      expect(events.at(-1)).toMatchObject({ type: 'end', outcome: 'sent' });
     });
 
     it('never puts tool-call arguments in a draft', async () => {

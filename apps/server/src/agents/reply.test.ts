@@ -743,3 +743,91 @@ describe('runDmTurn with streaming', () => {
     expect(harness.deltas.join('')).not.toContain('Answer in Spanish.');
   });
 });
+
+describe('runDmTurn beforeFinalSend', () => {
+  function hookHarness(fetchImpl: FetchLike, executeTool?: ExecuteToolCall) {
+    const logger = captureLogger();
+    const order: string[] = [];
+    const hooks: string[] = [];
+    const sent: Array<{ to: string; kind: ChatKind; text: string }> = [];
+    const run = () =>
+      runDmTurn({
+        aiId: 'ai-1',
+        ownerJid: OWNER_JID,
+        messages: MESSAGES,
+        baseUrl: BASE_URL,
+        virtualKey: VIRTUAL_KEY,
+        model: MODEL,
+        ...(executeTool === undefined ? {} : { executeTool }),
+        fetchImpl,
+        beforeFinalSend: (text) => {
+          hooks.push(text);
+          order.push(`hook:${text}`);
+        },
+        sendMessage: (to, kind, text) => {
+          sent.push({ to, kind, text });
+          order.push(`send:${text}`);
+          return Promise.resolve({ id: `m-${sent.length}` });
+        },
+        sendTyping: () => undefined,
+        logger,
+        secrets: [MASTER_KEY],
+      });
+    return { logger, order, hooks, sent, run };
+  }
+
+  it('receives the exact final text before its send', async () => {
+    const { fetchImpl } = createFetch(() => completionResponse('hello, Julio'));
+    const harness = hookHarness(fetchImpl);
+    const outcome = await harness.run();
+    expect(outcome).toEqual({ kind: 'replied', text: 'hello, Julio' });
+    expect(harness.hooks).toEqual(['hello, Julio']);
+    expect(harness.order).toEqual(['hook:hello, Julio', 'send:hello, Julio']);
+  });
+
+  it('is not called for failure texts', async () => {
+    const { fetchImpl } = createFetch(() => jsonResponse({ error: 'boom' }, 500));
+    const harness = hookHarness(fetchImpl);
+    const outcome = await harness.run();
+    expect(outcome).toEqual({ kind: 'failed', text: TRANSIENT_FAILURE_REPLY });
+    expect(harness.hooks).toHaveLength(0);
+    expect(harness.order).toEqual([`send:${TRANSIENT_FAILURE_REPLY}`]);
+  });
+
+  it('tool turn: called once with the full text plus the notice, before the send', async () => {
+    const args = { persona: 'Answer in Spanish.', summary: 'Spanish answers' };
+    const responses = [
+      jsonResponse({
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call-1',
+                  type: 'function',
+                  function: { name: 'update_persona', arguments: JSON.stringify(args) },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      completionResponse('vale'),
+    ];
+    let index = 0;
+    const fetchImpl: FetchLike = () => {
+      const response = responses[Math.min(index, responses.length - 1)]!;
+      index += 1;
+      return Promise.resolve(response.clone());
+    };
+    const notice = formatPersonaUpdatedLine('Spanish answers');
+    const full = `vale${notice}`;
+    const harness = hookHarness(fetchImpl, async () => ({ content: 'ok', notice }));
+    const outcome = await harness.run();
+    expect(outcome).toEqual({ kind: 'replied', text: full });
+    // Once, with the whole final text: never with the notice on its own.
+    expect(harness.hooks).toEqual([full]);
+    expect(harness.order).toEqual([`hook:${full}`, `send:${full}`]);
+  });
+});
