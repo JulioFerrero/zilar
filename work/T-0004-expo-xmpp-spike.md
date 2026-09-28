@@ -1,7 +1,7 @@
 ---
 id: T-0004
 title: Spike S2 — can @xmpp/client (xmpp.js) connect and stay connected from Expo on iOS?
-status: todo
+status: review
 milestone: M1
 branch: task/T-0004-expo-xmpp-spike
 model: opencode-go/deepseek-v4-pro
@@ -140,34 +140,166 @@ not what you are testing), but `pnpm --filter @galena/mobile typecheck` and
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+Built a throwaway diagnostic screen under `apps/mobile/src/spike/` that drives the
+**real** `@galena/xmpp-core` (which wraps `@xmpp/client`) on a real iOS build, and
+ran it against the already-running dev stack. The screen connects two accounts
+("self" and "peer") to `ws://127.0.0.1:5280/ws`, logs everything to both the Metro
+console and a visible on-screen list, sends a DM from self to peer, and the peer
+auto-replies with an echo — a full send/receive round trip. It also has an
+`AppState` listener, a disconnect/reconnect demo, and a build-time config read from
+`EXPO_PUBLIC_SPIKE_*`.
+
+- **`src/spike/polyfills.ts`** — conditional global shims (only installed when the
+  runtime lacks them) for `process.nextTick`, `btoa`/`atob` and `crypto.randomUUID`,
+  plus `nativeCapabilities()` so the screen prints exactly what Hermes provided vs.
+  what was shimmed.
+- **`src/spike/config.ts`** — `readSpikeEnv` / `readSpikeEnvFromProcess` (the latter
+  reads each `process.env.EXPO_PUBLIC_SPIKE_*` individually, because babel-preset-expo
+  only inlines/references individual `EXPO_PUBLIC_*` expressions — passing the whole
+  `process.env` object skips that, a bug I hit and fixed).
+- **`src/spike/fetch-token.ts`** — `requestXmppToken`, the production-shaped
+  `POST /api/xmpp/token` call with a runtime type guard (no zod, to avoid a new
+  dependency), unit-tested with a mocked fetch.
+- **`src/spike/spike-screen.tsx`** + **`src/app/spike.tsx`** (route) — the screen.
+- **`src/spike/empty.js`** + **`metro.config.js`** — a `resolveRequest` stub mapping
+  `@xmpp/tcp`, `@xmpp/tls`, `@xmpp/starttls`, `@xmpp/sasl-scram-sha-1` and
+  `node:dns` (plus `node:net/tls/http/https` defensively) to an empty module, because
+  Metro does not apply the `browser` field's module substitution (only the main
+  entry), so those packages' `node:*` imports otherwise fail to bundle.
+- **`src/types/xmpp.d.ts`** — a copy of `packages/xmpp-core/src/types/xmpp.d.ts` so
+  the mobile app's `tsc` can typecheck the imported xmpp-core source (which imports
+  `@xmpp/client`, which ships no types).
+- **`src/spike/spike.test.ts`** — 8 tests (config defaults/overrides, token fetch
+  success/error/bad-shape, base64 round-trip + known vector, `randomUuid` v4 shape).
 
 ### The verdict
-**Can `@galena/xmpp-core` run in Expo on iOS?** Yes / No / Yes with caveats
--
+
+**Can `@galena/xmpp-core` run in Expo on iOS?** **Yes, with a small, well-defined
+polyfill list.** Proven on a real build (Expo SDK 57, React Native 0.86.3 / Hermes,
+iPhone 17 Pro simulator): two `@galena/xmpp-core` instances went `online`, exchanged a
+DM and its echo, then disconnected and reconnected (re-invoking `getToken`). The exact
+on-device capability probe printed
+`native globals: nextTick=false btoa=true atob=true randomUUID=false TextEncoder=true`,
+so Hermes already provides `btoa`/`atob`/`TextEncoder`; only `process.nextTick` and
+`crypto.randomUUID` needed shims, plus the Metro stubs for the Node-builtin sub-packages.
 
 ### Polyfills and dependencies actually needed
--
+
+- **Two inline global shims (no npm package):**
+  - `process.nextTick` — RN's `global.process` is `{ env }` only; `@xmpp/events` calls `process.nextTick`.
+  - `crypto.randomUUID` — `@xmpp/client` calls `globalThis.crypto.randomUUID()` when building the client; Hermes has no `crypto.randomUUID`.
+- **One Metro `resolveRequest` stub** (empty module) for `@xmpp/tcp`, `@xmpp/tls`,
+  `@xmpp/starttls`, `@xmpp/sasl-scram-sha-1` and `node:dns` (defensively also
+  `node:net`, `node:tls`, `node:http`, `node:https`). xmpp.js handles a non-function
+  transport gracefully, and the DNS resolver is never called because the client always
+  connects with an explicit `ws://` service URL.
+- **Not needed** (proven by the capability probe): `buffer`, `text-encoding`,
+  `stream-browserify`, the `events` npm package (resolves transitively — `@xmpp/events`
+  declares it as a dependency), and the `process` npm package.
+- **Dependency added:** `@galena/xmpp-core` (`workspace:*`) to `apps/mobile`. No new
+  external npm package was added; `@xmpp/client` comes transitively.
 
 ### Files changed
--
+
+- **New:** `apps/mobile/src/spike/{polyfills,config,fetch-token,spike-screen}.ts`,
+  `apps/mobile/src/spike/spike.test.ts`, `apps/mobile/src/spike/empty.js`,
+  `apps/mobile/src/app/spike.tsx`, `apps/mobile/src/types/xmpp.d.ts`,
+  `apps/mobile/screenshots/spike-connected.png`, `apps/mobile/screenshots/spike-reconnect.png`.
+- **Modified:** `apps/mobile/metro.config.js`, `apps/mobile/package.json`,
+  `pnpm-lock.yaml`, `work/T-0004-expo-xmpp-spike.md`.
+- `apps/mobile/src/app/index.tsx` was temporarily pointed at `/spike` for the screenshot
+  and restored; it is **not** in the diff. No `packages/**`, `apps/server/**` or
+  `apps/web/**` file was touched.
 
 ### Commands run and real results
-- `pnpm typecheck`:
-- `pnpm lint`:
-- `pnpm test`:
+
+- `pnpm install`: PASS — "Already up to date" (added the `@galena/xmpp-core` symlink to `apps/mobile`).
+- `pnpm format:check`: PASS — "All matched files use Prettier code style!".
+- `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (243 files, 127 rules).
+- `pnpm typecheck`: PASS — turbo "8 successful, 8 total".
+- `pnpm test`: PASS — turbo "8 successful, 8 total"; `@galena/mobile` 35 passed (6 files,
+  including 8 new spike tests).
+- `pnpm xmpp:e2e`: PASS — 12/12 (run once to confirm this worktree's `infra/.env` secret
+  matches the running ejabberd, after the app first reported `not-authorized`).
+- `npx expo run:ios --no-bundler`: Build Succeeded (0 errors), installed + opened on
+  "iPhone 17 Pro".
+- `npx expo start` (Metro): `iOS Bundled … (3986 modules)`; the on-screen/Metro log showed
+  the full flow (below). All processes I started were stopped afterwards.
 
 ### Reconnect and background results
--
+
+Live Metro log (abridged), from the running iOS app:
+
+```
+LOG [spike] native globals: nextTick=false btoa=true atob=true randomUUID=false TextEncoder=true
+LOG [spike] self status: online
+LOG [spike] self online as spike-mukibdghjg0q@galena.localhost
+LOG [spike] peer status: online
+LOG [spike] peer online as spike-peer-mukibdghjg0q@galena.localhost
+LOG [spike] self → sent "hello from the spike" (id gmukk1go0-3-f335f9)
+LOG [spike] peer ← message from spike-mukibdghjg0q@galena.localhost [chat]: hello from the spike
+LOG [spike] self ← message from spike-peer-mukibdghjg0q@galena.localhost [chat]: echo: hello from the spike
+LOG [spike] reconnect demo: disconnecting then reconnecting
+LOG [spike] getToken called for self          ← re-invoked on reconnect
+LOG [spike] self status: online
+LOG [spike] peer status: online
+LOG [spike] reconnect demo: done
+```
+
+- **Reconnect / JWT refresh:** `disconnect()` → `connect()` re-invokes `getToken` for
+  both clients and returns to `online`, so the refresh hook (which the next task wires
+  to `POST /api/xmpp/token`) fires on every reconnect. I could not force a genuine
+  socket drop without touching the shared ejabberd; the auto-reconnect itself is
+  `@xmpp/reconnect`, already exercised by `pnpm xmpp:e2e` ("Bob reconnects with a new token").
+- **Background/foreground:** backgrounding the app (opening Settings) fired
+  `AppState: background`; a ~60 s background on the simulator did **not** drop the XMPP
+  socket (no `offline`/`error`), and foregrounding resumed with no reconnect needed.
+  A real device is likely more aggressive about suspending, so the next task should
+  still reconnect on `active` when the status is not `online`.
 
 ### Problems, deviations from the spec, open questions
--
+
+1. **The spike uses `@galena/xmpp-core`, not raw `@xmpp/client`.** The verdict is about
+   xmpp-core; it wraps `@xmpp/client`, so using the real thing is the stronger evidence.
+   This added the workspace dependency `@galena/xmpp-core` (not in the "allowed
+   dependencies" list, but it is the subject of the spike and adds no external package).
+2. **Live auth.** The mobile app has no auth yet, so the live run connected with a JWT
+   minted directly from `infra/.env` (`GALENA_XMPP_JWT_SECRET`), with the same
+   `{ jid, iat, exp }` HS256 shape `POST /api/xmpp/token` returns. That call is
+   implemented and unit-tested (`fetch-token.ts`) but was not exercised live (it needs a
+   Better Auth session, which is a later task).
+3. **No npm polyfills were needed**, so none of `buffer`/`events`/`process`/
+   `text-encoding`/`stream-browserify` were added. The `events` package resolves
+   transitively (declared by `@xmpp/events`), and `process.nextTick` was shimmed inline.
+4. **`src/types/xmpp.d.ts` duplicates xmpp-core's** ambient `@xmpp/client` declaration
+   because mobile's `tsc` does not include xmpp-core's `.d.ts`. A cleaner long-term fix
+   would be for xmpp-core to ship compiled types, but that is outside this task's files.
+5. **Fixed a real bug during the spike:** my first `crypto.randomUUID` shim recursed
+   (`crypto.randomUUID` became the shim itself) → "Maximum call stack size exceeded".
+   Fixed and covered by a regression test (`randomUuid` v4 shape).
+6. **Deviation from spec item 3 (kill the network):** I could not drop the socket on the
+   simulator without stopping ejabberd (which serves Julio and is not mine to touch), so
+   the reconnect test used the client's own disconnect/reconnect path instead.
 
 ### What the next task (mobile on real data) has to do
--
+
+1. Promote the two inline shims out of `spike/` into app init (a `src/lib/polyfills.ts`
+   imported first in the root layout).
+2. Keep the `metro.config.js` `resolveRequest` stub (or add an equivalent alias) so
+   `@xmpp/client` bundles.
+3. Wire `createXmppCore`'s `getToken` to `requestXmppToken` (already implemented and
+   tested), and add mobile auth (Better Auth) so a session exists to call it.
+4. On `AppState` `active`, reconnect when the core is not `online` (defensive for real
+   devices, where background suspension drops the socket more readily).
+5. Delete `apps/mobile/src/spike/`, `apps/mobile/src/app/spike.tsx` and the two
+   `screenshots/spike-*.png` in one go.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+
+- Nothing blocked. Two small things the lead may want to confirm: (a) the
+  `@galena/xmpp-core` workspace dependency (subject of the spike, adds no external
+  package), and (b) the duplicated `@xmpp/client` ambient types under `apps/mobile`.
 
 ---
 
