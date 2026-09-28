@@ -380,6 +380,35 @@ value. The existing `PATCH limits` test now asserts the stored `30.00`.
 
 Still not run: `GALENA_AIS_INTEGRATION=1` (the lead runs it).
 
+### Round 3
+
+Fixed findings 5 and 6, both in `apps/server/src/ais/integration.test.ts` only.
+
+**Finding 5 — key lookup.** `findKeyToken` now calls
+`/key/list?return_full_object=true&size=100` and matches `key_alias` on the full
+key records (the lead's live run showed that without `return_full_object=true`
+this LiteLLM returns bare token strings, which carry no alias). The `KeyListEntry`
+type is now just the object shape, and the token handle is read from
+`token ?? token_id ?? key`.
+
+**Finding 6 — cleanup on failure.** The test body is wrapped in `try/finally`.
+Three ids (`token`, `connectionId`, `aiId`) are tracked outside the `try`; each is
+cleared once the test itself has deleted that resource. The `finally` does a
+best-effort `DELETE /api/ais/:id` and `DELETE /api/connections/:id` for whatever
+is still set, swallowing every error (including network errors) so cleanup can
+never mask the original failure. An early `return` (no OTP, no session token)
+still runs the `finally`, and at that point there is nothing to clean.
+
+**Round 3 commands (real, on the loaded machine):**
+- `pnpm format:check`: `All matched files use Prettier code style!`
+- `pnpm lint`: exit 0 (no findings; oxlint printed no summary on this run).
+- `pnpm typecheck`: `Tasks: 8 successful, 8 total`.
+- `pnpm --filter @galena/server exec vitest run`: **27 files passed, 4 skipped
+  (31); 253 passed, 5 skipped (258)**, 52.85 s. `integration.test.ts` is among
+  the skipped files (gate not set).
+
+Not run, as instructed: the gated `GALENA_AIS_INTEGRATION=1` test and any server.
+
 ---
 
 ## Review (written by Claude)

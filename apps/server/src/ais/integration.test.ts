@@ -13,7 +13,8 @@ import { aiLocalpart, virtualKeyAlias } from './service';
  * server (no mocks) through sign-up, then create → check XMPP account and
  * roster → check the LiteLLM cap → patch the cap → delete, and finally checks
  * that the XMPP account and the virtual key are gone. The provider key is
- * made up, so no real model call is made.
+ * made up, so no real model call is made. A run that fails part way best-effort
+ * deletes whatever it created, so it never leaves an AI or a connection behind.
  *
  * Required env vars:
  *   GALENA_AIS_INTEGRATION=1                 (turns the test on)
@@ -143,27 +144,26 @@ function bearer(token: string): Record<string, string> {
   return { authorization: `Bearer ${token}` };
 }
 
-// A LiteLLM key as it appears in `/key/list`. The endpoint has returned bare
-// token strings in some versions and objects in others, so both are handled.
-type KeyListEntry =
-  string | { token?: string; token_id?: string; key?: string; key_alias?: string | null };
-
-function entryToken(entry: KeyListEntry): string | undefined {
-  if (typeof entry === 'string') {
-    return entry;
-  }
-  return entry.token ?? entry.token_id ?? entry.key;
+// One record from `/key/list?return_full_object=true`. `key_alias` names the
+// AI; `token` (or `token_id`) is the handle `/key/info?key=` accepts. Without
+// `return_full_object=true` this LiteLLM returns bare token strings, which
+// carry no alias to match on.
+interface KeyListEntry {
+  token?: string;
+  token_id?: string;
+  key?: string;
+  key_alias?: string | null;
 }
 
-function entryAlias(entry: KeyListEntry): string | undefined {
-  return typeof entry === 'string' ? undefined : (entry.key_alias ?? undefined);
+function entryToken(entry: KeyListEntry): string | undefined {
+  return entry.token ?? entry.token_id ?? entry.key;
 }
 
 // Finds the LiteLLM token id for an AI's key alias. `/key/info?key_alias=` is
 // not supported by this pinned version, so the key is located through
-// `/key/list` and then read with `/key/info?key=<token>`.
+// `/key/list?return_full_object=true` and then read with `/key/info?key=<token>`.
 async function findKeyToken(baseUrl: string, masterKey: string, alias: string): Promise<string> {
-  const response = await fetch(`${baseUrl}/key/list`, {
+  const response = await fetch(`${baseUrl}/key/list?return_full_object=true&size=100`, {
     headers: { authorization: `Bearer ${masterKey}` },
     signal: AbortSignal.timeout(10_000),
   });
@@ -171,7 +171,7 @@ async function findKeyToken(baseUrl: string, masterKey: string, alias: string): 
     throw new Error(`GET /key/list failed with HTTP ${response.status}`);
   }
   const body = (await response.json()) as { keys?: KeyListEntry[] };
-  const match = (body.keys ?? []).find((entry) => entryAlias(entry) === alias);
+  const match = (body.keys ?? []).find((entry) => entry.key_alias === alias);
   const token = match === undefined ? undefined : entryToken(match);
   if (token === undefined) {
     throw new Error(`no LiteLLM key with alias "${alias}"`);
@@ -213,95 +213,129 @@ describe.skipIf(!ENABLED)('AIs integration (real server)', () => {
     const adminClient = createEjabberdAdminClient(xmppConfig);
     const litellm = createLitellmAdminClient({ baseUrl: litellmBaseUrl, masterKey });
 
-    // 1. Sign up through the invite, reading the OTP from the server log.
-    const before = await fileSize(logPath);
-    const sendResponse = await request(baseUrl, '/api/auth/email-otp/send-verification-otp', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
-      body: { email, type: 'sign-in' },
-    });
-    expect(sendResponse.status).toBe(200);
+    // The ids the cleanup below may need. Each is cleared once the test itself
+    // has deleted it, so an aborted run only tears down what it created.
+    let token: string | undefined;
+    let connectionId: string | undefined;
+    let aiId: string | undefined;
 
-    const otp = await readOtpFromLog(logPath, email, before);
-    expect(otp).toBeDefined();
-    if (otp === undefined) return;
+    try {
+      // 1. Sign up through the invite, reading the OTP from the server log.
+      const before = await fileSize(logPath);
+      const sendResponse = await request(baseUrl, '/api/auth/email-otp/send-verification-otp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+        body: { email, type: 'sign-in' },
+      });
+      expect(sendResponse.status).toBe(200);
 
-    const signInResponse = await request(baseUrl, '/api/auth/sign-in/email-otp', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
-      body: { email, otp },
-    });
-    expect(signInResponse.status).toBe(200);
-    const token = signInResponse.headers['set-auth-token'];
-    expect(typeof token).toBe('string');
-    if (typeof token !== 'string') return;
-    const userId = (signInResponse.body as { user: { id: string } }).user.id;
+      const otp = await readOtpFromLog(logPath, email, before);
+      expect(otp).toBeDefined();
+      if (otp === undefined) return;
 
-    // 2. Create a connection with a made-up key.
-    const connectionResponse = await request(baseUrl, '/api/connections', {
-      method: 'POST',
-      headers: { ...bearer(token), 'content-type': 'application/json' },
-      body: { provider: 'openai', key: FAKE_PROVIDER_KEY, label: 'AIs integration' },
-    });
-    expect(connectionResponse.status).toBe(201);
-    const connectionId = (connectionResponse.body as { id: string }).id;
+      const signInResponse = await request(baseUrl, '/api/auth/sign-in/email-otp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+        body: { email, otp },
+      });
+      expect(signInResponse.status).toBe(200);
+      const sessionToken = signInResponse.headers['set-auth-token'];
+      expect(typeof sessionToken).toBe('string');
+      if (typeof sessionToken !== 'string') return;
+      token = sessionToken;
+      const userId = (signInResponse.body as { user: { id: string } }).user.id;
 
-    // 3. Create an AI with a 3 USD monthly cap.
-    const createResponse = await request(baseUrl, '/api/ais', {
-      method: 'POST',
-      headers: { ...bearer(token), 'content-type': 'application/json' },
-      body: {
-        name: 'Integration AI',
-        template: 'dev',
-        providerConnectionId: connectionId,
-        model: 'gpt-4o-mini',
-        limits: { perDayUsd: 1, perMonthUsd: 3 },
-      },
-    });
-    expect(createResponse.status).toBe(201);
-    const created = createResponse.body as { id: string; jid: string };
-    expect(created.jid).toBe(`${aiLocalpart(created.id)}@${domain}`);
-    expect(JSON.stringify(createResponse.body)).not.toContain('sk-');
+      // 2. Create a connection with a made-up key.
+      const connectionResponse = await request(baseUrl, '/api/connections', {
+        method: 'POST',
+        headers: { ...bearer(token), 'content-type': 'application/json' },
+        body: { provider: 'openai', key: FAKE_PROVIDER_KEY, label: 'AIs integration' },
+      });
+      expect(connectionResponse.status).toBe(201);
+      connectionId = (connectionResponse.body as { id: string }).id;
 
-    // 4. The XMPP account exists and is in the owner's roster.
-    expect(await adminClient.userExists(aiLocalpart(created.id))).toBe(true);
-    const roster = await adminClient.getRoster(localpartFor(userId));
-    expect(roster).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ jid: created.jid, nick: 'Integration AI', subscription: 'both' }),
-      ]),
-    );
+      // 3. Create an AI with a 3 USD monthly cap.
+      const createResponse = await request(baseUrl, '/api/ais', {
+        method: 'POST',
+        headers: { ...bearer(token), 'content-type': 'application/json' },
+        body: {
+          name: 'Integration AI',
+          template: 'dev',
+          providerConnectionId: connectionId,
+          model: 'gpt-4o-mini',
+          limits: { perDayUsd: 1, perMonthUsd: 3 },
+        },
+      });
+      expect(createResponse.status).toBe(201);
+      const created = createResponse.body as { id: string; jid: string };
+      aiId = created.id;
+      expect(created.jid).toBe(`${aiLocalpart(created.id)}@${domain}`);
+      expect(JSON.stringify(createResponse.body)).not.toContain('sk-');
 
-    // 5. The gateway key is capped at perMonthUsd.
-    const alias = virtualKeyAlias(created.id);
-    const keyToken = await findKeyToken(litellmBaseUrl, masterKey, alias);
-    const info = await litellm.getKeyInfo(keyToken);
-    expect(info.maxBudget).toBe(3);
+      // 4. The XMPP account exists and is in the owner's roster.
+      expect(await adminClient.userExists(aiLocalpart(created.id))).toBe(true);
+      const roster = await adminClient.getRoster(localpartFor(userId));
+      expect(roster).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            jid: created.jid,
+            nick: 'Integration AI',
+            subscription: 'both',
+          }),
+        ]),
+      );
 
-    // 6. Patching the limit updates the cap in the gateway.
-    const patchResponse = await request(baseUrl, `/api/ais/${created.id}`, {
-      method: 'PATCH',
-      headers: { ...bearer(token), 'content-type': 'application/json' },
-      body: { limits: { perDayUsd: 1, perMonthUsd: 7 } },
-    });
-    expect(patchResponse.status).toBe(200);
-    const patchedInfo = await litellm.getKeyInfo(keyToken);
-    expect(patchedInfo.maxBudget).toBe(7);
+      // 5. The gateway key is capped at perMonthUsd.
+      const alias = virtualKeyAlias(created.id);
+      const keyToken = await findKeyToken(litellmBaseUrl, masterKey, alias);
+      const info = await litellm.getKeyInfo(keyToken);
+      expect(info.maxBudget).toBe(3);
 
-    // 7. Delete: the account and the key are gone.
-    const deleteResponse = await request(baseUrl, `/api/ais/${created.id}`, {
-      method: 'DELETE',
-      headers: bearer(token),
-    });
-    expect(deleteResponse.status).toBe(204);
-    expect(await adminClient.userExists(aiLocalpart(created.id))).toBe(false);
-    expect(await isKeyPresent(litellmBaseUrl, masterKey, alias)).toBe(false);
+      // 6. Patching the limit updates the cap in the gateway.
+      const patchResponse = await request(baseUrl, `/api/ais/${created.id}`, {
+        method: 'PATCH',
+        headers: { ...bearer(token), 'content-type': 'application/json' },
+        body: { limits: { perDayUsd: 1, perMonthUsd: 7 } },
+      });
+      expect(patchResponse.status).toBe(200);
+      const patchedInfo = await litellm.getKeyInfo(keyToken);
+      expect(patchedInfo.maxBudget).toBe(7);
 
-    // 8. Clean up the connection we created.
-    const removeConnection = await request(baseUrl, `/api/connections/${connectionId}`, {
-      method: 'DELETE',
-      headers: bearer(token),
-    });
-    expect(removeConnection.status).toBe(204);
+      // 7. Delete: the account and the key are gone.
+      const deleteResponse = await request(baseUrl, `/api/ais/${created.id}`, {
+        method: 'DELETE',
+        headers: bearer(token),
+      });
+      expect(deleteResponse.status).toBe(204);
+      aiId = undefined;
+      expect(await adminClient.userExists(aiLocalpart(created.id))).toBe(false);
+      expect(await isKeyPresent(litellmBaseUrl, masterKey, alias)).toBe(false);
+
+      // 8. Clean up the connection we created.
+      const removeConnection = await request(baseUrl, `/api/connections/${connectionId}`, {
+        method: 'DELETE',
+        headers: bearer(token),
+      });
+      expect(removeConnection.status).toBe(204);
+      connectionId = undefined;
+    } finally {
+      // Best-effort cleanup so a run that fails part way leaves no AI or
+      // connection behind. Cleanup errors are swallowed: they must never mask
+      // the original failure.
+      if (token !== undefined) {
+        const headers = bearer(token);
+        if (aiId !== undefined) {
+          await request(baseUrl, `/api/ais/${aiId}`, { method: 'DELETE', headers }).catch(
+            () => undefined,
+          );
+        }
+        if (connectionId !== undefined) {
+          await request(baseUrl, `/api/connections/${connectionId}`, {
+            method: 'DELETE',
+            headers,
+          }).catch(() => undefined);
+        }
+      }
+    }
   });
 });
