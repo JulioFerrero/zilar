@@ -1,7 +1,7 @@
 ---
 id: T-0097
 title: Web: approval card refreshes itself, and the menu shows how many approvals wait (web)
-status: review
+status: merged
 milestone: M4
 branch: task/T-0097-approval-card-live-refresh
 model: minimax-coding-plan/MiniMax-M3
@@ -140,4 +140,8 @@ None.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged. Rebased on main; format, lint, typecheck, build clean; web 607 passed. No disable comments.
+
+Read the hook line by line: polls every 10 s only while visible and pending, reads once when the tab becomes visible, stops on any non-pending status, on a 404 (viewer cannot decide), on unmount and on id change; a failed poll keeps the last good state; the loading reset uses the adjust-state-during-render pattern (no setState in an effect body). The menu count loads only when the menu opens and never shows an error.
+
+Process note: the worker went idle at ~09:11 with the work unfinished and no Report; a lead re-prompt (`lead reply`) got it to finish. Idle workers are not always flagged by the autopilot: check `status` by hand.
