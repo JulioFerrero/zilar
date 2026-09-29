@@ -10,6 +10,7 @@ CREATE TABLE "pending_actions" (
 	"status" text DEFAULT 'waiting' NOT NULL,
 	"result_summary" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"started_at" timestamp with time zone,
 	"finished_at" timestamp with time zone,
 	CONSTRAINT "pending_actions_approval_id_unique" UNIQUE("approval_id")
 );

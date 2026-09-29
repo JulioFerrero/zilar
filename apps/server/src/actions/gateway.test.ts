@@ -637,10 +637,10 @@ describe('action gateway', () => {
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
       }
-      // Move the pending row to `running` and back-date `createdAt`.
+      // Move the pending row to `running` and back-date `startedAt`.
       await harness.context.db
         .update(pendingActions)
-        .set({ status: 'running', createdAt: new Date(Date.now() - 11 * 60 * 1000) })
+        .set({ status: 'running', startedAt: new Date(Date.now() - 11 * 60 * 1000) })
         .where(eq(pendingActions.approvalId, result.approvalId));
 
       await harness.gateway.recoverStuck();
@@ -659,6 +659,59 @@ describe('action gateway', () => {
       expect(stuckAudit.length).toBeGreaterThan(0);
       const last = stuckAudit[stuckAudit.length - 1];
       expect(last?.detail).toEqual({ reason: 'stuck' });
+    });
+
+    it('does not treat a long-waiting action that only just started as stuck', async () => {
+      const ownerId = await seedUser(harness.context);
+      const { aiId } = await seedAi(harness.context, ownerId);
+      const result = await harness.gateway.request({
+        aiId,
+        action: 'tier2.echo',
+        args: { value: 'slow-approval' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      if (result.status !== 'pending_approval') {
+        throw new Error('expected pending_approval');
+      }
+      await harness.context.db
+        .update(pendingActions)
+        .set({
+          status: 'running',
+          createdAt: new Date(Date.now() - 25 * 60 * 1000),
+          startedAt: new Date(),
+        })
+        .where(eq(pendingActions.approvalId, result.approvalId));
+
+      await harness.gateway.recoverStuck();
+
+      const [pending] = await harness.context.db
+        .select()
+        .from(pendingActions)
+        .where(eq(pendingActions.approvalId, result.approvalId));
+      expect(pending?.status).toBe('running');
+    });
+
+    it('leaves a waiting action alone when its approval is still undecided', async () => {
+      const ownerId = await seedUser(harness.context);
+      const { aiId } = await seedAi(harness.context, ownerId);
+      const result = await harness.gateway.request({
+        aiId,
+        action: 'tier2.echo',
+        args: { value: 'undecided' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      if (result.status !== 'pending_approval') {
+        throw new Error('expected pending_approval');
+      }
+
+      await harness.gateway.onApprovalDecided(result.approvalId);
+
+      const [pending] = await harness.context.db
+        .select()
+        .from(pendingActions)
+        .where(eq(pendingActions.approvalId, result.approvalId));
+      expect(pending?.status).toBe('waiting');
+      expect(harness.adapters[2]?.calls).toHaveLength(0);
     });
 
     it('cancels a waiting row whose approval is past due', async () => {

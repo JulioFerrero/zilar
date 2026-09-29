@@ -386,12 +386,16 @@ async function runOnApprovalDecided(
     .where(eq(ais.id, pending.aiId))
     .limit(1);
   if (!ai || ai.status !== 'active') {
-    await cancelPending(deps, pending, 'ai_not_active');
+    await cancelPending(deps, pending, 'ai_not_active', at);
     return;
   }
 
   if (approval.status === 'denied' || approval.expiresAt.getTime() <= at.getTime()) {
-    await cancelPending(deps, pending, 'denied');
+    await cancelPending(deps, pending, 'denied', at);
+    return;
+  }
+  if (approval.status === 'pending') {
+    // Not decided yet: nothing to run and nothing to cancel.
     return;
   }
 
@@ -411,7 +415,7 @@ async function runOnApprovalDecided(
       .where(eq(approvals.id, approvalId))
       .limit(1);
     if (postVerify?.status !== 'consumed') {
-      await cancelPending(deps, pending, 'denied');
+      await cancelPending(deps, pending, 'denied', at);
     }
     return;
   }
@@ -421,7 +425,7 @@ async function runOnApprovalDecided(
   // `running`, which `recoverStuck` reports — never re-executes.
   const claimed = await deps.db
     .update(pendingActions)
-    .set({ status: 'running' })
+    .set({ status: 'running', startedAt: at })
     .where(and(eq(pendingActions.id, pending.id), eq(pendingActions.status, 'waiting')))
     .returning();
   if (claimed.length === 0) {
@@ -476,7 +480,7 @@ async function runRecoverStuck(deps: ActionGatewayDependencies, now: () => Date)
   const stuck = await deps.db
     .update(pendingActions)
     .set({ status: 'failed', finishedAt: at })
-    .where(and(eq(pendingActions.status, 'running'), lt(pendingActions.createdAt, stuckCutoff)))
+    .where(and(eq(pendingActions.status, 'running'), lt(pendingActions.startedAt, stuckCutoff)))
     .returning();
   for (const row of stuck) {
     await deps.audit.record({
@@ -507,7 +511,7 @@ async function runRecoverStuck(deps: ActionGatewayDependencies, now: () => Date)
       continue;
     }
     if (approval.status === 'denied' || approval.expiresAt.getTime() <= at.getTime()) {
-      await cancelPending(deps, row, 'denied');
+      await cancelPending(deps, row, 'denied', at);
     }
   }
 }
@@ -516,8 +520,8 @@ async function cancelPending(
   deps: ActionGatewayDependencies,
   row: PendingActionRow,
   reason: 'denied' | 'ai_not_active',
+  at: Date,
 ): Promise<void> {
-  const at = new Date();
   const updated = await deps.db
     .update(pendingActions)
     .set({ status: 'cancelled', finishedAt: at })
@@ -550,7 +554,7 @@ async function finishPending(
   await deps.db
     .update(pendingActions)
     .set({ status, resultSummary: summary, finishedAt: at })
-    .where(eq(pendingActions.id, row.id));
+    .where(and(eq(pendingActions.id, row.id), eq(pendingActions.status, 'running')));
 }
 
 async function writeAllowAudit(

@@ -390,6 +390,9 @@ export const pendingActions = pgTable(
       .default('waiting'),
     resultSummary: text('result_summary'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    // Set when the row is claimed (`waiting → running`). Stuck detection
+    // measures from here: a request may wait a long time for its approval.
+    startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
   },
   (table) => [index('pending_actions_status_idx').on(table.status)],

@@ -1,7 +1,7 @@
 ---
 id: T-0090
 title: Action gateway (M4 core, server) — adapters, a tier policy, approval-gated execution of the exact approved request, audit at every step
-status: review
+status: merged
 milestone: M4
 branch: task/T-0090-action-gateway
 model: minimax-coding-plan/MiniMax-M3
@@ -144,4 +144,15 @@ Built the action gateway end-to-end:
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged after three lead fixes (security-sensitive code, read line by line).
+
+Checks after the last edit (rebased on main): format, lint, typecheck clean; server suite 755 passed, 7 skipped. No lint or ts disable comments; `db:generate` reports no schema changes.
+
+Confirmed: policy is a pure function with a fixed order; tier comes from the registered adapter; the hash is over the parsed args and the stored parsed args are what run; approval + pending row are created in one transaction; the claim is a conditional `waiting → running` update; adapter error text is never stored, returned or logged; production registers no adapter and no route requests an action; `onDecided` is fire-and-forget and only fires after a successful decision.
+
+Lead fixes:
+1. **Stuck detection measured from `created_at`.** An action approved after a long wait and only just started would have been flagged `failed` by the sweep while running. Added `started_at` (set on claim), `recoverStuck` measures from it, and the finish update is guarded with `status = 'running'`. Migration regenerated (`0014_thick_runaways.sql`); two tests added.
+2. **`onApprovalDecided` on a still-undecided approval cancelled the action.** It now returns without touching the row.
+3. `cancelPending` uses the injected clock.
+
+Known limits (accepted for now): a crash between consuming the approval and claiming the row leaves a `waiting` row that is never executed (safe, only untidy); a `pending_limit` failure is reported to the caller as `ai_not_active`.
