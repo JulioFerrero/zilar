@@ -8,6 +8,7 @@ import {
   groupAis,
   groupMembers,
   groups,
+  topicAis,
   topicMembers,
   topics,
   user,
@@ -15,7 +16,8 @@ import {
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
-import { emitGroupAi } from './events';
+import { emitGroupAi, emitTopicAi } from './events';
+import { aiMayBeInTopic } from '../topics/access';
 import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
 import { deleteToolsForAiInGroup } from '../tools/service';
 import { syncTopicRoom } from '../topics/rooms';
@@ -98,6 +100,8 @@ export interface RemoveGroupAiInput {
   groupId: string;
   actorId: string;
   aiId: string;
+  domain: string;
+  logger: InviteLogger;
 }
 
 export interface PatchGroupInput {
@@ -379,8 +383,12 @@ export async function removeGroupMember(
   }
   // T-0108: public topics lose the person; private topics drop them when
   // their row is gone. Best effort after the database commit: a failure is
-  // logged with the group id (never a topic name), never thrown.
+  // logged with the group id (never a topic name), never thrown. The sync
+  // also drops AIs whose owner just lost visibility of a private topic
+  // (derived rule in `topics/rooms.ts`); the event loop below tells live
+  // gateway sessions to leave those rooms right away.
   await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain, input.logger);
+  await emitDroppedGroupTopicAis(db, input.groupId);
   await archiveDrainedPrivateTopics(db, input.groupId);
 
   const detail = await getGroupDetail(db, input.groupId);
@@ -506,6 +514,20 @@ export async function removeGroupAi(
       await tx
         .delete(groupAis)
         .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)));
+      // T-0109: removing the AI from the group removes it from every topic
+      // of that group. The rows are deleted in the same transaction as the
+      // rules/tools cleanup below; every non-General topic room is re-synced
+      // after the commit (the gateway leaves through the same event).
+      const topicRows = await tx
+        .select({ id: topics.id })
+        .from(topics)
+        .where(eq(topics.groupId, input.groupId));
+      const topicIds = topicRows.map((row) => row.id);
+      if (topicIds.length > 0) {
+        await tx
+          .delete(topicAis)
+          .where(and(inArray(topicAis.topicId, topicIds), eq(topicAis.aiId, input.aiId)));
+      }
       // T-0099: an "always" rule tied to this (AI, group) pair must
       // die with the membership. Personal rules and other-group rules
       // are unaffected. `now` is the same timestamp the admin client
@@ -529,6 +551,10 @@ export async function removeGroupAi(
     throw mapXmppError(error);
   }
 
+  // Every topic room of the group where the AI had a row loses it. Best
+  // effort after the commit, like the member flows: a failure is logged with
+  // the group id (never a topic name), never thrown.
+  await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain, input.logger);
   emitGroupAi({ type: 'ai-removed', groupId: input.groupId, aiId: input.aiId });
   const detail = await getGroupDetail(db, input.groupId);
   if (!detail) {
@@ -687,6 +713,34 @@ async function syncGroupTopicRooms(
       await syncTopicRoom({ db, adminClient, domain, logger }, topic);
     } catch {
       logger.warn({ groupId }, 'could not sync a topic room after a group membership change');
+    }
+  }
+}
+
+// T-0109: after a group membership change, every AI that the derived rule
+// (`aiMayBeInTopic`) no longer allows in a topic gets an `ai-removed` event
+// so a live gateway session leaves the room without waiting for reconcile.
+// The `topic_ais` rows stay: re-adding the owner brings the AI back.
+async function emitDroppedGroupTopicAis(db: ServerDatabase, groupId: string): Promise<void> {
+  const topicRows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+  for (const topic of topicRows) {
+    if (topic.isGeneral || topic.archivedAt !== null || topic.visibility !== 'private') {
+      continue;
+    }
+    const aiRows = await db
+      .select({ aiId: topicAis.aiId, owner: ais.owner, status: ais.status })
+      .from(topicAis)
+      .innerJoin(ais, eq(ais.id, topicAis.aiId))
+      .where(eq(topicAis.topicId, topic.id));
+    for (const row of aiRows) {
+      const allowed = await aiMayBeInTopic(db, topic, {
+        id: row.aiId,
+        owner: row.owner,
+        status: row.status,
+      });
+      if (!allowed) {
+        emitTopicAi({ type: 'ai-removed', topicId: topic.id, aiId: row.aiId });
+      }
     }
   }
 }

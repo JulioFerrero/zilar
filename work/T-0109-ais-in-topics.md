@@ -1,7 +1,7 @@
 ---
 id: T-0109
 title: AIs in topics: an AI reads and answers only in the topics it was added to
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0109-ais-in-topics
 model: meta/muse-spark-1.3-contributor
@@ -79,28 +79,59 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Schema + migration: new `topic_ais` table (`topic_id`/`ai_id` pk, `added_by`, `added_at`, cascade FKs), rows only for non-General topics. Generated via `pnpm --filter @galena/server db:generate` → `0020_dry_lord_hawal.sql`.
+- Topics: `GET /api/topics/:id/ais` (visible), `POST /api/topics/:id/ais` `{ aiId }` (AI owner who can see the topic; AI must be an active group member; General → 400 `already_in_general`), `DELETE /api/topics/:id/ais/:aiId` (AI owner or topic manager). Strangers/blind owners/plain members get the same 404 as a missing id. `GET /api/topics/:id` and topic lists (incl. `GET /api/chats`) gain `ais: [{ id, name }]`. Audit `topic.ai_added`/`topic.ai_removed` (ids only). Room sync after every add/remove (502 on failure); events `ai-added`/`ai-removed` via new `onTopicAi`/`emitTopicAi` in `groups/events.ts`.
+- Rooms: `desiredMembers` adds AI JIDs — General = every active `group_ais` AI; other topics = their active `topic_ais` rows; a private topic never includes an AI without a row. Archived topics sync empty.
+- Groups: `removeGroupAi` deletes every `topic_ais` row for the AI in the same transaction as the rules/tools cleanup, re-syncs every topic room post-commit, then emits `ai-removed`. Input gains `domain`/`logger` (route passes them).
+- Gateway: `listAiRooms` returns General per `group_ais` row + each live topic in `topic_ais`; `RoomSubscription` carries `topicId`. `loadRoomGateState` takes `topicId`: General/public wake on group members, private topics only on `topic_members` (role check for `request_action` stays owner/admin + re-check now also requires topic membership). Rate limits/coalescing stay per room; history is the topic room only. `postToChat` gains optional `topicId` (posts into that room when the AI holds it, else `false`). `ActionAnnouncer` gains optional `topicId` on both methods (announcer in `index.ts` untouched — out of Allowed files, so production cards still go to General/DM). System prompt names the topic ("You are in the topic <name> of the group <group>"), never other topics.
+- Tests: topic AI routes (7 new), gateway topics block (8 new: joins, mention answered in-room, unjoined private ignored, runtime join/leave, admin gate accept/reject, postToChat true/false + stopped, no-other-topic-names), groups removal (1 new), context prompt (2 new), backfill exclusion fix.
 
 ### Files changed
--
+- `apps/server/src/db/schema.ts`, `apps/server/drizzle/0020_dry_lord_hawal.sql` (+ meta snapshot/journal)
+- `apps/server/src/topics/service.ts` (add/removeTopicAi), `topics/routes.ts` (3 routes), `topics/access.ts` (`ais` on views, `listTopicAis`), `topics/rooms.ts` (AI affiliations)
+- `apps/server/src/agents/gateway.ts` (rooms, gate, postToChat, event subs, topic prompt names), `agents/context.ts` (+ tests)
+- `apps/server/src/groups/service.ts` (removeGroupAi cleanup), `groups/routes.ts` (domain/logger), `groups/events.ts` (topic AI events)
+- `apps/server/src/actions/announce.ts` (optional `topicId` on the port only)
+- Tests: `topics/topics.test.ts`, `topics/backfill.test.ts`, `agents/gateway.test.ts`, `agents/context.test.ts`, `groups/groups.test.ts`
+- `work/T-0109-ais-in-topics.md` (status + this report)
 
 ### Commands run and real results
--
+- `pnpm install`: pass (7.7s)
+- `pnpm format:check`: pass ("All matched files use Prettier code style!")
+- `pnpm lint`: pass (oxlint clean)
+- `pnpm typecheck`: pass (turbo 10/10)
+- `pnpm --filter @galena/server test --maxWorkers=2`: 64 files passed, 5 skipped; 1113 passed, 7 skipped (229s)
+- `pnpm build`: pass (2/2 turbo tasks)
+- Scoped: topics 29 passed; agents+groups+chats+audit+authz-sweep 286 passed, 1 skipped; actions 105 passed; gateway full 113 passed.
+- `grep` for `eslint-disable|oxlint-disable|@ts-ignore|console.log|: any` in touched non-test source: no hits (2 pre-existing English comments containing "any" matched, no `any` types).
+
+### Round 2 (review fix: an AI must not stay in a private topic its owner cannot see)
+- New derived rule, evaluated live so it can never drift — `aiMayBeInTopic(db, topic, ai)` and `allowedTopicAiIds(db, topic)` in `topics/access.ts`: public non-General topics count the row as today; private topics count it only while the AI's owner holds a `topic_members` row (and is still a group member, via `canSeeTopic`). Rows are never deleted; re-adding the owner brings the AI back automatically. General answers false (no `topic_ais` rows there).
+- `topics/rooms.ts` `addTopicAiMembers` uses `allowedTopicAiIds`, so `syncTopicRoom` removes the AI's affiliation from a private room once its owner is out.
+- `agents/gateway.ts` `listAiRooms` filters each topic through `allowedTopicAiIds` (select now includes `visibility`), so the gateway leaves or never joins such a room. No change needed in `loadRoomGateState` callers: the gate already restricts wake-ups to topic members, and the subscription being gone means the message never reaches a turn.
+- Re-sync + live leave on every flow where owner visibility changes: `removeTopicMember` and public→private `patchTopic` call `syncTopicRoom` (already there) plus new `emitDroppedTopicAis` (`ai-removed` per dropped AI); `removeGroupMember` reuses the existing `syncGroupTopicRooms` plus new `emitDroppedGroupTopicAis` in `groups/service.ts`. `removeGroupAi` needed nothing new (rows deleted, rooms re-synced, event already emitted).
+- Tests: (a) owner self-removes from a private topic → AI affiliation gone, row stays, re-adding owner revives the AI; (b) public→private without the AI owner in `memberIds` → AI dropped, row stays; (c) covered by (a) re-add; (d) public topic keeps its AI. Gateway: owner removed from a private topic → session leaves on the event, later mentions unanswered, reconcile agrees. Fixed the pre-existing admin-gate fixture (AI owner must also be a topic member now for the turn to run). `backfill.test.ts` exclusion for `0020_*` unchanged.
+- Checks (one Vitest run at a time): topics+groups 62 passed; gateway full 114 passed; full server suite `pnpm --filter @galena/server test --maxWorkers=2`: 64 files passed, 5 skipped; 1117 passed, 7 skipped (232s). format/lint/typecheck/build pass. No `any`, no disables, no new dependencies.
 
 ### Problems, deviations from the spec, open questions
--
+- Per the review: the production announcer `topicId` wiring is left to T-0110. No action here.
+- `patchTopic` public→private always inserts the acting manager into `topic_members` (pre-existing T-0108 rule), so "without the owner" means without the AI's owner specifically; the test pins exactly that (admin converts, AI owner out → AI dropped).
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged after one round of fixes.
 
 ### Findings
--
+- Structure matches the spec: `topic_ais` (non-General only), per-topic room affiliations, gateway rooms and wake gate per topic (private topics wake only on topic members; `request_action` also requires topic membership), `postToChat` with `topicId`, topic-aware system prompt that never names other topics, group AI removal cleans every topic row in the same transaction.
+- Fixed after review: an AI stayed in a private topic after its owner lost access (owner removed from the topic, topic made private without the owner, owner left the group). Now a derived live rule (`aiMayBeInTopic` / `allowedTopicAiIds`): in a private topic an AI counts only while its owner is a topic member and group member. Applied in the room sync and in the gateway's room list; rows are kept so the AI returns when the owner is added back; live sessions leave through `ai-removed` events. Tests cover removal, going private, re-adding the owner, and public topics unaffected.
+- Checks re-run by the lead: format, lint, typecheck (10/10) pass; topics, groups, gateway and authz-sweep scoped run 181 passed; the worker's full server suite (after the fix) 1117 passed, 7 skipped.
 
 ### Follow-ups
--
+- T-0110: wire `topicId` through the production announcer in `index.ts` (cards still go to General until then).
+- Room reconciliation for drift after failed room calls is still a follow-up (see T-0108).
+- A topic owner AI is only checked to exist (T-0108 strip); tighten to AIs in the topic.

@@ -73,6 +73,10 @@ export interface GroupContextInput {
   today: string;
   /** Bare JID of the AI, to recognise its own turns. */
   aiJid: string;
+  /** Name of the group the topic belongs to. Omitted when unknown. */
+  groupName?: string;
+  /** Name of the topic the turn runs in. Omitted when unknown. */
+  topicName?: string;
   /** Room history oldest first, as MAM returns it. */
   history: ChatMessage[];
   /** The room message that mentioned the AI. */
@@ -83,16 +87,30 @@ export interface GroupContextInput {
 // but the platform line says the AI is in a group and replies to the person
 // who mentioned it, briefly unless asked. No persona-tool line: persona tools
 // are DM-only (only the owner may reshape the AI, and only in the DM).
+// T-0109: for a topic turn the platform line names the topic
+// ("You are in the topic <name> of the group <group>") for public and
+// private topics alike; it never lists the names of other topics.
 export function buildGroupSystemMessage(input: {
   aiName: string;
   persona: string;
   senderName: string;
   today: string;
+  groupName?: string;
+  topicName?: string;
 }): string {
   const persona = input.persona.trim();
   const sender = input.senderName.trim() === '' ? 'a member' : input.senderName.trim();
+  const topic = input.topicName?.trim() ?? '';
+  const group = input.groupName?.trim() ?? '';
+  const where =
+    topic !== ''
+      ? group !== ''
+        ? `You are in the topic ${topic} of the group ${group}. `
+        : `You are in the topic ${topic}. `
+      : '';
   const platform =
     `You are ${input.aiName}, an AI in the Galena chat app, talking in a group chat. ` +
+    `${where}` +
     `${sender} mentioned you: reply to them directly. Reply in plain text; keep it brief unless asked for more.`;
   return joinPrefix([persona, platform, `Today is ${input.today}.`]);
 }

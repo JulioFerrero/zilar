@@ -1,7 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { auditLog, groupMembers, groups, topicMembers, topics } from '../db/schema';
+import { aiLocalpart } from '../ais/service';
+import {
+  aiLimits,
+  ais,
+  auditLog,
+  groupAis,
+  groupMembers,
+  groups,
+  providerConnections,
+  topicAis,
+  topicMembers,
+  topics,
+} from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
@@ -9,6 +21,7 @@ import {
   expectedJid,
   testApp,
   TEST_BASE_URL,
+  TEST_XMPP_DOMAIN,
   TEST_XMPP_MUC_DOMAIN,
   type TestApp,
   type TestContext,
@@ -616,6 +629,8 @@ describe('topics', () => {
       { url: '/api/topics/x', method: 'PATCH' },
       { url: '/api/topics/x/members', method: 'GET' },
       { url: '/api/topics/x/members', method: 'POST' },
+      { url: '/api/topics/x/ais', method: 'GET' },
+      { url: '/api/topics/x/ais', method: 'POST' },
     ]) {
       const response = await app.request(`${TEST_BASE_URL}${init.url}`, { method: init.method });
       expect(response.status, `${init.method} ${init.url}`).toBe(401);
@@ -624,5 +639,387 @@ describe('topics', () => {
       method: 'DELETE',
     });
     expect(remove.status).toBe(401);
+    const removeAi = await app.request(`${TEST_BASE_URL}/api/topics/x/ais/y`, {
+      method: 'DELETE',
+    });
+    expect(removeAi.status).toBe(401);
+  });
+
+  describe('topic AIs (T-0109)', () => {
+    async function seedAi(
+      ownerId: string,
+      name = 'Helper AI',
+    ): Promise<{ aiId: string; jid: string }> {
+      const aiId = randomUUID();
+      const connectionId = randomUUID();
+      await context.db.insert(providerConnections).values({
+        id: connectionId,
+        owner: ownerId,
+        provider: 'openai',
+        encryptedKey: 'sealed-placeholder',
+        label: null,
+      });
+      const localpart = aiLocalpart(aiId);
+      const jid = `${localpart}@${TEST_XMPP_DOMAIN}`;
+      await context.db.insert(ais).values({
+        id: aiId,
+        owner: ownerId,
+        name,
+        template: 'dev',
+        persona: 'A helpful persona.',
+        providerConnectionId: connectionId,
+        model: 'gpt-4o-mini',
+        localpart,
+        jid,
+        status: 'active',
+      });
+      await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+      return { aiId, jid };
+    }
+
+    async function addGroupAi(cookie: string, groupId: string, aiId: string) {
+      return app.request(`${TEST_BASE_URL}/api/groups/${groupId}/ais`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({ aiId }),
+      });
+    }
+
+    async function addTopicAi(cookie: string, topicId: string, aiId: string) {
+      const response = await app.request(`${TEST_BASE_URL}/api/topics/${topicId}/ais`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({ aiId }),
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as TopicView & { error?: { code: string } },
+      };
+    }
+
+    async function removeTopicAi(cookie: string, topicId: string, aiId: string) {
+      const response = await app.request(`${TEST_BASE_URL}/api/topics/${topicId}/ais/${aiId}`, {
+        method: 'DELETE',
+        headers: { cookie },
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as TopicView & { error?: { code: string } },
+      };
+    }
+
+    async function topicAisOf(cookie: string, topicId: string) {
+      const response = await app.request(`${TEST_BASE_URL}/api/topics/${topicId}/ais`, {
+        headers: { cookie },
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as { ais: Array<{ id: string; name: string }> },
+      };
+    }
+
+    it('lets the AI owner who sees the topic add it, and lists it on the topic', async () => {
+      const { owner, member, group } = await setup();
+      const { aiId, jid } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const created = await createTopic(owner.cookie, group.id, { name: 'Backend' });
+      expect(created.status).toBe(201);
+
+      const added = await addTopicAi(owner.cookie, created.body.id, aiId);
+      expect(added.status).toBe(200);
+      expect(added.body.ais).toEqual([{ id: aiId, name: 'Helper AI' }]);
+
+      const listed = await topicAisOf(owner.cookie, created.body.id);
+      expect(listed.status).toBe(200);
+      expect(listed.body.ais).toEqual([{ id: aiId, name: 'Helper AI' }]);
+
+      // The AI's JID is now a member of the topic room.
+      const room = created.body.chatJid.split('@')[0]!;
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
+
+      // The topic view carries the AI too.
+      const detail = await app.request(`${TEST_BASE_URL}/api/topics/${created.body.id}`, {
+        headers: { cookie: member.cookie },
+      });
+      expect(detail.status).toBe(200);
+      expect(((await detail.json()) as TopicView).ais).toEqual([{ id: aiId, name: 'Helper AI' }]);
+    });
+
+    it('answers 404 for a non-owner, and for an owner who cannot see a private topic', async () => {
+      const { owner, member, other, group } = await setup();
+      const { aiId } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const privateCreated = await createTopic(owner.cookie, group.id, {
+        name: 'Hiring',
+        visibility: 'private',
+        memberIds: [member.id],
+      });
+      const topicId = privateCreated.body.id;
+
+      // A plain member who is not the AI owner gets the missing-id 404.
+      const foreign = await addTopicAi(member.cookie, topicId, aiId);
+      expect(foreign.status).toBe(404);
+
+      // Another owner's AI is a 404 too, so AI ids cannot be probed.
+      const strangerAi = await seedAi(other.id);
+      expect((await addGroupAi(owner.cookie, group.id, strangerAi.aiId)).status).toBe(404);
+
+      // The AI owner cannot see this private topic: same 404.
+      const ownerOnly = await seedAi(other.id);
+      await context.db
+        .insert(groupAis)
+        .values({ groupId: group.id, aiId: ownerOnly.aiId, addedBy: owner.id });
+      const blind = await addTopicAi(other.cookie, topicId, ownerOnly.aiId);
+      expect(blind.status).toBe(404);
+      expect(blind.body.error).toBeDefined();
+
+      const missing = await app.request(`${TEST_BASE_URL}/api/topics/does-not-exist/ais`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ aiId }),
+      });
+      expect(missing.status).toBe(404);
+      // A stranger's 404 is the same code and message as a missing id (the
+      // body also carries a request id, so compare the stable fields).
+      const missingBody = (await missing.json()) as { error: { code: string; message: string } };
+      const blindBody = blind.body.error as unknown as { code: string; message: string };
+      expect({ code: missingBody.error.code, message: missingBody.error.message }).toEqual({
+        code: blindBody.code,
+        message: blindBody.message,
+      });
+      expect(missingBody.error).toMatchObject({ code: 'not_found', message: 'Topic not found' });
+    });
+
+    it('answers 400 when the AI is not in the group, and for General', async () => {
+      const { owner, group } = await setup();
+      const { aiId } = await seedAi(owner.id);
+      const created = await createTopic(owner.cookie, group.id, { name: 'Backend' });
+
+      const notInGroup = await addTopicAi(owner.cookie, created.body.id, aiId);
+      expect(notInGroup.status).toBe(400);
+
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const general = await generalOf(group.id);
+      const generalAdd = await addTopicAi(owner.cookie, general.id, aiId);
+      expect(generalAdd.status).toBe(400);
+      expect(generalAdd.body.error?.code).toBe('already_in_general');
+    });
+
+    it('removes by owner or manager, and the room affiliation goes with it', async () => {
+      const { owner, member, group } = await setup();
+      const { aiId, jid } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const created = await createTopic(owner.cookie, group.id, { name: 'Backend' });
+      const topicId = created.body.id;
+      const room = created.body.chatJid.split('@')[0]!;
+      expect((await addTopicAi(owner.cookie, topicId, aiId)).status).toBe(200);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
+
+      // A plain member who is not the owner cannot remove: same 404.
+      const foreign = await removeTopicAi(member.cookie, topicId, aiId);
+      expect(foreign.status).toBe(404);
+
+      // The AI owner may remove.
+      const removed = await removeTopicAi(owner.cookie, topicId, aiId);
+      expect(removed.status).toBe(200);
+      expect(removed.body.ais).toEqual([]);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBeUndefined();
+
+      // Removing again answers 404.
+      expect((await removeTopicAi(owner.cookie, topicId, aiId)).status).toBe(404);
+    });
+
+    it('lets a topic manager who is not the AI owner remove it', async () => {
+      const { owner, other, group } = await setup();
+      await context.db
+        .update(groupMembers)
+        .set({ role: 'admin' })
+        .where(eq(groupMembers.userId, other.id));
+      const { aiId } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const privateCreated = await createTopic(owner.cookie, group.id, {
+        name: 'Hiring',
+        visibility: 'private',
+        memberIds: [other.id],
+      });
+      expect((await addTopicAi(owner.cookie, privateCreated.body.id, aiId)).status).toBe(200);
+      const removed = await removeTopicAi(other.cookie, privateCreated.body.id, aiId);
+      expect(removed.status).toBe(200);
+      expect(removed.body.ais).toEqual([]);
+    });
+
+    it('group removal deletes every topic row and the room affiliations', async () => {
+      const { owner, group } = await setup();
+      const { aiId, jid } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const first = await createTopic(owner.cookie, group.id, { name: 'Backend' });
+      const second = await createTopic(owner.cookie, group.id, {
+        name: 'Hiring',
+        visibility: 'private',
+      });
+      expect((await addTopicAi(owner.cookie, first.body.id, aiId)).status).toBe(200);
+      expect((await addTopicAi(owner.cookie, second.body.id, aiId)).status).toBe(200);
+      const firstRoom = first.body.chatJid.split('@')[0]!;
+      const secondRoom = second.body.chatJid.split('@')[0]!;
+
+      const removed = await app.request(`${TEST_BASE_URL}/api/groups/${group.id}/ais/${aiId}`, {
+        method: 'DELETE',
+        headers: { cookie: owner.cookie },
+      });
+      expect(removed.status).toBe(200);
+      const rows = await context.db.select().from(topicAis).where(eq(topicAis.aiId, aiId));
+      expect(rows).toEqual([]);
+      expect(context.adminClient.affiliationState.get(firstRoom)?.get(jid)).toBeUndefined();
+      expect(context.adminClient.affiliationState.get(secondRoom)?.get(jid)).toBeUndefined();
+    });
+
+    it('never gives a private room an AI that was not added to it', async () => {
+      const { owner, member, group } = await setup();
+      const { aiId, jid } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const privateCreated = await createTopic(owner.cookie, group.id, {
+        name: 'Hiring',
+        visibility: 'private',
+        memberIds: [member.id],
+      });
+      const room = privateCreated.body.chatJid.split('@')[0]!;
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBeUndefined();
+
+      // General keeps every group AI.
+      const general = await generalOf(group.id);
+      const generalState = context.adminClient.affiliationState.get(general.roomLocalpart);
+      expect(generalState?.get(jid)).toBe('member');
+    });
+
+    it('drops the AI from a private room when its owner loses the topic, and brings it back', async () => {
+      const { owner, member, group } = await setup();
+      const { aiId, jid } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const privateCreated = await createTopic(owner.cookie, group.id, {
+        name: 'Hiring',
+        visibility: 'private',
+        memberIds: [member.id],
+      });
+      const topicId = privateCreated.body.id;
+      const room = privateCreated.body.chatJid.split('@')[0]!;
+      expect((await addTopicAi(owner.cookie, topicId, aiId)).status).toBe(200);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
+
+      // The owner removes themselves: the AI loses its room affiliation, but
+      // the `topic_ais` row stays.
+      const selfLeave = await app.request(
+        `${TEST_BASE_URL}/api/topics/${topicId}/members/${owner.id}`,
+        { method: 'DELETE', headers: { cookie: owner.cookie } },
+      );
+      expect(selfLeave.status).toBe(200);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBeUndefined();
+      const rows = await context.db
+        .select()
+        .from(topicAis)
+        .where(and(eq(topicAis.topicId, topicId), eq(topicAis.aiId, aiId)));
+      expect(rows).toHaveLength(1);
+
+      // Adding the owner back brings the AI back into the room, with no new
+      // `topic.ai_added` row needed. The remaining member is not a manager,
+      // so insert the membership row directly (the route would 403): the
+      // derived rule is what the test pins, not the add-member permission.
+      await context.db.insert(topicMembers).values({
+        topicId,
+        userId: owner.id,
+        addedBy: member.id,
+      });
+      const [revived] = await context.db.select().from(topics).where(eq(topics.id, topicId));
+      const { syncTopicRoom } = await import('./rooms');
+      await syncTopicRoom(
+        {
+          db: context.db,
+          adminClient: context.adminClient,
+          domain: context.config.xmpp.domain,
+          logger: context.logger,
+        },
+        revived!,
+      );
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
+    });
+
+    it('making a public topic with an AI private without its owner drops the AI from the room', async () => {
+      const { owner, member, other, group } = await setup();
+      // `other` is a group admin so they can manage the topic the owner
+      // created, while the owner stays out of the new private member list.
+      await context.db
+        .update(groupMembers)
+        .set({ role: 'admin' })
+        .where(eq(groupMembers.userId, other.id));
+      const { aiId, jid } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const created = await createTopic(owner.cookie, group.id, { name: 'Backend' });
+      const topicId = created.body.id;
+      const room = created.body.chatJid.split('@')[0]!;
+      expect((await addTopicAi(owner.cookie, topicId, aiId)).status).toBe(200);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
+
+      // The admin makes the topic private with only the other member: the
+      // AI's owner is not in `memberIds`, so the AI drops out (row stays).
+      const patched = await patchTopic(other.cookie, topicId, {
+        visibility: 'private',
+        memberIds: [member.id],
+      });
+      expect(patched.status).toBe(200);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBeUndefined();
+      const rows = await context.db
+        .select()
+        .from(topicAis)
+        .where(and(eq(topicAis.topicId, topicId), eq(topicAis.aiId, aiId)));
+      expect(rows).toHaveLength(1);
+    });
+
+    it('keeps a public topic AI in the room regardless of owner membership', async () => {
+      const { owner, group } = await setup();
+      const { aiId, jid } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const created = await createTopic(owner.cookie, group.id, { name: 'Backend' });
+      const topicId = created.body.id;
+      const room = created.body.chatJid.split('@')[0]!;
+      expect((await addTopicAi(owner.cookie, topicId, aiId)).status).toBe(200);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
+
+      // The owner is not in `topic_members` (public topics have no rows) and
+      // the AI still belongs in the room.
+      const members = await context.db
+        .select()
+        .from(topicMembers)
+        .where(eq(topicMembers.topicId, topicId));
+      expect(members).toEqual([]);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
+    });
+
+    it('records topic.ai_added and topic.ai_removed without private names', async () => {
+      const { owner, group } = await setup();
+      const { aiId } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const privateCreated = await createTopic(owner.cookie, group.id, {
+        name: 'Secret Hiring Plans',
+        visibility: 'private',
+      });
+      expect((await addTopicAi(owner.cookie, privateCreated.body.id, aiId)).status).toBe(200);
+      expect((await removeTopicAi(owner.cookie, privateCreated.body.id, aiId)).status).toBe(200);
+
+      const rows = await context.db.select().from(auditLog);
+      const added = rows.find((row) => row.action === 'topic.ai_added');
+      const removedRow = rows.find((row) => row.action === 'topic.ai_removed');
+      expect(added).toBeDefined();
+      expect(removedRow).toBeDefined();
+      expect(added?.subjectId).toBe(privateCreated.body.id);
+      for (const row of [added, removedRow]) {
+        expect(JSON.stringify(row?.detail ?? {})).not.toContain('Secret Hiring Plans');
+      }
+
+      // The AI row is gone from the database after removal.
+      const remaining = await context.db
+        .select()
+        .from(topicAis)
+        .where(and(eq(topicAis.topicId, privateCreated.body.id), eq(topicAis.aiId, aiId)));
+      expect(remaining).toEqual([]);
+    });
   });
 });

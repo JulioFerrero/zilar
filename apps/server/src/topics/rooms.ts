@@ -1,11 +1,11 @@
 import { eq } from 'drizzle-orm';
 import type { ServerDatabase } from '../db/client';
-import { groupMembers, topicMembers } from '../db/schema';
+import { ais, groupAis, groupMembers, topicAis, topicMembers } from '../db/schema';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient, RoomAffiliation } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { InviteLogger } from '../groups/service';
-import type { TopicRow } from './access';
+import { allowedTopicAiIds, type TopicRow } from './access';
 
 export interface TopicRoomDeps {
   db: ServerDatabase;
@@ -15,10 +15,13 @@ export interface TopicRoomDeps {
 }
 
 // Who belongs in the topic's room: every group member for a public topic,
-// the `topic_members` rows for a private one. The return maps each JID to
-// the affiliation it should hold: the group owner is the room's owner for
-// General; for other topics the topic creator is owner (when they are still
-// allowed in), everyone else is a member.
+// the `topic_members` rows for a private one, plus the AI memberships —
+// every `group_ais` AI for General, the topic's `topic_ais` rows otherwise.
+// The return maps each JID to the affiliation it should hold: the group owner
+// is the room's owner for General; for other topics the topic creator is
+// owner (when they are still allowed in), everyone else is a member. AIs are
+// always plain members. An AI that is not a member of a private topic is
+// never included, even when it is in the group: the room itself enforces it.
 export async function desiredMembers(
   db: ServerDatabase,
   topic: TopicRow,
@@ -36,6 +39,7 @@ export async function desiredMembers(
         : row.userId === topic.createdBy;
       wanted.set(jidFor(localpartFor(row.userId), domain), ownerAffiliation ? 'owner' : 'member');
     }
+    await addTopicAiMembers(db, topic, wanted);
     return wanted;
   }
   const groupRows = await db
@@ -58,7 +62,53 @@ export async function desiredMembers(
       : row.userId === topic.createdBy;
     wanted.set(jidFor(localpartFor(row.userId), domain), ownerAffiliation ? 'owner' : 'member');
   }
+  await addTopicAiMembers(db, topic, wanted);
   return wanted;
+}
+
+// AI affiliations for one topic room: every group AI for General, the
+// topic's allowed `topic_ais` rows otherwise (see `allowedTopicAiIds`: for a
+// private topic an AI counts only while its owner is a topic member, so the
+// sync removes the AI from the room once its owner is not a member —
+// without deleting the row, so adding the owner back brings it back). Only
+// active AIs join a room; a stale row for a stopped or disabled AI no longer
+// counts. AIs invited into an archived topic are dropped too: archiving
+// keeps the rows but the gateway leaves the room.
+async function addTopicAiMembers(
+  db: ServerDatabase,
+  topic: TopicRow,
+  wanted: Map<string, RoomAffiliation>,
+): Promise<void> {
+  if (topic.archivedAt !== null) {
+    return;
+  }
+  if (topic.isGeneral) {
+    const rows = await db
+      .select({ jid: ais.jid, status: ais.status })
+      .from(groupAis)
+      .innerJoin(ais, eq(ais.id, groupAis.aiId))
+      .where(eq(groupAis.groupId, topic.groupId));
+    for (const row of rows) {
+      if (row.status === 'active' && !wanted.has(row.jid)) {
+        wanted.set(row.jid, 'member');
+      }
+    }
+    return;
+  }
+  const allowed = await allowedTopicAiIds(db, topic);
+  if (allowed.size === 0) {
+    return;
+  }
+  const rows = await db
+    .select({ id: ais.id, jid: ais.jid })
+    .from(topicAis)
+    .innerJoin(ais, eq(ais.id, topicAis.aiId))
+    .where(eq(topicAis.topicId, topic.id));
+  for (const row of rows) {
+    if (allowed.has(row.id) && !wanted.has(row.jid)) {
+      wanted.set(row.jid, 'member');
+    }
+  }
 }
 
 export interface SyncTopicRoomResult {

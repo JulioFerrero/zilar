@@ -3,11 +3,21 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, groupMembers, groups, topicMembers, topics, user } from '../db/schema';
+import {
+  ais,
+  groupAis,
+  groupMembers,
+  groups,
+  topicAis,
+  topicMembers,
+  topics,
+  user,
+} from '../db/schema';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { randomRoomLocalpart, type InviteLogger } from '../groups/service';
 import {
+  aiMayBeInTopic,
   canCreateTopic,
   canManageTopic,
   canSeeTopic,
@@ -21,6 +31,7 @@ import {
   topicVisibilitySchema,
   type TopicRow,
 } from './access';
+import { emitTopicAi } from '../groups/events';
 import { syncTopicRoom } from './rooms';
 
 export const TOPIC_NAME_MAX = 80;
@@ -489,6 +500,12 @@ export async function patchTopic(
       ? error
       : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
+  // A public-to-private change may leave AIs whose owner is not in
+  // `memberIds`: they drop out of the room here (rows stay). Live sessions
+  // leave on the event, like after a member removal.
+  if (goingPrivate) {
+    await emitDroppedTopicAis(deps, updated);
+  }
 
   if (deps.audit) {
     const action =
@@ -638,11 +655,176 @@ export async function removeTopicMember(
       ? error
       : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
+  // The removed user may own AIs in this topic: any AI whose owner can no
+  // longer see it drops out of the room (rows stay, so re-adding the owner
+  // brings them back). Live gateway sessions leave on the event below.
+  await emitDroppedTopicAis(deps, updated);
   if (deps.audit) {
     await deps.audit.record(
       toAuditEntry(updated, 'topic.member_removed', actorId, { subjectUserId: targetUserId }),
     );
   }
+  return updated;
+}
+
+// Compares the topic's `topic_ais` rows against the live rule
+// (`aiMayBeInTopic`) and emits `ai-removed` for every AI that just dropped
+// out of the room. The sync above already removed their affiliations; this
+// tells live gateway sessions to leave right away instead of waiting for
+// the next reconcile.
+async function emitDroppedTopicAis(deps: TopicServiceDeps, topic: TopicRow): Promise<void> {
+  if (topic.isGeneral || topic.archivedAt !== null) {
+    return;
+  }
+  const rows = await deps.db
+    .select({ aiId: topicAis.aiId, owner: ais.owner, status: ais.status })
+    .from(topicAis)
+    .innerJoin(ais, eq(ais.id, topicAis.aiId))
+    .where(eq(topicAis.topicId, topic.id));
+  for (const row of rows) {
+    const allowed = await aiMayBeInTopic(deps.db, topic, {
+      id: row.aiId,
+      owner: row.owner,
+      status: row.status,
+    });
+    if (!allowed) {
+      emitTopicAi({ type: 'ai-removed', topicId: topic.id, aiId: row.aiId });
+    }
+  }
+}
+
+export const addTopicAiBodySchema = z.object({ aiId: z.string().min(1) }).strict();
+
+export type AddTopicAiBody = z.infer<typeof addTopicAiBodySchema>;
+
+export interface AddTopicAiInput {
+  topicId: string;
+  actorId: string;
+  aiId: string;
+}
+
+// Adds an AI to a non-General topic. The actor must own the AI and see the
+// topic (`canSeeTopic`); the AI must be an active member of the group.
+// General membership is `group_ais`, so adding there answers 400
+// `already_in_general`. Anyone else — a plain member who is not the owner,
+// an owner who cannot see a private topic — gets the same 404 as a missing
+// id. Adding an AI that is already there answers 200 with the topic.
+export async function addTopicAi(
+  deps: TopicServiceDeps,
+  input: AddTopicAiInput,
+): Promise<TopicRow> {
+  const topic = await getTopic(deps.db, input.topicId);
+  const canSee = topic !== null && (await canSeeTopic(deps.db, topic, input.actorId));
+  if (!topic || topic.archivedAt !== null || !canSee) {
+    throw toMissingTopic();
+  }
+  if (topic.isGeneral) {
+    throw new HttpError(
+      400,
+      'already_in_general',
+      'General membership is managed through the group',
+    );
+  }
+  const [ai] = await deps.db
+    .select({ id: ais.id, owner: ais.owner, status: ais.status })
+    .from(ais)
+    .where(eq(ais.id, input.aiId))
+    .limit(1);
+  // A foreign or missing AI is the same 404, so AI ids cannot be probed.
+  if (!ai || ai.owner !== input.actorId) {
+    throw toMissingTopic();
+  }
+  const [groupRow] = await deps.db
+    .select({ aiId: groupAis.aiId })
+    .from(groupAis)
+    .where(and(eq(groupAis.groupId, topic.groupId), eq(groupAis.aiId, input.aiId)))
+    .limit(1);
+  if (!groupRow) {
+    throw new HttpError(400, 'invalid_request', 'The AI must be in the group first');
+  }
+  if (ai.status !== 'active') {
+    throw new HttpError(400, 'invalid_request', 'Only an active AI can be added to a topic');
+  }
+
+  await deps.db
+    .insert(topicAis)
+    .values({ topicId: topic.id, aiId: input.aiId, addedBy: input.actorId })
+    .onConflictDoNothing();
+  const [updated] = await deps.db.select().from(topics).where(eq(topics.id, topic.id)).limit(1);
+  if (!updated) {
+    throw toMissingTopic();
+  }
+  try {
+    await syncTopicRoom(deps, updated);
+  } catch (error) {
+    throw error instanceof HttpError
+      ? error
+      : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  }
+  if (deps.audit) {
+    await deps.audit.record(
+      toAuditEntry(updated, 'topic.ai_added', input.actorId, { aiId: ai.id }),
+    );
+  }
+  emitTopicAi({ type: 'ai-added', topicId: topic.id, aiId: input.aiId });
+  return updated;
+}
+
+// Removes an AI from a topic: the AI's owner, or a topic manager. A stranger
+// — or anyone who cannot see the topic — gets the same 404 as a missing id.
+export async function removeTopicAi(
+  deps: TopicServiceDeps,
+  topicId: string,
+  actorId: string,
+  aiId: string,
+): Promise<TopicRow> {
+  const topic = await getTopic(deps.db, topicId);
+  const canSee = topic !== null && (await canSeeTopic(deps.db, topic, actorId));
+  if (!topic || topic.archivedAt !== null || !canSee) {
+    throw toMissingTopic();
+  }
+  if (topic.isGeneral) {
+    throw new HttpError(
+      400,
+      'already_in_general',
+      'General membership is managed through the group',
+    );
+  }
+  const [existing] = await deps.db
+    .select({ aiId: topicAis.aiId })
+    .from(topicAis)
+    .where(and(eq(topicAis.topicId, topic.id), eq(topicAis.aiId, aiId)))
+    .limit(1);
+  if (!existing) {
+    throw new HttpError(404, 'not_found', 'That AI is not in this topic');
+  }
+  const [ai] = await deps.db
+    .select({ id: ais.id, owner: ais.owner })
+    .from(ais)
+    .where(eq(ais.id, aiId))
+    .limit(1);
+  const isAiOwner = ai !== undefined && ai.owner === actorId;
+  if (!isAiOwner && !(await canManageTopic(deps.db, topic, actorId))) {
+    throw toMissingTopic();
+  }
+  await deps.db
+    .delete(topicAis)
+    .where(and(eq(topicAis.topicId, topic.id), eq(topicAis.aiId, aiId)));
+  const [updated] = await deps.db.select().from(topics).where(eq(topics.id, topic.id)).limit(1);
+  if (!updated) {
+    throw toMissingTopic();
+  }
+  try {
+    await syncTopicRoom(deps, updated);
+  } catch (error) {
+    throw error instanceof HttpError
+      ? error
+      : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  }
+  if (deps.audit) {
+    await deps.audit.record(toAuditEntry(updated, 'topic.ai_removed', actorId, { aiId }));
+  }
+  emitTopicAi({ type: 'ai-removed', topicId: topic.id, aiId });
   return updated;
 }
 

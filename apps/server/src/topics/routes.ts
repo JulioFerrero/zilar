@@ -10,6 +10,7 @@ import { createRateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { InviteLogger } from '../groups/service';
 import {
+  listTopicAis,
   requireVisibleTopic,
   toMissingTopic,
   toTopicView,
@@ -17,6 +18,8 @@ import {
   visibleTopics,
 } from './access';
 import {
+  addTopicAi,
+  addTopicAiBodySchema,
   addTopicMember,
   archiveTopic,
   createTopicBodySchema,
@@ -24,6 +27,7 @@ import {
   listTopicMembers,
   patchTopic,
   patchTopicBodySchema,
+  removeTopicAi,
   removeTopicMember,
 } from './service';
 
@@ -165,6 +169,46 @@ export function createTopicsRoutes(deps: TopicsRoutesDependencies): Hono {
     if (topic.archivedAt !== null) {
       throw toMissingTopic();
     }
+    return c.json(await toTopicView(deps.db, topic, mucDomain));
+  });
+
+  // T-0109: AIs in non-General topics. Adding needs the AI's owner (who must
+  // see the topic); removing needs the owner or a topic manager. General
+  // membership stays in `group_ais`, so both routes 400 there.
+  routes.get('/topics/:id/ais', async (c) => {
+    const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    const topic = await requireVisibleTopic(deps.db, c.req.param('id'), user.id);
+    const ais = await listTopicAis(deps.db, topic.id);
+    return c.json({ ais });
+  });
+
+  routes.post('/topics/:id/ais', async (c) => {
+    const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    const body = await c.req.json().catch(() => null);
+    const parsed = addTopicAiBodySchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpError(
+        400,
+        'invalid_request',
+        parsed.error.issues[0]?.message ?? 'Invalid request',
+      );
+    }
+    const topic = await addTopicAi(serviceDeps(deps), {
+      topicId: c.req.param('id'),
+      actorId: user.id,
+      aiId: parsed.data.aiId,
+    });
+    return c.json(await toTopicView(deps.db, topic, mucDomain));
+  });
+
+  routes.delete('/topics/:id/ais/:aiId', async (c) => {
+    const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    const topic = await removeTopicAi(
+      serviceDeps(deps),
+      c.req.param('id'),
+      user.id,
+      c.req.param('aiId'),
+    );
     return c.json(await toTopicView(deps.db, topic, mucDomain));
   });
 
