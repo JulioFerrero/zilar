@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0086](T-0086-group-activity-web.md) | Web: Activity section in the group panel for owners/admins (audit by group) | in progress | minimax-m3 | T-0084 | Generalises `AiActivity`. |
 | [T-0087](T-0087-approvals-sweeper.md) | Approvals sweeper: expired pending requests are denied on a timer, one audit entry each | in progress | minimax-m3 | T-0073, T-0079 | Server only. |
-| [T-0085](T-0085-mobile-edits-send.md) | Mobile: react, delete for everyone and edit own messages (send side; three steps) | in progress | minimax-m3 | T-0078 | Mirrors the web store; largest mobile task of the night. |
 
 ## Follow-ups
 
@@ -116,3 +115,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0080](T-0080-ai-kill-switch.md) | Owner kill switch: stop/resume an AI at once, in-flight replies dropped, works without LiteLLM; web button; mobile tolerates the status | 2026-09-29 |
 | [T-0083](T-0083-audit-ai-stop-resume.md) | Audit entries for the AI kill switch (ai.stopped, ai.resumed) | 2026-09-29 |
 | [T-0084](T-0084-ai-activity-web.md) | Web: Activity section in the AI panel showing audit entries, with paging | 2026-09-29 |
+| [T-0085](T-0085-mobile-edits-send.md) | Mobile sends reactions, deletions and edits (optimistic with rollback), composer edit mode | 2026-09-29 |
