@@ -10,8 +10,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0076](T-0076-approvals-web.md) | Web: the approval card decides for real (Approve/Deny call the approvals API, card shows its state, mock mode) | in progress | minimax-m3 | T-0073 | No "always allow" yet. |
+| [T-0079](T-0079-audit-log.md) | Audit log (M4, server): append-only table (DB trigger), recorder, owner/admin read routes, writers in approvals and machines | in progress | minimax-m3 | T-0073, T-0068 | No web page yet. |
 | [T-0078](T-0078-mobile-edits-receive.md) | Mobile: show edits, deletions and reactions from others (receive side only; reuses the chat-core reducers) | in progress | minimax-m3 | T-0064 | Sending comes later. |
-| [T-0077](T-0077-tunnel-wss.md) | Runner tunnel: accept `wss://` server URLs in `RunnerClient` | in progress | minimax-m3 | T-0008 | Follow-up from the T-0075 report. |
 
 ## Follow-ups
 
@@ -106,3 +106,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0073](T-0073-approvals-service.md) | Approvals service: stored requests with args hash, expiry, owner/admin-only atomic decisions, single-use approvals | 2026-09-29 |
 | [T-0074](T-0074-connections-through-request.md) | ConnectionsPage through request(); mock global fetch wrapper removed | 2026-09-29 |
 | [T-0075](T-0075-runner-polish.md) | Runner polish: wss hub URLs, disconnected status, fixed 409 text, non-zero exits, e2e pair/approve/online/revoke test | 2026-09-29 |
+| [T-0077](T-0077-tunnel-wss.md) | RunnerClient accepts wss:// server URLs | 2026-09-29 |

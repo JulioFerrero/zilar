@@ -16,7 +16,12 @@ import { signNonce, type RunnerKeypair } from './keys.ts';
 import { StreamMux, TunnelClosedError, attachSocketToStream } from './mux.ts';
 
 const RunnerOptionsSchema = z.strictObject({
-  serverUrl: z.string().url().startsWith('ws://'),
+  serverUrl: z
+    .string()
+    .url()
+    .refine((value) => value.startsWith('ws://') || value.startsWith('wss://'), {
+      message: 'serverUrl must use ws:// or wss://',
+    }),
   runnerId: z.string().min(1).max(128),
   runnerVersion: z.string().min(1).max(64).default('0.1.0'),
   exposedPorts: z.array(z.number().int().min(1).max(65535)).default([]),
