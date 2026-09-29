@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { isMockApiEnabled } from '@/mock/gate';
+import { mockRequest } from '@/mock/api';
 
 /** Base path for the server API. The Vite dev server proxies it same-origin. */
 export const API_BASE = '/api';
@@ -109,18 +111,23 @@ export type XmppToken = z.infer<typeof xmppTokenSchema>;
 
 async function request<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
   let response: Response;
-  try {
-    const headers = new Headers(init.headers);
-    if (!headers.has('Accept')) {
-      headers.set('Accept', 'application/json');
+  if (isMockApiEnabled()) {
+    // Standalone mock mode: answer locally, never touch the network (T-0069).
+    response = await mockRequest(path, init);
+  } else {
+    try {
+      const headers = new Headers(init.headers);
+      if (!headers.has('Accept')) {
+        headers.set('Accept', 'application/json');
+      }
+      response = await fetch(`${API_BASE}${path}`, {
+        credentials: 'same-origin',
+        ...init,
+        headers,
+      });
+    } catch {
+      throw new ApiError(0, 'network_error', 'Could not reach the server');
     }
-    response = await fetch(`${API_BASE}${path}`, {
-      credentials: 'same-origin',
-      ...init,
-      headers,
-    });
-  } catch {
-    throw new ApiError(0, 'network_error', 'Could not reach the server');
   }
 
   const raw: unknown = await response.json().catch(() => null);

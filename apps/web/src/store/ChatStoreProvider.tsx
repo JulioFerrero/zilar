@@ -2,24 +2,15 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
 import { useAuth } from '@/auth/AuthProvider';
+import { isMockMode } from '@/mock/gate';
 import { createRealChatStore } from '@/store/realStore';
 import { createChatStore, type ChatStoreState } from '@/store/store';
 
 const ChatStoreContext = createContext<StoreApi<ChatStoreState> | null>(null);
 
-/**
- * The real store is the default. `?mock=1` (or `VITE_MOCK=1`) keeps the mock
- * store for tests and local UI work.
- */
-export function isMockMode(): boolean {
-  if (import.meta.env.VITE_MOCK === '1' || import.meta.env.MODE === 'test') {
-    return true;
-  }
-  if (typeof window === 'undefined') {
-    return false;
-  }
-  return new URLSearchParams(window.location.search).get('mock') === '1';
-}
+// Kept exported from this path for existing callers/tests (T-0069 moved the
+// decision itself to `@/mock/gate`).
+export { isMockMode };
 
 export function ChatStoreProvider({
   store,

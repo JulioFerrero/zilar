@@ -1,5 +1,7 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 import { authClient } from '@/lib/auth';
+import { isMockMode } from '@/mock/gate';
+import { currentUserId } from '@/mock/ids';
 
 export interface AuthUser {
   id: string;
@@ -32,10 +34,27 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
 }
 
+/**
+ * Mock mode needs no session server (T-0069): report the fixed user the mock
+ * store uses, so RequireAuth lets the app through without Better Auth.
+ */
+function MockAuthProvider({ children }: { children: ReactNode }) {
+  const [state] = useState<AuthState>(() => ({
+    status: 'authenticated',
+    user: { id: currentUserId, name: 'You', email: 'you@galena.test' },
+    refetch: async () => {},
+  }));
+
+  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
+}
+
 /** Provides the Better Auth session. Tests can pass a fixed `value`. */
 export function AuthProvider({ children, value }: { children: ReactNode; value?: AuthState }) {
   if (value !== undefined) {
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  }
+  if (isMockMode()) {
+    return <MockAuthProvider>{children}</MockAuthProvider>;
   }
   return <LiveAuthProvider>{children}</LiveAuthProvider>;
 }

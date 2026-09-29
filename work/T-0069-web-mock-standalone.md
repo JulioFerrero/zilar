@@ -1,7 +1,7 @@
 ---
 id: T-0069
 title: Web mock mode — gate `?mock=1` to dev builds, and make it run standalone (fake session, mock /api data for AIs and connections)
-status: todo
+status: review
 milestone: M2
 branch: task/T-0069-web-mock-standalone
 model: opencode-go/deepseek-v4.1-flash
@@ -88,16 +88,48 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+I took over the task from a quota-fallback session and continued from where it stopped: the gate, the standalone mock HTTP layer, the mock auth provider and the tests were already in place; I verified the full web test suite was green, ran the rest of the checks, did the live dev/preview integration check on a personal port and filled in this report.
+
+The gate (`mock/gate.ts`) decides `?mock=1` only when `import.meta.env.DEV` is true; a production build ignores the param. In mock mode the standalone `MockAuthProvider` reports the fixed `currentUserId` user (`u-you`) so `RequireAuth` lets the app through with no Better Auth call. `mock/api.ts` answers every `/api` route from in-memory state with a 150 ms delay (default 0 in tests) so loading states are real, and the same `Request` shape the real server sends so each route validates against the existing zod schemas in `lib/api.ts`. The connections page bypasses `request()` and uses `fetch` directly, so the mock module also installs a `globalThis.fetch` wrapper for `/api/*` when `isMockApiEnabled()` is true (excluded in `MODE === 'test'` so component tests that stub `fetch` keep their own fakes).
 
 ### Files changed
--
+
+Modified:
+- `apps/web/src/store/ChatStoreProvider.tsx` — re-exports `isMockMode` from `@/mock/gate` so the existing import path still works for tests and other callers.
+- `apps/web/src/auth/AuthProvider.tsx` — adds `MockAuthProvider` and switches to it when `isMockMode()` is true.
+- `apps/web/src/lib/api.ts` — `request()` calls `mockRequest` before any `fetch` when `isMockApiEnabled()` is true; otherwise the original `fetch` path is unchanged.
+- `apps/web/src/vite-env.d.ts` — types `VITE_MOCK` (no behaviour change at build time).
+- `work/T-0069-web-mock-standalone.md` — this report.
+
+New:
+- `apps/web/src/mock/gate.ts` — `resolveMockMode({ mode, viteMock, dev, search })`, `isMockMode()`, `isMockApiEnabled()` (off in `MODE === 'test'`).
+- `apps/web/src/mock/api.ts` — `mockRequest(path, init)`, `createMockFetch`, `installMockFetch`, in-memory state seeded with 2 AIs (one with `usage: null`, one at 85% of its daily limit) and 2 connections; 150 ms delay; 404 `mock_not_implemented` for anything else.
+- `apps/web/src/mock/gate.test.ts` — every `resolveMockMode` combination that matters, including production + `?mock=1` → false, `?mock=0`, `?mock=true`, and the test-runner gate wiring.
+- `apps/web/src/mock/api.test.ts` — each route validates against the real schema, create/patch/delete on `/ais` mutates what `GET /ais` returns, the 404 fallback, the delay is honoured with fake timers, the real `fetch` is used when the gate is closed, and the wrapper passes non-`/api` URLs through.
+- `apps/web/src/auth/AuthProvider.test.tsx` — mock mode reports the fixed user and never calls Better Auth; live mode calls Better Auth.
 
 ### Commands run and real results
--
+
+- `pnpm install` — `Already up to date` (lockfile is current, no install needed).
+- `pnpm exec turbo test --force --filter=@galena/web` — `Test Files 43 passed (43) / Tests 356 passed (356) / Tasks: 1 successful`.
+- `pnpm format:check` — `All matched files use Prettier code style!`.
+- `pnpm lint` — clean (oxlint, no findings).
+- `pnpm typecheck` — `@galena/web:typecheck: > tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json` (exit 0; cleared cache and re-ran locally to make sure).
+- `pnpm build` — `Tasks: 2 successful, 2 total`; the web build emits `dist/assets/index-TuVsBlpl.js` (838 kB / 253 kB gzip) and `dist/assets/index-CB4XjFw9.css` (45 kB / 9.5 kB gzip) with no errors.
+- `pnpm --filter @galena/web dev --port 5201 --strictPort` — Vite started, served `/?mock=1`, `/settings/ais?mock=1`, `/c/c-devai?mock=1`, `/settings/connections?mock=1`. Used the Chrome DevTools MCP to take snapshots of each route:
+  - `/?mock=1` — chat list rendered all 11 mock chats (Ana, Dev team, Viernes 🍻, Dev AI, Marta, Familia, QA squad, Luis, Marketing AI, Gym buddies, Product).
+  - `/settings/ais?mock=1` — both seeded AIs rendered; Marketing AI shows `Today $1.70`, Dev AI shows no usage line.
+  - `/c/c-devai?mock=1` — chat rendered the full mock transcript including the markdown review summary, date separators ("Yesterday", "Today") and read ticks.
+  - `/settings/connections?mock=1` — both connections rendered, `Test OpenAI key` returned `Key works`, `New AI` dialog opened with the provider picker showing both connections.
+- `pnpm exec vite preview --port 5202 --strictPort` (against the production build) — Chrome DevTools: `http://localhost:5202/?mock=1` redirected to `/login` ("Sign in to Galena"), confirming production ignores the param.
 
 ### Problems, deviations from the spec, open questions
--
+
+- The spec mentions a tiny "Mock data" hint "in the header of the AIs page or the sidebar" and explicitly says to skip it if it needs edits outside `Allowed files`. `AisPage.tsx` lives in `routes/` (only `AppRoutes.tsx` is allowed) and the sidebar lives in `components/`, so I skipped it. No code or test was harmed.
+- The mock module installs a `globalThis.fetch` wrapper at import time, gated on `isMockApiEnabled() && typeof globalThis.fetch === 'function'`. This is needed because `ConnectionsPage` calls `fetch` directly and is out of scope to refactor. The `MODE === 'test'` guard in `isMockApiEnabled` keeps component tests that stub `fetch` (`AisPage.test.tsx`, `NewAiDialog.test.tsx`, `AiPanel.test.tsx`) on their own fakes.
+- `mock/api.ts` imports from `mock/chats.ts`, `mock/groups.ts` and `mock/ids.ts`. None of those files were edited; the spec only forbids editing them and they already export everything I need.
+- No new dependencies were added. No `any`, no `@ts-ignore`/`@ts-expect-error` in the changed files.
 
 ### Blocked / needs a decision
 -
