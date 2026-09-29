@@ -128,6 +128,10 @@ Default `false`. When `true`:
 
 Neither has an env flag today. The voice engine and routes always mount (`app.ts:175-182`); the git routes always mount (`app.ts`'s `createGitRoutes`); what differs is whether the underlying dependency is configured (ffmpeg/ffprobe on `PATH` for voice, the three `GITHUB_APP_*` variables for git).
 
+### Topics (T-0108)
+
+Topics add no env vars. Every topic is its own members-only XMPP MUC room on `XMPP_MUC_DOMAIN`, created through the same ejabberd admin API as groups (`create_room_with_opts` with `members_only`, `persistent`, `mam`, non-`anonymous`). The server syncs each room's affiliations from the database (`topics` + `topic_members` + `group_members`): a topic creation or membership change that cannot reach ejabberd answers `502`/`503` instead of leaving the database and the rooms disagreeing. Creation is rate-limited to 30 topics per hour per user (in-memory, per process, like the other caps in `rate-limit.ts`).
+
 ## 4. Database
 
 ### How migrations run

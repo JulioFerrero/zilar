@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0104](T-0104-routines-scheduler.md) | Routines: scheduled tool runs that post as the AI | planned | meta/muse-spark-1.3-contributor | T-0102, T-0103, T-0110 | Needs T-0110 first (topic scope) |
 | [T-0105](T-0105-tool-adapters.md) | Tool and routine actions for the gateway; sandbox wiring | planned | meta/muse-spark-1.3-contributor | T-0104, T-0110 | routine.schedule needs a card, never always-allowed |
-| [T-0108](T-0108-topics-server.md) | Topics (server): public/private, one room per topic, task strip data | planned | meta/muse-spark-1.3-contributor | none | M5 core; see docs/ROADMAP_M5.md |
 | [T-0109](T-0109-ais-in-topics.md) | AIs read only the topics they were added to | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
 | [T-0110](T-0110-topic-scoped-actions.md) | Approvals, always-allow rules and tools scoped to (AI, topic) | planned | meta/muse-spark-1.3-contributor | T-0108, T-0109 | Riskiest review |
 | [T-0111](T-0111-topics-web.md) | Topics (web): nested sidebar, task strip, dialogs, panel | planned | meta/muse-spark-1.3-contributor | T-0108 to T-0110 | Visual spec = the topics mockup |
@@ -28,6 +27,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
 | [T-0124](T-0124-channels.md) | Channels: only admins post | planned | meta/muse-spark-1.3-contributor | T-0108, T-0115 |  |
 | [T-0125](T-0125-web-tools.md) | Web tools for AIs: web.fetch, Wikipedia, feeds, prices, best-effort search (no keys) | planned | meta/muse-spark-1.3-contributor | T-0105 |
+| [T-0126](T-0126-production-images-compose.md) | Production images, compose and Coolify file (easy install A) | planned | meta/muse-spark-1.3-contributor | none |
+| [T-0127](T-0127-install-wizard-backup-baremetal.md) | Install wizard, backup/restore, bare-metal guide | planned | meta/muse-spark-1.3-contributor | T-0126 |
 | T-0106 | Model side of AI tools (prompt guide, rounds per turn, working-on-it line) | planned | meta/muse-spark-1.3-contributor | T-0105 | Spec written after T-0105 merges |
 | T-0107 | Web Tools and Routines UI | planned | meta/muse-spark-1.3-contributor | T-0106 | Spec written after T-0105 merges |
 
@@ -155,3 +156,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0102](T-0102-tool-sandbox.md) | tool sandbox: AI-written JS runs in QuickJS/WASM inside a worker, allowlisted SSRF-safe fetch, CPU/memory/output limits; not wired to anything yet | 2026-09-29 |
 | [T-0103](T-0103-ai-tools-store.md) | AI tools store: versioned tool code per AI and chat (append-only history, revert = new version), manual run through an injected runner, read/manage routes, audit without code or output | 2026-09-29 |
 | [T-0118](T-0118-web-push-spike.md) | Web push spike: decision doc, GO for T-0119 (MUC/Sub for groupchat); code preserved on branch spike/T-0118-push | 2026-09-29 |
+| [T-0108](T-0108-topics-server.md) | Topics on the server: one XMPP room per topic, public/private, General backfill, task strip data | 2026-09-29 |

@@ -1,7 +1,7 @@
 ---
 id: T-0108
 title: Topics (server): each group is a list of topics, public or private, one XMPP room per topic
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0108-topics-server
 model: meta/muse-spark-1.3-contributor
@@ -103,28 +103,63 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Schema: added `topics` and `topic_members` tables, `groups.members_can_create_topics` (default false), partial unique indexes `(group_id, lower(name))` active-only and `(group_id)` General-only. Migration `0018_lethal_warhawk.sql` via `db:generate`; custom backfill `0019_general-topics.sql` inserts one General topic per group (`room_localpart` copied, deterministic md5 id, `ON CONFLICT DO NOTHING`).
+- `topics/access.ts`: `canSeeTopic`/`canSeeTopicById`/`requireVisibleTopic`, `visibleTopics`, `canManageTopic`/`requireManagedTopic` (creator or group owner/admin who can see it), `canCreateTopic` (owner/admin always, members if flag), same-404 rule, `toTopicView(s)` (chatJid, owner names from user/AI tables, never e-mail, memberCount).
+- `topics/rooms.ts`: `desiredMembers` (public → all group members; private → topic_members∩group; General → group owner is room owner, other topics → creator is owner) and idempotent `syncTopicRoom` (diff affiliations, invite new, `none` for removed; failures logged by class name, rethrown as 502/503). `getAffiliations` already existed on the admin client, so no change there.
+- `topics/service.ts`: create (DB row + `createRoom` + sync; any failure destroys room and deletes row), patch (strip open to visible members; name/glyph/visibility/archive need manager; private→public needs `confirmExposeHistory`, public→private needs `memberIds` incl. manager; General guards), members (private only, group-members only; self-leave or manager; last member archives), audit `topic.created/updated/archived/member_added/member_removed/visibility_changed` with no private name in detail.
+- `groups/service.ts`: `createGroup` inserts General in the same transaction; add/remove member syncs every active topic room (remove also deletes `topic_members` rows and archives drained private topics); new `patchGroup` (`membersCanCreateTopics`, owner/admin only); `GroupDetail` gains the flag.
+- Routes: `topics/routes.ts` mounted in `app.ts` (`GET/POST /api/groups/:id/topics`, `GET/PATCH /api/topics/:id`, `POST /api/topics/:id/archive`, member routes); `PATCH /api/groups/:id`; `GET /api/chats` group entries gain `topics` (General keeps `chatJid`). Rate limit 30/hour/user on creation. `test-support.ts` fake now tracks affiliation state and supports read failures. Audit group-activity route filters private-topic entries the viewer cannot see. `docs/SERVER_CONFIG.md` Topics note.
 
 ### Files changed
--
+- `apps/server/src/db/schema.ts`, `apps/server/drizzle/0018_lethal_warhawk.sql`, `apps/server/drizzle/0019_general-topics.sql` (+ meta snapshots/journal)
+- `apps/server/src/topics/access.ts`, `rooms.ts`, `service.ts`, `routes.ts`, `topics.test.ts` (20 tests), `backfill.test.ts` (1 test)
+- `apps/server/src/groups/service.ts`, `apps/server/src/groups/routes.ts`, `apps/server/src/chats/routes.ts`, `apps/server/src/audit/service.ts`, `apps/server/src/app.ts`, `apps/server/src/test-support.ts`
+- `docs/SERVER_CONFIG.md`, `work/T-0108-topics-server.md`
 
 ### Commands run and real results
--
+- `pnpm install`: pass (7.1s)
+- `pnpm format:check`: pass ("All matched files use Prettier code style!")
+- `pnpm lint`: pass (oxlint clean; rewrote a control-char regex as a code-point loop, no disables)
+- `pnpm typecheck`: pass (turbo 10/10)
+- `pnpm --filter @galena/server test --maxWorkers=2`: 64 files passed, 5 skipped; 1093 passed, 7 skipped (269s). Note: the first attempt used the wrong `-- --maxWorkers=2` form and was killed by the lead; re-ran once with the correct form, alone.
+- `pnpm build`: pass (2/2 turbo tasks)
+- Scoped: `src/topics` 21 passed; `groups.test.ts`+`chats.test.ts` 35 passed; `audit/routes`+`authz-sweep` 16 passed.
+- `grep` for `eslint-disable|oxlint-disable|@ts-ignore|console.log|: any` in all touched source: no hits.
 
 ### Problems, deviations from the spec, open questions
--
+- Spec says `glyph` is "1–2 chars"; zod counts UTF-16 units, so I capped the raw string at 8 units and enforced 1–2 code points. Emoji glyphs work.
+- `POST /api/topics/:id/archive` added as a convenience; archiving also works via `PATCH { archived: true }`. Both need a manager (creator or group admin who can see it).
+- Archived topics are invisible to everyone (404 + excluded from lists), stricter than "archived excluded from chats" only; re-creating the name is allowed. No hard delete (out of scope).
+- `DELETE .../members/:userId` on the last private member archives and answers 404 (topic gone). Chose 404 over 200+archived so it matches "invisible everywhere".
+- Group add/remove member room sync is best-effort post-commit (logged, never throws): the DB stays the source of truth and the next change retries. Topic routes answer 502 instead when sync fails, and creation rolls back row+room.
+- Audit `subjectId` for member add/remove is the topic id (action regex requires dotted `topic.*`, `argsHash` pattern rejects user ids); the affected user sits in `detail.subjectUserId`. Group-activity pagination over-fetches 2x to absorb filtered rows; the cursor still advances.
+- Backfill test replays migrations 0000–0019 from SQL text on a blank PGlite (two pre-existing groups) instead of snapshotting prod data; `topics.test.ts` covers General-on-create.
+- No `any`, no disables, no new dependencies.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
+
+### Round 2 (review fixes)
+- Fix 1: `RemoveGroupMemberInput` gains `logger: InviteLogger`; `groups/routes.ts` passes the real route logger; both `addGroupMembers` and `removeGroupMember` pass it into `syncGroupTopicRooms`. `silentLogger` deleted; the catch logs `could not sync a topic room after a group membership change` with `{ groupId }` (never a topic name). Sync stays best-effort, no rollback. New test in `groups.test.ts` (`TopicRoomsDownClient` fails room writes except the group room): removal answers 200, the DB row is gone, and the log contains the warning.
+- Fix 2: `removeTopicMember` runs `syncTopicRoom` on the archived topic before returning (desired members now empty, everyone removed), same 502 handling as the other branch. Extended the last-member test: the room's affiliation map is empty afterwards.
+- Fix 3: `'bad name'` control byte rewritten as `'bad\u0007name'`; `topics.test.ts` is plain ASCII and diffs as text.
+- Small suggestion applied: `mapXmppError` in `topics/service.ts` maps `code 23505` to 409 `topic_exists` (precise Postgres unique-violation code, same under PGlite).
+- Checks (correct form, one run at a time): scoped topics+groups 49 passed; format/lint/typecheck/build pass; full server suite 64 files passed, 5 skipped — 1094 passed, 7 skipped. No disables, no `any` (grep clean).
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged after one round of fixes.
 
 ### Findings
--
+- Design matches the spec: one members-only room per topic, DB-owned visibility, same 404 for missing and hidden topics, private topic names never in audit rows, group owners and admins do not see private topics they were not added to. Migration `0018` (generated) and `0019` (idempotent General backfill) read correctly.
+- Fixed after review: (1) removing a group member synced topic rooms with a silent logger, so a failed room call was invisible; the real logger is now passed and the failure is logged with the group id. (2) the last member leaving a private topic archived it without removing their room affiliation; the room is now synced empty. (3) a raw control byte in a test made git treat the file as binary. (4) a unique-index race on the topic name answered 503; it now answers 409.
+- Lead cleanup: removed three unused exported functions the pre-review found (`syncGroupTopics`, `removeGroupMemberTopics`, `archiveEmptyPrivateTopics`); `archived` in PATCH is now `true` only (un-archiving was an unreachable path).
+- Checks re-run by the lead: format, lint, typecheck pass; server suite 64 files passed, 1094 tests passed, 7 skipped (227 s, `--maxWorkers=2`).
 
 ### Follow-ups
--
+- Room membership can drift if a room call fails after a group membership change (the sync is best effort and logged). A reconcile pass for topic rooms is worth adding (T-0109 or a small task).
+- `GET /api/chats` and the topic list do per-topic count and owner lookups (N+1); fine now, batch later.
+- A topic owner AI is only checked to exist, not to be in the group; T-0109 (topic AIs) should tighten this.
+- Error bodies carry a request id, so 404s are identical in code and message but not byte for byte (pre-existing global behaviour).

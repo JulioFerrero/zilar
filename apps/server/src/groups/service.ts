@@ -2,13 +2,23 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { and, count, eq, inArray } from 'drizzle-orm';
 import { findOwnedAi } from '../ais/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, contacts, groupAis, groupMembers, groups, user } from '../db/schema';
+import {
+  ais,
+  contacts,
+  groupAis,
+  groupMembers,
+  groups,
+  topicMembers,
+  topics,
+  user,
+} from '../db/schema';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { emitGroupAi } from './events';
 import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
 import { deleteToolsForAiInGroup } from '../tools/service';
+import { syncTopicRoom } from '../topics/rooms';
 
 export const MAX_GROUP_MEMBERS = 50;
 export const ROOM_LOCALPART_LENGTH = 16;
@@ -34,6 +44,7 @@ export interface GroupDetail {
   title: string;
   createdBy: string;
   createdAt: Date;
+  membersCanCreateTopics: boolean;
   members: GroupMemberView[];
   ais: GroupAiView[];
 }
@@ -74,6 +85,7 @@ export interface RemoveGroupMemberInput {
   actorId: string;
   targetUserId: string;
   domain: string;
+  logger: InviteLogger;
 }
 
 export interface AddGroupAiInput {
@@ -86,6 +98,36 @@ export interface RemoveGroupAiInput {
   groupId: string;
   actorId: string;
   aiId: string;
+}
+
+export interface PatchGroupInput {
+  groupId: string;
+  actorId: string;
+  membersCanCreateTopics?: boolean | undefined;
+}
+
+// T-0108: group owner/admin toggles whether plain members may create topics.
+export async function patchGroup(db: ServerDatabase, input: PatchGroupInput): Promise<GroupDetail> {
+  const group = await requireGroup(db, input.groupId);
+  const actor = await getMembership(db, input.groupId, input.actorId);
+  // A non-member sees the same 404 as a missing group.
+  if (!group || !actor) {
+    throw new HttpError(404, 'not_found', 'Group not found');
+  }
+  if (actor.role === 'member') {
+    throw new HttpError(403, 'forbidden', 'Only owners and admins can change group settings');
+  }
+  if (input.membersCanCreateTopics !== undefined) {
+    await db
+      .update(groups)
+      .set({ membersCanCreateTopics: input.membersCanCreateTopics })
+      .where(eq(groups.id, input.groupId));
+  }
+  const detail = await getGroupDetail(db, input.groupId);
+  if (!detail) {
+    throw new Error('group disappeared while patching it');
+  }
+  return detail;
 }
 
 // `g` followed by 16 random lowercase base32 characters. Never derived from the
@@ -125,6 +167,20 @@ export async function createGroup(
           { groupId, userId: input.creatorId, role: 'owner' },
           ...memberIds.map((userId) => ({ groupId, userId, role: 'member' as const })),
         ]);
+      // T-0108: the group's room becomes its General topic (same room, same
+      // history). The row is created in the same transaction as the group.
+      await tx.insert(topics).values({
+        id: randomUUID(),
+        groupId,
+        name: 'General',
+        glyph: 'G',
+        roomLocalpart,
+        visibility: 'public',
+        kind: 'chat',
+        status: 'open',
+        isGeneral: true,
+        createdBy: input.creatorId,
+      });
 
       await adminClient.createRoom(roomLocalpart, {
         title: input.title,
@@ -177,6 +233,7 @@ export async function getGroupDetail(
     title: group.title,
     createdBy: group.createdBy,
     createdAt: group.createdAt,
+    membersCanCreateTopics: group.membersCanCreateTopics,
     members,
     ais: aiViews,
   };
@@ -250,6 +307,10 @@ export async function addGroupMembers(
     } catch (error) {
       throw mapXmppError(error);
     }
+    // T-0108: public topics gain the new members. The sync is best effort —
+    // the members are in the database even if a room call fails (the failure
+    // is logged with the group id, never a topic name).
+    await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain, input.logger);
   }
 
   const detail = await getGroupDetail(db, input.groupId);
@@ -295,10 +356,32 @@ export async function removeGroupMember(
         .where(
           and(eq(groupMembers.groupId, input.groupId), eq(groupMembers.userId, input.targetUserId)),
         );
+      // T-0108: a removed person loses their private-topic rows too. The
+      // topic room sync below then drops them from every topic room.
+      const topicRows = await tx
+        .select({ id: topics.id })
+        .from(topics)
+        .where(eq(topics.groupId, input.groupId));
+      const privateIds = topicRows.map((row) => row.id);
+      if (privateIds.length > 0) {
+        await tx
+          .delete(topicMembers)
+          .where(
+            and(
+              inArray(topicMembers.topicId, privateIds),
+              eq(topicMembers.userId, input.targetUserId),
+            ),
+          );
+      }
     });
   } catch (error) {
     throw mapXmppError(error);
   }
+  // T-0108: public topics lose the person; private topics drop them when
+  // their row is gone. Best effort after the database commit: a failure is
+  // logged with the group id (never a topic name), never thrown.
+  await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain, input.logger);
+  await archiveDrainedPrivateTopics(db, input.groupId);
 
   const detail = await getGroupDetail(db, input.groupId);
   if (!detail) {
@@ -580,6 +663,52 @@ function mapXmppError(error: unknown): HttpError {
     return error;
   }
   return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+}
+
+// T-0108: re-apply the desired members to every active topic room of the
+// group (public topics gain/lose the person; private topics drop anyone
+// whose `topic_members` row is gone). Best effort: the database is the
+// source of truth, and a failed room call is logged with the group id
+// (never a topic name), never thrown, so the group flow that just committed
+// is not rolled back by a room hiccup.
+async function syncGroupTopicRooms(
+  db: ServerDatabase,
+  adminClient: EjabberdAdminClient,
+  groupId: string,
+  domain: string,
+  logger: InviteLogger,
+): Promise<void> {
+  const rows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+  for (const topic of rows) {
+    if (topic.archivedAt !== null) {
+      continue;
+    }
+    try {
+      await syncTopicRoom({ db, adminClient, domain, logger }, topic);
+    } catch {
+      logger.warn({ groupId }, 'could not sync a topic room after a group membership change');
+    }
+  }
+}
+
+// T-0108: a private topic with no members left is archived.
+async function archiveDrainedPrivateTopics(db: ServerDatabase, groupId: string): Promise<void> {
+  const rows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+  for (const topic of rows) {
+    if (topic.archivedAt !== null || topic.visibility !== 'private' || topic.isGeneral) {
+      continue;
+    }
+    const [row] = await db
+      .select({ total: count() })
+      .from(topicMembers)
+      .where(eq(topicMembers.topicId, topic.id));
+    if (Number(row?.total ?? 0) === 0) {
+      await db
+        .update(topics)
+        .set({ archivedAt: new Date(), updatedAt: new Date() })
+        .where(eq(topics.id, topic.id));
+    }
+  }
 }
 
 async function destroyQuietly(

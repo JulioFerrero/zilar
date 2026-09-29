@@ -13,6 +13,7 @@ import {
   getGroupDetail,
   getMembership,
   MAX_GROUP_MEMBERS,
+  patchGroup,
   removeGroupAi,
   removeGroupMember,
   type InviteLogger,
@@ -44,6 +45,12 @@ const addMembersSchema = z.object({
 const addAiSchema = z.object({
   aiId: z.string().min(1, { message: 'aiId is required' }),
 });
+
+const patchGroupSchema = z
+  .object({
+    membersCanCreateTopics: z.boolean().optional(),
+  })
+  .strict();
 
 export function createGroupsRoutes({
   auth,
@@ -119,6 +126,7 @@ export function createGroupsRoutes({
       actorId: user.id,
       targetUserId: c.req.param('userId'),
       domain,
+      logger,
     });
     return c.json(group);
   });
@@ -149,6 +157,27 @@ export function createGroupsRoutes({
       groupId: c.req.param('id'),
       actorId: user.id,
       aiId: c.req.param('aiId'),
+    });
+    return c.json(group);
+  });
+
+  // T-0108: group owner/admin toggles whether plain members may create
+  // topics. A non-member sees the same 404 as a missing group.
+  routes.patch('/groups/:id', async (c) => {
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    const body = await c.req.json().catch(() => null);
+    const parsed = patchGroupSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpError(
+        400,
+        'invalid_request',
+        parsed.error.issues[0]?.message ?? 'Invalid request',
+      );
+    }
+    const group = await patchGroup(db, {
+      groupId: c.req.param('id'),
+      actorId: user.id,
+      membersCanCreateTopics: parsed.data.membersCanCreateTopics,
     });
     return c.json(group);
   });

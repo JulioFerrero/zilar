@@ -86,6 +86,9 @@ export const groups = pgTable('groups', {
   createdBy: text('created_by')
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
+  // T-0108: plain members may create topics only when this is true.
+  // Owners/admins always may.
+  membersCanCreateTopics: boolean('members_can_create_topics').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -146,6 +149,83 @@ export const groupAis = pgTable(
     addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.groupId, table.aiId] })],
+);
+
+// A topic inside a group (T-0108, decisions D25/D26/D29). A group is a list
+// of topics; every topic is its own members-only XMPP MUC room, so ejabberd
+// itself enforces who receives a private topic's messages. The group's
+// original room becomes its "General" topic (same room, same history):
+// exactly one General per group, always public, never archived.
+// `glyph` is 1-2 display characters (default: the first letter of the name,
+// uppercased). Task-strip fields (`kind`, `status`, owners, link) live here
+// too. `archived_at` is soft: archived topics keep their rows and history.
+export const topics = pgTable(
+  'topics',
+  {
+    id: text('id').primaryKey(),
+    groupId: text('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    glyph: text('glyph').notNull(),
+    roomLocalpart: text('room_localpart').notNull().unique(),
+    visibility: text('visibility', { enum: ['public', 'private'] })
+      .notNull()
+      .default('public'),
+    kind: text('kind', { enum: ['chat', 'task', 'bug', 'ui', 'routine'] })
+      .notNull()
+      .default('chat'),
+    status: text('status', {
+      enum: ['open', 'in_progress', 'in_review', 'blocked', 'done'],
+    })
+      .notNull()
+      .default('open'),
+    ownerUserId: text('owner_user_id').references(() => user.id, { onDelete: 'set null' }),
+    ownerAiId: text('owner_ai_id').references(() => ais.id, { onDelete: 'set null' }),
+    linkUrl: text('link_url'),
+    linkLabel: text('link_label'),
+    isGeneral: boolean('is_general').notNull().default(false),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // Names are unique per group, case-insensitively, while active. An
+    // archived topic frees its name for reuse.
+    uniqueIndex('topics_active_name_idx')
+      .on(table.groupId, sql`lower(${table.name})`)
+      .where(sql`${table.archivedAt} IS NULL`),
+    // Exactly one General topic per group.
+    uniqueIndex('topics_general_idx')
+      .on(table.groupId)
+      .where(sql`${table.isGeneral} IS TRUE`),
+    index('topics_group_idx').on(table.groupId),
+  ],
+);
+
+// Membership of private topics (T-0108). Rows exist only for private topics:
+// a public topic's members are all group members, with no rows here. At most
+// one of the two owner columns on `topics` is set; the application enforces
+// it (a check constraint cannot easily express "at most one non-null" across
+// nullable FK columns without surprising drizzle-kit diffs, so code owns it).
+export const topicMembers = pgTable(
+  'topic_members',
+  {
+    topicId: text('topic_id')
+      .notNull()
+      .references(() => topics.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    addedBy: text('added_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.topicId, table.userId] })],
 );
 
 // An AI an owner created. It is a real XMPP user (its own account and roster),

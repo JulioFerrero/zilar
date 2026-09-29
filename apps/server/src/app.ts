@@ -24,6 +24,7 @@ import { createContactsRoutes } from './contacts/routes';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
+import { createTopicsRoutes } from './topics/routes';
 import { createMachinesRoutes } from './machines/routes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
 import { serverVersion } from './version';
@@ -176,6 +177,10 @@ export function createApp({
     }),
   );
   app.route('/api', createGroupsRoutes({ auth, db, config, adminClient, logger }));
+  app.route(
+    '/api',
+    createTopicsRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
+  );
   app.route('/api', createChatsRoutes({ auth, db, config }));
   app.route('/api', createDraftsRoutes({ auth }));
   app.route('/api', createAuditRoutes({ auth, db }));

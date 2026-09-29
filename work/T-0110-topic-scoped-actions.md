@@ -37,6 +37,7 @@ Scope after this task: **personal chat** = `group_id null, topic_id null`; **gro
 - `apps/server/src/agents/{gateway,reply,tools}.ts` (+ tests) for the topic plumbing
 - `apps/server/src/db/schema.ts` + generated and custom migrations
 - `apps/server/src/audit/**`, `authz-sweep.test.ts`
+- `apps/server/src/index.ts` (only the production announcer wiring below)
 - `work/T-0110-topic-scoped-actions.md`
 
 **Not allowed:** web, mobile, the sandbox, the routines scheduler (T-0104), dependencies.
@@ -44,7 +45,7 @@ Scope after this task: **personal chat** = `group_id null, topic_id null`; **gro
 ### Tests (Vitest, PGlite, fakes; extend `flow.e2e.test.ts`)
 - Migration: rows made before the migration end up scoped to their group's General topic; the CHECK constraints reject a row with only one of the two ids.
 - Scope: a rule created in topic A does **not** fire in topic B of the same group, fires in A, and never in the personal chat; the same for tools (same name in two topics = two tools).
-- The card and the outcome notice are posted into the topic room (assert on the fake announcer's `topicId`).
+- The card and the outcome notice are posted into the topic room (assert on the fake announcer's `topicId`). **T-0109 added an optional `topicId` to the announcer port and to `postToChat` in the gateway, but the production announcer built in `index.ts` still ignores it (cards go to General or the DM). Wire it through in this task**: the announcer passes `topicId` to `gateway.postToChat`, and a test proves an approval card requested in a topic is posted into that topic's room, not General.
 - Private topic: a group admin who is not in it gets 404 on its approval, the list omits it, the pending count excludes it, `decide` answers 404, the rules and tools lists omit it; the AI owner who was removed from the topic loses decision rights; audit rows contain no topic name.
 - A request naming a topic the AI is not a member of → `denied`; a topic of another group → `denied`; a stopped AI → `denied` as before.
 - The T-0101 rule still holds per topic (member-owner cannot create a rule, gets 403 and can still approve once).
