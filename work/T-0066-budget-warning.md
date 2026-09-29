@@ -1,7 +1,7 @@
 ---
 id: T-0066
 title: AI budget warning at 80% (daily and 30-day window) — one fixed notice per chat, sent with the turn that crossed it
-status: review
+status: merged
 milestone: M2
 branch: task/T-0066-budget-warning
 model: opencode-go/muse-spark-1.3-contributor
@@ -114,10 +114,15 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved.
+
+**Approved and merged by Claude.** Verified after rebasing onto current `main`: all changed paths are inside Allowed files (`usage.ts`, `gateway.ts`, `reply.ts` and their tests); `format:check`, `lint`, `typecheck`, `test` (server 508 passed, 7 skipped) and `build` pass. The Muse pre-review found no must-fix or should-fix issues. Read `sendBudgetWarnings`: warnings go out after the reply, once per kind per AI per chat per UTC day (in memory), daily and monthly independently, nothing at or above 100% or when usage is null, and a failed send only logs ids and is retried by the next turn. The 80% check is cents-safe (`todayCents * 5 >= perDayCents * 4`).
+
+**Live proof is still open:** the warning needs real LiteLLM spend crossing 80% on a real AI, which I did not fake on Julio's data. The unit tests use a faked usage read. Julio can see it the first time one of his AIs crosses 80% of its daily or 30-day limit.
 
 ### Findings
--
+1. *(No change needed.)* The warning is also sent when the turn itself failed (for example a LiteLLM outage: the owner sees the failure text and then the warning). Harmless and disclosed in the Report; accepted.
+2. *(No change needed.)* The `dailyLimitReached` early return in `sendBudgetWarnings` is unreachable today (both callers return first); defense in depth, accepted.
 
 ### Follow-ups
--
+- None.
