@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Estimated Meta Model API spend of the Muse worker sessions (contributor tier prices).
 Run: python3 packages/devtools/scripts/muse-usage.py"""
+import json,subprocess,sys
 out=subprocess.run(['opencode2','api','session.list'],capture_output=True,text=True).stdout
 d=json.loads(out)['data']
 P_IN,P_CACHE,P_OUT=0.10,0.002,0.20   # USD per million tokens, contributor tier
