@@ -67,6 +67,16 @@ Phone → My AIs → tap an AI: **Stop** (then the row shows a "Stopped" pill an
 
 With `ACTION_DEMO_ENABLED=true` and an AI in a group: an admin or owner mentions the AI and asks it to echo a text with the demo action; a card appears in the room for everyone, only admins/owners (and the AI's owner) get the buttons. A plain member asking the same thing gets a normal reply and no card. Persona changes are still only possible in the owner's DM.
 
+## 11. "Always allow here" (T-0099, T-0100)
+
+With `ACTION_DEMO_ENABLED=true`:
+- DM with your AI: ask it to echo a text with the demo action. The card shows **Approve / Deny / Always allow here**. Click the third one: an inline confirmation names the scope ("in this chat only"); confirm. Good: the card turns into "Approved", the echo runs, and the AI's panel (**Always allowed** list) shows the rule.
+- Ask again in the same DM: no card, the action runs at once (audit shows `action.auto_approved`).
+- Ask the same in a **different** chat (or a group): a normal card appears; the rule does not apply there.
+- Panel → **Revoke** the rule: the next request asks again. Stopping the AI also stops rules from working.
+- In a group: the card's third button is created by the AI's owner; any group admin sees the rule in the group panel's **Always allowed** list and can revoke it. Removing the AI from the group revokes its group rules.
+- Note for the visual check in mock mode: the card does not poll in a hidden browser tab (by design), so it stays on a grey placeholder until the tab is visible.
+
 ## Known follow-ups (not blockers, also on `work/BOARD.md`)
 
 - Kill switch for room admins and workspace admins (J5), audit entries from the engine and proxy, retention (J4).
