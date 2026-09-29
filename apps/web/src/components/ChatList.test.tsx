@@ -200,4 +200,169 @@ describe('ChatList', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Machines' }));
     expect(screen.getByText('Machines')).toBeTruthy();
   });
+
+  it('does not call the approvals list before the menu opens', () => {
+    let fetchCalls = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/approvals') {
+        fetchCalls += 1;
+        return Promise.resolve(
+          new Response(JSON.stringify([]), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      renderApp('/');
+      expect(fetchCalls).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('shows the pending approval count when the list returns pending entries', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/approvals') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([
+              {
+                id: 'apr-1',
+                aiId: 'ai-dev-1',
+                groupId: null,
+                action: 'merge_pull_request',
+                summary: 'a',
+                details: null,
+                argsHash: 'a'.repeat(64),
+                worstCase: null,
+                requestedBy: 'dev-1@ai.galena.test',
+                status: 'pending',
+                decidedAt: null,
+                note: null,
+                expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+                createdAt: new Date().toISOString(),
+              },
+              {
+                id: 'apr-2',
+                aiId: 'ai-dev-1',
+                groupId: null,
+                action: 'merge_pull_request',
+                summary: 'b',
+                details: null,
+                argsHash: 'b'.repeat(64),
+                worstCase: null,
+                requestedBy: 'dev-1@ai.galena.test',
+                status: 'pending',
+                decidedAt: null,
+                note: null,
+                expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+                createdAt: new Date().toISOString(),
+              },
+              {
+                id: 'apr-3',
+                aiId: 'ai-dev-1',
+                groupId: null,
+                action: 'merge_pull_request',
+                summary: 'c',
+                details: null,
+                argsHash: 'c'.repeat(64),
+                worstCase: null,
+                requestedBy: 'dev-1@ai.galena.test',
+                status: 'pending',
+                decidedAt: null,
+                note: null,
+                expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+                createdAt: new Date().toISOString(),
+              },
+            ]),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      renderApp('/');
+      fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+      expect(await screen.findByLabelText('3 pending approvals')).toBeTruthy();
+      expect(screen.getByText('3')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('caps the badge at 9+ for ten or more pending entries', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const entries = Array.from({ length: 10 }, (_, index) => ({
+      id: `apr-${index}`,
+      aiId: 'ai-dev-1',
+      groupId: null,
+      action: 'merge_pull_request',
+      summary: 'a',
+      details: null,
+      argsHash: 'a'.repeat(64),
+      worstCase: null,
+      requestedBy: 'dev-1@ai.galena.test',
+      status: 'pending' as const,
+      decidedAt: null,
+      note: null,
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      createdAt: new Date().toISOString(),
+    }));
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/approvals') {
+        return Promise.resolve(
+          new Response(JSON.stringify(entries), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      renderApp('/');
+      fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+      expect(await screen.findByLabelText('9+ pending approvals')).toBeTruthy();
+      expect(screen.getByText('9+')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('hides the badge when the list is empty', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/approvals') {
+        return Promise.resolve(
+          new Response(JSON.stringify([]), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      renderApp('/');
+      fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.queryByLabelText(/pending approvals/)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
 });

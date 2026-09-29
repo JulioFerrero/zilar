@@ -9,7 +9,7 @@ import {
 } from './launch.js';
 import { loadRulesFile } from './prompts.js';
 import { appendLog, loadState, saveState } from './state.js';
-import { assertNotV4Pro, splitModel } from './task-file.js';
+import { assertAllowedModel, splitModel } from './task-file.js';
 import type { TaskRecord } from './types.js';
 
 export interface SwitchModelDeps {
@@ -86,7 +86,7 @@ export async function switchModel(
   if (!fs.existsSync(worktree)) {
     throw new Error(`worktree is missing for ${task}: ${worktree}`);
   }
-  assertNotV4Pro(newModel);
+  assertAllowedModel(newModel);
   const model = splitModel(newModel);
   const { file, branch } = readTaskFrontMatter(deps.repoRoot, task);
 

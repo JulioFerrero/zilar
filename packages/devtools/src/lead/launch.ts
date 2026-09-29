@@ -4,7 +4,7 @@ import { type OpenCodeClient, type SessionModel } from './client.js';
 import type { GitRunner } from './git.js';
 import { loadPrompt, loadRulesFile, renderPrompt, unfilledPlaceholders } from './prompts.js';
 import { loadState, saveState } from './state.js';
-import { assertNotV4Pro, parseTaskFrontMatter, splitModel } from './task-file.js';
+import { assertAllowedModel, parseTaskFrontMatter, splitModel } from './task-file.js';
 import { newTaskRecord } from './types.js';
 
 export interface LaunchDeps {
@@ -146,7 +146,7 @@ export async function launchTask(
     throw new Error(`task must look like T-0038, got ${JSON.stringify(task)}`);
   }
   const { file, model: modelString, branch } = readTaskFrontMatter(deps.repoRoot, task);
-  assertNotV4Pro(modelString);
+  assertAllowedModel(modelString);
   const model = splitModel(modelString);
   const worktree = worktreeFor(deps.repoRoot, task);
   if (fs.existsSync(worktree)) {

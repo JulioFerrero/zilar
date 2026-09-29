@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { ApprovalRequest } from '@galena/protocol';
 import { ShieldAlert } from 'lucide-react';
 import {
@@ -8,15 +8,10 @@ import {
   type ApprovalDecision,
   type PublicApproval,
 } from '@/lib/api';
+import { useApprovalPolling } from '@/lib/useApprovalPolling';
 import { Button } from '@/components/ui/button';
 import { FieldError } from '@/components/ais/AiPageShell';
 import { formatMoney } from '@/lib/format';
-
-type LoadState =
-  | { kind: 'loading' }
-  | { kind: 'notDecidable' }
-  | { kind: 'error' }
-  | { kind: 'ready'; approval: PublicApproval };
 
 function statusLabel(approval: PublicApproval): string {
   switch (approval.status) {
@@ -34,38 +29,20 @@ function statusLabel(approval: PublicApproval): string {
   }
 }
 
-// A 404 means the viewer may not decide this request (or it does not exist):
-// the card then shows no buttons and no error.
-async function loadState(approvalId: string): Promise<LoadState> {
-  try {
-    return { kind: 'ready', approval: await getApproval(approvalId) };
-  } catch (error) {
-    return error instanceof ApiError && error.status === 404
-      ? { kind: 'notDecidable' }
-      : { kind: 'error' };
-  }
-}
-
 export function ApprovalCard({ request }: { request: ApprovalRequest }) {
-  const [state, setState] = useState<LoadState>({ kind: 'loading' });
+  // Bumped on a manual retry to force the polling hook to drop its current
+  // state and re-fetch from scratch.
+  const [retryToken, setRetryToken] = useState(0);
+  // The polling hook owns the card's read-model state. A non-pending outcome,
+  // a 404, an id change, and an unmount all stop further reads; a failed poll
+  // keeps the last good state. `apply` lets the card push an optimistic state
+  // after a decision so the buttons drop at once.
+  const { state, apply } = useApprovalPolling(request, { resetKey: retryToken });
   const [inFlight, setInFlight] = useState<null | 'approve' | 'deny'>(null);
   const [actionError, setActionError] = useState('');
 
-  useEffect(() => {
-    let active = true;
-    void loadState(request.id).then((next) => {
-      if (active) {
-        setState(next);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, [request.id]);
-
   const retry = (): void => {
-    setState({ kind: 'loading' });
-    void loadState(request.id).then(setState);
+    setRetryToken((value) => value + 1);
   };
 
   async function decide(decision: ApprovalDecision): Promise<void> {
@@ -73,12 +50,12 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
     setInFlight(decision === 'deny' ? 'deny' : 'approve');
     try {
       const approval = await decideApproval(request.id, decision);
-      setState({ kind: 'ready', approval });
+      apply({ kind: 'ready', approval });
     } catch (error) {
       if (error instanceof ApiError && (error.code === 'not_pending' || error.code === 'expired')) {
         const refreshed = await getApproval(request.id).catch(() => null);
         if (refreshed !== null) {
-          setState({ kind: 'ready', approval: refreshed });
+          apply({ kind: 'ready', approval: refreshed });
         }
         return;
       }
