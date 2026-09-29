@@ -446,6 +446,30 @@ describe('approvals service', () => {
       ).rejects.toMatchObject({ errorCode: 'not_pending' });
     });
 
+    it('does not leak the state of a request to someone who may not decide it', async () => {
+      const ownerId = await seedUser(context);
+      const strangerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      const row = await createApproval(
+        context.db,
+        approvalInput({ aiId, hash: argsHash(31), expiresAt: futureExpiresAt(now, 60_000) }),
+        now,
+      );
+      await decideApproval(
+        context.db,
+        { approvalId: row.id, userId: ownerId, decision: 'approve_once' },
+        now,
+      );
+      const later = futureExpiresAt(now, 120_000);
+      // Already decided and now also expired: the stranger still sees "not found".
+      const result = await decideApproval(
+        context.db,
+        { approvalId: row.id, userId: strangerId, decision: 'deny' },
+        later,
+      );
+      expect(result).toBeNull();
+    });
+
     it('rejects a decide after expiry with 409-shape expired', async () => {
       const ownerId = await seedUser(context);
       const { aiId } = await seedAi(context, ownerId);
@@ -525,7 +549,7 @@ describe('approvals service', () => {
       expect(result).toEqual({ ok: true, decision: 'approve_once' });
     });
 
-    it('returns ok for approved_always too (treated like approve_once for now)', async () => {
+    it('treats approved_always like a single approval: ok once, then consumed', async () => {
       const ownerId = await seedUser(context);
       const { aiId } = await seedAi(context, ownerId);
       const hash = argsHash(21);
@@ -539,8 +563,10 @@ describe('approvals service', () => {
         { approvalId: row.id, userId: ownerId, decision: 'approve_always' },
         now,
       );
-      const result = await verifyApproval(context.db, { approvalId: row.id, argsHash: hash }, now);
-      expect(result).toEqual({ ok: true, decision: 'approve_always' });
+      const first = await verifyApproval(context.db, { approvalId: row.id, argsHash: hash }, now);
+      expect(first).toEqual({ ok: true, decision: 'approve_always' });
+      const second = await verifyApproval(context.db, { approvalId: row.id, argsHash: hash }, now);
+      expect(second).toEqual({ ok: false });
     });
 
     it('fails on a wrong hash', async () => {
@@ -762,6 +788,24 @@ describe('approvals service', () => {
 
       const listed = await listDecidableApprovals(context.db, ownerId, now);
       expect(listed.map((entry) => entry.id)).toEqual([owned.id]);
+    });
+
+    it('lists the newest request first', async () => {
+      const ownerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      const first = await createApproval(
+        context.db,
+        approvalInput({ aiId, hash: argsHash(40), expiresAt: futureExpiresAt(now, 60_000) }),
+        now,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      const second = await createApproval(
+        context.db,
+        approvalInput({ aiId, hash: argsHash(41), expiresAt: futureExpiresAt(now, 60_000) }),
+        now,
+      );
+      const listed = await listDecidableApprovals(context.db, ownerId, now);
+      expect(listed.map((entry) => entry.id)).toEqual([second.id, first.id]);
     });
 
     it('shows expired pending rows as expired without writing', async () => {

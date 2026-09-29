@@ -1,5 +1,5 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { and, asc, count, eq, gt, inArray, lt, or } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, lt, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { ARGS_HASH_PATTERN } from '@galena/protocol';
 import type { ServerDatabase } from '../db/client';
@@ -189,15 +189,16 @@ export async function decideApproval(
   if (!row) {
     return null;
   }
+  // Authorisation comes first: a caller who may not decide must not learn
+  // whether the request is expired or already decided.
+  if (!(await canDecide(db, row, params.userId))) {
+    return null;
+  }
   if (row.expiresAt.getTime() <= now.getTime()) {
     throw new ApprovalServiceError('expired', 'Approval request has expired');
   }
   if (row.status !== 'pending') {
     throw new ApprovalServiceError('not_pending', 'Approval request has already been decided');
-  }
-
-  if (!(await canDecide(db, row, params.userId))) {
-    return null;
   }
 
   const [updated] = await db
@@ -230,8 +231,8 @@ export async function decideApproval(
 // Verifies an approval for the engine. Returns `{ ok: true, decision }` only
 // when the request is `approved_once` or `approved_always`, unexpired, and
 // `argsHash` matches the stored hash (compared with `timingSafeEqual` so the
-// answer cannot be used to recover the hash byte by byte). For `approved_once`
-// the status is flipped to `consumed` with a conditional update so a second
+// answer cannot be used to recover the hash byte by byte). For both
+// approvals the status is flipped to `consumed` with a conditional update so a second
 // call fails. Any other state — wrong hash, not decided, denied, expired,
 // already consumed — returns `{ ok: false }` with no detail.
 //
@@ -261,18 +262,18 @@ export async function verifyApproval(
     return { ok: false };
   }
 
-  if (row.status === 'approved_once') {
-    const [consumed] = await db
-      .update(approvals)
-      .set({ status: 'consumed' })
-      .where(and(eq(approvals.id, row.id), eq(approvals.status, 'approved_once')))
-      .returning();
-    if (!consumed) {
-      return { ok: false };
-    }
-    return { ok: true, decision: 'approve_once' };
+  const [consumed] = await db
+    .update(approvals)
+    .set({ status: 'consumed' })
+    .where(and(eq(approvals.id, row.id), eq(approvals.status, row.status)))
+    .returning();
+  if (!consumed) {
+    return { ok: false };
   }
-  return { ok: true, decision: 'approve_always' };
+  return {
+    ok: true,
+    decision: row.status === 'approved_always' ? 'approve_always' : 'approve_once',
+  };
 }
 
 // Lists the pending, unexpired approval requests `userId` may decide: their
@@ -312,9 +313,9 @@ export async function listDecidableApprovals(
     .select()
     .from(approvals)
     .where(or(...conditions))
-    .orderBy(asc(approvals.createdAt))
+    .orderBy(desc(approvals.createdAt))
     .limit(100);
-  return rows.map((row) => toPublicApproval(row, now)).reverse();
+  return rows.map((row) => toPublicApproval(row, now));
 }
 
 // One request by id, visible only to a user who may decide it. The read model

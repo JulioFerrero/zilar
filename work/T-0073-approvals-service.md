@@ -1,7 +1,7 @@
 ---
 id: T-0073
 title: Approvals service (M4 foundation, server) — a stored approval request with an integrity hash, expiry, and owner/admin-only decisions
-status: review
+status: merged
 milestone: M4
 branch: task/T-0073-approvals-service
 model: minimax-coding-plan/MiniMax-M3
@@ -145,4 +145,13 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved with lead changes, merged (2026-09-29). After rebasing onto main: format, lint, typecheck, test (server 613 passed, 7 skipped) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand.
+
+**Lead changes (in the task branch):**
+- **Existence leak in `decideApproval`.** It checked expiry and status *before* whether the caller may decide, so a stranger got `409 not_pending`/`expired` for a real request but `404` for a missing one. The permission check now comes first (test added: a stranger gets `null` even for a decided and expired request).
+- **`approved_always` was reusable.** The code did not consume it although the spec said to treat it like a single approval, and the code comment claimed it did. Both kinds are now consumed on first successful `verifyApproval` (test rewritten: ok once, then fails). Standing rules remain a separate spec.
+- **List order.** `listDecidableApprovals` took the *oldest* 100 and reversed them; it now orders by `created_at desc` before the limit (test added).
+
+**Checked by reading:** `args_hash` comparison is `timingSafeEqual` on decoded bytes with a length guard; decisions and consumption use conditional updates; the migration is generated (`0011_silky_groot.sql`), no hand edits; no route creates approvals; `decided_by` is never returned; AI accounts have no session so cannot decide.
+
+**Next:** web wiring of the Approve/Deny buttons in `ApprovalCard.tsx` (needs the XMPP card to carry the approval id) and the engine's `createApproval` call are later tasks. Restart the server to apply the migration (done by the lead after merge).
