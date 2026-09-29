@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0071](T-0071-runner-hub.md) | Runner hub (M3, server): approved machines connect over the tunnel WebSocket, revoke drops them, online + last-seen | in progress | minimax-m3 | T-0068 | OpenCode Go is out of funds (402): MiniMax M3 fallback. |
+| [T-0072](T-0072-runner-app.md) | Runner app skeleton (M3): `galena-runner pair` (key pair, capability report, proof of possession) and `run` (tunnel client), identity file 0600 | in progress | minimax-m3 | T-0068 | New `apps/runner`; no desks yet. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
