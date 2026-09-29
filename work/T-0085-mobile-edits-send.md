@@ -1,7 +1,7 @@
 ---
 id: T-0085
 title: Mobile — react, delete for everyone and edit your own messages (send side)
-status: in-progress
+status: review
 milestone: M2
 branch: task/T-0085-mobile-edits-send
 model: minimax-coding-plan/MiniMax-M3
@@ -83,16 +83,44 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Mirrored web's send-side edit/reaction/delete/edit/edit machinery in the mobile real store. The chat-core reducers (`applyEdit`, `applyReaction`, `canEditMessage`, `canDeleteMessage`, `mentionsForTrimmedText`, `rebaseMentions`) and `@galena/xmpp-core` senders (`sendReactions`, `sendCorrection`, `sendRetraction`) are reused, not re-implemented.
+- Added `linkLocalToServer`, `wireTargetFor`, `restoreMessage`, `restoreEdits`, `mentionLocalpart`, `correctionTargetFor`, `retractionTargetFor`, plus a `messageServerIds` map and `linkLocalToServer` calls on the outgoing `sendText` and on the outgoing-echo reconciliation, so the wire target is the server id and a still-unacked `local-*` message never sends a stanza. `stop()` clears the new side table.
+- Implemented `react(chatId, messageId, emoji)` (alias-resolved local key, wire target = server id, toggles my emoji, optimistic apply through the existing `applyReactionUpdate`, sends `core.sendReactions`, undoes on failure, capped at 6 by the chat-core reducer), `startEdit(chatId, messageId)`, `cancelEdit()`, `editMessage(chatId, messageId, text)` (my own text message within 48 h, no-op guard, correction target = origin id, mentions rebased via `rebaseMentions`/`mentionsForTrimmedText`, optimistic apply, restore + `actionError` on failure), `deleteForEveryone(chatId, messageId)` (my own messages, retraction target = origin id in a DM, stanza-id in a group, optimistic tombstone via the edits reducer, restore + `actionError` on failure), and `dismissActionError()`.
+- UI: the message-actions sheet has a row of `QUICK_REACTIONS` (mine highlighted), Reply, Edit (when `canEditMessage`), Copy text (unchanged), and Delete for everyone (when `canDeleteMessage`). The Delete becomes a confirm step ("Delete for everyone?" / Cancel / Delete) inside the same sheet; `confirmOpen` is local state in `MessageBubble`. `MessageBubble` accepts `onReact`, `onEdit`, `onDelete` callbacks. `ReactionChips` gained an optional `onToggle` prop so tapping a chip I already reacted with removes that emoji.
+- Composer enters edit mode (showing a new `EditBar` with the original text and a × cancel), prefills the input with the target text, and routes `handleSend` to `editMessage` instead of `sendText` while `editTarget` is set; leaving edit mode restores the previous draft (only one snapshot, captured at the moment edit mode became active). `EditBar` mirrors the web `EditBar.tsx`.
+- The chat screen wires `onReact`/`onEdit`/`onDelete` from the store actions, and renders a small inline `actionError` notice above the composer with a Dismiss button when one is set. The screen pulls `actionError` only for the current chat.
+- Updated the mock store and `ChatStoreState` to expose the new actions and fields (`react`, `startEdit`, `cancelEdit`, `editMessage`, `deleteForEveryone`, `dismissActionError`, `editTarget`, `actionError`).
 
 ### Files changed
--
+- `apps/mobile/src/store/types.ts` — added `react`, `startEdit`, `cancelEdit`, `editMessage`, `deleteForEveryone`, `dismissActionError` actions and `editTarget` / `actionError` state fields on `ChatStoreState`.
+- `apps/mobile/src/store/real-store.ts` — added the `messageServerIds` map and `linkLocalToServer` / `wireTargetFor` helpers, `restoreMessage` / `restoreEdits` / `mentionLocalpart` / `correctionTargetFor` / `retractionTargetFor` helpers, and the `react`, `startEdit`, `cancelEdit`, `editMessage`, `deleteForEveryone`, `dismissActionError` store actions. Hooked `linkLocalToServer` and `rememberOriginId` into `sendText`, `linkLocalToServer` into the outgoing-echo reconciliation, and `messageServerIds.clear()` into `stop()`.
+- `apps/mobile/src/store/real-store.test.ts` — 13 new tests in a new `mobile sends reactions, deletions and edits (T-0085)` describe block: sends with the server id, toggles, caps at six (chip data, since the cap is in the chat-core reducer inside the store, not the wire call), does nothing for `local-*` with no server id, undoes the optimistic toggle on `sendReactions` failure, uses the stanza-id in a group, refuses other people's messages, uses the origin id in a DM and stanza-id in a group for retractions, restores + sets `actionError` on retraction failure, refuses no-op edits and out-of-window edits, targets the origin id even when the caller passes the local id, applies optimistic correction and rolls back on failure, `cancelEdit` clears `editTarget`, and a still-unacked message gets nothing. Added `sendReactions` / `sendCorrection` / `sendRetraction` mocks to the fake XMPP.
+- `apps/mobile/src/store/chat-store.ts` — added the same action and state fields to the mock store, kept as no-ops so the mock still satisfies the type.
+- `apps/mobile/src/components/chat/message-actions-sheet.tsx` — added the `QUICK_REACTIONS` row, Edit / Delete for everyone items (gated by `canEdit` / `canDelete`), `myReactions` for the highlighting, and the in-sheet confirm-delete dialog (`confirmOpen` controlled by the parent).
+- `apps/mobile/src/components/chat/message-bubble.tsx` — added `onReact`, `onEdit`, `onDelete` props and the `canEdit` / `canDelete` / `myReactions` derivation. Wired them into the actions sheet; `onDelete` opens the in-sheet confirm and only fires the callback on the actual confirm tap.
+- `apps/mobile/src/components/chat/reaction-chips.tsx` — added an optional `onToggle` prop; the chip becomes a toggle button when it is provided, disabled otherwise (the previous read-only look).
+- `apps/mobile/src/components/chat/reaction-chips.test.tsx` — new test: with no `onToggle` the chip is disabled and has no `onPress`; with `onToggle` it is enabled and the press calls back with the emoji.
+- `apps/mobile/src/components/chat/message-list.tsx` — accepts `onReact`, `onEdit`, `onDelete` props and forwards them to `MessageBubble`.
+- `apps/mobile/src/components/chat/composer.tsx` — added edit-mode support: when `state.editTarget` becomes set the input is prefilled with the target's text, the new `EditBar` is shown above the input, and `handleSend` routes to `editMessage` instead of `sendText`. Leaving edit mode (cancel or save) restores the previous draft.
+- `apps/mobile/src/components/chat/edit-bar.tsx` — new component, mirrors `apps/web/src/components/EditBar.tsx`.
+- `apps/mobile/src/app/chat/[id].tsx` — wires `react`, `startEdit`, `deleteForEveryone`, `dismissActionError` from the store and renders the inline `actionError` notice above the composer with a Dismiss button.
 
 ### Commands run and real results
--
+- `pnpm install` — 1010 packages added, no errors.
+- `pnpm exec turbo typecheck --filter=@galena/mobile` — `1 successful, 1 total`, `tsc --noEmit` exits 0.
+- `pnpm exec turbo test --force --filter=@galena/mobile` — 348 passed, 2 skipped (the same integration-test gate as before), 0 failed. `Test Files 32 passed | 2 skipped (34)`.
+- `pnpm format:check` — `All matched files use Prettier code style!`.
+- `pnpm lint` — no findings.
+- `pnpm exec turbo build --filter=@galena/mobile` — succeeds; iOS and Android bundles exported to `dist/`.
 
 ### Problems, deviations from the spec, open questions
--
+- The cap at six reactions is enforced inside the chat-core reducer (`cleanedSet` in `applyReaction`), not in the wire call. The `react` action sends the full set to `xmpp-core.sendReactions`, which then caps before the wire, and the chip strip shows the post-cap set. The cap test asserts the chip data, not the wire call's argument.
+- The composer edit-mode restore captures the in-progress draft once on the `editingId` transition (a `${chatId}:${messageId}` string). A later inbound correction of the same message would change `targetText` but not `editingId`, so the user's keystrokes survive. Only the message's own author can edit (per `canEditMessage`), so a remote correction of my message is the only other writer, and the spec does not cover it.
+- The mobile `restoreMessage`/`restoreEdits` pair is a copy of web's: it restores the exact `UiMessage` snapshot (text + status + reactions) and the previous `EditsState`. The reducer is already wired to refresh the bubble after `restoreEdits`.
+- The confirm-delete dialog lives inside `MessageActionsSheet` (controlled by the parent), not as a separate modal, so the existing modal layout handles the backdrop and Escape/back-button close. The same sheet handles the quick-reaction row when not in confirm mode.
+- I did not add a unit test for `MessageBubble`. The store-level tests cover the data path, and `reaction-chips.test.tsx` covers the chip toggle. The bubble uses the same pattern as `markdown-text.test.tsx`, which doesn't reach the provider, so the in-component wiring (`canEdit` / `canDelete`, sheet callbacks) is exercised end-to-end only on device.
+- I did not touch `apps/mobile/src/lib/chat.ts` (the only file with `( + its test)` listed separately). The wire-target logic lives in the store next to `aliasRoot` / `linkMessageIds` / `wireTargetFor`, and the helpers added are small and only used by the store.
+- The mock store's `react` / `startEdit` / `cancelEdit` / `editMessage` / `deleteForEveryone` / `dismissActionError` are no-ops, so the mock store still satisfies the interface and tests pass without change.
 
 ### Blocked / needs a decision
 -
