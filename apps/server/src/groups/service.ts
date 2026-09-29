@@ -85,6 +85,7 @@ export interface RemoveGroupMemberInput {
   actorId: string;
   targetUserId: string;
   domain: string;
+  logger: InviteLogger;
 }
 
 export interface AddGroupAiInput {
@@ -307,8 +308,9 @@ export async function addGroupMembers(
       throw mapXmppError(error);
     }
     // T-0108: public topics gain the new members. The sync is best effort —
-    // the members are in the database even if a room call fails.
-    await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain);
+    // the members are in the database even if a room call fails (the failure
+    // is logged with the group id, never a topic name).
+    await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain, input.logger);
   }
 
   const detail = await getGroupDetail(db, input.groupId);
@@ -376,8 +378,9 @@ export async function removeGroupMember(
     throw mapXmppError(error);
   }
   // T-0108: public topics lose the person; private topics drop them when
-  // their row is gone. Best effort after the database commit.
-  await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain);
+  // their row is gone. Best effort after the database commit: a failure is
+  // logged with the group id (never a topic name), never thrown.
+  await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain, input.logger);
   await archiveDrainedPrivateTopics(db, input.groupId);
 
   const detail = await getGroupDetail(db, input.groupId);
@@ -665,13 +668,15 @@ function mapXmppError(error: unknown): HttpError {
 // T-0108: re-apply the desired members to every active topic room of the
 // group (public topics gain/lose the person; private topics drop anyone
 // whose `topic_members` row is gone). Best effort: the database is the
-// source of truth, and a failed room call is logged, never thrown, so the
-// group flow that just committed is not rolled back by a room hiccup.
+// source of truth, and a failed room call is logged with the group id
+// (never a topic name), never thrown, so the group flow that just committed
+// is not rolled back by a room hiccup.
 async function syncGroupTopicRooms(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,
   groupId: string,
   domain: string,
+  logger: InviteLogger,
 ): Promise<void> {
   const rows = await db.select().from(topics).where(eq(topics.groupId, groupId));
   for (const topic of rows) {
@@ -679,9 +684,9 @@ async function syncGroupTopicRooms(
       continue;
     }
     try {
-      await syncTopicRoom({ db, adminClient, domain, logger: silentLogger }, topic);
+      await syncTopicRoom({ db, adminClient, domain, logger }, topic);
     } catch {
-      // Logged inside syncTopicRoom; the next group change retries.
+      logger.warn({ groupId }, 'could not sync a topic room after a group membership change');
     }
   }
 }
@@ -705,10 +710,6 @@ async function archiveDrainedPrivateTopics(db: ServerDatabase, groupId: string):
     }
   }
 }
-
-const silentLogger: InviteLogger = {
-  warn: () => {},
-};
 
 async function destroyQuietly(
   adminClient: EjabberdAdminClient,

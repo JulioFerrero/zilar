@@ -617,6 +617,15 @@ export async function removeTopicMember(
       .set({ archivedAt: new Date(), updatedAt: new Date() })
       .where(eq(topics.id, topic.id));
     updated = (await getTopic(deps.db, topic.id)) ?? topic;
+    // The room still holds the just-removed members: desired members is now
+    // empty, so the sync below removes everyone from the room.
+    try {
+      await syncTopicRoom(deps, updated);
+    } catch (error) {
+      throw error instanceof HttpError
+        ? error
+        : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    }
     if (deps.audit) {
       await deps.audit.record(toAuditEntry(updated, 'topic.archived', actorId));
     }
@@ -700,7 +709,19 @@ function mapXmppError(error: unknown): HttpError {
   if (error instanceof HttpError) {
     return error;
   }
+  // A name/localpart race against a concurrent create lands here (the
+  // pre-check passed, the unique index refused): answer 409 like the
+  // pre-check does, not 503.
+  if (isUniqueViolation(error)) {
+    return new HttpError(409, 'topic_exists', 'A topic with that name already exists');
+  }
   return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' && error !== null && (error as { code?: unknown }).code === '23505'
+  );
 }
 
 async function destroyQuietly(

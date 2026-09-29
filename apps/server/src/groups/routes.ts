@@ -126,6 +126,7 @@ export function createGroupsRoutes({
       actorId: user.id,
       targetUserId: c.req.param('userId'),
       domain,
+      logger,
     });
     return c.json(group);
   });

@@ -17,12 +17,14 @@ import {
   bootstrapUser,
   contactOf,
   createTestContext,
+  FakeAdminClient,
   testApp,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   type TestApp,
   type TestContext,
 } from '../test-support';
+import type { RoomAffiliation } from '../xmpp/admin-client';
 import { localpartFor } from '../xmpp/provisioning';
 import { onGroupAi, type GroupAiEvent } from './events';
 import { MAX_GROUP_MEMBERS } from './service';
@@ -129,6 +131,24 @@ describe('groups', () => {
     return app.request(`${TEST_BASE_URL}/api/groups/${groupId}`, {
       headers: { cookie },
     });
+  }
+
+  // An admin client whose room writes fail everywhere except the group's own
+  // room: the in-transaction removal succeeds while the post-commit topic
+  // sync fails, proving the failure is logged and the database still commits.
+  class TopicRoomsDownClient extends FakeAdminClient {
+    groupRoom = '';
+
+    override setAffiliation(
+      roomId: string,
+      jid: string,
+      affiliation: RoomAffiliation,
+    ): Promise<void> {
+      if (this.groupRoom !== '' && roomId !== this.groupRoom) {
+        return Promise.reject(new Error('ejabberd is down'));
+      }
+      return super.setAffiliation(roomId, jid, affiliation);
+    }
   }
 
   it('creates the room, sets affiliations and makes the creator the owner', async () => {
@@ -400,6 +420,48 @@ describe('groups', () => {
     expect((await removeMemberRequest(owner.cookie, groupId, other.id)).status).toBe(200);
     const memberRows = await context.db.select().from(groupMembers);
     expect(memberRows.map((row) => row.userId)).toEqual([owner.id]);
+  });
+
+  it('still commits the removal and logs when the post-commit topic sync fails', async () => {
+    const flaky = new TopicRoomsDownClient();
+    const ownContext = await createTestContext({ adminClient: flaky });
+    const ownApp = testApp(ownContext);
+    try {
+      const owner = await bootstrapUser(ownContext, ownApp, 'owner@example.com');
+      const member = await contactOf(ownContext, ownApp, owner.id, 'member@example.com');
+      const created = await ownApp.request(`${TEST_BASE_URL}/api/groups`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ title: 'Team', memberIds: [member.id] }),
+      });
+      expect(created.status).toBe(201);
+      const groupId = ((await created.json()) as GroupDetailBody).id;
+      const topic = await ownApp.request(`${TEST_BASE_URL}/api/groups/${groupId}/topics`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ name: 'Side' }),
+      });
+      expect(topic.status).toBe(201);
+      const [groupRow] = await ownContext.db.select().from(groups).where(eq(groups.id, groupId));
+      flaky.groupRoom = groupRow!.roomLocalpart;
+
+      const removed = await ownApp.request(
+        `${TEST_BASE_URL}/api/groups/${groupId}/members/${member.id}`,
+        { method: 'DELETE', headers: { cookie: owner.cookie } },
+      );
+      // Best effort: the database removal commits even though the topic
+      // rooms could not be synced, and the failure is logged.
+      expect(removed.status).toBe(200);
+      expect(
+        await ownContext.db
+          .select()
+          .from(groupMembers)
+          .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, member.id))),
+      ).toEqual([]);
+      expect(ownContext.logOutput()).toContain('could not sync a topic room');
+    } finally {
+      await ownContext.close();
+    }
   });
 
   it('returns a group to its members and hides it from everyone else', async () => {

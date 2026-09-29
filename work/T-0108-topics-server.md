@@ -139,6 +139,13 @@ pnpm build
 ### Blocked / needs a decision
 - None.
 
+### Round 2 (review fixes)
+- Fix 1: `RemoveGroupMemberInput` gains `logger: InviteLogger`; `groups/routes.ts` passes the real route logger; both `addGroupMembers` and `removeGroupMember` pass it into `syncGroupTopicRooms`. `silentLogger` deleted; the catch logs `could not sync a topic room after a group membership change` with `{ groupId }` (never a topic name). Sync stays best-effort, no rollback. New test in `groups.test.ts` (`TopicRoomsDownClient` fails room writes except the group room): removal answers 200, the DB row is gone, and the log contains the warning.
+- Fix 2: `removeTopicMember` runs `syncTopicRoom` on the archived topic before returning (desired members now empty, everyone removed), same 502 handling as the other branch. Extended the last-member test: the room's affiliation map is empty afterwards.
+- Fix 3: `'bad name'` control byte rewritten as `'bad\u0007name'`; `topics.test.ts` is plain ASCII and diffs as text.
+- Small suggestion applied: `mapXmppError` in `topics/service.ts` maps `code 23505` to 409 `topic_exists` (precise Postgres unique-violation code, same under PGlite).
+- Checks (correct form, one run at a time): scoped topics+groups 49 passed; format/lint/typecheck/build pass; full server suite 64 files passed, 5 skipped — 1094 passed, 7 skipped. No disables, no `any` (grep clean).
+
 ---
 
 ## Review (written by Claude)
