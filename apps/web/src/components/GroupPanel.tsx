@@ -6,6 +6,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ActivitySection } from './ais/AiActivity';
+import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { AiBadge } from './AiBadge';
 import { FieldError } from './ais/AiPageShell';
 import { describeAiError } from './ais/errors';
@@ -324,6 +325,10 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   its own load / error states; a failure here cannot break
                   the rest of the panel. */}
               {isManager && <ActivitySection scope={{ groupId: info.id }} />}
+
+              {/* T-0100: the standing rules for this group, same visibility
+                  as Activity — owners and admins only. */}
+              {isManager && <AlwaysAllowedList scope={{ groupId: info.id }} />}
 
               {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
             </>

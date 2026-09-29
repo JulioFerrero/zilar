@@ -18,9 +18,11 @@ const request = ApprovalRequestSchema.parse({
 
 interface ApprovalFixture {
   id: string;
-  status: 'pending' | 'approved_once' | 'denied' | 'consumed' | 'expired';
+  status: 'pending' | 'approved_once' | 'approved_always' | 'denied' | 'consumed' | 'expired';
   expiresAt: string;
   action?: string;
+  alwaysEligible?: boolean;
+  groupId?: string | null;
 }
 
 function approvalFixture({
@@ -28,11 +30,13 @@ function approvalFixture({
   status = 'pending',
   expiresAt = new Date(Date.now() + 3_600_000).toISOString(),
   action = 'merge_pull_request',
+  alwaysEligible = false,
+  groupId = 'dev-team',
 }: Partial<ApprovalFixture> = {}): unknown {
   return {
     id,
     aiId: 'ai-dev-1',
-    groupId: 'dev-team',
+    groupId,
     action,
     summary: 'Merge PR #42',
     details: null,
@@ -44,6 +48,7 @@ function approvalFixture({
     note: null,
     expiresAt,
     createdAt: new Date().toISOString(),
+    alwaysEligible,
   };
 }
 
@@ -355,5 +360,160 @@ describe('ApprovalCard', () => {
     expect(await screen.findByText('Expired')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
+  });
+});
+
+// T-0100: the "Always allow here" third button. It shows only for a
+// pending, decidable, eligible approval; the first click arms an inline
+// confirmation naming the scope, and Confirm sends `approve_always`.
+describe('ApprovalCard always allow (T-0100)', () => {
+  it('hides the third button when the approval is not eligible', async () => {
+    const fetchMock = makeFetch((url) => {
+      if (url === '/api/approvals/apr-42') {
+        return Promise.resolve(jsonResponse(200, approvalFixture({ alwaysEligible: false })));
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApprovalCard request={request} />);
+    await screen.findByRole('button', { name: 'Approve' });
+
+    expect(screen.queryByRole('button', { name: 'Always allow here' })).toBeNull();
+  });
+
+  it('hides the third button for a non-decider, with no error', async () => {
+    const fetchMock = makeFetch((url) => {
+      if (url === '/api/approvals/apr-42') {
+        return Promise.resolve(errorResponse(404, 'not_found', 'Approval not found'));
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApprovalCard request={request} />);
+
+    expect(await screen.findByText('Waiting for a decision')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Always allow here' })).toBeNull();
+    expect(screen.queryByText(/could not/i)).toBeNull();
+  });
+
+  it('confirms with the personal-chat wording and sends approve_always', async () => {
+    let approval = approvalFixture({ alwaysEligible: true, groupId: null });
+    const fetchMock = makeFetch((url, init) => {
+      if (url === '/api/approvals/apr-42' && (init?.method ?? 'GET') === 'GET') {
+        return Promise.resolve(jsonResponse(200, approval));
+      }
+      if (url === '/api/approvals/apr-42/decision' && init?.method === 'POST') {
+        const body = JSON.parse(init.body as string);
+        expect(body).toEqual({ decision: 'approve_always' });
+        approval = approvalFixture({
+          status: 'approved_always',
+          alwaysEligible: true,
+          groupId: null,
+        });
+        return Promise.resolve(jsonResponse(200, approval));
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApprovalCard request={request} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Always allow here' }));
+
+    // The buttons swap for the inline confirmation naming this chat.
+    expect(
+      screen.getByText('Always run merge_pull_request without asking, in this chat only.'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    expect(await screen.findByText('Approved')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Always allow here' })).toBeNull();
+  });
+
+  it('confirms with the group wording when the approval is group-scoped', async () => {
+    const fetchMock = makeFetch((url) => {
+      if (url === '/api/approvals/apr-42') {
+        return Promise.resolve(
+          jsonResponse(200, approvalFixture({ alwaysEligible: true, groupId: 'dev-team' })),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApprovalCard request={request} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Always allow here' }));
+
+    expect(
+      screen.getByText('Always run merge_pull_request without asking, in this group only.'),
+    ).toBeTruthy();
+  });
+
+  it('Cancel restores the buttons without a request', async () => {
+    const fetchMock = makeFetch((url) => {
+      if (url === '/api/approvals/apr-42') {
+        return Promise.resolve(
+          jsonResponse(200, approvalFixture({ alwaysEligible: true, groupId: null })),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApprovalCard request={request} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Always allow here' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(await screen.findByRole('button', { name: 'Approve' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Always allow here' })).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+  });
+
+  it('always_not_allowed shows the message and hides the third button', async () => {
+    const fetchMock = makeFetch((url, init) => {
+      if (url === '/api/approvals/apr-42' && (init?.method ?? 'GET') === 'GET') {
+        return Promise.resolve(
+          jsonResponse(200, approvalFixture({ alwaysEligible: true, groupId: null })),
+        );
+      }
+      if (url === '/api/approvals/apr-42/decision' && init?.method === 'POST') {
+        return Promise.resolve(
+          errorResponse(400, 'always_not_allowed', 'This action cannot be always allowed'),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApprovalCard request={request} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Always allow here' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    expect(await screen.findByText('This action can only be approved one time.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Always allow here' })).toBeNull();
+    // The one-time buttons stay: the request is still pending.
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
+  });
+
+  it('never shows the third button after a decision', async () => {
+    const fetchMock = makeFetch((url) => {
+      if (url === '/api/approvals/apr-42') {
+        return Promise.resolve(
+          jsonResponse(200, approvalFixture({ status: 'approved_always', alwaysEligible: true })),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApprovalCard request={request} />);
+
+    expect(await screen.findByText('Approved')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Always allow here' })).toBeNull();
   });
 });

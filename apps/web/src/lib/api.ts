@@ -521,6 +521,10 @@ export const publicApprovalSchema = z.object({
   note: z.string().nullable(),
   expiresAt: z.string(),
   createdAt: z.string(),
+  // T-0100: whether `approve_always` is a real choice for this action.
+  // Optional with a `false` default so a payload from a server that has not
+  // been upgraded yet still parses — the card just hides the third button.
+  alwaysEligible: z.boolean().default(false),
 });
 
 export type PublicApproval = z.infer<typeof publicApprovalSchema>;
@@ -546,6 +550,38 @@ export function decideApproval(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+// --- Approval rules (T-0100) ------------------------------------------------
+// The wire contract lives in apps/server/src/approvals/routes.ts and
+// rules.ts. Dates arrive as ISO strings, kept as strings like the
+// approvals schemas. The two list routes 404 for a viewer who may not
+// manage the rules, and so does revoke; all three flow through `ApiError`.
+
+export const approvalRuleSchema = z.object({
+  id: z.string(),
+  action: z.string(),
+  scope: z.enum(['personal', 'group']),
+  groupId: z.string().nullable(),
+  createdAt: z.string(),
+  createdBy: z.string(),
+});
+
+export type ApprovalRule = z.infer<typeof approvalRuleSchema>;
+
+export function listAiApprovalRules(aiId: string): Promise<ApprovalRule[]> {
+  return request(`/ais/${encodeURIComponent(aiId)}/approval-rules`, z.array(approvalRuleSchema));
+}
+
+export function listGroupApprovalRules(groupId: string): Promise<ApprovalRule[]> {
+  return request(
+    `/groups/${encodeURIComponent(groupId)}/approval-rules`,
+    z.array(approvalRuleSchema),
+  );
+}
+
+export async function revokeApprovalRule(id: string): Promise<void> {
+  await request(`/approval-rules/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
 }
 
 // --- Audit log (T-0079, T-0084) --------------------------------------------

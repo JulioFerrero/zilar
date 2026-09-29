@@ -81,6 +81,10 @@ function stubAudit(entries: unknown[]): ReturnType<typeof vi.fn> {
     if (target.includes('/audit')) {
       return jsonResponse(200, { entries, next: null });
     }
+    // T-0100: the rules section fires alongside Activity for managers.
+    if (target.includes('/approval-rules')) {
+      return jsonResponse(200, []);
+    }
     return jsonResponse(404, { error: { code: 'not_found', message: 'unexpected' } });
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -346,6 +350,9 @@ describe('GroupPanel', () => {
             error: { code: 'server_error', message: 'audit unavailable' },
           });
         }
+        if (target.includes('/approval-rules')) {
+          return jsonResponse(200, []);
+        }
         return jsonResponse(404, { error: { code: 'not_found', message: 'unexpected' } });
       });
       vi.stubGlobal('fetch', fetchMock);
@@ -364,6 +371,84 @@ describe('GroupPanel', () => {
         String(call[0]).includes('/audit'),
       );
       expect(auditCalls).toHaveLength(1);
+    });
+  });
+
+  // T-0100: the standing rules section. Owners and admins see it (fetched
+  // once with the group's id); plain members don't (no request fires).
+  describe('always allowed rules (T-0100)', () => {
+    function stubRules(rules: unknown[]): ReturnType<typeof vi.fn> {
+      const fetchMock = vi.fn(async (url: unknown) => {
+        const target = String(url);
+        if (target.includes('/audit')) {
+          return jsonResponse(200, { entries: [], next: null });
+        }
+        if (target.includes('/approval-rules')) {
+          return jsonResponse(200, rules);
+        }
+        return jsonResponse(404, { error: { code: 'not_found', message: 'unexpected' } });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+
+    it('renders the section for an owner and fetches once with the group id', async () => {
+      const fetchMock = stubRules([
+        {
+          id: 'rule-1',
+          action: 'merge_pull_request',
+          scope: 'group',
+          groupId: 'g-devteam',
+          createdAt: '2026-09-29T10:00:00.000Z',
+          createdBy: 'u-you',
+        },
+      ]);
+
+      const store = createChatStore(seedWith());
+      renderStore(store);
+
+      expect(await screen.findByRole('heading', { name: 'Always allowed' })).toBeTruthy();
+      expect(await screen.findByText('merge_pull_request')).toBeTruthy();
+
+      const ruleCalls = fetchMock.mock.calls.filter((call: unknown[]) =>
+        String(call[0]).includes('/approval-rules'),
+      );
+      expect(ruleCalls).toHaveLength(1);
+      expect(String(ruleCalls[0]?.[0])).toBe('/api/groups/g-devteam/approval-rules');
+    });
+
+    it('hides the section for a plain member and makes no rules request', async () => {
+      const fetchMock = vi.fn(async (url: unknown) => {
+        const target = String(url);
+        if (target.includes('/audit')) {
+          return jsonResponse(200, { entries: [], next: null });
+        }
+        return jsonResponse(200, { entries: [], next: null });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const store = createChatStore(
+        seedWith({
+          groupInfos: {
+            'c-devteam': detail({
+              members: [
+                { userId: 'u-ana', name: 'Ana', role: 'owner' },
+                { userId: 'u-you', name: 'You', role: 'member' },
+              ],
+            }),
+          },
+        }),
+      );
+      renderStore(store);
+
+      await waitFor(() =>
+        expect(screen.getByRole('region', { name: 'Members' }).textContent).toContain('Ana'),
+      );
+      expect(screen.queryByRole('heading', { name: 'Always allowed' })).toBeNull();
+      const ruleCalls = (fetchMock.mock.calls as unknown[][]).filter((call) =>
+        String(call[0]).includes('/approval-rules'),
+      );
+      expect(ruleCalls).toHaveLength(0);
     });
   });
 });

@@ -6,6 +6,7 @@ vi.mock('@/mock/gate', () => ({
 
 import { ApiError } from '@/lib/api';
 import {
+  approvalRuleSchema,
   approveMachine,
   createConnection,
   createPairingCode,
@@ -14,15 +15,18 @@ import {
   deleteMachine,
   denyMachine,
   getApproval,
+  listAiApprovalRules,
   listAis,
   listApprovals,
   listAudit,
+  listGroupApprovalRules,
   listMachines,
   listConnections,
   machineSchema,
   publicApprovalSchema,
   renameMachine,
   resumeAi,
+  revokeApprovalRule,
   revokeMachine,
   setAiMachine,
   stopAi,
@@ -515,6 +519,107 @@ describe('approvals API', () => {
     await expect(listApprovals()).rejects.toMatchObject({
       status: 200,
       code: 'invalid_response',
+    } satisfies Partial<ApiError>);
+  });
+});
+
+// T-0100: the always-eligible flag and the standing rules wire.
+describe('approval rules API (T-0100)', () => {
+  it('publicApprovalSchema defaults alwaysEligible to false when missing (older server)', () => {
+    const oldShape: Record<string, unknown> = { ...approvalFixture };
+    delete oldShape['alwaysEligible'];
+    const parsed = publicApprovalSchema.parse(oldShape);
+    expect(parsed.alwaysEligible).toBe(false);
+  });
+
+  it('publicApprovalSchema parses alwaysEligible true', () => {
+    const parsed = publicApprovalSchema.parse({ ...approvalFixture, alwaysEligible: true });
+    expect(parsed.alwaysEligible).toBe(true);
+  });
+
+  it('approvalRuleSchema parses a server-shaped rule', () => {
+    const parsed = approvalRuleSchema.parse({
+      id: 'rule-1',
+      action: 'merge_pull_request',
+      scope: 'personal',
+      groupId: null,
+      createdAt: '2026-09-29T10:00:00.000Z',
+      createdBy: 'u-you',
+    });
+    expect(parsed.scope).toBe('personal');
+    expect(parsed.groupId).toBeNull();
+  });
+
+  it('listAiApprovalRules hits GET /api/ais/:id/approval-rules and URL-encodes the id', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listAiApprovalRules('ai/1 with space');
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/ais/ai%2F1%20with%20space/approval-rules');
+  });
+
+  it('listGroupApprovalRules hits GET /api/groups/:id/approval-rules', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, [
+        {
+          id: 'rule-2',
+          action: 'send_message',
+          scope: 'group',
+          groupId: 'g-devteam',
+          createdAt: '2026-09-29T10:00:00.000Z',
+          createdBy: 'u-you',
+        },
+      ]),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const rules = await listGroupApprovalRules('g-devteam');
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.scope).toBe('group');
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/groups/g-devteam/approval-rules');
+  });
+
+  it('revokeApprovalRule DELETEs the id-specific path', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(204, null));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await revokeApprovalRule('rule-1');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/approval-rules/rule-1');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('a 404 on listAiApprovalRules surfaces as a not_found ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(404, { error: { code: 'not_found', message: 'AI not found' } }),
+        ),
+    );
+
+    await expect(listAiApprovalRules('missing')).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+    } satisfies Partial<ApiError>);
+  });
+
+  it('a 404 on revokeApprovalRule surfaces as a not_found ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(404, { error: { code: 'not_found', message: 'Approval rule not found' } }),
+        ),
+    );
+
+    await expect(revokeApprovalRule('gone')).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
     } satisfies Partial<ApiError>);
   });
 });

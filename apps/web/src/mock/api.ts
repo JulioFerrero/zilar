@@ -34,6 +34,9 @@ interface MockState {
   // dev-team chat). It can be decided and then stays decided for the rest of
   // the page load.
   approvals: MockApproval[];
+  // T-0100: standing approval rules created by `approve_always` decisions.
+  // Listed by the AI panel (`?aiId`) and the group panel (`?groupId`).
+  approvalRules: MockApprovalRule[];
   audit: MockAuditEntry[];
 }
 
@@ -53,9 +56,21 @@ interface MockAuditEntry {
 
 interface MockApproval {
   id: string;
-  status: 'pending' | 'approved_once' | 'denied';
+  status: 'pending' | 'approved_once' | 'approved_always' | 'denied';
   decidedAt: string | null;
   note: string | null;
+}
+
+// T-0100: one standing rule row. `groupId` null means the personal chat
+// with the AI's owner, exactly like the server's `approval_rules`.
+interface MockApprovalRule {
+  id: string;
+  aiId: string;
+  action: string;
+  scope: 'personal' | 'group';
+  groupId: string | null;
+  createdAt: string;
+  createdBy: string;
 }
 
 function seedAi(name: string, template: PublicAi['template'], id: string): PublicAi {
@@ -180,6 +195,7 @@ function seedState(): MockState {
         note: null,
       },
     ],
+    approvalRules: [],
     audit: [
       {
         id: 'audit-dev-stopped',
@@ -540,6 +556,12 @@ export async function mockRequest(
     const aiId = decodeURIComponent(first);
     const ai = state.ais.find((item) => item.id === aiId);
     if (ai === undefined) return notFound('That AI no longer exists.');
+    // T-0100: the AI's standing rules. The mock has one user, the AI
+    // owner, so any found AI is manageable — like the real server's
+    // owner-only route with the mock's single user.
+    if (second === 'approval-rules' && method === 'GET') {
+      return jsonResponse(state.approvalRules.filter((rule) => rule.aiId === ai.id));
+    }
     if (method === 'GET') return jsonResponse(ai);
     if (method === 'PATCH') return patchAi(ai, init);
     if (method === 'DELETE') {
@@ -579,6 +601,34 @@ export async function mockRequest(
       .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
       .slice(0, limit);
     return jsonResponse({ entries, next: null });
+  }
+
+  // T-0100: the group's standing rules. Managers only, like the real
+  // server — but the mock store knows the members from `mockGroupDetails`
+  // while this API layer answers by group id, so the lookup walks the
+  // details for a matching group id.
+  if (head === 'groups' && second === 'approval-rules' && method === 'GET') {
+    const groupId = decodeURIComponent(first ?? '');
+    const detail = Object.values(mockGroupDetails).find((item) => item.id === groupId);
+    if (detail === undefined) {
+      return notFound('Group not found');
+    }
+    const viewer = detail.members.find((member) => member.userId === currentUserId);
+    if (viewer === undefined || (viewer.role !== 'owner' && viewer.role !== 'admin')) {
+      return notFound('Group not found');
+    }
+    return jsonResponse(state.approvalRules.filter((rule) => rule.groupId === groupId));
+  }
+
+  if (head === 'approval-rules' && first !== undefined && second === undefined) {
+    const ruleId = decodeURIComponent(first);
+    if (method === 'DELETE') {
+      // Idempotent, like the real server: removing a missing id is silent
+      // (the client's 404 branch covers a row that is not manageable).
+      state.approvalRules = state.approvalRules.filter((rule) => rule.id !== ruleId);
+      return noContent();
+    }
+    return notImplemented();
   }
 
   if (head === 'connections') {
@@ -697,6 +747,35 @@ export async function mockRequest(
         );
       }
       const note = typeof body.note === 'string' ? body.note : null;
+      // T-0100: `approve_always` stands the decision (and creates the rule
+      // the AI panel lists); every mock action is always-eligible.
+      if (decision === 'approve_always') {
+        approval.status = 'approved_always';
+        approval.decidedAt = new Date().toISOString();
+        approval.note = note;
+        const built = publicApproval(approval);
+        const existing = state.approvalRules.find(
+          (rule) =>
+            rule.aiId === built.aiId &&
+            rule.groupId === built.groupId &&
+            rule.action === built.action,
+        );
+        if (existing === undefined) {
+          state.approvalRules = [
+            ...state.approvalRules,
+            {
+              id: `rule-${approval.id}-${built.action}`,
+              aiId: built.aiId,
+              action: built.action,
+              scope: built.groupId === null ? 'personal' : 'group',
+              groupId: built.groupId,
+              createdAt: new Date().toISOString(),
+              createdBy: currentUserId,
+            },
+          ];
+        }
+        return jsonResponse(publicApproval(approval));
+      }
       approval.status = decision === 'deny' ? 'denied' : 'approved_once';
       approval.decidedAt = new Date().toISOString();
       approval.note = note;
@@ -741,21 +820,31 @@ function publicApproval(row: MockApproval): {
   argsHash: string;
   worstCase: { currency: 'EUR' | 'USD'; amount: number } | null;
   requestedBy: string;
-  status: 'pending' | 'approved_once' | 'denied';
+  status: 'pending' | 'approved_once' | 'approved_always' | 'denied';
   decidedAt: string | null;
   note: string | null;
   expiresAt: string;
   createdAt: string;
+  // T-0100: the seeded card is always-eligible in the personal chat.
+  alwaysEligible: boolean;
 } {
   const card = approvalCard();
   if (card.type !== 'approval.request') {
     throw new Error('approvalCard() must be an approval.request payload');
   }
   const data = card.data;
+  // The card's `ai` is a JID with no matching mock AI row; the seeded
+  // audit trail already treats `apr-42` as the Dev AI's approval, so the
+  // read model resolves to the first mock AI. That keeps the AI panel's
+  // rules list (`?aiId=ai-mock-dev`) showing the rule an `approve_always`
+  // decision creates.
+  const owner = state.ais.find((item) => item.jid === data.ai) ?? state.ais[0];
   return {
     id: row.id,
-    aiId: data.ai,
-    groupId: data.room,
+    aiId: owner?.id ?? data.ai,
+    // T-0100: the seeded card lives in the personal chat with the AI's
+    // owner (`groupId: null`), and the mock action is always-eligible.
+    groupId: null,
     action: data.action,
     summary: data.summary,
     details: data.details ?? null,
@@ -767,6 +856,7 @@ function publicApproval(row: MockApproval): {
     note: row.note,
     expiresAt: data.expires_at,
     createdAt: new Date().toISOString(),
+    alwaysEligible: true,
   };
 }
 

@@ -108,6 +108,11 @@ function mockPanelFetch(
     if (target.includes('/audit')) {
       return jsonResponse(200, { entries: [], next: null });
     }
+    // T-0100: the rules section loads alongside the panel; the default
+    // is an empty list so tests about other sections stay quiet.
+    if (target.includes('/approval-rules')) {
+      return jsonResponse(200, []);
+    }
     return jsonResponse(200, [listed]);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -176,6 +181,9 @@ function mockPanelFetchWithState(
     }
     if (method === 'DELETE') {
       return jsonResponse(204, null);
+    }
+    if (target.includes('/approval-rules')) {
+      return jsonResponse(200, []);
     }
     if (target.includes('/audit')) {
       return jsonResponse(200, { entries: [], next: null });
@@ -389,6 +397,9 @@ describe('AiPanel', () => {
       if (target.includes('/connections')) {
         return jsonResponse(200, [openaiConnection]);
       }
+      if (target.includes('/approval-rules')) {
+        return jsonResponse(200, []);
+      }
       return jsonResponse(200, [ai]);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -535,6 +546,7 @@ describe('AiPanel', () => {
         if (target.endsWith('/resume')) return jsonResponse(200, { ...ai, status: 'active' });
         if ((init?.method ?? 'GET') === 'DELETE') return jsonResponse(204, null);
         if (/\/ais\/[^/]+$/.test(target)) return jsonResponse(200, ai);
+        if (target.includes('/approval-rules')) return jsonResponse(200, []);
         return jsonResponse(200, [ai]);
       });
       vi.stubGlobal('fetch', fetchMock);
@@ -653,6 +665,9 @@ describe('AiPanel', () => {
         if (/\/ais\/[^/]+$/.test(target)) {
           return jsonResponse(200, ai);
         }
+        if (target.includes('/approval-rules')) {
+          return jsonResponse(200, []);
+        }
         if (target.includes('/audit')) {
           return jsonResponse(200, {
             entries: [
@@ -695,6 +710,9 @@ describe('AiPanel', () => {
         if (/\/ais\/[^/]+$/.test(target)) {
           return jsonResponse(200, ai);
         }
+        if (target.includes('/approval-rules')) {
+          return jsonResponse(200, []);
+        }
         if (target.includes('/audit')) {
           return jsonResponse(404, {
             error: { code: 'not_found', message: 'AI not found' },
@@ -711,6 +729,88 @@ describe('AiPanel', () => {
       expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Stop AI' })).toBeTruthy();
       expect(screen.getByDisplayValue('Dev-1')).toBeTruthy();
+    });
+  });
+
+  // T-0100: the standing rules section. `listAis` only returns the
+  // viewer's own AIs, so the panel (and its rules list) is owner-only by
+  // construction: a stranger's AI lands on the missing state with no
+  // section and no rules request.
+  describe('always allowed section (T-0100)', () => {
+    function mockPanelFetchWithRules(rules: unknown[]): ReturnType<typeof vi.fn> {
+      const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+        const target = String(url);
+        if ((init?.method ?? 'GET') === 'PATCH') {
+          return jsonResponse(200, ai);
+        }
+        if (target.includes('/connections')) {
+          return jsonResponse(200, [openaiConnection]);
+        }
+        if (target.includes('/machines')) {
+          return jsonResponse(200, []);
+        }
+        if (target.includes('/approval-rules')) {
+          return jsonResponse(200, rules);
+        }
+        if (/\/ais\/[^/]+$/.test(target)) {
+          return jsonResponse(200, ai);
+        }
+        if (target.includes('/audit')) {
+          return jsonResponse(200, { entries: [], next: null });
+        }
+        return jsonResponse(200, [ai]);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+
+    it('renders the section for the owner and fetches the AI rules once', async () => {
+      const fetchMock = mockPanelFetchWithRules([
+        {
+          id: 'rule-1',
+          action: 'merge_pull_request',
+          scope: 'personal',
+          groupId: null,
+          createdAt: '2026-09-29T10:00:00.000Z',
+          createdBy: 'u-you',
+        },
+      ]);
+
+      renderPanel();
+
+      expect(await screen.findByRole('heading', { name: 'Always allowed' })).toBeTruthy();
+      expect(await screen.findByText('merge_pull_request')).toBeTruthy();
+      expect(screen.getByText('Personal chat')).toBeTruthy();
+
+      const ruleCalls = fetchMock.mock.calls.filter((call) =>
+        String(call[0]).includes('/approval-rules'),
+      );
+      expect(ruleCalls).toHaveLength(1);
+      expect(String(ruleCalls[0]?.[0])).toBe('/api/ais/a-1/approval-rules');
+    });
+
+    it('a stranger sees the missing state with no rules section and no rules request', async () => {
+      const fetchMock = vi.fn(async (url: unknown) => {
+        const target = String(url);
+        if (target.includes('/connections')) {
+          return jsonResponse(200, [openaiConnection]);
+        }
+        if (target.includes('/audit')) {
+          return jsonResponse(200, { entries: [], next: null });
+        }
+        // The server's owner filter: someone else's AI is not listed.
+        return jsonResponse(200, []);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderPanel();
+
+      expect(await screen.findByText('This AI no longer exists.')).toBeTruthy();
+      expect(screen.queryByRole('heading', { name: 'Always allowed' })).toBeNull();
+      const ruleCalls = (fetchMock.mock.calls as unknown[][]).filter((call) =>
+        String(call[0]).includes('/approval-rules'),
+      );
+      expect(ruleCalls).toHaveLength(0);
     });
   });
 });
@@ -781,6 +881,9 @@ describe('AiPanel home machine (T-0091)', () => {
       }
       if (target.includes('/connections')) {
         return jsonResponse(200, [openaiConnection]);
+      }
+      if (target.includes('/approval-rules')) {
+        return jsonResponse(200, []);
       }
       if (target.includes('/audit')) {
         return jsonResponse(200, { entries: [], next: null });
