@@ -1,4 +1,4 @@
-import { formatTime, isBigEmoji, shouldRenderMarkdown, type UiMessage } from '@galena/chat-core';
+import { formatTime, isBigEmoji, type UiMessage } from '@galena/chat-core';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
@@ -9,6 +9,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Avatar } from '@/components/chat/avatar';
 import { ImageMessage } from '@/components/chat/image-message';
 import { LinkText } from '@/components/chat/link-text';
+import { rendersMarkdown } from '@/components/chat/markdown-decision';
 import { MarkdownText } from '@/components/chat/markdown-text';
 import { MessageActionsSheet } from '@/components/chat/message-actions-sheet';
 import { PayloadCard } from '@/components/chat/payload-card';
@@ -209,10 +210,9 @@ export function MessageBubble({
   const outgoing = message.senderId === currentUserId;
   // `MessageBubble` has no chat prop, so the shared Markdown rule is evaluated
   // against the store's chat for this message (AI DMs and AI group replies).
-  const rendersMarkdown = useChatStore((state) => {
-    const chat = state.chats.find((item) => item.id === message.chatId);
-    return chat !== undefined && shouldRenderMarkdown(chat, message, currentUserId);
-  });
+  const showMarkdown = useChatStore((state) =>
+    rendersMarkdown(state.chats, message, currentUserId),
+  );
   const metaColor = outgoing ? colors.outgoingMeta : colors.incomingMeta;
   const hasText = message.text !== undefined && message.text.length > 0;
   const beyondDraft = revealTurnId !== undefined && !draft;
@@ -358,7 +358,7 @@ export function MessageBubble({
                         className="mt-1 justify-end"
                       />
                     </>
-                  ) : rendersMarkdown ? (
+                  ) : showMarkdown ? (
                     <>
                       <MarkdownText text={text} color={textColor} />
                       <Text className="text-[15px] leading-5" color={textColor}>

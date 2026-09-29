@@ -1,9 +1,10 @@
-import { formatListTime, markdownToPlain, shouldRenderMarkdown } from '@galena/chat-core';
+import { formatListTime } from '@galena/chat-core';
 import { VolumeX } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
 import { Avatar } from '@/components/chat/avatar';
+import { plainPreviewBody } from '@/components/chat/markdown-decision';
 import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
@@ -51,12 +52,9 @@ export function ChatListItem({ chat, onPress }: ChatListItemProps) {
     isGroup: chat.kind === 'group',
     currentUserId: CURRENT_USER_ID,
   });
-  // An incoming AI reply previews as plain text, exactly like the web list; a
+  // An incoming AI reply (a DM AI or a group AI reply) previews as plain text; a
   // human message or your own stays literal.
-  const body =
-    last !== undefined && shouldRenderMarkdown(chat, last, CURRENT_USER_ID)
-      ? markdownToPlain(preview.body)
-      : preview.body;
+  const body = plainPreviewBody(chat, last, preview.body, CURRENT_USER_ID);
   const showTicks = chat.unread === 0 && last?.senderId === CURRENT_USER_ID;
   return (
     <Pressable

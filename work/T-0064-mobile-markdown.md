@@ -185,6 +185,56 @@ no check was ever bypassed.
 - None. The one design note is above: if you want the bubble to receive the chat as a
   prop instead of reading the store, allow `message-list.tsx`.
 
+## Round 1 (review fixes)
+
+Addressed the pre-review findings (`PREREVIEW.md`).
+
+**1. Tests for the wiring (finding 1, must-fix).** The chat components cannot be
+rendered under Vitest as configured: `message-bubble.tsx` / `chat-list-item.tsx` import
+`@/`-aliased modules (Vitest has no `@` alias) and native modules (`react-native-svg`,
+`expo-clipboard`, `expo-haptics`, `react-native-reanimated`, `nativewind`), and there
+is no React Native testing library. So, per the instruction, I extracted the two small
+decisions into a pure module next to the components, kept both JSX branches trivial, and
+unit-tested the decisions:
+- `apps/mobile/src/components/chat/markdown-decision.ts` (new): `rendersMarkdown(chats,
+  message, currentUserId)` (which bubble renderer) and `plainPreviewBody(chat, last,
+  rawBody, currentUserId)` (which list preview). Both delegate to `@galena/chat-core`'s
+  `shouldRenderMarkdown`, so the rule lives in one place.
+- `message-bubble.tsx` now branches on `showMarkdown = useChatStore((state) =>
+  rendersMarkdown(state.chats, message, currentUserId))`; `chat-list-item.tsx` computes
+  `body = plainPreviewBody(chat, last, preview.body, CURRENT_USER_ID)`.
+- `apps/mobile/src/components/chat/markdown-decision.test.ts` (new, 9 tests): an incoming
+  AI DM renders Markdown; an incoming human DM, an incoming human group message and your
+  own message in an AI chat stay plain; an incoming group AI reply (`ai-…` JID) renders
+  Markdown and a human group message stays plain; an unknown chat stays plain; the AI-chat
+  preview strips `**`, backticks and `#`; a group AI reply preview is stripped; a human
+  preview and your own AI-chat message are untouched; no last message returns the raw
+  body. `markdown-decision.ts` is a new file next to the component (decision 1 authorises
+  the extraction).
+
+**2. Canonical group preview (finding 2).** Kept the mobile behavior: a group AI reply
+previews stripped, because its bubble renders Markdown; `shouldRenderMarkdown` already
+covers it, and the new test pins it. The web list is untouched (the lead will file the
+web fix).
+
+**3. Timestamp on its own line (finding 3).** Intentional and accepted: in the Markdown
+branch the mono timestamp and ticks sit in their own `Text` after the last block instead
+of flowing inline at the end of the paragraph. No change.
+
+### Checks (Round 1, real results)
+```
+pnpm format:check   # All matched files use Prettier code style!
+pnpm lint           # exit 0
+pnpm typecheck      # Tasks: 9 successful, 9 total
+pnpm test           # Test Files 26 passed | 2 skipped (28)
+                    # Tests 253 passed | 2 skipped (255)
+                    # (new markdown-decision.test.ts 9; +1 file, +9 tests vs round 0)
+pnpm build          # Tasks: 2 successful, 2 total; Exported iOS + Android bundles
+```
+
+`PREREVIEW.md` (untracked) needed `prettier --write` in place for `format:check` to stay
+green; it is left untracked and is not in the commit.
+
 ---
 
 ## Review (written by Claude)
