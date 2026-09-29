@@ -1,7 +1,7 @@
 ---
 id: T-0077
 title: Runner tunnel — accept wss:// server URLs in RunnerClient (TLS to the hub)
-status: review
+status: merged
 milestone: M3
 branch: task/T-0077-tunnel-wss
 model: minimax-coding-plan/MiniMax-M3
@@ -89,4 +89,6 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged (lead, 2026-09-29). Rebased on main; format, lint, typecheck, test and build all green. No pre-review (OpenCode Go has no funds); reviewed by hand.
+
+**Checked:** the diff is the validation change only (`ws://` or `wss://`, still a parsed URL, everything else rejected: tests cover http, https, ftp, file, javascript, empty and scheme-less). There is no `rejectUnauthorized` or `NODE_TLS_*` anywhere in `packages/`, `apps/runner` or `apps/server`, so TLS verification stays at the Node default. The worker could not test a real TLS handshake, as the spec said.
