@@ -19,12 +19,15 @@ import {
   getChats,
   getContacts,
   getMe,
+  listAiApprovalRules,
   listAis,
   listAudit,
   listConnections,
+  listGroupApprovalRules,
   listMachines,
   renameMachine,
   resumeAi,
+  revokeApprovalRule,
   revokeMachine,
   stopAi,
   updateAi,
@@ -259,6 +262,39 @@ describe('mockRequest', () => {
     expect(approval.id).toBe('apr-42');
     expect(approval.status).toBe('pending');
     expect(approval.action).toBe('merge_pull_request');
+  });
+
+  // T-0100: the seeded card is always-eligible in the personal chat;
+  // `approve_always` stands it and creates a rule the AI panel lists,
+  // and the mock DELETE removes it again.
+  it('seeds apr-42 as always-eligible with a null groupId', async () => {
+    const approval = await getApproval('apr-42');
+    expect(approval.alwaysEligible).toBe(true);
+    expect(approval.groupId).toBeNull();
+  });
+
+  it('approve_always creates a rule visible in the AI panel list, DELETE removes it', async () => {
+    const decided = await decideApproval('apr-42', 'approve_always');
+    expect(decided.status).toBe('approved_always');
+    expect(decided.alwaysEligible).toBe(true);
+
+    const rules = await listAiApprovalRules('ai-mock-dev');
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({
+      action: 'merge_pull_request',
+      scope: 'personal',
+      groupId: null,
+    });
+
+    await revokeApprovalRule(rules[0]!.id);
+    await expect(listAiApprovalRules('ai-mock-dev')).resolves.toEqual([]);
+  });
+
+  it('the AI rules list starts empty and the group list 404s for a non-manager group', async () => {
+    await expect(listAiApprovalRules('ai-mock-dev')).resolves.toEqual([]);
+    await expect(listGroupApprovalRules('g-viernes')).rejects.toMatchObject({ status: 404 });
+    const groupRules = await listGroupApprovalRules('g-devteam');
+    expect(groupRules).toEqual([]);
   });
 
   it('approve flips the seeded approval to approved_once and a second decision answers 409', async () => {

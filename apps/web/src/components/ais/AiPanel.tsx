@@ -23,6 +23,7 @@ import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 import { Button, FieldError } from './AiPageShell';
 import { AiActivity } from './AiActivity';
+import { AlwaysAllowedList } from '@/components/approvals/AlwaysAllowedList';
 import { ConnectionPicker } from './ConnectionPicker';
 import { describeAiError } from './errors';
 import { LimitsFields } from './LimitsFields';
@@ -746,6 +747,8 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
               </div>
 
               <AiActivity aiId={ai.id} />
+
+              <AlwaysAllowedList scope={{ aiId: ai.id }} />
             </>
           )}
         </div>

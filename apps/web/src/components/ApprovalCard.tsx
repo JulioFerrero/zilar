@@ -38,8 +38,13 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
   // keeps the last good state. `apply` lets the card push an optimistic state
   // after a decision so the buttons drop at once.
   const { state, apply } = useApprovalPolling(request, { resetKey: retryToken });
-  const [inFlight, setInFlight] = useState<null | 'approve' | 'deny'>(null);
+  const [inFlight, setInFlight] = useState<null | 'approve' | 'deny' | 'always'>(null);
   const [actionError, setActionError] = useState('');
+  // T-0100: the "Always allow here" two-step. The first click arms the
+  // inline confirmation; `alwaysBlocked` drops the third button for the
+  // rest of this view when the server says the action is not eligible.
+  const [confirmingAlways, setConfirmingAlways] = useState(false);
+  const [alwaysBlocked, setAlwaysBlocked] = useState(false);
 
   const retry = (): void => {
     setRetryToken((value) => value + 1);
@@ -47,7 +52,9 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
 
   async function decide(decision: ApprovalDecision): Promise<void> {
     setActionError('');
-    setInFlight(decision === 'deny' ? 'deny' : 'approve');
+    setInFlight(
+      decision === 'deny' ? 'deny' : decision === 'approve_always' ? 'always' : 'approve',
+    );
     try {
       const approval = await decideApproval(request.id, decision);
       apply({ kind: 'ready', approval });
@@ -59,6 +66,14 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
         }
         return;
       }
+      // The action lost its eligibility (or never had it): say so in plain
+      // words and drop the third button instead of leaving a dead end.
+      if (error instanceof ApiError && error.code === 'always_not_allowed') {
+        setConfirmingAlways(false);
+        setAlwaysBlocked(true);
+        setActionError('This action can only be approved one time.');
+        return;
+      }
       setActionError(error instanceof Error ? error.message : 'Could not send the decision');
     } finally {
       setInFlight(null);
@@ -68,8 +83,13 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
   const approval = state.kind === 'ready' ? state.approval : null;
   // The server turns a past-due `pending` row into `expired` in its read model
   // (see `toPublicApproval`), so a `pending` status is already "pending and
-  // not expired" from the user's perspective.
+  // not expired" from the user's perspective. The third button needs the
+  // server's eligibility flag too: the polling state is the decidable read
+  // model, so a non-decider never gets this far (the hook reports
+  // `notDecidable` for them).
   const isPending = approval !== null && approval.status === 'pending';
+  const showAlways =
+    isPending && approval.alwaysEligible && !alwaysBlocked && state.kind === 'ready';
   const busy = inFlight !== null;
 
   return (
@@ -119,33 +139,84 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
         </p>
       )}
 
-      {isPending && (
+      {isPending && approval !== null && (
         <div className="mt-2 flex flex-col gap-2">
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              className="px-3"
-              disabled={busy}
-              onClick={() => {
-                void decide('approve_once');
-              }}
-            >
-              {inFlight === 'approve' ? 'Approving…' : 'Approve'}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="px-3"
-              disabled={busy}
-              onClick={() => {
-                void decide('deny');
-              }}
-            >
-              {inFlight === 'deny' ? 'Denying…' : 'Deny'}
-            </Button>
-          </div>
+          {confirmingAlways && showAlways ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-[12px] leading-4 text-muted-foreground">
+                {approval.groupId === null
+                  ? `Always run ${request.action} without asking, in this chat only.`
+                  : `Always run ${request.action} without asking, in this group only.`}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="px-3"
+                  disabled={busy}
+                  onClick={() => {
+                    void decide('approve_always');
+                  }}
+                >
+                  {inFlight === 'always' ? 'Allowing…' : 'Confirm'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="px-3"
+                  disabled={busy}
+                  onClick={() => {
+                    setConfirmingAlways(false);
+                    setActionError('');
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="px-3"
+                disabled={busy}
+                onClick={() => {
+                  void decide('approve_once');
+                }}
+              >
+                {inFlight === 'approve' ? 'Approving…' : 'Approve'}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="px-3"
+                disabled={busy}
+                onClick={() => {
+                  void decide('deny');
+                }}
+              >
+                {inFlight === 'deny' ? 'Denying…' : 'Deny'}
+              </Button>
+              {showAlways && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="px-3"
+                  disabled={busy}
+                  onClick={() => {
+                    setConfirmingAlways(true);
+                    setActionError('');
+                  }}
+                >
+                  Always allow here
+                </Button>
+              )}
+            </div>
+          )}
           {actionError !== '' && <FieldError>{actionError}</FieldError>}
         </div>
       )}
