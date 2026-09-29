@@ -1,7 +1,7 @@
 ---
 id: T-0118
 title: Spike: web push through ejabberd's push module (XEP-0357) to a real browser
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0118-web-push-spike
 model: meta/muse-spark-1.3-contributor
@@ -72,28 +72,94 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Spike proving XEP-0357 web push. Verdict: **GO for T-0119** (DM path proven
+  at unit level + source-verified against mod_push.erl 26.07; MUC/groupchat is
+  the one open question — `mam_message` hook fires for `chat` type only).
+- `apps/server/src/push-spike/`: `protocol.ts` (node + notification schemas),
+  `notification.ts` (parse ejabberd publish IQs), `payload.ts` (mute/visible
+  filter as a pure function + 3000-byte encrypted-payload budget),
+  `component.ts` (XEP-0114 component via `@xmpp/component`, answers every
+  publish with IQ result, 404/410 unsubscribes), `sender.ts` (real `web-push`
+  VAPID+RFC8291 sender), `routes.ts` (session-guarded
+  `GET /api/push-spike/config`, `POST subscribe/unsubscribe`, 404 unless
+  `PUSH_SPIKE_ENABLED=true`, 401 before 404 so the authz sweep passes),
+  `subscriptions.ts` (in-memory store keyed by node), `spike-config.ts`
+  (all-optional env schema), `xmpp-component.d.ts` (spike-only typings —
+  the package ships none), plus 4 unit test files (18 tests, fakes only).
+- `apps/server/src/app.ts` (spike wiring via optional `pushSpike` dep +
+  env fallback; production default unchanged) and `tsconfig.json` (include
+  the spike `.d.ts`). `config.ts` was intentionally left untouched after a
+  first approach broke `config.test.ts` exact-match expectations.
+- `apps/web/public/push-spike/`: plain `index.html` (VAPID key → SW
+  register → PushManager subscribe → store → show `<enable/>` stanza text;
+  xmpp-core has no raw-IQ sender, noted as a T-0119 item) + `sw.js`
+  (show notification, click opens `/chat/<id>`). Not in the app bundle.
+- `infra/ejabberd/ejabberd.yml`: marked spike lines only — loopback
+  `ejabberd_service` listener on 5347 for `push.galena.localhost`, and
+  `mod_push` with `include_sender/include_body: true` for the proof.
+- `docs/PUSH_SPIKE.md` (149 lines): answers to all six questions with
+  evidence, GO/NO-GO, T-0119 outline, Helium 5-step procedure, deps/licences
+  (web-push MPL-2.0, @types/web-push MIT, @xmpp/component ISC), risks.
+- VAPID keys generated into git-ignored `infra/.env.push-spike` (0600);
+  only variable names appear in docs. No secrets committed or printed
+  (one `web-push generate-vapid-keys` CLI run echoed keys into my own
+  shell log only; the file keys were regenerated programmatically after).
 
 ### Files changed
--
+- New: `apps/server/src/push-spike/*` (11 files), `apps/web/public/push-spike/*`
+  (2 files), `docs/PUSH_SPIKE.md`.
+- Edited: `apps/server/package.json` + `pnpm-lock.yaml` (`web-push`,
+  `@xmpp/component`, `@types/web-push` — the spec's whole list, nothing else),
+  `apps/server/src/app.ts`, `apps/server/tsconfig.json`,
+  `infra/ejabberd/ejabberd.yml` (marked spike lines),
+  `work/T-0118-web-push-spike.md` (this report + status).
+- Not committed, git-ignored: `infra/.env.push-spike` (VAPID keys + secret).
 
 ### Commands run and real results
--
+- `pnpm install`: ok (7.3 s).
+- `pnpm --filter @galena/server add web-push @xmpp/component @types/web-push`: ok.
+- `pnpm --filter @galena/server exec tsc --noEmit`: clean (after fixing a
+  `.d.ts`-basename shadowing trap, an `as`-precedence bug, and moving from
+  `@xmpp/client` imports — not a server dep — to `@xmpp/component` re-exports).
+- Spike tests: `notification` 5 passed, `payload` 6 passed, `component` 2 passed,
+  `routes` 5 passed (18 total, fakes only, no network).
+- Full `pnpm --filter @galena/server test --maxWorkers=2` (correct form, after
+  the lead's warning): 66 files passed, 1090 tests passed, 7 skipped, 0 failed
+  (259 s). First full run had 3 failures, all mine and fixed: 2×
+  `config.test.ts` exact-match (reverted the `ServerConfig` change, used dep
+  injection instead) + 1× authz sweep (routes now 401 before 404).
+- `pnpm format:check`: clean. `pnpm lint`: clean (no output, exit 0).
+- `pnpm typecheck`: 10 tasks successful. `pnpm build`: 2 successful.
 
 ### Problems, deviations from the spec, open questions
--
+- Deviation: the spike page cannot send `<enable/>` itself — xmpp-core has
+  no raw-IQ sender, so the page shows the stanza text for a scratch client
+  and T-0119 must add the sender (noted in PUSH_SPIKE.md).
+- Deviation: `subscriptions.ts` keeps an unused `now` param wired as
+  `void now` (oxlint arg-order rule vs unused-param rule); harmless, flagged
+  for removal in T-0119.
+- No live ejabberd run from here (no browser, infra needs local secrets);
+  live proof is the Helium 5-step procedure in `docs/PUSH_SPIKE.md`.
+  Groupchat/MUC notifications are unverified against a live server
+  (source says MAM hook is chat-only) — T-0119's first job.
+- Size estimate for T-0119: medium (~1 week): migration, raw-IQ sender,
+  chat_prefs/topic joins, keepalive, MUC path, PWA shell, metrics.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None. Status: review.
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved as a decision document. Merged docs-only.
 
 ### Findings
--
+- The spike answers five of the six questions with evidence from `mod_push.erl` and unit tests with fakes. The sixth (groupchat) was left open by the worker; the lead addendum in `docs/PUSH_SPIKE.md` answers it: MUC/Sub (XEP-0369) is the path, and T-0119 must prove it live first.
+- The spike code was throwaway by the spec ("a decision document, not a merged feature"). It also carried live-infra changes (`mod_push` with `include_body: true`, a component listener) and three new server dependencies, so it is **not merged**. It is preserved on the branch `spike/T-0118-push` for T-0119. The Report above describes that branch, not `main`.
+- The worker first ran the full server suite with the wrong `-- --maxWorkers=2` form (about 10 workers); the lead killed it. The correct run afterwards passed: 1090 tests.
+- Secrets: VAPID keys stayed in a git-ignored file; nothing committed.
 
 ### Follow-ups
--
+- T-0119: rewrite the (SPIKE) sections from this document; first job is the live MUC/Sub proof.
+- Remove the unused `now` parameter in the spike's subscription store when promoting it.

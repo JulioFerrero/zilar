@@ -21,13 +21,13 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0115](T-0115-invite-links.md) | Join by link for groups | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
 | [T-0116](T-0116-group-roles.md) | Custom roles: private-topic access, approver rights | planned | meta/muse-spark-1.3-contributor | T-0108, T-0110, T-0111 |  |
 | [T-0117](T-0117-message-search.md) | Message search across everything you may see | planned | meta/muse-spark-1.3-contributor | T-0108 | Needs a read-only role on the ejabberd DB |
-| [T-0118](T-0118-web-push-spike.md) | Spike: web push through ejabberd mod_push | planned | meta/muse-spark-1.3-contributor | none | Decides T-0119 |
 | [T-0119](T-0119-pwa-web-push.md) | PWA and web push | planned | meta/muse-spark-1.3-contributor | T-0118, T-0113 | Outline: lead rewrites (SPIKE) sections first |
 | [T-0120](T-0120-stickers.md) | Stickers: user-made packs, storage, sending, rendering | planned | meta/muse-spark-1.3-contributor | none |  |
 | [T-0121](T-0121-sticker-creator.md) | Sticker pack creator, favorites, discover | planned | meta/muse-spark-1.3-contributor | T-0120 |  |
 | [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | planned | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
 | [T-0124](T-0124-channels.md) | Channels: only admins post | planned | meta/muse-spark-1.3-contributor | T-0108, T-0115 |  |
+| [T-0125](T-0125-web-tools.md) | Web tools for AIs: web.fetch, Wikipedia, feeds, prices, best-effort search (no keys) | planned | meta/muse-spark-1.3-contributor | T-0105 |
 | T-0106 | Model side of AI tools (prompt guide, rounds per turn, working-on-it line) | planned | meta/muse-spark-1.3-contributor | T-0105 | Spec written after T-0105 merges |
 | T-0107 | Web Tools and Routines UI | planned | meta/muse-spark-1.3-contributor | T-0106 | Spec written after T-0105 merges |
 
@@ -154,3 +154,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0101](T-0101-group-always-admin-only.md) | approve always in a group needs a group owner/admin; alwaysEligible is per viewer; approve once unchanged | 2026-09-29 |
 | [T-0102](T-0102-tool-sandbox.md) | tool sandbox: AI-written JS runs in QuickJS/WASM inside a worker, allowlisted SSRF-safe fetch, CPU/memory/output limits; not wired to anything yet | 2026-09-29 |
 | [T-0103](T-0103-ai-tools-store.md) | AI tools store: versioned tool code per AI and chat (append-only history, revert = new version), manual run through an injected runner, read/manage routes, audit without code or output | 2026-09-29 |
+| [T-0118](T-0118-web-push-spike.md) | Web push spike: decision doc, GO for T-0119 (MUC/Sub for groupchat); code preserved on branch spike/T-0118-push | 2026-09-29 |
