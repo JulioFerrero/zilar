@@ -1,7 +1,7 @@
 ---
 id: T-0071
 title: Runner hub (M3, server) — approved machines can connect over the tunnel WebSocket; revoke drops them; last-seen and online state
-status: review
+status: merged
 milestone: M3
 branch: task/T-0071-runner-hub
 model: minimax-coding-plan/MiniMax-M3
@@ -154,10 +154,12 @@ The 18 new hub tests cover: cache resolution for approved / pending / revoked / 
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved with lead changes, merged (2026-09-29). After rebasing onto main: format, lint, typecheck, test (server 567 passed, 7 skipped) and build all green. No pre-review (OpenCode Go has no funds); reviewed by hand.
 
-### Findings
--
+**Lead changes (made in the task branch):**
+- **Refresh race (security).** The 30 s refresh replaced the whole key map from a query that could have read the database before a revoke committed, so a machine revoked mid-refresh could come back into the cache for up to 30 s. Approve/revoke events that arrive while a refresh is in flight now win over its result. New test `a revoke that lands while a refresh is in flight is not undone by the stale read` (I confirmed it fails without the fix).
+- **`isOnline`** now reads `server.isRunnerLive` directly (and requires the key to still be in the cache) instead of a set refreshed every 60 s, so the flag is never stale and is false the moment a machine is revoked. The poll remains only for the throttled `last_seen_at` writes.
 
-### Follow-ups
--
+**Accepted deviations:** `allowImportingTsExtensions` in `apps/server/tsconfig.json` (needed to typecheck the tunnel package's `.ts` imports; `packages/**` untouched, verified with `git diff main -- packages`), and `app.ts`/`index.ts` sharing one `DbMachineRegistry` with the hub (required for a revoke to reach the live connection).
+
+**Live check for Julio / next lead step:** set `RUNNER_HUB_ENABLED=true` in the dev server env, pair a runner (T-0072), approve it on the Machines page, and see it as online. The web page does not show `online` yet (follow-up: web shows the online dot).

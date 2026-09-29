@@ -57,6 +57,11 @@ export function createHubKeyRegistry({
   const revokeListeners = new Set<(machineId: string) => void>();
   let timer: NodeJS.Timeout | null = null;
   let closed = false;
+  // Approve/revoke events that land while a refresh query is in flight. The
+  // query may have read the database before the change committed, so the
+  // events win over its result: a machine revoked mid-refresh must never come
+  // back into the cache from a stale read.
+  let inFlight: { revoked: Set<string>; approved: Map<string, string> } | null = null;
 
   function fireRevoke(machineId: string): void {
     for (const listener of revokeListeners) {
@@ -69,15 +74,27 @@ export function createHubKeyRegistry({
   }
 
   async function refresh(): Promise<void> {
+    const events = { revoked: new Set<string>(), approved: new Map<string, string>() };
+    inFlight = events;
     let next: Map<string, string>;
     try {
       const rows = await listApprovedMachineKeys(db);
       next = new Map(rows.map((row) => [row.id, row.publicKey]));
+      for (const id of events.revoked) {
+        next.delete(id);
+      }
+      for (const [id, publicKey] of events.approved) {
+        next.set(id, publicKey);
+      }
     } catch (error) {
       // A failed refresh keeps the old map; the cache survives a transient
       // database blip and we do not silently authenticate the wrong set.
       logger.error({ err: serializeError(error) }, 'runner hub key refresh failed');
       return;
+    } finally {
+      if (inFlight === events) {
+        inFlight = null;
+      }
     }
     const removed: string[] = [];
     for (const id of keys.keys()) {
@@ -117,9 +134,13 @@ export function createHubKeyRegistry({
   // 30 s refresh race). `cache.revoke` then fires the tunnel's `onRevoke`
   // listener, which closes the live WebSocket with CLOSE_REVOKED.
   const unsubscribeDurableApprove = registry.onApprove((machineId, publicKey) => {
+    inFlight?.revoked.delete(machineId);
+    inFlight?.approved.set(machineId, publicKey);
     keys.set(machineId, publicKey);
   });
   const unsubscribeDurableRevoke = registry.onRevoke((machineId) => {
+    inFlight?.approved.delete(machineId);
+    inFlight?.revoked.add(machineId);
     if (keys.delete(machineId)) {
       fireRevoke(machineId);
     }
@@ -131,10 +152,14 @@ export function createHubKeyRegistry({
     },
 
     approve(machineId: string, publicKey: string): void {
+      inFlight?.revoked.delete(machineId);
+      inFlight?.approved.set(machineId, publicKey);
       keys.set(machineId, publicKey);
     },
 
     revoke(machineId: string): void {
+      inFlight?.approved.delete(machineId);
+      inFlight?.revoked.add(machineId);
       if (keys.delete(machineId)) {
         fireRevoke(machineId);
       }
@@ -185,9 +210,9 @@ export interface StartRunnerHubOptions {
   /** Refresh cadence for the approved-key cache; default 30 s. */
   refreshMs?: number;
   /**
-   * How often the hub polls live connections to update `last_seen_at` and
-   * the in-memory `isOnline` set. Defaults to `LAST_SEEN_MIN_INTERVAL_MS`
-   * (60 s). Tests shorten it so the assertions do not wait a minute.
+   * How often the hub polls live connections to update `last_seen_at`.
+   * Defaults to `LAST_SEEN_MIN_INTERVAL_MS` (60 s). Tests shorten it so the
+   * assertions do not wait a minute.
    */
   pollIntervalMs?: number;
 }
@@ -265,27 +290,19 @@ export async function startRunnerHub({
     }
   };
 
-  // Poll the live set on the same cadence as the cache refresh. The tunnel
-  // does not expose a "became ready" event, and the cost is one Map lookup
-  // per approved machine every 30 s — negligible.
+  // The tunnel has no "became ready" event, so a poll walks the approved ids
+  // and writes `last_seen_at` for the live ones (throttled per machine).
   let pollTimer: NodeJS.Timeout | null = null;
   let stopped = false;
-  const onlineIds = new Set<string>();
 
   async function pollOnce(): Promise<void> {
-    if (stopped) {
-      return;
-    }
-    const nextOnline = new Set<string>();
     for (const id of cache.approvedIds()) {
+      if (stopped) {
+        return;
+      }
       if (server.isRunnerLive(id)) {
-        nextOnline.add(id);
         await flushLastSeen(id);
       }
-    }
-    onlineIds.clear();
-    for (const id of nextOnline) {
-      onlineIds.add(id);
     }
   }
 
@@ -306,8 +323,10 @@ export async function startRunnerHub({
   logger.info({ port: server.port }, 'runner hub listening');
 
   return {
+    // Read straight from the tunnel so the flag is never stale, and never
+    // true for a machine whose key has just been revoked.
     isOnline(machineId: string): boolean {
-      return onlineIds.has(machineId);
+      return cache.getPublicKey(machineId) !== null && server.isRunnerLive(machineId);
     },
 
     async close(): Promise<void> {

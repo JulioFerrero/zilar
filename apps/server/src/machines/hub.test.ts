@@ -213,6 +213,32 @@ describe('createHubKeyRegistry', () => {
     cache.close();
   });
 
+  it('a revoke that lands while a refresh is in flight is not undone by the stale read', async () => {
+    const app = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+    });
+    const user = await bootstrapUser(context, app, 'race@example.com');
+    const registry = createDbMachineRegistry(context.db);
+    const cache = createHubKeyRegistry({ db: context.db, registry, logger: makeLogger() });
+    const id = await insertMachine(context.db, user.id, {
+      status: 'approved',
+      publicKey: 'raced-key',
+    });
+
+    // The query starts before the revoke event and reads the old, approved
+    // row; the event arrives before the query resolves.
+    const refreshing = cache.refresh();
+    registry.notifyRevoked(id);
+    await refreshing;
+
+    expect(cache.getPublicKey(id)).toBeNull();
+    cache.close();
+  });
+
   it('keeps the old map when the database is broken, and the next good refresh still works', async () => {
     // A separate context we tear down ourselves: the afterEach also calls
     // close, which would throw because PGlite is already closed.
