@@ -84,6 +84,8 @@ export function createInitialState(phase?: MockDraftPhase, load?: MockLoadScenar
     activeChatId: null,
     historyComplete: {},
     typing: {},
+    edits: {},
+    reactions: {},
     drafts:
       phase === 'stream'
         ? { [MOCK_DRAFT_CHAT_ID]: { turnId: MOCK_DRAFT_TURN_ID, text: MOCK_DRAFT_STREAM_TEXT } }
