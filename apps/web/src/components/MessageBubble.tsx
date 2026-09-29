@@ -15,6 +15,7 @@ import { AiBadge } from './AiBadge';
 import { ApprovalCard } from './ApprovalCard';
 import { Avatar } from './Avatar';
 import { ConfirmDialog } from './ConfirmDialog';
+import { FileMessage } from './FileMessage';
 import { ImageMessage } from './ImageMessage';
 import { LinkText } from './LinkText';
 import { MarkdownText } from './MarkdownText';
@@ -177,6 +178,7 @@ export function MessageBubble({
     message.replyTo === undefined &&
     message.image === undefined &&
     message.voice === undefined &&
+    message.attachment === undefined &&
     message.card === undefined &&
     isBigEmoji(message.text ?? '');
   // A big-emoji message is shown without its bubble, so the sender name would
@@ -185,11 +187,15 @@ export function MessageBubble({
   // In a group, an incoming AI reply (recognisable from its `ai-` JID) carries
   // the small AI badge next to its name (T-0055).
   const senderIsAi = showSender && isAiJid(message.senderId);
+  const attachmentImage = message.attachment?.kind === 'image';
+  const attachmentFile = message.attachment?.kind === 'file';
+  const failed = message.failed === true;
   const imageOnly =
-    message.image !== undefined &&
+    (message.image !== undefined || attachmentImage) &&
     !hasText &&
     message.card === undefined &&
-    message.voice === undefined;
+    message.voice === undefined &&
+    !attachmentFile;
 
   const handleReact = (emoji: string): void => {
     storeApi.getState().react(chat.id, message.id, emoji);
@@ -197,7 +203,11 @@ export function MessageBubble({
 
   // Sender-side limits: Edit is for my own text messages under 48 h, Delete for
   // everyone is for my own messages of any kind. Neither applies to a tombstone.
-  const canEdit = !generating && !deleted && canEditMessage(message, currentUserId, new Date());
+  const canEdit =
+    !generating &&
+    !deleted &&
+    message.attachment === undefined &&
+    canEditMessage(message, currentUserId, new Date());
   const canDelete = !generating && !deleted && canDeleteMessage(message, currentUserId);
 
   // A retracted message keeps its place as a slim tombstone and has no actions.
@@ -299,7 +309,12 @@ export function MessageBubble({
             <>
               {message.image !== undefined && (
                 <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
-                  <ImageMessage image={message.image} alt="Photo" />
+                  <ImageMessage
+                    url={message.image.url}
+                    alt="Photo"
+                    width={message.image.width}
+                    height={message.image.height}
+                  />
                   {imageOnly && (
                     <MessageMeta
                       message={message}
@@ -307,6 +322,50 @@ export function MessageBubble({
                       className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
                     />
                   )}
+                </div>
+              )}
+
+              {attachmentImage && message.attachment !== undefined && (
+                <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
+                  <ImageMessage
+                    url={message.attachment.url}
+                    alt={message.attachment.name}
+                    width={message.attachment.width}
+                    height={message.attachment.height}
+                  />
+                  {failed ? (
+                    <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
+                      <span>Upload failed</span>
+                      <button
+                        type="button"
+                        aria-label="Retry upload"
+                        onClick={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+                        className="font-semibold underline"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : (
+                    imageOnly && (
+                      <MessageMeta
+                        message={message}
+                        showTicks={own}
+                        className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
+                      />
+                    )
+                  )}
+                </div>
+              )}
+
+              {attachmentFile && message.attachment !== undefined && (
+                <div className="px-3 py-1.5">
+                  <FileMessage
+                    attachment={message.attachment}
+                    own={own}
+                    uploading={isSending && !failed}
+                    failed={failed}
+                    onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+                  />
                 </div>
               )}
 
@@ -374,15 +433,16 @@ export function MessageBubble({
 
               {generating && hasText && <GeneratingLabel />}
 
-              {!hasText && (message.voice !== undefined || message.card !== undefined) && (
-                <div className="flex justify-end px-3 pb-2">
-                  <MessageMeta
-                    message={message}
-                    showTicks={own}
-                    className={own ? 'text-bubble-out-meta' : 'text-bubble-in-meta'}
-                  />
-                </div>
-              )}
+              {!hasText &&
+                (message.voice !== undefined || message.card !== undefined || attachmentFile) && (
+                  <div className="flex justify-end px-3 pb-2">
+                    <MessageMeta
+                      message={message}
+                      showTicks={own}
+                      className={own ? 'text-bubble-out-meta' : 'text-bubble-in-meta'}
+                    />
+                  </div>
+                )}
             </>
           )}
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ApprovalDecisionSchema, ApprovalRequestSchema } from './approval';
+import { AttachmentSchema } from './attachment';
 import { HandoffSchema } from './handoff';
 import { PollSchema, PollVoteSchema } from './poll';
 import { CostSchema, PreviewSchema, ProgressSchema } from './progress';
@@ -30,6 +31,7 @@ export const PayloadSchema = z.discriminatedUnion('type', [
   z.strictObject({ v: z.literal(0), type: z.literal('poll'), data: PollSchema }),
   z.strictObject({ v: z.literal(0), type: z.literal('poll.vote'), data: PollVoteSchema }),
   z.strictObject({ v: z.literal(0), type: z.literal('voice'), data: VoiceMetaSchema }),
+  z.strictObject({ v: z.literal(0), type: z.literal('attachment'), data: AttachmentSchema }),
 ]);
 
 export type Payload = z.infer<typeof PayloadSchema>;

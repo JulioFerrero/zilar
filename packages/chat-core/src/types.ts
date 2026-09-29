@@ -1,4 +1,4 @@
-import type { Payload, VoiceMeta } from '@galena/protocol';
+import type { Attachment, Payload, VoiceMeta } from '@galena/protocol';
 
 export type ChatKind = 'dm' | 'group' | 'ai';
 
@@ -48,7 +48,14 @@ export interface UiMessage {
   mentions?: UiMention[];
   voice?: VoiceMeta;
   image?: UiImage;
+  /** A file or image sent with the `attachment` payload (T-0065). */
+  attachment?: Attachment;
   card?: Payload;
+  /**
+   * True when an outgoing attachment could not be uploaded. The message keeps
+   * its local data and shows a Retry action instead of a "sending" state.
+   */
+  failed?: boolean;
   /** XEP-0444 reaction chips, newest state first-used; empty/absent means none. */
   reactions?: UiReaction[];
   /** True when the message was corrected (XEP-0308) after it was sent. */

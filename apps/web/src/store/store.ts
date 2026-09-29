@@ -15,6 +15,7 @@ import {
   canDeleteMessage,
 } from '@galena/chat-core';
 import type { Contact, GroupDetail, Me, PublicAi } from '@/lib/api';
+import { classify, cleanFilename, objectUrlFor } from '@/lib/attachments';
 import { sampleVoiceDataUrl } from '@/lib/voice';
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
@@ -58,6 +59,12 @@ export interface VoiceRecording {
   blob: Blob;
   durationMs: number;
   waveform: number[];
+}
+
+/** What the composer passes when it sends a file or image attachment. */
+export interface SendAttachmentOptions {
+  caption?: string;
+  replyTo?: ReplyRef;
 }
 
 export interface ChatStore {
@@ -109,6 +116,9 @@ export interface ChatStore {
   hasMore: (chatId: string) => boolean;
   sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
   sendVoice: (chatId: string, recording: VoiceRecording, options?: SendTextOptions) => void;
+  sendAttachment: (chatId: string, file: File, options?: SendAttachmentOptions) => void;
+  /** Re-runs a failed attachment upload, keeping the original file. */
+  retryAttachment: (chatId: string, messageId: string) => void;
   /**
    * Toggles my reaction of `emoji` on a message and sends my complete set
    * (XEP-0444). Optimistic; it reverts when the send fails.
@@ -485,10 +495,12 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
           delete deleted.text;
           delete deleted.voice;
           delete deleted.image;
+          delete deleted.attachment;
           delete deleted.card;
           delete deleted.reactions;
           delete deleted.mentions;
           delete deleted.edited;
+          delete deleted.failed;
           return {
             messagesByChat: {
               ...state.messagesByChat,
@@ -568,6 +580,44 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         window.setTimeout(() => setStatus(chatId, message.id, 'sent'), 300);
         window.setTimeout(() => setStatus(chatId, message.id, 'read'), 1500);
       },
+      sendAttachment: (chatId, file, options) => {
+        if (file.size === 0) {
+          return;
+        }
+        const kind = classify(file);
+        const name = cleanFilename(file.name);
+        const mime = file.type === '' ? 'application/octet-stream' : file.type;
+        const localUrl = kind === 'image' ? objectUrlFor(file) : undefined;
+        const caption = options?.caption?.trim() ?? '';
+        sequence += 1;
+        const message: UiMessage = {
+          id: `out-${sequence}`,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: 'You',
+          createdAt: new Date(),
+          status: 'sending',
+          attachment: {
+            kind,
+            url: localUrl ?? `https://files.galena.test/${encodeURIComponent(name)}`,
+            name,
+            size: file.size,
+            mime,
+          },
+          ...(caption.length === 0 ? {} : { text: caption }),
+          ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
+        };
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: [...(state.messagesByChat[chatId] ?? []), message],
+          },
+          chats: withLastMessage(state.chats, chatId, message),
+        }));
+        window.setTimeout(() => setStatus(chatId, message.id, 'sent'), 300);
+        window.setTimeout(() => setStatus(chatId, message.id, 'read'), 1500);
+      },
+      retryAttachment: () => {},
       setSearch: (value) => set({ search: value }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),
     };

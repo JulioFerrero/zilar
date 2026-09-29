@@ -12,17 +12,27 @@ import {
 } from '@galena/chat-core';
 import { ArrowUp, Mic, Paperclip, Smile, X } from 'lucide-react';
 import {
+  useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
+  type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { AttachmentPreview } from './AttachmentPreview';
 import { EditBar } from './EditBar';
 import { MentionPicker } from './MentionPicker';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { Well } from './ui/well';
+import {
+  MAX_ATTACHMENT_BYTES,
+  classify,
+  objectUrlFor,
+  type PendingAttachment,
+} from '@/lib/attachments';
 import { VOICE_MAX_BYTES, VOICE_MIN_MS, VoiceRecorder, computeWaveform } from '@/lib/voice';
 import { useChatStore } from '@/store/ChatStoreProvider';
 
@@ -59,10 +69,96 @@ export function Composer({
   const [elapsedMs, setElapsedMs] = useState(0);
   const [cancelArmed, setCancelArmed] = useState(false);
   const [voiceError, setVoiceError] = useState<string | undefined>(undefined);
+  const [attachment, setAttachment] = useState<PendingAttachment | undefined>(undefined);
+  const [attachmentError, setAttachmentError] = useState<string | undefined>(undefined);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const lastTypingRef = useRef(0);
   const recorderRef = useRef<VoiceRecorder | null>(null);
   const pressRef = useRef<PressState | null>(null);
+
+  // The picker, paste and drop all funnel a chosen file through here. An empty
+  // or oversized file is refused inline, before any request.
+  const acceptFile = useCallback((file: File): void => {
+    setAttachmentError(undefined);
+    if (file.size === 0) {
+      setAttachmentError('That file is empty.');
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setAttachmentError('That file is larger than 50 MB.');
+      return;
+    }
+    setAttachment({ file, kind: classify(file) });
+  }, []);
+
+  const attachmentPreviewUrl = useMemo(
+    () =>
+      attachment !== undefined && attachment.kind === 'image'
+        ? objectUrlFor(attachment.file)
+        : undefined,
+    [attachment],
+  );
+
+  // The preview thumbnail's object URL is revoked when it is replaced or the
+  // composer unmounts, so it never leaks.
+  useEffect(
+    () => () => {
+      if (attachmentPreviewUrl !== undefined) {
+        URL.revokeObjectURL(attachmentPreviewUrl);
+      }
+    },
+    [attachmentPreviewUrl],
+  );
+
+  // A file dropped anywhere on the chat panel (or the page) opens the preview,
+  // exactly like the picker.
+  useEffect(() => {
+    const onDragOver = (event: DragEvent): void => {
+      if (event.dataTransfer?.types.includes('Files') === true) {
+        event.preventDefault();
+      }
+    };
+    const onDrop = (event: DragEvent): void => {
+      const file = event.dataTransfer?.files[0];
+      if (file === undefined) {
+        return;
+      }
+      event.preventDefault();
+      acceptFile(file);
+    };
+    document.addEventListener('dragover', onDragOver);
+    document.addEventListener('drop', onDrop);
+    return () => {
+      document.removeEventListener('dragover', onDragOver);
+      document.removeEventListener('drop', onDrop);
+    };
+  }, [acceptFile]);
+
+  const onPaste = (event: ReactClipboardEvent<HTMLDivElement>): void => {
+    const transfer = event.clipboardData;
+    if (transfer === undefined) {
+      return;
+    }
+    let file = transfer.files[0];
+    if (file === undefined) {
+      for (let index = 0; index < transfer.items.length; index += 1) {
+        const item = transfer.items[index];
+        if (item !== undefined && item.kind === 'file') {
+          const fromItem = item.getAsFile();
+          if (fromItem !== null) {
+            file = fromItem;
+            break;
+          }
+        }
+      }
+    }
+    if (file !== undefined) {
+      event.preventDefault();
+      acceptFile(file);
+    }
+  };
+
   // Set when a pick or a mention deletion decides where the caret goes; applied
   // after the controlled value has been committed to the textarea.
   const pendingCaretRef = useRef<number | undefined>(undefined);
@@ -88,8 +184,10 @@ export function Composer({
     setMentions([]);
     setPicker(undefined);
     setActiveIndex(0);
+    setAttachment(undefined);
+    setAttachmentError(undefined);
   }
-  const canSend = value.trim().length > 0;
+  const canSend = value.trim().length > 0 || attachment !== undefined;
   const title = store.chats.find((chat) => chat.id === chatId)?.title;
   const placeholder = title === undefined ? 'Message' : `Message ${title}`;
   const isGroup = store.chats.find((chat) => chat.id === chatId)?.kind === 'group';
@@ -190,6 +288,18 @@ export function Composer({
   };
 
   const send = (): void => {
+    if (attachment !== undefined) {
+      store.sendAttachment(chatId, attachment.file, {
+        ...(value.trim().length === 0 ? {} : { caption: value.trim() }),
+        ...(replyTo === undefined ? {} : { replyTo }),
+      });
+      setAttachment(undefined);
+      setValue('');
+      setMentions([]);
+      setPicker(undefined);
+      onCancelReply();
+      return;
+    }
     if (!canSend) {
       return;
     }
@@ -254,6 +364,15 @@ export function Composer({
         setPicker(undefined);
         return;
       }
+    }
+
+    // Esc cancels the pending attachment only when it is the last step left
+    // (an empty caption); once there is text, Esc belongs to the composer.
+    if (event.key === 'Escape' && attachment !== undefined && value.length === 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      setAttachment(undefined);
+      return;
     }
 
     if (event.key === 'ArrowUp' && editing === undefined && replyTo === undefined) {
@@ -388,7 +507,10 @@ export function Composer({
   };
 
   return (
-    <div className="chat-background relative shrink-0 px-3 pt-2 pb-3 wide:px-8 wide:pt-3 wide:pb-5">
+    <div
+      onPaste={onPaste}
+      className="chat-background relative shrink-0 px-3 pt-2 pb-3 wide:px-8 wide:pt-3 wide:pb-5"
+    >
       {pickerOpen && (
         <MentionPicker
           id={MENTION_PICKER_ID}
@@ -425,12 +547,19 @@ export function Composer({
           </Well>
         )
       )}
-      {voiceError !== undefined && (
+      {attachment !== undefined && (
+        <AttachmentPreview
+          attachment={attachment}
+          previewUrl={attachmentPreviewUrl}
+          onCancel={() => setAttachment(undefined)}
+        />
+      )}
+      {(voiceError !== undefined || attachmentError !== undefined) && (
         <div className="mb-1 px-1 text-[12px] text-danger" role="alert">
-          {voiceError}
+          {voiceError ?? attachmentError}
         </div>
       )}
-      {voiceError === undefined && actionError !== undefined && (
+      {voiceError === undefined && attachmentError === undefined && actionError !== undefined && (
         <div className="mb-1 px-1 text-[12px] text-danger" role="alert">
           {actionError}
         </div>
@@ -446,7 +575,20 @@ export function Composer({
           </div>
         ) : (
           <>
-            <IconButton aria-label="Attach a file">
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              multiple={false}
+              onChange={(event) => {
+                const chosen = event.target.files?.[0];
+                if (chosen !== undefined) {
+                  acceptFile(chosen);
+                }
+                event.target.value = '';
+              }}
+            />
+            <IconButton aria-label="Attach a file" onClick={() => fileInputRef.current?.click()}>
               <Paperclip className="size-5" aria-hidden="true" />
             </IconButton>
             <textarea

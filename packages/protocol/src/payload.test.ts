@@ -142,6 +142,19 @@ const payloadExamples: Payload[] = [
       transcript: { text: 'Quick update on the release.', language: 'en', source: 'api' },
     },
   },
+  {
+    v: 0,
+    type: 'attachment',
+    data: {
+      kind: 'image',
+      url: 'https://upload.galena.localhost/upload/abc/stage.png',
+      name: 'stage.png',
+      size: 245_760,
+      mime: 'image/png',
+      width: 1280,
+      height: 720,
+    },
+  },
 ];
 
 const expectedTypes = [
@@ -157,6 +170,7 @@ const expectedTypes = [
   'poll',
   'poll.vote',
   'voice',
+  'attachment',
 ];
 
 describe('PayloadSchema', () => {
@@ -210,6 +224,23 @@ describe('decodePayload', () => {
 
   it('rejects a known envelope whose data fails validation', () => {
     expect(decodePayload(JSON.stringify({ v: 0, type: 'task', data: {} })).ok).toBe(false);
+  });
+
+  it('rejects a 70 KiB attachment envelope', () => {
+    const envelope = JSON.stringify({
+      v: 0,
+      type: 'attachment',
+      data: {
+        kind: 'file',
+        url: 'https://upload.galena.localhost/upload/abc/report.pdf',
+        name: 'a'.repeat(255),
+        size: 1,
+        mime: 'application/pdf',
+        padding: 'x'.repeat(70 * 1024),
+      },
+    });
+    expect(envelope.length).toBeGreaterThan(MAX_PAYLOAD_BYTES);
+    expect(decodePayload(envelope).ok).toBe(false);
   });
 
   it('never throws on hostile input', () => {
