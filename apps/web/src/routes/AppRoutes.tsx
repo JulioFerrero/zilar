@@ -10,6 +10,7 @@ import { InvitePage } from './InvitePage';
 import { LoginPage } from './LoginPage';
 import { MachinesPage } from './MachinesPage';
 import { NamePage } from './NamePage';
+import { ApprovalsPage } from './ApprovalsPage';
 
 // The session check usually answers within a frame or two; the text only
 // shows when it is slow, so a reload doesn't flash a "Loading…" page.
@@ -101,6 +102,14 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <MachinesPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/settings/approvals"
+        element={
+          <RequireAuth>
+            <ApprovalsPage />
           </RequireAuth>
         }
       />

@@ -14,6 +14,7 @@ import {
   deleteMachine,
   denyMachine,
   getApproval,
+  listApprovals,
   listMachines,
   listConnections,
   machineSchema,
@@ -484,6 +485,29 @@ describe('approvals API', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { not: 'an approval' })));
 
     await expect(getApproval('apr-42')).rejects.toMatchObject({
+      status: 200,
+      code: 'invalid_response',
+    } satisfies Partial<ApiError>);
+  });
+
+  it('listApprovals hits GET /api/approvals and parses an array', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse(200, [approvalFixture, { ...approvalFixture, id: 'apr-43' }]),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const list = await listApprovals();
+    expect(list).toHaveLength(2);
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/approvals');
+  });
+
+  it('listApprovals throws an invalid_response ApiError when the body is not an array', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { not: 'a list' })));
+
+    await expect(listApprovals()).rejects.toMatchObject({
       status: 200,
       code: 'invalid_response',
     } satisfies Partial<ApiError>);
