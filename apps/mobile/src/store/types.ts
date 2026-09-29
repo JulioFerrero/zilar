@@ -14,6 +14,13 @@ export type SendTextOptions = {
   replyTo?: ReplyRef;
 };
 
+/**
+ * A quiet load state (T-0067): `loading` until the data has actually arrived,
+ * `error` when it failed, `loaded` once it is known. "empty" is not a load
+ * state; it is what a finished load with no rows looks like.
+ */
+export type LoadState = 'loading' | 'loaded' | 'error';
+
 /** The live AI draft of one chat: the latest cumulative reply text. */
 export type DraftState = {
   turnId: string;
@@ -33,6 +40,52 @@ export function draftEntryKey(
   return turnId === undefined ? messageId : `draft-${turnId}`;
 }
 
+/** What the chat list shows for its current load state and row count. */
+export type ChatsListView = 'skeleton' | 'error' | 'empty' | 'list';
+
+/**
+ * The chat list's view state (T-0067): a load that has never shown rows gets
+ * the skeleton, a failure with no rows the centered Retry, and the empty text
+ * only once a load has settled. Rows already shown keep the list.
+ */
+export function chatsListView(load: LoadState, chatCount: number): ChatsListView {
+  if (chatCount > 0) {
+    return 'list';
+  }
+  if (load === 'loading') {
+    return 'skeleton';
+  }
+  if (load === 'error') {
+    return 'error';
+  }
+  return 'empty';
+}
+
+/** What the chat screen shows for its current load state and message count. */
+export type MessagesListView = 'skeleton' | 'error' | 'empty' | 'messages';
+
+/** The message list's view state (T-0067); live messages override loading. */
+export function messagesListView(load: LoadState, messageCount: number): MessagesListView {
+  if (messageCount > 0) {
+    return 'messages';
+  }
+  if (load === 'loading') {
+    return 'skeleton';
+  }
+  if (load === 'error') {
+    return 'error';
+  }
+  return 'empty';
+}
+
+/**
+ * The empty-list text. A filtered or searched list that matched nothing says
+ * "No chats found"; a list with no chats at all says "No chats yet" (T-0067).
+ */
+export function emptyChatsText(chatCount: number): string {
+  return chatCount === 0 ? 'No chats yet' : 'No chats found';
+}
+
 /**
  * The state and actions the mobile screens use. Both the mock store and the
  * real store implement it, so the components do not care which one is running.
@@ -41,9 +94,16 @@ export interface ChatStoreState {
   currentUserId: string;
   me?: Me;
   status: ConnectionStatus;
+  /**
+   * The first chat-list load (T-0067). `error` keeps any chats already shown,
+   * so a failed refresh never blanks a list the user is looking at.
+   */
+  chatsLoad: LoadState;
   chats: ChatSummary[];
   contacts: Contact[];
   messagesByChat: Record<string, UiMessage[]>;
+  /** The first history page of each chat, by chat id (T-0067). */
+  historyLoad: Record<string, LoadState>;
   search: string;
   activeFolder: ChatFolder;
   activeChatId: string | null;
@@ -63,6 +123,10 @@ export interface ChatStoreState {
   hasMore: (chatId: string) => boolean;
   openChat: (chatId: string) => void;
   loadOlder: (chatId: string) => void;
+  /** Refetch the chat list (pull-to-refresh and the list's Retry key). */
+  reloadChats: () => void;
+  /** Retry the first history page of a chat after it failed. */
+  retryHistory: (chatId: string) => void;
   sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
   sendTyping: (chatId: string) => void;
   setSearch: (search: string) => void;

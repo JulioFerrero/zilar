@@ -1,7 +1,7 @@
 ---
 id: T-0067
 title: Mobile loading is not empty — chat list and chat history show skeletons until loaded, inline errors with Retry, and a reopened chat loads its history
-status: todo
+status: review
 milestone: M2
 branch: task/T-0067-mobile-loading-states
 model: opencode-go/deepseek-v4.1-flash
@@ -95,19 +95,171 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+Applied the T-0042 rule on mobile: **"loading", "error" and "empty" are three
+states.** Ported the web store's ideas (not its code) into the mobile store, added
+the skeleton/error UI, made the mock fakes slow, and covered the store with tests.
+
+**1. Store state (both stores).** `store/types.ts` gains `LoadState = 'loading' |
+'loaded' | 'error'`, `chatsLoad` and `historyLoad: Record<chatId, LoadState>`, plus
+the actions `reloadChats()` and `retryHistory(chatId)`. `historyLoad` absent means
+"never requested"; the message list treats that as `loading` (the real store never
+has data without asking), while the mock store seeds every mock chat as `loaded`.
+Error entries keep whatever rows/messages are already on screen.
+
+**2. Pending open, flushed when ready (the silent-return bug).**
+`real-store.ts` now mirrors the web's `openHistory`:
+- `canLoadHistory(chat)` is true only when `core` is defined **and** `status ===
+  'online'` **and** (for a group) the rooms have been joined. `core` is assigned
+  before `connect()` resolves, so `status` is the gate: no MAM query while connecting.
+- `openChat`/`openHistory` on a chat that is not ready records `pendingOpenChatId`,
+  marks it `loading`, and returns. `flushPending()` runs it once both are ready.
+- Flush points: after the first chat merge in `boot`, after a background
+  `refreshChats` merge, after the manual `reloadChatsList`, on an XMPP `status:
+  'online'` event, and after `reconnect()` joins the rooms.
+- Only the latest pending chat counts; opening a newer one clears the older
+  chat's `loading` marker (`clearSupersededMarker`) and an in-flight load dedupes
+  repeats, so nothing loads twice and no ownerless entry stays behind.
+- The first page success → `loaded`, failure → `error` (live messages are kept).
+  `stop()` clears the pending open, the in-flight set and `groupsJoined`.
+
+**3. Chat list (`app/index.tsx`).** `chatsLoad === 'loading' && chats.length === 0`
+→ `ChatListSkeleton` (6 rows: 52 px avatar circle + two bars, list-row layout,
+hairline separator); `error && no chats` → centered `LoadError` with Retry;
+`error && chats present` → a thin `LoadErrorBanner` above the rows; `loaded && no
+chats` → "No chats yet"; a filtered/searched list with no matches keeps "No chats
+found" (`emptyChatsText`). Pull-to-refresh calls `reloadChats` via a
+`RefreshControl` whose spinner clears when the load settles.
+
+**4. Chat screen (`message-list.tsx`, `chat/[id].tsx`).** While the first page is
+in flight with no messages → `MessageListSkeleton` (alternating bubble shapes);
+`error` → inline "Couldn't load messages" + Retry (`retryHistory`); `loaded` with
+no messages → centered "No messages yet" (new). Live messages that arrive during
+the load still render. `[id].tsx` shows the message skeleton while `chatsLoad ===
+'loading'` and the chat is not known yet, instead of a premature "Chat not found".
+
+**5. Reduced motion.** The skeleton pulse uses the same `useReducedMotion` hook as
+`typing-dots.tsx`/`message-bubble.tsx`; with it on, the opacity is static (ui-style
+§6).
+
+**6. Accessibility.** Every Retry is a `Pressable` with `accessibilityRole="button"`
+and `accessibilityLabel="Retry"`; skeleton containers carry a single live-region
+label ("Loading chats" / "Loading messages") and their rows are
+`accessibilityElementsHidden` + `importantForAccessibility="no-hide-descendants"`.
+
+**7. Failing tests first (both causes verified).** I restored `real-store.ts` to
+HEAD with a temporary copy swap, ran the new `loading states (T-0067)` block and
+got **9 failures**, then put the fixed file back. The failure output shows both
+causes: `openHistory` called `loadHistory` while the core was still connecting
+("expected \"vi.fn()\" to not be called at all, but actually been called 1 times"
+— gotcha 19), and `chatsLoad` did not exist (`expected [ undefined ] to include
+'loaded'`).
+
+**8. Slow fakes.** New tests use a deferred `connect()` (a `deferred()` promise on
+the fake core) and gated `getChats`, so the instant-fake blind spot is covered.
 
 ### Files changed
--
+- `apps/mobile/src/store/types.ts` (+`LoadState`, `chatsLoad`, `historyLoad`,
+  `reloadChats`, `retryHistory`, and the testable view helpers `chatsListView`,
+  `messagesListView`, `emptyChatsText`), `types.test.ts`
+- `apps/mobile/src/store/real-store.ts` (pending open, per-chat load state,
+  `reloadChats`/`retryHistory`, `groupsJoined`, `reloadChatsList`, refactor of the
+  chat merge), `real-store.test.ts`
+- `apps/mobile/src/store/chat-store.ts` (mock state + scenario + the two actions),
+  `chat-store.test.ts`
+- `apps/mobile/src/app/index.tsx`, `apps/mobile/src/app/chat/[id].tsx`
+- `apps/mobile/src/components/chat/message-list.tsx`,
+  `components/chat/skeleton.tsx` (new), `components/chat/load-error.tsx` (new)
+- `apps/mobile/src/mock/load.ts` (new), `mock/load.test.ts` (new)
+- `work/T-0067-mobile-loading-states.md` (this report + status)
+
+Nothing outside the Allowed files changed; no dependencies added.
 
 ### Commands run and real results
--
+```bash
+pnpm install        # Done in 33.5s, 1010 packages, no lockfile change
+pnpm format:check   # PASS (after `prettier --write` on 4 new/changed files)
+pnpm lint           # PASS (oxlint, no findings) — two set-state-in-effect errors found during
+                    #   the run and fixed by deriving/adjusting state instead
+pnpm typecheck      # PASS — 9 successful, 9 total
+pnpm test           # PASS — 9 successful, 9 total; @galena/mobile: 25 files passed | 2 skipped,
+                    #   240 tests passed | 2 skipped (242)
+pnpm build          # PASS — 2 successful; expo export: ios 7.6 MB, android 7.8 MB
+```
+New/changed test counts: `real-store.test.ts` 30 → 39 (9 new), `types.test.ts` 3 →
+8 (5 new), `chat-store.test.ts` 14 → 20 (6 new), `mock/load.test.ts` 3 (new).
+
+The new store tests cover: loading → loaded; a failed chat list → error and
+`reloadChats` recovers; a chat opened while connecting loads only once it is
+online (and **not** before); a chat opened before it is in `chats` flushes when it
+appears; opening the same chat twice loads once; a superseded pending chat is
+dropped; a failed history → error and `retryHistory` recovers; a reconnect
+re-flushes the pending open; `chatsLoad` never goes `loaded → loading` on a
+background refresh.
 
 ### Problems, deviations from the spec, open questions
--
+- **Mock scenarios use env, not the `?load=` route param.**
+  `src/mock/load.ts` reads `EXPO_PUBLIC_GALENA_MOCK_LOAD` (`slow`, `error`,
+  `empty`, `no-messages`), the same shape as the T-0056
+  `EXPO_PUBLIC_GALENA_MOCK_DRAFT` precedent, and `createChatStore` consumes it.
+  The `?mock=1&load=slow` route param needs the value to reach `createChatStore`,
+  which is created in `store/chat-store-provider.tsx` — **not in this task's
+  Allowed files** (T-0063 had it; T-0067 does not). The env path is production-safe:
+  without mock mode the mock store is never created, so a stray build-time
+  variable changes nothing. If the exact param is required, add
+  `chat-store-provider.tsx` to Allowed and pass the scenario into `createChatStore`
+  (one line + the gate); the pure parser is already testable.
+- **`no-messages` is a fourth scenario.** A store cannot be both "no chats" (list
+  empty) and "a chat with no messages", so the spec's three values cover
+  list-skeleton (`slow`), list-error + chat-error (`error`, chats kept) and
+  list-empty (`empty`); the chat "No messages yet" state needs `no-messages`.
+  All four are documented in `mock/load.ts`.
+- **Component render tests are not possible.** The mobile package has no React
+  Native test renderer / Testing Library and no vitest config (no `@/` alias), and
+  adding one is forbidden. As in T-0056, the render tree is not unit-tested; instead
+  the decisions the components make are extracted to pure helpers in
+  `store/types.ts` (`chatsListView`, `messagesListView`, `emptyChatsText`) and
+  tested, and the store is tested end to end. The skeleton **delay** itself
+  (`SKELETON_DELAY_MS = 250`, via `useDelayedVisible`) is a hook, so it is verified
+  live, not by fake timers. If the lead wants hook tests, that needs a React test
+  renderer (a dependency).
+- **No `historyLoadFor` selector.** The web added one; here the message list uses
+  `historyLoad[chatId] ?? 'loading'` and the mock store seeds its chats as loaded,
+  so the interface only gains the two fields the spec asked for.
+- **`[id].tsx` extra branch.** It renders the message skeleton while `chatsLoad ===
+  'loading'` instead of "Chat not found" (the same loading/empty confusion one level
+  up). That file is in Allowed files for this reason.
+- The optional top spinner while `loadOlder` runs was not added.
 
 ### Blocked / needs a decision
--
+- Nothing blocking.
+- One decision if the lead wants exact spec compliance on item 7: allow a one-line
+  change to `apps/mobile/src/store/chat-store-provider.tsx` to pass a `load` route
+  param (gated by `mockParamAllowed`) into `createChatStore`. I did not touch it
+  because it is outside Allowed files.
+
+### Screenshots (not taken)
+I did **not** take the six screenshots, and I did not fake any. Reasons, honestly:
+- Only one simulator exists (`DB167CD4`, Julio's iPhone 17 Pro) and the task
+  forbids touching it; there is no other device and no generated `apps/mobile/ios/`
+  project, so `boot:ios` would be a from-scratch native build (prebuild + pods +
+  Xcode) while other workers run in parallel — the playbook warns against more than
+  one iOS build at a time.
+- Reaching a chat screen needs a session; T-0056 used a temporary mock-auth bypass
+  and a mock redirect, which are edits outside Allowed files that must be reverted.
+- The states are exercised by the store tests and the mock scenarios are unit-tested.
+
+To capture them later (own simulator, Metro on 8082, mock mode):
+```bash
+EXPO_PUBLIC_GALENA_MOCK=1 EXPO_PUBLIC_GALENA_MOCK_LOAD=slow \
+  pnpm --filter @galena/mobile boot:ios --device <your-own-udid>   # list + chat skeleton
+EXPO_PUBLIC_GALENA_MOCK=1 EXPO_PUBLIC_GALENA_MOCK_LOAD=error ...   # list error + chat error
+EXPO_PUBLIC_GALENA_MOCK=1 EXPO_PUBLIC_GALENA_MOCK_LOAD=empty ...   # list "No chats yet"
+EXPO_PUBLIC_GALENA_MOCK=1 EXPO_PUBLIC_GALENA_MOCK_LOAD=no-messages ... # chat "No messages yet"
+```
+`xcrun simctl io <udid> screenshot`, then `sips -Z 900`; save under
+`apps/mobile/screenshots/T-0067/`. Stop the Metro it started and delete only your
+own simulator.
 
 ---
 

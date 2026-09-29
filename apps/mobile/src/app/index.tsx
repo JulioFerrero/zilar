@@ -2,13 +2,15 @@ import { useRouter } from 'expo-router';
 import { Bot, Search } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, TextInput, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { ChatListItem } from '@/components/chat/chat-list-item';
 import { FolderTabs } from '@/components/chat/folder-tabs';
+import { LoadError, LoadErrorBanner } from '@/components/chat/load-error';
 import { NewChatButton } from '@/components/chat/new-chat-button';
+import { ChatListSkeleton } from '@/components/chat/skeleton';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -18,6 +20,7 @@ import { well } from '@/lib/depth';
 import { filterChats, unreadCount } from '@/lib/filter';
 import type { ChatFolder } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
+import { chatsListView, emptyChatsText } from '@/store/types';
 
 const FOLDER_KEYS: ChatFolder[] = ['all', 'personal', 'ai', 'work'];
 
@@ -33,6 +36,8 @@ function ChatsList() {
   const router = useRouter();
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const chats = useChatStore((state) => state.chats);
+  const chatsLoad = useChatStore((state) => state.chatsLoad);
+  const reloadChats = useChatStore((state) => state.reloadChats);
   const search = useChatStore((state) => state.search);
   const setSearch = useChatStore((state) => state.setSearch);
   const activeFolder = useChatStore((state) => state.activeFolder);
@@ -40,11 +45,22 @@ function ChatsList() {
   const status = useChatStore((state) => state.status);
   const connection = connectionLabel(status);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  // Clear the pull-to-refresh spinner as soon as the reload settles, however it
+  // ends. Adjusted during render (as ChatList does on web), not in an effect.
+  const [lastChatsLoad, setLastChatsLoad] = useState(chatsLoad);
+  if (chatsLoad !== lastChatsLoad) {
+    setLastChatsLoad(chatsLoad);
+    if (refreshing && chatsLoad !== 'loading') {
+      setRefreshing(false);
+    }
+  }
 
   const visibleChats = useMemo(
     () => filterChats(chats, { folder: activeFolder, search }),
     [chats, activeFolder, search],
   );
+  const listView = chatsListView(chatsLoad, chats.length);
   const counts = useMemo(
     () =>
       Object.fromEntries(FOLDER_KEYS.map((key) => [key, unreadCount(chats, key)])) as Record<
@@ -104,11 +120,24 @@ function ChatsList() {
           <Text className="text-center text-[12px] text-muted-foreground">{connection}</Text>
         </View>
       ) : null}
+      {chatsLoad === 'error' && chats.length > 0 ? (
+        <LoadErrorBanner message="Couldn't load chats" onRetry={reloadChats} />
+      ) : null}
       <FlatList
         className="flex-1"
         data={visibleChats}
         keyExtractor={(chat) => chat.id}
         contentContainerStyle={{ paddingBottom: 96 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={MUTED_FOREGROUND[scheme]}
+            onRefresh={() => {
+              setRefreshing(true);
+              reloadChats();
+            }}
+          />
+        }
         renderItem={({ item }) => (
           <ChatListItem
             chat={item}
@@ -116,9 +145,17 @@ function ChatsList() {
           />
         )}
         ListEmptyComponent={
-          <View className="items-center px-6 pt-16">
-            <Text className="text-[15px] text-muted-foreground">No chats found</Text>
-          </View>
+          listView === 'skeleton' ? (
+            <ChatListSkeleton />
+          ) : listView === 'error' ? (
+            <LoadError message="Couldn't load chats" onRetry={reloadChats} />
+          ) : (
+            <View className="items-center px-6 pt-16">
+              <Text className="text-[15px] text-muted-foreground">
+                {emptyChatsText(chats.length)}
+              </Text>
+            </View>
+          )
         }
       />
       <NewChatButton />
