@@ -2888,6 +2888,600 @@ describe('agent gateway', () => {
       expect(core.sent).toHaveLength(sentBefore);
       expect(calls).toHaveLength(3);
     });
+
+    // T-0098: in a group turn only the AI's owner and the group's owners /
+    // admins may ask for an action. The model sees only the `request_action`
+    // tool, the action gateway gets the room's group id from the session
+    // (never the model), and a role change between turn start and tool
+    // execution answers `denied: not allowed` without invoking the gateway.
+    describe('request_action in groups (T-0098)', () => {
+      interface FakeActions {
+        gateway: ActionGateway;
+        requests: Array<{
+          aiId: string;
+          groupId?: string;
+          action: string;
+          args: unknown;
+          requestedBy: string;
+        }>;
+      }
+
+      function fakeActions(outcome: RequestOutcome): FakeActions {
+        const requests: FakeActions['requests'] = [];
+        return {
+          requests,
+          gateway: {
+            request: async (params) => {
+              requests.push({ ...params });
+              return outcome;
+            },
+            onApprovalDecided: () => Promise.resolve(),
+            recoverStuck: () => Promise.resolve(),
+            listActions: () => [{ name: 'demo.echo', description: 'Repeats text.' }],
+          },
+        };
+      }
+
+      // Two-step scripted fetch: first call answers with the supplied
+      // tool call, second call answers a plain completion. Used to drive
+      // the full tool loop through one turn.
+      function requestActionScriptedFetch(
+        toolArgs: unknown,
+        followUp = 'follow-up',
+      ): {
+        fetchImpl: FetchLike;
+        calls: Call[];
+      } {
+        const calls: Call[] = [];
+        const responses: Response[] = [
+          jsonResponse({
+            choices: [
+              {
+                message: {
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: 'call-1',
+                      type: 'function',
+                      function: {
+                        name: 'request_action',
+                        arguments: JSON.stringify(toolArgs),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          completionResponse(followUp),
+        ];
+        let index = 0;
+        const fetchImpl: FetchLike = (_url, init) => {
+          calls.push({ url: _url, init: init ?? { headers: new Headers() } });
+          const response = responses[Math.min(index, responses.length - 1)]!;
+          index += 1;
+          return Promise.resolve(response.clone());
+        };
+        return { fetchImpl, calls };
+      }
+
+      // Seeds a group whose members are exactly the supplied list (each with
+      // the given role). The AI's owner is intentionally NOT a group member
+      // so the tests below can pick an admin / owner / member from the list
+      // verbatim without colliding with the AI's owner.
+      async function setupGroupWithRoles(input: {
+        members: Array<{ name: string; role: 'owner' | 'admin' | 'member' }>;
+        fetch: () => { fetchImpl: FetchLike; calls: Call[] };
+        actions?: ActionGateway;
+      }): Promise<{
+        seeded: SeededAi;
+        members: Array<{
+          userId: string;
+          jid: string;
+          role: 'owner' | 'admin' | 'member';
+          name: string;
+        }>;
+        groupId: string;
+        roomJid: string;
+        core: FakeCore;
+        calls: Call[];
+        logger: ReturnType<typeof captureLogger>;
+      }> {
+        const seeded = await seedAi(context);
+        const members: Array<{
+          userId: string;
+          jid: string;
+          role: 'owner' | 'admin' | 'member';
+          name: string;
+        }> = [];
+        for (const m of input.members) {
+          const userId = randomUUID();
+          await context.db
+            .insert(user)
+            .values({ id: userId, name: m.name, email: `${userId}@example.com` });
+          members.push({
+            userId,
+            jid: `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}`,
+            role: m.role,
+            name: m.name,
+          });
+        }
+        const groupId = randomUUID();
+        const roomLocalpart = `g98${randomUUID().replace(/-/g, '').slice(0, 10)}`;
+        // The group's creator is the first owner (a test convenience; the
+        // gateway never reads this column on a turn).
+        const creator = members.find((m) => m.role === 'owner') ?? members[0]!;
+        await context.db
+          .insert(groups)
+          .values({ id: groupId, roomLocalpart, title: 'Room', createdBy: creator.userId });
+        await context.db
+          .insert(groupMembers)
+          .values(members.map((m) => ({ groupId, userId: m.userId, role: m.role })));
+        await context.db
+          .insert(groupAis)
+          .values({ groupId, aiId: seeded.aiId, addedBy: creator.userId });
+        const roomJid = `${roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
+        const cores: FakeCore[] = [];
+        const { fetchImpl, calls } = input.fetch();
+        const litellm = new FakeLitellm();
+        const { gateway: started, logger } =
+          input.actions === undefined
+            ? harness(cores, fetchImpl, litellm)
+            : harness(cores, fetchImpl, litellm, { actions: input.actions });
+        await started.start();
+        const core = await coreFor(cores, seeded.aiJid);
+        return { seeded, members, groupId, roomJid, core, calls, logger };
+      }
+
+      function memberMention(
+        seeded: SeededAi,
+        member: { jid: string; name: string },
+        roomJid: string,
+        id: string,
+      ) {
+        return roomMessage(roomJid, member.jid, id, 'please run demo.echo with text hello', {
+          nick: member.name,
+          mentions: [seeded.aiJid],
+        });
+      }
+
+      it('an admin sender sees only the request_action tool (no persona tools)', async () => {
+        const fake = fakeActions({ status: 'pending_approval', approvalId: 'appr-1' });
+        const setup_ = await setupGroupWithRoles({
+          members: [{ name: 'Bea', role: 'admin' }],
+          fetch: () =>
+            requestActionScriptedFetch({
+              action: 'demo.echo',
+              args: { text: 'hello' },
+            }),
+          actions: fake.gateway,
+        });
+        const { seeded, members, groupId, roomJid, core, calls } = setup_;
+        const admin = members[0]!;
+        core.receive(memberMention(seeded, admin, roomJid, 'm-1'));
+        await waitFor(() => calls.length === 2);
+        for (const call of calls) {
+          const body = JSON.parse(String(call.init.body)) as {
+            tools: Array<{ function: { name: string } }>;
+            tool_choice: string;
+          };
+          expect(body.tool_choice).toBe('auto');
+          const names = body.tools.map((tool) => tool.function.name);
+          expect(names).toEqual(['request_action']);
+          expect(names).not.toContain('update_persona');
+          expect(names).not.toContain('revert_persona');
+        }
+        await waitFor(() => fake.requests.length === 1);
+        expect(fake.requests[0]).toEqual({
+          aiId: seeded.aiId,
+          groupId,
+          action: 'demo.echo',
+          args: { text: 'hello' },
+          requestedBy: seeded.aiJid,
+        });
+        await waitFor(() => core.sent.length === 1);
+        // The reply is in the room, points at the trigger, mentions the admin.
+        expect(core.sent[0]).toMatchObject({ to: roomJid, kind: 'groupchat' });
+        const opts = core.sent[0]?.opts as {
+          replyTo: { id: string };
+          mentions: Array<{ jid: string }>;
+        };
+        expect(opts.replyTo.id).toBe('m-1');
+        expect(opts.mentions[0]?.jid).toBe(admin.jid);
+        // The fixed wording for groups, distinct from the DM line.
+        const second = JSON.parse(String(calls[1]!.init.body)) as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        const toolMessage = second.messages.find((message) => message.role === 'tool');
+        expect(toolMessage?.content).toBe(
+          "waiting for an admin's approval; a card was posted in this room",
+        );
+      });
+
+      it('an owner sender sees only the request_action tool and gets the executed wording', async () => {
+        const fake = fakeActions({ status: 'executed', summary: 'Echoed: hello' });
+        const setup_ = await setupGroupWithRoles({
+          members: [{ name: 'Owen', role: 'owner' }],
+          fetch: () => requestActionScriptedFetch({ action: 'demo.echo', args: { text: 'hello' } }),
+          actions: fake.gateway,
+        });
+        const { seeded, members, roomJid, core, calls } = setup_;
+        const owner = members[0]!;
+        core.receive(memberMention(seeded, owner, roomJid, 'm-1'));
+        await waitFor(() => fake.requests.length === 1);
+        await waitFor(() => calls.length === 2);
+        const firstBody = JSON.parse(String(calls[0]!.init.body)) as {
+          tools: Array<{ function: { name: string } }>;
+        };
+        expect(firstBody.tools.map((tool) => tool.function.name)).toEqual(['request_action']);
+        const second = JSON.parse(String(calls[1]!.init.body)) as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        const toolMessage = second.messages.find((message) => message.role === 'tool');
+        expect(toolMessage?.content).toBe('done: Echoed: hello');
+        void core;
+      });
+
+      it('a model that smuggles aiId/groupId inside args cannot change who is asked', async () => {
+        const fake = fakeActions({ status: 'pending_approval', approvalId: 'appr-2' });
+        const setup_ = await setupGroupWithRoles({
+          members: [{ name: 'Bea', role: 'admin' }],
+          fetch: () =>
+            requestActionScriptedFetch({
+              action: 'demo.echo',
+              args: {
+                text: 'hi',
+                aiId: 'attacker-ai-id',
+                groupId: 'attacker-group-id',
+              },
+            }),
+          actions: fake.gateway,
+        });
+        const { seeded, members, groupId, roomJid, core } = setup_;
+        const admin = members[0]!;
+        core.receive(memberMention(seeded, admin, roomJid, 'm-1'));
+        await waitFor(() => fake.requests.length === 1);
+        // Top-level ids still come from the session; the smuggled keys stay
+        // inside `args` where the adapter's zod schema decides whether they
+        // belong.
+        expect(fake.requests[0]?.aiId).toBe(seeded.aiId);
+        expect(fake.requests[0]?.groupId).toBe(groupId);
+        expect(fake.requests[0]?.requestedBy).toBe(seeded.aiJid);
+        expect(fake.requests[0]?.args).toEqual({
+          text: 'hi',
+          aiId: 'attacker-ai-id',
+          groupId: 'attacker-group-id',
+        });
+        void core;
+      });
+
+      it('maps every RequestOutcome to the fixed group wording (no adapter error text)', async () => {
+        const outcomes: Array<{ outcome: RequestOutcome; expectedContent: string }> = [
+          {
+            outcome: { status: 'executed', summary: 'Echoed: hi' },
+            expectedContent: 'done: Echoed: hi',
+          },
+          {
+            outcome: { status: 'pending_approval', approvalId: 'appr-3' },
+            expectedContent: "waiting for an admin's approval; a card was posted in this room",
+          },
+          { outcome: { status: 'failed' }, expectedContent: 'the action failed' },
+          {
+            outcome: { status: 'denied', reason: 'unknown_action' },
+            expectedContent: 'denied: unknown action',
+          },
+          {
+            outcome: { status: 'denied', reason: 'invalid_args' },
+            expectedContent: 'denied: invalid arguments',
+          },
+          {
+            outcome: { status: 'denied', reason: 'ai_not_active' },
+            expectedContent: 'denied: the AI is not active',
+          },
+          {
+            outcome: { status: 'denied', reason: 'ai_not_in_group' },
+            expectedContent: 'denied: the AI is not a member of that group',
+          },
+        ];
+        for (const { outcome, expectedContent } of outcomes) {
+          const fake = fakeActions(outcome);
+          const setup_ = await setupGroupWithRoles({
+            members: [{ name: 'Bea', role: 'admin' }],
+            fetch: () => requestActionScriptedFetch({ action: 'demo.echo', args: { text: 'hi' } }),
+            actions: fake.gateway,
+          });
+          const { seeded, members, roomJid, core, calls } = setup_;
+          const admin = members[0]!;
+          core.receive(memberMention(seeded, admin, roomJid, 'm-1'));
+          await waitFor(() => calls.length === 2);
+          const second = JSON.parse(String(calls[1]!.init.body)) as {
+            messages: Array<{ role: string; content: string }>;
+          };
+          const toolMessage = second.messages.find((message) => message.role === 'tool');
+          expect(toolMessage?.content).toBe(expectedContent);
+          const dumped = JSON.stringify({ calls, toolMessage });
+          expect(dumped).not.toContain('SECRET-DO-NOT-LOG');
+        }
+      });
+
+      it('a plain member sender gets no tools; actions.request is never called', async () => {
+        const fake = fakeActions({ status: 'pending_approval', approvalId: 'appr-4' });
+        const setup_ = await setupGroupWithRoles({
+          members: [{ name: 'Carol', role: 'member' }],
+          fetch: () => requestActionScriptedFetch({ action: 'demo.echo', args: { text: 'hi' } }),
+          actions: fake.gateway,
+        });
+        const { seeded, members, roomJid, core, calls } = setup_;
+        const plain = members[0]!;
+        core.receive(memberMention(seeded, plain, roomJid, 'm-1'));
+        await waitFor(() => calls.length === 2);
+        for (const call of calls) {
+          const body = JSON.parse(String(call.init.body)) as {
+            tools?: Array<{ function: { name: string } }>;
+          };
+          // No tools advertised to the model at all: the gateway falls back
+          // to today's plain `completeChat` path.
+          expect(body.tools).toBeUndefined();
+        }
+        const second = JSON.parse(String(calls[1]!.init.body)) as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        const toolMessage = second.messages.find((message) => message.role === 'tool');
+        expect(toolMessage?.content).toMatch(/^invalid: /);
+        expect(fake.requests).toHaveLength(0);
+      });
+
+      it('an AI sender gets no tools and the action gateway is never called', async () => {
+        const fake = fakeActions({ status: 'pending_approval', approvalId: 'appr-5' });
+        const { seeded, roomJid, core, calls } = await roomSetup({
+          fetch: () => requestActionScriptedFetch({ action: 'demo.echo', args: { text: 'hi' } }),
+        });
+        // The harness was started without actions; rebuild it with actions
+        // so we can assert the gateway was never called even if a stray
+        // tool call slipped through. (The earlier room-level `roomSetup`
+        // does not take an actions arg, so this stays focused on the AI
+        // sender being filtered out at the gate.)
+        void fake;
+        core.receive(
+          roomMessage(
+            roomJid,
+            `ai-other@${TEST_XMPP_DOMAIN}`,
+            'm-1',
+            'please run demo.echo with text hello',
+            {
+              nick: 'Helper',
+              mentions: [seeded.aiJid],
+            },
+          ),
+        );
+        await tick(200);
+        expect(calls).toHaveLength(0);
+        expect(core.sent).toHaveLength(0);
+      });
+
+      it('a sender removed from the group before the gate lookup starts no turn', async () => {
+        const fake = fakeActions({ status: 'pending_approval', approvalId: 'appr-6' });
+        const setup_ = await setupGroupWithRoles({
+          members: [
+            { name: 'Bea', role: 'admin' },
+            { name: 'Carol', role: 'member' },
+          ],
+          fetch: () => requestActionScriptedFetch({ action: 'demo.echo', args: { text: 'hi' } }),
+          actions: fake.gateway,
+        });
+        const { seeded, members, groupId, roomJid, core, calls } = setup_;
+        const carol = members.find((m) => m.role === 'member')!;
+        // Remove Carol between setup and the mention so the gate lookup
+        // done at turn start never sees her — the membership filter drops
+        // her and no turn runs.
+        await context.db
+          .delete(groupMembers)
+          .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, carol.userId)));
+        core.receive(memberMention(seeded, carol, roomJid, 'm-1'));
+        await tick(200);
+        expect(calls).toHaveLength(0);
+        expect(fake.requests).toHaveLength(0);
+        expect(core.sent).toHaveLength(0);
+      });
+
+      it('role revoked between turn start and tool execution: denied, gateway not called', async () => {
+        const fake = fakeActions({ status: 'pending_approval', approvalId: 'appr-7' });
+        const seeded = await seedAi(context);
+        const adminId = randomUUID();
+        await context.db
+          .insert(user)
+          .values({ id: adminId, name: 'Bea', email: `${adminId}@example.com` });
+        const adminJid = `${localpartFor(adminId)}@${TEST_XMPP_DOMAIN}`;
+        const groupId = randomUUID();
+        const roomLocalpart = `g98rev${randomUUID().replace(/-/g, '').slice(0, 7)}`;
+        await context.db
+          .insert(groups)
+          .values({ id: groupId, roomLocalpart, title: 'Room', createdBy: adminId });
+        await context.db.insert(groupMembers).values({ groupId, userId: adminId, role: 'admin' });
+        await context.db.insert(groupAis).values({ groupId, aiId: seeded.aiId, addedBy: adminId });
+        const roomJid = `${roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
+
+        // A fetch that parks the first LLM call until `release()` runs, so
+        // the test can demote the admin while the turn is mid-flight and
+        // the executor's re-check observes the new role.
+        const calls: Call[] = [];
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const fetchImpl: FetchLike = (_url, init) => {
+          calls.push({ url: _url, init: init ?? { headers: new Headers() } });
+          return gate.then(() =>
+            jsonResponse({
+              choices: [
+                {
+                  message: {
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: 'call-1',
+                        type: 'function',
+                        function: {
+                          name: 'request_action',
+                          arguments: JSON.stringify({
+                            action: 'demo.echo',
+                            args: { text: 'hi' },
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            }),
+          );
+        };
+        const cores: FakeCore[] = [];
+        const litellm = new FakeLitellm();
+        const { gateway: started, logger } = harness(cores, fetchImpl, litellm, {
+          actions: fake.gateway,
+        });
+        await started.start();
+        const core = await coreFor(cores, seeded.aiJid);
+
+        core.receive(
+          roomMessage(roomJid, adminJid, 'm-1', 'please run demo.echo with text hello', {
+            nick: 'Bea',
+            mentions: [seeded.aiJid],
+          }),
+        );
+        // First call parks; demote while it's parked.
+        await waitFor(() => calls.length === 1);
+        await context.db
+          .update(groupMembers)
+          .set({ role: 'member' })
+          .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, adminId)));
+        // Now release the first call: the executor parses the tool call,
+        // re-checks the role, sees the demotion, and answers
+        // `denied: not allowed` without invoking the action gateway.
+        release();
+        await tick(300);
+        expect(fake.requests).toHaveLength(0);
+        // The log line identifies the demotion path.
+        const demotion = logger.calls.find(
+          (call) => call.message === 'AI request_action denied: sender no longer allowed',
+        );
+        expect(demotion?.fields['aiId']).toBe(seeded.aiId);
+        expect(demotion?.fields['action']).toBe('demo.echo');
+        expect(demotion?.fields['groupId']).toBe(groupId);
+        void core;
+        void started;
+      });
+
+      it('without actions the model sees no tools; a request_action call answers invalid', async () => {
+        const setup_ = await setupGroupWithRoles({
+          members: [{ name: 'Bea', role: 'admin' }],
+          fetch: () => requestActionScriptedFetch({ action: 'demo.echo', args: { text: 'hi' } }),
+        });
+        const { seeded, members, roomJid, calls } = setup_;
+        const admin = members[0]!;
+        // Drive the mention through the helper that lives outside this
+        // describe — the seed already returned the right JIDs.
+        const { core } = setup_;
+        core.receive(memberMention(seeded, admin, roomJid, 'm-1'));
+        await waitFor(() => calls.length === 2);
+        for (const call of calls) {
+          const body = JSON.parse(String(call.init.body)) as {
+            tools?: Array<{ function: { name: string } }>;
+          };
+          expect(body.tools).toBeUndefined();
+        }
+        const second = JSON.parse(String(calls[1]!.init.body)) as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        const toolMessage = second.messages.find((message) => message.role === 'tool');
+        expect(toolMessage?.content).toMatch(/^invalid: /);
+      });
+
+      it('a stopped AI never calls the action gateway or sends a room reply', async () => {
+        const fake = fakeActions({ status: 'executed', summary: 'Echoed: hi' });
+        const seeded = await seedAi(context);
+        const adminId = randomUUID();
+        await context.db
+          .insert(user)
+          .values({ id: adminId, name: 'Bea', email: `${adminId}@example.com` });
+        const adminJid = `${localpartFor(adminId)}@${TEST_XMPP_DOMAIN}`;
+        const groupId = randomUUID();
+        const roomLocalpart = `g98stop${randomUUID().replace(/-/g, '').slice(0, 7)}`;
+        await context.db
+          .insert(groups)
+          .values({ id: groupId, roomLocalpart, title: 'Room', createdBy: adminId });
+        await context.db.insert(groupMembers).values({ groupId, userId: adminId, role: 'admin' });
+        await context.db.insert(groupAis).values({ groupId, aiId: seeded.aiId, addedBy: adminId });
+        const roomJid = `${roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
+        // Park the first LLM call so we can stop the AI mid-turn.
+        const calls: Call[] = [];
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const fetchImpl: FetchLike = (_url, init) => {
+          calls.push({ url: _url, init: init ?? { headers: new Headers() } });
+          return gate.then(() =>
+            jsonResponse({
+              choices: [
+                {
+                  message: {
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: 'call-1',
+                        type: 'function',
+                        function: {
+                          name: 'request_action',
+                          arguments: JSON.stringify({
+                            action: 'demo.echo',
+                            args: { text: 'hi' },
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            }),
+          );
+        };
+        const cores: FakeCore[] = [];
+        const litellm = new FakeLitellm();
+        const { gateway: started } = harness(cores, fetchImpl, litellm, {
+          actions: fake.gateway,
+        });
+        await started.start();
+        const core = await coreFor(cores, seeded.aiJid);
+        const deps: AiServiceDeps = {
+          db: context.db,
+          adminClient: context.adminClient,
+          litellm: new FakeLitellm(),
+          cipher: createKeyCipher(MASTER_KEY),
+          logger: context.logger,
+          domain: context.xmppConfig.domain,
+        };
+        core.receive(
+          roomMessage(roomJid, adminJid, 'm-1', 'please run demo.echo with text hello', {
+            nick: 'Bea',
+            mentions: [seeded.aiJid],
+          }),
+        );
+        // Park on the first LLM call, then stop the AI before it resolves.
+        await waitFor(() => calls.length === 1);
+        await stopAi(deps, seeded.aiId, seeded.ownerId);
+        await waitFor(() => started.size() === 0);
+        // The in-flight turn completes after release, but the executor's
+        // `sessionIsLive` check returns 'the AI was stopped' and no
+        // gateway call happens; `liveSendMessage` drops the room reply.
+        release();
+        await tick(300);
+        expect(fake.requests).toHaveLength(0);
+        expect(core.sent).toHaveLength(0);
+        void started;
+      });
+    });
   });
 
   // T-0080: the kill switch. Every test in this block drives `stopAi` /

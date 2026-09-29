@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACTION_NAME_MAX_LENGTH,
+  buildGroupTools,
   buildTools,
   formatPersonaUpdatedLine,
   parseToolArguments,
@@ -216,6 +217,35 @@ describe('buildTools', () => {
     expect(requestAction?.function.description.indexOf('alpha.first')).toBeLessThan(
       requestAction?.function.description.indexOf('zeta.last') ?? Number.MAX_SAFE_INTEGER,
     );
+  });
+});
+
+describe('buildGroupTools', () => {
+  it('returns no tools when no action is registered (caller falls back to plain completeChat)', () => {
+    expect(buildGroupTools([])).toEqual([]);
+  });
+
+  it('returns only the request_action tool when at least one action is registered', () => {
+    const tools = buildGroupTools([
+      { name: 'demo.echo', description: 'Repeats a short text back.' },
+    ]);
+    const names = tools.map((tool) => tool.function.name);
+    expect(names).toEqual([REQUEST_ACTION_TOOL]);
+    // Persona tools must never appear in a group turn.
+    expect(names).not.toContain(UPDATE_PERSONA_TOOL);
+    expect(names).not.toContain(REVERT_PERSONA_TOOL);
+  });
+
+  it('lists every registered action name and description in the request_action tool', () => {
+    const tools = buildGroupTools([
+      { name: 'demo.echo', description: 'Repeats a short text back.' },
+      { name: 'another.tool', description: 'Does another thing.' },
+    ]);
+    const requestAction = tools.find((tool) => tool.function.name === REQUEST_ACTION_TOOL);
+    expect(requestAction?.function.description).toContain('demo.echo');
+    expect(requestAction?.function.description).toContain('Repeats a short text back.');
+    expect(requestAction?.function.description).toContain('another.tool');
+    expect(requestAction?.function.description).toContain('Does another thing.');
   });
 });
 

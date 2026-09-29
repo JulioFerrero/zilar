@@ -1081,4 +1081,232 @@ describe('runGroupTurn', () => {
     expect(logged).not.toContain(MASTER_KEY);
     expect(JSON.stringify(harness.sent)).not.toContain(VIRTUAL_KEY);
   });
+
+  // T-0098: when `tools` and `executeTool` are supplied, group turns run
+  // the same tool loop as DMs. The reply still points at the trigger and
+  // mentions the sender; without them the plain path is unchanged.
+  describe('with tools (T-0098)', () => {
+    function groupToolHarness(
+      fetchImpl: FetchLike,
+      executeTool: ExecuteToolCall,
+    ): {
+      logger: ReturnType<typeof captureLogger>;
+      sent: GroupSend[];
+      run: () => Promise<{ kind: string; text: string }>;
+    } {
+      const logger = captureLogger();
+      const sent: GroupSend[] = [];
+      const run = () =>
+        runGroupTurn({
+          aiId: 'ai-1',
+          roomJid: ROOM_JID,
+          triggerId: 'm-9',
+          senderJid: SENDER_JID,
+          senderName: 'Ana',
+          messages: MESSAGES,
+          baseUrl: BASE_URL,
+          virtualKey: VIRTUAL_KEY,
+          model: MODEL,
+          fetchImpl,
+          tools: [
+            {
+              type: 'function',
+              function: {
+                name: 'request_action',
+                description: 'fake',
+                parameters: { type: 'object', properties: {}, additionalProperties: false },
+              },
+            },
+          ],
+          executeTool,
+          sendMessage: (to, kind, text, opts) => {
+            sent.push({ to, kind, text, opts });
+            return Promise.resolve({ id: 'sent-1' });
+          },
+          sendTyping: () => undefined,
+          logger,
+          secrets: [MASTER_KEY],
+        });
+      return { logger, sent, run };
+    }
+
+    function toolFetch(
+      args: unknown,
+      followUp = 'all done',
+    ): { fetchImpl: FetchLike; calls: Call[] } {
+      const calls: Call[] = [];
+      const responses: Response[] = [
+        jsonResponse({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'request_action',
+                      arguments: JSON.stringify(args),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        completionResponse(followUp),
+      ];
+      let index = 0;
+      const fetchImpl: FetchLike = (_url, init) => {
+        calls.push({ url: _url, init: init ?? { headers: new Headers() } });
+        const response = responses[Math.min(index, responses.length - 1)]!;
+        index += 1;
+        return Promise.resolve(response.clone());
+      };
+      return { fetchImpl, calls };
+    }
+
+    it('runs a request_action call and posts the follow-up reply in the room', async () => {
+      const executed: ValidToolCall[] = [];
+      const { fetchImpl, calls } = toolFetch({
+        action: 'demo.echo',
+        args: { text: 'hi' },
+      });
+      const harness = groupToolHarness(fetchImpl, async (call) => {
+        executed.push(call);
+        return { content: 'done: Echoed: hi' };
+      });
+      const outcome = await harness.run();
+      expect(outcome).toEqual({ kind: 'replied', text: '@Ana all done' });
+      expect(executed).toHaveLength(1);
+      expect(executed[0]).toMatchObject({
+        tool: 'request_action',
+        action: 'demo.echo',
+        args: { text: 'hi' },
+      });
+      // Two model calls: one with the tool, one after the result.
+      expect(calls).toHaveLength(2);
+      // The reply carries the room mention and replyTo on the trigger.
+      expect(harness.sent).toHaveLength(1);
+      expect(harness.sent[0]).toMatchObject({
+        to: ROOM_JID,
+        kind: 'groupchat',
+        text: '@Ana all done',
+      });
+      const opts = harness.sent[0]?.opts as {
+        replyTo: { id: string };
+        mentions: Array<{ jid: string }>;
+      };
+      expect(opts.replyTo.id).toBe('m-9');
+      expect(opts.mentions[0]?.jid).toBe(SENDER_JID);
+    });
+
+    it('a plain (no-tools) path still sends the reply in the room', async () => {
+      // Sanity: when `tools` is absent the harness falls through to the
+      // original completeChat path; the mention and replyTo are preserved.
+      const { fetchImpl } = groupFetch('plain reply');
+      const harness = groupHarness(fetchImpl);
+      const outcome = await harness.run();
+      expect(outcome).toEqual({ kind: 'replied', text: '@Ana plain reply' });
+    });
+
+    it('a plain path answers an improvised tool call `invalid: unknown tool`', async () => {
+      // A model that improvises a tool call although no tools were
+      // advertised never reaches the executor: the call is answered
+      // `invalid: unknown tool`, the result goes back for one follow-up
+      // call, and the reply still goes to the room with the mention.
+      const { fetchImpl, calls } = toolFetch(
+        {
+          action: 'demo.echo',
+          args: { text: 'hi' },
+        },
+        'all done',
+      );
+      let executed = 0;
+      const harness = groupHarness(fetchImpl);
+      const outcome = await runGroupTurn({
+        aiId: 'ai-1',
+        roomJid: ROOM_JID,
+        triggerId: 'm-9',
+        senderJid: SENDER_JID,
+        senderName: 'Ana',
+        messages: MESSAGES,
+        baseUrl: BASE_URL,
+        virtualKey: VIRTUAL_KEY,
+        model: MODEL,
+        fetchImpl,
+        executeTool: async () => {
+          executed += 1;
+          return { content: 'done: must never happen' };
+        },
+        sendMessage: (to, kind, text, opts) => {
+          harness.sent.push({ to, kind, text, opts });
+          return Promise.resolve({ id: 'sent-1' });
+        },
+        sendTyping: () => undefined,
+        logger: harness.logger,
+        secrets: [MASTER_KEY],
+      });
+      expect(outcome).toEqual({ kind: 'replied', text: '@Ana all done' });
+      expect(executed).toBe(0);
+      expect(calls).toHaveLength(2);
+      expect(bodyOf(calls[0]!).tools).toBeUndefined();
+      const followUp = bodyOf(calls[1]!) as {
+        tools?: unknown;
+        messages: Array<{ role: string; content: string }>;
+      };
+      expect(followUp.tools).toBeUndefined();
+      const toolMessage = followUp.messages.find((message) => message.role === 'tool');
+      expect(toolMessage?.content).toMatch(/^invalid: unknown tool/);
+    });
+
+    it('reports `kind: failed` with the failure text when the second call throws', async () => {
+      const calls: Call[] = [];
+      const responses: Response[] = [
+        jsonResponse({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'request_action',
+                      arguments: JSON.stringify({ action: 'demo.echo', args: { text: 'hi' } }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        jsonResponse({ error: { message: 'over budget' } }, 429),
+      ];
+      let index = 0;
+      const fetchImpl: FetchLike = (_url, init) => {
+        calls.push({ url: _url, init: init ?? { headers: new Headers() } });
+        const response = responses[Math.min(index, responses.length - 1)]!;
+        index += 1;
+        return Promise.resolve(response.clone());
+      };
+      const executed: ValidToolCall[] = [];
+      const harness = groupToolHarness(fetchImpl, async (call) => {
+        executed.push(call);
+        return { content: 'done: Echoed: hi' };
+      });
+      const outcome = await harness.run();
+      expect(executed).toHaveLength(1);
+      expect(outcome).toEqual({
+        kind: 'failed',
+        text: `@Ana ${BUDGET_EXCEEDED_REPLY}`,
+      });
+      // The failure text is sent to the room with the trigger mention.
+      expect(harness.sent).toHaveLength(1);
+      expect(harness.sent[0]).toMatchObject({ kind: 'groupchat' });
+      expect(harness.sent[0]?.text).toBe(`@Ana ${BUDGET_EXCEEDED_REPLY}`);
+    });
+  });
 });
