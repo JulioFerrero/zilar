@@ -10,7 +10,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0092](T-0092-approval-card-announce.md) | Approval cards posted into the chat: action gateway announces requests/outcomes through the AI's own XMPP session (server) | in progress | minimax-m3 | T-0090, T-0034, T-0080 | Next: T-0093 AI-side `request_action` tool + demo adapter for a live end-to-end check. |
-| [T-0093](T-0093-request-action-tool.md) | `request_action` AI tool + dev-only `demo.echo` adapter: an AI asks in the owner's DM, the card appears, the owner approves, the platform runs it (server) | planned | minimax-m3 | T-0090, T-0092 | Launch when T-0092 is in review. |
+| [T-0093](T-0093-request-action-tool.md) | `request_action` AI tool + dev-only `demo.echo` adapter: an AI asks in the owner's DM, the card appears, the owner approves, the platform runs it (server) | in progress | minimax-m3 | T-0090, T-0092 | Live check needs T-0092 merged. |
 
 ## Follow-ups
 
