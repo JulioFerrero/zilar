@@ -236,6 +236,106 @@ The web suite contains the five new "Composer attachments (T-0065)" tests, the f
 - **No `any` / `@ts-ignore` introduced.** Verified with `rg "@ts-ignore"` and `rg ": any|<any>|as any"` (only hit is an unrelated CSS property in `index.css`).
 - **No new dependencies.** `pnpm diff HEAD -- '**/package.json'` is empty.
 
+---
+
+## Round 1 (review fixes)
+
+### Must-fix applied: trusted-host auto-load allow-list
+
+The reviewer flagged a tracking-pixel leak: any incoming `attachment` payload with `kind: 'image'` and an arbitrary http(s) URL was being auto-rendered as `<img src=url>`, so a chat peer could force every viewer's browser to fetch a third-party URL the moment the message scrolled into view (leaking IP + UA). Telegram-style apps only auto-load media from their own servers, and T-0049 already rejects remote images in Markdown for the same reason.
+
+**Fix shape.** The pure logic lives in `apps/web/src/lib/attachments.ts`:
+
+```ts
+export interface MediaTokenShape {
+  service: string;
+  domain: string;
+}
+
+export function trustedMediaHosts(token: MediaTokenShape): ReadonlySet<string>
+export function isTrustedMediaUrl(url: string, trustedHosts: ReadonlySet<string>): boolean
+```
+
+`trustedMediaHosts` builds the allow-list from the XMPP token the store already has:
+
+- `new URL(token.service).hostname.toLowerCase()` (the WebSocket host; drops if the URL is malformed)
+- `token.domain.trim().toLowerCase()`
+- `upload.${token.domain}`
+
+`isTrustedMediaUrl` parses the URL, requires `http:` or `https:`, and looks the (lowercased) hostname up in the set. Anything that doesn't parse as an http(s) URL (`javascript:`, `data:`, relative paths, garbage) is untrusted. Comparison is hostname-only, so scheme and port don't matter; the dev case (`http://galena.localhost:5280/upload/...` while the WebSocket is `ws://127.0.0.1:5280/ws`) is covered because the upload service answers on the XMPP virtual host.
+
+**Store wiring (`apps/web/src/store/realStore.ts`).** A new closure-scoped `mediaToken: MediaTokenShape | undefined` is set right after `firstToken` in `connectXmpp` and refreshed in the same place as the cached auth token. `stop()` clears it. A pure module-scope helper `sanitizeIncomingAttachment(attachment, token)` is called from `toUiMessage`:
+
+```ts
+if (message.payload !== undefined && message.payload.type === 'attachment') {
+  ui.attachment = sanitizeIncomingAttachment(message.payload.data, mediaToken);
+}
+```
+
+When `kind === 'image'` and the URL is **not** trusted, the helper returns `{ ...attachment, kind: 'file' }` with `width`/`height` deleted — it renders as a `FileMessage` card, so the bytes are only fetched when the user clicks the download link. File attachments pass through unchanged (they never auto-load).
+
+**Outgoing is unaffected.** The optimistic outgoing message is created by `sendAttachment` / `updateMessageAttachment`, never goes through `toUiMessage`, and is skipped by the sanitizer. It starts with either a `blob:` object URL (image) or an empty string (file), then `updateMessageAttachment` replaces it with `slot.getUrl`, which is the upload service's URL and is on the trusted host by construction. So outgoing images always preview, and the only URL that ever reaches the bubble is one the user uploaded themselves.
+
+**Mock store.** Not touched, as instructed.
+
+**Last-line-of-defense.** The spec offers it; I didn't add it because the store mapping already gates every path the bubble renders. The only way an `<img>` with a remote URL reaches `ImageMessage` is if the sanitizer approved it, and the sanitizer checks the hostname. Adding a second check in `MessageBubble` would be redundant without changing what shows.
+
+### Tests added
+
+`apps/web/src/lib/attachments.test.ts` (+13 tests):
+
+- `trustedMediaHosts`: service + domain + upload subdomain; malformed service URL still trusts the domain; case-insensitive hostnames.
+- `isTrustedMediaUrl`: trusted host on any port, http or https; non-http scheme rejected; trusted domain and `upload.<domain>`; unrelated host rejected; look-alike suffix/prefix/substring (`galena.test.evil.example`, `evil-galena.test`, `evilgalena.test`); userinfo trick (`http://galena.test@evil.example/x`); `javascript:`, `data:`, `wss://` rejected; relative URL and garbage rejected; case-insensitive hostname match.
+
+`apps/web/src/store/realStore.test.tsx` (+4 tests in the existing `attachments (T-0065)` block):
+
+- Image attachment on a trusted host stays an image, with `width`/`height` intact.
+- Image attachment on an untrusted host becomes a `file`; `width` and `height` are dropped; the URL is preserved so the download link works.
+- File attachment on an untrusted host stays a file (no change to file semantics).
+- A page of `openHistory` goes through the same mapping: a trusted URL stays an image, an untrusted URL becomes a file with no dimensions.
+
+### Commands run and real results
+
+```bash
+pnpm prettier --check \
+  apps/web/src/lib/attachments.ts \
+  apps/web/src/lib/attachments.test.ts \
+  apps/web/src/store/realStore.ts \
+  apps/web/src/store/realStore.test.tsx
+# Checking formatting...
+# All matched files use Prettier code style!
+
+pnpm lint
+# > oxlint .
+# (exit 0)
+
+cd apps/web && pnpm exec tsc --noEmit -p tsconfig.json && pnpm exec tsc --noEmit -p tsconfig.node.json
+# OK
+
+cd apps/web && pnpm exec vitest run
+#  Test Files  48 passed (48)
+#       Tests  415 passed (415)   (was 381 — 34 new)
+
+cd apps/web && pnpm exec vitest run \
+  src/lib/attachments.test.ts \
+  src/store/realStore.test.tsx
+#  Test Files  2 passed (2)
+#       Tests  119 passed (119)
+
+cd packages/chat-core && pnpm exec vitest run
+#  Test Files  10 passed (10)
+#       Tests  135 passed (135)
+
+cd packages/protocol && pnpm exec vitest run
+#  Test Files  10 passed (10)
+#       Tests  144 passed (144)
+
+pnpm build
+# Tasks:    2 successful, 2 total
+```
+
+The pre-existing `format:check` and `typecheck` failures on `packages/xmpp-core/src/integration-edits.test.ts` (out of Allowed files, same as round 0) and the `devtools` `mergeTask rebase conflicts` flake are unchanged by these edits.
+
 ### Blocked / needs a decision
 -
 

@@ -2494,4 +2494,171 @@ describe('attachments (T-0065)', () => {
     expect(incoming?.text).toBe('just text');
     expect(incoming?.voice?.duration_ms).toBe(1000);
   });
+
+  it('keeps an incoming image attachment on a trusted host as an image', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'att-trusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'image',
+            url: 'https://upload.galena.test/upload/abc/stage.png',
+            name: 'stage.png',
+            size: 200,
+            mime: 'image/png',
+            width: 800,
+            height: 600,
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'att-trusted');
+    expect(incoming?.attachment?.kind).toBe('image');
+    expect(incoming?.attachment?.width).toBe(800);
+    expect(incoming?.attachment?.height).toBe(600);
+  });
+
+  it('downgrades an incoming image attachment on an untrusted host to a file', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'att-untrusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'image',
+            url: 'https://tracker.example.com/pixel.png',
+            name: 'pixel.png',
+            size: 200,
+            mime: 'image/png',
+            width: 1,
+            height: 1,
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'att-untrusted');
+    expect(incoming?.attachment?.kind).toBe('file');
+    // Width/height must not leak through, otherwise the bubble would still
+    // reserve image-sized space before the user clicks the card.
+    expect(incoming?.attachment?.width).toBeUndefined();
+    expect(incoming?.attachment?.height).toBeUndefined();
+    expect(incoming?.attachment?.url).toBe('https://tracker.example.com/pixel.png');
+  });
+
+  it('keeps an incoming file attachment on an untrusted host as a file', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'att-file-untrusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'file',
+            url: 'https://files.example.com/random.bin',
+            name: 'random.bin',
+            size: 200,
+            mime: 'application/octet-stream',
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'att-file-untrusted');
+    expect(incoming?.attachment?.kind).toBe('file');
+    expect(incoming?.attachment?.url).toBe('https://files.example.com/random.bin');
+  });
+
+  it('maps history attachments through the same trusted-host check', async () => {
+    const xmpp = fakeXmpp();
+    xmpp.history['ana@galena.test'] = [
+      message({
+        id: 'att-history-trusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'image',
+            url: 'https://upload.galena.test/upload/abc/photo.png',
+            name: 'photo.png',
+            size: 100,
+            mime: 'image/png',
+            width: 100,
+            height: 100,
+          },
+        },
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+      }),
+      message({
+        id: 'att-history-untrusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'image',
+            url: 'https://tracker.example.com/x.png',
+            name: 'x.png',
+            size: 100,
+            mime: 'image/png',
+            width: 100,
+            height: 100,
+          },
+        },
+        timestamp: new Date('2026-09-28T09:01:00Z'),
+      }),
+    ];
+
+    const store = createRealChatStore({
+      api: fakeApi(),
+      storage: memoryStorage(),
+      now: () => new Date('2026-09-28T12:00:00Z'),
+      createXmpp: (options) => {
+        xmpp.options.current = options;
+        return xmpp.core;
+      },
+    });
+    store.getState().start();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    const list = store.getState().messages('ana@galena.test');
+    const trusted = list.find((m) => m.id === 'att-history-trusted');
+    const untrusted = list.find((m) => m.id === 'att-history-untrusted');
+    expect(trusted?.attachment?.kind).toBe('image');
+    expect(untrusted?.attachment?.kind).toBe('file');
+    expect(untrusted?.attachment?.width).toBeUndefined();
+    expect(untrusted?.attachment?.height).toBeUndefined();
+  });
 });

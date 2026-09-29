@@ -81,6 +81,58 @@ export function safeHttpUrl(url: string): string | undefined {
   }
 }
 
+/**
+ * Just enough of the XMPP token to build the trusted media set: the WebSocket
+ * service URL and the XMPP domain the server issued for this session. Both are
+ * where the upload service answers in dev and production.
+ */
+export interface MediaTokenShape {
+  service: string;
+  domain: string;
+}
+
+/**
+ * The hostnames the renderer auto-loads images from. Anything else becomes a
+ * file card that only loads on click, so a chat peer cannot make every viewer's
+ * browser fetch a tracking pixel from a third-party host.
+ */
+export function trustedMediaHosts(token: MediaTokenShape): ReadonlySet<string> {
+  const hosts = new Set<string>();
+  try {
+    const serviceHost = new URL(token.service).hostname.toLowerCase();
+    if (serviceHost !== '') {
+      hosts.add(serviceHost);
+    }
+  } catch {
+    // A malformed service URL just means we trust nothing from it; the domain
+    // below still covers the production case.
+  }
+  const domain = token.domain.trim().toLowerCase();
+  if (domain !== '') {
+    hosts.add(domain);
+    hosts.add(`upload.${domain}`);
+  }
+  return hosts;
+}
+
+/**
+ * Whether `url` is http(s) and its hostname matches one of `trustedHosts`
+ * (case-insensitive, scheme- and port-agnostic). Anything that does not parse
+ * as an http(s) URL — `javascript:`, `data:`, relative paths, garbage — is
+ * untrusted.
+ */
+export function isTrustedMediaUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false;
+    }
+    return trustedHosts.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 /** A best-effort object URL; test environments without it get `undefined`. */
 export function objectUrlFor(blob: Blob): string | undefined {
   try {

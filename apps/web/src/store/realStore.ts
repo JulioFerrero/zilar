@@ -66,7 +66,14 @@ import {
   type OpenDraftStream,
 } from '@/lib/drafts';
 import { defaultVoicePort, type VoicePort } from '@/lib/voice';
-import { cleanFilename, defaultAttachmentPort, type AttachmentPort } from '@/lib/attachments';
+import {
+  cleanFilename,
+  defaultAttachmentPort,
+  isTrustedMediaUrl,
+  trustedMediaHosts,
+  type AttachmentPort,
+  type MediaTokenShape,
+} from '@/lib/attachments';
 import type { ChatStoreState, ConnectionStatus, DraftState } from './store';
 
 const LAST_READ_PREFIX = 'galena:lastRead:';
@@ -200,6 +207,29 @@ function objectUrlFor(blob: Blob): string | undefined {
 
 function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
   return chat.kind === 'group' ? 'groupchat' : 'chat';
+}
+
+/**
+ * An incoming image attachment on an untrusted host would auto-fetch from
+ * whatever URL a chat peer put in the payload, leaking the viewer's IP to that
+ * host. Downgrade it to a file card so the bytes are only loaded on click.
+ * File attachments stay files: the host check is image-only.
+ */
+function sanitizeIncomingAttachment(
+  attachment: Attachment,
+  token: MediaTokenShape | undefined,
+): Attachment {
+  if (attachment.kind !== 'image') {
+    return attachment;
+  }
+  const trusted = token === undefined ? undefined : trustedMediaHosts(token);
+  if (trusted !== undefined && isTrustedMediaUrl(attachment.url, trusted)) {
+    return attachment;
+  }
+  const downgraded: Attachment = { ...attachment, kind: 'file' };
+  delete downgraded.width;
+  delete downgraded.height;
+  return downgraded;
 }
 
 function mentionLocalpart(jid: string): string {
@@ -342,6 +372,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
     let firstToken: XmppToken | undefined;
+    // The XMPP token the latest session connected with, kept for the media
+    // allow-list (T-0065 round 1): images are only auto-loaded from hosts the
+    // server names, so a chat peer cannot make every viewer fetch a tracker.
+    let mediaToken: MediaTokenShape | undefined;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const cursors: Record<string, string | undefined> = {};
     const pendingOutgoing = new Map<string, string[]>();
@@ -1352,7 +1386,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         ui.voice = message.payload.data;
       }
       if (message.payload !== undefined && message.payload.type === 'attachment') {
-        ui.attachment = message.payload.data;
+        ui.attachment = sanitizeIncomingAttachment(message.payload.data, mediaToken);
       }
       const reactions = reactionChips(
         get().reactions[message.chatJid],
@@ -2061,6 +2095,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         return;
       }
       firstToken = token;
+      mediaToken = { service: token.service, domain: token.domain };
 
       const options: XmppCoreOptions = {
         service: token.service,
@@ -2072,6 +2107,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             return { jid: fresh.jid, token: fresh.token };
           }
           const fresh = await api.getXmppToken();
+          mediaToken = { service: fresh.service, domain: fresh.domain };
           return { jid: fresh.jid, token: fresh.token };
         },
       };
@@ -2647,6 +2683,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
         connectRetryAttempt = 0;
         groupsJoined = false;
+        mediaToken = undefined;
         if (typeof window !== 'undefined') {
           window.removeEventListener('pagehide', saveChatList);
         }

@@ -7,8 +7,10 @@ import {
   classify,
   cleanFilename,
   formatFileSize,
+  isTrustedMediaUrl,
   readImageSize,
   safeHttpUrl,
+  trustedMediaHosts,
   uploadAttachment,
 } from './attachments';
 
@@ -219,5 +221,80 @@ describe('readImageSize', () => {
     vi.stubGlobal('URL', {});
 
     await expect(readImageSize(file('a.png', 'image/png'))).resolves.toBeUndefined();
+  });
+});
+
+describe('trustedMediaHosts', () => {
+  it('includes the service hostname, the domain, and the upload subdomain', () => {
+    const hosts = trustedMediaHosts({ service: 'ws://xmpp.galena.test/ws', domain: 'galena.test' });
+    expect([...hosts].sort()).toEqual(['galena.test', 'upload.galena.test', 'xmpp.galena.test']);
+  });
+
+  it('drops a malformed service URL but still trusts the domain', () => {
+    const hosts = trustedMediaHosts({ service: 'not a url', domain: 'galena.test' });
+    expect([...hosts].sort()).toEqual(['galena.test', 'upload.galena.test']);
+  });
+
+  it('lowercases the hostnames', () => {
+    const hosts = trustedMediaHosts({
+      service: 'wss://XMPP.Galena.Test/ws',
+      domain: 'Galena.Test',
+    });
+    expect(hosts.has('xmpp.galena.test')).toBe(true);
+    expect(hosts.has('galena.test')).toBe(true);
+    expect(hosts.has('upload.galena.test')).toBe(true);
+  });
+});
+
+describe('isTrustedMediaUrl', () => {
+  const trusted = trustedMediaHosts({
+    service: 'wss://xmpp.galena.test/ws',
+    domain: 'galena.test',
+  });
+
+  it('accepts the service hostname on any port, with either http scheme', () => {
+    expect(isTrustedMediaUrl('https://xmpp.galena.test/upload/abc.png', trusted)).toBe(true);
+    expect(isTrustedMediaUrl('http://xmpp.galena.test:5280/upload/abc.png', trusted)).toBe(true);
+  });
+
+  it('does not accept the service hostname on a non-http scheme', () => {
+    expect(isTrustedMediaUrl('wss://xmpp.galena.test:443/path', trusted)).toBe(false);
+  });
+
+  it('accepts the domain and the upload subdomain', () => {
+    expect(isTrustedMediaUrl('https://galena.test/upload/abc.png', trusted)).toBe(true);
+    expect(isTrustedMediaUrl('https://upload.galena.test/upload/abc.png', trusted)).toBe(true);
+  });
+
+  it('rejects unrelated hosts', () => {
+    expect(isTrustedMediaUrl('https://tracker.example.com/pixel.png', trusted)).toBe(false);
+  });
+
+  it('rejects look-alike hosts that share a suffix or prefix', () => {
+    expect(isTrustedMediaUrl('https://galena.test.evil.example/pixel.png', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('https://evil-galena.test/pixel.png', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('https://evilgalena.test/pixel.png', trusted)).toBe(false);
+  });
+
+  it('rejects URLs that put the trusted host into userinfo', () => {
+    expect(isTrustedMediaUrl('http://galena.test@evil.example/x.png', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('http://xmpp.galena.test:80@evil.example/x.png', trusted)).toBe(false);
+  });
+
+  it('rejects javascript:, data:, and other non-http schemes', () => {
+    expect(isTrustedMediaUrl('javascript:alert(1)', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('data:image/png;base64,AAAA', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('ws://xmpp.galena.test/path', trusted)).toBe(false);
+  });
+
+  it('rejects relative URLs and garbage', () => {
+    expect(isTrustedMediaUrl('/upload/abc.png', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('not a url', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('', trusted)).toBe(false);
+  });
+
+  it('is case-insensitive on the hostname', () => {
+    expect(isTrustedMediaUrl('https://Galena.Test/upload/abc.png', trusted)).toBe(true);
+    expect(isTrustedMediaUrl('HTTPS://UPLOAD.GALENA.TEST/abc.png', trusted)).toBe(true);
   });
 });
