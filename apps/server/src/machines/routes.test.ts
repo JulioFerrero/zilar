@@ -343,6 +343,7 @@ describe('machines routes', () => {
         'id',
         'lastSeenAt',
         'name',
+        'online',
         'os',
         'osVersion',
         'ramGb',

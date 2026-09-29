@@ -2,7 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2023"],
-    "types": ["node"]
+    "types": ["node"],
+    "allowImportingTsExtensions": true
   },
   "include": ["src", "drizzle.config.ts", "../../packages/xmpp-core/src/types/xmpp.d.ts"]
 }

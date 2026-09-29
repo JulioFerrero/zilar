@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@galena/protocol": "workspace:*",
+    "@galena/runner-tunnel": "workspace:*",
     "@galena/xmpp-core": "workspace:*",
     "@hono/node-server": "^2.1.1",
     "better-auth": "^1.7.6",

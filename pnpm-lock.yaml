@@ -184,6 +184,9 @@ importers:
       '@galena/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@galena/runner-tunnel':
+        specifier: workspace:*
+        version: link:../../packages/runner-tunnel
       '@galena/xmpp-core':
         specifier: workspace:*
         version: link:../../packages/xmpp-core
@@ -8628,9 +8631,7 @@ snapshots:
       metro-runtime: 0.84.6
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.74.89': {}
 

@@ -20,7 +20,7 @@ import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
 import { createMachinesRoutes } from './machines/routes';
-import { createDbMachineRegistry } from './machines/registry';
+import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
 import { serverVersion } from './version';
 import type { VoiceEngine } from './voice/engine';
 import { createVoiceRoutes } from './voice/routes';
@@ -49,6 +49,14 @@ export interface AppDependencies {
     cipher?: KeyCipher;
     logger?: AiLogger;
   };
+  /** Injected by index.ts when the runner hub is on; absent = hub off. */
+  isMachineOnline?: (machineId: string) => boolean;
+  /**
+   * Shared with the runner hub so route-level notifies (approve / revoke)
+   * reach the same listener set. Defaults to a fresh registry over `db`,
+   * which is fine when no hub is running.
+   */
+  machineRegistry?: DbMachineRegistry;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -64,6 +72,8 @@ export function createApp({
   voiceMaxBytes,
   connections,
   ais,
+  isMachineOnline,
+  machineRegistry,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
 
@@ -107,7 +117,13 @@ export function createApp({
   app.route('/api', createContactsRoutes({ auth, db, config }));
   app.route(
     '/api',
-    createMachinesRoutes({ auth, db, logger, registry: createDbMachineRegistry(db) }),
+    createMachinesRoutes({
+      auth,
+      db,
+      logger,
+      registry: machineRegistry ?? createDbMachineRegistry(db),
+      ...(isMachineOnline === undefined ? {} : { isMachineOnline }),
+    }),
   );
   app.route('/api', createGroupsRoutes({ auth, db, config, adminClient, logger }));
   app.route('/api', createChatsRoutes({ auth, db, config }));
