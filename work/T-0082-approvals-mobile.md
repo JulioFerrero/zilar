@@ -1,7 +1,7 @@
 ---
 id: T-0082
 title: Mobile — the approval card decides for real (Approve / Deny call the approvals API and the card shows its state)
-status: review
+status: merged
 milestone: M4
 branch: task/T-0082-approvals-mobile
 model: minimax-coding-plan/MiniMax-M3
@@ -126,4 +126,10 @@ Not done from this worker. The spec said "Not needed from you" so no on-device c
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved with a lead refactor, merged (2026-09-29). Rebased on main; format, lint, typecheck, test (mobile 332 passed) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand.
+
+**Lead change:** the worker used relative imports (`../ui/button`, `../../lib/...`) in the card and the hook because Vitest cannot resolve the `@/` alias, and stubbed React Native in the test. That breaks the style of the surrounding code. The pure state logic (`approvalStatusLabel`, `loadApprovalCardState`, `applyDecision`, `ApprovalCardState`) now lives in `lib/approval-state.ts` (plain relative imports, tested without any mocks in `approval-state.test.ts`), and the card and `use-approvals-api.ts` use `@/` imports like `use-ais-api.ts`.
+
+**Checked:** the API twin uses type guards and an error class with `status`/`code`; Approve sends `approve_once`, Deny `deny`; both disable in flight; a 409 reloads; a 404 shows "Waiting for a decision" with no buttons; a failed first load shows Retry; no "always allow", no `console.log`; mock mode seeds `approval-2001`, the id of the mock chat's card, with the same mock gate as the AI screens.
+
+**Open for Julio (device check):** in a real chat with a real approval request (needs the engine to create one; until then mock mode `?mock=1`/`EXPO_PUBLIC_GALENA_MOCK=1` on a dev build) the card should show Approve/Deny and turn into "Approved". The card component itself has no render test on mobile (no test renderer in the project).

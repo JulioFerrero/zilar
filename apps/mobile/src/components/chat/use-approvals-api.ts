@@ -1,10 +1,10 @@
 import { useGlobalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 
-import { createApprovalsApi, type ApprovalsApi } from '../../lib/approvals-api';
-import { getSessionToken } from '../../lib/session-token';
-import { createMockApprovalsApi } from '../../mock/approvals';
-import { mockParamAllowed } from '../../mock/gate';
+import { createApprovalsApi, type ApprovalsApi } from '@/lib/approvals-api';
+import { getSessionToken } from '@/lib/session-token';
+import { createMockApprovalsApi } from '@/mock/approvals';
+import { mockParamAllowed } from '@/mock/gate';
 
 /**
  * The approvals API supports exactly one mock scenario (the pending request

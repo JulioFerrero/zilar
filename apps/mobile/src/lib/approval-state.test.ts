@@ -1,39 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApprovalRequest } from '@galena/protocol';
 
-import { ApprovalsApiError, type ApprovalsApi, type PublicApproval } from '../../lib/approvals-api';
+import { ApprovalsApiError, type ApprovalsApi, type PublicApproval } from './approvals-api';
+import { applyDecision, approvalStatusLabel, loadApprovalCardState } from './approval-state';
 
-import { applyDecision, approvalStatusLabel, loadApprovalCardState } from './approval-card';
-
-// `react-native` ships Flow-typed source, which Vitest's parser rejects, so we
-// stub the surface `approval-card.tsx` actually pulls in. Mocks are declared
-// before any import so they apply to the production module graph.
-vi.mock('react-native', () => ({
-  Pressable: 'Pressable',
-  View: 'View',
-  ActivityIndicator: 'ActivityIndicator',
-  Platform: { select: <T,>(value: { default: T }): T => value.default },
-}));
-
-vi.mock('../ui/button', () => ({ Button: 'Pressable' }));
-vi.mock('../ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: ({ children }: { children: unknown }) => children },
-}));
-vi.mock('../ui/use-key-press', () => ({
-  useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
-}));
-vi.mock('./use-approvals-api', () => ({
-  useApprovalsApi: () => ({ api: null, mock: false }),
-}));
-
-// The mobile test suite does not mount React (no React testing library, no
-// `react-test-renderer`): `markdown-text.test.tsx` and `reaction-chips.test.tsx`
-// render components as plain functions to inspect the JSX, and there is no
-// hook-driven render path. `ApprovalCard` uses `useState` / `useEffect` /
-// `useCallback`, so this file exercises the state logic through the helpers
-// the component itself uses (`loadApprovalCardState`, `applyDecision`,
-// `approvalStatusLabel`). The component just wires these helpers to the UI.
+// The mobile test suite does not mount React, so the card's state logic lives
+// in `approval-state.ts` as plain async functions and is tested here; the card
+// only wires them to `useState` and the JSX.
 
 const REQUEST: ApprovalRequest = {
   id: 'apr-1',
