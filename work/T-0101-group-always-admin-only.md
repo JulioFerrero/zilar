@@ -1,7 +1,7 @@
 ---
 id: T-0101
 title: Only a group owner/admin can create a group "always allow" rule
-status: review
+status: merged
 milestone: M4
 branch: task/T-0101-group-always-admin-only
 model: meta/muse-spark-1.3-contributor
