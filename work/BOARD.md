@@ -10,6 +10,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0091](T-0091-ai-home-machine.md) | AI home machine (server + web): `ais.machine_id`, `PUT /api/ais/:id/machine`, revoke unassigns, AiPanel select, machine card lists AIs | in progress | minimax-m3 | T-0071, T-0072, T-0080 | Migration may collide with T-0090's: regenerate after rebase. |
+| [T-0092](T-0092-approval-card-announce.md) | Approval cards posted into the chat: action gateway announces requests/outcomes through the AI's own XMPP session (server) | in progress | minimax-m3 | T-0090, T-0034, T-0080 | Next: T-0093 AI-side `request_action` tool + demo adapter for a live end-to-end check. |
 
 ## Follow-ups
 
