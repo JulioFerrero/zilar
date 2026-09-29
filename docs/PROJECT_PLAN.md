@@ -134,6 +134,11 @@ These are Julio's requirements, quoted where possible.
 | D21 | Object storage | **No MinIO:** its Docker images were deleted from Docker Hub in September 2026. File uploads use ejabberd's built-in upload for the MVP, Supabase Storage in production, and Garage or RustFS if we need S3 locally. | Research on 2026-09-27 |
 | D22 | OpenCode service network access | Julio's OpenCode v2 service stays reachable on his home network (`hostname 0.0.0.0`, password-protected) | Julio: "keep it open". He uses it from his phone. |
 | D23 | UI style | **Close to Telegram** in layout, patterns and feel, with no Telegram brand assets. Source of truth: `docs/design/ui-style.md`. | Julio: "we need to be closer to what Telegram is"; more detail once he's used the app |
+| D24 | UI depth | Vercel-dark look with skeuomorphic depth on buttons and bubbles; mockup in `docs/design/mockups/` | Julio, 2026-09-28. Source of truth: `docs/design/ui-style.md` |
+| D25 | Topics in groups | **Telegram forum style:** a group is a list of topics, each its own conversation with its own unread count. On desktop the topics are **nested under the group in the sidebar**; on mobile a group opens to its topics list. Topics and their metadata live in our database; XMPP stays the transport. | Julio, 2026-09-29, after the topics mockup |
+| D26 | Task strip | **Every topic** carries a thin task strip under the header (type: bug, UI, task or routine; status; owner, a person or an AI; linked PR). It is not a board. AI progress, previews and approval cards live in the topic, so the main room stays quiet. | Julio, 2026-09-29 |
+| D27 | Stickers, GIFs, importer | Stickers are **created by users** (packs). A **Telegram sticker importer** is a must-have for migration (later task). A **GIF section** is wanted. Open: GIF provider (with a proxy so users' IPs are not sent), and the copyright stance for imported packs (personal use). | Julio, 2026-09-29 |
+| D28 | Product focus | Be a good **daily chat for humans first**, Telegram's flow (chats, groups, channels, topics, stickers, folders): PWA with web push, search, pinned messages, forwarding, media gallery, mute and archive, voice notes, invite links. Then workspaces and roles, then the AI coding flow. **No inbox and no "catch up" feature** (Julio: "I don't like that"). | Julio, 2026-09-29 |
 
 ---
 
