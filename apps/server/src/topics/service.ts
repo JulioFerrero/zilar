@@ -117,7 +117,7 @@ export const patchTopicBodySchema = z
     owner: ownerSchema.nullish(),
     linkUrl: linkUrlSchema.nullish(),
     linkLabel: linkLabelSchema.nullish(),
-    archived: z.boolean().optional(),
+    archived: z.literal(true).optional(),
     visibility: topicVisibilitySchema.optional(),
     memberIds: z.array(z.string().min(1)).max(50).optional(),
     confirmExposeHistory: z.boolean().optional(),
@@ -458,7 +458,6 @@ export async function patchTopic(
   if (input.linkLabel !== undefined) patch.linkLabel = input.linkLabel ?? null;
   if (input.visibility !== undefined) patch.visibility = input.visibility;
   if (input.archived === true) patch.archivedAt = new Date();
-  if (input.archived === false) patch.archivedAt = null;
 
   const visibilityChanged = topic.visibility !== nextVisibility;
   const goingPrivate = topic.visibility === 'public' && nextVisibility === 'private';
@@ -645,64 +644,6 @@ export async function removeTopicMember(
     );
   }
   return updated;
-}
-
-export async function syncGroupTopics(deps: TopicServiceDeps, groupId: string): Promise<void> {
-  const rows = await deps.db.select().from(topics).where(eq(topics.groupId, groupId));
-  for (const topic of rows) {
-    if (topic.archivedAt !== null) {
-      continue;
-    }
-    await syncTopicRoom(deps, topic);
-  }
-}
-
-export async function removeGroupMemberTopics(
-  db: ServerDatabase,
-  groupId: string,
-  userId: string,
-): Promise<void> {
-  const rows = await db.select().from(topics).where(eq(topics.groupId, groupId));
-  const privateIds = rows.filter((row) => row.visibility === 'private').map((row) => row.id);
-  if (privateIds.length === 0) {
-    return;
-  }
-  await db
-    .delete(topicMembers)
-    .where(and(inArray(topicMembers.topicId, privateIds), eq(topicMembers.userId, userId)));
-}
-
-export async function archiveEmptyPrivateTopics(
-  deps: TopicServiceDeps,
-  groupId: string,
-  actorId: string,
-): Promise<void> {
-  const rows = await deps.db.select().from(topics).where(eq(topics.groupId, groupId));
-  for (const topic of rows) {
-    if (topic.archivedAt !== null || topic.visibility !== 'private' || topic.isGeneral) {
-      continue;
-    }
-    const members = await deps.db
-      .select({ userId: topicMembers.userId })
-      .from(topicMembers)
-      .where(eq(topicMembers.topicId, topic.id));
-    if (members.length === 0) {
-      await deps.db
-        .update(topics)
-        .set({ archivedAt: new Date(), updatedAt: new Date() })
-        .where(eq(topics.id, topic.id));
-      if (deps.audit) {
-        const [updated] = await deps.db
-          .select()
-          .from(topics)
-          .where(eq(topics.id, topic.id))
-          .limit(1);
-        if (updated) {
-          await deps.audit.record(toAuditEntry(updated, 'topic.archived', actorId));
-        }
-      }
-    }
-  }
 }
 
 function mapXmppError(error: unknown): HttpError {
