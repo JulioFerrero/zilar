@@ -10,6 +10,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | [T-0065](T-0065-attachments-web.md) | Attachments on web: images and files via XEP-0363 + `attachment` payload, preview bar, paste/drop, image and file bubbles, retry | in progress | deepseek-v4.1-flash | T-0061 | MVP list item (plan §21). |
 | [T-0071](T-0071-runner-hub.md) | Runner hub (M3, server): approved machines connect over the tunnel WebSocket, revoke drops them, online + last-seen | in progress | minimax-m3 | T-0068 | OpenCode Go is out of funds (402): MiniMax M3 fallback. |
+| [T-0070](T-0070-machines-web.md) | Machines page (web): add with a pairing code, approve/deny, rename, revoke, delete | in progress | minimax-m3 | T-0068, T-0069 | M3 UI slice. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
