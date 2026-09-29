@@ -1,7 +1,7 @@
 ---
 id: T-0079
 title: Audit log (M4, server) — an append-only record of who did what, written by approvals and machines, readable by the people who own the AI or the group
-status: review
+status: merged
 milestone: M4
 branch: task/T-0079-audit-log
 model: minimax-coding-plan/MiniMax-M3
@@ -131,4 +131,10 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged (lead, 2026-09-29). Rebased on main; format, lint, typecheck, test (server 648 passed, 7 skipped) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand.
+
+**Checked:** the table has no foreign keys, so audit rows survive deleted users, AIs and groups; the migration (`0013_audit_log_immutable.sql`) adds a plpgsql trigger that raises on UPDATE, DELETE and TRUNCATE, and the tests prove all three fail (PGlite supports the statement-level truncate trigger). `recordAudit` validates with zod (dotted action pattern, 64-hex hash, `detail` at most 2 KB); the recorder swallows any failure and logs only `{ action, err }`, so an audit failure never breaks the request. The decision route writes `approval.decided` with the decision only (no note) after a successful decision, and nothing on a 409; machine routes write `machine.paired/approved/denied/revoked/deleted` with ids only (no key, no name). Reads: an AI's entries only for its owner, a group's for its owner/admin; a member or stranger gets the same empty page as an unknown id.
+
+**Notes (not blocking):** the five machine writers repeat the same 12-line call and could share a helper; a hidden group answers an empty page rather than a 404 (indistinguishable from an unknown one, which is the point); `result` has no CHECK constraint in Postgres (zod is the gate). The trigger migration runs on the live Postgres when the server restarts; the lead restarts it after the merge and verifies.
+
+**Next:** entries from the engine and the proxy, the kill switch (T-0080 will not write one until this is merged), a web page for the log, retention (J4: 1 year).
