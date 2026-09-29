@@ -872,6 +872,72 @@ describe('loading states (T-0067)', () => {
     expect(store.getState().chats).toHaveLength(2);
   });
 
+  it('skips correction, retraction and reaction stanzas live and in history', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.history[ANA] = [
+      message({ id: 'ana-h1', chatJid: ANA, body: 'original', fromJid: ANA }),
+      message({
+        id: 'ana-h2',
+        chatJid: ANA,
+        body: 'edited text',
+        fromJid: ANA,
+        correction: { targetId: 'ana-h1' },
+      }),
+      message({
+        id: 'ana-h3',
+        chatJid: ANA,
+        body: '',
+        fromJid: ANA,
+        retraction: { targetId: 'ana-h1' },
+      }),
+      message({
+        id: 'ana-h4',
+        chatJid: ANA,
+        body: '',
+        fromJid: ANA,
+        reactions: { targetId: 'ana-h1', emojis: ['👍'] },
+      }),
+    ];
+
+    store.getState().openChat(ANA);
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    const ids = store
+      .getState()
+      .messages(ANA)
+      .map((item) => item.id);
+    expect(ids).toContain('ana-h1');
+    expect(ids).not.toContain('ana-h2');
+    expect(ids).not.toContain('ana-h3');
+    expect(ids).not.toContain('ana-h4');
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'ana-live-edit',
+        chatJid: ANA,
+        body: 'edited live',
+        fromJid: ANA,
+        correction: { targetId: 'ana-h1' },
+      }),
+    );
+    xmpp.emit(
+      'message',
+      message({
+        id: 'ana-live-retract',
+        chatJid: ANA,
+        body: '',
+        fromJid: ANA,
+        retraction: { targetId: 'ana-h1' },
+      }),
+    );
+    const after = store
+      .getState()
+      .messages(ANA)
+      .map((item) => item.id);
+    expect(after).not.toContain('ana-live-edit');
+    expect(after).not.toContain('ana-live-retract');
+  });
+
   it('does not query history while the core is connecting, then flushes on ready', async () => {
     const gate = deferred();
     const { store, xmpp } = await setup({}, {}, gate.promise);
