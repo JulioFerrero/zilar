@@ -1,7 +1,7 @@
 ---
 id: T-0092
 title: Post approval cards into the chat (M4, server) — the action gateway announces requests and outcomes through the AI's own XMPP session
-status: review
+status: merged
 milestone: M4
 branch: task/T-0092-approval-card-announce
 model: minimax-coding-plan/MiniMax-M3
@@ -126,4 +126,12 @@ Wired the action gateway to announce tier-2 requests and their outcomes through 
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged with one lead fix.
+
+Rebased on main; after the last edit format, lint, typecheck clean; server 791 passed, 7 skipped. No disable comments.
+
+Confirmed: announcing is best-effort (`safeAnnounce` swallows and logs the class name only, never changes an outcome, row or audit); failed/cancelled texts are fixed strings, never adapter text; `postToChat` sends only through the live session (a stopped AI posts nothing) and only to a room the AI is subscribed to, or the owner's DM; the card payload is validated with `ApprovalRequestSchema` and the builder is pure and tested.
+
+Lead fix: when the payload did not validate, the wiring in `index.ts` still posted the plain "Approval needed" text with no card, which the owner cannot act on. It now posts nothing and logs.
+
+Known limits: the announcer wiring in `index.ts` has no unit test of its own (it is DB lookups plus the tested builder and `postToChat`); it is covered by the live check after T-0093 (demo adapter). Stuck-running rows recovered by `recoverStuck` are not announced.

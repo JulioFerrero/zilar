@@ -121,12 +121,11 @@ const announcer: ActionAnnouncer = {
       ownerJid,
       roomJid,
     });
-    await gatewayRef.postToChat({
-      aiId,
-      groupId,
-      text: approvalCardBody(row),
-      ...(payload === null ? {} : { payload }),
-    });
+    if (payload === null) {
+      logger.warn({ aiId, approvalId }, 'approval card is not valid; nothing was posted');
+      return;
+    }
+    await gatewayRef.postToChat({ aiId, groupId, text: approvalCardBody(row), payload });
   },
   async outcome(input: {
     aiId: string;
