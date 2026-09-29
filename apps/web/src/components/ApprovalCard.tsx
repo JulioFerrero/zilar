@@ -34,6 +34,18 @@ function statusLabel(approval: PublicApproval): string {
   }
 }
 
+// A 404 means the viewer may not decide this request (or it does not exist):
+// the card then shows no buttons and no error.
+async function loadState(approvalId: string): Promise<LoadState> {
+  try {
+    return { kind: 'ready', approval: await getApproval(approvalId) };
+  } catch (error) {
+    return error instanceof ApiError && error.status === 404
+      ? { kind: 'notDecidable' }
+      : { kind: 'error' };
+  }
+}
+
 export function ApprovalCard({ request }: { request: ApprovalRequest }) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [inFlight, setInFlight] = useState<null | 'approve' | 'deny'>(null);
@@ -41,22 +53,11 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
 
   useEffect(() => {
     let active = true;
-    getApproval(request.id)
-      .then((approval) => {
-        if (active) {
-          setState({ kind: 'ready', approval });
-        }
-      })
-      .catch((error: unknown) => {
-        if (!active) {
-          return;
-        }
-        if (error instanceof ApiError && error.status === 404) {
-          setState({ kind: 'notDecidable' });
-          return;
-        }
-        setState({ kind: 'error' });
-      });
+    void loadState(request.id).then((next) => {
+      if (active) {
+        setState(next);
+      }
+    });
     return () => {
       active = false;
     };
@@ -64,23 +65,7 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
 
   const retry = (): void => {
     setState({ kind: 'loading' });
-    let active = true;
-    getApproval(request.id)
-      .then((approval) => {
-        if (active) {
-          setState({ kind: 'ready', approval });
-        }
-      })
-      .catch((error: unknown) => {
-        if (!active) {
-          return;
-        }
-        if (error instanceof ApiError && error.status === 404) {
-          setState({ kind: 'notDecidable' });
-          return;
-        }
-        setState({ kind: 'error' });
-      });
+    void loadState(request.id).then(setState);
   };
 
   async function decide(decision: ApprovalDecision): Promise<void> {

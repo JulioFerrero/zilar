@@ -1,7 +1,7 @@
 ---
 id: T-0076
 title: Web — the approval card decides for real (Approve / Deny call the approvals API, and the card shows its state)
-status: review
+status: merged
 milestone: M4
 branch: task/T-0076-approvals-web
 model: minimax-coding-plan/MiniMax-M3
@@ -119,4 +119,12 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved with a lead cleanup, merged (2026-09-29). Rebased on main; format, lint, typecheck, test (web 483) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand.
+
+**Lead change:** the card had the same load-and-map-errors block twice (mount effect and Retry); it is now one `loadState()` helper.
+
+**Checked:** Approve sends `approve_once`, Deny sends `deny`, both disable while a request is in flight, a 409 reloads the state, a 404 shows "Waiting for a decision" with no buttons and no error, and no "always allow" is offered. The mock serves the seeded `apr-42` request and answers a second decision with 409.
+
+**Visual check (lead, mock mode, own port 5181):** with `?mock=1` in the URL the card in the Dev team chat shows Approve and Deny; clicking Approve turns it into "Approved". Note: after an in-app navigation that drops `?mock=1` (e.g. clicking the chat in the list) the mock API is off and the card falls back to "Waiting for a decision" because there is no server behind the dev port. That is how the gate from T-0069 works, not a card bug, but it means mock mode should be entered with the deep link.
+
+**Open:** real end-to-end (a real approval row, a real card in a room) needs the engine to create approvals and post the card, a later task.
