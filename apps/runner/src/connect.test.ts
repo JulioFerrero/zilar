@@ -7,7 +7,7 @@ import {
   TunnelServer,
 } from '@galena/runner-tunnel';
 import { startFakeGateway } from '../../../packages/runner-tunnel/src/test-harness.ts';
-import { __test__mapFailure, hubUrlFromServer, runRunner, validateHubUrl } from './connect.ts';
+import { mapFailure, hubUrlFromServer, runRunner, validateHubUrl } from './connect.ts';
 import { buildIdentity } from './identity.ts';
 
 function buildTestIdentity(machineId: string): ReturnType<typeof buildIdentity> {
@@ -132,46 +132,42 @@ describe('validateHubUrl', () => {
 
 describe('mapFailure', () => {
   it('maps a revoke close to status revoked', () => {
-    expect(__test__mapFailure('connection closed (4404): rejected by the server')).toEqual({
+    expect(mapFailure('connection closed (4404): rejected by the server')).toEqual({
       status: 'revoked',
       message: 'this machine was revoked, run pair again with a new code',
     });
   });
 
   it('maps an auth close to status auth_failed', () => {
-    expect(__test__mapFailure('connection closed (4403): rejected by the server')).toEqual({
+    expect(mapFailure('connection closed (4403): rejected by the server')).toEqual({
       status: 'auth_failed',
       message: 'the server refused our identity (auth failure)',
     });
   });
 
   it('maps a version close to status version_mismatch', () => {
-    expect(__test__mapFailure('connection closed (4402): rejected by the server')).toEqual({
+    expect(mapFailure('connection closed (4402): rejected by the server')).toEqual({
       status: 'version_mismatch',
       message: 'the server speaks a different protocol version',
     });
   });
 
   it('maps a malformed-frame close to status disconnected (never auth_failed)', () => {
-    const result = __test__mapFailure(
-      `connection closed (${CLOSE_MALFORMED}): rejected by the server`,
-    );
+    const result = mapFailure(`connection closed (${CLOSE_MALFORMED}): rejected by the server`);
     expect(result.status).toBe('disconnected');
     expect(result.message).toMatch(/lost the connection/i);
     expect(result.message).not.toMatch(/auth/i);
   });
 
   it('maps an unknown-type close to status disconnected (never auth_failed)', () => {
-    const result = __test__mapFailure(
-      `connection closed (${CLOSE_UNKNOWN_TYPE}): rejected by the server`,
-    );
+    const result = mapFailure(`connection closed (${CLOSE_UNKNOWN_TYPE}): rejected by the server`);
     expect(result.status).toBe('disconnected');
     expect(result.message).toMatch(/lost the connection/i);
     expect(result.message).not.toMatch(/auth/i);
   });
 
   it('maps an unrecognised close to status disconnected (never auth_failed)', () => {
-    const result = __test__mapFailure('connection closed (1006): no reason');
+    const result = mapFailure('connection closed (1006): no reason');
     expect(result.status).toBe('disconnected');
     expect(result.message).toMatch(/lost the connection/i);
   });

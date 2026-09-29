@@ -9,7 +9,13 @@ import {
   saveIdentity,
   summarizeIdentity,
 } from './identity.ts';
-import { hubUrlFromServer, runRunner, validateHubUrl, type RunResult } from './connect.ts';
+import {
+  ConnectError,
+  hubUrlFromServer,
+  runRunner,
+  validateHubUrl,
+  type RunResult,
+} from './connect.ts';
 import { pairRunner, PairError, type PairOptions, type PairResult } from './pair.ts';
 
 const EXIT_OK = 0;
@@ -225,17 +231,13 @@ function handleRunResult(result: RunResult, io: CliIo): void {
       io.stdout('Runner stopped.');
       return;
     case 'revoked':
-      io.stderr(`Revoked: ${result.message}`);
-      throw `Revoked: ${result.message}`;
+      throw new ConnectError('revoked', `Revoked: ${result.message}`);
     case 'auth_failed':
-      io.stderr(`Auth failed: ${result.message}`);
-      throw `Auth failed: ${result.message}`;
+      throw new ConnectError('auth_failed', `Auth failed: ${result.message}`);
     case 'version_mismatch':
-      io.stderr(`Protocol mismatch: ${result.message}`);
-      throw `Protocol mismatch: ${result.message}`;
+      throw new ConnectError('version_mismatch', `Protocol mismatch: ${result.message}`);
     case 'disconnected':
-      io.stderr(`Disconnected: ${result.message}`);
-      throw `Disconnected: ${result.message}`;
+      throw new ConnectError('disconnected', `Disconnected: ${result.message}`);
   }
 }
 

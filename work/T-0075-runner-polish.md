@@ -1,7 +1,7 @@
 ---
 id: T-0075
 title: Runner app polish — accept wss:// hub URLs, honest failure messages, fixed CLI texts, a real end-to-end pair test
-status: review
+status: merged
 milestone: M3
 branch: task/T-0075-runner-polish
 model: minimax-coding-plan/MiniMax-M3
@@ -123,4 +123,10 @@ None.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved with lead changes, merged (2026-09-29). After the changes: format, lint, typecheck, test (runner 63) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand.
+
+**Lead changes:** the worker made the CLI exit non-zero for `revoked`/`auth_failed`/`version_mismatch`/`disconnected` (a good catch: T-0072 exited 0), but did it with `throw` of string literals plus an `io.stderr` call, which printed every message twice and threw non-Errors. The CLI now throws a `ConnectError` and the shared error handler prints it once. `mapFailure` is exported normally instead of as `__test__mapFailure`, and a misleading comment about reconnecting was corrected.
+
+**Checked:** identity accepts `wss://` and round-trips; a dropped connection reports `disconnected`, only a real `CLOSE_AUTH` is `auth_failed`; the 409 branch never prints server text (fixed sentences per known code, generic otherwise); the end-to-end test drives the real routes: pair, pending, approve, hub connect, `online: true`, revoke, runner returns `revoked`. The only new dependency is `@galena/server` as a devDependency of the runner (allowed by the spec).
+
+**Follow-up found by the worker:** `packages/runner-tunnel/src/runner.ts` (line ~19) still rejects `wss://` server URLs, so a TLS deployment needs that check loosened (own task, part of the wss/deployment work).

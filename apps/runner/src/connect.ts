@@ -106,7 +106,7 @@ export async function runRunner(options: RunOptions): Promise<RunResult> {
   }
 }
 
-function mapFailure(message: string): RunResult {
+export function mapFailure(message: string): RunResult {
   if (message.includes(`(${CLOSE_REVOKED})`)) {
     return {
       status: 'revoked',
@@ -125,18 +125,13 @@ function mapFailure(message: string): RunResult {
       message: 'the server speaks a different protocol version',
     };
   }
-  // Anything else (a network drop, the server going away, a malformed frame
-  // becoming a fatal close) is not an auth failure. Tell the user the link
-  // dropped and let the runner's own backoff reconnect for us.
+  // Anything else (a network drop, the server going away) is not an auth
+  // failure: say the link was lost.
   return {
     status: 'disconnected',
     message: 'lost the connection to the server',
   };
 }
-
-// Exposed for tests so each branch can be asserted directly without standing
-// up a real tunnel.
-export const __test__mapFailure = mapFailure;
 
 function waitForSignalOrFailure(
   signal: AbortSignal | undefined,
