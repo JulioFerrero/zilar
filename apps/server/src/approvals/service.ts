@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { ARGS_HASH_PATTERN } from '@galena/protocol';
 import type { ServerDatabase } from '../db/client';
 import { ais, approvals, groupAis, groupMembers } from '../db/schema';
-import { createRule } from './rules';
+import { createRule, isGroupAdmin } from './rules';
 
 // `approved_always` is treated exactly like `approved_once` for the
 // single-use path; T-0099 adds a separate standing-rule flow that the
@@ -104,7 +104,8 @@ export class ApprovalServiceError extends Error {
     | 'not_pending'
     | 'pending_limit'
     | 'ai_not_in_group'
-    | 'always_not_allowed';
+    | 'always_not_allowed'
+    | 'always_requires_admin';
 
   constructor(errorCode: ApprovalServiceError['errorCode'], message: string) {
     super(message);
@@ -245,12 +246,20 @@ export async function decideApproval(
   // T-0099: an "approve_always" decision that cannot create a rule (the
   // action is unknown, the adapter opted out, or the adapter reports a
   // cost) is refused before the row is updated so no state changes.
+  // T-0101: for a group approval the decider must also be a group
+  // owner/admin; a personal-chat approval needs no group check.
   if (params.decision === 'approve_always') {
     const eligible = params.alwaysEligible ?? (() => false);
     if (!eligible(row.action)) {
       throw new ApprovalServiceError(
         'always_not_allowed',
         `Action "${row.action}" cannot be always-allowed`,
+      );
+    }
+    if (row.groupId !== null && !(await isGroupAdmin(db, row.groupId, params.userId))) {
+      throw new ApprovalServiceError(
+        'always_requires_admin',
+        'Only a group admin can always allow an action in this group',
       );
     }
   }

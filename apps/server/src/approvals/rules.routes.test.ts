@@ -6,6 +6,7 @@ import {
   aiLimits,
   ais,
   approvalRules,
+  approvals,
   auditLog,
   groupAis,
   groupMembers,
@@ -513,6 +514,303 @@ describe('approval rules routes (T-0099)', () => {
       expect(list.status).toBe(200);
       const body = (await list.json()) as Array<{ alwaysEligible: boolean }>;
       expect(body[0]?.alwaysEligible).toBe(true);
+    });
+  });
+
+  describe('group always-allow admin gate (T-0101)', () => {
+    async function seedGroupApproval(args: {
+      aiOwnerEmail: string;
+      memberEmail: string;
+      adminEmail: string;
+    }): Promise<{
+      aiId: string;
+      groupId: string;
+      ownerCookie: string;
+      memberCookie: string;
+      adminCookie: string;
+    }> {
+      const aiOwner = await bootstrapUser(context, authApp, args.aiOwnerEmail);
+      const member = await bootstrapUser(context, authApp, args.memberEmail);
+      const admin = await bootstrapUser(context, authApp, args.adminEmail);
+      const { aiId } = await seedAi(context, aiOwner.id);
+      const groupId = await seedGroup(
+        context,
+        aiOwner.id,
+        [
+          // The AI owner is a plain group member: they may decide once but
+          // may not create a group rule.
+          { userId: aiOwner.id, role: 'member' },
+          { userId: member.id, role: 'member' },
+          { userId: admin.id, role: 'admin' },
+        ],
+        [aiId],
+      );
+      return {
+        aiId,
+        groupId,
+        ownerCookie: aiOwner.cookie,
+        memberCookie: member.cookie,
+        adminCookie: admin.cookie,
+      };
+    }
+
+    async function createGroupApproval(
+      context2: TestContext,
+      args: { aiId: string; groupId: string; seed: number },
+    ): Promise<string> {
+      const row = await createApproval(
+        context2.db,
+        {
+          aiId: args.aiId,
+          groupId: args.groupId,
+          action: 'demo.echo',
+          summary: 'Echo',
+          argsHash: argsHash(args.seed),
+          requestedBy: 'ai-bot@galena.localhost',
+          expiresAt: new Date(now.getTime() + 60_000),
+        },
+        now,
+      );
+      return row.id;
+    }
+
+    function decideRequest(
+      app2: Hono,
+      args: { cookie: string; approvalId: string; decision: string },
+    ): Promise<Response> | Response {
+      return app2.request(`${TEST_BASE_URL}/api/approvals/${args.approvalId}/decision`, {
+        method: 'POST',
+        headers: { cookie: args.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ decision: args.decision }),
+      });
+    }
+
+    it('a plain member AI owner gets 403 always_requires_admin, then approves once', async () => {
+      const localApp = buildRoutesHarness(context, now, () => true);
+      const aiOwner = await bootstrapUser(
+        context,
+        authApp,
+        `member-owner-${testCounter}@example.com`,
+      );
+      const admin = await bootstrapUser(context, authApp, `t101-admin-${testCounter}@example.com`);
+      const { aiId } = await seedAi(context, aiOwner.id);
+      const groupId = await seedGroup(
+        context,
+        aiOwner.id,
+        [
+          { userId: aiOwner.id, role: 'member' },
+          { userId: admin.id, role: 'admin' },
+        ],
+        [aiId],
+      );
+      const approvalId = await createGroupApproval(context, { aiId, groupId, seed: 60 });
+
+      const refused = await decideRequest(localApp, {
+        cookie: aiOwner.cookie,
+        approvalId,
+        decision: 'approve_always',
+      });
+      expect(refused.status).toBe(403);
+      expect((await errorOf(refused)).code).toBe('always_requires_admin');
+
+      const [row] = await context.db.select().from(approvals).where(eq(approvals.id, approvalId));
+      expect(row?.status).toBe('pending');
+      const rules = await context.db.select().from(approvalRules);
+      expect(rules).toHaveLength(0);
+      const auditRows = await context.db.select().from(auditLog);
+      expect(auditRows.find((entry) => entry.action === 'approval_rule.created')).toBeUndefined();
+
+      // The same person can still approve once afterwards.
+      const once = await decideRequest(localApp, {
+        cookie: aiOwner.cookie,
+        approvalId,
+        decision: 'approve_once',
+      });
+      expect(once.status).toBe(200);
+      const body = (await once.json()) as { status: string };
+      expect(body.status).toBe('approved_once');
+    });
+
+    it('a group admin who is not the AI owner can approve_always', async () => {
+      const localApp = buildRoutesHarness(context, now, () => true);
+      const seeded = await seedGroupApproval({
+        aiOwnerEmail: `t101-owner-${testCounter}@example.com`,
+        memberEmail: `t101-member-${testCounter}@example.com`,
+        adminEmail: `t101-admin2-${testCounter}@example.com`,
+      });
+      const approvalId = await createGroupApproval(context, {
+        aiId: seeded.aiId,
+        groupId: seeded.groupId,
+        seed: 61,
+      });
+
+      const onceId = await createGroupApproval(context, {
+        aiId: seeded.aiId,
+        groupId: seeded.groupId,
+        seed: 62,
+      });
+      const once = await decideRequest(localApp, {
+        cookie: seeded.adminCookie,
+        approvalId: onceId,
+        decision: 'approve_once',
+      });
+      expect(once.status).toBe(200);
+
+      const always = await decideRequest(localApp, {
+        cookie: seeded.adminCookie,
+        approvalId,
+        decision: 'approve_always',
+      });
+      expect(always.status).toBe(200);
+      const rules = await context.db.select().from(approvalRules);
+      expect(rules).toHaveLength(1);
+      expect(rules[0]?.groupId).toBe(seeded.groupId);
+    });
+
+    it('still answers 404 for a stranger on both decisions', async () => {
+      const localApp = buildRoutesHarness(context, now, () => true);
+      const seeded = await seedGroupApproval({
+        aiOwnerEmail: `t101-owner3-${testCounter}@example.com`,
+        memberEmail: `t101-member3-${testCounter}@example.com`,
+        adminEmail: `t101-admin3-${testCounter}@example.com`,
+      });
+      const stranger = await bootstrapUser(
+        context,
+        authApp,
+        `t101-stranger-${testCounter}@example.com`,
+      );
+      const approvalId = await createGroupApproval(context, {
+        aiId: seeded.aiId,
+        groupId: seeded.groupId,
+        seed: 63,
+      });
+      for (const decision of ['approve_once', 'approve_always']) {
+        const response = await decideRequest(localApp, {
+          cookie: stranger.cookie,
+          approvalId,
+          decision,
+        });
+        expect(response.status).toBe(404);
+      }
+    });
+
+    it('alwaysEligible is per viewer: false for a plain-member owner, true for an admin', async () => {
+      const localApp = buildRoutesHarness(context, now, () => true);
+      const seeded = await seedGroupApproval({
+        aiOwnerEmail: `t101-owner4-${testCounter}@example.com`,
+        memberEmail: `t101-member4-${testCounter}@example.com`,
+        adminEmail: `t101-admin4-${testCounter}@example.com`,
+      });
+      const groupApprovalId = await createGroupApproval(context, {
+        aiId: seeded.aiId,
+        groupId: seeded.groupId,
+        seed: 64,
+      });
+      // A personal-chat approval for the same AI, so the list mixes scopes.
+      const personal = await createApproval(
+        context.db,
+        {
+          aiId: seeded.aiId,
+          action: 'demo.echo',
+          summary: 'Echo',
+          argsHash: argsHash(164),
+          requestedBy: 'ai-bot@galena.localhost',
+          expiresAt: new Date(now.getTime() + 60_000),
+        },
+        now,
+      );
+
+      // Single GET: the AI owner (a plain group member) sees false.
+      const ownerGet = await localApp.request(`${TEST_BASE_URL}/api/approvals/${groupApprovalId}`, {
+        headers: { cookie: seeded.ownerCookie },
+      });
+      expect(ownerGet.status).toBe(200);
+      expect(((await ownerGet.json()) as { alwaysEligible: boolean }).alwaysEligible).toBe(false);
+
+      // The admin sees true on the same row.
+      const adminGet = await localApp.request(`${TEST_BASE_URL}/api/approvals/${groupApprovalId}`, {
+        headers: { cookie: seeded.adminCookie },
+      });
+      expect(adminGet.status).toBe(200);
+      expect(((await adminGet.json()) as { alwaysEligible: boolean }).alwaysEligible).toBe(true);
+
+      // A plain group member who may not decide at all still sees 404.
+      const memberGet = await localApp.request(
+        `${TEST_BASE_URL}/api/approvals/${groupApprovalId}`,
+        { headers: { cookie: seeded.memberCookie } },
+      );
+      expect(memberGet.status).toBe(404);
+
+      // The list mixes both rows for the owner; the admin only sees the
+      // group row (the personal chat belongs to someone else's AI).
+      const adminList = await localApp.request(`${TEST_BASE_URL}/api/approvals`, {
+        headers: { cookie: seeded.adminCookie },
+      });
+      expect(adminList.status).toBe(200);
+      const adminRows = (await adminList.json()) as Array<{
+        id: string;
+        alwaysEligible: boolean;
+      }>;
+      expect(adminRows.find((row) => row.id === groupApprovalId)?.alwaysEligible).toBe(true);
+      expect(adminRows.some((row) => row.id === personal.id)).toBe(false);
+
+      const ownerList = await localApp.request(`${TEST_BASE_URL}/api/approvals`, {
+        headers: { cookie: seeded.ownerCookie },
+      });
+      expect(ownerList.status).toBe(200);
+      const ownerRows = (await ownerList.json()) as Array<{
+        id: string;
+        alwaysEligible: boolean;
+      }>;
+      expect(ownerRows.find((row) => row.id === groupApprovalId)?.alwaysEligible).toBe(false);
+      expect(ownerRows.find((row) => row.id === personal.id)?.alwaysEligible).toBe(true);
+    });
+
+    it('ordering: non-eligible answers 400 and expired answers 409 before the admin check', async () => {
+      const ineligibleApp = buildRoutesHarness(context, now, () => false);
+      const eligibleApp = buildRoutesHarness(context, now, () => true);
+      const aiOwner = await bootstrapUser(
+        context,
+        authApp,
+        `t101-order-${testCounter}@example.com`,
+      );
+      const admin = await bootstrapUser(
+        context,
+        authApp,
+        `t101-order-admin-${testCounter}@example.com`,
+      );
+      const { aiId } = await seedAi(context, aiOwner.id);
+      const groupId = await seedGroup(
+        context,
+        aiOwner.id,
+        [
+          { userId: aiOwner.id, role: 'member' },
+          { userId: admin.id, role: 'admin' },
+        ],
+        [aiId],
+      );
+
+      const notEligibleId = await createGroupApproval(context, { aiId, groupId, seed: 65 });
+      const notEligible = await decideRequest(ineligibleApp, {
+        cookie: aiOwner.cookie,
+        approvalId: notEligibleId,
+        decision: 'approve_always',
+      });
+      expect(notEligible.status).toBe(400);
+      expect((await errorOf(notEligible)).code).toBe('always_not_allowed');
+
+      const expiredId = await createGroupApproval(context, { aiId, groupId, seed: 66 });
+      await context.db
+        .update(approvals)
+        .set({ expiresAt: new Date(now.getTime() - 1) })
+        .where(eq(approvals.id, expiredId));
+      const expired = await decideRequest(eligibleApp, {
+        cookie: aiOwner.cookie,
+        approvalId: expiredId,
+        decision: 'approve_always',
+      });
+      expect(expired.status).toBe(409);
+      expect((await errorOf(expired)).code).toBe('expired');
     });
   });
 });

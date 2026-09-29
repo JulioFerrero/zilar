@@ -1,7 +1,7 @@
 ---
 id: T-0101
 title: Only a group owner/admin can create a group "always allow" rule
-status: todo
+status: review
 milestone: M4
 branch: task/T-0101-group-always-admin-only
 model: meta/muse-spark-1.3-contributor
@@ -68,19 +68,31 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Decision gate (`apps/server/src/approvals/service.ts` `decideApproval`): for `approve_always` on a group approval (`groupId` not null), the caller must be a group owner/admin via `isGroupAdmin` from `approvals/rules.ts`. Refusal is a new `ApprovalServiceError` code `always_requires_admin`, thrown after the existing checks (canDecide → 404, expired/not_pending → 409, `always_not_allowed` → 400) and before any state change, so the row stays `pending` and the same person can still `approve_once` afterwards. Personal-chat approvals skip the group check.
+- Read model (`apps/server/src/approvals/routes.ts`): `decoratePublic` now takes the viewer's manager status and `alwaysEligible` is `true` only when the action is eligible AND (personal chat OR viewer is a group owner/admin). The list computes the viewer's managed group ids once via `managedGroupIdsForUser` (single query, `Set` lookup per row); single GET and the decision response do one `isGroupAdmin` check. Route maps `always_requires_admin` to 403 with that code.
+- Web (`apps/web/src/components/ApprovalCard.tsx`): a `403 always_requires_admin` on Confirm shows "Only a group admin can always allow an action here." and drops the third button, same pattern as `always_not_allowed`; one-time buttons stay. Rule creation/revocation/listing and the gateway lookup are unchanged.
 
 ### Files changed
--
+- `apps/server/src/approvals/service.ts` (admin check + new error code), `routes.ts` (per-viewer `alwaysEligible`, 403 mapping, `managedGroupIdsForUser`)
+- `apps/web/src/components/ApprovalCard.tsx` (403 branch)
+- Tests: `apps/server/src/approvals/service.test.ts` (+6: member-owner refused with no state change then approves once; non-owner admin decides once + always; owner-admin always works; personal unchanged; stranger 404 both; ordering 400/409-before-403), `rules.routes.test.ts` (+5 incl. per-viewer single/list incl. mixed personal+group rows), `apps/server/src/actions/flow.e2e.test.ts` (+1: member-owner sees `alwaysEligible: false`, forced 403, approve-once runs, admin always creates rule, next request auto-executes), `apps/web/src/components/ApprovalCard.test.tsx` (+1: 403 message + hides third button)
+- `work/T-0101-group-always-admin-only.md` (this Report + status)
 
 ### Commands run and real results
--
+- `pnpm install`: ok (7.7s).
+- `pnpm format:check`: initially 4 files unformatted (mine); after `prettier --write`: "All matched files use Prettier code style!".
+- `pnpm lint` (oxlint, re-run after last edit): clean.
+- `pnpm typecheck`: 10 tasks successful (fixed one missing `approvals` import in `rules.routes.test.ts` mid-way).
+- Targeted `pnpm exec vitest run src/actions/flow.e2e.test.ts src/approvals/service.test.ts src/approvals/rules.routes.test.ts` (in `apps/server`): 3 files, 77 tests, all passed.
+- Full `pnpm --filter @galena/server test`: 57 files passed, 5 skipped; 909 tests passed, 7 skipped, 0 failed (ran twice; the package arg filter is swallowed by the test script so the whole suite ran — pre-existing arg plumbing, not my change).
+- `pnpm --filter @galena/web test`: 57 files, 640 tests, all passed (includes 1 new test).
+- `pnpm build`: 2 tasks successful.
 
 ### Problems, deviations from the spec, open questions
--
+- None. Ordering verified by test: non-eligible action → 400 `always_not_allowed` and expired row → 409 even when the caller also lacks admin rights; the admin check runs last of the refusal checks, before the transaction.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
 
 ---
 

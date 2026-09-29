@@ -1,11 +1,11 @@
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, approvalRules } from '../db/schema';
+import { ais, approvalRules, groupMembers } from '../db/schema';
 import { HttpError } from '../errors';
 import {
   ApprovalServiceError,
@@ -74,7 +74,16 @@ export function createApprovalsRoutes({
   routes.get('/approvals', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
     const approvals = await listDecidableApprovals(db, user.id, new Date(now()));
-    return c.json(approvals.map((row) => decoratePublic(row, alwaysEligibleFn)));
+    const managedGroupIds = await managedGroupIdsForUser(db, user.id);
+    return c.json(
+      approvals.map((row) =>
+        decoratePublic(
+          row,
+          alwaysEligibleFn,
+          row.groupId === null || managedGroupIds.has(row.groupId),
+        ),
+      ),
+    );
   });
 
   routes.get('/approvals/:id', async (c) => {
@@ -83,7 +92,9 @@ export function createApprovalsRoutes({
     if (!approval) {
       throw new HttpError(404, 'not_found', 'Approval not found');
     }
-    return c.json(decoratePublic(approval, alwaysEligibleFn));
+    const isManager =
+      approval.groupId === null || (await isGroupAdmin(db, approval.groupId, user.id));
+    return c.json(decoratePublic(approval, alwaysEligibleFn, isManager));
   });
 
   routes.post('/approvals/:id/decision', async (c) => {
@@ -162,11 +173,21 @@ export function createApprovalsRoutes({
             }
           });
       }
-      return c.json(decoratePublic(toPublicApproval(updated, new Date(now())), alwaysEligibleFn));
+      return c.json(
+        decoratePublic(
+          toPublicApproval(updated, new Date(now())),
+          alwaysEligibleFn,
+          updated.groupId === null || (await isGroupAdmin(db, updated.groupId, user.id)),
+        ),
+      );
     } catch (error) {
       if (error instanceof ApprovalServiceError) {
         const status =
-          error.errorCode === 'expired' || error.errorCode === 'not_pending' ? 409 : 400;
+          error.errorCode === 'expired' || error.errorCode === 'not_pending'
+            ? 409
+            : error.errorCode === 'always_requires_admin'
+              ? 403
+              : 400;
         throw new HttpError(status, error.errorCode, error.message);
       }
       throw error;
@@ -278,12 +299,26 @@ async function canManageRuleFor(
 
 // Re-runs `toPublicApproval` with the always-eligible flag filled in.
 // The service returns `alwaysEligible: false` because it does not own
-// the registry; the route is the boundary that knows.
+// the registry; the route is the boundary that knows. T-0101: the flag
+// is per viewer — a group approval is only always-eligible for a group
+// owner/admin (`isManager`), since only they may create a group rule.
+// Personal-chat approvals need no group check (`isManager` is `true`).
 function decoratePublic(
   row: ReturnType<typeof toPublicApproval>,
   alwaysEligible: AlwaysEligiblePredicate,
+  isManager: boolean,
 ): ReturnType<typeof toPublicApproval> {
-  return { ...row, alwaysEligible: alwaysEligible(row.action) };
+  return { ...row, alwaysEligible: isManager && alwaysEligible(row.action) };
+}
+
+// The group ids where the user is an owner/admin. One query for the
+// whole list response — never one query per row.
+async function managedGroupIdsForUser(db: ServerDatabase, userId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({ groupId: groupMembers.groupId })
+    .from(groupMembers)
+    .where(and(eq(groupMembers.userId, userId), inArray(groupMembers.role, ['owner', 'admin'])));
+  return new Set(rows.map((row) => row.groupId));
 }
 
 async function readJson(c: Context): Promise<unknown> {

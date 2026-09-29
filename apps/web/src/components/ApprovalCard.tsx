@@ -74,6 +74,15 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
         setActionError('This action can only be approved one time.');
         return;
       }
+      // T-0101: the viewer lost group-admin rights (or never had them) —
+      // a standing rule for the group needs an admin. Same pattern as
+      // above: drop the third button, keep the one-time buttons.
+      if (error instanceof ApiError && error.code === 'always_requires_admin') {
+        setConfirmingAlways(false);
+        setAlwaysBlocked(true);
+        setActionError('Only a group admin can always allow an action here.');
+        return;
+      }
       setActionError(error instanceof Error ? error.message : 'Could not send the decision');
     } finally {
       setInFlight(null);
