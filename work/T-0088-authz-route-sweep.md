@@ -1,7 +1,7 @@
 ---
 id: T-0088
 title: Authorization sweep (server) — a test that every route answers 401 without a session unless it is on a reviewed public list
-status: review
+status: merged
 milestone: M4
 branch: task/T-0088-authz-route-sweep
 model: minimax-coding-plan/MiniMax-M3
@@ -154,4 +154,10 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged. Tests only, no production code touched.
+
+Rebased onto main, format, lint, typecheck and the new test file pass (5 tests); the worker's full server run was 682 passed. No lint or ts disable comments.
+
+- The sweep enumerates `app.routes` and probes every `/api` route without a session. 40 routes: all answer 401 except the four allowlisted ones (Better Auth, invite check, runner pairing, health). **No open route found.**
+- The allowlist is explicit and commented, has a stale-entry check, and a check that allowlisted routes really are public. The negative control proves the helper flags an unguarded route.
+- Known limits (accepted): the sweep only covers paths under `/api` (routes outside it, apart from `/health`, are not probed), and the two middleware paths `/*` and `/api/*` are filtered by name.
