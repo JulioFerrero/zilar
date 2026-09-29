@@ -3122,6 +3122,63 @@ describe('agent gateway', () => {
         void core;
       });
 
+      it('a persona tool the model improvises in a group tool turn is never executed', async () => {
+        const fake = fakeActions({ status: 'executed', summary: 'unused' });
+        const calls: Call[] = [];
+        const responses: Response[] = [
+          jsonResponse({
+            choices: [
+              {
+                message: {
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: 'call-1',
+                      type: 'function',
+                      function: {
+                        name: 'update_persona',
+                        arguments: JSON.stringify({ persona: 'INJECTED PERSONA', summary: 'x' }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          completionResponse('follow-up'),
+        ];
+        let index = 0;
+        const fetchImpl: FetchLike = (_url, init) => {
+          calls.push({ url: _url, init: init ?? { headers: new Headers() } });
+          const response = responses[Math.min(index, responses.length - 1)]!;
+          index += 1;
+          return Promise.resolve(response.clone());
+        };
+        const setup_ = await setupGroupWithRoles({
+          members: [{ name: 'Owen', role: 'owner' }],
+          fetch: () => ({ fetchImpl, calls }),
+          actions: fake.gateway,
+        });
+        const { seeded, members, roomJid, core } = setup_;
+        const [before] = await context.db
+          .select({ persona: ais.persona })
+          .from(ais)
+          .where(eq(ais.id, seeded.aiId));
+        core.receive(memberMention(seeded, members[0]!, roomJid, 'm-1'));
+        await waitFor(() => calls.length === 2);
+        const second = JSON.parse(String(calls[1]!.init.body)) as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        const toolMessage = second.messages.find((message) => message.role === 'tool');
+        expect(toolMessage?.content).toBe('invalid: unknown tool');
+        const [after] = await context.db
+          .select({ persona: ais.persona })
+          .from(ais)
+          .where(eq(ais.id, seeded.aiId));
+        expect(after?.persona).toBe(before?.persona);
+        expect(fake.requests).toHaveLength(0);
+      });
+
       it('a model that smuggles aiId/groupId inside args cannot change who is asked', async () => {
         const fake = fakeActions({ status: 'pending_approval', approvalId: 'appr-2' });
         const setup_ = await setupGroupWithRoles({

@@ -1,7 +1,7 @@
 ---
 id: T-0098
 title: `request_action` in group chats — only admins can trigger it, the card is visible to the whole room (server)
-status: review
+status: merged
 milestone: M4
 branch: task/T-0098-group-request-action
 model: meta/muse-spark-1.3-contributor
@@ -119,4 +119,12 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged after one security fix by the lead. Rebased on main; after the last edit format, lint, typecheck clean; server 851 passed, 7 skipped. No disable comments.
+
+**The hole (found by the lead, proven by a failing test first):** in a group turn with `request_action` offered, the executor still handled the persona tools, and the argument parser accepts a tool by name whether or not it was advertised. A model that improvised `update_persona` in a room (for example after reading a hostile message) got `ok` and the AI's persona was rewritten. That broke the acceptance criterion "persona tools are not reachable from groups". Fixed in two layers: the group executor answers `invalid: unknown tool` for anything but `request_action`, and the group tool loop refuses any tool that was not advertised. Regression test added (`a persona tool the model improvises in a group tool turn is never executed`).
+
+Confirmed: only a group owner or admin sender gets the tool (per-turn database lookup, re-checked right before execution), a plain member, an AI or an unknown sender gets no tools and the gateway is never called even if the model tries; group id and AI id come from the session; each outcome maps to a fixed line; a stopped AI sends nothing; DM behaviour is unchanged (all DM tests untouched).
+
+Notes: the plain group path now makes one follow-up call when a model improvises a tool call with none advertised (answered `invalid: unknown tool`); the audit entry does not carry the triggering admin's user id yet (a follow-up: needs a change in `actions/gateway.ts`). Not live-checked (needs a real group and Julio's OK); steps are in the live-checks doc.
+
+Process note: this worker had been moved from MiniMax to Muse mid-task.

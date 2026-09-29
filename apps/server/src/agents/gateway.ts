@@ -507,6 +507,12 @@ export function createAgentGateway(
       if (!sessionIsLive(session)) {
         return { content: 'the AI was stopped' };
       }
+      // A group turn only ever offers `request_action`. The persona tools are
+      // reachable from the owner's DM alone, so a model that improvises one in
+      // a room (for example after reading a hostile message) gets nothing.
+      if (context !== undefined && call.tool !== REQUEST_ACTION_TOOL) {
+        return { content: 'invalid: unknown tool' };
+      }
       if (call.tool === UPDATE_PERSONA_TOOL) {
         await setPersonaFromChat(deps.db, aiId, call.persona);
         logger.info({ aiId, tool: call.tool, ok: true }, 'AI persona updated by chat');

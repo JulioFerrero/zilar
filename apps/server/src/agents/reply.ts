@@ -788,10 +788,21 @@ async function runGroupToolTurn(
     }
     return await sendGroupReply(deps, secrets, wire(first.content));
   }
+  // Only a tool that was advertised may run: anything else the model
+  // improvises (a persona tool, say) is answered `invalid: unknown tool`.
+  const advertised = new Set(tools.map((tool) => tool.function.name));
+  const execute = deps.executeTool;
+  const executeAdvertised: ExecuteToolCall | undefined =
+    execute === undefined
+      ? undefined
+      : (call) =>
+          advertised.has(call.tool)
+            ? execute(call)
+            : Promise.resolve({ content: 'invalid: unknown tool' });
   const { toolMessages, notices } = await executeToolCalls({
     toolCalls: first.toolCalls,
     aiId: deps.aiId,
-    ...(deps.executeTool === undefined ? {} : { executeTool: deps.executeTool }),
+    ...(executeAdvertised === undefined ? {} : { executeTool: executeAdvertised }),
     logger: deps.logger,
     secrets,
   });
