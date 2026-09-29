@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0065](T-0065-attachments-web.md) | Attachments on web: images and files via XEP-0363 + `attachment` payload, preview bar, paste/drop, image and file bubbles, retry | in progress | deepseek-v4.1-flash | T-0061 | MVP list item (plan §21). |
-| [T-0069](T-0069-web-mock-standalone.md) | Web mock mode: `?mock=1` only in dev builds; standalone (fake session, mock /api for AIs and connections) so QA can run without a server | in progress | deepseek-v4.1-flash | T-0062 | Web slot. Same hole T-0063 closed on mobile. |
 | [T-0071](T-0071-runner-hub.md) | Runner hub (M3, server): approved machines connect over the tunnel WebSocket, revoke drops them, online + last-seen | in progress | minimax-m3 | T-0068 | OpenCode Go is out of funds (402): MiniMax M3 fallback. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
@@ -98,3 +97,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0064](T-0064-mobile-markdown.md) | Mobile renders Markdown in AI replies (own dependency-free parser, safe subset, plain list previews); visual check open | 2026-09-29 |
 | [T-0067](T-0067-mobile-loading-states.md) | Mobile loading is not empty: skeletons, inline errors with Retry, pending open flushed on ready (port of T-0042); phone check open | 2026-09-29 |
 | [T-0068](T-0068-machines-registry.md) | M3 machines registry (server): hashed single-use pairing codes, proof-of-key-possession registration, owner approve/deny/revoke, durable key registry; live proof open | 2026-09-29 |
+| [T-0069](T-0069-web-mock-standalone.md) | Web mock mode: ?mock=1 only in dev builds; standalone (fake session, mock /api for AIs and connections); production ignores the param (proved with vite preview) | 2026-09-29 |
