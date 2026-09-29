@@ -277,3 +277,44 @@ export const llmVirtualKeys = pgTable('llm_virtual_keys', {
   budgetDuration: text('budget_duration').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// One stored approval request (T-0073). The AI asked a human to approve a
+// specific action; the args are bound to the row by `args_hash`, so a consumer
+// must present the same hash or the approval does not apply. `group_id` is
+// null for a DM with the AI and set for a group, because who may decide
+// differs between the two. `status` is `pending` until a human decides or the
+// sweeper expires it; `approved_once` is single-use (the verify path flips it
+// to `consumed`); `approved_always` is treated identically to a one-shot for
+// now (standing rules are out of scope). `decided_by` is the deciding user's
+// id; it is intentionally not exposed by the API.
+export const approvals = pgTable(
+  'approvals',
+  {
+    id: text('id').primaryKey(),
+    aiId: text('ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    action: text('action').notNull(),
+    summary: text('summary').notNull(),
+    details: text('details'),
+    argsHash: text('args_hash').notNull(),
+    worstCaseCurrency: text('worst_case_currency'),
+    worstCaseAmount: numeric('worst_case_amount', { precision: 12, scale: 2 }),
+    requestedBy: text('requested_by').notNull(),
+    status: text('status', {
+      enum: ['pending', 'approved_once', 'approved_always', 'denied', 'consumed'],
+    })
+      .notNull()
+      .default('pending'),
+    decidedBy: text('decided_by').references(() => user.id, { onDelete: 'set null' }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    note: text('note'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('approvals_ai_status_idx').on(table.aiId, table.status),
+    index('approvals_group_status_idx').on(table.groupId, table.status),
+  ],
+);

@@ -7,6 +7,7 @@ import { protocolVersion } from '@galena/protocol';
 import { createLitellmAdminClientFromConfig, type LitellmAdminClient } from './ai/litellm-client';
 import { createAisRoutes } from './ais/routes';
 import type { AiLogger } from './ais/service';
+import { createApprovalsRoutes } from './approvals/routes';
 import type { Auth } from './auth/auth';
 import { createAuthRoutes } from './auth/routes';
 import { createChatsRoutes } from './chats/routes';
@@ -128,6 +129,7 @@ export function createApp({
   app.route('/api', createGroupsRoutes({ auth, db, config, adminClient, logger }));
   app.route('/api', createChatsRoutes({ auth, db, config }));
   app.route('/api', createDraftsRoutes({ auth }));
+  app.route('/api', createApprovalsRoutes({ auth, db }));
   app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));
   app.route(
     '/api',
