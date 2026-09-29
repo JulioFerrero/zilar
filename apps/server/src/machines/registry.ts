@@ -3,6 +3,7 @@ import type { ServerDatabase } from '../db/client';
 import { machines } from '../db/schema';
 
 export type RevokeListener = (machineId: string) => void;
+export type ApproveListener = (machineId: string, publicKey: string) => void;
 
 // The durable lookup the tunnel hub uses to trust connecting machines. Only
 // `approved` machines expose their key: pending and revoked machines (and
@@ -15,10 +16,15 @@ export interface DbMachineRegistry {
   // process's listeners synchronously, so the hub can close live
   // connections. Cross-process fan-out is out of scope for this task.
   notifyRevoked(machineId: string): void;
+  onApprove(listener: ApproveListener): () => void;
+  // Called by the machines routes after an approve commits, so the hub can
+  // trust a freshly-approved machine without waiting for its 30 s refresh.
+  notifyApproved(machineId: string, publicKey: string): void;
 }
 
 export function createDbMachineRegistry(db: ServerDatabase): DbMachineRegistry {
   const revokeListeners = new Set<RevokeListener>();
+  const approveListeners = new Set<ApproveListener>();
 
   return {
     async getApprovedPublicKey(machineId: string): Promise<string | null> {
@@ -46,6 +52,19 @@ export function createDbMachineRegistry(db: ServerDatabase): DbMachineRegistry {
     notifyRevoked(machineId: string): void {
       for (const listener of revokeListeners) {
         listener(machineId);
+      }
+    },
+
+    onApprove(listener: ApproveListener): () => void {
+      approveListeners.add(listener);
+      return () => {
+        approveListeners.delete(listener);
+      };
+    },
+
+    notifyApproved(machineId: string, publicKey: string): void {
+      for (const listener of approveListeners) {
+        listener(machineId, publicKey);
       }
     },
   };

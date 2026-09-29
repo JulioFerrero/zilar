@@ -19,7 +19,8 @@ export type MachineStatus = 'pending' | 'approved' | 'revoked';
 
 // The owner-facing shape. The public key is never returned: `fingerprint`
 // (the first 16 hex chars of sha256(public key bytes)) lets the owner compare
-// the machine with what the runner shows locally.
+// the machine with what the runner shows locally. `online` is true only
+// when the runner hub is on and the machine has a live tunnel connection.
 export interface PublicMachine {
   id: string;
   name: string;
@@ -33,6 +34,7 @@ export interface PublicMachine {
   diskFreeGb: number;
   drivers: string[];
   fingerprint: string;
+  online: boolean;
   createdAt: Date;
   approvedAt: Date | null;
   lastSeenAt: Date | null;
@@ -83,7 +85,10 @@ export function verifyPairingSignature(
   }
 }
 
-export function toPublicMachine(row: MachineRow): PublicMachine {
+export function toPublicMachine(
+  row: MachineRow,
+  isOnline?: (machineId: string) => boolean,
+): PublicMachine {
   const capabilities = row.capabilities;
   return {
     id: row.id,
@@ -98,6 +103,7 @@ export function toPublicMachine(row: MachineRow): PublicMachine {
     diskFreeGb: asNumber(capabilities['disk_free_gb']),
     drivers: asStringArray(capabilities['drivers']),
     fingerprint: fingerprintOfPublicKey(row.publicKey),
+    online: isOnline?.(row.id) ?? false,
     createdAt: row.createdAt,
     approvedAt: row.approvedAt,
     lastSeenAt: row.lastSeenAt,
@@ -259,6 +265,17 @@ export async function listMachines(db: ServerDatabase, ownerUserId: string): Pro
     .from(machines)
     .where(eq(machines.ownerUserId, ownerUserId))
     .orderBy(machines.createdAt);
+}
+
+// The full set of approved (machine id, public key) pairs. Used by the hub
+// to refresh its in-memory cache; nothing else needs this view.
+export async function listApprovedMachineKeys(
+  db: ServerDatabase,
+): Promise<Array<{ id: string; publicKey: string }>> {
+  return db
+    .select({ id: machines.id, publicKey: machines.publicKey })
+    .from(machines)
+    .where(eq(machines.status, 'approved'));
 }
 
 // Looks up one machine owned by `ownerUserId`. Returns null for a missing id

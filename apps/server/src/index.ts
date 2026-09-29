@@ -1,5 +1,9 @@
 import { serve } from '@hono/node-server';
-import { createLitellmAdminClientFromConfig, redactSecrets } from './ai/litellm-client';
+import {
+  createLitellmAdminClientFromConfig,
+  DEFAULT_LITELLM_BASE_URL,
+  redactSecrets,
+} from './ai/litellm-client';
 import { createAgentGateway } from './agents/gateway';
 import { createApp } from './app';
 import { createAuth } from './auth/auth';
@@ -10,6 +14,8 @@ import { createDb } from './db/client';
 import { runMigrations } from './db/migrate';
 import { sharedDraftHub } from './drafts/hub';
 import { createLogger } from './logger';
+import { assertRunnerHubConfig, startRunnerHub, type RunnerHub } from './machines/hub';
+import { createDbMachineRegistry } from './machines/registry';
 import { createEjabberdAdminClient } from './xmpp/admin-client';
 
 const config = loadServerConfigOrExit(process.env);
@@ -31,7 +37,36 @@ await runMigrations(db);
 
 const adminClient = createEjabberdAdminClient(config.xmpp);
 const auth = createAuth({ db, config, mailer, adminClient, logger });
-const app = createApp({ db, logger, config, auth, adminClient });
+
+// Runner hub (T-0071): validated here so a misconfiguration fails fast with
+// a single clear message, before the HTTP server starts. The actual listener
+// comes up after `serve()` so the API is not delayed.
+assertRunnerHubConfig({
+  enabled: config.RUNNER_HUB_ENABLED,
+  gatewayUrl: config.LITELLM_BASE_URL ?? DEFAULT_LITELLM_BASE_URL,
+});
+
+// One registry, shared with both the machines routes and the hub: the
+// route's approve/revoke notifies must reach the hub's listener set.
+const machineRegistry = createDbMachineRegistry(db);
+
+// `isMachineOnline` looks up the hub each request, so the routes pick up
+// the running hub once `startRunnerHub` resolves. Absent when the hub is
+// disabled, so the routes answer `online: false` for everyone.
+let runnerHub: RunnerHub | null = null;
+const isMachineOnline = (machineId: string): boolean => {
+  return runnerHub?.isOnline(machineId) ?? false;
+};
+
+const app = createApp({
+  db,
+  logger,
+  config,
+  auth,
+  adminClient,
+  machineRegistry,
+  ...(config.RUNNER_HUB_ENABLED ? { isMachineOnline } : {}),
+});
 
 // Agent gateway (T-0034): off unless AGENT_GATEWAY_ENABLED=true, and inert
 // without LiteLLM plus the key cipher. It connects each active AI to XMPP so
@@ -63,6 +98,28 @@ const gateway = createAgentGateway(
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
   logger.info({ port: info.port }, 'galena-server listening');
 });
+
+// Runner hub (T-0071): starts only when RUNNER_HUB_ENABLED=true, after the
+// HTTP server is listening. A start failure (port in use, bad config) must
+// never take the API down, so it logs and the rest of the server keeps
+// running. `isMachineOnline` returns false until the hub resolves, then
+// forwards to it for every request.
+if (config.RUNNER_HUB_ENABLED) {
+  startRunnerHub({
+    db,
+    registry: machineRegistry,
+    logger,
+    port: config.RUNNER_HUB_PORT,
+    gatewayUrl: config.LITELLM_BASE_URL ?? DEFAULT_LITELLM_BASE_URL,
+  })
+    .then((hub) => {
+      runnerHub = hub;
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error({ err: message }, 'runner hub failed to start; API continues without it');
+    });
+}
 
 // The gateway logs each AI in over XMPP, which can take a while when ejabberd
 // is slow or down: start it after the server is listening and never block on
@@ -109,6 +166,9 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
       setTimeout(() => server.closeAllConnections(), CONNECTION_GRACE_MS).unref();
     }
   });
+  if (runnerHub !== null) {
+    await runnerHub.close();
+  }
   await gateway.stop();
   await close();
   process.exit(0);

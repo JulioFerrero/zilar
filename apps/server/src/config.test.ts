@@ -50,6 +50,8 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_URL: 'http://localhost:3000',
       WEB_ORIGINS: ['http://localhost:5173'],
       AGENT_GATEWAY_ENABLED: false,
+      RUNNER_HUB_ENABLED: false,
+      RUNNER_HUB_PORT: 3189,
       xmpp: VALID_XMPP,
     });
   });
@@ -77,6 +79,8 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_URL: 'https://auth.example.com',
       WEB_ORIGINS: ['https://app.example.com', 'https://admin.example.com'],
       AGENT_GATEWAY_ENABLED: false,
+      RUNNER_HUB_ENABLED: false,
+      RUNNER_HUB_PORT: 3189,
       xmpp: VALID_XMPP,
     });
   });
@@ -233,5 +237,58 @@ describe('loadServerConfig', () => {
     expect(loadServerConfig({ ...base, AGENT_GATEWAY_ENABLED: 'true' }).AGENT_GATEWAY_ENABLED).toBe(
       true,
     );
+  });
+
+  it('leaves the runner hub off by default on port 3189', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    const config = loadServerConfig(base);
+    expect(config.RUNNER_HUB_ENABLED).toBe(false);
+    expect(config.RUNNER_HUB_PORT).toBe(3189);
+  });
+
+  it('enables the runner hub with one line and accepts a custom port', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig({ ...base, RUNNER_HUB_ENABLED: 'true' }).RUNNER_HUB_ENABLED).toBe(true);
+    expect(
+      loadServerConfig({ ...base, RUNNER_HUB_ENABLED: 'true', RUNNER_HUB_PORT: '4000' })
+        .RUNNER_HUB_PORT,
+    ).toBe(4000);
+  });
+
+  it('accepts the runner-hub port boundaries', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(
+      loadServerConfig({ ...base, RUNNER_HUB_ENABLED: 'true', RUNNER_HUB_PORT: '1' })
+        .RUNNER_HUB_PORT,
+    ).toBe(1);
+    expect(
+      loadServerConfig({ ...base, RUNNER_HUB_ENABLED: 'true', RUNNER_HUB_PORT: '65535' })
+        .RUNNER_HUB_PORT,
+    ).toBe(65535);
+  });
+
+  it('rejects an out-of-range runner-hub port', () => {
+    for (const port of ['0', '65536', '12.5']) {
+      const message = configErrorMessage({
+        DATABASE_URL: VALID_DATABASE_URL,
+        BETTER_AUTH_SECRET: VALID_SECRET,
+        RUNNER_HUB_PORT: port,
+        ...VALID_XMPP_ENV,
+      });
+      expect(message).toContain('RUNNER_HUB_PORT');
+      expect(message).not.toContain(port);
+    }
   });
 });

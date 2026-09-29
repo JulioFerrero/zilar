@@ -95,4 +95,19 @@ describe('db machine registry', () => {
     expect(seen).toEqual(['machine-1']);
     expect(other).toEqual(['machine-1', 'machine-2']);
   });
+
+  it('emits approves to listeners synchronously with the public key and unsubscribes', async () => {
+    const registry = createDbMachineRegistry(context.db);
+    const seen: Array<{ id: string; publicKey: string }> = [];
+    const unsubscribe = registry.onApprove((machineId, publicKey) => {
+      seen.push({ id: machineId, publicKey });
+    });
+
+    registry.notifyApproved('machine-1', 'key-1');
+    expect(seen).toEqual([{ id: 'machine-1', publicKey: 'key-1' }]);
+
+    unsubscribe();
+    registry.notifyApproved('machine-2', 'key-2');
+    expect(seen).toEqual([{ id: 'machine-1', publicKey: 'key-1' }]);
+  });
 });

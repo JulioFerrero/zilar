@@ -66,6 +66,22 @@ const serverConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // Runner hub (T-0071): off by default. When enabled, the server accepts
+    // tunnel connections from approved machines on RUNNER_HUB_PORT (default
+    // 3189) bound to 127.0.0.1. The HTTP-only gateway requirement is checked
+    // in index.ts once the LiteLLM base URL is known.
+    RUNNER_HUB_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    RUNNER_HUB_PORT: z.preprocess(
+      (value) => value ?? '3189',
+      z
+        .string()
+        .regex(/^\d+$/)
+        .transform((value) => Number.parseInt(value, 10))
+        .refine((value) => value >= 1 && value <= 65535),
+    ),
   })
   .superRefine((value, ctx) => {
     const entries = [

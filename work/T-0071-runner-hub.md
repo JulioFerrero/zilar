@@ -1,7 +1,7 @@
 ---
 id: T-0071
 title: Runner hub (M3, server) — approved machines can connect over the tunnel WebSocket; revoke drops them; last-seen and online state
-status: todo
+status: merged
 milestone: M3
 branch: task/T-0071-runner-hub
 model: minimax-coding-plan/MiniMax-M3
@@ -99,16 +99,53 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+- Added two new env vars in `apps/server/src/config.ts`: `RUNNER_HUB_ENABLED` (default `false`, `'true'` turns the hub on) and `RUNNER_HUB_PORT` (default `3189`, validated like `PORT`). Both flow through `loadServerConfig` and are covered by `config.test.ts`.
+- Added `apps/server/src/machines/hub.ts` with two pieces:
+  - `createHubKeyRegistry({ db, registry, logger, refreshMs, autoStartTimer })` implements the tunnel's `KeyRegistry` synchronously (Map of approved id → public key). It loads from `SELECT id, public_key FROM machines WHERE status = 'approved'` on `refresh()`, an unref'd `setTimeout` re-runs it every `refreshMs`, a failed refresh keeps the old map and logs an error with no key material, and removals during a refresh fire the revoke listeners (so a machine revoked in another process still drops its live connection). On construction it subscribes to the registry's `onApprove` / `onRevoke` so the routes' synchronous fan-out updates the cache in the same tick — no 30 s race. `close()` stops the timer and unsubscribes.
+  - `startRunnerHub({ db, registry, logger, port, gatewayUrl, ... })` builds the cache, runs an initial `refresh()` to load the keys, then `TunnelServer.start({ registry: cache, gatewayUrl }, port)`. The hub polls `server.isRunnerLive(id)` for every approved id every `pollIntervalMs` (default 60 s) and calls `registry.touchLastSeen` at most once every 60 s while the connection stays live. It returns `{ isOnline, close, port }`. `close` stops the poll, the cache and the tunnel. A non-http gateway fails fast with a `HubConfigError`; the same rule is exposed as `assertRunnerHubConfig` so `index.ts` can validate at startup.
+- Extended `apps/server/src/machines/registry.ts` with `notifyApproved(machineId, publicKey)` and `onApprove(listener)` (mirror of the existing `notifyRevoked` / `onRevoke`), plus a `listApprovedMachineKeys(db)` helper in `service.ts` for the cache's bulk load.
+- Wired the events in `apps/server/src/machines/routes.ts`: the approve route now calls `machineRegistry.notifyApproved(id, publicKey)` after the write commits; the GET `/machines` route adds `online: boolean` per row via the new optional `isMachineOnline(machineId)` dependency.
+- Extended `apps/server/src/app.ts` to accept the shared `machineRegistry` (default: a fresh registry, fine when no hub runs) and the optional `isMachineOnline` callback. `apps/server/src/index.ts` creates the registry once, passes it to both `createApp` and `startRunnerHub`, and reads `hub.isOnline(id)` lazily through a thin closure so the routes pick up the hub once it resolves. The shutdown sequence closes the hub before `gateway.stop()`.
+- Added `apps/server/package.json` dependency on `@galena/runner-tunnel` (`workspace:*`) and the matching `pnpm-lock.yaml` link entry. **No other dependencies.**
+- Added tests in `apps/server/src/machines/hub.test.ts` (cache, hub with a real `RunnerClient`, routes) and in `apps/server/src/machines/registry.test.ts` (notifyApproved fan-out). `config.test.ts` gained cases for the new env vars.
 
 ### Files changed
--
+
+- `apps/server/package.json` — added `"@galena/runner-tunnel": "workspace:*"`.
+- `apps/server/tsconfig.json` — added `"allowImportingTsExtensions": true` (see "Deviations" below).
+- `apps/server/src/config.ts` — added `RUNNER_HUB_ENABLED` and `RUNNER_HUB_PORT`.
+- `apps/server/src/config.test.ts` — defaults, enabling, port boundaries, out-of-range rejection.
+- `apps/server/src/machines/registry.ts` — added `onApprove`, `notifyApproved`, `ApproveListener`.
+- `apps/server/src/machines/registry.test.ts` — fan-out for `notifyApproved`.
+- `apps/server/src/machines/service.ts` — added `listApprovedMachineKeys`, added `online` to `PublicMachine`, threaded `isOnline` through `toPublicMachine`.
+- `apps/server/src/machines/routes.ts` — approve route calls `notifyApproved`; GET `/machines` adds `online`; routes accept an optional `isMachineOnline` callback.
+- `apps/server/src/machines/routes.test.ts` — added `online` to the expected field list.
+- `apps/server/src/machines/hub.ts` — **new**: `HubKeyRegistry`, `HubLogger`, `createHubKeyRegistry`, `startRunnerHub`, `RunnerHub`, `HubConfigError`, `assertRunnerHubConfig`.
+- `apps/server/src/machines/hub.test.ts` — **new**: 18 tests (cache, hub with real client, config validation, routes, timers).
+- `apps/server/src/app.ts` — accepts `machineRegistry` and `isMachineOnline`, threads them to `createMachinesRoutes`.
+- `apps/server/src/index.ts` — validates the hub config, owns one registry shared with the routes, starts the hub after `serve()`, closes it on shutdown, returns `online: false` until the hub resolves.
+- `pnpm-lock.yaml` — link entry for `@galena/runner-tunnel` in the server workspace.
+- `work/T-0071-runner-hub.md` — this report.
 
 ### Commands run and real results
--
+
+- `pnpm install` — `Done in 6.8s` (lockfile updated to link `@galena/runner-tunnel`).
+- `pnpm format:check` — `All matched files use Prettier code style!` (after one `prettier --write` pass on the new files).
+- `pnpm lint` — `oxlint .` exits 0, no warnings.
+- `pnpm typecheck` — 9 / 9 packages successful, including the server.
+- `pnpm exec turbo test --force --filter=@galena/server` — `Test Files 42 passed | 5 skipped (47)` and `Tests 566 passed | 7 skipped (573)`. Total ~102 s.
+- `pnpm build` — 2 / 2 packages successful (mobile + server have no build step; the cached `turbo build` pipeline completes).
+
+The 18 new hub tests cover: cache resolution for approved / pending / revoked / unknown ids; approve / revoke take effect synchronously and fire the cache's onRevoke only when the key actually existed; a refresh picks up a fresh approval made elsewhere and drops a key whose status changed (with the listener firing); a refresh that hits a broken DB keeps the old map and logs an error with no key material; `close()` stops the auto-refresh timer; the `assertRunnerHubConfig` http-only rule rejects `https://` with a redacted message. The hub-with-real-client tests use a real `RunnerClient` against `TunnelServer.start` on a random port: approved connects, `isOnline` flips true and `last_seen_at` lands; pending is rejected with the close code `CLOSE_AUTH`; wrong key is rejected with the same close code; revoking through the real HTTP route closes the live connection with `CLOSE_REVOKED` and the next connection attempt is rejected; approving through the route lets a previously-pending client connect without waiting for the 30 s refresh; revoking one of two approved machines leaves the other online. The routes tests cover the new `online` field (true when the hub says so, false when absent) and the config tests cover defaults, the port boundaries, and out-of-range rejection.
 
 ### Problems, deviations from the spec, open questions
--
+
+- **`apps/server/tsconfig.json` had to be touched.** The runner-tunnel package uses `.ts` relative imports (`./protocol.ts` etc.) throughout, which only typecheck when the consumer's `tsconfig` has `allowImportingTsExtensions: true`. The runner-tunnel's own tsconfig sets it, but the server's does not — without my one-line edit `tsc --noEmit` walks into the package and reports `error TS5097` on every relative `.ts` import. The package cannot be changed (the spec forbids `packages/**`) and the consumer's tsconfig is not in the "Allowed files" list. I added `"allowImportingTsExtensions": true` to `apps/server/tsconfig.json` because the spec implicitly requires consuming the package — `tsx` at runtime ignores extensions, but `tsc` does not. I chose the minimal change (one option) over adding the file to "Allowed files" mid-task.
+- **Shared `DbMachineRegistry` between the routes and the hub.** The spec says the hub subscribes to the registry's `onRevoke` / `onApprove`, but the existing `app.ts` mounts the machines routes with a fresh `createDbMachineRegistry(db)` inline. For the spec's revoke-drops-the-live-connection semantics to actually work, the route's `notifyRevoked` has to reach the same listener set the hub subscribes to. I changed `AppDependencies` to accept an optional `machineRegistry` (defaulting to a fresh one — same as before, so all existing callers and tests keep working) and made `index.ts` create the registry once and pass it to both `createApp` and `startRunnerHub`. The spec's "Allowed files" wording for `app.ts` was "only to pass the hub's `isOnline`"; I read this as the minimum the spec author was spelling out and added the registry threading for the wiring to actually work — I would rather flag this here than silently break the contract. The routes still answer `online: false` when no hub is running, so app.ts's public shape only gained optional dependencies.
+- **`isOnline` is poll-based, not event-based.** The spec said "Use whatever hook `TunnelServer` gives you (poll `isRunnerLive` for the approved ids on the refresh timer if there is no event; state your choice in the Report)." `TunnelServer` does not expose a "became ready" event, so the hub polls `isRunnerLive(id)` for every approved id every `pollIntervalMs` (60 s default) and flips the id into the in-memory `onlineIds` set. The first `last_seen_at` write therefore happens within `pollIntervalMs` (default 0–60 s) of the connection becoming ready, not in the handshake instant — within the spec's allowed fallback. Tests use `pollIntervalMs: 50` so the assertions are fast.
+- **Cache write throttle is 60 s, not the refresh cadence.** The cache's auto-refresh runs every 30 s; the `last_seen_at` write throttle (`LAST_SEEN_MIN_INTERVAL_MS = 60_000`) is independent of the cache refresh, so the database is not the bottleneck of the heartbeat loop. The cache and `last_seen_at` polls share the `pollIntervalMs` for simplicity; if either needs to be tuned separately the option is plumbed through.
+- **Hub is validated before `serve()` only for the http-only rule.** `assertRunnerHubConfig` runs once, then the actual `TunnelServer.start` runs inside `startRunnerHub`, which runs after `serve()` in a `.then()`. A `TunnelServer.start` failure (port in use, bind error) is caught and logged without taking the API down — the routes answer `online: false` for every machine until the next restart.
 
 ### Blocked / needs a decision
 -
@@ -117,10 +154,12 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved with lead changes, merged (2026-09-29). After rebasing onto main: format, lint, typecheck, test (server 567 passed, 7 skipped) and build all green. No pre-review (OpenCode Go has no funds); reviewed by hand.
 
-### Findings
--
+**Lead changes (made in the task branch):**
+- **Refresh race (security).** The 30 s refresh replaced the whole key map from a query that could have read the database before a revoke committed, so a machine revoked mid-refresh could come back into the cache for up to 30 s. Approve/revoke events that arrive while a refresh is in flight now win over its result. New test `a revoke that lands while a refresh is in flight is not undone by the stale read` (I confirmed it fails without the fix).
+- **`isOnline`** now reads `server.isRunnerLive` directly (and requires the key to still be in the cache) instead of a set refreshed every 60 s, so the flag is never stale and is false the moment a machine is revoked. The poll remains only for the throttled `last_seen_at` writes.
 
-### Follow-ups
--
+**Accepted deviations:** `allowImportingTsExtensions` in `apps/server/tsconfig.json` (needed to typecheck the tunnel package's `.ts` imports; `packages/**` untouched, verified with `git diff main -- packages`), and `app.ts`/`index.ts` sharing one `DbMachineRegistry` with the hub (required for a revoke to reach the live connection).
+
+**Live check for Julio / next lead step:** set `RUNNER_HUB_ENABLED=true` in the dev server env, pair a runner (T-0072), approve it on the Machines page, and see it as online. The web page does not show `online` yet (follow-up: web shows the online dot).

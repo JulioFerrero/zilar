@@ -38,12 +38,14 @@ export interface MachinesRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
   logger: MachinesLogger;
-  /** Shared with the future tunnel hub so revokes close live connections. */
+  /** Shared with the tunnel hub so revokes close live connections. */
   registry?: DbMachineRegistry;
   /** Injected in tests so rate-limit windows can advance without waiting. */
   now?: () => number;
   /** Injected in tests; production uses the socket address. */
   getClientIp?: (c: Context) => string;
+  /** Injected by app.ts when the runner hub is on; absent = hub off. */
+  isMachineOnline?: (machineId: string) => boolean;
 }
 
 export interface MachinesLogger {
@@ -99,6 +101,7 @@ export function createMachinesRoutes({
   registry,
   now = Date.now,
   getClientIp,
+  isMachineOnline,
 }: MachinesRoutesDependencies): Hono {
   const routes = new Hono();
   const machineRegistry = registry ?? createDbMachineRegistry(db);
@@ -136,7 +139,7 @@ export function createMachinesRoutes({
   routes.get('/machines', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
     const rows = await listMachines(db, user.id);
-    return c.json(rows.map(toPublicMachine));
+    return c.json(rows.map((row) => toPublicMachine(row, isMachineOnline)));
   });
 
   routes.post('/machines/:id/approve', async (c) => {
@@ -153,6 +156,7 @@ export function createMachinesRoutes({
     if (!approved) {
       throw new HttpError(409, 'invalid_transition', 'Only pending machines can be approved');
     }
+    machineRegistry.notifyApproved(id, approved.publicKey);
     logger.info({ machineId: id }, 'machine approved');
     return c.json(toPublicMachine(approved));
   });
