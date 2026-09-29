@@ -354,3 +354,43 @@ export const auditLog = pgTable(
     index('audit_log_actor_at_idx').on(table.actorUserId, table.at),
   ],
 );
+
+// One row per state-changing action the gateway accepted (T-0090). The row
+// sits next to the approval row and carries the exact parsed args the
+// adapter will run: the platform executes what was approved, never
+// anything the AI substitutes later. `status` follows the lifecycle
+// `waiting → running → executed | failed` with `cancelled` reachable from
+// `waiting` (denied / expired / killed / hash-tampered) but not from
+// `running` — once a row is `running`, only `executed` or `failed` are
+// valid transitions, so a crash between claim and finish leaves the row
+// for `recoverStuck` to report but never re-execute. `args` is the parsed
+// value, capped at 20 KB serialised, so the stored hash and the stored
+// args always agree. `result_summary` is the adapter's success string,
+// truncated to 500 chars; never the adapter's error text.
+export const pendingActions = pgTable(
+  'pending_actions',
+  {
+    id: text('id').primaryKey(),
+    approvalId: text('approval_id')
+      .notNull()
+      .unique()
+      .references(() => approvals.id, { onDelete: 'cascade' }),
+    aiId: text('ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    action: text('action').notNull(),
+    args: jsonb('args').$type<unknown>().notNull(),
+    argsHash: text('args_hash').notNull(),
+    requestedBy: text('requested_by').notNull(),
+    status: text('status', {
+      enum: ['waiting', 'running', 'executed', 'failed', 'cancelled'],
+    })
+      .notNull()
+      .default('waiting'),
+    resultSummary: text('result_summary'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (table) => [index('pending_actions_status_idx').on(table.status)],
+);

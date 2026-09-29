@@ -13,6 +13,12 @@ import {
   toPublicApproval,
 } from './service';
 
+// The minimum slice of pino the route needs to log a hook failure. The
+// server wires its own logger; tests can pass a captor.
+export interface ApprovalsRouteLogger {
+  error: (fields: Record<string, unknown>, message: string) => void;
+}
+
 export interface ApprovalsRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
@@ -21,6 +27,15 @@ export interface ApprovalsRoutesDependencies {
    *  one whose failures are observed. */
   audit?: AuditRecorder;
   now?: () => number;
+  /** Logger used to record a hook failure; absent = silent. */
+  logger?: ApprovalsRouteLogger;
+  /**
+   * Optional hook fired after a successful decision. The action gateway
+   * (T-0090) uses it to execute any pending action tied to the approval;
+   * the response is returned to the user before the hook settles, and a
+   * throwing hook never changes the decision response.
+   */
+  onDecided?: (approvalId: string) => Promise<void> | void;
 }
 
 // The decision body. `strictObject` so an unknown key is rejected rather than
@@ -37,6 +52,8 @@ export function createApprovalsRoutes({
   db,
   audit,
   now = Date.now,
+  logger,
+  onDecided,
 }: ApprovalsRoutesDependencies): Hono {
   const routes = new Hono();
 
@@ -92,6 +109,21 @@ export function createApprovalsRoutes({
           result: 'ok',
           detail: { decision: parsed.data.decision },
         });
+      }
+      // Fire-and-forget hook: the response is returned to the user before
+      // the hook settles, and a throwing hook is logged rather than
+      // surfaced. The action gateway uses this to execute a pending
+      // action; a throw there must not turn a 200 into a 5xx for the user
+      // who just approved the request.
+      if (onDecided !== undefined) {
+        void Promise.resolve()
+          .then(() => onDecided(updated.id))
+          .catch((error: unknown) => {
+            if (logger !== undefined) {
+              const name = error instanceof Error ? error.name : typeof error;
+              logger.error({ err: name, approvalId: updated.id }, 'onDecided hook threw');
+            }
+          });
       }
       return c.json(toPublicApproval(updated, new Date(now())));
     } catch (error) {

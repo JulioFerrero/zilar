@@ -4,6 +4,11 @@ import {
   DEFAULT_LITELLM_BASE_URL,
   redactSecrets,
 } from './ai/litellm-client';
+import {
+  createActionGateway,
+  startRecoveryStuckTimer,
+  type RecoveryStuckHandle,
+} from './actions/gateway';
 import { createAgentGateway } from './agents/gateway';
 import { createApp } from './app';
 import { startApprovalsSweeper, type ApprovalsSweeperHandle } from './approvals/sweeper';
@@ -60,6 +65,23 @@ const isMachineOnline = (machineId: string): boolean => {
   return runnerHub?.isOnline(machineId) ?? false;
 };
 
+// The audit recorder used by both the action gateway and the app: one
+// recorder wraps `recordAudit` so a database write error never propagates
+// into the caller, and every route that audits shares it.
+const auditRecorder = createAuditRecorder({ db, logger });
+
+// Action gateway (T-0090): wired in production with an empty adapter
+// registry, so every action request is denied `unknown_action` until a
+// later task adds an adapter. `onApprovalDecided` is the hook the
+// approvals route fires after a successful decision; the recovery loop
+// below runs `recoverStuck` once at startup and every five minutes.
+const actionGateway = createActionGateway({
+  db,
+  adapters: {},
+  audit: auditRecorder,
+  logger,
+});
+
 const app = createApp({
   db,
   logger,
@@ -68,6 +90,7 @@ const app = createApp({
   adminClient,
   machineRegistry,
   ...(config.RUNNER_HUB_ENABLED ? { isMachineOnline } : {}),
+  actionGateway,
 });
 
 // Agent gateway (T-0034): off unless AGENT_GATEWAY_ENABLED=true, and inert
@@ -147,6 +170,23 @@ const approvalsSweeper: ApprovalsSweeperHandle = startApprovalsSweeper({
   logger,
 });
 
+// Action gateway recovery loop (T-0090): runs `recoverStuck` after one
+// interval and then every five minutes on an unref'd timer. The first
+// tick fires after the interval so startup is never blocked.
+const recoveryStuck: RecoveryStuckHandle = startRecoveryStuckTimer({
+  gateway: actionGateway,
+  logger,
+});
+
+// One startup sweep: an earlier crash may have left `running` or
+// past-due `waiting` rows that we want to surface immediately rather than
+// wait up to five minutes for the first timer tick. Failure here logs
+// and carries on; the timer will retry on the next tick.
+void actionGateway.recoverStuck().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  logger.error({ err: message }, 'initial recoverStuck sweep failed');
+});
+
 // How long open connections (SSE streams) get before they are closed, and the
 // point at which a stuck shutdown gives up and exits.
 const CONNECTION_GRACE_MS = 3_000;
@@ -183,6 +223,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   }
   await gateway.stop();
   approvalsSweeper.close();
+  recoveryStuck.close();
   await close();
   process.exit(0);
 }
