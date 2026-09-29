@@ -61,7 +61,9 @@ describe('ConnectionsPage', () => {
   it('renders the error state with the server message', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(jsonResponse(500, { error: { message: 'boom' } })),
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse(500, { error: { code: 'boom_code', message: 'boom' } })),
     );
 
     renderPage();
@@ -75,7 +77,10 @@ describe('ConnectionsPage', () => {
       'fetch',
       vi.fn().mockResolvedValue(
         jsonResponse(503, {
-          error: { message: 'Provider connections are not configured on this server' },
+          error: {
+            code: 'connections_unavailable',
+            message: 'Provider connections are not configured on this server',
+          },
         }),
       ),
     );
@@ -168,7 +173,9 @@ describe('ConnectionsPage', () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, [openaiConnection]))
       .mockResolvedValueOnce(
-        jsonResponse(500, { error: { message: 'Could not remove the connection' } }),
+        jsonResponse(500, {
+          error: { code: 'remove_failed', message: 'Could not remove the connection' },
+        }),
       );
     vi.stubGlobal('fetch', fetchMock);
 

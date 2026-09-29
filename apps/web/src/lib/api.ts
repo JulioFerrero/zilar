@@ -322,6 +322,47 @@ export function listConnections(): Promise<Connection[]> {
   return request('/connections', z.array(connectionSchema));
 }
 
+// T-0074: `ConnectionsPage` used to call `fetch` directly with its own copy of
+// `request`. Moving those calls here means errors flow through `ApiError` like
+// everywhere else; `ApiError.message` already carries the server's
+// `error.message`, so the page can keep showing it to the user.
+
+export interface CreateConnectionInput {
+  provider: string;
+  key: string;
+  label?: string;
+}
+
+export function createConnection(input: CreateConnectionInput): Promise<Connection> {
+  const body = {
+    provider: input.provider,
+    key: input.key,
+    ...(input.label === undefined ? {} : { label: input.label }),
+  };
+  return request('/connections', connectionSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+const connectionTestResultSchema = z.object({
+  ok: z.boolean(),
+  message: z.string().optional(),
+});
+
+export type ConnectionTestResult = z.infer<typeof connectionTestResultSchema>;
+
+export function testConnection(id: string): Promise<ConnectionTestResult> {
+  return request(`/connections/${encodeURIComponent(id)}/test`, connectionTestResultSchema, {
+    method: 'POST',
+  });
+}
+
+export async function deleteConnection(id: string): Promise<void> {
+  await request(`/connections/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
+}
+
 // --- Machines (T-0070) ---------------------------------------------------
 // The wire contract lives in apps/server/src/machines/routes.ts and
 // service.ts. `ApiError` carries the server's `code` and `status`, so callers
