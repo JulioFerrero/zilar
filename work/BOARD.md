@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 ## Follow-ups
 
+- **AI-built tools and routines (Julio, 2026-09-29: server sandbox first).** T-0102 sandbox (QuickJS/WASM, allowlisted SSRF-safe fetch), T-0103 versioned tools store + routes, then T-0104 scheduler/routines (approval-gated, pinned to approved hosts, auto-pause after failures), T-0105 AI tools (`write_tool`, `run_tool`, `schedule_routine`, ack + live example, admins only in groups) and wiring the sandbox as the runner, T-0106 web Tools & Routines in the AI/group panel.
 - Kill switch (T-0080): room-admin and workspace-admin stop (J5). (`addGroupAi` now refuses a stopped or provisioning AI with 409 `ai_not_active`, lead change 2026-09-29; audit entries for stop/resume are done, T-0083.)
 - Audit log (T-0079): entries from the engine and the proxy, a web page for an AI's / group's log, retention (J4: 1 year).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
