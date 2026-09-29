@@ -5,13 +5,16 @@ status: planned
 milestone: M4
 branch: task/T-0104-routines-scheduler
 model: meta/muse-spark-1.3-contributor
-depends_on: [T-0102, T-0103]
+depends_on: [T-0102, T-0103, T-0110]
 estimate: 2 days
 ---
 
 # T-0104: Routines and the scheduler
 
 ## Spec (written by Claude, do not edit)
+
+### Scope update (2026-09-29, after decisions D25 to D29): read this first
+Groups now have **topics** (T-0108) and the scope of everything the action pipeline stores is **(AI, topic)**, not (AI, group) (T-0110). Wherever this spec says *chat* or `group_id`, read **topic**: a routine belongs to one AI in one topic (personal chat: none) and posts into **that topic's room** (`postToChat` with `topicId`, T-0109); `routines` gets `topic_id` with the same CHECK as T-0110 (`(group_id is null) = (topic_id is null)`) and the 10-routines limit is per (AI, topic); reader/manager rules are T-0110's topic rules (a reader can see the topic; a manager is the AI's owner or a group owner/admin who can see the topic); removing an AI from a topic, archiving nothing but leaving the room, or deleting a tool deletes/pauses its routines there (`deleteRoutinesForAiInTopic`, plus the group-wide variant `removeGroupAi` uses); the scheduler skips a routine whose AI is no longer a member of the topic's room (`skipped`, not a failure); audit rows for private topics carry ids only. If any later section of this spec conflicts with this block, this block wins. This task must be launched **after T-0110 is merged**.
 
 ### Why
 "Every morning post the price of gold, the S&P 500 and BTC." A **routine** is a stored tool (T-0103) plus a schedule, in one chat, that posts the tool's output as the AI. This task builds the engine: the table, a scheduler that fires due routines exactly once, the run-and-post path, safety rules, and the routes to list/pause/resume/delete. **Creating** a routine from a chat request (the approval card) is T-0105; here `createRoutine` is a service function that the T-0105 adapter will call **after** a human approved.

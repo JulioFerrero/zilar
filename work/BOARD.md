@@ -9,9 +9,31 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0104](T-0104-routines-scheduler.md) | Routines: scheduled tool runs that post as the AI | planned | meta/muse-spark-1.3-contributor | T-0102, T-0103, T-0110 | Needs T-0110 first (topic scope) |
+| [T-0105](T-0105-tool-adapters.md) | Tool and routine actions for the gateway; sandbox wiring | planned | meta/muse-spark-1.3-contributor | T-0104, T-0110 | routine.schedule needs a card, never always-allowed |
+| [T-0108](T-0108-topics-server.md) | Topics (server): public/private, one room per topic, task strip data | planned | meta/muse-spark-1.3-contributor | none | M5 core; see docs/ROADMAP_M5.md |
+| [T-0109](T-0109-ais-in-topics.md) | AIs read only the topics they were added to | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
+| [T-0110](T-0110-topic-scoped-actions.md) | Approvals, always-allow rules and tools scoped to (AI, topic) | planned | meta/muse-spark-1.3-contributor | T-0108, T-0109 | Riskiest review |
+| [T-0111](T-0111-topics-web.md) | Topics (web): nested sidebar, task strip, dialogs, panel | planned | meta/muse-spark-1.3-contributor | T-0108 to T-0110 | Visual spec = the topics mockup |
+| [T-0112](T-0112-topics-mobile.md) | Topics (mobile): topics list, topic screen | planned | meta/muse-spark-1.3-contributor | T-0111 |  |
+| [T-0113](T-0113-chat-prefs.md) | Mute, archive, pin chats and topics (synced) | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
+| [T-0114](T-0114-pinned-messages.md) | Pinned messages banner and list | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
+| [T-0115](T-0115-invite-links.md) | Join by link for groups | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
+| [T-0116](T-0116-group-roles.md) | Custom roles: private-topic access, approver rights | planned | meta/muse-spark-1.3-contributor | T-0108, T-0110, T-0111 |  |
+| [T-0117](T-0117-message-search.md) | Message search across everything you may see | planned | meta/muse-spark-1.3-contributor | T-0108 | Needs a read-only role on the ejabberd DB |
+| [T-0118](T-0118-web-push-spike.md) | Spike: web push through ejabberd mod_push | planned | meta/muse-spark-1.3-contributor | none | Decides T-0119 |
+| [T-0119](T-0119-pwa-web-push.md) | PWA and web push | planned | meta/muse-spark-1.3-contributor | T-0118, T-0113 | Outline: lead rewrites (SPIKE) sections first |
+| [T-0120](T-0120-stickers.md) | Stickers: user-made packs, storage, sending, rendering | planned | meta/muse-spark-1.3-contributor | none |  |
+| [T-0121](T-0121-sticker-creator.md) | Sticker pack creator, favorites, discover | planned | meta/muse-spark-1.3-contributor | T-0120 |  |
+| [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | planned | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
+| [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
+| [T-0124](T-0124-channels.md) | Channels: only admins post | planned | meta/muse-spark-1.3-contributor | T-0108, T-0115 |  |
+| T-0106 | Model side of AI tools (prompt guide, rounds per turn, working-on-it line) | planned | meta/muse-spark-1.3-contributor | T-0105 | Spec written after T-0105 merges |
+| T-0107 | Web Tools and Routines UI | planned | meta/muse-spark-1.3-contributor | T-0106 | Spec written after T-0105 merges |
 
 ## Follow-ups
 
+- **M5 plan (2026-09-29): see [`docs/ROADMAP_M5.md`](../docs/ROADMAP_M5.md)** for the order, the waves for tonight, what only Julio can provide, and the decisions the lead made in the specs.
 - **AI-built tools and routines (Julio, 2026-09-29: server sandbox first).** T-0102 sandbox (QuickJS/WASM, allowlisted SSRF-safe fetch), T-0103 versioned tools store + routes, T-0104 scheduler/routines (pinned to approved hosts, auto-pause after failures), T-0105 tool/routine actions for the action gateway (routine.schedule needs a card and can never be always-allowed) + wiring the sandbox (`TOOLS_ENABLED`), T-0106 model side (prompt guide, more rounds per turn, "working on it" line, scripted-model e2e), T-0107 web Tools & Routines in the AI/group panel.
 - Kill switch (T-0080): room-admin and workspace-admin stop (J5). (`addGroupAi` now refuses a stopped or provisioning AI with 409 `ai_not_active`, lead change 2026-09-29; audit entries for stop/resume are done, T-0083.)
 - Audit log (T-0079): entries from the engine and the proxy, a web page for an AI's / group's log, retention (J4: 1 year).
