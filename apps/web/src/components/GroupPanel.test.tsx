@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ChatSummary } from '@galena/chat-core';
 import { AuthProvider, type AuthState } from '@/auth/AuthProvider';
@@ -64,6 +64,29 @@ function seedWith(seed: ChatStoreSeed = {}): ChatStoreSeed {
   return { groupInfos: { 'c-devteam': detail() }, ownedAis: [], ...seed };
 }
 
+// T-0086: the panel now mounts an Activity section for owners / admins, so
+// the suite needs a fetch stub for `/audit` calls. Plain members never
+// trigger a fetch (the section is not rendered), so the member-only tests
+// pass `auditEntries: 'no-stub'` and skip the fetch stub; the rest of the
+// suite stubs `/audit` so a manager's section renders without errors.
+type AuditAnswer = unknown[] | 'no-stub';
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), { status });
+}
+
+function stubAudit(entries: unknown[]): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn(async (url: unknown) => {
+    const target = String(url);
+    if (target.includes('/audit')) {
+      return jsonResponse(200, { entries, next: null });
+    }
+    return jsonResponse(404, { error: { code: 'not_found', message: 'unexpected' } });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 function renderStore(store: ReturnType<typeof createChatStore>, onClose = vi.fn()) {
   render(
     <AuthProvider value={auth}>
@@ -75,11 +98,18 @@ function renderStore(store: ReturnType<typeof createChatStore>, onClose = vi.fn(
   return onClose;
 }
 
-function setup(seed: ChatStoreSeed = {}) {
+function setup(seed: ChatStoreSeed = {}, auditEntries: AuditAnswer = []) {
   const store = createChatStore(seedWith(seed));
+  if (auditEntries !== 'no-stub') {
+    stubAudit(auditEntries);
+  }
   const onClose = renderStore(store);
   return { store, onClose };
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('GroupPanel', () => {
   it('lists the members and the AIs with their owner', () => {
@@ -106,18 +136,21 @@ describe('GroupPanel', () => {
   });
 
   it('hides Add my AI for a member', async () => {
-    setup({
-      groupInfos: {
-        'c-devteam': detail({
-          members: [
-            { userId: 'u-ana', name: 'Ana', role: 'owner' },
-            { userId: 'u-you', name: 'You', role: 'member' },
-          ],
-          ais: [devAi],
-        }),
+    setup(
+      {
+        groupInfos: {
+          'c-devteam': detail({
+            members: [
+              { userId: 'u-ana', name: 'Ana', role: 'owner' },
+              { userId: 'u-you', name: 'You', role: 'member' },
+            ],
+            ais: [devAi],
+          }),
+        },
+        ownedAis: [myAi('marketing', 'Marketing AI')],
       },
-      ownedAis: [myAi('marketing', 'Marketing AI')],
-    });
+      'no-stub',
+    );
 
     await waitFor(() =>
       expect(screen.getByRole('region', { name: 'Members' }).textContent).toContain('Ana'),
@@ -180,6 +213,9 @@ describe('GroupPanel', () => {
         ownedAis: [myAi('marketing', 'Marketing AI')],
       }),
     );
+    // T-0086: the Activity section fires a `/audit` request when the panel
+    // mounts for a manager, so the test stubs fetch to keep that path quiet.
+    stubAudit([]);
     store.setState({
       addGroupAi: async () => {
         throw new Error('The server is down');
@@ -200,5 +236,134 @@ describe('GroupPanel', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // T-0086: the room activity section is the same ActivitySection the AI
+  // panel mounts, fed by `?groupId=…` instead of `?aiId=…`. The rules:
+  // owners and admins see it, plain members don't (and no request fires for
+  // them), and any failure of the section is caught inside the component so
+  // the rest of the panel stays interactive.
+  describe('room activity (T-0086)', () => {
+    it('renders the Activity heading for an owner and fetches once with groupId', async () => {
+      const fetchMock = stubAudit([
+        {
+          id: 'audit-1',
+          at: new Date(Date.now() - 3 * 60_000).toISOString(),
+          aiId: 'dev-1',
+          groupId: 'g-devteam',
+          action: 'approval.decided',
+          subjectId: 'apr-100',
+          argsHash: 'c'.repeat(64),
+          cost: null,
+          result: 'ok',
+          detail: { decision: 'approve_once' },
+          actorUserId: 'u-you',
+        },
+      ]);
+
+      const store = createChatStore(
+        seedWith({
+          groupInfos: {
+            'c-devteam': detail({
+              members: [
+                { userId: 'u-you', name: 'You', role: 'owner' },
+                { userId: 'u-ana', name: 'Ana', role: 'admin' },
+              ],
+            }),
+          },
+        }),
+      );
+      renderStore(store);
+
+      expect(await screen.findByRole('heading', { name: 'Activity' })).toBeTruthy();
+      expect(await screen.findByText('A request was approved')).toBeTruthy();
+
+      const auditCalls = fetchMock.mock.calls.filter((call: unknown[]) =>
+        String(call[0]).includes('/audit'),
+      );
+      expect(auditCalls).toHaveLength(1);
+      expect(String(auditCalls[0]?.[0])).toBe('/api/audit?groupId=g-devteam&limit=20');
+    });
+
+    it('renders the Activity heading for an admin and fetches once', async () => {
+      const fetchMock = stubAudit([]);
+
+      const store = createChatStore(
+        seedWith({
+          groupInfos: {
+            'c-devteam': detail({
+              members: [
+                { userId: 'u-luis', name: 'Luis', role: 'owner' },
+                { userId: 'u-you', name: 'You', role: 'admin' },
+              ],
+            }),
+          },
+        }),
+      );
+      renderStore(store);
+
+      expect(await screen.findByRole('heading', { name: 'Activity' })).toBeTruthy();
+
+      const auditCalls = fetchMock.mock.calls.filter((call: unknown[]) =>
+        String(call[0]).includes('/audit'),
+      );
+      expect(auditCalls).toHaveLength(1);
+    });
+
+    it('hides the section for a plain member and makes no audit request', async () => {
+      const fetchMock = vi.fn(async () => jsonResponse(200, { entries: [], next: null }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const store = createChatStore(
+        seedWith({
+          groupInfos: {
+            'c-devteam': detail({
+              members: [
+                { userId: 'u-ana', name: 'Ana', role: 'owner' },
+                { userId: 'u-you', name: 'You', role: 'member' },
+              ],
+            }),
+          },
+        }),
+      );
+      renderStore(store);
+
+      await waitFor(() =>
+        expect(screen.getByRole('region', { name: 'Members' }).textContent).toContain('Ana'),
+      );
+      expect(screen.queryByRole('heading', { name: 'Activity' })).toBeNull();
+      const auditCalls = (fetchMock.mock.calls as unknown[][]).filter((call) =>
+        String(call[0]).includes('/audit'),
+      );
+      expect(auditCalls).toHaveLength(0);
+    });
+
+    it('a failing audit request leaves the rest of the panel intact', async () => {
+      const fetchMock = vi.fn(async (url: unknown) => {
+        const target = String(url);
+        if (target.includes('/audit')) {
+          return jsonResponse(500, {
+            error: { code: 'server_error', message: 'audit unavailable' },
+          });
+        }
+        return jsonResponse(404, { error: { code: 'not_found', message: 'unexpected' } });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const store = createChatStore(seedWith());
+      renderStore(store);
+
+      // The inline error from the audit section appears, but the rest of
+      // the panel — Members, AIs, the header — is still there.
+      expect(await screen.findByRole('heading', { name: 'Activity' })).toBeTruthy();
+      expect(await screen.findByRole('alert')).toBeTruthy();
+      expect(screen.getByRole('region', { name: 'Members' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Close group panel' })).toBeTruthy();
+
+      const auditCalls = fetchMock.mock.calls.filter((call: unknown[]) =>
+        String(call[0]).includes('/audit'),
+      );
+      expect(auditCalls).toHaveLength(1);
+    });
   });
 });

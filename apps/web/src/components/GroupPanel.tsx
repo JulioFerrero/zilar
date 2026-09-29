@@ -5,6 +5,7 @@ import type { GroupAi, PublicAi } from '@/lib/api';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { ActivitySection } from './ais/AiActivity';
 import { AiBadge } from './AiBadge';
 import { FieldError } from './ais/AiPageShell';
 import { describeAiError } from './ais/errors';
@@ -317,6 +318,12 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   </div>
                 )}
               </section>
+
+              {/* T-0086: room activity for owners and admins. Plain members
+                  get no section and no request is made. The section handles
+                  its own load / error states; a failure here cannot break
+                  the rest of the panel. */}
+              {isManager && <ActivitySection scope={{ groupId: info.id }} />}
 
               {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
             </>

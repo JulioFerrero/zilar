@@ -568,15 +568,25 @@ export interface ListAuditPage {
   next: string | null;
 }
 
-export interface ListAuditInput {
-  aiId: string;
+// T-0086: the audit endpoint answers one of `?aiId=…` or `?groupId=…`, never
+// both, and the server answers 400 otherwise. The discriminated union makes
+// "exactly one of the two keys" a compile error: passing both or neither
+// fails type-checking.
+export type AuditScope =
+  { aiId: string; groupId?: undefined } | { groupId: string; aiId?: undefined };
+
+export type ListAuditInput = AuditScope & {
   limit?: number;
   before?: string;
-}
+};
 
 export function listAudit(input: ListAuditInput): Promise<ListAuditPage> {
   const params = new URLSearchParams();
-  params.set('aiId', input.aiId);
+  if ('aiId' in input && input.aiId !== undefined) {
+    params.set('aiId', input.aiId);
+  } else if ('groupId' in input && input.groupId !== undefined) {
+    params.set('groupId', input.groupId);
+  }
   if (input.limit !== undefined) {
     params.set('limit', String(input.limit));
   }

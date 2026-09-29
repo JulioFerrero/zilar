@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { listAudit, type PublicAuditEntry } from '@/lib/api';
+import { listAudit, type AuditScope, type PublicAuditEntry } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useDelayed } from '@/lib/useDelayed';
@@ -79,7 +79,17 @@ interface LoadState {
   message: string;
 }
 
-export function AiActivity({ aiId }: { aiId: string }) {
+function serialiseScope(scope: AuditScope): string {
+  return 'aiId' in scope ? `ai:${scope.aiId}` : `group:${scope.groupId}`;
+}
+
+// T-0086: shared between the AI panel and the group panel. The scope is one
+// of `?aiId=…` or `?groupId=…` (the same union `listAudit` enforces); the
+// shape, the loading / error / empty states and the load-more behaviour are
+// identical between the two callers, so they share one component. Callers
+// guard their own mounting: the AI panel mounts it for any AI the viewer
+// owns; the group panel only mounts it for group owners and admins.
+export function ActivitySection({ scope }: { scope: AuditScope }) {
   const [state, setState] = useState<LoadState>({
     status: 'loading',
     entries: [],
@@ -89,11 +99,20 @@ export function AiActivity({ aiId }: { aiId: string }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
+  const scopeKey = serialiseScope(scope);
+  // A ref tracks the latest scope so the effect body can spread it without
+  // re-running on every render: callers pass a fresh `{ aiId }` / `{ groupId
+  // }` literal each render, and including `scope` in the deps would loop.
+  const scopeRef = useRef<AuditScope>(scope);
+  useEffect(() => {
+    scopeRef.current = scope;
+  });
+
   useEffect(() => {
     let active = true;
     void (async () => {
       try {
-        const page = await listAudit({ aiId, limit: PAGE_LIMIT });
+        const page = await listAudit({ ...scopeRef.current, limit: PAGE_LIMIT });
         if (!active) {
           return;
         }
@@ -118,7 +137,7 @@ export function AiActivity({ aiId }: { aiId: string }) {
     return () => {
       active = false;
     };
-  }, [aiId, refreshTick]);
+  }, [scopeKey, refreshTick]);
 
   const loadMore = async (): Promise<void> => {
     if (state.next === null || loadingMore) {
@@ -126,7 +145,7 @@ export function AiActivity({ aiId }: { aiId: string }) {
     }
     setLoadingMore(true);
     try {
-      const page = await listAudit({ aiId, limit: PAGE_LIMIT, before: state.next });
+      const page = await listAudit({ ...scope, limit: PAGE_LIMIT, before: state.next });
       setState((current) => {
         const seen = new Set(current.entries.map((entry) => entry.id));
         const merged = [...current.entries];
@@ -205,6 +224,12 @@ export function AiActivity({ aiId }: { aiId: string }) {
       {state.entries.length > 0 && state.message !== '' && <FieldError>{state.message}</FieldError>}
     </section>
   );
+}
+
+// Thin wrapper kept for the AI panel: the rest of the app imports
+// `AiActivity` and tests of the AI panel use it directly.
+export function AiActivity({ aiId }: { aiId: string }) {
+  return <ActivitySection scope={{ aiId }} />;
 }
 
 function ActivityList({ entries }: { entries: PublicAuditEntry[] }) {

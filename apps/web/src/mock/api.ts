@@ -245,6 +245,48 @@ function seedState(): MockState {
         detail: null,
         actorUserId: currentUserId,
       },
+      // T-0086: group-scoped entries, served when the panel asks for
+      // `?groupId=g-devteam`. They share the action vocabulary with the AI
+      // log so the panel renders them in the same words.
+      {
+        id: 'audit-devteam-approval',
+        at: minutesAgo(15),
+        aiId: 'dev-1',
+        groupId: 'g-devteam',
+        action: 'approval.decided',
+        subjectId: 'apr-100',
+        argsHash: 'c'.repeat(64),
+        cost: { currency: 'EUR', amount: 0.25 },
+        result: 'ok',
+        detail: { decision: 'approve_once' },
+        actorUserId: currentUserId,
+      },
+      {
+        id: 'audit-devteam-deny',
+        at: minutesAgo(28),
+        aiId: 'qa-1',
+        groupId: 'g-devteam',
+        action: 'approval.decided',
+        subjectId: 'apr-101',
+        argsHash: 'd'.repeat(64),
+        cost: { currency: 'USD', amount: 0.1 },
+        result: 'denied',
+        detail: { decision: 'deny' },
+        actorUserId: currentUserId,
+      },
+      {
+        id: 'audit-qa-approval',
+        at: minutesAgo(40),
+        aiId: 'qa-1',
+        groupId: 'g-qa',
+        action: 'approval.decided',
+        subjectId: 'apr-102',
+        argsHash: 'e'.repeat(64),
+        cost: { currency: 'EUR', amount: 0.5 },
+        result: 'ok',
+        detail: { decision: 'approve_always' },
+        actorUserId: currentUserId,
+      },
     ],
   };
 }
@@ -479,7 +521,8 @@ export async function mockRequest(
   if (head === 'audit' && method === 'GET') {
     const params = new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
     const aiId = params.get('aiId');
-    if (aiId === null) {
+    const groupId = params.get('groupId');
+    if ((aiId === null) === (groupId === null)) {
       return jsonResponse(
         { error: { code: 'invalid_request', message: 'Provide exactly one of groupId or aiId' } },
         400,
@@ -487,8 +530,12 @@ export async function mockRequest(
     }
     const limitParam = params.get('limit');
     const limit = limitParam === null ? 20 : Math.max(1, Math.min(50, Number(limitParam)));
+    const matches =
+      aiId !== null
+        ? (entry: MockAuditEntry): boolean => entry.aiId === aiId
+        : (entry: MockAuditEntry): boolean => entry.groupId === groupId;
     const entries = state.audit
-      .filter((entry) => entry.aiId === aiId)
+      .filter(matches)
       .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
       .slice(0, limit);
     return jsonResponse({ entries, next: null });
