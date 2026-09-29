@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import {
   aiLimits,
   ais,
+  aiTools,
   approvalRules,
   groupAis,
   groupMembers,
@@ -753,6 +754,50 @@ describe('groups', () => {
       expect(byId.get(groupRule!.id)?.revokedAt).not.toBeNull();
       expect(byId.get(personalRule!.id)?.revokedAt).toBeNull();
       expect(byId.get(otherGroupRule!.id)?.revokedAt).toBeNull();
+    });
+
+    it('T-0103: removing the AI from the group soft-deletes its group tools only', async () => {
+      const { owner, groupId } = await groupWithMember();
+      const ai = await seedAi(owner.id);
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: ai.aiId })).status).toBe(200);
+
+      const toolNow = new Date('2026-01-01T00:00:00Z');
+      const [groupTool] = await context.db
+        .insert(aiTools)
+        .values({
+          id: randomUUID(),
+          aiId: ai.aiId,
+          groupId,
+          name: 'group-tool',
+          description: 'A group tool',
+          currentVersion: 1,
+          createdBy: owner.id,
+          createdAt: toolNow,
+          updatedAt: toolNow,
+        })
+        .returning();
+      const [personalTool] = await context.db
+        .insert(aiTools)
+        .values({
+          id: randomUUID(),
+          aiId: ai.aiId,
+          groupId: null,
+          name: 'personal-tool',
+          description: 'A personal tool',
+          currentVersion: 1,
+          createdBy: owner.id,
+          createdAt: toolNow,
+          updatedAt: toolNow,
+        })
+        .returning();
+
+      const removed = await removeAiRequest(owner.cookie, groupId, ai.aiId);
+      expect(removed.status).toBe(200);
+
+      const rows = await context.db.select().from(aiTools);
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      expect(byId.get(groupTool!.id)?.deletedAt).not.toBeNull();
+      expect(byId.get(personalTool!.id)?.deletedAt).toBeNull();
     });
 
     it('lists the group AIs in the detail and hides the group from strangers', async () => {

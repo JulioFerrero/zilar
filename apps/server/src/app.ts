@@ -27,6 +27,8 @@ import { createGroupsRoutes } from './groups/routes';
 import { createMachinesRoutes } from './machines/routes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
 import { serverVersion } from './version';
+import { createToolsRoutes, type ToolsRoutesDependencies } from './tools/routes';
+import type { ToolRunner } from './tools/types';
 import type { VoiceEngine } from './voice/engine';
 import { createVoiceRoutes } from './voice/routes';
 import type { EjabberdAdminClient } from './xmpp/admin-client';
@@ -82,6 +84,12 @@ export interface AppDependencies {
    * Absent = nothing is always-eligible.
    */
   alwaysEligible?: AlwaysEligiblePredicate;
+  /**
+   * T-0103: tool runner port the tools routes use for manual runs. Absent
+   * = no runner (every run answers 501 `runner_unavailable`); T-0105
+   * wires the real sandbox.
+   */
+  toolRunner?: ToolRunner;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -102,6 +110,7 @@ export function createApp({
   audit,
   actionGateway,
   alwaysEligible,
+  toolRunner,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
   const auditRecorder = audit ?? createAuditRecorder({ db, logger });
@@ -181,6 +190,13 @@ export function createApp({
       ...(alwaysEligible === undefined ? {} : { alwaysEligible }),
     }),
   );
+  const toolsDeps: ToolsRoutesDependencies = {
+    auth,
+    db,
+    audit: auditRecorder,
+    ...(toolRunner === undefined ? {} : { toolRunner }),
+  };
+  app.route('/api', createToolsRoutes(toolsDeps));
   app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));
   app.route(
     '/api',

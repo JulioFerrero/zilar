@@ -1,7 +1,7 @@
 ---
 id: T-0103
 title: AI tools store: versioned tool code per AI and chat, history, revert, manual run, routes
-status: todo
+status: review
 milestone: M4
 branch: task/T-0103-ai-tools-store
 model: meta/muse-spark-1.3-contributor
@@ -104,19 +104,98 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Implemented the AI tools store end to end: versioned tool code per (AI, chat),
+  append-only history, revert-as-new-version, soft delete, manual runs through an
+  injected `ToolRunner` port, and HTTP routes with reader/manager access control.
+- Data model (`apps/server/src/db/schema.ts`, migration
+  `apps/server/drizzle/0017_plain_warstar.sql` generated via `pnpm --filter
+  @galena/server db:generate`): `ai_tools` (soft delete, two partial unique
+  indexes on `(ai_id, name)` / `(ai_id, group_id, name)` for active names, same
+  technique as `approval_rules`), `ai_tool_versions` (unique `(tool_id,
+  version)`, never updated/deleted by service code), `ai_tool_runs` (indexed on
+  `tool_id`).
+- Validation (`apps/server/src/tools/schemas.ts`, one shared zod schema):
+  name slug, 1–200 char description/message with no control characters, hosts
+  0–5 normalised to lowercase and de-duplicated (dot required; rejects scheme,
+  port, path, wildcard, IP literal), source 1–65 536 UTF-8 bytes, 20-tool and
+  200-version caps.
+- Service (`apps/server/src/tools/service.ts`): `saveToolVersion` (v1 create or
+  N+1 append only when source/hosts differ, `unchanged: true` otherwise, row
+  lock + unique-index retry for concurrent saves), `listTools`/`getTool`/
+  `listVersions`/`getVersion`, `revertTool` (`Revert to v<N>` new version),
+  `deleteTool` (idempotent soft delete), `deleteToolsForAiInGroup` (called from
+  `removeGroupAi` in the same transaction), `runToolVersion` (`ai_not_active`
+  kill switch before the runner is called; run row with 2 KiB output
+  truncation and prune-to-50 in the same transaction; runner failure recorded
+  as `error`, never thrown). Audit `tool.created`/`tool.updated` via an
+  optional recorder, detail `{ name, version }` only.
+- Routes (`apps/server/src/tools/routes.ts`, mounted in `app.ts` with optional
+  `toolRunner` dep; no real runner — T-0105's job): all nine endpoints with
+  reader (AI owner / any group member for group tools) vs manager (AI owner /
+  group owner/admin) gates and identical 404s for strangers; revert/delete/run
+  manager-only; DELETE idempotent 204 via raw-row manager check; run rate
+  limited 5/min/user, 501 `runner_unavailable` without a runner, 409
+  `ai_not_active`; audit `tool.reverted`/`tool.deleted`/`tool.run` with detail
+  `{ name, version }` (+`status` for runs), never source/output.
+- Tests: `service.test.ts` (42 tests: all spec cases incl. concurrent saves →
+  v2+v3, snapshot comparison of history rows across revert+delete, prune to
+  50, 2 KiB truncation, stopped/provisioning AI never calls the runner) and
+  `routes.test.ts` (all spec cases incl. 401 sweep per route, 404-shape
+  equality for strangers, 501/409/429, audit detail without source/output).
+  Plus one `groups.test.ts` case: `removeGroupAi` soft-deletes that AI's group
+  tools only. No `authz-sweep.test.ts` edit needed — the sweep discovers the
+  new routes automatically (all answer 401) and the allowlist is unchanged. No
+  `apps/server/src/audit/**` change needed — action names are free-form
+  strings validated by the existing recorder schema.
+- Spec deviations: none. `deleteToolsForAiInGroup` takes the caller's `tx`
+  (as the `removeGroupAi` transaction) rather than `(db, aiId, groupId, now)`
+  — same transaction requirement, T-0099 precedent. `saveToolVersion`
+  returns an extra `created` flag and accepts an optional audit recorder (no
+  create/update routes exist in this task; T-0104 will pass the recorder).
 
 ### Files changed
--
+- `apps/server/src/tools/types.ts` (new: `ToolRunner`/`ToolRunResult` port)
+- `apps/server/src/tools/schemas.ts` (new: shared zod validation)
+- `apps/server/src/tools/service.ts` (new: store logic)
+- `apps/server/src/tools/routes.ts` (new: HTTP routes)
+- `apps/server/src/tools/service.test.ts` (new: 42 tests)
+- `apps/server/src/tools/routes.test.ts` (new: routes tests)
+- `apps/server/src/db/schema.ts` (+ migration `0017_plain_warstar.sql` + meta)
+- `apps/server/src/app.ts` (mount routes, optional `toolRunner` dep)
+- `apps/server/src/groups/service.ts` (call `deleteToolsForAiInGroup`)
+- `apps/server/src/groups/groups.test.ts` (+1 removal test)
+- `work/T-0103-ai-tools-store.md` (this Report)
 
 ### Commands run and real results
--
+- `pnpm install`: up to date (first run 7.9s, later reruns cached).
+- `pnpm --filter @galena/server db:generate`: created `0017_plain_warstar.sql`;
+  re-run after final edits: "No schema changes, nothing to migrate".
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint` (oxlint): pass, re-run after last edit — pass.
+- `pnpm typecheck`: 10/10 tasks successful.
+- `pnpm exec vitest run src/tools src/groups --maxWorkers=2`: 3 files, 86
+  tests, all pass.
+- `pnpm exec vitest run src/authz-sweep.test.ts`: all 9 tools routes answer
+  401 without a session; 5/5 sweep tests pass.
+- `pnpm --filter @galena/server test -- --maxWorkers=2` (full suite, once):
+  59 files passed, 5 skipped; 968 tests passed, 7 skipped, 0 failed.
+- `pnpm build`: FULL TURBO (2 tasks successful).
+- No `any`, no `@ts-ignore`, no disable comments (verified with grep).
 
 ### Problems, deviations from the spec, open questions
--
+- During earlier sessions the machine was overloaded by parallel full test
+  suites, which produced timeout flakes in unrelated files; per lead
+  instruction I then ran only scoped suites while iterating and the full
+  suite once at the end — green.
+- Open question for the lead: `GET /api/tools/:id/runs` returns run rows
+  including truncated `outputText` to readers (owner + group members). I read
+  the "never carrying source code or output" audit rule as audit-only, so
+  run output is visible via the API by design (it is the point of a run
+  history). Confirm this is intended, otherwise gate output text to
+  managers only in a follow-up.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
 
 ---
 

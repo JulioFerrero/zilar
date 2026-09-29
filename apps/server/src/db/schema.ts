@@ -438,3 +438,82 @@ export const approvalRules = pgTable(
       .where(sql`${table.revokedAt} IS NULL AND ${table.groupId} IS NULL`),
   ],
 );
+
+// One stored AI tool (T-0103). A tool belongs to one AI and one chat: a
+// group, or the personal chat between the AI and its owner when `group_id`
+// is null. Same-name tools in different chats are different tools; the
+// active-name uniqueness is enforced per (AI, chat) with the two partial
+// unique indexes, like `approval_rules`. Deletion is soft (`deleted_at`),
+// so a deleted name can be reused while the history rows survive.
+export const aiTools = pgTable(
+  'ai_tools',
+  {
+    id: text('id').primaryKey(),
+    aiId: text('ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    // `null` means the personal chat between the AI and its owner.
+    groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description').notNull(),
+    currentVersion: integer('current_version').notNull().default(1),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('ai_tools_active_personal_idx')
+      .on(table.aiId, table.name)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.groupId} IS NULL`),
+    uniqueIndex('ai_tools_active_group_idx')
+      .on(table.aiId, table.groupId, table.name)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.groupId} IS NOT NULL`),
+  ],
+);
+
+// One version of a tool's code (T-0103). Append-only: no service function
+// ever updates or deletes a row here; a revert inserts a new row copying
+// an older one. `version` counts from 1 per tool.
+export const aiToolVersions = pgTable(
+  'ai_tool_versions',
+  {
+    id: text('id').primaryKey(),
+    toolId: text('tool_id')
+      .notNull()
+      .references(() => aiTools.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    source: text('source').notNull(),
+    hosts: jsonb('hosts').$type<string[]>().notNull(),
+    message: text('message').notNull(),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('ai_tool_versions_tool_version_idx').on(table.toolId, table.version)],
+);
+
+// One recorded run of a tool version (T-0103). `output_text` is the
+// runner's output truncated to 2 KiB. Only the newest 50 rows per tool are
+// kept; the insert prunes the rest in the same transaction.
+export const aiToolRuns = pgTable(
+  'ai_tool_runs',
+  {
+    id: text('id').primaryKey(),
+    toolId: text('tool_id')
+      .notNull()
+      .references(() => aiTools.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    trigger: text('trigger', { enum: ['manual', 'routine', 'ai'] }).notNull(),
+    status: text('status', { enum: ['ok', 'error'] }).notNull(),
+    errorKind: text('error_kind'),
+    durationMs: integer('duration_ms').notNull(),
+    fetchCount: integer('fetch_count').notNull(),
+    outputText: text('output_text'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('ai_tool_runs_tool_idx').on(table.toolId)],
+);

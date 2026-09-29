@@ -120,6 +120,13 @@
       "when": 1790671418513,
       "tag": "0016_glorious_lifeguard",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790687798804,
+      "tag": "0017_plain_warstar",
+      "breakpoints": true
     }
   ]
 }
