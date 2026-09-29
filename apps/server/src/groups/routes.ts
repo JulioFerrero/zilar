@@ -157,6 +157,8 @@ export function createGroupsRoutes({
       groupId: c.req.param('id'),
       actorId: user.id,
       aiId: c.req.param('aiId'),
+      domain,
+      logger,
     });
     return c.json(group);
   });

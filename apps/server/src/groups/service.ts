@@ -8,6 +8,7 @@ import {
   groupAis,
   groupMembers,
   groups,
+  topicAis,
   topicMembers,
   topics,
   user,
@@ -98,6 +99,8 @@ export interface RemoveGroupAiInput {
   groupId: string;
   actorId: string;
   aiId: string;
+  domain: string;
+  logger: InviteLogger;
 }
 
 export interface PatchGroupInput {
@@ -506,6 +509,20 @@ export async function removeGroupAi(
       await tx
         .delete(groupAis)
         .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)));
+      // T-0109: removing the AI from the group removes it from every topic
+      // of that group. The rows are deleted in the same transaction as the
+      // rules/tools cleanup below; every non-General topic room is re-synced
+      // after the commit (the gateway leaves through the same event).
+      const topicRows = await tx
+        .select({ id: topics.id })
+        .from(topics)
+        .where(eq(topics.groupId, input.groupId));
+      const topicIds = topicRows.map((row) => row.id);
+      if (topicIds.length > 0) {
+        await tx
+          .delete(topicAis)
+          .where(and(inArray(topicAis.topicId, topicIds), eq(topicAis.aiId, input.aiId)));
+      }
       // T-0099: an "always" rule tied to this (AI, group) pair must
       // die with the membership. Personal rules and other-group rules
       // are unaffected. `now` is the same timestamp the admin client
@@ -529,6 +546,10 @@ export async function removeGroupAi(
     throw mapXmppError(error);
   }
 
+  // Every topic room of the group where the AI had a row loses it. Best
+  // effort after the commit, like the member flows: a failure is logged with
+  // the group id (never a topic name), never thrown.
+  await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain, input.logger);
   emitGroupAi({ type: 'ai-removed', groupId: input.groupId, aiId: input.aiId });
   const detail = await getGroupDetail(db, input.groupId);
   if (!detail) {

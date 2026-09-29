@@ -210,6 +210,30 @@ describe('buildGroupSystemMessage', () => {
     expect(system).toContain('Today is 2026-09-28.');
   });
 
+  it('names the topic and group when both are known', () => {
+    const system = buildGroupSystemMessage({
+      aiName: 'Dev-1',
+      persona: 'Senior TypeScript developer.',
+      senderName: 'Ana',
+      today: '2026-09-28',
+      groupName: 'Team',
+      topicName: 'Backend',
+    });
+    expect(system).toContain('You are in the topic Backend of the group Team.');
+  });
+
+  it('names only the topic when the group is unknown', () => {
+    const system = buildGroupSystemMessage({
+      aiName: 'Dev-1',
+      persona: 'Senior TypeScript developer.',
+      senderName: 'Ana',
+      today: '2026-09-28',
+      topicName: 'Backend',
+    });
+    expect(system).toContain('You are in the topic Backend.');
+    expect(system).not.toContain('of the group');
+  });
+
   it('offers no persona tools in groups', () => {
     const system = buildGroupSystemMessage({
       aiName: 'Dev-1',

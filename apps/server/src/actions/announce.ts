@@ -12,11 +12,13 @@ export interface ActionAnnouncer {
   approvalRequested(input: {
     aiId: string;
     groupId: string | null;
+    topicId?: string;
     approvalId: string;
   }): Promise<void>;
   outcome(input: {
     aiId: string;
     groupId: string | null;
+    topicId?: string;
     status: 'executed' | 'failed' | 'cancelled';
     summary: string;
   }): Promise<void>;

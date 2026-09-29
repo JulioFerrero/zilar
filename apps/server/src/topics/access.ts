@@ -1,7 +1,7 @@
 import { and, count, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ServerDatabase } from '../db/client';
-import { ais, groupMembers, topicMembers, topics, user } from '../db/schema';
+import { ais, groupMembers, topicAis, topicMembers, topics, user } from '../db/schema';
 import { HttpError } from '../errors';
 
 export const topicVisibilitySchema = z.enum(['public', 'private']);
@@ -36,6 +36,13 @@ export interface TopicView {
   isGeneral: boolean;
   archived: boolean;
   memberCount: number;
+  /** AIs added to this topic (never private names). */
+  ais: TopicAiView[];
+}
+
+export interface TopicAiView {
+  id: string;
+  name: string;
 }
 
 const MISSING_TOPIC_MESSAGE = 'Topic not found';
@@ -266,9 +273,10 @@ export async function toTopicView(
   topic: TopicRow,
   mucDomain: string,
 ): Promise<TopicView> {
-  const [memberCount, owner] = await Promise.all([
+  const [memberCount, owner, aiList] = await Promise.all([
     countTopicMembers(db, topic),
     resolveOwnerName(db, topic),
+    listTopicAis(db, topic.id),
   ]);
   return {
     id: topic.id,
@@ -285,7 +293,19 @@ export async function toTopicView(
     isGeneral: topic.isGeneral,
     archived: topic.archivedAt !== null,
     memberCount,
+    ais: aiList,
   };
+}
+
+// The AIs added to one topic, sorted by name. Rows exist only for
+// non-General topics; General membership is `group_ais`.
+export async function listTopicAis(db: ServerDatabase, topicId: string): Promise<TopicAiView[]> {
+  const rows = await db
+    .select({ id: ais.id, name: ais.name })
+    .from(topicAis)
+    .innerJoin(ais, eq(ais.id, topicAis.aiId))
+    .where(eq(topicAis.topicId, topicId));
+  return rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
 export async function toTopicViews(

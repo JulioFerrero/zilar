@@ -26,3 +26,30 @@ export function emitGroupAi(event: GroupAiEvent): void {
     }
   }
 }
+
+// Sibling notifier for per-topic AI membership (T-0109). The gateway treats
+// it exactly like a group event: a live session re-syncs its rooms right
+// away, so a newly added or removed membership shows up without waiting for
+// the next full reconcile. Only topic ids travel on the event.
+export type TopicAiEvent =
+  | { type: 'ai-added'; topicId: string; aiId: string }
+  | { type: 'ai-removed'; topicId: string; aiId: string };
+
+const topicAiListeners = new Set<(event: TopicAiEvent) => void>();
+
+export function onTopicAi(listener: (event: TopicAiEvent) => void): () => void {
+  topicAiListeners.add(listener);
+  return () => {
+    topicAiListeners.delete(listener);
+  };
+}
+
+export function emitTopicAi(event: TopicAiEvent): void {
+  for (const listener of topicAiListeners) {
+    try {
+      listener(event);
+    } catch {
+      // A gateway listener must never break topic management.
+    }
+  }
+}

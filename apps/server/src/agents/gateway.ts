@@ -7,7 +7,7 @@ import {
   type XmppCoreOptions,
 } from '@galena/xmpp-core';
 import type { Payload } from '@galena/protocol';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_LITELLM_BASE_URL,
@@ -27,9 +27,19 @@ import {
 } from '../ais/service';
 import type { KeyCipher } from '../connections/crypto';
 import type { ServerDatabase } from '../db/client';
-import { ais, groupAis, groupMembers, groups, llmVirtualKeys, user } from '../db/schema';
+import {
+  ais,
+  groupAis,
+  groupMembers,
+  groups,
+  llmVirtualKeys,
+  topicAis,
+  topicMembers,
+  topics,
+  user,
+} from '../db/schema';
 import { sharedDraftHub, type DraftHub } from '../drafts/hub';
-import { onGroupAi } from '../groups/events';
+import { onGroupAi, onTopicAi } from '../groups/events';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { XmppConfig } from '../xmpp/config';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -150,6 +160,8 @@ interface RoomPendingMessage {
 
 interface RoomSubscription {
   groupId: string;
+  /** The topic this room belongs to. Set for every room subscription. */
+  topicId: string;
   joinedAtMs: number;
   nick: string;
 }
@@ -193,6 +205,7 @@ export interface AgentGateway {
   postToChat: (input: {
     aiId: string;
     groupId: string | null;
+    topicId?: string;
     text: string;
     payload?: Payload;
   }) => Promise<boolean>;
@@ -265,16 +278,70 @@ async function loadOwnerName(db: ServerDatabase, ownerId: string): Promise<strin
   return name === '' ? 'owner' : name;
 }
 
-// Every room an AI belongs to: its group_ais rows joined with groups.
+// Every room an AI belongs to (T-0109): for each `group_ais` row the
+// group's General room, plus each non-archived topic where the AI is in
+// `topic_ais`. Every subscription carries the topic id (and still the group
+// id) so the turn knows which topic it is answering in.
 async function listAiRooms(
   db: ServerDatabase,
   aiId: string,
-): Promise<Array<{ groupId: string; roomLocalpart: string }>> {
-  return db
+): Promise<Array<{ groupId: string; topicId: string; roomLocalpart: string }>> {
+  const groupRows = await db
     .select({ groupId: groupAis.groupId, roomLocalpart: groups.roomLocalpart })
     .from(groupAis)
     .innerJoin(groups, eq(groups.id, groupAis.groupId))
     .where(eq(groupAis.aiId, aiId));
+  if (groupRows.length === 0) {
+    return [];
+  }
+  const groupIds = groupRows.map((row) => row.groupId);
+  const topicRows = await db
+    .select({
+      id: topics.id,
+      groupId: topics.groupId,
+      roomLocalpart: topics.roomLocalpart,
+      isGeneral: topics.isGeneral,
+      archivedAt: topics.archivedAt,
+    })
+    .from(topics)
+    .where(inArray(topics.groupId, groupIds));
+  const topicAiRows = await db
+    .select({ topicId: topicAis.topicId })
+    .from(topicAis)
+    .where(eq(topicAis.aiId, aiId));
+  const inTopic = new Set(topicAiRows.map((row) => row.topicId));
+  const rooms: Array<{ groupId: string; topicId: string; roomLocalpart: string }> = [];
+  for (const topic of topicRows) {
+    if (topic.isGeneral) {
+      continue;
+    }
+    if (topic.archivedAt !== null) {
+      continue;
+    }
+    if (inTopic.has(topic.id)) {
+      rooms.push({ groupId: topic.groupId, topicId: topic.id, roomLocalpart: topic.roomLocalpart });
+    }
+  }
+  // General rooms ride on the `group_ais` rows themselves (one General topic
+  // per group, always public, never archived).
+  const generals = new Map(
+    topicRows.filter((row) => row.isGeneral).map((row) => [row.groupId, row]),
+  );
+  for (const group of groupRows) {
+    const general = generals.get(group.groupId);
+    if (general) {
+      rooms.push({
+        groupId: group.groupId,
+        topicId: general.id,
+        roomLocalpart: general.roomLocalpart,
+      });
+    } else {
+      // No General row yet (pre-backfill data in a test): fall back to the
+      // group's own room so existing AIs keep answering in General.
+      rooms.push({ groupId: group.groupId, topicId: '', roomLocalpart: group.roomLocalpart });
+    }
+  }
+  return rooms;
 }
 
 interface RoomGateState {
@@ -285,19 +352,36 @@ interface RoomGateState {
   memberRolesByJid: Map<string, GroupRole>;
 }
 
-// The fresh gate for one group turn: who may trigger the AI, and which nicks
-// belong to AIs. Member JIDs are derived with the same `localpartFor` the
-// provisioning uses, so no extra mapping table is needed. Roles come from
-// `group_members` and are looked up per turn so a promotion or demotion that
-// lands between turns is picked up the next time the AI wakes.
+// The fresh gate for one topic turn: who may trigger the AI, and which
+// nicks belong to AIs. For a General topic the humans are every group
+// member; for any other topic they are that topic's members (public topics:
+// every group member; private topics: the `topic_members` rows). Member JIDs
+// are derived with the same `localpartFor` the provisioning uses, so no
+// extra mapping table is needed. Roles come from `group_members` and are
+// looked up per turn so a promotion or demotion that lands between turns is
+// picked up the next time the AI wakes. A message from someone who is not a
+// topic member cannot wake the AI (they cannot even be in the room, but it
+// is asserted anyway). The `request_action` role check (T-0098: sender is
+// group owner/admin) stays, and additionally requires the sender to be in
+// the topic.
 async function loadRoomGateState(
   db: ServerDatabase,
   groupId: string,
   domain: string,
+  topicId: string,
 ): Promise<RoomGateState | null> {
   const [group] = await db.select({ id: groups.id }).from(groups).where(eq(groups.id, groupId));
   if (!group) {
     return null;
+  }
+  const [topic] = await db.select().from(topics).where(eq(topics.id, topicId)).limit(1);
+  let memberIds: Set<string> | null = null;
+  if (topic && !topic.isGeneral && topic.visibility === 'private') {
+    const rows = await db
+      .select({ userId: topicMembers.userId })
+      .from(topicMembers)
+      .where(eq(topicMembers.topicId, topic.id));
+    memberIds = new Set(rows.map((row) => row.userId));
   }
   const members = await db
     .select({ userId: groupMembers.userId, role: groupMembers.role })
@@ -306,6 +390,9 @@ async function loadRoomGateState(
   const memberRolesByJid = new Map<string, GroupRole>();
   const memberJids = new Set<string>();
   for (const row of members) {
+    if (memberIds !== null && !memberIds.has(row.userId)) {
+      continue;
+    }
     const bare = normBareJid(jidFor(localpartFor(row.userId), domain));
     memberJids.add(bare);
     memberRolesByJid.set(bare, row.role);
@@ -802,7 +889,7 @@ export function createAgentGateway(
     if (session.stopped || sessions.get(session.aiId) !== session) {
       return;
     }
-    let rooms: Array<{ groupId: string; roomLocalpart: string }>;
+    let rooms: Array<{ groupId: string; topicId: string; roomLocalpart: string }>;
     try {
       rooms = await listAiRooms(deps.db, session.aiId);
     } catch (error) {
@@ -832,7 +919,12 @@ export function createAgentGateway(
         );
         continue;
       }
-      session.rooms.set(roomJid, { groupId: room.groupId, joinedAtMs: nowMs(), nick: aiName });
+      session.rooms.set(roomJid, {
+        groupId: room.groupId,
+        topicId: room.topicId,
+        joinedAtMs: nowMs(),
+        nick: aiName,
+      });
       logger.info({ aiId: session.aiId, groupId: room.groupId }, 'AI joined the room');
     }
     for (const [roomJid, sub] of session.rooms) {
@@ -890,6 +982,21 @@ export function createAgentGateway(
     return roomJidFor(row.roomLocalpart);
   }
 
+  // Looks up the room JID (bare) for one topic. Returns `null` when the
+  // topic does not exist or is archived; the caller answers `false` for
+  // those cases too.
+  async function loadTopicRoomJid(topicId: string): Promise<string | null> {
+    const [row] = await deps.db
+      .select({ roomLocalpart: topics.roomLocalpart, archivedAt: topics.archivedAt })
+      .from(topics)
+      .where(eq(topics.id, topicId))
+      .limit(1);
+    if (row === undefined || row.archivedAt !== null) {
+      return null;
+    }
+    return roomJidFor(row.roomLocalpart);
+  }
+
   // Builds the `SendMessageOptions` for one `postToChat` call. The
   // `payload` field is only present when the caller actually passed one.
   function sendOptions(input: { text: string; payload?: Payload }): SendMessageOptions {
@@ -901,10 +1008,14 @@ export function createAgentGateway(
   // still owned by this gateway), the AI must exist, and — for a group —
   // the session must currently hold a subscription to the room. Any other
   // answer is `false` with no send, so a stopped AI (kill switch) and an
-  // AI that was never in the room stay silent.
+  // AI that was never in the room stay silent. T-0109: an optional `topicId`
+  // posts into that topic's room instead (the AI must be a member and the
+  // topic live); otherwise the group post goes into General (the group's own
+  // room) or the DM. `session.rooms.has(roomJid)` remains the guard.
   async function postToChat(input: {
     aiId: string;
     groupId: string | null;
+    topicId?: string;
     text: string;
     payload?: Payload;
   }): Promise<boolean> {
@@ -919,6 +1030,17 @@ export function createAgentGateway(
       }
       const ownerJid = jidFor(localpartFor(ownerId), deps.xmpp.domain);
       await liveSendMessage(session, ownerJid, 'chat', input.text, sendOptions(input));
+      return true;
+    }
+    if (input.topicId !== undefined) {
+      const topicJid = await loadTopicRoomJid(input.topicId);
+      if (topicJid === null) {
+        return false;
+      }
+      if (!session.rooms.has(topicJid)) {
+        return false;
+      }
+      await liveSendMessage(session, topicJid, 'groupchat', input.text, sendOptions(input));
       return true;
     }
     const roomJid = await loadRoomJid(input.groupId);
@@ -1117,7 +1239,12 @@ export function createAgentGateway(
     if (room === undefined) {
       return;
     }
-    const gate = await loadRoomGateState(deps.db, room.groupId, deps.xmpp.domain).catch(() => null);
+    const gate = await loadRoomGateState(
+      deps.db,
+      room.groupId,
+      deps.xmpp.domain,
+      room.topicId,
+    ).catch(() => null);
     if (gate === null) {
       logger.warn({ aiId: session.aiId, groupId: room.groupId }, 'AI group state lookup failed');
       return;
@@ -1179,7 +1306,37 @@ export function createAgentGateway(
     recent.push(atMs);
     session.roomTurns.set(roomJid, recent);
 
+    // The room history the AI reads for a turn is that topic's room only:
+    // the `roomJid` above is the joined topic room, and `loadHistory` reads
+    // that room alone. The trigger is always inside it (checked at enqueue).
     const senderName = displayNameOf({ fromJid: trigger.fromJid, fromNick: trigger.fromNick });
+    // T-0109: names for the topic-aware system prompt. Best effort: a lookup
+    // failure keeps the old generic prompt. The topic name goes to the model
+    // alone, never into another topic's turn or any log line.
+    let groupName: string | undefined;
+    let topicName: string | undefined;
+    try {
+      const [groupRow] = await deps.db
+        .select({ title: groups.title })
+        .from(groups)
+        .where(eq(groups.id, room.groupId))
+        .limit(1);
+      groupName = groupRow?.title;
+    } catch {
+      // Best effort: the turn still runs with the generic prompt.
+    }
+    if (room.topicId !== '') {
+      try {
+        const [topicRow] = await deps.db
+          .select({ name: topics.name })
+          .from(topics)
+          .where(eq(topics.id, room.topicId))
+          .limit(1);
+        topicName = topicRow?.name;
+      } catch {
+        // Best effort: the turn still runs with the generic prompt.
+      }
+    }
     let virtualKey: string | undefined;
     try {
       await ensureAiModel(aiDeps(), session.aiId);
@@ -1233,6 +1390,8 @@ export function createAgentGateway(
         senderName,
         today,
         aiJid: ai.jid,
+        ...(groupName === undefined ? {} : { groupName }),
+        ...(topicName === undefined ? {} : { topicName }),
         history: [...history, ...fresh],
         trigger: { id: trigger.id, body: trigger.body },
       });
@@ -1255,12 +1414,19 @@ export function createAgentGateway(
       // short-circuits to `denied: not allowed` without invoking the
       // action gateway.
       const isStillAllowed = async (): Promise<boolean> => {
-        const fresh = await loadRoomGateState(deps.db, room.groupId, deps.xmpp.domain);
+        const fresh = await loadRoomGateState(
+          deps.db,
+          room.groupId,
+          deps.xmpp.domain,
+          room.topicId,
+        );
         if (fresh === null) {
           return false;
         }
         const role = fresh.memberRolesByJid.get(triggerBare);
-        return role === 'owner' || role === 'admin';
+        // T-0109: the sender must still be a group owner/admin AND a member
+        // of this topic. Either check failing denies the action.
+        return (role === 'owner' || role === 'admin') && fresh.memberJids.has(triggerBare);
       };
 
       // No persona tools in groups and no drafts: the reply goes straight to
@@ -1593,6 +1759,30 @@ export function createAgentGateway(
         // A join or leave for a live session syncs right away; anything
         // missed (an AI with no session yet) is picked up by `reconcile`.
         // Only ids travel on the event.
+        const session = sessions.get(event.aiId);
+        if (session === undefined) {
+          return;
+        }
+        void loadActiveAi(deps.db, event.aiId)
+          .then((record) => {
+            if (record !== null && sessions.get(event.aiId) === session) {
+              return syncAiRooms(session, record.name);
+            }
+          })
+          .catch((error: unknown) => {
+            logger.warn(
+              { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
+              'AI room sync failed',
+            );
+          });
+      }),
+      // T-0109: the sibling event for per-topic AI membership. A newly added
+      // or removed membership shows up without waiting for the next full
+      // reconcile, through the same right-away sync as the group event.
+      onTopicAi((event) => {
+        if (!started) {
+          return;
+        }
         const session = sessions.get(event.aiId);
         if (session === undefined) {
           return;

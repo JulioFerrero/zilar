@@ -10,6 +10,7 @@ import {
   groupMembers,
   groups,
   providerConnections,
+  topicAis,
 } from '../db/schema';
 import { user } from '../auth/auth-schema';
 import { aiLocalpart } from '../ais/service';
@@ -756,6 +757,45 @@ describe('groups', () => {
       const removed = await removeAiRequest(owner.cookie, groupId, ai.aiId);
       expect(removed.status).toBe(200);
       expect(((await removed.json()) as GroupDetailBody).ais).toHaveLength(0);
+    });
+
+    it('T-0109: removing the AI from the group removes it from every topic', async () => {
+      const { owner, groupId } = await groupWithMember();
+      const ai = await seedAi(owner.id);
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: ai.aiId })).status).toBe(200);
+
+      const first = await app.request(`${TEST_BASE_URL}/api/groups/${groupId}/topics`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ name: 'Backend' }),
+      });
+      expect(first.status).toBe(201);
+      const firstBody = (await first.json()) as { id: string; chatJid: string };
+      const second = await app.request(`${TEST_BASE_URL}/api/groups/${groupId}/topics`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ name: 'Bugs', visibility: 'private' }),
+      });
+      expect(second.status).toBe(201);
+      const secondBody = (await second.json()) as { id: string; chatJid: string };
+      for (const topicId of [firstBody.id, secondBody.id]) {
+        const added = await app.request(`${TEST_BASE_URL}/api/topics/${topicId}/ais`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: owner.cookie },
+          body: JSON.stringify({ aiId: ai.aiId }),
+        });
+        expect(added.status).toBe(200);
+      }
+      const firstRoom = firstBody.chatJid.split('@')[0]!;
+      const secondRoom = secondBody.chatJid.split('@')[0]!;
+      expect(context.adminClient.affiliationState.get(firstRoom)?.get(ai.jid)).toBe('member');
+      expect(context.adminClient.affiliationState.get(secondRoom)?.get(ai.jid)).toBe('member');
+
+      const removed = await removeAiRequest(owner.cookie, groupId, ai.aiId);
+      expect(removed.status).toBe(200);
+      expect(await context.db.select().from(topicAis)).toHaveLength(0);
+      expect(context.adminClient.affiliationState.get(firstRoom)?.get(ai.jid)).toBeUndefined();
+      expect(context.adminClient.affiliationState.get(secondRoom)?.get(ai.jid)).toBeUndefined();
     });
 
     it('T-0099: removing the AI from the group revokes its group rules only', async () => {

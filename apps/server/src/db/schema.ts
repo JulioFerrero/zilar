@@ -228,6 +228,29 @@ export const topicMembers = pgTable(
   (table) => [primaryKey({ columns: [table.topicId, table.userId] })],
 );
 
+// Membership of AIs in non-General topics (T-0109). Rows exist only for
+// non-General topics: an AI in the group is in General through `group_ais`,
+// and may additionally be added to exactly the other topics it works in.
+// Adding requires the AI's owner (who must see the topic); removing needs
+// the owner or a topic manager. Removing the AI from the group deletes every
+// row here (see `removeGroupAi`).
+export const topicAis = pgTable(
+  'topic_ais',
+  {
+    topicId: text('topic_id')
+      .notNull()
+      .references(() => topics.id, { onDelete: 'cascade' }),
+    aiId: text('ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    addedBy: text('added_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.topicId, table.aiId] })],
+);
+
 // An AI an owner created. It is a real XMPP user (its own account and roster),
 // never a member of Better Auth: `owner` points at the user who owns it and
 // `localpart`/`jid` are the identity we registered in ejabberd. The persona and

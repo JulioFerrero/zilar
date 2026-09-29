@@ -1,7 +1,7 @@
 ---
 id: T-0109
 title: AIs in topics: an AI reads and answers only in the topics it was added to
-status: planned
+status: review
 milestone: M5
 branch: task/T-0109-ais-in-topics
 model: meta/muse-spark-1.3-contributor
@@ -79,19 +79,41 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Schema + migration: new `topic_ais` table (`topic_id`/`ai_id` pk, `added_by`, `added_at`, cascade FKs), rows only for non-General topics. Generated via `pnpm --filter @galena/server db:generate` → `0020_dry_lord_hawal.sql`.
+- Topics: `GET /api/topics/:id/ais` (visible), `POST /api/topics/:id/ais` `{ aiId }` (AI owner who can see the topic; AI must be an active group member; General → 400 `already_in_general`), `DELETE /api/topics/:id/ais/:aiId` (AI owner or topic manager). Strangers/blind owners/plain members get the same 404 as a missing id. `GET /api/topics/:id` and topic lists (incl. `GET /api/chats`) gain `ais: [{ id, name }]`. Audit `topic.ai_added`/`topic.ai_removed` (ids only). Room sync after every add/remove (502 on failure); events `ai-added`/`ai-removed` via new `onTopicAi`/`emitTopicAi` in `groups/events.ts`.
+- Rooms: `desiredMembers` adds AI JIDs — General = every active `group_ais` AI; other topics = their active `topic_ais` rows; a private topic never includes an AI without a row. Archived topics sync empty.
+- Groups: `removeGroupAi` deletes every `topic_ais` row for the AI in the same transaction as the rules/tools cleanup, re-syncs every topic room post-commit, then emits `ai-removed`. Input gains `domain`/`logger` (route passes them).
+- Gateway: `listAiRooms` returns General per `group_ais` row + each live topic in `topic_ais`; `RoomSubscription` carries `topicId`. `loadRoomGateState` takes `topicId`: General/public wake on group members, private topics only on `topic_members` (role check for `request_action` stays owner/admin + re-check now also requires topic membership). Rate limits/coalescing stay per room; history is the topic room only. `postToChat` gains optional `topicId` (posts into that room when the AI holds it, else `false`). `ActionAnnouncer` gains optional `topicId` on both methods (announcer in `index.ts` untouched — out of Allowed files, so production cards still go to General/DM). System prompt names the topic ("You are in the topic <name> of the group <group>"), never other topics.
+- Tests: topic AI routes (7 new), gateway topics block (8 new: joins, mention answered in-room, unjoined private ignored, runtime join/leave, admin gate accept/reject, postToChat true/false + stopped, no-other-topic-names), groups removal (1 new), context prompt (2 new), backfill exclusion fix.
 
 ### Files changed
--
+- `apps/server/src/db/schema.ts`, `apps/server/drizzle/0020_dry_lord_hawal.sql` (+ meta snapshot/journal)
+- `apps/server/src/topics/service.ts` (add/removeTopicAi), `topics/routes.ts` (3 routes), `topics/access.ts` (`ais` on views, `listTopicAis`), `topics/rooms.ts` (AI affiliations)
+- `apps/server/src/agents/gateway.ts` (rooms, gate, postToChat, event subs, topic prompt names), `agents/context.ts` (+ tests)
+- `apps/server/src/groups/service.ts` (removeGroupAi cleanup), `groups/routes.ts` (domain/logger), `groups/events.ts` (topic AI events)
+- `apps/server/src/actions/announce.ts` (optional `topicId` on the port only)
+- Tests: `topics/topics.test.ts`, `topics/backfill.test.ts`, `agents/gateway.test.ts`, `agents/context.test.ts`, `groups/groups.test.ts`
+- `work/T-0109-ais-in-topics.md` (status + this report)
 
 ### Commands run and real results
--
+- `pnpm install`: pass (7.7s)
+- `pnpm format:check`: pass ("All matched files use Prettier code style!")
+- `pnpm lint`: pass (oxlint clean)
+- `pnpm typecheck`: pass (turbo 10/10)
+- `pnpm --filter @galena/server test --maxWorkers=2`: 64 files passed, 5 skipped; 1113 passed, 7 skipped (229s)
+- `pnpm build`: pass (2/2 turbo tasks)
+- Scoped: topics 29 passed; agents+groups+chats+audit+authz-sweep 286 passed, 1 skipped; actions 105 passed; gateway full 113 passed.
+- `grep` for `eslint-disable|oxlint-disable|@ts-ignore|console.log|: any` in touched non-test source: no hits (2 pre-existing English comments containing "any" matched, no `any` types).
 
 ### Problems, deviations from the spec, open questions
--
+- Spec says gateway `RoomSubscription` carries `topicId` "(and still `groupId`)" — done. `postToChat` `topicId` wired in the gateway + port, but the production announcer in `index.ts` was NOT touched (`index.ts` is outside Allowed files); cards still announce to General/DM until a later task passes `topicId` there.
+- Pre-existing test fixtures seeded `group_ais` rows without General topic rows; gateway tests now insert matching General rows (fallback in `listAiRooms` keeps old behaviour if a General row is ever missing).
+- `backfill.test.ts` now skips `0020_*` files when building the pre-T-0108 state (it replays SQL text file-by-file; the new table needs `topics` first).
+- `_journal.json` needed a trailing newline after `db:generate` for `format:check`.
+- No `any`, no disables, no new dependencies.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
 
 ---
 

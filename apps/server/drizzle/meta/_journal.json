@@ -141,6 +141,13 @@
       "when": 1790715222580,
       "tag": "0019_general-topics",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790720744896,
+      "tag": "0020_dry_lord_hawal",
+      "breakpoints": true
     }
   ]
 }
