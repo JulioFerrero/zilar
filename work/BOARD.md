@@ -122,5 +122,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0092](T-0092-approval-card-announce.md) | approval cards and outcomes posted into the chat through the AI's live session | 2026-09-29 |
 | [T-0094](T-0094-server-config-docs.md) | docs/SERVER_CONFIG.md: env vars, flags, migrations, jobs, health | 2026-09-29 |
 | [T-0095](T-0095-mobile-kill-switch.md) | mobile kill switch: Stop/Resume from the AI list, Stopped pill | 2026-09-29 |
-| [T-0096](T-0096-action-flow-e2e-test.md) | End-to-end test of the action flow through the real HTTP routes (tests only) | in progress | minimax-m3 | T-0090, T-0092, T-0093 | Any bug it finds becomes a separate task. |
 | [T-0093](T-0093-request-action-tool.md) | request_action AI tool + dev-only demo.echo adapter (ACTION_DEMO_ENABLED) | 2026-09-29 |
+| [T-0096](T-0096-action-flow-e2e-test.md) | end-to-end test of the action flow through the real approvals routes | 2026-09-29 |
