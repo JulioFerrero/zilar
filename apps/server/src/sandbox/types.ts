@@ -77,6 +77,15 @@ export type SandboxErrorKind =
   | 'fetch_denied'
   | 'sandbox_failure';
 
+export const FETCH_DENIED_PREFIX = 'fetch_denied: ';
+
+// Prefixes a fetch failure message exactly once: callers may pass a message
+// that already carries the marker (worker rejections), so strip it first.
+export function withFetchPrefix(message: string): string {
+  const stripped = message.replace(/^fetch_denied:\s*/i, '');
+  return `${FETCH_DENIED_PREFIX}${stripped}`;
+}
+
 export interface ToolOutput {
   text: string;
   data?: unknown;

@@ -36,6 +36,10 @@ describe('classifyIp', () => {
     'ff02::1',
     '2001:db8::1',
     '::ffff:127.0.0.1',
+    '2002:7f00:1::1',
+    '2002:5dbd:299d::1',
+    '2001::1',
+    'fec0::1',
   ])('blocks %s', (address) => {
     expect(classifyIp(address)).toBe('blocked');
   });

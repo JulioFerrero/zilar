@@ -110,14 +110,41 @@ describe('runTool happy path', () => {
 });
 
 describe('runTool limits', () => {
-  it('times out an infinite loop within the cpu limit', async () => {
+  it('does not count fetch wait time against cpuMs', async () => {
+    // Lead repro: cpuMs 300, fetch delayed 800 ms, then real work. Under the
+    // old wall-clock cpuDeadline this reported timeout; cpu time here is only
+    // the loop, so the run must succeed.
+    const result = await runTool({
+      source: `export default async function run() {
+        const res = await fetch('https://api.example.com/x');
+        const body = await res.text();
+        let total = 0;
+        for (let i = 0; i < 200000; i++) { total += i; }
+        return body + ':' + (total > 0 ? 'worked' : 'idle');
+      }`,
+      input: null,
+      allowedHosts: ['api.example.com'],
+      fetcher: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        return { status: 200, body: textEncoder.encode('fetched') };
+      },
+      resolver: PUBLIC_RESOLVER,
+      limits: { cpuMs: 300, wallMs: 10000, fetchTimeoutMs: 5000 },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.output).toEqual({ text: 'fetched:worked' });
+    }
+  });
+
+  it('still times out a busy loop at cpuMs', async () => {
     const started = Date.now();
     const result = await runTool({
       source: `export default async function run() { while (true) {} }`,
       input: null,
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,
-      limits: { cpuMs: 500, wallMs: 5000 },
+      limits: { cpuMs: 500, wallMs: 10000 },
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -139,12 +166,12 @@ describe('runTool limits', () => {
     }
   });
 
-  it('reports memory for growing arrays', async () => {
+  it('reports memory for growing arrays', { timeout: 25000 }, async () => {
     const result = await runTool({
       source: `export default async function run() {
-        const parts = [];
-        while (true) { parts.push('x'.repeat(10000)); }
-      }`,
+          const parts = [];
+          while (true) { parts.push('x'.repeat(10000)); }
+        }`,
       input: null,
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,
@@ -185,7 +212,8 @@ describe('runTool limits', () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(['timeout', 'fetch_denied']).toContain(result.error.kind);
+      expect(result.error.kind).toBe('fetch_denied');
+      expect(result.error.message).toBe('fetch_denied: fetch timeout');
     }
   });
 
@@ -232,6 +260,7 @@ describe('runTool limits', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.kind).toBe('fetch_denied');
+      expect(result.error.message).toBe('fetch_denied: too many fetches');
       expect(result.fetchCount).toBe(5);
     }
   });
@@ -481,27 +510,27 @@ describe('runTool fetch rules', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.kind).toBe('fetch_denied');
-      expect(result.error.message).toMatch(/host not allowed: evil\.com/);
+      expect(result.error.message).toBe('fetch_denied: host not allowed: evil.com');
     }
     expect(called).toBe(0);
   });
 
   it('rejects http, credentials, ports and unlisted hosts', async () => {
-    const cases: Array<[string, RegExp]> = [
+    const cases: Array<[string, string]> = [
       [
         `export default async function run() { await fetch('http://api.example.com/x'); return 'x'; }`,
-        /only https/,
+        'fetch_denied: only https is allowed',
       ],
       [
         `export default async function run() { await fetch('https://u:p@api.example.com/x'); return 'x'; }`,
-        /credentials/,
+        'fetch_denied: credentials in url are not allowed',
       ],
       [
         `export default async function run() { await fetch('https://api.example.com:8443/x'); return 'x'; }`,
-        /port/,
+        'fetch_denied: explicit port is not allowed',
       ],
     ];
-    for (const [source, pattern] of cases) {
+    for (const [source, message] of cases) {
       const result = await runTool({
         source,
         input: null,
@@ -512,7 +541,7 @@ describe('runTool fetch rules', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.kind).toBe('fetch_denied');
-        expect(result.error.message).toMatch(pattern);
+        expect(result.error.message).toBe(message);
       }
     }
   });
@@ -628,6 +657,7 @@ describe('runTool fetch rules', () => {
     expect(post.ok).toBe(false);
     if (!post.ok) {
       expect(post.error.kind).toBe('fetch_denied');
+      expect(post.error.message).toBe('fetch_denied: method not allowed');
     }
     expect(calls).toHaveLength(0);
   });
@@ -647,7 +677,7 @@ describe('runTool fetch rules', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.kind).toBe('fetch_denied');
-      expect(result.error.message).toMatch(/too large/);
+      expect(result.error.message).toBe('fetch_denied: response too large');
     }
   });
 
@@ -673,6 +703,25 @@ describe('runTool fetch rules', () => {
     expect(result.ok).toBe(true);
     expect(seen).toEqual(['93.184.216.34']);
     expect(calls).toBe(1);
+  });
+
+  it('works when started from a different working directory', async () => {
+    const previous = process.cwd();
+    process.chdir('/');
+    try {
+      const result = await runTool({
+        source: `export default async function run() { return 'cwd-ok'; }`,
+        input: null,
+        allowedHosts: [],
+        fetcher: NO_NETWORK_FETCHER,
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.output).toEqual({ text: 'cwd-ok' });
+      }
+    } finally {
+      process.chdir(previous);
+    }
   });
 
   it('clamps limits to the hard maxima', async () => {

@@ -20,7 +20,7 @@ the tool's code: every failure is `{ ok: false, error: { kind, message } }`.
 | Limit | Default | Hard max |
 |---|---|---|
 | `wallMs` (whole run) | 10 000 | 30 000 |
-| `cpuMs` (JS execution) | 2 000 | 30 000 |
+| `cpuMs` (JS execution only, never fetch waits) | 2 000 | 30 000 |
 | `memoryBytes` | 32 MiB | 64 MiB |
 | `stackBytes` | 512 KiB | 8 MiB |
 | `maxFetches` | 5 | 10 |
@@ -57,7 +57,8 @@ Callers cannot raise a limit above its hard max. Error kinds: `invalid_source`,
   IDNA normalised; no wildcards, no suffix match, no IP literals).
 - SSRF guard: the host is DNS-resolved, **every** address must be public
   (loopback, private, link-local incl. 169.254.169.254, CGNAT, multicast,
-  unspecified, IPv6 ULA/link-local, mapped-private all rejected); the request
-  then connects to the validated IP with SNI/`Host` kept as the hostname.
+  unspecified, IPv6 ULA/link-local/site-local, 6to4, Teredo, mapped-private
+  all rejected); the request then connects to the validated IP with SNI/`Host`
+  kept as the hostname.
 - 3xx responses are returned as-is (status + empty body) and never followed.
 - The tool sees only `{ ok, status, text(), json() }`: no headers or streams.

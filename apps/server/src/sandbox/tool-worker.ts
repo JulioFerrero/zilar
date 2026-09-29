@@ -1,7 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { getQuickJS, type QuickJSContext, type QuickJSHandle } from 'quickjs-emscripten';
 import type { FetchResponse } from './host-fetch';
-import { MAX_SOURCE_BYTES, resolveLimits, type SandboxLimits } from './types';
+import { MAX_SOURCE_BYTES, resolveLimits, withFetchPrefix, type SandboxLimits } from './types';
 
 // Runs inside the worker thread. It owns the QuickJS runtime for one tool
 // execution and talks to the parent only through small JSON messages: log
@@ -116,21 +116,87 @@ async function run(): Promise<void> {
   const QuickJS = await getQuickJS();
   const runtime = QuickJS.newRuntime();
   const wallDeadline = startedAt + limits.wallMs;
-  const cpuDeadline = startedAt + limits.cpuMs;
   let fetchCount = 0;
+
+  // cpuMs counts only time the VM is actually executing JS, never time
+  // spent waiting on fetch. Every entry into the VM (evalCode,
+  // callFunction, executePendingJobs) opens a segment; leaving closes it
+  // and accumulates. The depth counter keeps nested entries (evalCode
+  // inside a host function) from corrupting the total.
+  let cpuUsedMs = 0;
+  let vmDepth = 0;
+  let segmentStartMs = 0;
+  const enterVm = (): void => {
+    if (vmDepth === 0) {
+      segmentStartMs = Date.now();
+    }
+    vmDepth += 1;
+  };
+  const exitVm = (): void => {
+    vmDepth -= 1;
+    if (vmDepth === 0) {
+      cpuUsedMs += Date.now() - segmentStartMs;
+    }
+  };
+  const cpuConsumedMs = (): number => cpuUsedMs + (vmDepth > 0 ? Date.now() - segmentStartMs : 0);
 
   runtime.setMemoryLimit(limits.memoryBytes);
   runtime.setMaxStackSize(limits.stackBytes);
-  runtime.setInterruptHandler(() => {
-    const now = Date.now();
-    return now >= wallDeadline || now >= cpuDeadline;
-  });
+  runtime.setInterruptHandler(() => Date.now() >= wallDeadline || cpuConsumedMs() >= limits.cpuMs);
 
   const context = runtime.newContext();
+
+  // All VM entries go through these so cpu accounting stays complete.
+  // Never call runtime.executePendingJobs() from inside a host function
+  // (text, json, fetch): that would pump jobs re-entrantly from inside VM
+  // execution. The main loop below already pumps after every return.
+  const pumpJobs = () => {
+    enterVm();
+    try {
+      return runtime.executePendingJobs();
+    } finally {
+      exitVm();
+    }
+  };
+  const evalInVm = (code: string, asModule = false) => {
+    enterVm();
+    try {
+      return asModule
+        ? context.evalCode(code, 'tool.js', { type: 'module' })
+        : context.evalCode(code, 'tool.js');
+    } finally {
+      exitVm();
+    }
+  };
+  const callInVm = (func: QuickJSHandle, thisVal: QuickJSHandle, args: QuickJSHandle[]) => {
+    enterVm();
+    try {
+      return context.callFunction(func, thisVal, args);
+    } finally {
+      exitVm();
+    }
+  };
   const handles: QuickJSHandle[] = [];
   const track = (handle: QuickJSHandle): QuickJSHandle => {
     handles.push(handle);
     return handle;
+  };
+  // Pumps that run outside VM execution (async fetch continuation, error
+  // paths) go through settleVm, so the VM time they spend also counts as cpu.
+  const settleVm = (settle: (handle: QuickJSHandle) => void, handle: QuickJSHandle): void => {
+    enterVm();
+    try {
+      settle(handle);
+    } finally {
+      exitVm();
+    }
+    pumpJobs();
+  };
+  const rejectWith = (
+    deferred: { reject: (handle: QuickJSHandle) => void },
+    text: string,
+  ): void => {
+    settleVm((handle) => deferred.reject(handle), track(context.newString(text)));
   };
 
   try {
@@ -142,15 +208,13 @@ async function run(): Promise<void> {
       try {
         urlText = context.getString(urlHandle);
       } catch {
-        deferred.reject(track(context.newString('fetch_denied: invalid url')));
-        runtime.executePendingJobs();
+        rejectWith(deferred, 'fetch_denied: invalid url');
         return deferred.handle;
       }
       void (async () => {
         try {
           if (fetchCount >= limits.maxFetches) {
-            deferred.reject(track(context.newString('fetch_denied: too many fetches')));
-            runtime.executePendingJobs();
+            rejectWith(deferred, 'fetch_denied: too many fetches');
             return;
           }
           fetchCount += 1;
@@ -200,7 +264,6 @@ async function run(): Promise<void> {
             context.newFunction('text', () => {
               const out = context.newPromise();
               out.resolve(track(context.newString(bodyText)));
-              runtime.executePendingJobs();
               return out.handle;
             }),
           );
@@ -208,27 +271,33 @@ async function run(): Promise<void> {
           const jsonFn = track(
             context.newFunction('json', () => {
               const out = context.newPromise();
-              context.setProp(context.global, '__galena_body', track(context.newString(bodyText)));
-              const parsed = context.evalCode('JSON.parse(__galena_body)', 'tool.js');
-              if (parsed.error) {
-                parsed.error.dispose();
-                out.reject(track(context.newString('fetch_denied: invalid json')));
-              } else {
-                const value = parsed.value;
-                track(value);
-                out.resolve(value);
+              enterVm();
+              try {
+                context.setProp(
+                  context.global,
+                  '__galena_body',
+                  track(context.newString(bodyText)),
+                );
+                const parsed = context.evalCode('JSON.parse(__galena_body)', 'tool.js');
+                if (parsed.error) {
+                  parsed.error.dispose();
+                  out.reject(track(context.newString('invalid json')));
+                } else {
+                  const value = parsed.value;
+                  track(value);
+                  out.resolve(value);
+                }
+              } finally {
+                exitVm();
               }
-              runtime.executePendingJobs();
               return out.handle;
             }),
           );
           context.setProp(responseHandle, 'json', jsonFn);
-          deferred.resolve(responseHandle);
-          runtime.executePendingJobs();
+          settleVm((handle) => deferred.resolve(handle), responseHandle);
         } catch (error) {
           const message = error instanceof Error ? error.message : 'fetch failed';
-          deferred.reject(track(context.newString(`fetch_denied: ${message}`)));
-          runtime.executePendingJobs();
+          rejectWith(deferred, withFetchPrefix(message));
         }
       })();
       return deferred.handle;
@@ -270,7 +339,7 @@ async function run(): Promise<void> {
       return null;
     };
 
-    const evalResult = context.evalCode(params.source, 'tool.js', { type: 'module' });
+    const evalResult = evalInVm(params.source, true);
     if (evalResult.error) {
       const dumped = dumpVmError(context, evalResult.error);
       evalResult.error.dispose();
@@ -312,7 +381,7 @@ async function run(): Promise<void> {
       return;
     }
 
-    const parseInput = context.evalCode('JSON.parse(__galena_input)', 'tool.js');
+    const parseInput = evalInVm('JSON.parse(__galena_input)');
     if (parseInput.error) {
       const dumped = dumpVmError(context, parseInput.error);
       parseInput.error.dispose();
@@ -328,7 +397,7 @@ async function run(): Promise<void> {
     const inputHandle = parseInput.value;
     track(inputHandle);
 
-    const callResult = context.callFunction(defaultExport, context.undefined, inputHandle);
+    const callResult = callInVm(defaultExport, context.undefined, [inputHandle]);
     if (callResult.error) {
       const dumped = dumpVmError(context, callResult.error);
       callResult.error.dispose();
@@ -361,7 +430,7 @@ async function run(): Promise<void> {
     );
 
     while (!settled) {
-      const jobs = runtime.executePendingJobs();
+      const jobs = pumpJobs();
       if (jobs.error) {
         const dumped = dumpVmError(context, jobs.error);
         jobs.error.dispose();
@@ -425,9 +494,8 @@ async function run(): Promise<void> {
       outputJson = JSON.stringify({ text });
     } else if (valueType === 'object') {
       context.setProp(context.global, '__galena_result_value', valueHandle);
-      const stringifyResult = context.evalCode(
+      const stringifyResult = evalInVm(
         '(() => { try { return JSON.stringify(__galena_result_value); } catch (e) { return null; } })()',
-        'tool.js',
       );
       if (!stringifyResult.error) {
         const stringified = stringifyResult.value;

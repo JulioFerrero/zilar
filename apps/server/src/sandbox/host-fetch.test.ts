@@ -1,10 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildHostHeaders, isHostAllowed, normalizeHost, validateFetchRequest } from './host-fetch';
+import { isHostAllowed, normalizeHost, validateFetchRequest } from './host-fetch';
 
 function bridge(overrides: Record<string, unknown> = {}) {
   return {
     allowedHosts: ['api.example.com'],
-    maxFetches: 5,
     fetchTimeoutMs: 1000,
     maxResponseBytes: 1024,
     resolver: async () => ['93.184.216.34'],
@@ -209,12 +208,66 @@ describe('validateFetchRequest', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
-});
 
-describe('buildHostHeaders', () => {
-  it('passes only accept and forces the tool user-agent', () => {
-    expect(
-      buildHostHeaders({ accept: 'application/json', authorization: 'Bearer x', 'x-a': 'b' }),
-    ).toEqual({ accept: 'application/json', 'user-agent': 'GalenaTool/1' });
+  it('ignores tool-supplied headers: the real request carries only accept and the fixed user-agent', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const { mkdtempSync, readFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { createServer } = await import('node:https');
+    const { fetchPinnedHttps } = await import('./host-fetch');
+    const dir = mkdtempSync(join(tmpdir(), 'galena-hdr-'));
+    try {
+      execFileSync('openssl', [
+        'req',
+        '-x509',
+        '-newkey',
+        'rsa:2048',
+        '-keyout',
+        join(dir, 'k.pem'),
+        '-out',
+        join(dir, 'c.pem'),
+        '-days',
+        '1',
+        '-nodes',
+        '-subj',
+        '/CN=tooltest.local',
+      ]);
+      const seen: Array<{ accept: unknown; userAgent: unknown; authorization: unknown }> = [];
+      const server = createServer(
+        { key: readFileSync(join(dir, 'k.pem')), cert: readFileSync(join(dir, 'c.pem')) },
+        (req, res) => {
+          seen.push({
+            accept: req.headers.accept,
+            userAgent: req.headers['user-agent'],
+            authorization: req.headers.authorization,
+          });
+          res.writeHead(200, { 'content-type': 'text/plain' });
+          res.end('ok');
+        },
+      );
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const port = (server.address() as { port: number }).port;
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      try {
+        // fetchPinnedHttps takes no headers argument at all: whatever the
+        // tool passed is dropped at validation, so the wire always shows
+        // exactly these two headers and nothing else.
+        const response = await fetchPinnedHttps(new URL('https://tooltest.local/x'), '127.0.0.1', {
+          fetchTimeoutMs: 5000,
+          maxResponseBytes: 65536,
+          port,
+        });
+        expect(response.status).toBe(200);
+        expect(seen).toEqual([
+          { accept: '*/*', userAgent: 'GalenaTool/1', authorization: undefined },
+        ]);
+      } finally {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = undefined;
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

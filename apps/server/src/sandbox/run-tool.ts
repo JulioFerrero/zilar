@@ -1,8 +1,8 @@
 import { Worker } from 'node:worker_threads';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import {
-  buildHostHeaders,
   createDefaultFetcher,
   validateFetchRequest,
   type DnsResolver,
@@ -12,6 +12,7 @@ import {
   MAX_SOURCE_BYTES,
   parseToolOutput,
   resolveLimits,
+  withFetchPrefix,
   type RunToolResult,
   type SandboxErrorKind,
   type SandboxLimits,
@@ -124,8 +125,8 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
   // The worker entry is TypeScript. The main thread may run under tsx, plain
   // node, or vitest (whose workers do not inherit a TS loader), so always
   // bootstrap through an eval wrapper that registers tsx's CJS hook and then
-  // requires the entry. This same wrapper was verified to work under tsx,
-  // plain node and vitest.
+  // requires the entry. Both paths are resolved from this module, never from
+  // the process working directory, so the server can start anywhere.
   const workerOptions = {
     workerData: {
       source: params.source,
@@ -143,7 +144,9 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
   };
   let worker: Worker;
   try {
-    const bootstrap = `require('tsx/cjs'); require(${JSON.stringify(workerPath)});`;
+    const requireFromHere = createRequire(import.meta.url);
+    const tsxHook = requireFromHere.resolve('tsx/cjs');
+    const bootstrap = `require(${JSON.stringify(tsxHook)}); require(${JSON.stringify(workerPath)});`;
     worker = new Worker(bootstrap, {
       eval: true,
       workerData: workerOptions.workerData,
@@ -215,6 +218,14 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
         return;
       }
       if (event.type === 'fetch') {
+        const fetchFailed = (message: string): void => {
+          worker.postMessage({
+            type: 'fetch-result',
+            id: event.id,
+            ok: false as const,
+            message: withFetchPrefix(message),
+          });
+        };
         void (async () => {
           const check = await validateFetchRequest(
             {
@@ -225,42 +236,28 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
             },
             {
               allowedHosts: params.allowedHosts,
-              maxFetches: limits.maxFetches,
               fetchTimeoutMs: limits.fetchTimeoutMs,
               maxResponseBytes: limits.maxResponseBytes,
               resolver: params.resolver,
             },
           );
           if (!check.ok) {
-            worker.postMessage({
-              type: 'fetch-result',
-              id: event.id,
-              ok: false as const,
-              message: `fetch_denied: ${check.message}`,
-            });
+            fetchFailed(check.message);
             return;
           }
-          void buildHostHeaders(event.headers);
+          // The fetcher ignores tool-supplied headers: the real request always
+          // sends only `accept: */*` plus the fixed `GalenaTool/1` user-agent.
+          // Anything the tool passes (authorization, cookies, …) never leaves
+          // the sandbox, so there is nothing to forward or merge here.
           let response;
           try {
             response = await fetcher(check.request);
           } catch (error) {
-            const message = error instanceof Error ? error.message : 'fetch failed';
-            worker.postMessage({
-              type: 'fetch-result',
-              id: event.id,
-              ok: false as const,
-              message: `fetch_denied: ${message}`,
-            });
+            fetchFailed(error instanceof Error ? error.message : 'fetch failed');
             return;
           }
           if (response.body.length > limits.maxResponseBytes) {
-            worker.postMessage({
-              type: 'fetch-result',
-              id: event.id,
-              ok: false as const,
-              message: 'fetch_denied: response too large',
-            });
+            fetchFailed('response too large');
             return;
           }
           worker.postMessage({

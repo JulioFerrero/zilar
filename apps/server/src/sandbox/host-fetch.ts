@@ -29,10 +29,10 @@ export type DnsResolver = (host: string) => Promise<string[]>;
 
 export interface FetchBridgeOptions {
   allowedHosts: readonly string[];
-  maxFetches: number;
   fetchTimeoutMs: number;
   maxResponseBytes: number;
-  fetcher?: HostFetcher | undefined;
+  // Note: maxFetches is enforced in the worker (it owns the counter), not
+  // here, so it is intentionally not part of these options.
   resolver?: DnsResolver | undefined;
 }
 
@@ -115,17 +115,6 @@ export async function validateFetchRequest(
     }
   }
   return { ok: true, request: { url, address: addresses[0] as string } };
-}
-
-export function buildHostHeaders(raw: Record<string, string>): Record<string, string> {
-  const headers: Record<string, string> = {};
-  for (const [name, value] of Object.entries(raw)) {
-    if (name.toLowerCase() === 'accept') {
-      headers.accept = value;
-    }
-  }
-  headers['user-agent'] = TOOL_USER_AGENT;
-  return headers;
 }
 
 export function createDefaultFetcher(options: {

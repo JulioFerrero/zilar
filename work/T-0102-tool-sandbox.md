@@ -141,11 +141,38 @@ pnpm build
   Context and runtime are disposed on every path.
 - Wrote `docs/TOOL_SANDBOX.md` (63 lines): contract, limits table, threat
   model, fetch rules.
-- Tests: 98 in `src/sandbox/` (`run-tool.test.ts` 46 happy/limit/contract/
-  escape/fetch cases, `host-fetch.test.ts` 23 incl. a real local-TLS pinned
+- Tests: 104 in `src/sandbox/` (`run-tool.test.ts` 48 happy/limit/contract/
+  escape/fetch cases, `host-fetch.test.ts` 24 incl. a real local-TLS pinned
   request test proving SNI + Host stay the hostname while TCP goes to the
-  validated IP, `ip-guard.test.ts` 29). No real network except local loopback
-  in that one test; everything else uses injected fake fetchers/resolvers.
+  validated IP, plus a header test proving only `accept` + `GalenaTool/1`
+  reach the wire, `ip-guard.test.ts` 32). No real network except local
+  loopback in those two tests; everything else uses injected fake
+  fetchers/resolvers.
+
+### Review fixes (lead items 1–7, all done)
+- cpuMs now counts only VM execution: `enterVm`/`exitVm` segments around every
+  `evalCode`/`callFunction`/`executePendingJobs` entry (depth-counted for
+  nesting), interrupt handler compares `cpuUsedMs + open segment` against
+  `cpuMs`; fetch waits no longer consume cpu. Tests: lead repro (cpuMs 300 +
+  800 ms delayed fetch + 200k loop) now succeeds; busy loop still times out at
+  cpuMs; never-answering fetch still ends via `fetchTimeoutMs` as
+  `fetch_denied: fetch timeout`.
+- Removed `executePendingJobs()` from inside the `text`/`json` host functions
+  (re-entrant pumping); the main loop pumps after every return. Async fetch
+  continuation pumps go through `settleVm`, inside cpu accounting.
+- `ip-guard.ts` now also blocks 6to4 `2002::/16`, Teredo `2001::/32`, and
+  deprecated site-local `fec0::/10`; tests incl. `2002:7f00:1::1`.
+- Removed dead code: `buildHostHeaders` (+ its tests) gone — the fetcher sends
+  only `accept: */*` + fixed user-agent and takes no headers argument;
+  `maxFetches` and `fetcher` removed from `FetchBridgeOptions` (fetch count is
+  enforced in the worker; noted in a comment).
+- Worker bootstrap resolves `tsx/cjs` via `createRequire(import.meta.url)`,
+  not the cwd; test runs `runTool` after `process.chdir('/')` and restores it.
+- `withFetchPrefix` (in `types.ts`, shared by worker and parent) strips a
+  leading `fetch_denied:` before prefixing; tests assert exact messages
+  (e.g. `fetch_denied: host not allowed: evil.com`).
+- `docs/TOOL_SANDBOX.md` updated: cpuMs is JS-execution-only, extra blocked
+  ranges listed.
 
 ### Files changed
 - `apps/server/src/sandbox/types.ts` (new): limits, `resolveLimits` clamping,
@@ -166,18 +193,21 @@ pnpm build
 - `docs/TOOL_SANDBOX.md` (new, 63 lines).
 - `work/T-0102-tool-sandbox.md`: this Report + `status: review`.
 
-### Commands run and real results
-- `pnpm install`: ok (23.1 s).
-- `pnpm add quickjs-emscripten@^0.32.0 --filter @galena/server`: ok
-  (installed 0.32.0; unrelated mobile peer warning only).
-- `pnpm --filter @galena/server test`: 60 files passed, 5 skipped;
-  995 tests passed, 7 skipped (~370 s). Includes the 98 new sandbox tests.
+### Commands run and real results (review-fixes pass; full suite run once at the end)
+- `pnpm install`: ok.
+- `pnpm exec vitest run src/sandbox --maxWorkers=2` (from `apps/server`):
+  3 files, 104 tests passed. One flake found while iterating: `growing arrays`
+  (cpuMs 5000 + worker startup under load) exceeds vitest's default 5 s
+  per-test timeout when vitest is run bare without the repo's
+  `--testTimeout=30000`; gave that test an explicit `{ timeout: 25000 }`.
+- `pnpm --filter @galena/server test -- --maxWorkers=2` (once, at the end):
+  60 files passed, 5 skipped; 1001 tests passed, 7 skipped (~517 s).
 - `pnpm format:check`: all files use Prettier style.
 - `pnpm lint` (oxlint): clean.
-- `pnpm typecheck` (turbo): clean (`tsc --noEmit` on the server also clean).
-- `pnpm build`: 2 tasks successful.
-- Probes (thrown away in /tmp): infinite loop → `InternalError: interrupted`
-  (~220 ms for a 200 ms deadline); `'x'.repeat(1e9)` → `out of memory`;
+- `pnpm typecheck` (turbo): 10 tasks successful.
+- `pnpm build`: 2 tasks successful (cached).
+- Original probes (thrown away in /tmp): infinite loop →
+  `InternalError: interrupted` (~220 ms for a 200 ms deadline); `'x'.repeat(1e9)` → `out of memory`;
   deep recursion → `InternalError: stack overflow` at 128 KiB guest stack but
   crashes the host process at 512 KiB — hence the spec default of 512 KiB is
   kept but `stackBytes` is user-raisible only to 8 MiB **worker** stack while
@@ -203,15 +233,13 @@ pnpm build
   `setMaxStackSize` is the resolved `stackBytes` (default 512 KiB, hard max
   8 MiB). Deep-recursion tests pass reliably under vitest and tsx.
 - `cpuMs` measures wall time of JS execution including `executePendingJobs`
-  pumping (the interrupt handler fires on `Date.now()` deadlines), not
-  isolated JS-thread CPU time; a tool awaiting a hanging fetch consumes wall
-  time, not cpu time, and is stopped by `wallMs`/`fetchTimeoutMs`. This keeps
-  every limit enforceable without asyncify.
-- Error-message prefixing: fetch rejections cross two hops (worker string →
-  parent `fetch_denied:` wrapper), so tool-visible messages can read
-  `fetch_denied: fetch_denied: host not allowed: evil.com`. Tests assert the
-  kind plus a `/host not allowed: evil\.com/` match; messages stay short and
-  secret-free (paths/`wasm…` frames/`at …` lines stripped).
+  pumping (the interrupt handler fires on `cpuUsedMs + open segment`), not
+  isolated JS-thread CPU time; a tool awaiting a hanging fetch consumes no cpu
+  time and is stopped by `wallMs`/`fetchTimeoutMs`. This keeps every limit
+  enforceable without asyncify.
+- Error messages carry the `fetch_denied:` prefix exactly once via the shared
+  `withFetchPrefix` helper; messages stay short and secret-free
+  (paths/`wasm…` frames/`at …` lines stripped).
 - `fetchPinnedHttps` takes an optional `port` used only by the local-TLS test;
   production callers always use 443 (the validator rejects explicit ports).
 - `TOOL_SANDBOX.md` documents the real defaults and guarantees; the one
