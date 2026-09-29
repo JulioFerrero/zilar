@@ -33,6 +33,13 @@ export interface ActionCost {
 // `description` is one short line the model sees in the `request_action`
 // tool definition, so it knows what each adapter does without a long card.
 // `execute` performs the side effect and returns the success summary.
+//
+// `allowAlways` (T-0099) opts the adapter in to the standing-rule flow:
+// an owner who clicks "Approve always" in this chat for this action
+// creates an `approval_rules` row that runs future matching requests
+// without a card. Off by default — most adapters should never be granted
+// a standing approval. Adapters that report a worst-case cost
+// (`estimateCost`) cannot opt in: money is never auto-approved.
 export interface ActionAdapter<Args> {
   name: string;
   description: string;
@@ -40,6 +47,15 @@ export interface ActionAdapter<Args> {
   argsSchema: z.ZodType<Args>;
   describe: (args: Args) => { summary: string; details?: string };
   estimateCost?: (args: Args) => ActionCost;
+  /**
+   * When `true`, an "Approve always" decision for this adapter is
+   * accepted and stored as an `approval_rules` row. When `false` or
+   * omitted, an "Approve always" decision is refused with 400
+   * `always_not_allowed`. Adapters that report a worst-case cost
+   * (`estimateCost`) cannot opt in: the registry rejects the
+   * combination at startup so money can never get a standing approval.
+   */
+  allowAlways?: boolean;
   execute: (ctx: ActionContext, args: Args) => Promise<ActionResult>;
 }
 
@@ -95,6 +111,16 @@ export function buildRegistry(adapters: ReadonlyArray<ActionAdapter<unknown>>): 
     if (typeof adapter.execute !== 'function') {
       throw new AdapterRegistryError(`adapter "${adapter.name}" is missing execute`);
     }
+    // T-0099: an adapter that reports a worst-case cost can never opt in
+    // to standing rules — money is never auto-approved. The registry
+    // refuses the combination at startup so a misconfigured demo or
+    // future adapter can never reach the request path with this state.
+    if (adapter.allowAlways === true && adapter.estimateCost !== undefined) {
+      throw new AdapterRegistryError(
+        `adapter "${adapter.name}" has allowAlways=true but reports a worst-case cost; ` +
+          'money must not be auto-approved',
+      );
+    }
     registry[adapter.name] = adapter;
   }
   return registry;
@@ -105,4 +131,33 @@ export class AdapterRegistryError extends Error {
     super(message);
     this.name = 'AdapterRegistryError';
   }
+}
+
+// T-0099: the "always-eligible" predicate the approvals routes use to
+// decide whether `approve_always` is a real choice (button shown, rule
+// created) or an unavailable one (400 `always_not_allowed`). It folds
+// the three blockers the spec names into a single boolean:
+//   - the action must be registered (unknown actions never get a card)
+//   - the adapter must have opted in via `allowAlways: true`
+//   - the adapter must not report a worst-case cost (money is never
+//     auto-approved)
+//
+// Keeping it here, next to the registry, means the predicate and the
+// validation rules above cannot drift apart — a future change that
+// rejects `allowAlways + estimateCost` at startup also makes this
+// predicate return `false` for the same case at runtime.
+export function buildAlwaysEligible(registry: ActionRegistry): (action: string) => boolean {
+  return (action: string): boolean => {
+    const adapter = registry[action];
+    if (adapter === undefined) {
+      return false;
+    }
+    if (adapter.allowAlways !== true) {
+      return false;
+    }
+    if (adapter.estimateCost !== undefined) {
+      return false;
+    }
+    return true;
+  };
 }

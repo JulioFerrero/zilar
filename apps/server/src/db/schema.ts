@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean,
   date,
@@ -9,6 +10,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { user } from '../auth/auth-schema';
 
@@ -401,4 +403,38 @@ export const pendingActions = pgTable(
     finishedAt: timestamp('finished_at', { withTimezone: true }),
   },
   (table) => [index('pending_actions_status_idx').on(table.status)],
+);
+
+// One row per "always allow" rule (T-0099). A rule grants a single AI the
+// right to run a single action in one chat (a group, or the personal chat
+// with its owner when `group_id` is null) without a fresh card. The unique
+// partial indexes enforce "at most one active rule per (AI, chat, action)":
+// the inactive ones can pile up so an audit reader sees the history.
+// Revocation is soft (`revoked_at`/`revoked_by`); deletion of the AI or
+// group cascades, leaving nothing usable behind.
+export const approvalRules = pgTable(
+  'approval_rules',
+  {
+    id: text('id').primaryKey(),
+    aiId: text('ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    // `null` means the personal chat between the AI and its owner.
+    groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    action: text('action').notNull(),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedBy: text('revoked_by').references(() => user.id, { onDelete: 'set null' }),
+  },
+  (table) => [
+    uniqueIndex('approval_rules_active_group_idx')
+      .on(table.aiId, table.groupId, table.action)
+      .where(sql`${table.revokedAt} IS NULL`),
+    uniqueIndex('approval_rules_active_personal_idx')
+      .on(table.aiId, table.action)
+      .where(sql`${table.revokedAt} IS NULL AND ${table.groupId} IS NULL`),
+  ],
 );

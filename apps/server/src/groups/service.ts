@@ -7,6 +7,7 @@ import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { emitGroupAi } from './events';
+import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
 
 export const MAX_GROUP_MEMBERS = 50;
 export const ROOM_LOCALPART_LENGTH = 16;
@@ -421,6 +422,16 @@ export async function removeGroupAi(
       await tx
         .delete(groupAis)
         .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)));
+      // T-0099: an "always" rule tied to this (AI, group) pair must
+      // die with the membership. Personal rules and other-group rules
+      // are unaffected. `now` is the same timestamp the admin client
+      // saw for the affiliation change so audit rows line up.
+      await revokeActiveRulesForAiInGroup(tx as unknown as ServerDatabase, {
+        aiId: input.aiId,
+        groupId: input.groupId,
+        actorId: input.actorId,
+        now: new Date(),
+      });
     });
   } catch (error) {
     throw mapXmppError(error);

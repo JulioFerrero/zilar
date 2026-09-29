@@ -221,6 +221,7 @@ describe('approvals routes', () => {
         [
           'action',
           'aiId',
+          'alwaysEligible',
           'argsHash',
           'createdAt',
           'decidedAt',

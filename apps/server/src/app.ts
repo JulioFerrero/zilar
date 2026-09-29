@@ -8,6 +8,7 @@ import { createLitellmAdminClientFromConfig, type LitellmAdminClient } from './a
 import { createAisRoutes } from './ais/routes';
 import type { AiLogger } from './ais/service';
 import { createActionGateway, type ActionGateway } from './actions/gateway';
+import type { AlwaysEligiblePredicate } from './approvals/service';
 import { createApprovalsRoutes } from './approvals/routes';
 import { createAuditRecorder, type AuditRecorder } from './audit/service';
 import { createAuditRoutes } from './audit/routes';
@@ -74,6 +75,13 @@ export interface AppDependencies {
    * registry; tests pass their own to inject fake adapters.
    */
   actionGateway?: ActionGateway;
+  /**
+   * T-0099: predicate the approvals route uses to decide whether an
+   * `approve_always` decision is a real choice. Built from the
+   * adapter registry by `buildAlwaysEligible` in `actions/registry.ts`.
+   * Absent = nothing is always-eligible.
+   */
+  alwaysEligible?: AlwaysEligiblePredicate;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -93,6 +101,7 @@ export function createApp({
   machineRegistry,
   audit,
   actionGateway,
+  alwaysEligible,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
   const auditRecorder = audit ?? createAuditRecorder({ db, logger });
@@ -169,6 +178,7 @@ export function createApp({
       audit: auditRecorder,
       logger,
       onDecided: (approvalId) => gateway.onApprovalDecided(approvalId),
+      ...(alwaysEligible === undefined ? {} : { alwaysEligible }),
     }),
   );
   app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));

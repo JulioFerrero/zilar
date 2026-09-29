@@ -16,6 +16,7 @@ import {
   user,
 } from '../db/schema';
 import { decideApproval } from '../approvals/service';
+import { createRule } from '../approvals/rules';
 import { type AuditEntry, createAuditRecorder } from '../audit/service';
 import { type ActionAnnouncer } from './announce';
 import { createActionGateway, type ActionGateway, type ActionGatewayLogger } from './gateway';
@@ -428,7 +429,7 @@ describe('action gateway', () => {
         },
         new Date(),
       );
-      expect(updated?.status).toBe('denied');
+      expect(updated?.row.status).toBe('denied');
 
       await harness.gateway.onApprovalDecided(result.approvalId);
 
@@ -1262,6 +1263,211 @@ describe('action gateway', () => {
         requestedBy: 'ai-bot@galena.localhost',
       });
       expect(result.status).toBe('pending_approval');
+    });
+  });
+
+  describe('standing rules (T-0099)', () => {
+    const ruleNow = new Date('2026-01-01T00:00:00Z');
+
+    function eligibleAdapter(): FakeAdapter {
+      const calls: AdapterCall[] = [];
+      const adapter: ActionAdapter<unknown> = {
+        name: 'rules.echo',
+        description: 'Opted-in echo adapter for standing-rule tests.',
+        tier: 2,
+        argsSchema: z.object({ value: z.string() }),
+        describe: (args) => ({ summary: `Echo ${(args as { value: string }).value}` }),
+        allowAlways: true,
+        execute: async (ctx, args) => {
+          calls.push({ ctx, args });
+          return { summary: `Echoed: ${(args as { value: string }).value}` };
+        },
+      };
+      return { name: adapter.name, tier: 2 as const, adapter, calls };
+    }
+
+    async function buildRuledHarness() {
+      const picked = eligibleAdapter();
+      const context = await createTestContext();
+      const auditEntries: AuditEntry[] = [];
+      const audit = createAuditRecorder({ db: context.db });
+      const recordedAudit = {
+        ...audit,
+        record: async (entry: AuditEntry): Promise<void> => {
+          auditEntries.push(entry);
+          await audit.record(entry);
+        },
+      };
+      const registry: ActionRegistry = buildRegistry([picked.adapter]);
+      const logger: ActionGatewayLogger = {
+        warn: () => undefined,
+        error: () => undefined,
+      };
+      const gateway = createActionGateway({
+        db: context.db,
+        adapters: registry,
+        audit: recordedAudit,
+        logger,
+        now: () => new Date(),
+      });
+      return { context, gateway, picked, auditEntries };
+    }
+
+    it('executes at once with no approval row and the prefixed announcer notice', async () => {
+      const ruled = await buildRuledHarness();
+      const { announcer, calls } = captureAnnouncer();
+      const gatewayWithAnnounce = createActionGateway({
+        db: ruled.context.db,
+        adapters: buildRegistry([ruled.picked.adapter]),
+        audit: createAuditRecorder({ db: ruled.context.db }),
+        logger: { warn: () => undefined, error: () => undefined },
+        now: () => new Date(),
+        announce: announcer,
+      });
+      try {
+        const ownerId = await seedUser(ruled.context);
+        const { aiId } = await seedAi(ruled.context, ownerId);
+        const { rule } = await createRule(
+          ruled.context.db,
+          { aiId, groupId: null, action: 'rules.echo', createdBy: ownerId },
+          ruleNow,
+        );
+        const approvalsBefore = await ruled.context.db.select().from(approvals);
+        const outcome = await gatewayWithAnnounce.request({
+          aiId,
+          action: 'rules.echo',
+          args: { value: 'fast' },
+          requestedBy: 'ai-bot@galena.localhost',
+        });
+        expect(outcome).toEqual({ status: 'executed', summary: 'Echoed: fast' });
+        expect(await ruled.context.db.select().from(approvals)).toHaveLength(
+          approvalsBefore.length,
+        );
+        expect(ruled.picked.calls).toHaveLength(1);
+        expect(calls.approvalRequested).toHaveLength(0);
+        expect(calls.outcome).toEqual([
+          {
+            aiId,
+            groupId: null,
+            status: 'executed',
+            summary: 'Ran automatically (always allowed in this chat): Echoed: fast',
+          },
+        ]);
+        const auditRows = await ruled.context.db.select().from(auditLog);
+        const auto = auditRows.find((row) => row.action === 'action.auto_approved');
+        expect(auto).toMatchObject({ subjectId: rule.id, aiId, groupId: null });
+        expect(auto?.argsHash).toMatch(/^[0-9a-f]{64}$/);
+        expect(JSON.stringify(auditRows)).not.toContain('fast');
+      } finally {
+        await ruled.context.close();
+      }
+    });
+
+    it('a failed adapter answers failed with no error text anywhere', async () => {
+      const failing: ActionAdapter<unknown> = {
+        name: 'rules.echo',
+        description: 'Failing opted-in adapter for standing-rule tests.',
+        tier: 2,
+        argsSchema: z.object({ value: z.string() }),
+        describe: () => ({ summary: 'fails' }),
+        allowAlways: true,
+        execute: async () => {
+          throw new Error('SECRET-RULE-FAILURE');
+        },
+      };
+      const context = await createTestContext();
+      try {
+        const gateway = createActionGateway({
+          db: context.db,
+          adapters: buildRegistry([failing]),
+          audit: createAuditRecorder({ db: context.db }),
+          logger: { warn: () => undefined, error: () => undefined },
+          now: () => new Date(),
+        });
+        const ownerId = await seedUser(context);
+        const { aiId } = await seedAi(context, ownerId);
+        await createRule(
+          context.db,
+          { aiId, groupId: null, action: 'rules.echo', createdBy: ownerId },
+          ruleNow,
+        );
+        const outcome = await gateway.request({
+          aiId,
+          action: 'rules.echo',
+          args: { value: 'boom' },
+          requestedBy: 'ai-bot@galena.localhost',
+        });
+        expect(outcome).toEqual({ status: 'failed' });
+        const auditRows = await context.db.select().from(auditLog);
+        expect(JSON.stringify(auditRows)).not.toContain('SECRET-RULE-FAILURE');
+        expect(auditRows.find((row) => row.action === 'action.auto_approved')).toBeDefined();
+        expect(auditRows.find((row) => row.action === 'action.failed')).toBeDefined();
+      } finally {
+        await context.close();
+      }
+    });
+
+    it('a stopped AI with a rule is denied and nothing runs', async () => {
+      const ruled = await buildRuledHarness();
+      try {
+        const ownerId = await seedUser(ruled.context);
+        const { aiId } = await seedAi(ruled.context, ownerId, { status: 'stopped' });
+        await createRule(
+          ruled.context.db,
+          { aiId, groupId: null, action: 'rules.echo', createdBy: ownerId },
+          ruleNow,
+        );
+        const outcome = await ruled.gateway.request({
+          aiId,
+          action: 'rules.echo',
+          args: { value: 'nope' },
+          requestedBy: 'ai-bot@galena.localhost',
+        });
+        expect(outcome).toEqual({ status: 'denied', reason: 'ai_not_active' });
+        expect(ruled.picked.calls).toHaveLength(0);
+        expect(
+          ruled.auditEntries.find((entry) => entry.action === 'action.auto_approved'),
+        ).toBeUndefined();
+      } finally {
+        await ruled.context.close();
+      }
+    });
+
+    it('a rule is ignored once the adapter loses eligibility', async () => {
+      const context = await createTestContext();
+      try {
+        const noLongerEligible: ActionAdapter<unknown> = {
+          name: 'rules.echo',
+          description: 'Same action, no longer opted in.',
+          tier: 2,
+          argsSchema: z.object({ value: z.string() }),
+          describe: (args) => ({ summary: `Echo ${(args as { value: string }).value}` }),
+          execute: async () => ({ summary: 'Echoed' }),
+        };
+        const gateway = createActionGateway({
+          db: context.db,
+          adapters: buildRegistry([noLongerEligible]),
+          audit: createAuditRecorder({ db: context.db }),
+          logger: { warn: () => undefined, error: () => undefined },
+          now: () => new Date(),
+        });
+        const ownerId = await seedUser(context);
+        const { aiId } = await seedAi(context, ownerId);
+        await createRule(
+          context.db,
+          { aiId, groupId: null, action: 'rules.echo', createdBy: ownerId },
+          ruleNow,
+        );
+        const outcome = await gateway.request({
+          aiId,
+          action: 'rules.echo',
+          args: { value: 'card-again' },
+          requestedBy: 'ai-bot@galena.localhost',
+        });
+        expect(outcome.status).toBe('pending_approval');
+      } finally {
+        await context.close();
+      }
     });
   });
 });

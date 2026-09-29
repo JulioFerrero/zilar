@@ -35,6 +35,12 @@ function describeDemoEcho(args: unknown): { summary: string } {
 // owner approves, the gateway calls this and reports the summary back
 // to the model. Typed as `ActionAdapter<unknown>` so it lines up with
 // the registry's contract.
+//
+// T-0099: `allowAlways: true` opts the demo into the standing-rule flow,
+// so an owner can approve "always" in the DM and the next echo runs
+// without a card. It has no `estimateCost` (and the registry rejects any
+// adapter that has both), so the cost-above-zero safety rule does not
+// apply.
 export function buildDemoEchoAdapter(): ActionAdapter<unknown> {
   return {
     name: DEMO_ECHO_ACTION,
@@ -42,6 +48,7 @@ export function buildDemoEchoAdapter(): ActionAdapter<unknown> {
     tier: 2,
     argsSchema: DemoEchoArgsSchema as unknown as z.ZodType<unknown>,
     describe: describeDemoEcho as ActionAdapter<unknown>['describe'],
+    allowAlways: true,
     execute: async (_ctx, args) => ({
       summary: `Echoed: ${(args as DemoEchoArgs).text}`,
     }),
