@@ -1,7 +1,7 @@
 ---
 id: T-0070
 title: Machines page (web) — add a machine with a pairing code, approve or deny new machines, rename, revoke, delete
-status: todo
+status: review
 milestone: M3
 branch: task/T-0070-machines-web
 model: minimax-coding-plan/MiniMax-M3
@@ -89,19 +89,67 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Implemented the Machines settings page at `/settings/machines` in `apps/web/src/routes/MachinesPage.tsx`, using the existing `AiPageShell` frame, `Button`, and `FieldError` from `ais/AiPageShell.tsx` so it sits next to Connections and My AIs.
+- Built five machine components under `apps/web/src/components/machines/`:
+  - `AddMachineDialog.tsx` — mints a pairing code, shows it big in Geist Mono, a working **Copy** key (uses `lib/clipboard.ts`), a live countdown that updates each second and stops at zero with a visible **Code expired** + **New code**, the `galena-runner pair <CODE>` command line, and the honest "The runner app is coming soon." muted note. Esc, the overlay and Done close it; the countdown interval is cleared on unmount. The expiry announcement lives in an `aria-live="polite"` `sr-only` text so screen readers hear it once.
+  - `PendingMachineCard.tsx` — "New machine" card with the fingerprint in mono, the safety line "Only approve a machine you just paired yourself.", and a two-step **Approve** / **Deny** with the standard confirm copy.
+  - `ApprovedMachineCard.tsx` — online pill (`Online` / `Offline · last seen X ago` / `Never connected` based on `online` + `lastSeenAt`), inline rename (pencil, Enter saves, Esc cancels, 1–64 chars), and a two-step **Revoke** with the per-machine message.
+  - `RevokedMachineCard.tsx` — muted card with "Revoked <date>" and a two-step **Delete**.
+  - `MachineListSkeleton.tsx` — quiet skeleton for the loading state, with the same 300 ms delay and reduced-motion handling as `components/Skeleton.tsx`.
+  - `errors.ts` — `machineErrorMessage` helper that maps the T-0068 codes (`pairing_code_limit`, `rate_limited`, `revoke_first`, `not_found`, `network_error`) to plain language and otherwise surfaces the server's own message.
+- Added the **Machines** menu item between Connections and My AIs in `apps/web/src/components/ChatList.tsx`.
+- Wired the route `/settings/machines` into `apps/web/src/routes/AppRoutes.tsx` (under the same `RequireAuth` guard as the other settings pages).
+- Extended `apps/web/src/lib/api.ts` with zod schemas and functions for `listMachines`, `createPairingCode`, `approveMachine`, `denyMachine`, `revokeMachine`, `renameMachine`, `deleteMachine`. The `Machine` shape mirrors T-0068 (`status` is the pending/approved/revoked enum, `online` is optional so the schema works before T-0071 lands).
+- Extended the standalone mock layer (`apps/web/src/mock/api.ts`):
+  - Seeded three machines (1 pending, 1 approved online, 1 revoked) to mirror the spec sketch.
+  - `POST /machines/pairing-codes` mints a 4-char/4-char code from an unambiguous alphabet and returns an `expiresAt` 10 minutes in the future.
+  - Approve / deny / revoke / rename / delete mutate the in-memory list with the same status rules as the server, including 409s for invalid transitions (revoking an already-revoked machine, approving a non-pending one, deleting an approved one with `revoke_first`).
+- Tests: `apps/web/src/lib/api.test.ts` (path, method, schema, optional `online`, 409 → `ApiError`); `apps/web/src/routes/MachinesPage.test.tsx` (loading, error+Retry, empty state, three sections, approve moves the card, deny/revoke need the second click, failed action leaves the card and shows the inline error, rename Enter saves and Esc cancels, add dialog opens with the code, copy uses the clipboard, Esc closes and clears timers, server error inside the dialog); `apps/web/src/components/machines/AddMachineDialog.test.tsx` (the code/copy/command/coming-soon copy, the countdown ticking into expiry with fake timers + **New code**, Esc closes the dialog); extended `apps/web/src/components/ChatList.test.tsx` to assert the menu navigates; extended `apps/web/src/mock/api.test.ts` with seed + transitions + 409s.
+- Visual check via a one-off Vite on port 5299 in mock mode: confirmed the three card types (pending, approved with Online pill, revoked), the Add dialog with pairing code + countdown + command + "coming soon" note, the Deny two-step confirm, and the Revoked disclosure expanding to show the muted revoked card.
 
 ### Files changed
--
+- `apps/web/src/lib/api.ts` — machines schemas (`machineSchema`, `pairingCodeSchema`) and functions (`listMachines`, `createPairingCode`, `approveMachine`, `denyMachine`, `revokeMachine`, `renameMachine`, `deleteMachine`); exported `Machine`, `PairingCode`, `MachineStatus`.
+- `apps/web/src/lib/api.test.ts` (new).
+- `apps/web/src/mock/api.ts` — three seeded machines, `createPairingCodeResponse`, the machines branches of `mockRequest`, helper `conflict`.
+- `apps/web/src/routes/AppRoutes.tsx` — imported `MachinesPage`, added the `/settings/machines` route.
+- `apps/web/src/routes/MachinesPage.tsx` (new).
+- `apps/web/src/routes/MachinesPage.test.tsx` (new).
+- `apps/web/src/components/ChatList.tsx` — added the **Machines** menuitem between Connections and My AIs.
+- `apps/web/src/components/ChatList.test.tsx` — added the menu navigation test.
+- `apps/web/src/components/machines/AddMachineDialog.tsx` (new).
+- `apps/web/src/components/machines/AddMachineDialog.test.tsx` (new).
+- `apps/web/src/components/machines/ApprovedMachineCard.tsx` (new).
+- `apps/web/src/components/machines/PendingMachineCard.tsx` (new; also exports the shared `hardwareLine` helper).
+- `apps/web/src/components/machines/RevokedMachineCard.tsx` (new).
+- `apps/web/src/components/machines/MachineListSkeleton.tsx` (new).
+- `apps/web/src/components/machines/errors.ts` (new).
+- `apps/web/src/mock/api.test.ts` — added machines seed + transitions + 409 cases.
 
 ### Commands run and real results
--
+- `pnpm install` — `Done in 6.7s using pnpm v10.32.1`. (lockfile up to date, only dev deps added)
+- `pnpm format:check` — `All matched files use Prettier code style!` (after running `prettier --write` on the new files once).
+- `pnpm lint` — `oxlint .` exits 0.
+- `pnpm --filter @galena/web typecheck` — `tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json` exits 0.
+- `pnpm exec turbo test --force --filter=@galena/web` — `Test Files 46 passed (46)`, `Tests 391 passed (391)`. The 35 new tests added by this task are:
+  - `src/lib/api.test.ts`: 10 (path/method/scheme, `online` optional, single-call shapes, 409 → `ApiError`).
+  - `src/routes/MachinesPage.test.tsx`: 11 (loading-then-sections, empty state, error+Retry, approve moves the card, deny needs the second click, revoke needs the second click, rename Enter saves / Esc cancels, failed action leaves the card, add dialog opens with the code + copy key + command + coming-soon, Esc closes the dialog and clears timers, server error inside the dialog).
+  - `src/components/machines/AddMachineDialog.test.tsx`: 3 (code + copy + command + coming-soon, countdown ticks into expiry with fake timers and the **New code** key, Esc closes and clears timers).
+  - `src/components/ChatList.test.tsx`: +1 menu navigation.
+  - `src/mock/api.test.ts`: +10 (seed, code shape + expiry, approve, deny, rename, revoke, delete, 409 approve, 409 delete `revoke_first`, 409 revoke already revoked).
+- `pnpm build` — both apps built; web bundle 863 KB / 258 KB gzipped (the same chunk-size warning the existing build prints).
+- Visual check: `cd apps/web && GALENA_API_URL=http://localhost:3188 pnpm exec vite --port 5299 --strictPort > $TMPDIR/vite.log 2>&1 &` on a free port, opened `/settings/machines?mock=1` in Chrome DevTools at 1440×900, confirmed the three sections render with the right copy (pending "office-linux" with fingerprint `a1b2c3d4e5f60718`, approved "julio-mbp" with the green Online pill, revoked "old-macbook" muted under the collapsed `Revoked (1)` disclosure), opened the Add dialog (it minted `XN4J-NQQU`, showed the **Copy** key, "Expires in 9:58" countdown, `galena-runner pair XN4J-NQQU`, "The runner app is coming soon.", Done), and clicked the first **Deny** to confirm the two-step confirm. Then `kill $(cat $TMPDIR/vite.pid)` stopped the server.
+- I could not persist the screenshots to `work/screenshots/T-0070/` — `chrome-devtools.take_screenshot` returns the image directly but does not surface the raw bytes to a writable path, and `screencapture -l <windowId>` returned "could not create image from window" because the DevTools page does not expose a window id to the system. The visual confirmation is in the browser preview above; no screenshots were persisted.
 
 ### Problems, deviations from the spec, open questions
--
+- The approved card's `online` / `Offline` / `Never connected` pill uses the optional `Machine.online` flag from the T-0071 wire shape. The mock seeds the approved machine with `online: true`. Before T-0071 merges, a server response without `online` will be parsed by `machineSchema` (it's `.optional()`) but the UI will always render `Offline · last seen X ago` or `Never connected`. This is exactly what the spec called for ("make it optional, default false").
+- `MachinesPage`'s rename is optimistic: the new name lands in the list immediately and rolls back on a server error. Other writes (approve / deny / revoke / delete) re-fetch from the response shape only — the same pattern `AisPage` uses for delete. The spec says "Actions update the list optimistically or re-fetch, but a failed action shows an inline error on that card and leaves the card as it was" — both shapes meet it.
+- The skeleton uses the same 300 ms `SKELETON_DELAY_MS` from `components/Skeleton.tsx`, so a fast load never flashes a skeleton. That matches the existing AisPage convention.
+- The Dialog's expiry announcement is a single `<p role="status" aria-live="polite" className="sr-only">` that switches to `"Code expired"` once. The countdown tick uses `aria-live="off"` and is wrapped in `aria-hidden="true"` so it doesn't spam screen readers. This matches the spec's "the countdown does not spam screen readers (update an `aria-live="off"` text, announce only 'Code expired')".
+- When `lastSeenAt` is set but `online` is not, the card shows `Offline · last seen 5 min ago` (or "1 h ago" / "2 d ago"). When `lastSeenAt` is null but the machine is approved, it shows `Never connected`.
+- No new dependencies were added.
 
 ### Blocked / needs a decision
--
+- None.
 
 ---
 

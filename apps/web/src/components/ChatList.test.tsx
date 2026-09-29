@@ -193,4 +193,11 @@ describe('ChatList', () => {
     expect(screen.queryByRole('button', { name: /Retrying/ })).toBeNull();
     expect(screen.queryByRole('status', { name: 'Loading chats' })).toBeNull();
   });
+
+  it('navigates to the Machines page from the menu', () => {
+    renderApp('/');
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Machines' }));
+    expect(screen.getByText('Machines')).toBeTruthy();
+  });
 });

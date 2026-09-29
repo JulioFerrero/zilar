@@ -321,3 +321,98 @@ export async function deleteAi(id: string): Promise<void> {
 export function listConnections(): Promise<Connection[]> {
   return request('/connections', z.array(connectionSchema));
 }
+
+// --- Machines (T-0070) ---------------------------------------------------
+// The wire contract lives in apps/server/src/machines/routes.ts and
+// service.ts. `ApiError` carries the server's `code` and `status`, so callers
+// can branch without parsing the message again. `online` is optional so the
+// schema works before T-0071 (the runner hub) lands.
+
+export type MachineStatus = 'pending' | 'approved' | 'revoked';
+
+export interface Machine {
+  id: string;
+  name: string;
+  status: MachineStatus;
+  os: string;
+  osVersion: string;
+  arch: string;
+  cpu: string;
+  cores: number;
+  ramGb: number;
+  diskFreeGb: number;
+  drivers: string[];
+  fingerprint: string;
+  createdAt: string;
+  approvedAt: string | null;
+  lastSeenAt: string | null;
+  /** Added by T-0071 (the runner hub). Absent before then; default to false. */
+  online?: boolean | undefined;
+}
+
+const machineStatusSchema = z.enum(['pending', 'approved', 'revoked']);
+
+export const machineSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: machineStatusSchema,
+  os: z.string(),
+  osVersion: z.string(),
+  arch: z.string(),
+  cpu: z.string(),
+  cores: z.number(),
+  ramGb: z.number(),
+  diskFreeGb: z.number(),
+  drivers: z.array(z.string()),
+  fingerprint: z.string(),
+  createdAt: z.string(),
+  approvedAt: z.string().nullable(),
+  lastSeenAt: z.string().nullable(),
+  online: z.boolean().optional(),
+});
+
+export interface PairingCode {
+  code: string;
+  expiresAt: string;
+}
+
+const pairingCodeSchema = z.object({
+  code: z.string(),
+  expiresAt: z.string(),
+});
+
+export function listMachines(): Promise<Machine[]> {
+  return request('/machines', z.array(machineSchema));
+}
+
+export function createPairingCode(): Promise<PairingCode> {
+  return request('/machines/pairing-codes', pairingCodeSchema, { method: 'POST' });
+}
+
+export function approveMachine(id: string): Promise<Machine> {
+  return request(`/machines/${encodeURIComponent(id)}/approve`, machineSchema, {
+    method: 'POST',
+  });
+}
+
+export async function denyMachine(id: string): Promise<void> {
+  await request(`/machines/${encodeURIComponent(id)}/deny`, z.null(), { method: 'POST' });
+}
+
+export function revokeMachine(id: string): Promise<Machine> {
+  return request(`/machines/${encodeURIComponent(id)}/revoke`, machineSchema, {
+    method: 'POST',
+  });
+}
+
+export function renameMachine(id: string, name: string): Promise<Machine> {
+  return request(`/machines/${encodeURIComponent(id)}`, machineSchema, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteMachine(id: string): Promise<void> {
+  await request(`/machines/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
+}
