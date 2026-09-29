@@ -9,7 +9,9 @@ export interface AisErrorInfo {
 
 // Maps the error codes in the T-0032/T-0037 contract to plain language.
 // `invalid_request` keeps the server's own message because it explains which
-// field is wrong.
+// field is wrong. `not_active` (T-0095) is the kill switch telling the owner
+// the AI changed under them: the list is reloaded, so the row will already
+// match the server's truth.
 export function describeAisError(error: unknown, fallback: string): AisErrorInfo {
   if (error instanceof AisApiError) {
     switch (error.code) {
@@ -29,6 +31,11 @@ export function describeAisError(error: unknown, fallback: string): AisErrorInfo
       case 'ai_teardown_failed':
         return {
           message: "The server couldn't finish. Nothing was left half-created; try again.",
+          unavailable: false,
+        };
+      case 'not_active':
+        return {
+          message: 'This AI changed state. Refreshing the list…',
           unavailable: false,
         };
       default:

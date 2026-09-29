@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 
 import type { PublicAi } from '../../lib/ais-api';
 import { formatLimit } from './limits';
+import { runStateLabel } from './run-state';
 import { templateLabel } from './templates';
 
 /** One row of the My AIs list: avatar, name, template, model and limits. */
@@ -41,9 +42,12 @@ export function AiRow({
             {ai.name}
           </Text>
           <AiBadge />
-          {ai.status !== 'active' ? (
-            <View className="rounded-full bg-badge-muted px-2 py-0.5">
-              <Text className="text-[11px] text-foreground">{ai.status}</Text>
+          {runStateLabel(ai.status) !== '' ? (
+            <View
+              accessibilityLabel={`AI status: ${runStateLabel(ai.status)}`}
+              className="rounded-full bg-badge-muted px-2 py-0.5"
+            >
+              <Text className="text-[11px] text-foreground">{runStateLabel(ai.status)}</Text>
             </View>
           ) : null}
         </View>

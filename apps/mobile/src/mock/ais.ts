@@ -221,5 +221,31 @@ export function createMockAisApi(scenario: AisMockScenario = 'default'): AisApi 
       if (scenario === 'no-connections') return [];
       return activeConnections().map((connection) => ({ ...connection }));
     },
+    async stopAi(id: string) {
+      if (scenario === 'unavailable') unavailable();
+      const existing = state.find((ai) => ai.id === id);
+      if (existing === undefined) {
+        throw new AisApiError(404, 'not_found', 'AI not found');
+      }
+      if (existing.status === 'disabled') {
+        throw new AisApiError(409, 'not_active', 'AI is not active');
+      }
+      const updated: PublicAi = { ...existing, status: 'stopped' };
+      state[state.indexOf(existing)] = updated;
+      return cloneAi(updated);
+    },
+    async resumeAi(id: string) {
+      if (scenario === 'unavailable') unavailable();
+      const existing = state.find((ai) => ai.id === id);
+      if (existing === undefined) {
+        throw new AisApiError(404, 'not_found', 'AI not found');
+      }
+      if (existing.status !== 'stopped') {
+        throw new AisApiError(409, 'not_active', 'AI is not active');
+      }
+      const updated: PublicAi = { ...existing, status: 'active' };
+      state[state.indexOf(existing)] = updated;
+      return cloneAi(updated);
+    },
   };
 }
