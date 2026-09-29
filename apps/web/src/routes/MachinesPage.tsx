@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ChevronDown, Plus, Server } from 'lucide-react';
 import {
   approveMachine,
   deleteMachine,
   denyMachine,
+  listAis,
   listMachines,
   renameMachine,
   revokeMachine,
 } from '@/lib/api';
-import type { Machine } from '@/lib/api';
+import type { Machine, PublicAi } from '@/lib/api';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { AiPageShell } from '@/components/ais/AiPageShell';
 import { AddMachineDialog } from '@/components/machines/AddMachineDialog';
@@ -56,6 +57,10 @@ export function MachinesPage() {
   const [pending, setPending] = useState<PendingActionState>(EMPTY_PENDING);
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const [showRevoked, setShowRevoked] = useState(false);
+  // T-0091: the owner's AIs, used to label each approved machine card with
+  // the AIs whose home machine it is. `null` means the load failed: the
+  // card hides its "AIs: …" line and the rest of the page keeps working.
+  const [ais, setAis] = useState<PublicAi[] | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -83,6 +88,27 @@ export function MachinesPage() {
         if (active) {
           setErrorMessage(machineErrorMessage(error, 'Could not load your machines.'));
           setStatus('error');
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // T-0091: load the owner's AIs so the approved machine card can list
+  // "AIs: A, B". The load is independent of the machines load: a failure
+  // here just hides the line on each card, never blocks the page.
+  useEffect(() => {
+    let active = true;
+    listAis()
+      .then((list) => {
+        if (active) {
+          setAis(list);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setAis(null);
         }
       });
     return () => {
@@ -160,6 +186,18 @@ export function MachinesPage() {
       const updated = await revokeMachine(id);
       setMachines((previous) => previous.map((m) => (m.id === id ? updated : m)));
       setConfirming((c) => ({ ...c, revoke: null }));
+      // T-0091: the server clears `ais.machineId` for the revoked machine
+      // in the same transaction, so refresh the AI list to keep the card
+      // labels in step. Best-effort: a failure here just leaves the
+      // previous names until the next load.
+      listAis()
+        .then((list) => {
+          setAis(list);
+        })
+        .catch(() => {
+          // Keep the existing list; the card will refresh on the next
+          // load or a future change.
+        });
     } catch (error) {
       setActionError(`revoke:${id}`, machineErrorMessage(error, 'Could not revoke the machine.'));
     } finally {
@@ -213,6 +251,25 @@ export function MachinesPage() {
   const pendingMachines = machines.filter((m) => m.status === 'pending');
   const approvedMachines = machines.filter((m) => m.status === 'approved');
   const revokedMachines = machines.filter((m) => m.status === 'revoked');
+
+  // T-0091: when an AI's home is unassigned (e.g. on revoke), the server
+  // returns a fresh AI; keep the local AI list in step so the card drops
+  // the AI's name right away. `ais` being null means the load failed and
+  // we skip the lookup entirely — the card hides its "AIs: …" line.
+  const aisByMachineId = useMemo(() => {
+    const map = new Map<string, string[]>();
+    if (ais === null) {
+      return map;
+    }
+    for (const ai of ais) {
+      if (ai.machineId !== null && ai.machineId !== undefined) {
+        const list = map.get(ai.machineId) ?? [];
+        list.push(ai.name);
+        map.set(ai.machineId, list);
+      }
+    }
+    return map;
+  }, [ais]);
 
   return (
     <AiPageShell
@@ -310,6 +367,7 @@ export function MachinesPage() {
                               actionErrors[`revoke:${machine.id}`] ??
                               ''
                             }
+                            aiNames={ais === null ? null : (aisByMachineId.get(machine.id) ?? [])}
                             onRename={(name) => rename(machine.id, name)}
                             onAskRevoke={() => askRevoke(machine.id)}
                             onCancelRevoke={() => cancelRevoke(machine.id)}

@@ -252,6 +252,10 @@ const publicAiSchema = z.object({
   providerConnectionId: z.string(),
   limits: aiLimitsSchema,
   usage: aiUsageSchema.nullable().optional(),
+  // T-0091: the AI's home machine id, or null when it runs on the platform.
+  // Optional so a payload from a server that has not been upgraded yet
+  // still parses — the panel renders the same way when it is absent.
+  machineId: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 
@@ -330,6 +334,18 @@ export function stopAi(id: string): Promise<PublicAi> {
 
 export function resumeAi(id: string): Promise<PublicAi> {
   return request(`/ais/${encodeURIComponent(id)}/resume`, publicAiSchema, { method: 'POST' });
+}
+
+// T-0091: set or clear the AI's home machine. `null` clears the assignment
+// (the AI runs on the platform); a machine id assigns it. The server
+// answers the fresh public AI, so the panel re-renders against server
+// truth.
+export function setAiMachine(aiId: string, machineId: string | null): Promise<PublicAi> {
+  return request(`/ais/${encodeURIComponent(aiId)}/machine`, publicAiSchema, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ machineId: machineId }),
+  });
 }
 
 export function listConnections(): Promise<Connection[]> {

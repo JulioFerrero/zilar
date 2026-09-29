@@ -50,6 +50,15 @@ Real chats in Helium (do not send messages you do not want sent): upload, paste 
 - Postgres refuses changes: `docker exec galena-dev-postgres-1 psql -U postgres -d galena -c "truncate audit_log"` must answer `audit_log is append-only` (verified once by the lead on the empty table).
 - The AI panel **Activity** section (owner) and the group panel **Activity** section (group owner/admin) list entries after you stop/resume an AI or approve/revoke a machine.
 
+## 7. AI home machine (T-0091)
+
+- Open an AI's panel (Settings → My AIs): the **Runs on** select lists your approved machines plus "The platform (no machine)". Pick one, reload: it stays. Machines page: the approved machine's card shows "AIs: <name>".
+- Revoke that machine: the AI falls back to "The platform" and the card says "No AIs yet". The AI's Activity shows `ai.machine_assigned`.
+
+## 8. Action gateway and approval cards (T-0090, T-0092, T-0093)
+
+The gateway (T-0090) is live but has no adapters. After T-0093 is merged, start the server with `ACTION_DEMO_ENABLED=true` (and the agent gateway on), ask an AI in its DM to echo a text with the demo action, see the card, approve it in the web app and in the phone app, and see the result. Also: deny once, and stop the AI before approving (nothing may run).
+
 ## Known follow-ups (not blockers, also on `work/BOARD.md`)
 
 - Kill switch for room admins and workspace admins (J5), audit entries from the engine and proxy, retention (J4).

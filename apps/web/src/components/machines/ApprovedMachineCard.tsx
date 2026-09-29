@@ -11,6 +11,10 @@ interface ApprovedMachineCardProps {
   revoking: boolean;
   confirmingRevoke: boolean;
   actionError: string;
+  /** T-0091: names of the owner's AIs whose home machine is this one. When
+   *  the AI list could not be loaded the prop is null and the line is
+   *  hidden — a failure here never blocks the rest of the card. */
+  aiNames: string[] | null;
   onRename: (name: string) => Promise<void> | void;
   onAskRevoke: () => void;
   onCancelRevoke: () => void;
@@ -27,6 +31,7 @@ export function ApprovedMachineCard({
   revoking,
   confirmingRevoke,
   actionError,
+  aiNames,
   onRename,
   onAskRevoke,
   onCancelRevoke,
@@ -146,6 +151,15 @@ export function ApprovedMachineCard({
             </span>
           ))}
         </div>
+      )}
+
+      {/* T-0091: which of the owner's AIs live on this machine. The list
+          comes from the same AI call the page already makes; a failure
+          there just hides this line so the rest of the card stays usable. */}
+      {aiNames !== null && (
+        <p className="text-[13px] text-muted-foreground">
+          {aiNames.length === 0 ? 'No AIs yet' : `AIs: ${aiNames.join(', ')}`}
+        </p>
       )}
 
       <div className="flex flex-col gap-1">

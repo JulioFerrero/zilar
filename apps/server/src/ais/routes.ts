@@ -10,6 +10,7 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
+  assignMachine,
   createAi,
   deleteAi,
   getOwnedAi,
@@ -98,6 +99,16 @@ const UpdateAiSchema = z
   .refine((value) => value.providerConnectionId === undefined || value.model !== undefined, {
     error: 'A new provider connection needs an explicit model',
   });
+
+// T-0091: the home machine is a separate route on purpose — it does not
+// belong on the general PATCH. `null` clears the assignment; the service
+// only accepts an owned and approved machine. `.strict()` so an unknown
+// key is a 400 instead of being silently dropped.
+const AssignMachineSchema = z
+  .object({
+    machineId: z.string().trim().min(1).max(128).nullable(),
+  })
+  .strict();
 
 export function createAisRoutes({
   auth,
@@ -275,6 +286,52 @@ export function createAisRoutes({
       } catch {
         // The recorder contract says it must not throw, but a buggy one
         // must not break the kill switch either.
+      }
+    }
+    return c.json(ai);
+  });
+
+  // T-0091: assign or clear the AI's home machine. The audit entry is
+  // written only when the value actually changed, mirroring how `stop` /
+  // `resume` skip the audit on an idempotent call: a recorder that swallows
+  // errors must not turn a 200 into a 500 here either. The `try/catch`
+  // around `audit.record` is the same defensive backstop as the kill-switch
+  // routes. `before.machineId` and `ai.machineId` are always either the
+  // same string or one of them is `null`, so the inequality check is
+  // straightforward.
+  routes.put('/ais/:id/machine', async (c) => {
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    const id = c.req.param('id');
+    const parsed = AssignMachineSchema.safeParse(await readJson(c));
+    if (!parsed.success) {
+      throw invalidRequest(parsed.error);
+    }
+    const before = await getOwnedAi(db, id, user.id);
+    const ai = await assignMachine(
+      { db },
+      {
+        aiId: id,
+        ownerId: user.id,
+        machineId: parsed.data.machineId,
+      },
+    );
+    if (audit !== undefined && before !== null && before.machineId !== ai.machineId) {
+      try {
+        await audit.record({
+          actorUserId: user.id,
+          aiId: ai.id,
+          groupId: null,
+          action: 'ai.machine_assigned',
+          subjectId: ai.id,
+          argsHash: null,
+          costCurrency: null,
+          costAmount: null,
+          result: 'ok',
+          detail: { machineId: ai.machineId },
+        });
+      } catch {
+        // The recorder contract says it must not throw, but a buggy one
+        // must not break the assignment either.
       }
     }
     return c.json(ai);

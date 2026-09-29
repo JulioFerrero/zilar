@@ -714,3 +714,168 @@ describe('AiPanel', () => {
     });
   });
 });
+
+// T-0091: the "Runs on" select. It lists the owner's approved machines
+// plus "The platform (no machine)", sends the PUT on change, rolls back
+// and shows an inline error on failure, and stays disabled (current value
+// only) when the machines load fails.
+describe('AiPanel home machine (T-0091)', () => {
+  const approvedMachine = {
+    id: 'm-approved',
+    name: 'julio-mbp',
+    status: 'approved',
+    os: 'macos',
+    osVersion: '27.0',
+    arch: 'arm64',
+    cpu: 'Apple M3 Pro',
+    cores: 11,
+    ramGb: 18,
+    diskFreeGb: 200,
+    drivers: ['docker'],
+    fingerprint: 'b2c3d4e5f607182a',
+    createdAt: '2026-09-25T10:00:00.000Z',
+    approvedAt: '2026-09-25T10:01:00.000Z',
+    lastSeenAt: null,
+    online: false,
+  };
+
+  const pendingMachine = {
+    ...approvedMachine,
+    id: 'm-pending',
+    name: 'office-linux',
+    status: 'pending',
+    approvedAt: null,
+  };
+
+  const revokedMachine = {
+    ...approvedMachine,
+    id: 'm-revoked',
+    name: 'old-macbook',
+    status: 'revoked',
+  };
+
+  function aiWithMachine(machineId: string | null): Record<string, unknown> {
+    return { ...ai, machineId: machineId };
+  }
+
+  function mockAiPanelFetchWithMachines(options: {
+    machines: unknown[] | { fail: true };
+    initialAi: Record<string, unknown>;
+    assignResponse?: { status: number; body?: unknown };
+  }): ReturnType<typeof vi.fn> {
+    const { machines, initialAi, assignResponse } = options;
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const target = String(url);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (method === 'PUT' && target.endsWith('/machine')) {
+        if (assignResponse !== undefined) {
+          return jsonResponse(assignResponse.status, assignResponse.body);
+        }
+        return jsonResponse(200, { ...initialAi, machineId: null });
+      }
+      if (target.endsWith('/machines') && method === 'GET') {
+        if ('fail' in machines) {
+          return jsonResponse(500, { error: { code: 'boom', message: 'server down' } });
+        }
+        return jsonResponse(200, machines);
+      }
+      if (target.includes('/connections')) {
+        return jsonResponse(200, [openaiConnection]);
+      }
+      if (target.includes('/audit')) {
+        return jsonResponse(200, { entries: [], next: null });
+      }
+      if (/\/ais\/[^/]+$/.test(target) && method === 'GET') {
+        return jsonResponse(200, initialAi);
+      }
+      if (method === 'DELETE') {
+        return jsonResponse(204, null);
+      }
+      return jsonResponse(200, [initialAi]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('renders the select with approved machines and "The platform"', async () => {
+    mockAiPanelFetchWithMachines({
+      machines: [approvedMachine, pendingMachine, revokedMachine],
+      initialAi: aiWithMachine(null),
+    });
+
+    renderPanel();
+
+    const select = await screen.findByLabelText('Runs on');
+    expect(select).toBeTruthy();
+    const options = Array.from((select as HTMLSelectElement).options).map((option) => ({
+      value: option.value,
+      label: option.textContent,
+    }));
+    // Only the approved machine and "The platform" — pending and revoked
+    // are filtered out.
+    expect(options).toEqual([
+      { value: '', label: 'The platform (no machine)' },
+      { value: 'm-approved', label: 'julio-mbp' },
+    ]);
+  });
+
+  it('puts the AI on the approved machine and the PUT body is the machine id', async () => {
+    const fetchMock = mockAiPanelFetchWithMachines({
+      machines: [approvedMachine],
+      initialAi: aiWithMachine(null),
+      assignResponse: { status: 200, body: aiWithMachine('m-approved') },
+    });
+
+    renderPanel();
+    const select = (await screen.findByLabelText('Runs on')) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'm-approved' } });
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        (call) => methodOf(call) === 'PUT' && String(call[0]).endsWith('/ais/a-1/machine'),
+      );
+      expect(put).toBeDefined();
+      expect(bodyOf(put!)).toEqual({ machineId: 'm-approved' });
+    });
+  });
+
+  it('rolls back and shows an inline error when the PUT fails', async () => {
+    const fetchMock = mockAiPanelFetchWithMachines({
+      machines: [approvedMachine],
+      initialAi: aiWithMachine(null),
+      assignResponse: {
+        status: 404,
+        body: { error: { code: 'machine_not_found', message: 'Machine not found' } },
+      },
+    });
+
+    renderPanel();
+    const select = (await screen.findByLabelText('Runs on')) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'm-approved' } });
+
+    await waitFor(() => expect(screen.getByText('Machine not found')).toBeTruthy());
+    // The PUT happened…
+    const putCalls = fetchMock.mock.calls.filter(
+      (call) => methodOf(call) === 'PUT' && String(call[0]).endsWith('/machine'),
+    );
+    expect(putCalls.length).toBeGreaterThan(0);
+    // …and the select rolled back to "The platform".
+    expect((select as HTMLSelectElement).value).toBe('');
+  });
+
+  it('disables the select with the current value only when the machines load fails', async () => {
+    mockAiPanelFetchWithMachines({
+      machines: { fail: true },
+      initialAi: aiWithMachine('m-approved'),
+    });
+
+    renderPanel();
+
+    const select = (await screen.findByLabelText('Runs on')) as HTMLSelectElement;
+    await waitFor(() => expect(select.disabled).toBe(true));
+    // The current value is still rendered so the owner sees what the AI is on.
+    expect(select.value).toBe('m-approved');
+    // No other options are offered.
+    expect(Array.from(select.options).map((option) => option.value)).toEqual(['m-approved']);
+  });
+});

@@ -9,8 +9,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0091](T-0091-ai-home-machine.md) | AI home machine (server + web): `ais.machine_id`, `PUT /api/ais/:id/machine`, revoke unassigns, AiPanel select, machine card lists AIs | in progress | minimax-m3 | T-0071, T-0072, T-0080 | Migration may collide with T-0090's: regenerate after rebase. |
 | [T-0092](T-0092-approval-card-announce.md) | Approval cards posted into the chat: action gateway announces requests/outcomes through the AI's own XMPP session (server) | in progress | minimax-m3 | T-0090, T-0034, T-0080 | Next: T-0093 AI-side `request_action` tool + demo adapter for a live end-to-end check. |
+| [T-0093](T-0093-request-action-tool.md) | `request_action` AI tool + dev-only `demo.echo` adapter: an AI asks in the owner's DM, the card appears, the owner approves, the platform runs it (server) | in progress | minimax-m3 | T-0090, T-0092 | Live check needs T-0092 merged. |
 
 ## Follow-ups
 
@@ -120,3 +120,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0087](T-0087-approvals-sweeper.md) | Approvals sweeper: expired pending requests are denied on a timer with one audit entry each; swept rows read as expired | 2026-09-29 |
 | [T-0088](T-0088-authz-route-sweep.md) | authz route sweep test: 40 /api routes, all 401 except 4 allowlisted; no open routes | 2026-09-29 |
 | [T-0090](T-0090-action-gateway.md) | action gateway: adapters, tier policy, approval-gated exactly-once execution of stored args; no adapters registered | 2026-09-29 |
+| [T-0091](T-0091-ai-home-machine.md) | AI home machine: ais.machineId, PUT /api/ais/:id/machine, revoke unassigns, AiPanel select, machine card lists AIs | 2026-09-29 |
