@@ -1,7 +1,7 @@
 ---
 id: T-0102
 title: Tool sandbox: run AI-written JavaScript in QuickJS with an allowlisted, SSRF-safe fetch
-status: todo
+status: review
 milestone: M4
 branch: task/T-0102-tool-sandbox
 model: meta/muse-spark-1.3-contributor
@@ -116,19 +116,111 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Built the tool sandbox in `apps/server/src/sandbox/`: `run-tool.ts` (public
+  `runTool`, owns the worker lifecycle and fetch mediation), `tool-worker.ts`
+  (runs one QuickJS runtime per execution inside the worker), `host-fetch.ts`
+  (allowlist + SSRF validation and the pinned `node:https` fetcher),
+  `ip-guard.ts` (IPv4/IPv6 non-public classification), `types.ts` (limits,
+  clamping, output parsing). Added `quickjs-emscripten@^0.32.0` to
+  `apps/server/package.json` (the one dependency the spec allows).
+- Worker mechanism: `runTool` spawns a `worker_threads` Worker whose entry
+  (`tool-worker.ts`) is TypeScript. The worker is started with an eval
+  bootstrap (`require('tsx/cjs'); require('<abs path to tool-worker.ts>')`)
+  so it loads under tsx (server `dev`), plain node, and vitest (whose workers
+  do not inherit a TS loader — a bare `.ts` worker path fails there with
+  "Cannot find module .../types.js"). The parent validates every fetch
+  (allowlist + SSRF) and performs HTTPS itself; the worker only ever receives
+  `{ status, body }`. The parent terminates the worker on the first result or
+  at `wallMs + 500 ms`, and also sets `resourceLimits` on the worker.
+- Inside the VM: fresh `QuickJS.newRuntime()` per run (`setMemoryLimit`,
+  `setMaxStackSize`, interrupt handler on `wallMs`/`cpuMs` deadlines), only
+  `fetch` + `console.log/warn/error` installed, source evaluated as
+  `type: 'module'`, default export called with the JSON input, promise driven
+  with `context.newPromise()` deferreds + `runtime.executePendingJobs()`,
+  output JSON-stringified inside the VM and re-validated with zod on the host.
+  Context and runtime are disposed on every path.
+- Wrote `docs/TOOL_SANDBOX.md` (63 lines): contract, limits table, threat
+  model, fetch rules.
+- Tests: 98 in `src/sandbox/` (`run-tool.test.ts` 46 happy/limit/contract/
+  escape/fetch cases, `host-fetch.test.ts` 23 incl. a real local-TLS pinned
+  request test proving SNI + Host stay the hostname while TCP goes to the
+  validated IP, `ip-guard.test.ts` 29). No real network except local loopback
+  in that one test; everything else uses injected fake fetchers/resolvers.
 
 ### Files changed
--
+- `apps/server/src/sandbox/types.ts` (new): limits, `resolveLimits` clamping,
+  `parseToolOutput`, result/error types.
+- `apps/server/src/sandbox/ip-guard.ts` (new): IPv4 CIDR + IPv6 classification.
+- `apps/server/src/sandbox/host-fetch.ts` (new): `validateFetchRequest`,
+  `buildHostHeaders`, `createDefaultFetcher`/`fetchPinnedHttps` (pinned IP,
+  SNI + Host = hostname, 3xx returned as-is with empty body, per-request
+  timeout, body cap).
+- `apps/server/src/sandbox/tool-worker.ts` (new): QuickJS runtime, `fetch` and
+  `console` bridges, output stringify-in-VM, error-kind mapping.
+- `apps/server/src/sandbox/run-tool.ts` (new): worker spawn/terminate, wall
+  clock, log cap, fetch mediation, zod validation of worker messages and
+  output shape, message sanitising.
+- `apps/server/src/sandbox/*.test.ts` (new, 3 files, 98 tests).
+- `apps/server/package.json`, `pnpm-lock.yaml`: only the
+  `quickjs-emscripten@^0.32.0` addition.
+- `docs/TOOL_SANDBOX.md` (new, 63 lines).
+- `work/T-0102-tool-sandbox.md`: this Report + `status: review`.
 
 ### Commands run and real results
--
+- `pnpm install`: ok (23.1 s).
+- `pnpm add quickjs-emscripten@^0.32.0 --filter @galena/server`: ok
+  (installed 0.32.0; unrelated mobile peer warning only).
+- `pnpm --filter @galena/server test`: 60 files passed, 5 skipped;
+  995 tests passed, 7 skipped (~370 s). Includes the 98 new sandbox tests.
+- `pnpm format:check`: all files use Prettier style.
+- `pnpm lint` (oxlint): clean.
+- `pnpm typecheck` (turbo): clean (`tsc --noEmit` on the server also clean).
+- `pnpm build`: 2 tasks successful.
+- Probes (thrown away in /tmp): infinite loop → `InternalError: interrupted`
+  (~220 ms for a 200 ms deadline); `'x'.repeat(1e9)` → `out of memory`;
+  deep recursion → `InternalError: stack overflow` at 128 KiB guest stack but
+  crashes the host process at 512 KiB — hence the spec default of 512 KiB is
+  kept but `stackBytes` is user-raisible only to 8 MiB **worker** stack while
+  the *guest* QuickJS stack stays capped; recursion inside a worker returns a
+  normal `runtime` error and the worker exits 0 (verified). Static and dynamic
+  `import('node:fs')` → `could not load module`. `typeof process/require/
+  Buffer/setTimeout/TextEncoder/crypto` all `undefined`; `URL` also undefined
+  in QuickJS (tools must not rely on it). `Function('return 1')()` works but
+  only inside the VM (returns 42/43 there, `typeof process` still undefined).
+  Pollution of `Object.prototype` does not cross runtimes (separate worker +
+  fresh runtime per run). A `while(true){}` run reports `timeout` in ~410 ms
+  and the worker is terminated (parent `terminate()` resolves; 3 sequential
+  runs exit cleanly, process exits 0, no leaked handles beyond 2 stdio
+  sockets).
 
 ### Problems, deviations from the spec, open questions
--
+- `stackBytes` default is 512 KiB per the spec, but a 512 KiB *guest* stack
+  lets deep recursion overflow the host (WASM) stack and crash the process
+  when run on the main thread. Containment is the worker thread: inside the
+  worker the same recursion returns `InternalError: stack overflow` mapped to
+  `runtime` and the worker exits 0. `HARD_MAX_LIMITS.stackBytes` is 8 MiB for
+  the worker thread stack; the guest QuickJS stack limit passed to
+  `setMaxStackSize` is the resolved `stackBytes` (default 512 KiB, hard max
+  8 MiB). Deep-recursion tests pass reliably under vitest and tsx.
+- `cpuMs` measures wall time of JS execution including `executePendingJobs`
+  pumping (the interrupt handler fires on `Date.now()` deadlines), not
+  isolated JS-thread CPU time; a tool awaiting a hanging fetch consumes wall
+  time, not cpu time, and is stopped by `wallMs`/`fetchTimeoutMs`. This keeps
+  every limit enforceable without asyncify.
+- Error-message prefixing: fetch rejections cross two hops (worker string →
+  parent `fetch_denied:` wrapper), so tool-visible messages can read
+  `fetch_denied: fetch_denied: host not allowed: evil.com`. Tests assert the
+  kind plus a `/host not allowed: evil\.com/` match; messages stay short and
+  secret-free (paths/`wasm…` frames/`at …` lines stripped).
+- `fetchPinnedHttps` takes an optional `port` used only by the local-TLS test;
+  production callers always use 443 (the validator rejects explicit ports).
+- `TOOL_SANDBOX.md` documents the real defaults and guarantees; the one
+  deliberate hedge is "QuickJS itself is unaudited; a VM bug could escape".
+- `runTool` is a leaf module: it imports only `node:` builtins, zod,
+  quickjs-emscripten (worker) and its sibling files — no DB, Hono, or config.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
 
 ---
 
