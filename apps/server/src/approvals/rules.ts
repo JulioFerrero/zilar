@@ -79,8 +79,7 @@ export async function findActiveRuleForUpdate(
 // existing active row and `created: false` when one already exists for the
 // same (aiId, chat, action). No race protection beyond the partial unique
 // indexes — two concurrent callers racing on the same key both reach this
-// function and one wins the insert while the other catches the unique
-// violation and falls back to a re-read.
+// function, one wins the insert and the other falls back to a re-read.
 export async function createRule(
   tx: ServerDatabase,
   input: CreateRuleInput,
@@ -95,38 +94,33 @@ export async function createRule(
     return { rule: toPublicRule(existing), created: false };
   }
 
-  const id = randomUUID();
-  try {
-    const [row] = await tx
-      .insert(approvalRules)
-      .values({
-        id,
-        aiId: input.aiId,
-        groupId: input.groupId,
-        action: input.action,
-        createdBy: input.createdBy,
-        createdAt: now,
-      })
-      .returning();
-    if (!row) {
-      throw new Error('Failed to create approval rule');
-    }
+  // `ON CONFLICT DO NOTHING` (not a caught unique violation): inside a
+  // Postgres transaction a failed statement aborts the whole transaction, so
+  // a concurrent inserter winning the partial unique index must not raise.
+  const [row] = await tx
+    .insert(approvalRules)
+    .values({
+      id: randomUUID(),
+      aiId: input.aiId,
+      groupId: input.groupId,
+      action: input.action,
+      createdBy: input.createdBy,
+      createdAt: now,
+    })
+    .onConflictDoNothing()
+    .returning();
+  if (row !== undefined) {
     return { rule: toPublicRule(row), created: true };
-  } catch (error) {
-    // The partial unique index made a concurrent inserter win. Re-read and
-    // hand back the existing rule. Anything else bubbles up.
-    if (isUniqueViolation(error)) {
-      const reread = await findActiveRuleForUpdate(tx, {
-        aiId: input.aiId,
-        groupId: input.groupId,
-        action: input.action,
-      });
-      if (reread !== null) {
-        return { rule: toPublicRule(reread), created: false };
-      }
-    }
-    throw error;
   }
+  const winner = await findActiveRuleForUpdate(tx, {
+    aiId: input.aiId,
+    groupId: input.groupId,
+    action: input.action,
+  });
+  if (winner === null) {
+    throw new Error('Failed to create approval rule');
+  }
+  return { rule: toPublicRule(winner), created: false };
 }
 
 // One-shot lookup the action gateway uses before creating an approval:
@@ -254,21 +248,4 @@ function toPublicRule(row: ApprovalRuleRow): PublicApprovalRule {
     createdAt: row.createdAt,
     createdBy: row.createdBy,
   };
-}
-
-// Postgres-style unique-violation detection. PGlite raises a DrizzleQueryError
-// wrapping the underlying error; the underlying message contains the SQLSTATE
-// `23505`. We keep the check narrow (substring on the message) so it does not
-// throw on drivers that wrap errors differently.
-function isUniqueViolation(error: unknown): boolean {
-  if (error === null || typeof error !== 'object') {
-    return false;
-  }
-  const message = 'message' in error && typeof error.message === 'string' ? error.message : '';
-  const cause =
-    'cause' in error && error.cause !== null && typeof error.cause === 'object'
-      ? (error.cause as { message?: unknown })
-      : null;
-  const causeMessage = cause && typeof cause.message === 'string' ? cause.message : '';
-  return /23505|duplicate key value|unique constraint/i.test(`${message}\n${causeMessage}`);
 }

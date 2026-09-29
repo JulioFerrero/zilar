@@ -209,31 +209,6 @@ async function runRequest(
     aiInGroup = await isAiInGroup(deps.db, params.aiId, params.groupId);
   }
 
-  // T-0099: a stopped AI must never be auto-approved even if a rule
-  // exists. Re-check `ai_status === 'active'` here, before any rule
-  // lookup, so the kill switch always wins.
-  if (aiRow === null || aiRow.status !== 'active') {
-    return { status: 'denied', reason: 'ai_not_active' };
-  }
-
-  // T-0099: a tier-2 request that matches an active standing rule
-  // short-circuits the approval path. The rule is (ai, chat, action)-
-  // exact: any mismatch (different AI, different chat, different action)
-  // leaves the request on the normal approval path. Cost is re-checked
-  // here (not just at decision time): an adapter that gains an
-  // `estimateCost` after the rule was created loses auto-run until the
-  // registry opts it back in.
-  if (adapter.tier === 2 && adapter.allowAlways === true && adapter.estimateCost === undefined) {
-    const rule = await findActiveRule(deps.db, {
-      aiId: params.aiId,
-      groupId: params.groupId ?? null,
-      action: params.action,
-    });
-    if (rule !== null) {
-      return runAutoApprovedAction(deps, params, adapter as ActionAdapter<unknown>, rule.id, at);
-    }
-  }
-
   const verdict = policy({
     adapter,
     rawArgs: params.args,
@@ -247,6 +222,25 @@ async function runRequest(
 
   if (verdict.kind === 'allow') {
     return runAllowedAction(deps, params, adapter as ActionAdapter<unknown>);
+  }
+
+  // T-0099: a tier-2 request that matches an active standing rule skips the
+  // card. This runs only after the policy accepted the request (the AI is
+  // active, it belongs to the named group, the args parse), so a stopped AI
+  // is never auto-approved and a rule can never widen who or where. The rule
+  // is (AI, chat, action)-exact: any mismatch leaves the request on the
+  // normal approval path. Eligibility is re-checked here, not only when the
+  // rule was created: an adapter that gained an `estimateCost` (or lost
+  // `allowAlways`) since then no longer auto-runs.
+  if (adapter.allowAlways === true && adapter.estimateCost === undefined) {
+    const rule = await findActiveRule(deps.db, {
+      aiId: params.aiId,
+      groupId: params.groupId ?? null,
+      action: params.action,
+    });
+    if (rule !== null) {
+      return runAutoApprovedAction(deps, params, adapter as ActionAdapter<unknown>, rule.id);
+    }
   }
 
   return runApprovalPath(deps, params, adapter, at);
@@ -306,7 +300,6 @@ async function runAutoApprovedAction(
   params: RequestParams,
   adapter: ActionAdapter<unknown>,
   ruleId: string,
-  at: Date,
 ): Promise<RequestOutcome> {
   const parse = adapter.argsSchema.safeParse(params.args);
   if (!parse.success) {
@@ -381,7 +374,6 @@ async function runAutoApprovedAction(
     },
   });
 
-  void at;
   return outcome === 'ok' && summary !== null
     ? { status: 'executed', summary }
     : { status: 'failed' };

@@ -820,6 +820,69 @@ describe('approval rules service (T-0099)', () => {
       expect(outcome.status).toBe('pending_approval');
     });
 
+    it('a rule never bypasses the policy: AI no longer in the group, or invalid args', async () => {
+      const adapters = buildRegistry([adapter]);
+      const calls: unknown[] = [];
+      const counting: ActionAdapter<unknown> = {
+        ...adapter,
+        execute: async (ctx, args) => {
+          calls.push(args);
+          return adapter.execute(ctx, args);
+        },
+      };
+      const app = createApp({
+        db: context.db,
+        logger: context.logger,
+        config: context.config,
+        auth: context.auth,
+        adminClient: context.adminClient,
+        alwaysEligible: buildAlwaysEligible(adapters),
+      });
+      const owner = await bootstrapUser(context, app, 'owner-policy@example.com');
+      const { aiId } = await seedAi(context, owner.id);
+      const group = await seedGroup(
+        context,
+        owner.id,
+        [{ userId: owner.id, role: 'owner' }],
+        [aiId],
+      );
+      await createRule(
+        context.db,
+        { aiId, groupId: group, action: 'demo.echo', createdBy: owner.id },
+        now,
+      );
+      const gateway = createActionGateway({
+        db: context.db,
+        adapters: buildRegistry([counting]),
+        audit: createAuditRecorder({ db: context.db }),
+        logger: { warn: () => undefined, error: () => undefined },
+        now: () => now,
+      });
+
+      // Invalid args still fail the schema even though a rule exists.
+      const invalid = await gateway.request({
+        aiId,
+        groupId: group,
+        action: 'demo.echo',
+        args: { text: '' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      expect(invalid).toEqual({ status: 'denied', reason: 'invalid_args' });
+
+      // The AI left the room without the rule being revoked (a direct row
+      // delete): the rule alone must not let it act there.
+      await context.db.delete(groupAis).where(eq(groupAis.groupId, group));
+      const outside = await gateway.request({
+        aiId,
+        groupId: group,
+        action: 'demo.echo',
+        args: { text: 'hello' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      expect(outside).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
+      expect(calls).toHaveLength(0);
+    });
+
     it('scope is exact: a rule for group G1 does not apply to group G2', async () => {
       const adapters = buildRegistry([adapter]);
       const alwaysEligible = buildAlwaysEligible(adapters);

@@ -1,9 +1,10 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { and, count, desc, eq, gt, inArray, isNull, lt, or } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, lt, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { ARGS_HASH_PATTERN } from '@galena/protocol';
 import type { ServerDatabase } from '../db/client';
-import { ais, approvalRules, approvals, groupAis, groupMembers } from '../db/schema';
+import { ais, approvals, groupAis, groupMembers } from '../db/schema';
+import { createRule } from './rules';
 
 // `approved_always` is treated exactly like `approved_once` for the
 // single-use path; T-0099 adds a separate standing-rule flow that the
@@ -282,90 +283,13 @@ export async function decideApproval(
     }
 
     if (params.decision === 'approve_always') {
-      const newRuleId = randomUUID();
-      // The partial unique indexes guarantee a single active rule per
-      // (ai, chat, action). If one already exists (idempotent), we keep
-      // it. If two concurrent decisions race, the loser's insert fails
-      // on the index and we re-read the winner.
-      const existing = await tx
-        .select()
-        .from(approvalRules)
-        .where(
-          row.groupId === null
-            ? and(
-                eq(approvalRules.aiId, row.aiId),
-                isNull(approvalRules.groupId),
-                eq(approvalRules.action, row.action),
-                isNull(approvalRules.revokedAt),
-              )
-            : and(
-                eq(approvalRules.aiId, row.aiId),
-                eq(approvalRules.groupId, row.groupId),
-                eq(approvalRules.action, row.action),
-                isNull(approvalRules.revokedAt),
-              ),
-        )
-        .limit(1);
-
-      if (existing.length > 0) {
-        createdRule = {
-          id: existing[0]!.id,
-          action: existing[0]!.action,
-          groupId: existing[0]!.groupId,
-          created: false,
-        };
-      } else {
-        try {
-          await tx.insert(approvalRules).values({
-            id: newRuleId,
-            aiId: row.aiId,
-            groupId: row.groupId,
-            action: row.action,
-            createdBy: params.userId,
-            createdAt: now,
-          });
-          createdRule = {
-            id: newRuleId,
-            action: row.action,
-            groupId: row.groupId,
-            created: true,
-          };
-        } catch (error) {
-          if (isUniqueViolation(error)) {
-            const [reread] = await tx
-              .select()
-              .from(approvalRules)
-              .where(
-                row.groupId === null
-                  ? and(
-                      eq(approvalRules.aiId, row.aiId),
-                      isNull(approvalRules.groupId),
-                      eq(approvalRules.action, row.action),
-                      isNull(approvalRules.revokedAt),
-                    )
-                  : and(
-                      eq(approvalRules.aiId, row.aiId),
-                      eq(approvalRules.groupId, row.groupId),
-                      eq(approvalRules.action, row.action),
-                      isNull(approvalRules.revokedAt),
-                    ),
-              )
-              .limit(1);
-            if (reread !== undefined) {
-              createdRule = {
-                id: reread.id,
-                action: reread.action,
-                groupId: reread.groupId,
-                created: false,
-              };
-            } else {
-              throw error;
-            }
-          } else {
-            throw error;
-          }
-        }
-      }
+      // The rule shares the decision's transaction: both commit or neither.
+      const { rule, created } = await createRule(
+        tx as unknown as ServerDatabase,
+        { aiId: row.aiId, groupId: row.groupId, action: row.action, createdBy: params.userId },
+        now,
+      );
+      createdRule = { id: rule.id, action: rule.action, groupId: rule.groupId, created };
     }
 
     return decisionRow;
@@ -630,22 +554,4 @@ function decisionToStatus(
     case 'deny':
       return 'denied';
   }
-}
-
-// Postgres-style unique-violation detection. PGlite raises a
-// DrizzleQueryError wrapping the underlying error; the underlying message
-// contains the SQLSTATE `23505`. We keep the check narrow (substring on
-// the message) so it does not throw on drivers that wrap errors
-// differently.
-function isUniqueViolation(error: unknown): boolean {
-  if (error === null || typeof error !== 'object') {
-    return false;
-  }
-  const message = 'message' in error && typeof error.message === 'string' ? error.message : '';
-  const cause =
-    'cause' in error && error.cause !== null && typeof error.cause === 'object'
-      ? (error.cause as { message?: unknown })
-      : null;
-  const causeMessage = cause && typeof cause.message === 'string' ? cause.message : '';
-  return /23505|duplicate key value|unique constraint/i.test(`${message}\n${causeMessage}`);
 }

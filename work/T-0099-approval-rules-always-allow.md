@@ -1,7 +1,7 @@
 ---
 id: T-0099
 title: "Approve always" as a standing rule scoped to one chat (M4, server)
-status: review
+status: merged
 milestone: M4
 branch: task/T-0099-approval-rules-always-allow
 model: meta/muse-spark-1.3-contributor
@@ -133,4 +133,15 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged after lead changes (security-sensitive, read line by line). Rebased on main; after the last edit format, lint, typecheck clean, `db:generate` reports no schema changes; server 897 passed, 7 skipped. No disable comments.
+
+**Lead changes**
+1. **The rule lookup ran before the policy.** In the gateway a matching rule short-circuited before the `ai_not_in_group` and args checks, so a rule could act for an AI that had left the room (any path that removes membership without the revoke hook) and skipped the schema check at the gateway level. The lookup now runs only after the policy accepted the request (AI active, in the named group, args valid), right before the approval would be created. New test: with a rule in place, invalid args and an AI removed from the group by a direct row delete are still denied and nothing runs.
+2. **A unique violation caught inside a Postgres transaction** aborts the transaction, so the "re-read the winner" fallback would have failed on real Postgres (PGlite hid it). `createRule` now uses `ON CONFLICT DO NOTHING` and re-reads; the decision service uses `createRule` instead of a duplicated inline copy (removed ~70 lines and the string-matching `isUniqueViolation`).
+3. Removed a leftover `void at;` and its unused parameter.
+
+Confirmed: the rule is exactly (AI, chat, action) and never applies to another group, the personal chat, another AI or another action (tests for each); non-opted-in adapters and adapters with a cost can never be always-approved or auto-run (registry refuses the combination at startup, the decision refuses with 400 `always_not_allowed`, the gateway re-checks); a stopped AI with a rule is denied; rule creation shares the decision's transaction; list and revoke routes use the 404 shape for strangers; removing the AI from a group revokes its rules; audit entries carry the rule id and the args hash, never args.
+
+Decision for Julio (flag, not a blocker): the AI's owner can decide a group approval today (existing behaviour) and so could create a group-scoped "always" rule even if they are not a group admin; any group admin can revoke it. If group rules should need a group admin, that is a one-line change in the decision route.
+
+Process notes: worker was moved from MiniMax to Muse mid-task; no Muse pre-review file was produced.
