@@ -1,7 +1,7 @@
 ---
 id: T-0096
 title: End-to-end test of the action flow through the real HTTP routes (tests only, server)
-status: review
+status: merged
 milestone: M4
 branch: task/T-0096-action-flow-e2e-test
 model: minimax-coding-plan/MiniMax-M3
@@ -98,4 +98,8 @@ The polling helpers (`waitForPendingStatus`, `waitForCallCount`) hit the databas
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged. Tests only; no production code touched, no bug found.
+
+Rebased on main; format, lint, typecheck clean; the file passed three runs in a row (10 tests each). All ten scenarios exist and assert what the spec asks: approve runs the adapter once with the stored args and the audit has no args text; deny, stranger (404 shape, owner can still approve), double decision, stop-before-approval, expiry (refused at decision time), tier 0, unknown/invalid args (no rows), hash tampering, and adapter throw (message leaks nowhere).
+
+Notes: the request itself is the real `gateway.request` (there is no HTTP route to request an action, by design); decisions and the AI stop go through real HTTP. Four short fixed 50 ms waits remain, only on negative assertions ("the adapter never ran"); positive waits poll with a ceiling.
