@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0067](T-0067-mobile-loading-states.md) | Mobile loading ≠ empty: skeletons, inline errors with Retry, pending open flushed on ready (port of T-0042) | in progress | deepseek-v4.1-flash | T-0056 | Mobile slot (80/20). |
 | [T-0065](T-0065-attachments-web.md) | Attachments on web: images and files via XEP-0363 + `attachment` payload, preview bar, paste/drop, image and file bubbles, retry | in progress | deepseek-v4.1-flash | T-0061 | MVP list item (plan §21). |
 | [T-0068](T-0068-machines-registry.md) | Machines registry (M3, server): pairing codes, runner registration with proof of key possession, approve/deny/revoke, durable key registry | in progress | muse-spark-1.3-contributor | T-0008 | First M3 slice. Next: web Machines page, tunnel hub, runner app. |
+| [T-0069](T-0069-web-mock-standalone.md) | Web mock mode: `?mock=1` only in dev builds; standalone (fake session, mock /api for AIs and connections) so QA can run without a server | in progress | deepseek-v4.1-flash | T-0062 | Web slot. Same hole T-0063 closed on mobile. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
