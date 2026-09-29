@@ -10,10 +10,12 @@ import {
   approveMachine,
   createAi,
   createPairingCode,
+  decideApproval,
   deleteAi,
   deleteMachine,
   denyMachine,
   getAi,
+  getApproval,
   getChats,
   getContacts,
   getMe,
@@ -247,6 +249,55 @@ describe('mockRequest', () => {
     await vi.advanceTimersByTimeAsync(1);
     await pending;
     expect(resolved).toBe(true);
+  });
+
+  it('seeds one pending approval matching the mock card', async () => {
+    const approval = await getApproval('apr-42');
+    expect(approval.id).toBe('apr-42');
+    expect(approval.status).toBe('pending');
+    expect(approval.action).toBe('merge_pull_request');
+  });
+
+  it('approve flips the seeded approval to approved_once and a second decision answers 409', async () => {
+    const approved = await decideApproval('apr-42', 'approve_once');
+    expect(approved.status).toBe('approved_once');
+    expect(approved.decidedAt).not.toBeNull();
+
+    const refreshed = await getApproval('apr-42');
+    expect(refreshed.status).toBe('approved_once');
+
+    const response = await mockRequest('/approvals/apr-42/decision', {
+      method: 'POST',
+      body: JSON.stringify({ decision: 'deny' }),
+    });
+    expect(response.status).toBe(409);
+    const body = z
+      .object({ error: z.object({ code: z.string(), message: z.string() }) })
+      .parse(await response.json());
+    expect(body.error.code).toBe('not_pending');
+  });
+
+  it('deny on the seeded approval flips it to denied', async () => {
+    const denied = await decideApproval('apr-42', 'deny', 'looks risky');
+    expect(denied.status).toBe('denied');
+    expect(denied.note).toBe('looks risky');
+  });
+
+  it('an unknown approval id answers 404 not_found', async () => {
+    const response = await mockRequest('/approvals/no-such', { method: 'GET' });
+    expect(response.status).toBe(404);
+    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    expect(body.error.code).toBe('not_found');
+  });
+
+  it('an invalid decision body answers 400 invalid_request', async () => {
+    const response = await mockRequest('/approvals/apr-42/decision', {
+      method: 'POST',
+      body: JSON.stringify({ decision: 'maybe' }),
+    });
+    expect(response.status).toBe(400);
+    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    expect(body.error.code).toBe('invalid_request');
   });
 });
 

@@ -2,6 +2,7 @@ import type { ChatEntry, Connection, Contact, Machine, Me, PublicAi } from '@/li
 import { currentUserId, PEOPLE } from './ids';
 import { mockChats } from './chats';
 import { mockGroupDetails } from './groups';
+import { approvalCard } from './helpers';
 
 /**
  * The standalone mock HTTP layer (T-0069). In mock mode the app needs no
@@ -28,6 +29,18 @@ interface MockState {
   nextAiSequence: number;
   nextConnectionSequence: number;
   machines: Machine[];
+  // T-0076: one pending approval seeded from `approvalCard()` so the card
+  // shows real Approve/Deny buttons in mock mode (matches the message in the
+  // dev-team chat). It can be decided and then stays decided for the rest of
+  // the page load.
+  approvals: MockApproval[];
+}
+
+interface MockApproval {
+  id: string;
+  status: 'pending' | 'approved_once' | 'denied';
+  decidedAt: string | null;
+  note: string | null;
 }
 
 function seedAi(name: string, template: PublicAi['template'], id: string): PublicAi {
@@ -140,6 +153,17 @@ function seedState(): MockState {
     ],
     nextAiSequence: 1,
     nextConnectionSequence: 1,
+    // T-0076: one pending approval seeded from `approvalCard()`, so the chat
+    // card has real Approve/Deny buttons out of the box. `id` matches the
+    // approval card in mock/messages.ts.
+    approvals: [
+      {
+        id: 'apr-42',
+        status: 'pending',
+        decidedAt: null,
+        note: null,
+      },
+    ],
   };
 }
 
@@ -426,6 +450,43 @@ export async function mockRequest(
     return notImplemented();
   }
 
+  // T-0076: serve the approvals routes from `approvalCard()`. The card in the
+  // dev-team chat carries `id: 'apr-42'`, so the seeded entry keeps the card
+  // pending and decidable on first paint. Decisions flip it to the matching
+  // terminal state; a second decision on the same id answers 409, exactly like
+  // the server.
+  if (head === 'approvals') {
+    if (first === undefined && method === 'GET') {
+      return jsonResponse(state.approvals.map(publicApproval).filter(isPendingApproval));
+    }
+    if (first === undefined) return notImplemented();
+    const approvalId = decodeURIComponent(first);
+    const approval = state.approvals.find((item) => item.id === approvalId);
+    if (approval === undefined) return notFound('Approval not found');
+    if (second === undefined && method === 'GET') {
+      return jsonResponse(publicApproval(approval));
+    }
+    if (second === 'decision' && method === 'POST') {
+      if (approval.status !== 'pending') {
+        return conflict('not_pending', 'Approval request has already been decided');
+      }
+      const body = readJsonBody(init);
+      const decision = body.decision;
+      if (decision !== 'approve_once' && decision !== 'approve_always' && decision !== 'deny') {
+        return jsonResponse(
+          { error: { code: 'invalid_request', message: 'Invalid decision body' } },
+          400,
+        );
+      }
+      const note = typeof body.note === 'string' ? body.note : null;
+      approval.status = decision === 'deny' ? 'denied' : 'approved_once';
+      approval.decidedAt = new Date().toISOString();
+      approval.note = note;
+      return jsonResponse(publicApproval(approval));
+    }
+    return notImplemented();
+  }
+
   return notImplemented();
 }
 
@@ -447,4 +508,50 @@ function createPairingCodeResponse(): Response {
 
 function conflict(code: string, message: string): Response {
   return jsonResponse({ error: { code, message } }, 409);
+}
+
+// T-0076: read-model helpers for the seeded approval. `approvalCard()` is the
+// source of truth for the request payload (action, summary, hash, costs,
+// expiry); the local row only carries the decision.
+function publicApproval(row: MockApproval): {
+  id: string;
+  aiId: string;
+  groupId: string | null;
+  action: string;
+  summary: string;
+  details: string | null;
+  argsHash: string;
+  worstCase: { currency: 'EUR' | 'USD'; amount: number } | null;
+  requestedBy: string;
+  status: 'pending' | 'approved_once' | 'denied';
+  decidedAt: string | null;
+  note: string | null;
+  expiresAt: string;
+  createdAt: string;
+} {
+  const card = approvalCard();
+  if (card.type !== 'approval.request') {
+    throw new Error('approvalCard() must be an approval.request payload');
+  }
+  const data = card.data;
+  return {
+    id: row.id,
+    aiId: data.ai,
+    groupId: data.room,
+    action: data.action,
+    summary: data.summary,
+    details: data.details ?? null,
+    argsHash: data.args_hash,
+    worstCase: data.worst_case_cost ?? null,
+    requestedBy: data.requested_by,
+    status: row.status,
+    decidedAt: row.decidedAt,
+    note: row.note,
+    expiresAt: data.expires_at,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function isPendingApproval(approval: { status: string; expiresAt: string }): boolean {
+  return approval.status === 'pending' && new Date(approval.expiresAt).getTime() > Date.now();
 }

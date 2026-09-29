@@ -457,3 +457,57 @@ export function renameMachine(id: string, name: string): Promise<Machine> {
 export async function deleteMachine(id: string): Promise<void> {
   await request(`/machines/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
 }
+
+// --- Approvals (T-0076) ---------------------------------------------------
+// The wire contract lives in apps/server/src/approvals/routes.ts and
+// service.ts. Dates arrive as ISO strings; we keep them as strings so the
+// types line up with `ApprovalRequest.expires_at` and we don't have to think
+// about zod's string-to-Date coercion in tests.
+
+export type ApprovalStatus =
+  'pending' | 'approved_once' | 'approved_always' | 'denied' | 'consumed' | 'expired';
+
+export type ApprovalDecision = 'approve_once' | 'approve_always' | 'deny';
+
+const approvalWorstCaseSchema = z
+  .object({
+    currency: z.enum(['EUR', 'USD']),
+    amount: z.number(),
+  })
+  .nullable();
+
+export const publicApprovalSchema = z.object({
+  id: z.string(),
+  aiId: z.string(),
+  groupId: z.string().nullable(),
+  action: z.string(),
+  summary: z.string(),
+  details: z.string().nullable(),
+  argsHash: z.string(),
+  worstCase: approvalWorstCaseSchema,
+  requestedBy: z.string(),
+  status: z.enum(['pending', 'approved_once', 'approved_always', 'denied', 'consumed', 'expired']),
+  decidedAt: z.string().nullable(),
+  note: z.string().nullable(),
+  expiresAt: z.string(),
+  createdAt: z.string(),
+});
+
+export type PublicApproval = z.infer<typeof publicApprovalSchema>;
+
+export function getApproval(id: string): Promise<PublicApproval> {
+  return request(`/approvals/${encodeURIComponent(id)}`, publicApprovalSchema);
+}
+
+export function decideApproval(
+  id: string,
+  decision: ApprovalDecision,
+  note?: string,
+): Promise<PublicApproval> {
+  const body = note === undefined ? { decision } : { decision, note };
+  return request(`/approvals/${encodeURIComponent(id)}/decision`, publicApprovalSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
