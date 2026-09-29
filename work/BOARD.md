@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0081](T-0081-approvals-inbox-web.md) | Web: Approvals inbox page (Settings → Approvals) with Approve/Deny for every pending request | in progress | minimax-m3 | T-0073, T-0076 | No history yet. |
 | [T-0080](T-0080-ai-kill-switch.md) | Kill switch (M4): owner stops/resumes an AI (`stopped` status), gateway drops it at once and drops in-flight replies; web button; mobile tolerates the status | in progress | minimax-m3 | T-0034, T-0058 | Owner only for now (J5). |
 | [T-0079](T-0079-audit-log.md) | Audit log (M4, server): append-only table (DB trigger), recorder, owner/admin read routes, writers in approvals and machines | in progress | minimax-m3 | T-0073, T-0068 | No web page yet. |
 
@@ -109,3 +108,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0077](T-0077-tunnel-wss.md) | RunnerClient accepts wss:// server URLs | 2026-09-29 |
 | [T-0076](T-0076-approvals-web.md) | Web approval card decides for real: Approve/Deny call the approvals API, shows its state, mock mode | 2026-09-29 |
 | [T-0078](T-0078-mobile-edits-receive.md) | Mobile shows edits, deletions and reactions from others (receive side), reusing chat-core reducers | 2026-09-29 |
+| [T-0081](T-0081-approvals-inbox-web.md) | Web Approvals inbox page (Settings → Approvals) with Approve/Deny | 2026-09-29 |
