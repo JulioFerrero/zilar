@@ -1,7 +1,7 @@
 ---
 id: T-0095
 title: Mobile kill switch — Stop and Resume an AI from the AI list (M4/M5, mobile)
-status: review
+status: merged
 milestone: M4
 branch: task/T-0095-mobile-kill-switch
 model: minimax-coding-plan/MiniMax-M3
@@ -137,4 +137,10 @@ Live iOS check was not done (the spec says only the lead runs it, and only when 
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged with one lead change. Mobile tests 358 passed; format, lint, typecheck clean after the last edit; no disable comments (the two `console.log` hits are older integration tests).
+
+Confirmed: Stop only for `active`, Resume only for `stopped`, nothing for `disabled`; a double tap cannot send two requests (ref + disabled state); a failure keeps the list unchanged and shows the error inline; the "Stopped" and "Setting up" pills replace the raw status string; the parser tolerates unknown fields. The edit to `apps/mobile/src/mock/ais.ts` (outside the listed files) was necessary because the interface gained two methods and the mock implements it; accepted.
+
+Lead change: on a 409 the worker kept the sheet open with a stale Stop/Resume button. It now closes the sheet and reloads the list so the row tells the truth.
+
+Not checked: a run on the iOS simulator (not done tonight); worth one look on the phone (see the live checks doc). Note: the server is idempotent (stopping a stopped AI answers 200), so a 409 only happens for an AI that is still being set up; the mock resumes an active AI with 409 where the server answers 200, which is harmless.

@@ -86,9 +86,9 @@ function AisList() {
 
   // T-0095: stop or resume the AI the sheet is open for. The server's answer
   // is the source of truth, so the list swaps to it on success. On a 409 the
-  // AI changed under the owner (someone else flipped it, or it was deleted);
-  // the list is reloaded so the row matches the server. The sheet stays open
-  // on any failure so the inline error is visible and the owner can retry.
+  // AI is not in a state this action applies to; the sheet closes and the list
+  // is reloaded so the row matches the server. Any other failure keeps the
+  // sheet open so the inline error is visible and the owner can retry.
   const toggleRun = (next: RunAction): void => {
     if (actionAi === null || runRef.current) {
       return;
@@ -103,10 +103,15 @@ function AisList() {
         setActionAi(null);
       })
       .catch((error: unknown) => {
-        setRunError(describeAisError(error, 'Could not change the AI state').message);
         if (error instanceof AisApiError && error.status === 409) {
+          // The AI is not in a state this action applies to (still being set
+          // up, or changed elsewhere). Reload so the row says so, and close
+          // the sheet: its Stop / Resume button would otherwise be stale.
+          setActionAi(null);
           reload();
+          return;
         }
+        setRunError(describeAisError(error, 'Could not change the AI state').message);
       })
       .finally(() => {
         runRef.current = false;
