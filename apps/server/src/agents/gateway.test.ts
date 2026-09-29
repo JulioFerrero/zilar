@@ -2852,4 +2852,167 @@ describe('agent gateway', () => {
       expect(freshCalls.length).toBeGreaterThanOrEqual(1);
     });
   });
+
+  // T-0092: the action gateway uses this to post the approval card and
+  // outcome notices into the AI's own chat. The kill-switch semantics live
+  // here too: a stopped AI, an unknown AI, or an AI that was never in the
+  // room must answer `false` and send nothing.
+  describe('postToChat (T-0092)', () => {
+    async function seedMemberLocal(name: string): Promise<{ userId: string; jid: string }> {
+      const userId = randomUUID();
+      await context.db.insert(user).values({ id: userId, name, email: `${userId}@example.com` });
+      return { userId, jid: `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}` };
+    }
+
+    async function seedGroupLocal(input: {
+      ownerId: string;
+      aiId: string;
+      memberIds?: string[];
+    }): Promise<{ groupId: string; roomJid: string }> {
+      const groupId = randomUUID();
+      const roomLocalpart = `gpost${randomUUID().replace(/-/g, '').slice(0, 9)}`;
+      await context.db
+        .insert(groups)
+        .values({ id: groupId, roomLocalpart, title: 'Room', createdBy: input.ownerId });
+      await context.db.insert(groupMembers).values([
+        { groupId, userId: input.ownerId, role: 'owner' },
+        ...(input.memberIds ?? []).map((userId) => ({
+          groupId,
+          userId,
+          role: 'member' as const,
+        })),
+      ]);
+      await context.db
+        .insert(groupAis)
+        .values({ groupId, aiId: input.aiId, addedBy: input.ownerId });
+      return { groupId, roomJid: `${roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}` };
+    }
+
+    it('sends one groupchat to the room JID for a group with a payload', async () => {
+      const seeded = await seedAi(context);
+      const member = await seedMemberLocal('Ana');
+      const { groupId, roomJid } = await seedGroupLocal({
+        ownerId: seeded.ownerId,
+        aiId: seeded.aiId,
+        memberIds: [member.userId],
+      });
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = completionFetch();
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      const payload = {
+        v: 0 as const,
+        type: 'approval.request' as const,
+        data: {
+          id: 'approval-1',
+          room: roomJid,
+          ai: seeded.aiJid,
+          action: 'demo.echo',
+          summary: 'Echo',
+          args_hash: 'a'.repeat(64),
+          requested_by: member.jid,
+          expires_at: '2026-12-01T12:00:00.000Z',
+        },
+      };
+      const ok = await started.postToChat({
+        aiId: seeded.aiId,
+        groupId,
+        text: 'Approval needed: Echo',
+        payload,
+      });
+      expect(ok).toBe(true);
+      expect(core.sent).toEqual([
+        {
+          to: roomJid,
+          kind: 'groupchat',
+          text: 'Approval needed: Echo',
+          opts: { payload },
+        },
+      ]);
+    });
+
+    it('sends a chat to the owner JID for a DM (groupId null)', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = completionFetch();
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      const ok = await started.postToChat({
+        aiId: seeded.aiId,
+        groupId: null,
+        text: 'Done: Echo',
+      });
+      expect(ok).toBe(true);
+      expect(core.sent).toEqual([
+        { to: seeded.ownerJid, kind: 'chat', text: 'Done: Echo', opts: {} },
+      ]);
+    });
+
+    it('returns false and sends nothing for an unknown AI', async () => {
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = completionFetch();
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const ok = await started.postToChat({
+        aiId: 'no-such-ai',
+        groupId: null,
+        text: 'hi',
+      });
+      expect(ok).toBe(false);
+      for (const core of cores) {
+        expect(core.sent).toEqual([]);
+      }
+    });
+
+    it('returns false and sends nothing for a stopped AI', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = completionFetch();
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      const initialSentLength = core.sent.length;
+
+      // Stop the AI through the service entry point: the gateway observes
+      // the lifecycle event and disconnects the session, just like a real
+      // kill switch would.
+      const deps: AiServiceDeps = {
+        db: context.db,
+        adminClient: context.adminClient,
+        litellm: new FakeLitellm(),
+        cipher: createKeyCipher(MASTER_KEY),
+        logger: context.logger,
+        domain: context.xmppConfig.domain,
+      };
+      await stopAi(deps, seeded.aiId, seeded.ownerId);
+      await waitFor(() => started.size() === 0);
+
+      const ok = await started.postToChat({
+        aiId: seeded.aiId,
+        groupId: null,
+        text: 'after-stop',
+      });
+      expect(ok).toBe(false);
+      expect(core.sent.length).toBe(initialSentLength);
+    });
+
+    it('returns false for a group post when the AI never joined the room', async () => {
+      const seeded = await seedAi(context);
+      // AI is not added to any group: the session has no rooms.
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = completionFetch();
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      const ok = await started.postToChat({
+        aiId: seeded.aiId,
+        groupId: 'some-group',
+        text: 'hello room',
+      });
+      expect(ok).toBe(false);
+      expect(core.sent).toEqual([]);
+    });
+  });
 });

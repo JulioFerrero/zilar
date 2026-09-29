@@ -5,6 +5,9 @@ import type { AuditEntry, AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { ais, approvals, groupAis, pendingActions } from '../db/schema';
 import { createApproval, verifyApproval } from '../approvals/service';
+import { type ActionAnnouncer, summaryForOutcome } from './announce';
+
+export type { ActionAnnouncer };
 import { argsHash } from './canonical';
 import { policy, type PolicyDenialReason } from './policy';
 import type { ActionAdapter, ActionContext, ActionRegistry, ActionResult } from './registry';
@@ -58,6 +61,13 @@ export interface ActionGatewayDependencies {
   adapters: ActionRegistry;
   audit: AuditRecorder;
   logger: ActionGatewayLogger;
+  /**
+   * Optional port the gateway uses to announce tier-2 requests and their
+   * outcomes into the chat. Absent in tests and the default gateway; present
+   * in `index.ts` so a stopped AI posts nothing. Every call is best-effort:
+   * the gateway swallows a rejection.
+   */
+  announce?: ActionAnnouncer;
   now?: () => Date;
 }
 
@@ -344,6 +354,13 @@ async function runApprovalPath(
     detail: null,
   });
 
+  // Best-effort card announcement. The approval id and the chat target are
+  // enough for the announcer to build the payload; the gateway does not
+  // wait on it and a throw never changes the returned outcome.
+  await safeAnnounce(deps, {
+    approvalRequested: { aiId: params.aiId, groupId: params.groupId ?? null, approvalId },
+  });
+
   return { status: 'pending_approval', approvalId };
 }
 
@@ -436,6 +453,14 @@ async function runOnApprovalDecided(
   if (!adapter) {
     await finishPending(deps, pending, 'failed', null, at);
     await writeResultAudit(deps, pending, 'action.failed', 'error');
+    await safeAnnounce(deps, {
+      outcome: {
+        aiId: pending.aiId,
+        groupId: pending.groupId,
+        status: 'failed',
+        summary: null,
+      },
+    });
     return;
   }
 
@@ -467,6 +492,14 @@ async function runOnApprovalDecided(
     outcome === 'ok' ? 'action.executed' : 'action.failed',
     outcome,
   );
+  await safeAnnounce(deps, {
+    outcome: {
+      aiId: pending.aiId,
+      groupId: pending.groupId,
+      status: outcome === 'ok' ? 'executed' : 'failed',
+      summary: outcome === 'ok' ? summary : null,
+    },
+  });
 }
 
 // Marks a `running` row older than `STUCK_RUNNING_MS` as `failed` with a
@@ -541,6 +574,14 @@ async function cancelPending(
     costAmount: null,
     result: 'denied',
     detail: { reason },
+  });
+  await safeAnnounce(deps, {
+    outcome: {
+      aiId: row.aiId,
+      groupId: row.groupId,
+      status: 'cancelled',
+      summary: null,
+    },
   });
 }
 
@@ -640,4 +681,50 @@ function errorName(error: unknown): string {
     return error.name;
   }
   return typeof error;
+}
+
+// Calls every entry in `calls` on the optional announcer. A missing announcer
+// is a no-op; a throw only logs the error class name. The gateway never lets
+// an announcement failure change an outcome, a row or an audit entry.
+async function safeAnnounce(
+  deps: ActionGatewayDependencies,
+  calls: {
+    approvalRequested?: {
+      aiId: string;
+      groupId: string | null;
+      approvalId: string;
+    };
+    outcome?: {
+      aiId: string;
+      groupId: string | null;
+      status: 'executed' | 'failed' | 'cancelled';
+      summary: string | null;
+    };
+  },
+): Promise<void> {
+  if (deps.announce === undefined) {
+    return;
+  }
+  try {
+    if (calls.approvalRequested !== undefined) {
+      await deps.announce.approvalRequested(calls.approvalRequested);
+    }
+    if (calls.outcome !== undefined) {
+      await deps.announce.outcome({
+        ...calls.outcome,
+        summary: summaryForOutcome(calls.outcome.status, calls.outcome.summary),
+      });
+    }
+  } catch (error) {
+    const action =
+      calls.outcome !== undefined ? `action.${calls.outcome.status}` : 'action.requested';
+    deps.logger.warn(
+      {
+        err: errorName(error),
+        action: calls.outcome?.status ?? 'requested',
+        aiId: calls.outcome?.aiId ?? calls.approvalRequested?.aiId,
+      },
+      `announcer failed for ${action}; carrying on`,
+    );
+  }
 }
