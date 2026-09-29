@@ -9,6 +9,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0086](T-0086-group-activity-web.md) | Web: Activity section in the group panel for owners/admins (audit by group) | in progress | minimax-m3 | T-0084 | Generalises `AiActivity`. |
+| [T-0087](T-0087-approvals-sweeper.md) | Approvals sweeper: expired pending requests are denied on a timer, one audit entry each | in progress | minimax-m3 | T-0073, T-0079 | Server only. |
 | [T-0085](T-0085-mobile-edits-send.md) | Mobile: react, delete for everyone and edit own messages (send side; three steps) | in progress | minimax-m3 | T-0078 | Mirrors the web store; largest mobile task of the night. |
 
 ## Follow-ups
