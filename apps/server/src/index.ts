@@ -13,7 +13,7 @@ import {
   startRecoveryStuckTimer,
   type RecoveryStuckHandle,
 } from './actions/gateway';
-import { buildRegistry } from './actions/registry';
+import { buildAlwaysEligible, buildRegistry } from './actions/registry';
 import { createAgentGateway, type AgentGateway } from './agents/gateway';
 import { createApp } from './app';
 import { startApprovalsSweeper, type ApprovalsSweeperHandle } from './approvals/sweeper';
@@ -153,8 +153,13 @@ const announcer: ActionAnnouncer = {
 // at startup and every five minutes. The announcer (T-0092) closes over
 // the agent gateway reference and posts every tier-2 request and outcome
 // into the chat.
+//
+// T-0099: `alwaysEligible` is built from the same registry. Adapters
+// that opted in (`allowAlways: true`) and report no cost are always
+// eligible; money adapters and non-opted-in adapters never are.
 const actionAdapters = config.ACTION_DEMO_ENABLED ? [buildDemoEchoAdapter()] : [];
 const actionRegistry = buildRegistry(actionAdapters);
+const alwaysEligible = buildAlwaysEligible(actionRegistry);
 const actionGateway = createActionGateway({
   db,
   adapters: actionRegistry,
@@ -172,6 +177,7 @@ const app = createApp({
   machineRegistry,
   ...(config.RUNNER_HUB_ENABLED ? { isMachineOnline } : {}),
   actionGateway,
+  alwaysEligible,
 });
 
 // Agent gateway (T-0034): off unless AGENT_GATEWAY_ENABLED=true, and inert

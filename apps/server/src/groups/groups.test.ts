@@ -1,7 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { aiLimits, ais, groupAis, groupMembers, groups, providerConnections } from '../db/schema';
+import {
+  aiLimits,
+  ais,
+  approvalRules,
+  groupAis,
+  groupMembers,
+  groups,
+  providerConnections,
+} from '../db/schema';
 import { user } from '../auth/auth-schema';
 import { aiLocalpart } from '../ais/service';
 import {
@@ -685,6 +693,66 @@ describe('groups', () => {
       const removed = await removeAiRequest(owner.cookie, groupId, ai.aiId);
       expect(removed.status).toBe(200);
       expect(((await removed.json()) as GroupDetailBody).ais).toHaveLength(0);
+    });
+
+    it('T-0099: removing the AI from the group revokes its group rules only', async () => {
+      const { owner, groupId } = await groupWithMember();
+      const ai = await seedAi(owner.id);
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: ai.aiId })).status).toBe(200);
+
+      const otherGroupResponse = await createGroupRequest(owner.cookie, {
+        title: 'Other',
+        memberIds: [],
+      });
+      expect(otherGroupResponse.status).toBe(201);
+      const otherGroupId = ((await otherGroupResponse.json()) as GroupDetailBody).id;
+      await context.db
+        .insert(groupAis)
+        .values({ groupId: otherGroupId, aiId: ai.aiId, addedBy: owner.id });
+
+      const ruleNow = new Date('2026-01-01T00:00:00Z');
+      const [groupRule] = await context.db
+        .insert(approvalRules)
+        .values({
+          id: randomUUID(),
+          aiId: ai.aiId,
+          groupId,
+          action: 'demo.echo',
+          createdBy: owner.id,
+          createdAt: ruleNow,
+        })
+        .returning();
+      const [personalRule] = await context.db
+        .insert(approvalRules)
+        .values({
+          id: randomUUID(),
+          aiId: ai.aiId,
+          groupId: null,
+          action: 'demo.echo',
+          createdBy: owner.id,
+          createdAt: ruleNow,
+        })
+        .returning();
+      const [otherGroupRule] = await context.db
+        .insert(approvalRules)
+        .values({
+          id: randomUUID(),
+          aiId: ai.aiId,
+          groupId: otherGroupId,
+          action: 'demo.echo',
+          createdBy: owner.id,
+          createdAt: ruleNow,
+        })
+        .returning();
+
+      const removed = await removeAiRequest(owner.cookie, groupId, ai.aiId);
+      expect(removed.status).toBe(200);
+
+      const rows = await context.db.select().from(approvalRules);
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      expect(byId.get(groupRule!.id)?.revokedAt).not.toBeNull();
+      expect(byId.get(personalRule!.id)?.revokedAt).toBeNull();
+      expect(byId.get(otherGroupRule!.id)?.revokedAt).toBeNull();
     });
 
     it('lists the group AIs in the detail and hides the group from strangers', async () => {

@@ -304,8 +304,8 @@ describe('approvals service', () => {
         { approvalId: row.id, userId: ownerId, decision: 'approve_once' },
         now,
       );
-      expect(updated?.status).toBe('approved_once');
-      expect(updated?.decidedBy).toBe(ownerId);
+      expect(updated?.row.status).toBe('approved_once');
+      expect(updated?.row.decidedBy).toBe(ownerId);
     });
 
     it('lets a group owner decide', async () => {
@@ -336,7 +336,7 @@ describe('approvals service', () => {
         { approvalId: row.id, userId: ownerId, decision: 'approve_once' },
         now,
       );
-      expect(updated?.status).toBe('approved_once');
+      expect(updated?.row.status).toBe('approved_once');
     });
 
     it('lets a group admin decide', async () => {
@@ -367,8 +367,8 @@ describe('approvals service', () => {
         { approvalId: row.id, userId: adminId, decision: 'deny', note: 'no' },
         now,
       );
-      expect(updated?.status).toBe('denied');
-      expect(updated?.note).toBe('no');
+      expect(updated?.row.status).toBe('denied');
+      expect(updated?.row.note).toBe('no');
     });
 
     it('refuses a group member with the same null as a missing id (404-shape)', async () => {
@@ -559,9 +559,18 @@ describe('approvals service', () => {
         approvalInput({ aiId, hash, expiresAt: futureExpiresAt(now, 60_000) }),
         now,
       );
+      // T-0099: an `approve_always` decision is refused unless the
+      // action is on the always-eligible list. This test predates the
+      // rule flow and only cares about the single-use consumption
+      // behaviour, so we pass a permissive predicate.
       await decideApproval(
         context.db,
-        { approvalId: row.id, userId: ownerId, decision: 'approve_always' },
+        {
+          approvalId: row.id,
+          userId: ownerId,
+          decision: 'approve_always',
+          alwaysEligible: () => true,
+        },
         now,
       );
       const first = await verifyApproval(context.db, { approvalId: row.id, argsHash: hash }, now);

@@ -5,6 +5,7 @@ import type { AuditEntry, AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { ais, approvals, groupAis, pendingActions } from '../db/schema';
 import { createApproval, verifyApproval } from '../approvals/service';
+import { findActiveRule } from '../approvals/rules';
 import { type ActionAnnouncer, summaryForOutcome } from './announce';
 
 export type { ActionAnnouncer };
@@ -208,6 +209,31 @@ async function runRequest(
     aiInGroup = await isAiInGroup(deps.db, params.aiId, params.groupId);
   }
 
+  // T-0099: a stopped AI must never be auto-approved even if a rule
+  // exists. Re-check `ai_status === 'active'` here, before any rule
+  // lookup, so the kill switch always wins.
+  if (aiRow === null || aiRow.status !== 'active') {
+    return { status: 'denied', reason: 'ai_not_active' };
+  }
+
+  // T-0099: a tier-2 request that matches an active standing rule
+  // short-circuits the approval path. The rule is (ai, chat, action)-
+  // exact: any mismatch (different AI, different chat, different action)
+  // leaves the request on the normal approval path. Cost is re-checked
+  // here (not just at decision time): an adapter that gains an
+  // `estimateCost` after the rule was created loses auto-run until the
+  // registry opts it back in.
+  if (adapter.tier === 2 && adapter.allowAlways === true && adapter.estimateCost === undefined) {
+    const rule = await findActiveRule(deps.db, {
+      aiId: params.aiId,
+      groupId: params.groupId ?? null,
+      action: params.action,
+    });
+    if (rule !== null) {
+      return runAutoApprovedAction(deps, params, adapter as ActionAdapter<unknown>, rule.id, at);
+    }
+  }
+
   const verdict = policy({
     adapter,
     rawArgs: params.args,
@@ -263,6 +289,99 @@ async function runAllowedAction(
   }
 
   await writeAllowAudit(deps, params, outcome);
+  return outcome === 'ok' && summary !== null
+    ? { status: 'executed', summary }
+    : { status: 'failed' };
+}
+
+// T-0099: a tier-2 request that matches an active standing rule runs
+// immediately, like the allow path. The AI must still be `active`
+// (checked by `runRequest` before this function is reached) and the
+// adapter must still be always-eligible (`allowAlways: true` and no
+// `estimateCost`) — both enforced at the gateway entry. We never write
+// an approval row, never post a card, and the audit carries the rule id
+// as the `subject` so a reader can join the rule to the action.
+async function runAutoApprovedAction(
+  deps: ActionGatewayDependencies,
+  params: RequestParams,
+  adapter: ActionAdapter<unknown>,
+  ruleId: string,
+  at: Date,
+): Promise<RequestOutcome> {
+  const parse = adapter.argsSchema.safeParse(params.args);
+  if (!parse.success) {
+    // Defence in depth: invalid args fall through to the normal
+    // approval path. We do this by reporting the same denial the
+    // allow path would; the policy has the same order, but a custom
+    // adapter that mutates state between calls could in theory
+    // disagree.
+    return { status: 'denied', reason: 'invalid_args' };
+  }
+  const parsedArgs = parse.data;
+  const ctx: ActionContext = {
+    aiId: params.aiId,
+    groupId: params.groupId ?? null,
+    requestId: 'rule-' + ruleId,
+  };
+
+  let outcome: 'ok' | 'error';
+  let summary: string | null = null;
+  try {
+    const result: ActionResult = await adapter.execute(ctx, parsedArgs);
+    outcome = 'ok';
+    summary = truncateSummary(result.summary);
+  } catch (error) {
+    outcome = 'error';
+    // Adapter error text is never stored, never returned, never logged
+    // with the message. The class name is logged for ops.
+    deps.logger.warn(
+      { err: errorName(error), action: params.action, aiId: params.aiId, ruleId },
+      'action adapter threw under auto-approval',
+    );
+  }
+
+  // The args hash is computed over the parsed args so an audit reader
+  // can join back to the request without ever seeing the args.
+  const hash = argsHash(parsedArgs);
+  if (!ARGS_HASH_PATTERN.test(hash)) {
+    // Defence in depth: if canonical hashing rejects the args we
+    // never ran anything we could not audit. Practically unreachable.
+    return { status: 'denied', reason: 'invalid_args' };
+  }
+
+  // Two audit entries: `action.auto_approved` (subject = rule id) and
+  // `action.executed` / `action.failed` (subject = null, no rule
+  // attached) so the existing audit queries continue to surface every
+  // action outcome regardless of how it was authorised.
+  await deps.audit.record({
+    actorUserId: null,
+    aiId: params.aiId,
+    groupId: params.groupId ?? null,
+    action: 'action.auto_approved',
+    subjectId: ruleId,
+    argsHash: hash,
+    costCurrency: null,
+    costAmount: null,
+    result: 'ok',
+    detail: null,
+  });
+  await writeAllowAudit(deps, params, outcome);
+
+  // The chat sees the outcome with the "Ran automatically" prefix the
+  // spec asks for, so the owner can tell the card was skipped.
+  await safeAnnounce(deps, {
+    outcome: {
+      aiId: params.aiId,
+      groupId: params.groupId ?? null,
+      status: outcome === 'ok' ? 'executed' : 'failed',
+      summary:
+        outcome === 'ok' && summary !== null
+          ? `Ran automatically (always allowed in this chat): ${summary}`
+          : null,
+    },
+  });
+
+  void at;
   return outcome === 'ok' && summary !== null
     ? { status: 'executed', summary }
     : { status: 'failed' };

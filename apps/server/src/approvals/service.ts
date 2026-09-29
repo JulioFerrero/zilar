@@ -1,12 +1,14 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { and, count, desc, eq, gt, inArray, lt, or } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNull, lt, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { ARGS_HASH_PATTERN } from '@galena/protocol';
 import type { ServerDatabase } from '../db/client';
-import { ais, approvals, groupAis, groupMembers } from '../db/schema';
+import { ais, approvalRules, approvals, groupAis, groupMembers } from '../db/schema';
 
-// `approved_always` is treated exactly like `approved_once` for now: standing
-// rules (always-allow for an action across requests) are a separate spec.
+// `approved_always` is treated exactly like `approved_once` for the
+// single-use path; T-0099 adds a separate standing-rule flow that the
+// decision route triggers when the adapter is always-eligible and the
+// decider chose `approve_always`.
 export type ApprovalStatus =
   'pending' | 'approved_once' | 'approved_always' | 'denied' | 'consumed';
 
@@ -47,6 +49,23 @@ export const CreateApprovalInputSchema = z
 
 export type CreateApprovalInput = z.infer<typeof CreateApprovalInputSchema>;
 
+// T-0099: the predicate the routes pass to `decideApproval` so the
+// service can accept or refuse an `approve_always` decision. Absent =
+// "nothing is always-eligible", so `approve_always` is refused with 400
+// `always_not_allowed`.
+export type AlwaysEligiblePredicate = (action: string) => boolean;
+
+// T-0099: the result of an `approve_always` decision, returned by the
+// service so the route can write the matching audit entries (one for
+// `approval.decided` and one for `approval_rule.created`). The decision
+// itself is still a normal approval — the rule sits next to it.
+export interface CreatedApprovalRule {
+  id: string;
+  action: string;
+  groupId: string | null;
+  created: boolean;
+}
+
 export interface PublicApproval {
   id: string;
   aiId: string;
@@ -62,6 +81,11 @@ export interface PublicApproval {
   note: string | null;
   expiresAt: Date;
   createdAt: Date;
+  // T-0099: `true` when the action is on the always-eligible list (the
+  // adapter opted in via `allowAlways: true` and reports no cost). The
+  // client uses this to decide whether to show the "Approve always"
+  // button.
+  alwaysEligible: boolean;
 }
 
 export interface ApprovalVerifyResult {
@@ -74,7 +98,12 @@ export interface ApprovalVerifyResult {
 // answer 404.
 export class ApprovalServiceError extends Error {
   readonly errorCode:
-    'invalid_request' | 'expired' | 'not_pending' | 'pending_limit' | 'ai_not_in_group';
+    | 'invalid_request'
+    | 'expired'
+    | 'not_pending'
+    | 'pending_limit'
+    | 'ai_not_in_group'
+    | 'always_not_allowed';
 
   constructor(errorCode: ApprovalServiceError['errorCode'], message: string) {
     super(message);
@@ -166,6 +195,16 @@ export async function createApproval(
 // group). A user who may not decide gets the same null as a missing id, so
 // existence is never leaked. Two racing decisions: the conditional update
 // makes exactly one win.
+//
+// T-0099: when `decision === 'approve_always'` and `alwaysEligible(action)`
+// is `true`, an `approval_rules` row is created in the same transaction.
+// The decision itself still proceeds: the request runs once (the existing
+// `onDecided` path), and the rule applies to future matching requests.
+export interface DecideApprovalResult {
+  row: ApprovalRow;
+  rule: CreatedApprovalRule | null;
+}
+
 export async function decideApproval(
   db: ServerDatabase,
   params: {
@@ -173,9 +212,10 @@ export async function decideApproval(
     userId: string;
     decision: ApprovalDecision;
     note?: string;
+    alwaysEligible?: AlwaysEligiblePredicate;
   },
   now: Date,
-): Promise<ApprovalRow | null> {
+): Promise<DecideApprovalResult | null> {
   const noteParsed = noteSchema.safeParse(params.note);
   if (!noteParsed.success) {
     throw new ApprovalServiceError('invalid_request', 'Invalid note');
@@ -201,18 +241,136 @@ export async function decideApproval(
     throw new ApprovalServiceError('not_pending', 'Approval request has already been decided');
   }
 
-  const [updated] = await db
-    .update(approvals)
-    .set({
-      status: decisionToStatus(params.decision),
-      decidedBy: params.userId,
-      decidedAt: now,
-      note: params.note ?? null,
-    })
-    .where(
-      and(eq(approvals.id, row.id), eq(approvals.status, 'pending'), gt(approvals.expiresAt, now)),
-    )
-    .returning();
+  // T-0099: an "approve_always" decision that cannot create a rule (the
+  // action is unknown, the adapter opted out, or the adapter reports a
+  // cost) is refused before the row is updated so no state changes.
+  if (params.decision === 'approve_always') {
+    const eligible = params.alwaysEligible ?? (() => false);
+    if (!eligible(row.action)) {
+      throw new ApprovalServiceError(
+        'always_not_allowed',
+        `Action "${row.action}" cannot be always-allowed`,
+      );
+    }
+  }
+
+  // The decision + (optional) rule creation share one transaction. If
+  // either fails, both roll back.
+  let createdRule: CreatedApprovalRule | null = null;
+  const updated = await db.transaction(async (tx) => {
+    const [decisionRow] = await tx
+      .update(approvals)
+      .set({
+        status: decisionToStatus(params.decision),
+        decidedBy: params.userId,
+        decidedAt: now,
+        note: params.note ?? null,
+      })
+      .where(
+        and(
+          eq(approvals.id, row.id),
+          eq(approvals.status, 'pending'),
+          gt(approvals.expiresAt, now),
+        ),
+      )
+      .returning();
+    if (!decisionRow) {
+      // A concurrent decision won, or the row expired between our
+      // checks and the update. Signal "no row updated" so the caller
+      // can re-read and pick the right error.
+      return undefined;
+    }
+
+    if (params.decision === 'approve_always') {
+      const newRuleId = randomUUID();
+      // The partial unique indexes guarantee a single active rule per
+      // (ai, chat, action). If one already exists (idempotent), we keep
+      // it. If two concurrent decisions race, the loser's insert fails
+      // on the index and we re-read the winner.
+      const existing = await tx
+        .select()
+        .from(approvalRules)
+        .where(
+          row.groupId === null
+            ? and(
+                eq(approvalRules.aiId, row.aiId),
+                isNull(approvalRules.groupId),
+                eq(approvalRules.action, row.action),
+                isNull(approvalRules.revokedAt),
+              )
+            : and(
+                eq(approvalRules.aiId, row.aiId),
+                eq(approvalRules.groupId, row.groupId),
+                eq(approvalRules.action, row.action),
+                isNull(approvalRules.revokedAt),
+              ),
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        createdRule = {
+          id: existing[0]!.id,
+          action: existing[0]!.action,
+          groupId: existing[0]!.groupId,
+          created: false,
+        };
+      } else {
+        try {
+          await tx.insert(approvalRules).values({
+            id: newRuleId,
+            aiId: row.aiId,
+            groupId: row.groupId,
+            action: row.action,
+            createdBy: params.userId,
+            createdAt: now,
+          });
+          createdRule = {
+            id: newRuleId,
+            action: row.action,
+            groupId: row.groupId,
+            created: true,
+          };
+        } catch (error) {
+          if (isUniqueViolation(error)) {
+            const [reread] = await tx
+              .select()
+              .from(approvalRules)
+              .where(
+                row.groupId === null
+                  ? and(
+                      eq(approvalRules.aiId, row.aiId),
+                      isNull(approvalRules.groupId),
+                      eq(approvalRules.action, row.action),
+                      isNull(approvalRules.revokedAt),
+                    )
+                  : and(
+                      eq(approvalRules.aiId, row.aiId),
+                      eq(approvalRules.groupId, row.groupId),
+                      eq(approvalRules.action, row.action),
+                      isNull(approvalRules.revokedAt),
+                    ),
+              )
+              .limit(1);
+            if (reread !== undefined) {
+              createdRule = {
+                id: reread.id,
+                action: reread.action,
+                groupId: reread.groupId,
+                created: false,
+              };
+            } else {
+              throw error;
+            }
+          } else {
+            throw error;
+          }
+        }
+      }
+    }
+
+    return decisionRow;
+  });
+
   if (!updated) {
     // A concurrent decision won, or the row expired between our checks and the
     // update. Re-read to give the caller a stable error.
@@ -225,7 +383,7 @@ export async function decideApproval(
     }
     throw new ApprovalServiceError('not_pending', 'Approval request has already been decided');
   }
-  return updated;
+  return { row: updated, rule: createdRule };
 }
 
 // Verifies an approval for the engine. Returns `{ ok: true, decision }` only
@@ -403,7 +561,15 @@ async function decidableGroupIdsForUser(db: ServerDatabase, userId: string): Pro
 // writing, and so is a row the sweeper already denied (`denied`, note
 // `expired`, no human decider): the reader must not see "Denied" for a request
 // nobody denied. `decided_by` is intentionally omitted.
-export function toPublicApproval(row: ApprovalRow, now: Date): PublicApproval {
+//
+// `alwaysEligible` is supplied by the caller because the service does not
+// own the action registry — the gateway does. The route passes the
+// predicate it built from the registry.
+export function toPublicApproval(
+  row: ApprovalRow,
+  now: Date,
+  alwaysEligible: boolean = false,
+): PublicApproval {
   const isPending = row.status === 'pending';
   const sweptByTimer = row.status === 'denied' && row.note === 'expired' && row.decidedBy === null;
   const status: ApprovalStatus | 'expired' =
@@ -434,6 +600,7 @@ export function toPublicApproval(row: ApprovalRow, now: Date): PublicApproval {
     note: row.note,
     expiresAt: row.expiresAt,
     createdAt: row.createdAt,
+    alwaysEligible,
   };
 }
 
@@ -463,4 +630,22 @@ function decisionToStatus(
     case 'deny':
       return 'denied';
   }
+}
+
+// Postgres-style unique-violation detection. PGlite raises a
+// DrizzleQueryError wrapping the underlying error; the underlying message
+// contains the SQLSTATE `23505`. We keep the check narrow (substring on
+// the message) so it does not throw on drivers that wrap errors
+// differently.
+function isUniqueViolation(error: unknown): boolean {
+  if (error === null || typeof error !== 'object') {
+    return false;
+  }
+  const message = 'message' in error && typeof error.message === 'string' ? error.message : '';
+  const cause =
+    'cause' in error && error.cause !== null && typeof error.cause === 'object'
+      ? (error.cause as { message?: unknown })
+      : null;
+  const causeMessage = cause && typeof cause.message === 'string' ? cause.message : '';
+  return /23505|duplicate key value|unique constraint/i.test(`${message}\n${causeMessage}`);
 }

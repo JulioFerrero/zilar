@@ -1,10 +1,10 @@
 ---
 id: T-0099
 title: "Approve always" as a standing rule scoped to one chat (M4, server)
-status: todo
+status: review
 milestone: M4
 branch: task/T-0099-approval-rules-always-allow
-model: minimax-coding-plan/MiniMax-M3
+model: meta/muse-spark-1.3-contributor
 depends_on: [T-0090, T-0092, T-0093]
 estimate: 1.5 days
 ---
@@ -92,19 +92,42 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- New `approval_rules` table (`apps/server/src/db/schema.ts` + migration `0016_glorious_lifeguard.sql` generated via `pnpm --filter @galena/server db:generate`, never `npx`): `id` pk, `ai_id` fk cascade, `group_id` nullable fk cascade (`null` = personal chat), `action`, `created_by` fk cascade, `created_at`, `revoked_at`/`revoked_by` (soft revoke); two partial unique indexes (`WHERE revoked_at IS NULL`, one for group rules, one for personal) enforcing at most one active rule per (AI, chat, action).
+- New `apps/server/src/approvals/rules.ts`: `createRule` (idempotent, unique-violation re-read for races), `findActiveRule`, `listActiveRulesForAi`, `listActiveRulesForGroup`, `revokeRule` (idempotent), `revokeActiveRulesForAiInGroup`, `isGroupAdmin`, public shape `{ id, action, scope, groupId, createdAt, createdBy }`.
+- Rule creation: `decideApproval` (`approvals/service.ts`) takes optional `alwaysEligible?: (action) => boolean` (absent = nothing eligible); `approve_always` on a non-eligible action throws `always_not_allowed` before any write (route maps to 400, approval stays pending); on an eligible pending approval by someone who passes `canDecide`, the decision + rule insert share one transaction; concurrent second rule insert falls back to the existing row (idempotent). Returns `{ row, rule }`; `toPublicApproval` gains `alwaysEligible: boolean` (default `false`; routes fill it via `decoratePublic`).
+- Rule use: `actions/gateway.ts` `request` checks, for tier-2 + `allowAlways === true` + no `estimateCost` adapters and an `active` AI, an exact active rule for (`aiId`, `groupId ?? null`, `action`); on hit it executes immediately with no approval row and no card, audits `action.auto_approved` (subject = rule id, `argsHash`, no args) plus `action.executed`/`action.failed` (error text never stored/returned), and announces the outcome with summary prefixed `Ran automatically (always allowed in this chat): `. Stopped/disabled/missing AI is denied `ai_not_active` before the rule lookup (kill switch wins); cost (`estimateCost` present) is re-checked at use time, so an adapter that gains a cost after rule creation stops auto-running.
+- Rule management routes (session required, in `approvals/routes.ts`): `GET /api/ais/:id/approval-rules` (AI owner only, else 404), `GET /api/groups/:id/approval-rules` (group owner/admin only, else 404), `DELETE /api/approval-rules/:id` (AI owner or group owner/admin; idempotent 204; stranger/member/unknown id all 404). Audits `approval_rule.created` (one entry per successful `approve_always`, even when the rule already existed) and `approval_rule.revoked` with `detail { action, scope }` and no args, via the existing recorder.
+- Registry: `ActionAdapter.allowAlways?: boolean` (default `false`), `buildAlwaysEligible(registry)` predicate (registered + opted in + no `estimateCost`), startup rejection of `allowAlways + estimateCost`. `demo.echo` sets `allowAlways: true`.
+- Lifecycle: `removeGroupAi` revokes the AI's active rules for that group in the same transaction (personal/other-group rules untouched); AI/group/user deletes cascade via FKs.
+- Wiring: `index.ts` builds `alwaysEligible` from the real adapter registry; `app.ts` passes it and the gateway into the approvals routes. Web/mobile untouched. Live check steps come with T-0100 (web).
+- Follow-up idea (per spec): rules never expire by time in v1 — consider expiry/TTL or re-confirmation in a later task.
 
 ### Files changed
--
+- `apps/server/src/db/schema.ts`, `apps/server/drizzle/0016_glorious_lifeguard.sql`, `apps/server/drizzle/meta/0016_snapshot.json`, `apps/server/drizzle/meta/_journal.json` (prettier-formatted after generate)
+- `apps/server/src/approvals/rules.ts` (new), `service.ts`, `routes.ts`
+- `apps/server/src/actions/registry.ts`, `gateway.ts`, `demo.ts`
+- `apps/server/src/groups/service.ts`
+- `apps/server/src/app.ts`, `index.ts`
+- Tests: `apps/server/src/approvals/rules.test.ts` (new, 25 tests incl. end-to-end approve-always → second request auto-runs), `apps/server/src/approvals/rules.routes.test.ts` (new, 15 tests), `gateway.test.ts` (+4 standing-rule tests), `groups.test.ts` (+1 removeGroupAi-revokes-group-rules test), small updates to `service.test.ts`/`routes.test.ts` for the `{ row, rule }` shape and `alwaysEligible` field
 
 ### Commands run and real results
--
+- `pnpm install`: already up to date (834ms).
+- `pnpm --filter @galena/server db:generate` (probe run): "No schema changes, nothing to migrate" — migration is complete.
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint` (oxlint): pass, no warnings.
+- `pnpm typecheck` (root): pass. (`pnpm --filter @galena/server typecheck` equivalent `tsc --noEmit`: pass.)
+- `pnpm exec turbo test --force --filter=@galena/server`: 57 files passed, 5 skipped; 878 tests passed, 7 skipped, 0 failed (incl. untouched `authz-sweep.test.ts`: 5/5 pass, new routes answer 401 without a session).
+- `pnpm build`: pass (2 tasks successful).
+- Note: vitest default timeouts (5s test / 10s hook) flake under parallel PGlite load — I reproduced hook timeouts on the BASE commit too, so it is pre-existing, not caused by this task. The package `test` script uses `--testTimeout=30000 --hookTimeout=30000`; with those flags every touched file passes individually and the full turbo suite above is green.
 
 ### Problems, deviations from the spec, open questions
--
+- Deviation (documented, tests cover it): the rule-use check in `gateway.ts request` runs after adapter lookup + AI-status/group reads but before the policy's args validation, not literally "after args validation and hash". Net effect matches the spec: invalid args on the auto-run path answer `denied invalid_args` (no card, no execution); valid args execute with the hash audited. A stopped AI is denied before the rule lookup.
+- Spec sentence "The routes get an optional dependency `alwaysEligible?`" — implemented as specified on the approvals routes (and `app.ts`); the gateway instead reads `allowAlways`/`estimateCost` off the adapter registry directly (same source `buildAlwaysEligible` is built from).
+- I renamed no audit action: `approval_rule.created` is written once per successful `approve_always` decision (not only when the row is new); idempotent repeat decisions are visible in the audit trail rather than inventing a new `already_exists` action name.
+- Q for the lead: `GET /api/groups/:id/approval-rules` lists ALL of the group's rules (any AI) per "keep it simple: group owner/admin" — confirm that is the intended visibility (vs. only rules for AIs the caller owns).
 
 ### Blocked / needs a decision
--
+- None. Live check steps come with T-0100 (web).
 
 ---
 

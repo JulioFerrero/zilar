@@ -1,17 +1,21 @@
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
+import { eq } from 'drizzle-orm';
 import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
+import { ais, approvalRules } from '../db/schema';
 import { HttpError } from '../errors';
 import {
   ApprovalServiceError,
+  type AlwaysEligiblePredicate,
   decideApproval,
   getDecidableApproval,
   listDecidableApprovals,
   toPublicApproval,
 } from './service';
+import { isGroupAdmin, listActiveRulesForAi, listActiveRulesForGroup, revokeRule } from './rules';
 
 // The minimum slice of pino the route needs to log a hook failure. The
 // server wires its own logger; tests can pass a captor.
@@ -36,6 +40,14 @@ export interface ApprovalsRoutesDependencies {
    * throwing hook never changes the decision response.
    */
   onDecided?: (approvalId: string) => Promise<void> | void;
+  /**
+   * T-0099: predicate the route uses to decide whether `approve_always`
+   * is a real choice for this action. Absent = nothing is always
+   * eligible, so `approve_always` is refused with 400
+   * `always_not_allowed` and the public approval's `alwaysEligible`
+   * flag is `false`.
+   */
+  alwaysEligible?: AlwaysEligiblePredicate;
 }
 
 // The decision body. `strictObject` so an unknown key is rejected rather than
@@ -54,13 +66,15 @@ export function createApprovalsRoutes({
   now = Date.now,
   logger,
   onDecided,
+  alwaysEligible,
 }: ApprovalsRoutesDependencies): Hono {
   const routes = new Hono();
+  const alwaysEligibleFn = alwaysEligible ?? ((_action: string) => false);
 
   routes.get('/approvals', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
     const approvals = await listDecidableApprovals(db, user.id, new Date(now()));
-    return c.json(approvals);
+    return c.json(approvals.map((row) => decoratePublic(row, alwaysEligibleFn)));
   });
 
   routes.get('/approvals/:id', async (c) => {
@@ -69,7 +83,7 @@ export function createApprovalsRoutes({
     if (!approval) {
       throw new HttpError(404, 'not_found', 'Approval not found');
     }
-    return c.json(approval);
+    return c.json(decoratePublic(approval, alwaysEligibleFn));
   });
 
   routes.post('/approvals/:id/decision', async (c) => {
@@ -79,19 +93,21 @@ export function createApprovalsRoutes({
       throw new HttpError(400, 'invalid_request', 'Invalid decision body');
     }
     try {
-      const updated = await decideApproval(
+      const result = await decideApproval(
         db,
         {
           approvalId: c.req.param('id'),
           userId: user.id,
           decision: parsed.data.decision,
           ...(parsed.data.note === undefined ? {} : { note: parsed.data.note }),
+          alwaysEligible: alwaysEligibleFn,
         },
         new Date(now()),
       );
-      if (!updated) {
+      if (!result) {
         throw new HttpError(404, 'not_found', 'Approval not found');
       }
+      const { row: updated, rule } = result;
       // A 409 (already decided / expired) is not logged; an ok decision
       // always is. `note` is intentionally dropped: the audit log must never
       // carry free text. `detail.decision` uses the wire enum so the log
@@ -109,6 +125,27 @@ export function createApprovalsRoutes({
           result: 'ok',
           detail: { decision: parsed.data.decision },
         });
+        // T-0099: when `approve_always` succeeded, audit the rule creation
+        // as a separate entry. Subject is the rule id, not the approval id,
+        // so an audit reader can join the two. `detail.scope` makes the
+        // personal-vs-group chat obvious without exposing the id.
+        if (rule !== null) {
+          await audit.record({
+            actorUserId: user.id,
+            aiId: updated.aiId,
+            groupId: updated.groupId,
+            action: 'approval_rule.created',
+            subjectId: rule.id,
+            argsHash: null,
+            costCurrency: null,
+            costAmount: null,
+            result: 'ok',
+            detail: {
+              action: rule.action,
+              scope: rule.groupId === null ? 'personal' : 'group',
+            },
+          });
+        }
       }
       // Fire-and-forget hook: the response is returned to the user before
       // the hook settles, and a throwing hook is logged rather than
@@ -125,7 +162,7 @@ export function createApprovalsRoutes({
             }
           });
       }
-      return c.json(toPublicApproval(updated, new Date(now())));
+      return c.json(decoratePublic(toPublicApproval(updated, new Date(now())), alwaysEligibleFn));
     } catch (error) {
       if (error instanceof ApprovalServiceError) {
         const status =
@@ -136,7 +173,117 @@ export function createApprovalsRoutes({
     }
   });
 
+  // T-0099: rule management routes. All three require a session.
+  routes.get('/ais/:id/approval-rules', async (c) => {
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    const aiId = c.req.param('id');
+    const [aiRow] = await db
+      .select({ id: ais.id, owner: ais.owner })
+      .from(ais)
+      .where(eq(ais.id, aiId))
+      .limit(1);
+    // A stranger and a non-owner get the same 404 as a missing AI, so
+    // existence is never leaked.
+    if (!aiRow || aiRow.owner !== user.id) {
+      throw new HttpError(404, 'not_found', 'AI not found');
+    }
+    const rules = await listActiveRulesForAi(db, aiId);
+    return c.json(rules);
+  });
+
+  routes.get('/groups/:id/approval-rules', async (c) => {
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    const groupId = c.req.param('id');
+    const allowed = await isGroupAdmin(db, groupId, user.id);
+    if (!allowed) {
+      throw new HttpError(404, 'not_found', 'Group not found');
+    }
+    const rules = await listActiveRulesForGroup(db, groupId);
+    return c.json(rules);
+  });
+
+  routes.delete('/approval-rules/:id', async (c) => {
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    const ruleId = c.req.param('id');
+    const [existing] = await db
+      .select()
+      .from(approvalRules)
+      .where(eq(approvalRules.id, ruleId))
+      .limit(1);
+    // Same 404 shape for missing id and unauthorized: existence is never
+    // leaked.
+    if (!existing) {
+      throw new HttpError(404, 'not_found', 'Approval rule not found');
+    }
+    const allowed = await canManageRuleFor(db, existing, user.id);
+    if (!allowed) {
+      throw new HttpError(404, 'not_found', 'Approval rule not found');
+    }
+    const result = await revokeRule(db, {
+      ruleId,
+      actorId: user.id,
+      now: new Date(now()),
+    });
+    // `revokeRule` returns `null` only when the row vanished mid-call;
+    // an already-revoked row returns its data and we answer 204.
+    if (result === null) {
+      throw new HttpError(404, 'not_found', 'Approval rule not found');
+    }
+    const { row: revokedRow } = result;
+    if (audit !== undefined) {
+      await audit.record({
+        actorUserId: user.id,
+        aiId: revokedRow.aiId,
+        groupId: revokedRow.groupId,
+        action: 'approval_rule.revoked',
+        subjectId: revokedRow.id,
+        argsHash: null,
+        costCurrency: null,
+        costAmount: null,
+        result: 'ok',
+        detail: {
+          action: revokedRow.action,
+          scope: revokedRow.groupId === null ? 'personal' : 'group',
+        },
+      });
+    }
+    return c.body(null, 204);
+  });
+
   return routes;
+}
+
+// Looks up the AI ownership directly and adds the group-admin check via
+// the rules module. Kept in this file because it composes the two
+// checks the route needs in one place.
+async function canManageRuleFor(
+  db: ServerDatabase,
+  rule: typeof approvalRules.$inferSelect,
+  userId: string,
+): Promise<boolean> {
+  const [aiRow] = await db
+    .select({ owner: ais.owner })
+    .from(ais)
+    .where(eq(ais.id, rule.aiId))
+    .limit(1);
+  if (aiRow && aiRow.owner === userId) {
+    return true;
+  }
+  if (rule.groupId === null) {
+    // Personal rule and the caller is not the AI owner: not allowed.
+    return false;
+  }
+  return isGroupAdmin(db, rule.groupId, userId);
+}
+
+// Re-runs `toPublicApproval` with the always-eligible flag filled in.
+// The service returns `alwaysEligible: false` because it does not own
+// the registry; the route is the boundary that knows.
+function decoratePublic(
+  row: ReturnType<typeof toPublicApproval>,
+  alwaysEligible: AlwaysEligiblePredicate,
+): ReturnType<typeof toPublicApproval> {
+  return { ...row, alwaysEligible: alwaysEligible(row.action) };
 }
 
 async function readJson(c: Context): Promise<unknown> {
