@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0090](T-0090-action-gateway.md) | Action gateway (M4 core, server): adapters, tier policy, approval-gated execution of the exact approved request (stored args, single use), audit at every step; no adapters registered | in progress | minimax-m3 | T-0073, T-0079, T-0080, T-0087 | Security-critical: lead reviews line by line. No XMPP card yet. |
 | [T-0088](T-0088-authz-route-sweep.md) | Authorization sweep: a test that every `/api` route answers 401 without a session unless on a reviewed public list | in progress | minimax-m3 | T-0079 | Tests only; findings go to the Report. |
 
 ## Follow-ups
