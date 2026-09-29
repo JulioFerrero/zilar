@@ -110,7 +110,7 @@ Julio set this on 2026-09-28. **Never use DeepSeek V4 Pro.**
 
 | Task kind | Model (`MODEL_ID`) | Why |
 |---|---|---|
-| Backend, protocol, security, infra-adjacent, tricky logic | `muse-spark-1.3-contributor` | The strongest worker so far. On T-0008 it found a real stream-ordering bug by itself, and its reports are honest. |
+| Backend, protocol, security, infra-adjacent, tricky logic | `meta/muse-spark-1.3-contributor` (Julio's own Meta Model API key since 2026-09-29; the same model is `opencode-go/muse-spark-1.3-contributor` on OpenCode Go) | The strongest worker so far. On T-0008 it found a real stream-ordering bug by itself, and its reports are honest. |
 | UI and visual work (web or mobile screens) | `deepseek-v4.1-flash` | Fast, and it has vision, so it can check its own screenshots. It misses bugs that the tests hide, so review it live. |
 | Small or mechanical jobs; trying new models | `mimo-v2.6-flash`, `space-bunny-free`, `longcat-2.5-preview-free` | Watch MiMo for the `question` tool (§15). |
 | Scouting, chores, a second-opinion check; the **fallback when OpenCode Go returns 402** | `minimax-coding-plan` / `MiniMax-M3` (Julio's own subscription) | $0 per call, with its own quota. Julio calls it "quite dumb", so never give it security or core logic. `opencode-go/minimax-m3` also exists but is pay-per-use. |
@@ -546,3 +546,5 @@ Send any of them detached:
 python3 -c 'import json,sys; print(json.dumps({"text": sys.argv[1]}))' "…prompt…" > "$S/p.json"
 nohup opencode2 api session.prompt --param sessionID=ses_… -d "$(cat "$S/p.json")" >/dev/null 2>&1 &
 ```
+
+34. **Muse Spark now runs on Julio's own Meta Model API key (2026-09-29).** OpenCode Go ran out of funds, so `~/.config/opencode/opencode.json` has a `meta` provider (`@ai-sdk/openai-compatible`, `https://api.meta.ai/v1`, models `muse-spark-1.3-contributor` and `muse-spark-1.3`); the key is stored with `opencode2 auth login meta` (never in the file). Use `model: meta/muse-spark-1.3-contributor` in specs and for `lead launch`; the autopilot's Muse pre-review uses it too (`PREREVIEW_MODEL`). The contributor tier is cheap ($0.10 / $0.20 per million tokens) but Meta may use prompts and outputs to improve its product: keep secrets out of prompts (already a rule). A config edit needs an `opencode2 service restart`, which interrupts running workers: do it between tasks.
