@@ -1,7 +1,7 @@
 ---
 id: T-0100
 title: Web: "Always allow in this chat" on approval cards, and a list of always-allowed actions you can revoke
-status: review
+status: merged
 milestone: M4
 branch: task/T-0100-web-always-allow
 model: meta/muse-spark-1.3-contributor
@@ -115,4 +115,8 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged. Rebased on main; format, lint, typecheck, build clean; web 639 passed. No disable comments.
+
+Read the card and the list component: the third button shows only while pending, decidable and `alwaysEligible`; it is a two-step confirm that names the scope (this chat / this group only); `always_not_allowed` shows the plain message and drops the button; the polling hook from T-0097 is untouched. The list loads once, has loading/empty/error+retry, revokes with a one-step confirm, keeps the row on failure and drops it quietly on 404; state resets use the adjust-state-during-render pattern.
+
+Mock mode note (worker): the seeded card's `ai` resolves to the first mock AI so the created rule shows in the AI panel; mock-only. Not checked on the real stack (needs `ACTION_DEMO_ENABLED=true` and Julio's OK): steps are in the live-checks doc.
