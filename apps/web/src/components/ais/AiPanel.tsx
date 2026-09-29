@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { ChatSummary } from '@galena/chat-core';
 import { X } from 'lucide-react';
@@ -7,10 +7,13 @@ import {
   getAi,
   listAis,
   listConnections,
+  listMachines,
   resumeAi,
+  setAiMachine,
   stopAi,
   updateAi,
   type Connection,
+  type Machine,
   type PublicAi,
   type UpdateAiInput,
 } from '@/lib/api';
@@ -133,6 +136,16 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
   const [stopError, setStopError] = useState('');
   const [resuming, setResuming] = useState(false);
   const [resumeError, setResumeError] = useState('');
+  // T-0091: the home machine. `machines` is the owner's full list, kept
+  // here so the dropdown stays in sync with the Machines page even after a
+  // revoke. The select is disabled when the load failed, and the only
+  // option is the AI's current value. While the network call is in flight
+  // the select stays disabled too — the pending state is the disabled
+  // state, exactly like the kill switch. `machineError` is the inline
+  // failure message; on success we clear it.
+  const [machines, setMachines] = useState<Machine[] | null>(null);
+  const [machineBusy, setMachineBusy] = useState(false);
+  const [machineError, setMachineError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -187,6 +200,43 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
       active = false;
     };
   }, []);
+
+  // T-0091: the home machine dropdown lists the owner's approved machines.
+  // A failure here must not block the rest of the panel: we keep
+  // `machines` null so the select can render its disabled "current value
+  // only" state.
+  useEffect(() => {
+    let active = true;
+    listMachines()
+      .then((list) => {
+        if (active) {
+          setMachines(list);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setMachines(null);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // The approved machines the dropdown may pick from; an unloaded list
+  // means the select is disabled with the current value only.
+  const approvedMachines = useMemo(
+    () => (machines ?? []).filter((machine) => machine.status === 'approved'),
+    [machines],
+  );
+  const machineOptionsLoaded = machines !== null;
+  const currentMachineId = ai?.machine_id ?? null;
+  // The current value always shows, even if the machine vanished or was
+  // revoked in another tab — without it the dropdown would default to
+  // "The platform", which would be a silent change.
+  const knownMachineIds = new Set(approvedMachines.map((machine) => machine.id));
+  const currentMachineIsKnown = currentMachineId === null || knownMachineIds.has(currentMachineId);
+  const machineSelectDisabled = !machineOptionsLoaded || machineBusy;
 
   const usableConnections = connections;
   const effectiveConnection =
@@ -362,6 +412,47 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     }
   };
 
+  // T-0091: set or clear the home machine. The select carries the chosen
+  // value already (`event.target.value`), so on a failure we have to roll
+  // it back to the AI's previous value: the select itself is uncontrolled
+  // and uses `ai.machine_id` as the canonical source.
+  const changeMachine = async (nextValue: string): Promise<void> => {
+    if (ai === null || machineBusy) {
+      return;
+    }
+    const previous = ai.machine_id ?? null;
+    const next = nextValue === '' ? null : nextValue;
+    if (next === previous) {
+      return;
+    }
+    // The select only carries approved machines plus "The platform", so a
+    // chosen id is by construction known to the server. Still, the server
+    // is the source of truth; on a 404 (a revoke that raced us) we refetch
+    // instead of crashing the panel.
+    const optimistic: PublicAi = { ...ai, machine_id: next };
+    setAi(optimistic);
+    setMachineBusy(true);
+    setMachineError('');
+    try {
+      const fresh = await setAiMachine(ai.id, next);
+      setAi(fresh);
+    } catch (error) {
+      // Roll back to the AI's previous value, then refetch so the panel
+      // matches the server's view. The refetch is best-effort: the inline
+      // error stays visible either way.
+      setAi((current) => (current === null ? current : { ...current, machine_id: previous }));
+      setMachineError(describeAiError(error, 'Could not update the home machine').message);
+      try {
+        const fresh = await getAi(ai.id);
+        setAi(fresh);
+      } catch {
+        // The refetch is best-effort; the inline error stays visible.
+      }
+    } finally {
+      setMachineBusy(false);
+    }
+  };
+
   return (
     <div
       role="dialog"
@@ -471,6 +562,40 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
                 }}
                 inputId="ai-panel-model"
               />
+
+              {/* T-0091: the home machine. A labelled select listing the
+                  owner's approved machines plus "The platform (no machine)".
+                  When the machine list could not be loaded, the select is
+                  disabled and shows the current value only — it cannot show
+                  "The platform" by default, that would silently change the
+                  AI's home. The same applies when the AI is on a machine
+                  that has since been revoked in another tab: the value
+                  still renders so the owner sees what the AI is on, just
+                  without the option to keep it that way. */}
+              <div className="flex flex-col gap-1">
+                <label htmlFor="ai-panel-machine" className="text-[14px] font-medium">
+                  Runs on
+                </label>
+                <select
+                  id="ai-panel-machine"
+                  aria-label="Runs on"
+                  value={currentMachineId ?? ''}
+                  disabled={machineSelectDisabled}
+                  onChange={(event) => void changeMachine(event.target.value)}
+                  className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+                >
+                  {machineOptionsLoaded && <option value="">The platform (no machine)</option>}
+                  {approvedMachines.map((machine) => (
+                    <option key={machine.id} value={machine.id}>
+                      {machine.name}
+                    </option>
+                  ))}
+                  {!currentMachineIsKnown && currentMachineId !== null && (
+                    <option value={currentMachineId}>Current machine (unavailable)</option>
+                  )}
+                </select>
+                {machineError !== '' && <FieldError>{machineError}</FieldError>}
+              </div>
 
               <UsageBlock ai={ai} />
 

@@ -70,6 +70,7 @@ function seedAi(name: string, template: PublicAi['template'], id: string): Publi
     providerConnectionId: 'conn-openai',
     limits: { perDayUsd: 2, perMonthUsd: 20 },
     usage: null,
+    machine_id: 'mach-approved',
     createdAt: '2026-09-20T10:00:00.000Z',
   };
 }
@@ -367,6 +368,7 @@ function createAi(init: RequestInit): Response {
     providerConnectionId:
       typeof body.providerConnectionId === 'string' ? body.providerConnectionId : 'conn-openai',
     limits: readLimits(body.limits),
+    machine_id: null,
     createdAt: new Date().toISOString(),
   };
   state.ais = [created, ...state.ais];
@@ -384,6 +386,41 @@ function patchAi(ai: PublicAi, init: RequestInit): Response {
   }
   if (body.limits !== undefined) updated.limits = readLimits(body.limits);
   state.ais = state.ais.map((item) => (item.id === ai.id ? updated : item));
+  return jsonResponse(updated);
+}
+
+function assignMachine(ai: PublicAi, init: RequestInit): Response {
+  const body = readJsonBody(init);
+  if (!('machine_id' in body)) {
+    return jsonResponse(
+      { error: { code: 'invalid_request', message: 'machine_id is required' } },
+      400,
+    );
+  }
+  const machineId = body.machine_id;
+  if (machineId !== null && typeof machineId !== 'string') {
+    return jsonResponse(
+      { error: { code: 'invalid_request', message: 'machine_id must be a string or null' } },
+      400,
+    );
+  }
+  if (machineId !== null) {
+    const machine = state.machines.find((item) => item.id === machineId);
+    if (machine === undefined || machine.status !== 'approved') {
+      return notFound('Machine not found');
+    }
+  }
+  const updated: PublicAi = { ...ai, machine_id: machineId };
+  state.ais = state.ais.map((item) => (item.id === ai.id ? updated : item));
+  // T-0091: revoke also clears the AI link, matching the real server.
+  for (const item of state.ais) {
+    if (
+      item.machine_id !== null &&
+      !state.machines.some((m) => m.id === item.machine_id && m.status === 'approved')
+    ) {
+      item.machine_id = null;
+    }
+  }
   return jsonResponse(updated);
 }
 
@@ -515,6 +552,9 @@ export async function mockRequest(
     if (second === 'resume' && method === 'POST') {
       return stopOrResumeAi(ai, 'active');
     }
+    if (second === 'machine' && method === 'PUT') {
+      return assignMachine(ai, init);
+    }
     return notImplemented();
   }
 
@@ -603,6 +643,10 @@ export async function mockRequest(
       }
       const revoked: Machine = { ...machine, status: 'revoked' };
       state.machines = state.machines.map((item) => (item.id === machineId ? revoked : item));
+      // T-0091: revoke also clears the AI link, matching the real server.
+      state.ais = state.ais.map((ai) =>
+        ai.machine_id === machineId ? { ...ai, machine_id: null } : ai,
+      );
       return jsonResponse(revoked);
     }
     if (second === undefined && method === 'PATCH') {

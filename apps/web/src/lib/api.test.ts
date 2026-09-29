@@ -24,6 +24,7 @@ import {
   renameMachine,
   resumeAi,
   revokeMachine,
+  setAiMachine,
   stopAi,
   testConnection,
 } from '@/lib/api';
@@ -712,6 +713,106 @@ describe('audit list API (T-0084)', () => {
     await expect(listAudit({ aiId: 'missing' })).rejects.toMatchObject({
       status: 404,
       code: 'not_found',
+    } satisfies Partial<ApiError>);
+  });
+});
+
+// T-0091: the home machine wire. `setAiMachine` PUTs to the right path
+// with the expected snake_case body and parses the fresh public AI back;
+// `publicAiSchema` accepts the new `machine_id` field. Server errors
+// flow through `ApiError` like every other route.
+describe('AI home machine API (T-0091)', () => {
+  const assigned = {
+    id: 'a-1',
+    name: 'Dev-1',
+    template: 'dev',
+    persona: 'You are a concise senior engineer.',
+    model: 'gpt-4o',
+    jid: 'ai-a-1@galena.test',
+    status: 'active',
+    providerConnectionId: 'c-1',
+    limits: { perDayUsd: 2, perMonthUsd: 20 },
+    machine_id: 'm-1',
+    createdAt: '2026-09-28T00:00:00.000Z',
+  };
+
+  it('listAis parses an AI with a machine_id and an AI without one', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse(200, [assigned, { ...assigned, id: 'a-2', machine_id: null }]),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const list = await listAis();
+    expect(list.map((item) => item.machine_id)).toEqual(['m-1', null]);
+  });
+
+  it('listAis still parses an AI from a server that has not been upgraded yet (no machine_id key)', async () => {
+    const oldShape: Record<string, unknown> = { ...assigned };
+    delete oldShape['machine_id'];
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, [oldShape]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const list = await listAis();
+    expect(list[0]?.machine_id).toBeUndefined();
+  });
+
+  it('setAiMachine PUTs to /api/ais/:id/machine with snake_case body and parses the fresh AI', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, assigned));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const ai = await setAiMachine('a-1', 'm-1');
+    expect(ai.machine_id).toBe('m-1');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/ais/a-1/machine');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(init.body as string)).toEqual({ machine_id: 'm-1' });
+  });
+
+  it('setAiMachine(null) clears the assignment', async () => {
+    const cleared = { ...assigned, machine_id: null };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, cleared));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const ai = await setAiMachine('a-1', null);
+    expect(ai.machine_id).toBeNull();
+    expect(
+      JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string),
+    ).toEqual({
+      machine_id: null,
+    });
+  });
+
+  it('a 404 machine_not_found surfaces the server code through ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(404, {
+          error: { code: 'machine_not_found', message: 'Machine not found' },
+        }),
+      ),
+    );
+
+    await expect(setAiMachine('a-1', 'missing')).rejects.toMatchObject({
+      status: 404,
+      code: 'machine_not_found',
+    } satisfies Partial<ApiError>);
+  });
+
+  it('a 400 invalid_request (unknown body key) surfaces through ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(400, {
+          error: { code: 'invalid_request', message: 'Unknown key' },
+        }),
+      ),
+    );
+
+    await expect(setAiMachine('a-1', 'm-1')).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_request',
     } satisfies Partial<ApiError>);
   });
 });

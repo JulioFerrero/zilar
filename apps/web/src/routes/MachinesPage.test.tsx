@@ -476,4 +476,183 @@ describe('MachinesPage', () => {
       'You already have unused pairing codes',
     );
   });
+
+  // T-0091: each approved machine card lists the owner's AIs whose home
+  // machine is it. The list comes from a separate /api/ais call: a failure
+  // there hides the line; a revoke of a machine with AIs triggers a
+  // refetch and drops the names.
+  it('lists the AIs that live on each approved machine', async () => {
+    const devAi = {
+      id: 'a-dev',
+      name: 'Dev-1',
+      template: 'dev',
+      persona: 'p',
+      model: 'gpt-4o',
+      jid: 'ai-dev@galena.test',
+      status: 'active',
+      providerConnectionId: 'c-1',
+      limits: { perDayUsd: 2, perMonthUsd: 20 },
+      machine_id: 'm-approved',
+      createdAt: '2026-09-28T00:00:00.000Z',
+    };
+    const qaAi = {
+      ...devAi,
+      id: 'a-qa',
+      name: 'QA',
+      machine_id: 'm-other',
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([
+        {
+          method: 'GET',
+          path: '/api/machines',
+          respond: () =>
+            jsonResponse(200, [
+              { ...approvedMachine, id: 'm-approved' },
+              { ...approvedMachine, id: 'm-other', name: 'office-linux' },
+              pendingMachine,
+              revokedMachine,
+            ]),
+        },
+        {
+          method: 'GET',
+          path: '/api/ais',
+          respond: () => jsonResponse(200, [devAi, qaAi]),
+        },
+      ]),
+    );
+
+    renderMachinesPage();
+
+    // Wait for the AI names to render on the right card.
+    expect(await screen.findByText('AIs: Dev-1')).toBeTruthy();
+    expect(screen.getByText('AIs: QA')).toBeTruthy();
+  });
+
+  it('shows "No AIs yet" on an approved machine that no AI lives on', async () => {
+    const devAi = {
+      id: 'a-dev',
+      name: 'Dev-1',
+      template: 'dev',
+      persona: 'p',
+      model: 'gpt-4o',
+      jid: 'ai-dev@galena.test',
+      status: 'active',
+      providerConnectionId: 'c-1',
+      limits: { perDayUsd: 2, perMonthUsd: 20 },
+      machine_id: 'm-other',
+      createdAt: '2026-09-28T00:00:00.000Z',
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([
+        {
+          method: 'GET',
+          path: '/api/machines',
+          respond: () =>
+            jsonResponse(200, [
+              approvedMachine,
+              { ...approvedMachine, id: 'm-other', name: 'office-linux' },
+            ]),
+        },
+        {
+          method: 'GET',
+          path: '/api/ais',
+          respond: () => jsonResponse(200, [devAi]),
+        },
+      ]),
+    );
+
+    renderMachinesPage();
+
+    // julio-mbp has no AIs; office-linux has Dev-1.
+    expect(await screen.findByText('No AIs yet')).toBeTruthy();
+    expect(screen.getByText('AIs: Dev-1')).toBeTruthy();
+  });
+
+  it('hides the AIs line when the AI list cannot be loaded', async () => {
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([
+        {
+          method: 'GET',
+          path: '/api/machines',
+          respond: () => jsonResponse(200, [approvedMachine]),
+        },
+        {
+          method: 'GET',
+          path: '/api/ais',
+          respond: () => jsonResponse(500, { error: { code: 'boom', message: 'server down' } }),
+        },
+      ]),
+    );
+
+    renderMachinesPage();
+
+    expect(await screen.findByText('julio-mbp')).toBeTruthy();
+    // Give the AI fetch a chance to land; the line must not appear.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByText(/^AIs: /)).toBeNull();
+    expect(screen.queryByText('No AIs yet')).toBeNull();
+  });
+
+  it('drops an AI from a card after the machine it lived on is revoked', async () => {
+    const devAi = {
+      id: 'a-dev',
+      name: 'Dev-1',
+      template: 'dev',
+      persona: 'p',
+      model: 'gpt-4o',
+      jid: 'ai-dev@galena.test',
+      status: 'active',
+      providerConnectionId: 'c-1',
+      limits: { perDayUsd: 2, perMonthUsd: 20 },
+      machine_id: 'm-approved',
+      createdAt: '2026-09-28T00:00:00.000Z',
+    };
+    let aiListCalls = 0;
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([
+        {
+          method: 'GET',
+          path: '/api/machines',
+          respond: () => jsonResponse(200, [approvedMachine]),
+        },
+        {
+          method: 'POST',
+          path: '/api/machines/m-approved/revoke',
+          respond: () =>
+            jsonResponse(200, {
+              ...approvedMachine,
+              status: 'revoked',
+              revokedAt: '2026-09-29T10:00:00.000Z',
+            }),
+        },
+        {
+          method: 'GET',
+          path: '/api/ais',
+          respond: () => {
+            aiListCalls += 1;
+            return jsonResponse(
+              200,
+              aiListCalls === 1 ? [devAi] : [{ ...devAi, machine_id: null }],
+            );
+          },
+        },
+      ]),
+    );
+
+    renderMachinesPage();
+
+    expect(await screen.findByText('AIs: Dev-1')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke julio-mbp' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke' }));
+
+    await waitFor(() => expect(screen.queryByText('AIs: Dev-1')).toBeNull());
+  });
 });

@@ -1,7 +1,7 @@
 import { and, count, eq, gt, isNull, or } from 'drizzle-orm';
 import { createHash, createPublicKey, randomUUID, verify } from 'node:crypto';
 import type { ServerDatabase } from '../db/client';
-import { machinePairingCodes, machines } from '../db/schema';
+import { ais, machinePairingCodes, machines } from '../db/schema';
 import {
   generatePairingCode,
   hashPairingCode,
@@ -332,25 +332,34 @@ export async function denyMachine(
 }
 
 // Revocation is permanent: the row stays `revoked` (keeping the public key
-// reserved) and the machine must pair again with a new key.
+// reserved) and the machine must pair again with a new key. T-0091: the
+// `machine_id` on any AI that pointed at it must be cleared in the same
+// transaction, so the UI can never leave a revoked machine displayed as an
+// AI's home. `SET NULL` on the FK handles the rarer "delete the row"
+// case automatically.
 export async function revokeMachine(
   db: ServerDatabase,
   id: string,
   ownerUserId: string,
   now: Date,
 ): Promise<MachineRow | null> {
-  const [row] = await db
-    .update(machines)
-    .set({ status: 'revoked', revokedAt: now })
-    .where(
-      and(
-        eq(machines.id, id),
-        eq(machines.ownerUserId, ownerUserId),
-        or(eq(machines.status, 'approved'), eq(machines.status, 'pending')),
-      ),
-    )
-    .returning();
-  return row ?? null;
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(machines)
+      .set({ status: 'revoked', revokedAt: now })
+      .where(
+        and(
+          eq(machines.id, id),
+          eq(machines.ownerUserId, ownerUserId),
+          or(eq(machines.status, 'approved'), eq(machines.status, 'pending')),
+        ),
+      )
+      .returning();
+    if (row !== undefined) {
+      await tx.update(ais).set({ machineId: null, updatedAt: now }).where(eq(ais.machineId, id));
+    }
+    return row ?? null;
+  });
 }
 
 export async function renameMachine(

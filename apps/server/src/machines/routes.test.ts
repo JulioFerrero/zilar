@@ -1,4 +1,4 @@
-import { createHash, createPrivateKey, generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, createPrivateKey, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { eq } from 'drizzle-orm';
@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
 import { createAuditRecorder, type AuditRecorder } from '../audit/service';
 import * as schema from '../db/schema';
-import { auditLog, machinePairingCodes } from '../db/schema';
+import { ais, auditLog, machinePairingCodes, machines, providerConnections } from '../db/schema';
 import { HttpError } from '../errors';
 import { bootstrapUser, createTestContext, TEST_BASE_URL, type TestContext } from '../test-support';
 import { hashPairingCode, normalizePairingCode } from './codes';
@@ -1028,5 +1028,120 @@ describe('machines routes', () => {
     // The broken recorder caught every write: nothing landed in the real DB.
     const rows = await context.db.select().from(auditLog);
     expect(rows).toHaveLength(0);
+  });
+
+  // T-0091: revoking or deleting a machine must null `ais.machine_id` so the
+  // UI never keeps a revoked or vanished machine as an AI's home. Both are
+  // tested at the service layer with direct row writes: the routes above
+  // already prove the public contract, and a direct insert keeps this
+  // suite fast.
+  it('revokeMachine clears machine_id on AIs that point to it, in the same transaction', async () => {
+    const { revokeMachine } = await import('./service');
+    const alice = await bootstrapUser(context, app(), `revmachine${testCounter}@example.com`);
+    const connectionId = randomUUID();
+    await context.db.insert(providerConnections).values({
+      id: connectionId,
+      owner: alice.id,
+      provider: 'openai',
+      encryptedKey: 'irrelevant',
+      label: null,
+    });
+    const targeted = randomUUID();
+    const other = randomUUID();
+    await context.db.insert(machines).values([
+      {
+        id: targeted,
+        ownerUserId: alice.id,
+        name: 'julio-mbp',
+        publicKey: `pub-${targeted}`,
+        capabilities: { os: 'macos' },
+        status: 'approved',
+      },
+      {
+        id: other,
+        ownerUserId: alice.id,
+        name: 'office-linux',
+        publicKey: `pub-${other}`,
+        capabilities: { os: 'linux' },
+        status: 'approved',
+      },
+    ]);
+    const aiAId = randomUUID();
+    const aiBId = randomUUID();
+    await context.db.insert(ais).values([
+      {
+        id: aiAId,
+        owner: alice.id,
+        name: 'Dev-1',
+        template: 'dev',
+        persona: 'p',
+        providerConnectionId: connectionId,
+        model: 'gpt-4o-mini',
+        localpart: `ai-${aiAId}`,
+        jid: `ai-${aiAId}@galena.localhost`,
+        status: 'active',
+        machineId: targeted,
+      },
+      {
+        id: aiBId,
+        owner: alice.id,
+        name: 'Dev-2',
+        template: 'dev',
+        persona: 'p',
+        providerConnectionId: connectionId,
+        model: 'gpt-4o-mini',
+        localpart: `ai-${aiBId}`,
+        jid: `ai-${aiBId}@galena.localhost`,
+        status: 'active',
+        machineId: other,
+      },
+    ]);
+
+    const updated = await revokeMachine(context.db, targeted, alice.id, new Date());
+    expect(updated?.status).toBe('revoked');
+
+    const [aiA] = await context.db.select().from(ais).where(eq(ais.id, aiAId));
+    const [aiB] = await context.db.select().from(ais).where(eq(ais.id, aiBId));
+    expect(aiA?.machineId).toBeNull();
+    expect(aiB?.machineId).toBe(other);
+  });
+
+  it('deleting a machine row nulls machine_id on the AIs that pointed at it', async () => {
+    const alice = await bootstrapUser(context, app(), `delmachine${testCounter}@example.com`);
+    const connectionId = randomUUID();
+    await context.db.insert(providerConnections).values({
+      id: connectionId,
+      owner: alice.id,
+      provider: 'openai',
+      encryptedKey: 'irrelevant',
+      label: null,
+    });
+    const machineId = randomUUID();
+    await context.db.insert(machines).values({
+      id: machineId,
+      ownerUserId: alice.id,
+      name: 'julio-mbp',
+      publicKey: `pub-${machineId}`,
+      capabilities: { os: 'macos' },
+      status: 'revoked',
+    });
+    const aiId = randomUUID();
+    await context.db.insert(ais).values({
+      id: aiId,
+      owner: alice.id,
+      name: 'Dev-1',
+      template: 'dev',
+      persona: 'p',
+      providerConnectionId: connectionId,
+      model: 'gpt-4o-mini',
+      localpart: `ai-${aiId}`,
+      jid: `ai-${aiId}@galena.localhost`,
+      status: 'active',
+      machineId,
+    });
+
+    await context.db.delete(machines).where(eq(machines.id, machineId));
+    const [aiRow] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+    expect(aiRow?.machineId).toBeNull();
   });
 });

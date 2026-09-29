@@ -4,7 +4,7 @@ import type { KeyCipher } from '../connections/crypto';
 import { decryptForGatewayUse, findOwnedConnection } from '../connections/service';
 import { ROSTER_GROUP } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
-import { aiLimits, ais, llmVirtualKeys, providerConnections, user } from '../db/schema';
+import { aiLimits, ais, llmVirtualKeys, machines, providerConnections, user } from '../db/schema';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { ensureXmppAccount, jidFor, localpartFor } from '../xmpp/provisioning';
@@ -44,6 +44,9 @@ export interface PublicAi {
   status: 'active' | 'disabled' | 'stopped';
   providerConnectionId: string;
   limits: AiLimits;
+  // T-0091: the AI's home machine id, or null when it runs on the platform.
+  // Snake-case to match the rest of the public API.
+  machine_id: string | null;
   createdAt: Date;
 }
 
@@ -688,6 +691,60 @@ export async function resumeAi(
   return toPublicAi(reloaded);
 }
 
+export interface AssignMachineInput {
+  aiId: string;
+  ownerId: string;
+  machineId: string | null;
+}
+
+// T-0091: assign an AI to one of the owner's approved machines (or clear
+// it back to the platform). Owner-only: a foreign AI answers the same 404
+// the other AI routes give. A machine that is missing, foreign, or not
+// `approved` (pending or revoked) answers 404 `machine_not_found`, so the
+// caller cannot tell which case they hit. Setting the same value is a
+// no-op (200, no change) — the route skips the audit write on its end.
+// Only `status` independent of whether the AI is `active`, `stopped` or
+// `disabled`: the home machine is just a pointer the UI reads.
+export async function assignMachine(
+  deps: Pick<AiServiceDeps, 'db'>,
+  input: AssignMachineInput,
+): Promise<PublicAi> {
+  const ai = await findOwnedAi(deps.db, input.aiId, input.ownerId);
+  if (!ai) {
+    throw new HttpError(404, 'not_found', 'AI not found');
+  }
+  if (input.machineId === null) {
+    if (ai.machineId === null) {
+      return toPublicAi(ai);
+    }
+    await deps.db
+      .update(ais)
+      .set({ machineId: null, updatedAt: new Date() })
+      .where(eq(ais.id, ai.id));
+  } else {
+    const [machine] = await deps.db
+      .select({ ownerUserId: machines.ownerUserId, status: machines.status })
+      .from(machines)
+      .where(and(eq(machines.id, input.machineId), eq(machines.ownerUserId, input.ownerId)))
+      .limit(1);
+    if (!machine || machine.status !== 'approved') {
+      throw new HttpError(404, 'machine_not_found', 'Machine not found');
+    }
+    if (ai.machineId === input.machineId) {
+      return toPublicAi(ai);
+    }
+    await deps.db
+      .update(ais)
+      .set({ machineId: input.machineId, updatedAt: new Date() })
+      .where(eq(ais.id, ai.id));
+  }
+  const reloaded = await findOwnedAi(deps.db, ai.id, input.ownerId);
+  if (reloaded === null) {
+    throw new HttpError(404, 'not_found', 'AI not found');
+  }
+  return toPublicAi(reloaded);
+}
+
 // Deletes every LiteLLM model registered under `modelName`: the live id and
 // any stray an earlier attempt left behind (a crash between `addModel` and the
 // row update). A stray that cannot be deleted is logged, never thrown: the
@@ -1000,6 +1057,7 @@ interface AiRecord {
   localpart: string;
   status: 'active' | 'disabled' | 'stopped';
   providerConnectionId: string;
+  machineId: string | null;
   createdAt: Date;
   perDayUsd: string;
   perMonthUsd: string;
@@ -1023,6 +1081,7 @@ const publicAiColumns = {
   jid: ais.jid,
   status: ais.status,
   providerConnectionId: ais.providerConnectionId,
+  machineId: ais.machineId,
   createdAt: ais.createdAt,
   perDayUsd: aiLimits.perDayUsd,
   perMonthUsd: aiLimits.perMonthUsd,
@@ -1051,6 +1110,7 @@ function toPublicAi(row: PublicAiRow): PublicAi {
       perDayUsd: Number(row.perDayUsd),
       perMonthUsd: Number(row.perMonthUsd),
     },
+    machine_id: row.machineId,
     createdAt: row.createdAt,
   };
 }

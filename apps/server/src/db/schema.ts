@@ -179,10 +179,15 @@ export const ais = pgTable(
     status: text('status', { enum: ['active', 'disabled', 'stopped'] })
       .notNull()
       .default('active'),
+    // T-0091: the AI's home machine — where its desk lives — or null when it
+    // runs on the platform. The runner does not host desks yet, so this is
+    // only a pointer the UI shows today. `SET NULL` on machine delete so a
+    // row that vanished can never leave a dangling id behind.
+    machineId: text('machine_id').references(() => machines.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('ais_owner_idx').on(table.owner)],
+  (table) => [index('ais_owner_idx').on(table.owner), index('ais_machine_idx').on(table.machineId)],
 );
 
 // The owner's hard limits for one AI. `per_month_usd` is the LiteLLM key's
