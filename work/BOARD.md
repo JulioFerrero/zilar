@@ -16,6 +16,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 ## Follow-ups
 
+- Web: the chat list previews a group AI reply raw; strip Markdown there too (`ChatListItem.tsx` only strips for `chat.isAI`), as mobile does (T-0064 review).
+- Server: graceful shutdown of the API hangs with open SSE streams (`/api/drafts/stream`): after SIGTERM the process logged `shutting down` and stayed alive until `kill -9` (2026-09-29). Close draft streams on shutdown and add a hard exit timer.
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
