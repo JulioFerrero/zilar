@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0104](T-0104-routines-scheduler.md) | Routines: scheduled tool runs that post as the AI | planned | meta/muse-spark-1.3-contributor | T-0102, T-0103, T-0110 | Needs T-0110 first (topic scope) |
 | [T-0105](T-0105-tool-adapters.md) | Tool and routine actions for the gateway; sandbox wiring | planned | meta/muse-spark-1.3-contributor | T-0104, T-0110 | routine.schedule needs a card, never always-allowed |
-| [T-0109](T-0109-ais-in-topics.md) | AIs read only the topics they were added to | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
 | [T-0110](T-0110-topic-scoped-actions.md) | Approvals, always-allow rules and tools scoped to (AI, topic) | planned | meta/muse-spark-1.3-contributor | T-0108, T-0109 | Riskiest review |
 | [T-0111](T-0111-topics-web.md) | Topics (web): nested sidebar, task strip, dialogs, panel | planned | meta/muse-spark-1.3-contributor | T-0108 to T-0110 | Visual spec = the topics mockup |
 | [T-0112](T-0112-topics-mobile.md) | Topics (mobile): topics list, topic screen | planned | meta/muse-spark-1.3-contributor | T-0111 |  |
@@ -157,3 +156,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0103](T-0103-ai-tools-store.md) | AI tools store: versioned tool code per AI and chat (append-only history, revert = new version), manual run through an injected runner, read/manage routes, audit without code or output | 2026-09-29 |
 | [T-0118](T-0118-web-push-spike.md) | Web push spike: decision doc, GO for T-0119 (MUC/Sub for groupchat); code preserved on branch spike/T-0118-push | 2026-09-29 |
 | [T-0108](T-0108-topics-server.md) | Topics on the server: one XMPP room per topic, public/private, General backfill, task strip data | 2026-09-29 |
+| [T-0109](T-0109-ais-in-topics.md) | AIs in topics: topic_ais, per-topic rooms and wake gate, owner-visibility rule, postToChat topicId | 2026-09-29 |
