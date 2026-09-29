@@ -15,7 +15,7 @@ A Galena install has one TypeScript server, one React web app, one Postgres data
 | LiteLLM proxy (`1.102.1`) | LLM gateway and key vault | `4000` | `infra/docker-compose.dev.yml:87`, `ai/litellm-client.ts:6` |
 | Runner hub (optional) | tunnel for approved AI runners | `RUNNER_HUB_PORT` (default `3189`) | `config.ts:77-84`, `index.ts:212` |
 
-Three ports the loopback dev stack never uses: anything on `3000` belongs to Julio's Next.js app and must stay free. The Galena server's `BETTER_AUTH_URL` defaults to `PUBLIC_URL` (`config.ts:103`), and `apps/web/vite.config.ts:16` proxies `/api` to `GALENA_API_URL` (default `http://localhost:3000`), so the dev stack runs the server with `PORT=3188` and Vite with `GALENA_API_URL=http://localhost:3188`. See `docs/LEAD_PLAYBOOK.md` §12 for the exact start commands.
+Port `3000` is the code default but the local dev stack does not use it (it belongs to another app on the owner's machine). The Galena server's `BETTER_AUTH_URL` defaults to `PUBLIC_URL` (`config.ts:103`), and `apps/web/vite.config.ts:16` proxies `/api` to `GALENA_API_URL` (default `http://localhost:3000`), so the dev stack runs the server with `PORT=3188` and Vite with `GALENA_API_URL=http://localhost:3188`. See `docs/LEAD_PLAYBOOK.md` §12 for the exact start commands.
 
 ## 2. Environment variables
 
@@ -111,7 +111,7 @@ Default `false`. When `true`, the server builds an agent gateway (`createAgentGa
 - `LITELLM_MASTER_KEY` unset → same `litellm === undefined` check (`agents/gateway.ts:347-349`, `1361-1364`).
 - `GALENA_KEY_ENCRYPTION_KEY` unset → `cipher === undefined`, same outcome (`agents/gateway.ts:1361-1364`, `connections/crypto.ts:98-103`).
 
-`AGENT_GATEWAY_ENABLED=false` alone does not disable AI routes: with `LITELLM_MASTER_KEY` set but the flag off, every AI write route still answers 503 (`app.ts:204-227`) until `AGENT_GATEWAY_ENABLED=true`. The flag gates the gateway's *connection* to XMPP, not the AI API surface.
+The flag gates only the gateway's XMPP connections. The AI HTTP routes depend on LiteLLM and the key cipher instead: without `LITELLM_MASTER_KEY` or `GALENA_KEY_ENCRYPTION_KEY` the AI write routes answer 503 `ais_unavailable` and the connections routes answer 503 `connections_unavailable` (`app.ts:185`, `app.ts:207`), whatever the flag says.
 
 ### `RUNNER_HUB_ENABLED` (T-0071) — `config.ts:73-76`, validated in `index.ts:56-59`, started in `index.ts:211-226`
 
@@ -205,6 +205,7 @@ If a step blocks past the grace period, the 15 s hard exit fires. That is the co
 - `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY` and `GALENA_KEY_ENCRYPTION_KEY` are in `config.ts` (`config.ts:49-61`) but **not** listed in `apps/server/.env.example` (the example ends at `AGENT_GATEWAY_ENABLED`).
 - `RUNNER_HUB_ENABLED` and `RUNNER_HUB_PORT` are in `config.ts` (`config.ts:73-84`) but **not** in `apps/server/.env.example`.
 - `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` and `GITHUB_APP_INSTALLATION_ID` are in `config.ts` (`config.ts:53-55`) but **not** in `apps/server/.env.example` (the App config is intentionally gated behind all-or-nothing validation; not listing them in the example is a UX miss).
+- The comment in `apps/server/.env.example` says the admin password must match `GALENA_XMPP_ADMIN_PASSWORD` in `infra/.env`; the real variable in `infra/.env.example` and the compose file is `EJABBERD_ADMIN_PASSWORD`. The comment is stale.
 - `EJABBERD_API_URL`, `XMPP_DOMAIN`, `XMPP_MUC_DOMAIN` and `XMPP_WS_PUBLIC_URL` are in both `apps/server/.env.example` and `xmpp/config.ts` with the same defaults — no mismatch, mentioned for completeness.
 
 ## Open questions

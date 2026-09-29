@@ -1,7 +1,7 @@
 ---
 id: T-0094
 title: Server configuration reference (docs only) — every environment variable, its default and what it turns on
-status: review
+status: merged
 milestone: M4
 branch: task/T-0094-server-config-docs
 model: minimax-coding-plan/MiniMax-M3
@@ -90,4 +90,10 @@ None.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged after two lead corrections. Docs only; format clean.
+
+I spot-checked the tables against `config.ts` (names, defaults, required-ness match), the migration-at-startup claim (`index.ts:48`), the `db:migrate` / `db:generate` scripts, the mailer production guard and the infra variable names.
+
+Lead corrections: (1) a paragraph claimed the AI routes answer 503 until `AGENT_GATEWAY_ENABLED=true`; they depend on LiteLLM and the key cipher, not on that flag. Rewritten. (2) A garbled sentence about port 3000. Also added a mismatch the worker missed: a stale comment in `apps/server/.env.example` names `GALENA_XMPP_ADMIN_PASSWORD`, the real variable is `EJABBERD_ADMIN_PASSWORD`.
+
+Not verified line by line: the `file:line` citations inside the jobs table (they drift with every edit; treat them as pointers).
