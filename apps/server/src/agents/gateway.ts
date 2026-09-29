@@ -34,6 +34,7 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { XmppConfig } from '../xmpp/config';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { issueXmppToken } from '../xmpp/token';
+import type { GroupRole } from '../groups/service';
 import {
   bareJid,
   buildDmMessages,
@@ -56,6 +57,7 @@ import {
   type ValidToolCall,
 } from './reply';
 import {
+  buildGroupTools,
   buildTools,
   formatPersonaUpdatedLine,
   PERSONA_RESTORED_LINE,
@@ -278,11 +280,16 @@ async function listAiRooms(
 interface RoomGateState {
   /** Bare JIDs of the current human members, lowercased. */
   memberJids: Set<string>;
+  /** Per-member role for the gate that decides whether a sender may wake an
+   * AI for an action (T-0098). Keys are lowercased bare JIDs. */
+  memberRolesByJid: Map<string, GroupRole>;
 }
 
 // The fresh gate for one group turn: who may trigger the AI, and which nicks
 // belong to AIs. Member JIDs are derived with the same `localpartFor` the
-// provisioning uses, so no extra mapping table is needed.
+// provisioning uses, so no extra mapping table is needed. Roles come from
+// `group_members` and are looked up per turn so a promotion or demotion that
+// lands between turns is picked up the next time the AI wakes.
 async function loadRoomGateState(
   db: ServerDatabase,
   groupId: string,
@@ -293,14 +300,17 @@ async function loadRoomGateState(
     return null;
   }
   const members = await db
-    .select({ userId: groupMembers.userId })
+    .select({ userId: groupMembers.userId, role: groupMembers.role })
     .from(groupMembers)
     .where(eq(groupMembers.groupId, groupId));
-  return {
-    memberJids: new Set(
-      members.map((row) => normBareJid(jidFor(localpartFor(row.userId), domain))),
-    ),
-  };
+  const memberRolesByJid = new Map<string, GroupRole>();
+  const memberJids = new Set<string>();
+  for (const row of members) {
+    const bare = normBareJid(jidFor(localpartFor(row.userId), domain));
+    memberJids.add(bare);
+    memberRolesByJid.set(bare, row.role);
+  }
+  return { memberJids, memberRolesByJid };
 }
 
 // Agent gateway v0: keeps every active AI online over XMPP and replies to the
@@ -471,12 +481,24 @@ export function createAgentGateway(
     }
   }
 
+  // Per-turn context for a `request_action` call in a group (T-0098). The
+  // `groupId` is the room the AI was woken in — it rides along to the
+  // action gateway and is used to pick the model-facing wording. The
+  // `isStillAllowed` callback re-queries the database right before the
+  // action gateway runs, so a role change that landed between the turn
+  // starting and the tool executing short-circuits to `denied: not allowed`
+  // without calling the gateway.
+  interface RequestActionContext {
+    groupId: string;
+    isStillAllowed: () => Promise<boolean>;
+  }
+
   // Runs one validated tool call against the gateway's own AI id. The id
   // comes from the session, never from the model's arguments, and only
   // `ais.persona` / `ais.previous_persona` (persona tools) or the action
   // gateway (request_action) can change. Log lines carry the AI id, the
   // tool name and the outcome only: never the persona text or the args.
-  function executeToolCall(session: AiSession): ExecuteToolCall {
+  function executeToolCall(session: AiSession, context?: RequestActionContext): ExecuteToolCall {
     const aiId = session.aiId;
     return async (call) => {
       // A turn that was computing when the AI was stopped must not change the
@@ -485,13 +507,34 @@ export function createAgentGateway(
       if (!sessionIsLive(session)) {
         return { content: 'the AI was stopped' };
       }
+      // A group turn only ever offers `request_action`. The persona tools are
+      // reachable from the owner's DM alone, so a model that improvises one in
+      // a room (for example after reading a hostile message) gets nothing.
+      if (context !== undefined && call.tool !== REQUEST_ACTION_TOOL) {
+        return { content: 'invalid: unknown tool' };
+      }
       if (call.tool === UPDATE_PERSONA_TOOL) {
         await setPersonaFromChat(deps.db, aiId, call.persona);
         logger.info({ aiId, tool: call.tool, ok: true }, 'AI persona updated by chat');
         return { content: 'ok', notice: formatPersonaUpdatedLine(call.summary) };
       }
       if (call.tool === REQUEST_ACTION_TOOL) {
-        return runRequestAction(session, call);
+        if (context !== undefined) {
+          // The triggering user's role may have changed during a long turn
+          // (T-0098): re-check the database before calling the action
+          // gateway, and short-circuit to `denied: not allowed` when they
+          // are no longer an owner or admin. The gateway is never invoked
+          // in that case, so no audit row is written and no card appears.
+          const stillAllowed = await context.isStillAllowed();
+          if (!stillAllowed) {
+            logger.info(
+              { aiId: session.aiId, action: call.action, groupId: context.groupId },
+              'AI request_action denied: sender no longer allowed',
+            );
+            return { content: 'denied: not allowed' };
+          }
+        }
+        return runRequestAction(session, call, context?.groupId);
       }
       const outcome = await revertPersonaFromChat(deps.db, aiId);
       logger.info({ aiId, tool: call.tool, ok: true }, 'AI persona revert by chat');
@@ -507,10 +550,13 @@ export function createAgentGateway(
   // that smuggles `aiId` or `groupId` inside `args` cannot change who is
   // asked. The mapping below is the exact model-facing wording per
   // outcome (see spec); no adapter text beyond the success `summary`
-  // reaches the AI.
+  // reaches the AI. The group context (when present) adjusts the
+  // pending-approval wording — owners see "in this chat", admins see "in
+  // this room" — and tags the request with the room's group id.
   async function runRequestAction(
     session: AiSession,
     call: Extract<ValidToolCall, { tool: typeof REQUEST_ACTION_TOOL }>,
+    groupId?: string,
   ): Promise<ToolExecution> {
     const actions = deps.actions;
     if (actions === undefined) {
@@ -522,6 +568,7 @@ export function createAgentGateway(
     try {
       outcome = await actions.request({
         aiId: session.aiId,
+        ...(groupId === undefined ? {} : { groupId }),
         action: call.action,
         args: call.args,
         requestedBy: session.aiJid,
@@ -540,9 +587,15 @@ export function createAgentGateway(
         return { content: `done: ${outcome.summary}` };
       case 'pending_approval':
         // The card message is the owner's view; the model just gets a
-        // short fixed line so it knows to wait.
+        // short fixed line so it knows to wait. The wording differs by
+        // chat: in DMs the card appears in the owner's chat, in groups
+        // it appears in the room and only group admins / owners / the
+        // AI's owner get the buttons.
         return {
-          content: "waiting for your owner's approval; a card was posted in this chat",
+          content:
+            groupId === undefined
+              ? "waiting for your owner's approval; a card was posted in this chat"
+              : "waiting for an admin's approval; a card was posted in this room",
         };
       case 'failed':
         return { content: 'the action failed' };
@@ -1184,11 +1237,39 @@ export function createAgentGateway(
         trigger: { id: trigger.id, body: trigger.body },
       });
 
+      // T-0098: decide per turn, from the database, whether the trigger's
+      // sender is allowed to ask the AI for an action. The role lives on
+      // the `roomGate` we already loaded; a plain `member`, an AI sender,
+      // an unknown occupant, or an empty actions registry all fall through
+      // to today's plain `completeChat` path (no tools advertised).
+      const triggerBare = normBareJid(trigger.fromJid);
+      const triggerRole = gate.memberRolesByJid.get(triggerBare);
+      const allowedForAction = triggerRole === 'owner' || triggerRole === 'admin';
+      const actionsList = deps.actions?.listActions() ?? [];
+      const groupTools =
+        allowedForAction && actionsList.length > 0 ? buildGroupTools(actionsList) : undefined;
+      // The re-check callback runs at tool-execution time. A `plain
+      // member` turn never advertises tools, so this never fires for
+      // them; for an admin/owner turn it queries the same gate so a
+      // demotion that landed between the mention and the tool call
+      // short-circuits to `denied: not allowed` without invoking the
+      // action gateway.
+      const isStillAllowed = async (): Promise<boolean> => {
+        const fresh = await loadRoomGateState(deps.db, room.groupId, deps.xmpp.domain);
+        if (fresh === null) {
+          return false;
+        }
+        const role = fresh.memberRolesByJid.get(triggerBare);
+        return role === 'owner' || role === 'admin';
+      };
+
       // No persona tools in groups and no drafts: the reply goes straight to
       // the room with `composing`/`paused` chat states around it. The 80%
       // warnings go out after it, so the owner reads the answer first. The
       // `live*` wrappers drop the reply when the AI was stopped between the
-      // mention arriving and the LLM call resolving.
+      // mention arriving and the LLM call resolving. When `groupTools` is
+      // set the room reply goes through the same tool loop as DMs (T-0098);
+      // the executor carries the room's group id and the re-check callback.
       await runGroupTurn({
         aiId: session.aiId,
         roomJid,
@@ -1200,6 +1281,15 @@ export function createAgentGateway(
         virtualKey,
         model: modelNameForAi(session.aiId),
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
+        ...(groupTools === undefined
+          ? {}
+          : {
+              tools: groupTools,
+              executeTool: executeToolCall(session, {
+                groupId: room.groupId,
+                isStillAllowed,
+              }),
+            }),
         sendMessage: (to, kind, text, opts) => liveSendMessage(session, to, kind, text, opts),
         sendTyping: (to, kind, state) => {
           liveSendTyping(session, to, kind, state);

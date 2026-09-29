@@ -419,8 +419,127 @@ async function sendReply(deps: DmTurnDeps, text: string): Promise<DmTurnOutcome>
   return { kind: 'replied', text };
 }
 
+// Parses one raw tool call's `arguments`, runs the executor on it, and turns
+// the result into a `tool` message plus an optional persona notice. Shared by
+// the DM and the group tool loop (T-0098) so they run the exact same
+// validation and redaction rules. A thrown executor becomes a
+// `failed: could not save` message and the next call still runs.
+async function executeOneToolCall(
+  call: ChatToolCall,
+  context: {
+    aiId: string;
+    executeTool?: ExecuteToolCall;
+    logger: { warn: (fields: Record<string, unknown>, message: string) => void };
+    secrets: readonly string[];
+  },
+): Promise<{ message: ModelRequestMessage; notice?: string }> {
+  const parsed = parseToolArguments(call.name, call.argsJson);
+  if (!parsed.ok) {
+    // Never executed. The arguments stay out of the log entirely: only the
+    // tool name travels with the AI id, never the persona text.
+    context.logger.warn(
+      { aiId: context.aiId, tool: safeToolName(call.name) },
+      'AI tool call was not executed',
+    );
+    return {
+      message: { role: 'tool', content: `invalid: ${parsed.reason}`, tool_call_id: call.id },
+    };
+  }
+  if (context.executeTool === undefined) {
+    context.logger.warn(
+      { aiId: context.aiId, tool: safeToolName(call.name) },
+      'AI tool call was not executed',
+    );
+    return {
+      message: {
+        role: 'tool',
+        content: `invalid: unknown tool: ${safeToolName(call.name)}`,
+        tool_call_id: call.id,
+      },
+    };
+  }
+  let execution: ToolExecution;
+  try {
+    execution = await context.executeTool(toCall(parsed, call.id));
+  } catch (error) {
+    // One call failing must not drop the others or the notices already
+    // earned: the change (if any) stays, this call reports a failure, and
+    // the loop continues with the remaining calls.
+    context.logger.warn(
+      {
+        aiId: context.aiId,
+        tool: safeToolName(call.name),
+        ok: false,
+        err: redactError(error, context.secrets),
+      },
+      'AI tool call failed',
+    );
+    return {
+      message: { role: 'tool', content: 'failed: could not save', tool_call_id: call.id },
+    };
+  }
+  return {
+    message: { role: 'tool', content: execution.content, tool_call_id: call.id },
+    ...(execution.notice === undefined ? {} : { notice: execution.notice }),
+  };
+}
+
+// Runs every parsed tool call through the executor, in order. Returns the
+// follow-up `tool` messages and the persona notices that ride along on the
+// final text. Both the DM and the group tool loops call this so they share
+// one validation + execution pipeline.
+async function executeToolCalls(input: {
+  toolCalls: ChatToolCall[];
+  aiId: string;
+  executeTool?: ExecuteToolCall;
+  logger: { warn: (fields: Record<string, unknown>, message: string) => void };
+  secrets: readonly string[];
+}): Promise<{ toolMessages: ModelRequestMessage[]; notices: string[] }> {
+  const toolMessages: ModelRequestMessage[] = [];
+  const notices: string[] = [];
+  for (const call of input.toolCalls) {
+    const { message, notice } = await executeOneToolCall(call, {
+      aiId: input.aiId,
+      ...(input.executeTool === undefined ? {} : { executeTool: input.executeTool }),
+      logger: input.logger,
+      secrets: input.secrets,
+    });
+    toolMessages.push(message);
+    if (notice !== undefined) {
+      notices.push(notice);
+    }
+  }
+  return { toolMessages, notices };
+}
+
+// Builds the messages array for the second model call: the original
+// conversation, the assistant turn with its raw tool calls, and every
+// collected tool result in order.
+function followUpMessages(
+  history: ModelRequestMessage[],
+  first: ChatCompletionResult,
+  toolMessages: ModelRequestMessage[],
+): ModelRequestMessage[] {
+  return [
+    ...history,
+    {
+      role: 'assistant',
+      content: first.content ?? '',
+      tool_calls: first.toolCalls.map((call) => ({
+        id: call.id,
+        type: 'function' as const,
+        function: { name: call.name, arguments: call.argsJson },
+      })),
+    },
+    ...toolMessages,
+  ];
+}
+
 // The second half of a tool turn: execute every call, feed the results back
-// for one more model call, then send the text plus the fixed persona lines.
+// for exactly one more model call, then send the text plus any notices. The
+// per-call execution is shared with groups through `executeToolCalls`. A
+// second response that asks for tools again is answered from its text alone:
+// those calls are ignored and there is never a third model call.
 async function runToolTurn(
   deps: DmTurnDeps,
   completionInput: {
@@ -436,84 +555,19 @@ async function runToolTurn(
   secrets: string[],
   tools: ChatToolDefinition[],
 ): Promise<DmTurnOutcome> {
-  const notices: string[] = [];
-  const toolMessages: ModelRequestMessage[] = [];
-  for (const call of first.toolCalls) {
-    const parsed = parseToolArguments(call.name, call.argsJson);
-    if (!parsed.ok) {
-      // Never executed. The arguments stay out of the log entirely: only the
-      // tool name travels with the AI id, never the persona text.
-      deps.logger.warn(
-        { aiId: deps.aiId, tool: safeToolName(call.name) },
-        'AI tool call was not executed',
-      );
-      toolMessages.push({
-        role: 'tool',
-        content: `invalid: ${parsed.reason}`,
-        tool_call_id: call.id,
-      });
-      continue;
-    }
-    if (deps.executeTool === undefined) {
-      deps.logger.warn(
-        { aiId: deps.aiId, tool: safeToolName(call.name) },
-        'AI tool call was not executed',
-      );
-      toolMessages.push({
-        role: 'tool',
-        content: `invalid: unknown tool: ${safeToolName(call.name)}`,
-        tool_call_id: call.id,
-      });
-      continue;
-    }
-    let execution: ToolExecution;
-    try {
-      execution = await deps.executeTool(toCall(parsed, call.id));
-    } catch (error) {
-      // One call failing must not drop the others or the notices already
-      // earned: the change (if any) stays, this call reports a failure, and
-      // the loop continues with the remaining calls.
-      deps.logger.warn(
-        {
-          aiId: deps.aiId,
-          tool: safeToolName(call.name),
-          ok: false,
-          err: redactError(error, secrets),
-        },
-        'AI tool call failed',
-      );
-      toolMessages.push({
-        role: 'tool',
-        content: 'failed: could not save',
-        tool_call_id: call.id,
-      });
-      continue;
-    }
-    if (execution.notice !== undefined) {
-      notices.push(execution.notice);
-    }
-    toolMessages.push({ role: 'tool', content: execution.content, tool_call_id: call.id });
-  }
-
-  const followUp: ModelRequestMessage[] = [
-    ...deps.messages,
-    {
-      role: 'assistant',
-      content: first.content ?? '',
-      tool_calls: first.toolCalls.map((call) => ({
-        id: call.id,
-        type: 'function' as const,
-        function: { name: call.name, arguments: call.argsJson },
-      })),
-    },
-    ...toolMessages,
-  ];
+  const { toolMessages, notices } = await executeToolCalls({
+    toolCalls: first.toolCalls,
+    aiId: deps.aiId,
+    ...(deps.executeTool === undefined ? {} : { executeTool: deps.executeTool }),
+    logger: deps.logger,
+    secrets,
+  });
 
   let text: string;
   try {
     const second = await requestCompletion({
       ...completionInput,
-      messages: followUp,
+      messages: followUpMessages(deps.messages, first, toolMessages),
       tools,
     });
     // A second response that asks for tools again is answered from its text
@@ -612,14 +666,29 @@ export interface GroupTurnDeps {
   };
   /** Extra secrets to redact from every log line (e.g. the master key). */
   secrets?: readonly string[];
+  /**
+   * Tools to advertise to the model. Absent (or empty) = today's plain
+   * `completeChat` path, unchanged. When present and the model asks for a
+   * tool, each call is validated and executed through `executeTool`, the
+   * results go back for exactly one follow-up call, and the final text is
+   * sent into the room with the `@Name` prefix and the trigger's `replyTo`
+   * (T-0098). Persona tools are never offered in a group turn: only the
+   * `request_action` tool may be in this list.
+   */
+  tools?: ChatToolDefinition[];
+  executeTool?: ExecuteToolCall;
 }
 
-// Runs one group turn: typing on, one plain model call, reply into the room,
-// typing off. No persona tools in groups: only the owner may reshape the AI,
-// and only in the DM. The reply points at the triggering message and mentions
-// the sender (`@Name text`, with the mention offsets on the `@Name` span). A
-// model failure posts the same honest failure text DMs use, in the room —
-// never the raw error. XMPP send failures are logged, never thrown.
+// Runs one group turn: typing on, one model call (plain or tool loop),
+// reply into the room, typing off. The plain path is today's behaviour:
+// no tools advertised, and improvised tool calls the model sneaks in are
+// answered `invalid: unknown tool` (T-0098: a plain member must never
+// reach the action gateway). The tool path is the DM tool
+// loop applied to a room: one model call with tools, parsed calls run
+// through `executeTool`, one follow-up call, then the final text is sent
+// with the `@Name` prefix and `replyTo` on the trigger. A model failure
+// posts the honest failure text in the room (never the raw error). XMPP
+// send failures are logged, never thrown.
 export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> {
   const secrets = [deps.virtualKey, ...(deps.secrets ?? [])];
   // The mention needs a non-empty name for its offsets: fall back to the
@@ -632,28 +701,46 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
       mentions: [{ jid: deps.senderJid.toLowerCase(), begin: 0, end: name.length + 1 }],
     },
   });
+  const completionInput = {
+    baseUrl: deps.baseUrl,
+    virtualKey: deps.virtualKey,
+    model: deps.model,
+    ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
+    ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }),
+    ...(deps.secrets === undefined ? {} : { secrets: deps.secrets }),
+  };
   deps.sendTyping(deps.roomJid, 'groupchat', 'composing');
   try {
-    const text = await completeChat({
-      baseUrl: deps.baseUrl,
-      virtualKey: deps.virtualKey,
-      model: deps.model,
-      messages: deps.messages,
-      ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
-      ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }),
-      ...(deps.secrets === undefined ? {} : { secrets: deps.secrets }),
-    });
-    const outgoing = wire(text);
-    try {
-      await deps.sendMessage(deps.roomJid, 'groupchat', outgoing.text, outgoing.opts);
-    } catch (error) {
-      deps.logger.warn(
-        { err: redactError(error, secrets), aiId: deps.aiId },
-        'AI group reply could not be sent',
-      );
-      return { kind: 'failed', text: '' };
+    if (deps.tools !== undefined && deps.tools.length > 0 && deps.executeTool !== undefined) {
+      return await runGroupToolTurn(deps, completionInput, secrets, wire);
     }
-    return { kind: 'replied', text: outgoing.text };
+    const first = await requestCompletion({
+      ...completionInput,
+      messages: deps.messages,
+    });
+    if (first.toolCalls.length === 0) {
+      if (first.content === null) {
+        throw new ChatCompletionError(200, 'empty reply from the model');
+      }
+      return await sendGroupReply(deps, secrets, wire(first.content));
+    }
+    // No tools were advertised, so any tool call the model improvised is
+    // invalid: answer `invalid: unknown tool` for each call and make one
+    // follow-up call. `executeTool` is deliberately not invoked, so a
+    // plain member can never reach the action gateway even when the model
+    // tries. A follow-up with no text falls back to the honest failure
+    // text, exactly like the tool loop.
+    const { toolMessages } = await executeToolCalls({
+      toolCalls: first.toolCalls,
+      aiId: deps.aiId,
+      logger: deps.logger,
+      secrets,
+    });
+    const second = await requestCompletion({
+      ...completionInput,
+      messages: followUpMessages(deps.messages, first, toolMessages),
+    });
+    return await sendGroupReply(deps, secrets, wire(second.content ?? TRANSIENT_FAILURE_REPLY));
   } catch (error) {
     const reply = mapFailureToReply(error);
     deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
@@ -671,4 +758,95 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
   } finally {
     deps.sendTyping(deps.roomJid, 'groupchat', 'paused');
   }
+}
+
+// The group variant of the DM tool loop. Same parse / execute / follow-up
+// rules as `runToolTurn`; the only difference is the final send goes to
+// the room with `@Name` and `replyTo` instead of to the owner's DM.
+async function runGroupToolTurn(
+  deps: GroupTurnDeps,
+  completionInput: {
+    baseUrl: string;
+    virtualKey: string;
+    model: string;
+    fetchImpl?: FetchLike;
+    timeoutMs?: number;
+    secrets?: readonly string[];
+  },
+  secrets: string[],
+  wire: (text: string) => { text: string; opts: SendMessageOptions },
+): Promise<DmTurnOutcome> {
+  const tools = deps.tools ?? [];
+  const first = await requestCompletion({
+    ...completionInput,
+    messages: deps.messages,
+    tools,
+  });
+  if (first.toolCalls.length === 0) {
+    if (first.content === null) {
+      throw new ChatCompletionError(200, 'empty reply from the model');
+    }
+    return await sendGroupReply(deps, secrets, wire(first.content));
+  }
+  // Only a tool that was advertised may run: anything else the model
+  // improvises (a persona tool, say) is answered `invalid: unknown tool`.
+  const advertised = new Set(tools.map((tool) => tool.function.name));
+  const execute = deps.executeTool;
+  const executeAdvertised: ExecuteToolCall | undefined =
+    execute === undefined
+      ? undefined
+      : (call) =>
+          advertised.has(call.tool)
+            ? execute(call)
+            : Promise.resolve({ content: 'invalid: unknown tool' });
+  const { toolMessages, notices } = await executeToolCalls({
+    toolCalls: first.toolCalls,
+    aiId: deps.aiId,
+    ...(executeAdvertised === undefined ? {} : { executeTool: executeAdvertised }),
+    logger: deps.logger,
+    secrets,
+  });
+  let text: string;
+  try {
+    const second = await requestCompletion({
+      ...completionInput,
+      messages: followUpMessages(deps.messages, first, toolMessages),
+      tools,
+    });
+    // A second response that asks for tools again is answered from its text
+    // alone: those calls are ignored and there is never a third model call.
+    text = (second.content ?? TRANSIENT_FAILURE_REPLY) + notices.join('');
+  } catch (error) {
+    // The persona change (or any other notice) from the first call stays,
+    // so the failure text rides along with whatever was already earned.
+    const failure = mapFailureToReply(error);
+    deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
+    const text = failure + notices.join('');
+    return await sendGroupReply(deps, secrets, wire(text), { failure: true });
+  }
+  return await sendGroupReply(deps, secrets, wire(text));
+}
+
+// Sends the text into the room and shapes the outcome. A failure flag is
+// carried so the result mirrors the success / failure paths the DM tool
+// loop returns (today's `runToolTurn` returns `{ kind: 'failed', text }`
+// when the second call throws).
+async function sendGroupReply(
+  deps: GroupTurnDeps,
+  secrets: string[],
+  outgoing: { text: string; opts: SendMessageOptions },
+  options: { failure: boolean } = { failure: false },
+): Promise<DmTurnOutcome> {
+  try {
+    await deps.sendMessage(deps.roomJid, 'groupchat', outgoing.text, outgoing.opts);
+  } catch (error) {
+    deps.logger.warn(
+      { err: redactError(error, secrets), aiId: deps.aiId },
+      'AI group reply could not be sent',
+    );
+    return { kind: 'failed', text: '' };
+  }
+  return options.failure
+    ? { kind: 'failed', text: outgoing.text }
+    : { kind: 'replied', text: outgoing.text };
 }

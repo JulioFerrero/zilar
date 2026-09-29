@@ -1,10 +1,10 @@
 ---
 id: T-0098
 title: `request_action` in group chats — only admins can trigger it, the card is visible to the whole room (server)
-status: todo
+status: merged
 milestone: M4
 branch: task/T-0098-group-request-action
-model: minimax-coding-plan/MiniMax-M3
+model: meta/muse-spark-1.3-contributor
 depends_on: [T-0090, T-0092, T-0093]
 estimate: 1 day
 ---
@@ -80,22 +80,51 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Group turns now offer the `request_action` tool, but only when the trigger's sender is a group `owner`/`admin` (looked up per turn from `group_members` via JID, never from message text or model output) and at least one action is registered. Plain members, AI senders, unknown/removed senders, and empty registries all take today's plain path with no tools.
+- Extracted the DM tool-loop plumbing in `reply.ts` into shared helpers (`executeOneToolCall`, `executeToolCalls`, `followUpMessages`) so DM and group turns run the exact same validation/redaction; DM behaviour unchanged.
+- `runGroupTurn` accepts optional `tools` + `executeTool` and runs the shared loop; the reply still goes to the room with `@Name` + `replyTo` on the trigger, and model failures still post the honest failure text.
+- The plain (no-tools) group path now also answers an improvised model `tool_call` with `invalid: unknown tool` via one follow-up call instead of ignoring it — the spec requires `actions.request` is never called for plain members even if the fake model tries a tool call. The executor is never invoked on that path. (This fixed 2 failing gateway tests that scripted an improvised call on the plain path and timed out waiting for a second model call that never came.)
+- Group executor (`gateway.ts`): liveness check first, then `actions.request` with `aiId` from the session, `groupId` from the room subscription, `requestedBy` = AI's bare JID; smuggled `aiId`/`groupId` inside `args` cannot change the top-level values. Pending wording adjusted for groups (`waiting for an admin's approval; a card was posted in this room`); all other outcomes use the same fixed strings as DM.
+- The trigger sender's role is re-checked at execution time: demotion between turn start and tool execution answers `denied: not allowed` without calling the gateway (no audit row, no card).
+- `buildGroupTools` in `tools.ts` returns only the `request_action` tool (empty list when no actions registered, so the caller falls back to the plain path). Persona tools are never offered in groups.
+- Audit: did NOT set `actorUserId` on the `action.requested` entry. The field exists on `AuditEntry` (no schema change needed), but threading the triggering admin's user id through would require adding a field to `RequestParams` in `apps/server/src/actions/gateway.ts`, which is outside this task's Allowed files.
 
 ### Files changed
--
+- `apps/server/src/agents/tools.ts` (+14): `buildGroupTools` helper.
+- `apps/server/src/agents/tools.test.ts` (+30): `buildGroupTools` — empty registry, only `request_action` with persona tools excluded, description lists all actions.
+- `apps/server/src/agents/reply.ts`: extracted shared `executeOneToolCall`/`executeToolCalls`/`followUpMessages`; `runGroupTurn` gained optional `tools`+`executeTool` with `runGroupToolTurn` + `sendGroupReply`; plain path answers improvised tool calls `invalid: unknown tool` via one follow-up call (executor never invoked).
+- `apps/server/src/agents/reply.test.ts` (+228): group tool-loop tests (request_action execution, plain path unchanged, second-call failure → `kind: failed` + failure text) plus plain-path improvised-call test (executor never runs, `invalid: unknown tool` fed back, follow-up reply sent).
+- `apps/server/src/agents/gateway.ts` (+110): `memberRolesByJid` in room gate state, per-turn admin/owner check + `buildGroupTools`, group `RequestActionContext` with `isStillAllowed` re-check, group-aware `runRequestAction` wording and `groupId` plumbing.
+- `apps/server/src/agents/gateway.test.ts` (+594): 10 end-to-end group tests — admin/owner tool offer (no persona tools), smuggled ids, all outcome wordings, plain-member/AI/removed-sender no-tools, revocation mid-turn, no-actions invalid, stopped AI silence.
 
 ### Commands run and real results
--
+- `pnpm install`: up to date (7s).
+- `pnpm format:check`: all files use Prettier style (pass).
+- `pnpm lint`: pass (fixed one `unicorn/no-useless-spread` in `gateway.test.ts` from prior work; re-ran after last edit — pass).
+- `pnpm typecheck`: 10 tasks successful (pass).
+- `pnpm exec turbo test --force --filter=@galena/server`: 55 files passed, 5 skipped; 850 tests passed, 7 skipped (pass, ~7 min).
+- `pnpm build`: 2 tasks successful (pass).
+- Targeted: `reply.test.ts` + `tools.test.ts`: 70 passed. `gateway.test.ts`: 104 passed. `gateway.test.ts -t "request_action in groups"`: 10 passed.
+- Note: during this session `pnpm exec vitest run src/agents/gateway.test.ts` initially showed 2 failures (timeouts in the plain-member and no-actions group tests); root cause was the plain path ignoring improvised `tool_calls` so the scripted second model call never happened. Fixed in `reply.ts` as described above; full suite green afterwards.
 
 ### Problems, deviations from the spec, open questions
--
+- Deviation (bug fix on prior work, within spec): the plain group path now makes a follow-up model call when the model improvises a tool call, instead of ignoring it. This matches the spec test bullet (`invalid: unknown tool`, `actions.request` never called) and preserves "No actions registered: identical to today" for well-behaved models (single call, same reply). Existing group tests pass untouched.
+- Audit `actorUserId` skipped (see above); needs a decision whether T-0099 or a follow-up should thread the triggering admin id through `actions/gateway.ts` (not allowed here).
+- Live check not possible without a real group and Julio's OK (per spec).
 
 ### Blocked / needs a decision
--
+- None. Ready for review.
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged after one security fix by the lead. Rebased on main; after the last edit format, lint, typecheck clean; server 851 passed, 7 skipped. No disable comments.
+
+**The hole (found by the lead, proven by a failing test first):** in a group turn with `request_action` offered, the executor still handled the persona tools, and the argument parser accepts a tool by name whether or not it was advertised. A model that improvised `update_persona` in a room (for example after reading a hostile message) got `ok` and the AI's persona was rewritten. That broke the acceptance criterion "persona tools are not reachable from groups". Fixed in two layers: the group executor answers `invalid: unknown tool` for anything but `request_action`, and the group tool loop refuses any tool that was not advertised. Regression test added (`a persona tool the model improvises in a group tool turn is never executed`).
+
+Confirmed: only a group owner or admin sender gets the tool (per-turn database lookup, re-checked right before execution), a plain member, an AI or an unknown sender gets no tools and the gateway is never called even if the model tries; group id and AI id come from the session; each outcome maps to a fixed line; a stopped AI sends nothing; DM behaviour is unchanged (all DM tests untouched).
+
+Notes: the plain group path now makes one follow-up call when a model improvises a tool call with none advertised (answered `invalid: unknown tool`); the audit entry does not carry the triggering admin's user id yet (a follow-up: needs a change in `actions/gateway.ts`). Not live-checked (needs a real group and Julio's OK); steps are in the live-checks doc.
+
+Process note: this worker had been moved from MiniMax to Muse mid-task.

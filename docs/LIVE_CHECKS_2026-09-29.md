@@ -63,6 +63,10 @@ The gateway (T-0090) is live but has no adapters. After T-0093 is merged, start 
 
 Phone → My AIs → tap an AI: **Stop** (then the row shows a "Stopped" pill and the AI stops answering in chat), tap it again: **Resume**. An AI that is still setting up offers neither.
 
+## 10. Actions in groups (T-0098)
+
+With `ACTION_DEMO_ENABLED=true` and an AI in a group: an admin or owner mentions the AI and asks it to echo a text with the demo action; a card appears in the room for everyone, only admins/owners (and the AI's owner) get the buttons. A plain member asking the same thing gets a normal reply and no card. Persona changes are still only possible in the owner's DM.
+
 ## Known follow-ups (not blockers, also on `work/BOARD.md`)
 
 - Kill switch for room admins and workspace admins (J5), audit entries from the engine and proxy, retention (J4).

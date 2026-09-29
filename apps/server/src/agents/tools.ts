@@ -230,6 +230,20 @@ export function buildTools(
   return [...PERSONA_TOOLS, buildRequestActionTool(actions)];
 }
 
+// The tools array for one group turn when the trigger is allowed to ask
+// for an action (T-0098): only `request_action`. Persona tools never appear
+// in a group — only the AI's owner may reshape it, and only in the DM. With
+// no actions registered the result is an empty list, so the caller can
+// fall back to the plain `completeChat` path (today's behaviour).
+export function buildGroupTools(
+  actions: ReadonlyArray<{ name: string; description: string }>,
+): ChatToolDefinition[] {
+  if (actions.length === 0) {
+    return [];
+  }
+  return [buildRequestActionTool(actions)];
+}
+
 // One line the gateway appends to the AI's text reply after a successful
 // `update_persona`, so the owner sees what happened without relying on the
 // model to say it.
