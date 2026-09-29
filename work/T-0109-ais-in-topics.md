@@ -1,7 +1,7 @@
 ---
 id: T-0109
 title: AIs in topics: an AI reads and answers only in the topics it was added to
-status: review
+status: merged
 milestone: M5
 branch: task/T-0109-ais-in-topics
 model: meta/muse-spark-1.3-contributor
@@ -124,10 +124,14 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged after one round of fixes.
 
 ### Findings
--
+- Structure matches the spec: `topic_ais` (non-General only), per-topic room affiliations, gateway rooms and wake gate per topic (private topics wake only on topic members; `request_action` also requires topic membership), `postToChat` with `topicId`, topic-aware system prompt that never names other topics, group AI removal cleans every topic row in the same transaction.
+- Fixed after review: an AI stayed in a private topic after its owner lost access (owner removed from the topic, topic made private without the owner, owner left the group). Now a derived live rule (`aiMayBeInTopic` / `allowedTopicAiIds`): in a private topic an AI counts only while its owner is a topic member and group member. Applied in the room sync and in the gateway's room list; rows are kept so the AI returns when the owner is added back; live sessions leave through `ai-removed` events. Tests cover removal, going private, re-adding the owner, and public topics unaffected.
+- Checks re-run by the lead: format, lint, typecheck (10/10) pass; topics, groups, gateway and authz-sweep scoped run 181 passed; the worker's full server suite (after the fix) 1117 passed, 7 skipped.
 
 ### Follow-ups
--
+- T-0110: wire `topicId` through the production announcer in `index.ts` (cards still go to General until then).
+- Room reconciliation for drift after failed room calls is still a follow-up (see T-0108).
+- A topic owner AI is only checked to exist (T-0108 strip); tighten to AIs in the topic.
