@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import { and, desc, eq, lt, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { ARGS_HASH_PATTERN } from '@galena/protocol';
 import type { ServerDatabase } from '../db/client';
-import { ais, auditLog, groupMembers, groups } from '../db/schema';
+import { ais, auditLog, groupMembers, groups, topicMembers, topics } from '../db/schema';
 
 // `action` is dotted: `domain.verb`, lowercase + underscores. Same regex the
 // protocol's approval schema already enforces for similar dotted ids.
@@ -185,7 +185,9 @@ function decodeCursor(cursor: string): { at: Date; id: string } {
 // Lists audit rows whose `group_id` matches, newest first. Visibility:
 // the group's owner and admins only. A non-member — or a plain member —
 // gets the same empty page as an unknown group id, so existence is never
-// leaked.
+// leaked. T-0108: topic entries for a private topic the viewer cannot see
+// are dropped from the page (the recorder never stores a private topic's
+// name in `detail`, and this filter keeps the entries themselves hidden).
 export async function listAuditForGroup(
   db: ServerDatabase,
   groupId: string,
@@ -198,7 +200,17 @@ export async function listAuditForGroup(
   if (!visible) {
     return { entries: [], next: null };
   }
-  return listForColumn(db, auditLog.groupId, groupId, limit, before);
+  // Over-fetch so private-topic entries can be filtered without shrinking
+  // the page more than needed; pagination stays newest-first and the cursor
+  // still advances.
+  const page = await listForColumn(db, auditLog.groupId, groupId, limit * 2 + 1, before);
+  const kept = await filterHiddenTopicEntries(db, userId, page.entries);
+  const entries = kept.slice(0, limit);
+  const last = entries[entries.length - 1];
+  return {
+    entries,
+    next: kept.length > limit && last !== undefined ? encodeCursor(last.at, last.id) : page.next,
+  };
 }
 
 // Lists audit rows whose `ai_id` matches, newest first. Visibility: the AI's
@@ -289,6 +301,51 @@ function isGroupAdmin(db: ServerDatabase, groupId: string, userId: string): Prom
       const role = rows[0]!.role;
       return role === 'owner' || role === 'admin';
     });
+}
+
+// Drops entries about a private topic the viewer cannot see. Topic actions
+// (`topic.*`) carry the topic id in `subject_id`; anything else passes
+// through. Group membership is already established by the caller.
+async function filterHiddenTopicEntries(
+  db: ServerDatabase,
+  userId: string,
+  entries: PublicAuditEntry[],
+): Promise<PublicAuditEntry[]> {
+  const topicActions = entries.filter((entry) => entry.action.startsWith('topic.'));
+  if (topicActions.length === 0) {
+    return entries;
+  }
+  const subjectIds = [
+    ...new Set(
+      topicActions.map((entry) => entry.subjectId).filter((id): id is string => id !== null),
+    ),
+  ];
+  if (subjectIds.length === 0) {
+    return entries;
+  }
+  const topicRows = await db.select().from(topics).where(inArray(topics.id, subjectIds));
+  const byId = new Map(topicRows.map((row) => [row.id, row]));
+  let privateSeen: Set<string> = new Set();
+  const privateIds = topicRows.filter((row) => row.visibility === 'private').map((row) => row.id);
+  if (privateIds.length > 0) {
+    const memberRows = await db
+      .select({ topicId: topicMembers.topicId })
+      .from(topicMembers)
+      .where(and(inArray(topicMembers.topicId, privateIds), eq(topicMembers.userId, userId)));
+    privateSeen = new Set(memberRows.map((row) => row.topicId));
+  }
+  return entries.filter((entry) => {
+    if (!entry.action.startsWith('topic.') || entry.subjectId === null) {
+      return true;
+    }
+    const topic = byId.get(entry.subjectId);
+    // A topic row that is gone (or never existed) carries no private name;
+    // keep the entry so the log stays complete.
+    if (!topic || topic.visibility !== 'private') {
+      return true;
+    }
+    return privateSeen.has(topic.id);
+  });
 }
 
 function clampLimit(limit: number | undefined): number {

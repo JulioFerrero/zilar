@@ -127,6 +127,20 @@
       "when": 1790687798804,
       "tag": "0017_plain_warstar",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790715213140,
+      "tag": "0018_lethal_warhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790715222580,
+      "tag": "0019_general-topics",
+      "breakpoints": true
     }
   ]
 }

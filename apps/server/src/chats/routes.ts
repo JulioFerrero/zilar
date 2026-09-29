@@ -6,6 +6,7 @@ import type { ServerConfig } from '../config';
 import { listContacts } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { listGroupsForUser, type GroupRole } from '../groups/service';
+import { toTopicViews, visibleTopics, type TopicView } from '../topics/access';
 
 export type ChatListEntry =
   | {
@@ -24,6 +25,8 @@ export type ChatListEntry =
       groupId: string;
       memberCount: number;
       role: GroupRole;
+      /** Visible topics (archived excluded); General keeps the group chatJid. */
+      topics: TopicView[];
     };
 
 export interface ChatsRoutesDependencies {
@@ -70,8 +73,19 @@ export function createChatsRoutes({ auth, db, config }: ChatsRoutesDependencies)
         groupId: group.id,
         memberCount: group.memberCount,
         role: group.role,
+        topics: [],
       })),
     ];
+
+    // T-0108: each group entry gains its visible topics. Fetched per group
+    // after the list so a group the user cannot see never leaks in.
+    for (const entry of chats) {
+      if (entry.kind !== 'group') {
+        continue;
+      }
+      const rows = await visibleTopics(db, entry.groupId, user.id);
+      entry.topics = await toTopicViews(db, rows, config.xmpp.mucDomain);
+    }
 
     chats.sort((a, b) => a.title.localeCompare(b.title));
 
