@@ -3,6 +3,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   primaryKey,
@@ -191,6 +192,55 @@ export const aiLimits = pgTable('ai_limits', {
   perMonthUsd: numeric('per_month_usd', { precision: 12, scale: 2 }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// A machine (runner host) an owner paired with the server. `publicKey` is the
+// runner's ed25519 public key (SPKI DER, base64) and is globally unique: a key
+// that was ever registered — including on a revoked machine — can never pair
+// again, so a stolen runner stays locked out until its key is replaced.
+// `capabilities` is the runner's capability report as sent on pairing
+// (snake_case keys, see machines/service.ts). Revocation is permanent: the row
+// stays with `status = 'revoked'` and the machine must pair again with a new
+// key. `lastSeenAt` is written by the tunnel hub when the machine connects.
+export const machines = pgTable(
+  'machines',
+  {
+    id: text('id').primaryKey(),
+    ownerUserId: text('owner_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    publicKey: text('public_key').notNull().unique(),
+    capabilities: jsonb('capabilities').$type<Record<string, unknown>>().notNull(),
+    status: text('status', { enum: ['pending', 'approved', 'revoked'] })
+      .notNull()
+      .default('pending'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  },
+  (table) => [index('machines_owner_idx').on(table.ownerUserId)],
+);
+
+// A one-time pairing code an owner created for `POST /api/runner/pair`. Only
+// the SHA-256 hash is stored; the plain code is returned once at creation and
+// never logged. A code is consumed with an atomic
+// `UPDATE … WHERE used_at IS NULL AND expires_at > now() RETURNING …` so two
+// concurrent pair requests cannot both win.
+export const machinePairingCodes = pgTable(
+  'machine_pairing_codes',
+  {
+    id: text('id').primaryKey(),
+    ownerUserId: text('owner_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    codeHash: text('code_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('machine_pairing_codes_owner_idx').on(table.ownerUserId)],
+);
 
 // The spend baseline for one AI on one UTC day (T-0058). LiteLLM's key spend
 // is cumulative over the key's 30-day budget window, so today's spend is the
