@@ -145,3 +145,40 @@ describe('runner protocol enforcement', () => {
     }
   });
 });
+
+describe('serverUrl validation', () => {
+  function buildClient(serverUrl: string): void {
+    new RunnerClient({
+      serverUrl,
+      runnerId: 'runner-1',
+      keypair: generateRunnerKeypair(),
+    });
+  }
+
+  const accepted = [
+    'ws://127.0.0.1:9000/tunnel',
+    'wss://hub.example.com/tunnel',
+    'wss://host:1234/tunnel',
+  ];
+  const rejected = [
+    { value: 'http://host:1234/tunnel', reason: 'http scheme' },
+    { value: 'https://host:1234/tunnel', reason: 'https scheme' },
+    { value: 'ftp://host:1234/tunnel', reason: 'ftp scheme' },
+    { value: '', reason: 'empty string' },
+    { value: 'host:1234/tunnel', reason: 'no scheme' },
+    { value: 'javascript:alert(1)', reason: 'javascript scheme' },
+    { value: 'file:///etc/passwd', reason: 'file scheme' },
+  ];
+
+  for (const url of accepted) {
+    it(`accepts ${url}`, () => {
+      expect(() => buildClient(url)).not.toThrow();
+    });
+  }
+
+  for (const { value, reason } of rejected) {
+    it(`rejects ${reason} (${JSON.stringify(value)})`, () => {
+      expect(() => buildClient(value)).toThrow();
+    });
+  }
+});
