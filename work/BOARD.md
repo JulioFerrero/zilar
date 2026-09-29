@@ -127,4 +127,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0097](T-0097-approval-card-live-refresh.md) | approval card refreshes itself; menu shows pending approvals count | 2026-09-29 |
 | [T-0098](T-0098-group-request-action.md) | request_action in groups: admins only, card visible to the room; persona tools unreachable from groups | 2026-09-29 |
 | [T-0099](T-0099-approval-rules-always-allow.md) | approve always as a per-chat standing rule (personal or one group), revocable, audited | 2026-09-29 |
-| [T-0100](T-0100-web-always-allow.md) | Web: "Always allow here" on approval cards (two-step, names the scope) and a revocable list of always-allowed actions in the AI and group panels | in progress | meta/muse-spark-1.3-contributor | T-0099, T-0097 | Web. |
+| [T-0100](T-0100-web-always-allow.md) | web: Always allow here on approval cards, revocable always-allowed list in AI and group panels | 2026-09-29 |
