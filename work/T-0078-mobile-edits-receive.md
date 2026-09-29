@@ -1,7 +1,7 @@
 ---
 id: T-0078
 title: Mobile — show edits, deletions and reactions from other people (receive side only)
-status: review
+status: merged
 milestone: M2
 branch: task/T-0078-mobile-edits-receive
 model: minimax-coding-plan/MiniMax-M3
@@ -118,4 +118,10 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged (lead, 2026-09-29). Rebased on main; format, lint, typecheck, test (mobile 296 passed) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand, including the whole store diff.
+
+**Checked:** the store uses the `@galena/chat-core` reducers (`applyEdit`, `resolveEdits`, `editsFor`, `mergeEdits`, `applyReaction`, `summarize`, `mergeTargets`) rather than copying them; the author of each message is remembered and passed as the target author, so an edit or retraction from someone else stays pending and is never applied (test `ignores a correction or retraction from a foreign sender`); history is ingested (reactions and edits first, then the messages, then `resolvePendingEdits`) for the preview, the first page and older pages, so order does not matter; origin id and stanza-id are linked through the alias map; update stanzas never become bubbles or previews; reaction-only stanzas are swallowed, a stanza with a body that also carries reactions still renders. In the bubble, every hook is above the tombstone's early return (no rules-of-hooks break), the tombstone has no actions or reactions, "edited" appears in the time line, chips are read-only. The chat list says "Message deleted" for a deleted last message.
+
+**Accepted deviation:** no component test of the whole bubble (needs the provider and native tree); the store tests cover the data and `reaction-chips.test.tsx` covers the chips.
+
+**Open for Julio (device check):** open a chat on the phone where someone edited, deleted or reacted to a message from the web: the edited text with "edited", the "This message was deleted" tombstone and the chips should appear, both live and after reopening the chat. Sending edits, deleting and reacting from mobile is still not built (board follow-up).
