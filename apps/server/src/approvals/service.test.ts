@@ -898,8 +898,11 @@ describe('approvals service', () => {
       );
 
       const later = futureExpiresAt(now, 120_000);
-      const updated = await expireStale(context.db, later);
-      expect(updated).toBe(1);
+      const swept = await expireStale(context.db, later);
+      expect(swept).toHaveLength(1);
+      expect(swept[0]?.id).toBe(row.id);
+      expect(swept[0]?.aiId).toBe(aiId);
+      expect(swept[0]?.groupId).toBeNull();
 
       const [stored] = await context.db.select().from(approvals).where(eq(approvals.id, row.id));
       expect(stored?.status).toBe('denied');
@@ -911,6 +914,75 @@ describe('approvals service', () => {
         .from(approvals)
         .where(eq(approvals.id, fresh.id));
       expect(stillFresh?.status).toBe('pending');
+    });
+
+    it('returns every swept row when several are past due', async () => {
+      const ownerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      const a = await createApproval(
+        context.db,
+        approvalInput({
+          aiId,
+          hash: argsHash(42),
+          expiresAt: futureExpiresAt(now, 60_000),
+          action: 'a',
+        }),
+        now,
+      );
+      const b = await createApproval(
+        context.db,
+        approvalInput({
+          aiId,
+          hash: argsHash(43),
+          expiresAt: futureExpiresAt(now, 60_000),
+          action: 'b',
+        }),
+        now,
+      );
+
+      const later = futureExpiresAt(now, 120_000);
+      const swept = await expireStale(context.db, later);
+      expect(swept.map((entry) => entry.id).sort()).toEqual([a.id, b.id].sort());
+    });
+
+    it('does not touch a request decided just before the sweep', async () => {
+      const ownerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      const row = await createApproval(
+        context.db,
+        approvalInput({ aiId, hash: argsHash(44), expiresAt: futureExpiresAt(now, 60_000) }),
+        now,
+      );
+      await decideApproval(
+        context.db,
+        { approvalId: row.id, userId: ownerId, decision: 'approve_once' },
+        now,
+      );
+
+      const later = futureExpiresAt(now, 120_000);
+      const swept = await expireStale(context.db, later);
+      expect(swept).toEqual([]);
+
+      const [stored] = await context.db.select().from(approvals).where(eq(approvals.id, row.id));
+      expect(stored?.status).toBe('approved_once');
+      expect(stored?.note).toBeNull();
+    });
+
+    it('does not touch an unexpired pending request', async () => {
+      const ownerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      await createApproval(
+        context.db,
+        approvalInput({
+          aiId,
+          hash: argsHash(45),
+          expiresAt: futureExpiresAt(now, 60 * 60 * 1000),
+        }),
+        now,
+      );
+
+      const swept = await expireStale(context.db, futureExpiresAt(now, 5_000));
+      expect(swept).toEqual([]);
     });
   });
 

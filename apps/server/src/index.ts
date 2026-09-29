@@ -6,6 +6,8 @@ import {
 } from './ai/litellm-client';
 import { createAgentGateway } from './agents/gateway';
 import { createApp } from './app';
+import { startApprovalsSweeper, type ApprovalsSweeperHandle } from './approvals/sweeper';
+import { createAuditRecorder } from './audit/service';
 import { createAuth } from './auth/auth';
 import { createMailer, MailerConfigurationError, type Mailer } from './auth/mailer';
 import { loadServerConfigOrExit } from './config';
@@ -135,6 +137,16 @@ void gateway.start().catch((error: unknown) => {
   logger.error({ err }, 'agent gateway failed to start');
 });
 
+// Approvals sweeper (T-0087): starts after `serve()` resolves so the API is
+// already listening, never blocks startup. The handle is held in a variable
+// the shutdown sequence closes. The recorder wraps `recordAudit` so a
+// database write error never propagates into the timer.
+const approvalsSweeper: ApprovalsSweeperHandle = startApprovalsSweeper({
+  db,
+  audit: createAuditRecorder({ db, logger }),
+  logger,
+});
+
 // How long open connections (SSE streams) get before they are closed, and the
 // point at which a stuck shutdown gives up and exits.
 const CONNECTION_GRACE_MS = 3_000;
@@ -170,6 +182,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     await runnerHub.close();
   }
   await gateway.stop();
+  approvalsSweeper.close();
   await close();
   process.exit(0);
 }
