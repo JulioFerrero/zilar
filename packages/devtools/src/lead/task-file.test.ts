@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertAllowedModel,
   assertNotV4Pro,
   extractBlockedText,
+  isCostlyMetaModel,
   isV4Pro,
   parseFrontMatter,
   parseTaskFrontMatter,
@@ -108,5 +110,31 @@ describe('extractBlockedText', () => {
 
   it('returns empty when there is no blocked section', () => {
     expect(extractBlockedText('## Report\n\nall good\n')).toBe('');
+  });
+});
+
+describe('Meta Model API cost guard', () => {
+  it.each([
+    'meta/muse-spark-1.3',
+    'meta/muse-spark-1.2',
+    'meta/muse-spark-1.1',
+    'META/muse-spark-1.3',
+  ])('refuses %s', (model) => {
+    expect(isCostlyMetaModel(model)).toBe(true);
+    expect(() => assertAllowedModel(model)).toThrow(/contributor/);
+  });
+
+  it.each([
+    'meta/muse-spark-1.3-contributor',
+    'meta/muse-spark-1.2-contributor',
+    'opencode-go/muse-spark-1.3-contributor',
+    'minimax-coding-plan/MiniMax-M3',
+  ])('allows %s', (model) => {
+    expect(isCostlyMetaModel(model)).toBe(false);
+    expect(() => assertAllowedModel(model)).not.toThrow();
+  });
+
+  it('still refuses DeepSeek V4 Pro', () => {
+    expect(() => assertAllowedModel('opencode-go/deepseek-v4-pro')).toThrow(/V4 Pro/);
   });
 });

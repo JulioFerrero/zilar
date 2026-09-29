@@ -49,6 +49,24 @@ export function assertNotV4Pro(model: string): void {
   }
 }
 
+// Julio's rule (2026-09-29): on the Meta Model API only the `-contributor`
+// tier of Muse Spark may be used; the standard tier costs about 12 to 20 times
+// more per token.
+export function isCostlyMetaModel(model: string): boolean {
+  return /^meta\//i.test(model) && !/-contributor$/i.test(model);
+}
+
+// The one gate every launch path goes through: banned or costly models never
+// reach a worker session.
+export function assertAllowedModel(model: string): void {
+  assertNotV4Pro(model);
+  if (isCostlyMetaModel(model)) {
+    throw new Error(
+      `refusing model ${JSON.stringify(model)}: only meta/muse-spark-1.3-contributor is allowed on the Meta Model API (the standard tier costs far more)`,
+    );
+  }
+}
+
 // Returns the text under the "Blocked / needs a decision" subsection of the
 // Report, or an empty string when there is none.
 export function extractBlockedText(text: string): string {
