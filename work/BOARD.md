@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0071](T-0071-runner-hub.md) | Runner hub (M3, server): approved machines connect over the tunnel WebSocket, revoke drops them, online + last-seen | in progress | minimax-m3 | T-0068 | OpenCode Go is out of funds (402): MiniMax M3 fallback. |
-| [T-0072](T-0072-runner-app.md) | Runner app skeleton (M3): `galena-runner pair` (key pair, capability report, proof of possession) and `run` (tunnel client), identity file 0600 | in progress | minimax-m3 | T-0068 | New `apps/runner`; no desks yet. |
 | [T-0073](T-0073-approvals-service.md) | Approvals service (M4 foundation, server): stored approval requests with args hash, expiry, owner/admin-only atomic decisions, single-use `approve_once` | in progress | minimax-m3 | T-0054 | No web wiring yet; creation is server-internal. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
@@ -102,3 +101,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0069](T-0069-web-mock-standalone.md) | Web mock mode: ?mock=1 only in dev builds; standalone (fake session, mock /api for AIs and connections); production ignores the param (proved with vite preview) | 2026-09-29 |
 | [T-0065](T-0065-attachments-web.md) | Web attachments: images and files via XEP-0363 + attachment payload, preview bar, paste and drag-and-drop, image/file bubbles, retry; images auto-load only from Galena's upload host; live check open | 2026-09-29 |
 | [T-0070](T-0070-machines-web.md) | Machines page (web): add with a pairing code, approve/deny, rename, revoke, delete; mock data; runner described as coming soon; visual check open | 2026-09-29 |
+| [T-0072](T-0072-runner-app.md) | Runner app skeleton: pair (ed25519 key, capability report, proof of possession), run (tunnel client), identity file 0600, no exec path | 2026-09-29 |
