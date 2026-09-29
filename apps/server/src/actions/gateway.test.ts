@@ -1050,6 +1050,7 @@ describe('action gateway', () => {
       const secretError = new Error('SECRET-DO-NOT-ANNOUNCE');
       const failing: ActionAdapter<unknown> = {
         name: 'tier2.fail',
+        description: 'Always fails (test)',
         tier: 2,
         argsSchema: z.object({ value: z.string() }),
         describe: (args) => ({ summary: `Fail ${(args as { value: string }).value}` }),
@@ -1191,6 +1192,7 @@ describe('action gateway', () => {
       };
       const failing: ActionAdapter<unknown> = {
         name: 'tier2.boom',
+        description: 'Always throws (test)',
         tier: 2,
         argsSchema: z.object({ value: z.string() }),
         describe: (args) => ({ summary: `Boom ${(args as { value: string }).value}` }),

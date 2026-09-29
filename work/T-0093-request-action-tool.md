@@ -1,7 +1,7 @@
 ---
 id: T-0093
 title: `request_action` AI tool + dev-only demo adapter (M4, server) — an AI can ask for an approved action in the owner's DM, end to end
-status: review
+status: merged
 milestone: M4
 branch: task/T-0093-request-action-tool
 model: minimax-coding-plan/MiniMax-M3
@@ -146,4 +146,10 @@ Closed the loop T-0090 / T-0092 opened: a model in an owner's DM gets a third to
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged after lead changes. Rebased on main (T-0092 landed meanwhile); after the last edit format, lint, typecheck clean; server 823 passed, 7 skipped. No disable comments.
+
+Confirmed: the tool is offered only when at least one adapter is registered (production default: none, flag off, nothing changes); the liveness check runs before any tool call, so a stopped AI runs nothing; `aiId` and the chat (DM, no group) come from the session, never from the model, and `requestedBy` is the AI's JID; model-facing strings are fixed lines plus the adapter's success summary and the denial enum, never adapter error text; `demo.echo` is tier 2, has no I/O and exists only with `ACTION_DEMO_ENABLED=true`.
+
+Lead changes: resolved the `index.ts` conflict with T-0092 (both imports and the announcer kept); added the now-required `description` to two adapters in T-0092's tests; corrected the stale comment in `.env.example` (`EJABBERD_ADMIN_PASSWORD`).
+
+Not done: the live end-to-end check (needs a real message to an AI in Julio's DM, which needs Julio's OK). Steps are in `docs/LIVE_CHECKS_2026-09-29.md` §8.
