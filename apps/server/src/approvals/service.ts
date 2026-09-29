@@ -400,11 +400,16 @@ async function decidableGroupIdsForUser(db: ServerDatabase, userId: string): Pro
 }
 
 // The read shape: a past-due `pending` row is mapped to `expired` without
-// writing. `decided_by` is intentionally omitted.
+// writing, and so is a row the sweeper already denied (`denied`, note
+// `expired`, no human decider): the reader must not see "Denied" for a request
+// nobody denied. `decided_by` is intentionally omitted.
 export function toPublicApproval(row: ApprovalRow, now: Date): PublicApproval {
   const isPending = row.status === 'pending';
+  const sweptByTimer = row.status === 'denied' && row.note === 'expired' && row.decidedBy === null;
   const status: ApprovalStatus | 'expired' =
-    isPending && row.expiresAt.getTime() <= now.getTime() ? 'expired' : row.status;
+    sweptByTimer || (isPending && row.expiresAt.getTime() <= now.getTime())
+      ? 'expired'
+      : row.status;
 
   const hasWorstCase = row.worstCaseCurrency !== null && row.worstCaseAmount !== null;
   const worstCase = hasWorstCase

@@ -21,6 +21,7 @@ import {
   getDecidableApproval,
   listDecidableApprovals,
   MAX_PENDING_APPROVALS_PER_AI,
+  toPublicApproval,
   verifyApproval,
   type CreateApprovalInput,
 } from './service';
@@ -914,6 +915,42 @@ describe('approvals service', () => {
         .from(approvals)
         .where(eq(approvals.id, fresh.id));
       expect(stillFresh?.status).toBe('pending');
+    });
+
+    it('reads a swept request as expired, but a human denial with the same note stays denied', async () => {
+      const ownerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      const swept = await createApproval(
+        context.db,
+        approvalInput({ aiId, hash: argsHash(50), expiresAt: futureExpiresAt(now, 60_000) }),
+        now,
+      );
+      const denied = await createApproval(
+        context.db,
+        approvalInput({
+          aiId,
+          hash: argsHash(51),
+          expiresAt: futureExpiresAt(now, 60 * 60 * 1000),
+        }),
+        now,
+      );
+      await decideApproval(
+        context.db,
+        { approvalId: denied.id, userId: ownerId, decision: 'deny', note: 'expired' },
+        now,
+      );
+      await expireStale(context.db, futureExpiresAt(now, 120_000));
+
+      const [sweptRow] = await context.db
+        .select()
+        .from(approvals)
+        .where(eq(approvals.id, swept.id));
+      const [deniedRow] = await context.db
+        .select()
+        .from(approvals)
+        .where(eq(approvals.id, denied.id));
+      expect(toPublicApproval(sweptRow!, now).status).toBe('expired');
+      expect(toPublicApproval(deniedRow!, now).status).toBe('denied');
     });
 
     it('returns every swept row when several are past due', async () => {

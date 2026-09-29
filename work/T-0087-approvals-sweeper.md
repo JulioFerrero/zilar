@@ -1,7 +1,7 @@
 ---
 id: T-0087
 title: Approvals sweeper — expired pending requests are denied in the background
-status: review
+status: merged
 milestone: M4
 branch: task/T-0087-approvals-sweeper
 model: minimax-coding-plan/MiniMax-M3
@@ -115,4 +115,10 @@ The final command of the sequence was the full pipeline `pnpm format:check && pn
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved with a lead fix, merged (2026-09-29). Rebased on main; format, lint, typecheck, test (server 687 passed, 7 skipped) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand.
+
+**Lead fix:** once the sweeper turned a request into `denied` (note `expired`), the read model showed it as "Denied": the web and mobile cards would have told the owner they denied a request nobody denied. `toPublicApproval` now reads a `denied` row with note `expired` and **no human decider** (`decided_by` null) as `expired`; a human denial that happens to carry the note "expired" still reads `denied` (test added for both).
+
+**Checked:** `expireStale` keeps its conditional `WHERE status = 'pending' AND expires_at < now`, so a decision racing the sweep always wins, and returns the swept rows; the sweeper runs on an unref'd timer, first run after one interval, never overlaps (the next tick is scheduled after the previous finishes), logs `{ err }` only (no row data) and keeps going when the sweep or an audit write fails; one `approval.expired` audit entry per swept request (no actor, ids only, result `denied`); `index.ts` starts it after the server listens and closes it on shutdown.
+
+**Effect on the live server:** starts after the next restart (the lead restarts it after this merge).
