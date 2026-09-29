@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import {
   LitellmApiError,
   type AddModelInput,
@@ -1133,5 +1134,199 @@ describe('AI routes', () => {
     const logged = loggedText(logger.calls);
     expect(logged).not.toContain(PROVIDER_KEY);
     expect(logged).not.toContain('sk-virtual');
+  });
+});
+
+// T-0080: the owner kill switch through the HTTP routes. The full create /
+// list / patch / delete contract is already covered above; this suite adds
+// the two new endpoints (`POST /api/ais/:id/stop` and `/resume`) and proves
+// they answer the same 401 / 404 / 200 / 503 shape as the other writes.
+describe('AI stop / resume routes', () => {
+  let context: TestContext;
+  let testCounter = 0;
+
+  beforeEach(async () => {
+    testCounter += 1;
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  function mount(options: { litellm?: LitellmAdminClient } = {}): TestApp {
+    return createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+      connections: { cipher: createKeyCipher(MASTER_KEY), probe: new FakeProbe() },
+      ais: {
+        cipher: createKeyCipher(MASTER_KEY),
+        litellm: options.litellm ?? new FakeLitellm(),
+      },
+    });
+  }
+
+  async function addConnection(ownerId: string): Promise<string> {
+    const id = randomUUID();
+    await context.db.insert(providerConnections).values({
+      id,
+      owner: ownerId,
+      provider: 'openai',
+      encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
+      label: null,
+    });
+    return id;
+  }
+
+  async function createAiFor(ownerId: string, cookie: string): Promise<string> {
+    const connectionId = await addConnection(ownerId);
+    const response = await app.request(`${TEST_BASE_URL}/api/ais`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Dev-1',
+        template: 'dev',
+        providerConnectionId: connectionId,
+        model: 'gpt-4o-mini',
+        limits: { perDayUsd: 1, perMonthUsd: 20 },
+      }),
+    });
+    const created = (await response.json()) as { id: string };
+    return created.id;
+  }
+
+  let app: TestApp;
+
+  beforeEach(() => {
+    app = mount();
+  });
+
+  it('requires a signed-in user on every stop and resume', async () => {
+    const alice = await bootstrapUser(context, app, `killauth${testCounter}@example.com`);
+    const connectionId = await addConnection(alice.id);
+    const created = await app.request(`${TEST_BASE_URL}/api/ais`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Dev-1',
+        template: 'dev',
+        providerConnectionId: connectionId,
+        model: 'gpt-4o-mini',
+        limits: { perDayUsd: 1, perMonthUsd: 20 },
+      }),
+    });
+    const { id } = (await created.json()) as { id: string };
+
+    const stopNoAuth = await app.request(`${TEST_BASE_URL}/api/ais/${id}/stop`, {
+      method: 'POST',
+    });
+    const resumeNoAuth = await app.request(`${TEST_BASE_URL}/api/ais/${id}/resume`, {
+      method: 'POST',
+    });
+    expect([stopNoAuth.status, resumeNoAuth.status]).toEqual([401, 401]);
+  });
+
+  it('returns the same 404 for a missing and a foreign id on stop and resume', async () => {
+    const alice = await bootstrapUser(context, app, `killowner${testCounter}@example.com`);
+    const bob = await bootstrapUser(context, app, `killthief${testCounter}@example.com`);
+    const aliceId = await createAiFor(alice.id, alice.cookie);
+
+    for (const target of [aliceId, 'does-not-exist']) {
+      const stop = await app.request(`${TEST_BASE_URL}/api/ais/${target}/stop`, {
+        method: 'POST',
+        headers: { cookie: bob.cookie },
+      });
+      const resume = await app.request(`${TEST_BASE_URL}/api/ais/${target}/resume`, {
+        method: 'POST',
+        headers: { cookie: bob.cookie },
+      });
+      expect([stop.status, resume.status]).toEqual([404, 404]);
+    }
+    // Alice's AI is untouched by Bob's attempts.
+    const [row] = await context.db.select().from(ais);
+    expect(row?.status).toBe('active');
+  });
+
+  it('stop returns the public AI with status `stopped`, and resume flips it back', async () => {
+    const alice = await bootstrapUser(context, app, `killhappy${testCounter}@example.com`);
+    const id = await createAiFor(alice.id, alice.cookie);
+
+    const stopped = await app.request(`${TEST_BASE_URL}/api/ais/${id}/stop`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(stopped.status).toBe(200);
+    const stoppedBody = (await stopped.json()) as { status: string };
+    expect(stoppedBody.status).toBe('stopped');
+    const [rowAfterStop] = await context.db.select().from(ais).where(eq(ais.id, id));
+    expect(rowAfterStop?.status).toBe('stopped');
+
+    const resumed = await app.request(`${TEST_BASE_URL}/api/ais/${id}/resume`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(resumed.status).toBe(200);
+    const resumedBody = (await resumed.json()) as { status: string };
+    expect(resumedBody.status).toBe('active');
+    const [rowAfterResume] = await context.db.select().from(ais).where(eq(ais.id, id));
+    expect(rowAfterResume?.status).toBe('active');
+  });
+
+  it('a second stop on a stopped AI is a no-op 200 (idempotent) and resume on active is a no-op 200', async () => {
+    const alice = await bootstrapUser(context, app, `killidemp${testCounter}@example.com`);
+    const id = await createAiFor(alice.id, alice.cookie);
+
+    const firstStop = await app.request(`${TEST_BASE_URL}/api/ais/${id}/stop`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(firstStop.status).toBe(200);
+    const secondStop = await app.request(`${TEST_BASE_URL}/api/ais/${id}/stop`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(secondStop.status).toBe(200);
+    expect(((await secondStop.json()) as { status: string }).status).toBe('stopped');
+
+    const firstResume = await app.request(`${TEST_BASE_URL}/api/ais/${id}/resume`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(firstResume.status).toBe(200);
+    const secondResume = await app.request(`${TEST_BASE_URL}/api/ais/${id}/resume`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(secondResume.status).toBe(200);
+    expect(((await secondResume.json()) as { status: string }).status).toBe('active');
+  });
+
+  it('answers 503 for stop and resume when the gateway is not configured', async () => {
+    const unconfigured = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+    });
+    const user = await bootstrapUser(context, unconfigured, `killnogw${testCounter}@example.com`);
+
+    const stop = await unconfigured.request(`${TEST_BASE_URL}/api/ais/whatever/stop`, {
+      method: 'POST',
+      headers: { cookie: user.cookie },
+    });
+    const resume = await unconfigured.request(`${TEST_BASE_URL}/api/ais/whatever/resume`, {
+      method: 'POST',
+      headers: { cookie: user.cookie },
+    });
+    expect([stop.status, resume.status]).toEqual([503, 503]);
+    for (const response of [stop, resume]) {
+      expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+        'ais_unavailable',
+      );
+    }
   });
 });

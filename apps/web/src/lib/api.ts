@@ -246,7 +246,9 @@ const publicAiSchema = z.object({
   persona: z.string(),
   model: z.string(),
   jid: z.string(),
-  status: z.enum(['active', 'disabled']),
+  // `stopped` is the owner kill switch (T-0080): the AI is paused, not
+  // deleted, and a resume brings it back.
+  status: z.enum(['active', 'disabled', 'stopped']),
   providerConnectionId: z.string(),
   limits: aiLimitsSchema,
   usage: aiUsageSchema.nullable().optional(),
@@ -316,6 +318,18 @@ export function updateAi(id: string, input: UpdateAiInput): Promise<PublicAi> {
 
 export async function deleteAi(id: string): Promise<void> {
   await request(`/ais/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
+}
+
+// T-0080: the owner's kill switch. Both return the fresh public AI so the
+// panel can re-render against the server truth without a second GET. The
+// server answers the same `not_active` 409 when the AI was already in the
+// other terminal state, which the panel treats as a refresh cue.
+export function stopAi(id: string): Promise<PublicAi> {
+  return request(`/ais/${encodeURIComponent(id)}/stop`, publicAiSchema, { method: 'POST' });
+}
+
+export function resumeAi(id: string): Promise<PublicAi> {
+  return request(`/ais/${encodeURIComponent(id)}/resume`, publicAiSchema, { method: 'POST' });
 }
 
 export function listConnections(): Promise<Connection[]> {

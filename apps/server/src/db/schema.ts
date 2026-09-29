@@ -172,7 +172,11 @@ export const ais = pgTable(
     model: text('model').notNull(),
     localpart: text('localpart').notNull().unique(),
     jid: text('jid').notNull().unique(),
-    status: text('status', { enum: ['active', 'disabled'] })
+    // `disabled` means provisioning in progress (set by `createAi` and
+    // flipped to `active` once every step succeeded, see ais/service.ts);
+    // `stopped` is the kill-switched owner pause (T-0080). A resume must
+    // never be able to activate a `disabled` row, so the two are distinct.
+    status: text('status', { enum: ['active', 'disabled', 'stopped'] })
       .notNull()
       .default('active'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

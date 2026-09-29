@@ -14,6 +14,8 @@ import {
   getOwnedAi,
   listAis,
   MAX_MONTHLY_USD,
+  resumeAi,
+  stopAi,
   updateAi,
   type AiLimits,
   type AiLogger,
@@ -200,6 +202,25 @@ export function createAisRoutes({
     const configured = requireConfigured();
     await deleteAi(serviceDeps(configured), c.req.param('id'), user.id);
     return c.body(null, 204);
+  });
+
+  // T-0080: the owner's kill switch. Stop disconnects the AI at once and
+  // prevents the gateway from waking it back up; resume reconnects it. Both
+  // answer the public AI, so the panel can re-render against the server
+  // truth without a second GET. Same 503 as the other writes when the
+  // gateway or the key cipher is not configured.
+  routes.post('/ais/:id/stop', async (c) => {
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    const configured = requireConfigured();
+    const ai = await stopAi(serviceDeps(configured), c.req.param('id'), user.id);
+    return c.json(ai);
+  });
+
+  routes.post('/ais/:id/resume', async (c) => {
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    const configured = requireConfigured();
+    const ai = await resumeAi(serviceDeps(configured), c.req.param('id'), user.id);
+    return c.json(ai);
   });
 
   return routes;

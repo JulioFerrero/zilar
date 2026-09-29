@@ -7,6 +7,8 @@ import {
   getAi,
   listAis,
   listConnections,
+  resumeAi,
+  stopAi,
   updateAi,
   type Connection,
   type PublicAi,
@@ -120,6 +122,16 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  // T-0080: the owner kill switch. `confirmingStop` mirrors the delete
+  // confirm step (one tap to arm, one tap to act) so a stray click on the
+  // destructive button is harmless. While the network call is in flight the
+  // button stays disabled and an inline error shows on failure, like the
+  // other panel actions.
+  const [confirmingStop, setConfirmingStop] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState('');
+  const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -300,6 +312,55 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     }
   };
 
+  // T-0080: stop the AI. The server returns the fresh public AI so the
+  // panel re-renders against the server truth (the `stopped` label appears
+  // immediately); a 409 (the AI was already in another terminal state)
+  // refetches to align the UI with the server.
+  const confirmStop = async (): Promise<void> => {
+    if (ai === null) {
+      return;
+    }
+    setStopping(true);
+    setStopError('');
+    try {
+      const fresh = await stopAi(ai.id);
+      setAi(fresh);
+    } catch (error) {
+      setStopError(describeAiError(error, 'Could not stop the AI').message);
+      try {
+        setAi(await getAi(ai.id));
+      } catch {
+        // The refetch is best-effort; the inline error stays visible.
+      }
+    } finally {
+      setStopping(false);
+      setConfirmingStop(false);
+    }
+  };
+
+  // T-0080: resume. Same shape as `confirmStop`: the server's answer is the
+  // source of truth for the new status, and a 409 just refetches.
+  const confirmResume = async (): Promise<void> => {
+    if (ai === null) {
+      return;
+    }
+    setResuming(true);
+    setResumeError('');
+    try {
+      const fresh = await resumeAi(ai.id);
+      setAi(fresh);
+    } catch (error) {
+      setResumeError(describeAiError(error, 'Could not resume the AI').message);
+      try {
+        setAi(await getAi(ai.id));
+      } catch {
+        // The refetch is best-effort; the inline error stays visible.
+      }
+    } finally {
+      setResuming(false);
+    }
+  };
+
   return (
     <div
       role="dialog"
@@ -318,6 +379,14 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
             <div className="flex items-center gap-1.5">
               <span className="truncate text-[16px] font-semibold">{ai?.name ?? chat.title}</span>
               <AiBadge />
+              {/* T-0080: a stopped AI gets a clear "Stopped" label near the
+                  name so the owner sees the kill-switch state at a glance,
+                  even before opening the panel body. */}
+              {ai !== null && ai.status === 'stopped' && (
+                <span className="rounded-full border border-divider px-2 py-0.5 text-[12px] font-medium text-muted-foreground">
+                  Stopped
+                </span>
+              )}
             </div>
             <p className="text-[13px] text-muted-foreground">AI settings</p>
           </div>
@@ -425,6 +494,80 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
                   Saved
                 </p>
               )}
+
+              {/* T-0080: the owner's kill switch. When the AI is `active` a
+                  Stop button arms the destructive action (matching the
+                  delete confirm); when the AI is `stopped` a Resume button
+                  brings it back without a confirm step (the call is
+                  idempotent on `active` already, so it cannot fail loudly).
+                  Inline errors land in `stopError` / `resumeError` like the
+                  other panel actions. The error renders above the buttons,
+                  not inside the confirm branch, so it survives the
+                  confirm step resetting on a failed call. */}
+              <div className="mt-1 flex flex-col gap-2 border-t border-divider pt-4">
+                {ai.status === 'active' && stopError !== '' && <FieldError>{stopError}</FieldError>}
+                {ai.status === 'active' &&
+                  (confirmingStop ? (
+                    <>
+                      <p className="text-[14px] text-danger">
+                        Stop {ai.name}? It goes offline at once and any reply in flight is dropped.
+                        Resume to bring it back.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="lg"
+                          className="rounded-full px-4"
+                          disabled={stopping}
+                          onClick={() => void confirmStop()}
+                        >
+                          {stopping ? 'Stopping…' : 'Stop AI'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="lg"
+                          className="rounded-full px-4"
+                          disabled={stopping}
+                          onClick={() => {
+                            setConfirmingStop(false);
+                            setStopError('');
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="lg"
+                      className="self-start rounded-full px-4"
+                      onClick={() => {
+                        setConfirmingStop(true);
+                        setStopError('');
+                      }}
+                    >
+                      Stop AI
+                    </Button>
+                  ))}
+                {ai.status === 'stopped' && (
+                  <>
+                    {resumeError !== '' && <FieldError>{resumeError}</FieldError>}
+                    <Button
+                      type="button"
+                      size="lg"
+                      className="self-start rounded-full px-4"
+                      disabled={resuming}
+                      onClick={() => void confirmResume()}
+                    >
+                      {resuming ? 'Resuming…' : 'Resume'}
+                    </Button>
+                  </>
+                )}
+              </div>
 
               <div className="mt-1 flex flex-col gap-2 border-t border-divider pt-4">
                 {confirmingDelete ? (

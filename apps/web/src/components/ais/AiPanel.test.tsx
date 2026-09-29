@@ -111,6 +111,78 @@ function mockPanelFetch(
   return fetchMock;
 }
 
+// T-0080: a richer mock for the kill-switch panel tests. `state` is the
+// server's view of the AI; `stop` and `resume` answers are produced from
+// it (stop flips status to `stopped`, resume back to `active`); the AI
+// list endpoint always answers `[state]`. PATCH/DELETE keep the same
+// shape as `mockPanelFetch` for symmetry.
+function mockPanelFetchWithState(
+  initial: Record<string, unknown>,
+  options: {
+    connections?: unknown[];
+    patch?: unknown;
+    patchError?: { status: number; message: string };
+    /** When set, /ais/:id/stop returns 503 (gateway not configured). */
+    stopError?: { status: number; message: string };
+    /** When set, /ais/:id/resume returns 503 (gateway not configured). */
+    resumeError?: { status: number; message: string };
+  } = {},
+): { fetchMock: ReturnType<typeof vi.fn>; getState: () => Record<string, unknown> } {
+  let state = { ...initial };
+  const getState = (): Record<string, unknown> => state;
+  const connections = options.connections ?? [openaiConnection];
+  const patch = options.patch ?? state;
+  const patchError = options.patchError;
+  const stopError = options.stopError;
+  const resumeError = options.resumeError;
+  const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+    const target = String(url);
+    const method = (init?.method ?? 'GET').toUpperCase();
+    if (method === 'PATCH' && /\/ais\/[^/]+$/.test(target)) {
+      if (patchError !== undefined) {
+        return jsonResponse(patchError.status, {
+          error: { code: 'ai_update_failed', message: patchError.message },
+        });
+      }
+      state = { ...state, ...(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>) };
+      return jsonResponse(200, state);
+    }
+    if (method === 'POST' && target.endsWith('/stop')) {
+      if (stopError !== undefined) {
+        // Mirrors the real error shape: a 502 from the gateway becomes a
+        // `not_active`-or-similar code; the panel's `describeAiError` only
+        // recognises a fixed set, so the test exercises one of them.
+        return jsonResponse(stopError.status, {
+          error: { code: 'ai_update_failed', message: stopError.message },
+        });
+      }
+      state = { ...state, status: 'stopped' };
+      return jsonResponse(200, state);
+    }
+    if (method === 'POST' && target.endsWith('/resume')) {
+      if (resumeError !== undefined) {
+        return jsonResponse(resumeError.status, {
+          error: { code: 'ai_update_failed', message: resumeError.message },
+        });
+      }
+      state = { ...state, status: 'active' };
+      return jsonResponse(200, state);
+    }
+    if (target.includes('/connections')) {
+      return jsonResponse(200, connections);
+    }
+    if (method === 'DELETE') {
+      return jsonResponse(204, null);
+    }
+    if (/\/ais\/[^/]+$/.test(target) && method === 'GET') {
+      return jsonResponse(200, patch);
+    }
+    return jsonResponse(200, [state]);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return { fetchMock, getState };
+}
+
 function renderPanel() {
   const store = createChatStore({ chats: [chat] });
   const onClose = vi.fn();
@@ -400,5 +472,158 @@ describe('AiPanel', () => {
       providerConnectionId: 'c-2',
     });
     expect(await screen.findByRole('status')).toBeTruthy();
+  });
+
+  // T-0080: the owner kill switch. The panel renders a "Stop AI" button
+  // with a confirm step for an active AI, and a "Stopped" label plus a
+  // "Resume" button for a stopped AI. While the call is in flight the
+  // button is disabled; errors show inline like the other panel actions.
+  describe('kill switch (T-0080)', () => {
+    it('shows a Stop AI button with a confirm step for an active AI', async () => {
+      mockPanelFetchWithState({ ...ai, status: 'active' });
+      renderPanel();
+      await screen.findByDisplayValue('Dev-1');
+
+      // First tap arms the destructive action.
+      fireEvent.click(screen.getByRole('button', { name: 'Stop AI' }));
+      expect(
+        screen.getByText(/Stop Dev-1\? It goes offline at once and any reply in flight is dropped/),
+      ).toBeTruthy();
+    });
+
+    it('the second tap POSTs /ais/:id/stop and shows the new status on success', async () => {
+      const { fetchMock, getState } = mockPanelFetchWithState({ ...ai, status: 'active' });
+      renderPanel();
+      await screen.findByDisplayValue('Dev-1');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Stop AI' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Stop AI' }));
+
+      // The fetch fired for /stop and answered with the stopped AI.
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(
+            (call) =>
+              String(call[0]).endsWith('/ais/a-1/stop') &&
+              ((call[1] as RequestInit)?.method ?? 'GET') === 'POST',
+          ),
+        ).toBe(true),
+      );
+      expect(getState().status).toBe('stopped');
+      // The Stop AI button is gone; the Stopped label and Resume button
+      // appear instead.
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Stop AI' })).toBeNull());
+      expect(screen.getByText('Stopped')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy();
+    });
+
+    it('disables the Stop AI button while the call is in flight', async () => {
+      let release!: (response: Response) => void;
+      const pending = new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+      const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+        const target = String(url);
+        if (target.includes('/connections')) return jsonResponse(200, [openaiConnection]);
+        if (target.endsWith('/stop')) return pending;
+        if (target.endsWith('/resume')) return jsonResponse(200, { ...ai, status: 'active' });
+        if ((init?.method ?? 'GET') === 'DELETE') return jsonResponse(204, null);
+        if (/\/ais\/[^/]+$/.test(target)) return jsonResponse(200, ai);
+        return jsonResponse(200, [ai]);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderPanel();
+      await screen.findByDisplayValue('Dev-1');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Stop AI' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Stop AI' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Stopping…' })).toBeTruthy());
+      expect(
+        (screen.getByRole('button', { name: 'Stopping…' }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+
+      release(jsonResponse(200, { ...ai, status: 'stopped' }));
+      expect(await screen.findByText('Stopped')).toBeTruthy();
+    });
+
+    it('shows an inline error and keeps the active state when stop fails', async () => {
+      const { fetchMock } = mockPanelFetchWithState(
+        { ...ai, status: 'active' },
+        {
+          stopError: { status: 502, message: 'Could not stop the AI' },
+        },
+      );
+      renderPanel();
+      await screen.findByDisplayValue('Dev-1');
+
+      // First click arms the destructive action; the confirm copy appears.
+      fireEvent.click(screen.getByRole('button', { name: 'Stop AI' }));
+      // Second click confirms — the network call fails and the inline
+      // error lands above the buttons, while the confirm step resets.
+      fireEvent.click(screen.getByRole('button', { name: 'Stop AI' }));
+
+      // The fetch fired for /stop and answered with the error.
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(
+            (call) =>
+              String(call[0]).endsWith('/ais/a-1/stop') &&
+              ((call[1] as RequestInit)?.method ?? 'GET') === 'POST',
+          ),
+        ).toBe(true),
+      );
+      // The AI stays active (no Stopped label) and the inline error lands
+      // above the buttons. The Stop AI button reappears (confirm resets).
+      await waitFor(() => expect(screen.queryByText('Stopped')).toBeNull());
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Stop AI' })).toBeTruthy());
+      expect(
+        screen.getByText("The server couldn't finish. Nothing was left half-created; try again."),
+      ).toBeTruthy();
+    });
+
+    it('for a stopped AI, renders the Stopped label and a Resume button that POSTs /resume', async () => {
+      const { fetchMock } = mockPanelFetchWithState({ ...ai, status: 'stopped' });
+      renderPanel();
+      // The label appears in the header at first paint.
+      expect(await screen.findByText('Stopped')).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(
+            (call) =>
+              String(call[0]).endsWith('/ais/a-1/resume') &&
+              ((call[1] as RequestInit)?.method ?? 'GET') === 'POST',
+          ),
+        ).toBe(true),
+      );
+      // After the server answers, the panel re-renders against the new
+      // status (active): the Stop AI button reappears, Stopped label is
+      // gone.
+      await waitFor(() => expect(screen.queryByText('Stopped')).toBeNull());
+      expect(screen.getByRole('button', { name: 'Stop AI' })).toBeTruthy();
+    });
+
+    it('keeps the stopped state and shows an inline error when resume fails', async () => {
+      mockPanelFetchWithState(
+        { ...ai, status: 'stopped' },
+        {
+          resumeError: { status: 502, message: 'Could not resume the AI' },
+        },
+      );
+      renderPanel();
+      expect(await screen.findByText('Stopped')).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+      expect(
+        await screen.findByText(
+          "The server couldn't finish. Nothing was left half-created; try again.",
+        ),
+      ).toBeTruthy();
+      // The AI is still stopped.
+      expect(screen.getByText('Stopped')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy();
+    });
   });
 });

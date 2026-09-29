@@ -176,4 +176,19 @@ describe('createAisApi', () => {
     await expect(api.listAis()).rejects.toMatchObject({ status: 401, code: 'unauthorized' });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  // T-0080: a stopped AI is still a valid AI — the type guard accepts the
+  // new value so the list screen renders a paused AI instead of failing
+  // the whole response. Mobile only consumes the AI list today, so we just
+  // exercise the guard.
+  it('lists AIs with status `stopped` (T-0080 kill switch)', async () => {
+    const stopped = {
+      ...createdAi,
+      status: 'stopped',
+    };
+    const fetchImpl = vi.fn(async () => jsonResponse([stopped]));
+    const api = createAisApi(async () => 'session-token', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.listAis()).resolves.toEqual([stopped]);
+  });
 });

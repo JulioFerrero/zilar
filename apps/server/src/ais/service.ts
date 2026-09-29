@@ -38,7 +38,10 @@ export interface PublicAi {
   persona: string;
   model: string;
   jid: string;
-  status: 'active' | 'disabled';
+  // `stopped` is the kill-switch (T-0080): the owner paused the AI. It is
+  // distinct from `disabled` (provisioning in progress), so a resume can
+  // never be allowed to flip a half-built AI to `active`.
+  status: 'active' | 'disabled' | 'stopped';
   providerConnectionId: string;
   limits: AiLimits;
   createdAt: Date;
@@ -123,10 +126,15 @@ export async function listActiveAisForGateway(db: ServerDatabase): Promise<Activ
     .orderBy(asc(ais.createdAt));
 }
 
-// In-process notifier so the gateway learns about created and deleted AIs
-// without polling. The gateway also reconciles periodically as a safety net,
-// so a missed event only delays a connect, never loses it.
-export type AiLifecycleEvent = { type: 'created' | 'deleted'; aiId: string };
+// In-process notifier so the gateway learns about created, deleted,
+// stopped and resumed AIs without polling. The gateway also reconciles
+// periodically as a safety net, so a missed event only delays a connect,
+// never loses it. T-0080 added `stopped`/`resumed` for the owner kill switch:
+// `stopped` disconnects the AI at once; `resumed` reconnects it.
+export type AiLifecycleEvent = {
+  type: 'created' | 'deleted' | 'stopped' | 'resumed';
+  aiId: string;
+};
 
 const aiLifecycleListeners = new Set<(event: AiLifecycleEvent) => void>();
 
@@ -586,6 +594,95 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
   emitAiLifecycle({ type: 'deleted', aiId: ai.id });
 }
 
+// Stops an AI (T-0080): owner-only. Accepts only `active`, answers the same
+// 404 as `getOwnedAi` for a foreign or missing id (so existence is never
+// leaked). Idempotent on `stopped` (returns the AI unchanged). `disabled` —
+// provisioning still in flight — answers 409 `not_active` so a resume can
+// never accidentally flip a half-built AI to `active`. The conditional update
+// (`WHERE status = 'active'`) keeps a resume racing a delete from
+// resurrecting anything: a delete wins because the row is gone, and a second
+// stop wins because the row already left `active`.
+export async function stopAi(deps: AiServiceDeps, id: string, ownerId: string): Promise<PublicAi> {
+  const ai = await findOwnedAi(deps.db, id, ownerId);
+  if (!ai) {
+    throw new HttpError(404, 'not_found', 'AI not found');
+  }
+  if (ai.status === 'stopped') {
+    return toPublicAi(ai);
+  }
+  if (ai.status === 'disabled') {
+    throw new HttpError(409, 'not_active', 'AI is not active');
+  }
+  const updated = await deps.db
+    .update(ais)
+    .set({ status: 'stopped', updatedAt: new Date() })
+    .where(and(eq(ais.id, ai.id), eq(ais.status, 'active')))
+    .returning();
+  if (updated.length === 0) {
+    // A concurrent stop/resume/delete raced between the read and the update.
+    // Re-read under the owner's view: if the row is now `stopped`, return it
+    // (idempotent success); otherwise surface the same 409 as above.
+    const fresh = await findOwnedAi(deps.db, ai.id, ownerId);
+    if (fresh === null) {
+      throw new HttpError(404, 'not_found', 'AI not found');
+    }
+    if (fresh.status === 'stopped') {
+      return toPublicAi(fresh);
+    }
+    throw new HttpError(409, 'not_active', 'AI is not active');
+  }
+  emitAiLifecycle({ type: 'stopped', aiId: ai.id });
+  const reloaded = await findOwnedAi(deps.db, ai.id, ownerId);
+  if (reloaded === null) {
+    // The row was deleted between the update and the read; the lifecycle
+    // event already went out, and the caller gets a 404-shape answer.
+    throw new HttpError(404, 'not_found', 'AI not found');
+  }
+  return toPublicAi(reloaded);
+}
+
+// Resumes an AI (T-0080): owner-only, mirror of `stopAi`. Accepts only
+// `stopped`, idempotent on `active`, 409 on `disabled`. The conditional update
+// makes a resume racing a stop or delete a no-op: the row either is `stopped`
+// still (stop won) or no longer exists (delete won).
+export async function resumeAi(
+  deps: AiServiceDeps,
+  id: string,
+  ownerId: string,
+): Promise<PublicAi> {
+  const ai = await findOwnedAi(deps.db, id, ownerId);
+  if (!ai) {
+    throw new HttpError(404, 'not_found', 'AI not found');
+  }
+  if (ai.status === 'active') {
+    return toPublicAi(ai);
+  }
+  if (ai.status === 'disabled') {
+    throw new HttpError(409, 'not_active', 'AI is not active');
+  }
+  const updated = await deps.db
+    .update(ais)
+    .set({ status: 'active', updatedAt: new Date() })
+    .where(and(eq(ais.id, ai.id), eq(ais.status, 'stopped')))
+    .returning();
+  if (updated.length === 0) {
+    const fresh = await findOwnedAi(deps.db, ai.id, ownerId);
+    if (fresh === null) {
+      throw new HttpError(404, 'not_found', 'AI not found');
+    }
+    if (fresh.status === 'active') {
+      return toPublicAi(fresh);
+    }
+    throw new HttpError(409, 'not_active', 'AI is not active');
+  }
+  emitAiLifecycle({ type: 'resumed', aiId: ai.id });
+  const reloaded = await findOwnedAi(deps.db, ai.id, ownerId);
+  if (reloaded === null) {
+    throw new HttpError(404, 'not_found', 'AI not found');
+  }
+  return toPublicAi(reloaded);
+}
+
 // Deletes every LiteLLM model registered under `modelName`: the live id and
 // any stray an earlier attempt left behind (a crash between `addModel` and the
 // row update). A stray that cannot be deleted is logged, never thrown: the
@@ -896,7 +993,7 @@ interface AiRecord {
   model: string;
   jid: string;
   localpart: string;
-  status: 'active' | 'disabled';
+  status: 'active' | 'disabled' | 'stopped';
   providerConnectionId: string;
   createdAt: Date;
   perDayUsd: string;

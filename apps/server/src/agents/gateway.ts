@@ -1,6 +1,8 @@
 import {
   createXmppCore,
+  type ChatKind,
   type ChatMessage,
+  type SendMessageOptions,
   type XmppCore,
   type XmppCoreOptions,
 } from '@galena/xmpp-core';
@@ -466,6 +468,57 @@ export function createAgentGateway(
     }, delay);
   }
 
+  // Whether a session is still owned by the gateway. T-0080: every send path
+  // a running AI turn triggers — DM reply, group reply, budget warnings,
+  // daily-limit notice, drafts, persona-tool notice — checks this right
+  // before it sends, so a stop that lands mid-turn drops the reply rather
+  // than delivering it. `disconnectAi` flips `stopped` to `true` and removes
+  // the session from the map; both checks together cover the race.
+  function sessionIsLive(session: AiSession): boolean {
+    return !session.stopped && sessions.get(session.aiId) === session;
+  }
+
+  // Wraps `core.sendMessage` so any send during a turn is skipped the moment
+  // the AI is stopped. The skip resolves with an empty id, which matches
+  // what `sendMessage` returns for a successful send — the caller still
+  // sees a successful path, only the wire never carries the text.
+  function liveSendMessage(
+    session: AiSession,
+    to: string,
+    kind: ChatKind,
+    text: string,
+    opts?: SendMessageOptions,
+  ): Promise<{ id: string }> {
+    if (!sessionIsLive(session)) {
+      return Promise.resolve({ id: '' });
+    }
+    return session.core.sendMessage(to, kind, text, opts);
+  }
+
+  function liveSendTyping(
+    session: AiSession,
+    to: string,
+    kind: ChatKind,
+    state: 'composing' | 'paused',
+  ): void {
+    if (!sessionIsLive(session)) {
+      return;
+    }
+    session.core.sendTyping(to, kind, state);
+  }
+
+  function liveMarkDisplayed(
+    session: AiSession,
+    chatJid: string,
+    kind: ChatKind,
+    messageId: string,
+  ): void {
+    if (!sessionIsLive(session)) {
+      return;
+    }
+    session.core.markDisplayed(chatJid, kind, messageId);
+  }
+
   async function connectAi(record: ActiveAiForGateway): Promise<void> {
     if (!started || sessions.has(record.id) || superseded.has(record.id)) {
       return;
@@ -865,12 +918,14 @@ export function createAgentGateway(
     // call: a limited AI sends at most one fixed notice per room per UTC day
     // (a plain room message, no mention) and further mentions get nothing.
     // The usage read also decides the 80% warnings, which go out after the
-    // reply below — never for a skipped or rate-limited turn.
+    // reply below — never for a skipped or rate-limited turn. The notice
+    // goes through `liveSendMessage` so a stop that lands between the spend
+    // read and the notice is silently dropped.
     const groupChatKey = `room:${roomJid}`;
     const groupBudget = await checkDailyLimit({
       aiId: session.aiId,
       chatKey: groupChatKey,
-      sendNotice: (text) => session.core.sendMessage(roomJid, 'groupchat', text),
+      sendNotice: (text) => liveSendMessage(session, roomJid, 'groupchat', text),
     });
     if (groupBudget.limited) {
       return;
@@ -951,7 +1006,9 @@ export function createAgentGateway(
 
       // No persona tools in groups and no drafts: the reply goes straight to
       // the room with `composing`/`paused` chat states around it. The 80%
-      // warnings go out after it, so the owner reads the answer first.
+      // warnings go out after it, so the owner reads the answer first. The
+      // `live*` wrappers drop the reply when the AI was stopped between the
+      // mention arriving and the LLM call resolving.
       await runGroupTurn({
         aiId: session.aiId,
         roomJid,
@@ -963,9 +1020,9 @@ export function createAgentGateway(
         virtualKey,
         model: modelNameForAi(session.aiId),
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
-        sendMessage: (to, kind, text, opts) => session.core.sendMessage(to, kind, text, opts),
+        sendMessage: (to, kind, text, opts) => liveSendMessage(session, to, kind, text, opts),
         sendTyping: (to, kind, state) => {
-          session.core.sendTyping(to, kind, state);
+          liveSendTyping(session, to, kind, state);
         },
         logger,
         secrets: secretsFor(),
@@ -974,7 +1031,7 @@ export function createAgentGateway(
         aiId: session.aiId,
         chatKey: groupChatKey,
         usage: groupBudget.usage,
-        sendWarning: (text) => session.core.sendMessage(roomJid, 'groupchat', text),
+        sendWarning: (text) => liveSendMessage(session, roomJid, 'groupchat', text),
       });
     } catch (error) {
       // ensureAiModel, the key lookup and anything else outside the turn: an
@@ -986,7 +1043,7 @@ export function createAgentGateway(
       const reply = mapFailureToReply(error);
       const name = senderName.trim() === '' ? normBareJid(trigger.fromJid) : senderName.trim();
       try {
-        await session.core.sendMessage(roomJid, 'groupchat', `@${name} ${reply}`, {
+        await liveSendMessage(session, roomJid, 'groupchat', `@${name} ${reply}`, {
           replyTo: { id: trigger.id },
           mentions: [{ jid: normBareJid(trigger.fromJid), begin: 0, end: name.length + 1 }],
         });
@@ -994,7 +1051,7 @@ export function createAgentGateway(
         // There is nobody left to tell when the send itself fails.
       }
       try {
-        session.core.sendTyping(roomJid, 'groupchat', 'paused');
+        liveSendTyping(session, roomJid, 'groupchat', 'paused');
       } catch {
         // Typing state is best-effort.
       }
@@ -1053,8 +1110,10 @@ export function createAgentGateway(
     // `ChatMessage.id`, the same id the owner's client stores and matches
     // received markers against (the archive stanza-id when known, else the
     // stanza id). Only owner messages are ever marked: strangers and other
-    // AIs returned above, before this point.
-    session.core.markDisplayed(ownerJid, 'chat', trigger.id);
+    // AIs returned above, before this point. The `liveMarkDisplayed` wrapper
+    // drops the marker when the AI was stopped between the message arriving
+    // and the marker going out.
+    liveMarkDisplayed(session, ownerJid, 'chat', trigger.id);
 
     // The soft daily limit holds even when the marker above already went out:
     // a limited AI answers with at most one notice per day, and further
@@ -1064,7 +1123,7 @@ export function createAgentGateway(
     const dmBudget = await checkDailyLimit({
       aiId: session.aiId,
       chatKey: dmChatKey,
-      sendNotice: (text) => session.core.sendMessage(ownerJid, 'chat', text),
+      sendNotice: (text) => liveSendMessage(session, ownerJid, 'chat', text),
     });
     if (dmBudget.limited) {
       return;
@@ -1136,7 +1195,11 @@ export function createAgentGateway(
       });
 
       // `end` always comes after the final XMPP message: `runDmTurn` sends
-      // it before resolving.
+      // it before resolving. Every send and draft push is gated by a
+      // `live*` wrapper so a stop that lands between the LLM call and the
+      // final send drops the reply (and every draft) instead of delivering
+      // it. The `end` itself runs unconditionally so the owner's client
+      // sees the turn terminate instead of hanging.
       const outcome = await runDmTurn({
         aiId: session.aiId,
         ownerJid,
@@ -1147,19 +1210,23 @@ export function createAgentGateway(
         executeTool: executePersonaTool(session.aiId),
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
         onDelta: (textSoFar) => {
-          turnDrafts.push(textSoFar);
+          if (sessionIsLive(session)) {
+            turnDrafts.push(textSoFar);
+          }
         },
         beforeFinalSend: (text) => {
-          turnDrafts.flush(text);
+          if (sessionIsLive(session)) {
+            turnDrafts.flush(text);
+          }
         },
-        sendMessage: (to, kind, text) => session.core.sendMessage(to, kind, text),
+        sendMessage: (to, kind, text) => liveSendMessage(session, to, kind, text),
         sendTyping: (to, kind, state) => {
-          session.core.sendTyping(to, kind, state);
+          liveSendTyping(session, to, kind, state);
         },
         logger,
         secrets: secretsFor(),
       });
-      turnDrafts.end(outcome.kind === 'replied' ? 'sent' : 'failed');
+      turnDrafts.end(outcome.kind === 'replied' && sessionIsLive(session) ? 'sent' : 'failed');
       // The 80% heads-ups go out after the reply, so the owner reads the
       // answer first. A failed warning send only logs and never fails the
       // turn.
@@ -1167,7 +1234,7 @@ export function createAgentGateway(
         aiId: session.aiId,
         chatKey: dmChatKey,
         usage: dmBudget.usage,
-        sendWarning: (text) => session.core.sendMessage(ownerJid, 'chat', text),
+        sendWarning: (text) => liveSendMessage(session, ownerJid, 'chat', text),
       });
     } catch (error) {
       // ensureAiModel, the key lookup and anything else outside the turn: an
@@ -1178,14 +1245,14 @@ export function createAgentGateway(
       );
       const reply = mapFailureToReply(error);
       try {
-        await session.core.sendMessage(ownerJid, 'chat', reply);
+        await liveSendMessage(session, ownerJid, 'chat', reply);
       } catch {
         // There is nobody left to tell when the send itself fails.
       }
       // The failed `end` goes out only after the failure text was sent (or
       // its send was attempted): the contract promises `end` comes last.
       try {
-        session.core.sendTyping(ownerJid, 'chat', 'paused');
+        liveSendTyping(session, ownerJid, 'chat', 'paused');
       } catch {
         // Typing state is best-effort.
       }
@@ -1213,7 +1280,10 @@ export function createAgentGateway(
         if (!started) {
           return;
         }
-        if (event.type === 'created') {
+        if (event.type === 'created' || event.type === 'resumed') {
+          // `loadActiveAi` is the same `WHERE status = 'active'` filter the
+          // periodic reconcile uses (T-0080): a `stopped` or `disabled` row
+          // never wakes the gateway back up, even on the notifier path.
           void loadActiveAi(deps.db, event.aiId)
             .then((record) => {
               if (record !== null) {
@@ -1223,14 +1293,24 @@ export function createAgentGateway(
             .catch((error: unknown) => {
               logger.warn(
                 { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
-                'AI post-create connect failed',
+                event.type === 'created'
+                  ? 'AI post-create connect failed'
+                  : 'AI post-resume connect failed',
               );
             });
         } else {
+          // `stopped` and `deleted` both go through `disconnectAi`: the
+          // session is removed from the map, `session.stopped` is set so
+          // every send path skips, and queued turns are dropped with the
+          // session. For `stopped` the periodic safety net never reconnects
+          // (the row is no longer in `listActiveAisForGateway`); a delete
+          // tears the row down on its own.
           void disconnectAi(event.aiId).catch((error: unknown) => {
             logger.warn(
               { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
-              'AI post-delete disconnect failed',
+              event.type === 'stopped'
+                ? 'AI post-stop disconnect failed'
+                : 'AI post-delete disconnect failed',
             );
           });
         }
