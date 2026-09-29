@@ -1,7 +1,7 @@
 ---
 id: T-0102
 title: Tool sandbox: run AI-written JavaScript in QuickJS with an allowlisted, SSRF-safe fetch
-status: review
+status: merged
 milestone: M4
 branch: task/T-0102-tool-sandbox
 model: meta/muse-spark-1.3-contributor
@@ -254,10 +254,13 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged after one round. Server suite 1001 passed (worker run), format, lint, typecheck, build clean; no disable comments; one dependency added as allowed (`quickjs-emscripten`).
 
 ### Findings
--
+- Round 1 caught a real bug I reproduced: the CPU limit was measured from worker start, so time spent waiting on `fetch` counted as CPU (an 800 ms fetch plus a 200 000-iteration loop failed with `timeout` at `cpuMs: 300`). Fixed by accounting only for time inside the VM (enter/exit segments around every VM entry); the repro now returns its result; a busy loop still times out; a hanging fetch still ends by the wall clock.
+- Also fixed: no re-entrant `executePendingJobs()` inside host functions, IPv6 6to4 / Teredo / site-local blocked, the worker's `tsx` hook is resolved by absolute path (works from any working directory), dead `buildHostHeaders` removed, `fetch_denied:` prefix once.
+- Read the whole boundary: the VM gets only `fetch` and `console`; the parent validates every fetch (https only, GET/HEAD, exact host allowlist, DNS resolved by us with every address checked, connection pinned to the validated IP with SNI/Host kept, no redirects, response cap, count cap in the worker); results cross as JSON strings validated with zod; one worker and one runtime per run, terminated on the wall clock.
 
 ### Follow-ups
--
+- QuickJS itself is unaudited; the docs say so. Keep the sandbox behind `TOOLS_ENABLED` (T-0105) and off by default.
+- The tool runs on the server: a runner-desk executor can reuse the same tool format later.
