@@ -1,7 +1,7 @@
 ---
 id: T-0070
 title: Machines page (web) — add a machine with a pairing code, approve or deny new machines, rename, revoke, delete
-status: review
+status: merged
 milestone: M3
 branch: task/T-0070-machines-web
 model: minimax-coding-plan/MiniMax-M3
@@ -155,10 +155,16 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved.
+
+**Approved and merged by Claude.** Built on MiniMax M3 (OpenCode Go has no funds); no Muse pre-review, so I read the client and compared it with the real server. Verified after rebasing onto `main`: every changed path is inside Allowed files; `format:check`, `lint`, `typecheck`, `test` (web 452 passed) and `build` pass; no new dependencies.
+
+What I checked: the schemas in `lib/api.ts` match `apps/server/src/machines/routes.ts` (a bare array for the list, `{ code, expiresAt }` for pairing codes, full machine objects for approve, revoke and rename, `204` for deny and delete, which the shared `request()` already turns into `null`); `online` is optional, so the page works before T-0071 and gets the flag after it; destructive steps (deny, revoke, delete) use a second click; the add dialog shows the code, a copy key, a live countdown with an expired state, and the runner command labelled "The runner app is coming soon", so nothing claims the runner works today.
+
+**Visual check is still open:** the worker could not save screenshots (the DevTools page exposes no window id to `screencapture`) and only looked at the page in a browser preview. Julio should open Settings → Machines (or `/settings/machines?mock=1` on the dev server) and look at the three card kinds, the add dialog and the confirm steps at desktop and phone width.
 
 ### Findings
--
+1. *(No change needed.)* No screenshots are committed (disclosed).
 
 ### Follow-ups
--
+- After T-0071 merges, the `online` pill shows real data.
