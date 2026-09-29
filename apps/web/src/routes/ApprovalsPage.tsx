@@ -38,6 +38,9 @@ export function ApprovalsPage() {
   const [now, setNow] = useState<Date>(() => new Date());
   const noticeTimer = useRef<number | null>(null);
   const mounted = useRef(true);
+  // Requests decided in this session: a list response that was already in
+  // flight when the decision landed must not bring their rows back.
+  const decidedIds = useRef(new Set<string>());
 
   const showNotice = useCallback((message: string, durationMs: number): void => {
     setNotice(message);
@@ -50,38 +53,51 @@ export function ApprovalsPage() {
     }, durationMs);
   }, []);
 
-  const load = useCallback(async (showLoading: boolean) => {
-    if (showLoading) {
-      setStatus('loading');
+  const applyList = useCallback((list: PublicApproval[]): void => {
+    if (!mounted.current) {
+      return;
     }
-    try {
-      const list = await listApprovals();
-      if (!mounted.current) {
-        return;
-      }
-      setRows((previous) => {
-        const next: RowsById = {};
-        for (const approval of list) {
-          const prior = previous[approval.id];
-          next[approval.id] = {
-            approval,
-            busy: null,
-            error: '',
-            ...(prior === undefined ? {} : { busy: prior.busy, error: prior.error }),
-          };
+    setRows((previous) => {
+      const next: RowsById = {};
+      for (const approval of list) {
+        if (decidedIds.current.has(approval.id)) {
+          continue;
         }
-        return next;
-      });
-      setStatus('ready');
-      setErrorMessage('');
-    } catch (error) {
-      if (!mounted.current) {
-        return;
+        const prior = previous[approval.id];
+        next[approval.id] = {
+          approval,
+          busy: null,
+          error: '',
+          ...(prior === undefined ? {} : { busy: prior.busy, error: prior.error }),
+        };
       }
-      setStatus('error');
-      setErrorMessage(error instanceof Error ? error.message : 'Could not load your approvals.');
-    }
+      return next;
+    });
+    setStatus('ready');
+    setErrorMessage('');
   }, []);
+
+  const applyError = useCallback((error: unknown): void => {
+    if (!mounted.current) {
+      return;
+    }
+    setStatus('error');
+    setErrorMessage(error instanceof Error ? error.message : 'Could not load your approvals.');
+  }, []);
+
+  const load = useCallback(
+    async (showLoading: boolean) => {
+      if (showLoading) {
+        setStatus('loading');
+      }
+      try {
+        applyList(await listApprovals());
+      } catch (error) {
+        applyError(error);
+      }
+    },
+    [applyList, applyError],
+  );
 
   useEffect(() => {
     mounted.current = true;
@@ -94,11 +110,11 @@ export function ApprovalsPage() {
     };
   }, []);
 
-  // The initial mount fires the same `load` the focus listener and 30 s
-  // timer use; the latest `load` is captured by the dependency.
+  // The first load. The status already starts as `loading`; the other
+  // refreshes (focus, timer, buttons) go through `load`.
   useEffect(() => {
-    void load(true);
-  }, [load]);
+    listApprovals().then(applyList).catch(applyError);
+  }, [applyList, applyError]);
 
   // Refresh when the tab regains focus so coming back from another window
   // picks up anything decided elsewhere.
@@ -150,6 +166,7 @@ export function ApprovalsPage() {
     });
     try {
       const updated = await decideApproval(id, decision === 'approve' ? 'approve_once' : 'deny');
+      decidedIds.current.add(id);
       if (!mounted.current) {
         return;
       }
@@ -167,6 +184,7 @@ export function ApprovalsPage() {
         return;
       }
       if (error instanceof ApiError && (error.code === 'not_pending' || error.code === 'expired')) {
+        decidedIds.current.add(id);
         setRows((previous) => {
           const next = { ...previous };
           delete next[id];
@@ -199,7 +217,7 @@ export function ApprovalsPage() {
       onBack={() => navigate('/')}
     >
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-        {status === 'ready' && ordered.length > 0 && (
+        {status === 'ready' && (
           <div className="flex justify-end">
             <Button
               type="button"

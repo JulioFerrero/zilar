@@ -172,6 +172,63 @@ describe('ApprovalsPage', () => {
     expect(await screen.findByText('Nothing is waiting for you.')).toBeTruthy();
   });
 
+  it('keeps the manual Refresh button in the empty state and reloads on click', async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([
+        {
+          method: 'GET',
+          path: '/api/approvals',
+          respond: () => {
+            calls += 1;
+            return jsonResponse(200, calls === 1 ? [] : [makeApproval({ id: 'apr-new' })]);
+          },
+        },
+      ]),
+    );
+
+    renderApprovalsPage();
+
+    await screen.findByText('Nothing is waiting for you.');
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(await screen.findByText('merge_pull_request')).toBeTruthy();
+  });
+
+  it('does not bring a decided request back when a stale list response arrives', async () => {
+    let listCalls = 0;
+    const fetchMock = fetchRouter([
+      {
+        method: 'GET',
+        path: '/api/approvals',
+        // Every list still contains the request: it simulates a response that
+        // was computed before the decision was committed.
+        respond: () => {
+          listCalls += 1;
+          return jsonResponse(200, [makeApproval({ id: 'apr-1' })]);
+        },
+      },
+      {
+        method: 'POST',
+        path: '/api/approvals/apr-1/decision',
+        respond: () =>
+          jsonResponse(200, { ...makeApproval({ id: 'apr-1' }), status: 'approved_once' }),
+      },
+    ]);
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApprovalsPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve merge_pull_request' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Approve merge_pull_request' })).toBeNull(),
+    );
+    const before = listCalls;
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(listCalls).toBeGreaterThan(before));
+    expect(screen.queryByRole('button', { name: 'Approve merge_pull_request' })).toBeNull();
+  });
+
   it('shows an error with a Retry button when listing fails', async () => {
     vi.stubGlobal(
       'fetch',

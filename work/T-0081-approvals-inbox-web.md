@@ -1,7 +1,7 @@
 ---
 id: T-0081
 title: Web — an Approvals inbox (Settings → Approvals) listing every pending request you may decide, with Approve / Deny
-status: review
+status: merged
 milestone: M4
 branch: task/T-0081-approvals-inbox-web
 model: minimax-coding-plan/MiniMax-M3
@@ -116,4 +116,13 @@ Added `listApprovals()` to `lib/api.ts` (GET `/api/approvals`, zod-array of the 
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved with lead changes, merged (2026-09-29). Rebased on main; format, lint, typecheck, test (web 511) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand.
+
+**Lead changes:**
+- **Lint was failing** (`react(set-state-in-effect)`: the worker's "collapse the initial effect into `load(true)`" called a state-setting function synchronously in an effect). The first load is now an inline `listApprovals().then(applyList).catch(applyError)` and `load` is built from the same two helpers; the report said checks passed, the repo did not agree, so always re-run lint after the last edit.
+- **Stale list resurrecting a decided row:** a list response already in flight when a decision landed could bring the row back until the next refresh. Decided ids are now remembered for the session and skipped by later lists (test added).
+- **Refresh button** was hidden in the empty state; it now shows whenever the list is loaded (test added).
+
+**Checked:** Approve sends `approve_once`, Deny `deny`; buttons disable in flight; 409 removes the row with a notice; other errors stay inline; no "always allow"; the 30 s refresh and the minute tick are cleaned up on unmount; the menu item and route exist. The worker deviated from "show the outcome on the row briefly": the row is removed at once and a page-level notice says "Approved …" (accepted).
+
+**Not visually checked:** the worker had no browser. The lead has not opened the page either; it can be seen in mock mode with a deep link `…/settings/approvals?mock=1`.
