@@ -16,8 +16,6 @@
     "@galena/runner-tunnel": "workspace:*",
     "@galena/xmpp-core": "workspace:*",
     "@hono/node-server": "^2.1.1",
-    "@types/web-push": "^3.6.4",
-    "@xmpp/component": "^0.14.0",
     "better-auth": "^1.7.6",
     "drizzle-orm": "^0.45.3",
     "hono": "^4.13.9",
@@ -25,7 +23,6 @@
     "pino": "^10.3.1",
     "postgres": "^3.4.9",
     "quickjs-emscripten": "^0.32.0",
-    "web-push": "^3.6.7",
     "zod": "^4.6.5"
   },
   "devDependencies": {

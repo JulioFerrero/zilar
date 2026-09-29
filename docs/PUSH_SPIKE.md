@@ -1,8 +1,11 @@
 # Push spike (T-0118): web push through ejabberd's mod_push
 
-Spike, not a feature. Everything throwaway lives in
-`apps/server/src/push-spike/` and `apps/web/public/push-spike/`, off by
-default (`PUSH_SPIKE_ENABLED=false`). Decision: **GO** for T-0119.
+Spike, not a feature. The throwaway code (`apps/server/src/push-spike/`,
+`apps/web/public/push-spike/`, the marked `ejabberd.yml` lines and the three
+dependencies) is **not merged**: it is preserved on the branch
+`spike/T-0118-push` for T-0119 to promote. Only this document is on `main`.
+Decision: **GO** for T-0119, with the MUC answer in the lead addendum at the
+end.
 
 ## 1. Component connection: YES
 
@@ -128,3 +131,34 @@ until proven otherwise); `message-count` does not exist; no stanza id in
 the notification (join MAM for deep-link precision); iOS needs an
 installed PWA; `web-push` maintenance mode; secret rotation for the
 component password needs an ejabberd reload path.
+
+## Lead addendum (review of T-0118): groupchat push goes through MUC/Sub
+
+The spike's open question was that `mod_push` fires for offline and
+MAM-archived one-to-one chats only, and skips `groupchat`. Every group and
+topic is a MUC room, so this matters most. The answer is **MUC/Sub
+(XEP-0369)**: a user subscribes to a room, and the room then delivers its
+messages to that user as wrapped events addressed to the user's bare JID.
+With no session those events go through the offline path, which is exactly
+what `mod_push` listens to. (ejabberd docs: "Subscriptions are delivered to
+online users. If the user has no active session, the server can choose to
+broadcast to the user through a push notification"; setup is
+`allow_subscription: true` in the room options plus `mod_push`.)
+
+What T-0119 must therefore do (and prove first, on a live ejabberd, before
+anything else):
+
+1. Create every topic room with `allow_subscription: true` (T-0108's
+   `createRoom` options) and subscribe each member to their rooms (the admin
+   API has `subscribe_room` for this), keeping subscriptions in sync with the
+   same `desiredMembers` logic as affiliations. A private topic's room only
+   ever holds its members, so its pushes reach only them.
+2. Prove that a wrapped MUC/Sub event for a member with no session produces
+   the push IQ, and that a muted or hidden topic can be filtered at send time.
+3. If MUC/Sub does not trigger `mod_push` as hoped, the fallback is a
+   server-side component that polls MAM per subscribed user; that is more
+   work and is the reason step 2 comes first.
+4. Push payloads keep `include_body` **off** in production; previews come
+   from the server's own send path and the user's "Show message previews"
+   setting, never from ejabberd (the spike turned `include_body` on only for
+   the proof).

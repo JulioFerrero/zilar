@@ -1,7 +1,7 @@
 ---
 id: T-0118
 title: Spike: web push through ejabberd's push module (XEP-0357) to a real browser
-status: review
+status: merged
 milestone: M5
 branch: task/T-0118-web-push-spike
 model: meta/muse-spark-1.3-contributor
@@ -152,10 +152,14 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved as a decision document. Merged docs-only.
 
 ### Findings
--
+- The spike answers five of the six questions with evidence from `mod_push.erl` and unit tests with fakes. The sixth (groupchat) was left open by the worker; the lead addendum in `docs/PUSH_SPIKE.md` answers it: MUC/Sub (XEP-0369) is the path, and T-0119 must prove it live first.
+- The spike code was throwaway by the spec ("a decision document, not a merged feature"). It also carried live-infra changes (`mod_push` with `include_body: true`, a component listener) and three new server dependencies, so it is **not merged**. It is preserved on the branch `spike/T-0118-push` for T-0119. The Report above describes that branch, not `main`.
+- The worker first ran the full server suite with the wrong `-- --maxWorkers=2` form (about 10 workers); the lead killed it. The correct run afterwards passed: 1090 tests.
+- Secrets: VAPID keys stayed in a git-ignored file; nothing committed.
 
 ### Follow-ups
--
+- T-0119: rewrite the (SPIKE) sections from this document; first job is the live MUC/Sub proof.
+- Remove the unused `now` parameter in the spike's subscription store when promoting it.

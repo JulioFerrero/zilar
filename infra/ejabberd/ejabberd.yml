@@ -63,16 +63,6 @@ listen:
     shaper: c2s_shaper
     access: c2s
     starttls_required: STARTTLS_REQUIRED
-  # >>> PUSH SPIKE (T-0118) >>> XEP-0114 component listener for the throwaway
-  # push service. Loopback only, plain TCP (inside the dev network), secret
-  # from PUSH_COMPONENT_SECRET. Remove with the spike.
-  - port: 5347
-    ip: '127.0.0.1'
-    module: ejabberd_service
-    hosts:
-      push.galena.localhost:
-        password: CHANGE_ME_PUSH_COMPONENT_SECRET
-  # <<< PUSH SPIKE (T-0118) <<<
   - # No s2s listener on 5269: federation is off.
     port: PORT_HTTP
     ip: '0.0.0.0'
@@ -194,14 +184,7 @@ modules:
   mod_carboncopy: {}
   mod_ping: {}
   # Push notifications: enabled with no app server configured yet (see plan 6.5).
-  # >>> PUSH SPIKE (T-0118) >>> include_sender/body on only for the proof so
-  # the component can show who wrote what; production (T-0119) decides again.
-  # notify_on stays at the default `all` (per docs, recommended). Remove the
-  # two options with the spike if production wants different values.
-  mod_push:
-    include_sender: true
-    include_body: true
-  # <<< PUSH SPIKE (T-0118) <<<
+  mod_push: {}
   mod_http_api: {}
   mod_admin_extra: {}
   mod_adhoc: {}
