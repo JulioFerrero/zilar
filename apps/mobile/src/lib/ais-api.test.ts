@@ -191,4 +191,63 @@ describe('createAisApi', () => {
 
     await expect(api.listAis()).resolves.toEqual([stopped]);
   });
+
+  // T-0095: the kill switch is reachable from the phone. The bearer header
+  // and POST verb match the server's `routes.ts`; the server's answer is
+  // parsed with the same type guard as the list, so a 200 with the expected
+  // shape swaps into the list state at once.
+  it('stops an AI with POST and the bearer header (T-0095)', async () => {
+    const stopped = { ...createdAi, status: 'stopped' };
+    const fetchImpl = vi.fn(async () => jsonResponse(stopped));
+    const api = createAisApi(async () => 'session-token', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.stopAi('a-1')).resolves.toEqual(stopped);
+
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/ais/a-1/stop');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer session-token');
+  });
+
+  it('resumes an AI with POST and the bearer header (T-0095)', async () => {
+    const active = { ...createdAi, status: 'active' };
+    const fetchImpl = vi.fn(async () => jsonResponse(active));
+    const api = createAisApi(async () => 'session-token', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.resumeAi('a-1')).resolves.toEqual(active);
+
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/ais/a-1/resume');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer session-token');
+  });
+
+  it('accepts an AI with `machineId` in the response (T-0095)', async () => {
+    // The list route decorates each AI with `usage`, and `PublicAiWithUsage`
+    // carries `machineId`. The mobile client never reads those fields, so a
+    // 200 from stop / resume must still parse cleanly when the server adds
+    // more shape to the payload.
+    const withMachine = { ...createdAi, status: 'stopped', machineId: 'm-1', usage: null };
+    const fetchImpl = vi.fn(async () => jsonResponse(withMachine));
+    const api = createAisApi(async () => 'session-token', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.stopAi('a-1')).resolves.toMatchObject({ id: 'a-1', status: 'stopped' });
+  });
+
+  it('maps a 409 to AisApiError with the server code (T-0095)', async () => {
+    // The server answers 409 `not_active` for a stop on a `disabled` AI or a
+    // resume on one that just left `stopped`. The mobile client must see the
+    // exact code so it can reload the list and tell the owner.
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { code: 'not_active', message: 'AI is not active' } }, 409),
+    );
+    const api = createAisApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.stopAi('a-1')).rejects.toBeInstanceOf(AisApiError);
+    await expect(api.stopAi('a-1')).rejects.toMatchObject({
+      status: 409,
+      code: 'not_active',
+      message: 'AI is not active',
+    });
+  });
 });

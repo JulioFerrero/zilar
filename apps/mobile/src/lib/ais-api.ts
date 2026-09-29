@@ -64,6 +64,10 @@ export interface AisApi {
   updateAi(id: string, input: UpdateAiInput): Promise<PublicAi>;
   deleteAi(id: string): Promise<void>;
   listConnections(): Promise<Connection[]>;
+  // T-0080: the owner kill switch. The server answers the fresh public AI so
+  // the list can swap the row against server truth without a second GET.
+  stopAi(id: string): Promise<PublicAi>;
+  resumeAi(id: string): Promise<PublicAi>;
 }
 
 export class AisApiError extends Error {
@@ -98,6 +102,8 @@ function parseLimits(value: unknown): AiLimits | null {
   return { perDayUsd, perMonthUsd };
 }
 
+// Tolerant of unknown fields (the server also sends `machineId` on
+// `PublicAiWithUsage`, T-0091): only the fields mobile renders are required.
 function parsePublicAi(value: unknown): PublicAi | null {
   if (!isRecord(value)) return null;
   const id = value['id'];
@@ -269,6 +275,22 @@ export function createAisApi(
         parseList(value, parseConnection),
       );
       return body as Connection[];
+    },
+    async stopAi(id) {
+      const body = await withToken(
+        `/api/ais/${encodeURIComponent(id)}/stop`,
+        { method: 'POST' },
+        parsePublicAi,
+      );
+      return body as PublicAi;
+    },
+    async resumeAi(id) {
+      const body = await withToken(
+        `/api/ais/${encodeURIComponent(id)}/resume`,
+        { method: 'POST' },
+        parsePublicAi,
+      );
+      return body as PublicAi;
     },
   };
 }

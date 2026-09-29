@@ -59,6 +59,10 @@ Real chats in Helium (do not send messages you do not want sent): upload, paste 
 
 The gateway (T-0090) is live but has no adapters. After T-0093 is merged, start the server with `ACTION_DEMO_ENABLED=true` (and the agent gateway on), ask an AI in its DM to echo a text with the demo action, see the card, approve it in the web app and in the phone app, and see the result. Also: deny once, and stop the AI before approving (nothing may run).
 
+## 9. Mobile kill switch (T-0095)
+
+Phone → My AIs → tap an AI: **Stop** (then the row shows a "Stopped" pill and the AI stops answering in chat), tap it again: **Resume**. An AI that is still setting up offers neither.
+
 ## Known follow-ups (not blockers, also on `work/BOARD.md`)
 
 - Kill switch for room admins and workspace admins (J5), audit entries from the engine and proxy, retention (J4).

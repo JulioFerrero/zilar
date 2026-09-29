@@ -9,6 +9,7 @@ import { AiActionsSheet } from '@/components/ais/ai-actions-sheet';
 import { AiRow } from '@/components/ais/ai-row';
 import { DeleteConfirmDialog } from '@/components/ais/delete-confirm';
 import { describeAisError, type AisErrorInfo } from '@/components/ais/errors';
+import { type RunAction } from '@/components/ais/run-state';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { useAisApi } from '@/components/ais/use-ais-api';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ import { Text } from '@/components/ui/text';
 import { ACCENT, ICON } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT_FOREGROUND } from '@/lib/depth';
-import type { PublicAi } from '@/lib/ais-api';
+import { AisApiError, type PublicAi } from '@/lib/ais-api';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
@@ -47,6 +48,16 @@ function AisList() {
   // Guards against a double tap landing before React re-renders the disabled
   // button, so one confirm can never send two DELETEs.
   const deletingRef = useRef(false);
+  // T-0095: the kill switch state. `runBusy` keeps the action-sheet button
+  // disabled while a request is in flight and shows "Stopping…" / "Resuming…".
+  // `runError` renders inline in the sheet on failure (the sheet stays open
+  // so the owner can retry), and a 409 also reloads the list because the AI
+  // changed under them.
+  const [runBusy, setRunBusy] = useState(false);
+  const [runError, setRunError] = useState('');
+  // A second ref like `deletingRef`: it stops a second tap that lands before
+  // the disabled state has propagated through React.
+  const runRef = useRef(false);
 
   const reload = useCallback(() => {
     setStatus('loading');
@@ -68,7 +79,45 @@ function AisList() {
     }, [reload]),
   );
 
-  const closeActions = (): void => setActionAi(null);
+  const closeActions = (): void => {
+    setActionAi(null);
+    setRunError('');
+  };
+
+  // T-0095: stop or resume the AI the sheet is open for. The server's answer
+  // is the source of truth, so the list swaps to it on success. On a 409 the
+  // AI is not in a state this action applies to; the sheet closes and the list
+  // is reloaded so the row matches the server. Any other failure keeps the
+  // sheet open so the inline error is visible and the owner can retry.
+  const toggleRun = (next: RunAction): void => {
+    if (actionAi === null || runRef.current) {
+      return;
+    }
+    runRef.current = true;
+    setRunBusy(true);
+    setRunError('');
+    const request = next === 'stop' ? api.stopAi(actionAi.id) : api.resumeAi(actionAi.id);
+    void request
+      .then((fresh) => {
+        setAis((previous) => previous.map((ai) => (ai.id === fresh.id ? fresh : ai)));
+        setActionAi(null);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof AisApiError && error.status === 409) {
+          // The AI is not in a state this action applies to (still being set
+          // up, or changed elsewhere). Reload so the row says so, and close
+          // the sheet: its Stop / Resume button would otherwise be stale.
+          setActionAi(null);
+          reload();
+          return;
+        }
+        setRunError(describeAisError(error, 'Could not change the AI state').message);
+      })
+      .finally(() => {
+        runRef.current = false;
+        setRunBusy(false);
+      });
+  };
 
   const openEdit = (ai: PublicAi): void => {
     setActionAi(null);
@@ -192,6 +241,9 @@ function AisList() {
             askDelete(actionAi);
           }
         }}
+        onToggleRun={toggleRun}
+        runBusy={runBusy}
+        runError={runError}
         onClose={closeActions}
       />
 
