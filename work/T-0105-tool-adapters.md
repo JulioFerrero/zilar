@@ -67,6 +67,7 @@ All names dotted (registry pattern). Every adapter takes `aiId`/`groupId` **only
 - `apps/server/src/tools/adapters.ts` (+ `adapters.test.ts`, new)
 - `apps/server/src/actions/registry.ts`, `gateway.ts` (+ their tests), `flow.e2e.test.ts` (new scenarios)
 - `apps/server/src/agents/gateway.ts` (+ its test) only for the `modelText` message format
+- `apps/server/src/tools/routes.ts` (+ test): cap `POST /api/tools/:id/run` `input` at 16 KiB serialised (400 `invalid_request`); the `tool.run` adapter applies the same cap
 - `apps/server/src/index.ts`, `config.ts`, `config.test.ts`
 - `docs/SERVER_CONFIG.md`
 - `work/T-0105-tool-adapters.md`

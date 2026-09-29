@@ -131,3 +131,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0100](T-0100-web-always-allow.md) | web: Always allow here on approval cards, revocable always-allowed list in AI and group panels | 2026-09-29 |
 | [T-0101](T-0101-group-always-admin-only.md) | approve always in a group needs a group owner/admin; alwaysEligible is per viewer; approve once unchanged | 2026-09-29 |
 | [T-0102](T-0102-tool-sandbox.md) | tool sandbox: AI-written JS runs in QuickJS/WASM inside a worker, allowlisted SSRF-safe fetch, CPU/memory/output limits; not wired to anything yet | 2026-09-29 |
+| [T-0103](T-0103-ai-tools-store.md) | AI tools store: versioned tool code per AI and chat (append-only history, revert = new version), manual run through an injected runner, read/manage routes, audit without code or output | 2026-09-29 |
