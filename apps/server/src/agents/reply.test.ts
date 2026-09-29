@@ -17,7 +17,7 @@ import {
   type ExecuteToolCall,
   type ValidToolCall,
 } from './reply';
-import { formatPersonaUpdatedLine } from './tools';
+import { formatPersonaUpdatedLine, type ChatToolDefinition } from './tools';
 
 const VIRTUAL_KEY = 'sk-virtual-turn-test-key-aaaa';
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
@@ -431,6 +431,111 @@ describe('runDmTurn with tools', () => {
       ]);
       expect(body.max_tokens).toBe(REPLY_MAX_TOKENS);
     }
+  });
+
+  it('sends the tools array passed in deps.tools to the model on both calls', async () => {
+    const { fetchImpl, calls } = scriptedFetch([
+      toolCallResponse([{ id: 'call-1', name: 'update_persona', args: UPDATE_ARGS }]),
+      completionResponse('vale'),
+    ]);
+    const customTools: ChatToolDefinition[] = [
+      {
+        type: 'function',
+        function: {
+          name: 'my_custom_tool',
+          description: 'a custom tool just for this test',
+          parameters: { type: 'object', properties: {}, additionalProperties: false },
+        },
+      },
+    ];
+    const logger = captureLogger();
+    const executed: ValidToolCall[] = [];
+    await runDmTurn({
+      aiId: 'ai-1',
+      ownerJid: OWNER_JID,
+      messages: MESSAGES,
+      baseUrl: BASE_URL,
+      virtualKey: VIRTUAL_KEY,
+      model: MODEL,
+      tools: customTools,
+      executeTool: async (call) => {
+        executed.push(call);
+        return { content: 'ok' };
+      },
+      fetchImpl,
+      sendMessage: () => Promise.resolve({ id: 'm-1' }),
+      sendTyping: () => undefined,
+      logger,
+      secrets: [MASTER_KEY],
+    });
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      const body = bodyOf(call) as { tools: Array<{ function: { name: string } }> };
+      expect(body.tools.map((tool) => tool.function.name)).toEqual(['my_custom_tool']);
+    }
+    expect(executed).toHaveLength(1);
+  });
+
+  it('defaults to PERSONA_TOOLS when no tools array is passed', async () => {
+    const { fetchImpl, calls } = scriptedFetch([
+      toolCallResponse([{ id: 'call-1', name: 'update_persona', args: UPDATE_ARGS }]),
+      completionResponse('vale'),
+    ]);
+    const harness = toolHarness(fetchImpl);
+    await harness.run();
+    const body = bodyOf(calls[0]!) as { tools: Array<{ function: { name: string } }> };
+    expect(body.tools.map((tool) => tool.function.name).sort()).toEqual([
+      'revert_persona',
+      'update_persona',
+    ]);
+  });
+
+  it('runs a request_action call, feeds the result back, and reports the adapter summary', async () => {
+    const requestArgs = { action: 'demo.echo', args: { text: 'hello' } };
+    const { fetchImpl, calls } = scriptedFetch([
+      rawArgsResponse(JSON.stringify(requestArgs), 'request_action'),
+      completionResponse('Done.'),
+    ]);
+    const executed: ValidToolCall[] = [];
+    const outcome = await runDmTurn({
+      aiId: 'ai-1',
+      ownerJid: OWNER_JID,
+      messages: MESSAGES,
+      baseUrl: BASE_URL,
+      virtualKey: VIRTUAL_KEY,
+      model: MODEL,
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'request_action',
+            description: 'Request an action',
+            parameters: { type: 'object', properties: {}, additionalProperties: false },
+          },
+        },
+      ],
+      executeTool: async (call) => {
+        executed.push(call);
+        return { content: 'done: Echoed: hello' };
+      },
+      fetchImpl,
+      sendMessage: () => Promise.resolve({ id: 'm-1' }),
+      sendTyping: () => undefined,
+      logger: captureLogger(),
+      secrets: [MASTER_KEY],
+    });
+    expect(outcome.kind).toBe('replied');
+    expect(executed).toHaveLength(1);
+    expect(executed[0]).toMatchObject({
+      tool: 'request_action',
+      action: 'demo.echo',
+      args: { text: 'hello' },
+    });
+    const second = bodyOf(calls[1]!) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const toolMessage = second.messages.find((message) => message.role === 'tool');
+    expect(toolMessage?.content).toBe('done: Echoed: hello');
   });
 
   it('runs update_persona in exactly 2 calls and appends the exact line', async () => {

@@ -19,6 +19,7 @@ import type {
   VirtualKeyInfo,
 } from '../ai/litellm-client';
 import { createKeyCipher } from '../connections/crypto';
+import type { ActionGateway, RequestOutcome } from '../actions/gateway';
 import {
   aiLimits,
   ais,
@@ -432,6 +433,7 @@ describe('agent gateway', () => {
       failConnect?: (coreIndex: number) => boolean;
       hub?: DraftHub;
       now?: () => Date;
+      actions?: ActionGateway;
     } = {},
   ): { gateway: AgentGateway; logger: ReturnType<typeof captureLogger> } {
     const logger = captureLogger();
@@ -458,6 +460,7 @@ describe('agent gateway', () => {
         ? { now: () => new Date('2026-09-28T12:00:00Z') }
         : { now: config.now }),
       ...(config.hub === undefined ? {} : { drafts: { hub: config.hub } }),
+      ...(config.actions === undefined ? {} : { actions: config.actions }),
     };
     const created = createAgentGateway(deps, {
       enabled: config.enabled ?? true,
@@ -1777,6 +1780,329 @@ describe('agent gateway', () => {
         persona: NEW_PERSONA,
         previousPersona: OLD_PERSONA,
       });
+    });
+  });
+
+  describe('request_action tool', () => {
+    interface RecordedRequest {
+      aiId: string;
+      groupId?: string;
+      action: string;
+      args: unknown;
+      requestedBy: string;
+    }
+
+    function requestActionScriptedFetch(responses: Response[]): {
+      fetchImpl: FetchLike;
+      calls: Call[];
+    } {
+      const calls: Call[] = [];
+      let index = 0;
+      const fetchImpl: FetchLike = (url, init) => {
+        calls.push({ url, init });
+        const response = responses[Math.min(index, responses.length - 1)]!;
+        index += 1;
+        return Promise.resolve(response.clone());
+      };
+      return { fetchImpl, calls };
+    }
+
+    function fakeActionGateway(outcome: RequestOutcome): {
+      gateway: ActionGateway;
+      requests: RecordedRequest[];
+    } {
+      const requests: RecordedRequest[] = [];
+      return {
+        requests,
+        gateway: {
+          request: async (params) => {
+            requests.push({ ...params });
+            return outcome;
+          },
+          onApprovalDecided: () => Promise.resolve(),
+          recoverStuck: () => Promise.resolve(),
+          listActions: () => [{ name: 'demo.echo', description: 'Repeats text.' }],
+        },
+      };
+    }
+
+    function requestActionResponse(args: unknown, secondContent = 'AI follow-up'): Response[] {
+      return [
+        jsonResponse({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'request_action',
+                      arguments: JSON.stringify(args),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        completionResponse(secondContent),
+      ];
+    }
+
+    it('routes a tier-2 request_action through the action gateway with session-derived ids', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl } = requestActionScriptedFetch(
+        requestActionResponse({ action: 'demo.echo', args: { text: 'hi' } }),
+      );
+      const fake = fakeActionGateway({ status: 'pending_approval', approvalId: 'appr-1' });
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm(), {
+        actions: fake.gateway,
+      });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'echo hi'));
+      await waitFor(() => fake.requests.length === 1);
+
+      expect(fake.requests[0]).toEqual({
+        aiId: seeded.aiId,
+        action: 'demo.echo',
+        args: { text: 'hi' },
+        requestedBy: seeded.aiJid,
+      });
+      expect(fake.requests[0]?.groupId).toBeUndefined();
+      await waitFor(() => core.sent.length === 1);
+      // The model sees the fixed "waiting for your owner's approval" line.
+      expect(core.sent[0]?.text).toBe('AI follow-up');
+    });
+
+    it('cannot be tricked by an aiId or groupId smuggled inside args', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const smuggledArgs = {
+        action: 'demo.echo',
+        args: {
+          text: 'hi',
+          aiId: 'attacker-ai-id',
+          groupId: 'attacker-group-id',
+        },
+      };
+      const { fetchImpl } = requestActionScriptedFetch(requestActionResponse(smuggledArgs));
+      const fake = fakeActionGateway({ status: 'pending_approval', approvalId: 'appr-2' });
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm(), {
+        actions: fake.gateway,
+      });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'echo hi'));
+      await waitFor(() => fake.requests.length === 1);
+
+      // Top-level ids still come from the session; the smuggled keys stay
+      // inside `args` where the adapter's zod schema decides whether they
+      // belong.
+      expect(fake.requests[0]?.aiId).toBe(seeded.aiId);
+      expect(fake.requests[0]?.groupId).toBeUndefined();
+      expect(fake.requests[0]?.args).toEqual({
+        text: 'hi',
+        aiId: 'attacker-ai-id',
+        groupId: 'attacker-group-id',
+      });
+      expect(fake.requests[0]?.requestedBy).toBe(seeded.aiJid);
+      void core;
+    });
+
+    it('maps every RequestOutcome to the model-facing wording (no adapter error text)', async () => {
+      const outcomes: Array<{ outcome: RequestOutcome; expectedContent: string }> = [
+        {
+          outcome: { status: 'executed', summary: 'Echoed: hi' },
+          expectedContent: 'done: Echoed: hi',
+        },
+        {
+          outcome: { status: 'pending_approval', approvalId: 'appr-3' },
+          expectedContent: "waiting for your owner's approval; a card was posted in this chat",
+        },
+        { outcome: { status: 'failed' }, expectedContent: 'the action failed' },
+        {
+          outcome: { status: 'denied', reason: 'unknown_action' },
+          expectedContent: 'denied: unknown action',
+        },
+        {
+          outcome: { status: 'denied', reason: 'invalid_args' },
+          expectedContent: 'denied: invalid arguments',
+        },
+        {
+          outcome: { status: 'denied', reason: 'ai_not_active' },
+          expectedContent: 'denied: the AI is not active',
+        },
+        {
+          outcome: { status: 'denied', reason: 'ai_not_in_group' },
+          expectedContent: 'denied: the AI is not a member of that group',
+        },
+      ];
+      for (const { outcome, expectedContent } of outcomes) {
+        const seeded = await seedAi(context);
+        const cores: FakeCore[] = [];
+        const { fetchImpl, calls } = requestActionScriptedFetch(
+          requestActionResponse({ action: 'demo.echo', args: { text: 'hi' } }),
+        );
+        const fake = fakeActionGateway(outcome);
+        const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm(), {
+          actions: fake.gateway,
+        });
+        await started.start();
+        const core = await coreFor(cores, seeded.aiJid);
+
+        core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'echo hi'));
+        await waitFor(() => calls.length === 2);
+        const second = JSON.parse(String(calls[1]!.init.body)) as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        const toolMessage = second.messages.find((message) => message.role === 'tool');
+        expect(toolMessage?.content).toBe(expectedContent);
+        // No adapter text leaks into logs.
+        const everything = JSON.stringify({ calls, toolMessage });
+        expect(everything).not.toContain('SECRET-DO-NOT-LOG');
+      }
+    });
+
+    it('a stopped AI answers "the AI was stopped" and never calls the action gateway', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const fetchImpl: FetchLike = () =>
+        gate.then(() =>
+          jsonResponse({
+            choices: [
+              {
+                message: {
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: 'call-1',
+                      type: 'function',
+                      function: {
+                        name: 'request_action',
+                        arguments: JSON.stringify({ action: 'demo.echo', args: { text: 'hi' } }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        );
+      const fake = fakeActionGateway({ status: 'executed', summary: 'Echoed: hi' });
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm(), {
+        actions: fake.gateway,
+      });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      const deps: AiServiceDeps = {
+        db: context.db,
+        adminClient: context.adminClient,
+        litellm: new FakeLitellm(),
+        cipher: createKeyCipher(MASTER_KEY),
+        logger: context.logger,
+        domain: context.xmppConfig.domain,
+      };
+
+      // Drive the message into the gateway and stop the AI before the LLM
+      // call resolves, so the executor runs against a stopped session.
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'echo hi'));
+      await stopAi(deps, seeded.aiId, seeded.ownerId);
+      await waitFor(() => started.size() === 0);
+      // Now release the LLM call: the in-flight turn sees `sessionIsLive`
+      // false and answers "the AI was stopped" without invoking the action
+      // gateway.
+      release();
+      await tick(200);
+
+      expect(fake.requests).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+    });
+
+    it('without actions: the tool is not offered and a request_action call answers invalid', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = requestActionScriptedFetch([
+        jsonResponse({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'request_action',
+                      arguments: JSON.stringify({ action: 'demo.echo', args: { text: 'hi' } }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        completionResponse('noted'),
+      ]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      // The persona-only tools are sent on both calls (no request_action).
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'echo hi'));
+      await waitFor(() => calls.length === 2);
+      for (const call of calls) {
+        const body = JSON.parse(String(call.init.body)) as {
+          tools: Array<{ function: { name: string } }>;
+        };
+        expect(body.tools.map((tool) => tool.function.name).sort()).toEqual([
+          'revert_persona',
+          'update_persona',
+        ]);
+      }
+      const second = JSON.parse(String(calls[1]!.init.body)) as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      const toolMessage = second.messages.find((message) => message.role === 'tool');
+      expect(toolMessage?.content).toMatch(/^invalid: /);
+    });
+
+    it('a throwing action gateway is logged but the turn still gets a fixed failure text', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = requestActionScriptedFetch(
+        requestActionResponse({ action: 'demo.echo', args: { text: 'hi' } }),
+      );
+      const throwingGateway: ActionGateway = {
+        request: () => Promise.reject(new Error('SECRET-DO-NOT-LOG')),
+        onApprovalDecided: () => Promise.resolve(),
+        recoverStuck: () => Promise.resolve(),
+        listActions: () => [{ name: 'demo.echo', description: 'Repeats text.' }],
+      };
+      const { gateway: started, logger } = harness(cores, fetchImpl, new FakeLitellm(), {
+        actions: throwingGateway,
+      });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'echo hi'));
+      await waitFor(() => calls.length === 2);
+      const second = JSON.parse(String(calls[1]!.init.body)) as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      const toolMessage = second.messages.find((message) => message.role === 'tool');
+      expect(toolMessage?.content).toBe('the action failed');
+      const dumped = JSON.stringify({ calls, toolMessage, loggerCalls: logger.calls });
+      expect(dumped).not.toContain('SECRET-DO-NOT-LOG');
     });
   });
 

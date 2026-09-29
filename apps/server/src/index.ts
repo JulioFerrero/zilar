@@ -6,12 +6,14 @@ import {
   redactSecrets,
 } from './ai/litellm-client';
 import { approvalCardBody, buildApprovalCardPayload } from './actions/announce';
+import { buildDemoEchoAdapter } from './actions/demo';
 import {
   type ActionAnnouncer,
   createActionGateway,
   startRecoveryStuckTimer,
   type RecoveryStuckHandle,
 } from './actions/gateway';
+import { buildRegistry } from './actions/registry';
 import { createAgentGateway, type AgentGateway } from './agents/gateway';
 import { createApp } from './app';
 import { startApprovalsSweeper, type ApprovalsSweeperHandle } from './approvals/sweeper';
@@ -142,15 +144,20 @@ const announcer: ActionAnnouncer = {
 };
 
 // Action gateway (T-0090): wired in production with an empty adapter
-// registry, so every action request is denied `unknown_action` until a
-// later task adds an adapter. `onApprovalDecided` is the hook the
-// approvals route fires after a successful decision; the recovery loop
-// below runs `recoverStuck` once at startup and every five minutes. The
-// announcer (T-0092) closes over the agent gateway reference and posts
-// every tier-2 request and outcome into the chat.
+// registry by default, so every action request is denied `unknown_action`
+// until a later task adds a real adapter. The demo adapter (T-0093) is
+// registered only when `ACTION_DEMO_ENABLED=true`; off in production, it
+// is harmless and exists to prove the `request_action` tool end-to-end.
+// `onApprovalDecided` is the hook the approvals route fires after a
+// successful decision; the recovery loop below runs `recoverStuck` once
+// at startup and every five minutes. The announcer (T-0092) closes over
+// the agent gateway reference and posts every tier-2 request and outcome
+// into the chat.
+const actionAdapters = config.ACTION_DEMO_ENABLED ? [buildDemoEchoAdapter()] : [];
+const actionRegistry = buildRegistry(actionAdapters);
 const actionGateway = createActionGateway({
   db,
-  adapters: {},
+  adapters: actionRegistry,
   audit: auditRecorder,
   logger,
   announce: announcer,
@@ -191,6 +198,10 @@ const gateway = createAgentGateway(
     // The shared in-process hub: the gateway publishes drafts here and the
     // `/api/drafts/stream` route (mounted in app.ts) streams them out.
     drafts: { hub: sharedDraftHub },
+    // The action gateway is wired whether or not the agent gateway is
+    // enabled: `buildTools` returns just the persona tools when the
+    // action list is empty, so a missing registry never offers the tool.
+    actions: actionGateway,
   },
   { enabled: config.AGENT_GATEWAY_ENABLED },
 );

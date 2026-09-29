@@ -52,6 +52,7 @@ describe('loadServerConfig', () => {
       AGENT_GATEWAY_ENABLED: false,
       RUNNER_HUB_ENABLED: false,
       RUNNER_HUB_PORT: 3189,
+      ACTION_DEMO_ENABLED: false,
       xmpp: VALID_XMPP,
     });
   });
@@ -81,6 +82,7 @@ describe('loadServerConfig', () => {
       AGENT_GATEWAY_ENABLED: false,
       RUNNER_HUB_ENABLED: false,
       RUNNER_HUB_PORT: 3189,
+      ACTION_DEMO_ENABLED: false,
       xmpp: VALID_XMPP,
     });
   });
@@ -237,6 +239,29 @@ describe('loadServerConfig', () => {
     expect(loadServerConfig({ ...base, AGENT_GATEWAY_ENABLED: 'true' }).AGENT_GATEWAY_ENABLED).toBe(
       true,
     );
+  });
+
+  it('leaves the demo action off by default and enables it with one line', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig(base).ACTION_DEMO_ENABLED).toBe(false);
+    expect(loadServerConfig({ ...base, ACTION_DEMO_ENABLED: 'true' }).ACTION_DEMO_ENABLED).toBe(
+      true,
+    );
+  });
+
+  it('rejects junk values for ACTION_DEMO_ENABLED like the sibling flags', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    const message = configErrorMessage({ ...base, ACTION_DEMO_ENABLED: 'maybe' });
+    expect(message).toContain('ACTION_DEMO_ENABLED');
+    expect(message).not.toContain('maybe');
   });
 
   it('leaves the runner hub off by default on port 3189', () => {

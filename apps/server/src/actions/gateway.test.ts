@@ -38,6 +38,7 @@ function echoAdapter(tier: 0 | 1 | 2): FakeAdapter {
   const calls: AdapterCall[] = [];
   const adapter: ActionAdapter<unknown> = {
     name: `tier${tier}.echo`,
+    description: `Echo adapter at tier ${tier}.`,
     tier,
     argsSchema: z.object({ value: z.string() }),
     describe: (args) => ({ summary: `Echo ${(args as { value: string }).value}` }),
@@ -577,6 +578,7 @@ describe('action gateway', () => {
       const secretError = new Error('SECRET-DO-NOT-LOG');
       const failing: ActionAdapter<unknown> = {
         name: 'tier0.failing',
+        description: 'Failing adapter for tests.',
         tier: 0,
         argsSchema: z.object({ value: z.string() }),
         describe: () => ({ summary: 'fails' }),
@@ -880,6 +882,34 @@ describe('action gateway', () => {
     });
   });
 
+  describe('listActions', () => {
+    it('returns every registered action with its description, sorted by name', () => {
+      expect(harness.gateway.listActions()).toEqual([
+        { name: 'tier0.echo', description: 'Echo adapter at tier 0.' },
+        { name: 'tier1.echo', description: 'Echo adapter at tier 1.' },
+        { name: 'tier2.echo', description: 'Echo adapter at tier 2.' },
+      ]);
+    });
+
+    it('returns an empty list when no action is registered', async () => {
+      const context = await createTestContext();
+      const audit = createAuditRecorder({ db: context.db });
+      const logger: ActionGatewayLogger = {
+        warn: () => undefined,
+        error: () => undefined,
+      };
+      const gateway = createActionGateway({
+        db: context.db,
+        adapters: {},
+        audit,
+        logger,
+        now: () => new Date(),
+      });
+      expect(gateway.listActions()).toEqual([]);
+      await context.close();
+    });
+  });
+
   describe('recovery timer', () => {
     it('runs recoverStuck on a cadence and stops on close', async () => {
       const recoverCalls: number[] = [];
@@ -890,6 +920,7 @@ describe('action gateway', () => {
           recoverCalls.push(Date.now());
           return Promise.resolve();
         },
+        listActions: () => [],
       };
       const logger: ActionGatewayLogger = {
         warn: () => undefined,
