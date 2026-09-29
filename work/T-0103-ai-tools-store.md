@@ -1,7 +1,7 @@
 ---
 id: T-0103
 title: AI tools store: versioned tool code per AI and chat, history, revert, manual run, routes
-status: review
+status: merged
 milestone: M4
 branch: task/T-0103-ai-tools-store
 model: meta/muse-spark-1.3-contributor
@@ -201,10 +201,15 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged. Worker run: server suite 968 passed, format, lint, typecheck, build clean; no disable comments; migration `0017` generated with `db:generate`.
 
 ### Findings
--
+- Store: append-only versions, a revert is a new version, identical saves are `unchanged`, the tool row is locked (`FOR UPDATE`) for concurrent appends, soft delete frees the name, group removal soft-deletes that AI's tools in the same transaction.
+- Routes: reader/manager split as specified (owner, group member, group admin); strangers get the same 404 as a missing id; the rate limiter runs after the access check so a stranger cannot burn a manager's quota; run answers 501 without a runner and 409 for a stopped AI, and the runner is never called for a stopped AI. Audit entries carry name/version/status only, never source or output.
+- Host validation rejects wildcards, ports, paths, IPv4 literals; anything odd that slips through (hex/numeric forms) is caught again by the sandbox's allowlist and DNS guard.
 
-### Follow-ups
--
+### Follow-ups (small, none blocking)
+- `POST /api/tools/:id/run`: `input` is unbounded JSON. Manager-only and rate-limited, but cap it (16 KiB serialised) in T-0105, which touches `routes.ts` anyway.
+- The "lost the create race" branch in `saveToolVersion` appends without the row lock; a rare same-name concurrent create could hit the unique index and answer 500 instead of retrying.
+- `runToolVersion` does not catch a runner that throws (the sandbox never does; it returns `sandbox_failure`), so a bug there would answer 500 with no run row.
+- The description is only updated together with a new version (an identical save keeps the old description).
