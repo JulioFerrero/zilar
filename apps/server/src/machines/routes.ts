@@ -1,6 +1,7 @@
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
+import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
 import type { ServerDatabase } from '../db/client';
@@ -38,6 +39,8 @@ export interface MachinesRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
   logger: MachinesLogger;
+  /** Audit recorder; production wires the server's own recorder. */
+  audit?: AuditRecorder;
   /** Shared with the tunnel hub so revokes close live connections. */
   registry?: DbMachineRegistry;
   /** Injected in tests so rate-limit windows can advance without waiting. */
@@ -98,6 +101,7 @@ export function createMachinesRoutes({
   auth,
   db,
   logger,
+  audit,
   registry,
   now = Date.now,
   getClientIp,
@@ -158,6 +162,20 @@ export function createMachinesRoutes({
     }
     machineRegistry.notifyApproved(id, approved.publicKey);
     logger.info({ machineId: id }, 'machine approved');
+    if (audit !== undefined) {
+      await audit.record({
+        actorUserId: user.id,
+        aiId: null,
+        groupId: null,
+        action: 'machine.approved',
+        subjectId: id,
+        argsHash: null,
+        costCurrency: null,
+        costAmount: null,
+        result: 'ok',
+        detail: null,
+      });
+    }
     return c.json(toPublicMachine(approved));
   });
 
@@ -176,6 +194,20 @@ export function createMachinesRoutes({
       throw new HttpError(409, 'invalid_transition', 'Only pending machines can be denied');
     }
     logger.info({ machineId: id }, 'machine denied');
+    if (audit !== undefined) {
+      await audit.record({
+        actorUserId: user.id,
+        aiId: null,
+        groupId: null,
+        action: 'machine.denied',
+        subjectId: id,
+        argsHash: null,
+        costCurrency: null,
+        costAmount: null,
+        result: 'ok',
+        detail: null,
+      });
+    }
     return c.body(null, 204);
   });
 
@@ -195,6 +227,20 @@ export function createMachinesRoutes({
     }
     machineRegistry.notifyRevoked(id);
     logger.info({ machineId: id }, 'machine revoked');
+    if (audit !== undefined) {
+      await audit.record({
+        actorUserId: user.id,
+        aiId: null,
+        groupId: null,
+        action: 'machine.revoked',
+        subjectId: id,
+        argsHash: null,
+        costCurrency: null,
+        costAmount: null,
+        result: 'ok',
+        detail: null,
+      });
+    }
     return c.json(toPublicMachine(revoked));
   });
 
@@ -231,6 +277,20 @@ export function createMachinesRoutes({
       throw new HttpError(409, 'invalid_transition', 'Machine can no longer be deleted');
     }
     logger.info({ machineId: id }, 'machine deleted');
+    if (audit !== undefined) {
+      await audit.record({
+        actorUserId: user.id,
+        aiId: null,
+        groupId: null,
+        action: 'machine.deleted',
+        subjectId: id,
+        argsHash: null,
+        costCurrency: null,
+        costAmount: null,
+        result: 'ok',
+        detail: null,
+      });
+    }
     return c.body(null, 204);
   });
 
@@ -267,6 +327,20 @@ export function createMachinesRoutes({
         capabilities: parsed.data.capabilities,
       });
       logger.info({ machineId: machine.id }, 'runner paired');
+      if (audit !== undefined) {
+        await audit.record({
+          actorUserId: consumed.ownerUserId,
+          aiId: null,
+          groupId: null,
+          action: 'machine.paired',
+          subjectId: machine.id,
+          argsHash: null,
+          costCurrency: null,
+          costAmount: null,
+          result: 'ok',
+          detail: null,
+        });
+      }
       return c.json({ machineId: machine.id, status: 'pending' as const }, 201);
     } catch (error) {
       throw toConflict(error);

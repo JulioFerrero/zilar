@@ -1,7 +1,7 @@
 ---
 id: T-0079
 title: Audit log (M4, server) — an append-only record of who did what, written by approvals and machines, readable by the people who own the AI or the group
-status: todo
+status: review
 milestone: M4
 branch: task/T-0079-audit-log
 model: minimax-coding-plan/MiniMax-M3
@@ -83,19 +83,49 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Added the `audit_log` table to `apps/server/src/db/schema.ts` (no FKs, indexed on `(group_id, at)`, `(ai_id, at)`, `(actor_user_id, at)`, closed `result` enum).
+- Generated the schema migration with `drizzle-kit generate` (`apps/server/drizzle/0012_add_audit_log.sql`).
+- Generated a custom migration with `drizzle-kit generate --custom` (`apps/server/drizzle/0013_audit_log_immutable.sql`) and filled its body with a `plpgsql` function and three triggers that refuse UPDATE / DELETE / TRUNCATE on `audit_log` (statement-level for `TRUNCATE`).
+- Wrote `apps/server/src/audit/service.ts` (validation + recorder + list endpoints + visibility rule) and `apps/server/src/audit/routes.ts` (the owner-facing `GET /api/audit`).
+- Wrote `apps/server/src/audit/service.test.ts` and `apps/server/src/audit/routes.test.ts` (PGlite-backed, 31 tests).
+- Wired the approvals decision route to write `approval.decided` (no note, ever), and the machines routes to write `machine.paired` / `approved` / `denied` / `revoked` / `deleted`.
+- Mounted the audit routes and the shared recorder in `apps/server/src/app.ts`.
+- Added test cases in `approvals/routes.test.ts` and `machines/routes.test.ts` proving the writers run, the 409 path writes nothing, and a failing recorder (closed PGlite) does not change the route's response.
 
 ### Files changed
--
+- `apps/server/src/db/schema.ts` (new `auditLog` table)
+- `apps/server/drizzle/0012_add_audit_log.sql` (generated)
+- `apps/server/drizzle/0013_audit_log_immutable.sql` (custom, hand-filled trigger SQL)
+- `apps/server/drizzle/meta/_journal.json`, `0012_snapshot.json`, `0013_snapshot.json` (generated)
+- `apps/server/src/audit/service.ts` (new)
+- `apps/server/src/audit/routes.ts` (new)
+- `apps/server/src/audit/service.test.ts` (new)
+- `apps/server/src/audit/routes.test.ts` (new)
+- `apps/server/src/approvals/routes.ts` (writes `approval.decided` on a successful decision)
+- `apps/server/src/approvals/routes.test.ts` (audit-row + failing-recorder assertions; harness now passes a recorder)
+- `apps/server/src/machines/routes.ts` (writes `machine.paired` / `approved` / `denied` / `revoked` / `deleted`)
+- `apps/server/src/machines/routes.test.ts` (audit-row + failing-recorder assertions)
+- `apps/server/src/app.ts` (mounts audit routes, builds a default recorder)
+- `work/T-0079-audit-log.md` (this report)
 
 ### Commands run and real results
--
+- `pnpm install`: `Done in 7.1s using pnpm v10.32.1` — 1010 packages installed, lockfile up to date.
+- `pnpm exec drizzle-kit generate --name add_audit_log` (in `apps/server`): generated `drizzle/0012_add_audit_log.sql` cleanly with the table and three indexes.
+- `pnpm exec drizzle-kit generate --custom --name=audit_log_immutable` (in `apps/server`): produced the empty custom migration file; I hand-filled its body with the trigger SQL.
+- `pnpm format:check`: `All matched files use Prettier code style!` (after running `prettier --write` on the touched source files and the generated snapshot JSON).
+- `pnpm lint`: clean (the only lint error was the unnecessary `\-` inside a character class, which I removed).
+- `pnpm typecheck`: `Tasks: 10 successful, 10 total`.
+- `pnpm exec turbo test --force --filter=@galena/server`: `Test Files 46 passed | 5 skipped (51) / Tests 648 passed | 7 skipped (655) / Duration 130.81s` (audit adds 31 tests on top of the pre-existing 617).
+- `pnpm build`: `Tasks: 2 successful, 2 total` (the only build failure considered was `@galena/mobile`, which is unrelated — both `@galena/server` and `@galena/web` build cleanly).
 
 ### Problems, deviations from the spec, open questions
--
+- PGlite supports `BEFORE TRUNCATE ... FOR EACH STATEMENT` triggers and the test that runs `truncate table audit_log` through `db.execute(sql\`truncate table audit_log\`)` does fail with the `audit_log is append-only: TRUNCATE is not allowed` exception, so the spec's "(and TRUNCATE if PGlite supports it)" clause is satisfied. No deviation needed.
+- `note` is intentionally absent from the audit row: `detail` is reserved for `decision` and ids only, and the approval `note` field never reaches the recorder.
+- The schema-level enum on `result` did not generate a Postgres CHECK constraint (Drizzle 0.45.x writes the enum only as a TypeScript hint); the service-layer zod schema is the gate, exactly as the spec's "validates with zod" line requires.
+- No new dependencies were added — only `drizzle-orm`, `zod`, `@galena/protocol`, and `@electric-sql/pglite`, all already declared in `apps/server/package.json`.
 
 ### Blocked / needs a decision
--
+- None.
 
 ---
 

@@ -318,3 +318,35 @@ export const approvals = pgTable(
     index('approvals_group_status_idx').on(table.groupId, table.status),
   ],
 );
+
+// Append-only audit log (T-0079). Every row is one decision or one machine
+// lifecycle event: who acted, on which AI/group, what the action was, the
+// hash of the args it ran against, the cost (optional), and the outcome. The
+// shape is small on purpose so we never store notes, names, secrets, key
+// material or free text in `detail`. Foreign keys are intentionally absent:
+// an audit row must outlive the deletion of its user, AI or group, so the
+// log keeps a faithful history even after the entities it refers to are
+// gone. Mutability is enforced at the database, not just in code: a custom
+// migration installs triggers that refuse UPDATE / DELETE / TRUNCATE.
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: text('id').primaryKey(),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+    actorUserId: text('actor_user_id'),
+    aiId: text('ai_id'),
+    groupId: text('group_id'),
+    action: text('action').notNull(),
+    subjectId: text('subject_id'),
+    argsHash: text('args_hash'),
+    costCurrency: text('cost_currency'),
+    costAmount: numeric('cost_amount', { precision: 12, scale: 2 }),
+    result: text('result', { enum: ['ok', 'denied', 'error'] }).notNull(),
+    detail: jsonb('detail'),
+  },
+  (table) => [
+    index('audit_log_group_at_idx').on(table.groupId, table.at),
+    index('audit_log_ai_at_idx').on(table.aiId, table.at),
+    index('audit_log_actor_at_idx').on(table.actorUserId, table.at),
+  ],
+);

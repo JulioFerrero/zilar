@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
+import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
@@ -15,6 +16,10 @@ import {
 export interface ApprovalsRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
+  /** Audit recorder; production wires the server's own recorder, real tests
+   *  pass a recorder pointed at the test database, the live-check test passes
+   *  one whose failures are observed. */
+  audit?: AuditRecorder;
   now?: () => number;
 }
 
@@ -30,6 +35,7 @@ const decisionSchema = z
 export function createApprovalsRoutes({
   auth,
   db,
+  audit,
   now = Date.now,
 }: ApprovalsRoutesDependencies): Hono {
   const routes = new Hono();
@@ -68,6 +74,24 @@ export function createApprovalsRoutes({
       );
       if (!updated) {
         throw new HttpError(404, 'not_found', 'Approval not found');
+      }
+      // A 409 (already decided / expired) is not logged; an ok decision
+      // always is. `note` is intentionally dropped: the audit log must never
+      // carry free text. `detail.decision` uses the wire enum so the log
+      // matches what the request sent.
+      if (audit !== undefined) {
+        await audit.record({
+          actorUserId: user.id,
+          aiId: updated.aiId,
+          groupId: updated.groupId,
+          action: 'approval.decided',
+          subjectId: updated.id,
+          argsHash: updated.argsHash,
+          costCurrency: null,
+          costAmount: null,
+          result: 'ok',
+          detail: { decision: parsed.data.decision },
+        });
       }
       return c.json(toPublicApproval(updated, new Date(now())));
     } catch (error) {
