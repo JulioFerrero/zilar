@@ -2,10 +2,22 @@ import { chmod, stat, writeFile } from 'node:fs/promises';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateRunnerKeypair } from '@galena/runner-tunnel';
 import { buildIdentity, saveIdentity, identityPaths } from './identity.ts';
-import { runCli, type CliIo } from './cli.ts';
+import type { RunResult } from './connect.ts';
+
+// The mock module for `./connect.ts` exports a hoisted `runRunnerMock` so the
+// tests below can drive `runRunner` without standing up a real tunnel. The
+// mock is applied before any other import in this file.
+const { runRunnerMock } = vi.hoisted(() => ({ runRunnerMock: vi.fn() }));
+vi.mock('./connect.ts', async () => {
+  const actual = await vi.importActual<typeof import('./connect.ts')>('./connect.ts');
+  return { ...actual, runRunner: runRunnerMock };
+});
+
+const { runCli } = await import('./cli.ts');
+type CliIo = import('./cli.ts').CliIo;
 
 function tempHome(): { homeDir: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'galena-runner-cli-'));
@@ -198,5 +210,80 @@ describe('runCli', () => {
     const result = await runCli(['status', '--home', home], io);
     expect(result.exitCode).toBe(1);
     expect(stderr.join('\n')).toMatch(/not valid JSON/);
+  });
+});
+
+describe('runCli run command result routing', () => {
+  let home: string;
+  let cleanup: () => void;
+
+  beforeEach(() => {
+    const t = tempHome();
+    home = t.homeDir;
+    cleanup = t.cleanup;
+    runRunnerMock.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  async function seedIdentity(): Promise<void> {
+    const storage = identityPaths(home);
+    const keypair = generateRunnerKeypair();
+    await saveIdentity(
+      storage,
+      buildIdentity({
+        serverUrl: 'http://127.0.0.1:3000',
+        machineId: 'machine-run-1',
+        publicKey: keypair.publicKey,
+        privateKey: keypair.privateKey,
+        name: 'runner-host',
+        hubUrl: 'ws://127.0.0.1:3189/tunnel',
+      }),
+    );
+  }
+
+  it('prints "Disconnected: …" and exits 1 when the runner reports disconnected', async () => {
+    await seedIdentity();
+    const fakeResult: RunResult = {
+      status: 'disconnected',
+      message: 'lost the connection to the server',
+    };
+    runRunnerMock.mockResolvedValue(fakeResult);
+    const { io, stdout, stderr } = captureIo();
+    const result = await runCli(['run', '--home', home], io);
+    expect(result.exitCode).toBe(1);
+    const text = stdout.join('\n') + '\n' + stderr.join('\n');
+    expect(text).toContain('Disconnected:');
+    expect(text).toContain('lost the connection to the server');
+    expect(runRunnerMock).toHaveBeenCalledOnce();
+  });
+
+  it('prints "Revoked: …" and exits 1 when the runner reports revoked', async () => {
+    await seedIdentity();
+    const fakeResult: RunResult = {
+      status: 'revoked',
+      message: 'this machine was revoked, run pair again with a new code',
+    };
+    runRunnerMock.mockResolvedValue(fakeResult);
+    const { io, stdout, stderr } = captureIo();
+    const result = await runCli(['run', '--home', home], io);
+    expect(result.exitCode).toBe(1);
+    expect(stdout.join('\n') + '\n' + stderr.join('\n')).toContain('Revoked:');
+  });
+
+  it('prints "Auth failed: …" and exits 1 when the runner reports auth_failed', async () => {
+    await seedIdentity();
+    const fakeResult: RunResult = {
+      status: 'auth_failed',
+      message: 'the server refused our identity (auth failure)',
+    };
+    runRunnerMock.mockResolvedValue(fakeResult);
+    const { io, stdout, stderr } = captureIo();
+    const result = await runCli(['run', '--home', home], io);
+    expect(result.exitCode).toBe(1);
+    expect(stdout.join('\n') + '\n' + stderr.join('\n')).toContain('Auth failed:');
   });
 });

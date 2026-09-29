@@ -226,13 +226,16 @@ function handleRunResult(result: RunResult, io: CliIo): void {
       return;
     case 'revoked':
       io.stderr(`Revoked: ${result.message}`);
-      return;
+      throw `Revoked: ${result.message}`;
     case 'auth_failed':
       io.stderr(`Auth failed: ${result.message}`);
-      return;
+      throw `Auth failed: ${result.message}`;
     case 'version_mismatch':
       io.stderr(`Protocol mismatch: ${result.message}`);
-      return;
+      throw `Protocol mismatch: ${result.message}`;
+    case 'disconnected':
+      io.stderr(`Disconnected: ${result.message}`);
+      throw `Disconnected: ${result.message}`;
   }
 }
 

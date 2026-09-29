@@ -24,7 +24,13 @@ export const IdentitySchema = z.strictObject({
   privateKey: z.string().min(1).max(4096),
   name: z.string().min(1).max(64),
   createdAt: z.string().min(1).max(64),
-  hubUrl: z.string().url().startsWith('ws://').optional(),
+  hubUrl: z
+    .string()
+    .url()
+    .refine((value) => value.startsWith('ws://') || value.startsWith('wss://'), {
+      message: 'hubUrl must use ws:// or wss://',
+    })
+    .optional(),
 });
 
 export type RunnerIdentity = z.infer<typeof IdentitySchema>;

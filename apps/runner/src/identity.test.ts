@@ -209,4 +209,42 @@ describe('identity storage', () => {
     expect(resolveHomeDir(undefined, undefined)).toMatch(/\.galena-runner$/);
     expect(resolveHomeDir('', '')).toMatch(/\.galena-runner$/);
   });
+
+  it('accepts a wss:// hubUrl and round-trips it through the identity file', async () => {
+    const storage = identityPaths(home);
+    const keypair = generateRunnerKeypair();
+    await saveIdentity(
+      storage,
+      buildIdentity({
+        serverUrl: 'https://galena.example.com',
+        machineId: 'machine-wss',
+        publicKey: keypair.publicKey,
+        privateKey: keypair.privateKey,
+        name: 'tls-machine',
+        hubUrl: 'wss://galena.example.com:3189/tunnel',
+      }),
+    );
+    const loaded = await loadIdentity(storage);
+    expect(loaded.hubUrl).toBe('wss://galena.example.com:3189/tunnel');
+  });
+
+  it('rejects an http:// hubUrl in the identity file', async () => {
+    const { IdentitySchema } = await import('./identity.ts');
+    const keypair = generateRunnerKeypair();
+    const parsed = IdentitySchema.safeParse({
+      version: 1,
+      serverUrl: 'https://galena.example.com',
+      machineId: 'm1',
+      publicKey: keypair.publicKey,
+      privateKey: keypair.privateKey,
+      name: 'x',
+      createdAt: new Date().toISOString(),
+      hubUrl: 'http://galena.example.com:3189/tunnel',
+    });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      const text = JSON.stringify(parsed.error.issues);
+      expect(text).toMatch(/ws:\/\/ or wss:\/\//);
+    }
+  });
 });

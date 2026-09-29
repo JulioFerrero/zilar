@@ -15,7 +15,7 @@ export interface RunOptions {
 }
 
 export interface RunResult {
-  status: 'stopped' | 'revoked' | 'auth_failed' | 'version_mismatch';
+  status: 'stopped' | 'revoked' | 'auth_failed' | 'version_mismatch' | 'disconnected';
   message: string;
 }
 
@@ -125,11 +125,18 @@ function mapFailure(message: string): RunResult {
       message: 'the server speaks a different protocol version',
     };
   }
+  // Anything else (a network drop, the server going away, a malformed frame
+  // becoming a fatal close) is not an auth failure. Tell the user the link
+  // dropped and let the runner's own backoff reconnect for us.
   return {
-    status: 'auth_failed',
-    message: `the server closed the connection: ${message}`,
+    status: 'disconnected',
+    message: 'lost the connection to the server',
   };
 }
+
+// Exposed for tests so each branch can be asserted directly without standing
+// up a real tunnel.
+export const __test__mapFailure = mapFailure;
 
 function waitForSignalOrFailure(
   signal: AbortSignal | undefined,

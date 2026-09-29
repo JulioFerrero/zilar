@@ -237,6 +237,122 @@ describe('pairRunner', () => {
     }
   });
 
+  it('maps known 409 codes (machine_limit, pending_limit, pairing_code_limit) to fixed sentences', async () => {
+    const validCode = `${ALPHABET[0]}${ALPHABET[1]}${ALPHABET[2]}${ALPHABET[3]}${ALPHABET[4]}${ALPHABET[5]}${ALPHABET[6]}${ALPHABET[7]}`;
+    const cases = [
+      { code: 'machine_limit', message: 'hostile <script>alert(1)</script>' },
+      { code: 'pending_limit', message: 'too many pendings <dangerous>' },
+      { code: 'pairing_code_limit', message: 'codes > limit' },
+    ] as const;
+    for (const body of cases) {
+      const server = await startFakeServer({
+        validCode,
+        nextStatus: 409,
+        nextBody: { code: body.code, message: body.message },
+      });
+      try {
+        let caught: unknown;
+        try {
+          await pairRunner({
+            code: validCode,
+            serverUrl: server.url,
+            storage: identityPaths(home),
+          });
+        } catch (err) {
+          caught = err;
+        }
+        expect(caught).toBeInstanceOf(PairError);
+        const message = (caught as PairError).message;
+        // The server's hostile `message` text must never reach the CLI.
+        expect(message).not.toContain('hostile');
+        expect(message).not.toContain('script');
+        expect(message).not.toContain('alert(1)');
+        expect(message).not.toContain('dangerous');
+        // The fixed sentence should be present.
+        expect(message.length).toBeGreaterThan(0);
+      } finally {
+        await server.close();
+      }
+    }
+  });
+
+  it('uses a single generic sentence for a 409 with an unknown or hostile body', async () => {
+    const validCode = `${ALPHABET[0]}${ALPHABET[1]}${ALPHABET[2]}${ALPHABET[3]}${ALPHABET[4]}${ALPHABET[5]}${ALPHABET[6]}${ALPHABET[7]}`;
+    const hostileBodies: unknown[] = [
+      { code: 'mystery_code', message: 'dangerous <script>alert("x")</script>' },
+      { code: 'mystery_code', message: '送你一份恶意终端提示: rm -rf /' },
+      { code: 'mystery_code', message: '' },
+      { code: 12345, message: 'numbers' },
+      'plain string hostile',
+      null,
+    ];
+    for (const body of hostileBodies) {
+      const server = await startFakeServer({
+        validCode,
+        nextStatus: 409,
+        nextBody: body,
+      });
+      try {
+        let caught: unknown;
+        try {
+          await pairRunner({
+            code: validCode,
+            serverUrl: server.url,
+            storage: identityPaths(home),
+          });
+        } catch (err) {
+          caught = err;
+        }
+        expect(caught).toBeInstanceOf(PairError);
+        const message = (caught as PairError).message;
+        // None of the hostile fragments should ever be present.
+        expect(message).not.toContain('dangerous');
+        expect(message).not.toContain('<script>');
+        expect(message).not.toContain('alert(');
+        expect(message).not.toContain('rm -rf');
+        expect(message).not.toContain('恶意');
+        expect(message).not.toMatch(/numbers/);
+      } finally {
+        await server.close();
+      }
+    }
+  });
+
+  it('falls back to a fixed sentence when the 409 body is not parseable', async () => {
+    const validCode = `${ALPHABET[0]}${ALPHABET[1]}${ALPHABET[2]}${ALPHABET[3]}${ALPHABET[4]}${ALPHABET[5]}${ALPHABET[6]}${ALPHABET[7]}`;
+    const server = await startFakeServer({
+      validCode,
+      nextStatus: 409,
+      nextBody: {},
+    });
+    let caught: unknown;
+    try {
+      // Replace fetch with one that returns plain text, so the JSON parse
+      // fails and the runner hits its "no body" branch.
+      const runnerFetch: typeof fetch = async () =>
+        new Response('not-json-text <dangerous>', {
+          status: 409,
+          headers: { 'content-type': 'text/plain' },
+        });
+      try {
+        await pairRunner({
+          code: validCode,
+          serverUrl: server.url,
+          storage: identityPaths(home),
+          fetchImpl: runnerFetch,
+        });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(PairError);
+      const message = (caught as PairError).message;
+      expect(message).toBe('The server refused this machine.');
+      expect(message).not.toContain('dangerous');
+    } finally {
+      await server.close();
+    }
+  });
+
   it('maps 429 to a friendly message', async () => {
     const validCode = `${ALPHABET[0]}${ALPHABET[1]}${ALPHABET[2]}${ALPHABET[3]}${ALPHABET[4]}${ALPHABET[5]}${ALPHABET[6]}${ALPHABET[7]}`;
     const server = await startFakeServer({

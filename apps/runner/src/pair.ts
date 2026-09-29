@@ -199,16 +199,26 @@ export async function pairRunner(options: PairOptions): Promise<PairResult> {
     );
   }
   if (response.status === 409) {
+    // Never echo server-provided text: a hostile or buggy server body could
+    // trick the CLI into printing something we don't want on the user's
+    // terminal. Map the known 409 codes to fixed sentences; fall back to a
+    // single generic line for anything else.
     let detail = 'Another machine already uses this key.';
     try {
-      const data = (await response.json()) as { message?: string; code?: string };
+      const data = (await response.json()) as { code?: string };
       if (data?.code === 'key_in_use') {
         detail = 'This machine key is already registered with the server.';
-      } else if (typeof data?.message === 'string' && data.message.length > 0) {
-        detail = data.message;
+      } else if (data?.code === 'machine_limit') {
+        detail = 'You already have the maximum number of machines registered.';
+      } else if (data?.code === 'pending_limit') {
+        detail = 'You already have the maximum number of pending machines.';
+      } else if (data?.code === 'pairing_code_limit') {
+        detail = 'You have too many outstanding pairing codes.';
+      } else {
+        detail = 'The server refused this machine.';
       }
     } catch {
-      // No body: keep the default.
+      detail = 'The server refused this machine.';
     }
     throw new PairError('key_in_use', detail);
   }
