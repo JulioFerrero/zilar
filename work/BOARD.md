@@ -8,13 +8,14 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0065](T-0065-attachments-web.md) | Attachments on web: images and files via XEP-0363 + `attachment` payload, preview bar, paste/drop, image and file bubbles, retry | in progress | deepseek-v4.1-flash | T-0061 | MVP list item (plan §21). |
 | [T-0071](T-0071-runner-hub.md) | Runner hub (M3, server): approved machines connect over the tunnel WebSocket, revoke drops them, online + last-seen | in progress | minimax-m3 | T-0068 | OpenCode Go is out of funds (402): MiniMax M3 fallback. |
 | [T-0070](T-0070-machines-web.md) | Machines page (web): add with a pairing code, approve/deny, rename, revoke, delete | in progress | minimax-m3 | T-0068, T-0069 | M3 UI slice. |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
 
+- Mobile: apply edits, retractions and reactions (receive side first: "edited" label, tombstones, reaction chips; then send: edit, delete for everyone, react). Until then mobile **skips** those stanzas (stopgap in `real-store.ts`, `isUpdateStanza`), so an edit made on the web is not shown on the phone. Port the pure reducers in `chat-core` (`edits.ts`, `reactions.ts`); the web glue is in `apps/web/src/store/realStore.ts` (alias maps `aliasRoot`, `applyEditUpdate`, `withEdits`, `reactionChips`).
+- Web: route `ConnectionsPage` through `request()` and drop the global `fetch` wrapper that the mock layer installs (T-0069).
 - Web: the chat list previews a group AI reply raw; strip Markdown there too (`ChatListItem.tsx` only strips for `chat.isAI`), as mobile does (T-0064 review).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
@@ -99,3 +100,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0067](T-0067-mobile-loading-states.md) | Mobile loading is not empty: skeletons, inline errors with Retry, pending open flushed on ready (port of T-0042); phone check open | 2026-09-29 |
 | [T-0068](T-0068-machines-registry.md) | M3 machines registry (server): hashed single-use pairing codes, proof-of-key-possession registration, owner approve/deny/revoke, durable key registry; live proof open | 2026-09-29 |
 | [T-0069](T-0069-web-mock-standalone.md) | Web mock mode: ?mock=1 only in dev builds; standalone (fake session, mock /api for AIs and connections); production ignores the param (proved with vite preview) | 2026-09-29 |
+| [T-0065](T-0065-attachments-web.md) | Web attachments: images and files via XEP-0363 + attachment payload, preview bar, paste and drag-and-drop, image/file bubbles, retry; images auto-load only from Galena's upload host; live check open | 2026-09-29 |

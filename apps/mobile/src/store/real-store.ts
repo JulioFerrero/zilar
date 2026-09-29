@@ -81,6 +81,20 @@ function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
   return chat.kind === 'group' ? 'groupchat' : 'chat';
 }
 
+/**
+ * XEP-0308 corrections, XEP-0424 retractions and XEP-0444 reactions arrive as
+ * their own stanzas. Mobile does not render them yet, and shown as messages they
+ * would appear as a duplicate bubble (an edit carries the new full body) or an
+ * empty one. Until mobile applies them, they are skipped everywhere.
+ */
+export function isUpdateStanza(message: ChatMessage): boolean {
+  return (
+    message.correction !== undefined ||
+    message.retraction !== undefined ||
+    message.reactions !== undefined
+  );
+}
+
 function sortMessages(messages: UiMessage[]): UiMessage[] {
   return [...messages].sort(
     (left, right) =>
@@ -572,6 +586,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     }
 
     function handleMessage(message: ChatMessage): void {
+      if (isUpdateStanza(message)) {
+        return;
+      }
       const meId = get().currentUserId;
       const chatId = message.chatJid;
       const ui = toUiMessage(message, meId);
@@ -910,7 +927,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         const page = await current.loadHistory(chat.id, coreKind(chat), {
           max: PREVIEW_HISTORY_MAX,
         });
-        const last = page.messages.at(-1);
+        const last = page.messages.filter((message) => !isUpdateStanza(message)).at(-1);
         if (last === undefined) {
           return;
         }
@@ -984,7 +1001,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       setHistoryLoad(chatId, 'loading');
       try {
         const page = await current.loadHistory(chatId, coreKind(chat), { max: PAGE_HISTORY_MAX });
-        const loaded = page.messages.map((message) => toUiMessage(message, get().currentUserId));
+        const loaded = page.messages
+          .filter((message) => !isUpdateStanza(message))
+          .map((message) => toUiMessage(message, get().currentUserId));
         const newest = loaded.at(-1);
         set((state) => {
           const live = listFor(state, chatId).filter(
@@ -1035,7 +1054,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       void core
         .loadHistory(chatId, coreKind(chat), { before: cursor, max: PAGE_HISTORY_MAX })
         .then((page) => {
-          const older = page.messages.map((message) => toUiMessage(message, get().currentUserId));
+          const older = page.messages
+            .filter((message) => !isUpdateStanza(message))
+            .map((message) => toUiMessage(message, get().currentUserId));
           set((state) => ({
             messagesByChat: {
               ...state.messagesByChat,

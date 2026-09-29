@@ -90,7 +90,7 @@ export function previewPrefix(lastMessage: UiMessage | undefined, options: Previ
   return `${name}: `;
 }
 
-/** Body of a list preview: voice, photo, text or a generic attachment. */
+/** Body of a list preview: voice, photo, attachment, text or a generic card. */
 export function previewBody(lastMessage: UiMessage | undefined): string {
   if (lastMessage === undefined) {
     return '';
@@ -100,6 +100,12 @@ export function previewBody(lastMessage: UiMessage | undefined): string {
   }
   if (lastMessage.image !== undefined) {
     return '🖼 Photo';
+  }
+  if (lastMessage.attachment !== undefined) {
+    const base =
+      lastMessage.attachment.kind === 'image' ? '🖼 Photo' : `📎 ${lastMessage.attachment.name}`;
+    const caption = lastMessage.text;
+    return caption !== undefined && caption.length > 0 ? `${base}, ${caption}` : base;
   }
   if (lastMessage.text !== undefined && lastMessage.text.length > 0) {
     return lastMessage.text;

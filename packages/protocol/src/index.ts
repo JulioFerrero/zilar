@@ -5,6 +5,7 @@ export * from './progress';
 export * from './wake';
 export * from './poll';
 export * from './voice';
+export * from './attachment';
 export * from './handoff';
 export * from './payload';
 export { protocolVersion } from './version';

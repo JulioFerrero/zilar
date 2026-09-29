@@ -1,4 +1,5 @@
 import type {
+  Attachment,
   ChatSummary,
   EditAuthor,
   EditsState,
@@ -65,6 +66,14 @@ import {
   type OpenDraftStream,
 } from '@/lib/drafts';
 import { defaultVoicePort, type VoicePort } from '@/lib/voice';
+import {
+  cleanFilename,
+  defaultAttachmentPort,
+  isTrustedMediaUrl,
+  trustedMediaHosts,
+  type AttachmentPort,
+  type MediaTokenShape,
+} from '@/lib/attachments';
 import type { ChatStoreState, ConnectionStatus, DraftState } from './store';
 
 const LAST_READ_PREFIX = 'galena:lastRead:';
@@ -131,6 +140,8 @@ export interface RealStoreDeps {
   documentVisible?: () => boolean;
   /** Conversion + XEP-0363 upload; tests inject fakes. */
   voice?: VoicePort;
+  /** Classification, image sizing + XEP-0363 upload; tests inject fakes. */
+  attachments?: AttachmentPort;
   /** The AI draft SSE stream; tests inject a fake. */
   openDrafts?: OpenDraftStream;
 }
@@ -198,6 +209,48 @@ function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
   return chat.kind === 'group' ? 'groupchat' : 'chat';
 }
 
+/**
+ * An incoming image attachment on an untrusted host would auto-fetch from
+ * whatever URL a chat peer put in the payload, leaking the viewer's IP to that
+ * host. Downgrade it to a file card so the bytes are only loaded on click.
+ * File attachments stay files: the host check is image-only.
+ */
+function sanitizeIncomingAttachment(
+  attachment: Attachment,
+  token: MediaTokenShape | undefined,
+): Attachment {
+  if (attachment.kind !== 'image') {
+    return attachment;
+  }
+  const trusted = token === undefined ? undefined : trustedMediaHosts(token);
+  if (trusted !== undefined && isTrustedMediaUrl(attachment.url, trusted)) {
+    return attachment;
+  }
+  const downgraded: Attachment = { ...attachment, kind: 'file' };
+  delete downgraded.width;
+  delete downgraded.height;
+  return downgraded;
+}
+
+/**
+ * An incoming voice message on an untrusted host would make `<audio
+ * preload="metadata">` fetch whatever URL a chat peer put in the payload,
+ * leaking the viewer's IP just like an image would. Drop the URL: the bubble
+ * still shows the waveform and the duration, but nothing is fetched.
+ */
+function sanitizeIncomingVoice(voice: VoiceMeta, token: MediaTokenShape | undefined): VoiceMeta {
+  if (voice.url === undefined) {
+    return voice;
+  }
+  const trusted = token === undefined ? undefined : trustedMediaHosts(token);
+  if (trusted !== undefined && isTrustedMediaUrl(voice.url, trusted)) {
+    return voice;
+  }
+  const stripped: VoiceMeta = { ...voice };
+  delete stripped.url;
+  return stripped;
+}
+
 function mentionLocalpart(jid: string): string {
   const bare = jid.split('/')[0] ?? jid;
   const at = bare.indexOf('@');
@@ -209,6 +262,16 @@ function sortMessages(messages: UiMessage[]): UiMessage[] {
     (left, right) =>
       left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id),
   );
+}
+
+/** Drops the `failed` flag without leaving an `undefined` value behind. */
+function clearFailure(message: UiMessage): UiMessage {
+  if (message.failed === undefined) {
+    return message;
+  }
+  const next: UiMessage = { ...message };
+  delete next.failed;
+  return next;
 }
 
 function sortByRecency(chats: ChatSummary[]): ChatSummary[] {
@@ -295,6 +358,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
   const isVisible = deps.documentVisible ?? defaultVisible;
   const createXmpp = deps.createXmpp ?? ((options: XmppCoreOptions) => createXmppCore(options));
   const voicePort = deps.voice ?? defaultVoicePort;
+  const attachmentPort = deps.attachments ?? defaultAttachmentPort;
   const openDrafts = deps.openDrafts ?? subscribeToDrafts;
 
   return createStore<ChatStoreState>((set, get) => {
@@ -327,9 +391,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
     let firstToken: XmppToken | undefined;
+    // The XMPP token the latest session connected with, kept for the media
+    // allow-list (T-0065 round 1): images are only auto-loaded from hosts the
+    // server names, so a chat peer cannot make every viewer fetch a tracker.
+    let mediaToken: MediaTokenShape | undefined;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const cursors: Record<string, string | undefined> = {};
     const pendingOutgoing = new Map<string, string[]>();
+    // An outgoing attachment's bytes, kept for a Retry after a failed upload.
+    const pendingAttachments = new Map<string, File>();
     const messageAliases = new Map<string, string>();
     // Local optimistic id -> the server id it resolved to, once known.
     const messageServerIds = new Map<string, string>();
@@ -696,10 +766,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           message.text === undefined &&
           message.voice === undefined &&
           message.image === undefined &&
+          message.attachment === undefined &&
           message.card === undefined &&
           message.reactions === undefined &&
           message.mentions === undefined &&
-          message.edited === undefined
+          message.edited === undefined &&
+          message.failed === undefined
         ) {
           return message;
         }
@@ -707,10 +779,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         delete deleted.text;
         delete deleted.voice;
         delete deleted.image;
+        delete deleted.attachment;
         delete deleted.card;
         delete deleted.reactions;
         delete deleted.mentions;
         delete deleted.edited;
+        delete deleted.failed;
         return deleted;
       }
       const text = state.text ?? message.text;
@@ -892,6 +966,100 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             : state.chats,
         };
       });
+    }
+
+    // Swaps an optimistic attachment for the uploaded one: the served URL plus
+    // any dimensions read from the local file.
+    function updateMessageAttachment(
+      chatId: string,
+      messageId: string,
+      attachment: Attachment,
+    ): void {
+      set((state) => {
+        const list = listFor(state, chatId).map((item) =>
+          sameMessage(item.id, messageId) ? { ...clearFailure(item), attachment } : item,
+        );
+        const last = state.chats.find((chat) => chat.id === chatId)?.lastMessage;
+        const lastMatches = last !== undefined && sameMessage(last.id, messageId);
+        return {
+          messagesByChat: { ...state.messagesByChat, [chatId]: list },
+          chats: lastMatches
+            ? state.chats.map((chat) =>
+                chat.id === chatId && chat.lastMessage !== undefined
+                  ? { ...chat, lastMessage: { ...clearFailure(chat.lastMessage), attachment } }
+                  : chat,
+              )
+            : state.chats,
+        };
+      });
+    }
+
+    // A failed upload keeps the message and its local bytes, but shows a Retry
+    // instead of a silent "sending" state.
+    function markAttachmentFailed(chatId: string, messageId: string): void {
+      set((state) => ({
+        messagesByChat: {
+          ...state.messagesByChat,
+          [chatId]: listFor(state, chatId).map((item) =>
+            sameMessage(item.id, messageId) ? { ...item, failed: true } : item,
+          ),
+        },
+      }));
+    }
+
+    function clearAttachmentFailure(chatId: string, messageId: string): void {
+      set((state) => ({
+        messagesByChat: {
+          ...state.messagesByChat,
+          [chatId]: listFor(state, chatId).map((item) =>
+            sameMessage(item.id, messageId) ? clearFailure(item) : item,
+          ),
+        },
+      }));
+    }
+
+    // The upload steps of an attachment, re-runnable from a Retry: read the
+    // image size when it is one, PUT the bytes, then send the payload message.
+    function runAttachmentUpload(
+      chat: ChatSummary,
+      localId: string,
+      file: File,
+      caption: string,
+      replyTo: ReplyRef | undefined,
+    ): void {
+      const current = core;
+      if (current === undefined) {
+        markAttachmentFailed(chat.id, localId);
+        return;
+      }
+      void (async () => {
+        try {
+          const kind = attachmentPort.classify(file);
+          const measured = kind === 'image' ? await attachmentPort.readImageSize(file) : undefined;
+          const url = await attachmentPort.upload(current, file);
+          const data: Attachment = {
+            kind,
+            url,
+            name: cleanFilename(file.name),
+            size: file.size,
+            mime: file.type === '' ? 'application/octet-stream' : file.type,
+            ...(measured === undefined ? {} : { width: measured.width, height: measured.height }),
+          };
+          updateMessageAttachment(chat.id, localId, data);
+          const sent = await current.sendMessage(chat.id, coreKind(chat), caption, {
+            payload: { v: 0, type: 'attachment', data },
+            ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+          });
+          linkMessageIds(localId, sent.id);
+          linkLocalToServer(localId, sent.id);
+          rememberOriginId(localId, sent.id);
+          updateMessageStatus(chat.id, localId, 'sent');
+          pendingAttachments.delete(localId);
+        } catch {
+          // Keep the local bytes so the bubble can offer a Retry.
+          markAttachmentFailed(chat.id, localId);
+        }
+      })();
     }
 
     function myJid(): string | undefined {
@@ -1234,7 +1402,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         ui.mentions = mentions;
       }
       if (message.payload !== undefined && message.payload.type === 'voice') {
-        ui.voice = message.payload.data;
+        ui.voice = sanitizeIncomingVoice(message.payload.data, mediaToken);
+      }
+      if (message.payload !== undefined && message.payload.type === 'attachment') {
+        ui.attachment = sanitizeIncomingAttachment(message.payload.data, mediaToken);
       }
       const reactions = reactionChips(
         get().reactions[message.chatJid],
@@ -1943,6 +2114,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         return;
       }
       firstToken = token;
+      mediaToken = { service: token.service, domain: token.domain };
 
       const options: XmppCoreOptions = {
         service: token.service,
@@ -1954,6 +2126,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             return { jid: fresh.jid, token: fresh.token };
           }
           const fresh = await api.getXmppToken();
+          mediaToken = { service: fresh.service, domain: fresh.domain };
           return { jid: fresh.jid, token: fresh.token };
         },
       };
@@ -2339,6 +2512,64 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           }
         })();
       },
+      sendAttachment: (chatId, file, options) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (chat === undefined || file.size === 0) {
+          return;
+        }
+        sequence += 1;
+        const localId = `local-${sequence}`;
+        const replyTo = options?.replyTo;
+        const caption = options?.caption?.trim() ?? '';
+        const kind = attachmentPort.classify(file);
+        const mime = file.type === '' ? 'application/octet-stream' : file.type;
+        const localUrl = kind === 'image' ? objectUrlFor(file) : undefined;
+        const message: UiMessage = {
+          id: localId,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: 'You',
+          createdAt: now(),
+          status: 'sending',
+          attachment: {
+            kind,
+            url: localUrl ?? '',
+            name: cleanFilename(file.name),
+            size: file.size,
+            mime,
+          },
+          ...(caption.length === 0 ? {} : { text: caption }),
+          ...(replyTo === undefined ? {} : { replyTo }),
+        };
+        const signature = signatureFor(chatId, caption, replyTo);
+        const queue = pendingOutgoing.get(signature) ?? [];
+        queue.push(localId);
+        pendingOutgoing.set(signature, queue);
+        setChatMessage(chatId, message, true);
+        pendingAttachments.set(localId, file);
+        const mine = myJid();
+        if (mine !== undefined) {
+          rememberAuthor(localId, { jid: mine, resolved: true });
+        }
+        if (caption.length > 0) {
+          rememberBaseText(localId, caption);
+        }
+        runAttachmentUpload(chat, localId, file, caption, replyTo);
+      },
+      retryAttachment: (chatId, messageId) => {
+        const root = aliasRoot(messageId);
+        const file = pendingAttachments.get(root) ?? pendingAttachments.get(messageId);
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (file === undefined || chat === undefined) {
+          return;
+        }
+        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        if (message === undefined) {
+          return;
+        }
+        clearAttachmentFailure(chatId, messageId);
+        runAttachmentUpload(chat, messageId, file, message.text ?? '', message.replyTo);
+      },
       createGroup: async (title, memberIds) => {
         const detail = await api.createGroup({ title, memberIds });
         const entries = await api.getChats();
@@ -2471,6 +2702,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
         connectRetryAttempt = 0;
         groupsJoined = false;
+        mediaToken = undefined;
         if (typeof window !== 'undefined') {
           window.removeEventListener('pagehide', saveChatList);
         }

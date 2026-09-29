@@ -4,6 +4,7 @@ import { AuthProvider } from '@/auth/AuthProvider';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { createChatStore } from '@/store/store';
 import { renderApp } from '@/test/renderApp';
+import { MAX_ATTACHMENT_BYTES } from '@/lib/attachments';
 import { Composer } from './Composer';
 
 afterEach(() => {
@@ -317,5 +318,78 @@ describe('Composer chat switching (T-0053 review)', () => {
     const sent = store.getState().messages('c-devteam').at(-1);
     expect(sent?.text).toBe('@Luis');
     expect(sent?.mentions).toBeUndefined();
+  });
+});
+
+describe('Composer attachments (T-0065)', () => {
+  function picker(container: HTMLElement): HTMLInputElement {
+    const input = container.querySelector('input[type="file"]');
+    if (input === null) {
+      throw new Error('the composer has no file input');
+    }
+    return input as HTMLInputElement;
+  }
+
+  it('opens the preview from the file picker and sends it with a caption', () => {
+    const { container, store } = renderApp('/c/c-ana');
+    const file = new File(['abcd'], 'stage.png', { type: 'image/png' });
+
+    fireEvent.change(picker(container), { target: { files: [file] } });
+    expect(screen.getByText('stage.png')).toBeTruthy();
+    expect(screen.getByLabelText('Remove attachment')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'the stage' } });
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' });
+
+    const sent = store.getState().messages('c-ana').at(-1);
+    expect(sent?.attachment?.name).toBe('stage.png');
+    expect(sent?.attachment?.kind).toBe('image');
+    expect(sent?.text).toBe('the stage');
+    expect(screen.queryByText('stage.png')).toBeNull();
+  });
+
+  it('opens the preview from a pasted image', () => {
+    renderApp('/c/c-ana');
+    const file = new File(['abcd'], 'paste.png', { type: 'image/png' });
+
+    fireEvent.paste(screen.getByLabelText('Message'), { clipboardData: { files: [file] } });
+
+    expect(screen.getByText('paste.png')).toBeTruthy();
+  });
+
+  it('opens the preview from a dropped file', () => {
+    renderApp('/c/c-ana');
+    const file = new File(['abcd'], 'dropped.pdf', { type: 'application/pdf' });
+
+    fireEvent.drop(document.body, { dataTransfer: { files: [file] } });
+
+    expect(screen.getByText('dropped.pdf')).toBeTruthy();
+  });
+
+  it('cancels the preview with the ✕ and with Escape when the caption is empty', () => {
+    const { container } = renderApp('/c/c-ana');
+    const file = new File(['abcd'], 'stage.png', { type: 'image/png' });
+
+    fireEvent.change(picker(container), { target: { files: [file] } });
+    fireEvent.click(screen.getByLabelText('Remove attachment'));
+    expect(screen.queryByText('stage.png')).toBeNull();
+
+    fireEvent.change(picker(container), { target: { files: [file] } });
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Escape' });
+    expect(screen.queryByText('stage.png')).toBeNull();
+  });
+
+  it('refuses an oversize or empty file with the inline error and no preview', () => {
+    const { container } = renderApp('/c/c-ana');
+    const oversize = new File(['x'], 'big.bin', { type: 'application/octet-stream' });
+    Object.defineProperty(oversize, 'size', { value: MAX_ATTACHMENT_BYTES + 1 });
+
+    fireEvent.change(picker(container), { target: { files: [oversize] } });
+    expect(screen.getByText('That file is larger than 50 MB.')).toBeTruthy();
+    expect(screen.queryByText('big.bin')).toBeNull();
+
+    const empty = new File([], 'empty.png', { type: 'image/png' });
+    fireEvent.change(picker(container), { target: { files: [empty] } });
+    expect(screen.getByText('That file is empty.')).toBeTruthy();
   });
 });

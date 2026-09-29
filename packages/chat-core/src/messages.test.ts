@@ -112,6 +112,46 @@ describe('previewText', () => {
     expect(previewText(last, options)).toBe('Ana: 🖼 Photo');
   });
 
+  it('uses the image attachment preview, with the caption after it', () => {
+    const image = message({
+      id: '1',
+      senderId: 'ana',
+      senderName: 'Ana',
+      createdAt: at(0, 0),
+      attachment: {
+        kind: 'image',
+        url: 'https://upload.galena.test/1/stage.png',
+        name: 'stage.png',
+        size: 200,
+        mime: 'image/png',
+      },
+    });
+    expect(previewBody(image)).toBe('🖼 Photo');
+
+    const withCaption = message({ ...image, text: 'the stage!' });
+    expect(previewText(withCaption, options)).toBe('Ana: 🖼 Photo, the stage!');
+  });
+
+  it('uses the file attachment preview with its name and caption', () => {
+    const file = message({
+      id: '1',
+      senderId: 'ana',
+      senderName: 'Ana',
+      createdAt: at(0, 0),
+      attachment: {
+        kind: 'file',
+        url: 'https://upload.galena.test/1/tickets.pdf',
+        name: 'tickets.pdf',
+        size: 200,
+        mime: 'application/pdf',
+      },
+    });
+    expect(previewText(file, options)).toBe('Ana: 📎 tickets.pdf');
+
+    const withCaption = message({ ...file, text: 'print these' });
+    expect(previewBody(withCaption)).toBe('📎 tickets.pdf, print these');
+  });
+
   it('returns an empty string without a message', () => {
     expect(previewText(undefined, options)).toBe('');
     expect(previewBody(undefined)).toBe('');

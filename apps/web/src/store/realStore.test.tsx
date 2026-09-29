@@ -5,6 +5,7 @@ import { AuthProvider } from '@/auth/AuthProvider';
 import { MessageBubble } from '@/components/MessageBubble';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import type { DraftHubEvent } from '@/lib/drafts';
+import { AttachmentError, type AttachmentPort } from '@/lib/attachments';
 import {
   CONNECT_RETRY_DELAYS_MS,
   DRAFT_END_FALLBACK_MS,
@@ -2335,5 +2336,389 @@ describe('AI reply drafts (T-0043)', () => {
     expect(drafts.close).toHaveBeenCalledTimes(1);
     expect(store.getState().drafts).toEqual({});
     expect(assign).toHaveBeenCalledWith('/login');
+  });
+});
+
+describe('attachments (T-0065)', () => {
+  function fakeAttachments(overrides: Partial<AttachmentPort> = {}): AttachmentPort {
+    return {
+      classify: () => 'image',
+      readImageSize: vi.fn(async () => ({ width: 800, height: 600 })),
+      upload: vi.fn(async () => 'http://upload.galena.test/get/1/photo.png'),
+      ...overrides,
+    };
+  }
+
+  function imageFile(): File {
+    return new File(['abcd'], 'photo.png', { type: 'image/png' });
+  }
+
+  it('shows an optimistic image at once, then sends the payload with the upload', async () => {
+    const attachments = fakeAttachments();
+    const { store, xmpp } = await setup({}, undefined, { attachments });
+
+    store.getState().sendAttachment('ana@galena.test', imageFile(), { caption: 'the stage' });
+
+    const optimistic = store.getState().messages('ana@galena.test').at(-1);
+    expect(optimistic?.attachment?.kind).toBe('image');
+    expect(optimistic?.attachment?.name).toBe('photo.png');
+    expect(optimistic?.text).toBe('the stage');
+    expect(optimistic?.status).toBe('sending');
+
+    await flush();
+
+    expect(attachments.upload).toHaveBeenCalledTimes(1);
+    expect(xmpp.core.sendMessage).toHaveBeenCalledWith('ana@galena.test', 'chat', 'the stage', {
+      payload: {
+        v: 0,
+        type: 'attachment',
+        data: {
+          kind: 'image',
+          url: 'http://upload.galena.test/get/1/photo.png',
+          name: 'photo.png',
+          size: 4,
+          mime: 'image/png',
+          width: 800,
+          height: 600,
+        },
+      },
+    });
+    const sent = store.getState().messages('ana@galena.test').at(-1);
+    expect(sent?.attachment?.url).toBe('http://upload.galena.test/get/1/photo.png');
+    expect(sent?.status).toBe('sent');
+  });
+
+  it('marks a failed upload failed and retries it from the kept file', async () => {
+    let attempt = 0;
+    const upload = vi.fn(async () => {
+      attempt += 1;
+      if (attempt === 1) {
+        throw new AttachmentError('upload_failed', 'nope');
+      }
+      return 'http://upload.galena.test/get/1/photo.png';
+    });
+    const attachments = fakeAttachments({ upload });
+    const { store } = await setup({}, undefined, { attachments });
+
+    store.getState().sendAttachment('ana@galena.test', imageFile(), { caption: 'retry me' });
+    await flush();
+
+    const failed = store.getState().messages('ana@galena.test').at(-1);
+    expect(failed?.failed).toBe(true);
+    expect(failed?.status).toBe('sending');
+    expect(failed?.attachment?.url).toBe('');
+
+    store.getState().retryAttachment('ana@galena.test', failed?.id ?? '');
+    expect(store.getState().messages('ana@galena.test').at(-1)?.failed).toBeUndefined();
+
+    await flush();
+
+    const retried = store.getState().messages('ana@galena.test').at(-1);
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(retried?.failed).toBeUndefined();
+    expect(retried?.status).toBe('sent');
+    expect(retried?.attachment?.url).toBe('http://upload.galena.test/get/1/photo.png');
+  });
+
+  it('carries the reply target on the sent payload', async () => {
+    const attachments = fakeAttachments();
+    const { store, xmpp } = await setup({}, undefined, { attachments });
+
+    store.getState().sendAttachment('ana@galena.test', imageFile(), {
+      caption: 'look',
+      replyTo: { id: 'ana-2', senderName: 'Ana', text: 'newest' },
+    });
+    await flush();
+
+    expect(xmpp.core.sendMessage).toHaveBeenCalledWith(
+      'ana@galena.test',
+      'chat',
+      'look',
+      expect.objectContaining({ replyTo: { id: 'ana-2' } }),
+    );
+  });
+
+  it('maps an incoming attachment payload', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'att-in',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'file',
+            url: 'http://upload.galena.test/get/1/plan.pdf',
+            name: 'plan.pdf',
+            size: 2048,
+            mime: 'application/pdf',
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'att-in');
+    expect(incoming?.attachment?.kind).toBe('file');
+    expect(incoming?.attachment?.name).toBe('plan.pdf');
+  });
+
+  it('ignores a payload that is not an attachment and keeps the body', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'not-att',
+        chatJid: 'ana@galena.test',
+        body: 'just text',
+        payload: {
+          v: 0,
+          type: 'voice',
+          data: { duration_ms: 1000, mime: 'audio/mp4', waveform: [1] },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'not-att');
+    expect(incoming?.attachment).toBeUndefined();
+    expect(incoming?.text).toBe('just text');
+    expect(incoming?.voice?.duration_ms).toBe(1000);
+  });
+
+  it('keeps the audio URL of an incoming voice message on a trusted host', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'voice-trusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'voice',
+          data: {
+            duration_ms: 1000,
+            mime: 'audio/mp4',
+            waveform: [10, 20],
+            url: 'https://upload.galena.test/upload/abc/voice.m4a',
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'voice-trusted');
+    expect(incoming?.voice?.url).toBe('https://upload.galena.test/upload/abc/voice.m4a');
+  });
+
+  it('drops the audio URL of an incoming voice message on an untrusted host', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'voice-untrusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'voice',
+          data: {
+            duration_ms: 1000,
+            mime: 'audio/mp4',
+            waveform: [10, 20],
+            url: 'https://tracker.example.com/beacon.m4a',
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'voice-untrusted');
+    expect(incoming?.voice).toBeDefined();
+    expect(incoming?.voice?.duration_ms).toBe(1000);
+    expect(incoming?.voice?.url).toBeUndefined();
+  });
+
+  it('keeps an incoming image attachment on a trusted host as an image', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'att-trusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'image',
+            url: 'https://upload.galena.test/upload/abc/stage.png',
+            name: 'stage.png',
+            size: 200,
+            mime: 'image/png',
+            width: 800,
+            height: 600,
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'att-trusted');
+    expect(incoming?.attachment?.kind).toBe('image');
+    expect(incoming?.attachment?.width).toBe(800);
+    expect(incoming?.attachment?.height).toBe(600);
+  });
+
+  it('downgrades an incoming image attachment on an untrusted host to a file', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'att-untrusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'image',
+            url: 'https://tracker.example.com/pixel.png',
+            name: 'pixel.png',
+            size: 200,
+            mime: 'image/png',
+            width: 1,
+            height: 1,
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'att-untrusted');
+    expect(incoming?.attachment?.kind).toBe('file');
+    // Width/height must not leak through, otherwise the bubble would still
+    // reserve image-sized space before the user clicks the card.
+    expect(incoming?.attachment?.width).toBeUndefined();
+    expect(incoming?.attachment?.height).toBeUndefined();
+    expect(incoming?.attachment?.url).toBe('https://tracker.example.com/pixel.png');
+  });
+
+  it('keeps an incoming file attachment on an untrusted host as a file', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'att-file-untrusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'file',
+            url: 'https://files.example.com/random.bin',
+            name: 'random.bin',
+            size: 200,
+            mime: 'application/octet-stream',
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'att-file-untrusted');
+    expect(incoming?.attachment?.kind).toBe('file');
+    expect(incoming?.attachment?.url).toBe('https://files.example.com/random.bin');
+  });
+
+  it('maps history attachments through the same trusted-host check', async () => {
+    const xmpp = fakeXmpp();
+    xmpp.history['ana@galena.test'] = [
+      message({
+        id: 'att-history-trusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'image',
+            url: 'https://upload.galena.test/upload/abc/photo.png',
+            name: 'photo.png',
+            size: 100,
+            mime: 'image/png',
+            width: 100,
+            height: 100,
+          },
+        },
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+      }),
+      message({
+        id: 'att-history-untrusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'image',
+            url: 'https://tracker.example.com/x.png',
+            name: 'x.png',
+            size: 100,
+            mime: 'image/png',
+            width: 100,
+            height: 100,
+          },
+        },
+        timestamp: new Date('2026-09-28T09:01:00Z'),
+      }),
+    ];
+
+    const store = createRealChatStore({
+      api: fakeApi(),
+      storage: memoryStorage(),
+      now: () => new Date('2026-09-28T12:00:00Z'),
+      createXmpp: (options) => {
+        xmpp.options.current = options;
+        return xmpp.core;
+      },
+    });
+    store.getState().start();
+    store.getState().openChat('ana@galena.test');
+    await flush();
+
+    const list = store.getState().messages('ana@galena.test');
+    const trusted = list.find((m) => m.id === 'att-history-trusted');
+    const untrusted = list.find((m) => m.id === 'att-history-untrusted');
+    expect(trusted?.attachment?.kind).toBe('image');
+    expect(untrusted?.attachment?.kind).toBe('file');
+    expect(untrusted?.attachment?.width).toBeUndefined();
+    expect(untrusted?.attachment?.height).toBeUndefined();
   });
 });
