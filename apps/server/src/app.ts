@@ -8,6 +8,8 @@ import { createLitellmAdminClientFromConfig, type LitellmAdminClient } from './a
 import { createAisRoutes } from './ais/routes';
 import type { AiLogger } from './ais/service';
 import { createApprovalsRoutes } from './approvals/routes';
+import { createAuditRecorder, type AuditRecorder } from './audit/service';
+import { createAuditRoutes } from './audit/routes';
 import type { Auth } from './auth/auth';
 import { createAuthRoutes } from './auth/routes';
 import { createChatsRoutes } from './chats/routes';
@@ -58,6 +60,12 @@ export interface AppDependencies {
    * which is fine when no hub is running.
    */
   machineRegistry?: DbMachineRegistry;
+  /**
+   * Audit recorder shared with the approvals and machines routes. Tests may
+   * pass a recorder backed by the same database to observe what the routes
+   * write; production wires the recorder built above.
+   */
+  audit?: AuditRecorder;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -75,8 +83,10 @@ export function createApp({
   ais,
   isMachineOnline,
   machineRegistry,
+  audit,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
+  const auditRecorder = audit ?? createAuditRecorder({ db, logger });
 
   app.use('*', requestId());
 
@@ -122,6 +132,7 @@ export function createApp({
       auth,
       db,
       logger,
+      audit: auditRecorder,
       registry: machineRegistry ?? createDbMachineRegistry(db),
       ...(isMachineOnline === undefined ? {} : { isMachineOnline }),
     }),
@@ -129,7 +140,8 @@ export function createApp({
   app.route('/api', createGroupsRoutes({ auth, db, config, adminClient, logger }));
   app.route('/api', createChatsRoutes({ auth, db, config }));
   app.route('/api', createDraftsRoutes({ auth }));
-  app.route('/api', createApprovalsRoutes({ auth, db }));
+  app.route('/api', createAuditRoutes({ auth, db }));
+  app.route('/api', createApprovalsRoutes({ auth, db, audit: auditRecorder }));
   app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));
   app.route(
     '/api',

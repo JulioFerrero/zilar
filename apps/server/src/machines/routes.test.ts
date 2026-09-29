@@ -1,9 +1,13 @@
 import { createHash, createPrivateKey, generateKeyPairSync, sign } from 'node:crypto';
+import { PGlite } from '@electric-sql/pglite';
+import { drizzle } from 'drizzle-orm/pglite';
 import { eq } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
-import { machinePairingCodes } from '../db/schema';
+import { createAuditRecorder, type AuditRecorder } from '../audit/service';
+import * as schema from '../db/schema';
+import { auditLog, machinePairingCodes } from '../db/schema';
 import { HttpError } from '../errors';
 import { bootstrapUser, createTestContext, TEST_BASE_URL, type TestContext } from '../test-support';
 import { hashPairingCode, normalizePairingCode } from './codes';
@@ -92,6 +96,7 @@ describe('machines routes', () => {
       now?: () => number;
       getClientIp?: (c: Context) => string;
       registry?: DbMachineRegistry;
+      audit?: AuditRecorder;
     } = {},
   ): Hono {
     const routes = new Hono();
@@ -933,5 +938,95 @@ describe('machines routes', () => {
     const blocked = await badAttempt();
     expect(blocked.status).toBe(429);
     expect((await errorOf(blocked)).code).toBe('rate_limited');
+  });
+
+  it('writes one audit row per machine lifecycle event with no extra fields', async () => {
+    const appInstance = app();
+    const user = await bootstrapUser(
+      context,
+      appInstance,
+      `machineaudit${testCounter}@example.com`,
+    );
+    const key = generateKey();
+    const { code, machineId } = await pairHappy(appInstance, user.cookie, key, 'laptop-jp');
+    void code;
+
+    const approved = await appInstance.request(
+      `${TEST_BASE_URL}/api/machines/${machineId}/approve`,
+      { method: 'POST', headers: { cookie: user.cookie } },
+    );
+    expect(approved.status).toBe(200);
+
+    const pendingMachineId = (
+      await pairHappy(appInstance, user.cookie, generateKey(), 'laptop-pending')
+    ).machineId;
+    const denied = await appInstance.request(
+      `${TEST_BASE_URL}/api/machines/${pendingMachineId}/deny`,
+      { method: 'POST', headers: { cookie: user.cookie } },
+    );
+    expect(denied.status).toBe(204);
+
+    const anotherPending = (
+      await pairHappy(appInstance, user.cookie, generateKey(), 'laptop-revoke')
+    ).machineId;
+    const revoked = await appInstance.request(
+      `${TEST_BASE_URL}/api/machines/${anotherPending}/revoke`,
+      { method: 'POST', headers: { cookie: user.cookie } },
+    );
+    expect(revoked.status).toBe(200);
+
+    const deletedMachineId = (
+      await pairHappy(appInstance, user.cookie, generateKey(), 'laptop-deleted')
+    ).machineId;
+    const deleted = await appInstance.request(`${TEST_BASE_URL}/api/machines/${deletedMachineId}`, {
+      method: 'DELETE',
+      headers: { cookie: user.cookie },
+    });
+    expect(deleted.status).toBe(204);
+
+    const rows = await context.db.select().from(auditLog);
+    const actions = rows.map((row) => row.action).sort();
+    expect(actions).toEqual([
+      'machine.approved',
+      'machine.deleted',
+      'machine.denied',
+      'machine.paired',
+      'machine.paired',
+      'machine.paired',
+      'machine.paired',
+      'machine.revoked',
+    ]);
+    for (const row of rows) {
+      expect(row.actorUserId).toBe(user.id);
+      expect(row.subjectId).toHaveLength(36);
+      expect(row.detail).toBeNull();
+      const dumped = JSON.stringify(row);
+      expect(dumped).not.toContain(key.publicKey);
+      expect(dumped).not.toContain('laptop-');
+    }
+  });
+
+  it('keeps answering when the recorder swallows a DB failure', async () => {
+    // A closed PGlite makes every insert reject; the real recorder swallows.
+    const brokenClient = new PGlite();
+    const brokenDb = drizzle(brokenClient, { schema });
+    await brokenClient.close();
+    const recorder = createAuditRecorder({
+      db: brokenDb,
+      logger: { error: () => undefined },
+    });
+    const mounted = mountMachines({ audit: recorder });
+
+    const user = await bootstrapUser(context, app(), `machineauditfail${testCounter}@example.com`);
+    const { machineId } = await pairHappy(mounted, user.cookie, generateKey(), 'doomed');
+
+    const approved = await mounted.request(`${TEST_BASE_URL}/api/machines/${machineId}/approve`, {
+      method: 'POST',
+      headers: { cookie: user.cookie },
+    });
+    expect(approved.status).toBe(200);
+    // The broken recorder caught every write: nothing landed in the real DB.
+    const rows = await context.db.select().from(auditLog);
+    expect(rows).toHaveLength(0);
   });
 });

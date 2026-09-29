@@ -1,8 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import { PGlite } from '@electric-sql/pglite';
+import { drizzle } from 'drizzle-orm/pglite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { aiLimits, ais, approvals, providerConnections } from '../db/schema';
+import { createAuditRecorder, type AuditRecorder } from '../audit/service';
+import { aiLimits, ais, approvals, auditLog, providerConnections } from '../db/schema';
+import * as schema from '../db/schema';
 import { HttpError } from '../errors';
 import {
   bootstrapUser,
@@ -57,6 +61,7 @@ async function seedAi(
 interface ApprovalsHarness {
   app: HonoRequester;
   advance: (ms: number) => void;
+  audit: AuditRecorder;
 }
 
 interface HonoRequester {
@@ -70,6 +75,7 @@ interface HonoRequester {
 // The session is read off the headers in both apps, so the cookie works.
 function buildApprovalsHarness(context: TestContext, start: Date): ApprovalsHarness {
   let clockNow = start.getTime();
+  const audit = createAuditRecorder({ db: context.db, now: () => new Date(clockNow) });
   const routes = new Hono();
   routes.onError((error, c) => {
     if (error instanceof HttpError) {
@@ -79,7 +85,12 @@ function buildApprovalsHarness(context: TestContext, start: Date): ApprovalsHarn
   });
   routes.route(
     '/api',
-    createApprovalsRoutes({ auth: context.auth, db: context.db, now: () => clockNow }),
+    createApprovalsRoutes({
+      auth: context.auth,
+      db: context.db,
+      audit,
+      now: () => clockNow,
+    }),
   );
 
   return {
@@ -87,6 +98,7 @@ function buildApprovalsHarness(context: TestContext, start: Date): ApprovalsHarn
     advance: (ms: number) => {
       clockNow += ms;
     },
+    audit,
   };
 }
 
@@ -469,5 +481,114 @@ describe('approvals routes', () => {
     const body = (await response.json()) as Record<string, unknown>;
     expect(body).not.toHaveProperty('decidedBy');
     expect(body).not.toHaveProperty('decided_by');
+  });
+
+  it('writes one audit row on a successful decision and never on a 409', async () => {
+    const owner = await bootstrapUser(context, authApp, `audit${testCounter}@example.com`);
+    const { aiId } = await seedAi(context, owner.id);
+    const created = await createApproval(
+      context.db,
+      {
+        aiId,
+        action: 'send',
+        summary: 'Send',
+        argsHash: argsHash(11),
+        requestedBy: 'ai-bot@galena.localhost',
+        expiresAt: new Date(now.getTime() + 60_000),
+      },
+      now,
+    );
+
+    const decided = await app.request(
+      `${TEST_BASE_URL}/api/approvals/${created.id}/decision`,
+      approvalsRequest({
+        method: 'POST',
+        cookie: owner.cookie,
+        body: JSON.stringify({ decision: 'approve_once', note: 'private note' }),
+      }),
+    );
+    expect(decided.status).toBe(200);
+
+    const rows = await context.db.select().from(auditLog);
+    expect(rows).toHaveLength(1);
+    const row = rows[0]!;
+    expect(row.action).toBe('approval.decided');
+    expect(row.subjectId).toBe(created.id);
+    expect(row.actorUserId).toBe(owner.id);
+    expect(row.aiId).toBe(aiId);
+    expect(row.argsHash).toBe(created.argsHash);
+    expect(row.result).toBe('ok');
+    expect(row.detail).toEqual({ decision: 'approve_once' });
+    const dumped = JSON.stringify(row);
+    expect(dumped).not.toContain('private note');
+    expect(dumped).not.toContain('note');
+
+    // A second decide hits 409; nothing is appended.
+    const second = await app.request(
+      `${TEST_BASE_URL}/api/approvals/${created.id}/decision`,
+      approvalsRequest({
+        method: 'POST',
+        cookie: owner.cookie,
+        body: JSON.stringify({ decision: 'deny' }),
+      }),
+    );
+    expect(second.status).toBe(409);
+    const after = await context.db.select().from(auditLog);
+    expect(after).toHaveLength(1);
+  });
+
+  it('still answers 200 when the audit recorder fails', async () => {
+    const owner = await bootstrapUser(context, authApp, `auditfail${testCounter}@example.com`);
+    const { aiId } = await seedAi(context, owner.id);
+    const created = await createApproval(
+      context.db,
+      {
+        aiId,
+        action: 'send',
+        summary: 'Send',
+        argsHash: argsHash(12),
+        requestedBy: 'ai-bot@galena.localhost',
+        expiresAt: new Date(now.getTime() + 60_000),
+      },
+      now,
+    );
+
+    // A recorder whose internal `recordAudit` throws — the recorder must
+    // catch and the route must still answer 200. We inject a broken `db` by
+    // closing a fresh PGlite, then build a recorder on it: `recordAudit`
+    // will reject, the recorder swallows, the route keeps going.
+    const brokenClient = new PGlite();
+    const brokenDb = drizzle(brokenClient, { schema });
+    await brokenClient.close();
+    const recorder = createAuditRecorder({
+      db: brokenDb,
+      logger: { error: () => undefined },
+    });
+
+    let clockNow = now.getTime();
+    const routes = new Hono();
+    routes.onError((error, c) => {
+      if (error instanceof HttpError) {
+        return c.json({ error: { code: error.code, message: error.message } }, error.status);
+      }
+      throw error;
+    });
+    routes.route(
+      '/api',
+      createApprovalsRoutes({
+        auth: context.auth,
+        db: context.db,
+        audit: recorder,
+        now: () => clockNow,
+      }),
+    );
+    const response = await routes.request(`${TEST_BASE_URL}/api/approvals/${created.id}/decision`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: owner.cookie },
+      body: JSON.stringify({ decision: 'approve_once' }),
+    });
+    expect(response.status).toBe(200);
+    const auditRows = await context.db.select().from(auditLog);
+    expect(auditRows).toHaveLength(0);
   });
 });

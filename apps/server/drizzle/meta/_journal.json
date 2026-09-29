@@ -85,6 +85,20 @@
       "when": 1790643531274,
       "tag": "0011_silky_groot",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790646956276,
+      "tag": "0012_add_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790646961876,
+      "tag": "0013_audit_log_immutable",
+      "breakpoints": true
     }
   ]
 }
