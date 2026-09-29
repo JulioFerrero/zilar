@@ -591,4 +591,115 @@ describe('approvals routes', () => {
     const auditRows = await context.db.select().from(auditLog);
     expect(auditRows).toHaveLength(0);
   });
+
+  it('fires onDecided after a successful decision and not after a 409', async () => {
+    const owner = await bootstrapUser(context, authApp, `hook${testCounter}@example.com`);
+    const { aiId } = await seedAi(context, owner.id);
+    const created = await createApproval(
+      context.db,
+      {
+        aiId,
+        action: 'send',
+        summary: 'Send',
+        argsHash: argsHash(13),
+        requestedBy: 'ai-bot@galena.localhost',
+        expiresAt: new Date(now.getTime() + 60_000),
+      },
+      now,
+    );
+
+    const hookCalls: string[] = [];
+    let clockNow = now.getTime();
+    const routes = new Hono();
+    routes.onError((error, c) => {
+      if (error instanceof HttpError) {
+        return c.json({ error: { code: error.code, message: error.message } }, error.status);
+      }
+      throw error;
+    });
+    routes.route(
+      '/api',
+      createApprovalsRoutes({
+        auth: context.auth,
+        db: context.db,
+        audit: createAuditRecorder({ db: context.db, now: () => new Date(clockNow) }),
+        now: () => clockNow,
+        onDecided: async (approvalId) => {
+          hookCalls.push(approvalId);
+        },
+      }),
+    );
+
+    const first = await routes.request(`${TEST_BASE_URL}/api/approvals/${created.id}/decision`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: owner.cookie },
+      body: JSON.stringify({ decision: 'approve_once' }),
+    });
+    expect(first.status).toBe(200);
+
+    const second = await routes.request(`${TEST_BASE_URL}/api/approvals/${created.id}/decision`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: owner.cookie },
+      body: JSON.stringify({ decision: 'deny' }),
+    });
+    expect(second.status).toBe(409);
+
+    // Drain microtasks so the fire-and-forget hook has a chance to run.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(hookCalls).toEqual([created.id]);
+  });
+
+  it('a throwing onDecided hook does not change the response', async () => {
+    const owner = await bootstrapUser(context, authApp, `hookthrow${testCounter}@example.com`);
+    const { aiId } = await seedAi(context, owner.id);
+    const created = await createApproval(
+      context.db,
+      {
+        aiId,
+        action: 'send',
+        summary: 'Send',
+        argsHash: argsHash(14),
+        requestedBy: 'ai-bot@galena.localhost',
+        expiresAt: new Date(now.getTime() + 60_000),
+      },
+      now,
+    );
+
+    const loggerCalls: Array<{ fields: Record<string, unknown>; message: string }> = [];
+    let clockNow = now.getTime();
+    const routes = new Hono();
+    routes.onError((error, c) => {
+      if (error instanceof HttpError) {
+        return c.json({ error: { code: error.code, message: error.message } }, error.status);
+      }
+      throw error;
+    });
+    routes.route(
+      '/api',
+      createApprovalsRoutes({
+        auth: context.auth,
+        db: context.db,
+        audit: createAuditRecorder({ db: context.db, now: () => new Date(clockNow) }),
+        now: () => clockNow,
+        logger: {
+          error: (fields, message) => {
+            loggerCalls.push({ fields, message });
+          },
+        },
+        onDecided: () => {
+          throw new Error('hook blew up');
+        },
+      }),
+    );
+
+    const response = await routes.request(`${TEST_BASE_URL}/api/approvals/${created.id}/decision`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: owner.cookie },
+      body: JSON.stringify({ decision: 'approve_once' }),
+    });
+    expect(response.status).toBe(200);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(loggerCalls).toHaveLength(1);
+    expect(loggerCalls[0]?.message).toBe('onDecided hook threw');
+  });
 });

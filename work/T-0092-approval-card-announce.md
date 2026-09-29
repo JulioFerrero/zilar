@@ -1,0 +1,106 @@
+---
+id: T-0092
+title: Post approval cards into the chat (M4, server) — the action gateway announces requests and outcomes through the AI's own XMPP session
+status: todo
+milestone: M4
+branch: task/T-0092-approval-card-announce
+model: minimax-coding-plan/MiniMax-M3
+depends_on: [T-0090, T-0034, T-0080]
+estimate: 1 day
+---
+
+# T-0092: Approval cards appear in the chat
+
+## Spec (written by Claude, do not edit)
+
+### Goal
+
+T-0090 built the action gateway: a tier-2 request creates an approval and waits. Nobody sees it yet. This task makes the request **visible where people already talk**: when a request needs approval, the AI posts a message with an `approval.request` payload (the card web and mobile already render, T-0075/T-0081/T-0084) into the right chat, and when the action finishes (executed, failed, cancelled) the AI posts a short notice. Server only. The messages are sent through the AI's own live XMPP session in the agent gateway, so a stopped AI (kill switch) posts nothing.
+
+Nothing can trigger a request in production yet (empty adapter registry), so the tests carry the proof. Say so in the Report.
+
+### Design (decided; follow it)
+- **Port in the action gateway.** `ActionGatewayDependencies` gets an optional `announce?: ActionAnnouncer`:
+  ```ts
+  interface ActionAnnouncer {
+    approvalRequested(input: { aiId: string; groupId: string | null; approvalId: string }): Promise<void>;
+    outcome(input: { aiId: string; groupId: string | null; status: 'executed' | 'failed' | 'cancelled'; summary: string }): Promise<void>;
+  }
+  ```
+  The gateway calls `approvalRequested` right **after** the approval transaction commits and the `action.requested` audit is written (in `runApprovalPath`), and `outcome` after the final audit of `onApprovalDecided` (executed / failed) and in `cancelPending` (cancelled). Every call is **best-effort**: wrapped in try/catch, a failure logs only the error class name (`logger.warn({ err: name, action, aiId }, …)`), never changes the outcome returned or stored, and never blocks (`await` it, but a rejection is swallowed). No announcer = nothing happens (tests and `createApp`'s default gateway).
+- `outcome.summary` is the adapter's `result.summary` for executed (already ≤ 500 chars) and a fixed string otherwise: failed → `The action failed.`, cancelled → `The request was not carried out.`. **Never the adapter's error text.**
+- **Agent gateway implements the port** as one new method on `AgentGateway`:
+  `postToChat(input: { aiId: string; groupId: string | null; text: string; payload?: Payload }): Promise<boolean>` — returns `false` (and sends nothing) when the AI has no live session (`sessionIsLive` false / unknown AI) or the AI is not a member of the group's room (no room subscription); otherwise sends with `liveSendMessage` (groupchat to the room JID when `groupId` is set, chat to the **owner's** JID when it is `null`) and returns `true`.
+- **The card message.** Text body: `Approval needed: <summary>` (the approval's `summary`). Payload `{ v: 0, type: 'approval.request', data }` where `data` is an `ApprovalRequest` (`@galena/protocol`): `id` = approval id, `room` = the room JID (group) or the owner's bare JID (DM), `ai` = the AI's JID, `action`, `summary`, `details` (if any), `args_hash`, `worst_case_cost` (if any), `requested_by`, `expires_at` (ISO). Build it from the approval row, validate with `ApprovalRequestSchema` before sending; if it does not validate, do not send and log the class name only. Put this builder in a small pure function with its own tests.
+- **Outcome notice:** plain text only, e.g. `Done: <summary>`, `The action failed.`, `The request was not carried out.`, no payload.
+- **Wiring in `index.ts`:** the announcer delegates to the agent gateway (create it lazily: the action gateway is built before the agent gateway, so pass an object whose methods call `agentGateway.postToChat(...)` at call time; when the agent gateway is disabled (`AGENT_GATEWAY_ENABLED` off) the announcer must still exist and simply do nothing). Only `index.ts` changes for wiring; `createApp`'s default gateway keeps no announcer.
+- No new HTTP routes, no new tables, no new dependencies.
+
+### Read first
+- `AGENTS.md` (mandatory)
+- `docs/PROJECT_PLAN.md` §15.3 (approval cards) and §6.3 (payload encoding)
+- `apps/server/src/actions/gateway.ts`, `gateway.test.ts` and `work/T-0090-action-gateway.md` (Review: pitfalls)
+- `apps/server/src/agents/gateway.ts`: `sessionIsLive`, `liveSendMessage`, `roomJidFor`, `session.rooms`, how DMs to the owner are addressed (`jidFor(localpartFor(ai.owner), …)`), `AgentGateway`; and `agents/gateway.test.ts` for how a fake core and sessions are driven in tests
+- `packages/protocol/src/approval.ts`, `payload.ts` (the `approval.request` payload), `packages/xmpp-core/src/types.ts` (`SendMessageOptions.payload`)
+- `apps/server/src/approvals/service.ts` (`PublicApproval`, `toPublicApproval`)
+
+### Allowed files
+- `apps/server/src/actions/` (port, calls, a new `announce.ts` for the card builder + tests)
+- `apps/server/src/agents/gateway.ts` and `agents/gateway.test.ts` (only `postToChat` and its tests)
+- `apps/server/src/index.ts` (wiring)
+- `work/T-0092-approval-card-announce.md`
+
+**Not allowed:** web, mobile, packages, schema/migrations, the reply pipeline (`reply.ts`), any other agent-gateway behaviour, new dependencies, any HTTP route.
+
+### Tests (Vitest, fake core and fake announcer, no network)
+- Action gateway: `approvalRequested` is called once after a tier-2 request with the approval id; not called when the request is denied or tier 0/1; a throwing announcer does not change the returned outcome, the stored rows or the audit; `outcome` is called with `executed` + the adapter summary, `failed` + the fixed text (adapter error text appears nowhere), `cancelled` for deny/expiry/stopped-AI paths; no announcer = no error.
+- Card builder: valid payload for a group and for a DM (room = owner's bare JID), optional fields omitted when absent, over-long details or invalid values → no payload (returns null) and nothing sent.
+- Agent gateway `postToChat`: live session + group → one groupchat message to the room JID with the payload; `groupId: null` → one chat message to the owner; unknown AI, stopped AI (after `disconnectAi`) and AI not in the room → returns `false`, sends nothing.
+- Wiring: covered by the tests above; additionally `index.ts` must type-check and the server must start (say in the Report what you ran).
+
+### Live check (the lead does it)
+Not possible without an adapter and an AI tool call; say so in the Report. (A later task adds the AI-side tool and a demo adapter.)
+
+### Acceptance criteria
+- [ ] A tier-2 request posts one card into the right chat through the AI's live session; nothing is posted for a stopped AI.
+- [ ] Announcing is best-effort: no announcer failure changes an outcome, a row or an audit entry.
+- [ ] No adapter error text, args or secrets in any posted message, log line or audit entry.
+- [ ] No lint or ts disable comments, no `any`, no `@ts-ignore`; lint passes and is re-run after your last edit.
+
+### Checks (all must pass)
+```bash
+pnpm install
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm exec turbo test --force --filter=@galena/server
+pnpm build
+```
+
+### Out of scope
+- The AI-side tool call that requests an action, a demo adapter, editing the card message after the decision (a follow-up), push notifications, web/mobile changes.
+
+---
+
+## Report (written by the worker when done)
+
+### What I did
+-
+
+### Files changed
+-
+
+### Commands run and real results
+-
+
+### Problems, deviations from the spec, open questions
+-
+
+### Blocked / needs a decision
+-
+
+---
+
+## Review (written by Claude)
+
+**Verdict:**

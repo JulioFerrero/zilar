@@ -7,6 +7,7 @@ import { protocolVersion } from '@galena/protocol';
 import { createLitellmAdminClientFromConfig, type LitellmAdminClient } from './ai/litellm-client';
 import { createAisRoutes } from './ais/routes';
 import type { AiLogger } from './ais/service';
+import { createActionGateway, type ActionGateway } from './actions/gateway';
 import { createApprovalsRoutes } from './approvals/routes';
 import { createAuditRecorder, type AuditRecorder } from './audit/service';
 import { createAuditRoutes } from './audit/routes';
@@ -66,6 +67,13 @@ export interface AppDependencies {
    * write; production wires the recorder built above.
    */
   audit?: AuditRecorder;
+  /**
+   * Action gateway (T-0090): wires `onDecided` into the approvals route so
+   * a successful decision executes the matching pending action. Production
+   * passes the gateway built in `index.ts` with an empty adapter
+   * registry; tests pass their own to inject fake adapters.
+   */
+  actionGateway?: ActionGateway;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -84,9 +92,21 @@ export function createApp({
   isMachineOnline,
   machineRegistry,
   audit,
+  actionGateway,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
   const auditRecorder = audit ?? createAuditRecorder({ db, logger });
+  // Default gateway: empty registry. Every action is denied
+  // `unknown_action` until a later task registers an adapter, and there is
+  // no HTTP route to request an action yet.
+  const gateway =
+    actionGateway ??
+    createActionGateway({
+      db,
+      adapters: {},
+      audit: auditRecorder,
+      logger,
+    });
 
   app.use('*', requestId());
 
@@ -141,7 +161,16 @@ export function createApp({
   app.route('/api', createChatsRoutes({ auth, db, config }));
   app.route('/api', createDraftsRoutes({ auth }));
   app.route('/api', createAuditRoutes({ auth, db }));
-  app.route('/api', createApprovalsRoutes({ auth, db, audit: auditRecorder }));
+  app.route(
+    '/api',
+    createApprovalsRoutes({
+      auth,
+      db,
+      audit: auditRecorder,
+      logger,
+      onDecided: (approvalId) => gateway.onApprovalDecided(approvalId),
+    }),
+  );
   app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));
   app.route(
     '/api',
