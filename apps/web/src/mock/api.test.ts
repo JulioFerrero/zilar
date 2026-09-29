@@ -20,6 +20,7 @@ import {
   getContacts,
   getMe,
   listAis,
+  listAudit,
   listConnections,
   listMachines,
   renameMachine,
@@ -368,6 +369,29 @@ describe('mockRequest', () => {
       .object({ error: z.object({ code: z.string() }) })
       .parse(await resume.json());
     expect(resumeBody.error.code).toBe('not_found');
+  });
+
+  it('serves audit entries for a seeded AI through the real schema', async () => {
+    const page = await listAudit({ aiId: 'ai-mock-dev', limit: 20 });
+    expect(page.entries.length).toBeGreaterThan(0);
+    expect(page.next).toBeNull();
+    const actions = new Set(page.entries.map((entry) => entry.action));
+    expect(actions.has('ai.stopped')).toBe(true);
+    expect(actions.has('ai.resumed')).toBe(true);
+    expect(actions.has('approval.decided')).toBe(true);
+  });
+
+  it('returns an empty page for an unknown AI id', async () => {
+    const page = await listAudit({ aiId: 'no-such', limit: 20 });
+    expect(page.entries).toEqual([]);
+    expect(page.next).toBeNull();
+  });
+
+  it('rejects an audit request without aiId with 400 invalid_request', async () => {
+    const response = await mockRequest('/audit', { method: 'GET' });
+    expect(response.status).toBe(400);
+    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    expect(body.error.code).toBe('invalid_request');
   });
 });
 
