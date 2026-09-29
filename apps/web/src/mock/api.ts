@@ -1,4 +1,4 @@
-import type { ChatEntry, Connection, Contact, Me, PublicAi } from '@/lib/api';
+import type { ChatEntry, Connection, Contact, Machine, Me, PublicAi } from '@/lib/api';
 import { isMockApiEnabled } from './gate';
 import { currentUserId, PEOPLE } from './ids';
 import { mockChats } from './chats';
@@ -28,6 +28,7 @@ interface MockState {
   ais: PublicAi[];
   connections: Connection[];
   nextAiSequence: number;
+  machines: Machine[];
 }
 
 function seedAi(name: string, template: PublicAi['template'], id: string): PublicAi {
@@ -81,6 +82,61 @@ function seedState(): MockState {
         label: 'Personal key',
         status: 'active',
         createdAt: '2026-09-21T10:00:00.000Z',
+      },
+    ],
+    // T-0070: one pending, one approved online, one revoked (11.5 sketch).
+    machines: [
+      {
+        id: 'mach-pending',
+        name: 'office-linux',
+        status: 'pending',
+        os: 'linux',
+        osVersion: '6.6.0',
+        arch: 'x86_64',
+        cpu: 'AMD Ryzen 9 7950X',
+        cores: 16,
+        ramGb: 64,
+        diskFreeGb: 920,
+        drivers: ['docker', 'linux-vm'],
+        fingerprint: 'a1b2c3d4e5f60718',
+        createdAt: '2026-09-29T08:00:00.000Z',
+        approvedAt: null,
+        lastSeenAt: null,
+      },
+      {
+        id: 'mach-approved',
+        name: 'julio-mbp',
+        status: 'approved',
+        os: 'macos',
+        osVersion: '27.0',
+        arch: 'arm64',
+        cpu: 'Apple M3 Pro',
+        cores: 11,
+        ramGb: 18,
+        diskFreeGb: 200,
+        drivers: ['docker', 'apple-container', 'macos-vm'],
+        fingerprint: 'b2c3d4e5f607182a',
+        createdAt: '2026-09-25T10:00:00.000Z',
+        approvedAt: '2026-09-25T10:01:00.000Z',
+        lastSeenAt: '2026-09-29T07:55:00.000Z',
+        online: true,
+      },
+      {
+        id: 'mach-revoked',
+        name: 'old-macbook',
+        status: 'revoked',
+        os: 'macos',
+        osVersion: '26.4',
+        arch: 'arm64',
+        cpu: 'Apple M2',
+        cores: 8,
+        ramGb: 16,
+        diskFreeGb: 320,
+        drivers: ['docker', 'macos-vm'],
+        fingerprint: 'c3d4e5f607182a3b',
+        createdAt: '2026-08-10T10:00:00.000Z',
+        approvedAt: '2026-08-10T10:01:00.000Z',
+        lastSeenAt: '2026-09-20T11:00:00.000Z',
       },
     ],
     nextAiSequence: 1,
@@ -291,7 +347,87 @@ export async function mockRequest(
     return notImplemented();
   }
 
+  if (head === 'machines') {
+    if (first === undefined) {
+      if (method === 'GET') return jsonResponse(state.machines);
+      return notImplemented();
+    }
+    if (first === 'pairing-codes' && second === undefined) {
+      if (method === 'POST') return createPairingCodeResponse();
+      return notImplemented();
+    }
+    const machineId = decodeURIComponent(first);
+    const machine = state.machines.find((item) => item.id === machineId);
+    if (machine === undefined) {
+      return notFound('Machine not found');
+    }
+    if (second === 'approve' && method === 'POST') {
+      if (machine.status !== 'pending') {
+        return conflict('invalid_transition', 'Only pending machines can be approved');
+      }
+      const approved: Machine = {
+        ...machine,
+        status: 'approved',
+        approvedAt: new Date().toISOString(),
+      };
+      state.machines = state.machines.map((item) => (item.id === machineId ? approved : item));
+      return jsonResponse(approved);
+    }
+    if (second === 'deny' && method === 'POST') {
+      if (machine.status !== 'pending') {
+        return conflict('invalid_transition', 'Only pending machines can be denied');
+      }
+      state.machines = state.machines.filter((item) => item.id !== machineId);
+      return noContent();
+    }
+    if (second === 'revoke' && method === 'POST') {
+      if (machine.status === 'revoked') {
+        return conflict('invalid_transition', 'Machine is already revoked');
+      }
+      const revoked: Machine = { ...machine, status: 'revoked' };
+      state.machines = state.machines.map((item) => (item.id === machineId ? revoked : item));
+      return jsonResponse(revoked);
+    }
+    if (second === undefined && method === 'PATCH') {
+      const body = readJsonBody(init);
+      if (typeof body.name !== 'string' || body.name.trim() === '') {
+        return conflict('invalid_request', 'Name is required');
+      }
+      const renamed: Machine = { ...machine, name: body.name };
+      state.machines = state.machines.map((item) => (item.id === machineId ? renamed : item));
+      return jsonResponse(renamed);
+    }
+    if (second === undefined && method === 'DELETE') {
+      if (machine.status === 'approved') {
+        return conflict('revoke_first', 'Revoke the machine before deleting it');
+      }
+      state.machines = state.machines.filter((item) => item.id !== machineId);
+      return noContent();
+    }
+    return notImplemented();
+  }
+
   return notImplemented();
+}
+
+// T-0070: a fixed-format pairing code (4 chars, dash, 4 chars from an
+// unambiguous alphabet) and an expiry 10 minutes in the future.
+function createPairingCodeResponse(): Response {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const block = (): string => {
+    let value = '';
+    for (let i = 0; i < 4; i += 1) {
+      value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+    }
+    return value;
+  };
+  const code = `${block()}-${block()}`;
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  return jsonResponse({ code, expiresAt }, 201);
+}
+
+function conflict(code: string, message: string): Response {
+  return jsonResponse({ error: { code, message } }, 409);
 }
 
 const API_PREFIX = '/api';

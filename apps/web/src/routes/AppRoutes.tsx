@@ -8,6 +8,7 @@ import { AisPage } from './AisPage';
 import { ConnectionsPage } from './ConnectionsPage';
 import { InvitePage } from './InvitePage';
 import { LoginPage } from './LoginPage';
+import { MachinesPage } from './MachinesPage';
 import { NamePage } from './NamePage';
 
 // The session check usually answers within a frame or two; the text only
@@ -92,6 +93,14 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <AisPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/settings/machines"
+        element={
+          <RequireAuth>
+            <MachinesPage />
           </RequireAuth>
         }
       />

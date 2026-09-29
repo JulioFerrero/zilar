@@ -7,14 +7,21 @@ vi.mock('@/mock/gate', () => ({
 }));
 
 import {
+  approveMachine,
   createAi,
+  createPairingCode,
   deleteAi,
+  deleteMachine,
+  denyMachine,
   getAi,
   getChats,
   getContacts,
   getMe,
   listAis,
   listConnections,
+  listMachines,
+  renameMachine,
+  revokeMachine,
   updateAi,
   updateMe,
 } from '@/lib/api';
@@ -110,6 +117,98 @@ describe('mockRequest', () => {
     expect(response.status).toBe(404);
     const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
     expect(body.error.code).toBe('mock_not_implemented');
+  });
+
+  it('seeds three machines (1 pending, 1 approved, 1 revoked)', async () => {
+    const machines = await listMachines();
+    expect(machines).toHaveLength(3);
+    const statuses = new Set(machines.map((machine) => machine.status));
+    expect(statuses).toEqual(new Set(['pending', 'approved', 'revoked']));
+  });
+
+  it('mints a pairing code with the K7QX-M2PA shape and an expiry 10 minutes ahead', async () => {
+    const before = Date.now();
+    const code = await createPairingCode();
+    expect(code.code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    const expiry = new Date(code.expiresAt).getTime();
+    expect(expiry).toBeGreaterThan(before);
+    expect(expiry - before).toBeGreaterThanOrEqual(10 * 60 * 1000 - 5000);
+    expect(expiry - before).toBeLessThanOrEqual(10 * 60 * 1000 + 5000);
+  });
+
+  it('approve moves a pending machine to approved', async () => {
+    const before = await listMachines();
+    const pending = before.find((machine) => machine.status === 'pending');
+    expect(pending).toBeDefined();
+    const updated = await approveMachine(pending!.id);
+    expect(updated.status).toBe('approved');
+    expect(updated.approvedAt).not.toBeNull();
+  });
+
+  it('deny removes a pending machine from the list', async () => {
+    const before = await listMachines();
+    const pending = before.find((machine) => machine.status === 'pending');
+    expect(pending).toBeDefined();
+    await denyMachine(pending!.id);
+    const after = await listMachines();
+    expect(after.find((machine) => machine.id === pending!.id)).toBeUndefined();
+  });
+
+  it('rename changes the name', async () => {
+    const machines = await listMachines();
+    const approved = machines.find((machine) => machine.status === 'approved');
+    expect(approved).toBeDefined();
+    const renamed = await renameMachine(approved!.id, 'renamed-mac');
+    expect(renamed.name).toBe('renamed-mac');
+  });
+
+  it('revoke moves an approved machine to revoked', async () => {
+    const machines = await listMachines();
+    const approved = machines.find((machine) => machine.status === 'approved');
+    expect(approved).toBeDefined();
+    const revoked = await revokeMachine(approved!.id);
+    expect(revoked.status).toBe('revoked');
+  });
+
+  it('delete removes a non-approved machine', async () => {
+    const machines = await listMachines();
+    const revoked = machines.find((machine) => machine.status === 'revoked');
+    expect(revoked).toBeDefined();
+    await deleteMachine(revoked!.id);
+    const after = await listMachines();
+    expect(after.find((machine) => machine.id === revoked!.id)).toBeUndefined();
+  });
+
+  it('approve on an approved machine is a 409 invalid_transition', async () => {
+    const machines = await listMachines();
+    const approved = machines.find((machine) => machine.status === 'approved');
+    expect(approved).toBeDefined();
+    const response = await mockRequest(`/machines/${approved!.id}/approve`, { method: 'POST' });
+    expect(response.status).toBe(409);
+    const body = z
+      .object({ error: z.object({ code: z.string(), message: z.string() }) })
+      .parse(await response.json());
+    expect(body.error.code).toBe('invalid_transition');
+  });
+
+  it('delete on an approved machine is a 409 revoke_first', async () => {
+    const machines = await listMachines();
+    const approved = machines.find((machine) => machine.status === 'approved');
+    expect(approved).toBeDefined();
+    const response = await mockRequest(`/machines/${approved!.id}`, { method: 'DELETE' });
+    expect(response.status).toBe(409);
+    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    expect(body.error.code).toBe('revoke_first');
+  });
+
+  it('revoke on an already revoked machine is a 409 invalid_transition', async () => {
+    const machines = await listMachines();
+    const revoked = machines.find((machine) => machine.status === 'revoked');
+    expect(revoked).toBeDefined();
+    const response = await mockRequest(`/machines/${revoked!.id}/revoke`, { method: 'POST' });
+    expect(response.status).toBe(409);
+    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    expect(body.error.code).toBe('invalid_transition');
   });
 
   it('waits before answering, so loading states are real', async () => {

@@ -3,6 +3,7 @@ import {
   markdownToPlain,
   previewBody,
   previewPrefix,
+  shouldRenderMarkdown,
   type ChatSummary,
 } from '@galena/chat-core';
 import { VolumeX } from 'lucide-react';
@@ -28,10 +29,11 @@ export function ChatListItem({
   const options = { isGroup: chat.kind === 'group', currentUserId: store.currentUserId };
   const prefix = previewPrefix(last, options);
   const rawBody = previewBody(last);
-  // Only an incoming AI reply is Markdown (shouldRenderMarkdown); your own
-  // message in an AI chat previews literally, exactly as its bubble shows it.
+  // Only an incoming AI reply is Markdown (shouldRenderMarkdown), in an AI
+  // chat or in a group; your own message previews literally, exactly as its
+  // bubble shows it.
   const body =
-    chat.isAI && last !== undefined && last.senderId !== store.currentUserId
+    last !== undefined && shouldRenderMarkdown(chat, last, store.currentUserId)
       ? markdownToPlain(rawBody)
       : rawBody;
   const own = last !== undefined && last.senderId === store.currentUserId;
