@@ -24,6 +24,7 @@ Decisions D25 to D29 in [`PROJECT_PLAN.md`](PROJECT_PLAN.md). Visual spec: the C
 | T-0123 | Telegram sticker importer | Bring your Telegram packs | T-0120, T-0121; **bot token from Julio** | yes |
 | T-0124 | Channels | One-way feeds, only admins post | T-0108, T-0115 | yes |
 | T-0104 to T-0107 | Routines, AI tool actions, model side, tools UI | "Every morning post gold, S&P and BTC" | T-0110 (T-0104, T-0105 specs are updated for topics; T-0106, T-0107 are written after T-0105) | T-0104 yes |
+| T-0125 | Web tools for AIs | `web.price` (gold, S&P, BTC), Wikipedia, feeds, page reading and a best-effort search, all keyless (no SearXNG/Exa for now) | T-0105 | no |
 
 ## Order for tonight
 
