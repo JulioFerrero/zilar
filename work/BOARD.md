@@ -124,6 +124,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0095](T-0095-mobile-kill-switch.md) | mobile kill switch: Stop/Resume from the AI list, Stopped pill | 2026-09-29 |
 | [T-0093](T-0093-request-action-tool.md) | request_action AI tool + dev-only demo.echo adapter (ACTION_DEMO_ENABLED) | 2026-09-29 |
 | [T-0096](T-0096-action-flow-e2e-test.md) | end-to-end test of the action flow through the real approvals routes | 2026-09-29 |
-| [T-0098](T-0098-group-request-action.md) | `request_action` in groups: only admins can trigger it, the card is visible to the whole room (server) | in progress | minimax-m3 | T-0090, T-0092, T-0093 | Julio's decision 2026-09-29. |
 | [T-0099](T-0099-approval-rules-always-allow.md) | "Approve always" as a standing rule scoped to one chat (personal or one group), revocable, audited (server) | in progress | minimax-m3 | T-0090, T-0092, T-0093 | Julio's decision 2026-09-29. Web UI next (T-0100). |
 | [T-0097](T-0097-approval-card-live-refresh.md) | approval card refreshes itself; menu shows pending approvals count | 2026-09-29 |
+| [T-0098](T-0098-group-request-action.md) | request_action in groups: admins only, card visible to the room; persona tools unreachable from groups | 2026-09-29 |
