@@ -105,6 +105,9 @@ function mockPanelFetch(
     if (/\/ais\/[^/]+$/.test(target)) {
       return jsonResponse(200, refetched);
     }
+    if (target.includes('/audit')) {
+      return jsonResponse(200, { entries: [], next: null });
+    }
     return jsonResponse(200, [listed]);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -173,6 +176,9 @@ function mockPanelFetchWithState(
     }
     if (method === 'DELETE') {
       return jsonResponse(204, null);
+    }
+    if (target.includes('/audit')) {
+      return jsonResponse(200, { entries: [], next: null });
     }
     if (/\/ais\/[^/]+$/.test(target) && method === 'GET') {
       return jsonResponse(200, patch);
@@ -624,6 +630,87 @@ describe('AiPanel', () => {
       // The AI is still stopped.
       expect(screen.getByText('Stopped')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy();
+    });
+  });
+
+  describe('activity section (T-0084)', () => {
+    it('renders the Activity heading at the bottom of the panel', async () => {
+      mockPanelFetch();
+      renderPanel();
+
+      expect(await screen.findByRole('heading', { name: 'Activity' })).toBeTruthy();
+    });
+
+    it('shows a Stopped entry from the audit list', async () => {
+      const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+        const target = String(url);
+        if ((init?.method ?? 'GET') === 'PATCH') {
+          return jsonResponse(200, ai);
+        }
+        if (target.includes('/connections')) {
+          return jsonResponse(200, [openaiConnection]);
+        }
+        if (/\/ais\/[^/]+$/.test(target)) {
+          return jsonResponse(200, ai);
+        }
+        if (target.includes('/audit')) {
+          return jsonResponse(200, {
+            entries: [
+              {
+                id: 'audit-1',
+                at: new Date(Date.now() - 3 * 60_000).toISOString(),
+                aiId: 'a-1',
+                groupId: null,
+                action: 'ai.stopped',
+                subjectId: 'a-1',
+                argsHash: null,
+                cost: null,
+                result: 'ok',
+                detail: null,
+                actorUserId: 'u-you',
+              },
+            ],
+            next: null,
+          });
+        }
+        return jsonResponse(200, [ai]);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderPanel();
+
+      expect(await screen.findByText('Stopped')).toBeTruthy();
+      expect(screen.getByDisplayValue('Dev-1')).toBeTruthy();
+    });
+
+    it('a 404 on the audit endpoint leaves the rest of the panel intact', async () => {
+      const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+        const target = String(url);
+        if ((init?.method ?? 'GET') === 'PATCH') {
+          return jsonResponse(200, ai);
+        }
+        if (target.includes('/connections')) {
+          return jsonResponse(200, [openaiConnection]);
+        }
+        if (/\/ais\/[^/]+$/.test(target)) {
+          return jsonResponse(200, ai);
+        }
+        if (target.includes('/audit')) {
+          return jsonResponse(404, {
+            error: { code: 'not_found', message: 'AI not found' },
+          });
+        }
+        return jsonResponse(200, [ai]);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderPanel();
+
+      await screen.findByRole('heading', { name: 'Activity' });
+      expect(await screen.findByRole('alert')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Stop AI' })).toBeTruthy();
+      expect(screen.getByDisplayValue('Dev-1')).toBeTruthy();
     });
   });
 });

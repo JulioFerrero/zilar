@@ -34,6 +34,21 @@ interface MockState {
   // dev-team chat). It can be decided and then stays decided for the rest of
   // the page load.
   approvals: MockApproval[];
+  audit: MockAuditEntry[];
+}
+
+interface MockAuditEntry {
+  id: string;
+  at: string;
+  aiId: string;
+  groupId: string | null;
+  action: string;
+  subjectId: string | null;
+  argsHash: string | null;
+  cost: { currency: 'EUR' | 'USD'; amount: number } | null;
+  result: 'ok' | 'denied' | 'error';
+  detail: Record<string, unknown> | null;
+  actorUserId: string | null;
 }
 
 interface MockApproval {
@@ -164,6 +179,73 @@ function seedState(): MockState {
         note: null,
       },
     ],
+    audit: [
+      {
+        id: 'audit-dev-stopped',
+        at: minutesAgo(7),
+        aiId: 'ai-mock-dev',
+        groupId: null,
+        action: 'ai.stopped',
+        subjectId: 'ai-mock-dev',
+        argsHash: null,
+        cost: null,
+        result: 'ok',
+        detail: null,
+        actorUserId: currentUserId,
+      },
+      {
+        id: 'audit-dev-resumed',
+        at: minutesAgo(4),
+        aiId: 'ai-mock-dev',
+        groupId: null,
+        action: 'ai.resumed',
+        subjectId: 'ai-mock-dev',
+        argsHash: null,
+        cost: null,
+        result: 'ok',
+        detail: null,
+        actorUserId: currentUserId,
+      },
+      {
+        id: 'audit-dev-approval',
+        at: minutesAgo(2),
+        aiId: 'ai-mock-dev',
+        groupId: null,
+        action: 'approval.decided',
+        subjectId: 'apr-42',
+        argsHash: 'a'.repeat(64),
+        cost: { currency: 'EUR', amount: 0.4 },
+        result: 'ok',
+        detail: { decision: 'approve_once' },
+        actorUserId: currentUserId,
+      },
+      {
+        id: 'audit-mkt-approval',
+        at: minutesAgo(10),
+        aiId: 'ai-mock-marketing',
+        groupId: null,
+        action: 'approval.decided',
+        subjectId: 'apr-43',
+        argsHash: 'b'.repeat(64),
+        cost: { currency: 'USD', amount: 0.2 },
+        result: 'denied',
+        detail: { decision: 'deny' },
+        actorUserId: currentUserId,
+      },
+      {
+        id: 'audit-mkt-paired',
+        at: minutesAgo(35),
+        aiId: 'ai-mock-marketing',
+        groupId: null,
+        action: 'machine.paired',
+        subjectId: 'mach-approved',
+        argsHash: null,
+        cost: null,
+        result: 'ok',
+        detail: null,
+        actorUserId: currentUserId,
+      },
+    ],
   };
 }
 
@@ -222,6 +304,10 @@ const TEMPLATES = ['dev', 'marketing', 'fun', 'custom'] as const;
 
 function isTemplate(value: unknown): value is PublicAi['template'] {
   return typeof value === 'string' && (TEMPLATES as readonly string[]).includes(value);
+}
+
+function minutesAgo(minutes: number): string {
+  return new Date(Date.now() - minutes * 60_000).toISOString();
 }
 
 function createAi(init: RequestInit): Response {
@@ -388,6 +474,24 @@ export async function mockRequest(
       return stopOrResumeAi(ai, 'active');
     }
     return notImplemented();
+  }
+
+  if (head === 'audit' && method === 'GET') {
+    const params = new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
+    const aiId = params.get('aiId');
+    if (aiId === null) {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'Provide exactly one of groupId or aiId' } },
+        400,
+      );
+    }
+    const limitParam = params.get('limit');
+    const limit = limitParam === null ? 20 : Math.max(1, Math.min(50, Number(limitParam)));
+    const entries = state.audit
+      .filter((entry) => entry.aiId === aiId)
+      .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+      .slice(0, limit);
+    return jsonResponse({ entries, next: null });
   }
 
   if (head === 'connections') {

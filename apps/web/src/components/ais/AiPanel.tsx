@@ -19,6 +19,7 @@ import { Avatar } from '@/components/Avatar';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 import { Button, FieldError } from './AiPageShell';
+import { AiActivity } from './AiActivity';
 import { ConnectionPicker } from './ConnectionPicker';
 import { describeAiError } from './errors';
 import { LimitsFields } from './LimitsFields';
@@ -618,6 +619,8 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
                   </Button>
                 )}
               </div>
+
+              <AiActivity aiId={ai.id} />
             </>
           )}
         </div>

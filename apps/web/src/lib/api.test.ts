@@ -16,6 +16,7 @@ import {
   getApproval,
   listAis,
   listApprovals,
+  listAudit,
   listMachines,
   listConnections,
   machineSchema,
@@ -610,6 +611,87 @@ describe('AIs stop / resume API (T-0080)', () => {
     );
 
     await expect(stopAi('missing')).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+    } satisfies Partial<ApiError>);
+  });
+});
+
+const auditFixture = {
+  id: 'audit-1',
+  at: '2026-09-29T09:00:00.000Z',
+  aiId: 'a-1',
+  groupId: null,
+  action: 'ai.stopped',
+  subjectId: 'a-1',
+  argsHash: null,
+  cost: null,
+  result: 'ok' as const,
+  detail: null,
+  actorUserId: 'u-you',
+};
+
+describe('audit list API (T-0084)', () => {
+  it('listAudit hits GET /api/audit with the aiId query string', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { entries: [auditFixture], next: null }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const page = await listAudit({ aiId: 'a-1' });
+    expect(page.entries).toHaveLength(1);
+    expect(page.entries[0]?.action).toBe('ai.stopped');
+    expect(page.next).toBeNull();
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/audit?aiId=a-1');
+  });
+
+  it('listAudit encodes the aiId and includes limit + before when given', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { entries: [], next: 'cursor' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listAudit({ aiId: 'a/1 with space', limit: 20, before: 'cursor' });
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/audit?aiId=a%2F1+with+space&limit=20&before=cursor');
+  });
+
+  it('listAudit accepts a page with a next cursor and parses cost', async () => {
+    const withCost = {
+      ...auditFixture,
+      cost: { currency: 'USD' as const, amount: 0.42 },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { entries: [withCost], next: 'next-cursor' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const page = await listAudit({ aiId: 'a-1' });
+    expect(page.next).toBe('next-cursor');
+    expect(page.entries[0]?.cost).toEqual({ currency: 'USD', amount: 0.42 });
+  });
+
+  it('a wrong response shape becomes an invalid_response ApiError', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { entries: 'oops' })));
+
+    await expect(listAudit({ aiId: 'a-1' })).rejects.toMatchObject({
+      status: 200,
+      code: 'invalid_response',
+    } satisfies Partial<ApiError>);
+  });
+
+  it('a 404 on listAudit surfaces as a not_found ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(404, { error: { code: 'not_found', message: 'AI not found' } }),
+        ),
+    );
+
+    await expect(listAudit({ aiId: 'missing' })).rejects.toMatchObject({
       status: 404,
       code: 'not_found',
     } satisfies Partial<ApiError>);

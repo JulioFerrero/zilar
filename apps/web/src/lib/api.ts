@@ -531,3 +531,57 @@ export function decideApproval(
     body: JSON.stringify(body),
   });
 }
+
+// --- Audit log (T-0079, T-0084) --------------------------------------------
+// The wire contract lives in apps/server/src/audit/routes.ts and service.ts.
+
+const auditCostSchema = z
+  .object({
+    currency: z.enum(['EUR', 'USD']),
+    amount: z.number(),
+  })
+  .nullable();
+
+export const publicAuditEntrySchema = z.object({
+  id: z.string(),
+  at: z.string(),
+  aiId: z.string().nullable(),
+  groupId: z.string().nullable(),
+  action: z.string(),
+  subjectId: z.string().nullable(),
+  argsHash: z.string().nullable(),
+  cost: auditCostSchema,
+  result: z.enum(['ok', 'denied', 'error']),
+  detail: z.record(z.string(), z.unknown()).nullable(),
+  actorUserId: z.string().nullable(),
+});
+
+export type PublicAuditEntry = z.infer<typeof publicAuditEntrySchema>;
+
+const auditPageSchema = z.object({
+  entries: z.array(publicAuditEntrySchema),
+  next: z.string().nullable(),
+});
+
+export interface ListAuditPage {
+  entries: PublicAuditEntry[];
+  next: string | null;
+}
+
+export interface ListAuditInput {
+  aiId: string;
+  limit?: number;
+  before?: string;
+}
+
+export function listAudit(input: ListAuditInput): Promise<ListAuditPage> {
+  const params = new URLSearchParams();
+  params.set('aiId', input.aiId);
+  if (input.limit !== undefined) {
+    params.set('limit', String(input.limit));
+  }
+  if (input.before !== undefined && input.before !== '') {
+    params.set('before', input.before);
+  }
+  return request(`/audit?${params.toString()}`, auditPageSchema);
+}
