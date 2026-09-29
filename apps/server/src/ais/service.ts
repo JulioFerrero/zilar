@@ -45,8 +45,8 @@ export interface PublicAi {
   providerConnectionId: string;
   limits: AiLimits;
   // T-0091: the AI's home machine id, or null when it runs on the platform.
-  // Snake-case to match the rest of the public API.
-  machine_id: string | null;
+  // CamelCase like the rest of the public AI fields.
+  machineId: string | null;
   createdAt: Date;
 }
 
@@ -1110,7 +1110,7 @@ function toPublicAi(row: PublicAiRow): PublicAi {
       perDayUsd: Number(row.perDayUsd),
       perMonthUsd: Number(row.perMonthUsd),
     },
-    machine_id: row.machineId,
+    machineId: row.machineId,
     createdAt: row.createdAt,
   };
 }

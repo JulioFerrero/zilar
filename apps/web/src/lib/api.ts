@@ -255,7 +255,7 @@ const publicAiSchema = z.object({
   // T-0091: the AI's home machine id, or null when it runs on the platform.
   // Optional so a payload from a server that has not been upgraded yet
   // still parses — the panel renders the same way when it is absent.
-  machine_id: z.string().nullable().optional(),
+  machineId: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 
@@ -344,7 +344,7 @@ export function setAiMachine(aiId: string, machineId: string | null): Promise<Pu
   return request(`/ais/${encodeURIComponent(aiId)}/machine`, publicAiSchema, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ machine_id: machineId }),
+    body: JSON.stringify({ machineId: machineId }),
   });
 }
 

@@ -1611,9 +1611,9 @@ describe('AI stop / resume audit entries', () => {
 });
 
 // T-0091: the home machine. The route is its own `PUT /api/ais/:id/machine`,
-// owner-only, accepting `{ machine_id: string | null }`; it never changes
+// owner-only, accepting `{ machineId: string | null }`; it never changes
 // `updateAi` or `PATCH /api/ais/:id`. Every public AI response carries the
-// new `machine_id` field, the audit recorder writes only on a real change,
+// new `machineId` field, the audit recorder writes only on a real change,
 // and a machine that is not approved or does not belong to the caller
 // answers the same 404 `machine_not_found` so the caller cannot tell which.
 describe('AI home machine assignment (T-0091)', () => {
@@ -1711,7 +1711,7 @@ describe('AI home machine assignment (T-0091)', () => {
     const noAuth = await app.request(`${TEST_BASE_URL}/api/ais/${id}/machine`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ machine_id: null }),
+      body: JSON.stringify({ machineId: null }),
     });
     expect(noAuth.status).toBe(401);
   });
@@ -1722,59 +1722,59 @@ describe('AI home machine assignment (T-0091)', () => {
     const machineId = await insertMachine(alice.id, { status: 'approved' });
     const id = await createAiFor(app, alice.id, alice.cookie);
 
-    const assigned = await putMachine(app, alice.cookie, id, { machine_id: machineId });
+    const assigned = await putMachine(app, alice.cookie, id, { machineId: machineId });
     expect(assigned.status).toBe(200);
-    expect(((await assigned.json()) as { machine_id: string | null }).machine_id).toBe(machineId);
+    expect(((await assigned.json()) as { machineId: string | null }).machineId).toBe(machineId);
 
     const [rowAfterAssign] = await context.db.select().from(ais).where(eq(ais.id, id));
     expect(rowAfterAssign?.machineId).toBe(machineId);
 
-    const cleared = await putMachine(app, alice.cookie, id, { machine_id: null });
+    const cleared = await putMachine(app, alice.cookie, id, { machineId: null });
     expect(cleared.status).toBe(200);
-    expect(((await cleared.json()) as { machine_id: string | null }).machine_id).toBeNull();
+    expect(((await cleared.json()) as { machineId: string | null }).machineId).toBeNull();
 
     const [rowAfterClear] = await context.db.select().from(ais).where(eq(ais.id, id));
     expect(rowAfterClear?.machineId).toBeNull();
 
-    // Every public AI response carries machine_id: list, get, create, patch,
+    // Every public AI response carries machineId: list, get, create, patch,
     // stop, resume. After the assignment it is the assigned id.
-    const reassigned = await putMachine(app, alice.cookie, id, { machine_id: machineId });
+    const reassigned = await putMachine(app, alice.cookie, id, { machineId: machineId });
     expect(reassigned.status).toBe(200);
 
     const list = await app.request(`${TEST_BASE_URL}/api/ais`, {
       headers: { cookie: alice.cookie },
     });
-    expect(((await list.json()) as Array<{ machine_id: string | null }>)[0]?.machine_id).toBe(
+    expect(((await list.json()) as Array<{ machineId: string | null }>)[0]?.machineId).toBe(
       machineId,
     );
 
     const detail = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
       headers: { cookie: alice.cookie },
     });
-    expect(((await detail.json()) as { machine_id: string | null }).machine_id).toBe(machineId);
+    expect(((await detail.json()) as { machineId: string | null }).machineId).toBe(machineId);
 
     const stopped = await app.request(`${TEST_BASE_URL}/api/ais/${id}/stop`, {
       method: 'POST',
       headers: { cookie: alice.cookie },
     });
-    expect(
-      ((await stopped.json()) as { machine_id: string | null; status: string }).machine_id,
-    ).toBe(machineId);
+    expect(((await stopped.json()) as { machineId: string | null; status: string }).machineId).toBe(
+      machineId,
+    );
 
     const resumed = await app.request(`${TEST_BASE_URL}/api/ais/${id}/resume`, {
       method: 'POST',
       headers: { cookie: alice.cookie },
     });
-    expect(
-      ((await resumed.json()) as { machine_id: string | null; status: string }).machine_id,
-    ).toBe(machineId);
+    expect(((await resumed.json()) as { machineId: string | null; status: string }).machineId).toBe(
+      machineId,
+    );
 
     const patched = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
       method: 'PATCH',
       headers: { cookie: alice.cookie, 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Renamed' }),
     });
-    expect(((await patched.json()) as { machine_id: string | null; name: string }).machine_id).toBe(
+    expect(((await patched.json()) as { machineId: string | null; name: string }).machineId).toBe(
       machineId,
     );
 
@@ -1789,7 +1789,7 @@ describe('AI home machine assignment (T-0091)', () => {
         limits: { perDayUsd: 1, perMonthUsd: 20 },
       }),
     });
-    expect(((await created.json()) as { machine_id: string | null }).machine_id).toBeNull();
+    expect(((await created.json()) as { machineId: string | null }).machineId).toBeNull();
   });
 
   it('returns 404 not_found for a missing or foreign AI', async () => {
@@ -1800,7 +1800,7 @@ describe('AI home machine assignment (T-0091)', () => {
     const aliceAi = await createAiFor(app, alice.id, alice.cookie);
 
     for (const target of [aliceAi, 'does-not-exist']) {
-      const bobAssign = await putMachine(app, bob.cookie, target, { machine_id: aliceMachine });
+      const bobAssign = await putMachine(app, bob.cookie, target, { machineId: aliceMachine });
       expect(bobAssign.status).toBe(404);
       expect(((await bobAssign.json()) as { error: { code: string } }).error.code).toBe(
         'not_found',
@@ -1822,7 +1822,7 @@ describe('AI home machine assignment (T-0091)', () => {
     const id = await createAiFor(app, alice.id, alice.cookie);
 
     for (const target of ['does-not-exist', alicePending, aliceRevoked, bobApproved]) {
-      const response = await putMachine(app, alice.cookie, id, { machine_id: target });
+      const response = await putMachine(app, alice.cookie, id, { machineId: target });
       expect(response.status).toBe(404);
       expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
         'machine_not_found',
@@ -1830,7 +1830,7 @@ describe('AI home machine assignment (T-0091)', () => {
     }
 
     // Sanity: the good machine still works.
-    const ok = await putMachine(app, alice.cookie, id, { machine_id: aliceApproved });
+    const ok = await putMachine(app, alice.cookie, id, { machineId: aliceApproved });
     expect(ok.status).toBe(200);
 
     // None of the failed attempts stored a value.
@@ -1845,8 +1845,8 @@ describe('AI home machine assignment (T-0091)', () => {
     const id = await createAiFor(app, alice.id, alice.cookie);
 
     const response = await putMachine(app, alice.cookie, id, {
-      machine_id: machineId,
       machineId,
+      extra: 'nope',
     });
     expect(response.status).toBe(400);
   });
@@ -1862,23 +1862,23 @@ describe('AI home machine assignment (T-0091)', () => {
     const id = await createAiFor(app, alice.id, alice.cookie);
 
     // Initial assignment: one entry.
-    const assigned = await putMachine(app, alice.cookie, id, { machine_id: machineId });
+    const assigned = await putMachine(app, alice.cookie, id, { machineId: machineId });
     expect(assigned.status).toBe(200);
 
     // Idempotent repeat on the same value: no new entry.
-    const sameAgain = await putMachine(app, alice.cookie, id, { machine_id: machineId });
+    const sameAgain = await putMachine(app, alice.cookie, id, { machineId: machineId });
     expect(sameAgain.status).toBe(200);
 
     // Clear: one entry with machineId null.
-    const cleared = await putMachine(app, alice.cookie, id, { machine_id: null });
+    const cleared = await putMachine(app, alice.cookie, id, { machineId: null });
     expect(cleared.status).toBe(200);
 
     // Idempotent clear: no new entry.
-    const clearAgain = await putMachine(app, alice.cookie, id, { machine_id: null });
+    const clearAgain = await putMachine(app, alice.cookie, id, { machineId: null });
     expect(clearAgain.status).toBe(200);
 
     // Re-assign to a different machine: one entry.
-    const reassigned = await putMachine(app, alice.cookie, id, { machine_id: otherId });
+    const reassigned = await putMachine(app, alice.cookie, id, { machineId: otherId });
     expect(reassigned.status).toBe(200);
 
     const entries = await app.request(`${TEST_BASE_URL}/api/audit?aiId=${id}`, {
@@ -1914,7 +1914,7 @@ describe('AI home machine assignment (T-0091)', () => {
     const aliceAi = await createAiFor(app, alice.id, alice.cookie);
     const aliceMachine = await insertMachine(alice.id);
 
-    const bobTries = await putMachine(app, bob.cookie, aliceAi, { machine_id: aliceMachine });
+    const bobTries = await putMachine(app, bob.cookie, aliceAi, { machineId: aliceMachine });
     expect(bobTries.status).toBe(404);
 
     const entries = await app.request(`${TEST_BASE_URL}/api/audit?aiId=${aliceAi}`, {
@@ -1928,7 +1928,7 @@ describe('AI home machine assignment (T-0091)', () => {
     const alice = await bootstrapUser(context, app, `homeauditmac${testCounter}@example.com`);
     const id = await createAiFor(app, alice.id, alice.cookie);
 
-    const bad = await putMachine(app, alice.cookie, id, { machine_id: 'no-such-machine' });
+    const bad = await putMachine(app, alice.cookie, id, { machineId: 'no-such-machine' });
     expect(bad.status).toBe(404);
     expect(((await bad.json()) as { error: { code: string } }).error.code).toBe(
       'machine_not_found',
@@ -1953,7 +1953,7 @@ describe('AI home machine assignment (T-0091)', () => {
     const machineId = await insertMachine(alice.id);
     const id = await createAiFor(app, alice.id, alice.cookie);
 
-    const response = await putMachine(app, alice.cookie, id, { machine_id: machineId });
+    const response = await putMachine(app, alice.cookie, id, { machineId: machineId });
     expect(response.status).toBe(200);
     expect(calls).toEqual([1]);
     expect(await context.db.select().from(auditLog)).toHaveLength(0);
@@ -1966,12 +1966,12 @@ describe('AI home machine assignment (T-0091)', () => {
     const first = await createAiFor(app, alice.id, alice.cookie);
     const second = await createAiFor(app, alice.id, alice.cookie);
 
-    const assignFirst = await putMachine(app, alice.cookie, first, { machine_id: machineId });
+    const assignFirst = await putMachine(app, alice.cookie, first, { machineId: machineId });
     expect(assignFirst.status).toBe(200);
-    const assignSecond = await putMachine(app, alice.cookie, second, { machine_id: machineId });
+    const assignSecond = await putMachine(app, alice.cookie, second, { machineId: machineId });
     expect(assignSecond.status).toBe(200);
 
-    const clearSecond = await putMachine(app, alice.cookie, second, { machine_id: null });
+    const clearSecond = await putMachine(app, alice.cookie, second, { machineId: null });
     expect(clearSecond.status).toBe(200);
 
     const [firstRow] = await context.db.select().from(ais).where(eq(ais.id, first));

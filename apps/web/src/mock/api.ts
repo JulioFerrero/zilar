@@ -70,7 +70,7 @@ function seedAi(name: string, template: PublicAi['template'], id: string): Publi
     providerConnectionId: 'conn-openai',
     limits: { perDayUsd: 2, perMonthUsd: 20 },
     usage: null,
-    machine_id: 'mach-approved',
+    machineId: 'mach-approved',
     createdAt: '2026-09-20T10:00:00.000Z',
   };
 }
@@ -368,7 +368,7 @@ function createAi(init: RequestInit): Response {
     providerConnectionId:
       typeof body.providerConnectionId === 'string' ? body.providerConnectionId : 'conn-openai',
     limits: readLimits(body.limits),
-    machine_id: null,
+    machineId: null,
     createdAt: new Date().toISOString(),
   };
   state.ais = [created, ...state.ais];
@@ -391,16 +391,16 @@ function patchAi(ai: PublicAi, init: RequestInit): Response {
 
 function assignMachine(ai: PublicAi, init: RequestInit): Response {
   const body = readJsonBody(init);
-  if (!('machine_id' in body)) {
+  if (!('machineId' in body)) {
     return jsonResponse(
-      { error: { code: 'invalid_request', message: 'machine_id is required' } },
+      { error: { code: 'invalid_request', message: 'machineId is required' } },
       400,
     );
   }
-  const machineId = body.machine_id;
+  const machineId = body.machineId;
   if (machineId !== null && typeof machineId !== 'string') {
     return jsonResponse(
-      { error: { code: 'invalid_request', message: 'machine_id must be a string or null' } },
+      { error: { code: 'invalid_request', message: 'machineId must be a string or null' } },
       400,
     );
   }
@@ -410,15 +410,15 @@ function assignMachine(ai: PublicAi, init: RequestInit): Response {
       return notFound('Machine not found');
     }
   }
-  const updated: PublicAi = { ...ai, machine_id: machineId };
+  const updated: PublicAi = { ...ai, machineId: machineId };
   state.ais = state.ais.map((item) => (item.id === ai.id ? updated : item));
   // T-0091: revoke also clears the AI link, matching the real server.
   for (const item of state.ais) {
     if (
-      item.machine_id !== null &&
-      !state.machines.some((m) => m.id === item.machine_id && m.status === 'approved')
+      item.machineId !== null &&
+      !state.machines.some((m) => m.id === item.machineId && m.status === 'approved')
     ) {
-      item.machine_id = null;
+      item.machineId = null;
     }
   }
   return jsonResponse(updated);
@@ -645,7 +645,7 @@ export async function mockRequest(
       state.machines = state.machines.map((item) => (item.id === machineId ? revoked : item));
       // T-0091: revoke also clears the AI link, matching the real server.
       state.ais = state.ais.map((ai) =>
-        ai.machine_id === machineId ? { ...ai, machine_id: null } : ai,
+        ai.machineId === machineId ? { ...ai, machineId: null } : ai,
       );
       return jsonResponse(revoked);
     }

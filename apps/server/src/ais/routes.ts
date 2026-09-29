@@ -106,7 +106,7 @@ const UpdateAiSchema = z
 // key is a 400 instead of being silently dropped.
 const AssignMachineSchema = z
   .object({
-    machine_id: z.string().trim().min(1).max(128).nullable(),
+    machineId: z.string().trim().min(1).max(128).nullable(),
   })
   .strict();
 
@@ -296,7 +296,7 @@ export function createAisRoutes({
   // `resume` skip the audit on an idempotent call: a recorder that swallows
   // errors must not turn a 200 into a 500 here either. The `try/catch`
   // around `audit.record` is the same defensive backstop as the kill-switch
-  // routes. `before.machine_id` and `ai.machine_id` are always either the
+  // routes. `before.machineId` and `ai.machineId` are always either the
   // same string or one of them is `null`, so the inequality check is
   // straightforward.
   routes.put('/ais/:id/machine', async (c) => {
@@ -312,10 +312,10 @@ export function createAisRoutes({
       {
         aiId: id,
         ownerId: user.id,
-        machineId: parsed.data.machine_id,
+        machineId: parsed.data.machineId,
       },
     );
-    if (audit !== undefined && before !== null && before.machine_id !== ai.machine_id) {
+    if (audit !== undefined && before !== null && before.machineId !== ai.machineId) {
       try {
         await audit.record({
           actorUserId: user.id,
@@ -327,7 +327,7 @@ export function createAisRoutes({
           costCurrency: null,
           costAmount: null,
           result: 'ok',
-          detail: { machineId: ai.machine_id },
+          detail: { machineId: ai.machineId },
         });
       } catch {
         // The recorder contract says it must not throw, but a buggy one

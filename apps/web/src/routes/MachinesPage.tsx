@@ -186,7 +186,7 @@ export function MachinesPage() {
       const updated = await revokeMachine(id);
       setMachines((previous) => previous.map((m) => (m.id === id ? updated : m)));
       setConfirming((c) => ({ ...c, revoke: null }));
-      // T-0091: the server clears `ais.machine_id` for the revoked machine
+      // T-0091: the server clears `ais.machineId` for the revoked machine
       // in the same transaction, so refresh the AI list to keep the card
       // labels in step. Best-effort: a failure here just leaves the
       // previous names until the next load.
@@ -262,10 +262,10 @@ export function MachinesPage() {
       return map;
     }
     for (const ai of ais) {
-      if (ai.machine_id !== null && ai.machine_id !== undefined) {
-        const list = map.get(ai.machine_id) ?? [];
+      if (ai.machineId !== null && ai.machineId !== undefined) {
+        const list = map.get(ai.machineId) ?? [];
         list.push(ai.name);
-        map.set(ai.machine_id, list);
+        map.set(ai.machineId, list);
       }
     }
     return map;

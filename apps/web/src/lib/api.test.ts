@@ -719,7 +719,7 @@ describe('audit list API (T-0084)', () => {
 
 // T-0091: the home machine wire. `setAiMachine` PUTs to the right path
 // with the expected snake_case body and parses the fresh public AI back;
-// `publicAiSchema` accepts the new `machine_id` field. Server errors
+// `publicAiSchema` accepts the new `machineId` field. Server errors
 // flow through `ApiError` like every other route.
 describe('AI home machine API (T-0091)', () => {
   const assigned = {
@@ -732,30 +732,30 @@ describe('AI home machine API (T-0091)', () => {
     status: 'active',
     providerConnectionId: 'c-1',
     limits: { perDayUsd: 2, perMonthUsd: 20 },
-    machine_id: 'm-1',
+    machineId: 'm-1',
     createdAt: '2026-09-28T00:00:00.000Z',
   };
 
-  it('listAis parses an AI with a machine_id and an AI without one', async () => {
+  it('listAis parses an AI with a machineId and an AI without one', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(
-        jsonResponse(200, [assigned, { ...assigned, id: 'a-2', machine_id: null }]),
+        jsonResponse(200, [assigned, { ...assigned, id: 'a-2', machineId: null }]),
       );
     vi.stubGlobal('fetch', fetchMock);
 
     const list = await listAis();
-    expect(list.map((item) => item.machine_id)).toEqual(['m-1', null]);
+    expect(list.map((item) => item.machineId)).toEqual(['m-1', null]);
   });
 
-  it('listAis still parses an AI from a server that has not been upgraded yet (no machine_id key)', async () => {
+  it('listAis still parses an AI from a server that has not been upgraded yet (no machineId key)', async () => {
     const oldShape: Record<string, unknown> = { ...assigned };
-    delete oldShape['machine_id'];
+    delete oldShape['machineId'];
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, [oldShape]));
     vi.stubGlobal('fetch', fetchMock);
 
     const list = await listAis();
-    expect(list[0]?.machine_id).toBeUndefined();
+    expect(list[0]?.machineId).toBeUndefined();
   });
 
   it('setAiMachine PUTs to /api/ais/:id/machine with snake_case body and parses the fresh AI', async () => {
@@ -763,24 +763,24 @@ describe('AI home machine API (T-0091)', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const ai = await setAiMachine('a-1', 'm-1');
-    expect(ai.machine_id).toBe('m-1');
+    expect(ai.machineId).toBe('m-1');
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/ais/a-1/machine');
     expect(init.method).toBe('PUT');
-    expect(JSON.parse(init.body as string)).toEqual({ machine_id: 'm-1' });
+    expect(JSON.parse(init.body as string)).toEqual({ machineId: 'm-1' });
   });
 
   it('setAiMachine(null) clears the assignment', async () => {
-    const cleared = { ...assigned, machine_id: null };
+    const cleared = { ...assigned, machineId: null };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, cleared));
     vi.stubGlobal('fetch', fetchMock);
 
     const ai = await setAiMachine('a-1', null);
-    expect(ai.machine_id).toBeNull();
+    expect(ai.machineId).toBeNull();
     expect(
       JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string),
     ).toEqual({
-      machine_id: null,
+      machineId: null,
     });
   });
 

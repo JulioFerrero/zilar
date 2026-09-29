@@ -1,7 +1,7 @@
 ---
 id: T-0091
 title: AI home machine (M3/M4, server + web) — assign an AI to one of the owner's approved machines
-status: review
+status: merged
 milestone: M3
 branch: task/T-0091-ai-home-machine
 model: minimax-coding-plan/MiniMax-M3
@@ -148,4 +148,13 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged after lead changes (the spec had one error, mine).
+
+Rebased on main; after the last edit format, lint, typecheck clean; server 767 passed, web 588, mobile 348. No disable comments; `db:generate` reports no schema changes.
+
+Lead changes:
+1. **Field naming.** The spec said `machine_id` (snake_case) "like the other fields", but the public AI is camelCase (`providerConnectionId`, `createdAt`). Renamed to `machineId` on the wire, in the request body, in web and in tests. That was my spec mistake, not the worker's.
+2. **Migration collision** with T-0090's `0014`: deleted the worker's migration and regenerated (`0015_late_randall_flagg.sql`).
+3. Fixed the "unknown body key" test that the rename turned into a duplicate key (now sends a real extra key).
+
+Confirmed: only the owner can assign, only to their own approved machine (missing, foreign, pending and revoked all answer 404 `machine_not_found`); revoke clears the link in the same transaction; deleting the row is covered by `SET NULL`; audit only on a real change; `PATCH /api/ais/:id` untouched; the authz sweep picked the new route up and it answers 401; mobile untouched and still parses AIs.

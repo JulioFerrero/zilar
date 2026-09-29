@@ -230,7 +230,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     [machines],
   );
   const machineOptionsLoaded = machines !== null;
-  const currentMachineId = ai?.machine_id ?? null;
+  const currentMachineId = ai?.machineId ?? null;
   // The current value always shows, even if the machine vanished or was
   // revoked in another tab — without it the dropdown would default to
   // "The platform", which would be a silent change.
@@ -415,12 +415,12 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
   // T-0091: set or clear the home machine. The select carries the chosen
   // value already (`event.target.value`), so on a failure we have to roll
   // it back to the AI's previous value: the select itself is uncontrolled
-  // and uses `ai.machine_id` as the canonical source.
+  // and uses `ai.machineId` as the canonical source.
   const changeMachine = async (nextValue: string): Promise<void> => {
     if (ai === null || machineBusy) {
       return;
     }
-    const previous = ai.machine_id ?? null;
+    const previous = ai.machineId ?? null;
     const next = nextValue === '' ? null : nextValue;
     if (next === previous) {
       return;
@@ -429,7 +429,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     // chosen id is by construction known to the server. Still, the server
     // is the source of truth; on a 404 (a revoke that raced us) we refetch
     // instead of crashing the panel.
-    const optimistic: PublicAi = { ...ai, machine_id: next };
+    const optimistic: PublicAi = { ...ai, machineId: next };
     setAi(optimistic);
     setMachineBusy(true);
     setMachineError('');
@@ -440,7 +440,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
       // Roll back to the AI's previous value, then refetch so the panel
       // matches the server's view. The refetch is best-effort: the inline
       // error stays visible either way.
-      setAi((current) => (current === null ? current : { ...current, machine_id: previous }));
+      setAi((current) => (current === null ? current : { ...current, machineId: previous }));
       setMachineError(describeAiError(error, 'Could not update the home machine').message);
       try {
         const fresh = await getAi(ai.id);

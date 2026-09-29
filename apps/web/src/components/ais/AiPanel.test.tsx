@@ -755,7 +755,7 @@ describe('AiPanel home machine (T-0091)', () => {
   };
 
   function aiWithMachine(machineId: string | null): Record<string, unknown> {
-    return { ...ai, machine_id: machineId };
+    return { ...ai, machineId: machineId };
   }
 
   function mockAiPanelFetchWithMachines(options: {
@@ -771,7 +771,7 @@ describe('AiPanel home machine (T-0091)', () => {
         if (assignResponse !== undefined) {
           return jsonResponse(assignResponse.status, assignResponse.body);
         }
-        return jsonResponse(200, { ...initialAi, machine_id: null });
+        return jsonResponse(200, { ...initialAi, machineId: null });
       }
       if (target.endsWith('/machines') && method === 'GET') {
         if ('fail' in machines) {
@@ -835,7 +835,7 @@ describe('AiPanel home machine (T-0091)', () => {
         (call) => methodOf(call) === 'PUT' && String(call[0]).endsWith('/ais/a-1/machine'),
       );
       expect(put).toBeDefined();
-      expect(bodyOf(put!)).toEqual({ machine_id: 'm-approved' });
+      expect(bodyOf(put!)).toEqual({ machineId: 'm-approved' });
     });
   });
 

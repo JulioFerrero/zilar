@@ -492,14 +492,14 @@ describe('MachinesPage', () => {
       status: 'active',
       providerConnectionId: 'c-1',
       limits: { perDayUsd: 2, perMonthUsd: 20 },
-      machine_id: 'm-approved',
+      machineId: 'm-approved',
       createdAt: '2026-09-28T00:00:00.000Z',
     };
     const qaAi = {
       ...devAi,
       id: 'a-qa',
       name: 'QA',
-      machine_id: 'm-other',
+      machineId: 'm-other',
     };
 
     vi.stubGlobal(
@@ -542,7 +542,7 @@ describe('MachinesPage', () => {
       status: 'active',
       providerConnectionId: 'c-1',
       limits: { perDayUsd: 2, perMonthUsd: 20 },
-      machine_id: 'm-other',
+      machineId: 'm-other',
       createdAt: '2026-09-28T00:00:00.000Z',
     };
 
@@ -610,7 +610,7 @@ describe('MachinesPage', () => {
       status: 'active',
       providerConnectionId: 'c-1',
       limits: { perDayUsd: 2, perMonthUsd: 20 },
-      machine_id: 'm-approved',
+      machineId: 'm-approved',
       createdAt: '2026-09-28T00:00:00.000Z',
     };
     let aiListCalls = 0;
@@ -637,10 +637,7 @@ describe('MachinesPage', () => {
           path: '/api/ais',
           respond: () => {
             aiListCalls += 1;
-            return jsonResponse(
-              200,
-              aiListCalls === 1 ? [devAi] : [{ ...devAi, machine_id: null }],
-            );
+            return jsonResponse(200, aiListCalls === 1 ? [devAi] : [{ ...devAi, machineId: null }]);
           },
         },
       ]),

@@ -1030,12 +1030,12 @@ describe('machines routes', () => {
     expect(rows).toHaveLength(0);
   });
 
-  // T-0091: revoking or deleting a machine must null `ais.machine_id` so the
+  // T-0091: revoking or deleting a machine must null `ais.machineId` so the
   // UI never keeps a revoked or vanished machine as an AI's home. Both are
   // tested at the service layer with direct row writes: the routes above
   // already prove the public contract, and a direct insert keeps this
   // suite fast.
-  it('revokeMachine clears machine_id on AIs that point to it, in the same transaction', async () => {
+  it('revokeMachine clears machineId on AIs that point to it, in the same transaction', async () => {
     const { revokeMachine } = await import('./service');
     const alice = await bootstrapUser(context, app(), `revmachine${testCounter}@example.com`);
     const connectionId = randomUUID();
@@ -1106,7 +1106,7 @@ describe('machines routes', () => {
     expect(aiB?.machineId).toBe(other);
   });
 
-  it('deleting a machine row nulls machine_id on the AIs that pointed at it', async () => {
+  it('deleting a machine row nulls machineId on the AIs that pointed at it', async () => {
     const alice = await bootstrapUser(context, app(), `delmachine${testCounter}@example.com`);
     const connectionId = randomUUID();
     await context.db.insert(providerConnections).values({
