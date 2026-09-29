@@ -10,6 +10,7 @@ import { SearchBar } from './SearchBar';
 import { ChatListSkeleton } from './Skeleton';
 import { useDelayed } from '@/lib/useDelayed';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -18,6 +19,9 @@ import { cn } from '@/lib/utils';
 
 // A normal (re)connect takes well under this; only a slow one gets a banner.
 const CONNECTION_BANNER_DELAY_MS = 1500;
+
+// The menu badge caps at 9+; any number bigger than that just reads "9+".
+const APPROVAL_BADGE_CAP = 9;
 
 function statusLabel(status: string): string | undefined {
   switch (status) {
@@ -66,6 +70,17 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
     setMenuOpen(false);
     void store.signOut();
   };
+
+  // The badge fetches only when the menu opens; `null` is "unknown or failed",
+  // which the UI treats as "show nothing". A failed call leaves the previous
+  // count in place.
+  const pendingApprovals = usePendingApprovalCount(menuOpen);
+  const approvalsBadge =
+    pendingApprovals !== null && pendingApprovals > 0
+      ? pendingApprovals > APPROVAL_BADGE_CAP
+        ? '9+'
+        : String(pendingApprovals)
+      : null;
 
   const menu = (
     <div className="relative">
@@ -133,9 +148,17 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                 setMenuOpen(false);
                 navigate('/settings/approvals');
               }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
             >
-              Approvals
+              <span className="flex-1">Approvals</span>
+              {approvalsBadge !== null && (
+                <span
+                  aria-label={`${approvalsBadge} pending approvals`}
+                  className="shrink-0 rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
+                >
+                  {approvalsBadge}
+                </span>
+              )}
             </button>
             <button
               type="button"

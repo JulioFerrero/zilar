@@ -304,4 +304,56 @@ describe('ApprovalCard', () => {
       ),
     ).toHaveLength(1);
   });
+
+  it('shows the decided state once a poll returns approved_once, without a click', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let pending = approvalFixture();
+    const fetchMock = makeFetch((url) => {
+      if (url === '/api/approvals/apr-42') {
+        return Promise.resolve(jsonResponse(200, pending));
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApprovalCard request={request} />);
+    const approve = await screen.findByRole('button', { name: 'Approve' });
+    expect(approve).toBeTruthy();
+
+    // The next poll decides the approval.
+    pending = approvalFixture({ status: 'approved_once' });
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(await screen.findByText('Approved')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
+  });
+
+  it('drops the buttons when a poll returns expired', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let pending = approvalFixture();
+    const fetchMock = makeFetch((url) => {
+      if (url === '/api/approvals/apr-42') {
+        return Promise.resolve(jsonResponse(200, pending));
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApprovalCard request={request} />);
+    await screen.findByRole('button', { name: 'Approve' });
+
+    pending = approvalFixture({ status: 'expired' });
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(await screen.findByText('Expired')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
+  });
 });
