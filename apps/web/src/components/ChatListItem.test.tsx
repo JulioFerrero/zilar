@@ -114,4 +114,61 @@ describe('ChatListItem', () => {
     expect(screen.getByText('a **bold** word')).toBeTruthy();
     expect(screen.queryByText('a bold word')).toBeNull();
   });
+
+  it('shows a plain preview for a Markdown AI reply in a group', () => {
+    renderApp('/', {
+      chats: [
+        {
+          id: 'g-dev',
+          title: 'Dev team',
+          kind: 'group',
+          isAI: false,
+          space: 'work',
+          unread: 0,
+          muted: false,
+          lastMessage: {
+            id: 'm-4',
+            chatId: 'g-dev',
+            senderId: 'ai-dev-1@galena.test',
+            senderName: 'Dev-1',
+            text: '**Deployed** to `staging`',
+            createdAt: new Date(2026, 8, 28, 10, 0),
+            status: 'read',
+          },
+        },
+      ],
+      messagesByChat: {},
+    });
+
+    expect(screen.getByText('Deployed to staging')).toBeTruthy();
+    expect(screen.queryByText('**Deployed** to `staging`')).toBeNull();
+  });
+
+  it('keeps literal markers in a human group message preview', () => {
+    renderApp('/', {
+      chats: [
+        {
+          id: 'g-fam',
+          title: 'Familia',
+          kind: 'group',
+          isAI: false,
+          space: 'personal',
+          unread: 0,
+          muted: false,
+          lastMessage: {
+            id: 'm-5',
+            chatId: 'g-fam',
+            senderId: 'u-ana@galena.test',
+            senderName: 'Ana',
+            text: 'a **bold** word',
+            createdAt: new Date(2026, 8, 28, 10, 0),
+            status: 'read',
+          },
+        },
+      ],
+      messagesByChat: {},
+    });
+
+    expect(screen.getByText('a **bold** word')).toBeTruthy();
+  });
 });

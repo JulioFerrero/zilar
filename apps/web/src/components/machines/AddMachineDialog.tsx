@@ -196,7 +196,9 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
 
             <p className="mt-3 text-[14px]">
               On the machine, run{' '}
-              <span className="font-mono text-[13px]">galena-runner pair {pairing.code}</span>
+              <span className="font-mono text-[13px] whitespace-nowrap">
+                galena-runner pair {pairing.code}
+              </span>
             </p>
             <p className="mt-1 text-[13px] text-muted-foreground">The runner app is coming soon.</p>
 

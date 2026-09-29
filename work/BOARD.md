@@ -14,10 +14,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 ## Follow-ups
 
-- Web polish: in the Add machine dialog the pairing code wraps at its dash inside the `galena-runner pair XXXX-XXXX` line; keep it on one line (non-breaking hyphen or `whitespace-nowrap`). Seen in the lead's visual check of T-0070.
 - Mobile: apply edits, retractions and reactions (receive side first: "edited" label, tombstones, reaction chips; then send: edit, delete for everyone, react). Until then mobile **skips** those stanzas (stopgap in `real-store.ts`, `isUpdateStanza`), so an edit made on the web is not shown on the phone. Port the pure reducers in `chat-core` (`edits.ts`, `reactions.ts`); the web glue is in `apps/web/src/store/realStore.ts` (alias maps `aliasRoot`, `applyEditUpdate`, `withEdits`, `reactionChips`).
 - Web: route `ConnectionsPage` through `request()` and drop the global `fetch` wrapper that the mock layer installs (T-0069).
-- Web: the chat list previews a group AI reply raw; strip Markdown there too (`ChatListItem.tsx` only strips for `chat.isAI`), as mobile does (T-0064 review).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
