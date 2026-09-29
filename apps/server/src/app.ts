@@ -191,6 +191,7 @@ export function createApp({
       config,
       adminClient,
       logger: ais?.logger ?? logger,
+      audit: auditRecorder,
       ...(aisCipher === undefined ? {} : { cipher: aisCipher }),
       ...(aisLitellm === undefined ? {} : { litellm: aisLitellm }),
     }),

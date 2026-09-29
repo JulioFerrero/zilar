@@ -12,9 +12,10 @@ import {
   type VirtualKeyInfo,
 } from '../ai/litellm-client';
 import { createApp } from '../app';
+import { createAuditRecorder, type AuditRecorder } from '../audit/service';
 import type { ProbeOutcome, ProviderProbe } from '../connections/probe';
 import { createKeyCipher } from '../connections/crypto';
-import { aiLimits, ais, llmVirtualKeys, providerConnections } from '../db/schema';
+import { aiLimits, ais, auditLog, llmVirtualKeys, providerConnections } from '../db/schema';
 import {
   bootstrapUser,
   createTestContext,
@@ -1154,7 +1155,7 @@ describe('AI stop / resume routes', () => {
     await context.close();
   });
 
-  function mount(options: { litellm?: LitellmAdminClient } = {}): TestApp {
+  function mount(options: { litellm?: LitellmAdminClient; audit?: AuditRecorder } = {}): TestApp {
     return createApp({
       db: context.db,
       logger: context.logger,
@@ -1166,6 +1167,7 @@ describe('AI stop / resume routes', () => {
         cipher: createKeyCipher(MASTER_KEY),
         litellm: options.litellm ?? new FakeLitellm(),
       },
+      ...(options.audit === undefined ? {} : { audit: options.audit }),
     });
   }
 
@@ -1324,5 +1326,279 @@ describe('AI stop / resume routes', () => {
     });
     // 404 for an unknown id, never the 503 `ais_unavailable` of the other writes.
     expect([stop.status, resume.status]).toEqual([404, 404]);
+  });
+});
+
+// T-0083: the kill switch writes one audit entry per real status flip. The
+// default recorder in production is the one built in `app.ts`; here we wire
+// it through `createAuditRecorder` so the assertions read straight from the
+// `audit_log` table the audit routes already serve.
+describe('AI stop / resume audit entries', () => {
+  let context: TestContext;
+  let testCounter = 0;
+
+  beforeEach(async () => {
+    testCounter += 1;
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  function mountApp(): TestApp {
+    return createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+      connections: { cipher: createKeyCipher(MASTER_KEY), probe: new FakeProbe() },
+      ais: {
+        cipher: createKeyCipher(MASTER_KEY),
+        litellm: new FakeLitellm(),
+      },
+      audit: createAuditRecorder({ db: context.db, logger: context.logger }),
+    });
+  }
+
+  async function addConnection(ownerId: string): Promise<string> {
+    const id = randomUUID();
+    await context.db.insert(providerConnections).values({
+      id,
+      owner: ownerId,
+      provider: 'openai',
+      encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
+      label: null,
+    });
+    return id;
+  }
+
+  async function createAiFor(app: TestApp, ownerId: string, cookie: string): Promise<string> {
+    const connectionId = await addConnection(ownerId);
+    const response = await app.request(`${TEST_BASE_URL}/api/ais`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Dev-1',
+        template: 'dev',
+        providerConnectionId: connectionId,
+        model: 'gpt-4o-mini',
+        limits: { perDayUsd: 1, perMonthUsd: 20 },
+      }),
+    });
+    const created = (await response.json()) as { id: string };
+    return created.id;
+  }
+
+  async function readAudit(
+    app: TestApp,
+    cookie: string,
+    aiId: string,
+  ): Promise<
+    Array<{
+      action: string;
+      aiId: string | null;
+      groupId: string | null;
+      subjectId: string | null;
+      argsHash: string | null;
+      cost: unknown;
+      result: string;
+      detail: unknown;
+      actorUserId: string | null;
+    }>
+  > {
+    const response = await app.request(`${TEST_BASE_URL}/api/audit?aiId=${aiId}`, {
+      headers: { cookie },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { entries: Array<Record<string, unknown>> };
+    return body.entries as Array<{
+      action: string;
+      aiId: string | null;
+      groupId: string | null;
+      subjectId: string | null;
+      argsHash: string | null;
+      cost: unknown;
+      result: string;
+      detail: unknown;
+      actorUserId: string | null;
+    }>;
+  }
+
+  it('writes exactly one ai.stopped entry on a real stop and one ai.resumed on a real resume, with no free text', async () => {
+    const app = mountApp();
+    const alice = await bootstrapUser(context, app, `killaudit${testCounter}@example.com`);
+    const id = await createAiFor(app, alice.id, alice.cookie);
+
+    const stopped = await app.request(`${TEST_BASE_URL}/api/ais/${id}/stop`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(stopped.status).toBe(200);
+    const resumed = await app.request(`${TEST_BASE_URL}/api/ais/${id}/resume`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(resumed.status).toBe(200);
+
+    const entries = await readAudit(app, alice.cookie, id);
+    const actions = entries.map((entry) => entry.action).sort();
+    expect(actions).toEqual(['ai.resumed', 'ai.stopped']);
+    for (const entry of entries) {
+      expect(entry).toMatchObject({
+        actorUserId: alice.id,
+        aiId: id,
+        groupId: null,
+        subjectId: id,
+        argsHash: null,
+        cost: null,
+        result: 'ok',
+        detail: null,
+      });
+      const dumped = JSON.stringify(entry);
+      expect(dumped).not.toContain('Dev-1');
+      expect(dumped).not.toContain('gpt-4o-mini');
+      expect(dumped).not.toContain(alice.cookie);
+    }
+  });
+
+  it('a second stop writes nothing; a second resume writes nothing', async () => {
+    const app = mountApp();
+    const alice = await bootstrapUser(context, app, `killauditidemp${testCounter}@example.com`);
+    const id = await createAiFor(app, alice.id, alice.cookie);
+
+    const firstStop = await app.request(`${TEST_BASE_URL}/api/ais/${id}/stop`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(firstStop.status).toBe(200);
+    const secondStop = await app.request(`${TEST_BASE_URL}/api/ais/${id}/stop`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(secondStop.status).toBe(200);
+
+    const firstResume = await app.request(`${TEST_BASE_URL}/api/ais/${id}/resume`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(firstResume.status).toBe(200);
+    const secondResume = await app.request(`${TEST_BASE_URL}/api/ais/${id}/resume`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(secondResume.status).toBe(200);
+
+    const entries = await readAudit(app, alice.cookie, id);
+    expect(entries.map((entry) => entry.action).sort()).toEqual(['ai.resumed', 'ai.stopped']);
+  });
+
+  it('a 404 on a missing or foreign id writes nothing', async () => {
+    const app = mountApp();
+    const alice = await bootstrapUser(context, app, `killauditmiss${testCounter}@example.com`);
+    const bob = await bootstrapUser(context, app, `killauditthief${testCounter}@example.com`);
+    const id = await createAiFor(app, alice.id, alice.cookie);
+
+    for (const target of [id, 'does-not-exist']) {
+      const stop = await app.request(`${TEST_BASE_URL}/api/ais/${target}/stop`, {
+        method: 'POST',
+        headers: { cookie: bob.cookie },
+      });
+      const resume = await app.request(`${TEST_BASE_URL}/api/ais/${target}/resume`, {
+        method: 'POST',
+        headers: { cookie: bob.cookie },
+      });
+      expect([stop.status, resume.status]).toEqual([404, 404]);
+    }
+
+    const entries = await readAudit(app, alice.cookie, id);
+    expect(entries).toEqual([]);
+  });
+
+  it('a 409 (resume on active, stop on disabled) writes nothing', async () => {
+    const app = mountApp();
+    const alice = await bootstrapUser(context, app, `killaudit409${testCounter}@example.com`);
+    const id = await createAiFor(app, alice.id, alice.cookie);
+
+    // Resume on active is an idempotent success (200) — no status change, no
+    // audit entry. Stop on a row that the service knows is `disabled`
+    // (provisioning in progress) answers 409. Both paths must write nothing.
+    const resumeOnActive = await app.request(`${TEST_BASE_URL}/api/ais/${id}/resume`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(resumeOnActive.status).toBe(200);
+
+    await context.db.update(ais).set({ status: 'disabled' }).where(eq(ais.id, id));
+    const stopOnDisabled = await app.request(`${TEST_BASE_URL}/api/ais/${id}/stop`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(stopOnDisabled.status).toBe(409);
+
+    const entries = await readAudit(app, alice.cookie, id);
+    expect(entries).toEqual([]);
+  });
+
+  it('a recorder that throws does not change the 200 and writes no audit row', async () => {
+    // The real recorder swallows its own failures, but the contract is also
+    // that the route itself never propagates one: a buggy recorder must not
+    // turn a 200 into a 500. A throwing recorder proves it.
+    const calls: number[] = [];
+    const failingRecorder: AuditRecorder = {
+      async record(): Promise<void> {
+        calls.push(1);
+        throw new Error('recorder exploded');
+      },
+    };
+    const app = mountApp();
+    // Replace the route recorder by mounting a fresh app with the failing one.
+    const buggy = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+      connections: { cipher: createKeyCipher(MASTER_KEY), probe: new FakeProbe() },
+      ais: {
+        cipher: createKeyCipher(MASTER_KEY),
+        litellm: new FakeLitellm(),
+      },
+      audit: failingRecorder,
+    });
+    const alice = await bootstrapUser(context, buggy, `killauditthrow${testCounter}@example.com`);
+    const id = await createAiFor(app, alice.id, alice.cookie);
+
+    const stopped = await buggy.request(`${TEST_BASE_URL}/api/ais/${id}/stop`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(stopped.status).toBe(200);
+    expect(((await stopped.json()) as { status: string }).status).toBe('stopped');
+    expect(calls).toEqual([1]);
+
+    const rows = await context.db.select().from(auditLog);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('is readable by the owner through GET /api/audit?aiId=… and not by a stranger', async () => {
+    const app = mountApp();
+    const alice = await bootstrapUser(context, app, `killownerview${testCounter}@example.com`);
+    const bob = await bootstrapUser(context, app, `killstrangerview${testCounter}@example.com`);
+    const id = await createAiFor(app, alice.id, alice.cookie);
+
+    const stopped = await app.request(`${TEST_BASE_URL}/api/ais/${id}/stop`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie },
+    });
+    expect(stopped.status).toBe(200);
+
+    const ownerEntries = await readAudit(app, alice.cookie, id);
+    expect(ownerEntries).toHaveLength(1);
+    expect(ownerEntries[0]!.action).toBe('ai.stopped');
+
+    const strangerEntries = await readAudit(app, bob.cookie, id);
+    expect(strangerEntries).toEqual([]);
   });
 });
