@@ -40,6 +40,7 @@ import {
 } from '../db/schema';
 import { sharedDraftHub, type DraftHub } from '../drafts/hub';
 import { onGroupAi, onTopicAi } from '../groups/events';
+import { allowedTopicAiIds } from '../topics/access';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { XmppConfig } from '../xmpp/config';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -300,6 +301,7 @@ async function listAiRooms(
       id: topics.id,
       groupId: topics.groupId,
       roomLocalpart: topics.roomLocalpart,
+      visibility: topics.visibility,
       isGeneral: topics.isGeneral,
       archivedAt: topics.archivedAt,
     })
@@ -310,6 +312,15 @@ async function listAiRooms(
     .from(topicAis)
     .where(eq(topicAis.aiId, aiId));
   const inTopic = new Set(topicAiRows.map((row) => row.topicId));
+  // The owner's visibility is a live derived rule (see `allowedTopicAiIds`):
+  // a private topic counts only while the AI's owner is a topic member. The
+  // rows stay, so adding the owner back brings the AI back automatically.
+  const allowedByTopic = new Map<string, Set<string>>();
+  for (const topic of topicRows) {
+    if (!topic.isGeneral && topic.archivedAt === null && inTopic.has(topic.id)) {
+      allowedByTopic.set(topic.id, await allowedTopicAiIds(db, topic));
+    }
+  }
   const rooms: Array<{ groupId: string; topicId: string; roomLocalpart: string }> = [];
   for (const topic of topicRows) {
     if (topic.isGeneral) {
@@ -318,7 +329,7 @@ async function listAiRooms(
     if (topic.archivedAt !== null) {
       continue;
     }
-    if (inTopic.has(topic.id)) {
+    if (inTopic.has(topic.id) && (allowedByTopic.get(topic.id)?.has(aiId) ?? false)) {
       rooms.push({ groupId: topic.groupId, topicId: topic.id, roomLocalpart: topic.roomLocalpart });
     }
   }

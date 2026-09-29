@@ -17,6 +17,7 @@ import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { randomRoomLocalpart, type InviteLogger } from '../groups/service';
 import {
+  aiMayBeInTopic,
   canCreateTopic,
   canManageTopic,
   canSeeTopic,
@@ -499,6 +500,12 @@ export async function patchTopic(
       ? error
       : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
+  // A public-to-private change may leave AIs whose owner is not in
+  // `memberIds`: they drop out of the room here (rows stay). Live sessions
+  // leave on the event, like after a member removal.
+  if (goingPrivate) {
+    await emitDroppedTopicAis(deps, updated);
+  }
 
   if (deps.audit) {
     const action =
@@ -648,12 +655,42 @@ export async function removeTopicMember(
       ? error
       : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
+  // The removed user may own AIs in this topic: any AI whose owner can no
+  // longer see it drops out of the room (rows stay, so re-adding the owner
+  // brings them back). Live gateway sessions leave on the event below.
+  await emitDroppedTopicAis(deps, updated);
   if (deps.audit) {
     await deps.audit.record(
       toAuditEntry(updated, 'topic.member_removed', actorId, { subjectUserId: targetUserId }),
     );
   }
   return updated;
+}
+
+// Compares the topic's `topic_ais` rows against the live rule
+// (`aiMayBeInTopic`) and emits `ai-removed` for every AI that just dropped
+// out of the room. The sync above already removed their affiliations; this
+// tells live gateway sessions to leave right away instead of waiting for
+// the next reconcile.
+async function emitDroppedTopicAis(deps: TopicServiceDeps, topic: TopicRow): Promise<void> {
+  if (topic.isGeneral || topic.archivedAt !== null) {
+    return;
+  }
+  const rows = await deps.db
+    .select({ aiId: topicAis.aiId, owner: ais.owner, status: ais.status })
+    .from(topicAis)
+    .innerJoin(ais, eq(ais.id, topicAis.aiId))
+    .where(eq(topicAis.topicId, topic.id));
+  for (const row of rows) {
+    const allowed = await aiMayBeInTopic(deps.db, topic, {
+      id: row.aiId,
+      owner: row.owner,
+      status: row.status,
+    });
+    if (!allowed) {
+      emitTopicAi({ type: 'ai-removed', topicId: topic.id, aiId: row.aiId });
+    }
+  }
 }
 
 export const addTopicAiBodySchema = z.object({ aiId: z.string().min(1) }).strict();

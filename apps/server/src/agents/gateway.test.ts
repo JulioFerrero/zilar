@@ -4244,6 +4244,33 @@ describe('agent gateway', () => {
       expect(core.sent).toHaveLength(0);
     });
 
+    it('leaves a private room when its owner is removed, and never answers there again', async () => {
+      const { seeded, member, topicId, topicJid, core, calls } = await seedTopicSetup({
+        visibility: 'private',
+      });
+      // The AI starts in the private room (its owner is a member).
+      expect(core.joined.map((join) => join.roomJid)).toContain(topicJid);
+
+      // The owner is removed from the topic: the gateway leaves on the
+      // emitted event, and a later mention never reaches the model.
+      await context.db
+        .delete(topicMembers)
+        .where(and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, seeded.ownerId)));
+      emitTopicAi({ type: 'ai-removed', topicId, aiId: seeded.aiId });
+      await waitFor(() => core.left.includes(topicJid));
+
+      core.receive(topicMention(seeded, member, topicJid, 'm-1'));
+      await tick(250);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+
+      // Reconcile agrees: with the owner still out, the room stays left.
+      const joinedBefore = core.joined.length;
+      await gateway!.reconcile();
+      await tick(100);
+      expect(core.joined.length).toBe(joinedBefore);
+    });
+
     it('joins on the topic ai-added event and leaves on ai-removed', async () => {
       const { seeded, topicId, topicJid, core } = await seedTopicSetup({ withMember: false });
       expect(core.joined.map((join) => join.roomJid)).not.toContain(topicJid);
@@ -4309,7 +4336,12 @@ describe('agent gateway', () => {
         isGeneral: false,
         createdBy: adminId,
       });
-      await context.db.insert(topicMembers).values({ topicId, userId: adminId, addedBy: adminId });
+      await context.db.insert(topicMembers).values([
+        { topicId, userId: adminId, addedBy: adminId },
+        // The AI counts in a private room only while its owner is a topic
+        // member too (derived rule): add the owner so the turn below runs.
+        { topicId, userId: seeded.ownerId, addedBy: adminId },
+      ]);
       await context.db
         .insert(topicAis)
         .values({ topicId, aiId: seeded.aiId, addedBy: seeded.ownerId });

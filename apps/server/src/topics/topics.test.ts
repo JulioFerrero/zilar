@@ -887,10 +887,110 @@ describe('topics', () => {
 
       // General keeps every group AI.
       const general = await generalOf(group.id);
-      const generalRoom = `${general.roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
-      void generalRoom;
       const generalState = context.adminClient.affiliationState.get(general.roomLocalpart);
       expect(generalState?.get(jid)).toBe('member');
+    });
+
+    it('drops the AI from a private room when its owner loses the topic, and brings it back', async () => {
+      const { owner, member, group } = await setup();
+      const { aiId, jid } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const privateCreated = await createTopic(owner.cookie, group.id, {
+        name: 'Hiring',
+        visibility: 'private',
+        memberIds: [member.id],
+      });
+      const topicId = privateCreated.body.id;
+      const room = privateCreated.body.chatJid.split('@')[0]!;
+      expect((await addTopicAi(owner.cookie, topicId, aiId)).status).toBe(200);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
+
+      // The owner removes themselves: the AI loses its room affiliation, but
+      // the `topic_ais` row stays.
+      const selfLeave = await app.request(
+        `${TEST_BASE_URL}/api/topics/${topicId}/members/${owner.id}`,
+        { method: 'DELETE', headers: { cookie: owner.cookie } },
+      );
+      expect(selfLeave.status).toBe(200);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBeUndefined();
+      const rows = await context.db
+        .select()
+        .from(topicAis)
+        .where(and(eq(topicAis.topicId, topicId), eq(topicAis.aiId, aiId)));
+      expect(rows).toHaveLength(1);
+
+      // Adding the owner back brings the AI back into the room, with no new
+      // `topic.ai_added` row needed. The remaining member is not a manager,
+      // so insert the membership row directly (the route would 403): the
+      // derived rule is what the test pins, not the add-member permission.
+      await context.db.insert(topicMembers).values({
+        topicId,
+        userId: owner.id,
+        addedBy: member.id,
+      });
+      const [revived] = await context.db.select().from(topics).where(eq(topics.id, topicId));
+      const { syncTopicRoom } = await import('./rooms');
+      await syncTopicRoom(
+        {
+          db: context.db,
+          adminClient: context.adminClient,
+          domain: context.config.xmpp.domain,
+          logger: context.logger,
+        },
+        revived!,
+      );
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
+    });
+
+    it('making a public topic with an AI private without its owner drops the AI from the room', async () => {
+      const { owner, member, other, group } = await setup();
+      // `other` is a group admin so they can manage the topic the owner
+      // created, while the owner stays out of the new private member list.
+      await context.db
+        .update(groupMembers)
+        .set({ role: 'admin' })
+        .where(eq(groupMembers.userId, other.id));
+      const { aiId, jid } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const created = await createTopic(owner.cookie, group.id, { name: 'Backend' });
+      const topicId = created.body.id;
+      const room = created.body.chatJid.split('@')[0]!;
+      expect((await addTopicAi(owner.cookie, topicId, aiId)).status).toBe(200);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
+
+      // The admin makes the topic private with only the other member: the
+      // AI's owner is not in `memberIds`, so the AI drops out (row stays).
+      const patched = await patchTopic(other.cookie, topicId, {
+        visibility: 'private',
+        memberIds: [member.id],
+      });
+      expect(patched.status).toBe(200);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBeUndefined();
+      const rows = await context.db
+        .select()
+        .from(topicAis)
+        .where(and(eq(topicAis.topicId, topicId), eq(topicAis.aiId, aiId)));
+      expect(rows).toHaveLength(1);
+    });
+
+    it('keeps a public topic AI in the room regardless of owner membership', async () => {
+      const { owner, group } = await setup();
+      const { aiId, jid } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const created = await createTopic(owner.cookie, group.id, { name: 'Backend' });
+      const topicId = created.body.id;
+      const room = created.body.chatJid.split('@')[0]!;
+      expect((await addTopicAi(owner.cookie, topicId, aiId)).status).toBe(200);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
+
+      // The owner is not in `topic_members` (public topics have no rows) and
+      // the AI still belongs in the room.
+      const members = await context.db
+        .select()
+        .from(topicMembers)
+        .where(eq(topicMembers.topicId, topicId));
+      expect(members).toEqual([]);
+      expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
     });
 
     it('records topic.ai_added and topic.ai_removed without private names', async () => {

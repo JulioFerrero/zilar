@@ -5,7 +5,7 @@ import { HttpError } from '../errors';
 import type { EjabberdAdminClient, RoomAffiliation } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { InviteLogger } from '../groups/service';
-import type { TopicRow } from './access';
+import { allowedTopicAiIds, type TopicRow } from './access';
 
 export interface TopicRoomDeps {
   db: ServerDatabase;
@@ -67,10 +67,13 @@ export async function desiredMembers(
 }
 
 // AI affiliations for one topic room: every group AI for General, the
-// topic's `topic_ais` rows otherwise. Only active AIs join a room; a stale
-// row for a stopped or disabled AI no longer counts. AIs invited into an
-// archived topic are dropped too: archiving keeps the rows but the gateway
-// leaves the room.
+// topic's allowed `topic_ais` rows otherwise (see `allowedTopicAiIds`: for a
+// private topic an AI counts only while its owner is a topic member, so the
+// sync removes the AI from the room once its owner is not a member —
+// without deleting the row, so adding the owner back brings it back). Only
+// active AIs join a room; a stale row for a stopped or disabled AI no longer
+// counts. AIs invited into an archived topic are dropped too: archiving
+// keeps the rows but the gateway leaves the room.
 async function addTopicAiMembers(
   db: ServerDatabase,
   topic: TopicRow,
@@ -92,13 +95,17 @@ async function addTopicAiMembers(
     }
     return;
   }
+  const allowed = await allowedTopicAiIds(db, topic);
+  if (allowed.size === 0) {
+    return;
+  }
   const rows = await db
-    .select({ jid: ais.jid, status: ais.status })
+    .select({ id: ais.id, jid: ais.jid })
     .from(topicAis)
     .innerJoin(ais, eq(ais.id, topicAis.aiId))
     .where(eq(topicAis.topicId, topic.id));
   for (const row of rows) {
-    if (row.status === 'active' && !wanted.has(row.jid)) {
+    if (allowed.has(row.id) && !wanted.has(row.jid)) {
       wanted.set(row.jid, 'member');
     }
   }

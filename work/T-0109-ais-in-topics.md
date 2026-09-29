@@ -105,12 +105,17 @@ pnpm build
 - Scoped: topics 29 passed; agents+groups+chats+audit+authz-sweep 286 passed, 1 skipped; actions 105 passed; gateway full 113 passed.
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|console.log|: any` in touched non-test source: no hits (2 pre-existing English comments containing "any" matched, no `any` types).
 
+### Round 2 (review fix: an AI must not stay in a private topic its owner cannot see)
+- New derived rule, evaluated live so it can never drift — `aiMayBeInTopic(db, topic, ai)` and `allowedTopicAiIds(db, topic)` in `topics/access.ts`: public non-General topics count the row as today; private topics count it only while the AI's owner holds a `topic_members` row (and is still a group member, via `canSeeTopic`). Rows are never deleted; re-adding the owner brings the AI back automatically. General answers false (no `topic_ais` rows there).
+- `topics/rooms.ts` `addTopicAiMembers` uses `allowedTopicAiIds`, so `syncTopicRoom` removes the AI's affiliation from a private room once its owner is out.
+- `agents/gateway.ts` `listAiRooms` filters each topic through `allowedTopicAiIds` (select now includes `visibility`), so the gateway leaves or never joins such a room. No change needed in `loadRoomGateState` callers: the gate already restricts wake-ups to topic members, and the subscription being gone means the message never reaches a turn.
+- Re-sync + live leave on every flow where owner visibility changes: `removeTopicMember` and public→private `patchTopic` call `syncTopicRoom` (already there) plus new `emitDroppedTopicAis` (`ai-removed` per dropped AI); `removeGroupMember` reuses the existing `syncGroupTopicRooms` plus new `emitDroppedGroupTopicAis` in `groups/service.ts`. `removeGroupAi` needed nothing new (rows deleted, rooms re-synced, event already emitted).
+- Tests: (a) owner self-removes from a private topic → AI affiliation gone, row stays, re-adding owner revives the AI; (b) public→private without the AI owner in `memberIds` → AI dropped, row stays; (c) covered by (a) re-add; (d) public topic keeps its AI. Gateway: owner removed from a private topic → session leaves on the event, later mentions unanswered, reconcile agrees. Fixed the pre-existing admin-gate fixture (AI owner must also be a topic member now for the turn to run). `backfill.test.ts` exclusion for `0020_*` unchanged.
+- Checks (one Vitest run at a time): topics+groups 62 passed; gateway full 114 passed; full server suite `pnpm --filter @galena/server test --maxWorkers=2`: 64 files passed, 5 skipped; 1117 passed, 7 skipped (232s). format/lint/typecheck/build pass. No `any`, no disables, no new dependencies.
+
 ### Problems, deviations from the spec, open questions
-- Spec says gateway `RoomSubscription` carries `topicId` "(and still `groupId`)" — done. `postToChat` `topicId` wired in the gateway + port, but the production announcer in `index.ts` was NOT touched (`index.ts` is outside Allowed files); cards still announce to General/DM until a later task passes `topicId` there.
-- Pre-existing test fixtures seeded `group_ais` rows without General topic rows; gateway tests now insert matching General rows (fallback in `listAiRooms` keeps old behaviour if a General row is ever missing).
-- `backfill.test.ts` now skips `0020_*` files when building the pre-T-0108 state (it replays SQL text file-by-file; the new table needs `topics` first).
-- `_journal.json` needed a trailing newline after `db:generate` for `format:check`.
-- No `any`, no disables, no new dependencies.
+- Per the review: the production announcer `topicId` wiring is left to T-0110. No action here.
+- `patchTopic` public→private always inserts the acting manager into `topic_members` (pre-existing T-0108 rule), so "without the owner" means without the AI's owner specifically; the test pins exactly that (admin converts, AI owner out → AI dropped).
 
 ### Blocked / needs a decision
 - None.

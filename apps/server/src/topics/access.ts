@@ -297,6 +297,76 @@ export async function toTopicView(
   };
 }
 
+// Whether an AI may currently be in a topic's room: the derived rule that
+// keeps an AI from reading a conversation its owner cannot see. For a public
+// non-General topic a `topic_ais` row counts as today (the AI must also be
+// active and in the group — checked by the callers). For a private topic the
+// row counts only while the AI's owner holds a `topic_members` row for that
+// topic (and is still a group member): when the owner is removed from the
+// topic, or the topic is made private without the owner in `memberIds`, the
+// AI drops out of the room automatically, and comes back when the owner is
+// added again. The rows are never deleted: this is evaluated live, so it can
+// never drift. General topics have no `topic_ais` rows and always answer
+// false here.
+export async function aiMayBeInTopic(
+  db: ServerDatabase,
+  topic: TopicRow,
+  ai: { id: string; owner: string; status: string },
+): Promise<boolean> {
+  if (topic.isGeneral || topic.archivedAt !== null || ai.status !== 'active') {
+    return false;
+  }
+  const [row] = await db
+    .select({ aiId: topicAis.aiId })
+    .from(topicAis)
+    .where(and(eq(topicAis.topicId, topic.id), eq(topicAis.aiId, ai.id)))
+    .limit(1);
+  if (!row) {
+    return false;
+  }
+  if (topic.visibility !== 'private') {
+    return true;
+  }
+  return canSeeTopic(db, topic, ai.owner);
+}
+
+// The AI ids currently allowed in one topic under `aiMayBeInTopic`: the
+// fast path for the gateway listing, which needs the allowed set per AI.
+// Takes the narrow slice of the topic row the rule reads, so callers with a
+// partial select (like the gateway listing) can pass it directly.
+export async function allowedTopicAiIds(
+  db: ServerDatabase,
+  topic: Pick<TopicRow, 'id' | 'groupId' | 'visibility' | 'isGeneral' | 'archivedAt'>,
+): Promise<Set<string>> {
+  if (topic.isGeneral || topic.archivedAt !== null) {
+    return new Set();
+  }
+  const rows = await db
+    .select({ aiId: topicAis.aiId, owner: ais.owner, status: ais.status })
+    .from(topicAis)
+    .innerJoin(ais, eq(ais.id, topicAis.aiId))
+    .where(eq(topicAis.topicId, topic.id));
+  const active = rows.filter((row) => row.status === 'active');
+  if (topic.visibility !== 'private') {
+    return new Set(active.map((row) => row.aiId));
+  }
+  const memberRows = await db
+    .select({ userId: topicMembers.userId })
+    .from(topicMembers)
+    .where(eq(topicMembers.topicId, topic.id));
+  const memberIds = new Set(memberRows.map((row) => row.userId));
+  const groupRows = await db
+    .select({ userId: groupMembers.userId })
+    .from(groupMembers)
+    .where(eq(groupMembers.groupId, topic.groupId));
+  const groupIds = new Set(groupRows.map((row) => row.userId));
+  return new Set(
+    active
+      .filter((row) => memberIds.has(row.owner) && groupIds.has(row.owner))
+      .map((row) => row.aiId),
+  );
+}
+
 // The AIs added to one topic, sorted by name. Rows exist only for
 // non-General topics; General membership is `group_ais`.
 export async function listTopicAis(db: ServerDatabase, topicId: string): Promise<TopicAiView[]> {
