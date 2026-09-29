@@ -56,8 +56,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test -- --maxWorkers=2
-pnpm --filter @galena/web test -- --maxWorkers=2
+pnpm --filter @galena/server test --maxWorkers=2
+pnpm --filter @galena/web test --maxWorkers=2
 pnpm build
 ```
 

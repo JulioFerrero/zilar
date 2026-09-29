@@ -57,7 +57,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test -- --maxWorkers=2
+pnpm --filter @galena/mobile test --maxWorkers=2
 pnpm build
 ```
 
