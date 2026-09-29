@@ -24,6 +24,70 @@ function message(overrides: Partial<ChatMessage> & { chatJid: string; body: stri
   };
 }
 
+function correctionMessage(overrides: {
+  id: string;
+  chatJid: string;
+  targetId: string;
+  text: string;
+  timestamp: Date;
+  fromJid?: string;
+  fromNick?: string;
+}): ChatMessage {
+  return {
+    id: overrides.id,
+    chatJid: overrides.chatJid,
+    kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
+    fromJid: overrides.fromJid ?? 'ana@galena.test',
+    fromResolved: true,
+    timestamp: overrides.timestamp,
+    outgoing: false,
+    body: overrides.text,
+    correction: { targetId: overrides.targetId },
+    ...(overrides.fromNick === undefined ? {} : { fromNick: overrides.fromNick }),
+  };
+}
+
+function retractionMessage(overrides: {
+  id: string;
+  chatJid: string;
+  targetId: string;
+  timestamp: Date;
+  fromJid?: string;
+  fromNick?: string;
+}): ChatMessage {
+  return {
+    id: overrides.id,
+    chatJid: overrides.chatJid,
+    kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
+    fromJid: overrides.fromJid ?? 'ana@galena.test',
+    fromResolved: true,
+    timestamp: overrides.timestamp,
+    outgoing: false,
+    retraction: { targetId: overrides.targetId },
+    ...(overrides.fromNick === undefined ? {} : { fromNick: overrides.fromNick }),
+  };
+}
+
+function reactionMessage(overrides: {
+  id: string;
+  chatJid: string;
+  targetId: string;
+  emojis: string[];
+  timestamp: Date;
+  fromJid?: string;
+}): ChatMessage {
+  return {
+    id: overrides.id,
+    chatJid: overrides.chatJid,
+    kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
+    fromJid: overrides.fromJid ?? 'ana@galena.test',
+    fromResolved: true,
+    timestamp: overrides.timestamp,
+    outgoing: false,
+    reactions: { targetId: overrides.targetId, emojis: overrides.emojis },
+  };
+}
+
 interface FakeAppState extends AppStateLike {
   setActive(): void;
   setBackground(): void;
@@ -872,30 +936,29 @@ describe('loading states (T-0067)', () => {
     expect(store.getState().chats).toHaveLength(2);
   });
 
-  it('skips correction, retraction and reaction stanzas live and in history', async () => {
+  it('never makes a correction, retraction or reaction-only stanza its own bubble', async () => {
     const { store, xmpp } = await setup();
     xmpp.history[ANA] = [
       message({ id: 'ana-h1', chatJid: ANA, body: 'original', fromJid: ANA }),
-      message({
+      correctionMessage({
         id: 'ana-h2',
         chatJid: ANA,
-        body: 'edited text',
-        fromJid: ANA,
-        correction: { targetId: 'ana-h1' },
+        targetId: 'ana-h1',
+        text: 'edited text',
+        timestamp: new Date('2026-09-28T09:00:30Z'),
       }),
-      message({
+      retractionMessage({
         id: 'ana-h3',
         chatJid: ANA,
-        body: '',
-        fromJid: ANA,
-        retraction: { targetId: 'ana-h1' },
+        targetId: 'ana-h1',
+        timestamp: new Date('2026-09-28T09:00:40Z'),
       }),
-      message({
+      reactionMessage({
         id: 'ana-h4',
         chatJid: ANA,
-        body: '',
-        fromJid: ANA,
-        reactions: { targetId: 'ana-h1', emojis: ['👍'] },
+        targetId: 'ana-h1',
+        emojis: ['👍'],
+        timestamp: new Date('2026-09-28T09:00:50Z'),
       }),
     ];
 
@@ -912,22 +975,31 @@ describe('loading states (T-0067)', () => {
 
     xmpp.emit(
       'message',
-      message({
+      correctionMessage({
         id: 'ana-live-edit',
         chatJid: ANA,
-        body: 'edited live',
-        fromJid: ANA,
-        correction: { targetId: 'ana-h1' },
+        targetId: 'ana-h1',
+        text: 'edited live',
+        timestamp: new Date('2026-09-28T12:05:00Z'),
       }),
     );
     xmpp.emit(
       'message',
-      message({
+      retractionMessage({
         id: 'ana-live-retract',
         chatJid: ANA,
-        body: '',
-        fromJid: ANA,
-        retraction: { targetId: 'ana-h1' },
+        targetId: 'ana-h1',
+        timestamp: new Date('2026-09-28T12:06:00Z'),
+      }),
+    );
+    xmpp.emit(
+      'message',
+      reactionMessage({
+        id: 'ana-live-react',
+        chatJid: ANA,
+        targetId: 'ana-h1',
+        emojis: ['👍'],
+        timestamp: new Date('2026-09-28T12:07:00Z'),
       }),
     );
     const after = store
@@ -936,6 +1008,7 @@ describe('loading states (T-0067)', () => {
       .map((item) => item.id);
     expect(after).not.toContain('ana-live-edit');
     expect(after).not.toContain('ana-live-retract');
+    expect(after).not.toContain('ana-live-react');
   });
 
   it('does not query history while the core is connecting, then flushes on ready', async () => {
@@ -1084,5 +1157,369 @@ describe('loading states (T-0067)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('message edits, retractions and reactions received (T-0078)', () => {
+  const ANA = 'ana@galena.test';
+
+  it('applies a live correction and retraction from the original sender', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat(ANA);
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    xmpp.emit(
+      'message',
+      correctionMessage({
+        id: 'c-1',
+        chatJid: ANA,
+        targetId: 'ana-1',
+        text: 'edited live',
+        timestamp: new Date('2026-09-28T12:05:00Z'),
+      }),
+    );
+
+    const target = store
+      .getState()
+      .messages(ANA)
+      .find((m) => m.id === 'ana-1');
+    expect(target?.text).toBe('edited live');
+    expect(target?.edited).toBe(true);
+
+    xmpp.emit(
+      'message',
+      retractionMessage({
+        id: 'r-1',
+        chatJid: ANA,
+        targetId: 'ana-1',
+        timestamp: new Date('2026-09-28T12:06:00Z'),
+      }),
+    );
+
+    const retracted = store
+      .getState()
+      .messages(ANA)
+      .find((m) => m.id === 'ana-1');
+    expect(retracted?.deleted).toBe(true);
+    expect(retracted?.text).toBeUndefined();
+    expect(retracted?.edited).toBeUndefined();
+  });
+
+  it('ignores a correction or retraction from a foreign sender', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat(ANA);
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    xmpp.emit(
+      'message',
+      correctionMessage({
+        id: 'c-foreign',
+        chatJid: ANA,
+        targetId: 'ana-1',
+        text: 'hijacked',
+        timestamp: new Date('2026-09-28T12:05:00Z'),
+        fromJid: 'luis@galena.test',
+      }),
+    );
+    xmpp.emit(
+      'message',
+      retractionMessage({
+        id: 'r-foreign',
+        chatJid: ANA,
+        targetId: 'ana-2',
+        timestamp: new Date('2026-09-28T12:06:00Z'),
+        fromJid: 'luis@galena.test',
+      }),
+    );
+
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((m) => m.id === 'ana-1')?.text,
+    ).toBe('older');
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((m) => m.id === 'ana-2')?.deleted,
+    ).toBeUndefined();
+  });
+
+  it('applies a pending correction when its target finally loads', async () => {
+    const history = Array.from({ length: 60 }, (_, index) =>
+      message({
+        id: `ana-${index}`,
+        chatJid: ANA,
+        body: `msg ${index}`,
+        timestamp: new Date(Date.UTC(2026, 8, 28, 8, index)),
+      }),
+    );
+    const { store, xmpp } = await setup();
+    xmpp.history[ANA] = history;
+
+    // The correction arrives live before the page that contains its target.
+    xmpp.emit(
+      'message',
+      correctionMessage({
+        id: 'c-old',
+        chatJid: ANA,
+        targetId: 'ana-0',
+        text: 'fixed later',
+        timestamp: new Date(Date.UTC(2026, 8, 28, 8, 40)),
+      }),
+    );
+    expect(store.getState().messages(ANA)).toHaveLength(0);
+
+    store.getState().openChat(ANA);
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    store.getState().loadOlder(ANA);
+    await flush();
+
+    const first = store.getState().messages(ANA)[0];
+    expect(first?.id).toBe('ana-0');
+    expect(first?.text).toBe('fixed later');
+    expect(first?.edited).toBe(true);
+  });
+
+  it('applies history edits before and after the target in any order', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.history[ANA] = [
+      correctionMessage({
+        id: 'c-1',
+        chatJid: ANA,
+        targetId: 'ana-1',
+        text: 'corrected twice',
+        timestamp: new Date('2026-09-28T09:00:30Z'),
+      }),
+      message({
+        id: 'ana-1',
+        chatJid: ANA,
+        body: 'older',
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+      }),
+      retractionMessage({
+        id: 'r-1',
+        chatJid: ANA,
+        targetId: 'ana-2',
+        timestamp: new Date('2026-09-28T10:00:30Z'),
+      }),
+      message({
+        id: 'ana-2',
+        chatJid: ANA,
+        body: 'newest',
+        timestamp: new Date('2026-09-28T10:00:00Z'),
+      }),
+    ];
+
+    store.getState().openChat(ANA);
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    const list = store.getState().messages(ANA);
+    expect(list.map((m) => m.id)).toEqual(['ana-1', 'ana-2']);
+    expect(list[0]?.text).toBe('corrected twice');
+    expect(list[0]?.edited).toBe(true);
+    expect(list[1]?.deleted).toBe(true);
+    expect(list[1]?.text).toBeUndefined();
+  });
+
+  it('applies older-page edits and reactions when loadOlder returns them', async () => {
+    const history: ChatMessage[] = Array.from({ length: 60 }, (_, index) =>
+      message({
+        id: `ana-${index}`,
+        chatJid: ANA,
+        body: `msg ${index}`,
+        timestamp: new Date(Date.UTC(2026, 8, 28, 8, index)),
+      }),
+    );
+    history.push(
+      correctionMessage({
+        id: 'c-old',
+        chatJid: ANA,
+        targetId: 'ana-0',
+        text: 'old correction',
+        timestamp: new Date(Date.UTC(2026, 8, 28, 8, 40)),
+      }),
+      reactionMessage({
+        id: 'r-old',
+        chatJid: ANA,
+        targetId: 'ana-1',
+        emojis: ['👍'],
+        timestamp: new Date(Date.UTC(2026, 8, 28, 8, 41)),
+      }),
+    );
+    const { store, xmpp } = await setup();
+    xmpp.history[ANA] = history;
+
+    store.getState().openChat(ANA);
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    store.getState().loadOlder(ANA);
+    await flush();
+
+    const list = store.getState().messages(ANA);
+    expect(list[0]?.id).toBe('ana-0');
+    expect(list[0]?.text).toBe('old correction');
+    expect(list[0]?.edited).toBe(true);
+    const firstWithReaction = list.find((m) => m.id === 'ana-1');
+    expect(firstWithReaction?.reactions).toEqual([
+      { emoji: '👍', count: 1, mine: false, reactors: ['Ana'] },
+    ]);
+  });
+
+  it('adds and clears reactions and waits for an unknown target', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat(ANA);
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    xmpp.emit(
+      'message',
+      reactionMessage({
+        id: 'r-1',
+        chatJid: ANA,
+        targetId: 'ana-1',
+        emojis: ['👍', '❤️'],
+        timestamp: new Date('2026-09-28T12:05:00Z'),
+      }),
+    );
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((m) => m.id === 'ana-1')?.reactions,
+    ).toEqual([
+      { emoji: '👍', count: 1, mine: false, reactors: ['Ana'] },
+      { emoji: '❤️', count: 1, mine: false, reactors: ['Ana'] },
+    ]);
+
+    xmpp.emit(
+      'message',
+      reactionMessage({
+        id: 'r-1-clear',
+        chatJid: ANA,
+        targetId: 'ana-1',
+        emojis: [],
+        timestamp: new Date('2026-09-28T12:06:00Z'),
+      }),
+    );
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((m) => m.id === 'ana-1')?.reactions,
+    ).toBeUndefined();
+
+    // A reaction for an unknown target is kept in state and attaches to the
+    // bubble once its target finally loads.
+    xmpp.emit(
+      'message',
+      reactionMessage({
+        id: 'r-late',
+        chatJid: ANA,
+        targetId: 'ana-late',
+        emojis: ['🎉'],
+        timestamp: new Date('2026-09-28T12:07:00Z'),
+      }),
+    );
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((m) => m.id === 'ana-late')?.reactions,
+    ).toBeUndefined();
+
+    xmpp.history[ANA] = [
+      message({
+        id: 'ana-late',
+        chatJid: ANA,
+        body: 'late',
+        timestamp: new Date('2026-09-28T08:00:00Z'),
+      }),
+      message({
+        id: 'ana-1',
+        chatJid: ANA,
+        body: 'older',
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+      }),
+      message({
+        id: 'ana-2',
+        chatJid: ANA,
+        body: 'newest',
+        timestamp: new Date('2026-09-28T10:00:00Z'),
+      }),
+    ];
+    store.getState().retryHistory(ANA);
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((m) => m.id === 'ana-late')?.reactions,
+    ).toEqual([{ emoji: '🎉', count: 1, mine: false, reactors: ['Ana'] }]);
+  });
+
+  it('updates the preview for edits and deletions', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat(ANA);
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    xmpp.emit(
+      'message',
+      correctionMessage({
+        id: 'c-1',
+        chatJid: ANA,
+        targetId: 'ana-2',
+        text: 'preview edit',
+        timestamp: new Date('2026-09-28T12:05:00Z'),
+      }),
+    );
+    expect(store.getState().chats.find((c) => c.id === ANA)?.lastMessage?.text).toBe(
+      'preview edit',
+    );
+
+    xmpp.emit(
+      'message',
+      retractionMessage({
+        id: 'r-1',
+        chatJid: ANA,
+        targetId: 'ana-2',
+        timestamp: new Date('2026-09-28T12:06:00Z'),
+      }),
+    );
+    expect(store.getState().chats.find((c) => c.id === ANA)?.lastMessage?.text).toBe(
+      'Message deleted',
+    );
+  });
+
+  it('resolves a correction that names the origin id of a message stored under its stanza-id', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.history[ANA] = [
+      message({
+        id: 'stanza-1',
+        chatJid: ANA,
+        body: 'older',
+        fromJid: ANA,
+        originId: 'origin-1',
+        timestamp: new Date('2026-09-28T09:00:00Z'),
+      }),
+    ];
+    store.getState().openChat(ANA);
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    xmpp.emit(
+      'message',
+      correctionMessage({
+        id: 'c-1',
+        chatJid: ANA,
+        targetId: 'origin-1',
+        text: 'matched by origin',
+        timestamp: new Date('2026-09-28T12:05:00Z'),
+      }),
+    );
+
+    const target = store.getState().messages(ANA)[0];
+    expect(target?.id).toBe('stanza-1');
+    expect(target?.text).toBe('matched by origin');
+    expect(target?.edited).toBe(true);
   });
 });

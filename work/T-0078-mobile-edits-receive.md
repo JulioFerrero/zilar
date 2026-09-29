@@ -1,7 +1,7 @@
 ---
 id: T-0078
 title: Mobile — show edits, deletions and reactions from other people (receive side only)
-status: todo
+status: merged
 milestone: M2
 branch: task/T-0078-mobile-edits-receive
 model: minimax-coding-plan/MiniMax-M3
@@ -79,16 +79,37 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Mirrored web's edit/reaction/receive machinery in the mobile real store, using the same chat-core reducers (`applyEdit`, `resolveEdits`, `mergeEdits`, `applyReaction`, `mergeTargets`, `summarize`, `editsFor`) and the alias-aware target lookup web uses. The mobile `isUpdateStanza` keeps its job — it gates whether a stanza becomes its own bubble — and is split into `isEditStanza` and `isReactionOnly` so each path is routed through the right ingest function. Corrections and retractions are now applied live and from history (preview, first page and `loadOlder`); reactions on body-less stanzas no longer render either, but their state is applied and they attach to the bubble once the target is loaded.
+- Tracked per-message side tables (`messageAuthors`, `messageOriginIds`, `messageAliases`) the same way web does, so a correction that names the origin id of a message stored under its stanza id resolves, an edit before its target arrives stays pending and applies when the target loads, and an outgoing message whose id gets merged with the server id migrates its reactions and edits.
+- Added the same `withEdits` / `previewFor` / `withReplyQuote` / `refreshEdits` / `resolvePendingEdits` and reaction equivalent (`reactionChips`, `refreshReactions`, `applyReactionUpdate`) so the preview and the bubble list stay in agreement and reply quotes follow the corrected text or the "Deleted message" tombstone.
+- Wrote a new `ReactionChips` component and integrated it into `MessageBubble`. Edited messages show a small "edited" label in the meta line; deleted messages render a slim italic tombstone instead of the bubble, with the same wording as web ("You deleted this message" / "This message was deleted"); reactions render as chips under the bubble, with mine highlighted and the count formatted in mono. The chips are disabled until the picker lands.
+- Updated `ChatListItem` to show "Message deleted" as the preview when the chat's last message was retracted, otherwise the existing `previewParts` flow runs as before (edits flow through `previewFor(withEdits(...))`).
+- Updated the mock store and `ChatStoreState` to expose the new `edits` and `reactions` slices. `stop()` clears all the new side tables.
 
 ### Files changed
--
+- `apps/mobile/src/store/types.ts` — added `edits: Record<string, EditsState>` and `reactions: Record<string, ReactionsState>` to `ChatStoreState`.
+- `apps/mobile/src/store/real-store.ts` — full edit/reaction receive pipeline: side tables, ingest helpers, `withEdits`, `previewFor`, `withReplyQuote`, `refreshEdits`/`refreshReactions`/`resolvePendingEdits`, route `isEditStanza` and `isReactionOnly` through them in `handleMessage`, apply them in `loadPreview` / `openHistory` / `loadOlder`, clear them in `stop()`. Removed the `isUpdateStanza` early-return for reaction-only stanzas so reactions on body-less stanzas update state without rendering as bubbles.
+- `apps/mobile/src/store/chat-store.ts` — initial-state `edits: {}` and `reactions: {}` to satisfy the interface.
+- `apps/mobile/src/components/chat/message-bubble.tsx` — deleted-tombstone branch ("You deleted this message" / "This message was deleted"), "edited" label inline with the time, `ReactionChips` rendered under the bubble (only on the last in group, matching the chips sit under the whole group on web).
+- `apps/mobile/src/components/chat/reaction-chips.tsx` — new component, emoji + count chips, raised look for everyone else, accent look for mine, disabled (the picker is out of scope).
+- `apps/mobile/src/components/chat/reaction-chips.test.tsx` — new component test using the same `react-native` stub pattern as `markdown-text.test.tsx`.
+- `apps/mobile/src/components/chat/chat-list-item.tsx` — `previewParts` is called with `undefined` when the last message is deleted, and a separate `deletedPreview` branch renders "Message deleted" italic.
+- `apps/mobile/src/store/real-store.test.ts` — three new test helpers (`correctionMessage`, `retractionMessage`, `reactionMessage`) mirroring web's; the existing "never makes a correction, retraction or reaction-only stanza its own bubble" test now also asserts a live one; the `body: ''` art in the existing test is replaced with the body-less shape the wire carries; eight new tests cover the new contract (live edit, live retract, foreign sender ignored, pending-edit-until-target, history order, older page, reactions add/clear/wait, preview, origin-id alias).
 
 ### Commands run and real results
--
+- `pnpm install` — 1010 packages added, no errors.
+- `pnpm exec turbo test --force --filter=@galena/mobile` — 296 passed, 2 skipped (the integration test gate), 0 failed. Full output ends with `Test Files 29 passed | 2 skipped (31)`.
+- `pnpm format:check` — `All matched files use Prettier code style!`
+- `pnpm lint` — no findings.
+- `pnpm typecheck` (turbo) — `10 successful, 10 total`.
+- `pnpm exec turbo build --filter=@galena/mobile` — succeeds; bundles for iOS and Android exported to `dist/`.
 
 ### Problems, deviations from the spec, open questions
--
+- I did not add a dedicated component-level test of `MessageBubble` for the "edited" label, tombstone and chips. Testing `MessageBubble` directly requires the `ChatStoreProvider` and the full native component tree, neither of which the existing test pattern (`markdown-text.test.tsx`) handles. The store-level tests prove the data path (deleted → `lastMessage.text === 'Message deleted'`, edited → `edited: true` on the bubble, reactions → `reactions` populated on the bubble), and `reaction-chips.test.tsx` proves the chip rendering. The deleted-tombstone JSX is straightforward enough that a unit test of the whole bubble is not worth the new test scaffolding.
+- Web has a separate `withReplyQuote` that follows the corrected/retracted text of a reply's target. I implemented the same in the mobile store; the bubble already renders the quote via `ReplyQuote`, so I did not touch the mobile `ReplyQuote`.
+- The `body: ''` (empty string) used in the existing mobile T-0067 test is unrealistic — the wire never carries an empty body for a reaction or retraction. I changed those two stanzas in the existing test to be body-less (no `body` key) to match the wire shape and the web tests. The test still asserts the same contract.
+- The existing mobile test asserted that the reaction-only stanza `ana-h4` did not appear in the message list. With the new contract the stanza is still not added as a bubble, but the line `expect(ids).not.toContain('ana-h4')` continues to hold (verified in the test run).
+- I did not touch `apps/mobile/src/lib/chat.ts` (the only file with `( + its test)` listed separately). The deleted preview is handled inline in `chat-list-item.tsx`, which is in the allowed list and is where the preview text is composed.
 
 ### Blocked / needs a decision
 -
@@ -97,4 +118,10 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged (lead, 2026-09-29). Rebased on main; format, lint, typecheck, test (mobile 296 passed) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand, including the whole store diff.
+
+**Checked:** the store uses the `@galena/chat-core` reducers (`applyEdit`, `resolveEdits`, `editsFor`, `mergeEdits`, `applyReaction`, `summarize`, `mergeTargets`) rather than copying them; the author of each message is remembered and passed as the target author, so an edit or retraction from someone else stays pending and is never applied (test `ignores a correction or retraction from a foreign sender`); history is ingested (reactions and edits first, then the messages, then `resolvePendingEdits`) for the preview, the first page and older pages, so order does not matter; origin id and stanza-id are linked through the alias map; update stanzas never become bubbles or previews; reaction-only stanzas are swallowed, a stanza with a body that also carries reactions still renders. In the bubble, every hook is above the tombstone's early return (no rules-of-hooks break), the tombstone has no actions or reactions, "edited" appears in the time line, chips are read-only. The chat list says "Message deleted" for a deleted last message.
+
+**Accepted deviation:** no component test of the whole bubble (needs the provider and native tree); the store tests cover the data and `reaction-chips.test.tsx` covers the chips.
+
+**Open for Julio (device check):** open a chat on the phone where someone edited, deleted or reacted to a message from the web: the edited text with "edited", the "This message was deleted" tombstone and the chips should appear, both live and after reopening the chat. Sending edits, deleting and reacting from mobile is still not built (board follow-up).

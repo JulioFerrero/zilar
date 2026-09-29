@@ -1,4 +1,10 @@
-import type { ChatSummary, ReplyRef, UiMessage } from '@galena/chat-core';
+import type {
+  ChatSummary,
+  EditsState,
+  ReactionsState,
+  ReplyRef,
+  UiMessage,
+} from '@galena/chat-core';
 
 import type { Contact, Me } from '../lib/chat-api';
 import type { ChatFolder } from '../lib/types';
@@ -109,6 +115,17 @@ export interface ChatStoreState {
   activeChatId: string | null;
   historyComplete: Record<string, boolean>;
   typing: Record<string, TypingState>;
+  /**
+   * Edit state (XEP-0308 corrections and XEP-0424 retractions) per chat id.
+   * The store canonicalises every target through its alias map before calling
+   * the reducers, and updates that arrive before their target stays pending.
+   */
+  edits: Record<string, EditsState>;
+  /**
+   * Reaction state (XEP-0444) per chat id. The store canonicalises every
+   * target through its alias map before applying an update.
+   */
+  reactions: Record<string, ReactionsState>;
   /**
    * Live AI reply drafts by chat id (the AI's bare JID), from
    * `/api/drafts/stream` (T-0056). Empty when no AI is writing.

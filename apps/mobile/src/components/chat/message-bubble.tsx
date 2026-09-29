@@ -13,6 +13,7 @@ import { rendersMarkdown } from '@/components/chat/markdown-decision';
 import { MarkdownText } from '@/components/chat/markdown-text';
 import { MessageActionsSheet } from '@/components/chat/message-actions-sheet';
 import { PayloadCard } from '@/components/chat/payload-card';
+import { ReactionChips } from '@/components/chat/reaction-chips';
 import { ReplyQuote } from '@/components/chat/reply-quote';
 import { SwipeToReply } from '@/components/chat/swipe-to-reply';
 import { Ticks } from '@/components/chat/ticks';
@@ -168,6 +169,7 @@ function BigEmoji({
         style={raisedPill}
       >
         <Text className="font-mono text-[10px] text-muted-foreground">
+          {message.edited === true ? 'edited ' : ''}
           {formatTime(message.createdAt)}
         </Text>
         {outgoing ? <Ticks status={message.status} color="#8a8a8a" size={13} /> : null}
@@ -260,6 +262,40 @@ export function MessageBubble({
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setMenuOpen(true);
   };
+
+  // A retracted message keeps its place as a slim tombstone, with no actions
+  // and no reactions: web does the same.
+  if (message.deleted === true) {
+    return (
+      <View
+        className={cn(
+          'flex-row px-2',
+          outgoing ? 'justify-end' : 'items-end',
+          isLastInGroup ? 'mb-2' : 'mb-0.5',
+        )}
+      >
+        {!outgoing ? (
+          showAvatar ? (
+            <Avatar id={message.senderId} name={message.senderName} size={34} className="mr-2" />
+          ) : (
+            <View className="mr-2" style={{ width: 34 }} />
+          )
+        ) : null}
+        <View className={cn('max-w-[80%] shrink', outgoing ? 'items-end' : 'items-start')}>
+          <View
+            className={cn(
+              'rounded-[14px] bg-[#1a1a1a] px-3 py-1.5',
+              outgoing ? 'rounded-br-[4px]' : 'rounded-bl-[4px]',
+            )}
+          >
+            <Text className="text-[13px] italic text-muted-foreground">
+              {outgoing ? 'You deleted this message' : 'This message was deleted'}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <>
@@ -369,6 +405,7 @@ export function MessageBubble({
                           style={generating ? { opacity: 0 } : undefined}
                         >
                           {'  '}
+                          {message.edited === true ? 'edited ' : ''}
                           {formatTime(message.createdAt)}
                           {outgoing ? outgoingTicks(message.status) : ''}
                         </Text>
@@ -386,6 +423,7 @@ export function MessageBubble({
                           style={generating ? { opacity: 0 } : undefined}
                         >
                           {'  '}
+                          {message.edited === true ? 'edited ' : ''}
                           {formatTime(message.createdAt)}
                           {outgoing ? outgoingTicks(message.status) : ''}
                         </Text>
@@ -404,6 +442,9 @@ export function MessageBubble({
                 />
               ) : null}
             </View>
+            {isLastInGroup && message.reactions !== undefined && message.reactions.length > 0 ? (
+              <ReactionChips reactions={message.reactions} outgoing={outgoing} />
+            ) : null}
           </View>
         </View>
       </SwipeToReply>

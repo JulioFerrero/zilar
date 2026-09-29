@@ -48,10 +48,11 @@ export function ChatListItem({ chat, onPress }: ChatListItemProps) {
   const last = chat.lastMessage;
   const typing = typingLabel(chat, names ?? []);
   const label = chat.isAI && (typing !== undefined || hasDraft) ? 'writing…' : typing;
-  const preview = previewParts(last, {
+  const preview = previewParts(last?.deleted === true ? undefined : last, {
     isGroup: chat.kind === 'group',
     currentUserId: CURRENT_USER_ID,
   });
+  const deletedPreview = last?.deleted === true ? 'Message deleted' : undefined;
   // An incoming AI reply (a DM AI or a group AI reply) previews as plain text; a
   // human message or your own stays literal.
   const body = plainPreviewBody(chat, last, preview.body, CURRENT_USER_ID);
@@ -92,6 +93,13 @@ export function ChatListItem({ chat, onPress }: ChatListItemProps) {
                   {label}
                 </Text>
               </View>
+            ) : deletedPreview !== undefined ? (
+              <Text
+                numberOfLines={1}
+                className="mr-2 flex-1 text-[14px] italic text-muted-foreground"
+              >
+                {deletedPreview}
+              </Text>
             ) : (
               <Text numberOfLines={1} className="mr-2 flex-1 text-[14px] text-muted-foreground">
                 {preview.prefix ? <Text color="#d4d4d4">{preview.prefix}</Text> : null}
