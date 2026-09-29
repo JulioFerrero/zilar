@@ -37,7 +37,15 @@ import {
 } from '../test-support';
 import { emitGroupAi } from '../groups/events';
 import { localpartFor } from '../xmpp/provisioning';
-import { aiLocalpart, createAi, deleteAi, onAiLifecycle, type AiServiceDeps } from '../ais/service';
+import {
+  aiLocalpart,
+  createAi,
+  deleteAi,
+  onAiLifecycle,
+  resumeAi,
+  stopAi,
+  type AiServiceDeps,
+} from '../ais/service';
 import {
   createAgentGateway,
   GATEWAY_RESOURCE,
@@ -2553,6 +2561,295 @@ describe('agent gateway', () => {
       await tick(200);
       expect(core.sent).toHaveLength(sentBefore);
       expect(calls).toHaveLength(3);
+    });
+  });
+
+  // T-0080: the kill switch. Every test in this block drives `stopAi` /
+  // `resumeAi` through their service entry points so the gateway observes
+  // the same lifecycle events it would in production. The core is a fake
+  // (no real ejabberd), but the gateway's react to the events is what we
+  // are testing: every send path a running AI turn triggers is gated by
+  // `liveSendMessage` / `liveSendTyping` / `liveMarkDisplayed`, so a stop
+  // that lands between the LLM call and the final send drops the reply
+  // (and every draft) instead of delivering it.
+  describe('kill switch (T-0080)', () => {
+    async function stoppableSetup(): Promise<{
+      seeds: SeededAi[];
+      cores: FakeCore[];
+      calls: Call[];
+      gateway: AgentGateway;
+      deps: AiServiceDeps;
+    }> {
+      const a = await seedAi(context);
+      const b = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = completionFetch();
+      const litellm = new FakeLitellm();
+      const { gateway: started } = harness(cores, fetchImpl, litellm);
+      await started.start();
+      const aiDeps: AiServiceDeps = {
+        db: context.db,
+        adminClient: context.adminClient,
+        litellm,
+        cipher: createKeyCipher(MASTER_KEY),
+        logger: context.logger,
+        domain: context.xmppConfig.domain,
+      };
+      return { seeds: [a, b], cores, calls, gateway: started, deps: aiDeps };
+    }
+
+    // A fetch that resolves only when `release()` is called, so the test
+    // can park the gateway between the LLM call and the final send.
+    function pausedFetch(text: string): {
+      fetchImpl: FetchLike;
+      calls: Call[];
+      release: () => void;
+    } {
+      const calls: Call[] = [];
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const fetchImpl: FetchLike = (url, init) => {
+        calls.push({ url, init });
+        return gate.then(() => completionResponse(text));
+      };
+      return { fetchImpl, calls, release };
+    }
+
+    it('disconnects an AI stopped after start at once and keeps it offline across reconcile', async () => {
+      const { seeds, cores, gateway, deps } = await stoppableSetup();
+      const first = seeds[0]!;
+      const second = seeds[1]!;
+      expect(gateway.size()).toBe(2);
+      const firstCore = await coreFor(cores, first.aiJid);
+      const secondCore = await coreFor(cores, second.aiJid);
+
+      // Stop the first AI. The notifier path disconnects it at once; the
+      // other AI is untouched.
+      await stopAi(deps, first.aiId, first.ownerId);
+      await waitFor(() => gateway.size() === 1);
+      expect(gateway.aiIds()).toEqual([second.aiId]);
+      expect(firstCore.disconnects).toBe(1);
+
+      // The stopped row is no longer in `listActiveAisForGateway`, so a
+      // reconcile never reconnects it.
+      await gateway.reconcile();
+      await tick(50);
+      expect(gateway.size()).toBe(1);
+      expect(firstCore.connects).toBe(1);
+
+      // The other AI still answers.
+      secondCore.receive(incoming(second.aiJid, second.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => secondCore.sent.length === 1);
+      expect(secondCore.sent[0]).toEqual({ to: second.ownerJid, kind: 'chat', text: 'AI says hi' });
+    });
+
+    it('a reply in flight when the stop arrives is dropped, not delivered', async () => {
+      const first = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls, release } = pausedFetch('AI says hi');
+      const litellm = new FakeLitellm();
+      const { gateway: started } = harness(cores, fetchImpl, litellm);
+      await started.start();
+      const core = await coreFor(cores, first.aiJid);
+      const deps: AiServiceDeps = {
+        db: context.db,
+        adminClient: context.adminClient,
+        litellm,
+        cipher: createKeyCipher(MASTER_KEY),
+        logger: context.logger,
+        domain: context.xmppConfig.domain,
+      };
+
+      core.receive(incoming(first.aiJid, first.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+
+      // Stop while the LLM call is still parked. The notifier path
+      // disconnects the AI immediately; the pump is mid-turn.
+      await stopAi(deps, first.aiId, first.ownerId);
+      await waitFor(() => started.size() === 0);
+
+      // Releasing the LLM call lets the in-flight turn finish computing,
+      // yet `liveSendMessage` drops the reply.
+      release();
+      await tick(200);
+      expect(core.sent.find((message) => message.text === 'AI says hi')).toBeUndefined();
+      expect(core.disconnects).toBe(1);
+    });
+
+    it('a persona change requested by a turn that was running when the stop arrived is not applied', async () => {
+      const first = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const calls: Call[] = [];
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const fetchImpl: FetchLike = (url, init) => {
+        calls.push({ url, init });
+        return gate.then(() =>
+          jsonResponse({
+            choices: [
+              {
+                message: {
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: 'call-1',
+                      type: 'function',
+                      function: {
+                        name: 'update_persona',
+                        arguments: JSON.stringify({
+                          persona: 'A persona set after the stop.',
+                          summary: 'Changed after stop',
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        );
+      };
+      const litellm = new FakeLitellm();
+      const { gateway: started } = harness(cores, fetchImpl, litellm);
+      await started.start();
+      const core = await coreFor(cores, first.aiJid);
+      const deps: AiServiceDeps = {
+        db: context.db,
+        adminClient: context.adminClient,
+        litellm,
+        cipher: createKeyCipher(MASTER_KEY),
+        logger: context.logger,
+        domain: context.xmppConfig.domain,
+      };
+
+      core.receive(incoming(first.aiJid, first.ownerJid, 'm-1', 'change your persona'));
+      await waitFor(() => calls.length === 1);
+      await stopAi(deps, first.aiId, first.ownerId);
+      await waitFor(() => started.size() === 0);
+
+      release();
+      await tick(200);
+      const [row] = await context.db
+        .select({ persona: ais.persona })
+        .from(ais)
+        .where(eq(ais.id, first.aiId));
+      expect(row?.persona).toBe('A helpful persona.');
+    });
+
+    it('queued, not-yet-started turns are dropped when a stop arrives', async () => {
+      const first = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls, release } = pausedFetch('reply one');
+      const litellm = new FakeLitellm();
+      const { gateway: started } = harness(cores, fetchImpl, litellm);
+      await started.start();
+      const core = await coreFor(cores, first.aiJid);
+      const deps: AiServiceDeps = {
+        db: context.db,
+        adminClient: context.adminClient,
+        litellm,
+        cipher: createKeyCipher(MASTER_KEY),
+        logger: context.logger,
+        domain: context.xmppConfig.domain,
+      };
+
+      // First turn holds the pump busy: every subsequent receive coalesces
+      // into `pending`. The LLM call never resolves until `release()`.
+      core.receive(incoming(first.aiJid, first.ownerJid, 'm-1', 'one'));
+      await waitFor(() => calls.length === 1);
+      core.receive(incoming(first.aiJid, first.ownerJid, 'm-2', 'two'));
+      core.receive(incoming(first.aiJid, first.ownerJid, 'm-3', 'three'));
+
+      // Stop the AI: the pump's `while (... && !session.stopped)` exits,
+      // and `disconnectAi` clears `session.pending`.
+      await stopAi(deps, first.aiId, first.ownerId);
+      await waitFor(() => started.size() === 0);
+
+      // Release the in-flight call so any continuation that did sneak in
+      // can resolve; the only LLM call was the first one and it must not
+      // produce a second one for the queued messages.
+      release();
+      await tick(200);
+      expect(calls).toHaveLength(1);
+      // No DM was delivered (the session was disconnected).
+      expect(core.sent).toHaveLength(0);
+    });
+
+    it('a message to a stopped AI gets no answer', async () => {
+      const { seeds, cores, calls, gateway, deps } = await stoppableSetup();
+      const first = seeds[0]!;
+      const second = seeds[1]!;
+      await stopAi(deps, first.aiId, first.ownerId);
+      await waitFor(() => gateway.size() === 1);
+
+      const firstCore = await coreFor(cores, first.aiJid);
+      // The XMPP core for the stopped AI is gone (disconnected), so its
+      // fake `receive` no longer feeds a live pump. The gateway itself
+      // does not deliver turns for the stopped AI on incoming messages
+      // because it is no longer connected. Here we simulate by driving
+      // the model path directly: there must be no model call for the
+      // stopped AI.
+      const callsBefore = calls.length;
+      firstCore.receive(incoming(first.aiJid, first.ownerJid, 'm-1', 'hello'));
+      await tick(200);
+      expect(calls.length).toBe(callsBefore);
+      expect(firstCore.sent).toHaveLength(0);
+
+      // The other AI is unaffected.
+      const secondCore = await coreFor(cores, second.aiJid);
+      secondCore.receive(incoming(second.aiJid, second.ownerJid, 'm-1', 'hi'));
+      await waitFor(() => secondCore.sent.length === 1);
+      expect(secondCore.sent[0]).toEqual({ to: second.ownerJid, kind: 'chat', text: 'AI says hi' });
+    });
+
+    it('resume brings a stopped AI back and it answers', async () => {
+      const { seeds, cores, gateway, deps } = await stoppableSetup();
+      const first = seeds[0]!;
+      await stopAi(deps, first.aiId, first.ownerId);
+      await waitFor(() => gateway.size() === 1);
+
+      const coresBefore = cores.length;
+      await resumeAi(deps, first.aiId, first.ownerId);
+      await waitFor(() => gateway.size() === 2);
+      // A fresh XMPP connection was created on resume (the original one
+      // was disconnected by stop). `cores` now has one entry per connect.
+      expect(cores.length).toBeGreaterThan(coresBefore);
+      const live = cores[cores.length - 1] as FakeCore;
+      live.receive(incoming(first.aiJid, first.ownerJid, 'm-1', 'hello again'));
+      await waitFor(() => live.sent.length === 1);
+      expect(live.sent[0]).toEqual({ to: first.ownerJid, kind: 'chat', text: 'AI says hi' });
+    });
+
+    it('a "restart" — fresh gateway, fresh reconcile — leaves a stopped AI offline', async () => {
+      const { seeds, gateway, deps } = await stoppableSetup();
+      const first = seeds[0]!;
+      const second = seeds[1]!;
+      await stopAi(deps, first.aiId, first.ownerId);
+      await waitFor(() => gateway.size() === 1);
+      await gateway.stop();
+
+      // Fresh gateway (simulates a server restart). The stopped AI's row
+      // is still `stopped`, so the reconcile excludes it.
+      const freshCores: FakeCore[] = [];
+      const { fetchImpl: freshFetch, calls: freshCalls } = completionFetch('fresh');
+      const litellm = new FakeLitellm();
+      const { gateway: restarted } = harness(freshCores, freshFetch, litellm);
+      await restarted.start();
+      expect(restarted.size()).toBe(1);
+      expect(restarted.aiIds()).toEqual([second.aiId]);
+      // The stopped AI never gets a core allocated, no connect attempt.
+      expect(freshCores).toHaveLength(1);
+      const liveCore = freshCores[0]!;
+      liveCore.receive(incoming(second.aiJid, second.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => liveCore.sent.length === 1);
+      expect(liveCore.sent[0]).toEqual({ to: second.ownerJid, kind: 'chat', text: 'fresh' });
+      // The fixture `calls` is from the original harness — confirm the
+      // fresh one was driven.
+      expect(freshCalls.length).toBeGreaterThanOrEqual(1);
     });
   });
 });

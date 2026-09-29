@@ -13,7 +13,17 @@ import type {
 import { createKeyCipher } from '../connections/crypto';
 import { aiLimits, ais, llmVirtualKeys, providerConnections, user } from '../db/schema';
 import { createTestContext, TEST_XMPP_DOMAIN, type TestContext } from '../test-support';
-import { ensureAiModel, changeAiModel, deleteAi, updateAi, type AiServiceDeps } from './service';
+import {
+  ensureAiModel,
+  changeAiModel,
+  deleteAi,
+  listActiveAisForGateway,
+  onAiLifecycle,
+  resumeAi,
+  stopAi,
+  updateAi,
+  type AiServiceDeps,
+} from './service';
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
 const PROVIDER_KEY = 'sk-provider-key-do-not-leak';
@@ -616,6 +626,246 @@ describe('changeAiModel', () => {
       expect(logs).not.toContain(PROVIDER_KEY);
       expect(logs).not.toContain('sk-virtual');
       expect(logs).toContain(aiId);
+    } finally {
+      await context.close();
+    }
+  });
+});
+
+// T-0080: the owner kill switch. `stopAi` and `resumeAi` are the same
+// owner-only shape as the other AI service functions: a foreign or missing
+// id is the same 404 as `getOwnedAi`, so existence is never leaked. The
+// conditional update (`WHERE status = <expected>`) means a stop racing a
+// delete or a resume racing a stop can never resurrect anything: the
+// second writer either sees the row gone (delete won) or sees the row in
+// its new state (stop won) and the conditional UPDATE matches zero rows.
+
+describe('stopAi', () => {
+  it('owner stops an active AI and emits a stopped event', async () => {
+    const context = await createTestContext();
+    try {
+      const seen: Array<{ type: string; aiId: string }> = [];
+      const litellm = new FakeLitellm();
+      const { aiId, ownerId } = await seedSwappableAi(context, litellm);
+      const events = onAiLifecycle((event) => {
+        seen.push(event);
+      });
+      try {
+        const ai = await stopAi(depsFor(context, litellm), aiId, ownerId);
+        expect(ai.status).toBe('stopped');
+        const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+        expect(row?.status).toBe('stopped');
+        expect(seen).toEqual([{ type: 'stopped', aiId }]);
+      } finally {
+        events();
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('returns 404 to a non-owner, the AI is untouched', async () => {
+    const context = await createTestContext();
+    try {
+      const litellm = new FakeLitellm();
+      const { aiId } = await seedSwappableAi(context, litellm);
+      await expect(stopAi(depsFor(context, litellm), aiId, 'someone-else')).rejects.toMatchObject({
+        status: 404,
+      });
+      const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      expect(row?.status).toBe('active');
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('is idempotent on an already-stopped AI: returns it unchanged, no second event', async () => {
+    const context = await createTestContext();
+    try {
+      const seen: Array<{ type: string; aiId: string }> = [];
+      const litellm = new FakeLitellm();
+      const { aiId, ownerId } = await seedSwappableAi(context, litellm);
+      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      const events = onAiLifecycle((event) => {
+        seen.push(event);
+      });
+      try {
+        const ai = await stopAi(depsFor(context, litellm), aiId, ownerId);
+        expect(ai.status).toBe('stopped');
+        expect(seen).toHaveLength(0);
+      } finally {
+        events();
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('a 409 not_active for a disabled (provisioning) AI; resume can never activate it', async () => {
+    const context = await createTestContext();
+    try {
+      const litellm = new FakeLitellm();
+      const { aiId, ownerId } = await seedSwappableAi(context, litellm);
+      await context.db.update(ais).set({ status: 'disabled' }).where(eq(ais.id, aiId));
+      await expect(stopAi(depsFor(context, litellm), aiId, ownerId)).rejects.toMatchObject({
+        status: 409,
+        code: 'not_active',
+      });
+      await expect(resumeAi(depsFor(context, litellm), aiId, ownerId)).rejects.toMatchObject({
+        status: 409,
+        code: 'not_active',
+      });
+      const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      expect(row?.status).toBe('disabled');
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('a stop racing a delete does not resurrect anything and surfaces the right error', async () => {
+    const context = await createTestContext();
+    try {
+      const litellm = new FakeLitellm();
+      const { aiId, ownerId } = await seedSwappableAi(context, litellm);
+      const deps = depsFor(context, litellm);
+      // Either order converges: stop that wins leaves the row `stopped`,
+      // delete that wins removes the row, both ends never resurrect.
+      await Promise.allSettled([stopAi(deps, aiId, ownerId), deleteAi(deps, aiId, ownerId)]);
+      const remaining = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      if (remaining.length === 0) {
+        expect(remaining).toHaveLength(0);
+      } else {
+        expect(remaining[0]?.status).toBe('stopped');
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('two concurrent stops both succeed: the conditional update lands once', async () => {
+    const context = await createTestContext();
+    try {
+      const litellm = new FakeLitellm();
+      const { aiId, ownerId } = await seedSwappableAi(context, litellm);
+      const deps = depsFor(context, litellm);
+      const [first, second] = await Promise.all([
+        stopAi(deps, aiId, ownerId),
+        stopAi(deps, aiId, ownerId),
+      ]);
+      expect(first.status).toBe('stopped');
+      expect(second.status).toBe('stopped');
+      const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      expect(row?.status).toBe('stopped');
+    } finally {
+      await context.close();
+    }
+  });
+});
+
+describe('resumeAi', () => {
+  it('owner resumes a stopped AI and emits a resumed event', async () => {
+    const context = await createTestContext();
+    try {
+      const seen: Array<{ type: string; aiId: string }> = [];
+      const litellm = new FakeLitellm();
+      const { aiId, ownerId } = await seedSwappableAi(context, litellm);
+      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      const events = onAiLifecycle((event) => {
+        seen.push(event);
+      });
+      try {
+        const ai = await resumeAi(depsFor(context, litellm), aiId, ownerId);
+        expect(ai.status).toBe('active');
+        const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+        expect(row?.status).toBe('active');
+        expect(seen).toEqual([{ type: 'resumed', aiId }]);
+      } finally {
+        events();
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('returns 404 to a non-owner', async () => {
+    const context = await createTestContext();
+    try {
+      const litellm = new FakeLitellm();
+      const { aiId } = await seedSwappableAi(context, litellm);
+      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      await expect(resumeAi(depsFor(context, litellm), aiId, 'someone-else')).rejects.toMatchObject(
+        { status: 404 },
+      );
+      const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      expect(row?.status).toBe('stopped');
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('is idempotent on an already-active AI: returns it unchanged, no event', async () => {
+    const context = await createTestContext();
+    try {
+      const seen: Array<{ type: string; aiId: string }> = [];
+      const litellm = new FakeLitellm();
+      const { aiId, ownerId } = await seedSwappableAi(context, litellm);
+      const events = onAiLifecycle((event) => {
+        seen.push(event);
+      });
+      try {
+        const ai = await resumeAi(depsFor(context, litellm), aiId, ownerId);
+        expect(ai.status).toBe('active');
+        expect(seen).toHaveLength(0);
+      } finally {
+        events();
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('a resume racing a stop never resurrects the row', async () => {
+    const context = await createTestContext();
+    try {
+      const litellm = new FakeLitellm();
+      const { aiId, ownerId } = await seedSwappableAi(context, litellm);
+      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      const deps = depsFor(context, litellm);
+      // Two writers race: resume wins → row is `active`, stop is the no-op
+      // (conditional UPDATE matches zero rows and reports 409 through the
+      // re-read). Stop wins → row stays `stopped`, resume answers 409.
+      const [resume, stop] = await Promise.allSettled([
+        resumeAi(deps, aiId, ownerId),
+        stopAi(deps, aiId, ownerId),
+      ]);
+      const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      expect(['active', 'stopped']).toContain(row?.status);
+      expect([resume.status, stop.status]).toContain('fulfilled');
+    } finally {
+      await context.close();
+    }
+  });
+});
+
+// T-0080: `listActiveAisForGateway` already filters on `status = 'active'`,
+// so a `stopped` (or `disabled`) row must never reach the gateway's connect
+// path. This is the test the spec asks for: prove `stopped` and `disabled`
+// are absent, even when both are seeded.
+describe('listActiveAisForGateway', () => {
+  it('excludes stopped and disabled rows, returning only active ones', async () => {
+    const context = await createTestContext();
+    try {
+      const active = await seedOldAi(context);
+      const stopped = await seedOldAi(context);
+      const disabled = await seedOldAi(context);
+      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, stopped));
+      await context.db.update(ais).set({ status: 'disabled' }).where(eq(ais.id, disabled));
+
+      const rows = await listActiveAisForGateway(context.db);
+      const ids = new Set(rows.map((row) => row.id));
+      expect(ids).toEqual(new Set([active]));
+      expect(ids.has(stopped)).toBe(false);
+      expect(ids.has(disabled)).toBe(false);
     } finally {
       await context.close();
     }

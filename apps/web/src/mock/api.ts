@@ -259,6 +259,23 @@ function patchAi(ai: PublicAi, init: RequestInit): Response {
   return jsonResponse(updated);
 }
 
+// T-0080: the owner's stop and resume. The state in the mock layer mirrors
+// the server's contract: `stopped` for an already-stopped AI is a no-op
+// (returns the AI unchanged) and `disabled` is a 409 `not_active`. The mock
+// has no `disabled` AIs today (createAi always lands on `active`), so the
+// 409 branch is left here for symmetry with the real server's behaviour.
+function stopOrResumeAi(ai: PublicAi, target: 'stopped' | 'active'): Response {
+  if (ai.status === target) {
+    return jsonResponse(ai);
+  }
+  if (ai.status === 'disabled') {
+    return conflict('not_active', 'AI is not active');
+  }
+  const updated: PublicAi = { ...ai, status: target };
+  state.ais = state.ais.map((item) => (item.id === ai.id ? updated : item));
+  return jsonResponse(updated);
+}
+
 function createConnection(init: RequestInit): Response {
   const body = readJsonBody(init);
   const id = `conn-mock-${state.nextConnectionSequence}`;
@@ -363,6 +380,12 @@ export async function mockRequest(
     if (method === 'DELETE') {
       state.ais = state.ais.filter((item) => item.id !== aiId);
       return noContent();
+    }
+    if (second === 'stop' && method === 'POST') {
+      return stopOrResumeAi(ai, 'stopped');
+    }
+    if (second === 'resume' && method === 'POST') {
+      return stopOrResumeAi(ai, 'active');
     }
     return notImplemented();
   }

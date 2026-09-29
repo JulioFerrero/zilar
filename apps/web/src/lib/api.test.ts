@@ -14,13 +14,16 @@ import {
   deleteMachine,
   denyMachine,
   getApproval,
+  listAis,
   listApprovals,
   listMachines,
   listConnections,
   machineSchema,
   publicApprovalSchema,
   renameMachine,
+  resumeAi,
   revokeMachine,
+  stopAi,
   testConnection,
 } from '@/lib/api';
 import { isMockApiEnabled } from '@/mock/gate';
@@ -510,6 +513,105 @@ describe('approvals API', () => {
     await expect(listApprovals()).rejects.toMatchObject({
       status: 200,
       code: 'invalid_response',
+    } satisfies Partial<ApiError>);
+  });
+});
+
+// T-0080: the owner kill switch on the wire. `publicAiSchema` accepts the
+// new `stopped` value; `stopAi` and `resumeAi` POST to the right paths and
+// parse the fresh public AI back. Server errors flow through `ApiError`
+// like every other route.
+describe('AIs stop / resume API (T-0080)', () => {
+  const stopped = {
+    id: 'a-1',
+    name: 'Dev-1',
+    template: 'dev',
+    persona: 'You are a concise senior engineer.',
+    model: 'gpt-4o',
+    jid: 'ai-a-1@galena.test',
+    status: 'stopped',
+    providerConnectionId: 'c-1',
+    limits: { perDayUsd: 2, perMonthUsd: 20 },
+    createdAt: '2026-09-28T00:00:00.000Z',
+  };
+
+  it('publicAiSchema parses an AI with status `stopped`', () => {
+    // The schema is internal but listAis must accept the new value, so
+    // round-tripping a stopped AI through the list endpoint is the proof.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, [stopped]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    return expect(listAis()).resolves.toEqual([stopped]);
+  });
+
+  it('stopAi POSTs to /api/ais/:id/stop and parses the fresh AI', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, stopped));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const ai = await stopAi('a-1');
+    expect(ai.status).toBe('stopped');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/ais/a-1/stop');
+    expect(init.method).toBe('POST');
+  });
+
+  it('resumeAi POSTs to /api/ais/:id/resume and parses the fresh AI', async () => {
+    const active = { ...stopped, status: 'active' };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, active));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const ai = await resumeAi('a-1');
+    expect(ai.status).toBe('active');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/ais/a-1/resume');
+    expect(init.method).toBe('POST');
+  });
+
+  it('a 409 not_active surfaces the server code through ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(409, {
+          error: { code: 'not_active', message: 'AI is not active' },
+        }),
+      ),
+    );
+
+    await expect(stopAi('a-1')).rejects.toMatchObject({
+      status: 409,
+      code: 'not_active',
+    } satisfies Partial<ApiError>);
+  });
+
+  it('a 409 not_active on resume surfaces through ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(409, {
+          error: { code: 'not_active', message: 'AI is not active' },
+        }),
+      ),
+    );
+
+    await expect(resumeAi('a-1')).rejects.toMatchObject({
+      status: 409,
+      code: 'not_active',
+    } satisfies Partial<ApiError>);
+  });
+
+  it('a 404 on stop / resume surfaces as a not_found ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(404, { error: { code: 'not_found', message: 'AI not found' } }),
+        ),
+    );
+
+    await expect(stopAi('missing')).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
     } satisfies Partial<ApiError>);
   });
 });

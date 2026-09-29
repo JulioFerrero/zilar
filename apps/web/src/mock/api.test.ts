@@ -23,7 +23,9 @@ import {
   listConnections,
   listMachines,
   renameMachine,
+  resumeAi,
   revokeMachine,
+  stopAi,
   updateAi,
   updateMe,
 } from '@/lib/api';
@@ -298,6 +300,74 @@ describe('mockRequest', () => {
     expect(response.status).toBe(400);
     const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
     expect(body.error.code).toBe('invalid_request');
+  });
+
+  // T-0080: the mock layer serves the kill-switch routes the same way
+  // the real server does: stop flips status to `stopped`, resume flips it
+  // back, both runs are reflected in subsequent listAi calls.
+  it('stops an active AI and reflects the new status in the list', async () => {
+    const created = await createAi({
+      name: 'Stoppable',
+      template: 'dev',
+      persona: 'Be brief.',
+      providerConnectionId: 'conn-openai',
+      model: 'gpt-4o',
+      limits: { perDayUsd: 1, perMonthUsd: 10 },
+    });
+    const stopped = await stopAi(created.id);
+    expect(stopped.status).toBe('stopped');
+
+    const refreshed = await getAi(created.id);
+    expect(refreshed.status).toBe('stopped');
+
+    const list = await listAis();
+    const found = list.find((ai) => ai.id === created.id);
+    expect(found?.status).toBe('stopped');
+  });
+
+  it('resumes a stopped AI and reflects the new status in the list', async () => {
+    const created = await createAi({
+      name: 'Resumable',
+      template: 'dev',
+      persona: 'Be brief.',
+      providerConnectionId: 'conn-openai',
+      model: 'gpt-4o',
+      limits: { perDayUsd: 1, perMonthUsd: 10 },
+    });
+    await stopAi(created.id);
+    const resumed = await resumeAi(created.id);
+    expect(resumed.status).toBe('active');
+
+    const refreshed = await getAi(created.id);
+    expect(refreshed.status).toBe('active');
+  });
+
+  it('a second stop on an already-stopped AI is idempotent (returns it unchanged)', async () => {
+    const created = await createAi({
+      name: 'Stop again',
+      template: 'dev',
+      persona: 'Be brief.',
+      providerConnectionId: 'conn-openai',
+      model: 'gpt-4o',
+      limits: { perDayUsd: 1, perMonthUsd: 10 },
+    });
+    await stopAi(created.id);
+    const second = await stopAi(created.id);
+    expect(second.status).toBe('stopped');
+  });
+
+  it('stop / resume on an unknown AI answers 404 not_found', async () => {
+    const stop = await mockRequest('/ais/no-such/stop', { method: 'POST' });
+    expect(stop.status).toBe(404);
+    const stopBody = z.object({ error: z.object({ code: z.string() }) }).parse(await stop.json());
+    expect(stopBody.error.code).toBe('not_found');
+
+    const resume = await mockRequest('/ais/no-such/resume', { method: 'POST' });
+    expect(resume.status).toBe(404);
+    const resumeBody = z
+      .object({ error: z.object({ code: z.string() }) })
+      .parse(await resume.json());
+    expect(resumeBody.error.code).toBe('not_found');
   });
 });
 

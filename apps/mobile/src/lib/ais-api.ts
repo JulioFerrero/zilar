@@ -24,7 +24,10 @@ export interface PublicAi {
   persona: string;
   model: string;
   jid: string;
-  status: 'active' | 'disabled';
+  // `stopped` is the owner kill switch (T-0080). Mobile only renders the
+  // AI list, so accepting it in the type guard keeps the list rendering
+  // for a paused AI — the screen shows it as "stopped" rather than failing.
+  status: 'active' | 'disabled' | 'stopped';
   providerConnectionId: string;
   limits: AiLimits;
   createdAt: string;
@@ -114,7 +117,7 @@ function parsePublicAi(value: unknown): PublicAi | null {
     !isString(persona) ||
     !isString(model) ||
     !isString(jid) ||
-    (status !== 'active' && status !== 'disabled') ||
+    (status !== 'active' && status !== 'disabled' && status !== 'stopped') ||
     !isString(providerConnectionId) ||
     !isString(createdAt) ||
     limits === null
