@@ -499,6 +499,12 @@ export function getApproval(id: string): Promise<PublicApproval> {
   return request(`/approvals/${encodeURIComponent(id)}`, publicApprovalSchema);
 }
 
+// T-0081: the inbox page lists everything pending. The server already filters
+// by pending, unexpired, decidable by the caller, newest first, max 100.
+export function listApprovals(): Promise<PublicApproval[]> {
+  return request('/approvals', z.array(publicApprovalSchema));
+}
+
 export function decideApproval(
   id: string,
   decision: ApprovalDecision,

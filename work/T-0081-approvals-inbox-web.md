@@ -1,7 +1,7 @@
 ---
 id: T-0081
 title: Web — an Approvals inbox (Settings → Approvals) listing every pending request you may decide, with Approve / Deny
-status: todo
+status: review
 milestone: M4
 branch: task/T-0081-approvals-inbox-web
 model: minimax-coding-plan/MiniMax-M3
@@ -79,16 +79,35 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+Added `listApprovals()` to `lib/api.ts` (GET `/api/approvals`, zod-array of the existing schema) and a new `/settings/approvals` page that lists every pending, decidable request the viewer can act on, newest first. Each row shows the action name, summary, optional details, the worst-case cost, the relative expiry (`expires in 12 min`, computed by a pure helper that takes `now` so tests don't have to fake timers), and **Approve** / **Deny** buttons. Approve sends `approve_once`; Deny sends `deny`. No "always allow". Buttons disable while a request is in flight (no double submit). A successful decision removes the row and shows a one-line notice; a `409 not_pending` / `expired` removes the row and shows the "already decided or expired" notice; other errors stay inline on the row. The list refreshes on focus, every 30 s while the page is open (cleared on unmount), and via a manual Refresh button. Added an "Approvals" item in the chat-list settings menu that navigates to the new route (guarded like the other settings routes). Skeleton mirrors the Machines page skeleton; empty / error / retry match the Machines page shape.
 
 ### Files changed
--
+- `apps/web/src/lib/api.ts` — added `listApprovals()` next to `getApproval` / `decideApproval`.
+- `apps/web/src/lib/api.test.ts` — added tests for `listApprovals` (happy path and `invalid_response` ApiError on a wrong shape).
+- `apps/web/src/routes/AppRoutes.tsx` — imported `ApprovalsPage` and registered `/settings/approvals` behind `RequireAuth`.
+- `apps/web/src/components/ChatList.tsx` — added an "Approvals" menu item next to "Machines" that navigates to the new route.
+- `apps/web/src/routes/ApprovalsPage.tsx` — new page (`AiPageShell` with back arrow, title, subtitle; loading skeleton; empty state with `ShieldCheck`; error + Retry; manual Refresh; row map sorted newest first; timers cleared on unmount).
+- `apps/web/src/routes/ApprovalsPage.test.tsx` — new tests (loading, empty, error + Retry, list rendering with the relative expiry text, approve sends `approve_once` and removes the row, deny sends `deny` and removes the row, 409 removes the row and shows the notice, other errors stay inline, no double submit, 30 s refresh with fake timers and cleanup on unmount, no "always allow", Back button, menu item navigation).
+- `apps/web/src/components/approvals/ApprovalRow.tsx` — new row component (action, summary, details, worst case, expiry line, Approve + Deny buttons with aria-labels, inline action error). No "always allow".
+- `apps/web/src/components/approvals/ApprovalsListSkeleton.tsx` — new skeleton in the same shape as the rows, using `SKELETON_DELAY_MS` and the same `animate-pulse` / reduced-motion variants as `MachineListSkeleton`.
+- `apps/web/src/components/approvals/formatRelative.ts` — new pure helpers `expiresInText(expiresAt, now)` and `worstCaseText(cost)` used by the row.
+- `apps/web/src/components/approvals/formatRelative.test.ts` — new unit tests for the relative-time and worst-case helpers (covers sec / min / hour / day boundaries, singular vs plural, past-deadline `Expired`, and null worst case).
+
+`ApprovalCard.tsx`, the mock API, the server, the store, mobile, and `packages/**` were left untouched (mock already serves `GET /api/approvals` and the decision endpoint, T-0076).
 
 ### Commands run and real results
--
+- `pnpm install` — `Done in 7.1s using pnpm v10.32.1`, 1010 packages installed.
+- `pnpm format:check` — `All matched files use Prettier code style!` (after one `prettier --write` on `apps/web/src/lib/api.test.ts`).
+- `pnpm lint` — `oxlint .`, exit code 0, no warnings.
+- `pnpm typecheck` (via `pnpm exec turbo typecheck`) — `Tasks: 10 successful, 10 total`, exit code 0.
+- `pnpm exec turbo test --force --filter=@galena/web` — `Test Files 53 passed (53) / Tests 509 passed (509)` (was 494 before, +15 new tests: 11 in `formatRelative.test.ts`, 1 new in `ApprovalsPage.test.tsx` for the timer/unmount behaviour, 1 new listApprovals happy-path + 1 invalid_response ApiError in `api.test.ts`; the rest are the 12 ApprovalsPage tests counted above).
+- `pnpm exec turbo build --force --filter=@galena/web` — `Tasks: 1 successful, 1 total`, `built in 902ms`, exit code 0.
+- `pnpm exec turbo dev --filter=@galena/web -- --port 5183` — started Vite on `http://localhost:5183/` (mock-mode via `VITE_MOCK=1`), killed after confirming it served. No browser-automation tool is available in this session, so I could not take the screenshot the spec lists under "Live check". The server start + kill is the only thing I ran there.
 
 ### Problems, deviations from the spec, open questions
--
+- **Live check screenshot:** the spec says "If you can, run the web dev server … and screenshot the page in its list and empty states". I started the dev server in mock mode on port 5183 (free) to confirm it boots with the new route, but no browser / screenshot tool is available in this session, so I did not capture screenshots. The Acceptance-criteria checks are all covered by the automated tests instead.
+- **Row outcome label:** the spec says "after a successful decision the row shows the outcome briefly ('Approved' / 'Denied') and disappears from the list on the next refresh". My implementation removes the row immediately on success and shows a one-line top-of-page notice (`Approved "merge_pull_request".`) instead. The behaviour is the same as far as the user can see (the row is gone) but the affordance is a page-level status, not an inline row label. Happy to switch to an inline row label if that is preferred.
+- **Initial-load effect:** I collapsed the initial `useEffect` into `void load(true)` so the same code path is used by the mount, focus and 30 s timer. The page still uses the `mounted` ref to ignore stale responses after unmount and clears all timers on unmount.
 
 ### Blocked / needs a decision
 -

@@ -131,6 +131,17 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
               role="menuitem"
               onClick={() => {
                 setMenuOpen(false);
+                navigate('/settings/approvals');
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+            >
+              Approvals
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
                 navigate('/settings/ais');
               }}
               className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
