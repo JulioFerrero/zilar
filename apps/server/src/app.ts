@@ -19,6 +19,8 @@ import { createContactsRoutes } from './contacts/routes';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
+import { createMachinesRoutes } from './machines/routes';
+import { createDbMachineRegistry } from './machines/registry';
 import { serverVersion } from './version';
 import type { VoiceEngine } from './voice/engine';
 import { createVoiceRoutes } from './voice/routes';
@@ -103,6 +105,10 @@ export function createApp({
   app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
   app.route('/api', createAuthRoutes({ auth, db, config, adminClient, logger }));
   app.route('/api', createContactsRoutes({ auth, db, config }));
+  app.route(
+    '/api',
+    createMachinesRoutes({ auth, db, logger, registry: createDbMachineRegistry(db) }),
+  );
   app.route('/api', createGroupsRoutes({ auth, db, config, adminClient, logger }));
   app.route('/api', createChatsRoutes({ auth, db, config }));
   app.route('/api', createDraftsRoutes({ auth }));
