@@ -98,10 +98,13 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged. Full server suite and web suite green in the worker's run; format, lint, typecheck, build clean; no disable comments.
 
 ### Findings
--
+- `decideApproval`: the admin check runs after canDecide (404), expiry/not_pending (409) and `always_not_allowed` (400), and before the transaction, so a refusal changes no state and the same person can still approve once. Personal-chat approvals skip it. Matches the spec's ordering, and a test proves it.
+- `alwaysEligible` is per viewer in the single GET, the list (one query for the viewer's managed groups, set lookup per row) and the decision response.
+- The card handles `403 always_requires_admin` like `always_not_allowed`: message, third button dropped, one-time buttons stay.
+- Rule creation, revocation, listing and the gateway lookup are untouched. The e2e scenario proves member-owner: no third option, forced 403, approve once runs; admin: always creates the rule and the next request auto-executes.
 
 ### Follow-ups
--
+- None.
