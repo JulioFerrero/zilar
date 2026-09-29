@@ -387,6 +387,29 @@ describe('mockRequest', () => {
     expect(page.next).toBeNull();
   });
 
+  // T-0086: the group panel asks for `?groupId=…`. The mock serves the
+  // seeded room activity and answers an empty page for unknown rooms.
+  it('serves audit entries for a seeded group through the real schema', async () => {
+    const page = await listAudit({ groupId: 'g-devteam', limit: 20 });
+    expect(page.entries.length).toBeGreaterThan(0);
+    expect(page.entries.every((entry) => entry.groupId === 'g-devteam')).toBe(true);
+    const actions = new Set(page.entries.map((entry) => entry.action));
+    expect(actions.has('approval.decided')).toBe(true);
+  });
+
+  it('returns an empty page for an unknown group id', async () => {
+    const page = await listAudit({ groupId: 'no-such-group', limit: 20 });
+    expect(page.entries).toEqual([]);
+    expect(page.next).toBeNull();
+  });
+
+  it('rejects an audit request with both groupId and aiId with 400 invalid_request', async () => {
+    const response = await mockRequest('/audit?aiId=a-1&groupId=g-devteam', { method: 'GET' });
+    expect(response.status).toBe(400);
+    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    expect(body.error.code).toBe('invalid_request');
+  });
+
   it('rejects an audit request without aiId with 400 invalid_request', async () => {
     const response = await mockRequest('/audit', { method: 'GET' });
     expect(response.status).toBe(400);

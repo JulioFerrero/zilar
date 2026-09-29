@@ -647,6 +647,24 @@ describe('audit list API (T-0084)', () => {
     expect(url).toBe('/api/audit?aiId=a-1');
   });
 
+  // T-0086: the same endpoint serves a group's audit log. The signature is a
+  // discriminated union (`aiId` xor `groupId`); the constraint is compile-time
+  // only, so the test exercises the runtime query string for `groupId`.
+  it('listAudit hits GET /api/audit with the groupId query string', async () => {
+    const groupFixture = { ...auditFixture, aiId: null, groupId: 'g-devteam' };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { entries: [groupFixture], next: null }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const page = await listAudit({ groupId: 'g-devteam' });
+    expect(page.entries).toHaveLength(1);
+    expect(page.entries[0]?.groupId).toBe('g-devteam');
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/audit?groupId=g-devteam');
+  });
+
   it('listAudit encodes the aiId and includes limit + before when given', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { entries: [], next: 'cursor' }));
     vi.stubGlobal('fetch', fetchMock);

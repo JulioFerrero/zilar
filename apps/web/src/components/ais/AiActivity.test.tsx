@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { AiActivity, describeAuditEntry, formatRelativeAudit } from './AiActivity';
+import { ActivitySection, AiActivity, describeAuditEntry, formatRelativeAudit } from './AiActivity';
 import type { PublicAuditEntry } from '@/lib/api';
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -8,6 +8,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 const aiId = 'a-1';
+const groupId = 'g-devteam';
 
 function minutesAgo(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
@@ -388,6 +389,106 @@ describe('AiActivity', () => {
     ]);
 
     const { container } = renderActivity();
+
+    expect(await screen.findByText('A request was approved')).toBeTruthy();
+    expect(container.textContent).not.toContain('<script>');
+    expect(container.textContent).not.toContain('onerror');
+  });
+});
+
+// T-0086: the group panel renders the same section with a `groupId` scope.
+// The render helper takes a scope so the same tests cover both call sites.
+function renderSection(scope: { aiId: string } | { groupId: string }) {
+  return render(<ActivitySection scope={scope} />);
+}
+
+describe('ActivitySection with a groupId scope', () => {
+  it('hits /api/audit?groupId=… and renders entries in plain words', async () => {
+    auditRouter([
+      {
+        path: '/api/audit?groupId=g-devteam&limit=20',
+        respond: () =>
+          jsonResponse(200, {
+            entries: [
+              auditEntry({
+                id: 'g-approved',
+                aiId: 'dev-1',
+                groupId,
+                action: 'approval.decided',
+                detail: { decision: 'approve_once' },
+              }),
+              auditEntry({
+                id: 'g-denied',
+                aiId: 'qa-1',
+                groupId,
+                action: 'approval.decided',
+                detail: { decision: 'deny' },
+              }),
+            ],
+            next: null,
+          }),
+      },
+    ]);
+
+    renderSection({ groupId });
+
+    expect(await screen.findByText('A request was approved')).toBeTruthy();
+    expect(screen.getByText('A request was denied')).toBeTruthy();
+  });
+
+  it('shows the empty state when the group has no activity', async () => {
+    auditRouter([
+      {
+        path: '/api/audit?groupId=g-devteam&limit=20',
+        respond: () => jsonResponse(200, { entries: [], next: null }),
+      },
+    ]);
+
+    renderSection({ groupId });
+
+    expect(await screen.findByText('No activity yet.')).toBeTruthy();
+  });
+
+  it('shows an inline error and a Retry button when the first load fails', async () => {
+    auditRouter([
+      {
+        path: '/api/audit?groupId=g-devteam&limit=20',
+        respond: () => jsonResponse(500, { error: { code: 'boom', message: 'server down' } }),
+      },
+    ]);
+
+    renderSection({ groupId });
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('server down');
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  it('renders nothing from `detail` other than the decision', async () => {
+    auditRouter([
+      {
+        path: '/api/audit?groupId=g-devteam&limit=20',
+        respond: () =>
+          jsonResponse(200, {
+            entries: [
+              auditEntry({
+                id: 'hostile-group',
+                aiId: 'dev-1',
+                groupId,
+                action: 'approval.decided',
+                detail: {
+                  decision: 'approve_once',
+                  note: '<script>alert(1)</script>',
+                  nested: { x: '<img src=x onerror=alert(1)>' },
+                },
+              }),
+            ],
+            next: null,
+          }),
+      },
+    ]);
+
+    const { container } = renderSection({ groupId });
 
     expect(await screen.findByText('A request was approved')).toBeTruthy();
     expect(container.textContent).not.toContain('<script>');
