@@ -10,6 +10,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0093](T-0093-request-action-tool.md) | `request_action` AI tool + dev-only `demo.echo` adapter: an AI asks in the owner's DM, the card appears, the owner approves, the platform runs it (server) | in progress | minimax-m3 | T-0090, T-0092 | Live check needs T-0092 merged. |
+| [T-0094](T-0094-server-config-docs.md) | Server configuration reference (docs only): every env var, default, feature flag, jobs | in progress | minimax-m3 | - | Lead cross-checks against config.ts. |
 
 ## Follow-ups
 
