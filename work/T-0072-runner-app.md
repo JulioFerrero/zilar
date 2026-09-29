@@ -1,7 +1,7 @@
 ---
 id: T-0072
 title: The runner app (M3, skeleton) — `galena-runner pair` and `run`: capability report, key pair on disk, pairing, and the tunnel connection
-status: review
+status: merged
 milestone: M3
 branch: task/T-0072-runner-app
 model: minimax-coding-plan/MiniMax-M3
@@ -198,10 +198,12 @@ None.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged (lead, 2026-09-29). All checks green after rebasing onto main: format, lint, typecheck, test (runner 45, server 543), build. No pre-review (OpenCode Go has no funds); reviewed by hand.
 
-### Findings
--
+**Checked by reading:** the identity file is written through a temp file with mode 0600 and renamed, the directory is 0700, a group/other-readable identity is refused at load, and no error string or `status` output contains the private key. The pairing signature is the same `galena-pair:v1:<CODE>` message the server verifies. There is no `child_process`, `exec` or `spawn` anywhere in `apps/runner`; the tunnel client is started with `exposedPorts: []` and the model listener off, so the app can't run anything on the host. After a revoke it stops instead of reconnecting forever.
 
-### Follow-ups
--
+**Follow-ups (not blocking):**
+- `identity.hubUrl` only accepts `ws://`; the connect code already accepts `wss://`. Loosen the schema when the deployment task exposes the hub over TLS.
+- `mapFailure` reports any unrecognised close as `auth_failed`; a plain network drop should say so.
+- The 409 branch shows the server's `message` text; harmless today, but keep the CLI messages fixed.
+- Live check still open: pair a real runner against the dev server, approve it in the Machines page, then `run` against the hub (needs T-0071 merged and `RUNNER_HUB_ENABLED=true`).
