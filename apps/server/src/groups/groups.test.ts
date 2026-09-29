@@ -551,6 +551,31 @@ describe('groups', () => {
       ).toHaveLength(1);
     });
 
+    it('refuses to add a stopped or provisioning AI, but leaves an existing member alone', async () => {
+      const { owner, groupId } = await groupWithMember();
+      const stopped = await seedAi(owner.id);
+      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, stopped.aiId));
+
+      const refused = await addAiRequest(owner.cookie, groupId, { aiId: stopped.aiId });
+      expect(refused.status).toBe(409);
+      expect(((await refused.json()) as { error: { code: string } }).error.code).toBe(
+        'ai_not_active',
+      );
+      expect(await context.db.select().from(groupAis)).toHaveLength(0);
+
+      const provisioning = await seedAi(owner.id);
+      await context.db.update(ais).set({ status: 'disabled' }).where(eq(ais.id, provisioning.aiId));
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: provisioning.aiId })).status).toBe(
+        409,
+      );
+
+      // Already a member when it gets stopped: the add stays idempotent.
+      const member = await seedAi(owner.id);
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: member.aiId })).status).toBe(200);
+      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, member.aiId));
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: member.aiId })).status).toBe(200);
+    });
+
     it('answers 200 to two concurrent adds with a single row', async () => {
       const { owner, groupId } = await groupWithMember();
       const ai = await seedAi(owner.id);

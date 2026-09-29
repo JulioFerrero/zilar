@@ -9,12 +9,12 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0090](T-0090-action-gateway.md) | Action gateway (M4 core, server): adapters, tier policy, approval-gated execution of the exact approved request (stored args, single use), audit at every step; no adapters registered | in progress | minimax-m3 | T-0073, T-0079, T-0080, T-0087 | Security-critical: lead reviews line by line. No XMPP card yet. |
 | [T-0088](T-0088-authz-route-sweep.md) | Authorization sweep: a test that every `/api` route answers 401 without a session unless on a reviewed public list | in progress | minimax-m3 | T-0079 | Tests only; findings go to the Report. |
-| [T-0087](T-0087-approvals-sweeper.md) | Approvals sweeper: expired pending requests are denied on a timer, one audit entry each | in progress | minimax-m3 | T-0073, T-0079 | Server only. |
 
 ## Follow-ups
 
-- Kill switch (T-0080): `addGroupAi` accepts a stopped AI (stale membership, no wake-up): decide; audit entries for `ai.stopped` / `ai.resumed`; room-admin and workspace-admin stop (J5).
+- Kill switch (T-0080): room-admin and workspace-admin stop (J5). (`addGroupAi` now refuses a stopped or provisioning AI with 409 `ai_not_active`, lead change 2026-09-29; audit entries for stop/resume are done, T-0083.)
 - Audit log (T-0079): entries from the engine and the proxy, a web page for an AI's / group's log, retention (J4: 1 year).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
@@ -117,3 +117,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0084](T-0084-ai-activity-web.md) | Web: Activity section in the AI panel showing audit entries, with paging | 2026-09-29 |
 | [T-0085](T-0085-mobile-edits-send.md) | Mobile sends reactions, deletions and edits (optimistic with rollback), composer edit mode | 2026-09-29 |
 | [T-0086](T-0086-group-activity-web.md) | Web: Activity section in the group panel for owners and admins | 2026-09-29 |
+| [T-0087](T-0087-approvals-sweeper.md) | Approvals sweeper: expired pending requests are denied on a timer with one audit entry each; swept rows read as expired | 2026-09-29 |

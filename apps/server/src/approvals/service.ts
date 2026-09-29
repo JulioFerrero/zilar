@@ -338,14 +338,19 @@ export async function getDecidableApproval(
 
 // Used by the future sweeper (and the tests). Marks past-due `pending` rows
 // `denied` with `note = 'expired'` so the read model and a hard `pending`
-// query agree. Returns the number of rows updated.
-export async function expireStale(db: ServerDatabase, now: Date): Promise<number> {
+// query agree. Returns the swept rows' ids and AI/group ids so the sweeper
+// can write one audit entry per row. The conditional `WHERE` keeps a
+// concurrent decision from being overwritten.
+export async function expireStale(
+  db: ServerDatabase,
+  now: Date,
+): Promise<Array<{ id: string; aiId: string; groupId: string | null }>> {
   const updated = await db
     .update(approvals)
     .set({ status: 'denied', decidedAt: now, note: 'expired' })
     .where(and(eq(approvals.status, 'pending'), lt(approvals.expiresAt, now)))
     .returning();
-  return updated.length;
+  return updated.map((row) => ({ id: row.id, aiId: row.aiId, groupId: row.groupId }));
 }
 
 // Whether `userId` may decide `row`: the AI owner, or — when the request was
@@ -395,11 +400,16 @@ async function decidableGroupIdsForUser(db: ServerDatabase, userId: string): Pro
 }
 
 // The read shape: a past-due `pending` row is mapped to `expired` without
-// writing. `decided_by` is intentionally omitted.
+// writing, and so is a row the sweeper already denied (`denied`, note
+// `expired`, no human decider): the reader must not see "Denied" for a request
+// nobody denied. `decided_by` is intentionally omitted.
 export function toPublicApproval(row: ApprovalRow, now: Date): PublicApproval {
   const isPending = row.status === 'pending';
+  const sweptByTimer = row.status === 'denied' && row.note === 'expired' && row.decidedBy === null;
   const status: ApprovalStatus | 'expired' =
-    isPending && row.expiresAt.getTime() <= now.getTime() ? 'expired' : row.status;
+    sweptByTimer || (isPending && row.expiresAt.getTime() <= now.getTime())
+      ? 'expired'
+      : row.status;
 
   const hasWorstCase = row.worstCaseCurrency !== null && row.worstCaseAmount !== null;
   const worstCase = hasWorstCase
