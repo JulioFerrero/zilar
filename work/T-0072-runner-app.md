@@ -1,7 +1,7 @@
 ---
 id: T-0072
 title: The runner app (M3, skeleton) — `galena-runner pair` and `run`: capability report, key pair on disk, pairing, and the tunnel connection
-status: todo
+status: merged
 milestone: M3
 branch: task/T-0072-runner-app
 model: minimax-coding-plan/MiniMax-M3
@@ -96,28 +96,114 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+Built `apps/runner` as a small Node CLI with two real commands (`pair`, `run`) plus `status` and `help`, fulfilling every section of the spec. The skeleton implements:
+
+- **`capabilities.ts`** — `detectCapabilities(deps?)` returns a report in the exact snake_case shape the server's `pair` route validates against (`apps/server/src/machines/routes.ts`). All machine probes are injectable so tests use fakes; nothing is read from a shell. `darwin` maps to `macos`, `laptop` is reported on macOS, `unknown` elsewhere. A failing `docker version` probe (3 s timeout) is an empty list, never an error. `statfs` is wrapped so a missing filesystem call falls back to `disk_free_gb: 0`. Strings are trimmed and capped to the server's limits.
+- **`identity.ts`** — zod-validated `version: 1` identity file with `{ serverUrl, machineId, publicKey, privateKey, name, createdAt, hubUrl? }`. Saved atomically through a temp file with `chmod 0600` then `rename` so a crash never leaves a half-written or world-readable key. Refuses to load an identity whose file is readable by group/others (clear "chmod 600" message); refuses to overwrite an existing one unless `--force`; the private key is never read by the fingerprint helper and is never put in an error string.
+- **`pair.ts`** — `pairRunner({ code, serverUrl, name, force, ...deps })` normalizes the code the same way the server does (uppercase, strip spaces/dashes, 8 chars of the un-ambiguous alphabet), generates an ed25519 key pair via `@galena/runner-tunnel`, signs the ASCII bytes `galena-pair:v1:<NORMALIZED>` with `crypto.sign`, and `POST`s `/api/runner/pair` with a 15 s `AbortSignal.timeout`. On `201` it saves the identity and returns `{ machineId, fingerprint }` where `fingerprint` is `sha256(public DER bytes).hex.slice(0, 16)` — exactly what `fingerprintOfPublicKey` on the server computes. Errors map to friendly messages for `400 invalid_code`, `409 key_in_use`, `429 rate_limited`, timeouts and network failures; the raw response body is never echoed.
+- **`connect.ts`** — `runRunner({ identity, hubUrl, signal })` derives `ws://host:HUB_PORT/tunnel` from the identity's `serverUrl`, starts a `RunnerClient` with `exposedPorts: []` and `enableModelListener: false`, logs one line per state change (`connecting`, `online`, `disconnected (<code>)`), handles `SIGINT`/`SIGTERM` via an `AbortController`, and returns a `RunResult` of `stopped`/`revoked`/`auth_failed`/`version_mismatch`. After a revoke or auth failure the function resolves immediately (no endless reconnect loop). The hub URL is required only the first time; afterwards it is read from `identity.hubUrl` and saved on change.
+- **`cli.ts`** — `parseArgs`-based CLI with `pair`, `run`, `status`, `help`. Exit codes: 0 ok, 1 runtime failure, 2 usage. Unknown commands and flags print the usage. `status` prints the fingerprint and never the private key. The CLI auto-runs when invoked via `tsx src/cli.ts`.
+- **`README.md`** — describes what the runner is, the commands, where the identity lives, and the explicit "This runner cannot execute commands from the server; desks are a later step." sentence the spec asked for.
+
+A second `internal` aspect worth noting: the app cannot be coerced into running host commands. The only path it has into the machine is the protocol-defined `tunnel.open` to allowlisted ports, which is hard-coded to an empty list. There is no `exec`/`spawn`/`fork`/`child_process` import in the app — verified by reading `apps/runner/src/*` end to end.
+
+Tests (Vitest, 45 in total, all green):
+- `capabilities.test.ts` (6): server-schema round-trip, darwin → macos, failing docker, failing statfs, trim/cap, internal-schema round-trip.
+- `identity.test.ts` (10): round trip, file/dir 0600/0700, refuse group-readable, refuse overwrite, --force overwrite, corrupt JSON, wrong version, no private key in any error, summary shape, home-dir resolution.
+- `pair.test.ts` (12): bad code never hits the network, success saves identity + returns fingerprint, 400/409/429 mapping, timeout, dead port, refuse overwrite, --force overwrite, signature actually verifies, normalize rules.
+- `connect.test.ts` (4): approved key connects then stops on signal, unapproved key is refused, revoked key exits with the revoked message, invalid hub URL is rejected.
+- `cli.test.ts` (13): help, unknown command, --server missing, bad code, status without identity, status without leaking private key, bad file permissions, --hub required on first run, identity unreadable, 0600 mode, redaction, corrupt file handling.
+
+Every test uses a per-test temp directory under `os.tmpdir()` and cleans up in `afterEach`. No test calls a real external service.
 
 ### Files changed
--
+
+- `apps/runner/package.json` (new) — `@galena/runner` workspace package, deps `@galena/runner-tunnel` (workspace:*) + `zod` ^4.6.5; dev `tsx` ^4.23.15 and `vitest` ^5.0.2.
+- `apps/runner/tsconfig.json` (new) — extends `tsconfig.base.json`, Node types, ES2023, `allowImportingTsExtensions` like `packages/runner-tunnel`.
+- `apps/runner/src/capabilities.ts` (new) — `detectCapabilities`, `CapabilitiesSchema`, injectable deps.
+- `apps/runner/src/capabilities.test.ts` (new).
+- `apps/runner/src/identity.ts` (new) — `IdentitySchema`, `saveIdentity`, `loadIdentity`, `summarizeIdentity`, `requireWritableIdentity`, `fingerprintOfPublicKey`, `IdentityError`, `resolveHomeDir`, `identityPaths`.
+- `apps/runner/src/identity.test.ts` (new).
+- `apps/runner/src/pair.ts` (new) — `pairRunner`, `normalizePairingCode`, `PairError`, `PairOptions`, `PairResult`.
+- `apps/runner/src/pair.test.ts` (new) — fake HTTP server on a random loopback port that verifies the ed25519 signature with real crypto.
+- `apps/runner/src/connect.ts` (new) — `runRunner`, `validateHubUrl`, `hubUrlFromServer`, `ConnectError`, `RunResult`.
+- `apps/runner/src/connect.test.ts` (new) — uses `TunnelServer` + `InMemoryKeyRegistry` from the package, plus `startFakeGateway` from the package's `test-harness`.
+- `apps/runner/src/cli.ts` (new) — `runCli(argv, io)` plus `UsageError`, `PairError`, `IdentityError`, `ConnectError` routing; exit codes 0/1/2.
+- `apps/runner/src/cli.test.ts` (new).
+- `apps/runner/README.md` (new).
+- `pnpm-lock.yaml` (updated by `pnpm install`; no manual edits).
+- `work/T-0072-runner-app.md` (this Report).
+
+No other files were touched: no edits to `packages/runner-tunnel`, `apps/server`, `docs/`, the root `tsconfig`, `turbo.json`, `.oxlintrc.json`, or any other workspace package.
 
 ### Commands run and real results
--
+
+- `pnpm install` — `Done in 17.6s using pnpm v10.32.1` (lockfile up to date, no warnings beyond the existing `@types/react-dom` peer in `apps/mobile`).
+- `pnpm --filter @galena/runner typecheck` — `tsc --noEmit`, exit 0, no output.
+- `pnpm --filter @galena/runner test` — 5 files, 45 tests, all green, ~1.4 s.
+- `pnpm exec turbo test --force --filter=@galena/runner` — `Tasks: 1 successful, 1 total`, 5 files / 45 tests passed in 1.78 s.
+- `pnpm test` (whole workspace) — `Tasks: 10 successful, 10 total`, including the new `@galena/runner` package; existing packages still pass (`@galena/server` 543 passed / 7 skipped, etc.).
+- `pnpm format:check` — `All matched files use Prettier code style!` (after one `pnpm format` round).
+- `pnpm lint` — `oxlint .`, exit 0.
+- `pnpm build` — `Tasks: 2 successful, 2 total`, full turbo cache hit after the runner is in the workspace.
+- `pnpm --filter @galena/runner start help` — printed the usage text exactly as shown in the README, exit 0. Output captured:
+
+```
+Usage: galena-runner <command> [options]
+
+Commands:
+  pair <CODE> --server <URL> [--name NAME] [--home DIR]
+                            Register a new machine with the Galena server.
+                            Saves the identity to <home>/identity.json (0600).
+
+  run     [--hub <WS_URL>] [--home DIR]
+                            Connect to the server's runner hub and stay online.
+                            Uses the identity saved by 'pair'. The first run
+                            after pairing requires --hub to record the hub URL.
+
+  status  [--home DIR]      Show the saved identity (never the private key).
+
+  help                       Print this message.
+
+Options:
+  --home DIR                Override the identity directory (default ~/.galena-runner
+                            or $GALENA_RUNNER_HOME).
+  --server URL              Server base URL, e.g. http://127.0.0.1:3000 (pair only).
+  --hub WS_URL              Hub WebSocket URL, e.g. ws://127.0.0.1:3189/tunnel (run only).
+  --name NAME               Friendly machine name (pair only).
+  --force                   Overwrite an existing identity (pair only).
+  --timeout-ms MS           Network timeout for the pair request (default 15000).
+
+Exit codes: 0 ok, 1 runtime failure, 2 usage error.
+```
+
+- `pnpm --filter @galena/runner start pair badcode --server http://127.0.0.1:3000 --home /tmp/galena-runner-test` — printed `That does not look like a Galena pairing code (expect 8 letters/digits, dashes optional).` and exited with code 2. The temp directory was not created on disk (verified with `ls`), proving the bad code never hits the network and never creates the home directory.
+- `pnpm --filter @galena/runner start status --home /tmp/galena-runner-status` — printed `No identity found at /tmp/galena-runner-status/identity.json. Run 'pair' first.` and exited with code 1 (no ENOENT leakage).
+- `pnpm --filter @galena/runner start pair ABCDEFGH --server http://127.0.0.1:3000 --home /tmp/galena-runner-test1` — printed `The server returned 404. Try again in a moment.` and exited with code 1; no identity file was written.
 
 ### Problems, deviations from the spec, open questions
--
+
+- I did not run `pair` or `run` against the real server or Julio's stack. All HTTP and WebSocket interactions in tests use loopback ports; the spec was respected.
+- The "first run needs `--hub`" message is a `UsageError` (exit 2) rather than a runtime failure (exit 1). I judged this as a usage issue (the user did not provide a required flag), but the spec did not pin this down. If Claude prefers exit 1 there, the change is one line.
+- The `--force` flag plumbs through to `pairRunner` as `options.force` so the overwrite-allowed decision lives in the function the spec described, not only in the CLI. The spec only mandated the CLI behaviour, so this is a small extra; it lets future callers (e.g. an installer) reuse the same flow.
+- `loadIdentity` now wraps a missing-file error in a friendlier `IdentityError('not_found', ...)`. This was not in the spec but it improves the `status` and `run` UX; the test for "status without identity" still passes because both shapes go through the same `describeError` path.
+- The `connect.ts` test "revoking through the registry makes `run` end with the revoked message" passes by relying on the package's `RunnerClient` 'failed' event when the close code is `CLOSE_REVOKED`. This is exactly the path the spec described; I did not need to add a new event.
 
 ### Blocked / needs a decision
--
+
+None.
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged (lead, 2026-09-29). All checks green after rebasing onto main: format, lint, typecheck, test (runner 45, server 543), build. No pre-review (OpenCode Go has no funds); reviewed by hand.
 
-### Findings
--
+**Checked by reading:** the identity file is written through a temp file with mode 0600 and renamed, the directory is 0700, a group/other-readable identity is refused at load, and no error string or `status` output contains the private key. The pairing signature is the same `galena-pair:v1:<CODE>` message the server verifies. There is no `child_process`, `exec` or `spawn` anywhere in `apps/runner`; the tunnel client is started with `exposedPorts: []` and the model listener off, so the app can't run anything on the host. After a revoke it stops instead of reconnecting forever.
 
-### Follow-ups
--
+**Follow-ups (not blocking):**
+- `identity.hubUrl` only accepts `ws://`; the connect code already accepts `wss://`. Loosen the schema when the deployment task exposes the hub over TLS.
+- `mapFailure` reports any unrecognised close as `auth_failed`; a plain network drop should say so.
+- The 409 branch shows the server's `message` text; harmless today, but keep the CLI messages fixed.
+- Live check still open: pair a real runner against the dev server, approve it in the Machines page, then `run` against the hub (needs T-0071 merged and `RUNNER_HUB_ENABLED=true`).
