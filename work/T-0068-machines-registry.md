@@ -1,7 +1,7 @@
 ---
 id: T-0068
 title: Machines (M3, server) — pairing codes, runner registration with proof of key possession, owner approval, revoke, and a durable registry
-status: review
+status: merged
 milestone: M3
 branch: task/T-0068-machines-registry
 model: opencode-go/muse-spark-1.3-contributor
@@ -197,10 +197,18 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved.
+
+**Approved and merged by Claude.** No Muse pre-review this time (the OpenCode Go account ran out of funds), so I read the code myself with an attacker's eye. Verified after rebasing onto `main`: every changed path is inside Allowed files (the `machines/` folder, `schema.ts`, one generated migration, four lines in `app.ts`); `format:check`, `lint`, `typecheck`, `test` (server 543 passed, 7 skipped) and `build` pass; no new dependencies.
+
+What I checked against the spec: codes come from `crypto.randomInt` over a 31-character alphabet, stored only as SHA-256, and normalized before hashing; the code is consumed by one atomic `UPDATE … WHERE used_at IS NULL AND expires_at > now() RETURNING`, and a concurrent-pairing test proves exactly one 201; the signature is over `galena-pair:v1:<CODE>` with the public key sent, so someone else's key fails; every failure on the public route is the same 400 `invalid_code`, after both the global (30/min) and per-IP (10/min) limiters; the owner routes query with `owner_user_id` in every `WHERE` and answer 404 for other users' ids; responses carry a fingerprint, never the key; revoke is permanent, keeps the key reserved and notifies the registry listeners synchronously; caps of 20 machines, 5 pending and 5 unused codes hold under concurrency-safe checks at insert.
+
+**Live proof was not done** (the spec said so). The migration `0010` runs when the server restarts; the routes are covered by PGlite-backed tests only.
 
 ### Findings
--
+1. *(No change needed.)* A valid code with a bad signature is consumed (the consume and the signature check run together so timing does not leak which failed). Only someone who already holds a valid code can burn it; accepted.
+2. *(No change needed.)* Deleting a **revoked** machine frees its public key for pairing again (the row is gone). It needs a fresh pairing code from the owner, so it is not an escalation; noted for the hub task.
+3. *(No change needed.)* `status` is a plain text column without a CHECK constraint, like the other status columns in this schema.
 
 ### Follow-ups
--
+- The next M3 tasks: the web Machines page, then the tunnel hub (DB-backed `KeyRegistry`; its `getPublicKey` is synchronous today and the DB lookup is async, so the hub task must make the interface async or cache), then the runner app.
