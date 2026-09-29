@@ -9,12 +9,15 @@ import {
   approveMachine,
   createConnection,
   createPairingCode,
+  decideApproval,
   deleteConnection,
   deleteMachine,
   denyMachine,
+  getApproval,
   listMachines,
   listConnections,
   machineSchema,
+  publicApprovalSchema,
   renameMachine,
   revokeMachine,
   testConnection,
@@ -359,6 +362,130 @@ describe('connections API', () => {
       status: 503,
       code: 'connections_unavailable',
       message: 'Provider connections are not configured on this server',
+    } satisfies Partial<ApiError>);
+  });
+});
+
+const approvalFixture = {
+  id: 'apr-42',
+  aiId: 'ai-dev-1',
+  groupId: 'dev-team',
+  action: 'merge_pull_request',
+  summary: 'Merge PR #42',
+  details: null,
+  argsHash: 'a'.repeat(64),
+  worstCase: { currency: 'EUR' as const, amount: 0.4 },
+  requestedBy: 'dev-1@ai.galena.test',
+  status: 'pending' as const,
+  decidedAt: null,
+  note: null,
+  expiresAt: '2026-09-29T10:00:00.000Z',
+  createdAt: '2026-09-29T09:55:00.000Z',
+};
+
+describe('approvals API', () => {
+  it('publicApprovalSchema parses a server-shaped approval', () => {
+    const parsed = publicApprovalSchema.parse(approvalFixture);
+    expect(parsed.status).toBe('pending');
+    expect(parsed.worstCase).toEqual({ currency: 'EUR', amount: 0.4 });
+  });
+
+  it('publicApprovalSchema rejects an unknown status', () => {
+    expect(publicApprovalSchema.safeParse({ ...approvalFixture, status: 'gone' }).success).toBe(
+      false,
+    );
+  });
+
+  it('getApproval hits GET /api/approvals/:id and URL-encodes the id', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { ...approvalFixture, status: 'approved_once' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const approval = await getApproval('apr/42 with space');
+    expect(approval.status).toBe('approved_once');
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/approvals/apr%2F42%20with%20space');
+  });
+
+  it('decideApproval POSTs approve_once by default and parses the response', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        ...approvalFixture,
+        status: 'approved_once',
+        decidedAt: '2026-09-29T09:59:00.000Z',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const approval = await decideApproval('apr-42', 'approve_once');
+    expect(approval.status).toBe('approved_once');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/approvals/apr-42/decision');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ decision: 'approve_once' });
+  });
+
+  it('decideApproval includes the note when provided', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse(200, { ...approvalFixture, status: 'denied', note: 'looks risky' }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await decideApproval('apr-42', 'deny', 'looks risky');
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ decision: 'deny', note: 'looks risky' });
+  });
+
+  it('decideApproval omits the note key when none is given', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, approvalFixture));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await decideApproval('apr-42', 'approve_once');
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ decision: 'approve_once' });
+  });
+
+  it('a 409 not_pending surfaces the server code through ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(409, {
+          error: { code: 'not_pending', message: 'Approval request has already been decided' },
+        }),
+      ),
+    );
+
+    await expect(decideApproval('apr-42', 'deny')).rejects.toMatchObject({
+      status: 409,
+      code: 'not_pending',
+    } satisfies Partial<ApiError>);
+  });
+
+  it('a 404 on getApproval surfaces as a not_found ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(404, { error: { code: 'not_found', message: 'Approval not found' } }),
+        ),
+    );
+
+    await expect(getApproval('missing')).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+    } satisfies Partial<ApiError>);
+  });
+
+  it('a wrong response shape becomes an invalid_response ApiError', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { not: 'an approval' })));
+
+    await expect(getApproval('apr-42')).rejects.toMatchObject({
+      status: 200,
+      code: 'invalid_response',
     } satisfies Partial<ApiError>);
   });
 });
