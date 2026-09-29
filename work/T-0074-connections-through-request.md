@@ -1,7 +1,7 @@
 ---
 id: T-0074
 title: Web — route ConnectionsPage through the shared `request()` and drop the global fetch wrapper from mock mode
-status: review
+status: merged
 milestone: M2
 branch: task/T-0074-connections-through-request
 model: minimax-coding-plan/MiniMax-M3
@@ -116,4 +116,8 @@ I closed the dev tab and killed the dev server before finishing.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged (lead, 2026-09-29). Rebased onto main; format, lint, typecheck, test and build all green. No pre-review (OpenCode Go has no funds); reviewed by hand.
+
+**Checked:** the page no longer calls `fetch` and has no private helper; `globalThis.fetch` is not replaced anywhere in the app any more; the four calls go through `request()` with zod schemas and `encodeURIComponent` on ids; the visible error text still comes from the server's `error.message` (the three page tests needed a `code` in the fake error body because the shared `errorBodySchema` requires it, which matches every real server error). The mock layer now serves `POST /connections` and 404s an unknown test id like the real server.
+
+**Open:** the visual check of the connections page in mock mode was not done by the worker; the lead can do it next time Julio's browser is free.
