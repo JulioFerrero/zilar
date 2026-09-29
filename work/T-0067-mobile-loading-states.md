@@ -1,7 +1,7 @@
 ---
 id: T-0067
 title: Mobile loading is not empty — chat list and chat history show skeletons until loaded, inline errors with Retry, and a reopened chat loads its history
-status: review
+status: merged
 milestone: M2
 branch: task/T-0067-mobile-loading-states
 model: opencode-go/deepseek-v4.1-flash
@@ -265,10 +265,14 @@ own simulator.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved.
+
+**Approved and merged by Claude.** No Muse pre-review this time: the OpenCode Go account ran out of funds (`402 Insufficient account funds`), so I read the store diff myself. Verified after rebasing onto `main`: every changed path is inside Allowed files; `format:check`, `lint`, `typecheck`, `test` (mobile 284 passed, 2 skipped) and `build` pass. The worker proved both causes with failing tests first (9 failures on the old `real-store.ts`: MAM queried while the core was still connecting, and no `chatsLoad`), and used slow fakes (deferred `connect()`, gated `getChats`), as the spec required. Read the store logic: `canLoadHistory` gates on `status === 'online'` (not on the core merely existing) and on joined rooms for groups; the pending open is flushed on `online`, after every chat merge and after the rooms join; only the latest pending chat counts; a failed load lands in `error` and keeps the rows already shown; `stop()` clears the pending state.
+
+**Visual and live checks are still open:** no simulator screenshots; per playbook gotcha 19 this is exactly the class where a live reload matters. Julio should cold-start the phone app, reopen a chat from a cold start, and try it in airplane mode (skeleton, then the error with Retry, then recovery).
 
 ### Findings
--
+1. *(No change needed.)* `reloadChats` re-runs the whole boot when the first boot never produced a core, otherwise it only refetches the list. Sensible and tested.
 
 ### Follow-ups
--
+- A phone check by Julio (above).
