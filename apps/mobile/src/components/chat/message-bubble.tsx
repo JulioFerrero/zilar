@@ -1,4 +1,10 @@
-import { formatTime, isBigEmoji, type UiMessage } from '@galena/chat-core';
+import {
+  canDeleteMessage,
+  canEditMessage,
+  formatTime,
+  isBigEmoji,
+  type UiMessage,
+} from '@galena/chat-core';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
@@ -193,6 +199,12 @@ type MessageBubbleProps = {
    * reveal is done.
    */
   revealTurnId?: string;
+  /** Called when the user picks a quick-reaction emoji or taps a chip. */
+  onReact?: (message: UiMessage, emoji: string) => void;
+  /** Called when the sheet asks to edit the message. */
+  onEdit?: (message: UiMessage) => void;
+  /** Called when the user confirms a delete-for-everyone. */
+  onDelete?: (message: UiMessage) => void;
 };
 
 export function MessageBubble({
@@ -204,17 +216,28 @@ export function MessageBubble({
   onReply,
   draft = false,
   revealTurnId,
+  onReact,
+  onEdit,
+  onDelete,
 }: MessageBubbleProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const colors = BUBBLE_COLORS[scheme];
   const reduceMotion = useReducedMotion();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const outgoing = message.senderId === currentUserId;
   // `MessageBubble` has no chat prop, so the shared Markdown rule is evaluated
   // against the store's chat for this message (AI DMs and AI group replies).
   const showMarkdown = useChatStore((state) =>
     rendersMarkdown(state.chats, message, currentUserId),
   );
+  // Edit/Delete are user-side limits: my own text message under 48 h, or my
+  // own message of any kind. Tombstones and live drafts offer neither.
+  const canEdit =
+    !draft && message.deleted !== true && canEditMessage(message, currentUserId, new Date());
+  const canDelete = !draft && message.deleted !== true && canDeleteMessage(message, currentUserId);
+  const myReactions = (message.reactions ?? []).filter((entry) => entry.mine);
+  const react = onReact ?? (() => {});
   const metaColor = outgoing ? colors.outgoingMeta : colors.incomingMeta;
   const hasText = message.text !== undefined && message.text.length > 0;
   const beyondDraft = revealTurnId !== undefined && !draft;
@@ -443,7 +466,17 @@ export function MessageBubble({
               ) : null}
             </View>
             {isLastInGroup && message.reactions !== undefined && message.reactions.length > 0 ? (
-              <ReactionChips reactions={message.reactions} outgoing={outgoing} />
+              <ReactionChips
+                reactions={message.reactions}
+                outgoing={outgoing}
+                onToggle={
+                  onReact === undefined
+                    ? undefined
+                    : (emoji) => {
+                        react(message, emoji);
+                      }
+                }
+              />
             ) : null}
           </View>
         </View>
@@ -451,13 +484,34 @@ export function MessageBubble({
       <MessageActionsSheet
         visible={menuOpen}
         canCopy={hasText}
+        canEdit={canEdit}
+        canDelete={canDelete}
+        myReactions={myReactions}
+        confirmOpen={confirmOpen}
         onReply={() => {
           setMenuOpen(false);
           onReply(message);
         }}
+        onEdit={() => {
+          setMenuOpen(false);
+          onEdit?.(message);
+        }}
         onCopy={() => {
           setMenuOpen(false);
           void Clipboard.setStringAsync(message.text ?? '');
+        }}
+        onDelete={() => {
+          setConfirmOpen(true);
+        }}
+        onCloseConfirm={() => setConfirmOpen(false)}
+        onConfirmDelete={() => {
+          setConfirmOpen(false);
+          setMenuOpen(false);
+          onDelete?.(message);
+        }}
+        onReact={(emoji) => {
+          setMenuOpen(false);
+          react(message, emoji);
         }}
         onClose={() => setMenuOpen(false)}
       />

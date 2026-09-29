@@ -1,8 +1,9 @@
 import { ArrowUp, Mic, Paperclip, Smile, X } from 'lucide-react-native';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { EditBar } from '@/components/chat/edit-bar';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
@@ -16,6 +17,7 @@ import {
   well,
 } from '@/lib/depth';
 import type { ReplyRef } from '@/lib/types';
+import { useChatStore } from '@/store/chat-store-provider';
 import { useColorScheme } from 'nativewind';
 
 const MIN_INPUT_HEIGHT = 36;
@@ -66,8 +68,36 @@ export function Composer({ onSend, replyTo, onCancelReply, onTyping, title }: Co
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const insets = useSafeAreaInsets();
   const { pressed, reduceMotion, setPressed } = useKeyPress();
+  const editTarget = useChatStore((state) => state.editTarget);
+  const cancelEdit = useChatStore((state) => state.cancelEdit);
+  const editMessage = useChatStore((state) => state.editMessage);
+  // The target message's text is the initial value; the store keeps the live
+  // message under the same id, so the bar never goes stale while editing.
+  const targetText = useChatStore((state) => {
+    const target = state.editTarget;
+    if (target === undefined) return undefined;
+    return state.messages(target.chatId).find((message) => message.id === target.messageId)?.text;
+  });
+  const previousDraft = useRef('');
   const [text, setText] = useState('');
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
+  // Entering edit mode prefills the input with the message's text; leaving it
+  // restores whatever the user had typed before they tapped Edit. We key the
+  // effect on the message id (a string) so a later inbound correction (which
+  // only changes `targetText`) does not clobber the user's typing.
+  const editingId =
+    editTarget === undefined ? undefined : `${editTarget.chatId}:${editTarget.messageId}`;
+  useEffect(() => {
+    if (editingId === undefined) {
+      previousDraft.current = '';
+      return;
+    }
+    previousDraft.current = text;
+    setText(targetText ?? '');
+    // Only seed once per edit session: a fresh `targetText` while editing
+    // (e.g. a remote correction) is the user's keystrokes, not the store's.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId]);
   const canSend = text.trim().length > 0;
   const iconColor = ICON[scheme];
   const placeholder = title === undefined ? 'Message' : `Message ${title}`;
@@ -76,21 +106,42 @@ export function Composer({ onSend, replyTo, onCancelReply, onTyping, title }: Co
     if (!canSend) {
       return;
     }
+    if (editTarget !== undefined) {
+      // XEP-0308: replacing the message with a new body sends a correction.
+      // The sender id check and the no-op guard live in the store.
+      editMessage(editTarget.chatId, editTarget.messageId, text);
+      cancelEdit();
+      previousDraft.current = '';
+      setText('');
+      setInputHeight(MIN_INPUT_HEIGHT);
+      return;
+    }
     onSend(text);
     setText('');
     setInputHeight(MIN_INPUT_HEIGHT);
   };
 
+  const handleCancelEdit = () => {
+    const restored = previousDraft.current;
+    cancelEdit();
+    previousDraft.current = '';
+    setText(restored);
+  };
+
   const handleChange = (value: string) => {
     setText(value);
-    if (value.trim().length > 0) {
+    if (editTarget === undefined && value.trim().length > 0) {
       onTyping?.();
     }
   };
 
   return (
     <View className="px-2 pt-1.5" style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
-      {replyTo !== undefined ? <ReplyBar reply={replyTo} onCancel={onCancelReply} /> : null}
+      {editTarget !== undefined ? (
+        <EditBar text={targetText ?? ''} onCancel={handleCancelEdit} />
+      ) : replyTo !== undefined ? (
+        <ReplyBar reply={replyTo} onCancel={onCancelReply} />
+      ) : null}
       <View
         className="flex-row items-end gap-1 rounded-[14px] p-2"
         style={[well, { borderColor: '#262626' }]}
@@ -123,7 +174,7 @@ export function Composer({ onSend, replyTo, onCancelReply, onTyping, title }: Co
         {canSend ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Send message"
+            accessibilityLabel={editTarget !== undefined ? 'Save edit' : 'Send message'}
             onPress={handleSend}
             onPressIn={() => setPressed(true)}
             onPressOut={() => setPressed(false)}

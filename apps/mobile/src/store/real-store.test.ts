@@ -136,6 +136,9 @@ function fakeXmpp(connectGate?: Promise<void>): FakeXmpp {
     leaveRoom: vi.fn(async () => {}),
     occupants: vi.fn((): Occupant[] => []),
     sendMessage: vi.fn(async () => ({ id: 'srv-1' })),
+    sendReactions: vi.fn(async () => {}),
+    sendCorrection: vi.fn(async () => ({ id: 'srv-c' })),
+    sendRetraction: vi.fn(async () => {}),
     requestUploadSlot: vi.fn(async () => ({ putUrl: '', getUrl: '', headers: {} })),
     loadHistory: vi.fn(
       async (chatJid: string, _kind: unknown, opts?: { before?: string; max?: number }) => {
@@ -1521,5 +1524,383 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
     expect(target?.id).toBe('stanza-1');
     expect(target?.text).toBe('matched by origin');
     expect(target?.edited).toBe(true);
+  });
+});
+
+describe('mobile sends reactions, deletions and edits (T-0085)', () => {
+  const ANA = 'ana@galena.test';
+
+  function outgoingMessage(overrides: {
+    id: string;
+    chatJid: string;
+    body: string;
+    timestamp: Date;
+    fromJid?: string;
+    originId?: string;
+  }): ChatMessage {
+    return message({
+      ...overrides,
+      fromJid: overrides.fromJid ?? 'me@galena.test',
+      outgoing: true,
+    });
+  }
+
+  it('sends a reaction with the server id as the wire target', async () => {
+    const { store, xmpp } = await setup();
+    // A live message authored by me, so it already has a server id under its
+    // alias root.
+    xmpp.emit(
+      'message',
+      outgoingMessage({
+        id: 'srv-1',
+        chatJid: ANA,
+        body: 'hi',
+        timestamp: new Date('2026-09-28T12:01:00Z'),
+      }),
+    );
+
+    const sendReactions = vi.mocked(xmpp.core.sendReactions);
+    store.getState().react(ANA, 'srv-1', '👍');
+
+    expect(sendReactions).toHaveBeenCalledWith(ANA, 'chat', 'srv-1', ['👍']);
+    const bubble = store
+      .getState()
+      .messages(ANA)
+      .find((item) => item.id === 'srv-1');
+    expect(bubble?.reactions).toEqual([{ emoji: '👍', count: 1, mine: true, reactors: ['You'] }]);
+  });
+
+  it('toggles an existing emoji off and sends the new set', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.emit(
+      'message',
+      outgoingMessage({
+        id: 'srv-1',
+        chatJid: ANA,
+        body: 'hi',
+        timestamp: new Date('2026-09-28T12:01:00Z'),
+      }),
+    );
+
+    const sendReactions = vi.mocked(xmpp.core.sendReactions);
+    store.getState().react(ANA, 'srv-1', '👍');
+    store.getState().react(ANA, 'srv-1', '👍');
+
+    expect(sendReactions.mock.calls.map((call) => call[3])).toEqual([['👍'], []]);
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === 'srv-1')?.reactions,
+    ).toBeUndefined();
+  });
+
+  it('caps the reaction set at six', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.emit(
+      'message',
+      outgoingMessage({
+        id: 'srv-1',
+        chatJid: ANA,
+        body: 'hi',
+        timestamp: new Date('2026-09-28T12:01:00Z'),
+      }),
+    );
+
+    // Eight quick reactions: the reducer caps the kept set at six
+    // (`MAX_REACTIONS_PER_MESSAGE`), so the seventh and eighth emojis never
+    // appear on the chip strip.
+    const all = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🎉', '🔥'] as const;
+    for (const emoji of all) {
+      store.getState().react(ANA, 'srv-1', emoji);
+    }
+    const chipEmojis =
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === 'srv-1')
+        ?.reactions?.map((reaction) => reaction.emoji) ?? [];
+    expect(chipEmojis).toEqual(['👍', '❤️', '😂', '😮', '😢', '🙏']);
+  });
+
+  it('does nothing for a local-* id that has no server id', async () => {
+    const { store, xmpp } = await setup();
+    // Simulate an unacked send: the store keeps the message but `sendMessage`
+    // has not resolved yet, so the server id map is empty.
+    store.getState().sendText(ANA, 'unacked');
+    const sendReactions = vi.mocked(xmpp.core.sendReactions);
+    sendReactions.mockClear();
+
+    const localId = store
+      .getState()
+      .messages(ANA)
+      .find((item) => item.text === 'unacked')?.id;
+    expect(localId?.startsWith('local-')).toBe(true);
+
+    store.getState().react(ANA, localId ?? '', '👍');
+    expect(sendReactions).not.toHaveBeenCalled();
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === localId)?.reactions,
+    ).toBeUndefined();
+  });
+
+  it('undoes the optimistic toggle when sendReactions rejects', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.emit(
+      'message',
+      outgoingMessage({
+        id: 'srv-1',
+        chatJid: ANA,
+        body: 'hi',
+        timestamp: new Date('2026-09-28T12:01:00Z'),
+      }),
+    );
+
+    const sendReactions = vi.mocked(xmpp.core.sendReactions);
+    sendReactions.mockRejectedValueOnce(new Error('offline'));
+    store.getState().react(ANA, 'srv-1', '👍');
+    await flush();
+
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === 'srv-1')?.reactions,
+    ).toBeUndefined();
+  });
+
+  it('uses the stanza-id as the wire target for a group message', async () => {
+    const { store, xmpp } = await setup();
+    const group = 'team@rooms.galena.test';
+    // The mobile store keys group messages by their stanza-id, the only id
+    // the wire sees in a room.
+    xmpp.emit(
+      'message',
+      outgoingMessage({
+        id: 'team-stanza-1',
+        chatJid: group,
+        body: 'mine in the group',
+        timestamp: new Date('2026-09-28T12:01:00Z'),
+      }),
+    );
+
+    const sendReactions = vi.mocked(xmpp.core.sendReactions);
+    store.getState().react(group, 'team-stanza-1', '👍');
+    expect(sendReactions).toHaveBeenCalledWith(group, 'groupchat', 'team-stanza-1', ['👍']);
+  });
+
+  it('only lets the sender delete for everyone', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.emit(
+      'message',
+      message({
+        id: 'ana-msg',
+        chatJid: ANA,
+        body: 'anothers',
+        timestamp: new Date('2026-09-28T12:01:00Z'),
+      }),
+    );
+    xmpp.emit(
+      'message',
+      outgoingMessage({
+        id: 'srv-2',
+        originId: 'srv-2',
+        chatJid: ANA,
+        body: 'mine',
+        timestamp: new Date('2026-09-28T12:02:00Z'),
+      }),
+    );
+
+    // Sanity: the outgoing message is in the store under its server id.
+    const stored = store
+      .getState()
+      .messages(ANA)
+      .find((item) => item.id === 'srv-2');
+    expect(stored?.senderId).toBe('u-me');
+
+    const sendRetraction = vi.mocked(xmpp.core.sendRetraction);
+    store.getState().deleteForEveryone(ANA, 'ana-msg');
+    expect(sendRetraction).not.toHaveBeenCalled();
+
+    store.getState().deleteForEveryone(ANA, 'srv-2');
+    expect(sendRetraction).toHaveBeenCalledWith(ANA, 'chat', 'srv-2');
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === 'srv-2')?.deleted,
+    ).toBe(true);
+  });
+
+  it('uses the stanza-id for a group retraction and the origin id for a DM', async () => {
+    const { store, xmpp } = await setup();
+    const group = 'team@rooms.galena.test';
+    // Mine in a DM with the origin id different from the stanza id.
+    xmpp.emit(
+      'message',
+      outgoingMessage({
+        id: 'srv-3',
+        originId: 'origin-3',
+        chatJid: ANA,
+        body: 'dm mine',
+        timestamp: new Date('2026-09-28T12:03:00Z'),
+      }),
+    );
+    xmpp.emit(
+      'message',
+      outgoingMessage({
+        id: 'team-2',
+        chatJid: group,
+        body: 'group mine',
+        timestamp: new Date('2026-09-28T12:04:00Z'),
+      }),
+    );
+
+    const sendRetraction = vi.mocked(xmpp.core.sendRetraction);
+    store.getState().deleteForEveryone(ANA, 'srv-3');
+    store.getState().deleteForEveryone(group, 'team-2');
+
+    expect(sendRetraction).toHaveBeenCalledWith(ANA, 'chat', 'origin-3');
+    expect(sendRetraction).toHaveBeenCalledWith(group, 'groupchat', 'team-2');
+  });
+
+  it('restores the message and sets actionError when sendRetraction rejects', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.emit(
+      'message',
+      outgoingMessage({
+        id: 'srv-2',
+        originId: 'srv-2',
+        chatJid: ANA,
+        body: 'mine',
+        timestamp: new Date('2026-09-28T12:02:00Z'),
+      }),
+    );
+
+    const sendRetraction = vi.mocked(xmpp.core.sendRetraction);
+    sendRetraction.mockRejectedValueOnce(new Error('boom'));
+    store.getState().deleteForEveryone(ANA, 'srv-2');
+    await flush();
+
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === 'srv-2')?.deleted,
+    ).toBeUndefined();
+    expect(store.getState().actionError?.message ?? '').toContain('Could not delete');
+  });
+
+  it('only lets the sender edit within the window and refuses no-ops', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.emit(
+      'message',
+      outgoingMessage({
+        id: 'srv-2',
+        originId: 'srv-2',
+        chatJid: ANA,
+        body: 'original',
+        timestamp: new Date('2026-09-28T12:00:00Z'),
+      }),
+    );
+    xmpp.emit(
+      'message',
+      message({
+        id: 'ana-stale',
+        chatJid: ANA,
+        body: 'stale',
+        timestamp: new Date('2026-09-26T12:00:00Z'),
+      }),
+    );
+
+    const sendCorrection = vi.mocked(xmpp.core.sendCorrection);
+    store.getState().editMessage(ANA, 'srv-2', 'original');
+    expect(sendCorrection).not.toHaveBeenCalled();
+
+    store.getState().editMessage(ANA, 'ana-stale', 'too late');
+    expect(sendCorrection).not.toHaveBeenCalled();
+
+    store.getState().editMessage(ANA, 'srv-2', 'updated text');
+    expect(sendCorrection).toHaveBeenCalledWith(ANA, 'chat', 'srv-2', 'updated text', undefined);
+  });
+
+  it('targets the origin id even when the store key is the local id', async () => {
+    const { store, xmpp } = await setup();
+    // Send and wait for the local id to be linked with the server id.
+    store.getState().sendText(ANA, 'edit me');
+    await flush();
+    // The store now has both the local id (replaced) and the server id.
+    const localId = 'local-1';
+    const sendCorrection = vi.mocked(xmpp.core.sendCorrection);
+    sendCorrection.mockClear();
+
+    store.getState().editMessage(ANA, localId, 'new text');
+    // The wire target is the server id (origin id), not the local id.
+    const lastCall = sendCorrection.mock.calls.at(-1);
+    expect(lastCall?.[2]).toBe('srv-1');
+  });
+
+  it('applies an optimistic correction and rolls it back on failure', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.emit(
+      'message',
+      outgoingMessage({
+        id: 'srv-2',
+        originId: 'srv-2',
+        chatJid: ANA,
+        body: 'original',
+        timestamp: new Date('2026-09-28T12:00:00Z'),
+      }),
+    );
+
+    const sendCorrection = vi.mocked(xmpp.core.sendCorrection);
+    sendCorrection.mockRejectedValueOnce(new Error('boom'));
+    store.getState().editMessage(ANA, 'srv-2', 'updated text');
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === 'srv-2')?.text,
+    ).toBe('updated text');
+
+    await flush();
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === 'srv-2')?.text,
+    ).toBe('original');
+    expect(store.getState().actionError?.message ?? '').toContain('Could not save the edit');
+  });
+
+  it('cancelEdit clears the edit target', async () => {
+    const { store } = await setup();
+    store.getState().startEdit(ANA, 'srv-2');
+    expect(store.getState().editTarget).toEqual({ chatId: ANA, messageId: 'srv-2' });
+    store.getState().cancelEdit();
+    expect(store.getState().editTarget).toBeUndefined();
+  });
+
+  it('does nothing when an edit or delete targets a still-unacked message', async () => {
+    const { store } = await setup();
+    // The message has not been acked: its id is `local-1` and has no server id.
+    store.getState().sendText(ANA, 'still flying');
+    const localId = store
+      .getState()
+      .messages(ANA)
+      .find((item) => item.text === 'still flying')?.id;
+    expect(localId?.startsWith('local-')).toBe(true);
+
+    store.getState().editMessage(ANA, localId ?? '', 'whatever');
+    store.getState().deleteForEveryone(ANA, localId ?? '');
+    // No corrections or retractions are sent: nothing to compare, the bubble
+    // is still the optimistic text and is not marked deleted.
+    const list = store.getState().messages(ANA);
+    const target = list.find((item) => item.id === localId);
+    expect(target?.text).toBe('still flying');
+    expect(target?.deleted).toBeUndefined();
   });
 });

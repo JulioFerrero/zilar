@@ -1,7 +1,7 @@
 ---
 id: T-0085
 title: Mobile — react, delete for everyone and edit your own messages (send side)
-status: todo
+status: in-progress
 milestone: M2
 branch: task/T-0085-mobile-edits-send
 model: minimax-coding-plan/MiniMax-M3

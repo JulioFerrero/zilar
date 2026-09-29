@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -31,6 +31,13 @@ function Chat() {
   const openChat = useChatStore((state) => state.openChat);
   const sendText = useChatStore((state) => state.sendText);
   const sendTyping = useChatStore((state) => state.sendTyping);
+  const react = useChatStore((state) => state.react);
+  const startEdit = useChatStore((state) => state.startEdit);
+  const deleteForEveryone = useChatStore((state) => state.deleteForEveryone);
+  const actionError = useChatStore((state) =>
+    state.actionError?.chatId === chatId ? state.actionError : undefined,
+  );
+  const dismissActionError = useChatStore((state) => state.dismissActionError);
   const currentUserId = useChatStore((state) => state.currentUserId);
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
 
@@ -70,7 +77,26 @@ function Chat() {
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <MessageList chat={chat} onReply={startReply} />
+        <MessageList
+          chat={chat}
+          onReply={startReply}
+          onReact={(_message, emoji) => react(chat.id, _message.id, emoji)}
+          onEdit={(message) => startEdit(chat.id, message.id)}
+          onDelete={(message) => deleteForEveryone(chat.id, message.id)}
+        />
+        {actionError !== undefined ? (
+          <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
+            <Text className="flex-1 text-[13px] text-danger">{actionError.message}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss error"
+              onPress={() => dismissActionError()}
+              className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+            >
+              <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <Composer
           title={chat.title}
           onSend={(text) => {
