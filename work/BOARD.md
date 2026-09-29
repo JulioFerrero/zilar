@@ -9,11 +9,12 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0082](T-0082-approvals-mobile.md) | Mobile: the approval card decides for real (approvals API twin, states, mock) | in progress | minimax-m3 | T-0073, T-0076 | No inbox screen. |
 | [T-0080](T-0080-ai-kill-switch.md) | Kill switch (M4): owner stops/resumes an AI (`stopped` status), gateway drops it at once and drops in-flight replies; web button; mobile tolerates the status | in progress | minimax-m3 | T-0034, T-0058 | Owner only for now (J5). |
 
 ## Follow-ups
 
+- Kill switch (T-0080): `addGroupAi` accepts a stopped AI (stale membership, no wake-up): decide; audit entries for `ai.stopped` / `ai.resumed`; room-admin and workspace-admin stop (J5).
+- Audit log (T-0079): entries from the engine and the proxy, a web page for an AI's / group's log, retention (J4: 1 year).
 - Mobile: send side of edits, delete for everyone and reactions (receive side is T-0078).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
@@ -110,3 +111,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0078](T-0078-mobile-edits-receive.md) | Mobile shows edits, deletions and reactions from others (receive side), reusing chat-core reducers | 2026-09-29 |
 | [T-0081](T-0081-approvals-inbox-web.md) | Web Approvals inbox page (Settings → Approvals) with Approve/Deny | 2026-09-29 |
 | [T-0079](T-0079-audit-log.md) | Audit log: append-only table (DB trigger), recorder, owner/admin read routes, writers in approvals and machines | 2026-09-29 |
+| [T-0082](T-0082-approvals-mobile.md) | Mobile approval card decides for real (approvals API twin, states, mock) | 2026-09-29 |
