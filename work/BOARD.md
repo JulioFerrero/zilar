@@ -9,6 +9,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0083](T-0083-audit-ai-stop-resume.md) | Audit entries for the kill switch (`ai.stopped`, `ai.resumed`) | in progress | minimax-m3 | T-0079, T-0080 | Server only. |
+| [T-0084](T-0084-ai-activity-web.md) | Web: Activity section in the AI panel (audit entries, paging) | in progress | minimax-m3 | T-0079, T-0080 | Reads `GET /api/audit?aiId=`. |
 
 ## Follow-ups
 
