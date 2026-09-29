@@ -8,6 +8,7 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { emitGroupAi } from './events';
 import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
+import { deleteToolsForAiInGroup } from '../tools/service';
 
 export const MAX_GROUP_MEMBERS = 50;
 export const ROOM_LOCALPART_LENGTH = 16;
@@ -430,6 +431,14 @@ export async function removeGroupAi(
         aiId: input.aiId,
         groupId: input.groupId,
         actorId: input.actorId,
+        now: new Date(),
+      });
+      // T-0103: the AI's tools made in this group die with the
+      // membership, like the rules above. Personal-chat tools and
+      // other-group tools are unaffected.
+      await deleteToolsForAiInGroup(tx as unknown as ServerDatabase, {
+        aiId: input.aiId,
+        groupId: input.groupId,
         now: new Date(),
       });
     });

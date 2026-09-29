@@ -5,13 +5,16 @@ status: planned
 milestone: M4
 branch: task/T-0105-tool-adapters
 model: meta/muse-spark-1.3-contributor
-depends_on: [T-0102, T-0103, T-0104]
+depends_on: [T-0102, T-0103, T-0104, T-0110]
 estimate: 2 days
 ---
 
 # T-0105: Tool and routine actions
 
 ## Spec (written by Claude, do not edit)
+
+### Scope update (2026-09-29, after decisions D25 to D29): read this first
+Groups now have **topics** (T-0108) and the scope of everything the action pipeline stores is **(AI, topic)**, not (AI, group) (T-0110). Wherever this spec says *chat* or `group_id`, read **topic**: the adapters take `aiId`, `groupId` **and `topicId`** from the `ActionContext` (T-0110 adds `topicId`), tools and routines are per (AI, topic), `tool.run` and routine posts go into that topic's room, `tool.list` lists that topic's tools and routines only, and the adapter descriptions say "in this topic". The approval card for `routine.schedule` appears in the topic; a private topic's name never appears in audit rows. Everything else (approval card, hosts, never always-allowable) is unchanged. If any later section of this spec conflicts with this block, this block wins. This task must be launched **after T-0110 is merged**.
 
 ### Why
 The pieces exist: a sandbox (T-0102), a versioned tools store (T-0103), and routines with a scheduler (T-0104). The AI needs a way to use them from a chat. The right door already exists: **the action gateway** and the `request_action` tool (T-0090, T-0093, T-0098). Going through it means the AI's id and chat come from the session, groups are admins-only, the kill switch and the audit log apply, and scheduling can use an approval card, all without new special cases. This task registers the adapters and wires the sandbox as the real runner. The model-side behaviour (prompt guide, more model rounds per turn, the "working on it" line) is T-0106.
@@ -67,6 +70,7 @@ All names dotted (registry pattern). Every adapter takes `aiId`/`groupId` **only
 - `apps/server/src/tools/adapters.ts` (+ `adapters.test.ts`, new)
 - `apps/server/src/actions/registry.ts`, `gateway.ts` (+ their tests), `flow.e2e.test.ts` (new scenarios)
 - `apps/server/src/agents/gateway.ts` (+ its test) only for the `modelText` message format
+- `apps/server/src/tools/routes.ts` (+ test): cap `POST /api/tools/:id/run` `input` at 16 KiB serialised (400 `invalid_request`); the `tool.run` adapter applies the same cap
 - `apps/server/src/index.ts`, `config.ts`, `config.test.ts`
 - `docs/SERVER_CONFIG.md`
 - `work/T-0105-tool-adapters.md`
