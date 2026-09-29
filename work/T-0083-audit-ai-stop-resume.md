@@ -1,7 +1,7 @@
 ---
 id: T-0083
 title: Audit entries for the AI kill switch — stop and resume are written to the audit log
-status: review
+status: merged
 milestone: M4
 branch: task/T-0083-audit-ai-stop-resume
 model: minimax-coding-plan/MiniMax-M3
@@ -110,4 +110,6 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged (lead, 2026-09-29). Rebased on main; format, lint, typecheck, test (server 677 passed, 7 skipped) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand.
+
+**Checked:** `ais/service.ts` is untouched; the route reads the AI first with `getOwnedAi` (owner-checked, so a stranger still gets the same 404) and writes `ai.stopped` / `ai.resumed` only when the status differs after the call, so idempotent repeats and 4xx answers write nothing; entries carry ids only (no name, persona or free text); a recorder that throws does not change the 200 (the worker wrapped the call; it is redundant with `createAuditRecorder` but harmless and required by the spec's test). The pre-read and the service call are not atomic: two simultaneous stops can, in theory, both log. Accepted for an audit trail that is meant to be complete rather than exact.
