@@ -339,6 +339,12 @@ export async function addGroupAi(
     }
     return detail;
   }
+  // A stopped (kill switch) or still-provisioning AI cannot join a room: it
+  // would not answer, and a stale membership would surprise the room. An AI
+  // that is already a member is left alone by the branch above.
+  if (ai.status !== 'active') {
+    throw new HttpError(409, 'ai_not_active', 'Resume the AI before adding it to a group');
+  }
 
   const memberRows = await db
     .select({ userId: groupMembers.userId })

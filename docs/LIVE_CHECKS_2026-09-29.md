@@ -24,6 +24,7 @@ With an AI that answers in a DM and in a group:
 - Web → the AI's panel → **Stop AI** (confirm). Good: the panel shows "Stopped"; the AI disappears from `docker exec galena-dev-ejabberd-1 ejabberdctl connected_users` (its `…/gateway` session); a message to it gets no answer; ask it something long and stop it while it is answering: **no reply arrives afterwards**.
 - **Resume**. Good: it is back online and answers again.
 - The panel's **Activity** section shows "Stopped" and "Resumed" entries.
+- While it is stopped, adding it to a group answers an error (409 `ai_not_active`); an AI that already was a member stays.
 
 ## 3. Approvals (T-0073, T-0076, T-0081, T-0082, T-0087)
 
@@ -51,7 +52,6 @@ Real chats in Helium (do not send messages you do not want sent): upload, paste 
 
 ## Known follow-ups (not blockers, also on `work/BOARD.md`)
 
-- `addGroupAi` still lets you add a stopped AI to a room (no wake-up, stale membership).
 - Kill switch for room admins and workspace admins (J5), audit entries from the engine and proxy, retention (J4).
 - TLS for the runner hub is a deployment task (the client accepts `wss://` now; the hub itself binds to loopback).
 - Desks, the docker driver and the approval-creating engine are the next big pieces (M3/M4).
