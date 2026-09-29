@@ -1,7 +1,7 @@
 ---
 id: T-0069
 title: Web mock mode — gate `?mock=1` to dev builds, and make it run standalone (fake session, mock /api data for AIs and connections)
-status: review
+status: merged
 milestone: M2
 branch: task/T-0069-web-mock-standalone
 model: opencode-go/deepseek-v4.1-flash
@@ -138,10 +138,15 @@ New:
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved.
+
+**Approved and merged by Claude.** Worked through a quota fallback (DeepSeek Flash hit `402`, then MiniMax M3 finished it). No Muse pre-review (no funds), so I read the gate, the auth change and the `request()` change myself. Verified after rebasing onto `main`: every changed path is inside Allowed files (the mock files are new, `mock/chats.ts`, `groups.ts`, `messages.ts`, `index.ts` are untouched); `format:check`, `lint`, `typecheck`, `test` (web 356 passed) and `build` pass; no new dependencies.
+
+Gate: `?mock=1` counts only when `import.meta.env.DEV` is true; `VITE_MOCK=1` and `MODE=test` keep working; a production build ignores the param. The worker proved it with `vite preview` of the production build, where `/?mock=1` lands on `/login`. The mock session and the `fetch` wrapper are gated by the same decision, so a production build never installs them (`isMockApiEnabled` is false unless the build itself was made with `VITE_MOCK=1`).
 
 ### Findings
--
+1. *(No change needed.)* `mock/api.ts` installs a `globalThis.fetch` wrapper when mock mode is on, because `ConnectionsPage` calls `fetch` directly (T-0028) and was out of scope. It only rewrites `/api` URLs and is off in unit tests. A follow-up could route that page through `request()` and drop the wrapper.
+2. *(No change needed.)* The optional "Mock data" hint was skipped (it needed files outside the allowed list).
 
 ### Follow-ups
--
+- Route `ConnectionsPage` through `request()` and remove the global `fetch` wrapper.
