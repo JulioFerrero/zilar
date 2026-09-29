@@ -14,7 +14,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 ## Follow-ups
 
-- Web: apply the trusted-media-host rule (`isTrustedMediaUrl`, T-0065) to voice payload URLs too, so a peer cannot make viewers' browsers fetch from third-party hosts.
 - Web: route `ConnectionsPage` through `request()` and drop the global `fetch` wrapper that the mock layer installs (T-0069).
 - Web: the chat list previews a group AI reply raw; strip Markdown there too (`ChatListItem.tsx` only strips for `chat.isAI`), as mobile does (T-0064 review).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).

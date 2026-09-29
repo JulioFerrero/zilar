@@ -232,6 +232,25 @@ function sanitizeIncomingAttachment(
   return downgraded;
 }
 
+/**
+ * An incoming voice message on an untrusted host would make `<audio
+ * preload="metadata">` fetch whatever URL a chat peer put in the payload,
+ * leaking the viewer's IP just like an image would. Drop the URL: the bubble
+ * still shows the waveform and the duration, but nothing is fetched.
+ */
+function sanitizeIncomingVoice(voice: VoiceMeta, token: MediaTokenShape | undefined): VoiceMeta {
+  if (voice.url === undefined) {
+    return voice;
+  }
+  const trusted = token === undefined ? undefined : trustedMediaHosts(token);
+  if (trusted !== undefined && isTrustedMediaUrl(voice.url, trusted)) {
+    return voice;
+  }
+  const stripped: VoiceMeta = { ...voice };
+  delete stripped.url;
+  return stripped;
+}
+
 function mentionLocalpart(jid: string): string {
   const bare = jid.split('/')[0] ?? jid;
   const at = bare.indexOf('@');
@@ -1383,7 +1402,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         ui.mentions = mentions;
       }
       if (message.payload !== undefined && message.payload.type === 'voice') {
-        ui.voice = message.payload.data;
+        ui.voice = sanitizeIncomingVoice(message.payload.data, mediaToken);
       }
       if (message.payload !== undefined && message.payload.type === 'attachment') {
         ui.attachment = sanitizeIncomingAttachment(message.payload.data, mediaToken);

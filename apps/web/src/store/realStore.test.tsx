@@ -2495,6 +2495,66 @@ describe('attachments (T-0065)', () => {
     expect(incoming?.voice?.duration_ms).toBe(1000);
   });
 
+  it('keeps the audio URL of an incoming voice message on a trusted host', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'voice-trusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'voice',
+          data: {
+            duration_ms: 1000,
+            mime: 'audio/mp4',
+            waveform: [10, 20],
+            url: 'https://upload.galena.test/upload/abc/voice.m4a',
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'voice-trusted');
+    expect(incoming?.voice?.url).toBe('https://upload.galena.test/upload/abc/voice.m4a');
+  });
+
+  it('drops the audio URL of an incoming voice message on an untrusted host', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'voice-untrusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'voice',
+          data: {
+            duration_ms: 1000,
+            mime: 'audio/mp4',
+            waveform: [10, 20],
+            url: 'https://tracker.example.com/beacon.m4a',
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'voice-untrusted');
+    expect(incoming?.voice).toBeDefined();
+    expect(incoming?.voice?.duration_ms).toBe(1000);
+    expect(incoming?.voice?.url).toBeUndefined();
+  });
+
   it('keeps an incoming image attachment on a trusted host as an image', async () => {
     const { store, xmpp } = await setup();
 
