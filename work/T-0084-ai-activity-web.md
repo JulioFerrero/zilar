@@ -1,7 +1,7 @@
 ---
 id: T-0084
 title: Web — an Activity section in the AI panel, showing the audit log entries for that AI
-status: review
+status: merged
 milestone: M4
 branch: task/T-0084-ai-activity-web
 model: minimax-coding-plan/MiniMax-M3
@@ -117,4 +117,10 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved with small lead changes, merged (2026-09-29). Rebased on main; format, lint, typecheck, test (web 562) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand.
+
+**Lead changes:** the worker committed two screenshots under `apps/web/screenshots/` (not an allowed file); I looked at them (the panel shows "Stop AI", "Delete" and an Activity list with "A request was approved · 2 min ago", "Resumed", "Stopped") and removed them from the commit. A load-more error message stayed on screen after a later successful load-more; it is now cleared.
+
+**Checked:** `describeAuditEntry` reads only `detail.decision` and maps everything else to a humanized action name, so nothing else from `detail` can reach the DOM (a hostile-detail test covers it); paging appends and dedupes by id; the first-load failure shows Retry; a load-more failure stays inline and keeps the list; the section is mounted for the owner's panel only and is self-contained, so its failure does not break the rest of the panel. The mock serves a small seed without cursor paging (the wire shape matches the server).
+
+**Visual check:** by the worker's own screenshot (mock mode); the lead has not opened the panel in a browser.

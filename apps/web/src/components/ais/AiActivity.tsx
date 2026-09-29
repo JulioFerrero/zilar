@@ -136,7 +136,7 @@ export function AiActivity({ aiId }: { aiId: string }) {
             seen.add(entry.id);
           }
         }
-        return { ...current, entries: merged, next: page.next };
+        return { ...current, entries: merged, next: page.next, message: '' };
       });
     } catch (error) {
       setState((current) => ({
