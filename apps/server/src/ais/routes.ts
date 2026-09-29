@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { LitellmAdminClient } from '../ai/litellm-client';
+import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
 import type { ServerConfig } from '../config';
@@ -34,6 +35,11 @@ export interface AisRoutesDependencies {
    * that touch an AI answer 503 instead of failing halfway. */
   litellm?: LitellmAdminClient;
   cipher?: KeyCipher;
+  /** Audit recorder (T-0083): when present, a successful stop / resume that
+   * actually flipped the AI's status writes one entry; an idempotent repeat
+   * writes nothing; a 4xx writes nothing. The recorder swallows its own
+   * errors, so the response is never affected. */
+  audit?: AuditRecorder;
 }
 
 // The spend summary the AI list and detail carry (T-0058). Null when LiteLLM
@@ -101,6 +107,7 @@ export function createAisRoutes({
   logger,
   litellm,
   cipher,
+  audit,
 }: AisRoutesDependencies): Hono {
   const routes = new Hono();
 
@@ -210,15 +217,66 @@ export function createAisRoutes({
   // truth without a second GET. Unlike the other writes they need only the
   // database: a kill switch must work when LiteLLM, the cipher or the
   // gateway are not configured or are down.
+  //
+  // T-0083: when an `audit` recorder is wired in, a real status flip writes
+  // one entry (`ai.stopped` / `ai.resumed`); an idempotent repeat writes
+  // nothing. The pre-read here is owner-checked, so a stranger gets the same
+  // 404 whether or not the recorder is present, and we use it only to know
+  // whether the service call actually changed the state. The service stays
+  // free of audit code. The `try/catch` around `audit.record` is a defensive
+  // backstop: the standard recorder swallows its own errors, but a custom or
+  // buggy one must never turn a 200 into a 500 here.
   routes.post('/ais/:id/stop', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
-    const ai = await stopAi({ db }, c.req.param('id'), user.id);
+    const id = c.req.param('id');
+    const before = await getOwnedAi(db, id, user.id);
+    const ai = await stopAi({ db }, id, user.id);
+    if (audit !== undefined && before !== null && before.status !== ai.status) {
+      try {
+        await audit.record({
+          actorUserId: user.id,
+          aiId: ai.id,
+          groupId: null,
+          action: 'ai.stopped',
+          subjectId: ai.id,
+          argsHash: null,
+          costCurrency: null,
+          costAmount: null,
+          result: 'ok',
+          detail: null,
+        });
+      } catch {
+        // The recorder contract says it must not throw, but a buggy one
+        // must not break the kill switch either.
+      }
+    }
     return c.json(ai);
   });
 
   routes.post('/ais/:id/resume', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
-    const ai = await resumeAi({ db }, c.req.param('id'), user.id);
+    const id = c.req.param('id');
+    const before = await getOwnedAi(db, id, user.id);
+    const ai = await resumeAi({ db }, id, user.id);
+    if (audit !== undefined && before !== null && before.status !== ai.status) {
+      try {
+        await audit.record({
+          actorUserId: user.id,
+          aiId: ai.id,
+          groupId: null,
+          action: 'ai.resumed',
+          subjectId: ai.id,
+          argsHash: null,
+          costCurrency: null,
+          costAmount: null,
+          result: 'ok',
+          detail: null,
+        });
+      } catch {
+        // The recorder contract says it must not throw, but a buggy one
+        // must not break the kill switch either.
+      }
+    }
     return c.json(ai);
   });
 

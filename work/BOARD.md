@@ -9,14 +9,13 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0083](T-0083-audit-ai-stop-resume.md) | Audit entries for the kill switch (`ai.stopped`, `ai.resumed`) | in progress | minimax-m3 | T-0079, T-0080 | Server only. |
+| [T-0085](T-0085-mobile-edits-send.md) | Mobile: react, delete for everyone and edit own messages (send side; three steps) | in progress | minimax-m3 | T-0078 | Mirrors the web store; largest mobile task of the night. |
 | [T-0084](T-0084-ai-activity-web.md) | Web: Activity section in the AI panel (audit entries, paging) | in progress | minimax-m3 | T-0079, T-0080 | Reads `GET /api/audit?aiId=`. |
 
 ## Follow-ups
 
 - Kill switch (T-0080): `addGroupAi` accepts a stopped AI (stale membership, no wake-up): decide; audit entries for `ai.stopped` / `ai.resumed`; room-admin and workspace-admin stop (J5).
 - Audit log (T-0079): entries from the engine and the proxy, a web page for an AI's / group's log, retention (J4: 1 year).
-- Mobile: send side of edits, delete for everyone and reactions (receive side is T-0078).
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
@@ -114,3 +113,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0079](T-0079-audit-log.md) | Audit log: append-only table (DB trigger), recorder, owner/admin read routes, writers in approvals and machines | 2026-09-29 |
 | [T-0082](T-0082-approvals-mobile.md) | Mobile approval card decides for real (approvals API twin, states, mock) | 2026-09-29 |
 | [T-0080](T-0080-ai-kill-switch.md) | Owner kill switch: stop/resume an AI at once, in-flight replies dropped, works without LiteLLM; web button; mobile tolerates the status | 2026-09-29 |
+| [T-0083](T-0083-audit-ai-stop-resume.md) | Audit entries for the AI kill switch (ai.stopped, ai.resumed) | 2026-09-29 |
