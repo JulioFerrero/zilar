@@ -1,7 +1,7 @@
 ---
 id: T-0064
 title: Mobile renders Markdown in AI replies (safe subset, no new dependency), plain previews in the chat list
-status: review
+status: merged
 milestone: M2
 branch: task/T-0064-mobile-markdown
 model: opencode-go/deepseek-v4.1-flash
@@ -239,10 +239,15 @@ green; it is left untracked and is not in the commit.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved after round 1.
+
+**Approved and merged by Claude.** Round 0: the Muse pre-review found no security or robustness issues (links are double-gated by `safeMarkdownUrl` and `safeLinkTarget`; the parser is total, capped at 20k characters and fuzz-tested) and two should-fix items. Round 1 fixed both: the renderer and preview decisions moved into a pure `markdown-decision.ts` with 9 tests (AI DM and group AI replies render Markdown; human, own and unknown-chat messages stay plain; previews of AI messages are stripped), because the chat components cannot render under Vitest here. Verified after rebasing onto `main`: `format:check`, `lint`, `typecheck`, `test` (mobile 261 passed, 2 skipped) and `build` pass; scope is inside Allowed files; no new dependencies.
+
+**Visual check is still open:** no simulator screenshots were taken (the worker disclosed it; the spec allowed component tests instead). Julio should look at an AI reply with a list, a code block and a link on the phone.
 
 ### Findings
--
+1. *(No change needed.)* The timestamp sits on its own line under Markdown blocks. Intentional.
+2. *(No change needed.)* `mailto:` links render as inert text on mobile (only http/https are opened). Safe and accepted.
 
 ### Follow-ups
--
+- Web list previews of group AI replies should be stripped too (already on the board).
