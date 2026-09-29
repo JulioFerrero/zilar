@@ -33,6 +33,9 @@ import type { VoiceEngine } from './voice/engine';
 import { createVoiceRoutes } from './voice/routes';
 import type { EjabberdAdminClient } from './xmpp/admin-client';
 import { createXmppRoutes } from './xmpp/routes';
+import { createPushSpikeRoutes, type PushSpikeRoutesDependencies } from './push-spike/routes';
+import { createMemorySubscriptionStore } from './push-spike/subscriptions';
+import { loadPushSpikeConfig } from './push-spike/spike-config';
 
 export interface AppDependencies {
   db: ServerDatabase;
@@ -90,6 +93,12 @@ export interface AppDependencies {
    * wires the real sandbox.
    */
   toolRunner?: ToolRunner;
+  /**
+   * T-0118 push spike: optional override for the spike routes (tests pass an
+   * enabled config; production leaves it absent so the routes read
+   * PUSH_SPIKE_* from the environment and stay off by default).
+   */
+  pushSpike?: Pick<PushSpikeRoutesDependencies, 'config' | 'store'>;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -111,6 +120,7 @@ export function createApp({
   actionGateway,
   alwaysEligible,
   toolRunner,
+  pushSpike,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
   const auditRecorder = audit ?? createAuditRecorder({ db, logger });
@@ -198,6 +208,16 @@ export function createApp({
   };
   app.route('/api', createToolsRoutes(toolsDeps));
   app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));
+  // Push spike (T-0118): throwaway wiring only. Without the `pushSpike`
+  // override (only tests pass one) the routes read PUSH_SPIKE_* from the
+  // environment and answer 404 unless PUSH_SPIKE_ENABLED=true, so the
+  // default production behaviour is unchanged. The in-memory store lives
+  // as long as the process.
+  const pushSpikeDeps = pushSpike ?? {
+    config: loadPushSpikeConfig(process.env),
+    store: createMemorySubscriptionStore(),
+  };
+  app.route('/api', createPushSpikeRoutes({ auth, ...pushSpikeDeps }));
   app.route(
     '/api',
     createVoiceRoutes({
