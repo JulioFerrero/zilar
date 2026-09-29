@@ -500,6 +500,35 @@ describe('ApprovalCard always allow (T-0100)', () => {
     expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
   });
 
+  it('always_requires_admin shows the message and hides the third button', async () => {
+    const fetchMock = makeFetch((url, init) => {
+      if (url === '/api/approvals/apr-42' && (init?.method ?? 'GET') === 'GET') {
+        return Promise.resolve(
+          jsonResponse(200, approvalFixture({ alwaysEligible: true, groupId: 'dev-team' })),
+        );
+      }
+      if (url === '/api/approvals/apr-42/decision' && init?.method === 'POST') {
+        return Promise.resolve(
+          errorResponse(403, 'always_requires_admin', 'Only a group admin can always allow'),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApprovalCard request={request} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Always allow here' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    expect(
+      await screen.findByText('Only a group admin can always allow an action here.'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Always allow here' })).toBeNull();
+    // The one-time buttons stay: the request is still pending.
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
+  });
+
   it('never shows the third button after a decision', async () => {
     const fetchMock = makeFetch((url) => {
       if (url === '/api/approvals/apr-42') {

@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import {
   aiLimits,
   ais,
+  approvalRules,
   approvals,
   groupAis,
   groupMembers,
@@ -1078,6 +1079,242 @@ describe('approvals service', () => {
       // Silence the lint: confirm we used `and` at least once so the import
       // doesn't get flagged.
       expect(and(eq(approvals.aiId, aiId), eq(approvals.status, 'pending'))).toBeDefined();
+    });
+  });
+
+  describe('decideApproval approve_always group-admin gate (T-0101)', () => {
+    async function seedGroupApproval(args: {
+      aiOwnerId: string;
+      roles: Array<{ userId: string; role: 'owner' | 'admin' | 'member' }>;
+      action?: string;
+    }): Promise<{ aiId: string; groupId: string; approvalId: string }> {
+      const { aiId } = await seedAi(context, args.aiOwnerId);
+      const groupId = await seedGroup(context, args.aiOwnerId, args.roles, [aiId]);
+      const row = await createApproval(
+        context.db,
+        approvalInput({
+          aiId,
+          groupId,
+          hash: argsHash(`t101-${args.action ?? 'send_email'}`),
+          expiresAt: futureExpiresAt(now, 60_000),
+          ...(args.action === undefined ? {} : { action: args.action }),
+        }),
+        now,
+      );
+      return { aiId, groupId, approvalId: row.id };
+    }
+
+    it('refuses approve_always for an AI owner who is a plain group member, keeps everything unchanged', async () => {
+      const aiOwnerId = await seedUser(context);
+      const adminId = await seedUser(context, { name: 'Admin' });
+      const { approvalId } = await seedGroupApproval({
+        aiOwnerId,
+        roles: [
+          { userId: adminId, role: 'owner' },
+          { userId: aiOwnerId, role: 'member' },
+        ],
+      });
+
+      await expect(
+        decideApproval(
+          context.db,
+          {
+            approvalId,
+            userId: aiOwnerId,
+            decision: 'approve_always',
+            alwaysEligible: () => true,
+          },
+          now,
+        ),
+      ).rejects.toMatchObject({ errorCode: 'always_requires_admin' });
+
+      const [row] = await context.db.select().from(approvals).where(eq(approvals.id, approvalId));
+      expect(row?.status).toBe('pending');
+      expect(row?.decidedBy).toBeNull();
+      const rules = await context.db.select().from(approvalRules);
+      expect(rules).toHaveLength(0);
+
+      // The same person can still approve once afterwards.
+      const once = await decideApproval(
+        context.db,
+        { approvalId, userId: aiOwnerId, decision: 'approve_once' },
+        now,
+      );
+      expect(once?.row.status).toBe('approved_once');
+      expect(once?.rule).toBeNull();
+    });
+
+    it('lets a group admin who is not the AI owner decide once and approve_always', async () => {
+      const aiOwnerId = await seedUser(context);
+      const adminId = await seedUser(context, { name: 'Admin' });
+      const { aiId, groupId, approvalId } = await seedGroupApproval({
+        aiOwnerId,
+        roles: [
+          { userId: aiOwnerId, role: 'member' },
+          { userId: adminId, role: 'admin' },
+        ],
+      });
+
+      const once = await createApproval(
+        context.db,
+        approvalInput({
+          aiId,
+          groupId,
+          hash: argsHash('t101-admin-once'),
+          expiresAt: futureExpiresAt(now, 60_000),
+        }),
+        now,
+      );
+      const onceResult = await decideApproval(
+        context.db,
+        { approvalId: once.id, userId: adminId, decision: 'approve_once' },
+        now,
+      );
+      expect(onceResult?.row.status).toBe('approved_once');
+
+      const always = await decideApproval(
+        context.db,
+        {
+          approvalId,
+          userId: adminId,
+          decision: 'approve_always',
+          alwaysEligible: () => true,
+        },
+        now,
+      );
+      expect(always?.row.status).toBe('approved_always');
+      expect(always?.rule?.created).toBe(true);
+      expect(always?.rule?.groupId).toBe(groupId);
+    });
+
+    it('lets an AI owner who is also a group admin approve_always', async () => {
+      const aiOwnerId = await seedUser(context);
+      const { approvalId } = await seedGroupApproval({
+        aiOwnerId,
+        roles: [{ userId: aiOwnerId, role: 'admin' }],
+      });
+      const result = await decideApproval(
+        context.db,
+        {
+          approvalId,
+          userId: aiOwnerId,
+          decision: 'approve_always',
+          alwaysEligible: () => true,
+        },
+        now,
+      );
+      expect(result?.row.status).toBe('approved_always');
+      expect(result?.rule?.created).toBe(true);
+    });
+
+    it('still lets the AI owner approve_always for a personal-chat approval', async () => {
+      const aiOwnerId = await seedUser(context);
+      const { aiId } = await seedAi(context, aiOwnerId);
+      const row = await createApproval(
+        context.db,
+        approvalInput({
+          aiId,
+          hash: argsHash('t101-personal'),
+          expiresAt: futureExpiresAt(now, 60_000),
+        }),
+        now,
+      );
+      const result = await decideApproval(
+        context.db,
+        {
+          approvalId: row.id,
+          userId: aiOwnerId,
+          decision: 'approve_always',
+          alwaysEligible: () => true,
+        },
+        now,
+      );
+      expect(result?.row.status).toBe('approved_always');
+      expect(result?.rule?.groupId).toBeNull();
+    });
+
+    it('still returns null for a stranger on both decisions', async () => {
+      const aiOwnerId = await seedUser(context);
+      const strangerId = await seedUser(context, { name: 'Outsider' });
+      const { approvalId } = await seedGroupApproval({
+        aiOwnerId,
+        roles: [{ userId: aiOwnerId, role: 'owner' }],
+      });
+      for (const decision of ['approve_once', 'approve_always'] as const) {
+        const result = await decideApproval(
+          context.db,
+          {
+            approvalId,
+            userId: strangerId,
+            decision,
+            ...(decision === 'approve_always' ? { alwaysEligible: () => true } : {}),
+          },
+          now,
+        );
+        expect(result).toBeNull();
+      }
+    });
+
+    it('checks eligibility and expiry before the admin gate', async () => {
+      const aiOwnerId = await seedUser(context);
+      const { approvalId: notEligibleId } = await seedGroupApproval({
+        aiOwnerId,
+        roles: [{ userId: aiOwnerId, role: 'member' }],
+        action: 'costly.action',
+      });
+      await expect(
+        decideApproval(
+          context.db,
+          {
+            approvalId: notEligibleId,
+            userId: aiOwnerId,
+            decision: 'approve_always',
+            alwaysEligible: () => false,
+          },
+          now,
+        ),
+      ).rejects.toMatchObject({ errorCode: 'always_not_allowed' });
+
+      const { approvalId: expiredId } = await seedGroupApproval({
+        aiOwnerId,
+        roles: [{ userId: aiOwnerId, role: 'member' }],
+        action: 'other.action',
+      });
+      await expect(
+        decideApproval(
+          context.db,
+          {
+            approvalId: expiredId,
+            userId: aiOwnerId,
+            decision: 'approve_always',
+            alwaysEligible: () => true,
+          },
+          futureExpiresAt(now, 120_000),
+        ),
+      ).rejects.toMatchObject({ errorCode: 'expired' });
+
+      const { approvalId: decidedId } = await seedGroupApproval({
+        aiOwnerId,
+        roles: [{ userId: aiOwnerId, role: 'member' }],
+        action: 'third.action',
+      });
+      await decideApproval(
+        context.db,
+        { approvalId: decidedId, userId: aiOwnerId, decision: 'approve_once' },
+        now,
+      );
+      await expect(
+        decideApproval(
+          context.db,
+          {
+            approvalId: decidedId,
+            userId: aiOwnerId,
+            decision: 'approve_always',
+            alwaysEligible: () => true,
+          },
+          now,
+        ),
+      ).rejects.toMatchObject({ errorCode: 'not_pending' });
     });
   });
 });

@@ -9,6 +9,9 @@ import {
   ais,
   approvals,
   auditLog,
+  groupAis,
+  groupMembers,
+  groups,
   pendingActions,
   providerConnections,
 } from '../db/schema';
@@ -20,7 +23,12 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
-import { type ActionAdapter, type ActionRegistry, buildRegistry } from './registry';
+import {
+  type ActionAdapter,
+  type ActionRegistry,
+  buildAlwaysEligible,
+  buildRegistry,
+} from './registry';
 import {
   createActionGateway,
   type ActionAnnouncer,
@@ -204,7 +212,7 @@ async function decide(
   harness: Harness,
   cookie: string,
   approvalId: string,
-  decision: 'approve_once' | 'deny',
+  decision: 'approve_once' | 'approve_always' | 'deny',
 ): Promise<Response> {
   return harness.app.request(`${TEST_BASE_URL}/api/approvals/${approvalId}/decision`, {
     method: 'POST',
@@ -568,5 +576,155 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     const outcome = harness.announcerCalls.outcome[0];
     expect(outcome?.status).toBe('failed');
     expect(outcome?.summary).toBe('The action failed.');
+  });
+
+  // 11) T-0101: only a group admin can create a group "always" rule. The
+  // AI owner (a plain group member) sees no third option
+  // (`alwaysEligible: false`), forcing `approve_always` answers 403 and
+  // changes nothing, then `approve_once` runs the action; an admin's
+  // `approve_always` creates the rule and the next request in that group
+  // auto-executes.
+  it('a plain-member owner cannot always-allow in a group but an admin can', async () => {
+    const alwaysAdapter: ActionAdapter<unknown> = {
+      name: 'flow.always',
+      description: 'Tier-2 adapter that opts into always-allow.',
+      tier: 2,
+      argsSchema: z.object({ value: z.string().min(1).max(64) }),
+      describe: (args) => ({ summary: `always ${(args as { value: string }).value}` }),
+      allowAlways: true,
+      execute: async (_ctx, args) => {
+        return { summary: `always-ran:${(args as { value: string }).value}` };
+      },
+    };
+    const adapters: ActionRegistry = buildRegistry([
+      harness.tier0.adapter,
+      harness.tier2.adapter,
+      alwaysAdapter,
+    ]);
+    const alwaysEligible = buildAlwaysEligible(adapters);
+    const gateway = createActionGateway({
+      db: harness.context.db,
+      adapters,
+      audit: harness.audit,
+      logger: {
+        warn: () => undefined,
+        error: () => undefined,
+      },
+      now: () => new Date(),
+      announce: {
+        approvalRequested: async (input) => {
+          harness.announcerCalls.approvalRequested.push(input);
+        },
+        outcome: async (input) => {
+          harness.announcerCalls.outcome.push(input);
+        },
+      },
+    });
+    const app = createApp({
+      db: harness.context.db,
+      logger: harness.context.logger,
+      config: harness.context.config,
+      auth: harness.context.auth,
+      adminClient: harness.context.adminClient,
+      audit: harness.audit,
+      actionGateway: gateway,
+      alwaysEligible,
+    });
+    harness.app = app;
+    harness.gateway = gateway;
+
+    const owner = await bootstrapUser(
+      harness.context,
+      harness.app,
+      `owner-always-${testCounter}@example.com`,
+    );
+    const admin = await bootstrapUser(
+      harness.context,
+      harness.app,
+      `admin-always-${testCounter}@example.com`,
+    );
+    const { aiId } = await seedAi(harness.context, owner.id);
+    const groupId = randomUUID();
+    await harness.context.db.insert(groups).values({
+      id: groupId,
+      roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
+      title: 'Always group',
+      createdBy: admin.id,
+    });
+    await harness.context.db.insert(groupMembers).values([
+      { groupId, userId: owner.id, role: 'member' },
+      { groupId, userId: admin.id, role: 'admin' },
+    ]);
+    await harness.context.db.insert(groupAis).values({ groupId, aiId, addedBy: admin.id });
+
+    async function requestInGroup(value: string): Promise<string> {
+      const outcome = await harness.gateway.request({
+        aiId,
+        groupId,
+        action: 'flow.always',
+        args: { value },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      if (outcome.status !== 'pending_approval') {
+        throw new Error(`expected pending_approval, got ${outcome.status}`);
+      }
+      return outcome.approvalId;
+    }
+
+    async function readCard(
+      cookie: string,
+      approvalId: string,
+    ): Promise<{ alwaysEligible: boolean }> {
+      const response = await harness.app.request(`${TEST_BASE_URL}/api/approvals/${approvalId}`, {
+        headers: { cookie },
+      });
+      expect(response.status).toBe(200);
+      return (await response.json()) as { alwaysEligible: boolean };
+    }
+
+    // The plain-member owner sees no third option.
+    const memberApprovalId = await requestInGroup('first');
+    expect((await readCard(owner.cookie, memberApprovalId)).alwaysEligible).toBe(false);
+    // The admin sees it on the same card.
+    expect((await readCard(admin.cookie, memberApprovalId)).alwaysEligible).toBe(true);
+
+    // Forcing `approve_always` as the member answers 403 and changes nothing.
+    const refused = await decide(harness, owner.cookie, memberApprovalId, 'approve_always');
+    expect(refused.status).toBe(403);
+    const refusedBody = (await refused.json()) as { error: { code: string } };
+    expect(refusedBody.error.code).toBe('always_requires_admin');
+
+    // The same person approves once and the action runs.
+    const approved = await decide(harness, owner.cookie, memberApprovalId, 'approve_once');
+    expect(approved.status).toBe(200);
+    await waitForPendingStatus(harness, memberApprovalId, 'executed');
+
+    // An admin's `approve_always` creates the rule; the next request in
+    // that group auto-executes with no new approval row.
+    const adminApprovalId = await requestInGroup('second');
+    const adminDecision = await decide(harness, admin.cookie, adminApprovalId, 'approve_always');
+    expect(adminDecision.status).toBe(200);
+    await waitForPendingStatus(harness, adminApprovalId, 'executed');
+
+    const rulesResponse = await harness.app.request(
+      `${TEST_BASE_URL}/api/groups/${groupId}/approval-rules`,
+      { headers: { cookie: admin.cookie } },
+    );
+    expect(rulesResponse.status).toBe(200);
+    const rules = (await rulesResponse.json()) as Array<{ groupId: string | null }>;
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.groupId).toBe(groupId);
+
+    const approvalCountBefore = (await harness.context.db.select().from(approvals)).length;
+    const auto = await harness.gateway.request({
+      aiId,
+      groupId,
+      action: 'flow.always',
+      args: { value: 'third' },
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    expect(auto).toEqual({ status: 'executed', summary: 'always-ran:third' });
+    const approvalCountAfter = (await harness.context.db.select().from(approvals)).length;
+    expect(approvalCountAfter).toBe(approvalCountBefore);
   });
 });
