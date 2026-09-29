@@ -37,6 +37,12 @@ type ChatStoreData = Omit<
   | 'hasMore'
   | 'sendText'
   | 'sendTyping'
+  | 'react'
+  | 'startEdit'
+  | 'cancelEdit'
+  | 'editMessage'
+  | 'deleteForEveryone'
+  | 'dismissActionError'
   | 'setSearch'
   | 'setActiveFolder'
   | 'start'
@@ -92,6 +98,8 @@ export function createInitialState(phase?: MockDraftPhase, load?: MockLoadScenar
         : {},
     finishedDraftMessages:
       phase === 'final' ? { [MOCK_DRAFT_FINAL_MESSAGE_ID]: MOCK_DRAFT_TURN_ID } : {},
+    editTarget: undefined,
+    actionError: undefined,
   };
   if (load === 'slow') {
     return { ...base, chats: [], chatsLoad: 'loading', messagesByChat: {}, historyLoad: {} };
@@ -181,6 +189,12 @@ export function createChatStore(
       retryHistory: (chatId) =>
         set((state) => ({ historyLoad: { ...state.historyLoad, [chatId]: 'loaded' } })),
       sendTyping: () => {},
+      react: () => {},
+      startEdit: () => {},
+      cancelEdit: () => {},
+      editMessage: () => {},
+      deleteForEveryone: () => {},
+      dismissActionError: () => {},
       start: () => {},
       stop: () => {},
       openChat: (chatId) => {

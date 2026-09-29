@@ -13,11 +13,15 @@ import type {
 import {
   applyEdit,
   applyReaction,
+  canDeleteMessage,
+  canEditMessage,
   editsFor,
   emptyEdits,
   emptyReactions,
   mergeEdits,
   mergeTargets,
+  mentionsForTrimmedText,
+  rebaseMentions,
   resolveEdits,
   summarize,
 } from '@galena/chat-core';
@@ -307,6 +311,31 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
+    // Remembers the server id a local optimistic id resolved to, so a reaction
+    // sent after the echo can name the target everyone else knows.
+    const messageServerIds = new Map<string, string>();
+
+    function linkLocalToServer(localId: string, serverId: string): void {
+      if (localId !== serverId) {
+        messageServerIds.set(localId, serverId);
+        // Also under the alias root so an action that already canonicalised
+        // (e.g. a chip tap before the echo) resolves to the server id.
+        messageServerIds.set(aliasRoot(localId), serverId);
+      }
+    }
+
+    // The id to put on the wire for a message: the server id when it is known,
+    // else the message id itself. A still-unacked `local-*` id has no server id
+    // yet and cannot be named, so it resolves to undefined.
+    function wireTargetFor(messageId: string): string | undefined {
+      const root = aliasRoot(messageId);
+      const server = messageServerIds.get(root);
+      if (server !== undefined) {
+        return server;
+      }
+      return root.startsWith('local-') ? undefined : root;
+    }
+
     function sameMessage(left: string, right: string): boolean {
       return aliasRoot(left) === aliasRoot(right);
     }
@@ -584,6 +613,52 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // text, but the chat row says what happened.
     function previewFor(message: UiMessage): UiMessage {
       return message.deleted === true ? { ...message, text: 'Message deleted' } : message;
+    }
+
+    // Puts a message back exactly as it was before an optimistic edit or delete,
+    // so a failed send restores the fields a retraction had stripped.
+    function restoreMessage(chatId: string, snapshot: UiMessage): void {
+      set((state) => ({
+        messagesByChat: {
+          ...state.messagesByChat,
+          [chatId]: listFor(state, chatId).map((item) =>
+            sameMessage(item.id, snapshot.id) ? snapshot : item,
+          ),
+        },
+      }));
+    }
+
+    // Rolls back the edits slice a store action was about to apply, so a
+    // failed send leaves no optimistic deletion or correction behind.
+    function restoreEdits(chatId: string, previous: EditsState | undefined): void {
+      set((state) => {
+        const edits = { ...state.edits };
+        if (previous === undefined) {
+          delete edits[chatId];
+        } else {
+          edits[chatId] = previous;
+        }
+        return { edits };
+      });
+      refreshEdits(chatId);
+    }
+
+    // The id a correction must name: the original sender-generated id, in DMs
+    // and in groups alike (XEP-0308).
+    function correctionTargetFor(messageId: string): string | undefined {
+      const root = aliasRoot(messageId);
+      return messageOriginIds.get(root) ?? messageOriginIds.get(messageId);
+    }
+
+    // The id a retraction must name: the origin id in a DM, the stanza-id in a
+    // group (XEP-0424). A still-unacked group message has no stanza-id yet.
+    function retractionTargetFor(chat: ChatSummary, messageId: string): string | undefined {
+      if (chat.kind === 'group') {
+        const message = listFor(get(), chat.id).find((item) => sameMessage(item.id, messageId));
+        const stanzaId = message?.id;
+        return stanzaId === undefined || stanzaId.startsWith('local-') ? undefined : stanzaId;
+      }
+      return correctionTargetFor(messageId);
     }
 
     // A reply quote follows its target: the corrected text, or "Deleted
@@ -1160,6 +1235,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
         if (localId !== undefined) {
           linkMessageIds(localId, ui.id);
+          linkLocalToServer(localId, ui.id);
         }
         set((state) => {
           const existing = listFor(state, chatId);
@@ -1794,6 +1870,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       reactions: {},
       drafts: {},
       finishedDraftMessages: {},
+      editTarget: undefined,
+      actionError: undefined,
       messages: (chatId) => get().messagesByChat[chatId] ?? [],
       hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
       openChat: (chatId) => {
@@ -1851,6 +1929,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         queue.push(localId);
         pendingOutgoing.set(signature, queue);
         setChatMessage(chatId, message, true);
+        const mine = myJid();
+        if (mine !== undefined) {
+          rememberAuthor(localId, { jid: mine, resolved: true });
+        }
 
         if (core === undefined) {
           return;
@@ -1864,11 +1946,159 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           )
           .then((sent) => {
             linkMessageIds(localId, sent.id);
+            linkLocalToServer(localId, sent.id);
+            rememberOriginId(localId, sent.id);
             updateMessageStatus(chatId, localId, 'sent');
           })
           .catch(() => {
             // The message stays marked as sending; a reconnect can resend later.
           });
+      },
+      react: (chatId, messageId, emoji) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const mine = myJid();
+        if (chat === undefined || mine === undefined) {
+          return;
+        }
+        // The local key is alias-resolved; the wire target must be the server
+        // id everyone else knows. An unacked message has none yet, so reacting
+        // would send a target nobody could match: do nothing until it has one.
+        const targetId = aliasRoot(messageId);
+        const wireTarget = wireTargetFor(messageId);
+        const currentCore = core;
+        if (wireTarget === undefined || currentCore === undefined) {
+          return;
+        }
+        const current = get().reactions[chatId]?.targets[targetId]?.[mine]?.emojis ?? [];
+        const next = current.includes(emoji)
+          ? current.filter((entry) => entry !== emoji)
+          : [...current, emoji];
+        const apply = (emojis: string[]): void => {
+          applyReactionUpdate(chatId, targetId, mine, emojis, now().getTime());
+        };
+        apply(next);
+        currentCore.sendReactions(chatId, coreKind(chat), wireTarget, next).catch(() => {
+          // The send failed: undo the optimistic toggle.
+          apply(current);
+        });
+      },
+      startEdit: (chatId, messageId) => {
+        set({ editTarget: { chatId, messageId }, actionError: undefined });
+      },
+      cancelEdit: () => {
+        set({ editTarget: undefined });
+      },
+      editMessage: (chatId, messageId, text) => {
+        const trimmed = text.trim();
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const mine = myJid();
+        if (chat === undefined || mine === undefined || trimmed.length === 0) {
+          return;
+        }
+        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        if (message === undefined || !canEditMessage(message, get().currentUserId, now())) {
+          return;
+        }
+        // The UI already blocks a no-op edit; the store does too, so no stanza
+        // is ever sent for an unchanged text.
+        if (message.text === trimmed) {
+          return;
+        }
+        // XEP-0308 names the original by its sender-generated id.
+        const wireTarget = correctionTargetFor(messageId);
+        const currentCore = core;
+        if (wireTarget === undefined || currentCore === undefined) {
+          return;
+        }
+        const targetId = aliasRoot(messageId);
+        const author: EditAuthor = { jid: mine, resolved: true };
+        const priorMentions = rebaseMentions(message.text ?? '', text, message.mentions ?? []);
+        const mentions = mentionsForTrimmedText(text, trimmed, priorMentions);
+        const update: EditUpdate = {
+          kind: 'correction',
+          targetId,
+          author,
+          text: trimmed,
+          order: now().getTime(),
+        };
+        if (mentions.length > 0) {
+          update.mentions = mentions;
+        }
+        const previous = get().edits[chatId];
+        set({ actionError: undefined });
+        set((state) => ({
+          edits: {
+            ...state.edits,
+            [chatId]: applyEdit(state.edits[chatId] ?? emptyEdits(), update, author),
+          },
+        }));
+        refreshEdits(chatId);
+        currentCore
+          .sendCorrection(
+            chatId,
+            coreKind(chat),
+            wireTarget,
+            trimmed,
+            mentions.length === 0
+              ? undefined
+              : {
+                  mentions: mentions.map((mention) => ({
+                    jid: mention.jid,
+                    begin: mention.begin,
+                    end: mention.end,
+                  })),
+                },
+          )
+          .catch(() => {
+            restoreMessage(chatId, message);
+            restoreEdits(chatId, previous);
+            set({
+              actionError: { chatId, message: 'Could not save the edit. Try again.' },
+            });
+          });
+      },
+      deleteForEveryone: (chatId, messageId) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const mine = myJid();
+        if (chat === undefined || mine === undefined) {
+          return;
+        }
+        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        if (message === undefined || !canDeleteMessage(message, get().currentUserId)) {
+          return;
+        }
+        const wireTarget = retractionTargetFor(chat, messageId);
+        const currentCore = core;
+        if (wireTarget === undefined || currentCore === undefined) {
+          return;
+        }
+        const targetId = aliasRoot(messageId);
+        const author: EditAuthor = { jid: mine, resolved: true };
+        const update: EditUpdate = {
+          kind: 'retraction',
+          targetId,
+          author,
+          order: now().getTime(),
+        };
+        const previous = get().edits[chatId];
+        set({ actionError: undefined });
+        set((state) => ({
+          edits: {
+            ...state.edits,
+            [chatId]: applyEdit(state.edits[chatId] ?? emptyEdits(), update, author),
+          },
+        }));
+        refreshEdits(chatId);
+        currentCore.sendRetraction(chatId, coreKind(chat), wireTarget).catch(() => {
+          restoreMessage(chatId, message);
+          restoreEdits(chatId, previous);
+          set({
+            actionError: { chatId, message: 'Could not delete the message. Try again.' },
+          });
+        });
+      },
+      dismissActionError: () => {
+        set({ actionError: undefined });
       },
       setSearch: (value) => set({ search: value }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),
@@ -1918,6 +2148,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         messageAliases.clear();
         messageAuthors.clear();
         messageOriginIds.clear();
+        messageServerIds.clear();
         const current = core;
         core = undefined;
         if (current !== undefined) {

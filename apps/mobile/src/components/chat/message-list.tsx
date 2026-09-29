@@ -31,13 +31,16 @@ type ListEntry =
 type MessageListProps = {
   chat: ChatSummary;
   onReply: (message: UiMessage) => void;
+  onReact?: (message: UiMessage, emoji: string) => void;
+  onEdit?: (message: UiMessage) => void;
+  onDelete?: (message: UiMessage) => void;
 };
 
 /**
  * Message list grouped by sender and day. Opening a chat with unread messages
  * scrolls to the "Unread messages" divider instead of the bottom.
  */
-export function MessageList({ chat, onReply }: MessageListProps) {
+export function MessageList({ chat, onReply, onReact, onEdit, onDelete }: MessageListProps) {
   const currentUserId = useChatStore((state) => state.currentUserId);
   const messages = useChatStore((state) => state.messages(chat.id));
   // Unknown means never requested: the real store has no data without asking,
@@ -201,6 +204,9 @@ export function MessageList({ chat, onReply }: MessageListProps) {
             isLastInGroup={item.item.lastInGroup}
             currentUserId={currentUserId}
             onReply={onReply}
+            {...(onReact === undefined ? {} : { onReact })}
+            {...(onEdit === undefined ? {} : { onEdit })}
+            {...(onDelete === undefined ? {} : { onDelete })}
             draft={item.isDraft}
             revealTurnId={item.revealTurnId}
           />

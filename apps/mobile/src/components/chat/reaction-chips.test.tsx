@@ -113,4 +113,33 @@ describe('ReactionChips', () => {
   it('renders nothing without reactions', () => {
     expect(collect(ReactionChips({ reactions: [], outgoing: false }))).toEqual([]);
   });
+
+  it('does nothing on press without onToggle, and calls it otherwise', () => {
+    const toggled: string[] = [];
+    const disabled = collect(ReactionChips({ reactions, outgoing: false }));
+    const disabledChips = disabled.filter((element) => element.type === 'Pressable');
+    expect(disabledChips).toHaveLength(2);
+    expect(
+      disabledChips.every((chip) => (chip.props as { disabled?: boolean }).disabled === true),
+    ).toBe(true);
+    expect(
+      disabledChips.every((chip) => (chip.props as { onPress?: () => void }).onPress === undefined),
+    ).toBe(true);
+
+    const enabled = collect(
+      ReactionChips({ reactions, outgoing: false, onToggle: (emoji) => toggled.push(emoji) }),
+    );
+    const enabledChips = enabled.filter((element) => element.type === 'Pressable');
+    expect(enabledChips).toHaveLength(2);
+    expect(
+      enabledChips.every((chip) => (chip.props as { disabled?: boolean }).disabled === false),
+    ).toBe(true);
+    const firstChip = enabledChips[0];
+    expect(firstChip).toBeDefined();
+    const props = firstChip?.props as { onPress?: () => void };
+    const onPress = props?.onPress;
+    expect(onPress).toBeDefined();
+    onPress?.();
+    expect(toggled).toEqual(['👍']);
+  });
 });

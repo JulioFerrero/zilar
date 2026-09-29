@@ -136,6 +136,10 @@ export interface ChatStoreState {
    * rendering on the draft's key so its reveal continues instead of snapping.
    */
   finishedDraftMessages: Record<string, string>;
+  /** The message the composer is currently editing, or undefined when idle. */
+  editTarget?: { chatId: string; messageId: string };
+  /** A user-facing failure from a recent edit/delete (T-0085). */
+  actionError?: { chatId: string; message: string };
   messages: (chatId: string) => UiMessage[];
   hasMore: (chatId: string) => boolean;
   openChat: (chatId: string) => void;
@@ -146,6 +150,18 @@ export interface ChatStoreState {
   retryHistory: (chatId: string) => void;
   sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
   sendTyping: (chatId: string) => void;
+  /** Toggle my reaction of `emoji` on a message (XEP-0444). */
+  react: (chatId: string, messageId: string, emoji: string) => void;
+  /** Begin editing `messageId`: composer switches to edit mode with its text. */
+  startEdit: (chatId: string, messageId: string) => void;
+  /** Cancel the current edit without sending anything. */
+  cancelEdit: () => void;
+  /** Save the edited text and send a XEP-0308 correction. */
+  editMessage: (chatId: string, messageId: string, text: string) => void;
+  /** Send a XEP-0424 retraction ("delete for everyone"). */
+  deleteForEveryone: (chatId: string, messageId: string) => void;
+  /** Dismiss the current `actionError` inline notice. */
+  dismissActionError: () => void;
   setSearch: (search: string) => void;
   setActiveFolder: (folder: ChatFolder) => void;
   start: () => void;
