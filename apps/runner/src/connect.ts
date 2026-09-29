@@ -15,7 +15,7 @@ export interface RunOptions {
 }
 
 export interface RunResult {
-  status: 'stopped' | 'revoked' | 'auth_failed' | 'version_mismatch';
+  status: 'stopped' | 'revoked' | 'auth_failed' | 'version_mismatch' | 'disconnected';
   message: string;
 }
 
@@ -106,7 +106,7 @@ export async function runRunner(options: RunOptions): Promise<RunResult> {
   }
 }
 
-function mapFailure(message: string): RunResult {
+export function mapFailure(message: string): RunResult {
   if (message.includes(`(${CLOSE_REVOKED})`)) {
     return {
       status: 'revoked',
@@ -125,9 +125,11 @@ function mapFailure(message: string): RunResult {
       message: 'the server speaks a different protocol version',
     };
   }
+  // Anything else (a network drop, the server going away) is not an auth
+  // failure: say the link was lost.
   return {
-    status: 'auth_failed',
-    message: `the server closed the connection: ${message}`,
+    status: 'disconnected',
+    message: 'lost the connection to the server',
   };
 }
 

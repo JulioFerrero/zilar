@@ -13,6 +13,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@galena/server": "workspace:*",
     "tsx": "^4.23.15",
     "vitest": "^5.0.2"
   }

@@ -172,6 +172,9 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
     devDependencies:
+      '@galena/server':
+        specifier: workspace:*
+        version: link:../server
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
