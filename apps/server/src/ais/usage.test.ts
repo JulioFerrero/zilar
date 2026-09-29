@@ -158,6 +158,8 @@ describe('getAiUsage', () => {
       perDayUsd: 2,
       perMonthUsd: 20,
       dailyLimitReached: false,
+      dailyWarning: false,
+      monthlyWarning: false,
     });
     expect(await baselineFor(aiId, '2026-09-28')).toBe('1.50');
     // The token id addresses the key: the usable secret never travels.
@@ -180,6 +182,8 @@ describe('getAiUsage', () => {
       perDayUsd: 2,
       perMonthUsd: 20,
       dailyLimitReached: false,
+      dailyWarning: false,
+      monthlyWarning: false,
     });
   });
 
@@ -214,6 +218,8 @@ describe('getAiUsage', () => {
       perDayUsd: 2,
       perMonthUsd: 20,
       dailyLimitReached: false,
+      dailyWarning: false,
+      monthlyWarning: false,
     });
     expect(await baselineFor(aiId, '2026-09-28')).toBe('0.25');
 
@@ -284,9 +290,103 @@ describe('getAiUsage', () => {
       perDayUsd: 2,
       perMonthUsd: 20,
       dailyLimitReached: false,
+      dailyWarning: false,
+      monthlyWarning: false,
     });
     expect(utcDayString(current)).toBe('2026-09-29');
     expect(await baselineFor(aiId, '2026-09-28')).toBe('1.50');
     expect(await baselineFor(aiId, '2026-09-29')).toBe('2.50');
+  });
+
+  it('warns at exactly 80% of the daily limit but not just below', async () => {
+    const litellm = new FakeLitellm();
+    litellm.spendByKey.set('tok-usage-1', 1);
+    const aiId = await seedAi();
+    const { deps } = depsFor(litellm);
+
+    await getAiUsage(deps, aiId);
+    // 1.60 of 2.00 is exactly 80%: cents-safe comparison must warn.
+    litellm.spendByKey.set('tok-usage-1', 2.6);
+    const atEighty = await getAiUsage(deps, aiId);
+    expect(atEighty?.todayUsd).toBeCloseTo(1.6, 10);
+    expect(atEighty?.dailyLimitReached).toBe(false);
+    expect(atEighty?.dailyWarning).toBe(true);
+
+    // 1.59 of 2.00 is just below 80%: no warning.
+    litellm.spendByKey.set('tok-usage-1', 2.59);
+    const below = await getAiUsage(deps, aiId);
+    expect(below?.dailyLimitReached).toBe(false);
+    expect(below?.dailyWarning).toBe(false);
+  });
+
+  it('has no daily warning at or above 100%, with the limit reached', async () => {
+    const litellm = new FakeLitellm();
+    litellm.spendByKey.set('tok-usage-1', 1);
+    const aiId = await seedAi();
+    const { deps } = depsFor(litellm);
+
+    await getAiUsage(deps, aiId);
+    litellm.spendByKey.set('tok-usage-1', 3);
+    const over = await getAiUsage(deps, aiId);
+    expect(over?.todayUsd).toBe(2);
+    expect(over?.dailyLimitReached).toBe(true);
+    expect(over?.dailyWarning).toBe(false);
+  });
+
+  it('never warns when the daily limit is zero', async () => {
+    const litellm = new FakeLitellm();
+    litellm.spendByKey.set('tok-usage-1', 1);
+    const aiId = await seedAi();
+    await context.db.update(aiLimits).set({ perDayUsd: '0.00' }).where(eq(aiLimits.aiId, aiId));
+    const { deps } = depsFor(litellm);
+
+    await getAiUsage(deps, aiId);
+    litellm.spendByKey.set('tok-usage-1', 5);
+    const usage = await getAiUsage(deps, aiId);
+    expect(usage?.perDayUsd).toBe(0);
+    expect(usage?.dailyWarning).toBe(false);
+  });
+
+  it('warns at exactly 80% of the monthly window but not just below or at the cap', async () => {
+    const litellm = new FakeLitellm();
+    // First read records the baseline; the window spend itself drives the
+    // monthly flag.
+    litellm.spendByKey.set('tok-usage-1', 16);
+    const aiId = await seedAi();
+    const { deps } = depsFor(litellm);
+
+    const atEighty = await getAiUsage(deps, aiId);
+    expect(atEighty?.windowUsd).toBe(16);
+    expect(atEighty?.monthlyWarning).toBe(true);
+
+    litellm.spendByKey.set('tok-usage-1', 15.99);
+    // A spend drop counts as a window reset, so seed a fresh AI for the
+    // just-below case instead.
+    const aiId2 = await seedAi('tok-usage-2');
+    litellm.spendByKey.set('tok-usage-2', 15.99);
+    const below = await getAiUsage(deps, aiId2);
+    expect(below?.monthlyWarning).toBe(false);
+
+    // At the cap there is no warning (the stop path applies instead).
+    litellm.spendByKey.set('tok-usage-1', 20);
+    const atCap = await getAiUsage(deps, aiId);
+    expect(atCap?.windowUsd).toBe(20);
+    expect(atCap?.monthlyWarning).toBe(false);
+
+    litellm.spendByKey.set('tok-usage-1', 21);
+    const over = await getAiUsage(deps, aiId);
+    expect(over?.monthlyWarning).toBe(false);
+  });
+
+  it('never warns for a zero monthly cap', async () => {
+    const litellm = new FakeLitellm();
+    const aiId = await seedAi();
+    await context.db.update(aiLimits).set({ perMonthUsd: '0.00' }).where(eq(aiLimits.aiId, aiId));
+    litellm.spendByKey.set('tok-usage-1', 16);
+    const { deps } = depsFor(litellm);
+
+    const usage = await getAiUsage(deps, aiId);
+    expect(usage?.perMonthUsd).toBe(0);
+    expect(usage?.monthlyWarning).toBe(false);
   });
 });

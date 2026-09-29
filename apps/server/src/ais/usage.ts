@@ -20,6 +20,8 @@ export interface AiUsage {
   perDayUsd: number;
   perMonthUsd: number;
   dailyLimitReached: boolean;
+  dailyWarning: boolean;
+  monthlyWarning: boolean;
 }
 
 // The UTC day (`YYYY-MM-DD`) a spend reading belongs to. Spend baselines are
@@ -92,7 +94,15 @@ export async function getAiUsage(deps: AiUsageDeps, aiId: string): Promise<AiUsa
       .insert(aiDailySpend)
       .values({ aiId, day, baselineUsd: usd(windowUsd) })
       .onConflictDoNothing();
-    return { todayUsd: 0, windowUsd, perDayUsd, perMonthUsd, dailyLimitReached: 0 >= perDayUsd };
+    return {
+      todayUsd: 0,
+      windowUsd,
+      perDayUsd,
+      perMonthUsd,
+      dailyLimitReached: 0 >= perDayUsd,
+      dailyWarning: false,
+      monthlyWarning: monthlyWarns(windowUsd, perMonthUsd),
+    };
   }
 
   const baselineUsd = Number(baseline.baselineUsd);
@@ -103,15 +113,51 @@ export async function getAiUsage(deps: AiUsageDeps, aiId: string): Promise<AiUsa
       .update(aiDailySpend)
       .set({ baselineUsd: usd(windowUsd), updatedAt: new Date() })
       .where(and(eq(aiDailySpend.aiId, aiId), eq(aiDailySpend.day, day)));
-    return { todayUsd: 0, windowUsd, perDayUsd, perMonthUsd, dailyLimitReached: 0 >= perDayUsd };
+    return {
+      todayUsd: 0,
+      windowUsd,
+      perDayUsd,
+      perMonthUsd,
+      dailyLimitReached: 0 >= perDayUsd,
+      dailyWarning: false,
+      monthlyWarning: monthlyWarns(windowUsd, perMonthUsd),
+    };
   }
 
   const todayUsd = windowUsd - baselineUsd;
-  return { todayUsd, windowUsd, perDayUsd, perMonthUsd, dailyLimitReached: todayUsd >= perDayUsd };
+  const dailyLimitReached = todayUsd >= perDayUsd;
+  return {
+    todayUsd,
+    windowUsd,
+    perDayUsd,
+    perMonthUsd,
+    dailyLimitReached,
+    dailyWarning: dailyLimitReached ? false : dailyWarns(todayUsd, perDayUsd),
+    monthlyWarning: monthlyWarns(windowUsd, perMonthUsd),
+  };
 }
 
 // `numeric` columns are strings; two decimal places is the currency precision
 // the schema stores, as in ais/service.ts.
 function usd(value: number): string {
   return value.toFixed(2);
+}
+
+// Cents-safe 80% checks: integer cents avoid float surprises at exactly 80%
+// (1.60 of 2.00 must warn). `today >= 0.8 * perDay` becomes
+// `todayCents * 5 >= perDayCents * 4` with no floats involved.
+function toCents(value: number): number {
+  return Math.round(value * 100);
+}
+
+function dailyWarns(todayUsd: number, perDayUsd: number): boolean {
+  const todayCents = toCents(todayUsd);
+  const perDayCents = toCents(perDayUsd);
+  return perDayCents > 0 && todayCents * 5 >= perDayCents * 4;
+}
+
+function monthlyWarns(windowUsd: number, perMonthUsd: number): boolean {
+  const windowCents = toCents(windowUsd);
+  const perMonthCents = toCents(perMonthUsd);
+  return perMonthCents > 0 && windowCents * 5 >= perMonthCents * 4 && windowCents < perMonthCents;
 }

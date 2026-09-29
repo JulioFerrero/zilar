@@ -78,6 +78,11 @@ void gateway.start().catch((error: unknown) => {
   logger.error({ err }, 'agent gateway failed to start');
 });
 
+// How long open connections (SSE streams) get before they are closed, and the
+// point at which a stuck shutdown gives up and exits.
+const CONNECTION_GRACE_MS = 3_000;
+const FORCE_EXIT_MS = 15_000;
+
 let shuttingDown = false;
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
@@ -87,8 +92,22 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   shuttingDown = true;
   logger.info({ signal }, 'shutting down');
 
+  // `server.close()` waits for every open connection, and the SSE draft
+  // streams never end on their own, so a plain close hangs until SIGKILL.
+  // Drop idle connections at once, live ones after a short grace, and exit
+  // hard if anything else still blocks the shutdown.
+  const forceExit = setTimeout(() => {
+    logger.error('shutdown timed out; exiting');
+    process.exit(1);
+  }, FORCE_EXIT_MS);
+  forceExit.unref();
   await new Promise<void>((resolve) => {
     server.close(() => resolve());
+    // `serve()` returns an HTTP/1 server here; the type also allows HTTP/2.
+    if ('closeAllConnections' in server) {
+      server.closeIdleConnections();
+      setTimeout(() => server.closeAllConnections(), CONNECTION_GRACE_MS).unref();
+    }
   });
   await gateway.stop();
   await close();

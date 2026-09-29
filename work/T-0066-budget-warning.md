@@ -1,7 +1,7 @@
 ---
 id: T-0066
 title: AI budget warning at 80% (daily and 30-day window) — one fixed notice per chat, sent with the turn that crossed it
-status: todo
+status: merged
 milestone: M2
 branch: task/T-0066-budget-warning
 model: opencode-go/muse-spark-1.3-contributor
@@ -78,28 +78,51 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- `usage.ts`: added `dailyWarning` and `monthlyWarning` to `AiUsage` with cents-safe integer comparison (`todayCents * 5 >= perDayCents * 4`, `windowCents * 5 >= perMonthCents * 4 && windowCents < perMonthCents`). Exactly 80% warns, just-below doesn't, over-100% has no warning, zero caps never warn. Existing fields unchanged.
+- `reply.ts`: added `dailyWarningReply(todayUsd, perDayUsd)` and `monthlyWarningReply(windowUsd, perMonthUsd)` with the exact spec texts.
+- `gateway.ts`: `checkDailyLimit` now returns `{ limited, usage }` from its single pre-turn read; after the reply (`runDmTurn`/`runGroupTurn`) `sendBudgetWarnings` sends daily then monthly warnings to the same chat (DM or plain group message), at most one per kind per AI per chat per UTC day in memory. At 100% or usage-null nothing extra is sent; a failed warning send only logs ids and never fails the turn. Group warnings only happen when the turn ran (early returns for skipped/rate-limited turns send nothing).
+- Tests: extended `usage.test.ts` (exact-80% daily/monthly, just-below, over-cap, zero caps), `reply.test.ts` (exact strings), `gateway.test.ts` (DM: reply-then-warning order, once-per-day, next-UTC-day re-warn, both-warnings-once, 100% notice-only, null-usage silent, failing-warning-send recovery; groups: reply-then-warning in room, once-per-day, no warning for non-mention skipped turns).
+- Live proof is still open (per spec, the lead does it).
 
 ### Files changed
--
+- `apps/server/src/ais/usage.ts`
+- `apps/server/src/ais/usage.test.ts` (updated 4 old `toEqual` for the 2 new fields + 5 new tests)
+- `apps/server/src/agents/reply.ts`
+- `apps/server/src/agents/reply.test.ts` (2 new tests)
+- `apps/server/src/agents/gateway.ts`
+- `apps/server/src/agents/gateway.test.ts` (6 new DM tests + 1 new group test)
 
 ### Commands run and real results
--
+- `pnpm install`: ok.
+- `pnpm format:check`: my files pass after prettier; 1 remaining warn in `packages/xmpp-core/src/integration-edits.test.ts` (outside Allowed files, untouched, pre-existing).
+- `pnpm lint` (oxlint): pass, no warnings.
+- `pnpm --filter @galena/server exec tsc --noEmit`: pass (exit 0). Repo-wide `pnpm typecheck` fails in `packages/xmpp-core` (`integration-edits.test.ts` node types + `apps/server/src/xmpp/admin-client.ts` node types via that package's tsconfig) — pre-existing, outside Allowed files, untouched by me.
+- `pnpm exec turbo test --force --filter=@galena/server`: 38 files passed / 5 skipped files, 508 tests passed / 7 skipped (was 492 passed before my 16 new tests).
+- `pnpm build`: pass (2 tasks).
+- `grep any/ts-ignore` on changed source: no `any`, no `@ts-ignore` (only the word "anywhere" in a comment).
 
 ### Problems, deviations from the spec, open questions
--
+- Pre-existing repo failures outside my scope (see above): `format:check` and repo-wide `typecheck` both fail only on `packages/xmpp-core/src/integration-edits.test.ts`, which I did not touch (not in Allowed files). All server-scoped checks pass.
+- Warning decision uses the pre-turn usage read (no second LiteLLM call), as the spec directs ("the check that already runs before every turn also decides the warning").
+- Warning order when both cross: daily first, then monthly. DM outer-catch failure texts (e.g. missing virtual key) do not trigger warnings since the warning send lives inside the `try` after `runDmTurn`; group outer-catch failure texts likewise skip warnings. Normal `runDmTurn`/`runGroupTurn` failure replies (which are sent messages) are followed by warnings when the flags say so.
+- No new dependencies. No amounts, keys, or message text in new log lines (only `{ aiId }`); test asserts the log contains no `$0.80`/`$1.00`, keys, or message text.
 
 ### Blocked / needs a decision
--
+- None.
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved.
+
+**Approved and merged by Claude.** Verified after rebasing onto current `main`: all changed paths are inside Allowed files (`usage.ts`, `gateway.ts`, `reply.ts` and their tests); `format:check`, `lint`, `typecheck`, `test` (server 508 passed, 7 skipped) and `build` pass. The Muse pre-review found no must-fix or should-fix issues. Read `sendBudgetWarnings`: warnings go out after the reply, once per kind per AI per chat per UTC day (in memory), daily and monthly independently, nothing at or above 100% or when usage is null, and a failed send only logs ids and is retried by the next turn. The 80% check is cents-safe (`todayCents * 5 >= perDayCents * 4`).
+
+**Live proof is still open:** the warning needs real LiteLLM spend crossing 80% on a real AI, which I did not fake on Julio's data. The unit tests use a faked usage read. Julio can see it the first time one of his AIs crosses 80% of its daily or 30-day limit.
 
 ### Findings
--
+1. *(No change needed.)* The warning is also sent when the turn itself failed (for example a LiteLLM outage: the owner sees the failure text and then the warning). Harmless and disclosed in the Report; accepted.
+2. *(No change needed.)* The `dailyLimitReached` early return in `sendBudgetWarnings` is unreachable today (both callers return first); defense in depth, accepted.
 
 ### Follow-ups
--
+- None.

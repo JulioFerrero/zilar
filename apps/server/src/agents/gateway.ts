@@ -40,10 +40,12 @@ import {
   normBareJid,
   type ChatCompletionMessage,
 } from './context';
-import { getAiUsage } from '../ais/usage';
+import { getAiUsage, type AiUsage } from '../ais/usage';
 import {
   dailyLimitReply,
+  dailyWarningReply,
   mapFailureToReply,
+  monthlyWarningReply,
   runDmTurn,
   runGroupTurn,
   type ExecuteToolCall,
@@ -302,6 +304,10 @@ export function createAgentGateway(
   // One fixed notice per AI per chat per UTC day, in memory only. After a
   // restart the map is empty, so a limited AI may notify once more.
   const dailyLimitNotices = new Map<string, string>();
+  // One 80% heads-up per kind per AI per chat per UTC day, in memory only.
+  // Daily and monthly warnings are independent; a restart may repeat one.
+  const dailyWarningNotices = new Map<string, string>();
+  const monthlyWarningNotices = new Map<string, string>();
 
   function utcDay(): string {
     return (deps.now ?? (() => new Date()))().toISOString().slice(0, 10);
@@ -311,16 +317,17 @@ export function createAgentGateway(
   // runs before any model call: a null usage fails open (the turn goes
   // ahead — the monthly cap is still enforced by LiteLLM itself), while a
   // reached limit sends the fixed notice at most once per AI per chat per UTC
-  // day and skips the turn. Returns true when the turn must stop. Only ids
+  // day and skips the turn. The fetched usage is returned so the caller can
+  // send the 80% warnings after the reply without a second read. Only ids
   // are ever logged: the usage read addresses the key by its token id, never
   // by the secret.
   async function checkDailyLimit(input: {
     aiId: string;
     chatKey: string;
     sendNotice: (text: string) => Promise<unknown>;
-  }): Promise<boolean> {
+  }): Promise<{ limited: boolean; usage: AiUsage | null }> {
     if (deps.litellm === undefined) {
-      return false;
+      return { limited: false, usage: null };
     }
     let usage;
     try {
@@ -338,15 +345,15 @@ export function createAgentGateway(
         { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
         'AI usage check failed; failing open',
       );
-      return false;
+      return { limited: false, usage: null };
     }
     if (usage === null || !usage.dailyLimitReached) {
-      return false;
+      return { limited: false, usage };
     }
     const today = utcDay();
     const key = `${input.aiId}:${input.chatKey}`;
     if (dailyLimitNotices.get(key) === today) {
-      return true;
+      return { limited: true, usage };
     }
     try {
       await input.sendNotice(dailyLimitReply(usage.perDayUsd));
@@ -355,11 +362,59 @@ export function createAgentGateway(
         { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
         'AI daily-limit notice could not be sent',
       );
-      return true;
+      return { limited: true, usage };
     }
     dailyLimitNotices.set(key, today);
     logger.info({ aiId: input.aiId }, 'AI daily spending limit reached; turn skipped');
-    return true;
+    return { limited: true, usage };
+  }
+
+  // Sends the 80% heads-ups after the AI's reply for the turn that crossed
+  // them: daily first, then monthly. At most one per kind per AI per chat per
+  // UTC day. A reached limit sends nothing: the notice path above applies.
+  // Usage null fails open with no warning. A failed send only logs (ids
+  // only, never the key or amounts) and never fails the turn.
+  async function sendBudgetWarnings(input: {
+    aiId: string;
+    chatKey: string;
+    usage: AiUsage | null;
+    sendWarning: (text: string) => Promise<unknown>;
+  }): Promise<void> {
+    const usage = input.usage;
+    if (usage === null || usage.dailyLimitReached) {
+      return;
+    }
+    const today = utcDay();
+    if (usage.dailyWarning) {
+      const key = `${input.aiId}:${input.chatKey}:daily-warning`;
+      if (dailyWarningNotices.get(key) !== today) {
+        try {
+          await input.sendWarning(dailyWarningReply(usage.todayUsd, usage.perDayUsd));
+          dailyWarningNotices.set(key, today);
+          logger.info({ aiId: input.aiId }, 'AI daily budget warning sent');
+        } catch (error) {
+          logger.warn(
+            { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
+            'AI budget warning could not be sent',
+          );
+        }
+      }
+    }
+    if (usage.monthlyWarning) {
+      const key = `${input.aiId}:${input.chatKey}:monthly-warning`;
+      if (monthlyWarningNotices.get(key) !== today) {
+        try {
+          await input.sendWarning(monthlyWarningReply(usage.windowUsd, usage.perMonthUsd));
+          monthlyWarningNotices.set(key, today);
+          logger.info({ aiId: input.aiId }, 'AI monthly budget warning sent');
+        } catch (error) {
+          logger.warn(
+            { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
+            'AI budget warning could not be sent',
+          );
+        }
+      }
+    }
   }
 
   // Runs one validated persona tool call against the gateway's own AI id. The
@@ -809,12 +864,15 @@ export function createAgentGateway(
     // The soft daily limit is checked before the rate budget and any model
     // call: a limited AI sends at most one fixed notice per room per UTC day
     // (a plain room message, no mention) and further mentions get nothing.
-    const groupLimited = await checkDailyLimit({
+    // The usage read also decides the 80% warnings, which go out after the
+    // reply below — never for a skipped or rate-limited turn.
+    const groupChatKey = `room:${roomJid}`;
+    const groupBudget = await checkDailyLimit({
       aiId: session.aiId,
-      chatKey: `room:${roomJid}`,
+      chatKey: groupChatKey,
       sendNotice: (text) => session.core.sendMessage(roomJid, 'groupchat', text),
     });
-    if (groupLimited) {
+    if (groupBudget.limited) {
       return;
     }
 
@@ -892,7 +950,8 @@ export function createAgentGateway(
       });
 
       // No persona tools in groups and no drafts: the reply goes straight to
-      // the room with `composing`/`paused` chat states around it.
+      // the room with `composing`/`paused` chat states around it. The 80%
+      // warnings go out after it, so the owner reads the answer first.
       await runGroupTurn({
         aiId: session.aiId,
         roomJid,
@@ -910,6 +969,12 @@ export function createAgentGateway(
         },
         logger,
         secrets: secretsFor(),
+      });
+      await sendBudgetWarnings({
+        aiId: session.aiId,
+        chatKey: groupChatKey,
+        usage: groupBudget.usage,
+        sendWarning: (text) => session.core.sendMessage(roomJid, 'groupchat', text),
       });
     } catch (error) {
       // ensureAiModel, the key lookup and anything else outside the turn: an
@@ -993,13 +1058,15 @@ export function createAgentGateway(
 
     // The soft daily limit holds even when the marker above already went out:
     // a limited AI answers with at most one notice per day, and further
-    // messages that day get no reply and no notice.
-    const limited = await checkDailyLimit({
+    // messages that day get no reply and no notice. The usage read also
+    // decides the 80% warnings, which go out after the reply below.
+    const dmChatKey = `dm:${ownerBare}`;
+    const dmBudget = await checkDailyLimit({
       aiId: session.aiId,
-      chatKey: `dm:${ownerBare}`,
+      chatKey: dmChatKey,
       sendNotice: (text) => session.core.sendMessage(ownerJid, 'chat', text),
     });
-    if (limited) {
+    if (dmBudget.limited) {
       return;
     }
 
@@ -1093,6 +1160,15 @@ export function createAgentGateway(
         secrets: secretsFor(),
       });
       turnDrafts.end(outcome.kind === 'replied' ? 'sent' : 'failed');
+      // The 80% heads-ups go out after the reply, so the owner reads the
+      // answer first. A failed warning send only logs and never fails the
+      // turn.
+      await sendBudgetWarnings({
+        aiId: session.aiId,
+        chatKey: dmChatKey,
+        usage: dmBudget.usage,
+        sendWarning: (text) => session.core.sendMessage(ownerJid, 'chat', text),
+      });
     } catch (error) {
       // ensureAiModel, the key lookup and anything else outside the turn: an
       // honest short message, never the raw error.
