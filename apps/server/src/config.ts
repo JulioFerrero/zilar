@@ -66,6 +66,14 @@ const serverConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // Action demo adapter (T-0093): when true, the harmless `demo.echo`
+    // adapter is registered so a DM owner can prove the `request_action`
+    // tool end-to-end without a real integration. Off by default so
+    // production behaviour is unchanged.
+    ACTION_DEMO_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     // Runner hub (T-0071): off by default. When enabled, the server accepts
     // tunnel connections from approved machines on RUNNER_HUB_PORT (default
     // 3189) bound to 127.0.0.1. The HTTP-only gateway requirement is checked

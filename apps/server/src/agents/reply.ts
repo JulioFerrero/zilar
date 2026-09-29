@@ -5,11 +5,13 @@ import type { ChatCompletionMessage } from './context';
 import { ChatStreamInterruptedError, consumeChatCompletionStream } from './stream';
 import {
   PERSONA_TOOLS,
+  REQUEST_ACTION_TOOL,
   REVERT_PERSONA_TOOL,
   UPDATE_PERSONA_TOOL,
   parseToolArguments,
   safeToolName,
   type ChatToolDefinition,
+  type ParsedToolArguments,
 } from './tools';
 
 // Cap on every completion request, enforced in code from day one (§8.4).
@@ -71,7 +73,13 @@ export interface ChatToolCall {
 // never reach this shape: they get `invalid: …` back instead.
 export type ValidToolCall =
   | { id: string; tool: typeof UPDATE_PERSONA_TOOL; persona: string; summary: string }
-  | { id: string; tool: typeof REVERT_PERSONA_TOOL };
+  | { id: string; tool: typeof REVERT_PERSONA_TOOL }
+  | {
+      id: string;
+      tool: typeof REQUEST_ACTION_TOOL;
+      action: string;
+      args: Record<string, unknown>;
+    };
 
 export interface ToolExecution {
   // A short result for the model: "ok", "nothing to undo" or "invalid: …".
@@ -333,6 +341,11 @@ export interface DmTurnDeps {
   };
   /** Extra secrets to redact from every log line (e.g. the master key). */
   secrets?: readonly string[];
+  /** Tools to advertise to the model. Defaults to `PERSONA_TOOLS` (the
+   * historical behaviour), so existing callers and tests stay unchanged.
+   * When `request_action` is in play the agent gateway passes a list that
+   * also includes the `request_action` tool definition. */
+  tools?: ChatToolDefinition[];
 }
 
 export type DmTurnOutcome = { kind: 'replied'; text: string } | { kind: 'failed'; text: string };
@@ -346,6 +359,7 @@ export type DmTurnOutcome = { kind: 'replied'; text: string } | { kind: 'failed'
 // logged, never thrown: there is nobody left to tell.
 export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
   const secrets = [deps.virtualKey, ...(deps.secrets ?? [])];
+  const tools = deps.tools ?? PERSONA_TOOLS;
   const completionInput = {
     baseUrl: deps.baseUrl,
     virtualKey: deps.virtualKey,
@@ -360,7 +374,7 @@ export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
     const first = await requestCompletion({
       ...completionInput,
       messages: deps.messages,
-      tools: PERSONA_TOOLS,
+      tools,
     });
     if (first.toolCalls.length === 0) {
       if (first.content === null) {
@@ -368,7 +382,7 @@ export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
       }
       return await sendReply(deps, first.content);
     }
-    return await runToolTurn(deps, completionInput, first, secrets);
+    return await runToolTurn(deps, completionInput, first, secrets, tools);
   } catch (error) {
     const reply = mapFailureToReply(error);
     deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
@@ -420,6 +434,7 @@ async function runToolTurn(
   },
   first: ChatCompletionResult,
   secrets: string[],
+  tools: ChatToolDefinition[],
 ): Promise<DmTurnOutcome> {
   const notices: string[] = [];
   const toolMessages: ModelRequestMessage[] = [];
@@ -453,16 +468,7 @@ async function runToolTurn(
     }
     let execution: ToolExecution;
     try {
-      execution = await deps.executeTool(
-        parsed.tool === UPDATE_PERSONA_TOOL
-          ? {
-              id: call.id,
-              tool: UPDATE_PERSONA_TOOL,
-              persona: parsed.persona,
-              summary: parsed.summary,
-            }
-          : { id: call.id, tool: REVERT_PERSONA_TOOL },
-      );
+      execution = await deps.executeTool(toCall(parsed, call.id));
     } catch (error) {
       // One call failing must not drop the others or the notices already
       // earned: the change (if any) stays, this call reports a failure, and
@@ -508,7 +514,7 @@ async function runToolTurn(
     const second = await requestCompletion({
       ...completionInput,
       messages: followUp,
-      tools: PERSONA_TOOLS,
+      tools,
     });
     // A second response that asks for tools again is answered from its text
     // alone: those calls are ignored and there is never a third model call.
@@ -532,6 +538,33 @@ async function runToolTurn(
   }
   return sendReply(deps, text);
 }
+
+// Lifts a parsed `request_action` / `update_persona` / `revert_persona`
+// shape into the `ValidToolCall` the executor understands. The call id
+// comes from the wire; everything else is already validated by zod.
+function toCall(parsed: ParsedToolArgumentsOk, id: string): ValidToolCall {
+  if (parsed.tool === UPDATE_PERSONA_TOOL) {
+    return {
+      id,
+      tool: UPDATE_PERSONA_TOOL,
+      persona: parsed.persona,
+      summary: parsed.summary,
+    };
+  }
+  if (parsed.tool === REVERT_PERSONA_TOOL) {
+    return { id, tool: REVERT_PERSONA_TOOL };
+  }
+  return {
+    id,
+    tool: REQUEST_ACTION_TOOL,
+    action: parsed.action,
+    args: parsed.args,
+  };
+}
+
+// A narrowed view of `ParsedToolArguments` for the cases that have already
+// been verified `ok: true`; the helper above only runs in that branch.
+type ParsedToolArgumentsOk = Extract<ParsedToolArguments, { ok: true }>;
 
 // Rebuilds the error with every secret redacted out of its message, so the
 // logger (which prints `err.message` and `err.stack`) can never leak a key.

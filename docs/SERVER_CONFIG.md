@@ -14,6 +14,7 @@ A Galena install has one TypeScript server, one React web app, one Postgres data
 | ejabberd (`26.07`) | XMPP server (C2S + admin API + WebSocket) | `5222` (C2S), `5280` (HTTP/WS + admin) | `infra/docker-compose.dev.yml:49-50` |
 | LiteLLM proxy (`1.102.1`) | LLM gateway and key vault | `4000` | `infra/docker-compose.dev.yml:87`, `ai/litellm-client.ts:6` |
 | Runner hub (optional) | tunnel for approved AI runners | `RUNNER_HUB_PORT` (default `3189`) | `config.ts:77-84`, `index.ts:212` |
+| `ACTION_DEMO_ENABLED` | No | `false` | Registers the harmless `demo.echo` action (tier 2, no side effects) so an owner can prove the approval flow end to end: ask the AI in its DM to echo a text, approve the card, see the result (`actions/demo.ts`, `config.ts`). With the flag off no action is registered and the AI is not offered the `request_action` tool. | Not a secret. For testing only. |
 
 Port `3000` is the code default but the local dev stack does not use it (it belongs to another app on the owner's machine). The Galena server's `BETTER_AUTH_URL` defaults to `PUBLIC_URL` (`config.ts:103`), and `apps/web/vite.config.ts:16` proxies `/api` to `GALENA_API_URL` (default `http://localhost:3000`), so the dev stack runs the server with `PORT=3188` and Vite with `GALENA_API_URL=http://localhost:3188`. See `docs/LEAD_PLAYBOOK.md` §12 for the exact start commands.
 
@@ -205,7 +206,6 @@ If a step blocks past the grace period, the 15 s hard exit fires. That is the co
 - `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY` and `GALENA_KEY_ENCRYPTION_KEY` are in `config.ts` (`config.ts:49-61`) but **not** listed in `apps/server/.env.example` (the example ends at `AGENT_GATEWAY_ENABLED`).
 - `RUNNER_HUB_ENABLED` and `RUNNER_HUB_PORT` are in `config.ts` (`config.ts:73-84`) but **not** in `apps/server/.env.example`.
 - `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` and `GITHUB_APP_INSTALLATION_ID` are in `config.ts` (`config.ts:53-55`) but **not** in `apps/server/.env.example` (the App config is intentionally gated behind all-or-nothing validation; not listing them in the example is a UX miss).
-- The comment in `apps/server/.env.example` says the admin password must match `GALENA_XMPP_ADMIN_PASSWORD` in `infra/.env`; the real variable in `infra/.env.example` and the compose file is `EJABBERD_ADMIN_PASSWORD`. The comment is stale.
 - `EJABBERD_API_URL`, `XMPP_DOMAIN`, `XMPP_MUC_DOMAIN` and `XMPP_WS_PUBLIC_URL` are in both `apps/server/.env.example` and `xmpp/config.ts` with the same defaults — no mismatch, mentioned for completeness.
 
 ## Open questions

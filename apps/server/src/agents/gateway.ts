@@ -52,8 +52,17 @@ import {
   runDmTurn,
   runGroupTurn,
   type ExecuteToolCall,
+  type ToolExecution,
+  type ValidToolCall,
 } from './reply';
-import { formatPersonaUpdatedLine, PERSONA_RESTORED_LINE, UPDATE_PERSONA_TOOL } from './tools';
+import {
+  buildTools,
+  formatPersonaUpdatedLine,
+  PERSONA_RESTORED_LINE,
+  REQUEST_ACTION_TOOL,
+  UPDATE_PERSONA_TOOL,
+} from './tools';
+import type { ActionGateway, DeniedReason, RequestOutcome } from '../actions/gateway';
 
 export interface GatewayLogger {
   info: (fields: Record<string, unknown>, message: string) => void;
@@ -77,6 +86,10 @@ export interface AgentGatewayDeps {
   now?: () => Date;
   /** Draft hub for live reply drafts. Defaults to the shared server hub. */
   drafts?: { hub?: DraftHub };
+  /** Optional action gateway. When present, every DM turn also offers the
+   * `request_action` tool, and tool calls route through it. Absent = no
+   * action tool, no behaviour change for the persona tools. */
+  actions?: ActionGateway;
 }
 
 export interface AgentGatewayConfig {
@@ -189,6 +202,29 @@ function isAiSender(bare: string): boolean {
 
 function retryDelayMs(attempt: number, baseMs: number): number {
   return Math.min(baseMs * 2 ** (attempt - 1), RETRY_MAX_DELAY_MS);
+}
+
+function errorName(error: unknown): string {
+  if (error instanceof Error) {
+    return error.name;
+  }
+  return typeof error;
+}
+
+// The model-facing wording for a `denied` outcome. We never echo the
+// adapter's reason beyond the stable enum: only `unknown_action`,
+// `invalid_args`, `ai_not_active`, and `ai_not_in_group` (T-0090).
+function denialReasonForModel(reason: DeniedReason): string {
+  switch (reason) {
+    case 'unknown_action':
+      return 'unknown action';
+    case 'invalid_args':
+      return 'invalid arguments';
+    case 'ai_not_active':
+      return 'the AI is not active';
+    case 'ai_not_in_group':
+      return 'the AI is not a member of that group';
+  }
 }
 
 function toRedactedError(error: unknown, secrets: readonly string[]): Error {
@@ -435,15 +471,17 @@ export function createAgentGateway(
     }
   }
 
-  // Runs one validated persona tool call against the gateway's own AI id. The
-  // id comes from the session, never from the model's arguments, and only
-  // `ais.persona` and `ais.previous_persona` can change. Log lines carry the
-  // AI id, the tool name and the outcome only: never the persona text.
-  function executePersonaTool(session: AiSession): ExecuteToolCall {
+  // Runs one validated tool call against the gateway's own AI id. The id
+  // comes from the session, never from the model's arguments, and only
+  // `ais.persona` / `ais.previous_persona` (persona tools) or the action
+  // gateway (request_action) can change. Log lines carry the AI id, the
+  // tool name and the outcome only: never the persona text or the args.
+  function executeToolCall(session: AiSession): ExecuteToolCall {
     const aiId = session.aiId;
     return async (call) => {
       // A turn that was computing when the AI was stopped must not change the
-      // persona afterwards.
+      // persona afterwards, and a tier-2 action must not run without the
+      // owner's approval.
       if (!sessionIsLive(session)) {
         return { content: 'the AI was stopped' };
       }
@@ -452,6 +490,9 @@ export function createAgentGateway(
         logger.info({ aiId, tool: call.tool, ok: true }, 'AI persona updated by chat');
         return { content: 'ok', notice: formatPersonaUpdatedLine(call.summary) };
       }
+      if (call.tool === REQUEST_ACTION_TOOL) {
+        return runRequestAction(session, call);
+      }
       const outcome = await revertPersonaFromChat(deps.db, aiId);
       logger.info({ aiId, tool: call.tool, ok: true }, 'AI persona revert by chat');
       if (outcome === 'nothing to undo') {
@@ -459,6 +500,55 @@ export function createAgentGateway(
       }
       return { content: 'ok', notice: PERSONA_RESTORED_LINE };
     };
+  }
+
+  // Routes a `request_action` call into the action gateway. The ai id and
+  // group id always come from the session, never from the call: a model
+  // that smuggles `aiId` or `groupId` inside `args` cannot change who is
+  // asked. The mapping below is the exact model-facing wording per
+  // outcome (see spec); no adapter text beyond the success `summary`
+  // reaches the AI.
+  async function runRequestAction(
+    session: AiSession,
+    call: Extract<ValidToolCall, { tool: typeof REQUEST_ACTION_TOOL }>,
+  ): Promise<ToolExecution> {
+    const actions = deps.actions;
+    if (actions === undefined) {
+      // No action gateway wired: the tool was never offered, so this call
+      // is treated as an unknown tool and answered honestly.
+      return { content: 'invalid: unknown tool: request_action' };
+    }
+    let outcome: RequestOutcome;
+    try {
+      outcome = await actions.request({
+        aiId: session.aiId,
+        action: call.action,
+        args: call.args,
+        requestedBy: session.aiJid,
+      });
+    } catch (error) {
+      // The gateway is best-effort: a thrown error here would mean a bug
+      // we cannot leak. Log the class name only and answer as failed.
+      logger.warn(
+        { err: errorName(error), aiId: session.aiId, action: call.action },
+        'action gateway request threw',
+      );
+      return { content: 'the action failed' };
+    }
+    switch (outcome.status) {
+      case 'executed':
+        return { content: `done: ${outcome.summary}` };
+      case 'pending_approval':
+        // The card message is the owner's view; the model just gets a
+        // short fixed line so it knows to wait.
+        return {
+          content: "waiting for your owner's approval; a card was posted in this chat",
+        };
+      case 'failed':
+        return { content: 'the action failed' };
+      case 'denied':
+        return { content: `denied: ${denialReasonForModel(outcome.reason)}` };
+    }
   }
 
   function scheduleRetry(session: AiSession): void {
@@ -1297,7 +1387,8 @@ export function createAgentGateway(
         baseUrl: baseUrl,
         virtualKey,
         model: modelNameForAi(session.aiId),
-        executeTool: executePersonaTool(session),
+        executeTool: executeToolCall(session),
+        ...(deps.actions === undefined ? {} : { tools: buildTools(deps.actions.listActions()) }),
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
         onDelta: (textSoFar) => {
           if (sessionIsLive(session)) {

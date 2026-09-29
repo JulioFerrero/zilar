@@ -30,15 +30,22 @@ export interface ActionCost {
 // `safeParse(input.args)` and uses the parsed value as the
 // canonical-JSON/args-hash input. `describe` builds the card text
 // (`summary` is the bolded line, `details` the body, both bounded).
+// `description` is one short line the model sees in the `request_action`
+// tool definition, so it knows what each adapter does without a long card.
 // `execute` performs the side effect and returns the success summary.
 export interface ActionAdapter<Args> {
   name: string;
+  description: string;
   tier: 0 | 1 | 2;
   argsSchema: z.ZodType<Args>;
   describe: (args: Args) => { summary: string; details?: string };
   estimateCost?: (args: Args) => ActionCost;
   execute: (ctx: ActionContext, args: Args) => Promise<ActionResult>;
 }
+
+// The hard ceiling on an adapter's description: short enough to fit one
+// line in the `request_action` tool definition next to the action name.
+export const ADAPTER_DESCRIPTION_MAX_LENGTH = 200;
 
 // A registry is a plain object indexed by adapter name. The gateway keeps
 // it in a typed record so an unknown action answers `unknown_action`
@@ -54,8 +61,9 @@ const ADAPTER_NAME_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 
 // Shape checks performed at startup so a buggy adapter never reaches the
 // request path: `tier` must be one of the three values the spec defines,
-// `name` must match the dotted pattern and be non-empty, and `describe` /
-// `execute` must be functions.
+// `name` must match the dotted pattern and be non-empty, `description`
+// must be a one-line string under the ceiling, and `describe` / `execute`
+// must be functions.
 export function buildRegistry(adapters: ReadonlyArray<ActionAdapter<unknown>>): ActionRegistry {
   const registry: ActionRegistry = {};
   for (const adapter of adapters) {
@@ -72,6 +80,14 @@ export function buildRegistry(adapters: ReadonlyArray<ActionAdapter<unknown>>): 
     }
     if (adapter.tier !== 0 && adapter.tier !== 1 && adapter.tier !== 2) {
       throw new AdapterRegistryError(`adapter "${adapter.name}" has invalid tier ${adapter.tier}`);
+    }
+    if (typeof adapter.description !== 'string' || adapter.description.trim() === '') {
+      throw new AdapterRegistryError(`adapter "${adapter.name}" is missing a description`);
+    }
+    if (adapter.description.length > ADAPTER_DESCRIPTION_MAX_LENGTH) {
+      throw new AdapterRegistryError(
+        `adapter "${adapter.name}" description is over ${ADAPTER_DESCRIPTION_MAX_LENGTH} characters`,
+      );
     }
     if (typeof adapter.describe !== 'function') {
       throw new AdapterRegistryError(`adapter "${adapter.name}" is missing describe`);

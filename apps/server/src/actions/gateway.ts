@@ -74,10 +74,14 @@ export interface ActionGatewayDependencies {
 // The handle returned by `createActionGateway`. `request` is the only
 // public surface right now; `onApprovalDecided` is wired into the
 // approvals route, and `recoverStuck` runs at startup and on a timer.
+// `listActions` is the read-only view the agent gateway uses to build the
+// `request_action` tool definition: every registered action's name and
+// description, sorted by name so the order is stable for the model.
 export interface ActionGateway {
   request: (params: RequestParams) => Promise<RequestOutcome>;
   onApprovalDecided: (approvalId: string) => Promise<void>;
   recoverStuck: () => Promise<void>;
+  listActions: () => Array<{ name: string; description: string }>;
 }
 
 export interface RequestParams {
@@ -104,7 +108,19 @@ export function createActionGateway(deps: ActionGatewayDependencies): ActionGate
     request: (params) => runRequest(deps, params, now),
     onApprovalDecided: (approvalId) => runOnApprovalDecided(deps, approvalId, now),
     recoverStuck: () => runRecoverStuck(deps, now),
+    listActions: () => listActions(deps),
   };
+}
+
+// The model-facing view of the registry: just name + description, sorted
+// by name so the tool definition the AI sees is the same on every turn.
+// The full adapter (tier, schema, execute) stays behind the gateway.
+function listActions(
+  deps: ActionGatewayDependencies,
+): Array<{ name: string; description: string }> {
+  return Object.values(deps.adapters)
+    .map((adapter) => ({ name: adapter.name, description: adapter.description }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
 // Handle returned by `startRecoveryStuckTimer`. The sweeper pattern: a

@@ -9,6 +9,7 @@ const strictSchema = z.object({ required: z.number().int().nonnegative() });
 function adapter(tier: 0 | 1 | 2, schema: z.ZodTypeAny = echoSchema): ActionAdapter<unknown> {
   return {
     name: 'demo.echo',
+    description: 'Echo adapter.',
     tier,
     argsSchema: schema,
     describe: () => ({ summary: 'echo' }),

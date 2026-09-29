@@ -1,10 +1,16 @@
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
-import { AdapterRegistryError, buildRegistry, type ActionAdapter } from './registry';
+import {
+  ADAPTER_DESCRIPTION_MAX_LENGTH,
+  AdapterRegistryError,
+  buildRegistry,
+  type ActionAdapter,
+} from './registry';
 
 function makeAdapter(overrides: Partial<ActionAdapter<unknown>> = {}): ActionAdapter<unknown> {
   return {
     name: 'demo.echo',
+    description: 'Echoes the input back.',
     tier: 0,
     argsSchema: z.object({ value: z.string() }),
     describe: () => ({ summary: 'echo' }),
@@ -57,6 +63,28 @@ describe('buildRegistry', () => {
         makeAdapter({ execute: undefined as unknown as ActionAdapter<unknown>['execute'] }),
       ]),
     ).toThrow(AdapterRegistryError);
+  });
+
+  it('rejects a missing or empty description', () => {
+    expect(() =>
+      buildRegistry([
+        makeAdapter({ description: undefined as unknown as ActionAdapter<unknown>['description'] }),
+      ]),
+    ).toThrow(AdapterRegistryError);
+    expect(() => buildRegistry([makeAdapter({ description: '' })])).toThrow(AdapterRegistryError);
+    expect(() => buildRegistry([makeAdapter({ description: '   ' })])).toThrow(
+      AdapterRegistryError,
+    );
+  });
+
+  it('rejects an over-long description', () => {
+    const tooLong = 'a'.repeat(ADAPTER_DESCRIPTION_MAX_LENGTH + 1);
+    expect(() => buildRegistry([makeAdapter({ description: tooLong })])).toThrow(
+      AdapterRegistryError,
+    );
+    // No off-by-one: exactly the cap is accepted.
+    const atCap = 'a'.repeat(ADAPTER_DESCRIPTION_MAX_LENGTH);
+    expect(() => buildRegistry([makeAdapter({ description: atCap })])).not.toThrow();
   });
 
   it('accepts an empty list', () => {
