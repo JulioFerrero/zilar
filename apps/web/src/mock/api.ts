@@ -1,14 +1,12 @@
 import type { ChatEntry, Connection, Contact, Machine, Me, PublicAi } from '@/lib/api';
-import { isMockApiEnabled } from './gate';
 import { currentUserId, PEOPLE } from './ids';
 import { mockChats } from './chats';
 import { mockGroupDetails } from './groups';
 
 /**
  * The standalone mock HTTP layer (T-0069). In mock mode the app needs no
- * server: `request()` in lib/api.ts answers from here, and a global fetch
- * wrapper (see `installMockFetch`) covers the few callers that still use
- * `fetch` directly. Data lives in memory for the page load only.
+ * server: `request()` in lib/api.ts answers from here. Data lives in memory
+ * for the page load only.
  */
 export interface MockRequestOptions {
   delayMs?: number;
@@ -28,6 +26,7 @@ interface MockState {
   ais: PublicAi[];
   connections: Connection[];
   nextAiSequence: number;
+  nextConnectionSequence: number;
   machines: Machine[];
 }
 
@@ -140,6 +139,7 @@ function seedState(): MockState {
       },
     ],
     nextAiSequence: 1,
+    nextConnectionSequence: 1,
   };
 }
 
@@ -233,6 +233,21 @@ function patchAi(ai: PublicAi, init: RequestInit): Response {
   if (body.limits !== undefined) updated.limits = readLimits(body.limits);
   state.ais = state.ais.map((item) => (item.id === ai.id ? updated : item));
   return jsonResponse(updated);
+}
+
+function createConnection(init: RequestInit): Response {
+  const body = readJsonBody(init);
+  const id = `conn-mock-${state.nextConnectionSequence}`;
+  state.nextConnectionSequence += 1;
+  const created: Connection = {
+    id,
+    provider: typeof body.provider === 'string' && body.provider !== '' ? body.provider : 'openai',
+    label: typeof body.label === 'string' && body.label !== '' ? body.label : null,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  };
+  state.connections = [created, ...state.connections];
+  return jsonResponse(created, 201);
 }
 
 function chatEntries(): ChatEntry[] {
@@ -331,10 +346,14 @@ export async function mockRequest(
   if (head === 'connections') {
     if (first === undefined) {
       if (method === 'GET') return jsonResponse(state.connections);
+      if (method === 'POST') return createConnection(init);
       return notImplemented();
     }
     const connectionId = decodeURIComponent(first);
     if (second === 'test' && method === 'POST') {
+      if (!state.connections.some((item) => item.id === connectionId)) {
+        return notFound('No such connection.');
+      }
       return jsonResponse({ ok: true });
     }
     if (second === undefined && method === 'DELETE') {
@@ -428,64 +447,4 @@ function createPairingCodeResponse(): Response {
 
 function conflict(code: string, message: string): Response {
   return jsonResponse({ error: { code, message } }, 409);
-}
-
-const API_PREFIX = '/api';
-
-/** The API path of a fetch URL, or null when the URL is not under `/api`. */
-function apiPath(url: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url, 'http://localhost');
-  } catch {
-    return null;
-  }
-  if (parsed.pathname !== API_PREFIX && !parsed.pathname.startsWith(`${API_PREFIX}/`)) {
-    return null;
-  }
-  return `${parsed.pathname.slice(API_PREFIX.length)}${parsed.search}`;
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  if (typeof input === 'string') {
-    return input;
-  }
-  if (input instanceof URL) {
-    return input.href;
-  }
-  return input.url;
-}
-
-/** A fetch that serves `/api` from `mockRequest` and passes everything else through. */
-export function createMockFetch(
-  realFetch: typeof globalThis.fetch,
-  options: MockRequestOptions = {},
-): typeof globalThis.fetch {
-  return (input, init) => {
-    const path = apiPath(urlOf(input));
-    if (path === null) {
-      return realFetch(input, init);
-    }
-    return mockRequest(path, init ?? {}, options);
-  };
-}
-
-/**
- * Replaces `globalThis.fetch` with the mock wrapper. Needed for the connections
- * page, which mirrors `request()` with its own `fetch` (T-0028) and cannot be
- * edited by this task.
- */
-export function installMockFetch(options: MockRequestOptions = {}): () => void {
-  const realFetch = globalThis.fetch;
-  const wrapped = createMockFetch(realFetch, options);
-  globalThis.fetch = wrapped;
-  return () => {
-    globalThis.fetch = realFetch;
-  };
-}
-
-// The app is server-less as soon as the mock layer loads. Unit tests fake
-// `fetch` themselves, so `isMockApiEnabled` keeps this off there.
-if (isMockApiEnabled() && typeof globalThis.fetch === 'function') {
-  installMockFetch();
 }

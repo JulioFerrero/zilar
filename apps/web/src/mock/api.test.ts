@@ -26,7 +26,7 @@ import {
   updateMe,
 } from '@/lib/api';
 import { isMockApiEnabled } from '@/mock/gate';
-import { createMockFetch, mockRequest, resetMockApi, setMockDelay } from './api';
+import { mockRequest, resetMockApi, setMockDelay } from './api';
 
 const mockEnabled = vi.mocked(isMockApiEnabled);
 
@@ -99,9 +99,27 @@ describe('mockRequest', () => {
     expect((await listAis()).some((ai) => ai.id === created.id)).toBe(false);
   });
 
-  it('serves two connections and handles test and delete', async () => {
+  it('serves two connections and handles create, test and delete', async () => {
     const connections = await listConnections();
     expect(connections).toHaveLength(2);
+
+    const created = await mockRequest('/connections', {
+      method: 'POST',
+      body: JSON.stringify({ provider: 'github', key: 'ghp_test', label: 'Work' }),
+    });
+    expect(created.status).toBe(201);
+    const createdBody = z
+      .object({
+        id: z.string(),
+        provider: z.string(),
+        label: z.string().nullable(),
+        status: z.string(),
+        createdAt: z.string(),
+      })
+      .parse(await created.json());
+    expect(createdBody.provider).toBe('github');
+    expect(createdBody.label).toBe('Work');
+    expect(await listConnections()).toHaveLength(3);
 
     const tested = await mockRequest('/connections/conn-openai/test', { method: 'POST' });
     expect(tested.status).toBe(200);
@@ -109,7 +127,12 @@ describe('mockRequest', () => {
 
     const removed = await mockRequest('/connections/conn-openai', { method: 'DELETE' });
     expect(removed.status).toBe(204);
-    expect(await listConnections()).toHaveLength(1);
+    expect(await listConnections()).toHaveLength(2);
+  });
+
+  it('test on an unknown connection answers 404', async () => {
+    const response = await mockRequest('/connections/no-such/test', { method: 'POST' });
+    expect(response.status).toBe(404);
   });
 
   it('answers 404 mock_not_implemented for anything else', async () => {
@@ -237,17 +260,5 @@ describe('the mock layer is gated', () => {
 
     expect((await getMe()).name).toBe('A');
     expect(fetchMock).toHaveBeenCalledWith('/api/me', expect.anything());
-  });
-
-  it('wraps fetch only for /api URLs and passes the rest through', async () => {
-    const realFetch = vi.fn(async () => jsonResponse(200, { ok: true }));
-    const mockFetch = createMockFetch(realFetch as unknown as typeof globalThis.fetch);
-
-    await mockFetch('/health');
-    expect(realFetch).toHaveBeenCalledWith('/health', undefined);
-
-    const response = await mockFetch('/api/me');
-    expect(response.status).toBe(200);
-    expect(realFetch).toHaveBeenCalledTimes(1);
   });
 });

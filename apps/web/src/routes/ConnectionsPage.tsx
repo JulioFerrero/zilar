@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ArrowLeft, Eye, EyeOff, Link, Trash2, Zap } from 'lucide-react';
-import { z } from 'zod';
-import { API_BASE } from '@/lib/api';
+import {
+  type Connection,
+  type ConnectionTestResult,
+  createConnection,
+  deleteConnection,
+  listConnections,
+  testConnection as testConnectionApi,
+} from '@/lib/api';
 
 const PROVIDERS = [
   { id: 'openai', label: 'OpenAI' },
@@ -16,51 +22,6 @@ const PROVIDERS = [
 
 function providerLabel(id: string): string {
   return PROVIDERS.find((provider) => provider.id === id)?.label ?? id;
-}
-
-const connectionSchema = z.object({
-  id: z.string(),
-  provider: z.string(),
-  label: z.string().nullable(),
-  status: z.string(),
-  createdAt: z.string(),
-});
-
-type Connection = z.infer<typeof connectionSchema>;
-
-const errorBodySchema = z.object({ error: z.object({ message: z.string() }) });
-
-// Mirrors the shared `request` in lib/api, but lives here because that file is
-// out of scope for this task. Throws an Error carrying the server's message.
-async function request(path: string, init: RequestInit = {}): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}${path}`, {
-      credentials: 'same-origin',
-      ...init,
-      headers: {
-        Accept: 'application/json',
-        ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new Error('Could not reach the server');
-  }
-
-  const raw: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const parsed = errorBodySchema.safeParse(raw);
-    throw new Error(
-      parsed.success ? parsed.data.error.message : `Request failed (${response.status})`,
-    );
-  }
-  return raw;
-}
-
-async function loadConnections(): Promise<Connection[]> {
-  const raw = await request('/connections');
-  return z.array(connectionSchema).parse(raw);
 }
 
 export function ConnectionsPage() {
@@ -78,7 +39,7 @@ export function ConnectionsPage() {
 
   const reload = async () => {
     try {
-      const list = await loadConnections();
+      const list = await listConnections();
       setConnections(list);
       setStatus('ready');
     } catch (error) {
@@ -89,7 +50,7 @@ export function ConnectionsPage() {
 
   useEffect(() => {
     let active = true;
-    loadConnections()
+    listConnections()
       .then((list) => {
         if (active) {
           setConnections(list);
@@ -108,10 +69,7 @@ export function ConnectionsPage() {
   }, []);
 
   const addConnection = async (input: { provider: string; key: string; label?: string }) => {
-    await request('/connections', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
+    await createConnection(input);
     setShowForm(false);
     await reload();
   };
@@ -119,13 +77,12 @@ export function ConnectionsPage() {
   const testConnection = async (id: string) => {
     setTestingId(id);
     try {
-      const raw = await request(`/connections/${id}/test`, { method: 'POST' });
-      const parsed = z.object({ ok: z.boolean(), message: z.string().optional() }).parse(raw);
+      const result: ConnectionTestResult = await testConnectionApi(id);
       setTestResults((previous) => ({
         ...previous,
-        [id]: parsed.ok
+        [id]: result.ok
           ? { ok: true }
-          : { ok: false, message: parsed.message ?? 'The key was rejected' },
+          : { ok: false, message: result.message ?? 'The key was rejected' },
       }));
     } catch (error) {
       setTestResults((previous) => ({
@@ -143,7 +100,7 @@ export function ConnectionsPage() {
   const confirmRemove = async (id: string) => {
     setRemoveError('');
     try {
-      await request(`/connections/${id}`, { method: 'DELETE' });
+      await deleteConnection(id);
       setConnections((previous) => previous.filter((connection) => connection.id !== id));
       setConfirmingId(null);
     } catch (error) {
