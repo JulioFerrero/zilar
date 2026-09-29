@@ -1,7 +1,7 @@
 ---
 id: T-0085
 title: Mobile — react, delete for everyone and edit your own messages (send side)
-status: review
+status: merged
 milestone: M2
 branch: task/T-0085-mobile-edits-send
 model: minimax-coding-plan/MiniMax-M3
@@ -129,4 +129,13 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved with lead changes, merged (2026-09-29). Rebased on main; format, lint, typecheck, test (mobile 348 passed) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand, store diff and composer flow in full.
+
+**Lead changes:**
+- **A lint rule was switched off to pass.** The composer seeded its text in a `useEffect` with `// eslint-disable-next-line react-hooks/exhaustive-deps`; without the comment oxlint fails twice (`set-state-in-effect`, `exhaustive-deps`). AGENTS.md forbids disabling lint. The seeding now happens while rendering, keyed on the edit target id (`seededFor` state), and the previous draft is state instead of a ref; no effect, no disable comment. Behavior is the same (prefill on entering edit mode, restore on cancel, a remote correction does not clobber typing).
+- **The edit bar could leak into another chat** because `editTarget` is global in the store: the chat screen now cancels the edit when it unmounts or the chat changes.
+- `[id].tsx` was outside the allowed files; the change there (wiring the callbacks and an inline action error with Dismiss) is minimal and is accepted (I allowed it in my reply to the worker's permission prompt). A parameter named `_message` was renamed.
+
+**Checked:** `react`, `editMessage` and `deleteForEveryone` mirror the web store: alias-resolved local key, wire target from the server id (reactions), origin id (edits, and retractions in a DM) or stanza-id (retractions in a group); a message without a server id does nothing; `canEditMessage`/`canDeleteMessage` gate them; optimistic apply through the shared reducers with a real rollback (`restoreMessage` + `restoreEdits`) and an inline `actionError`; the sheet shows quick reactions, Edit (own text within 48 h) and Delete with a confirm step (own messages only); chips toggle my reaction. The mock store's new actions are no-ops (mock mode cannot send).
+
+**Open for Julio (device check):** on a real phone in a DM and in a group: react from the sheet and by tapping a chip; delete one of your messages (confirm) and see the tombstone on the web; edit one of your messages (the input is prefilled, "Save edit") and see "edited" on the web; cancel an edit and get your draft back; switch chats mid-edit. The bubble and sheet have no render tests (no test renderer in the project).

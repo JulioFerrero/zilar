@@ -38,6 +38,7 @@ function Chat() {
     state.actionError?.chatId === chatId ? state.actionError : undefined,
   );
   const dismissActionError = useChatStore((state) => state.dismissActionError);
+  const cancelEdit = useChatStore((state) => state.cancelEdit);
   const currentUserId = useChatStore((state) => state.currentUserId);
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
 
@@ -46,6 +47,14 @@ function Chat() {
       openChat(chatId);
     }
   }, [chatId, openChat]);
+
+  // An edit belongs to one chat: leaving it (or switching chats) drops the
+  // edit mode so the composer of another chat never shows a stale edit bar.
+  useEffect(() => {
+    return () => {
+      cancelEdit();
+    };
+  }, [chatId, cancelEdit]);
 
   if (!chat) {
     // The chats are still arriving: this is a loading state, not "not found".
@@ -80,7 +89,7 @@ function Chat() {
         <MessageList
           chat={chat}
           onReply={startReply}
-          onReact={(_message, emoji) => react(chat.id, _message.id, emoji)}
+          onReact={(message, emoji) => react(chat.id, message.id, emoji)}
           onEdit={(message) => startEdit(chat.id, message.id)}
           onDelete={(message) => deleteForEveryone(chat.id, message.id)}
         />

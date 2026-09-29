@@ -1,5 +1,5 @@
 import { ArrowUp, Mic, Paperclip, Smile, X } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -78,26 +78,24 @@ export function Composer({ onSend, replyTo, onCancelReply, onTyping, title }: Co
     if (target === undefined) return undefined;
     return state.messages(target.chatId).find((message) => message.id === target.messageId)?.text;
   });
-  const previousDraft = useRef('');
   const [text, setText] = useState('');
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
   // Entering edit mode prefills the input with the message's text; leaving it
-  // restores whatever the user had typed before they tapped Edit. We key the
-  // effect on the message id (a string) so a later inbound correction (which
-  // only changes `targetText`) does not clobber the user's typing.
+  // restores whatever the user had typed before they tapped Edit. The seeding
+  // runs while rendering, keyed on the message id (a string), instead of in an
+  // effect: a later inbound correction (which only changes `targetText`) does
+  // not clobber the user's typing, and no state is set from an effect.
   const editingId =
     editTarget === undefined ? undefined : `${editTarget.chatId}:${editTarget.messageId}`;
-  useEffect(() => {
-    if (editingId === undefined) {
-      previousDraft.current = '';
-      return;
+  const [seededFor, setSeededFor] = useState<string | undefined>(undefined);
+  const [previousDraft, setPreviousDraft] = useState('');
+  if (editingId !== seededFor) {
+    setSeededFor(editingId);
+    if (editingId !== undefined) {
+      setPreviousDraft(text);
+      setText(targetText ?? '');
     }
-    previousDraft.current = text;
-    setText(targetText ?? '');
-    // Only seed once per edit session: a fresh `targetText` while editing
-    // (e.g. a remote correction) is the user's keystrokes, not the store's.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingId]);
+  }
   const canSend = text.trim().length > 0;
   const iconColor = ICON[scheme];
   const placeholder = title === undefined ? 'Message' : `Message ${title}`;
@@ -111,7 +109,7 @@ export function Composer({ onSend, replyTo, onCancelReply, onTyping, title }: Co
       // The sender id check and the no-op guard live in the store.
       editMessage(editTarget.chatId, editTarget.messageId, text);
       cancelEdit();
-      previousDraft.current = '';
+      setPreviousDraft('');
       setText('');
       setInputHeight(MIN_INPUT_HEIGHT);
       return;
@@ -122,10 +120,9 @@ export function Composer({ onSend, replyTo, onCancelReply, onTyping, title }: Co
   };
 
   const handleCancelEdit = () => {
-    const restored = previousDraft.current;
     cancelEdit();
-    previousDraft.current = '';
-    setText(restored);
+    setText(previousDraft);
+    setPreviousDraft('');
   };
 
   const handleChange = (value: string) => {
