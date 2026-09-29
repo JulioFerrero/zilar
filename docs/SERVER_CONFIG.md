@@ -1,0 +1,215 @@
+# Galena server configuration reference
+
+This page is the source of truth for running `@galena`. Every variable here is read by `apps/server/src/config.ts` or `apps/server/src/xmpp/config.ts`; the description and default come from those files. Placeholders only — use `CHANGE_ME` everywhere a real value would go.
+
+## 1. What runs where
+
+A Galena install has one TypeScript server, one React web app, one Postgres database (with `pgvector` enabled), one ejabberd instance, one LiteLLM proxy and an optional runner hub. The numbers below are what the code actually binds to; check them against `infra/docker-compose.dev.yml` and `apps/server/src/config.ts` before changing anything.
+
+| Process | What it is | Default port (loopback) | Source |
+|---|---|---|---|
+| Galena server (`@galena`) | `@hono/node-server` HTTP API | `PORT` (default `3000`; the local dev stack uses `3188`) | `config.ts:39`, `index.ts:202` |
+| Web dev server (Vite) | React app, proxies `/api` to the server | `5173` | `apps/web/vite.config.ts:16` |
+| Postgres (`pgvector/pgvector:0.8.6-pg18-trixie`) | data store | `5432` | `infra/docker-compose.dev.yml:21` |
+| ejabberd (`26.07`) | XMPP server (C2S + admin API + WebSocket) | `5222` (C2S), `5280` (HTTP/WS + admin) | `infra/docker-compose.dev.yml:49-50` |
+| LiteLLM proxy (`1.102.1`) | LLM gateway and key vault | `4000` | `infra/docker-compose.dev.yml:87`, `ai/litellm-client.ts:6` |
+| Runner hub (optional) | tunnel for approved AI runners | `RUNNER_HUB_PORT` (default `3189`) | `config.ts:77-84`, `index.ts:212` |
+
+Three ports the loopback dev stack never uses: anything on `3000` belongs to Julio's Next.js app and must stay free. The Galena server's `BETTER_AUTH_URL` defaults to `PUBLIC_URL` (`config.ts:103`), and `apps/web/vite.config.ts:16` proxies `/api` to `GALENA_API_URL` (default `http://localhost:3000`), so the dev stack runs the server with `PORT=3188` and Vite with `GALENA_API_URL=http://localhost:3188`. See `docs/LEAD_PLAYBOOK.md` §12 for the exact start commands.
+
+## 2. Environment variables
+
+The server reads every variable below. Two schemas feed into one `ServerConfig`:
+
+- the core schema at `apps/server/src/config.ts:36-104`
+- the XMPP schema at `apps/server/src/xmpp/config.ts:13-21` (called from `config.ts:118`)
+
+A value shown as `CHANGE_ME` here is what `apps/server/.env.example` ships with. Real values go in `apps/server/.env` and `infra/.env`; both are git-ignored and never logged (`apps/server/src/logger.ts:5-14` redacts secrets).
+
+**Secret** in the *Notes* column means: never commit, never paste into chat, never echo in a config error. The config schemas validate presence, length and shape but never print a value back (`config.ts:142-158`, `xmpp/config.ts:38-44`).
+
+### Core
+
+| Variable | Required? | Default | What it does | Notes |
+|---|---|---|---|---|
+| `NODE_ENV` | No | `development` | One of `development`, `test`, `production`. Switches `createLogger` between `pino-pretty` and plain JSON (`logger.ts:23-30`), and `createMailer` refuses `production` without a real provider (`auth/mailer.ts:20-27`). | Not a secret. |
+| `PORT` | No | `3000` | TCP port the HTTP server binds to (`index.ts:202`). Integer in `[1, 65535]`. | The local stack uses `3188`; `3000` belongs to another app on this host. |
+| `DATABASE_URL` | Yes | — | Postgres connection string used by every Drizzle call (`db/client.ts`, `index.ts:47`). Schema accepts `postgres://` and `postgresql://`. | **Secret.** Password goes here. |
+| `LOG_LEVEL` | No | `info` | One of `fatal`, `error`, `warn`, `info`, `debug`, `trace` (`config.ts:41`). Passed straight to pino (`logger.ts:18`). | Not a secret. |
+| `PUBLIC_URL` | No | `http://localhost:3000` | Public base URL the server is reachable at. Used for cookie scoping, the `allowedOrigins` allow-list (`app.ts:311-316`) and as the default for `BETTER_AUTH_URL`. | Not a secret, but a wrong value breaks CORS on the web app. |
+| `BETTER_AUTH_SECRET` | Yes | — | Secret Better Auth uses to sign sessions and encrypt data. Must be at least 32 characters (`config.ts:43`); `config.test.ts:184-192` proves a short one fails validation without echoing the value. | **Secret.** Generate with `openssl rand -base64 32`. |
+| `BETTER_AUTH_URL` | No | `PUBLIC_URL` | Base URL Better Auth advertises. Defaults to `PUBLIC_URL` (`config.ts:103`). | Not a secret. |
+| `WEB_ORIGINS` | No | `http://localhost:5173` | Comma-separated list of web origins allowed to call the API with cookies (`app.ts:130-144`). Each entry is normalised to its URL origin (scheme + host + port) and deduplicated (`config.ts:24-34`). Must contain at least one entry. | Not a secret. The empty list fails at startup. |
+
+### XMPP / ejabberd
+
+| Variable | Required? | Default | What it does | Notes |
+|---|---|---|---|---|
+| `EJABBERD_API_URL` | No | `http://127.0.0.1:5280/api` | Admin HTTP API the server uses to create accounts, add roster items and manage MUC rooms (`xmpp/admin-client.ts`, `xmpp/config.ts:14`). Trailing slashes are stripped (`xmpp/config.ts:46-48`, `56`). | Not a secret, but in production it should be `https://`. |
+| `EJABBERD_ADMIN_JID` | Yes | — | Bare JID of the ejabberd admin account the server logs in as. Must match `EJABBERD_ADMIN_JID` in `infra/.env` so the container registers the same account on first boot (`infra/docker-compose.dev.yml:60`). | **Treat as semi-secret** — knowing the admin JID plus its password is enough to call the admin API. |
+| `EJABBERD_ADMIN_PASSWORD` | Yes | — | Password for the admin account above. Must match `EJABBERD_ADMIN_PASSWORD` in `infra/.env` so the container's `REGISTER_ADMIN_PASSWORD` accepts it (`infra/docker-compose.dev.yml:61`). | **Secret.** Never log. |
+| `XMPP_DOMAIN` | No | `galena.localhost` | XMPP domain users are registered on. Lowercase host name, `1-253` characters (`xmpp/config.ts:5-9`, `17`). | Not a secret. |
+| `XMPP_MUC_DOMAIN` | No | `rooms.galena.localhost` | MUC (group chat) domain. Same shape rules as `XMPP_DOMAIN` (`xmpp/config.ts:18`). | Not a secret. |
+| `XMPP_WS_PUBLIC_URL` | No | `ws://127.0.0.1:5280/ws` | Public WebSocket URL clients connect to. Must be `ws://` or `wss://` (`xmpp/config.ts:19`). | Not a secret. In production use `wss://`. |
+| `GALENA_XMPP_JWT_SECRET` | Yes | — | HS256 secret the server signs short-lived XMPP login JWTs with. Must be at least 32 characters and match `GALENA_XMPP_JWT_SECRET` in `infra/.env` so the ejabberd container's `jwt-entrypoint.sh` derives the same JWK (`infra/docker-compose.dev.yml:63`). | **Secret.** Generate with `openssl rand -base64 48`. Changing it later invalidates every issued token. |
+
+### AI (LiteLLM) and provider-key encryption
+
+| Variable | Required? | Default | What it does | Notes |
+|---|---|---|---|---|
+| `LITELLM_BASE_URL` | No | none → falls back to `http://127.0.0.1:4000` (`ai/litellm-client.ts:6`) | Base URL for LiteLLM admin calls and the gateway's LLM calls (`ai/integration.ts:19`, `agents/gateway.ts:283`). | Not a secret. The default lives in the AI module, not the schema, so an absent variable does not change the parsed config (`ai/litellm-client.ts:4-6`). |
+| `LITELLM_MASTER_KEY` | No | — | Bearer token for the LiteLLM admin API (`ai/integration.ts:18`, `ai/litellm-client.ts`). Absent → the AI and gateway code refuses to call LiteLLM; every AI route answers 503 (`app.ts:210-227`). | **Secret.** |
+| `GALENA_KEY_ENCRYPTION_KEY` | No | — | Envelope-encryption master key for provider keys stored in `provider_connections` (`connections/crypto.ts:1-103`). Must be at least 32 characters when set (`config.ts:61`). Absent → `provider_connections` and AI write routes answer 503 (`app.ts:184-203`, `app.ts:204-227`); the cipher is what unlocks AI access to LiteLLM. | **Secret.** Generate with `openssl rand -base64 48`. Changing it makes every stored provider key undecryptable. |
+
+### GitHub App (git proxy)
+
+| Variable | Required? | Default | What it does | Notes |
+|---|---|---|---|---|
+| `GITHUB_APP_ID` | No | — | GitHub App id used to sign installation-token JWTs (`git/token.ts:41-69`). | **Treat as semi-secret.** All three `GITHUB_APP_*` variables must be set together; a partial set fails at startup (`config.ts:86-100`). |
+| `GITHUB_APP_PRIVATE_KEY` | No | — | PKCS#8 PEM the server signs the App JWT with. Held in memory only; injected by the proxy per request (`git/proxy.ts:1-179`). | **Secret.** The PEM body must be on one logical line in `.env`; wrap in single quotes. |
+| `GITHUB_APP_INSTALLATION_ID` | No | — | Installation id GitHub exchanges the App JWT for an installation access token (`git/token.ts:72-115`). | **Treat as semi-secret.** |
+
+The git proxy uses `https://api.github.com` by default (`git/token.ts:12`); no env variable overrides it today.
+
+### Feature flags
+
+| Variable | Required? | Default | What it does | Notes |
+|---|---|---|---|---|
+| `AGENT_GATEWAY_ENABLED` | No | `false` | Off by default; set to `'true'` to enable (`config.ts:65-68`). Wires the agent gateway into `index.ts` and starts every active AI over XMPP (`agents/gateway.ts:1353-1364`). Needs `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY` and `GALENA_KEY_ENCRYPTION_KEY` to do anything useful — without any of those the gateway logs `agent gateway needs LiteLLM and the key cipher; staying off` and stays off (`agents/gateway.ts:1361-1364`). | Not a secret. |
+| `RUNNER_HUB_ENABLED` | No | `false` | Off by default; set to `'true'` to enable the tunnel for approved runners (`config.ts:73-76`). When on, the server binds `RUNNER_HUB_PORT` to `127.0.0.1` (`machines/hub.ts:200-344`) and validates that the gateway URL is `http://` (`machines/hub.ts:356-365`). A misconfigured URL exits before the HTTP server starts (`index.ts:56-59`). | Not a secret. |
+| `RUNNER_HUB_PORT` | No | `3189` | TCP port the runner hub tunnel binds to. Integer in `[1, 65535]` (`config.ts:77-84`). | Not a secret. |
+
+### Voice, git proxy, limits / timeouts
+
+The voice engine itself (`voice/engine.ts:1-204`) takes no env vars; the routes mount with a default `ffmpeg`/`ffprobe` from `PATH` and no upload-size cap is configurable today. The git proxy takes no env vars apart from the three `GITHUB_APP_*` ones above. The only timeout/cap constants live in code:
+
+- approvals sweeper ticks every `60_000` ms by default (`approvals/sweeper.ts:40`)
+- action-recovery timer ticks every `5 * 60_000` ms by default (`actions/gateway.ts:128`)
+- agent gateway reconciles every `RECONCILE_INTERVAL_MS = 60_000` ms (`agents/gateway.ts:89`)
+- agent gateway reconnect backoff: base `RETRY_BASE_DELAY_MS = 5_000` ms, doubles per attempt, capped at `RETRY_MAX_DELAY_MS = 60_000` ms (`agents/gateway.ts:91-93`)
+- agent gateway room rate limit: `GROUP_TURNS_PER_WINDOW = 6` turns per `GROUP_RATE_WINDOW_MS = 10 * 60_000` ms (`agents/gateway.ts:113-114`)
+- voice probe timeout `10_000` ms, voice convert timeout `30_000` ms (`voice/engine.ts:3-4`)
+- graceful shutdown grace period `3_000` ms, hard exit `15_000` ms (`index.ts:271-272`)
+- action gateway: approval TTL `30 * 60_000` ms, stuck-running cutoff `10 * 60_000` ms, summary cap 500 chars, stored-args cap `20 * 1024` bytes (`actions/gateway.ts:39-53`)
+
+None of these are env vars yet; they are values to be aware of when sizing or debugging the server.
+
+## 3. Feature flags and what each one enables
+
+### `AGENT_GATEWAY_ENABLED` (T-0034) — `config.ts:65-68`, wired in `index.ts:179-196`
+
+Default `false`. When `true`, the server builds an agent gateway (`createAgentGateway`), then starts it after the HTTP listener is up (`index.ts:202`, `index.ts:232-240`). The gateway:
+
+- logs each active AI in over XMPP and replies to its owner in DMs and to `@mentions` in groups (`agents/gateway.ts:1353-1437`)
+- exposes a draft hub so the web app can stream live reply drafts over `/api/drafts/stream` (`index.ts:193`, `drafts/hub.ts`)
+- drifts each AI's room joins toward the database every `RECONCILE_INTERVAL_MS` (`agents/gateway.ts:280-281`, `1433-1438`)
+- silently no-ops a stop that lands mid-turn (`agents/gateway.ts:499-518`)
+
+**Prerequisites that turn the flag into a no-op** (the server stays up, the gateway does nothing):
+
+- `LITELLM_BASE_URL` unset → the gateway logs `agent gateway needs LiteLLM and the key cipher; staying off` and exits `start()` early (`agents/gateway.ts:1361-1364`).
+- `LITELLM_MASTER_KEY` unset → same `litellm === undefined` check (`agents/gateway.ts:347-349`, `1361-1364`).
+- `GALENA_KEY_ENCRYPTION_KEY` unset → `cipher === undefined`, same outcome (`agents/gateway.ts:1361-1364`, `connections/crypto.ts:98-103`).
+
+`AGENT_GATEWAY_ENABLED=false` alone does not disable AI routes: with `LITELLM_MASTER_KEY` set but the flag off, every AI write route still answers 503 (`app.ts:204-227`) until `AGENT_GATEWAY_ENABLED=true`. The flag gates the gateway's *connection* to XMPP, not the AI API surface.
+
+### `RUNNER_HUB_ENABLED` (T-0071) — `config.ts:73-76`, validated in `index.ts:56-59`, started in `index.ts:211-226`
+
+Default `false`. When `true`:
+
+- `assertRunnerHubConfig` runs at startup and exits with a clear `HubConfigError` if the gateway URL is not `http://` (`machines/hub.ts:356-365`).
+- the server binds `RUNNER_HUB_PORT` to `127.0.0.1` after the HTTP API is listening, so a bind failure (port in use) cannot take the API down (`index.ts:211-226`).
+- the hub's in-memory approved-key cache refreshes every `30_000` ms (`machines/hub.ts:53`, `127-129`) and the `last_seen_at` poll runs every `LAST_SEEN_MIN_INTERVAL_MS = 60_000` ms (`machines/hub.ts:229`).
+
+`RUNNER_HUB_ENABLED=false` is the default; `isMachineOnline` always returns `false` and every machines route that asks the hub gets `online: false` (`index.ts:68-71`, `app.ts:56-57`).
+
+### Voice and git flags
+
+Neither has an env flag today. The voice engine and routes always mount (`app.ts:175-182`); the git routes always mount (`app.ts`'s `createGitRoutes`); what differs is whether the underlying dependency is configured (ffmpeg/ffprobe on `PATH` for voice, the three `GITHUB_APP_*` variables for git).
+
+## 4. Database
+
+### How migrations run
+
+Migrations run **at startup**, not on demand. `index.ts:47-48` opens the database and immediately calls `runMigrations(db)`, which reads the SQL files in `apps/server/drizzle/` (the folder is `migrationsFolder` at `db/migrate.ts:6`) and applies them via Drizzle's `migrate` — `migratePglite` for tests, `migratePostgres` for production (`db/migrate.ts:8-14`). If a migration fails, the server never reaches `serve()` (`index.ts:202`).
+
+For an out-of-band migration run (e.g. against a read replica during a deploy):
+
+```bash
+pnpm --filter @galena/server db:migrate
+```
+
+The command is defined at `apps/server/package.json:12` and runs `tsx --env-file-if-exists=.env src/db/migrate-cli.ts`, which loads the same config schema and exits non-zero on failure (`db/migrate-cli.ts:6`). Generate a new migration after editing `apps/server/src/db/schema.ts`:
+
+```bash
+pnpm --filter @galena/server db:generate
+```
+
+(`apps/server/package.json:11`; `drizzle.config.ts:1-3` pins the dialect, schema and out folder.) Never use `npx drizzle-kit …` — the lockfile drift and the missing schema flag produce surprising diffs.
+
+### Append-only guarantees
+
+`audit_log` is the only table with enforced append-only behaviour. `apps/server/drizzle/0013_audit_log_immutable.sql` installs three `BEFORE` triggers that reject `UPDATE`, `DELETE` and `TRUNCATE` with `RAISE EXCEPTION 'audit_log is append-only: … is not allowed'`, ERRCODE `P0001`. The triggers live on `audit_log_no_update`, `audit_log_no_delete` and `audit_log_no_truncate` and run a plpgsql function `audit_log_block_mutations()` — same function works under PGlite (tests) and Postgres (production). No other table in the schema has a comparable guarantee; everything else follows the normal `updated_at` pattern.
+
+The audit recorder itself (`audit/service.ts:76-92`) wraps `recordAudit` so a database write error never propagates into the caller: a failed audit write logs `{ action, err }` and returns. Best-effort by design; the database trigger is the actual immutability.
+
+## 5. Background jobs the server starts
+
+The server starts four background loops after `serve()` resolves. Each is `unref()`'d (so it does not pin the event loop) and is closed during shutdown.
+
+| Job | Where | Cadence | Started at |
+|---|---|---|---|
+| Approvals sweeper (`startApprovalsSweeper`) | `apps/server/src/approvals/sweeper.ts:36-108` | `60_000` ms (default) | `index.ts:246-250`; first tick after one interval, not at boot |
+| Action-recovery timer (`startRecoveryStuckTimer`) | `apps/server/src/actions/gateway.ts:125-166` | `5 * 60_000` ms (default) | `index.ts:255-258`; first tick after one interval |
+| Initial `recoverStuck` sweep | `actions/gateway.ts:509-550` | once, at startup | `index.ts:264-267`; runs in parallel with the timer |
+| Agent gateway reconcile timer | `apps/server/src/agents/gateway.ts:1433-1438` | `RECONCILE_INTERVAL_MS = 60_000` ms | `index.ts:232-240` (`gateway.start()`) |
+| Agent gateway retry | `agents/gateway.ts:464-491` | `RETRY_BASE_DELAY_MS = 5_000` ms, doubles per attempt, capped at `RETRY_MAX_DELAY_MS = 60_000` ms | inside the gateway, on a per-AI failed connect |
+| Agent gateway room rate limit | `agents/gateway.ts:1125-1037` | window `GROUP_RATE_WINDOW_MS = 10 * 60_000` ms, cap `GROUP_TURNS_PER_WINDOW = 6` | enforced at turn time |
+| Runner hub key-cache refresh | `apps/server/src/machines/hub.ts:114-129` | `30_000` ms (default) | inside `startRunnerHub` |
+| Runner hub `last_seen_at` poll | `apps/server/src/machines/hub.ts:309-321` | `LAST_SEEN_MIN_INTERVAL_MS = 60_000` ms (default) | inside `startRunnerHub` |
+| Runner hub itself (listener) | `apps/server/src/machines/hub.ts:264-274` | n/a | `index.ts:211-226`, only when `RUNNER_HUB_ENABLED=true` |
+| Action announcer / agent gateway `postToChat` | `apps/server/src/actions/announce.ts`, `agents/gateway.ts:762-790` | per-call (no timer) | wired in `index.ts:86-142` and `index.ts:201` |
+
+The agent gateway `start()` is launched with `void` and `.catch(...)` (`index.ts:232-240`) so a slow ejabberd or a missing token never blocks startup — the API stays up, the gateway keeps retrying.
+
+## 6. Health and shutdown
+
+### `/health`
+
+`apps/server/src/app.ts:229-241` mounts a single GET route at `/health`. It runs `SELECT 1` against the database with a `1_000` ms timeout (`app.ts:79`, `app.ts:278-285`). The response is JSON:
+
+- `200` + `{ ok: true, name: 'galena-server', version: serverVersion, protocolVersion, db: 'ok' }` when the ping resolves.
+- `503` + `{ ok: false, name: 'galena-server', version: serverVersion, protocolVersion, db: 'down' }` when it does not.
+
+The 503 is the only signal a load balancer should treat as unhealthy. `version` comes from `apps/server/package.json` (`version.ts:1-13`); `protocolVersion` from `@galena/protocol` (`app.ts:6`).
+
+### Graceful shutdown
+
+`SIGINT` and `SIGTERM` both call `shutdown(signal)` (`index.ts:310-315`). The shutdown sequence is in `index.ts:276-308`:
+
+1. Sets `shuttingDown = true` so a second signal returns immediately.
+2. Schedules `forceExit` for `FORCE_EXIT_MS = 15_000` ms (`index.ts:271`) — a `process.exit(1)` the logger fires once if anything below hangs.
+3. Calls `server.close()`; SSE draft streams never end on their own, so the close path drops idle connections at once, calls `closeAllConnections()` after `CONNECTION_GRACE_MS = 3_000` ms (`index.ts:272`), and resolves when the listener is fully closed.
+4. Closes the runner hub (`runnerHub.close()`) if one was started.
+5. Awaits `gateway.stop()` so each AI is disconnected cleanly.
+6. Closes the approvals sweeper (`approvalsSweeper.close()`) and the recovery timer (`recoveryStuck.close()`).
+7. Closes the database (`close()`).
+8. `process.exit(0)`.
+
+If a step blocks past the grace period, the 15 s hard exit fires. That is the contract: in the worst case the server takes 15 s to die, and the API becomes unreachable after the `server.close()` resolves.
+
+---
+
+## Mismatches found
+
+- `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY` and `GALENA_KEY_ENCRYPTION_KEY` are in `config.ts` (`config.ts:49-61`) but **not** listed in `apps/server/.env.example` (the example ends at `AGENT_GATEWAY_ENABLED`).
+- `RUNNER_HUB_ENABLED` and `RUNNER_HUB_PORT` are in `config.ts` (`config.ts:73-84`) but **not** in `apps/server/.env.example`.
+- `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` and `GITHUB_APP_INSTALLATION_ID` are in `config.ts` (`config.ts:53-55`) but **not** in `apps/server/.env.example` (the App config is intentionally gated behind all-or-nothing validation; not listing them in the example is a UX miss).
+- `EJABBERD_API_URL`, `XMPP_DOMAIN`, `XMPP_MUC_DOMAIN` and `XMPP_WS_PUBLIC_URL` are in both `apps/server/.env.example` and `xmpp/config.ts` with the same defaults — no mismatch, mentioned for completeness.
+
+## Open questions
+
+- Several env vars appear only in test files (`apps/server/src/agents/integration.test.ts`, `apps/server/src/ais/integration.test.ts`, `apps/server/src/connections/integration.test.ts`, `apps/server/src/voice/integration.test.ts`, `apps/server/src/ai/integration.ts`): `GALENA_AGENT_INTEGRATION`, `GALENA_AIS_INTEGRATION`, `GALENA_AI_MODELS_INTEGRATION`, `GALENA_VOICE_INTEGRATION`, `GALENA_CONNECTIONS_INTEGRATION`, `GALENA_LITELLM_INTEGRATION`, plus the matching `*_URL` and `XMPP_WS_URL` variants. Each is gated by `=== '1'` and only checked in tests, so it is configuration of the test suite, not the server. Listing them here would be misleading; the live server never reads them.
+- The web app reads one env var of its own: `GALENA_API_URL` in `apps/web/vite.config.ts:16` (default `http://localhost:3000`). It is read by Vite, not by `@galena`, but it has to agree with `PORT` on the server or `/api` 404s. Not documented in `apps/web/.env.example` (there is no web `.env.example` file yet).
+- The runner hub accepts a `gatewayUrl` argument whose default comes from `LITELLM_BASE_URL ?? DEFAULT_LITELLM_BASE_URL` (`index.ts:58`, `index.ts:217`). Whether to expose that as a separate `RUNNER_HUB_GATEWAY_URL` env var is **unclear from the code** — the hub will reuse whatever LiteLLM uses, and a misconfigured scheme fails the explicit `http://` check.
+- The agent gateway `postToChat` path is reachable only when `AGENT_GATEWAY_ENABLED=true`; whether a separate `ACTION_ANNOUNCER_ENABLED` flag exists to silence the action gateway announcer while keeping the gateway off is **unclear from the code** (the announcer object exists unconditionally in `index.ts:86-142` but `postToChat` is no-op while the gateway is stopped).

@@ -1,7 +1,7 @@
 ---
 id: T-0094
 title: Server configuration reference (docs only) — every environment variable, its default and what it turns on
-status: todo
+status: review
 milestone: M4
 branch: task/T-0094-server-config-docs
 model: minimax-coding-plan/MiniMax-M3
@@ -58,19 +58,33 @@ pnpm lint
 ## Report (written by the worker when done)
 
 ### What I did
--
+
+Read `AGENTS.md`, the task file, `apps/server/src/config.ts`, `config.test.ts`, `index.ts`, `app.ts`, `xmpp/config.ts`, `apps/server/.env.example`, `infra/.env.example`, `infra/docker-compose.dev.yml`, `docs/LEAD_PLAYBOOK.md` §12, the `process.env` references in `apps/server/src` (`git grep -n "process.env" apps/server/src`), and the relevant background-job files (`approvals/sweeper.ts`, `actions/gateway.ts`, `agents/gateway.ts`, `machines/hub.ts`, `db/migrate.ts`, `apps/server/drizzle/0012_add_audit_log.sql`, `0013_audit_log_immutable.sql`, `0014_thick_runaways.sql`, `0015_late_randall_flagg.sql`). Wrote `docs/SERVER_CONFIG.md` covering: the processes/ports table, every variable in `config.ts` and `xmpp/config.ts` (core, XMPP/ejabberd, AI/LiteLLM, GitHub App, feature flags, voice/git/limits), the two feature flags with the prerequisites that turn each into a no-op (and the `file:line` citations), migrations (startup + `pnpm --filter @galena/server db:generate` / `db:migrate`, never `npx`), the two audit-log append-only triggers (`audit_log_no_update`, `audit_log_no_delete`, `audit_log_no_truncate` on `audit_log`), the background-job cadence table, and `/health` + graceful shutdown (3 s idle grace, 15 s hard exit). Closed with the required *Mismatches found* and *Open questions* sections.
+
+Did not touch any other file. Did not open a real `.env` (only `.env.example`).
 
 ### Files changed
--
+
+- `docs/SERVER_CONFIG.md` (new)
+- `work/T-0094-server-config-docs.md` (front matter status, this Report)
 
 ### Commands run and real results
--
+
+- `pnpm install` — succeeded: `Done in 6.4s using pnpm v10.32.1`, `+ @types/node 24.19.0`, `+ oxlint 1.85.0`, `+ prettier 3.9.9`, `+ turbo 2.11.4`, `+ typescript 6.0.3`, `+ vitest 5.0.2`. Lockfile was already up to date, so only the workspace devDependencies were reinstalled.
+- `pnpm format:check` — succeeded: `Checking formatting...` then `All matched files use Prettier code style!` (exit 0). The `docs/` directory is in `.prettierignore`, so `docs/SERVER_CONFIG.md` is intentionally excluded and does not need a `prettier --write` step.
+- `pnpm lint` — succeeded: `> galena@ lint … > oxlint .` then exit 0, no warnings.
 
 ### Problems, deviations from the spec, open questions
--
+
+- `apps/server/.env.example` ends at `AGENT_GATEWAY_ENABLED` and does not document `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY`, `GALENA_KEY_ENCRYPTION_KEY`, `RUNNER_HUB_ENABLED`, `RUNNER_HUB_PORT` or the three `GITHUB_APP_*` variables, even though all of them are accepted by the schema. Listed in *Mismatches found*. Did not fix (out of scope).
+- The spec's "two append-only guarantees (audit log triggers)" is one table (`audit_log`) with three triggers on it (`UPDATE`, `DELETE`, `TRUNCATE`). Described it as the single append-only guarantee, naming all three trigger names — the spec phrasing is preserved by treating the three triggers as one guarantee applied at three levels.
+- Env vars that appear only in integration test files (`GALENA_AGENT_INTEGRATION`, `GALENA_AIS_INTEGRATION`, `GALENA_AI_MODELS_INTEGRATION`, `GALENA_VOICE_INTEGRATION`, `GALENA_CONNECTIONS_INTEGRATION`, `GALENA_LITELLM_INTEGRATION`, plus the matching `*_URL` and `XMPP_WS_URL` variants) are test-suite configuration, not server configuration. Not included in the main table; called out under *Open questions* so the lead can decide whether to add them later.
+- The web app reads one env var (`GALENA_API_URL` in `apps/web/vite.config.ts:16`); it is not a `@galena/` variable, but it has to agree with `PORT` on the server. Called out under *Open questions*.
+- The "every other `process.env` read in `apps/server/src`" check (`git grep -n "process.env" apps/server/src`) found only test files and CLI scripts (`db/migrate-cli.ts`, `auth/invite-cli.ts`) that delegate to `loadServerConfigOrExit(process.env)`. No new variables to document.
 
 ### Blocked / needs a decision
--
+
+None.
 
 ---
 
