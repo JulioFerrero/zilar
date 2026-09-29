@@ -15,12 +15,25 @@ export const MOCK_DRAFT_CHAT_ID = 'dev-ai';
 /** One UUID, matching the contract's `turnId`. */
 export const MOCK_DRAFT_TURN_ID = '5f2b7c1e-9a3d-4e6f-8b1c-2d3e4f5a6b7c';
 
-/** A mid-stream prefix of the reply, so the draft looks like it is being written. */
-export const MOCK_DRAFT_STREAM_TEXT =
-  'I bisected the failure to the token expiry check. The fix is on the branch and the auth suite';
+/**
+ * A mid-stream prefix of the reply, so the draft looks like it is being written.
+ * It is Markdown so the generating bubble also exercises the mobile renderer.
+ */
+export const MOCK_DRAFT_STREAM_TEXT = [
+  '## Nightly build',
+  '',
+  'The auth suite failed on the **token expiry** check:',
+  '',
+  '```',
+  'FAIL auth.test.ts',
+  '```',
+  '',
+  '- bisected to the clock helper',
+  '- fix is on the branch',
+].join('\n');
 
 /** The complete reply: the stream text plus the tail the reveal finishes with. */
-export const MOCK_DRAFT_FINAL_TEXT = `${MOCK_DRAFT_STREAM_TEXT} is green again and I pushed a regression test. Want me to redeploy staging?`;
+export const MOCK_DRAFT_FINAL_TEXT = `${MOCK_DRAFT_STREAM_TEXT}\n\n> Want me to redeploy staging?\n\nDetails: https://galena.test/builds/last`;
 
 /** The final message that takes over the draft in the `final` phase. */
 export const MOCK_DRAFT_FINAL_MESSAGE_ID = 'dev-ai-draft-final';
