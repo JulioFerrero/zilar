@@ -6,6 +6,7 @@ import {
   type XmppCore,
   type XmppCoreOptions,
 } from '@galena/xmpp-core';
+import type { Payload } from '@galena/protocol';
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import {
@@ -165,6 +166,21 @@ export interface AgentGateway {
   reconcile: () => Promise<void>;
   size: () => number;
   aiIds: () => string[];
+  /**
+   * Posts a message from the AI's own live XMPP session into the chat the
+   * action gateway asked about. Returns `true` when the message went out
+   * and `false` (sending nothing) when the AI has no live session, when
+   * the AI is unknown, or — for a group — when the AI is not currently
+   * subscribed to the room. Used by the action gateway to announce tier-2
+   * requests and their outcomes; a stopped AI (kill switch) returns
+   * `false`, so nothing is posted.
+   */
+  postToChat: (input: {
+    aiId: string;
+    groupId: string | null;
+    text: string;
+    payload?: Payload;
+  }) => Promise<boolean>;
 }
 
 function isAiSender(bare: string): boolean {
@@ -703,6 +719,74 @@ export function createAgentGateway(
       return;
     }
     logger.info({ aiId: session.aiId, groupId }, 'AI left the room');
+  }
+
+  // Looks up the AI's owner id from the database. The owner JID is derived
+  // the same way the rest of the platform derives it (via `localpartFor` and
+  // `jidFor`), so a DM announcement lands where the gateway already talks.
+  async function loadOwnerId(aiId: string): Promise<string | null> {
+    const [row] = await deps.db
+      .select({ owner: ais.owner })
+      .from(ais)
+      .where(eq(ais.id, aiId))
+      .limit(1);
+    return row?.owner ?? null;
+  }
+
+  // Looks up the room JID (bare) for one group. Returns `null` when the
+  // group does not exist; the caller answers `false` for that case too.
+  async function loadRoomJid(groupId: string): Promise<string | null> {
+    const [row] = await deps.db
+      .select({ roomLocalpart: groups.roomLocalpart })
+      .from(groups)
+      .where(eq(groups.id, groupId))
+      .limit(1);
+    if (row === undefined) {
+      return null;
+    }
+    return roomJidFor(row.roomLocalpart);
+  }
+
+  // Builds the `SendMessageOptions` for one `postToChat` call. The
+  // `payload` field is only present when the caller actually passed one.
+  function sendOptions(input: { text: string; payload?: Payload }): SendMessageOptions {
+    return input.payload === undefined ? {} : { payload: input.payload };
+  }
+
+  // T-0092: posts one message from the AI's live XMPP session into the chat
+  // the action gateway asked about. The session must be live (not stopped,
+  // still owned by this gateway), the AI must exist, and — for a group —
+  // the session must currently hold a subscription to the room. Any other
+  // answer is `false` with no send, so a stopped AI (kill switch) and an
+  // AI that was never in the room stay silent.
+  async function postToChat(input: {
+    aiId: string;
+    groupId: string | null;
+    text: string;
+    payload?: Payload;
+  }): Promise<boolean> {
+    const session = sessions.get(input.aiId);
+    if (session === undefined || !sessionIsLive(session)) {
+      return false;
+    }
+    if (input.groupId === null) {
+      const ownerId = await loadOwnerId(input.aiId);
+      if (ownerId === null) {
+        return false;
+      }
+      const ownerJid = jidFor(localpartFor(ownerId), deps.xmpp.domain);
+      await liveSendMessage(session, ownerJid, 'chat', input.text, sendOptions(input));
+      return true;
+    }
+    const roomJid = await loadRoomJid(input.groupId);
+    if (roomJid === null) {
+      return false;
+    }
+    if (!session.rooms.has(roomJid)) {
+      return false;
+    }
+    await liveSendMessage(session, roomJid, 'groupchat', input.text, sendOptions(input));
+    return true;
   }
 
   // Another gateway logged this AI in with the same resource and ejabberd
@@ -1383,5 +1467,6 @@ export function createAgentGateway(
     reconcile,
     size: () => sessions.size,
     aiIds: () => [...sessions.keys()],
+    postToChat,
   };
 }

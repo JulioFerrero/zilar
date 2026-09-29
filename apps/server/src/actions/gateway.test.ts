@@ -17,6 +17,7 @@ import {
 } from '../db/schema';
 import { decideApproval } from '../approvals/service';
 import { type AuditEntry, createAuditRecorder } from '../audit/service';
+import { type ActionAnnouncer } from './announce';
 import { createActionGateway, type ActionGateway, type ActionGatewayLogger } from './gateway';
 import { startRecoveryStuckTimer } from './gateway';
 import { buildRegistry, type ActionAdapter, type ActionRegistry } from './registry';
@@ -143,6 +144,77 @@ async function buildHarness(adapters: FakeAdapter[]): Promise<Harness> {
     now: () => new Date(),
   });
   return { context, gateway, adapters, auditEntries };
+}
+
+interface AnnouncerCalls {
+  approvalRequested: Array<{ aiId: string; groupId: string | null; approvalId: string }>;
+  outcome: Array<{
+    aiId: string;
+    groupId: string | null;
+    status: 'executed' | 'failed' | 'cancelled';
+    summary: string;
+  }>;
+}
+
+function captureAnnouncer(): { announcer: ActionAnnouncer; calls: AnnouncerCalls } {
+  const calls: AnnouncerCalls = { approvalRequested: [], outcome: [] };
+  const announcer: ActionAnnouncer = {
+    async approvalRequested(input) {
+      calls.approvalRequested.push(input);
+    },
+    async outcome(input) {
+      calls.outcome.push(input);
+    },
+  };
+  return { announcer, calls };
+}
+
+async function buildHarnessWithAnnouncer(
+  adapters: FakeAdapter[],
+): Promise<Harness & { announcerCalls: AnnouncerCalls; throwsAnnouncer: ActionAnnouncer }> {
+  const context = await createTestContext();
+  const auditEntries: AuditEntry[] = [];
+  const audit = createAuditRecorder({ db: context.db });
+  const recordedAudit = {
+    ...audit,
+    record: async (entry: AuditEntry): Promise<void> => {
+      auditEntries.push(entry);
+      await audit.record(entry);
+    },
+  };
+  const registry: ActionRegistry = buildRegistry(adapters.map((entry) => entry.adapter));
+  const warnings: Array<{ fields: Record<string, unknown>; message: string }> = [];
+  const logger: ActionGatewayLogger = {
+    warn: (fields, message) => {
+      warnings.push({ fields, message });
+    },
+    error: () => undefined,
+  };
+  const { announcer, calls } = captureAnnouncer();
+  const throwsAnnouncer: ActionAnnouncer = {
+    async approvalRequested() {
+      throw new Error('announcer is down');
+    },
+    async outcome() {
+      throw new Error('announcer is down');
+    },
+  };
+  const gateway = createActionGateway({
+    db: context.db,
+    adapters: registry,
+    audit: recordedAudit,
+    logger,
+    now: () => new Date(),
+    announce: announcer,
+  });
+  return {
+    context,
+    gateway,
+    adapters,
+    auditEntries,
+    announcerCalls: calls,
+    throwsAnnouncer,
+  };
 }
 
 describe('action gateway', () => {
@@ -836,6 +908,327 @@ describe('action gateway', () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
       expect(recoverCalls.length).toBe(callsAtClose);
       expect(callsAtClose).toBeGreaterThan(0);
+    });
+  });
+
+  describe('announcer (T-0092)', () => {
+    let harness: Harness & { announcerCalls: AnnouncerCalls; throwsAnnouncer: ActionAnnouncer };
+
+    beforeEach(async () => {
+      harness = await buildHarnessWithAnnouncer([echoAdapter(0), echoAdapter(1), echoAdapter(2)]);
+    });
+
+    afterEach(async () => {
+      await harness.context.close();
+    });
+
+    it('calls approvalRequested once after a tier-2 request with the approval id', async () => {
+      const ownerId = await seedUser(harness.context);
+      const { aiId } = await seedAi(harness.context, ownerId);
+      const result = await harness.gateway.request({
+        aiId,
+        action: 'tier2.echo',
+        args: { value: 'spicy' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      if (result.status !== 'pending_approval') {
+        throw new Error('expected pending_approval');
+      }
+      expect(harness.announcerCalls.approvalRequested).toEqual([
+        { aiId, groupId: null, approvalId: result.approvalId },
+      ]);
+      expect(harness.announcerCalls.outcome).toEqual([]);
+    });
+
+    it('passes groupId for a tier-2 request raised in a group', async () => {
+      const ownerId = await seedUser(harness.context);
+      const { aiId } = await seedAi(harness.context, ownerId);
+      const { groupId } = await seedGroup(harness.context, ownerId, [aiId]);
+      const result = await harness.gateway.request({
+        aiId,
+        groupId,
+        action: 'tier2.echo',
+        args: { value: 'spicy' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      expect(result.status).toBe('pending_approval');
+      if (result.status !== 'pending_approval') {
+        return;
+      }
+      expect(harness.announcerCalls.approvalRequested).toEqual([
+        { aiId, groupId, approvalId: result.approvalId },
+      ]);
+    });
+
+    it('does not call the announcer for tier 0 or tier 1 actions', async () => {
+      const ownerId = await seedUser(harness.context);
+      const { aiId } = await seedAi(harness.context, ownerId);
+      await harness.gateway.request({
+        aiId,
+        action: 'tier0.echo',
+        args: { value: 'fast' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      await harness.gateway.request({
+        aiId,
+        action: 'tier1.echo',
+        args: { value: 'mid' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      expect(harness.announcerCalls.approvalRequested).toEqual([]);
+      expect(harness.announcerCalls.outcome).toEqual([]);
+    });
+
+    it('does not call the announcer when a tier-2 request is denied before approval', async () => {
+      const ownerId = await seedUser(harness.context);
+      const { aiId } = await seedAi(harness.context, ownerId, { status: 'stopped' });
+      const result = await harness.gateway.request({
+        aiId,
+        action: 'tier2.echo',
+        args: { value: 'x' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      expect(result).toEqual({ status: 'denied', reason: 'ai_not_active' });
+      expect(harness.announcerCalls.approvalRequested).toEqual([]);
+    });
+
+    it('calls outcome(executed) with the adapter summary after a successful approval', async () => {
+      const ownerId = await seedUser(harness.context);
+      const { aiId } = await seedAi(harness.context, ownerId);
+      const result = await harness.gateway.request({
+        aiId,
+        action: 'tier2.echo',
+        args: { value: 'yay' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      if (result.status !== 'pending_approval') {
+        throw new Error('expected pending_approval');
+      }
+      await decideApproval(
+        harness.context.db,
+        { approvalId: result.approvalId, userId: ownerId, decision: 'approve_once' },
+        new Date(),
+      );
+      await harness.gateway.onApprovalDecided(result.approvalId);
+      expect(harness.announcerCalls.outcome).toEqual([
+        { aiId, groupId: null, status: 'executed', summary: 'Echoed: yay' },
+      ]);
+    });
+
+    it('calls outcome(failed) with the fixed text when the adapter throws', async () => {
+      const secretError = new Error('SECRET-DO-NOT-ANNOUNCE');
+      const failing: ActionAdapter<unknown> = {
+        name: 'tier2.fail',
+        tier: 2,
+        argsSchema: z.object({ value: z.string() }),
+        describe: (args) => ({ summary: `Fail ${(args as { value: string }).value}` }),
+        execute: () => {
+          throw secretError;
+        },
+      };
+      const context = await createTestContext();
+      const { announcer, calls } = captureAnnouncer();
+      const audit = createAuditRecorder({ db: context.db });
+      const recordedAudit = {
+        ...audit,
+        record: async (entry: AuditEntry) => {
+          await audit.record(entry);
+        },
+      };
+      const warnings: Array<{ fields: Record<string, unknown>; message: string }> = [];
+      const logger: ActionGatewayLogger = {
+        warn: (fields, message) => {
+          warnings.push({ fields, message });
+        },
+        error: () => undefined,
+      };
+      const gateway = createActionGateway({
+        db: context.db,
+        adapters: buildRegistry([failing]),
+        audit: recordedAudit,
+        logger,
+        now: () => new Date(),
+        announce: announcer,
+      });
+      const ownerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      const result = await gateway.request({
+        aiId,
+        action: 'tier2.fail',
+        args: { value: 'x' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      if (result.status !== 'pending_approval') {
+        throw new Error('expected pending_approval');
+      }
+      await decideApproval(
+        context.db,
+        { approvalId: result.approvalId, userId: ownerId, decision: 'approve_once' },
+        new Date(),
+      );
+      await gateway.onApprovalDecided(result.approvalId);
+      expect(calls.outcome).toEqual([
+        { aiId, groupId: null, status: 'failed', summary: 'The action failed.' },
+      ]);
+      // The adapter's error text never leaks through the announcer summary.
+      expect(JSON.stringify(calls)).not.toContain('SECRET-DO-NOT-ANNOUNCE');
+      // The audit log has the failure recorded without leaking the error text.
+      const rows = await context.db.select().from(auditLog);
+      expect(JSON.stringify(rows)).not.toContain('SECRET-DO-NOT-ANNOUNCE');
+      await context.close();
+    });
+
+    it('calls outcome(cancelled) for denial, expiry, and stopped-AI paths', async () => {
+      const ownerId = await seedUser(harness.context);
+      const { aiId } = await seedAi(harness.context, ownerId);
+
+      // 1) denial
+      const r1 = await harness.gateway.request({
+        aiId,
+        action: 'tier2.echo',
+        args: { value: 'a' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      if (r1.status !== 'pending_approval') {
+        throw new Error('expected pending_approval');
+      }
+      await decideApproval(
+        harness.context.db,
+        { approvalId: r1.approvalId, userId: ownerId, decision: 'deny' },
+        new Date(),
+      );
+      await harness.gateway.onApprovalDecided(r1.approvalId);
+
+      // 2) expiry
+      const r2 = await harness.gateway.request({
+        aiId,
+        action: 'tier2.echo',
+        args: { value: 'b' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      if (r2.status !== 'pending_approval') {
+        throw new Error('expected pending_approval');
+      }
+      await harness.context.db
+        .update(approvals)
+        .set({ expiresAt: new Date(Date.now() - 1) })
+        .where(eq(approvals.id, r2.approvalId));
+      await harness.gateway.onApprovalDecided(r2.approvalId);
+
+      // 3) stopped AI
+      const r3 = await harness.gateway.request({
+        aiId,
+        action: 'tier2.echo',
+        args: { value: 'c' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      if (r3.status !== 'pending_approval') {
+        throw new Error('expected pending_approval');
+      }
+      await decideApproval(
+        harness.context.db,
+        { approvalId: r3.approvalId, userId: ownerId, decision: 'approve_once' },
+        new Date(),
+      );
+      await harness.context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      await harness.gateway.onApprovalDecided(r3.approvalId);
+
+      expect(harness.announcerCalls.outcome).toEqual([
+        { aiId, groupId: null, status: 'cancelled', summary: 'The request was not carried out.' },
+        { aiId, groupId: null, status: 'cancelled', summary: 'The request was not carried out.' },
+        { aiId, groupId: null, status: 'cancelled', summary: 'The request was not carried out.' },
+      ]);
+    });
+
+    it('a throwing announcer does not change the outcome, the rows, or the audit', async () => {
+      const context = await createTestContext();
+      const auditEntries: AuditEntry[] = [];
+      const audit = createAuditRecorder({ db: context.db });
+      const recordedAudit = {
+        ...audit,
+        record: async (entry: AuditEntry) => {
+          auditEntries.push(entry);
+          await audit.record(entry);
+        },
+      };
+      const warnings: Array<{ fields: Record<string, unknown>; message: string }> = [];
+      const logger: ActionGatewayLogger = {
+        warn: (fields, message) => {
+          warnings.push({ fields, message });
+        },
+        error: () => undefined,
+      };
+      const failing: ActionAdapter<unknown> = {
+        name: 'tier2.boom',
+        tier: 2,
+        argsSchema: z.object({ value: z.string() }),
+        describe: (args) => ({ summary: `Boom ${(args as { value: string }).value}` }),
+        execute: () => {
+          throw new Error('adapter secret text');
+        },
+      };
+      const gateway = createActionGateway({
+        db: context.db,
+        adapters: buildRegistry([failing]),
+        audit: recordedAudit,
+        logger,
+        now: () => new Date(),
+        announce: harness.throwsAnnouncer,
+      });
+      const ownerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      const result = await gateway.request({
+        aiId,
+        action: 'tier2.boom',
+        args: { value: 'spicy' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      if (result.status !== 'pending_approval') {
+        throw new Error('expected pending_approval');
+      }
+      await decideApproval(
+        context.db,
+        { approvalId: result.approvalId, userId: ownerId, decision: 'approve_once' },
+        new Date(),
+      );
+      await gateway.onApprovalDecided(result.approvalId);
+
+      // Outcome unchanged: adapter threw → failed.
+      const [pending] = await context.db
+        .select()
+        .from(pendingActions)
+        .where(eq(pendingActions.approvalId, result.approvalId));
+      expect(pending?.status).toBe('failed');
+      // Audit entries still got written.
+      const actions = auditEntries.map((entry) => entry.action);
+      expect(actions).toContain('action.requested');
+      expect(actions).toContain('action.failed');
+      // The announcer's throw was logged with the error class name only.
+      const announcerWarnings = warnings.filter((entry) =>
+        entry.message.startsWith('announcer failed for'),
+      );
+      expect(announcerWarnings.length).toBeGreaterThan(0);
+      for (const warning of announcerWarnings) {
+        const err = warning.fields['err'];
+        expect(err).toBe('Error');
+      }
+      // No adapter error text in the warnings.
+      const warningText = JSON.stringify(warnings);
+      expect(warningText).not.toContain('adapter secret text');
+      await context.close();
+    });
+
+    it('no announcer means no error: the request still resolves', async () => {
+      // The default `buildHarness` builds a gateway without an announcer.
+      const ownerId = await seedUser(harness.context);
+      const { aiId } = await seedAi(harness.context, ownerId);
+      const result = await harness.gateway.request({
+        aiId,
+        action: 'tier2.echo',
+        args: { value: 'silent' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      expect(result.status).toBe('pending_approval');
     });
   });
 });
