@@ -1,7 +1,7 @@
 ---
 id: T-0086
 title: Web — an Activity section in the group panel for group owners and admins (the audit entries of the room)
-status: review
+status: merged
 milestone: M4
 branch: task/T-0086-group-activity-web
 model: minimax-coding-plan/MiniMax-M3
@@ -109,4 +109,8 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged (lead, 2026-09-29). Rebased on main; format, lint, typecheck, test (web 574) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand.
+
+**Checked:** `AiActivity` became a thin wrapper over a shared `ActivitySection` that takes a scope (`{ aiId }` or `{ groupId }`, a union that makes both or neither a compile error); the AI panel is untouched and its tests still pass; the group panel mounts the section only when `isManager` (owner or admin), so members make no request; the section keeps its own loading, error and load-more handling, so its failure cannot break the panel. `detail` handling is unchanged (only the decision is read). No lint disables, no screenshots, no `console.log`. The effect uses a ref for the latest scope and re-runs on a string key, which avoids a loop from the fresh scope literal.
+
+**Not visually checked** (mock mode would show it with a deep link `?mock=1`).
