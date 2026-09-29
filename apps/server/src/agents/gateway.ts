@@ -423,8 +423,14 @@ export function createAgentGateway(
   // id comes from the session, never from the model's arguments, and only
   // `ais.persona` and `ais.previous_persona` can change. Log lines carry the
   // AI id, the tool name and the outcome only: never the persona text.
-  function executePersonaTool(aiId: string): ExecuteToolCall {
+  function executePersonaTool(session: AiSession): ExecuteToolCall {
+    const aiId = session.aiId;
     return async (call) => {
+      // A turn that was computing when the AI was stopped must not change the
+      // persona afterwards.
+      if (!sessionIsLive(session)) {
+        return { content: 'the AI was stopped' };
+      }
       if (call.tool === UPDATE_PERSONA_TOOL) {
         await setPersonaFromChat(deps.db, aiId, call.persona);
         logger.info({ aiId, tool: call.tool, ok: true }, 'AI persona updated by chat');
@@ -1207,7 +1213,7 @@ export function createAgentGateway(
         baseUrl: baseUrl,
         virtualKey,
         model: modelNameForAi(session.aiId),
-        executeTool: executePersonaTool(session.aiId),
+        executeTool: executePersonaTool(session),
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
         onDelta: (textSoFar) => {
           if (sessionIsLive(session)) {

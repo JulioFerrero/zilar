@@ -207,19 +207,18 @@ export function createAisRoutes({
   // T-0080: the owner's kill switch. Stop disconnects the AI at once and
   // prevents the gateway from waking it back up; resume reconnects it. Both
   // answer the public AI, so the panel can re-render against the server
-  // truth without a second GET. Same 503 as the other writes when the
-  // gateway or the key cipher is not configured.
+  // truth without a second GET. Unlike the other writes they need only the
+  // database: a kill switch must work when LiteLLM, the cipher or the
+  // gateway are not configured or are down.
   routes.post('/ais/:id/stop', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
-    const configured = requireConfigured();
-    const ai = await stopAi(serviceDeps(configured), c.req.param('id'), user.id);
+    const ai = await stopAi({ db }, c.req.param('id'), user.id);
     return c.json(ai);
   });
 
   routes.post('/ais/:id/resume', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
-    const configured = requireConfigured();
-    const ai = await resumeAi(serviceDeps(configured), c.req.param('id'), user.id);
+    const ai = await resumeAi({ db }, c.req.param('id'), user.id);
     return c.json(ai);
   });
 

@@ -1,7 +1,7 @@
 ---
 id: T-0080
 title: Kill switch (M4) — the owner can stop an AI at once and resume it; a stopped AI is offline and cannot be woken
-status: review
+status: merged
 milestone: M4
 branch: task/T-0080-ai-kill-switch
 model: minimax-coding-plan/MiniMax-M3
@@ -174,4 +174,17 @@ The server doesn't have a `build` script, so `pnpm build` exercises web + mobile
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved with lead changes, merged (2026-09-29). After rebasing onto main (one import-list conflict in `apps/web/src/lib/api.test.ts`, resolved by keeping both) and my changes: format, lint, typecheck, test (server 671, web 527, mobile 333) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand, including the whole gateway diff. `drizzle-kit generate` confirms "No schema changes": widening the text enum needs no migration.
+
+**Lead changes:**
+- **The kill switch no longer needs LiteLLM, the key cipher or the gateway to be configured.** The worker copied the other writes' `requireConfigured()` (503 `ais_unavailable`), which would have made the emergency stop fail exactly when something is broken. `stopAi`/`resumeAi` now take only the database and the routes use `{ db }`; the 503 test became "answers 404, never 503, without the gateway".
+- **A persona change from a turn that was running at stop time** was still applied (the tool executes before the reply is dropped). `executePersonaTool` now takes the session and returns "the AI was stopped" when it is no longer live (new gateway test: the persona row stays unchanged).
+
+**Checked:** every send path of a running turn (DM reply, group reply, typing, displayed marker, budget notices and warnings, drafts) goes through a `live*` wrapper that checks the session is still the gateway's live one right before sending; queued turns are dropped by `disconnectAi`; `stopped` and `disabled` rows are never returned by `listActiveAisForGateway`, so reconcile and a restart leave them offline; resume goes through `loadActiveAi` (active only); stop/resume use conditional updates and are owner-only with the same 404 for a stranger; `disabled` (provisioning) gives 409 and can never be activated by resume. Web: Stop with a confirm step, "Stopped" label, Resume, inline errors, mock routes; mobile: only the status guard.
+
+**Follow-ups (not blocking):**
+- `addGroupAi` does not refuse a stopped AI: it can be added to a room (it does not wake, but the membership is stale). Decide whether to allow this.
+- Audit entries for `ai.stopped`/`ai.resumed` (the audit log exists now, T-0079).
+- Room-admin and workspace-admin kill switch (J5).
+
+**Open for Julio (live check):** stop and resume a real AI from the web panel while it answers in a DM and in a group; the AI should go offline at once (ejabberd `connected_users`), a reply that was being generated must not arrive, and resume must bring it back.

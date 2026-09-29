@@ -2678,6 +2678,68 @@ describe('agent gateway', () => {
       expect(core.disconnects).toBe(1);
     });
 
+    it('a persona change requested by a turn that was running when the stop arrived is not applied', async () => {
+      const first = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const calls: Call[] = [];
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const fetchImpl: FetchLike = (url, init) => {
+        calls.push({ url, init });
+        return gate.then(() =>
+          jsonResponse({
+            choices: [
+              {
+                message: {
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: 'call-1',
+                      type: 'function',
+                      function: {
+                        name: 'update_persona',
+                        arguments: JSON.stringify({
+                          persona: 'A persona set after the stop.',
+                          summary: 'Changed after stop',
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        );
+      };
+      const litellm = new FakeLitellm();
+      const { gateway: started } = harness(cores, fetchImpl, litellm);
+      await started.start();
+      const core = await coreFor(cores, first.aiJid);
+      const deps: AiServiceDeps = {
+        db: context.db,
+        adminClient: context.adminClient,
+        litellm,
+        cipher: createKeyCipher(MASTER_KEY),
+        logger: context.logger,
+        domain: context.xmppConfig.domain,
+      };
+
+      core.receive(incoming(first.aiJid, first.ownerJid, 'm-1', 'change your persona'));
+      await waitFor(() => calls.length === 1);
+      await stopAi(deps, first.aiId, first.ownerId);
+      await waitFor(() => started.size() === 0);
+
+      release();
+      await tick(200);
+      const [row] = await context.db
+        .select({ persona: ais.persona })
+        .from(ais)
+        .where(eq(ais.id, first.aiId));
+      expect(row?.persona).toBe('A helpful persona.');
+    });
+
     it('queued, not-yet-started turns are dropped when a stop arrives', async () => {
       const first = await seedAi(context);
       const cores: FakeCore[] = [];

@@ -594,7 +594,8 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
   emitAiLifecycle({ type: 'deleted', aiId: ai.id });
 }
 
-// Stops an AI (T-0080): owner-only. Accepts only `active`, answers the same
+// Stops an AI (T-0080): owner-only. It needs only the database, so the kill
+// switch keeps working when LiteLLM, the key cipher or XMPP are down. Accepts only `active`, answers the same
 // 404 as `getOwnedAi` for a foreign or missing id (so existence is never
 // leaked). Idempotent on `stopped` (returns the AI unchanged). `disabled` —
 // provisioning still in flight — answers 409 `not_active` so a resume can
@@ -602,7 +603,11 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
 // (`WHERE status = 'active'`) keeps a resume racing a delete from
 // resurrecting anything: a delete wins because the row is gone, and a second
 // stop wins because the row already left `active`.
-export async function stopAi(deps: AiServiceDeps, id: string, ownerId: string): Promise<PublicAi> {
+export async function stopAi(
+  deps: Pick<AiServiceDeps, 'db'>,
+  id: string,
+  ownerId: string,
+): Promise<PublicAi> {
   const ai = await findOwnedAi(deps.db, id, ownerId);
   if (!ai) {
     throw new HttpError(404, 'not_found', 'AI not found');
@@ -646,7 +651,7 @@ export async function stopAi(deps: AiServiceDeps, id: string, ownerId: string): 
 // makes a resume racing a stop or delete a no-op: the row either is `stopped`
 // still (stop won) or no longer exists (delete won).
 export async function resumeAi(
-  deps: AiServiceDeps,
+  deps: Pick<AiServiceDeps, 'db'>,
   id: string,
   ownerId: string,
 ): Promise<PublicAi> {

@@ -1304,7 +1304,7 @@ describe('AI stop / resume routes', () => {
     expect(((await secondResume.json()) as { status: string }).status).toBe('active');
   });
 
-  it('answers 503 for stop and resume when the gateway is not configured', async () => {
+  it('does not need the gateway or the key cipher for stop and resume (the kill switch must work when they are down)', async () => {
     const unconfigured = createApp({
       db: context.db,
       logger: context.logger,
@@ -1322,11 +1322,7 @@ describe('AI stop / resume routes', () => {
       method: 'POST',
       headers: { cookie: user.cookie },
     });
-    expect([stop.status, resume.status]).toEqual([503, 503]);
-    for (const response of [stop, resume]) {
-      expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
-        'ais_unavailable',
-      );
-    }
+    // 404 for an unknown id, never the 503 `ais_unavailable` of the other writes.
+    expect([stop.status, resume.status]).toEqual([404, 404]);
   });
 });
