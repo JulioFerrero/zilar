@@ -1,7 +1,7 @@
 ---
 id: T-0065
 title: Attachments on web — send and receive images and files (XEP-0363 upload, `attachment` payload), image bubbles, file cards, paste and drag-and-drop
-status: review
+status: merged
 milestone: M1
 branch: task/T-0065-attachments-web
 model: opencode-go/deepseek-v4.1-flash
@@ -343,10 +343,20 @@ The pre-existing `format:check` and `typecheck` failures on `packages/xmpp-core/
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved after round 1.
+
+**Approved and merged by Claude.** Built by DeepSeek Flash until its quota ran out, then finished on MiniMax M3. No Muse pre-review (OpenCode Go has no funds), so I read the upload, classification and rendering code myself. Verified after rebasing onto `main`: every changed path is inside Allowed files; `format:check`, `lint`, `typecheck`, `test` (protocol 144, chat-core 135, web 415 passed) and `build` pass; no new dependencies.
+
+**Round 1 (must-fix, privacy):** an incoming `attachment` payload of kind `image` with any http(s) URL was rendered as an `<img>`, so a chat peer could make every viewer's browser fetch a tracking pixel from a third-party host. Fixed in the store mapping: images auto-load only when the URL's hostname is one of `token.service`'s host, `token.domain` or `upload.<domain>` (in dev the upload URL uses the XMPP domain while the WebSocket uses `127.0.0.1`); anything else, including look-alikes and `user@host` tricks, becomes a file card that only loads on click. The trusted set lives in a persistent `mediaToken`, not in the one-shot `firstToken`. Tested with hostile URLs.
+
+What else I checked: SVG is a file, never an image; every link goes through `safeHttpUrl`; the 50 MB cap is enforced before any request; a failed upload stays visible and retryable; history maps attachments like voice.
+
+**Live and visual checks are still open:** no browser screenshots or real upload against ejabberd were done (a live send needs a real chat). The XEP-0363 path is the one voice messages already proved in T-0010. Julio should attach an image and a file in a real chat, paste an image, and drag one in.
 
 ### Findings
--
+1. *(No change needed.)* The same class of issue exists for **voice**: `VoiceMessage` plays whatever `url` a voice payload names. It is an `<audio>` element (no auto-fetch of the body before play in most browsers, but it can preload metadata). Worth applying the same trusted-host rule in a follow-up.
+2. *(No change needed.)* Download links open an untrusted URL only on an explicit click, in a new tab with `noopener noreferrer`.
 
 ### Follow-ups
--
+- Apply `isTrustedMediaUrl` to voice payload URLs too.
+- A real upload and a paste/drag check by Julio.
