@@ -7,6 +7,7 @@ import {
   MOCK_DRAFT_STREAM_TEXT,
   MOCK_DRAFT_TURN_ID,
 } from '../mock/drafts';
+import { MOCK_LOAD_DELAY_MS } from '../mock/load';
 import {
   READ_DELAY_MS,
   SENT_DELAY_MS,
@@ -136,6 +137,53 @@ describe('chat store', () => {
     expect(store.getState().chats.find((chat) => chat.id === 'dev-ai')?.lastMessage?.id).toBe(
       MOCK_DRAFT_FINAL_MESSAGE_ID,
     );
+  });
+
+  it('is loaded at once by default', () => {
+    const store = createChatStore();
+    expect(store.getState().chatsLoad).toBe('loaded');
+    expect(store.getState().historyLoad['ana']).toBe('loaded');
+  });
+
+  it('slow starts empty and loading, then settles', () => {
+    const store = createChatStore(undefined, 'slow');
+    expect(store.getState().chatsLoad).toBe('loading');
+    expect(store.getState().chats).toHaveLength(0);
+
+    vi.advanceTimersByTime(MOCK_LOAD_DELAY_MS);
+
+    expect(store.getState().chatsLoad).toBe('loaded');
+    expect(store.getState().chats).toHaveLength(10);
+    expect(store.getState().historyLoad['ana']).toBe('loaded');
+  });
+
+  it('error keeps its chats but reports the failures', () => {
+    const store = createChatStore(undefined, 'error');
+    expect(store.getState().chatsLoad).toBe('error');
+    expect(store.getState().chats).toHaveLength(10);
+    expect(store.getState().historyLoad['ana']).toBe('error');
+  });
+
+  it('empty has no chats at all', () => {
+    const store = createChatStore(undefined, 'empty');
+    expect(store.getState().chatsLoad).toBe('loaded');
+    expect(store.getState().chats).toHaveLength(0);
+    expect(store.getState().messages('ana')).toHaveLength(0);
+  });
+
+  it('no-messages has chats but no history', () => {
+    const store = createChatStore(undefined, 'no-messages');
+    expect(store.getState().chats).toHaveLength(10);
+    expect(store.getState().messages('ana')).toHaveLength(0);
+    expect(store.getState().historyLoad['ana']).toBe('loaded');
+  });
+
+  it('the mock retry actions settle the states for screenshots', () => {
+    const store = createChatStore(undefined, 'error');
+    store.getState().reloadChats();
+    store.getState().retryHistory('ana');
+    expect(store.getState().chatsLoad).toBe('loaded');
+    expect(store.getState().historyLoad['ana']).toBe('loaded');
   });
 });
 

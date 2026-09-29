@@ -194,6 +194,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const groupMembers = new Map<string, Map<string, string>>();
     const loadingGroupMembers = new Set<string>();
     const loadingOlder = new Set<string>();
+    // First-page history loads currently in flight, by chat id (T-0067).
+    const loadingHistory = new Set<string>();
+    // A chat opened before the core was connected or before the chats had
+    // arrived. Only the latest one counts; it loads once both are ready.
+    let pendingOpenChatId: string | undefined;
+    // True once the group rooms are joined; a MAM query for a group before that
+    // fails, so a pending group history waits for it (T-0067).
+    let groupsJoined = false;
 
     function isVisible(): boolean {
       return appState.current() === 'active';
@@ -442,6 +450,27 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     function listFor(state: ChatStoreState, chatId: string): UiMessage[] {
       return state.messagesByChat[chatId] ?? [];
+    }
+
+    function setHistoryLoad(chatId: string, load: 'loading' | 'loaded' | 'error'): void {
+      set((state) => ({ historyLoad: { ...state.historyLoad, [chatId]: load } }));
+    }
+
+    // Drops the `loading` marker of a pending chat that was superseded before it
+    // ever loaded, so no ownerless entry stays behind. Settled entries and
+    // in-flight loads are left alone.
+    function clearSupersededMarker(chatId: string): void {
+      if (loadingHistory.has(chatId)) {
+        return;
+      }
+      set((state) => {
+        if (state.historyLoad[chatId] !== 'loading') {
+          return state;
+        }
+        const next = { ...state.historyLoad };
+        delete next[chatId];
+        return { historyLoad: next };
+      });
     }
 
     function markTurnFinished(turnId: string): void {
@@ -720,7 +749,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     function subscribe(current: XmppCore): void {
       unsubscribers = [
-        current.on('status', (status: ConnectionStatus) => set({ status })),
+        current.on('status', (status: ConnectionStatus) => {
+          set({ status });
+          if (status === 'online') {
+            flushPending();
+          }
+        }),
         current.on('message', handleMessage),
         current.on('typing', handleTyping),
         current.on('displayed', handleDisplayed),
@@ -773,20 +807,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }, CHAT_REFRESH_DEBOUNCE_MS);
     }
 
-    async function refreshChats(): Promise<void> {
-      const gen = generation;
-      let entries: ChatEntry[];
-      try {
-        entries = await api.getChats();
-      } catch {
-        return;
-      }
-      if (gen !== generation) {
-        return;
-      }
-
-      const previous = get().chats;
-      const known = new Map(previous.map((chat) => [chat.id, chat]));
+    // Merges a fresh chat list, preserving the local last message, unread count
+    // and presence of the chats already shown. Returns the previous chats so the
+    // caller can tell which entries are new (T-0067 shared by the background
+    // refresh and the manual reload).
+    function mergeChatEntries(entries: ChatEntry[]): Map<string, ChatSummary> {
+      const known = new Map(get().chats.map((chat) => [chat.id, chat]));
       const fresh = entries.filter((entry) => !known.has(entry.chatJid)).map(summaryFor);
       const kept = entries
         .filter((entry) => known.has(entry.chatJid))
@@ -807,7 +833,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       // New chats appear at the top; the rest keep their recency order.
       set({ chats: [...fresh, ...sortByRecency(kept)] });
       rememberGroupIds(entries);
+      return known;
+    }
 
+    // Joins the rooms of the new groups and loads their preview, best-effort.
+    async function adoptChatEntries(
+      entries: ChatEntry[],
+      known: Map<string, ChatSummary>,
+    ): Promise<void> {
       const current = core;
       const me = get().me;
       if (current === undefined || me === undefined) {
@@ -829,6 +862,47 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           await loadPreview(current, chat);
         }
       }
+    }
+
+    async function refreshChats(): Promise<void> {
+      const gen = generation;
+      let entries: ChatEntry[];
+      try {
+        entries = await api.getChats();
+      } catch {
+        // A background refresh failure stays silent; the manual reload reports it.
+        return;
+      }
+      if (gen !== generation) {
+        return;
+      }
+
+      const known = mergeChatEntries(entries);
+      flushPending();
+      await adoptChatEntries(entries, known);
+    }
+
+    // Pull-to-refresh and the list's Retry key. Unlike a background refresh it
+    // reports a failure in `chatsLoad`, and it only re-runs boot when the first
+    // boot never got as far as a core (e.g. the first `/api/chats` failed).
+    async function reloadChatsList(): Promise<void> {
+      const gen = generation;
+      let entries: ChatEntry[];
+      try {
+        entries = await api.getChats();
+      } catch {
+        if (gen === generation) {
+          set({ chatsLoad: 'error' });
+        }
+        return;
+      }
+      if (gen !== generation) {
+        return;
+      }
+      const known = mergeChatEntries(entries);
+      set({ chatsLoad: 'loaded' });
+      flushPending();
+      await adoptChatEntries(entries, known);
     }
 
     async function loadPreview(current: XmppCore, chat: ChatSummary): Promise<void> {
@@ -860,13 +934,56 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    async function openHistory(chatId: string): Promise<void> {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      if (core === undefined || chat === undefined) {
+    // A history load is safe only once the core is online (it is assigned
+    // before `connect()` resolves, so presence alone is not enough: a MAM query
+    // sent while still connecting fails) and, for a group, once its room joined.
+    function canLoadHistory(chat: ChatSummary): boolean {
+      return (
+        core !== undefined && get().status === 'online' && (chat.kind !== 'group' || groupsJoined)
+      );
+    }
+
+    // Runs the pending open once the core is online and the chat is known.
+    // Called after every point where either can become ready: the first chat
+    // merge, a background refresh, a manual reload and (re)connect.
+    function flushPending(): void {
+      const pending = pendingOpenChatId;
+      if (pending === undefined) {
         return;
       }
+      const chat = get().chats.find((entry) => entry.id === pending);
+      if (chat === undefined || !canLoadHistory(chat)) {
+        return;
+      }
+      pendingOpenChatId = undefined;
+      void openHistory(pending);
+    }
+
+    async function openHistory(chatId: string): Promise<void> {
+      const chat = get().chats.find((entry) => entry.id === chatId);
+      const current = core;
+      if (current === undefined || chat === undefined || !canLoadHistory(chat)) {
+        // The chat screen mounted before the data was there. Remember it and
+        // load once the core and the chat are both ready; never query MAM while
+        // the core is still connecting.
+        pendingOpenChatId = chatId;
+        setHistoryLoad(chatId, 'loading');
+        return;
+      }
+      if (loadingHistory.has(chatId)) {
+        // A load for this chat is already in flight; it covers this open.
+        if (pendingOpenChatId === chatId) {
+          pendingOpenChatId = undefined;
+        }
+        return;
+      }
+      if (pendingOpenChatId === chatId) {
+        pendingOpenChatId = undefined;
+      }
+      loadingHistory.add(chatId);
+      setHistoryLoad(chatId, 'loading');
       try {
-        const page = await core.loadHistory(chatId, coreKind(chat), { max: PAGE_HISTORY_MAX });
+        const page = await current.loadHistory(chatId, coreKind(chat), { max: PAGE_HISTORY_MAX });
         const loaded = page.messages.map((message) => toUiMessage(message, get().currentUserId));
         const newest = loaded.at(-1);
         set((state) => {
@@ -891,11 +1008,16 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         const last = loaded.at(-1);
         if (last !== undefined) {
           recordRead(chatId, last.id);
-          core.markDisplayed(chatId, coreKind(chat), last.id);
+          current.markDisplayed(chatId, coreKind(chat), last.id);
         }
+        setHistoryLoad(chatId, 'loaded');
       } catch {
-        // Keep whatever live messages we have.
+        // Keep whatever live messages we have; the view offers a retry.
+        setHistoryLoad(chatId, 'error');
+      } finally {
+        loadingHistory.delete(chatId);
       }
+      flushPending();
     }
 
     function loadOlder(chatId: string): void {
@@ -943,7 +1065,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         ]);
       } catch {
         if (gen === generation) {
-          set({ status: 'offline' });
+          set({ status: 'offline', chatsLoad: 'error' });
         }
         return;
       }
@@ -958,8 +1080,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         currentUserId: me.id,
         chats: entries.map(summaryFor),
         contacts,
+        chatsLoad: 'loaded',
       });
       startDraftStream(gen);
+      flushPending();
 
       let token: { jid: string; token: string; service: string; domain: string };
       try {
@@ -1005,7 +1129,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         return;
       }
       set({ status: 'online' });
+      flushPending();
       await joinGroups(current, me);
+      if (gen !== generation) {
+        return;
+      }
+      groupsJoined = true;
+      flushPending();
       await Promise.all(get().chats.map((chat) => loadPreview(current, chat)));
       if (gen === generation) {
         set((state) => ({ chats: sortByRecency(state.chats) }));
@@ -1029,10 +1159,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       try {
         await current.connect();
         set({ status: 'online' });
+        flushPending();
         const me = get().me;
         if (me !== undefined) {
           await joinGroups(current, me);
+          groupsJoined = true;
         }
+        flushPending();
       } catch {
         set({ status: 'offline' });
       }
@@ -1042,9 +1175,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       currentUserId: CURRENT_USER_ID,
       me: undefined,
       status: 'offline',
+      chatsLoad: 'loading',
       chats: [],
       contacts: [],
       messagesByChat: {},
+      historyLoad: {},
       activeChatId: null,
       historyComplete: {},
       search: '',
@@ -1058,6 +1193,24 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         set({ activeChatId: chatId });
         recordRead(chatId, lastRead[chatId]);
         void ensureGroupMembers(chatId);
+        if (pendingOpenChatId !== undefined && pendingOpenChatId !== chatId) {
+          clearSupersededMarker(pendingOpenChatId);
+        }
+        pendingOpenChatId = chatId;
+        void openHistory(chatId);
+      },
+      reloadChats: () => {
+        set({ chatsLoad: 'loading' });
+        // A first boot that never reached a core (e.g. `/api/chats` failed) is
+        // retried whole; a running session just refetches the list.
+        if (core === undefined) {
+          generation += 1;
+          void boot(generation);
+          return;
+        }
+        void reloadChatsList();
+      },
+      retryHistory: (chatId) => {
         void openHistory(chatId);
       },
       loadOlder,
@@ -1118,6 +1271,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
         started = true;
         generation += 1;
+        if (get().chats.length === 0) {
+          set({ chatsLoad: 'loading' });
+        }
         removeAppState = appState.subscribe((state) => {
           if (state !== 'active') {
             return;
@@ -1149,6 +1305,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         closeDraftStream = undefined;
         clearDraftState();
         set({ drafts: {}, finishedDraftMessages: {} });
+        pendingOpenChatId = undefined;
+        loadingHistory.clear();
+        groupsJoined = false;
         const current = core;
         core = undefined;
         if (current !== undefined) {

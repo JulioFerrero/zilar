@@ -6,13 +6,16 @@ import {
   type UiMessage,
 } from '@galena/chat-core';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList } from 'react-native';
+import { FlatList, View } from 'react-native';
 
 import { DateSeparator } from '@/components/chat/date-separator';
+import { LoadError } from '@/components/chat/load-error';
 import { MessageBubble } from '@/components/chat/message-bubble';
+import { MessageListSkeleton } from '@/components/chat/skeleton';
 import { UnreadDivider } from '@/components/chat/unread-divider';
+import { Text } from '@/components/ui/text';
 import { useChatStore } from '@/store/chat-store-provider';
-import { draftEntryKey } from '@/store/types';
+import { draftEntryKey, messagesListView } from '@/store/types';
 
 type ListEntry =
   | { type: 'divider'; key: string }
@@ -37,6 +40,10 @@ type MessageListProps = {
 export function MessageList({ chat, onReply }: MessageListProps) {
   const currentUserId = useChatStore((state) => state.currentUserId);
   const messages = useChatStore((state) => state.messages(chat.id));
+  // Unknown means never requested: the real store has no data without asking,
+  // so the first paint (before `openChat` runs) is loading, never empty.
+  const historyLoad = useChatStore((state) => state.historyLoad[chat.id] ?? 'loading');
+  const retryHistory = useChatStore((state) => state.retryHistory);
   const draft = useChatStore((state) => state.drafts[chat.id]);
   const finishedDraftMessages = useChatStore((state) => state.finishedDraftMessages);
   const loadOlder = useChatStore((state) => state.loadOlder);
@@ -119,6 +126,24 @@ export function MessageList({ chat, onReply }: MessageListProps) {
     }
     previousCount.current = messages.length;
   }, [messages.length]);
+
+  // Loading, error and empty are three different states: the empty text and
+  // the Retry only appear once the first page has settled. Live messages that
+  // arrive while loading render immediately, as before.
+  const view = messagesListView(historyLoad, entries.length);
+  if (view !== 'messages') {
+    if (view === 'skeleton') {
+      return <MessageListSkeleton />;
+    }
+    if (view === 'error') {
+      return <LoadError message="Couldn't load messages" onRetry={() => retryHistory(chat.id)} />;
+    }
+    return (
+      <View className="flex-1 items-center justify-center p-8">
+        <Text className="text-[15px] text-muted-foreground">No messages yet</Text>
+      </View>
+    );
+  }
 
   return (
     <FlatList

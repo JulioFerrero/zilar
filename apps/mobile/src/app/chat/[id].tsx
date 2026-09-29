@@ -8,6 +8,7 @@ import { ChatBackground } from '@/components/chat/chat-background';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { Composer } from '@/components/chat/composer';
 import { MessageList } from '@/components/chat/message-list';
+import { MessageListSkeleton } from '@/components/chat/skeleton';
 import { Text } from '@/components/ui/text';
 import { replyRef } from '@/lib/format';
 import type { ReplyRef, UiMessage } from '@/lib/types';
@@ -26,6 +27,7 @@ function Chat() {
   const params = useLocalSearchParams<{ id: string }>();
   const chatId = typeof params.id === 'string' ? params.id : '';
   const chat = useChatStore((state) => state.chats.find((item) => item.id === chatId));
+  const chatsLoad = useChatStore((state) => state.chatsLoad);
   const openChat = useChatStore((state) => state.openChat);
   const sendText = useChatStore((state) => state.sendText);
   const sendTyping = useChatStore((state) => state.sendTyping);
@@ -39,6 +41,15 @@ function Chat() {
   }, [chatId, openChat]);
 
   if (!chat) {
+    // The chats are still arriving: this is a loading state, not "not found".
+    if (chatsLoad === 'loading') {
+      return (
+        <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+          <ChatBackground />
+          <MessageListSkeleton />
+        </SafeAreaView>
+      );
+    }
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-background" edges={['top']}>
         <Text className="text-[15px] text-muted-foreground">Chat not found</Text>

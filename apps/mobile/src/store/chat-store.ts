@@ -2,7 +2,7 @@ import type { MessageStatus, UiMessage } from '@galena/chat-core';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import { CURRENT_USER_ID, CURRENT_USER_NAME } from '../lib/types';
-import { mockChats, mockMessagesByChat } from '../mock';
+import { chatSeeds, mockChats, mockMessagesByChat } from '../mock';
 import { mockParamAllowed } from '../mock/gate';
 import {
   MOCK_DRAFT_CHAT_ID,
@@ -13,7 +13,8 @@ import {
   readMockDraftPhase,
   type MockDraftPhase,
 } from '../mock/drafts';
-import type { ChatStoreState } from './types';
+import { MOCK_LOAD_DELAY_MS, readMockLoadScenario, type MockLoadScenario } from '../mock/load';
+import type { ChatStoreState, LoadState } from './types';
 
 /** Simulated send states, from T-0018 step 5. */
 export const SENT_DELAY_MS = 300;
@@ -31,6 +32,8 @@ type ChatStoreData = Omit<
   | 'messages'
   | 'openChat'
   | 'loadOlder'
+  | 'reloadChats'
+  | 'retryHistory'
   | 'hasMore'
   | 'sendText'
   | 'sendTyping'
@@ -49,7 +52,7 @@ function cloneMessages(): Record<string, UiMessage[]> {
   );
 }
 
-export function createInitialState(phase?: MockDraftPhase): ChatStoreData {
+export function createInitialState(phase?: MockDraftPhase, load?: MockLoadScenario): ChatStoreData {
   const messagesByChat = cloneMessages();
   // The `final` phase appends the completed reply, so the last message is the
   // one that takes over the draft's place (same text position, incoming look).
@@ -63,13 +66,19 @@ export function createInitialState(phase?: MockDraftPhase): ChatStoreData {
     const lastMessage = messagesByChat[chat.id]?.at(-1);
     return lastMessage ? { ...chat, lastMessage } : { ...chat };
   });
-  return {
+  // The mock store is loaded at once, except in the T-0067 screenshot scenarios.
+  const loadedHistory: Record<string, LoadState> = Object.fromEntries(
+    mockChats.map((chat) => [chat.id, 'loaded']),
+  );
+  const base: ChatStoreData = {
     currentUserId: CURRENT_USER_ID,
     me: undefined,
     status: 'online',
+    chatsLoad: 'loaded',
     chats,
     contacts: [],
     messagesByChat,
+    historyLoad: loadedHistory,
     search: '',
     activeFolder: 'all',
     activeChatId: null,
@@ -82,6 +91,23 @@ export function createInitialState(phase?: MockDraftPhase): ChatStoreData {
     finishedDraftMessages:
       phase === 'final' ? { [MOCK_DRAFT_FINAL_MESSAGE_ID]: MOCK_DRAFT_TURN_ID } : {},
   };
+  if (load === 'slow') {
+    return { ...base, chats: [], chatsLoad: 'loading', messagesByChat: {}, historyLoad: {} };
+  }
+  if (load === 'error') {
+    return {
+      ...base,
+      chatsLoad: 'error',
+      historyLoad: Object.fromEntries(mockChats.map((chat) => [chat.id, 'error'])),
+    };
+  }
+  if (load === 'empty') {
+    return { ...base, chats: [], chatsLoad: 'loaded', messagesByChat: {}, historyLoad: {} };
+  }
+  if (load === 'no-messages') {
+    return { ...base, chats: chatSeeds.map((seed) => ({ ...seed })), messagesByChat: {} };
+  }
+  return base;
 }
 
 /**
@@ -102,6 +128,7 @@ let messageCounter = 0;
 /** The mock store kept for `?mock=1` dev mode and unit tests. */
 export function createChatStore(
   phase: MockDraftPhase | undefined = readMockDraftPhase(),
+  load: MockLoadScenario | undefined = readMockLoadScenario(),
 ): UseBoundStore<StoreApi<ChatStoreState>> {
   return create<ChatStoreState>()((set, get) => {
     const setStatus = (chatId: string, messageId: string, status: MessageStatus) => {
@@ -129,11 +156,28 @@ export function createChatStore(
 
     scheduleTypingSimulation(set);
 
+    // The `slow` scenario is the only one that settles: the real list arrives
+    // after the delay, the same way a slow backend would.
+    if (load === 'slow') {
+      setTimeout(() => {
+        const loaded = createInitialState(phase);
+        set({
+          chats: loaded.chats,
+          messagesByChat: loaded.messagesByChat,
+          chatsLoad: 'loaded',
+          historyLoad: loaded.historyLoad,
+        });
+      }, MOCK_LOAD_DELAY_MS);
+    }
+
     return {
-      ...createInitialState(phase),
+      ...createInitialState(phase, load),
       messages: (chatId) => get().messagesByChat[chatId] ?? NO_MESSAGES,
       hasMore: () => false,
       loadOlder: () => {},
+      reloadChats: () => set({ chatsLoad: 'loaded' }),
+      retryHistory: (chatId) =>
+        set((state) => ({ historyLoad: { ...state.historyLoad, [chatId]: 'loaded' } })),
       sendTyping: () => {},
       start: () => {},
       stop: () => {},

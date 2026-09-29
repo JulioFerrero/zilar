@@ -56,7 +56,7 @@ interface FakeXmpp {
   emit: (event: string, payload: unknown) => void;
 }
 
-function fakeXmpp(): FakeXmpp {
+function fakeXmpp(connectGate?: Promise<void>): FakeXmpp {
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
   const history: Record<string, ChatMessage[]> = {};
   const options: { current?: XmppCoreOptions } = {};
@@ -64,7 +64,9 @@ function fakeXmpp(): FakeXmpp {
   const core = {
     status: () => 'online' as const,
     me: () => 'me@galena.test',
-    connect: vi.fn(async () => {}),
+    connect: vi.fn(async () => {
+      await connectGate;
+    }),
     disconnect: vi.fn(async () => {}),
     joinRoom: vi.fn(async () => {}),
     leaveRoom: vi.fn(async () => {}),
@@ -150,9 +152,28 @@ async function flush(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-async function setup(overrides: Partial<ChatApi> = {}, deps: Partial<RealStoreDeps> = {}) {
+/** Flushes microtasks until `predicate` holds (or gives up after 50 rounds). */
+async function flushUntil(predicate: () => boolean): Promise<void> {
+  for (let round = 0; round < 50 && !predicate(); round += 1) {
+    await flush();
+  }
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+async function setup(
+  overrides: Partial<ChatApi> = {},
+  deps: Partial<RealStoreDeps> = {},
+  connectGate?: Promise<void>,
+) {
   const api = fakeApi(overrides);
-  const xmpp = fakeXmpp();
+  const xmpp = fakeXmpp(connectGate);
   const appState = fakeAppState();
   xmpp.history['ana@galena.test'] = [
     message({
@@ -803,5 +824,199 @@ describe('AI reply drafts (T-0056)', () => {
     await flush();
     expect(drafts.open).toHaveBeenCalledTimes(2);
     expect(drafts.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('loading states (T-0067)', () => {
+  const ANA = 'ana@galena.test';
+
+  it('reports the chat list as loading until it arrives, then loaded', async () => {
+    const gate = deferred();
+    const base = fakeApi();
+    const { store } = await setup({
+      getChats: vi.fn(async () => {
+        await gate.promise;
+        return base.getChats();
+      }),
+    });
+    expect(store.getState().chatsLoad).toBe('loading');
+    expect(store.getState().chats).toHaveLength(0);
+
+    gate.resolve();
+    await flushUntil(() => store.getState().chatsLoad === 'loaded');
+
+    expect(store.getState().chatsLoad).toBe('loaded');
+    expect(store.getState().chats.map((chat) => chat.id)).toEqual(['team@rooms.galena.test', ANA]);
+  });
+
+  it('lands a failed chat list in error and reloadChats recovers', async () => {
+    let failFirst = true;
+    const base = fakeApi();
+    const { store } = await setup({
+      getChats: vi.fn(async () => {
+        if (failFirst) {
+          failFirst = false;
+          throw new Error('server down');
+        }
+        return base.getChats();
+      }),
+    });
+
+    expect(store.getState().chatsLoad).toBe('error');
+    expect(store.getState().chats).toHaveLength(0);
+
+    store.getState().reloadChats();
+    await flushUntil(() => store.getState().chatsLoad === 'loaded');
+
+    expect(store.getState().chatsLoad).toBe('loaded');
+    expect(store.getState().chats).toHaveLength(2);
+  });
+
+  it('does not query history while the core is connecting, then flushes on ready', async () => {
+    const gate = deferred();
+    const { store, xmpp } = await setup({}, {}, gate.promise);
+    expect(store.getState().chatsLoad).toBe('loaded');
+    const loadHistory = vi.mocked(xmpp.core.loadHistory);
+    loadHistory.mockClear();
+
+    store.getState().openChat(ANA);
+    expect(loadHistory).not.toHaveBeenCalled();
+    expect(store.getState().historyLoad[ANA]).toBe('loading');
+
+    gate.resolve();
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    expect(loadHistory).toHaveBeenCalledWith(ANA, 'chat', { max: 50 });
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .map((item) => item.id),
+    ).toContain('ana-2');
+  });
+
+  it('flushes an open chat when the chat appears after the open', async () => {
+    const gate = deferred();
+    const base = fakeApi();
+    const { store, xmpp } = await setup({
+      getChats: vi.fn(async () => {
+        await gate.promise;
+        return base.getChats();
+      }),
+    });
+    const loadHistory = vi.mocked(xmpp.core.loadHistory);
+    loadHistory.mockClear();
+
+    store.getState().openChat(ANA);
+    expect(loadHistory).not.toHaveBeenCalled();
+    expect(store.getState().historyLoad[ANA]).toBe('loading');
+
+    gate.resolve();
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    expect(loadHistory).toHaveBeenCalledWith(ANA, 'chat', { max: 50 });
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .map((item) => item.id),
+    ).toContain('ana-2');
+  });
+
+  it('loads a chat opened again once, not twice, across the pending flush', async () => {
+    const gate = deferred();
+    const { store, xmpp } = await setup({}, {}, gate.promise);
+    const loadHistory = vi.mocked(xmpp.core.loadHistory);
+    loadHistory.mockClear();
+
+    store.getState().openChat(ANA);
+    store.getState().openChat(ANA);
+
+    gate.resolve();
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    const pageLoads = loadHistory.mock.calls.filter((call) => call[2]?.max === 50);
+    expect(pageLoads).toHaveLength(1);
+  });
+
+  it('loads only the latest chat when a second chat is opened before ready', async () => {
+    const gate = deferred();
+    const { store, xmpp } = await setup({}, {}, gate.promise);
+    const loadHistory = vi.mocked(xmpp.core.loadHistory);
+    loadHistory.mockClear();
+
+    store.getState().openChat(ANA);
+    store.getState().openChat('team@rooms.galena.test');
+    // The superseded chat's pending marker is cleared, so it is not loading.
+    expect(store.getState().historyLoad[ANA]).toBeUndefined();
+    expect(store.getState().historyLoad['team@rooms.galena.test']).toBe('loading');
+
+    gate.resolve();
+    await flushUntil(() => store.getState().historyLoad['team@rooms.galena.test'] === 'loaded');
+
+    const pageLoads = loadHistory.mock.calls.filter((call) => call[2]?.max === 50);
+    expect(pageLoads).toHaveLength(1);
+    expect(pageLoads[0]?.[0]).toBe('team@rooms.galena.test');
+  });
+
+  it('lands a failed history in error and retryHistory recovers', async () => {
+    const { store, xmpp } = await setup();
+    const loadHistory = vi.mocked(xmpp.core.loadHistory);
+    loadHistory.mockRejectedValueOnce(new Error('MAM failed'));
+
+    store.getState().openChat(ANA);
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'error');
+
+    expect(store.getState().historyLoad[ANA]).toBe('error');
+    expect(store.getState().messages(ANA)).toHaveLength(0);
+
+    store.getState().retryHistory(ANA);
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    expect(store.getState().historyLoad[ANA]).toBe('loaded');
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .map((item) => item.id),
+    ).toContain('ana-2');
+  });
+
+  it('re-flushes the pending open after a reconnect', async () => {
+    const { store, xmpp, appState } = await setup();
+    xmpp.emit('status', 'offline');
+    const loadHistory = vi.mocked(xmpp.core.loadHistory);
+    loadHistory.mockClear();
+
+    store.getState().openChat(ANA);
+    expect(loadHistory).not.toHaveBeenCalled();
+    expect(store.getState().historyLoad[ANA]).toBe('loading');
+
+    appState.setActive();
+    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    expect(loadHistory).toHaveBeenCalledWith(ANA, 'chat', { max: 50 });
+    expect(store.getState().historyLoad[ANA]).toBe('loaded');
+  });
+
+  it('never moves a loaded chat list back to loading on a background refresh', async () => {
+    const { store, xmpp, api } = await setup();
+    const getChats = vi.mocked(api.getChats);
+    const before = getChats.mock.calls.length;
+
+    vi.useFakeTimers();
+    try {
+      const seen: string[] = [];
+      const unsubscribe = store.subscribe((state) => seen.push(state.chatsLoad));
+      xmpp.emit('roster', {});
+      await vi.advanceTimersByTimeAsync(600);
+      unsubscribe();
+
+      expect(getChats.mock.calls.length).toBeGreaterThan(before);
+      expect(seen).not.toContain('loading');
+      expect(seen).toContain('loaded');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
