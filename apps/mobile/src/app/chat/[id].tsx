@@ -13,6 +13,7 @@ import { TaskStrip } from '@/components/chat/task-strip';
 import { TopicInfoSheet } from '@/components/chat/topic-sheets';
 import { Text } from '@/components/ui/text';
 import { replyRef } from '@/lib/format';
+import { attachedRoleIds, describeRolesError, mayManageRoles } from '@/lib/roles';
 import { httpsTopicUrl, mayArchiveTopic } from '@/lib/topics';
 import type { TopicStatus } from '@/lib/topics-api';
 import type { ReplyRef, UiMessage } from '@/lib/types';
@@ -48,10 +49,16 @@ function Chat() {
   const removeTopicMember = useChatStore((state) => state.removeTopicMember);
   const listTopicMembers = useChatStore((state) => state.listTopicMembers);
   const listTopicAis = useChatStore((state) => state.listTopicAis);
+  const setTopicRoles = useChatStore((state) => state.setTopicRoles);
+  const topicRoles = useChatStore((state) => state.topicRoles(chatId));
+  const refreshTopicRoles = useChatStore((state) => state.refreshTopicRoles);
   const chatGroupId = useChatStore(
     (state) => state.chats.find((item) => item.id === chatId)?.groupId,
   );
   const groupDetail = useChatStore((state) => state.groupDetail(chatGroupId ?? ''));
+  const refreshGroupDetail = useChatStore((state) => state.refreshGroupDetail);
+  const groupRoles = useChatStore((state) => state.groupRoles(chatGroupId ?? ''));
+  const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
   const me = useChatStore((state) => state.me);
   const topicNotice = useChatStore((state) => state.topicNotice);
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
@@ -66,6 +73,8 @@ function Chat() {
   const [infoAis, setInfoAis] = useState<{ id: string; name: string }[]>([]);
   const [infoBusy, setInfoBusy] = useState(false);
   const [infoError, setInfoError] = useState('');
+  const [infoRolesError, setInfoRolesError] = useState('');
+  const [infoGroupRolesError, setInfoGroupRolesError] = useState('');
 
   useEffect(() => {
     if (chatId) {
@@ -80,6 +89,18 @@ function Chat() {
       cancelEdit();
     };
   }, [chatId, cancelEdit]);
+
+  // The manager bit (archive gate, role controls) and the owner picker read
+  // the group detail, so load it for the topic's group: opening a topic
+  // directly (deep link) must not demote a manager to a silent read-only
+  // view. A load failure keeps the read-only view with a neutral notice in
+  // the info sheet.
+  const detailGroupId = chat?.groupId ?? chatGroupId;
+  useEffect(() => {
+    if (detailGroupId !== undefined && detailGroupId !== '') {
+      refreshGroupDetail(detailGroupId);
+    }
+  }, [detailGroupId, refreshGroupDetail]);
 
   // A topic that disappears while open goes back to the topics screen with a
   // short notice that never names the topic (the store sets it on refresh).
@@ -118,6 +139,7 @@ function Chat() {
   const isTopic = chat.topic !== undefined;
   const groupName = chat.groupTitle ?? '';
   const detail = groupDetail;
+  const detailLoaded = detail !== undefined;
   const myUserId = me?.id ?? currentUserId;
   const permissions = {
     members:
@@ -161,6 +183,21 @@ function Chat() {
     void patch({ status: next });
   };
 
+  const refreshInfoRoles = () => {
+    setInfoRolesError('');
+    setInfoGroupRolesError('');
+    // Loads map a 404 to "no longer available" (refreshable) and never show
+    // raw server messages; a 403 stays the neutral denied line.
+    void refreshTopicRoles(chat.id).catch((error: unknown) =>
+      setInfoRolesError(describeRolesError(error, 'load')),
+    );
+    if (chatGroupId !== undefined) {
+      void refreshGroupRoles(chatGroupId).catch((error: unknown) =>
+        setInfoGroupRolesError(describeRolesError(error, 'load')),
+      );
+    }
+  };
+
   const openInfo = () => {
     setInfoError('');
     setInfoOpen(true);
@@ -170,6 +207,25 @@ function Chat() {
     void listTopicAis(chat.id)
       .then(setInfoAis)
       .catch(() => setInfoAis([]));
+    // The access picker reads the attached roles fresh.
+    refreshInfoRoles();
+  };
+
+  const saveTopicRoles = (roleIds: string[], approverRoleId: string | null): void => {
+    setInfoRolesError('');
+    // Writes map 403 and 404 to the neutral denied line (the server answers
+    // the same 404 for unknown and hidden ids); nothing raw reaches the UI.
+    void setTopicRoles(chat.id, { roleIds, approverRoleId }).catch((error: unknown) =>
+      setInfoRolesError(describeRolesError(error, 'write')),
+    );
+  };
+
+  const toggleTopicRole = (roleId: string): void => {
+    const attached = topicRoles?.roles ?? [];
+    const next = attached.some((role) => role.id === roleId)
+      ? attached.filter((role) => role.id !== roleId).map((role) => role.id)
+      : [...attached.map((role) => role.id), roleId];
+    saveTopicRoles(next, topicRoles?.approverRole?.id ?? null);
   };
 
   if (!isTopic) {
@@ -349,6 +405,33 @@ function Chat() {
         onClose={() => {
           if (!infoBusy) {
             setInfoOpen(false);
+          }
+        }}
+        roles={topicRoles?.roles ?? []}
+        rolesError={infoRolesError}
+        rolesLoading={!detailLoaded && infoRolesError === ''}
+        groupRolesError={infoGroupRolesError}
+        approverRole={topicRoles?.approverRole ?? null}
+        groupRoles={groupRoles ?? []}
+        canManageRoles={mayManageRoles(
+          detail?.members.find((member) => member.userId === myUserId)?.role,
+        )}
+        onToggleTopicRole={toggleTopicRole}
+        onPickApprover={(roleId) =>
+          saveTopicRoles(attachedRoleIds(topicRoles?.roles ?? []), roleId)
+        }
+        onRetryRoles={() => {
+          setInfoRolesError('');
+          void refreshTopicRoles(chat.id).catch((error: unknown) =>
+            setInfoRolesError(describeRolesError(error, 'load')),
+          );
+        }}
+        onRetryGroupRoles={() => {
+          setInfoGroupRolesError('');
+          if (chatGroupId !== undefined) {
+            void refreshGroupRoles(chatGroupId).catch((error: unknown) =>
+              setInfoGroupRolesError(describeRolesError(error, 'load')),
+            );
           }
         }}
       />

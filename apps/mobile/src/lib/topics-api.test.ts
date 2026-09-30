@@ -85,6 +85,32 @@ describe('parseTopic', () => {
     expect(parseTopicStatus('shipped')).toBe('open');
     expect(parseTopicVisibility('public')).toBe('public');
   });
+
+  it('parses attached roles and the approver role', () => {
+    const topic = parseTopic(
+      topicRow({
+        roles: [{ id: 'role-designers', name: 'Designers', memberCount: 2 }],
+        approverRole: { id: 'role-designers', name: 'Designers' },
+      }),
+    );
+    expect(topic?.roles).toEqual([{ id: 'role-designers', name: 'Designers', memberCount: 2 }]);
+    expect(topic?.approverRole).toEqual({ id: 'role-designers', name: 'Designers' });
+  });
+
+  it('treats absent roles as none, for older servers', () => {
+    const row = topicRow();
+    delete row['roles'];
+    delete row['approverRole'];
+    const topic = parseTopic(row);
+    expect(topic?.roles).toEqual([]);
+    expect(topic?.approverRole).toBeNull();
+  });
+
+  it('rejects malformed role entries', () => {
+    expect(parseTopic(topicRow({ roles: [{ id: 'r1' }] }))).toBeNull();
+    expect(parseTopic(topicRow({ roles: 'nope' }))).toBeNull();
+    expect(parseTopic(topicRow({ approverRole: { id: 'r1' } }))).toBeNull();
+  });
 });
 
 describe('chatEntryTopics', () => {
@@ -150,6 +176,31 @@ describe('createTopicsApi', () => {
     expect(calls).toContain('GET http://127.0.0.1:3188/api/topics/t-1/ais');
     expect(calls).toContain('POST http://127.0.0.1:3188/api/topics/t-1/ais');
     expect(calls).toContain('DELETE http://127.0.0.1:3188/api/topics/t-1/ais/dev-1');
+  });
+
+  it('replaces a private topic roles with one PUT', async () => {
+    let seenBody: unknown;
+    const calls: string[] = [];
+    const api = apiFor(async (url, init) => {
+      calls.push(`${init?.method ?? 'GET'} ${url}`);
+      seenBody = JSON.parse((init?.body as string) ?? '{}');
+      return jsonResponse(
+        topicRow({
+          roles: [{ id: 'role-designers', name: 'Designers', memberCount: 2 }],
+          approverRole: { id: 'role-designers', name: 'Designers' },
+        }),
+      );
+    });
+
+    const topic = await api.setTopicRoles('t-1', {
+      roleIds: ['role-designers'],
+      approverRoleId: 'role-designers',
+    });
+
+    expect(calls).toContain('PUT http://127.0.0.1:3188/api/topics/t-1/roles');
+    expect(seenBody).toEqual({ roleIds: ['role-designers'], approverRoleId: 'role-designers' });
+    expect(topic.roles).toEqual([{ id: 'role-designers', name: 'Designers', memberCount: 2 }]);
+    expect(topic.approverRole).toEqual({ id: 'role-designers', name: 'Designers' });
   });
 
   it('throws a typed error on a failed request', async () => {

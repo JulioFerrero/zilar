@@ -8,9 +8,18 @@ import type {
   JoinResult,
 } from '../lib/invite-links-api';
 import { CURRENT_USER_ID, CURRENT_USER_NAME } from '../lib/types';
+import type { CustomGroupRole } from '../lib/roles-api';
+import type { ApproverRole, TopicRole } from '../lib/topics-api';
 import { chatSeeds, mockChats, mockMessagesByChat } from '../mock';
 import { createMockInviteLinksStore } from '../mock/invite-links';
-import { mockDevteamGroupDetail, mockDevteamOwnedAis, mockTopicAisById } from '../mock/topics';
+import {
+  mockDevteamGroupDetail,
+  mockDevteamOwnedAis,
+  mockGroupRoles,
+  mockMemberName,
+  mockTopicAisById,
+  mockTopicRolesOf,
+} from '../mock/topics';
 import { mockParamAllowed } from '../mock/gate';
 import {
   MOCK_DRAFT_CHAT_ID,
@@ -70,6 +79,15 @@ type ChatStoreData = Omit<
   | 'revokeInviteLink'
   | 'previewJoinLink'
   | 'joinByLink'
+  | 'groupRoles'
+  | 'refreshGroupRoles'
+  | 'createGroupRole'
+  | 'renameGroupRole'
+  | 'deleteGroupRole'
+  | 'setGroupRoleMembers'
+  | 'topicRoles'
+  | 'refreshTopicRoles'
+  | 'setTopicRoles'
   | 'setSearch'
   | 'setActiveFolder'
   | 'start'
@@ -171,6 +189,53 @@ export function createChatStore(
   load: MockLoadScenario | undefined = readMockLoadScenario(),
 ): UseBoundStore<StoreApi<ChatStoreState>> {
   return create<ChatStoreState>()((set, get) => {
+    // In-memory custom roles (T-0137): each mock store gets its own copy of
+    // the seeded Designers/Devs roles, plus the attached roles + approver
+    // role per topic id. Writes mutate the copies and bump
+    // `groupDetailsRevision` so the `groupRoles`/`topicRoles` selectors
+    // re-fire, like the real store.
+    const mockRoles: CustomGroupRole[] = mockGroupRoles();
+    const mockTopicRoles = new Map<
+      string,
+      { roles: TopicRole[]; approverRole: ApproverRole | null }
+    >();
+    let mockRoleSequence = 1;
+
+    const bumpRolesRevision = () =>
+      set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
+
+    const findMockRole = (roleId: string): CustomGroupRole | undefined =>
+      mockRoles.find((role) => role.id === roleId);
+
+    const topicRolesOf = (
+      topicId: string,
+    ): { roles: TopicRole[]; approverRole: ApproverRole | null } => {
+      const cached = mockTopicRoles.get(topicId);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const seeded = mockTopicRolesOf(topicId);
+      const entry = {
+        roles: seeded.roles.map((role) => ({ ...role })),
+        approverRole: seeded.approverRole === null ? null : { ...seeded.approverRole },
+      };
+      mockTopicRoles.set(topicId, entry);
+      return entry;
+    };
+
+    const refreshMockTopicRoleCounts = () => {
+      for (const [topicId, entry] of mockTopicRoles) {
+        mockTopicRoles.set(topicId, {
+          ...entry,
+          roles: entry.roles.map((role) => {
+            const live = findMockRole(role.id);
+            return live === undefined
+              ? role
+              : { ...role, name: live.name, memberCount: live.members.length };
+          }),
+        });
+      }
+    };
     const setStatus = (chatId: string, messageId: string, status: MessageStatus) => {
       set((state) => {
         const messages = state.messagesByChat[chatId];
@@ -277,6 +342,8 @@ export function createChatStore(
             linkLabel: null,
           },
         };
+        // A new topic starts with no roles attached (T-0137).
+        mockTopicRoles.set(topicId, { roles: [], approverRole: null });
         set((state) => ({
           chats: [next, ...state.chats],
           messagesByChat: { ...state.messagesByChat, [roomId]: [] },
@@ -285,6 +352,18 @@ export function createChatStore(
         return roomId;
       },
       patchTopic: async (chatId, input) => {
+        const before = get().chats.find((entry) => entry.id === chatId);
+        const topicId = before?.topic?.id;
+        // Going public clears the attached roles and the approver role, like
+        // the server: re-privatizing never brings them back silently.
+        if (
+          topicId !== undefined &&
+          before?.topic?.visibility === 'private' &&
+          input.visibility === 'public'
+        ) {
+          mockTopicRoles.set(topicId, { roles: [], approverRole: null });
+          bumpRolesRevision();
+        }
         set((state) => ({
           chats: state.chats.map((entry) => {
             if (entry.id !== chatId || entry.topic === undefined) {
@@ -378,6 +457,128 @@ export function createChatStore(
       },
       previewJoinLink: async (token: string): Promise<JoinPreview> => inviteLinks.preview(token),
       joinByLink: async (token: string): Promise<JoinResult> => inviteLinks.join(token),
+      groupRoles: (groupId) => {
+        void get().groupDetailsRevision;
+        return groupId === 'g-devteam' ? mockRoles.map((role) => ({ ...role })) : undefined;
+      },
+      refreshGroupRoles: async () => {},
+      createGroupRole: async (groupId, name) => {
+        if (groupId !== 'g-devteam') {
+          throw new Error('This group is not available yet.');
+        }
+        const trimmed = name.trim().slice(0, 30);
+        if (trimmed === '') {
+          throw new Error('Enter a role name.');
+        }
+        if (mockRoles.some((role) => role.name.toLowerCase() === trimmed.toLowerCase())) {
+          throw new Error('A role with that name already exists.');
+        }
+        const role: CustomGroupRole = {
+          id: `role-mock-${mockRoleSequence}`,
+          name: trimmed,
+          members: [],
+        };
+        mockRoleSequence += 1;
+        mockRoles.push(role);
+        bumpRolesRevision();
+        return { ...role };
+      },
+      renameGroupRole: async (_groupId, roleId, name) => {
+        const role = findMockRole(roleId);
+        if (role === undefined) {
+          throw new Error('That role is no longer here.');
+        }
+        const trimmed = name.trim().slice(0, 30);
+        if (trimmed === '') {
+          throw new Error('Enter a role name.');
+        }
+        if (
+          mockRoles.some(
+            (entry) => entry.id !== roleId && entry.name.toLowerCase() === trimmed.toLowerCase(),
+          )
+        ) {
+          throw new Error('A role with that name already exists.');
+        }
+        role.name = trimmed;
+        refreshMockTopicRoleCounts();
+        bumpRolesRevision();
+        return { ...role, members: [...role.members] };
+      },
+      deleteGroupRole: async (_groupId, roleId) => {
+        const index = mockRoles.findIndex((role) => role.id === roleId);
+        if (index === -1) {
+          throw new Error('That role is no longer here.');
+        }
+        mockRoles.splice(index, 1);
+        for (const [topicId, entry] of mockTopicRoles) {
+          mockTopicRoles.set(topicId, {
+            roles: entry.roles.filter((role) => role.id !== roleId),
+            approverRole: entry.approverRole?.id === roleId ? null : entry.approverRole,
+          });
+        }
+        bumpRolesRevision();
+      },
+      setGroupRoleMembers: async (_groupId, roleId, userIds) => {
+        const role = findMockRole(roleId);
+        if (role === undefined) {
+          throw new Error('That role is no longer here.');
+        }
+        role.members = [...new Set(userIds)].map((userId) => ({
+          userId,
+          name: mockMemberName(userId),
+        }));
+        refreshMockTopicRoleCounts();
+        bumpRolesRevision();
+        return { ...role, members: [...role.members] };
+      },
+      topicRoles: (chatId) => {
+        void get().groupDetailsRevision;
+        const topicId = get().chats.find((entry) => entry.id === chatId)?.topic?.id;
+        if (topicId === undefined) {
+          return undefined;
+        }
+        const entry = topicRolesOf(topicId);
+        return {
+          roles: entry.roles.map((role) => ({ ...role })),
+          approverRole: entry.approverRole === null ? null : { ...entry.approverRole },
+        };
+      },
+      refreshTopicRoles: async (chatId) => {
+        const topicId = get().chats.find((entry) => entry.id === chatId)?.topic?.id;
+        if (topicId !== undefined) {
+          topicRolesOf(topicId);
+        }
+      },
+      setTopicRoles: async (chatId, input) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const topicId = chat?.topic?.id;
+        if (topicId === undefined) {
+          throw new Error('This topic is not available yet.');
+        }
+        if (chat?.topic?.visibility !== 'private') {
+          throw new Error('Only private topics have roles.');
+        }
+        const wanted = [...new Set(input.roleIds)];
+        const roles: TopicRole[] = [];
+        for (const id of wanted) {
+          const live = findMockRole(id);
+          if (live === undefined) {
+            throw new Error('That role is no longer here.');
+          }
+          roles.push({ id: live.id, name: live.name, memberCount: live.members.length });
+        }
+        const approverId = input.approverRoleId;
+        let approverRole: ApproverRole | null = null;
+        if (approverId !== null) {
+          const live = findMockRole(approverId);
+          if (live === undefined) {
+            throw new Error('That role is no longer here.');
+          }
+          approverRole = { id: live.id, name: live.name };
+        }
+        mockTopicRoles.set(topicId, { roles, approverRole });
+        bumpRolesRevision();
+      },
       start: () => {},
       stop: () => {},
       openChat: (chatId) => {

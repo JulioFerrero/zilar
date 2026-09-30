@@ -236,7 +236,12 @@ export function mockDevteamGroupDetail(): {
   title: string;
   createdBy: string;
   membersCanCreateTopics: boolean;
-  members: { userId: string; name: string; role: 'owner' | 'admin' | 'member' }[];
+  members: {
+    userId: string;
+    name: string;
+    role: 'owner' | 'admin' | 'member';
+    roles: { id: string; name: string }[];
+  }[];
   ais: { aiId: string; jid: string; name: string; ownerId: string }[];
 } {
   return {
@@ -245,10 +250,28 @@ export function mockDevteamGroupDetail(): {
     createdBy: 'me',
     membersCanCreateTopics: false,
     members: [
-      { userId: 'me', name: 'You', role: 'owner' },
-      { userId: 'ana', name: 'Ana', role: 'admin' },
-      { userId: 'luis', name: 'Luis', role: 'member' },
-      { userId: 'marta', name: 'Marta', role: 'member' },
+      {
+        userId: 'me',
+        name: 'You',
+        role: 'owner',
+        roles: [
+          { id: 'role-designers', name: 'Designers' },
+          { id: 'role-devs', name: 'Devs' },
+        ],
+      },
+      {
+        userId: 'ana',
+        name: 'Ana',
+        role: 'admin',
+        roles: [{ id: 'role-designers', name: 'Designers' }],
+      },
+      {
+        userId: 'luis',
+        name: 'Luis',
+        role: 'member',
+        roles: [{ id: 'role-devs', name: 'Devs' }],
+      },
+      { userId: 'marta', name: 'Marta', role: 'member', roles: [] },
     ],
     ais: [
       { aiId: 'dev-ai', jid: 'ai-dev-ai@galena.test', name: 'Dev AI', ownerId: 'me' },
@@ -275,4 +298,77 @@ export function mockDevteamOwnedAis(): { id: string; name: string }[] {
     { id: 'dev-ai', name: 'Dev AI' },
     { id: 'marketing-ai', name: 'Marketing AI' },
   ];
+}
+
+/**
+ * The Dev team group's custom roles (T-0137, the same two as the web mock):
+ * Designers held by you and Ana, Devs by you and Luis.
+ */
+export function mockGroupRoles(): {
+  id: string;
+  name: string;
+  members: { userId: string; name: string }[];
+}[] {
+  return [
+    {
+      id: 'role-designers',
+      name: 'Designers',
+      members: [
+        { userId: 'me', name: 'You' },
+        { userId: 'ana', name: 'Ana' },
+      ],
+    },
+    {
+      id: 'role-devs',
+      name: 'Devs',
+      members: [
+        { userId: 'me', name: 'You' },
+        { userId: 'luis', name: 'Luis' },
+      ],
+    },
+  ];
+}
+
+/** The display name of a Dev team member, falling back to the id. */
+export function mockMemberName(userId: string): string {
+  return (
+    mockDevteamGroupDetail().members.find((member) => member.userId === userId)?.name ?? userId
+  );
+}
+
+/**
+ * The roles attached to each mock topic (T-0137, mirroring the web mock):
+ * the private hiring topic carries Designers, the pricing-page UI topic
+ * names Designers as its approver.
+ */
+export function mockTopicRolesById(): Record<
+  string,
+  {
+    roles: { id: string; name: string; memberCount: number }[];
+    approverRole: { id: string; name: string } | null;
+  }
+> {
+  const roles = mockGroupRoles();
+  const view = (id: string): { id: string; name: string; memberCount: number } => {
+    const role = roles.find((entry) => entry.id === id);
+    return { id, name: role?.name ?? id, memberCount: role?.members.length ?? 0 };
+  };
+  return {
+    't-devteam-hiring': {
+      roles: [view('role-designers')],
+      approverRole: null,
+    },
+    't-devteam-ui': {
+      roles: [],
+      approverRole: { id: 'role-designers', name: 'Designers' },
+    },
+  };
+}
+
+/** The topic roles of one mock topic id, or none for topics without any. */
+export function mockTopicRolesOf(topicId: string): {
+  roles: { id: string; name: string; memberCount: number }[];
+  approverRole: { id: string; name: string } | null;
+} {
+  return mockTopicRolesById()[topicId] ?? { roles: [], approverRole: null };
 }

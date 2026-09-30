@@ -14,7 +14,14 @@ import type {
   JoinPreview,
   JoinResult,
 } from '../lib/invite-links-api';
-import type { CreateTopicInput, PatchTopicInput } from '../lib/topics-api';
+import type { CustomGroupRole } from '../lib/roles-api';
+import type {
+  ApproverRole,
+  CreateTopicInput,
+  PatchTopicInput,
+  SetTopicRolesInput,
+  TopicRole,
+} from '../lib/topics-api';
 import type { ChatFolder } from '../lib/types';
 
 /** Connection state shown by the thin "Connecting…" bar in the chat list. */
@@ -244,6 +251,47 @@ export interface ChatStoreState {
    * list. Resolves with the group id. Rejects on failure.
    */
   joinByLink: (token: string) => Promise<JoinResult>;
+  /**
+   * The custom roles of one group (T-0137), keyed by **group id** like the
+   * group detail. `undefined` until `refreshGroupRoles` has loaded them;
+   * every member reads the list, only owners/admins write it.
+   */
+  groupRoles: (groupId: string) => CustomGroupRole[] | undefined;
+  /** Loads the custom roles of one group id. Rejects on failure. */
+  refreshGroupRoles: (groupId: string) => Promise<void>;
+  /** Creates a role in `groupId` (the screen passes its route param, so an
+   *  empty group with no loaded topic rows still works). Rejects on failure. */
+  createGroupRole: (groupId: string, name: string) => Promise<CustomGroupRole>;
+  /** Renames a role in `groupId`. Rejects on failure. */
+  renameGroupRole: (groupId: string, roleId: string, name: string) => Promise<CustomGroupRole>;
+  /** Deletes a role in `groupId` everywhere. Rejects on failure. */
+  deleteGroupRole: (groupId: string, roleId: string) => Promise<void>;
+  /**
+   * Replaces a role's holder set in `groupId` (the server diffs inside a
+   * transaction, so the full desired member list goes over the wire).
+   * Rejects on failure.
+   */
+  setGroupRoleMembers: (
+    groupId: string,
+    roleId: string,
+    userIds: string[],
+  ) => Promise<CustomGroupRole>;
+  /**
+   * Replaces a private topic's roles and picks its approver role,
+   * refreshing the row. Public topics show no role controls. Going public
+   * clears roles server-side, so the refreshed row carries none. Rejects on
+   * failure.
+   */
+  setTopicRoles: (chatId: string, input: SetTopicRolesInput) => Promise<void>;
+  /**
+   * The roles attached to the topic that owns `chatId` plus its approver
+   * role (T-0137). `undefined` until `refreshTopicRoles` has loaded them.
+   */
+  topicRoles: (
+    chatId: string,
+  ) => { roles: TopicRole[]; approverRole: ApproverRole | null } | undefined;
+  /** Loads the attached roles + approver role of the topic. Rejects on failure. */
+  refreshTopicRoles: (chatId: string) => Promise<void>;
   setSearch: (search: string) => void;
   setActiveFolder: (folder: ChatFolder) => void;
   start: () => void;

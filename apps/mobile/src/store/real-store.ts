@@ -47,11 +47,15 @@ import { API_URL } from '../lib/auth';
 import { createInviteLinksApi, type InviteLinksApi } from '../lib/invite-links-api';
 import {
   createTopicsApi,
+  type ApproverRole,
   type CreateTopicInput,
   type PatchTopicInput,
+  type SetTopicRolesInput,
   type Topic,
+  type TopicRole,
   type TopicsApi,
 } from '../lib/topics-api';
+import { createRolesApi, type CustomGroupRole, type RolesApi } from '../lib/roles-api';
 import { summariesForTopicsEntry, TOPIC_GONE_NOTICE } from '../lib/topics';
 import {
   DRAFT_STREAM_PATH,
@@ -109,6 +113,7 @@ export interface RealStoreDeps {
   topicsApi?: TopicsApi;
   /** The group invite-links API (T-0136); tests inject a fake. */
   inviteLinksApi?: InviteLinksApi;
+  rolesApi?: RolesApi;
   ownedAis?: { id: string; name: string }[];
   createXmpp?: (options: XmppCoreOptions) => XmppCore;
   now?: () => Date;
@@ -271,6 +276,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
   const topics = topicsApi2(deps);
   const inviteLinks = deps.inviteLinksApi ?? createInviteLinksApi(getSessionToken, fetch, API_URL);
 
+  function rolesApi2(deps: RealStoreDeps): RolesApi {
+    if (deps.rolesApi !== undefined) {
+      return deps.rolesApi;
+    }
+    return createRolesApi(getSessionToken, fetch, API_URL);
+  }
+
+  const rolesApi = rolesApi2(deps);
+
   return createStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
     let unsubscribers: Array<() => void> = [];
@@ -300,6 +314,22 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // until the server answers (see `rememberGroupIds`).
     const groupDetails = new Map<string, GroupDetail>();
     const loadingGroupDetails = new Set<string>();
+    // groupId -> the custom roles (T-0137), loaded on demand by the group
+    // screen. Keyed by group id like `groupDetails` so every topic row of a
+    // group shares one entry; published through `set()` (the
+    // `groupDetailsRevision` bump) so selectors re-fire. Replaced wholesale
+    // on every successful load or role write.
+    const groupRolesById = new Map<string, CustomGroupRole[]>();
+    const loadingGroupRoles = new Set<string>();
+    // topicId -> the attached roles + approver role (T-0137), loaded on
+    // demand by the topic info sheet. Replaced wholesale from every full
+    // topic response, so a private-to-public flip never leaves stale roles
+    // behind (the server clears them, and the response carries none).
+    const topicRolesById = new Map<
+      string,
+      { roles: TopicRole[]; approverRole: ApproverRole | null }
+    >();
+    const loadingTopicRoles = new Set<string>();
     // The 60 s active-app poll for new/removed topics (T-0112), plus its
     // AppState listener. Both stop when the store stops (or restarts).
     let topicsPollTimer: ReturnType<typeof setInterval> | undefined;
@@ -1160,6 +1190,62 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // group rows resolve it through the remembered `/api/chats` entries.
     function groupIdForChat(chatId: string): string | undefined {
       return groupIds.get(chatId) ?? get().chats.find((entry) => entry.id === chatId)?.groupId;
+    }
+
+    // Loads the custom roles (T-0137) of a group once, so the group screen
+    // and the topic access sheet can read them. Published through `set()`
+    // (the `groupDetailsRevision` bump) so `groupRoles` selectors re-fire.
+    // Rejects on failure so the screen can show Retry.
+    async function ensureGroupRoles(groupId: string, force = false): Promise<void> {
+      if (groupId === '') {
+        return;
+      }
+      if (loadingGroupRoles.has(groupId)) {
+        return;
+      }
+      if (!force && groupRolesById.has(groupId)) {
+        return;
+      }
+      loadingGroupRoles.add(groupId);
+      try {
+        const roles = await rolesApi.listGroupRoles(groupId);
+        groupRolesById.set(groupId, roles);
+        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
+      } finally {
+        loadingGroupRoles.delete(groupId);
+      }
+    }
+
+    // Remembers the roles of one full topic response (create/patch/roles),
+    // replacing whatever was cached. The response is the server truth, so a
+    // private-to-public flip clears the entry instead of leaving it stale.
+    function rememberTopicRoles(topic: Topic): void {
+      topicRolesById.set(topic.id, { roles: topic.roles, approverRole: topic.approverRole });
+      set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
+    }
+
+    // Loads the attached roles + approver role of the topic that owns
+    // `chatId` once, so the topic info sheet can read them. Rejects on
+    // failure so the sheet can show Retry.
+    async function ensureTopicRoles(chatId: string, force = false): Promise<void> {
+      const chat = get().chats.find((entry) => entry.id === chatId);
+      const topicId = chat?.topic?.id;
+      if (topicId === undefined) {
+        return;
+      }
+      if (loadingTopicRoles.has(topicId)) {
+        return;
+      }
+      if (!force && topicRolesById.has(topicId)) {
+        return;
+      }
+      loadingTopicRoles.add(topicId);
+      try {
+        const topic = await topics.getTopic(topicId);
+        rememberTopicRoles(topic);
+      } finally {
+        loadingTopicRoles.delete(topicId);
+      }
     }
 
     // Loads the member names of a group once per chat, so a typing indicator
@@ -2341,6 +2427,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           throw new Error('This group is not available yet.');
         }
         const topic = await topics.createTopic(groupId, input as CreateTopicInput);
+        rememberTopicRoles(topic);
         await applyTopicRow(topic);
         const row = get().chats.find((entry) => entry.topic?.id === topic.id);
         if (row === undefined) {
@@ -2355,6 +2442,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       patchTopic: async (chatId, input) => {
         const { topicId } = await topicIdFor(chatId);
         const topic = await topics.patchTopic(topicId, input as PatchTopicInput);
+        // The patch response is the server truth: a private-to-public flip
+        // cleared the roles there, so the cache is replaced, not merged.
+        rememberTopicRoles(topic);
         await applyTopicRow(topic);
       },
       archiveTopic: async (chatId) => {
@@ -2416,6 +2506,73 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         await refreshChats().catch(() => {});
         return result;
       },
+      groupRoles: (groupId) => {
+        // Reading the revision subscribes the selector to roles loads, like
+        // `groupDetail`.
+        void get().groupDetailsRevision;
+        return groupRolesById.get(groupId);
+      },
+      refreshGroupRoles: (groupId) => {
+        return ensureGroupRoles(groupId, true);
+      },
+      createGroupRole: async (groupId, name) => {
+        const role = await rolesApi.createGroupRole(groupId, name);
+        groupRolesById.set(groupId, [...(groupRolesById.get(groupId) ?? []), role]);
+        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
+        return role;
+      },
+      renameGroupRole: async (groupId, roleId, name) => {
+        const role = await rolesApi.renameGroupRole(groupId, roleId, name);
+        groupRolesById.set(
+          groupId,
+          (groupRolesById.get(groupId) ?? []).map((entry) => (entry.id === roleId ? role : entry)),
+        );
+        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
+        return role;
+      },
+      deleteGroupRole: async (groupId, roleId) => {
+        await rolesApi.deleteGroupRole(groupId, roleId);
+        groupRolesById.set(
+          groupId,
+          (groupRolesById.get(groupId) ?? []).filter((entry) => entry.id !== roleId),
+        );
+        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
+      },
+      setGroupRoleMembers: async (groupId, roleId, userIds) => {
+        const role = await rolesApi.setGroupRoleMembers(groupId, roleId, userIds);
+        const known = groupRolesById.get(groupId);
+        groupRolesById.set(
+          groupId,
+          known === undefined
+            ? [role]
+            : known.some((entry) => entry.id === roleId)
+              ? known.map((entry) => (entry.id === roleId ? role : entry))
+              : [...known, role],
+        );
+        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
+        return role;
+      },
+      setTopicRoles: async (chatId, input) => {
+        const { topicId } = await topicIdFor(chatId);
+        const topic = await topics.setTopicRoles(topicId, input as SetTopicRolesInput);
+        // The refreshed row carries the server truth: going public cleared
+        // the roles there, so no stale roles stay in the store.
+        rememberTopicRoles(topic);
+        await applyTopicRow(topic);
+      },
+      topicRoles: (chatId) => {
+        // Reading the revision subscribes the selector to topic-roles loads,
+        // like `groupDetail`.
+        void get().groupDetailsRevision;
+        const topicId = get().chats.find((entry) => entry.id === chatId)?.topic?.id;
+        if (topicId === undefined) {
+          return undefined;
+        }
+        return topicRolesById.get(topicId);
+      },
+      refreshTopicRoles: (chatId) => {
+        return ensureTopicRoles(chatId, true);
+      },
       setSearch: (value) => set({ search: value }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),
       start: () => {
@@ -2461,6 +2618,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         clearDraftState();
         groupDetails.clear();
         loadingGroupDetails.clear();
+        groupRolesById.clear();
+        loadingGroupRoles.clear();
+        topicRolesById.clear();
+        loadingTopicRoles.clear();
         set({ drafts: {}, finishedDraftMessages: {}, edits: {}, reactions: {} });
         pendingOpenChatId = undefined;
         loadingHistory.clear();

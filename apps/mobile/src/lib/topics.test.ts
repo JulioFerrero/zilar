@@ -41,6 +41,8 @@ function topicWire(overrides: Partial<Topic> = {}): Topic {
     archived: false,
     memberCount: 6,
     ais: [],
+    roles: [],
+    approverRole: null,
     ...overrides,
   };
 }

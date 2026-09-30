@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, Link2, Plus, Search } from 'lucide-react-native';
+import { ChevronLeft, Link2, Plus, Search, Users } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, Share, TextInput, View } from 'react-native';
@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Avatar } from '@/components/chat/avatar';
 import { InviteLinksSheet, type CreateInviteLinkForm } from '@/components/chat/invite-links-sheet';
+import { GroupRolesSheet } from '@/components/chat/group-roles-sheet';
 import { NewTopicSheet, type NewTopicInput } from '@/components/chat/new-topic-sheet';
 import { TopicActionsSheet, type TopicSheetAction } from '@/components/chat/topic-sheets';
 import { TopicRow } from '@/components/chat/topic-row';
@@ -18,6 +19,8 @@ import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
+import { describeRolesError, mayManageRoles, membersWithChips } from '@/lib/roles';
+import type { CustomGroupRole } from '@/lib/roles-api';
 import { mayArchiveTopic, mayCreateTopic, topicsHeaderSubtitle, topicsOfGroup } from '@/lib/topics';
 import type { ChatSummary } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -40,6 +43,12 @@ function GroupTopics() {
   const chatsLoad = useChatStore((state) => state.chatsLoad);
   const groupDetail = useChatStore((state) => state.groupDetail(groupId));
   const refreshGroupDetail = useChatStore((state) => state.refreshGroupDetail);
+  const groupRoles = useChatStore((state) => state.groupRoles(groupId));
+  const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
+  const createGroupRole = useChatStore((state) => state.createGroupRole);
+  const renameGroupRole = useChatStore((state) => state.renameGroupRole);
+  const deleteGroupRole = useChatStore((state) => state.deleteGroupRole);
+  const setGroupRoleMembers = useChatStore((state) => state.setGroupRoleMembers);
   const ownedAis = useChatStore((state) => state.ownedAis);
   const currentUserId = useChatStore((state) => state.currentUserId);
   const listInviteLinks = useChatStore((state) => state.listInviteLinks);
@@ -67,14 +76,22 @@ function GroupTopics() {
   const [sheetBusy, setSheetBusy] = useState(false);
   const [sheetError, setSheetError] = useState('');
   const [composerAiError, setComposerAiError] = useState('');
+  const [rolesOpen, setRolesOpen] = useState(false);
+  const [rolesBusy, setRolesBusy] = useState(false);
+  const [rolesError, setRolesError] = useState('');
+  const [rolesLoadError, setRolesLoadError] = useState('');
 
   // The detail is keyed by group id (not chat id): load it on mount so the
   // member list, the "+" gate and the AI count resolve even on first visit.
+  // The roles ride a second load for the members/roles sheet.
   useEffect(() => {
     if (groupId !== '') {
       refreshGroupDetail(groupId);
+      void refreshGroupRoles(groupId).catch(() =>
+        setRolesLoadError('Could not load the roles. Try again.'),
+      );
     }
-  }, [groupId, refreshGroupDetail]);
+  }, [groupId, refreshGroupDetail, refreshGroupRoles]);
 
   const topics = useMemo(() => topicsOfGroup(chats, groupId), [chats, groupId]);
   const general = topics.find((topic) => topic.topic?.isGeneral === true);
@@ -104,6 +121,38 @@ function GroupTopics() {
     meUserId: currentUserId,
     membersCanCreateTopics: groupDetail?.membersCanCreateTopics === true,
   });
+  const isManager = mayManageRoles(members.find((member) => member.userId === currentUserId)?.role);
+  const membersWithRoleChips = useMemo(
+    () => membersWithChips(members, groupRoles),
+    [members, groupRoles],
+  );
+
+  // Roles writes (T-0137) take the route's group id directly, so an empty
+  // group with no loaded topic rows still works. The store replaces its
+  // cache on success, so the sheet re-renders with server truth.
+  const runRolesWrite = (work: () => Promise<unknown>): Promise<void> => {
+    setRolesBusy(true);
+    setRolesError('');
+    return work()
+      .then(() => {})
+      .catch((error: unknown) => setRolesError(describeRolesError(error, 'write')))
+      .finally(() => setRolesBusy(false));
+  };
+
+  const retryRolesLoad = () => {
+    setRolesLoadError('');
+    void refreshGroupRoles(groupId).catch((error: unknown) =>
+      setRolesLoadError(describeRolesError(error, 'load')),
+    );
+  };
+
+  const toggleRoleMember = (role: CustomGroupRole, userId: string): Promise<void> => {
+    const held = role.members.some((holder) => holder.userId === userId);
+    const userIds = held
+      ? role.members.filter((holder) => holder.userId !== userId).map((holder) => holder.userId)
+      : [...role.members.map((holder) => holder.userId), userId];
+    return runRolesWrite(() => setGroupRoleMembers(groupId, role.id, userIds));
+  };
   const notice =
     topicNotice !== undefined && topicNotice.groupId === groupId ? topicNotice.message : undefined;
 
@@ -252,6 +301,9 @@ function GroupTopics() {
             <Link2 size={20} color={ICON[scheme]} />
           </IconButton>
         ) : null}
+        <IconButton label="Members and roles" onPress={() => setRolesOpen(true)}>
+          <Users size={22} color={ICON[scheme]} />
+        </IconButton>
       </View>
 
       {notice !== undefined ? (
@@ -372,6 +424,26 @@ function GroupTopics() {
         onClose={() => {
           if (!linksBusy) {
             setLinksOpen(false);
+          }
+        }}
+      />
+      <GroupRolesSheet
+        visible={rolesOpen}
+        groupTitle={groupTitle}
+        members={membersWithRoleChips}
+        roles={groupRoles}
+        rolesError={rolesLoadError}
+        isManager={isManager}
+        busy={rolesBusy}
+        error={rolesError}
+        onRetryRoles={retryRolesLoad}
+        onCreateRole={(name) => runRolesWrite(() => createGroupRole(groupId, name))}
+        onRenameRole={(roleId, name) => runRolesWrite(() => renameGroupRole(groupId, roleId, name))}
+        onDeleteRole={(roleId) => runRolesWrite(() => deleteGroupRole(groupId, roleId))}
+        onToggleMember={toggleRoleMember}
+        onClose={() => {
+          if (!rolesBusy) {
+            setRolesOpen(false);
           }
         }}
       />
