@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { MAX_GROUP_MEMBERS } from '../groups/service';
 import { createApp } from '../app';
+import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { createAuditRecorder } from '../audit/service';
 import { auditLog } from '../db/schema';
 import { groupInviteLinks } from '../db/schema';
@@ -22,6 +23,7 @@ import {
   type TestContext,
 } from '../test-support';
 import { setTestAppInviteLinks } from '../app';
+import { trustedClientIp } from './routes';
 
 interface CreatedLinkBody {
   id: string;
@@ -365,6 +367,73 @@ describe('group invite links', () => {
     );
   });
 
+  it('the loser of a same-user race answers alreadyMember and consumes no use', async () => {
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    const friend = await bootstrapUser(context, app, 'friend@example.com');
+    const groupId = await lonelyGroup(owner);
+    const link = (await (await createLink(owner.cookie, groupId)).json()) as CreatedLinkBody;
+
+    // Park the first join at the start of its transaction — past its
+    // pre-transaction member check, before its claim, while it holds no
+    // lock — so the second join commits first. The first join's in-tx
+    // re-check must then see the committed membership and answer
+    // `alreadyMember` without claiming. (A true both-claimed interleave is
+    // impossible on PGlite: parking inside the open transaction blocks the
+    // second join's queries behind it. The `onConflictDoNothing` no-row
+    // backstop only triggers under real Postgres concurrency.)
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let parkedTransactions = 0;
+    const db = context.db as unknown as {
+      transaction<T>(callback: (tx: unknown) => Promise<T>): Promise<T>;
+    };
+    const realTransaction = db.transaction.bind(db);
+    let transactionCalls = 0;
+    db.transaction = ((callback: (tx: unknown) => Promise<boolean>) => {
+      transactionCalls += 1;
+      if (transactionCalls === 1) {
+        parkedTransactions += 1;
+        return firstGate.then(() => realTransaction(callback));
+      }
+      return realTransaction(callback);
+    }) as typeof db.transaction;
+
+    try {
+      const first = join(link.token, friend.cookie);
+      const deadline = Date.now() + 5000;
+      while (parkedTransactions === 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(parkedTransactions).toBe(1);
+
+      const second = await join(link.token, friend.cookie);
+      expect(second.status).toBe(200);
+      expect(await second.json()).toEqual({ groupId, alreadyMember: false });
+      releaseFirst();
+      const firstResponse = await first;
+      expect(firstResponse.status).toBe(200);
+      // The loser path: 200 with `alreadyMember: true`, not a second join.
+      expect(await firstResponse.json()).toEqual({ groupId, alreadyMember: true });
+    } finally {
+      releaseFirst();
+    }
+
+    const members = await context.db
+      .select()
+      .from(groupMembers)
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, friend.id)));
+    expect(members).toHaveLength(1);
+    const [row] = await context.db
+      .select()
+      .from(groupInviteLinks)
+      .where(eq(groupInviteLinks.id, link.id));
+    // One membership was created, so exactly one use was consumed — the
+    // loser never claimed.
+    expect(row!.uses).toBe(1);
+  });
+
   it('two parallel joins on a 1-use link admit exactly one newcomer', async () => {
     const owner = await bootstrapUser(context, app, 'owner@example.com');
     const first = await bootstrapUser(context, app, 'first@example.com');
@@ -476,6 +545,148 @@ describe('group invite links', () => {
     expect(output).not.toContain(link.token);
     expect(output).not.toContain(doomed.token);
     expect(output).toContain('/api/join/:token');
+  });
+
+  it('resolves the join limiter IP from x-forwarded-for per TRUSTED_PROXY_HOPS', async () => {
+    // Unit cases: 0 hops ignores headers; N > 0 reads from the right; a
+    // forged left-most entry never counts; short headers fall back.
+    expect(trustedClientIp(undefined, 1)).toBeNull();
+    expect(trustedClientIp('', 1)).toBeNull();
+    expect(trustedClientIp('203.0.113.7', 1)).toBe('203.0.113.7');
+    expect(trustedClientIp('203.0.113.7, 10.0.0.1', 1)).toBe('10.0.0.1');
+    expect(trustedClientIp('203.0.113.7, 10.0.0.1', 2)).toBe('203.0.113.7');
+    expect(trustedClientIp('forged, 203.0.113.7, 10.0.0.1', 1)).toBe('10.0.0.1');
+    expect(trustedClientIp('forged, 203.0.113.7, 10.0.0.1', 2)).toBe('203.0.113.7');
+    expect(trustedClientIp('203.0.113.7', 2)).toBeNull();
+    expect(trustedClientIp(' 203.0.113.7 ,, 10.0.0.1 ', 1)).toBe('10.0.0.1');
+  });
+
+  // Fires `count` failing join guesses, each with its own user but the
+  // same-shaped headers, and returns the statuses.
+  async function guessJoins(
+    requestApp: TestApp,
+    count: number,
+    headersFor: (index: number) => Record<string, string>,
+    cookies: string[],
+  ): Promise<number[]> {
+    const statuses: number[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const response = await requestApp.request(`${TEST_BASE_URL}/api/join/${'e'.repeat(64)}`, {
+        method: 'POST',
+        headers: { ...headersFor(index), cookie: cookies[index] ?? '' },
+      });
+      statuses.push(response.status);
+    }
+    return statuses;
+  }
+
+  it('limits joins per resolved client IP: 0 hops shares the socket, 1 hop splits by header', async () => {
+    for (const hops of [0, 1]) {
+      const limited = await mountLimited({
+        trustedProxyHops: hops,
+        joinLimiters: {
+          user: createRateLimiter({ max: 1000, windowMs: 60 * 60 * 1000 }),
+          ip: createRateLimiter({ max: 2, windowMs: 60 * 60 * 1000 }),
+        },
+      });
+      try {
+        const cookies: string[] = [];
+        for (let index = 0; index < 4; index += 1) {
+          const guest = await bootstrapUser(
+            limited.context,
+            limited.app,
+            `h${hops}-${index}@example.com`,
+          );
+          cookies.push(guest.cookie);
+        }
+        // Every request carries its own right-most address; the left-most
+        // entry is forged and must never affect the budget.
+        const statuses = await guessJoins(
+          limited.app,
+          4,
+          (index) => ({ 'x-forwarded-for': `forged-${index}, 203.0.113.${index}` }),
+          cookies,
+        );
+        if (hops === 0) {
+          // Headers ignored: all four share the socket budget of 2.
+          expect(statuses).toEqual([404, 404, 429, 429]);
+        } else {
+          // One hop: each request resolves to its own right-most address.
+          expect(statuses).toEqual([404, 404, 404, 404]);
+        }
+      } finally {
+        await limited.close();
+      }
+    }
+  });
+
+  it('with 2 hops the limiter reads the second address from the right', async () => {
+    const limited = await mountLimited({
+      trustedProxyHops: 2,
+      joinLimiters: {
+        user: createRateLimiter({ max: 1000, windowMs: 60 * 60 * 1000 }),
+        ip: createRateLimiter({ max: 1, windowMs: 60 * 60 * 1000 }),
+      },
+    });
+    try {
+      const first = await bootstrapUser(limited.context, limited.app, 'two-a@example.com');
+      const second = await bootstrapUser(limited.context, limited.app, 'two-b@example.com');
+      // Same second-from-right (`10.0.0.1`), different edge addresses: the
+      // second guess shares the first's budget.
+      const one = await limited.app.request(`${TEST_BASE_URL}/api/join/${'e'.repeat(64)}`, {
+        method: 'POST',
+        headers: { cookie: first.cookie, 'x-forwarded-for': 'client-a, 10.0.0.1, 10.9.9.9' },
+      });
+      expect(one.status).toBe(404);
+      const two = await limited.app.request(`${TEST_BASE_URL}/api/join/${'e'.repeat(64)}`, {
+        method: 'POST',
+        headers: { cookie: second.cookie, 'x-forwarded-for': 'client-b, 10.0.0.1, 10.9.9.9' },
+      });
+      expect(two.status).toBe(429);
+    } finally {
+      await limited.close();
+    }
+  });
+
+  it('rate-limits join previews per user (120 per hour, windowed)', async () => {
+    let now = Date.now();
+    const clock = (): number => now;
+    const limited = await mountLimited({
+      now: clock,
+      joinLimiters: {
+        user: createRateLimiter({ max: 1000, windowMs: 60 * 60 * 1000 }),
+        ip: createRateLimiter({ max: 1000, windowMs: 60 * 60 * 1000 }),
+        preview: createRateLimiter({ max: 3, windowMs: 60 * 60 * 1000, now: clock }),
+      },
+    });
+    try {
+      const owner = await bootstrapUser(limited.context, limited.app, 'owner@example.com');
+      const groupId = await lonelyGroupOn(limited.app, owner);
+      const link = await limited.createLink(owner.cookie, groupId);
+
+      // 3 previews pass (even for a missing token — the limit runs first);
+      // the 4th is rate limited.
+      for (let index = 0; index < 3; index += 1) {
+        const response = await limited.app.request(`${TEST_BASE_URL}/api/join/${link.token}`, {
+          headers: { cookie: owner.cookie },
+        });
+        expect(response.status).toBe(200);
+      }
+      const blocked = await limited.app.request(`${TEST_BASE_URL}/api/join/${link.token}`, {
+        headers: { cookie: owner.cookie },
+      });
+      expect(blocked.status).toBe(429);
+      expect(errorOf(await blocked.json()).code).toBe('rate_limited');
+
+      // The window passes: previews work again.
+      now += 60 * 60 * 1000 + 1;
+      const afterWindow = await limited.app.request(`${TEST_BASE_URL}/api/join/${link.token}`, {
+        headers: { cookie: owner.cookie },
+      });
+      expect(afterWindow.status).toBe(200);
+    } finally {
+      await limited.close();
+    }
   });
 
   it('rate-limits joins per user (20 per hour, windowed)', async () => {
@@ -612,6 +823,8 @@ describe('group invite links', () => {
   async function mountLimited(overrides: {
     now?: () => number;
     getClientIp?: () => string;
+    trustedProxyHops?: number;
+    joinLimiters?: { user: RateLimiter; ip: RateLimiter; preview?: RateLimiter };
   }): Promise<{
     context: TestContext;
     app: TestApp;

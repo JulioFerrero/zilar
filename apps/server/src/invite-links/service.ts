@@ -23,6 +23,10 @@ export const MAX_ACTIVE_INVITE_LINKS = 10;
 export const JOIN_RATE_LIMIT_MAX_PER_USER = 20;
 export const JOIN_RATE_LIMIT_MAX_PER_IP = 60;
 export const JOIN_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+// The preview reveals only a title and a count for a valid link, but probing
+// tokens at full speed must still be expensive: 120 previews per hour.
+export const JOIN_PREVIEW_RATE_LIMIT_MAX_PER_USER = 120;
+export const JOIN_PREVIEW_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 export type GroupInviteLinkRow = typeof groupInviteLinks.$inferSelect;
 
@@ -362,11 +366,25 @@ export interface JoinByLinkResult {
 // Adds the caller as a `member` through the existing add-member flow, so
 // room sync, public topics and the audit entry all happen. The group-full
 // check runs before any use is consumed, so a full group never burns a use.
-// The use is claimed atomically (not revoked, not expired, under the cap)
-// right before the add, so two racing joins can never exceed `max_uses`; a
-// failure after a successful claim refunds the use, so a 503 never burns
-// one either. Already a member answers 200 with `alreadyMember: true` and
-// consumes no use. A full group answers 409 `group_full`.
+// The membership re-check, the claim and the insert share one transaction.
+// What that guarantees, per race:
+// - Same user twice: the loser either sees the committed row in the in-tx
+//   re-check, or both claimed and its insert is a no-op (`onConflictDoNothing`
+//   returns no row, the unique index is the backstop). Either way it answers
+//   200 with `alreadyMember: true` and consumes nothing: its own claim rolls
+//   back with the transaction.
+// - Two strangers on a 1-use link: the conditional claim UPDATE is the
+//   backstop — at most `max_uses` of them win. The loser's claim updates no
+//   row, so it answers the same 404 `invalid_link` (never `alreadyMember`).
+// - A room failure after the claim answers 503 and the claim rolls back,
+//   so a 503 never burns a use either.
+// There is no `SELECT ... FOR UPDATE` or advisory lock here: strangers
+// serialize on the link row through the conditional claim, and same-user
+// claims on an under-cap link can both land momentarily — the unique index
+// plus the no-row check is what makes the loser consume nothing.
+// Already a member answers 200 with `alreadyMember: true` and consumes no
+// use (fast path, before the transaction). A full group answers 409
+// `group_full`.
 // Unknown/expired/revoked/exhausted links answer the same 404 `invalid_link`.
 export async function joinByInviteLink(
   deps: InviteLinkServiceDeps,
@@ -387,15 +405,57 @@ export async function joinByInviteLink(
   }
   await assertGroupHasRoom(deps.db, link.groupId);
 
-  const claimed = await claimLinkUse(deps.db, link.id, now);
-  if (!claimed) {
-    throw toInvalidLink();
+  const joined = await deps.db.transaction(async (tx) => {
+    // `tx` runs the claim and the insert atomically; the cast matches the
+    // codebase precedent (`createRule(tx as unknown as ServerDatabase …)`).
+    const txDb = tx as unknown as ServerDatabase;
+    const [existing] = await tx
+      .select({ userId: groupMembers.userId })
+      .from(groupMembers)
+      .where(and(eq(groupMembers.groupId, link.groupId), eq(groupMembers.userId, userId)))
+      .limit(1);
+    if (existing) {
+      return false;
+    }
+    const claimed = await claimLinkUse(txDb, link.id, now);
+    if (!claimed) {
+      throw toInvalidLink();
+    }
+    try {
+      await deps.adminClient.setAffiliation(
+        group.roomLocalpart,
+        jidFor(localpartFor(userId), deps.domain),
+        'member',
+      );
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw error;
+      }
+      throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    }
+    const inserted = await txDb
+      .insert(groupMembers)
+      .values({ groupId: link.groupId, userId, role: 'member' })
+      .onConflictDoNothing({ target: [groupMembers.groupId, groupMembers.userId] })
+      .returning();
+    // No row inserted: another writer won the race and committed first. No
+    // membership was created, so the claim above rolls back with the
+    // transaction and nothing is consumed.
+    return inserted.length > 0;
+  });
+  if (!joined) {
+    return { groupId: link.groupId, alreadyMember: true };
   }
+  await syncPublicTopicsByLink(deps, link.groupId);
   try {
-    await addMemberByLink(deps, group.roomLocalpart, link.groupId, userId);
+    await deps.adminClient.sendDirectInvitation(group.roomLocalpart, [
+      jidFor(localpartFor(userId), deps.domain),
+    ]);
   } catch (error) {
-    await refundLinkUse(deps.db, link.id);
-    throw error;
+    deps.logger.warn(
+      { err: error, roomLocalpart: group.roomLocalpart, members: 1 },
+      'could not send the group invitations',
+    );
   }
   if (deps.audit) {
     await deps.audit.record({
@@ -412,16 +472,6 @@ export async function joinByInviteLink(
     });
   }
   return { groupId: link.groupId, alreadyMember: false };
-}
-
-// Refunds one consumed use after a failed add (a 503 or any other error
-// past the claim). Guarded by `uses > 0` so a refund can never drive the
-// counter negative, even if two failures race the same row.
-async function refundLinkUse(db: ServerDatabase, linkId: string): Promise<void> {
-  await db
-    .update(groupInviteLinks)
-    .set({ uses: sql`${groupInviteLinks.uses} - 1` })
-    .where(and(eq(groupInviteLinks.id, linkId), sql`${groupInviteLinks.uses} > 0`));
 }
 
 // The group-full check, run before any use is claimed: people and AIs share
@@ -464,43 +514,12 @@ async function claimLinkUse(db: ServerDatabase, linkId: string, now: Date): Prom
   return rows.length > 0;
 }
 
-// The add-member half of a link join: insert the row, set the room
-// affiliation, sync every public topic room and invite the newcomer. Link
-// joins ignore the contacts rule on purpose: the link is the introduction.
-// The caller already checked membership and room, so the early return below
-// only covers a join that raced another writer (the insert stays
-// idempotent). The group-room affiliation is set inside the transaction
-// (like the groups flow), so a room outage there answers 503 before
-// anything commits; the topic sync afterwards is best effort.
-async function addMemberByLink(
-  deps: InviteLinkServiceDeps,
-  roomLocalpart: string,
-  groupId: string,
-  userId: string,
-): Promise<void> {
-  if (await isGroupMember(deps.db, groupId, userId)) {
-    return;
-  }
-  try {
-    await deps.db.transaction(async (tx) => {
-      await deps.adminClient.setAffiliation(
-        roomLocalpart,
-        jidFor(localpartFor(userId), deps.domain),
-        'member',
-      );
-      await tx
-        .insert(groupMembers)
-        .values({ groupId, userId, role: 'member' })
-        .onConflictDoNothing({ target: [groupMembers.groupId, groupMembers.userId] });
-    });
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
-  }
-  // Public topics gain the newcomer. Best effort after the commit, like the
-  // group flows: a failure is logged with the group id (never a topic name).
+// The post-commit half of a link join: every public topic room gains the
+// newcomer, then the newcomer is invited to the group room. Link joins
+// ignore the contacts rule on purpose: the link is the introduction. Topic
+// sync is best effort after the commit, like the group flows: a failure is
+// logged with the group id (never a topic name), never thrown.
+async function syncPublicTopicsByLink(deps: InviteLinkServiceDeps, groupId: string): Promise<void> {
   const topicRows = await deps.db.select().from(topics).where(eq(topics.groupId, groupId));
   for (const topic of topicRows) {
     if (topic.archivedAt !== null) {
@@ -514,16 +533,6 @@ async function addMemberByLink(
     } catch {
       deps.logger.warn({ groupId }, 'could not sync a topic room after a link join');
     }
-  }
-  try {
-    await deps.adminClient.sendDirectInvitation(roomLocalpart, [
-      jidFor(localpartFor(userId), deps.domain),
-    ]);
-  } catch (error) {
-    deps.logger.warn(
-      { err: error, roomLocalpart, members: 1 },
-      'could not send the group invitations',
-    );
   }
 }
 

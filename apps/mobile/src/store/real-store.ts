@@ -290,6 +290,7 @@ interface SenderInput {
 // One shared empty list: a selector must return the same reference while
 // nothing changed, or React re-renders forever ("Maximum update depth").
 const EMPTY_PINS: Pin[] = [];
+const EMPTY_MESSAGES: UiMessage[] = [];
 
 export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStoreState> {
   const api = deps.api ?? createChatApi(getSessionToken);
@@ -2349,7 +2350,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       finishedDraftMessages: {},
       editTarget: undefined,
       actionError: undefined,
-      messages: (chatId) => get().messagesByChat[chatId] ?? [],
+      messages: (chatId) => get().messagesByChat[chatId] ?? EMPTY_MESSAGES,
       hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
       jumpTarget: undefined,
       openChat: (chatId) => {
