@@ -1,4 +1,4 @@
-import { and, count, eq } from 'drizzle-orm';
+import { and, count, eq, sql } from 'drizzle-orm';
 import type { ServerDatabase } from '../db/client';
 import { pushSettings, pushSubscriptions } from '../db/schema';
 import { HttpError } from '../errors';
@@ -7,8 +7,10 @@ import type { WebPushSubscription } from './subscriptions';
 
 export type PushDeviceRow = typeof pushSubscriptions.$inferSelect;
 
-// At most this many browsers per user. Checked in code like the chat-prefs
-// caps; the unique node keeps concurrent subscribes from colliding.
+// At most this many browsers per user, enforced atomically: the whole
+// save runs in one transaction under a per-user advisory lock, and the
+// count is read inside it, so concurrent subscribes cannot jointly pass
+// the check (same pattern as the pins cap).
 export const PUSH_MAX_DEVICES_PER_USER = 20;
 
 // A device that received nothing for this long is listed as inactive. A
@@ -52,38 +54,41 @@ export async function saveDevice(
   cipher: PushCipher,
   input: SaveDeviceInput,
 ): Promise<PushDeviceRow> {
-  const [devices] = await db
-    .select({ total: count() })
-    .from(pushSubscriptions)
-    .where(eq(pushSubscriptions.userId, input.userId));
-  if (Number(devices?.total ?? 0) >= PUSH_MAX_DEVICES_PER_USER) {
-    throw new HttpError(409, 'too_many_devices', 'Too many push devices');
-  }
-  await db
-    .delete(pushSubscriptions)
-    .where(
-      and(
-        eq(pushSubscriptions.userId, input.userId),
-        eq(pushSubscriptions.endpoint, input.subscription.endpoint),
-      ),
-    );
-  const [row] = await db
-    .insert(pushSubscriptions)
-    .values({
-      id: input.id,
-      userId: input.userId,
-      node: input.node,
-      endpoint: input.subscription.endpoint,
-      p256dh: cipher.encrypt(input.subscription.keys.p256dh),
-      auth: cipher.encrypt(input.subscription.keys.auth),
-      userAgent: input.userAgent,
-      createdAt: input.now,
-    })
-    .returning();
-  if (!row) {
-    throw new HttpError(500, 'internal_error', 'Could not save the push device');
-  }
-  return row;
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${input.userId}))`);
+    const [devices] = await tx
+      .select({ total: count() })
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.userId, input.userId));
+    if (Number(devices?.total ?? 0) >= PUSH_MAX_DEVICES_PER_USER) {
+      throw new HttpError(409, 'too_many_devices', 'Too many push devices');
+    }
+    await tx
+      .delete(pushSubscriptions)
+      .where(
+        and(
+          eq(pushSubscriptions.userId, input.userId),
+          eq(pushSubscriptions.endpoint, input.subscription.endpoint),
+        ),
+      );
+    const [row] = await tx
+      .insert(pushSubscriptions)
+      .values({
+        id: input.id,
+        userId: input.userId,
+        node: input.node,
+        endpoint: input.subscription.endpoint,
+        p256dh: cipher.encrypt(input.subscription.keys.p256dh),
+        auth: cipher.encrypt(input.subscription.keys.auth),
+        userAgent: input.userAgent,
+        createdAt: input.now,
+      })
+      .returning();
+    if (!row) {
+      throw new HttpError(500, 'internal_error', 'Could not save the push device');
+    }
+    return row;
+  });
 }
 
 export async function devicesForUser(db: ServerDatabase, userId: string): Promise<PushDeviceRow[]> {

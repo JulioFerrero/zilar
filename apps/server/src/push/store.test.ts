@@ -67,6 +67,42 @@ describe('push device store', () => {
     expect(await devicesForUser(context.db, ana.id)).toEqual([]);
   });
 
+  it('caps devices at 20 per user, atomically under concurrency', async () => {
+    const app = testApp(context);
+    const ana = await bootstrapUser(context, app, 'ana@example.com');
+    const cipher = createPushCipher(STORAGE_KEY);
+    const { saveDevice } = await import('./store');
+    const { HttpError } = await import('../errors');
+    const now = new Date('2026-09-30T10:00:00Z');
+
+    // 21 concurrent registrations with distinct endpoints: the per-user
+    // advisory lock serializes the count-then-insert, so exactly 20 win
+    // and one answers 409 — never 21 rows.
+    const outcomes = await Promise.all(
+      Array.from({ length: 21 }, (_, index) =>
+        saveDevice(context.db, cipher, {
+          id: randomUUID(),
+          userId: ana.id,
+          node: `p-conc-${index}`,
+          subscription: subscription(`https://push.example.com/conc-${index}`),
+          userAgent: null,
+          now,
+        }).then(
+          () => 'saved' as const,
+          (error: unknown) =>
+            error instanceof HttpError && error.code === 'too_many_devices'
+              ? ('capped' as const)
+              : (() => {
+                  throw error;
+                })(),
+        ),
+      ),
+    );
+    expect(outcomes.filter((outcome) => outcome === 'saved')).toHaveLength(20);
+    expect(outcomes.filter((outcome) => outcome === 'capped')).toHaveLength(1);
+    expect(await devicesForUser(context.db, ana.id)).toHaveLength(20);
+  });
+
   it('replaces a re-registration of the same endpoint', async () => {
     const app = testApp(context);
     const ana = await bootstrapUser(context, app, 'ana@example.com');

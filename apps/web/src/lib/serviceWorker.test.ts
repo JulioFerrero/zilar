@@ -132,6 +132,17 @@ describe('service worker', () => {
     });
   });
 
+  it('tags by chat id when the payload has no message id', async () => {
+    await firePush({
+      json: () => ({ title: 'Galena', body: 'hi', chatId: 'room@rooms.x' }),
+      text: () => '',
+    });
+    expect(shown[0]!.options).toMatchObject({
+      tag: 'room@rooms.x',
+      data: { chatId: 'room@rooms.x' },
+    });
+  });
+
   it('falls back to placeholders for missing or broken payloads', async () => {
     await firePush(undefined);
     await firePush({

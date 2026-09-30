@@ -34,6 +34,15 @@ function notificationFor(data) {
   return { title, options };
 }
 
+// Dismissal contract (shared with `dismissChatNotifications` in
+// `src/lib/push.ts`): the tag is per-message (`messageId`, falling back to
+// the chat id), so one `getNotifications()` call can never enumerate a
+// chat's notifications by tag. Dismissal therefore enumerates all visible
+// notifications and closes the ones whose `data.chatId` matches. Both sides
+// pin this: `serviceWorker.test.ts` drives the real `sw.js` show path and
+// asserts `data.chatId` is set; `push.test.ts` asserts the dismiss side
+// matches on `data.chatId`.
+
 function clickUrlFor(chatId) {
   return chatId !== undefined && chatId !== '' ? `/c/${encodeURIComponent(chatId)}` : '/';
 }

@@ -62,7 +62,12 @@ export interface PushSubscriptionLike {
 
 export interface ServiceWorkerRegistrationLike {
   pushManager: PushManagerLike;
-  getNotifications?: (filter?: { tag?: string }) => Promise<Array<{ close: () => void }>>;
+  getNotifications?: (filter?: { tag?: string }) => Promise<
+    Array<{
+      close: () => void;
+      data?: { chatId?: string } | null;
+    }>
+  >;
 }
 
 export function realPushBrowser(): PushBrowser | undefined {
@@ -216,6 +221,10 @@ export async function updateAppBadge(
 }
 
 // Dismisses the push notifications of a chat once it is read in the app.
+// Tags are per-message (see the dismissal contract in `public/sw.js`), so
+// this enumerates all visible notifications and closes the ones whose
+// `data.chatId` matches — filtering by tag would miss every message-tagged
+// notification in production.
 export async function dismissChatNotifications(
   chatId: string,
   getRegistration?: () => Promise<ServiceWorkerRegistrationLike | undefined>,
@@ -228,9 +237,11 @@ export async function dismissChatNotifications(
     return;
   }
   try {
-    const notifications = await registration.getNotifications({ tag: chatId });
+    const notifications = await registration.getNotifications();
     for (const notification of notifications) {
-      notification.close();
+      if (notification.data?.chatId === chatId) {
+        notification.close();
+      }
     }
   } catch {
     // Dismissal is best effort.

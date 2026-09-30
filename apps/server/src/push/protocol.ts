@@ -23,7 +23,6 @@ const NodeSchema = z
 export const PushNotificationSchema = z.object({
   node: z.string().min(1),
   from: z.string().min(1),
-  publishOptionsSecret: z.string().optional(),
   messageCount: z.string().optional(),
   lastMessageSender: z.string().optional(),
   lastMessageBody: z.string().optional(),

@@ -44,7 +44,9 @@ async function canReachComponentPort(): Promise<boolean> {
 }
 
 describe.skipIf(!gateEnabled)('push live gate (T-0119)', () => {
-  it('MUC/Sub setup path works on live ejabberd; IQ observed when the listener exists', async () => {
+  it('MUC/Sub setup path works on live ejabberd; IQ observed when the listener exists', async ({
+    skip,
+  }) => {
     const config = loadConfig();
     const admin = createEjabberdAdminClient(config);
     const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -73,13 +75,13 @@ describe.skipIf(!gateEnabled)('push live gate (T-0119)', () => {
       console.log('PASS  unsubscribe_room accepted');
 
       // Stage B: the IQ itself. Needs the component listener; without it the
-      // gate stays open and the run reports SKIP, not failure.
+      // gate stays open and the run reports a real skip, not a pass.
       if (!(await canReachComponentPort())) {
         console.log(
-          'SKIP  stage B: nothing listens on 127.0.0.1:5347 ' +
-            '(add the ejabberd_service listener from infra/ejabberd/ejabberd.yml and restart ejabberd)',
+          'stage B needs the listener: add the ejabberd_service block from ' +
+            'infra/ejabberd/ejabberd.yml and restart ejabberd, then re-run the gate',
         );
-        return;
+        skip('no component listener on 127.0.0.1:5347 — stage B (IQ observation) unproven');
       }
       console.log('PASS  component listener reachable; stage B would run here');
       await sleep(WAIT_TIMEOUT_MS);

@@ -12,6 +12,7 @@ import {
   updateAppBadge,
   urlBase64ToUint8Array,
   type PushBrowser,
+  type ServiceWorkerRegistrationLike,
 } from './push';
 
 function fakeBrowser(overrides: Partial<PushBrowser> = {}): PushBrowser {
@@ -153,17 +154,37 @@ describe('push browser helpers', () => {
     });
   });
 
-  it('dismisses a chat notifications by tag', async () => {
+  it('dismisses only the read chat notifications, matching data.chatId', async () => {
+    // Contract mate of the sw.js show path (serviceWorker.test.ts asserts
+    // the worker sets `data.chatId`): tags are per-message, so dismissal
+    // enumerates everything and matches on `data.chatId`.
     const closed: string[] = [];
-    const registration = {
-      pushManager: fakeBrowser().serviceWorker.register('') as never,
-      getNotifications: async (filter?: { tag?: string }) => {
-        expect(filter).toEqual({ tag: 'room@rooms.x' });
-        return [{ close: () => closed.push('a') }, { close: () => closed.push('b') }];
-      },
+    const registration: ServiceWorkerRegistrationLike = {
+      pushManager: fakeBrowser()
+        .serviceWorker as unknown as ServiceWorkerRegistrationLike['pushManager'],
+      getNotifications: async () => [
+        {
+          data: { chatId: 'room@rooms.x' },
+          close: () => {
+            closed.push('a');
+          },
+        },
+        {
+          data: { chatId: 'other@rooms.x' },
+          close: () => {
+            closed.push('b');
+          },
+        },
+        {
+          data: null,
+          close: () => {
+            closed.push('c');
+          },
+        },
+      ],
     };
     await dismissChatNotifications('room@rooms.x', async () => registration);
-    expect(closed).toEqual(['a', 'b']);
+    expect(closed).toEqual(['a']);
     await dismissChatNotifications('room@rooms.x', async () => undefined);
   });
 

@@ -125,6 +125,12 @@ pnpm build
 - **Finding 8 (stage B):** unchanged — Report stays honest, lead does the live proof.
 - Checks rerun (scoped only, `--maxWorkers=2`): `format:check` pass (only PREREVIEW.md warns — untracked, untouched), `lint` pass, server `typecheck` pass; push 8 files 56 tests pass; neighbours `topics` + `authz-sweep` + `admin-client` + `config` 101 pass. No full suites (per rule change; pre-reviewer already ran them).
 
+### Round 3 — lead review fixes (4 items, no migration yet)
+- **1. Dismiss-on-read contract:** `sw.js` tags by `messageId` but `dismissChatNotifications` filtered by `{ tag: chatId }`, so dismissal silently missed in production. Dismissal now enumerates all visible notifications and closes those whose `data.chatId` matches (documented as the shared contract in `sw.js`). Tests agree: `serviceWorker.test.ts` pins the show side (`data.chatId` set, message/chat-id tagging) and `push.test.ts` pins the dismiss side (only matching `data.chatId` closed, `getNotifications` called with no tag filter). Web typecheck + 16 tests pass.
+- **2. Atomic device cap:** `saveDevice` now runs in one transaction under `pg_advisory_xact_lock(hashtext(userId))` with the count read inside (pins-service pattern). New concurrency test fires 21 parallel registrations: exactly 20 save, 1 answers 409 `too_many_devices`, 20 rows total.
+- **3. `publishOptionsSecret` dropped** (never consumed downstream); one comment in `notification.ts` explains why the `<publish-options>` echo is ignored (component connection already trusted; keeps a credential-adjacent value out of logs). Dead `readPublishOption` removed with it.
+- **4. Live-gate SKIP is now a real skip:** stage B calls vitest `ctx.skip()` with the reason, so the run reports `1 skipped` instead of a passing placeholder (`expect(true).toBe(true)` removed; verified: `Tests 1 skipped`).
+
 ---
 
 ## Review (written by Claude)

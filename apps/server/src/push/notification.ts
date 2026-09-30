@@ -41,17 +41,16 @@ export function parsePushIq(stanza: PushXmppElement): PushNotification | undefin
     return undefined;
   }
 
-  const options = pubsub.getChild('publish-options');
-  const secret = options === undefined ? undefined : readPublishOption(options, 'secret');
-
+  // Note: `<publish-options>` (the enable-time secret echo) is deliberately
+  // not parsed. The publish arrives over our own authenticated component
+  // connection, so the sender is already trusted; nothing downstream reads
+  // the secret, and logging it would put a credential-adjacent value in
+  // the log path.
   const result: PushNotification = {
     node,
     from,
     ...fields,
   };
-  if (secret !== undefined) {
-    result.publishOptionsSecret = secret;
-  }
   return result;
 }
 
@@ -96,16 +95,6 @@ function readField(form: PushXmppElement, name: string): string | undefined {
   for (const field of form.getChildren('field')) {
     if (field.attrs['var'] === name) {
       return field.getChildText('value') ?? undefined;
-    }
-  }
-  return undefined;
-}
-
-function readPublishOption(options: PushXmppElement, name: string): string | undefined {
-  for (const form of options.getChildren('x', DATA_FORMS_NAMESPACE)) {
-    const value = readField(form, name);
-    if (value !== undefined) {
-      return value;
     }
   }
   return undefined;
