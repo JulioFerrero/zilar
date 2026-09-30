@@ -606,7 +606,7 @@ function toolRoutes(
     }
     if (second === undefined && method === 'DELETE') {
       // Idempotent, like the real server: re-deleting answers 204, and the
-      // tool's routines pause with it.
+      // tool's routines are removed with it.
       tool.deleted = true;
       for (const routine of state.routines) {
         if (routine.toolId === tool.id && !routine.deleted) {

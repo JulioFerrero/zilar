@@ -1,7 +1,7 @@
 ---
 id: T-0107
 title: Tools and routines UI (web)
-status: review
+status: merged
 milestone: M4
 branch: task/T-0107-tools-routines-ui
 model: meta/muse-spark-1.3-contributor
@@ -104,10 +104,12 @@ Editing tool source in the UI (AIs write tools; humans read, run, revert, delete
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved with one lead fix. Web only, no schema. Pre-review packet found no secrets, no HTML/markdown rendering of tool output (plain text nodes and `<pre>`), schedule wording matching the server's `describeSchedule`, run wire shape matching the server. Shows declared, approved and waiting-for-approval hosts (T-0132 exposes `approvedHosts`).
 
 ### Findings
--
+- Fixed: a failed history refresh after a successful Run now no longer turns the run into an error (the result stays, the old list stays); test added.
+- Fixed: delete copy said "pauses its routines" but the server removes them; copy and mock comment corrected.
+- Nit, left: a 404 on the tools list is shown as the empty state (documented tradeoff; a blind viewer sees "No tools here yet").
 
 ### Follow-ups
--
+- Mobile tools UI is not planned; approving tool hosts still happens through the AI's approval card in the topic.

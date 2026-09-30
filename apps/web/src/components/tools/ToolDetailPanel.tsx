@@ -168,7 +168,11 @@ export function ToolDetailPanel({
       const result =
         input === undefined ? await runToolNow(toolId) : await runToolNow(toolId, input);
       setRunResult(result);
-      setRuns(await listToolRuns(toolId));
+      // The run itself succeeded: a failed history refresh must not turn it
+      // into an error, the old list simply stays until the next refresh.
+      await listToolRuns(toolId)
+        .then(setRuns)
+        .catch(() => {});
     } catch (error) {
       if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
         setRunError('You may not run this tool.');
@@ -466,7 +470,7 @@ function DeleteToolButton({
       {confirming && (
         <ConfirmDialog
           title={`Delete ${toolName}?`}
-          body="This deletes the tool and pauses its routines. This cannot be undone."
+          body="This deletes the tool and its routines. This cannot be undone."
           confirmLabel={busy ? 'Deleting…' : 'Delete'}
           onConfirm={() => void remove()}
           onCancel={() => setConfirming(false)}

@@ -227,6 +227,24 @@ describe('ToolsSection (T-0107)', () => {
     expect(await screen.findByText(/gold 4300/)).toBeTruthy();
   });
 
+  it('keeps the run result when the history refresh after it fails', async () => {
+    const fetchMock = stubTools();
+    renderWithStore(<ToolsSection scope={{ topicId: 't-1' }} scopeKey="topic:t-1" canManage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open prices' }));
+    await screen.findByText('Source (v2, read-only)');
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (url: unknown, init?: RequestInit) => {
+      const target = String(url);
+      if (target === '/api/tools/tool-1/runs' && (init?.method ?? 'GET') === 'GET') {
+        return errorResponse(500, 'internal', 'boom');
+      }
+      return base === undefined ? errorResponse(404, 'not_found', 'unexpected') : base(url, init);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
+    expect(await screen.findByText(/gold 4300/)).toBeTruthy();
+    expect(screen.queryByText('Could not run the tool.')).toBeNull();
+  });
+
   it('shows an older version source on history select and reverts with confirm', async () => {
     stubTools();
     renderWithStore(<ToolsSection scope={{ topicId: 't-1' }} scopeKey="topic:t-1" canManage />);
