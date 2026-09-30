@@ -17,7 +17,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0114](T-0114-pinned-messages.md) | Pinned messages banner and list | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
 | [T-0115](T-0115-invite-links.md) | Join by link for groups | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
 | [T-0116](T-0116-group-roles.md) | Custom roles: private-topic access, approver rights | planned | meta/muse-spark-1.3-contributor | T-0108, T-0110, T-0111 |  |
-| [T-0117](T-0117-message-search.md) | Message search across everything you may see | planned | meta/muse-spark-1.3-contributor | T-0108 | Needs a read-only role on the ejabberd DB |
 | [T-0119](T-0119-pwa-web-push.md) | PWA and web push | planned | meta/muse-spark-1.3-contributor | T-0118, T-0113 | Outline: lead rewrites (SPIKE) sections first |
 | [T-0120](T-0120-stickers.md) | Stickers: user-made packs, storage, sending, rendering | planned | meta/muse-spark-1.3-contributor | none |  |
 | [T-0121](T-0121-sticker-creator.md) | Sticker pack creator, favorites, discover | planned | meta/muse-spark-1.3-contributor | T-0120 |  |
@@ -158,3 +157,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0110](T-0110-topic-scoped-actions.md) | Approvals, always-allow rules and tools scoped to (AI, topic); topic announcer wiring; backfill to General | 2026-09-30 |
 | [T-0126](T-0126-production-images-compose.md) | production images + compose (Caddy, Coolify) for the self-hosted install; upload proxy fixed | 2026-09-30 |
 | [T-0128](T-0128-smtp-mailer.md) | SMTP mailer for sign-in codes (nodemailer), production console opt-in, config validation | 2026-09-30 |
+| [T-0117](T-0117-message-search.md) | message search across DMs, groups and topics (server, read-only archive role, web) | 2026-09-30 |
