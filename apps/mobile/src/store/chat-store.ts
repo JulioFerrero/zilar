@@ -319,8 +319,15 @@ export function createChatStore(
 
     // The mock invite-links backend (T-0136): create, list, revoke, preview
     // and join against in-memory links, so the manage and join UI work in
-    // mock mode without a server.
-    const inviteLinks = createMockInviteLinksStore();
+    // mock mode without a server. `alreadyMember` comes from the store's
+    // group detail (like the server's membership check), so a link for a
+    // group the viewer is not in exercises the real Join path.
+    const inviteLinks = createMockInviteLinksStore({
+      isMember: (groupId) =>
+        get()
+          .groupDetail(groupId)
+          ?.members.some((member) => member.userId === get().currentUserId) === true,
+    });
 
     // The `slow` scenario is the only one that settles: the real list arrives
     // after the delay, the same way a slow backend would.

@@ -1,4 +1,5 @@
 import type { ChatApi, ChatEntry } from '../lib/chat-api';
+import { describeRolesError, ROLE_GONE_MESSAGE, ROLE_LOAD_FAILED_MESSAGE } from '../lib/roles';
 import type { CustomGroupRole, RolesApi } from '../lib/roles-api';
 import type { TopicsApi } from '../lib/topics-api';
 import { describe, expect, it, vi } from 'vitest';
@@ -242,6 +243,37 @@ describe('real store group roles (T-0137)', () => {
     ).toEqual(['Designers', 'Devs']);
     // A chat id is NOT the group key.
     expect(store.getState().groupRoles('t-hiring@rooms.galena.test')).toBeUndefined();
+  });
+
+  it('maps the first roles load failure through describeRolesError load', async () => {
+    // The group screen's mount load used a hardcoded generic line; it now
+    // calls `describeRolesError(error, 'load')` like every retry, so a 404
+    // on first load reads as gone (refreshable) rather than denied.
+    const { store, roles } = setup();
+    store.getState().start();
+    await flush();
+    vi.mocked(roles.listGroupRoles).mockRejectedValueOnce(
+      Object.assign(new Error('not here'), { status: 404, code: 'not_found' }),
+    );
+    const first = await store
+      .getState()
+      .refreshGroupRoles('g1')
+      .then(
+        () => 'resolved',
+        (error: unknown) => error,
+      );
+    expect(first).not.toBe('resolved');
+    expect(describeRolesError(first, 'load')).toBe(ROLE_GONE_MESSAGE);
+
+    vi.mocked(roles.listGroupRoles).mockRejectedValueOnce(new Error('offline'));
+    const generic = await store
+      .getState()
+      .refreshGroupRoles('g1')
+      .then(
+        () => 'resolved',
+        (error: unknown) => error,
+      );
+    expect(describeRolesError(generic, 'load')).toBe(ROLE_LOAD_FAILED_MESSAGE);
   });
 
   it('creates, renames and deletes roles in the group id directly', async () => {

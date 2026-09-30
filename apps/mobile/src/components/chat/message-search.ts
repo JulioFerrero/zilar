@@ -162,6 +162,8 @@ export class MessageSearchController {
   private requestId = 0;
   private pageRequest = 0;
   private paging = false;
+  /** The in-flight page request: a newer `loadMore` aborts it. */
+  private pageController: AbortController | null = null;
   private inflight: AbortController | null = null;
   private disposed = false;
   private current: MessageSearchStatus = { status: 'idle' };
@@ -225,19 +227,25 @@ export class MessageSearchController {
    * an opaque microsecond stamp — never the last item's ISO date). A late
    * page after a new query is dropped. A failed page keeps the items shown
    * and reports the failure inline, so the spinner ends instead of retrying
-   * forever.
+   * forever. A second call while a page is in flight aborts the superseded
+   * request (its result is dropped); the `pageError` retry re-enters here.
    */
   loadMore(): void {
-    if (this.disposed || this.paging || this.debounced === null) {
+    if (this.disposed || this.debounced === null) {
       return;
     }
     if (this.current.status !== 'ready' || this.current.nextBefore === undefined) {
       return;
     }
+    if (this.paging) {
+      this.pageController?.abort();
+      this.pageController = null;
+    }
     const id = this.nextId();
     this.pageRequest = id;
     this.paging = true;
     const controller = new AbortController();
+    this.pageController = controller;
     const q = this.debounced;
     const chat = this.chat;
     const before = this.current.nextBefore;
@@ -251,10 +259,13 @@ export class MessageSearchController {
       })
       .then(
         (page) => {
-          this.paging = false;
+          if (this.pageController === controller) {
+            this.pageController = null;
+          }
           if (this.disposed || this.pageRequest !== id || this.requestId !== id) {
             return;
           }
+          this.paging = false;
           if (this.current.status !== 'ready') {
             return;
           }
@@ -271,10 +282,13 @@ export class MessageSearchController {
           });
         },
         (error: unknown) => {
-          this.paging = false;
+          if (this.pageController === controller) {
+            this.pageController = null;
+          }
           if (this.disposed || this.pageRequest !== id || this.requestId !== id) {
             return;
           }
+          this.paging = false;
           if (error instanceof DOMException && error.name === 'AbortError') {
             return;
           }
@@ -303,6 +317,8 @@ export class MessageSearchController {
     }
     this.inflight?.abort();
     this.inflight = null;
+    this.pageController?.abort();
+    this.pageController = null;
   }
 
   private arm(): void {
@@ -338,8 +354,11 @@ export class MessageSearchController {
     const id = this.nextId();
     this.pageRequest = id;
     // A fresh query owns paging from here: an older page load is dropped by
-    // its id, and the flag must not block the new query's pages.
+    // its id, its controller is aborted so it never even lands, and the flag
+    // must not block the new query's pages.
     this.paging = false;
+    this.pageController?.abort();
+    this.pageController = null;
     this.inflight?.abort();
     const controller = new AbortController();
     this.inflight = controller;

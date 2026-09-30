@@ -102,8 +102,10 @@ function GroupTopics() {
   useEffect(() => {
     if (groupId !== '') {
       ensureGroupDetail(groupId);
-      void refreshGroupRoles(groupId).catch(() =>
-        setRolesLoadError('Could not load the roles. Try again.'),
+      // The first load maps through the same error helper as every retry
+      // (404 on a load means the group is gone, not denied).
+      void refreshGroupRoles(groupId).catch((error: unknown) =>
+        setRolesLoadError(describeRolesError(error, 'load')),
       );
     }
   }, [groupId, ensureGroupDetail, refreshGroupRoles]);

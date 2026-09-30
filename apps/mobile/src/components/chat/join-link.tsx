@@ -53,6 +53,55 @@ export function joinLinkViewFor(input: {
   };
 }
 
+/** The preview-load failure from the route's store call: the mapped join
+ *  error (raw server text never reaches the UI) and whether the server was
+ *  simply unreachable. Takes the raw error's status/code only — the token
+ *  never enters the view. */
+export function joinPreviewFailure(error: unknown): { rateLimited: boolean; offline: boolean } {
+  const status =
+    typeof error === 'object' && error !== null && 'status' in error
+      ? (error.status as number | undefined)
+      : undefined;
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error
+      ? (error.code as string | undefined)
+      : undefined;
+  if (status === 429 || code === 'rate_limited') {
+    return { rateLimited: true, offline: false };
+  }
+  if (status === 0 || code === 'network_error') {
+    return { rateLimited: false, offline: true };
+  }
+  return { rateLimited: false, offline: false };
+}
+
+/** The join-press failure mapped to the next view: rate limits replace the
+ *  card, an unreachable server keeps the preview with a retry line, and
+ *  every other failure shows the same neutral message. The raw error never
+ *  reaches the rendered text, so a leaked token cannot leak into the UI. */
+export function joinPressFailure(error: unknown, preview: JoinPreview): JoinLinkView {
+  const status =
+    typeof error === 'object' && error !== null && 'status' in error
+      ? (error.status as number | undefined)
+      : undefined;
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error
+      ? (error.code as string | undefined)
+      : undefined;
+  if (status === 429 || code === 'rate_limited') {
+    return joinLinkViewFor({ failed: true, rateLimited: true });
+  }
+  if (status === 0 || code === 'network_error') {
+    return joinLinkViewFor({
+      preview,
+      failed: false,
+      rateLimited: false,
+      joinError: 'Could not join the group. Try again.',
+    });
+  }
+  return joinLinkViewFor({ failed: true, rateLimited: false });
+}
+
 /** The preview subtitle: "6 members" (never member names). */
 export function joinPreviewSubtitle(preview: JoinPreview): string {
   return `${preview.memberCount} ${preview.memberCount === 1 ? 'member' : 'members'}`;

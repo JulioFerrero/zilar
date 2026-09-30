@@ -9,6 +9,8 @@ import { useSession } from '@/auth/session';
 import {
   JoinLinkBody,
   joinLinkViewFor,
+  joinPressFailure,
+  joinPreviewFailure,
   resolveGroupChat,
   type JoinLinkView,
 } from '@/components/chat/join-link';
@@ -43,20 +45,28 @@ export default function JoinRoute() {
     return <LoadingScreen />;
   }
   if (status === 'guest') {
-    const from = token === undefined ? '/join' : `/join/${token}`;
+    // Keep the raw param (not the parsed token): a pasted junk token must
+    // survive the sign-in and land on the invalid-link state, never on a
+    // route that does not exist. `/join` alone matches no route, so a
+    // missing param falls back to the chats list.
+    const from = raw === undefined ? '/' : `/join/${raw}`;
     return <Redirect href={`/login?from=${encodeURIComponent(from)}`} />;
   }
   if ((me?.name ?? '').trim() === '') {
-    return <NameGate token={token} />;
+    return <NameGate raw={raw} />;
   }
   return <Join token={token} />;
 }
 
 /** The inline name gate: choose a name first, then return to the join. */
-function NameGate({ token }: { token: string | undefined }) {
+function NameGate({ raw }: { raw: string | undefined }) {
   const router = useRouter();
   const scheme = asColorScheme(useColorScheme().colorScheme);
-  const from = token === undefined ? '/join' : `/join/${token}`;
+  // The raw param rides through: a junk token still matches this route's
+  // `[token]` segment, so the join screen shows its invalid-link state
+  // instead of landing on a route that does not exist. `/join` alone matches
+  // no route, so a missing param falls back to the chats list.
+  const from = raw === undefined ? '/' : `/join/${raw}`;
   return (
     <JoinBackground scheme={scheme}>
       <View className="w-full max-w-sm rounded-2xl bg-background p-6 shadow-xl">
@@ -86,9 +96,11 @@ function Join({ token }: { token: string | undefined }) {
   const joinByLink = useChatStore((state) => state.joinByLink);
   const store = useChatStoreApi();
   // A missing token is invalid from the first render — no effect needed.
+  // Junk reads the neutral dead-link message, never the offline retry: the
+  // request was never worth making, and the route still matches `[token]`.
   const [view, setView] = useState<JoinLinkView>(
     token === undefined
-      ? joinLinkViewFor({ failed: true, rateLimited: false, offline: true })
+      ? joinLinkViewFor({ failed: true, rateLimited: false })
       : { state: 'checking' },
   );
   const [busy, setBusy] = useState(false);
@@ -115,18 +127,12 @@ function Join({ token }: { token: string | undefined }) {
         const preview = await previewJoinLink(value);
         return joinLinkViewFor({ preview, failed: false, rateLimited: false });
       } catch (error: unknown) {
-        const status = (error as { status?: number }).status;
-        const code = (error as { code?: string }).code;
         // An unreachable server is a retryable connection error, not a dead
         // link (nit 6): only invalid, expired, revoked and full links read
-        // the same neutral message.
-        if (status === 429 || code === 'rate_limited') {
-          return joinLinkViewFor({ failed: true, rateLimited: true });
-        }
-        if (status === 0 || code === 'network_error') {
-          return joinLinkViewFor({ failed: true, rateLimited: false, offline: true });
-        }
-        return joinLinkViewFor({ failed: true, rateLimited: false });
+        // the same neutral message. The mapping takes status/code only, so
+        // the token never enters the view.
+        const failure = joinPreviewFailure(error);
+        return joinLinkViewFor({ failed: true, ...failure });
       }
     }
     // `retries` re-runs the load after the offline card's Try again.
@@ -158,25 +164,10 @@ function Join({ token }: { token: string | undefined }) {
       },
       (error: { status?: number; code?: string }) => {
         setBusy(false);
-        if (error?.status === 429 || error?.code === 'rate_limited') {
-          setView(joinLinkViewFor({ failed: true, rateLimited: true }));
-          return;
-        }
         // Invalid, expired, revoked and full links all read the same: the
         // failure never reveals why. Only an unreachable server keeps the
-        // preview with a retry error.
-        if (error?.status === 0) {
-          setView(
-            joinLinkViewFor({
-              preview,
-              failed: false,
-              rateLimited: false,
-              joinError: 'Could not join the group. Try again.',
-            }),
-          );
-          return;
-        }
-        setView(joinLinkViewFor({ failed: true, rateLimited: false }));
+        // preview with a retry error (raw server text never renders).
+        setView(joinPressFailure(error, preview));
       },
     );
   };

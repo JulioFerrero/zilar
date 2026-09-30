@@ -249,6 +249,55 @@ describe('MessageSearchController', () => {
     expect(paged.nextBefore).toBeUndefined();
   });
 
+  it('aborts the superseded page when loadMore fires twice', async () => {
+    const CURSOR = '1758988200000000';
+    const CURSOR_2 = '1758988100000000';
+    let releases: Array<(value: { items: ReturnType<typeof hit>[]; nextBefore?: string }) => void> =
+      [];
+    const gates: Array<Promise<{ items: ReturnType<typeof hit>[]; nextBefore?: string }>> = [];
+    const { api, calls, signals } = fakeApi((input) => {
+      if (input.before === undefined) {
+        return Promise.resolve({
+          items: [hit('ana', 'ana-3', '2026-09-28T12:00:00Z')],
+          nextBefore: CURSOR,
+        });
+      }
+      const gate = new Promise<{
+        items: ReturnType<typeof hit>[];
+        nextBefore?: string;
+      }>((resolve) => {
+        releases.push(resolve);
+      });
+      gates.push(gate);
+      return gate;
+    });
+    const controller = control(api);
+
+    controller.setQuery('terra');
+    clock.run();
+    await flush();
+
+    // Two page requests back to back: the first is aborted, the second wins.
+    controller.loadMore();
+    await flush();
+    controller.loadMore();
+    await flush();
+    expect(calls).toHaveLength(3);
+    expect(signals[1]?.aborted).toBe(true);
+    expect(signals[2]?.aborted).toBe(false);
+
+    // The aborted first page resolving late changes nothing.
+    releases[0]?.({ items: [hit('ana', 'ana-2', '2026-09-28T11:00:00Z')], nextBefore: CURSOR_2 });
+    await flush();
+    releases[1]?.({ items: [hit('ana', 'ana-1', '2026-09-28T10:00:00Z')] });
+    await flush();
+    const paged = controller.view;
+    if (paged.status !== 'ready') throw new Error('unreachable');
+    expect(paged.items.map((item) => item.messageId)).toEqual(['ana-3', 'ana-1']);
+    expect(paged.nextBefore).toBeUndefined();
+    expect(gates).toHaveLength(2);
+  });
+
   it('ends the spinner with an inline error when a page fails', async () => {
     const CURSOR = '1758988200000000';
     let pages = 0;

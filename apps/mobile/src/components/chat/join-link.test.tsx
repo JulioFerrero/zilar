@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { JoinLinkBody, joinLinkViewFor, joinPreviewSubtitle, resolveGroupChat } from './join-link';
+import {
+  JoinLinkBody,
+  joinLinkViewFor,
+  joinPressFailure,
+  joinPreviewFailure,
+  joinPreviewSubtitle,
+  resolveGroupChat,
+} from './join-link';
 import type { JoinPreview } from '@/lib/invite-links-api';
 
 // The hook-free body is called as a plain function with `react-native`
@@ -112,20 +119,85 @@ describe('joinLinkViewFor', () => {
     expect(view.state).toBe('ready');
     expect(view.error).toBe('Could not join the group. Try again.');
   });
+});
 
-  it('never carries a token in any message', () => {
+describe('joinPreviewFailure', () => {
+  it('maps 429 to the rate-limited branch', () => {
+    expect(joinPreviewFailure({ status: 429, code: 'rate_limited' })).toEqual({
+      rateLimited: true,
+      offline: false,
+    });
+    expect(joinPreviewFailure({ status: 429, code: 'other' })).toEqual({
+      rateLimited: true,
+      offline: false,
+    });
+  });
+
+  it('maps an unreachable server to the offline branch, not the dead-link one', () => {
+    expect(joinPreviewFailure({ status: 0, code: 'network_error' })).toEqual({
+      rateLimited: false,
+      offline: true,
+    });
+  });
+
+  it('maps every other failure to the same neutral branch', () => {
+    for (const error of [
+      { status: 404, code: 'invalid_link' },
+      { status: 409, code: 'group_full' },
+      { status: 500, code: 'xmpp_unavailable' },
+      new Error('offline'),
+      undefined,
+    ]) {
+      expect(joinPreviewFailure(error)).toEqual({ rateLimited: false, offline: false });
+    }
+  });
+});
+
+describe('joinPressFailure', () => {
+  it('shows the retry text for rate limits', () => {
+    const view = joinPressFailure({ status: 429, code: 'rate_limited' }, preview());
+    expect(view.state).toBe('invalid');
+    expect(view.error).toBe('Too many attempts. Try again later.');
+  });
+
+  it('keeps the preview with a retry line when the server is unreachable', () => {
+    const view = joinPressFailure({ status: 0 }, preview());
+    expect(view.state).toBe('ready');
+    expect(view.error).toBe('Could not join the group. Try again.');
+  });
+
+  it('shows the same neutral message for every other failure kind', () => {
+    for (const error of [
+      { status: 404, code: 'invalid_link' },
+      { status: 409, code: 'group_full' },
+      new Error('offline'),
+    ]) {
+      const view = joinPressFailure(error, preview());
+      expect(view.state).toBe('invalid');
+      expect(view.error).toBe('This link does not work');
+    }
+  });
+
+  it('never carries the raw error, even when it embeds the token', () => {
+    // The vacuous version fed already-mapped strings back in and could never
+    // contain the token: feed the RAW error (token embedded, like a leaked
+    // server message or an axios-style error text) so the test fails if the
+    // mapping ever echoes it into the view. Rendered-text assertions live in
+    // the JoinLinkBody suite below, where the `body` helper is in scope.
     const token = 'a'.repeat(64);
-    const views = [
-      joinLinkViewFor({ failed: true, rateLimited: false }),
-      joinLinkViewFor({ failed: true, rateLimited: true }),
-      joinLinkViewFor({
-        preview: preview(),
-        failed: false,
-        rateLimited: false,
-        joinError: 'Could not join the group. Try again.',
+    const rawErrors = [
+      Object.assign(new Error(`request to /api/join/${token} failed`), {
+        status: 404,
+        code: 'invalid_link',
+      }),
+      Object.assign(new Error(token), { status: 0, code: 'network_error' }),
+      Object.assign(new Error(`join ${token}: too many`), {
+        status: 429,
+        code: 'rate_limited',
       }),
     ];
-    for (const view of views) {
+    for (const raw of rawErrors) {
+      const view = joinPressFailure(raw, preview());
       expect(JSON.stringify(view)).not.toContain(token);
     }
   });
@@ -233,10 +305,29 @@ describe('JoinLinkBody', () => {
     }
   });
 
-  it('never renders a token', () => {
+  it('never renders a token, even when the error embeds it', () => {
+    // The vacuous version rendered a mapped message that could never carry
+    // the token: feed views mapped from a RAW token-bearing error so the
+    // test fails if the component leaks the token itself.
     const token = 'a'.repeat(64);
-    const all = textOf(collect(body({ state: 'invalid', error: 'This link does not work' })));
-    expect(all).not.toContain(token);
+    const raw = Object.assign(new Error(`request to /api/join/${token} failed`), {
+      status: 404,
+      code: 'invalid_link',
+    });
+    const loadFailure = joinPreviewFailure(raw);
+    const invalid = joinLinkViewFor({ failed: true, ...loadFailure });
+    const invalidText = textOf(collect(body(invalid)));
+    expect(invalidText).toContain('This link does not work');
+    expect(invalidText).not.toContain(token);
+
+    const pressFailure = joinPressFailure(raw, preview());
+    const pressText = textOf(collect(body(pressFailure)));
+    expect(pressText).toContain('This link does not work');
+    expect(pressText).not.toContain(token);
+
+    // The raw message itself must never render, even unmapped.
+    const leaked = textOf(String(raw));
+    expect(leaked).toContain(token);
   });
 
   it('joins and cancels on press', () => {
