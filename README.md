@@ -108,6 +108,9 @@ Early and moving fast, built by one person with an AI team. Chat, AIs, streaming
 
 ## 🚀 Quick start
 
+To install your own Galena, pick a path in [`docs/INSTALL.md`](docs/INSTALL.md) (Docker in five minutes, Coolify, or bare metal).
+To hack on it locally:
+
 ```bash
 pnpm install
 cp infra/.env.example infra/.env   # then replace every CHANGE_ME

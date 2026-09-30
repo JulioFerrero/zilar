@@ -1,0 +1,923 @@
+#!/bin/sh
+#
+# galena — install helper for a Galena production install.
+#
+# Lives in deploy/ next to docker-compose.yml and .env. Single POSIX shell
+# script; needs only `sh`, `openssl` and `docker` (plus the POSIX core
+# tools every Linux and macOS ships: grep, sed, tar, date, mktemp).
+#
+#   ./galena init          write deploy/.env with generated secrets
+#   ./galena up|down|logs|status|update   run the compose stack
+#   ./galena doctor        check the machine before/after install
+#   ./galena backup [dir]  timestamped archive (databases, uploads, .env)
+#   ./galena restore <archive>   bring an install back (needs --yes)
+#   ./galena create-admin  mint the invite code for the first account
+#
+# Global options (accepted before or after the command):
+#   --env-file=PATH   use another env file (default: deploy/.env next to this script)
+#   --dry-run         print what would run or be written, change nothing
+#   --force, -f       let `init` overwrite an existing env file
+#   --yes, -y         required by `restore`
+#
+# Two environment overrides (used by the install test, not normal installs):
+#   COMPOSE_FILE_OVERRIDE=PATH   use a scratch copy of the compose file
+#   COMPOSE_PROJECT_NAME=name    run the stack under another project name
+#
+# The script NEVER prints a secret: it prints file paths and value shapes
+# (e.g. "<48 hex chars>"), never values. Secrets live only in the env file
+# (mode 0600) and in backup archives (mode 0600, with a warning file).
+#
+# Exit status: 0 on success, 1 on any failure (`doctor` exits 1 when a
+# check fails so it can gate scripts).
+
+set -eu
+
+PROG="galena"
+
+# The deploy directory is wherever this script lives.
+DEPLOY_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+COMPOSE_FILE="$DEPLOY_DIR/docker-compose.yml"
+DEFAULT_ENV_FILE="$DEPLOY_DIR/.env"
+
+DRY_RUN=0
+FORCE=0
+YES=0
+ENV_FILE=""
+
+die() {
+  echo "$PROG: error: $*" >&2
+  exit 1
+}
+
+info() {
+  echo "$PROG: $*"
+}
+
+warn() {
+  echo "$PROG: WARNING: $*" >&2
+}
+
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "needs '$1' on PATH ($2)"
+}
+
+# Print the command instead of running it when --dry-run is on.
+run() {
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "+ $*"
+  else
+    "$@"
+  fi
+}
+
+# Thin wrapper so every compose call uses the same file and env file.
+# Extra compose flags (e.g. `galena logs --tail 20`) pass straight through.
+# COMPOSE_FILE/COMPOSE_PROJECT_NAME may be overridden from the environment
+# (the install test does this to run a scratch copy of the compose file
+# under its own project name).
+compose() {
+  _file="${COMPOSE_FILE_OVERRIDE:-$COMPOSE_FILE}"
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "+ docker compose -f $_file --env-file $ENV_FILE $*"
+  else
+    docker compose -f "$_file" --env-file "$ENV_FILE" "$@"
+  fi
+}
+
+# Read one KEY from the env file (last occurrence wins). Values are
+# machine-generated (no spaces, no quotes); surrounding double quotes are
+# stripped so a hand-quoted edit still works.
+env_get() {
+  [ -f "$ENV_FILE" ] || return 0
+  sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1 | sed 's/^"//; s/"$//'
+}
+
+require_env_file() {
+  [ -f "$ENV_FILE" ] || die "no env file at $ENV_FILE — run '$PROG init' first"
+}
+
+require_docker() {
+  need_cmd docker "install Docker with the Compose plugin, then retry"
+  docker compose version >/dev/null 2>&1 || die "'docker compose' is missing — install the Compose plugin, then retry"
+}
+
+# Ask on the terminal (works even when stdin is piped). Prints the answer;
+# empty answer falls back to the default (second argument, may be empty).
+ask() {
+  if [ -n "${2-}" ]; then
+    printf '%s [%s]: ' "$1" "$2" >&2
+  else
+    printf '%s: ' "$1" >&2
+  fi
+  _answer=""
+  # Prefer the terminal (works when stdin is piped); fall back to stdin
+  # when there is no terminal (pipes, CI, non-interactive flags). The
+  # probe runs in a subshell so a missing /dev/tty stays quiet.
+  if ( : < /dev/tty ) 2>/dev/null; then
+    IFS= read -r _answer < /dev/tty || _answer=""
+  else
+    IFS= read -r _answer || _answer=""
+  fi
+  if [ -z "$_answer" ]; then
+    printf '%s' "${2-}"
+  else
+    printf '%s' "$_answer"
+  fi
+}
+
+usage() {
+  cat <<EOF
+Usage: $PROG [--env-file=PATH] [--dry-run] <command> [args]
+
+  init [--domain D] [--admin-email E] [--acme-email E]
+       [--image-owner O] [--image-tag T] [--http-port P] [--https-port P] [--force]
+      Generate every secret and write the env file (0600). Refuses to
+      overwrite an existing file unless --force is given.
+  up [compose args]       Start the stack and wait until it is healthy.
+  down [compose args]     Stop the stack (data volumes are kept).
+  logs [compose args]     Follow the service logs (default: -f).
+  status                  Show container and health status.
+  update                  Pull images, restart, wait until healthy.
+  doctor                  Check Docker, ports, DNS and /health with fix hints.
+  backup [dir]            Write a timestamped archive (default dir: deploy/backups).
+  restore <archive> --yes Stop services, restore databases/uploads/.env, restart.
+  create-admin [--uses N] [--days D]
+      Mint the invite code for the first account on the running server.
+
+Global options can come before or after the command.
+EOF
+}
+
+# --- init ---------------------------------------------------------------
+
+cmd_init() {
+  _domain="" _admin_email="" _acme_email="" _owner="" _tag="latest"
+  _http_port="80" _https_port="443"
+
+  _args_total=$#
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --domain=*|--admin-email=*|--acme-email=*|--image-owner=*|--image-tag=*|--http-port=*|--https-port=*)
+        _opt="${1%%=*}"; _val="${1#*=}"
+        shift
+        ;;
+      --domain|--admin-email|--acme-email|--image-owner|--image-tag|--http-port|--https-port)
+        _opt="$1"
+        [ "$#" -ge 2 ] || die "init: $1 needs a value (hint: $1=value)"
+        _val="$2"; shift 2
+        ;;
+      *) die "init: unknown option '$1' (see '$PROG init' usage above)" ;;
+    esac
+    case "$_opt" in
+      --domain) _domain="$_val" ;;
+      --admin-email) _admin_email="$_val" ;;
+      --acme-email) _acme_email="$_val" ;;
+      --image-owner) _owner="$_val" ;;
+      --image-tag) _tag="$_val" ;;
+      --http-port) _http_port="$_val" ;;
+      --https-port) _https_port="$_val" ;;
+    esac
+  done
+  [ "$_args_total" -ge 0 ]
+
+  need_cmd openssl "install OpenSSL, then retry"
+
+  if [ -f "$ENV_FILE" ] && [ "$FORCE" -eq 0 ]; then
+    die "$ENV_FILE already exists — remove it or re-run with --force to regenerate everything"
+  fi
+
+  [ -n "$_domain" ] || _domain="$(ask "Public domain of this install (localhost to try it out)" "localhost")"
+  [ -n "$_admin_email" ] || _admin_email="$(ask "Your email address (the first account signs up with it)" "")"
+  [ -n "$_acme_email" ] || _acme_email="$(ask "Email for the Let's Encrypt account" "$_admin_email")"
+  [ -n "$_owner" ] || _owner="$(ask "GitHub owner that publishes the images (ghcr.io/<owner>/galena-*)" "")"
+  _tag="${_tag:-latest}"
+
+  case "$_domain" in
+    # A bare host (optionally with a port for trials): letters, digits,
+    # dots, hyphens, and one optional :port. Anything else — spaces,
+    # slashes, $, backticks, =, shell metacharacters — is rejected, so a
+    # hostile or mistyped value can never reach the env file or Compose
+    # interpolation (where `$` would silently expand).
+    *[!A-Za-z0-9.:-]*|*".."*|*":"*":"*|*":") die "init: bad domain '$_domain' — give a bare host like chat.example.com" ;;
+  esac
+  case "$_admin_email" in
+    *"@"*.*) ;;
+    *) die "init: bad admin email '$_admin_email' (hint: --admin-email you@example.com)" ;;
+  esac
+  case "$_acme_email" in
+    *"@"*.*) ;;
+    *) die "init: bad ACME email '$_acme_email' (hint: --acme-email you@example.com)" ;;
+  esac
+  [ -n "$_owner" ] || die "init: the image owner is required (hint: --image-owner <github-org>)"
+  case "$_http_port" in
+    ""|*[!0-9]*) die "init: the HTTP port must be a number (hint: --http-port 80)" ;;
+  esac
+  case "$_https_port" in
+    ""|*[!0-9]*) die "init: the HTTPS port must be a number (hint: --https-port 443)" ;;
+  esac
+
+  # Empty here means the operator passed --domain= explicitly (the prompt
+  # defaults to localhost otherwise): fall back to localhost rather than
+  # writing an empty GALENA_DOMAIN.
+  _domain="${_domain:-localhost}"
+
+  # The server image ships no dev-only packages (no pino-pretty), so even a
+  # localhost trial runs NODE_ENV=production. The trial keeps the console
+  # mailer through MAIL_ALLOW_CONSOLE_IN_PRODUCTION (OTP codes go to the
+  # server log with a loud warning): scratch-only, never for a real
+  # install. A real install runs production + SMTP (see
+  # docs/INSTALL_DOCKER.md "Email (required)").
+  if [ "$_domain" = "localhost" ]; then
+    _node_env="production"
+    _mail_transport="console"
+    _console_in_prod="true"
+  else
+    _node_env="production"
+    _mail_transport="smtp"
+    _console_in_prod="false"
+  fi
+
+  # Every secret comes from openssl; nothing is printed, ever.
+  _postgres_pw="$(openssl rand -hex 24)"
+  _galena_pw="$(openssl rand -hex 24)"
+  _ejabberd_pw="$(openssl rand -hex 24)"
+  _archive_pw="$(openssl rand -hex 24)"
+  _ejabberd_admin_pw="$(openssl rand -hex 24)"
+  _jwt_secret="$(openssl rand -base64 48)"
+  _auth_secret="$(openssl rand -base64 32)"
+  _key_enc_key="$(openssl rand -base64 48)"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    cat <<EOF
++ would write $ENV_FILE (mode 0600) with:
++   GALENA_DOMAIN=$_domain, ACME_EMAIL set, HTTP_PORT=$_http_port, HTTPS_PORT=$_https_port
++   NODE_ENV=$_node_env, MAIL_TRANSPORT=$_mail_transport
++   (localhost trial: MAIL_ALLOW_CONSOLE_IN_PRODUCTION=true so the console
++    mailer boots in production; OTP codes go to the server log. Real
++    installs get false and must fill SMTP_* below.)
++   MAIL_FROM=Galena <no-reply@$_domain>
++   IMAGE_OWNER=$_owner, IMAGE_TAG=$_tag
++   5 generated passwords (<48 hex chars> each: POSTGRES, GALENA_DB,
++     EJABBERD_DB, GALENA_ARCHIVE_DB, EJABBERD_ADMIN)
++   3 generated secrets (base64: XMPP_JWT <64 chars>, BETTER_AUTH <44 chars>,
++     KEY_ENCRYPTION <64 chars>)
++   feature flags all false (gateway, tools, routines, push, runner hub)
++ secrets would NOT be printed — they would live only in $ENV_FILE
+EOF
+    [ "$_node_env" = "production" ] && echo "+ (production:) fill SMTP_HOST/SMTP_USER/SMTP_PASSWORD in $ENV_FILE before 'up'"
+    return 0
+  fi
+
+  # Compose has no way to say "unset when empty": it substitutes an empty
+  # string, and zod's .optional() rejects empty strings. So for a console
+  # trial the optional-but-empty SMTP lines are simply absent; a real
+  # install adds them back when it switches MAIL_TRANSPORT to smtp.
+  if [ "$_mail_transport" = "console" ]; then
+    _smtp_lines="# SMTP lines for a real install (MAIL_TRANSPORT=smtp): uncomment and fill them in:
+# SMTP_HOST=
+# SMTP_USER=
+# SMTP_PASSWORD=
+# MAIL_REPLY_TO= (optional)"
+  else
+    _smtp_lines="SMTP_HOST=
+SMTP_USER=
+SMTP_PASSWORD=
+MAIL_REPLY_TO="
+  fi
+  cat > "$ENV_FILE" <<EOF
+# Galena install env, written by '$PROG init'. Contains live secrets:
+# keep it private (mode 0600). Admin contact: $_admin_email.
+# The first account signs up with that address (see '$PROG create-admin').
+#
+# Optional-but-empty SMTP lines are simply ABSENT (not "KEY="): Compose
+# has no "unset when empty" and the server rejects empty strings for
+# these variables, so a real install adds the SMTP_* lines back when it
+# switches MAIL_TRANSPORT to smtp.
+
+GALENA_DOMAIN=$_domain
+ACME_EMAIL=$_acme_email
+HTTP_PORT=$_http_port
+HTTPS_PORT=$_https_port
+
+# Server mode. The image ships no dev-only packages (no pino-pretty), so
+# every install runs "production". A localhost trial keeps the console
+# mailer through MAIL_ALLOW_CONSOLE_IN_PRODUCTION (OTP codes go to the
+# server log with a loud warning): scratch-only, never for a real
+# install, which needs MAIL_TRANSPORT=smtp below.
+NODE_ENV=$_node_env
+
+POSTGRES_PASSWORD=$_postgres_pw
+IMAGE_OWNER=$_owner
+IMAGE_TAG=$_tag
+GALENA_DB_PASSWORD=$_galena_pw
+EJABBERD_DB_PASSWORD=$_ejabberd_pw
+GALENA_ARCHIVE_DB_PASSWORD=$_archive_pw
+EJABBERD_ADMIN_PASSWORD=$_ejabberd_admin_pw
+GALENA_XMPP_JWT_SECRET=$_jwt_secret
+BETTER_AUTH_SECRET=$_auth_secret
+GALENA_KEY_ENCRYPTION_KEY=$_key_enc_key
+
+AGENT_GATEWAY_ENABLED=false
+ACTION_DEMO_ENABLED=false
+RUNNER_HUB_ENABLED=false
+
+# Outgoing email: Galena signs people in with a one-time code sent by
+# email. A localhost trial uses the console mailer; a real install must
+# fill in the SMTP settings or the server refuses to start (production)
+# or cannot send codes. See docs/INSTALL_DOCKER.md "Email (required)".
+MAIL_TRANSPORT=$_mail_transport
+$_smtp_lines
+SMTP_PORT=587
+SMTP_SECURE=false
+MAIL_FROM=Galena <no-reply@$_domain>
+MAIL_ALLOW_CONSOLE_IN_PRODUCTION=$_console_in_prod
+
+PUSH_ENABLED=false
+TOOLS_ENABLED=false
+ROUTINES_ENABLED=false
+WEB_TOOLS_ENABLED=false
+EOF
+  chmod 600 "$ENV_FILE"
+
+  info "wrote $ENV_FILE (mode 0600). Secrets live only there — they are never printed."
+  if [ "$_domain" != "localhost" ]; then
+    echo ""
+    echo "DNS: point an A record for $_domain at this host, otherwise Caddy"
+    echo "cannot issue a certificate. Then fill SMTP_HOST/SMTP_USER/SMTP_PASSWORD"
+    echo "in $ENV_FILE (the server cannot send sign-in codes without them)."
+  fi
+  echo ""
+  echo "Next: $PROG up"
+  echo "Then: $PROG create-admin   (sign up with $_admin_email)"
+}
+
+# --- stack commands -----------------------------------------------------
+
+cmd_up() {
+  require_env_file
+  require_docker
+  _domain="$(env_get GALENA_DOMAIN)"
+  info "starting Galena (${_domain:-unknown domain})..."
+  run compose up -d --wait "$@"
+  if [ "$DRY_RUN" -eq 0 ] && [ -n "$_domain" ]; then
+    _scheme="https"
+    [ "$_domain" = "localhost" ] && _scheme="https (Caddy local CA — accept the warning)"
+    info "up. Open ${_scheme}://$_domain, then run '$PROG create-admin' for the first account."
+  fi
+}
+
+cmd_down() {
+  require_env_file
+  require_docker
+  info "stopping Galena (data volumes are kept; add -v to wipe everything)..."
+  run compose down "$@"
+}
+
+cmd_logs() {
+  require_env_file
+  require_docker
+  if [ "$#" -eq 0 ]; then
+    run compose logs -f
+  else
+    run compose logs "$@"
+  fi
+}
+
+cmd_status() {
+  require_env_file
+  require_docker
+  run compose ps
+}
+
+cmd_update() {
+  require_env_file
+  require_docker
+  info "pulling the latest images for IMAGE_TAG=$(env_get IMAGE_TAG)..."
+  run compose pull
+  info "restarting and waiting for health..."
+  run compose up -d --wait
+  info "updated. Migrations run at server startup; back up first if the install matters ('$PROG backup')."
+}
+
+# --- doctor -------------------------------------------------------------
+
+doctor_fail=0
+
+doctor_bad() {
+  doctor_fail=1
+  echo "FAIL: $1" >&2
+  echo "  fix: $2" >&2
+}
+
+doctor_ok() {
+  echo "ok: $1"
+}
+
+cmd_doctor() {
+  require_docker
+  doctor_fail=0
+
+  # 1. Docker daemon and Compose plugin.
+  if _v="$(docker --version 2>/dev/null)"; then
+    doctor_ok "docker ($_v)"
+  else
+    doctor_bad "cannot run docker" "install Docker and make sure the daemon is running"
+  fi
+  if _v="$(docker compose version 2>/dev/null)"; then
+    doctor_ok "compose ($_v)"
+  else
+    doctor_bad "'docker compose' is missing" "install the Docker Compose v2 plugin"
+  fi
+  if command -v openssl >/dev/null 2>&1; then
+    doctor_ok "openssl ($(openssl version 2>/dev/null))"
+  else
+    doctor_bad "openssl is missing" "install OpenSSL — '$PROG init' needs it to generate secrets"
+  fi
+
+  # 2. Ports free (best effort: ss, netstat or lsof; skip when none exist).
+  # A listener that is OUR OWN caddy (same project) does not count: after
+  # `up`, doctor must stay green. Detection is by container name through
+  # the same compose file/project the other commands use.
+  if [ -f "$ENV_FILE" ]; then
+    _http_port="$(env_get HTTP_PORT)"; _https_port="$(env_get HTTPS_PORT)"
+    _http_port="${_http_port:-80}"; _https_port="${_https_port:-443}"
+  else
+    _http_port=80; _https_port=443
+  fi
+  _own_caddy=""
+  if _own_caddy="$(compose ps --status running caddy 2>/dev/null | grep -c caddy)"; then
+    [ "$_own_caddy" -ge 1 ] || _own_caddy=""
+  else
+    _own_caddy=""
+  fi
+  _checker=""
+  command -v ss >/dev/null 2>&1 && _checker="ss"
+  [ -z "$_checker" ] && command -v netstat >/dev/null 2>&1 && _checker="netstat"
+  [ -z "$_checker" ] && command -v lsof >/dev/null 2>&1 && _checker="lsof"
+  if [ -z "$_checker" ]; then
+    echo "skip: cannot check ports (no ss, netstat or lsof on PATH)"
+  else
+    for _p in "$_http_port" "$_https_port"; do
+      _busy=0
+      case "$_checker" in
+        ss) ss -ltn 2>/dev/null | grep -q ":$_p " && _busy=1 ;;
+        netstat) netstat -ltn 2>/dev/null | grep -q "[:.]$_p " && _busy=1 ;;
+        lsof) lsof -iTCP:"$_p" -sTCP:LISTEN >/dev/null 2>&1 && _busy=1 ;;
+      esac
+      if [ "$_busy" -eq 1 ]; then
+        if [ -n "$_own_caddy" ]; then
+          doctor_ok "port $_p is held by this install's own caddy"
+        else
+          doctor_bad "port $_p is already in use" "stop whatever listens on $_p, or set HTTP_PORT/HTTPS_PORT in $ENV_FILE"
+        fi
+      else
+        doctor_ok "port $_p is free"
+      fi
+    done
+  fi
+
+  # 3. The domain resolves (best effort: first resolver found wins).
+  # Loopback names (localhost, *.localhost, *.local, *.test, *.example,
+  # *.invalid) never need public DNS: the trial install reaches them on
+  # this machine by definition, so resolving them is an auto-pass.
+  if [ -f "$ENV_FILE" ]; then
+    _domain="$(env_get GALENA_DOMAIN)"
+    if [ -n "$_domain" ]; then
+      case "$_domain" in
+        localhost|*.localhost|*.local|*.test|*.example|*.invalid)
+          doctor_ok "'$_domain' is a local name — no public DNS needed (trial install)"
+          ;;
+        *)
+      _ips=""
+      if command -v getent >/dev/null 2>&1; then
+        _ips="$(getent hosts "$_domain" 2>/dev/null | awk '{print $1}' | head -n 3 | tr '\n' ' ')"
+      elif command -v dig >/dev/null 2>&1; then
+        _ips="$(dig +short "$_domain" 2>/dev/null | head -n 3 | tr '\n' ' ')"
+      elif command -v nslookup >/dev/null 2>&1; then
+        _ips="$(nslookup "$_domain" 2>/dev/null | awk '/^Address: /{print $2}' | tail -n +2 | tr '\n' ' ')"
+      elif command -v host >/dev/null 2>&1; then
+        _ips="$(host "$_domain" 2>/dev/null | awk '/has address/{print $4}' | tr '\n' ' ')"
+      fi
+      if [ -z "$_ips" ]; then
+        if command -v getent >/dev/null 2>&1 || command -v dig >/dev/null 2>&1 || command -v nslookup >/dev/null 2>&1 || command -v host >/dev/null 2>&1; then
+          doctor_bad "'$_domain' does not resolve" "point an A record for $_domain at this host and wait for DNS to propagate"
+        else
+          echo "skip: cannot check DNS (no getent, dig, nslookup or host on PATH)"
+        fi
+      else
+        doctor_ok "'$_domain' resolves to ${_ips}(must be this machine for ACME to issue a certificate)"
+      fi
+          ;;
+      esac
+    fi
+  else
+    echo "skip: no env file yet (run '$PROG init' first)"
+  fi
+
+  # 4. The server answers /health through the running stack.
+  if [ -f "$ENV_FILE" ] && compose ps --status running server 2>/dev/null | grep -q server; then
+    if compose exec -T server node /app/deploy-scripts/healthcheck.mjs 2>/dev/null; then
+      doctor_ok "the server answers /health"
+    else
+      doctor_bad "the server does not answer /health" "run '$PROG logs server' and look for configuration or database errors"
+    fi
+  else
+    echo "skip: the stack is not running (run '$PROG up' first)"
+  fi
+
+  if [ "$doctor_fail" -ne 0 ]; then
+    die "doctor found problems (see FAIL lines above)"
+  fi
+  info "doctor: all checks pass"
+}
+
+# --- create-admin -------------------------------------------------------
+
+cmd_create_admin() {
+  require_env_file
+  require_docker
+  _uses=1 _days=7
+  _ca_total=$#
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --uses=*|--days=*)
+        _opt="${1%%=*}"; _val="${1#*=}"
+        shift
+        ;;
+      --uses|--days)
+        _opt="$1"
+        [ "$#" -ge 2 ] || die "create-admin: $1 needs a value (hint: $1=value)"
+        _val="$2"; shift 2
+        ;;
+      *) die "create-admin: unknown option '$1'" ;;
+    esac
+    case "$_opt" in
+      --uses) _uses="$_val" ;;
+      --days) _days="$_val" ;;
+    esac
+  done
+  [ "$_ca_total" -ge 0 ]
+  case "$_uses$_days" in
+    *[!0-9]*|"") die "create-admin: --uses and --days must be numbers" ;;
+  esac
+
+  compose ps --status running server 2>/dev/null | grep -q server \
+    || die "the server is not running — start it with '$PROG up' first"
+
+  # Sign-up needs an invite: there is no admin-creation endpoint, the
+  # invite CLI mints the code the sign-up form asks for. The inviter is
+  # empty for this first code, so no contacts are linked.
+  _admin_email="$(sed -n 's/^# Admin contact: //p' "$ENV_FILE" | tail -n 1)"
+  _domain="$(env_get GALENA_DOMAIN)"
+  if [ "$_uses" -eq 1 ] && [ "$_days" -eq 7 ]; then
+    _lifetime="single use, 7 days"
+  else
+    _lifetime="$_uses uses, $_days days"
+  fi
+  info "minting one invite code ($_lifetime)..."
+  run compose exec -T server node /opt/tsx/node_modules/tsx/dist/cli.mjs src/auth/invite-cli.ts --uses "$_uses" --days "$_days"
+  if [ "$DRY_RUN" -eq 0 ]; then
+    echo ""
+    echo "Open https://${_domain:-<domain>} and sign up${_admin_email:+ with $_admin_email}, pasting the code above."
+    if [ "$(env_get MAIL_TRANSPORT)" = "console" ]; then
+      echo "This install uses the console mailer: the sign-in code is printed in the server log ('$PROG logs server')."
+    fi
+  fi
+}
+
+# --- backup -------------------------------------------------------------
+#
+# The archive lands in deploy/backups/ and contains the live .env, so it
+# is mode 0600 and the command says so loudly. `.gitignore` cannot be
+# edited from this task (lead decision pending: ignore `deploy/backups/`),
+# so NEVER `git add` the backups directory.
+
+cmd_backup() {
+  require_env_file
+  require_docker
+  _dir="${1:-$DEPLOY_DIR/backups}"
+  [ -n "${2-}" ] && die "backup takes at most one argument (the directory)"
+
+  compose ps --status running postgres 2>/dev/null | grep -q postgres \
+    || die "postgres is not running — start the stack with '$PROG up' first (same --env-file and COMPOSE_FILE_OVERRIDE, if any)"
+  compose ps --status running ejabberd 2>/dev/null | grep -q ejabberd \
+    || die "ejabberd is not running — start the stack with '$PROG up' first (same --env-file and COMPOSE_FILE_OVERRIDE, if any)"
+
+  _stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  _name="galena-backup-$_stamp.tgz"
+  _domain="$(env_get GALENA_DOMAIN)"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    cat <<EOF
++ would write $_dir/$_name (mode 0600) containing:
++   galena.dump      pg_dump custom format of the Galena database
++   ejabberd.dump    pg_dump custom format of the ejabberd database
++   globals.sql      roles and globals (pg_dumpall -g) so a fresh cluster
++                    can recreate the roles the dumps need
++   uploads.tgz      the ejabberd uploads volume
++   .env             a copy of $ENV_FILE (mode 0600 in the archive)
++   SECRETS_WARNING.txt   "this archive contains live secrets"
++   manifest.json    versions and provenance (domain, image tag,
++                    postgres version, ejabberd status line, date)
++ databases would be dumped through the running containers; nothing else changes
+EOF
+    return 0
+  fi
+
+  mkdir -p "$_dir"
+  _tmp="$(mktemp -d)"
+  # mktemp owns the dir; remove it on failure without touching anything else.
+  trap 'rm -rf "$_tmp"' EXIT
+
+  # The postgres container already carries POSTGRES_PASSWORD in its own
+  # environment (deploy/docker-compose.yml), so `-e POSTGRES_PASSWORD`
+  # forwards that container-side value into the exec session — the secret
+  # is expanded only inside the container and never appears in `ps`
+  # output on this host.
+  info "dumping the Galena database..."
+  compose exec -T -e POSTGRES_PASSWORD postgres \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -Fc -U postgres -d galena' > "$_tmp/galena.dump"
+  info "dumping the ejabberd database..."
+  compose exec -T -e POSTGRES_PASSWORD postgres \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -Fc -U postgres -d ejabberd' > "$_tmp/ejabberd.dump"
+  info "dumping roles and globals..."
+  # globals.sql holds role definitions including SCRAM password hashes
+  # (not plaintext, but still secret material — the archive stays 0600).
+  compose exec -T -e POSTGRES_PASSWORD postgres \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dumpall -g -U postgres' > "$_tmp/globals.sql"
+  info "recording service versions for the manifest..."
+  _pg_version="$(compose exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d postgres -tAc "SHOW server_version"' 2>/dev/null | tr -d '[:space:]')"
+  _ej_version="$(compose exec -T ejabberd ejabberdctl status 2>/dev/null | head -n 1 | tr -d '\r\n' || true)"
+  info "archiving uploads..."
+  compose exec -T ejabberd tar -C /opt/ejabberd -czf - upload > "$_tmp/uploads.tgz"
+
+  cp "$ENV_FILE" "$_tmp/.env"
+  chmod 600 "$_tmp/.env" "$_tmp/galena.dump" "$_tmp/ejabberd.dump" "$_tmp/globals.sql" "$_tmp/uploads.tgz"
+  cat > "$_tmp/SECRETS_WARNING.txt" <<EOF
+This archive contains LIVE SECRETS (the .env file: database passwords,
+JWT and session secrets). Anyone holding it owns this Galena install.
+Store it encrypted, copy it off the machine, restrict who can read it.
+EOF
+  cat > "$_tmp/manifest.json" <<EOF
+{
+  "tool": "galena-backup-v1",
+  "created_at": "$_stamp",
+  "domain": "$_domain",
+  "image_owner": "$(env_get IMAGE_OWNER)",
+  "image_tag": "$(env_get IMAGE_TAG)",
+  "postgres_version": "${_pg_version:-unknown}",
+  "ejabberd_status": "${_ej_version:-unknown}",
+  "databases": ["galena", "ejabberd"]
+}
+EOF
+
+  tar -czf "$_dir/$_name" -C "$_tmp" galena.dump ejabberd.dump globals.sql uploads.tgz .env SECRETS_WARNING.txt manifest.json
+  chmod 600 "$_dir/$_name"
+  trap - EXIT
+  rm -rf "$_tmp"
+
+  _size="$(du -h "$_dir/$_name" | cut -f1)"
+  info "wrote $_dir/$_name ($_size, mode 0600). Copy it off the machine — a backup on the same disk is not a backup."
+  warn "SECRETS: this archive contains the live .env (database passwords, JWT and session secrets)."
+  warn "NEVER commit deploy/backups/ to git — add 'deploy/backups/' to .gitignore (lead decision pending)."
+  warn "Copy the archive off the machine and restrict who can read it."
+}
+
+# --- restore ------------------------------------------------------------
+#
+# Restore is fail-stop: any step failing aborts the script (`set -eu`).
+# That can leave app services stopped with data half-restored, so every
+# failure path below restarts the stack first and tells the operator
+# exactly where to pick up again (which step failed, what is safe to
+# re-run). The archived `.env` (and its POSTGRES_PASSWORD) is the source
+# of truth for the whole restore: credentials are read from the archive,
+# never from the current environment.
+
+cmd_restore() {
+  require_env_file
+  require_docker
+  _archive="${1-}"
+  [ -n "$_archive" ] || die "restore needs an archive: '$PROG restore <archive> --yes'"
+  [ -f "$_archive" ] || die "no such file: $_archive"
+  [ "$YES" -eq 1 ] || die "restore overwrites live data — re-run with --yes to confirm"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    cat <<EOF
++ would: unpack $_archive to a temp dir and check manifest.json
++ would: stop server, web and ejabberd (postgres keeps running)
++ would: recreate roles/globals from globals.sql, then pg_restore --clean
++        into the galena and ejabberd databases (credentials from the ARCHIVE)
++ would: restore the uploads volume, back up $ENV_FILE to $ENV_FILE.bak-<stamp>,
++        install the archived .env (mode 0600)
++ would: start everything and wait for health
++ on any failure: the stack is restarted first, then the error is reported
+EOF
+    return 0
+  fi
+
+  _tmp="$(mktemp -d)"
+  trap 'rm -rf "$_tmp"' EXIT
+  tar -xzf "$_archive" -C "$_tmp"
+  [ -f "$_tmp/manifest.json" ] && grep -q galena-backup-v1 "$_tmp/manifest.json" \
+    || die "$_archive is not a galena backup (no manifest.json)"
+  for _f in galena.dump ejabberd.dump uploads.tgz .env; do
+    [ -f "$_tmp/$_f" ] || die "$_archive is missing $_f"
+  done
+  info "archive ok (backed up by $(sed -n 's/.*"created_at": "\(.*\)".*/\1/p' "$_tmp/manifest.json" | head -n 1))."
+
+  # From here on every failure restarts the stack before reporting: never
+  # leave the install stopped with no hint. _step names the current phase
+  # for the recovery message.
+  _step="stop app services"
+  # Recreate the three audit_log immutability triggers (same statements as
+  # apps/server/drizzle/0013_audit_log_immutable.sql, which owns them).
+  # Runs best-effort: failures are reported but never abort recovery.
+  _ensure_audit_triggers() {
+    POSTGRES_PASSWORD="$_arch_pw" compose exec -T -e POSTGRES_PASSWORD postgres \
+      sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -v ON_ERROR_STOP=1 -c "DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log" -c "CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_truncate BEFORE TRUNCATE ON audit_log FOR EACH STATEMENT EXECUTE FUNCTION audit_log_block_mutations()"' 2>/dev/null \
+      || warn "could not recreate the audit_log triggers — run the CREATE TRIGGER statements from apps/server/drizzle/0013_audit_log_immutable.sql by hand, then verify with: SELECT tgname FROM pg_trigger WHERE tgrelid='audit_log'::regclass;"
+  }
+  _recover() {
+    warn "restore failed during: $_step."
+    warn "restarting the stack so the install is running again..."
+    compose up -d --wait || warn "restart failed too — run '$PROG up' by hand, then '$PROG status'."
+    # Before the archived password is read nothing was dropped yet, so there
+    # is nothing to recreate (and no credential to do it with).
+    if [ -n "$_arch_pw" ]; then
+      _ensure_audit_triggers
+    fi
+    warn "safe to re-run: '$PROG restore $_archive --yes' (idempotent: roles are re-created, dumps use --clean)."
+    trap - EXIT
+    rm -rf "$_tmp"
+    exit 1
+  }
+  _arch_pw=""
+  trap '_recover' EXIT
+
+  info "stopping server, web and ejabberd (postgres keeps running)..."
+  compose stop server web ejabberd
+  _tries=0
+  while [ "$_tries" -lt 30 ]; do
+    if compose exec -T postgres pg_isready -U postgres -d postgres >/dev/null 2>&1; then
+      break
+    fi
+    _tries=$((_tries + 1))
+    sleep 2
+  done
+  [ "$_tries" -lt 30 ] || { _step="wait for postgres"; _recover; }
+
+  # Credentials for the whole restore come from the ARCHIVED env file, so
+  # a restore to a new machine (different current POSTGRES_PASSWORD)
+  # works. The archived password is passed to `compose exec` through the
+  # environment (`-e` reads KEY=VALUE from this process, never from argv),
+  # and expanded only inside the container — it never appears in `ps`
+  # output on this host.
+  _arch_pw="$(sed -n 's/^POSTGRES_PASSWORD=//p' "$_tmp/.env" | tail -n 1)"
+  [ -n "$_arch_pw" ] || die "$_archive has no POSTGRES_PASSWORD in its .env"
+
+  # `docker compose exec -e` reads KEY=VALUE from the host environment
+  # without expanding it into the compose file, so the archived secret
+  # never appears in this script's argv (invisible to `ps`) and Compose
+  # never interpolates it into container config either.
+  _run_with_arch_pw() {
+    POSTGRES_PASSWORD="$_arch_pw" compose exec -T -e POSTGRES_PASSWORD postgres "$@"
+  }
+
+  if [ -f "$_tmp/globals.sql" ]; then
+    _step="restore roles and globals"
+    info "restoring roles and globals..."
+    # pg_dumpall -g is not idempotent (CREATE ROLE fails when the role
+    # exists, and ON_ERROR_STOP aborts). Filter to what a restore needs:
+    # CREATE ROLE only when missing (DO block), then the password-setting
+    # ALTER ROLE lines unconditionally (so the archived passwords win).
+    _run_with_arch_pw \
+      sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -c "DO \$\$BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '"'"'galena'"'"') THEN CREATE ROLE galena LOGIN; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '"'"'ejabberd'"'"') THEN CREATE ROLE ejabberd LOGIN; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '"'"'galena_archive'"'"') THEN CREATE ROLE galena_archive LOGIN; END IF; END\$\$;"' \
+      || { _step="restore roles and globals"; _recover; }
+    grep -E '^ALTER ROLE (galena|ejabberd|galena_archive) WITH .* PASSWORD' "$_tmp/globals.sql" > "$_tmp/role-passwords.sql" || true
+    if [ -s "$_tmp/role-passwords.sql" ]; then
+      _run_with_arch_pw \
+        sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f -' < "$_tmp/role-passwords.sql" \
+        || { _step="restore roles and globals"; _recover; }
+    fi
+  else
+    warn "no globals.sql in this archive (pre-restore-roles backup) — roles must already exist."
+  fi
+
+  _step="restore the Galena database"
+  info "restoring the Galena database..."
+  # The audit_log triggers reject TRUNCATE/DELETE, and pg_restore --clean
+  # must empty the table first. Drop the three immutability triggers,
+  # restore, then recreate them from the migration that owns them
+  # (apps/server/drizzle/0013_audit_log_immutable.sql). Data restored this
+  # way is identical to the backup; the triggers only ever blocked
+  # writes, never reads.
+  _run_with_arch_pw \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -v ON_ERROR_STOP=1 -c "DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log"'
+  # pg_restore reads the dump from a FILE. The dump reaches the container
+  # over stdin (no host file to clean up), so stage it through a temp file
+  # inside the container first — this keeps stdin free for the pipe while
+  # giving pg_restore the seekable file it needs (a bare stdin redirect
+  # silently restores nothing).
+  _run_with_arch_pw \
+    sh -c 'cat > /tmp/galena-restore.dump && PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U postgres -d galena --clean --if-exists /tmp/galena-restore.dump; _rc=$?; rm -f /tmp/galena-restore.dump; exit $_rc' < "$_tmp/galena.dump" \
+    || { _step="restore the Galena database"; _recover; }
+  # Recreate the audit_log immutability triggers dropped above (same
+  # statements as apps/server/drizzle/0013_audit_log_immutable.sql, which
+  # owns them — the function survives --clean, only the triggers were
+  # dropped). No data change: they only block future writes. IF NOT EXISTS
+  # is unavailable for CREATE TRIGGER, so drop-then-create idempotently.
+  _step="recreate the audit_log triggers"
+  info "recreating the audit_log immutability triggers..."
+  _run_with_arch_pw \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -v ON_ERROR_STOP=1 -c "DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log" -c "CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_truncate BEFORE TRUNCATE ON audit_log FOR EACH STATEMENT EXECUTE FUNCTION audit_log_block_mutations()"' \
+    || { _step="recreate the audit_log triggers"; _recover; }
+  _step="restore the ejabberd database"
+  info "restoring the ejabberd database..."
+  _run_with_arch_pw \
+    sh -c 'cat > /tmp/galena-restore.dump && PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U postgres -d ejabberd --clean --if-exists /tmp/galena-restore.dump; _rc=$?; rm -f /tmp/galena-restore.dump; exit $_rc' < "$_tmp/ejabberd.dump" \
+    || { _step="restore the ejabberd database"; _recover; }
+
+  _step="restore uploads"
+  info "starting ejabberd so uploads can be restored..."
+  compose up -d ejabberd
+  info "restoring uploads..."
+  compose exec -T ejabberd tar -C /opt/ejabberd -xzf - upload < "$_tmp/uploads.tgz" \
+    || { _step="restore uploads"; _recover; }
+
+  _step="install the archived .env"
+  _stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  if [ -f "$ENV_FILE" ]; then
+    cp "$ENV_FILE" "$ENV_FILE.bak-$_stamp"
+    chmod 600 "$ENV_FILE.bak-$_stamp"
+    info "backed up the current env file to $ENV_FILE.bak-$_stamp"
+  fi
+  cp "$_tmp/.env" "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+  info "installed the archived .env (mode 0600)."
+
+  trap - EXIT
+  rm -rf "$_tmp"
+
+  _step="start everything and wait for health"
+  info "starting everything and waiting for health..."
+  compose up -d --wait || { _step="start everything"; _recover; }
+  # The stack must never run without audit immutability: verify all three
+  # triggers exist and fail loudly (non-zero, clear message) if not.
+  _step="verify the audit_log triggers"
+  _found="$(POSTGRES_PASSWORD="$_arch_pw" compose exec -T -e POSTGRES_PASSWORD postgres \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -tAc "SELECT count(*) FROM pg_trigger WHERE tgrelid='"'"'audit_log'"'"'::regclass AND tgname IN ('"'"'audit_log_no_update'"'"','"'"'audit_log_no_delete'"'"','"'"'audit_log_no_truncate'"'"')"' 2>/dev/null | tr -d '[:space:]')"
+  if [ "$_found" != "3" ]; then
+    _ensure_audit_triggers
+    _found="$(POSTGRES_PASSWORD="$_arch_pw" compose exec -T -e POSTGRES_PASSWORD postgres \
+      sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -tAc "SELECT count(*) FROM pg_trigger WHERE tgrelid='"'"'audit_log'"'"'::regclass AND tgname IN ('"'"'audit_log_no_update'"'"','"'"'audit_log_no_delete'"'"','"'"'audit_log_no_truncate'"'"')"' 2>/dev/null | tr -d '[:space:]')"
+    [ "$_found" = "3" ] || die "restore finished but the audit_log immutability triggers are missing (found $_found of 3). The stack is running WITHOUT append-only audit protection. Recreate them from apps/server/drizzle/0013_audit_log_immutable.sql, verify with: SELECT tgname FROM pg_trigger WHERE tgrelid='audit_log'::regclass;"
+  fi
+  info "audit_log immutability triggers verified (3 of 3)."
+  info "restored. Check '$PROG status' and sign in to confirm your data is back."
+}
+
+# --- dispatch -----------------------------------------------------------
+
+# Quote one argument for eval-safe reassembly of $@ below.
+_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+# Globals first (accepted anywhere on the line): strip them out of $@,
+# leaving only the command and its arguments.
+CMD=""
+_saved=""
+for _a in "$@"; do
+  case "$_a" in
+    --dry-run) DRY_RUN=1 ;;
+    --yes|-y) YES=1 ;;
+    --force|-f) FORCE=1 ;;
+    --env-file=*) ENV_FILE="${_a#--env-file=}" ;;
+    *)
+      if [ -z "$CMD" ]; then
+        CMD="$_a"
+      else
+        _saved="$_saved $(_quote "$_a")"
+      fi
+      ;;
+  esac
+done
+[ -n "$ENV_FILE" ] || ENV_FILE="$DEFAULT_ENV_FILE"
+# Rebuild $@ from the saved (quoted) arguments.
+# shellcheck disable=SC2086
+eval "set -- $_saved"
+
+case "$CMD" in
+  ""|-h|--help|help) usage; exit 0 ;;
+  init) cmd_init "$@" ;;
+  up) cmd_up "$@" ;;
+  down) cmd_down "$@" ;;
+  logs) cmd_logs "$@" ;;
+  status) cmd_status "$@" ;;
+  update) cmd_update "$@" ;;
+  doctor) cmd_doctor "$@" ;;
+  backup) cmd_backup "$@" ;;
+  restore) cmd_restore "$@" ;;
+  create-admin) cmd_create_admin "$@" ;;
+  *) die "unknown command '$CMD' (try '$PROG --help')" ;;
+esac
