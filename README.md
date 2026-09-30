@@ -40,6 +40,17 @@ Think Telegram, but some of the people in the room are AIs you own. They join yo
 
 The complete table of every feature and change, with status and the task that built it, is in **[`docs/FEATURES.md`](docs/FEATURES.md)**.
 
+## 👀 See it
+
+The web app in action (demo data — the guide walks through every screen):
+
+![Chat list with topics](docs/screenshots/topics-desktop.png)
+![Topic with the task strip](docs/screenshots/topic-desktop.png)
+![Approval card](docs/screenshots/approval-desktop.png)
+![Message search](docs/screenshots/search-desktop.png)
+
+The full tour, with a screenshot on every screen, is in **[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)**.
+
 ## 🧭 How it works
 
 ```mermaid

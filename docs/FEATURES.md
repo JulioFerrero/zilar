@@ -1,6 +1,6 @@
 # Galena: features and changes
 
-Everything that exists in the repository today, grouped by area, with the task that built it. Status is stated honestly:
+Everything that exists in the repository today, grouped by area, with the task that built it. Status is stated honestly. New here? Start with the [user guide](USER_GUIDE.md) — every screen with a screenshot.
 
 | Mark | Meaning |
 |---|---|

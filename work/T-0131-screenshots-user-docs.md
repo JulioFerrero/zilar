@@ -1,7 +1,7 @@
 ---
 id: T-0131
 title: Feature screenshots and user documentation
-status: planned
+status: review
 milestone: M5
 branch: task/T-0131-screenshots-user-docs
 model: meta/muse-spark-1.3-contributor
@@ -55,19 +55,42 @@ Product code changes, mobile screenshots (simulators belong to Julio), a docs we
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Added Playwright as a root devDependency (`pnpm add -w --save-dev playwright`) and installed only the Chromium build locally (binaries live in the user cache, not the repo).
+- Wrote `scripts/screenshots.ts` (+ `scripts/tsconfig.json`): starts the web dev server on spare port 4319, drives headless Chromium in `?mock=1` mock mode only, captures 11 desktop shots (1440x900) and 4 phone shots (390x844), then asserts every PNG is under 400 KB. Run with `pnpm screenshots` (Node 24 `--experimental-strip-types`, no new runtime dependency; playwright/zod resolve from workspace packages). The spec's "sign-in" shot uses `/login` in the dev build, which renders the email form without a session.
+- Generated `docs/screenshots/` (15 PNGs, all under 400 KB, largest 222 KB): sign-in, chat list with topics, topic with task strip, group with an AI (QA squad + QA-1), approval card (Approvals inbox), message search, pinned banner, chat preferences menu, new-topic dialog, AI settings, machines page, plus 4 phone shots.
+- Wrote `docs/USER_GUIDE.md`: getting started, chats/groups, topics + task strip, AIs (create, keys, caps + 80% heads-up, approvals, kill switch, delete, Runs on), search, pins, mute/archive/pin, machines, and a "Coming next" section where every unmerged item is marked **(coming)**.
+- README: added a "See it" section with 4 screenshots + guide link. `docs/FEATURES.md`: one-line link to the guide at the top.
+- No product code changed (one accidental comment edit in `apps/web/src/store/store.ts` was reverted; `git diff` confirms only allowed files).
 
 ### Files changed
--
+- `scripts/screenshots.ts` (new), `scripts/tsconfig.json` (new)
+- `docs/screenshots/*.png` (15 new)
+- `docs/USER_GUIDE.md` (new)
+- `README.md`, `docs/FEATURES.md` (small additions)
+- `package.json`, `pnpm-lock.yaml` (playwright devDependency + `screenshots` script)
+- `work/T-0131-screenshots-user-docs.md` (status + this report)
 
 ### Commands run and real results
--
+- `pnpm install`: Done in 6.5s.
+- `pnpm add -w --save-dev playwright`: added `playwright ^1.63.0`, Done in 2.8s.
+- `pnpm exec playwright install chromium`: Chromium + headless shell downloaded to the user cache (100% of 94.3 MiB).
+- `node --experimental-strip-types scripts/screenshots.ts` (== `pnpm screenshots`): first full run failed on `search-phone.png` (phone hides the search box while a chat is open — fixed by starting that shot from `/`); second run captured all 15, "All 15 screenshots are under 400 KB." Re-ran once more after the typecheck refactor: all 15 captured, all under 400 KB (largest: prefs-desktop.png 222 KB).
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint` (oxlint): pass (one unused-var error fixed by removing the dead constant).
+- `pnpm typecheck` (turbo, 10 tasks): pass. Plus `tsc --noEmit -p scripts/tsconfig.json`: pass (scripts/ is not covered by any package tsconfig, hence the new one).
+- `pnpm build` (web + mobile): pass, 34s.
+- Looked at all 15 PNGs: mock names/places only (Ana, Luis, Dev-1, you@galena.test), no real emails, keys, or fingerprints beyond the mock's fixed test values. No product-code tests were touched, so no test run was needed beyond build/typecheck/lint (per the machine rule, no bare test runs).
 
 ### Problems, deviations from the spec, open questions
--
+- Spec asked for an **approval card** shot; the in-chat card (`dev-21` in the old `c-devteam` mock thread) is unreachable since T-0111 replaced the legacy group row with topic threads, so the shot is the **Approvals inbox** (`/settings/approvals`), which shows the same pending card with Approve/Deny. The LIVE_CHECKS deep-link claim (`/c/c-devteam?mock=1` shows the card) is stale for the same reason — worth a lead note, no code changed.
+- Spec asked for a **sign-in** shot "in mock mode"; mock mode auto-authenticates, so the shot uses `/login` in the dev build (same form, no session). It is the only shot taken without `?mock=1`, and it performs no action.
+- Spec asked for "chat preferences (mute/archive/pin)" as one shot: captured as the open header menu (Pinned messages / Pin / Mute / Archive chat). The Archived row and mute-duration submenu are described in the guide but not pictured.
+- Phone set covers list, topic, chat, and search (spec: "a phone-size set"). Machines/AI-settings phone shots omitted to keep the set small; desktop versions exist.
+- Screenshot determinism: one run showed "Luis is typing…" in a phone shot (the mock typing simulation fires 2s after load). Shots wait 7s so it usually clears, but a re-run can catch it. No product-code hook was added to suppress it (out of scope); re-running the script fixes any singleLocal run that catches it.
+- `pnpm screenshots` needs the Chromium build installed once (`pnpm exec playwright install chromium`); without it the script fails with a clear Playwright error, not silently.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- (none)
 
 ---
 

@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "playwright": ["../node_modules/playwright"],
+      "zod": ["../apps/web/node_modules/zod"]
+    }
+  },
+  "include": ["screenshots.ts"]
+}
