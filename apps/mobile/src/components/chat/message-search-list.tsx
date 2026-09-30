@@ -127,7 +127,6 @@ export function MessageSearchList({
         <Text className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">
           Messages
         </Text>
-        <Text className="px-[10px] pb-2 text-[13px] text-muted-foreground">{search.message}</Text>
         <LoadError message={search.message} onRetry={search.retry} />
       </View>
     );
@@ -163,7 +162,7 @@ function MessageSearchGroups({
       className="flex-1 px-2"
       keyboardShouldPersistTaps="handled"
       onScroll={
-        search.hasMore && search.loadMore !== undefined
+        search.nextBefore !== undefined && search.loadMore !== undefined
           ? (event) => {
               const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
               if (nearEnd(contentOffset.y, contentSize.height, layoutMeasurement.height)) {
@@ -204,11 +203,25 @@ function MessageSearchGroups({
           })}
         </View>
       ))}
-      {search.hasMore ? (
+      {search.nextBefore === undefined ? null : search.pageError !== undefined ? (
+        <View className="flex-row items-center justify-between gap-3 px-[10px] py-3">
+          <Text className="flex-1 text-[13px] text-muted-foreground">
+            {search.pageError.message}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading more messages"
+            onPress={search.pageError.retry}
+            className="rounded px-2 py-1 active:bg-surface-raised"
+          >
+            <Text className="text-[13px] font-semibold text-foreground">Retry</Text>
+          </Pressable>
+        </View>
+      ) : (
         <View className="items-center py-3">
           <ActivityIndicator color={ACCENT.dark} />
         </View>
-      ) : null}
+      )}
     </ScrollView>
   );
 }

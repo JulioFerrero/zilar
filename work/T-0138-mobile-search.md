@@ -88,6 +88,14 @@ Web changes, server changes, search filters beyond chat scope, semantic search.
 ### Blocked / needs a decision
 - None.
 
+### Round 2 (pre-review fixes)
+- Fix 1 (MUST) — paging now forwards the server's opaque `nextBefore` cursor instead of the last item's ISO date (page 2+ 400'd against the real server and the spinner never ended). `ready` carries `nextBefore?: string` (`hasMore` removed everywhere); `loadMore` sends exactly that value. A failed page (e.g. 400) keeps the items shown and sets inline `pageError` with Retry in the footer — the spinner ends instead of retrying forever. Controller test uses a realistic microsecond cursor (`1758988200000000`) and asserts the exact value is sent; new test covers the 400-on-paging inline error + retry.
+- Fix 2 (SHOULD) — error state shows `LoadError` only (removed the duplicate plain-Text message).
+- Fix 3 (SHOULD) — deleted the unused `MESSAGE_JUMP_MAX_PAGES` copy in `message-search.ts` (`real-store.ts` owns it).
+- Fix 4 (NIT) — removed the unused `searchInputRef` in `app/index.tsx`.
+- Fix 5 (SHOULD) — the no-log test now spies on `log/info/warn/error/debug`.
+- Verification: `typecheck` clean, `lint` clean, `format:check` (touched files) clean, touched suites 126 passed, full mobile suite 43 files / 447 passed, 2 skipped.
+
 ### Blocked / needs a decision
 - (only if status is blocked)
 

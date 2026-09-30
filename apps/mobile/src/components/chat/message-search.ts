@@ -17,9 +17,6 @@ export const MESSAGE_SEARCH_DEBOUNCE_MS = 300;
 /** The server needs at least 2 characters; shorter text never searches. */
 export const MESSAGE_SEARCH_MIN_LENGTH = 2;
 
-/** How many history pages a jump-to-message loads before it gives up. */
-export const MESSAGE_JUMP_MAX_PAGES = 20;
-
 /** Null until the first debounce settles, so the first keystrokes wait too. */
 export type DebouncedQuery = string | null;
 
@@ -32,7 +29,14 @@ export function activeQuery(query: string): string | null {
 export type MessageSearchStatus =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; items: SearchItem[]; hasMore: boolean }
+  | {
+      status: 'ready';
+      items: SearchItem[];
+      /** The opaque server cursor for the next page; absent means no more. */
+      nextBefore?: string;
+      /** A failed page keeps the items shown and reports the failure inline. */
+      pageError?: { message: string; retry: () => void };
+    }
   | { status: 'error'; message: string; rateLimited: boolean; retry: () => void }
   | { status: 'unavailable' };
 
@@ -216,16 +220,18 @@ export class MessageSearchController {
     this.fetch(this.debounced);
   }
 
-  /** Appends the next page; a late page after a new query is dropped. */
+  /**
+   * Appends the next page with the cursor the server returned (`nextBefore`,
+   * an opaque microsecond stamp — never the last item's ISO date). A late
+   * page after a new query is dropped. A failed page keeps the items shown
+   * and reports the failure inline, so the spinner ends instead of retrying
+   * forever.
+   */
   loadMore(): void {
     if (this.disposed || this.paging || this.debounced === null) {
       return;
     }
-    if (this.current.status !== 'ready' || !this.current.hasMore) {
-      return;
-    }
-    const last = this.current.items.at(-1);
-    if (last === undefined) {
+    if (this.current.status !== 'ready' || this.current.nextBefore === undefined) {
       return;
     }
     const id = this.nextId();
@@ -234,7 +240,7 @@ export class MessageSearchController {
     const controller = new AbortController();
     const q = this.debounced;
     const chat = this.chat;
-    const before = last.at;
+    const before = this.current.nextBefore;
     void this.api
       .searchMessages({
         q,
@@ -261,7 +267,7 @@ export class MessageSearchController {
           this.set({
             status: 'ready',
             items: [...this.current.items, ...fresh],
-            hasMore: page.nextBefore !== undefined,
+            ...(page.nextBefore === undefined ? {} : { nextBefore: page.nextBefore }),
           });
         },
         (error: unknown) => {
@@ -272,8 +278,19 @@ export class MessageSearchController {
           if (error instanceof DOMException && error.name === 'AbortError') {
             return;
           }
-          // A failed page keeps the items already shown; the next scroll
-          // retries (paging is back off).
+          if (this.current.status !== 'ready') {
+            return;
+          }
+          const kept = this.current;
+          this.set({
+            status: 'ready',
+            items: kept.items,
+            ...(kept.nextBefore === undefined ? {} : { nextBefore: kept.nextBefore }),
+            pageError: {
+              message: "Couldn't load more messages",
+              retry: () => this.loadMore(),
+            },
+          });
         },
       );
   }
@@ -343,7 +360,7 @@ export class MessageSearchController {
           this.set({
             status: 'ready',
             items: page.items,
-            hasMore: page.nextBefore !== undefined,
+            ...(page.nextBefore === undefined ? {} : { nextBefore: page.nextBefore }),
           });
         },
         (error: unknown) => {

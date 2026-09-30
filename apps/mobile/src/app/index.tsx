@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Bot, Search, X } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -81,8 +81,6 @@ function ChatsList() {
   // A search hit that lands nowhere ("Message not found"): the chat still
   // opens at its bottom; the inline notice says the message is not there.
   const [searchMiss, setSearchMiss] = useState<string | null>(null);
-  // Dismisses the miss notice on the next keystroke, like the web list does.
-  const searchInputRef = useRef<TextInput>(null);
   // Clear the pull-to-refresh spinner as soon as the reload settles, however it
   // ends. Adjusted during render (as ChatList does on web), not in an effect.
   const [lastChatsLoad, setLastChatsLoad] = useState(chatsLoad);
@@ -155,7 +153,6 @@ function ChatsList() {
       <View className="h-10 flex-1 flex-row items-center gap-2 rounded-xl px-3" style={well}>
         <Search size={16} color="#8a8a8a" />
         <TextInput
-          ref={searchInputRef}
           autoFocus
           value={search}
           onChangeText={onSearchChange}

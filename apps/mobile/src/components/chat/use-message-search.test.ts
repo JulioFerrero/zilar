@@ -218,11 +218,15 @@ describe('MessageSearchController', () => {
     expect(controller.view.status).toBe('unavailable');
   });
 
-  it('pages forward with the cursor and drops a late page', async () => {
+  it('pages forward with the server cursor, not the last item date', async () => {
+    // The server's cursor is an opaque microsecond stamp (`nextBefore`); the
+    // client forwards it unchanged — sending the ISO date 400s.
+    const CURSOR = '1758988200000000';
     const { api, calls } = fakeApi(async (input) => {
       if (input.before === undefined) {
-        return { items: [hit('ana', 'ana-2', '2026-09-28T12:00:00Z')], nextBefore: 'cursor-1' };
+        return { items: [hit('ana', 'ana-2', '2026-09-28T12:00:00Z')], nextBefore: CURSOR };
       }
+      expect(input.before).toBe(CURSOR);
       return { items: [hit('ana', 'ana-1', '2026-09-28T10:00:00Z')] };
     });
     const controller = control(api);
@@ -234,14 +238,48 @@ describe('MessageSearchController', () => {
     expect(ready.status).toBe('ready');
     if (ready.status !== 'ready') throw new Error('unreachable');
     expect(ready.items.map((item) => item.messageId)).toEqual(['ana-2']);
+    expect(ready.nextBefore).toBe(CURSOR);
 
     controller.loadMore();
     await flush();
-    expect(calls[1]).toMatchObject({ before: '2026-09-28T12:00:00Z' });
+    expect(calls[1]).toMatchObject({ before: CURSOR });
     const paged = controller.view;
     if (paged.status !== 'ready') throw new Error('unreachable');
     expect(paged.items.map((item) => item.messageId)).toEqual(['ana-2', 'ana-1']);
-    expect(paged.hasMore).toBe(false);
+    expect(paged.nextBefore).toBeUndefined();
+  });
+
+  it('ends the spinner with an inline error when a page fails', async () => {
+    const CURSOR = '1758988200000000';
+    let pages = 0;
+    const { api } = fakeApi(async (input) => {
+      if (input.before === undefined) {
+        return { items: [hit('ana', 'ana-2', '2026-09-28T12:00:00Z')], nextBefore: CURSOR };
+      }
+      pages += 1;
+      throw new SearchApiError(400, 'invalid_request', 'Bad cursor');
+    });
+    const controller = control(api);
+
+    controller.setQuery('terra');
+    clock.run();
+    await flush();
+
+    controller.loadMore();
+    await flush();
+    expect(pages).toBe(1);
+    const failed = controller.view;
+    expect(failed.status).toBe('ready');
+    if (failed.status !== 'ready') throw new Error('unreachable');
+    // The items stay, the spinner ends (no cursor surfaced), the error shows.
+    expect(failed.items.map((item) => item.messageId)).toEqual(['ana-2']);
+    expect(failed.nextBefore).toBe(CURSOR);
+    expect(failed.pageError?.message).toContain("Couldn't load more");
+
+    // Retry re-sends the same cursor; a late page after a new query is dropped.
+    failed.pageError?.retry();
+    await flush();
+    expect(pages).toBe(2);
   });
 
   it('ignores an abort as a silent cancel, not an error', async () => {
@@ -275,9 +313,12 @@ describe('MessageSearchController', () => {
 
   it('does not log the query: the API receives it only as a request param', async () => {
     const logged: string[] = [];
-    const spy = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
-      logged.push(args.map(String).join(' '));
-    });
+    const methods = ['log', 'info', 'warn', 'error', 'debug'] as const;
+    const spies = methods.map((method) =>
+      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        logged.push(args.map(String).join(' '));
+      }),
+    );
     try {
       const { api } = fakeApi(async () => ({ items: [] }));
       const controller = control(api);
@@ -286,7 +327,9 @@ describe('MessageSearchController', () => {
       await flush();
       expect(logged.join('\n')).not.toContain('supersecretquery');
     } finally {
-      spy.mockRestore();
+      for (const spy of spies) {
+        spy.mockRestore();
+      }
     }
   });
 });
