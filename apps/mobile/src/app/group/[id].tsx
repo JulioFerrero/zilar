@@ -53,7 +53,10 @@ function GroupTopics() {
   const chats = useChatStore((state) => state.chats);
   const chatsLoad = useChatStore((state) => state.chatsLoad);
   const groupDetail = useChatStore((state) => state.groupDetail(groupId));
-  const refreshGroupDetail = useChatStore((state) => state.refreshGroupDetail);
+  // Mount loads the detail only when nothing fresh is cached: the cached
+  // path dedupes in-flight loads too, so the group screen after the chat
+  // screen costs no second GET (T-0139). Explicit refreshes still force.
+  const ensureGroupDetail = useChatStore((state) => state.ensureGroupDetail);
   const groupRoles = useChatStore((state) => state.groupRoles(groupId));
   const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
   const createGroupRole = useChatStore((state) => state.createGroupRole);
@@ -98,12 +101,12 @@ function GroupTopics() {
   // The roles ride a second load for the members/roles sheet.
   useEffect(() => {
     if (groupId !== '') {
-      refreshGroupDetail(groupId);
+      ensureGroupDetail(groupId);
       void refreshGroupRoles(groupId).catch(() =>
         setRolesLoadError('Could not load the roles. Try again.'),
       );
     }
-  }, [groupId, refreshGroupDetail, refreshGroupRoles]);
+  }, [groupId, ensureGroupDetail, refreshGroupRoles]);
 
   const topics = useMemo(() => topicsOfGroup(chats, groupId), [chats, groupId]);
   const general = topics.find((topic) => topic.topic?.isGeneral === true);

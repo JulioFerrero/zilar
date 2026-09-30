@@ -23,12 +23,18 @@ type ChatHeaderProps = {
   topicGroupName?: string;
   /** Opens the topic-info sheet when the header is tapped (topics only). */
   onOpenInfo?: () => void;
+  /** Opens the group screen for this row's group (T-0139). */
+  onOpenGroup?: (groupId: string) => void;
 };
 
 /**
- * Chat header: back, avatar, name + AI badge, subtitle, search and menu. For
- * a topic (T-0112) the topic name shows with the group name small above it
- * and a Private chip, and tapping the title opens the topic-info sheet.
+ * Chat header: back, avatar, name + AI badge, subtitle, search and menu.
+ *
+ * T-0139: no dead taps. The title opens the info sheet where the screen
+ * wires one (topics today); the search row opens the scoped search where
+ * the screen wires it; the menu button renders only where the screen wires
+ * it to a sheet (topics today: the topic-info sheet; other chats have no
+ * menu yet, shown as no button rather than a dead one).
  */
 export function ChatHeader({
   chat,
@@ -36,6 +42,7 @@ export function ChatHeader({
   onSearchInChat,
   topicGroupName,
   onOpenInfo,
+  onOpenGroup,
 }: ChatHeaderProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const iconColor = ICON[scheme];
@@ -46,6 +53,7 @@ export function ChatHeader({
   const subtitle = writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date()));
   const working = chat.isAI && chat.aiStatus === 'working';
   const isTopic = chat.topic !== undefined;
+  const groupTarget = onOpenGroup !== undefined ? (chat.groupId ?? undefined) : undefined;
   const title = (
     <View className="ml-2.5 min-w-0 flex-1">
       {isTopic && topicGroupName !== undefined && topicGroupName !== '' ? (
@@ -92,15 +100,28 @@ export function ChatHeader({
         >
           {title}
         </Pressable>
+      ) : groupTarget !== undefined ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Open group ${chat.title}`}
+          onPress={() => onOpenGroup?.(groupTarget)}
+          className="min-w-0 flex-1"
+        >
+          {title}
+        </Pressable>
       ) : (
         title
       )}
-      <IconButton label="Search in chat" onPress={onSearchInChat}>
-        <Search size={20} color={iconColor} />
-      </IconButton>
-      <IconButton label="More options" onPress={isTopic ? onOpenInfo : undefined}>
-        <MoreVertical size={20} color={iconColor} />
-      </IconButton>
+      {onSearchInChat !== undefined ? (
+        <IconButton label="Search in chat" onPress={onSearchInChat}>
+          <Search size={20} color={iconColor} />
+        </IconButton>
+      ) : null}
+      {isTopic && onOpenInfo !== undefined ? (
+        <IconButton label="More options" onPress={onOpenInfo}>
+          <MoreVertical size={20} color={iconColor} />
+        </IconButton>
+      ) : null}
     </View>
   );
 }

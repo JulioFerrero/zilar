@@ -135,10 +135,11 @@ function ChatsList() {
   };
 
   // The rows behind the open action sheet: a group resolves to its General
-  // topic row (the pref row a group mute/pin sits on). A group row's sheet
-  // titles itself from the group; the pin/mute/archive rows stay disabled
-  // until the General row arrives (older servers send no `topics`, so there
-  // is no single row a group-level pref could sit on).
+  // topic row (the pref row a group mute/pin sits on). T-0139: only a
+  // General row enables the pref rows — when General is absent (older
+  // servers send no `topics`, or it is archived/filtered out) the sheet
+  // still opens the group screen, but pin/mute/archive stay disabled, since
+  // a group pref on a non-General JID would mute one topic, not the group.
   const actionContext = useMemo(() => {
     if (actionFor === null) {
       return undefined;
@@ -147,7 +148,8 @@ function ChatsList() {
       const groupId = actionFor.slice('group:'.length);
       const topics = topicsOfGroup(chats, groupId);
       const general = topics.find((topic) => topic.topic?.isGeneral === true);
-      const groupTitle = general?.groupTitle ?? topics[0]?.groupTitle ?? topics[0]?.title;
+      const fallback = general ?? topics[0];
+      const groupTitle = general?.groupTitle ?? fallback?.groupTitle ?? fallback?.title ?? 'Group';
       return { chat: general, groupId, groupTitle };
     }
     const chat = chats.find((entry) => entry.id === actionFor);
@@ -356,6 +358,7 @@ function ChatsList() {
       <ChatActionsSheet
         chat={actionContext?.chat ?? null}
         groupTitle={actionContext?.groupTitle}
+        groupId={actionContext?.groupId}
         busy={actionBusy}
         error={actionError}
         muteOpen={actionMuteOpen}
@@ -386,6 +389,10 @@ function ChatsList() {
                 archived: actionContext.chat.archived !== true,
               })
         }
+        onOpenGroup={(groupId) => {
+          closeActions();
+          router.push({ pathname: '/group/[id]', params: { id: groupId } });
+        }}
         onClose={closeActions}
       />
       <NewChatButton />

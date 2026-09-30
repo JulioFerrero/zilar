@@ -67,6 +67,7 @@ type ChatStoreData = Omit<
   | 'dismissActionError'
   | 'dismissTopicNotice'
   | 'groupDetail'
+  | 'ensureGroupDetail'
   | 'refreshGroupDetail'
   | 'setChatPref'
   | 'pins'
@@ -363,6 +364,7 @@ export function createChatStore(
         return detailSnapshot.value;
       },
       refreshGroupDetail: () => {},
+      ensureGroupDetail: () => {},
       ownedAis: mockDevteamOwnedAis(),
       pinsError: undefined,
       setChatPref: async (chatId, input) => {

@@ -208,6 +208,66 @@ describe('ChatActionsSheet', () => {
     }
   });
 
+  it('keeps pin/mute/archive disabled without a General row, Open group enabled', () => {
+    // T-0139 should-fix: a group whose General row is absent (older server,
+    // or General archived/filtered out) must not write a group pref onto a
+    // non-General topic JID. The sheet still titles itself from the group
+    // and opens the group screen, but the pref rows stay disabled.
+    const seen: string[] = [];
+    const elements = collect(
+      ChatActionsSheet({
+        ...BASE,
+        chat: null,
+        groupTitle: 'Dev team',
+        groupId: 'g1',
+        onOpenGroup: (id) => seen.push(id),
+      }),
+    );
+    const byLabel = (label: string) =>
+      elements.find((element) => element.props.accessibilityLabel === label);
+    expect(byLabel('Pin chat')?.props.disabled).toBe(true);
+    expect(byLabel('Mute chat')?.props.disabled).toBe(true);
+    expect(byLabel('Archive chat')?.props.disabled).toBe(true);
+    const open = byLabel('Open group');
+    expect(open?.props.disabled).toBe(false);
+    open?.props.onPress?.();
+    expect(seen).toEqual(['g1']);
+  });
+
+  it('shows Open group for a group row and calls onOpenGroup with the id', () => {
+    // T-0139: the long-press sheet is the chat list's way to the group
+    // screen (invite links, roles, members), including a General-only
+    // group. Unlike pin/mute/archive, opening needs no General row, so it
+    // stays enabled while those wait for it.
+    const seen: string[] = [];
+    const general = chat({
+      id: 'general@g',
+      title: 'General',
+      kind: 'group',
+      groupId: 'g1',
+      groupTitle: 'Dev team',
+    });
+    const elements = collect(
+      ChatActionsSheet({
+        ...BASE,
+        chat: general,
+        groupTitle: 'Dev team',
+        groupId: 'g1',
+        onOpenGroup: (id) => seen.push(id),
+      }),
+    );
+    const open = elements.find((element) => element.props.accessibilityLabel === 'Open group');
+    expect(open).toBeDefined();
+    expect(open?.props.disabled).toBe(false);
+    open?.props.onPress?.();
+    expect(seen).toEqual(['g1']);
+  });
+
+  it('hides Open group for a plain chat', () => {
+    const elements = collect(ChatActionsSheet({ ...BASE, chat: chat() }));
+    expect(labels(elements)).not.toContain('Open group');
+  });
+
   it('renders a hidden modal when closed', () => {
     const elements = collect(ChatActionsSheet({ ...BASE, chat: null }));
     const modal = elements.find((element) => element.type === 'Modal');
