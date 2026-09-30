@@ -1,7 +1,7 @@
 ---
 id: T-0125
 title: Web tools for AIs: web.fetch, keyless sources (Wikipedia, feeds, prices) and a best-effort web.search
-status: planned
+status: review
 milestone: M5
 branch: task/T-0125-web-tools
 model: meta/muse-spark-1.3-contributor
@@ -93,19 +93,42 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- New `apps/server/src/web-tools/` module with five gateway-level adapters (`buildWebToolsAdapters`), built from pure, socket-free units so every test is fake-only:
+  - `guarded-fetch.ts`: shared network path. Reuses the sandbox guard by importing `classifyIp`/`isIpLiteral` from `../sandbox/ip-guard` (no copy, no sandbox edits). DNS resolve-then-pin to the validated IP, GET-only, https-only, no credentials/ports/bodies, private/loopback/link-local/CGNAT/multicast/6to4/Teredo/IP-literal refused, redirects returned (never followed), 10 s timeout, 2 MiB cap, decode capped at 2 MiB, only the 8 allow-listed content types read. A `PinnedFetcher` seam (default = the real pinned-HTTPS implementation) keeps tests network-free.
+  - `html.ts`: hand-written extractor (drops script/style/head/nav/noscript/template + comments, keeps title/headings/paragraphs/list items, link text with inline `(href)` for http(s) only, entity decoding, whitespace collapse, 2 MiB input cap).
+  - `feed.ts`: hand-written RSS/Atom reader; rejects any body containing `<!DOCTYPE`/`<!ENTITY`; items capped at 20, snippets at 300 chars.
+  - `prices.ts`: keyless price table. Crypto via CoinGecko simple/price (`BTC→bitcoin`, `ETH→ethereum`, `SOL→solana`, `DOGE`, `XRP`, `ADA`, `AVAX`, `LINK`, `LTC`, `DOT`; unknown symbols reported as unknown); indexes/stocks/gold via Stooq CSV quote endpoint (`s`, `f=sd2t2ohlcv`, `h`, `e=csv`) with a strict CSV line parser; every number must be finite, `N/D`/empty/Infinity/NaN are unavailable.
+  - `search.ts`: `WebSearchProvider` port with the only provider `duckduckgo-html` (one GET per call, redirect links unwrapped from `uddg=`, non-http(s) dropped, max 8 results, block markers → `[]`, never retried).
+  - `adapters.ts`: `web.fetch` (t1), `web.wikipedia` (t0, `<lang>.wikipedia.org` letters-only, search + extract, `Galena/<version> (self-hosted; contact via server admin)` UA), `web.price` (t0), `web.feed` (t1), `web.search` (t1, description warns queries leave the server + results unreliable). Shared 30/hour/(AI, topic) in-memory rate limit. `execute` never throws for expected problems. `WEB_SEARCH_PROVIDER=none` unregisters `web.search`. All descriptions ≤ 200 chars.
+- Wiring: `WEB_TOOLS_ENABLED` (default `false`) + `WEB_SEARCH_PROVIDER` (default `duckduckgo-html`) in `config.ts`; `index.ts` registers the web adapters next to demo/tool adapters only when enabled; `docs/SERVER_CONFIG.md` documents both with the outbound-request warning linking `docs/TOOL_SANDBOX.md`.
+- Provider docs verified live before coding: Wikipedia search + extracts + `fullurl` API shape, CoinGecko `simple/price?ids=&vs_currencies=usd&include_last_updated_at=true`, DuckDuckGo HTML result markup (`result`/`result__a`/`result__snippet`, `uddg=` redirect wrap) via a real `curl` capture. Stooq note: `q/l/` returned a "page does not exist" HTML page and `q/d/l/` hit a JS-verification wall from this network, so the Stooq URL follows the documented `q/l/?s=&f=sd2t2ohlcv&h&e=csv` shape with the recorded-shape CSV parsed strictly; any provider-side failure surfaces per-symbol as `unavailable (...)`, never a throw.
 
 ### Files changed
--
+- `apps/server/src/web-tools/` (new): `guarded-fetch.ts` (+ `guarded-fetch.test.ts`, 24 tests), `html.ts` (+ `html.test.ts`, 8 tests), `feed.ts` (+ `feed.test.ts`, 5 tests), `prices.ts` (+ `prices.test.ts`, 8 tests), `search.ts` (+ `search.test.ts`, 6 tests), `adapters.ts` (+ `adapters.test.ts`, 20 tests)
+- `apps/server/src/config.ts`, `config.test.ts` (new env + 2 tests)
+- `apps/server/src/index.ts` (register web adapters when enabled)
+- `docs/SERVER_CONFIG.md` (two new rows)
+- `work/T-0125-web-tools.md` (this Report + status)
 
 ### Commands run and real results
--
+- `pnpm install`: done, 6.3s
+- `pnpm format:check`: after `prettier --write` on touched files: "All matched files use Prettier code style!"
+- `pnpm lint` (oxlint): clean, no output
+- `pnpm typecheck`: 10 tasks successful
+- `pnpm --filter @galena/server test --maxWorkers=2`: 78 files passed, 5 skipped; 1357 tests passed, 7 skipped, 0 failed (~291s)
+- `pnpm build`: 2 tasks successful (server build cached after passing; web/mobile unaffected)
 
 ### Problems, deviations from the spec, open questions
--
+- Unresolvable host: the guard answers `host not allowed` (same as a refused host) instead of a distinct `host could not be resolved`, so an observer cannot tell refusal from DNS failure. Same posture as `host-fetch.ts` (`host not allowed: …`), minus the hostname to avoid logging it.
+- `web.fetch`/`web.feed` zod schemas accept any string ≤ 2048 chars (matching `tool.save`-style adapter conventions), so `http:` URLs and garbage reach `execute` and are refused there with `only https urls are allowed` / `invalid url` rather than `invalid_args`. Nothing is ever sent in those paths (asserted).
+- `web.search` block markers are `anomaly-modal`, `challenge-form`, `did not match any documents` — deliberately no bare `captcha` substring: live DuckDuckGo result snippets legitimately contain the word "captcha" (verified in the real capture), which would false-positive every such page into "unavailable". Captcha/challenge pages still match via the other two markers.
+- Stooq `q/l/` could not be verified live from this network (404 page / JS wall, recorded in Report); the endpoint shape follows the public `q/l/?s=&f=sd2t2ohlcv&h&e=csv` documentation and parsing is strict. The lead's live check (with `WEB_TOOLS_ENABLED=true`) should confirm the exact Stooq response; if the shape differs, only `stooqUrl`/`parseStooqCsv` need a touch-up. The CoinGecko timestamp in tests is the real `last_updated_at` → ISO conversion (2026-09-30T04:28:20.000Z for 1790742500).
+- Test seam: `guardedGet` takes an optional `fetcher` (defaults to the real pinned-HTTPS code). This is the injection the task's fake-only test rule requires; production always uses the default.
+- No dependencies added. No `any`, no `@ts-ignore`, no disable comments. Sandbox, gateway, policy, registry untouched (imports only).
+- Open question (not blocking): Stooq has no documented etiquette UA requirement; the adapter sends only `accept: */*`. If Stooq rate-limits the server IP, a descriptive UA like Wikipedia's could be added later.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- (none)
 
 ---
 

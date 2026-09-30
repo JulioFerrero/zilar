@@ -144,6 +144,19 @@ const serverConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // Gateway-level web tools for AIs (T-0125): `web.fetch`,
+    // `web.wikipedia`, `web.price`, `web.feed` and a best-effort
+    // `web.search`. Keyless, no account: pages, Wikipedia, RSS/Atom
+    // feeds and market prices work with nothing to sign up for. Off by
+    // default: no adapters are registered.
+    WEB_TOOLS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    // The search backend behind the port (T-0125): `duckduckgo-html`
+    // parses one DuckDuckGo HTML page per call and may be blocked or
+    // change its markup at any time; `none` unregisters `web.search`.
+    WEB_SEARCH_PROVIDER: z.enum(['duckduckgo-html', 'none']).default('duckduckgo-html'),
     RUNNER_HUB_PORT: z.preprocess(
       (value) => value ?? '3189',
       z
