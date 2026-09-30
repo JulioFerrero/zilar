@@ -242,6 +242,8 @@ export function createChatStore(
     // selector returns the same reference until a write bumps it (a fresh
     // copy on every call would loop React forever).
     let rolesSnapshot: { revision: number; roles: CustomGroupRole[] } | undefined;
+    let detailSnapshot:
+      { revision: number; value: ReturnType<typeof mockDevteamGroupDetail> } | undefined;
     const topicRolesSnapshots = new Map<
       string,
       {
@@ -351,8 +353,14 @@ export function createChatStore(
       dismissTopicNotice: () => set({ topicNotice: undefined }),
       groupDetailsRevision: 0,
       groupDetail: (groupId) => {
-        void get().groupDetailsRevision;
-        return groupId === 'g-devteam' ? mockDevteamGroupDetail() : undefined;
+        const revision = get().groupDetailsRevision;
+        if (groupId !== 'g-devteam') {
+          return undefined;
+        }
+        if (detailSnapshot?.revision !== revision) {
+          detailSnapshot = { revision, value: mockDevteamGroupDetail() };
+        }
+        return detailSnapshot.value;
       },
       refreshGroupDetail: () => {},
       ownedAis: mockDevteamOwnedAis(),
