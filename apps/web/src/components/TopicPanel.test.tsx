@@ -89,6 +89,46 @@ describe('Group panel topic switch (T-0111)', () => {
   });
 });
 
+describe('topic roles (T-0116)', () => {
+  it('shows the attached role with its holder count on a private topic', async () => {
+    renderApp('/c/c-devteam-hiring');
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
+    const dialog = screen.getByRole('dialog', { name: 'Hiring: frontend role topic info' });
+    const roles = within(dialog).getByRole('region', { name: 'Roles' });
+    expect(await within(roles).findByText('Designers (2)')).toBeTruthy();
+  });
+
+  it('lets a manager attach a role and pick it as approver', async () => {
+    renderApp('/c/c-devteam-hiring');
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    const roles = within(dialog).getByRole('region', { name: 'Roles' });
+
+    fireEvent.click(await within(roles).findByRole('button', { name: 'Add roles' }));
+    fireEvent.click(within(roles).getByRole('button', { name: /Devs/ }));
+    expect(await within(roles).findByText('Devs (2)')).toBeTruthy();
+
+    const approvers = within(roles).getByLabelText('Approvers') as HTMLSelectElement;
+    fireEvent.change(approvers, { target: { value: 'role-designers' } });
+    await waitFor(() => {
+      const current = within(roles).getByLabelText('Approvers') as HTMLSelectElement;
+      expect(current.value).toBe('role-designers');
+    });
+  });
+
+  it('shows the approver line without editing for the seeded UI topic', async () => {
+    // t-devteam-ui is public: no Roles region, but the approver line shows
+    // through the card path instead (covered in ApprovalCard tests).
+    renderApp('/c/c-devteam-ui');
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    expect(within(dialog).queryByRole('region', { name: 'Roles' })).toBeNull();
+  });
+});
+
 describe('topic member removal errors (T-0130)', () => {
   // The panel removes through the store only (ONE DELETE). The stubs below
   // fail the member-removal endpoint like the server does: a 403 or a

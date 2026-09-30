@@ -792,3 +792,24 @@ describe('extractCommands', () => {
     expect(extractCommands(undefined)).toEqual([]);
   });
 });
+
+describe('GALENA_LEAD_ALLOW_ALL', () => {
+  const ctx = { worktree: '/tmp/wt', task: 'T-0001' };
+  const dangerous = { id: 'per_x', action: 'shell', commands: ['rm -rf /'] };
+
+  it('is off by default and the rules still apply', () => {
+    delete process.env.GALENA_LEAD_ALLOW_ALL;
+    expect(classifyPermission(dangerous, ctx).verdict).not.toBe('allow');
+  });
+
+  it('allows everything only when set to 1', () => {
+    process.env.GALENA_LEAD_ALLOW_ALL = '1';
+    try {
+      expect(classifyPermission(dangerous, ctx).verdict).toBe('allow');
+      process.env.GALENA_LEAD_ALLOW_ALL = 'true';
+      expect(classifyPermission(dangerous, ctx).verdict).not.toBe('allow');
+    } finally {
+      delete process.env.GALENA_LEAD_ALLOW_ALL;
+    }
+  });
+});

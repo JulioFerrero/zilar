@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ApprovalRequest } from '@galena/protocol';
 import { ShieldAlert } from 'lucide-react';
 import {
   ApiError,
   decideApproval,
   getApproval,
+  getTopic,
   type ApprovalDecision,
   type PublicApproval,
 } from '@/lib/api';
@@ -52,10 +53,39 @@ export function ApprovalCard({
   // rest of this view when the server says the action is not eligible.
   const [confirmingAlways, setConfirmingAlways] = useState(false);
   const [alwaysBlocked, setAlwaysBlocked] = useState(false);
+  // T-0116: the topic's approver role name, so the card can say who else
+  // may decide. One read per card when the approval lives in a topic; a
+  // failure hides the line instead of breaking the card.
+  const [approverName, setApproverName] = useState<string | null>(null);
+
+  const approval = state.kind === 'ready' ? state.approval : null;
+  const approvalTopicId = approval?.topicId ?? null;
+
+  useEffect(() => {
+    if (approvalTopicId === null) {
+      return;
+    }
+    let active = true;
+    getTopic(approvalTopicId)
+      .then((topic) => {
+        if (active) {
+          setApproverName(topic.approverRole?.name ?? null);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setApproverName(null);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [approvalTopicId]);
 
   const retry = (): void => {
     setRetryToken((value) => value + 1);
   };
+  // The server turns a past-due `pending` row into `expired` in its read model
 
   async function decide(decision: ApprovalDecision): Promise<void> {
     setActionError('');
@@ -96,7 +126,6 @@ export function ApprovalCard({
     }
   }
 
-  const approval = state.kind === 'ready' ? state.approval : null;
   // The server turns a past-due `pending` row into `expired` in its read model
   // (see `toPublicApproval`), so a `pending` status is already "pending and
   // not expired" from the user's perspective. The third button needs the
@@ -122,6 +151,9 @@ export function ApprovalCard({
         <p className="mt-1 text-[12px] text-muted-foreground">
           Worst case: {formatMoney(request.worst_case_cost)}
         </p>
+      )}
+      {approverName !== null && (
+        <p className="mt-1 text-[12px] text-muted-foreground">Approvers: {approverName}</p>
       )}
 
       {state.kind === 'loading' && (

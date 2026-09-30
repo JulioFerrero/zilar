@@ -190,6 +190,13 @@
       "when": 1790765994890,
       "tag": "0026_simple_spitfire",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790777823894,
+      "tag": "0027_opposite_red_hulk",
+      "breakpoints": true
     }
   ]
 }

@@ -73,6 +73,7 @@ import {
   removeTopicMember as removeTopicMemberRequest,
   revokeGroupInviteLink as revokeGroupInviteLinkRequest,
   setMembersCanCreateTopics as setMembersCanCreateTopicsRequest,
+  setTopicRoles as setTopicRolesRequest,
   unpinMessage as unpinMessageRequest,
   type ChatEntry,
   type ChatPref,
@@ -94,6 +95,7 @@ import {
   type Topic,
   type TopicAi,
   type TopicMember,
+  type SetTopicRolesInput,
   type XmppToken,
 } from '@/lib/api';
 import { authClient } from '@/lib/auth';
@@ -186,6 +188,7 @@ export interface ApiClient {
   listTopicAis(topicId: string): Promise<TopicAi[]>;
   addTopicAi(topicId: string, aiId: string): Promise<Topic>;
   removeTopicAi(topicId: string, aiId: string): Promise<Topic>;
+  setTopicRoles(topicId: string, input: SetTopicRolesInput): Promise<Topic>;
   setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<GroupDetail>;
   listChatPrefs(): Promise<ChatPref[]>;
   putChatPref(chatJid: string, input: PutChatPrefInput): Promise<ChatPref | null>;
@@ -241,6 +244,7 @@ const realApi: ApiClient = {
   listTopicAis: listTopicAisRequest,
   addTopicAi: addTopicAiRequest,
   removeTopicAi: removeTopicAiRequest,
+  setTopicRoles: setTopicRolesRequest,
   setMembersCanCreateTopics: setMembersCanCreateTopicsRequest,
   listChatPrefs: listChatPrefsRequest,
   putChatPref: putChatPrefRequest,
@@ -2757,6 +2761,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         // stale member list, or a second click on Remove). Rethrow as-is;
         // the caller re-checks the row via `refreshTopicRow`.
         const topic = await api.removeTopicMember(topicId, userId);
+        await applyTopicRow(topic);
+      },
+      setTopicRoles: async (chatId, input) => {
+        const { topicId } = await topicIdFor(chatId);
+        const topic = await api.setTopicRoles(topicId, input);
         await applyTopicRow(topic);
       },
       // T-0130 (review): re-reads the chat list and reports whether the

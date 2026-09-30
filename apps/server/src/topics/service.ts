@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
@@ -7,15 +7,18 @@ import {
   ais,
   groupAis,
   groupMembers,
+  groupRoles,
   groups,
   topicAis,
   topicMembers,
+  topicRoleAccess,
   topics,
   user,
 } from '../db/schema';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { randomRoomLocalpart, type InviteLogger } from '../groups/service';
+import { topicRoleHolderIds } from '../roles/service';
 import {
   aiMayBeInTopic,
   canCreateTopic,
@@ -488,8 +491,19 @@ export async function patchTopic(
       .values(memberIds.map((userId) => ({ topicId: topic.id, userId, addedBy: input.actorId })))
       .onConflictDoNothing();
   }
+  // Going public ends everything private access rested on: direct members,
+  // attached roles and the approver role. Clearing the roles now keeps them
+  // from silently coming back if the topic is made private again.
+  let clearedRoleIds: string[] = [];
   if (goingPublic) {
     await deps.db.delete(topicMembers).where(eq(topicMembers.topicId, topic.id));
+    const attached = await deps.db
+      .select({ roleId: topicRoleAccess.roleId })
+      .from(topicRoleAccess)
+      .where(eq(topicRoleAccess.topicId, topic.id));
+    clearedRoleIds = attached.map((row) => row.roleId);
+    await deps.db.delete(topicRoleAccess).where(eq(topicRoleAccess.topicId, topic.id));
+    await deps.db.update(topics).set({ approverRoleId: null }).where(eq(topics.id, topic.id));
   }
 
   const [updated] = await deps.db.select().from(topics).where(eq(topics.id, topic.id)).limit(1);
@@ -518,6 +532,11 @@ export async function patchTopic(
           ? 'topic.visibility_changed'
           : 'topic.updated';
     await deps.audit.record(toAuditEntry(updated, action, input.actorId));
+    for (const roleId of clearedRoleIds) {
+      await deps.audit.record(
+        toAuditEntry(updated, 'topic.role_removed', input.actorId, { roleId }),
+      );
+    }
   }
   return updated;
 }
@@ -544,12 +563,37 @@ export async function listTopicMembers(
       .where(eq(groupMembers.groupId, topic.groupId));
     return rows.sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
   }
+  // T-0116: direct members plus the holders of the topic's roles (still
+  // group members). Everyone holding the topic can see the full list: role
+  // membership is not secret.
+  const [direct, holders] = await Promise.all([
+    deps.db
+      .select({ userId: topicMembers.userId })
+      .from(topicMembers)
+      .where(eq(topicMembers.topicId, topic.id)),
+    topicRoleHolderIds(deps.db, topic.id, topic.groupId),
+  ]);
+  const ids = new Set(direct.map((row) => row.userId));
+  for (const id of holders) {
+    ids.add(id);
+  }
+  if (ids.size === 0) {
+    return [];
+  }
   const rows = await deps.db
-    .select({ userId: topicMembers.userId, name: user.name })
-    .from(topicMembers)
-    .innerJoin(user, eq(user.id, topicMembers.userId))
-    .where(eq(topicMembers.topicId, topic.id));
-  return rows.sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
+    .select({ userId: user.id, name: user.name })
+    .from(user)
+    .where(inArray(user.id, [...ids]));
+  // `topic_members` rows for users who left the group no longer count (the
+  // room sync drops them too); the join above only returns live users.
+  const memberRows = await deps.db
+    .select({ userId: groupMembers.userId })
+    .from(groupMembers)
+    .where(eq(groupMembers.groupId, topic.groupId));
+  const memberIds = new Set(memberRows.map((row) => row.userId));
+  return rows
+    .filter((row) => memberIds.has(row.userId))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
 }
 
 export async function addTopicMember(
@@ -629,8 +673,14 @@ export async function removeTopicMember(
     .select({ userId: topicMembers.userId })
     .from(topicMembers)
     .where(eq(topicMembers.topicId, topic.id));
+  // T-0116: the topic drains only when the direct rows AND the role holders
+  // are gone — a holder the role still grants access to keeps it alive.
+  const holders =
+    remaining.length === 0
+      ? await topicRoleHolderIds(deps.db, topic.id, topic.groupId)
+      : new Set<string>();
   let updated = (await getTopic(deps.db, topic.id)) ?? topic;
-  if (remaining.length === 0) {
+  if (remaining.length === 0 && holders.size === 0) {
     await deps.db
       .update(topics)
       .set({ archivedAt: new Date(), updatedAt: new Date() })
@@ -699,6 +749,129 @@ async function emitDroppedTopicAis(deps: TopicServiceDeps, topic: TopicRow): Pro
 export const addTopicAiBodySchema = z.object({ aiId: z.string().min(1) }).strict();
 
 export type AddTopicAiBody = z.infer<typeof addTopicAiBodySchema>;
+
+// T-0116: attach roles to a topic and pick its approver role. The actor
+// must be a topic manager (creator or group owner/admin) who can see the
+// topic — the same rule as every other `PUT` here. Only roles of the
+// topic's group count, and only for private topics: roles are meaningless
+// on a public one, like `memberIds`. The approver role may be null
+// ("Owner and admins only"). The room re-syncs so new holders join and
+// removed holders leave.
+export const setTopicRolesBodySchema = z
+  .object({
+    roleIds: z.array(z.string().min(1)).max(20),
+    approverRoleId: z.string().min(1).nullable(),
+  })
+  .strict();
+
+export type SetTopicRolesBody = z.infer<typeof setTopicRolesBodySchema>;
+
+export interface SetTopicRolesInput extends SetTopicRolesBody {
+  topicId: string;
+  actorId: string;
+}
+
+export async function setTopicRoles(
+  deps: TopicServiceDeps,
+  input: SetTopicRolesInput,
+): Promise<TopicRow> {
+  const topic = await requireManagedTopic(deps.db, input.topicId, input.actorId);
+  if (topic.visibility !== 'private') {
+    throw new HttpError(400, 'not_private', 'Only private topics have roles');
+  }
+  if (topic.isGeneral) {
+    throw new HttpError(400, 'not_private', 'The General topic is public');
+  }
+  const roles = await deps.db
+    .select()
+    .from(groupRoles)
+    .where(eq(groupRoles.groupId, topic.groupId));
+  const byId = new Map(roles.map((role) => [role.id, role]));
+  const wanted = [...new Set(input.roleIds)];
+  if (wanted.some((id) => !byId.has(id))) {
+    throw new HttpError(400, 'invalid_request', 'Roles must belong to the topic’s group');
+  }
+  if (input.approverRoleId !== null && !byId.has(input.approverRoleId)) {
+    throw new HttpError(
+      400,
+      'invalid_request',
+      'The approver role must belong to the topic’s group',
+    );
+  }
+  const wantedIds = new Set(wanted);
+  // One transaction under the group's advisory lock, reading the current
+  // set INSIDE it: two concurrent PUTs serialize and the second diffs
+  // against the first's commit (last-writer-wins, like `setRoleMembers`).
+  // The approver update rides the same transaction so access and approver
+  // can never disagree.
+  const approverChanged = (topic.approverRoleId ?? null) !== input.approverRoleId;
+  const diff = await deps.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${topic.groupId}))`);
+    const rows = await tx
+      .select({ roleId: topicRoleAccess.roleId })
+      .from(topicRoleAccess)
+      .where(eq(topicRoleAccess.topicId, topic.id));
+    const liveIds = new Set(rows.map((row) => row.roleId));
+    const nextAdded = wanted.filter((id) => !liveIds.has(id));
+    const nextRemoved = [...liveIds].filter((id) => !wantedIds.has(id));
+    if (nextAdded.length > 0) {
+      await tx
+        .insert(topicRoleAccess)
+        .values(nextAdded.map((roleId) => ({ topicId: topic.id, roleId })))
+        .onConflictDoNothing();
+    }
+    if (nextRemoved.length > 0) {
+      await tx
+        .delete(topicRoleAccess)
+        .where(
+          and(eq(topicRoleAccess.topicId, topic.id), inArray(topicRoleAccess.roleId, nextRemoved)),
+        );
+    }
+    if (approverChanged) {
+      await tx
+        .update(topics)
+        .set({ approverRoleId: input.approverRoleId, updatedAt: new Date() })
+        .where(eq(topics.id, topic.id));
+    }
+    return { added: nextAdded, removed: nextRemoved };
+  });
+  const { added, removed } = diff;
+  const [updated] = await deps.db.select().from(topics).where(eq(topics.id, topic.id)).limit(1);
+  if (!updated) {
+    throw toMissingTopic();
+  }
+  // The audit block runs even when the room sync below fails: the database
+  // already committed, so the change is real and the log must say so. The
+  // caller still sees the 502 and the room heals on the next write.
+  if (deps.audit) {
+    for (const roleId of added) {
+      await deps.audit.record(toAuditEntry(updated, 'topic.role_added', input.actorId, { roleId }));
+    }
+    for (const roleId of removed) {
+      await deps.audit.record(
+        toAuditEntry(updated, 'topic.role_removed', input.actorId, { roleId }),
+      );
+    }
+    if (approverChanged) {
+      await deps.audit.record(
+        toAuditEntry(
+          updated,
+          'topic.approver_role_set',
+          input.actorId,
+          input.approverRoleId === null ? {} : { roleId: input.approverRoleId },
+        ),
+      );
+    }
+  }
+  try {
+    await syncTopicRoom(deps, updated);
+  } catch (error) {
+    throw error instanceof HttpError
+      ? error
+      : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  }
+  return updated;
+}
 
 export interface AddTopicAiInput {
   topicId: string;

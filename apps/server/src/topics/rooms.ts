@@ -5,6 +5,7 @@ import { HttpError } from '../errors';
 import type { EjabberdAdminClient, RoomAffiliation } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { InviteLogger } from '../groups/service';
+import { topicRoleHolderIds } from '../roles/service';
 import { allowedTopicAiIds, type TopicRow } from './access';
 
 export interface TopicRoomDeps {
@@ -15,8 +16,9 @@ export interface TopicRoomDeps {
 }
 
 // Who belongs in the topic's room: every group member for a public topic,
-// the `topic_members` rows for a private one, plus the AI memberships —
-// every `group_ais` AI for General, the topic's `topic_ais` rows otherwise.
+// `topic_members` plus the holders of its roles for a private one, plus the
+// AI memberships — every `group_ais` AI for General, the topic's
+// `topic_ais` rows otherwise.
 // The return maps each JID to the affiliation it should hold: the group owner
 // is the room's owner for General; for other topics the topic creator is
 // owner (when they are still allowed in), everyone else is a member. AIs are
@@ -51,6 +53,9 @@ export async function desiredMembers(
     .select({ userId: topicMembers.userId })
     .from(topicMembers)
     .where(eq(topicMembers.topicId, topic.id));
+  // T-0116: holders of the topic's roles join too (still group members).
+  // A holder who is also a direct member keeps their single affiliation.
+  const holderIds = await topicRoleHolderIds(db, topic.id, topic.groupId);
   for (const row of memberRows) {
     // A stale `topic_members` row for a user who left the group no longer
     // counts: public sync would drop them, private sync must too.
@@ -61,6 +66,16 @@ export async function desiredMembers(
       ? byId.get(row.userId) === 'owner'
       : row.userId === topic.createdBy;
     wanted.set(jidFor(localpartFor(row.userId), domain), ownerAffiliation ? 'owner' : 'member');
+  }
+  for (const userId of holderIds) {
+    const jid = jidFor(localpartFor(userId), domain);
+    if (wanted.has(jid)) {
+      continue;
+    }
+    const ownerAffiliation = topic.isGeneral
+      ? byId.get(userId) === 'owner'
+      : userId === topic.createdBy;
+    wanted.set(jid, ownerAffiliation ? 'owner' : 'member');
   }
   await addTopicAiMembers(db, topic, wanted);
   return wanted;

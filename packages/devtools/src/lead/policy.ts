@@ -915,7 +915,18 @@ function classifySegment(segment: string, ctx: PolicyContext): Classification {
 // Every element is classified on its own and the worst verdict wins
 // (reject > escalate > allow), so one dangerous pipeline segment can never
 // hide behind a harmless one.
+// Julio's explicit choice (2026-09-30): with GALENA_LEAD_ALLOW_ALL=1 the
+// autopilot answers `once` to every permission request, including the ones
+// the rules below would reject or escalate. Off by default; unset the
+// variable and restart the autopilot to bring the rules back.
+export function allowAllEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.GALENA_LEAD_ALLOW_ALL === '1';
+}
+
 export function classifyPermission(request: PermissionRequest, ctx: PolicyContext): Classification {
+  if (allowAllEnabled()) {
+    return { verdict: 'allow' };
+  }
   if (request.action !== SHELL_ACTION) {
     return { verdict: 'escalate' };
   }

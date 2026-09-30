@@ -24,6 +24,7 @@ import type {
   Pin,
   PinMessageInput,
   PublicAi,
+  SetTopicRolesInput,
   Topic,
 } from '@/lib/api';
 import {
@@ -36,6 +37,7 @@ import {
   removeTopicAi,
   removeTopicMember,
   setMembersCanCreateTopics,
+  setTopicRoles,
 } from '@/lib/api';
 import {
   MUTE_DURATIONS,
@@ -167,6 +169,11 @@ export interface ChatStore {
   addTopicMember: (chatId: string, userId: string) => Promise<void>;
   /** Removes a person from a private topic. Rejects on failure. */
   removeTopicMember: (chatId: string, userId: string) => Promise<void>;
+  /**
+   * Replaces a private topic's roles and approver role, refreshing the row.
+   * Rejects on failure.
+   */
+  setTopicRoles: (chatId: string, input: SetTopicRolesInput) => Promise<void>;
   /**
    * Re-reads one topic row from the chat list. Resolves true when the topic
    * is gone (archived, made private, or the viewer removed): the caller
@@ -694,6 +701,11 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       removeTopicMember: async (chatId, userId) => {
         const topicId = topicIdForChat(get().chats, chatId);
         const topic = await removeTopicMember(topicId, userId);
+        set((state) => ({ chats: withMockTopicRow(state.chats, topic) }));
+      },
+      setTopicRoles: async (chatId, input) => {
+        const topicId = topicIdForChat(get().chats, chatId);
+        const topic = await setTopicRoles(topicId, input);
         set((state) => ({ chats: withMockTopicRow(state.chats, topic) }));
       },
       leaveTopic: async (chatId) => {

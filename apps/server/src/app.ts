@@ -27,6 +27,7 @@ import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
 import { createInviteLinksRoutes, type TestInviteLinksOverrides } from './invite-links/routes';
 import { createPinsRoutes } from './pins/routes';
+import { createRolesRoutes } from './roles/routes';
 import { createSearchRoutes, type SearchRoutesDependencies } from './search/routes';
 import { createTopicsRoutes } from './topics/routes';
 import { createMachinesRoutes } from './machines/routes';
@@ -218,6 +219,10 @@ export function createApp({
       audit: auditRecorder,
       ...(testInviteLinksOverrides === undefined ? {} : testInviteLinksOverrides),
     }),
+  );
+  app.route(
+    '/api',
+    createRolesRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
   );
   app.route('/api', createPinsRoutes({ auth, db, config, audit: auditRecorder }));
   app.route(

@@ -3,7 +3,15 @@ import { and, count, desc, eq, gt, inArray, lt, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { ARGS_HASH_PATTERN } from '@galena/protocol';
 import type { ServerDatabase } from '../db/client';
-import { ais, approvals, groupAis, groupMembers, topics } from '../db/schema';
+import {
+  ais,
+  approvals,
+  groupAis,
+  groupMemberRoles,
+  groupMembers,
+  groupRoles,
+  topics,
+} from '../db/schema';
 import { canSeeTopic } from '../topics/access';
 import { createRule, isGroupAdmin } from './rules';
 
@@ -494,6 +502,7 @@ export async function expireStale(
 
 // Whether `userId` may decide `row`: the AI owner, or — when the request
 // was raised in a topic — that group's owner or admin who can also see the
+// topic. T-0116: or a holder of the topic's approver role who can see the
 // topic. A group admin who cannot see a private topic gets the same false
 // as a missing id, so existence is never leaked. The AI owner keeps
 // deciding only while they can see the topic.
@@ -510,6 +519,31 @@ export async function canDecide(
     const [topic] = await db.select().from(topics).where(eq(topics.id, row.topicId)).limit(1);
     if (!topic || !(await canSeeTopic(db, topic, userId))) {
       return false;
+    }
+    // The approver role grants decide rights and nothing else: the holder
+    // must see the topic (checked above), and the role never widens AI
+    // management, rules or other topics. The join ties the role to the
+    // approval's group, so the check is self-sufficient even if a stale
+    // membership row ever survived a group leave. (`topicId` set implies
+    // `groupId` set by the topic-scope CHECK; the guard below is for the
+    // type checker.)
+    if (topic.approverRoleId !== null && row.groupId !== null) {
+      const groupId = row.groupId;
+      const [held] = await db
+        .select({ userId: groupMemberRoles.userId })
+        .from(groupMemberRoles)
+        .innerJoin(groupRoles, eq(groupRoles.id, groupMemberRoles.roleId))
+        .where(
+          and(
+            eq(groupMemberRoles.roleId, topic.approverRoleId),
+            eq(groupMemberRoles.userId, userId),
+            eq(groupRoles.groupId, groupId),
+          ),
+        )
+        .limit(1);
+      if (held) {
+        return true;
+      }
     }
   }
   if (ai.owner === userId) {

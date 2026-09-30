@@ -3,8 +3,13 @@ import type { GroupAi, GroupDetail, GroupMember, PublicAi } from '@/lib/api';
 const DOMAIN = 'galena.test';
 const OWNER = 'u-you';
 
-function member(userId: string, name: string, role: GroupMember['role']): GroupMember {
-  return { userId, name, role };
+function member(
+  userId: string,
+  name: string,
+  role: GroupMember['role'],
+  roles: GroupMember['roles'] = [],
+): GroupMember {
+  return { userId, name, role, roles };
 }
 
 // AIs are provisioned as `ai-<aiId>`; the id is the localpart without the
@@ -35,9 +40,12 @@ export const mockGroupDetails: Record<string, GroupDetail> = {
     title: 'Dev team',
     createdBy: OWNER,
     members: [
-      member('u-you', 'You', 'owner'),
-      member('u-ana', 'Ana', 'admin'),
-      member('u-luis', 'Luis', 'member'),
+      member('u-you', 'You', 'owner', [
+        { id: 'role-designers', name: 'Designers' },
+        { id: 'role-devs', name: 'Devs' },
+      ]),
+      member('u-ana', 'Ana', 'admin', [{ id: 'role-designers', name: 'Designers' }]),
+      member('u-luis', 'Luis', 'member', [{ id: 'role-devs', name: 'Devs' }]),
       member('u-marco', 'Marco', 'member'),
     ],
     ais: [ai('dev-1', 'Dev-1', OWNER), ai('qa-1', 'QA-1', OWNER)],

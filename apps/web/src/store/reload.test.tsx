@@ -110,6 +110,9 @@ function fakeApi(): ApiClient {
     removeTopicAi: vi.fn(async () => {
       throw new Error('not implemented');
     }),
+    setTopicRoles: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
     setMembersCanCreateTopics: vi.fn(async () => ({
       id: 'g1',
       title: 'Team',

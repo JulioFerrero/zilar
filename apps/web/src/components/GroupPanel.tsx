@@ -1,8 +1,17 @@
 import type { ChatSummary } from '@galena/chat-core';
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { CreatedInviteLink, GroupAi, GroupInviteLink, PublicAi } from '@/lib/api';
-import { createGroupInviteLink, listGroupInviteLinks, revokeGroupInviteLink } from '@/lib/api';
+import type { CreatedInviteLink, GroupAi, GroupInviteLink, GroupRole, PublicAi } from '@/lib/api';
+import {
+  createGroupInviteLink,
+  createGroupRole,
+  deleteGroupRole,
+  listGroupInviteLinks,
+  listGroupRoles,
+  renameGroupRole,
+  revokeGroupInviteLink,
+  setGroupRoleMembers,
+} from '@/lib/api';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -118,6 +127,69 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
       setLinksError(error instanceof Error ? error.message : 'Could not revoke the link.');
     }
   };
+
+  const [rolesState, setRolesState] = useState<{
+    status: 'loading' | 'ready' | 'error';
+    roles: GroupRole[];
+    message: string;
+  }>({ status: 'loading', roles: [], message: '' });
+
+  // Custom group roles (T-0116): every member sees who holds what (the
+  // chips below); managers get the CRUD section further down. A failure
+  // shows an inline error with Retry and never breaks the rest of the
+  // panel.
+  useEffect(() => {
+    let active = true;
+    const groupId = info?.id;
+    if (groupId === undefined) {
+      return;
+    }
+    listGroupRoles(groupId)
+      .then((roles) => {
+        if (active) {
+          setRolesState({ status: 'ready', roles, message: '' });
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setRolesState({
+            status: 'error',
+            roles: [],
+            message: error instanceof Error ? error.message : 'Could not load the roles.',
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [info?.id]);
+
+  const reloadRoles = async (): Promise<void> => {
+    if (info === undefined) {
+      return;
+    }
+    setRolesState({ status: 'loading', roles: [], message: '' });
+    try {
+      setRolesState({ status: 'ready', roles: await listGroupRoles(info.id), message: '' });
+    } catch (error) {
+      setRolesState({
+        status: 'error',
+        roles: [],
+        message: error instanceof Error ? error.message : 'Could not load the roles.',
+      });
+    }
+  };
+
+  const rolesByUser = new Map<string, GroupRole[]>();
+  if (rolesState.status === 'ready') {
+    for (const role of rolesState.roles) {
+      for (const holder of role.members) {
+        const list = rolesByUser.get(holder.userId) ?? [];
+        list.push(role);
+        rolesByUser.set(holder.userId, list);
+      }
+    }
+  }
 
   const eligibleAis = myAis.filter(
     (ai) => ai.status === 'active' && info?.ais.some((item) => item.aiId === ai.id) !== true,
@@ -281,6 +353,10 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Members</h2>
                 {info.members.map((member) => {
                   const label = roleLabel(member.role);
+                  // Role chips for everyone (T-0116): the fresh roles list
+                  // wins over the group detail's snapshot when both name a
+                  // holder, so the chips stay right after an assignment.
+                  const chipRoles = rolesByUser.get(member.userId) ?? member.roles ?? [];
                   return (
                     <div
                       key={member.userId}
@@ -288,6 +364,14 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                     >
                       <Avatar id={member.userId} name={member.name} size={32} />
                       <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
+                      {chipRoles.map((role) => (
+                        <span
+                          key={role.id}
+                          className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground"
+                        >
+                          {role.name}
+                        </span>
+                      ))}
                       {label !== undefined && (
                         <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
                           {label}
@@ -297,6 +381,20 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   );
                 })}
               </section>
+
+              {/* T-0116: custom group roles — managers only. Everyone sees
+                  the chips next to the member names above. */}
+              {isManager && info !== undefined && (
+                <RolesSection
+                  groupId={info.id}
+                  members={info.members.map((member) => ({
+                    userId: member.userId,
+                    name: member.name,
+                  }))}
+                  rolesState={rolesState}
+                  onReload={() => void reloadRoles()}
+                />
+              )}
 
               <section aria-label="AIs" className="flex flex-col gap-1">
                 <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">AIs</h2>
@@ -477,5 +575,257 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Custom group roles for managers (T-0116): create, rename, delete, and
+ * assign with a member multi-select. A role grants private-topic access and
+ * approver rights in the topics it is attached to — picked per topic in
+ * the topic panel, not here.
+ */
+function RolesSection({
+  groupId,
+  members,
+  rolesState,
+  onReload,
+}: {
+  groupId: string;
+  members: Array<{ userId: string; name: string }>;
+  rolesState: { status: 'loading' | 'ready' | 'error'; roles: GroupRole[]; message: string };
+  onReload: () => void;
+}) {
+  const [newName, setNewName] = useState('');
+  const [renamingId, setRenamingId] = useState<string | undefined>(undefined);
+  const [renameValue, setRenameValue] = useState('');
+  const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
+  const [assigningId, setAssigningId] = useState<string | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const run = async (work: () => Promise<void>): Promise<void> => {
+    setBusy(true);
+    setErrorMessage('');
+    try {
+      await work();
+      onReload();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not save the roles.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const create = (): Promise<void> =>
+    run(async () => {
+      const name = newName.trim();
+      if (name === '') {
+        throw new Error('Enter a role name.');
+      }
+      await createGroupRole(groupId, name.slice(0, 30));
+      setNewName('');
+    });
+
+  const rename = (roleId: string): Promise<void> =>
+    run(async () => {
+      const name = renameValue.trim();
+      if (name === '') {
+        throw new Error('Enter a role name.');
+      }
+      await renameGroupRole(groupId, roleId, name.slice(0, 30));
+      setRenamingId(undefined);
+    });
+
+  const remove = (roleId: string): Promise<void> =>
+    run(async () => {
+      await deleteGroupRole(groupId, roleId);
+      setConfirmingId(undefined);
+    });
+
+  const toggleHolder = (role: GroupRole, userId: string): Promise<void> => {
+    const held = role.members.some((holder) => holder.userId === userId);
+    const userIds = held
+      ? role.members.filter((holder) => holder.userId !== userId).map((holder) => holder.userId)
+      : [...role.members.map((holder) => holder.userId), userId];
+    return run(() => setGroupRoleMembers(groupId, role.id, userIds).then(() => {}));
+  };
+
+  return (
+    <section aria-label="Roles" className="flex flex-col gap-1">
+      <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Roles</h2>
+      {rolesState.status === 'loading' && (
+        <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+      )}
+      {rolesState.status === 'error' && (
+        <div className="flex flex-col gap-2 px-2">
+          <FieldError>{rolesState.message}</FieldError>
+          <Button
+            type="button"
+            size="lg"
+            className="self-start rounded-full px-4"
+            onClick={onReload}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+      {rolesState.status === 'ready' && rolesState.roles.length === 0 && (
+        <p className="px-2 text-[13px] text-muted-foreground">
+          No roles yet. Roles grant private-topic access and approver rights.
+        </p>
+      )}
+      {rolesState.status === 'ready' &&
+        rolesState.roles.map((role) => {
+          const renaming = renamingId === role.id;
+          const confirming = confirmingId === role.id;
+          const assigning = assigningId === role.id;
+          return (
+            <div key={role.id} className="flex flex-col gap-1 rounded-xl px-2 py-1.5">
+              <div className="flex items-center gap-2">
+                {renaming ? (
+                  <input
+                    aria-label={`Rename ${role.name}`}
+                    value={renameValue}
+                    maxLength={30}
+                    onChange={(event) => setRenameValue(event.target.value)}
+                    className="well-surface min-w-0 flex-1 rounded-[10px] px-3 py-1.5 text-[14px] text-foreground outline-none placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-accent/40"
+                  />
+                ) : (
+                  <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
+                    {role.name} ({role.members.length})
+                  </span>
+                )}
+                {renaming ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void rename(role.id)}
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => setRenamingId(undefined)}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                ) : confirming ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      aria-label={`Confirm deleting ${role.name}`}
+                      disabled={busy}
+                      onClick={() => void remove(role.id)}
+                    >
+                      Delete
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => setConfirmingId(undefined)}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label={`Assign ${role.name}`}
+                      className="shrink-0"
+                      disabled={busy}
+                      onClick={() => setAssigningId(assigning ? undefined : role.id)}
+                    >
+                      Assign
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Rename ${role.name}`}
+                      className="shrink-0"
+                      disabled={busy}
+                      onClick={() => {
+                        setRenameValue(role.name);
+                        setRenamingId(role.id);
+                      }}
+                    >
+                      Rename
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Delete ${role.name}`}
+                      className="shrink-0"
+                      disabled={busy}
+                      onClick={() => setConfirmingId(role.id)}
+                    >
+                      Delete
+                    </Button>
+                  </>
+                )}
+              </div>
+              {assigning && !renaming && !confirming && (
+                <div className="flex flex-col gap-1 pl-1">
+                  {members.map((member) => {
+                    const checked = role.members.some((holder) => holder.userId === member.userId);
+                    return (
+                      <label
+                        key={member.userId}
+                        className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-list-hover"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={busy}
+                          aria-label={`${member.name} holds ${role.name}`}
+                          onChange={() => void toggleHolder(role, member.userId)}
+                          className="size-4 accent-white"
+                        />
+                        <Avatar id={member.userId} name={member.name} size={28} />
+                        <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      <div className="mt-1 flex items-center gap-2 px-2">
+        <input
+          aria-label="New role name"
+          value={newName}
+          maxLength={30}
+          onChange={(event) => setNewName(event.target.value)}
+          placeholder="e.g. Designers"
+          className="well-surface min-w-0 flex-1 rounded-[10px] px-3 py-2 text-[14px] text-foreground outline-none placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-accent/40"
+        />
+        <Button
+          type="button"
+          size="lg"
+          className="shrink-0 rounded-full px-4"
+          disabled={busy || newName.trim() === ''}
+          onClick={() => void create()}
+        >
+          {busy ? 'Saving…' : 'Add role'}
+        </Button>
+      </div>
+      {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
+    </section>
   );
 }

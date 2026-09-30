@@ -92,6 +92,9 @@ const groupMemberSchema = z.object({
   userId: z.string(),
   name: z.string(),
   role: z.enum(['owner', 'admin', 'member']),
+  // T-0116: the custom group roles this member holds. Optional so payloads
+  // from an older server still parse (treated as none).
+  roles: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
 });
 
 const groupAiSchema = z.object({
@@ -275,6 +278,23 @@ export const topicAiSchema = z.object({
 
 export type TopicAi = z.infer<typeof topicAiSchema>;
 
+// T-0116: a custom group role attached to a topic (`roles`) or named as its
+// approver (`approverRole`). `memberCount` counts current holders.
+export const topicRoleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  memberCount: z.number(),
+});
+
+export type TopicRole = z.infer<typeof topicRoleSchema>;
+
+export const approverRoleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
+export type ApproverRole = z.infer<typeof approverRoleSchema>;
+
 export const topicSchema = z.object({
   id: z.string(),
   groupId: z.string(),
@@ -291,6 +311,10 @@ export const topicSchema = z.object({
   archived: z.boolean(),
   memberCount: z.number(),
   ais: z.array(topicAiSchema),
+  // T-0116: roles with access and the approver role. Optional so payloads
+  // from an older server still parse (treated as none).
+  roles: z.array(topicRoleSchema).optional(),
+  approverRole: approverRoleSchema.nullable().optional(),
 });
 
 export type Topic = z.infer<typeof topicSchema>;
@@ -401,6 +425,90 @@ export function addTopicAi(id: string, aiId: string): Promise<Topic> {
 export function removeTopicAi(id: string, aiId: string): Promise<Topic> {
   return request(`/topics/${encodeURIComponent(id)}/ais/${encodeURIComponent(aiId)}`, topicSchema, {
     method: 'DELETE',
+  });
+}
+
+// --- Group roles (T-0116) ---------------------------------------------------
+// Custom group roles: labels with two powers (private-topic access and
+// approver rights). Reading needs only membership; every write needs a
+// group owner/admin.
+
+export const groupRoleMemberSchema = z.object({
+  userId: z.string(),
+  name: z.string(),
+});
+
+export type GroupRoleMember = z.infer<typeof groupRoleMemberSchema>;
+
+export const groupRoleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  members: z.array(groupRoleMemberSchema),
+});
+
+export type GroupRole = z.infer<typeof groupRoleSchema>;
+
+export function listGroupRoles(groupId: string): Promise<GroupRole[]> {
+  return request(
+    `/groups/${encodeURIComponent(groupId)}/roles`,
+    z.object({ roles: z.array(groupRoleSchema) }),
+  ).then(({ roles }) => roles);
+}
+
+export function createGroupRole(groupId: string, name: string): Promise<GroupRole> {
+  return request(`/groups/${encodeURIComponent(groupId)}/roles`, groupRoleSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function renameGroupRole(groupId: string, roleId: string, name: string): Promise<GroupRole> {
+  return request(
+    `/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(roleId)}`,
+    groupRoleSchema,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    },
+  );
+}
+
+export async function deleteGroupRole(groupId: string, roleId: string): Promise<void> {
+  await request(
+    `/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(roleId)}`,
+    z.null(),
+    { method: 'DELETE' },
+  );
+}
+
+export function setGroupRoleMembers(
+  groupId: string,
+  roleId: string,
+  userIds: string[],
+): Promise<GroupRole> {
+  return request(
+    `/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(roleId)}/members`,
+    groupRoleSchema,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userIds }),
+    },
+  );
+}
+
+export interface SetTopicRolesInput {
+  roleIds: string[];
+  approverRoleId: string | null;
+}
+
+export function setTopicRoles(id: string, input: SetTopicRolesInput): Promise<Topic> {
+  return request(`/topics/${encodeURIComponent(id)}/roles`, topicSchema, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
   });
 }
 

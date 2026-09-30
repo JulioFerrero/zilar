@@ -215,6 +215,13 @@ export const topics = pgTable(
     ownerAiId: text('owner_ai_id').references(() => ais.id, { onDelete: 'set null' }),
     linkUrl: text('link_url'),
     linkLabel: text('link_label'),
+    // T-0116: custom group role whose holders may decide approval cards in
+    // this topic (see `canDecide`). Null = owner/admin only. Set null when
+    // the role is deleted. Only meaningful next to `topic_role_access`
+    // rows, which is how the holders get to see a private topic.
+    approverRoleId: text('approver_role_id').references(() => groupRoles.id, {
+      onDelete: 'set null',
+    }),
     isGeneral: boolean('is_general').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdBy: text('created_by')
@@ -235,6 +242,71 @@ export const topics = pgTable(
       .where(sql`${table.isGeneral} IS TRUE`),
     index('topics_group_idx').on(table.groupId),
   ],
+);
+
+// Custom group roles (T-0116, decision D29): labels with two powers — a
+// role can be added to a private topic (every holder gets access, now and
+// later) and a topic can name an approver role whose holders may decide
+// approval cards in that topic. The built-in owner/admin/member stay as
+// they are. Names are unique per group ignoring case
+// (`group_roles_group_name_idx` on `(group_id, lower(name))`; the service
+// maps a violation to 409 `role_exists`); at most 20 roles per group
+// (checked in code under a per-group advisory lock).
+export const groupRoles = pgTable(
+  'group_roles',
+  {
+    id: text('id').primaryKey(),
+    groupId: text('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('group_roles_group_idx').on(table.groupId),
+    // Names are unique per group ignoring case (the service maps a
+    // violation to 409 `role_exists`, so concurrent creates race safely).
+    uniqueIndex('group_roles_group_name_idx').on(table.groupId, sql`lower(${table.name})`),
+  ],
+);
+
+// Who holds a custom group role (T-0116). The holder must be a group member:
+// leaving the group deletes the rows (see `removeGroupMember`), and the
+// service refuses to assign non-members.
+export const groupMemberRoles = pgTable(
+  'group_member_roles',
+  {
+    roleId: text('role_id')
+      .notNull()
+      .references(() => groupRoles.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    assignedBy: text('assigned_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.roleId, table.userId] })],
+);
+
+// Which roles may see a private topic (T-0116). Only meaningful for private
+// topics: every holder of a listed role joins the room through the same
+// `desiredMembers` as `topic_members`.
+export const topicRoleAccess = pgTable(
+  'topic_role_access',
+  {
+    topicId: text('topic_id')
+      .notNull()
+      .references(() => topics.id, { onDelete: 'cascade' }),
+    roleId: text('role_id')
+      .notNull()
+      .references(() => groupRoles.id, { onDelete: 'cascade' }),
+  },
+  (table) => [primaryKey({ columns: [table.topicId, table.roleId] })],
 );
 
 // Membership of private topics (T-0108). Rows exist only for private topics:
