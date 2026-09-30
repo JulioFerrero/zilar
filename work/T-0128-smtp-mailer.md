@@ -1,7 +1,7 @@
 ---
 id: T-0128
 title: Real email for sign-in codes: an SMTP mailer (production installs cannot start without one today)
-status: planned
+status: review
 milestone: M6
 branch: task/T-0128-smtp-mailer
 model: meta/muse-spark-1.3-contributor
@@ -68,19 +68,33 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Added `nodemailer@^10.0.12` + `@types/nodemailer@^8.0.2` to `apps/server` (the only new dependencies, pinned by the lockfile).
+- `config.ts`: new optional mail settings `MAIL_TRANSPORT` (`console`|`smtp`), `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_SECURE` (default false), `SMTP_USER`/`SMTP_PASSWORD`, `MAIL_FROM`, `MAIL_REPLY_TO`, `MAIL_ALLOW_CONSOLE_IN_PRODUCTION` (default false). `MAIL_TRANSPORT` defaults to `console` outside production and stays unset in production. `checkMailConfig` validates only the smtp branch (host/from required, user+password together, mailbox shapes for from/reply-to); messages are precise and never include values. `formatIssues` now keeps every custom message (was: first per path) so both SMTP rules surface.
+- `mailer.ts`: kept `Mailer`/`ConsoleMailer` behaviour for dev/test (info-level log, unchanged text). Production refusal stays in the mailer (`MailerConfigurationError`, message now names `MAIL_TRANSPORT`/`SMTP_*`/`MAIL_FROM`/`MAIL_ALLOW_CONSOLE_IN_PRODUCTION`), so the existing production tests and `index.ts` (which exits 1 on it) work unchanged. Added `SmtpMailer` (nodemailer transport, `secure` from `SMTP_SECURE`, `requireTLS: true` when not secure, auth only when both user+password set, 10 s connection/greeting timeout, 20 s send timeout via `Promise.race`), plain-text + escaped-HTML bodies with per-purpose subjects and validity minutes from `OTP_EXPIRES_IN_SECONDS`, `verifyConnection()` (warn-only), and generic `MailerDeliveryError` on failure (logs only purpose + numeric SMTP response code). `createMailer` picks by config and fires the startup verify without awaiting it. Opt-in console-in-production logs the loud warning once and writes codes at `warn`.
+- `logger.ts`: added `SMTP_PASSWORD`, `SMTP_USER` to `redactPaths` (pino redacts by key substring case-insensitively, verified by test).
+- `index.ts`: unchanged — construction + startup-verify already happen inside `createMailer`.
+- `docs/SERVER_CONFIG.md`: new "Mail (sign-in codes)" section documenting every variable, subjects, timeouts and secrecy; updated stale `mailer.ts`/`logger.ts` line refs.
+- Tests: 14 new mailer tests (jsonTransport capture: subjects, from/to, minutes, no links, hostile-address escaping, TLS options, auth/absent-auth, reply-to, failure/timeout secrecy, verify-warn, opt-in warn-level codes, secret redaction) + 11 new config tests (defaults, every validation branch, password never in messages).
 
 ### Files changed
--
+- `apps/server/src/auth/mailer.ts` (+ tests in `apps/server/src/auth/mailer.test.ts`)
+- `apps/server/src/config.ts` (+ tests in `apps/server/src/config.test.ts`)
+- `apps/server/src/logger.ts` (redaction names only)
+- `apps/server/package.json`, `pnpm-lock.yaml` (nodemailer, @types/nodemailer)
+- `docs/SERVER_CONFIG.md`, `work/T-0128-smtp-mailer.md`
 
 ### Commands run and real results
--
+- `pnpm install`: ok (6.7 s).
+- `pnpm --filter @galena/server add nodemailer` / `add -D @types/nodemailer`: ok (nodemailer 10.0.12, types 8.0.2; pre-existing unmet-peer warning in apps/mobile only).
+- `pnpm format:check`: pass. `pnpm lint` (oxlint): pass. `pnpm typecheck` (turbo, all 10 tasks): pass.
+- `pnpm --filter @galena/server test --maxWorkers=2`: 64 files passed, 1141 passed, 7 skipped (pre-existing skips), 0 failed (~232 s).
+- `pnpm build` (turbo): 2 successful (server build is type-only/cached upstream; web+mobile built).
+- Verified manually: hostile address `evil"<script>…@example.com` is neutralised by nodemailer's parser and never interpolated into HTML (probed with node + jsonTransport before writing code); a scratch test (since removed) showed a throwing mailer still yields `200 {"success":true}` on send-verification-otp — the pre-existing Better Auth behaviour, unchanged — and per-email/per-IP rate limits in `auth.ts` are untouched (rate-limit test passes).
 
 ### Problems, deviations from the spec, open questions
--
-
-### Blocked / needs a decision
-- (only if status is blocked)
+- Deviation (required by "existing mailer and auth tests still pass unchanged"): the production refusal for unset `MAIL_TRANSPORT` lives in `createMailer`/`ConsoleMailer` (`MailerConfigurationError`), not in `loadServerConfig` — putting it in config broke 4 existing tests (`mailer.test.ts` (i), `auth.test.ts` cookie/J tests via `createTestContext({nodeEnv:'production'})`). Config validates only the smtp branch. The acceptance criterion still holds: unset in production refuses to start via `index.ts` exit(1) with a message naming the variables. `config.test.ts`'s two full-object `toEqual` assertions were extended with the new fields (unavoidable; they enumerate the whole object).
+- `apps/server/.env.example` does not document the new variables — it is not in Allowed files, so I left it; suggest a follow-up (also still missing LITELLM_*/RUNNER_HUB_*/GITHUB_APP_* per SERVER_CONFIG.md §Mismatches).
+- No new endpoint/UI/schema; no real emails sent from tests (jsonTransport + injected factories + loopback-refused verify only).
 
 ---
 

@@ -25,7 +25,7 @@ The server reads every variable below. Two schemas feed into one `ServerConfig`:
 - the core schema at `apps/server/src/config.ts:36-104`
 - the XMPP schema at `apps/server/src/xmpp/config.ts:13-21` (called from `config.ts:118`)
 
-A value shown as `CHANGE_ME` here is what `apps/server/.env.example` ships with. Real values go in `apps/server/.env` and `infra/.env`; both are git-ignored and never logged (`apps/server/src/logger.ts:5-14` redacts secrets).
+A value shown as `CHANGE_ME` here is what `apps/server/.env.example` ships with. Real values go in `apps/server/.env` and `infra/.env`; both are git-ignored and never logged (`apps/server/src/logger.ts:4-16` redacts secrets, including `SMTP_PASSWORD` and `SMTP_USER`).
 
 **Secret** in the *Notes* column means: never commit, never paste into chat, never echo in a config error. The config schemas validate presence, length and shape but never print a value back (`config.ts:142-158`, `xmpp/config.ts:38-44`).
 
@@ -33,7 +33,7 @@ A value shown as `CHANGE_ME` here is what `apps/server/.env.example` ships with.
 
 | Variable | Required? | Default | What it does | Notes |
 |---|---|---|---|---|
-| `NODE_ENV` | No | `development` | One of `development`, `test`, `production`. Switches `createLogger` between `pino-pretty` and plain JSON (`logger.ts:23-30`), and `createMailer` refuses `production` without a real provider (`auth/mailer.ts:20-27`). | Not a secret. |
+| `NODE_ENV` | No | `development` | One of `development`, `test`, `production`. Switches `createLogger` between `pino-pretty` and plain JSON (`logger.ts:24-32`), and `createMailer` refuses `production` without a real provider (`auth/mailer.ts:181-198`). | Not a secret. |
 | `PORT` | No | `3000` | TCP port the HTTP server binds to (`index.ts:202`). Integer in `[1, 65535]`. | The local stack uses `3188`; `3000` belongs to another app on this host. |
 | `DATABASE_URL` | Yes | — | Postgres connection string used by every Drizzle call (`db/client.ts`, `index.ts:47`). Schema accepts `postgres://` and `postgresql://`. | **Secret.** Password goes here. |
 | `LOG_LEVEL` | No | `info` | One of `fatal`, `error`, `warn`, `info`, `debug`, `trace` (`config.ts:41`). Passed straight to pino (`logger.ts:18`). | Not a secret. |
@@ -41,6 +41,23 @@ A value shown as `CHANGE_ME` here is what `apps/server/.env.example` ships with.
 | `BETTER_AUTH_SECRET` | Yes | — | Secret Better Auth uses to sign sessions and encrypt data. Must be at least 32 characters (`config.ts:43`); `config.test.ts:184-192` proves a short one fails validation without echoing the value. | **Secret.** Generate with `openssl rand -base64 32`. |
 | `BETTER_AUTH_URL` | No | `PUBLIC_URL` | Base URL Better Auth advertises. Defaults to `PUBLIC_URL` (`config.ts:103`). | Not a secret. |
 | `WEB_ORIGINS` | No | `http://localhost:5173` | Comma-separated list of web origins allowed to call the API with cookies (`app.ts:130-144`). Each entry is normalised to its URL origin (scheme + host + port) and deduplicated (`config.ts:24-34`). Must contain at least one entry. | Not a secret. The empty list fails at startup. |
+
+### Mail (sign-in codes)
+
+Galena signs people in only with an email one-time code, so every real install needs a mailer (`auth/mailer.ts`). `createMailer` picks by `MAIL_TRANSPORT` and verifies an SMTP connection at startup without crashing when it fails (a temporary mail outage must not take the chat down; `mailer.ts:209-216`).
+
+| Variable | Required? | Default | What it does | Notes |
+|---|---|---|---|---|
+| `MAIL_TRANSPORT` | In production | `console` outside production, unset in production | `console` writes codes to the log (development only); `smtp` sends real mail through nodemailer (`mailer.ts:83-164`). Unset in production refuses to start with `No email provider is configured…` naming these variables (`mailer.ts:185-191`). | Not a secret. |
+| `SMTP_HOST` | With `smtp` | — | SMTP host to connect to (`config.ts:67`). | Not a secret. Missing it fails startup with `SMTP_HOST is required when MAIL_TRANSPORT=smtp`. |
+| `SMTP_PORT` | No | `587` | SMTP port, integer in `[1, 65535]` (`config.ts:70-78`). | Not a secret. |
+| `SMTP_SECURE` | No | `false` | `'true'` = implicit TLS (normally port 465); `'false'` = STARTTLS is required (`requireTLS: true`, never falls back to plaintext) (`mailer.ts:103-108`). | Not a secret. Junk values fail startup. |
+| `SMTP_USER` / `SMTP_PASSWORD` | Together or neither, with `smtp` | — | SMTP credentials; no auth when both are absent. Setting only one fails startup (`config.ts:196-244`). | **Secrets.** Never logged, never echoed in a config error (`config.test.ts` proves the password is absent from messages). |
+| `MAIL_FROM` | With `smtp` | — | Sender on sign-in mails, e.g. `Galena <no-reply@example.com>`. Validated as a mailbox at startup. | Not a secret. Missing it fails startup with `MAIL_FROM is required when MAIL_TRANSPORT=smtp`. |
+| `MAIL_REPLY_TO` | No | — | Optional `Reply-To` header on sign-in mails. Validated as a mailbox when set. | Not a secret. |
+| `MAIL_ALLOW_CONSOLE_IN_PRODUCTION` | No | `false` | Explicit opt-in that lets a single-admin private install run with `MAIL_TRANSPORT=console` in production. The server logs a loud startup warning and the codes appear in the log at `warn` level (`mailer.ts:173-207`). | Not a secret. Unsuitable for anyone but the operator. |
+
+Mails are plain text plus a minimal HTML alternative, English only, with one subject per purpose (`Your Galena sign-in code`, `Verify your email`, `Reset your Galena sign-in`, `Confirm your new email`): the code, its validity in minutes (`OTP_EXPIRES_IN_SECONDS`, 10 minutes today), and "If you did not ask for this, ignore this email." — no links, no images. On delivery failure `sendOtp` throws a generic `MailerDeliveryError` (the auth route answers the same way it does today) and logs only the SMTP response code, never the code or the address echo. A connection timeout (10 s) and a send timeout (20 s) keep a dead SMTP server from hanging sign-in (`mailer.ts:27-28`).
 
 ### XMPP / ejabberd
 

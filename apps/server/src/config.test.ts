@@ -49,6 +49,10 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_SECRET: VALID_SECRET,
       BETTER_AUTH_URL: 'http://localhost:3000',
       WEB_ORIGINS: ['http://localhost:5173'],
+      MAIL_TRANSPORT: 'console',
+      SMTP_PORT: 587,
+      SMTP_SECURE: false,
+      MAIL_ALLOW_CONSOLE_IN_PRODUCTION: false,
       AGENT_GATEWAY_ENABLED: false,
       RUNNER_HUB_ENABLED: false,
       RUNNER_HUB_PORT: 3189,
@@ -79,6 +83,10 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_SECRET: VALID_SECRET,
       BETTER_AUTH_URL: 'https://auth.example.com',
       WEB_ORIGINS: ['https://app.example.com', 'https://admin.example.com'],
+      MAIL_TRANSPORT: undefined,
+      SMTP_PORT: 587,
+      SMTP_SECURE: false,
+      MAIL_ALLOW_CONSOLE_IN_PRODUCTION: false,
       AGENT_GATEWAY_ENABLED: false,
       RUNNER_HUB_ENABLED: false,
       RUNNER_HUB_PORT: 3189,
@@ -315,5 +323,145 @@ describe('loadServerConfig', () => {
       expect(message).toContain('RUNNER_HUB_PORT');
       expect(message).not.toContain(port);
     }
+  });
+});
+
+describe('mail transport config', () => {
+  const base = {
+    DATABASE_URL: VALID_DATABASE_URL,
+    BETTER_AUTH_SECRET: VALID_SECRET,
+    ...VALID_XMPP_ENV,
+  };
+
+  it('defaults to console outside production and to unset in production', () => {
+    expect(loadServerConfig(base).MAIL_TRANSPORT).toBe('console');
+    expect(loadServerConfig({ ...base, NODE_ENV: 'test' }).MAIL_TRANSPORT).toBe('console');
+    expect(loadServerConfig({ ...base, NODE_ENV: 'production' }).MAIL_TRANSPORT).toBeUndefined();
+  });
+
+  it('defaults the SMTP port to 587 and parses an explicit one', () => {
+    expect(loadServerConfig(base).SMTP_PORT).toBe(587);
+    expect(
+      loadServerConfig({
+        ...base,
+        MAIL_TRANSPORT: 'smtp',
+        SMTP_HOST: 'smtp.example.com',
+        MAIL_FROM: 'Galena <no-reply@example.com>',
+        SMTP_PORT: '465',
+      }).SMTP_PORT,
+    ).toBe(465);
+  });
+
+  it('rejects a bad SMTP port without printing it', () => {
+    for (const port of ['abc', '0', '65536', '12.5']) {
+      const message = configErrorMessage({ ...base, MAIL_TRANSPORT: 'smtp', SMTP_PORT: port });
+      expect(message).toContain('SMTP_PORT');
+      expect(message).not.toContain(port);
+    }
+  });
+
+  it('requires the host and the sender when SMTP is chosen', () => {
+    const message = configErrorMessage({ ...base, MAIL_TRANSPORT: 'smtp' });
+    expect(message).toContain('SMTP_HOST is required when MAIL_TRANSPORT=smtp');
+    expect(message).toContain('MAIL_FROM is required when MAIL_TRANSPORT=smtp');
+  });
+
+  it('accepts a full SMTP config with auth and one without', () => {
+    const withAuth = loadServerConfig({
+      ...base,
+      MAIL_TRANSPORT: 'smtp',
+      SMTP_HOST: 'smtp.example.com',
+      MAIL_FROM: 'Galena <no-reply@example.com>',
+      SMTP_USER: 'smtp-user',
+      SMTP_PASSWORD: 'smtp-password',
+    });
+    expect(withAuth.MAIL_TRANSPORT).toBe('smtp');
+    expect(withAuth.SMTP_PORT).toBe(587);
+    expect(withAuth.SMTP_SECURE).toBe(false);
+
+    const withoutAuth = loadServerConfig({
+      ...base,
+      MAIL_TRANSPORT: 'smtp',
+      SMTP_HOST: 'smtp.example.com',
+      MAIL_FROM: 'no-reply@example.com',
+    });
+    expect(withoutAuth.SMTP_USER).toBeUndefined();
+  });
+
+  it('rejects half-set SMTP credentials without printing the password', () => {
+    const password = 'smtp-password-value';
+    for (const partial of [{ SMTP_USER: 'smtp-user' }, { SMTP_PASSWORD: password }]) {
+      const message = configErrorMessage({
+        ...base,
+        MAIL_TRANSPORT: 'smtp',
+        SMTP_HOST: 'smtp.example.com',
+        MAIL_FROM: 'Galena <no-reply@example.com>',
+        ...partial,
+      });
+      expect(message).toContain('SMTP_USER and SMTP_PASSWORD must be set together');
+      expect(message).not.toContain(password);
+    }
+  });
+
+  it('rejects junk TLS flags and junk transports without printing them', () => {
+    const tls = configErrorMessage({ ...base, SMTP_SECURE: 'yes' });
+    expect(tls).toContain('SMTP_SECURE');
+    expect(tls).not.toContain('yes');
+
+    const transport = configErrorMessage({ ...base, MAIL_TRANSPORT: 'ses' });
+    expect(transport).toContain('MAIL_TRANSPORT');
+    expect(transport).not.toContain('ses');
+  });
+
+  it('rejects a malformed sender and reply-to without printing them', () => {
+    const badFrom = 'not-a-mailbox';
+    const message = configErrorMessage({
+      ...base,
+      MAIL_TRANSPORT: 'smtp',
+      SMTP_HOST: 'smtp.example.com',
+      MAIL_FROM: badFrom,
+    });
+    expect(message).toContain('MAIL_FROM');
+    expect(message).not.toContain(badFrom);
+
+    const badReplyTo = 'also-not-a-mailbox';
+    const replyTo = configErrorMessage({
+      ...base,
+      MAIL_TRANSPORT: 'smtp',
+      SMTP_HOST: 'smtp.example.com',
+      MAIL_FROM: 'Galena <no-reply@example.com>',
+      MAIL_REPLY_TO: badReplyTo,
+    });
+    expect(replyTo).toContain('MAIL_REPLY_TO');
+    expect(replyTo).not.toContain(badReplyTo);
+  });
+
+  it('never prints the SMTP password in any config error', () => {
+    const password = 'smtp-password-value';
+    const message = configErrorMessage({
+      ...base,
+      MAIL_TRANSPORT: 'smtp',
+      SMTP_HOST: 'smtp.example.com',
+      MAIL_FROM: 'Galena <no-reply@example.com>',
+      SMTP_PASSWORD: password,
+      SMTP_PORT: 'bogus-port',
+    });
+    expect(message).toContain('SMTP_PORT');
+    expect(message).toContain('SMTP_USER and SMTP_PASSWORD must be set together');
+    expect(message).not.toContain(password);
+  });
+
+  it('keeps the console opt-in off by default and enables it with one line', () => {
+    expect(loadServerConfig(base).MAIL_ALLOW_CONSOLE_IN_PRODUCTION).toBe(false);
+    expect(
+      loadServerConfig({ ...base, MAIL_ALLOW_CONSOLE_IN_PRODUCTION: 'true' })
+        .MAIL_ALLOW_CONSOLE_IN_PRODUCTION,
+    ).toBe(true);
+  });
+
+  it('rejects junk values for the console opt-in', () => {
+    const message = configErrorMessage({ ...base, MAIL_ALLOW_CONSOLE_IN_PRODUCTION: 'maybe' });
+    expect(message).toContain('MAIL_ALLOW_CONSOLE_IN_PRODUCTION');
+    expect(message).not.toContain('maybe');
   });
 });
