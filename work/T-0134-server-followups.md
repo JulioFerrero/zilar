@@ -1,7 +1,7 @@
 ---
 id: T-0134
 title: Server follow-ups from the invite-links, pins and roles reviews
-status: review
+status: merged
 milestone: M5
 branch: task/T-0134-server-followups
 model: meta/muse-spark-1.3-contributor
@@ -105,10 +105,10 @@ Schema changes, UI, new features.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved after two rounds. Verified in the packets and in the diff: invite-link joins claim the use and insert the membership in one transaction (same-user races answer 200 `alreadyMember` with nothing consumed, strangers on a 1-use link get the same 404, a room failure rolls the claim back), the comment now states exactly those guarantees; trusted proxy hops read the Nth address from the right (0 hops ignores headers, forged left-most entries covered); a missing pin answers the identical 404 as an invisible chat; the join preview has a per-user limiter after the session check; approver names come from one batched query and fan out to every topic sharing the role; the search test now carries a negative control proving scoping instead of blindness. Audit and logs carry ids only.
 
 ### Findings
--
+- Nit, left: `TRUSTED_PROXY_HOPS` uses `z.coerce.number()` so an empty string becomes 0 (the safe default) and " 3 " becomes 3; stricter parsing is cosmetic.
 
 ### Follow-ups
--
+- Web: show `approverNames` on the approval card instead of calling `getTopic` per card (noted in the Report).
