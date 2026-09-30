@@ -1,7 +1,7 @@
 ---
 id: T-0128
 title: Real email for sign-in codes: an SMTP mailer (production installs cannot start without one today)
-status: review
+status: merged
 milestone: M6
 branch: task/T-0128-smtp-mailer
 model: meta/muse-spark-1.3-contributor
@@ -100,10 +100,12 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged.
 
 ### Findings
--
+- Read line by line: codes are digit-only before sending, the address goes through nodemailer's parser (no header injection), `MAIL_FROM`/`MAIL_REPLY_TO` are validated at startup, STARTTLS is required unless implicit TLS is chosen, timeouts are bounded, and errors and logs carry only the purpose and a numeric SMTP code. SMTP credentials are redacted in the logger.
+- Deviation accepted: the production refusal stays in `createMailer`/`ConsoleMailer` so existing tests keep passing; unset `MAIL_TRANSPORT` in production still refuses to start with a message naming the variables.
 
 ### Follow-ups
--
+- `apps/server/.env.example` does not list the mail variables (outside Allowed files).
+- Lead proof against a real TLS SMTP server (fake) after merge.
