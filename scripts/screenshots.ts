@@ -99,6 +99,29 @@ async function runSetup(page: Page, setup: string): Promise<void> {
       await page.getByRole('button', { name: 'New topic in Dev team' }).click();
       await page.waitForTimeout(800);
       return;
+    // T-0107: the topic panel opens from the URL already (`?panel=topic`);
+    // click the first tool row so the shot shows the detail (source,
+    // history, run) instead of the list. The panel covers the chat, so
+    // dispatch the click directly instead of Playwright's actionability
+    //-checked `click()` (the dialog backdrop never intercepts it). The
+    // panel needs a beat after the 7 s settle: the tools list loads over
+    // the mock API.
+    case 'openToolDetail':
+      await page.waitForSelector('button[aria-label="Open prices"]', { timeout: 15000 });
+      await page.$eval('button[aria-label="Open prices"]', (button) => button.click());
+      await page.waitForTimeout(1500);
+      return;
+    // T-0107: the group panel opens from the URL already (`?panel=group`);
+    // scroll the routines section into view so the shot shows the routine
+    // rows instead of the top of the panel.
+    case 'openRoutines': {
+      await page.waitForSelector('section[aria-label="Routines"]', { timeout: 15000 });
+      await page.$eval('section[aria-label="Routines"]', (section) =>
+        section.scrollIntoView({ block: 'start' }),
+      );
+      await page.waitForTimeout(800);
+      return;
+    }
     default:
       throw new Error(`Unknown screenshot setup: ${setup}`);
   }

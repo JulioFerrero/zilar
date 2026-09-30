@@ -69,6 +69,15 @@ interface MockState {
   // id the client names the chat with (the mock has no JID access model).
   pins: MockPin[];
   nextPinSequence: number;
+  // T-0107: tools and routines in memory for the page load. The mock has
+  // one user (the group owner and AI owner), so every action succeeds —
+  // like the real server's manager check with the mock's single user.
+  tools: MockTool[];
+  routines: MockRoutine[];
+  runs: MockRun[];
+  nextToolSequence: number;
+  nextRoutineSequence: number;
+  nextRunSequence: number;
 }
 
 type TopicVisibility = 'public' | 'private';
@@ -179,6 +188,472 @@ interface MockApprovalRule {
   groupId: string | null;
   createdAt: string;
   createdBy: string;
+}
+
+// T-0107: one tool with its version history, mirroring the server's
+// `ai_tools` + `ai_tool_versions` (no source on the list rows).
+interface MockToolVersion {
+  id: string;
+  version: number;
+  source: string;
+  hosts: string[];
+  message: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+interface MockTool {
+  id: string;
+  aiId: string;
+  groupId: string | null;
+  topicId: string | null;
+  name: string;
+  description: string;
+  approvedHosts: string[];
+  versions: MockToolVersion[];
+  deleted: boolean;
+}
+
+// T-0107: one routine row, mirroring the server's `routines` (no tool source).
+interface MockRoutine {
+  id: string;
+  aiId: string;
+  groupId: string | null;
+  topicId: string | null;
+  toolId: string;
+  title: string;
+  schedule: unknown;
+  status: 'active' | 'paused' | 'needs_approval';
+  pausedReason: 'user' | 'failures' | 'hosts_changed' | null;
+  nextRunAt: string;
+  lastRunAt: string | null;
+  lastStatus: 'ok' | 'error' | 'skipped' | null;
+  approvedHosts: string[];
+  deleted: boolean;
+}
+
+// T-0107: one recorded run row, mirroring the server's `ai_tool_runs`.
+interface MockRun {
+  id: string;
+  toolId: string;
+  version: number;
+  trigger: 'manual' | 'routine' | 'ai';
+  status: 'ok' | 'error';
+  errorKind: string | null;
+  durationMs: number;
+  fetchCount: number;
+  outputText: string | null;
+  createdAt: string;
+}
+
+// T-0107: one AI with two tools (two versions each): the prices tool in
+// the bug topic and the notes tool in General. Sources are plain mock
+// code; hosts show a declared set and (for prices) an approved subset.
+function seedTools(): MockTool[] {
+  return [
+    {
+      id: 'tool-mock-prices',
+      aiId: 'dev-1',
+      groupId: 'g-devteam',
+      topicId: 't-devteam-bug',
+      name: 'prices',
+      description: 'Fetches the morning prices.',
+      approvedHosts: ['api.example.com'],
+      versions: [
+        {
+          id: 'tool-mock-prices-v1',
+          version: 1,
+          source: 'export function run() {\n  return fetchPrices(["gold"]);\n}',
+          hosts: [],
+          message: 'First version',
+          createdBy: currentUserId,
+          createdAt: '2026-09-28T09:00:00.000Z',
+        },
+        {
+          id: 'tool-mock-prices-v2',
+          version: 2,
+          source:
+            'export function run(input) {\n  const symbols = input?.symbols ?? ["gold", "BTC"];\n  return fetchPrices(symbols);\n}',
+          hosts: ['api.example.com', 'prices.example.com'],
+          message: 'Add the price host',
+          createdBy: currentUserId,
+          createdAt: '2026-09-29T09:00:00.000Z',
+        },
+      ],
+      deleted: false,
+    },
+    {
+      id: 'tool-mock-notes',
+      aiId: 'dev-1',
+      groupId: 'g-devteam',
+      topicId: 't-devteam-general',
+      name: 'notes',
+      description: 'Formats the standup notes.',
+      approvedHosts: [],
+      versions: [
+        {
+          id: 'tool-mock-notes-v1',
+          version: 1,
+          source: 'export function run(input) {\n  return formatNotes(input);\n}',
+          hosts: [],
+          message: 'First version',
+          createdBy: currentUserId,
+          createdAt: '2026-09-27T09:00:00.000Z',
+        },
+        {
+          id: 'tool-mock-notes-v2',
+          version: 2,
+          source: 'export function run(input) {\n  return formatNotes(input, { trim: true });\n}',
+          hosts: [],
+          message: 'Trim long lines',
+          createdBy: currentUserId,
+          createdAt: '2026-09-28T09:00:00.000Z',
+        },
+      ],
+      deleted: false,
+    },
+  ];
+}
+
+// T-0107: one active routine (morning prices) and one paused routine
+// (standup notes), mirroring the server's rows.
+function seedRoutines(): MockRoutine[] {
+  return [
+    {
+      id: 'routine-mock-morning',
+      aiId: 'dev-1',
+      groupId: 'g-devteam',
+      topicId: 't-devteam-bug',
+      toolId: 'tool-mock-prices',
+      title: 'Morning prices',
+      schedule: {
+        kind: 'daily',
+        time: '09:00',
+        timezone: 'Europe/Madrid',
+        weekdays: [1, 2, 3, 4, 5],
+      },
+      status: 'active',
+      pausedReason: null,
+      nextRunAt: '2026-10-01T09:00:00.000Z',
+      lastRunAt: '2026-09-30T09:00:00.000Z',
+      lastStatus: 'ok',
+      approvedHosts: ['api.example.com'],
+      deleted: false,
+    },
+    {
+      id: 'routine-mock-standup',
+      aiId: 'dev-1',
+      groupId: 'g-devteam',
+      topicId: 't-devteam-general',
+      toolId: 'tool-mock-notes',
+      title: 'Standup notes',
+      schedule: { kind: 'interval', everyMinutes: 1440 },
+      status: 'paused',
+      pausedReason: 'user',
+      nextRunAt: '2026-10-01T09:30:00.000Z',
+      lastRunAt: '2026-09-29T09:30:00.000Z',
+      lastStatus: 'ok',
+      approvedHosts: [],
+      deleted: false,
+    },
+  ];
+}
+
+function seedRuns(): MockRun[] {
+  return [
+    {
+      id: 'run-mock-1',
+      toolId: 'tool-mock-prices',
+      version: 2,
+      trigger: 'routine',
+      status: 'ok',
+      errorKind: null,
+      durationMs: 240,
+      fetchCount: 2,
+      outputText: 'gold 4300, BTC 114000',
+      createdAt: '2026-09-30T09:00:00.000Z',
+    },
+    {
+      id: 'run-mock-2',
+      toolId: 'tool-mock-prices',
+      version: 1,
+      trigger: 'manual',
+      status: 'error',
+      errorKind: 'fetch_failed',
+      durationMs: 1200,
+      fetchCount: 0,
+      outputText: null,
+      createdAt: '2026-09-29T10:00:00.000Z',
+    },
+  ];
+}
+
+function currentVersionOf(tool: MockTool): MockToolVersion {
+  const latest = tool.versions[tool.versions.length - 1];
+  if (latest === undefined) {
+    throw new Error('mock tools always carry versions');
+  }
+  return latest;
+}
+
+function lastRunStatusOf(toolId: string): 'ok' | 'error' | null {
+  const runs = state.runs
+    .filter((run) => run.toolId === toolId)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+  return runs[0]?.status ?? null;
+}
+
+function toolListRow(tool: MockTool): Record<string, unknown> {
+  const current = currentVersionOf(tool);
+  return {
+    id: tool.id,
+    aiId: tool.aiId,
+    groupId: tool.groupId,
+    topicId: tool.topicId,
+    name: tool.name,
+    description: tool.description,
+    currentVersion: current.version,
+    hosts: current.hosts,
+    approvedHosts: tool.approvedHosts,
+    lastRunStatus: lastRunStatusOf(tool.id),
+    updatedAt: current.createdAt,
+    scope: tool.groupId === null ? 'personal' : 'group',
+  };
+}
+
+function toolDetailRow(tool: MockTool): Record<string, unknown> {
+  const current = currentVersionOf(tool);
+  return { ...toolListRow(tool), source: current.source };
+}
+
+function routineRow(routine: MockRoutine): Record<string, unknown> {
+  const tool = state.tools.find((item) => item.id === routine.toolId);
+  return {
+    id: routine.id,
+    aiId: routine.aiId,
+    groupId: routine.groupId,
+    topicId: routine.topicId,
+    toolId: routine.toolId,
+    title: routine.title,
+    toolName: tool?.name ?? '',
+    schedule: routine.schedule,
+    status: routine.status,
+    pausedReason: routine.pausedReason,
+    nextRunAt: routine.nextRunAt,
+    lastRunAt: routine.lastRunAt,
+    lastStatus: routine.lastStatus,
+    approvedHosts: routine.approvedHosts,
+    scope: routine.groupId === null ? 'personal' : 'group',
+  };
+}
+
+function findTool(id: string): MockTool | undefined {
+  return state.tools.find((tool) => tool.id === id && !tool.deleted);
+}
+
+function findRoutine(id: string): MockRoutine | undefined {
+  return state.routines.find((routine) => routine.id === id && !routine.deleted);
+}
+
+// Every seeded AI id the mock tools/routines may belong to. The mock has
+// one user (the owner), so `/ais/:id/tools` answers for any AI row.
+function toolAiIds(): Set<string> {
+  return new Set([...state.ais.map((ai) => ai.id), 'dev-1', 'qa-1']);
+}
+
+// T-0107: tool and routine routes. The mock has one user (the group owner
+// and AI owner), so every read and every manager write succeeds; unknown
+// ids 404 like the real server's same-shape 404.
+function toolRoutes(
+  head: string,
+  first: string | undefined,
+  second: string | undefined,
+  segments: string[],
+  method: string,
+  init: RequestInit,
+): Response | undefined {
+  if (head === 'ais' && second === 'tools' && method === 'GET') {
+    const aiId = decodeURIComponent(first ?? '');
+    if (!toolAiIds().has(aiId)) {
+      return notFound('AI not found');
+    }
+    return jsonResponse(
+      state.tools.filter((tool) => !tool.deleted && tool.aiId === aiId).map(toolListRow),
+    );
+  }
+  if (head === 'groups' && second === 'tools' && method === 'GET') {
+    const groupId = decodeURIComponent(first ?? '');
+    return jsonResponse(
+      state.tools.filter((tool) => !tool.deleted && tool.groupId === groupId).map(toolListRow),
+    );
+  }
+  if (head === 'groups' && second === 'routines' && method === 'GET') {
+    const groupId = decodeURIComponent(first ?? '');
+    return jsonResponse(
+      state.routines
+        .filter((routine) => !routine.deleted && routine.groupId === groupId)
+        .map(routineRow),
+    );
+  }
+  if (head === 'ais' && second === 'routines' && method === 'GET') {
+    const aiId = decodeURIComponent(first ?? '');
+    if (!toolAiIds().has(aiId)) {
+      return notFound('AI not found');
+    }
+    return jsonResponse(
+      state.routines.filter((routine) => !routine.deleted && routine.aiId === aiId).map(routineRow),
+    );
+  }
+  if (head === 'tools' && first !== undefined) {
+    const tool = findTool(decodeURIComponent(first));
+    if (tool === undefined) {
+      return notFound('Tool not found');
+    }
+    if (second === undefined && method === 'GET') {
+      return jsonResponse(toolDetailRow(tool));
+    }
+    if (second === 'versions' && segments[3] === undefined && method === 'GET') {
+      return jsonResponse(
+        [...tool.versions].reverse().map((version) => ({
+          id: version.id,
+          toolId: tool.id,
+          version: version.version,
+          message: version.message,
+          hosts: version.hosts,
+          createdBy: version.createdBy,
+          createdAt: version.createdAt,
+        })),
+      );
+    }
+    if (second === 'versions' && segments[3] !== undefined && method === 'GET') {
+      const wanted = Number(segments[3]);
+      const version = tool.versions.find((item) => item.version === wanted);
+      if (version === undefined) {
+        return notFound('Tool version not found');
+      }
+      return jsonResponse({
+        id: version.id,
+        toolId: tool.id,
+        version: version.version,
+        source: version.source,
+        hosts: version.hosts,
+        message: version.message,
+        createdBy: version.createdBy,
+        createdAt: version.createdAt,
+      });
+    }
+    if (second === 'runs' && method === 'GET') {
+      return jsonResponse(
+        state.runs
+          .filter((run) => run.toolId === tool.id)
+          .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+          .slice(0, 20),
+      );
+    }
+    if (second === 'revert' && method === 'POST') {
+      const body = readJsonBody(init);
+      const wanted = typeof body.version === 'number' ? body.version : 0;
+      const old = tool.versions.find((item) => item.version === wanted);
+      if (old === undefined) {
+        return notFound('Tool version not found');
+      }
+      const next = currentVersionOf(tool).version + 1;
+      const created: MockToolVersion = {
+        id: `tool-mock-${state.nextToolSequence}`,
+        version: next,
+        source: old.source,
+        hosts: [...old.hosts],
+        message: `Revert to v${old.version}`,
+        createdBy: currentUserId,
+        createdAt: new Date().toISOString(),
+      };
+      state.nextToolSequence += 1;
+      tool.versions = [...tool.versions, created];
+      return jsonResponse({
+        id: created.id,
+        toolId: tool.id,
+        version: created.version,
+        message: created.message,
+        hosts: created.hosts,
+        createdBy: created.createdBy,
+        createdAt: created.createdAt,
+        toolName: tool.name,
+      });
+    }
+    if (second === 'run' && method === 'POST') {
+      const current = currentVersionOf(tool);
+      const run: MockRun = {
+        id: `run-mock-${state.nextRunSequence}`,
+        toolId: tool.id,
+        version: current.version,
+        trigger: 'manual',
+        status: 'ok',
+        errorKind: null,
+        durationMs: 42,
+        fetchCount: current.hosts.length,
+        outputText: `mock output of ${tool.name} v${current.version}`,
+        createdAt: new Date().toISOString(),
+      };
+      state.nextRunSequence += 1;
+      state.runs = [...state.runs, run];
+      return jsonResponse({
+        ok: true as const,
+        output: { text: run.outputText ?? '' },
+        logs: '',
+        durationMs: run.durationMs,
+        fetchCount: run.fetchCount,
+      });
+    }
+    if (second === undefined && method === 'DELETE') {
+      // Idempotent, like the real server: re-deleting answers 204, and the
+      // tool's routines pause with it.
+      tool.deleted = true;
+      for (const routine of state.routines) {
+        if (routine.toolId === tool.id && !routine.deleted) {
+          routine.deleted = true;
+        }
+      }
+      return noContent();
+    }
+    return notImplemented();
+  }
+  if (head === 'routines' && first !== undefined && second === undefined && method === 'DELETE') {
+    // Idempotent, like the real server: a missing id 404s, a deleted one 204s.
+    const raw = state.routines.find((routine) => routine.id === decodeURIComponent(first));
+    if (raw === undefined) {
+      return notFound('Routine not found');
+    }
+    raw.deleted = true;
+    return noContent();
+  }
+  if (head === 'routines' && first !== undefined && (second === 'pause' || second === 'resume')) {
+    const routine = findRoutine(decodeURIComponent(first));
+    if (routine === undefined) {
+      return notFound('Routine not found');
+    }
+    if (method !== 'POST') {
+      return notImplemented();
+    }
+    if (second === 'pause') {
+      if (routine.status === 'active') {
+        routine.status = 'paused';
+        routine.pausedReason = 'user';
+      }
+      return jsonResponse(routineRow(routine));
+    }
+    if (routine.status === 'needs_approval') {
+      return jsonResponse(
+        { error: { code: 'needs_approval', message: 'The routine needs re-approval' } },
+        409,
+      );
+    }
+    if (routine.status === 'paused') {
+      routine.status = 'active';
+      routine.pausedReason = null;
+    }
+    return jsonResponse(routineRow(routine));
+  }
+  return undefined;
 }
 
 function seedAi(name: string, template: PublicAi['template'], id: string): PublicAi {
@@ -485,6 +960,12 @@ function seedState(): MockState {
     chatPrefs: [],
     pins: seedPins(),
     nextPinSequence: 3,
+    tools: seedTools(),
+    routines: seedRoutines(),
+    runs: seedRuns(),
+    nextToolSequence: 100,
+    nextRoutineSequence: 100,
+    nextRunSequence: 100,
     audit: [
       {
         id: 'audit-dev-stopped',
@@ -935,6 +1416,14 @@ export async function mockRequest(
   await new Promise((resolve) => setTimeout(resolve, options.delayMs ?? delayMs));
   const method = (init.method ?? 'GET').toUpperCase();
   const [head, first, second] = pathParts(path);
+  const segments = pathParts(path);
+
+  // T-0107: tools and routines in memory. The mock routes live in
+  // `toolRoutes` above; an answered path returns here.
+  const toolAnswer = toolRoutes(head ?? '', first, second, segments, method, init);
+  if (toolAnswer !== undefined) {
+    return toolAnswer;
+  }
 
   if (head === 'me') {
     if (method === 'GET') return jsonResponse(state.me);
@@ -1614,7 +2103,14 @@ export async function mockRequest(
       return jsonResponse(topicToView(topic));
     }
     if (second === 'tools' && method === 'GET') {
-      return jsonResponse([]);
+      const topic = findTopic(topicId);
+      if (topic === undefined) {
+        return notFound('Topic not found');
+      }
+      // T-0107: the topic's tools in memory (was an empty list before).
+      return jsonResponse(
+        state.tools.filter((tool) => !tool.deleted && tool.topicId === topicId).map(toolListRow),
+      );
     }
     return notImplemented();
   }

@@ -110,11 +110,24 @@ Topics share the same menu; archiving a topic hides it inside its group's own Ar
 
 ![Machines](screenshots/machines-desktop.png)
 
+## Tools and routines (off by default, needs `TOOLS_ENABLED`)
+
+An AI can write small **tools** (code that runs on a schedule or on demand) and **routines** (a tool plus a schedule that posts into the chat). Both are off by default: the server needs `TOOLS_ENABLED=true` (and `ROUTINES_ENABLED=true` for routines to fire).
+
+- Open a topic's panel (click the topic title) and scroll to **Tools**: every tool shows its name, description, version, the sites it may contact (declared, and approved when shown), and its last run. The group's General panel and the AI settings panel show the same sections.
+- Click a tool to see its read-only source, its version history (each version's message and hosts, with **Revert to this version** behind a confirm step), a **Run now** button with an optional JSON input, and its recent runs. **Delete tool** (confirm step) removes the tool and pauses its routines.
+- The **Routines** list shows each routine's schedule in plain words (**daily at 09:00 Europe/Madrid**, **every 6 hours**), its next run, its last status, and — when paused — why: a routine paused because its tool contacts new sites, or after repeated failures, tells you to ask the AI to schedule it again. **Pause**, **Resume** and **Delete** (confirm step) are next to each row.
+- Everything renders as plain text; long output is truncated with a **Show all** toggle.
+- Plain members can look; only the AI's owner or a group owner/admin sees the Run, Revert, Pause, Resume and Delete buttons.
+
+![Tool detail](screenshots/tools-desktop.png)
+
+![Routines in the group panel](screenshots/routines-desktop.png)
+
 ## Coming next
 
 These are designed but not in the app yet:
 
 - **(coming)** Voice messages and push notifications.
 - **(coming)** Routines ("every morning post gold, the S&P 500 and BTC"): an AI writes the tool, you approve it once, and it posts on a schedule. The scheduler is merged but off by default; the model side is still planned.
-- **(coming)** Tools and Routines UI: see the AI-written code and its history, run, pause, delete. (The sandbox, the tools store, the scheduler, and keyless web tools are merged but off by default; there is nothing to click yet.)
 - **(coming)** Stickers and GIFs, channels (one-way feeds), an install wizard, and group roles beyond owner/admin/member.
