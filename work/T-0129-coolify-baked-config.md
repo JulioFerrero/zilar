@@ -1,7 +1,7 @@
 ---
 id: T-0129
 title: Coolify without bind mounts: bake the ejabberd and Postgres config into images
-status: review
+status: merged
 milestone: M6
 branch: task/T-0129-coolify-baked-config
 model: meta/muse-spark-1.3-contributor
@@ -108,10 +108,14 @@ Verifying on a live Coolify instance (Julio's later live check), HTTPS, the inst
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** merged. The pre-review sessions never produced a packet (two attempts died); I reviewed the commit myself and ran a partial proof.
 
 ### Findings
--
+- Diff read line by line: no bind mounts or relative paths left in the Coolify file, no secret baked into either image, workflow matrix builds all four images with unchanged tags and auth.
+- Proof I ran: the baked postgres image on an empty volume created the `galena` and `ejabberd` databases and the `galena_archive` role (init scripts ran, no errors); the baked ejabberd image runs as uid 9000, has `ejabberd.yml` and an executable `jwt-entrypoint.sh`, and its conf dir is writable for `jwt.jwk`.
+- Not proven: a full boot of the Coolify stack and of the plain stack after the `build:` change (needs the whole compose with secrets; no live Coolify).
 
 ### Follow-ups
--
+- `EJABBERD_MACRO_SQL_PASSWORD` in the Coolify file has no `:?` guard (blank would not fail loudly).
+- GitHub Container Registry packages are private by default: the four `galena-*` packages must be made public (or Coolify needs a registry login) before the paste works.
+- Boot the plain stack from a fresh clone once, on a free port, before the first release tag.
