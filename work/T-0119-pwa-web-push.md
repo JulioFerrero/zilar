@@ -131,6 +131,11 @@ pnpm build
 - **3. `publishOptionsSecret` dropped** (never consumed downstream); one comment in `notification.ts` explains why the `<publish-options>` echo is ignored (component connection already trusted; keeps a credential-adjacent value out of logs). Dead `readPublishOption` removed with it.
 - **4. Live-gate SKIP is now a real skip:** stage B calls vitest `ctx.skip()` with the reason, so the run reports `1 skipped` instead of a passing placeholder (`expect(true).toBe(true)` removed; verified: `Tests 1 skipped`).
 
+### Round 4 — migration 0031 (after lead rebase onto main post-T-0124)
+- Ran `pnpm --filter @galena/server db:generate` as instructed: produced exactly `drizzle/0031_glossy_wasp.sql` (`push_settings` + `push_subscriptions` with FKs, unique node, length check, user index — nothing else; 0030 channels untouched). Prettier --write applied to the meta snapshot + journal (SQL has no prettier parser, like prior migrations).
+- Push suite with the real migration in place (`src/push/`: 8 files pass, 56 tests pass, 1 skipped live gate). Neighbours: topics + groups + authz-sweep + app + chat-prefs — 6 files, 98 tests pass. `format:check`, `lint`, `typecheck` (10/10) all pass.
+- Note: `push/test-tables.ts` (`CREATE TABLE IF NOT EXISTS`) is now redundant with the migration but harmless — kept so the push tests stay self-sufficient.
+
 ---
 
 ## Review (written by Claude)

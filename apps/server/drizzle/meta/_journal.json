@@ -218,6 +218,13 @@
       "when": 1790799982652,
       "tag": "0030_aromatic_masked_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790803707307,
+      "tag": "0031_glossy_wasp",
+      "breakpoints": true
     }
   ]
 }
