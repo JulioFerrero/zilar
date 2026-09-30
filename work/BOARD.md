@@ -16,7 +16,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
 | [T-0124](T-0124-channels.md) | Channels: only admins post | planned | meta/muse-spark-1.3-contributor | T-0108, T-0115 |  |
 | [T-0134](T-0134-server-followups.md) | Server follow-ups (join race, trusted proxy hops, pin 404, search with roles, preview limit, approvers in list) | planned | meta/muse-spark-1.3-contributor | T-0116 | No schema |
-| [T-0135](T-0135-mobile-parity.md) | Mobile: chat preferences and pinned messages | planned | meta/muse-spark-1.3-contributor | T-0113, T-0114 | Mobile, not run in a simulator |
 | [T-0106](T-0106-tool-model-side.md) | Model side of AI tools: prompt guide, several rounds per turn, working-on-it line | planned | meta/muse-spark-1.3-contributor | T-0105, T-0125, T-0132 | Ready; starts after T-0132 merges |
 
 ## Follow-ups
@@ -168,3 +167,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0137](T-0137-mobile-roles-admin.md) | mobile group roles: manage roles, member chips, private-topic access and approver (mobile only, to be run on Android) | 2026-09-30 |
 | [T-0107](T-0107-tools-routines-ui.md) | tools and routines UI (web): tool list, detail, versions, run, revert, routines, approved hosts | 2026-09-30 |
 | [T-0138](T-0138-mobile-search.md) | mobile message search with paging, jump to message, chat scope (mobile only, to be run on Android) | 2026-09-30 |
+| [T-0135](T-0135-mobile-parity.md) | mobile chat prefs (mute, archive, pin) and pinned messages, mock parity, T-0112 fixes (mobile only) | 2026-09-30 |
