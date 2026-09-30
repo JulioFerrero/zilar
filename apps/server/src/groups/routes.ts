@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
 import type { ServerConfig } from '../config';
@@ -27,6 +28,7 @@ export interface GroupsRoutesDependencies {
   config: ServerConfig;
   adminClient: EjabberdAdminClient;
   logger: InviteLogger;
+  audit?: AuditRecorder;
 }
 
 const titleSchema = z
@@ -76,6 +78,7 @@ export function createGroupsRoutes({
   config,
   adminClient,
   logger,
+  audit,
 }: GroupsRoutesDependencies): Hono {
   const routes = new Hono();
   const domain = config.xmpp.domain;
@@ -140,7 +143,8 @@ export function createGroupsRoutes({
 
   // T-0124: promote a member to admin (or demote one back). Only the owner.
   // The room affiliation follows at once, so a channel's voice mapping is
-  // enforced by the room, not the UI.
+  // enforced by the room, not the UI. Every change is audited as
+  // `group.role_changed` (ids and roles only).
   routes.put('/groups/:id/members/:userId/role', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
     const body = await c.req.json().catch(() => null);
@@ -159,6 +163,7 @@ export function createGroupsRoutes({
       role: parsed.data.role,
       domain,
       logger,
+      ...(audit === undefined ? {} : { audit }),
     });
     return c.json(group);
   });

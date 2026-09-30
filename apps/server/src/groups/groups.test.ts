@@ -6,6 +6,7 @@ import {
   ais,
   aiTools,
   approvalRules,
+  auditLog,
   groupAis,
   groupMembers,
   groups,
@@ -1098,10 +1099,15 @@ describe('groups', () => {
 
       const roomLocalpart = await roomLocalpartOf(groupId);
       expect(context.adminClient.roomOptions).toContainEqual(
-        expect.objectContaining({ roomId: roomLocalpart, moderated: true }),
+        expect.objectContaining({
+          roomId: roomLocalpart,
+          moderated: true,
+          membersByDefault: false,
+        }),
       );
       // The owner posts (voice via affiliation `owner`); the subscriber
-      // never holds more than `member` (a visitor once inside the room).
+      // never holds more than `member` (a visitor once inside the room,
+      // since the room does not make members participants by default).
       const ownerJid = `${localpartFor(detail.createdBy)}@${TEST_XMPP_DOMAIN}`;
       const subJid = `${localpartFor(subscriberId)}@${TEST_XMPP_DOMAIN}`;
       const affiliations = context.adminClient.affiliationState.get(roomLocalpart);
@@ -1130,6 +1136,7 @@ describe('groups', () => {
       );
       expect(options).toMatchObject({ membersOnly: true, persistent: true, mam: true });
       expect(options).not.toHaveProperty('moderated');
+      expect(options).not.toHaveProperty('membersByDefault');
     });
 
     it('refuses topic creation in a channel with channel_has_no_topics', async () => {
@@ -1174,13 +1181,36 @@ describe('groups', () => {
     });
 
     it('promotes a subscriber to admin with voice, and refuses to lose the last admin', async () => {
-      const { ownerCookie, subscriberId, groupId } = await channelWithSubscriber();
+      const { ownerCookie, ownerId, subscriberId, groupId } = await channelWithSubscriber();
       const roomLocalpart = await roomLocalpartOf(groupId);
       const subJid = `${localpartFor(subscriberId)}@${TEST_XMPP_DOMAIN}`;
 
       const promoted = await changeRoleRequest(ownerCookie, groupId, subscriberId, 'admin');
       expect(promoted.status).toBe(200);
       expect(context.adminClient.affiliationState.get(roomLocalpart)?.get(subJid)).toBe('admin');
+
+      // The promotion is audited as `group.role_changed` (ids and roles
+      // only — never names). The actor is the owner.
+      const audits = await context.db
+        .select({
+          action: auditLog.action,
+          actorUserId: auditLog.actorUserId,
+          subjectId: auditLog.subjectId,
+          detail: auditLog.detail,
+        })
+        .from(auditLog)
+        .where(eq(auditLog.groupId, groupId));
+      expect(audits).toContainEqual({
+        action: 'group.role_changed',
+        actorUserId: ownerId,
+        subjectId: subscriberId,
+        detail: {
+          groupId,
+          subjectUserId: subscriberId,
+          from: 'member',
+          to: 'admin',
+        },
+      });
 
       // The new admin sees the audience list now.
       const list = await membersRequest(ownerCookie, groupId);

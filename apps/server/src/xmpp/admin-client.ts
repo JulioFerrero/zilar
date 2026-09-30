@@ -47,6 +47,11 @@ export type CreateRoomOptions = {
   // so they cannot post); admins/owners keep voice. Channels use this; group
   // rooms leave it off so every member can write.
   moderated?: boolean;
+  // T-0124: with `membersByDefault: false`, affiliated members join a
+  // moderated room as visitors (read, no voice) instead of participants.
+  // Channels set this; groups and topic rooms leave it off (ejabberd's
+  // default `true`), so every member keeps voice there.
+  membersByDefault?: boolean;
 };
 
 export type AddRosterItemOptions = {
@@ -269,6 +274,7 @@ export function createEjabberdAdminClient(
         mam = true,
         anonymous,
         moderated,
+        membersByDefault,
       } = options;
       const roomOptions = [
         { name: 'members_only', value: String(membersOnly) },
@@ -280,6 +286,9 @@ export function createEjabberdAdminClient(
       }
       if (moderated !== undefined) {
         roomOptions.push({ name: 'moderated', value: String(moderated) });
+      }
+      if (membersByDefault !== undefined) {
+        roomOptions.push({ name: 'members_by_default', value: String(membersByDefault) });
       }
       if (title !== undefined) {
         roomOptions.push({ name: 'title', value: title });

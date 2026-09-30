@@ -18,7 +18,7 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { emitGroupAi, emitTopicAi } from './events';
 import { aiMayBeInTopic } from '../topics/access';
-import { recordAudit } from '../audit/service';
+import { recordAudit, type AuditRecorder } from '../audit/service';
 import { dropMemberRoles, roleHoldersByGroup, topicRoleHolderIds } from '../roles/service';
 import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
 import { deleteRoutinesForAiInGroup } from '../routines/service';
@@ -211,17 +211,18 @@ export async function createGroup(
         createdBy: input.creatorId,
       });
 
-      // T-0124: a channel's room is moderated, so subscribers hold the
-      // visitor role (no voice, cannot post) while admins/owner (affiliation
-      // admin/owner, which carry voice) post. Group rooms stay unmoderated
-      // so every member keeps voice.
+      // T-0124: a channel's room is moderated with `members_by_default:
+      // false`, so subscribers (affiliation `member`) join as visitors:
+      // they read but cannot post. Affiliations `admin`/`owner` carry voice,
+      // so admins and the owner post. Group rooms stay unmoderated with the
+      // ejabberd default, so every member keeps voice.
       await adminClient.createRoom(roomLocalpart, {
         title: input.title,
         membersOnly: true,
         persistent: true,
         mam: true,
         anonymous: false,
-        ...(kind === 'channel' ? { moderated: true } : {}),
+        ...(kind === 'channel' ? { moderated: true, membersByDefault: false } : {}),
       });
       roomCreated = true;
       await adminClient.setAffiliation(
@@ -485,6 +486,7 @@ export interface ChangeMemberRoleInput {
   role: 'admin' | 'member';
   domain: string;
   logger: InviteLogger;
+  audit?: AuditRecorder;
 }
 
 // Promotes a member to admin (or demotes an admin back to member). Only the
@@ -542,6 +544,36 @@ export async function changeMemberRole(
     });
   } catch (error) {
     throw mapXmppError(error);
+  }
+  // T-0124: every promote/demote is audited as `group.role_changed` (ids and
+  // roles only — never names). The recorder is injected by the route; a write
+  // failure is logged and never fails the request.
+  if (input.audit) {
+    try {
+      await recordAudit(
+        db,
+        {
+          actorUserId: input.actorId,
+          aiId: null,
+          groupId: input.groupId,
+          action: 'group.role_changed',
+          subjectId: input.targetUserId,
+          argsHash: null,
+          costCurrency: null,
+          costAmount: null,
+          result: 'ok',
+          detail: {
+            groupId: input.groupId,
+            subjectUserId: input.targetUserId,
+            from: target.role,
+            to: input.role,
+          },
+        },
+        new Date(),
+      );
+    } catch {
+      input.logger.warn({ groupId: input.groupId }, 'could not audit a role change');
+    }
   }
   const detail = await getGroupDetail(db, input.groupId);
   if (!detail) {

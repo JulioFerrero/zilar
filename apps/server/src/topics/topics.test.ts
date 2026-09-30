@@ -141,6 +141,17 @@ describe('topics', () => {
     expect(context.adminClient.directInvitations.some((invite) => invite.roomId === room)).toBe(
       true,
     );
+    // Topic rooms stay unmoderated with the default voice mapping, even in
+    // a channel world: no `moderated`, no `members_by_default`.
+    const topicOptions = context.adminClient.roomOptions.find((entry) => entry.roomId === room);
+    expect(topicOptions).toMatchObject({
+      membersOnly: true,
+      persistent: true,
+      mam: true,
+      anonymous: false,
+    });
+    expect(topicOptions).not.toHaveProperty('moderated');
+    expect(topicOptions).not.toHaveProperty('membersByDefault');
 
     const privateCreated = await createTopic(owner.cookie, group.id, {
       name: 'Hiring',

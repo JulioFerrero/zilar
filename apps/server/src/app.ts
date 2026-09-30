@@ -217,7 +217,10 @@ export function createApp({
       ...(isMachineOnline === undefined ? {} : { isMachineOnline }),
     }),
   );
-  app.route('/api', createGroupsRoutes({ auth, db, config, adminClient, logger }));
+  app.route(
+    '/api',
+    createGroupsRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
+  );
   app.route(
     '/api',
     createInviteLinksRoutes({

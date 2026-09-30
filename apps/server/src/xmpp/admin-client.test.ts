@@ -159,6 +159,26 @@ describe('createEjabberdAdminClient', () => {
     await expect(client.createRoom('project-a')).resolves.toEqual({ created: false });
   });
 
+  it('sends moderated + members_by_default for a channel room, neither by default', async () => {
+    const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
+    const client = createEjabberdAdminClient(config, fetchImpl);
+
+    await client.createRoom('releases', {
+      title: 'Releases',
+      moderated: true,
+      membersByDefault: false,
+    });
+
+    expect(bodyOf(calls[0]!).options).toEqual([
+      { name: 'members_only', value: 'true' },
+      { name: 'persistent', value: 'true' },
+      { name: 'mam', value: 'true' },
+      { name: 'moderated', value: 'true' },
+      { name: 'members_by_default', value: 'false' },
+      { name: 'title', value: 'Releases' },
+    ]);
+  });
+
   it('sets an affiliation from a bare JID', async () => {
     const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
     const client = createEjabberdAdminClient(config, fetchImpl);
