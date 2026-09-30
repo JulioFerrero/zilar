@@ -11,7 +11,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0119](T-0119-pwa-web-push.md) | PWA and web push | planned | meta/muse-spark-1.3-contributor | T-0118, T-0113 | Spec ready (rewritten from the spike); schema task, starts after T-0116 merges |
 | [T-0121](T-0121-sticker-creator.md) | Sticker pack creator, favorites, discover | planned | meta/muse-spark-1.3-contributor | T-0120 |  |
-| [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | planned | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
+| [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | in progress | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
 | [T-0106](T-0106-tool-model-side.md) | Model side of AI tools: prompt guide, several rounds per turn, working-on-it line | planned | meta/muse-spark-1.3-contributor | T-0105, T-0125, T-0132 | Ready; starts after T-0132 merges |
 | [T-0139](T-0139-mobile-device-bugs.md) | Mobile bugs found on Android: topics dropped from /api/chats, dead More options, group screen route, repeated group fetch | planned | meta/muse-spark-1.3-contributor | T-0135, T-0136, T-0137 | Spec ready |
