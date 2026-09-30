@@ -47,6 +47,7 @@ import {
   archiveTopic as archiveTopicRequest,
   addTopicAi as addTopicAiRequest,
   addTopicMember as addTopicMemberRequest,
+  changeGroupMemberRole as changeGroupMemberRoleRequest,
   chatEntryTopics,
   createGroup as createGroupRequest,
   createGroupInviteLink as createGroupInviteLinkRequest,
@@ -62,6 +63,7 @@ import {
   listAis as listAisRequest,
   listChatPrefs as listChatPrefsRequest,
   listGroupInviteLinks as listGroupInviteLinksRequest,
+  listGroupMembers as listGroupMembersRequest,
   listGroupTopics as listGroupTopicsRequest,
   listPins as listPinsRequest,
   listTopicAis as listTopicAisRequest,
@@ -71,6 +73,7 @@ import {
   previewJoinLink as previewJoinLinkRequest,
   putChatPref as putChatPrefRequest,
   removeGroupAi as removeGroupAiRequest,
+  removeGroupMember as removeGroupMemberRequest,
   removeTopicAi as removeTopicAiRequest,
   removeTopicMember as removeTopicMemberRequest,
   revokeGroupInviteLink as revokeGroupInviteLinkRequest,
@@ -85,6 +88,7 @@ import {
   type CreateTopicInput,
   type GroupDetail,
   type GroupInviteLink,
+  type GroupMember,
   type Invite,
   type JoinPreview,
   type JoinResult,
@@ -166,7 +170,13 @@ export interface ApiClient {
   getContacts(): Promise<Contact[]>;
   getGroup(groupId: string): Promise<GroupDetail>;
   getXmppToken(): Promise<XmppToken>;
-  createGroup(input: { title: string; memberIds: string[] }): Promise<GroupDetail>;
+  createGroup(input: {
+    title: string;
+    memberIds: string[];
+    kind?: 'group' | 'channel';
+    description?: string;
+  }): Promise<GroupDetail>;
+  listGroupMembers(groupId: string): Promise<GroupMember[]>;
   createInvite(): Promise<Invite>;
   createGroupInviteLink(
     groupId: string,
@@ -176,6 +186,12 @@ export interface ApiClient {
   revokeGroupInviteLink(groupId: string, linkId: string): Promise<void>;
   previewJoinLink(token: string): Promise<JoinPreview>;
   joinByLink(token: string): Promise<JoinResult>;
+  changeGroupMemberRole(
+    groupId: string,
+    userId: string,
+    role: 'admin' | 'member',
+  ): Promise<GroupDetail>;
+  removeGroupMember(groupId: string, userId: string): Promise<GroupDetail>;
   listAis(): Promise<PublicAi[]>;
   addGroupAi(groupId: string, aiId: string): Promise<GroupDetail>;
   removeGroupAi(groupId: string, aiId: string): Promise<GroupDetail>;
@@ -226,10 +242,13 @@ const realApi: ApiClient = {
   getGroup,
   getXmppToken,
   createGroup: createGroupRequest,
+  listGroupMembers: listGroupMembersRequest,
   createInvite: createInviteRequest,
   createGroupInviteLink: createGroupInviteLinkRequest,
   listGroupInviteLinks: listGroupInviteLinksRequest,
   revokeGroupInviteLink: revokeGroupInviteLinkRequest,
+  changeGroupMemberRole: changeGroupMemberRoleRequest,
+  removeGroupMember: removeGroupMemberRequest,
   previewJoinLink: previewJoinLinkRequest,
   joinByLink: joinByLinkRequest,
   listAis: listAisRequest,
@@ -439,11 +458,23 @@ function summaryFor(entry: ChatEntry): ChatSummary {
       online: false,
     };
   }
+  // T-0124: channels ride the same rows as groups (their General topic is
+  // the feed); the feed row carries `chatKind: 'channel'`, the subscriber
+  // count and the blurb, plus the viewer's role (admins post, members read).
+  const chatKind = entry.chatKind ?? 'group';
   return {
     ...base,
     kind: 'group',
     memberCount: entry.memberCount,
     onlineCount: 0,
+    ...(chatKind === 'channel'
+      ? {
+          chatKind: 'channel' as const,
+          subscriberCount: entry.subscriberCount ?? entry.memberCount,
+          description: entry.description ?? null,
+          myRole: entry.role,
+        }
+      : {}),
   };
 }
 
@@ -451,9 +482,20 @@ function summaryFor(entry: ChatEntry): ChatSummary {
  * One topic becomes its own chat row (T-0111), keyed by the topic's room JID.
  * The General topic keeps the group's old chat id, so existing `/c/<jid>`
  * deep links open it. A group without a `topics` field (older server) keeps
- * its single row from `summaryFor`.
+ * its single row from `summaryFor`. T-0124: a channel's General topic is its
+ * feed, so the row carries the channel fields too.
  */
-function summaryForTopic(groupTitle: string, groupId: string, topic: Topic): ChatSummary {
+function summaryForTopic(
+  groupTitle: string,
+  groupId: string,
+  topic: Topic,
+  channel: {
+    chatKind: 'channel';
+    subscriberCount: number;
+    description: string | null;
+    role: 'owner' | 'admin' | 'member';
+  } | null,
+): ChatSummary {
   return {
     id: topic.chatJid,
     title: topic.name,
@@ -464,6 +506,14 @@ function summaryForTopic(groupTitle: string, groupId: string, topic: Topic): Cha
     muted: false,
     memberCount: topic.memberCount,
     onlineCount: 0,
+    ...(channel === null
+      ? {}
+      : {
+          chatKind: 'channel' as const,
+          subscriberCount: channel.subscriberCount,
+          description: channel.description,
+          myRole: channel.role,
+        }),
     groupId,
     groupTitle,
     topic: {
@@ -495,7 +545,17 @@ export function summariesFor(entry: ChatEntry): ChatSummary[] {
   if (topics.length === 0) {
     return [summaryFor(entry)];
   }
-  return topics.map((topic) => summaryForTopic(entry.title, entry.groupId, topic));
+  const chatKind = entry.chatKind ?? 'group';
+  const channel =
+    chatKind === 'channel'
+      ? {
+          chatKind: 'channel' as const,
+          subscriberCount: entry.subscriberCount ?? entry.memberCount,
+          description: entry.description ?? null,
+          role: entry.role,
+        }
+      : null;
+  return topics.map((topic) => summaryForTopic(entry.title, entry.groupId, topic, channel));
 }
 
 export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStoreState> {
@@ -2876,6 +2936,93 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           throw error;
         }
       },
+      // T-0124: channels share the create/list/refresh flow with groups (the
+      // detail carries `kind`, the chat list paints the feed row).
+      createChannel: async (title, memberIds, description) => {
+        const detail = await api.createGroup({
+          title,
+          memberIds,
+          kind: 'channel',
+          ...(description === undefined || description.trim() === ''
+            ? {}
+            : { description: description.trim() }),
+        });
+        const [entries, prefs] = await Promise.all([
+          api.getChats(),
+          api.listChatPrefs().catch(() => [] as ChatPref[]),
+        ]);
+        rememberGroupIds(entries);
+        const previous = get().chats;
+        const freshRows = entries.flatMap((entry) => summariesFor(entry));
+        const byJid: Record<string, ChatPref> = {};
+        for (const pref of prefs) {
+          byJid[pref.chatJid.toLowerCase()] = pref;
+        }
+        set({
+          chats: applyChatPrefs(
+            sortByRecency(
+              freshRows.map((row) => {
+                const before = previous.find((chat) => chat.id === row.id);
+                return before === undefined
+                  ? row
+                  : {
+                      ...row,
+                      ...(before.lastMessage === undefined
+                        ? {}
+                        : { lastMessage: before.lastMessage }),
+                      unread: before.unread,
+                      ...(before.online === undefined ? {} : { online: before.online }),
+                    };
+              }),
+            ),
+            prefs,
+            now().getTime(),
+          ),
+          chatPrefs: byJid,
+        });
+        const created = entries.find(
+          (entry) => entry.kind === 'group' && entry.groupId === detail.id,
+        );
+        if (created === undefined) {
+          throw new Error('the new channel did not appear in the chat list');
+        }
+        const me = get().me;
+        if (core !== undefined && me !== undefined) {
+          await core.joinRoom(created.chatJid, nick(me)).catch(() => {});
+        }
+        void ensureGroupMembers(created.chatJid);
+        await openHistory(created.chatJid);
+        return created.chatJid;
+      },
+      // T-0124: leaving a channel removes the caller's membership through
+      // the member route (the same route admins use to remove others). The
+      // list refreshes itself away; the caller navigates away.
+      leaveChannel: async (chatId) => {
+        const groupId = groupIds.get(chatId);
+        const me = get().me;
+        if (groupId === undefined || me === undefined) {
+          throw new Error('This channel is not available yet.');
+        }
+        await api.removeGroupMember(groupId, me.id);
+        await refreshChatsOrThrow();
+      },
+      // T-0124: promote/demote through the role route (owner only). The
+      // detail refreshes, so the panel updates at once; the chat list
+      // refreshes too, so the acting device's rows (myRole, counts) match
+      // server truth and the composer bar flips. The target's own device
+      // converges on the next list refresh (60s poll / focus), like every
+      // other membership change in the app.
+      changeChannelRole: async (chatId, userId, role) => {
+        const groupId = groupIds.get(chatId);
+        const mine = myJid();
+        if (groupId === undefined || mine === undefined) {
+          throw new Error('This channel is not available yet.');
+        }
+        const domain = mine.slice(mine.indexOf('@') + 1);
+        const detail = await api.changeGroupMemberRole(groupId, userId, role);
+        applyGroupDetail(chatId, detail, domain);
+        await refreshChatsOrThrow();
+      },
       setMembersCanCreateTopics: async (chatId, allowed) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
         const groupId = chat?.groupId ?? groupIds.get(chatId);
@@ -3491,6 +3638,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         runAttachmentUpload(chat, messageId, file, message.text ?? '', message.replyTo);
       },
       createGroup: async (title, memberIds) => {
+        // T-0124: channels share this entry point (the dialog passes `kind`
+        // and `description` through the same call). The detail carries
+        // `kind`, and the chat list paints the feed row.
         const detail = await api.createGroup({ title, memberIds });
         const [entries, prefs] = await Promise.all([
           api.getChats(),

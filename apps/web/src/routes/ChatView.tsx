@@ -2,6 +2,8 @@ import type { ChatSummary, ReplyRef, UiMessage } from '@galena/chat-core';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { AiPanel } from '@/components/ais/AiPanel';
+import { ChannelComposerBar } from '@/components/ChannelComposerBar';
+import { ChannelPanel } from '@/components/ChannelPanel';
 import { ChatHeader } from '@/components/ChatHeader';
 import { Composer } from '@/components/Composer';
 import { GroupPanel } from '@/components/GroupPanel';
@@ -19,10 +21,14 @@ function initialPanel(value: string | null, chat: ChatSummary): OpenPanel | unde
   if (value === 'ai' && chat.isAI) {
     return 'ai';
   }
-  if (value === 'topic' && chat.topic !== undefined) {
+  // T-0124: the channel feed opens the channel panel, not the topic panel.
+  if (value === 'topic' && chat.topic !== undefined && chat.chatKind !== 'channel') {
     return 'topic';
   }
   if (value === 'group' && chat.kind === 'group' && chat.topic === undefined) {
+    return 'group';
+  }
+  if (value === 'group' && chat.chatKind === 'channel') {
     return 'group';
   }
   return undefined;
@@ -106,13 +112,20 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         </div>
       )}
       <MessageList key={chat.id} chat={chat} onReply={startReply} />
-      <Composer chatId={chat.id} replyTo={replyTo} onCancelReply={cancelReply} />
+      {chat.chatKind === 'channel' ? (
+        <ChannelComposerBar chat={chat} />
+      ) : (
+        <Composer chatId={chat.id} replyTo={replyTo} onCancelReply={cancelReply} />
+      )}
       {panel === 'ai' && chat.isAI && <AiPanel chat={chat} onClose={() => setPanel(undefined)} />}
       {panel === 'group' && chat.kind === 'group' && chat.topic === undefined && (
         <GroupPanel chat={chat} onClose={() => setPanel(undefined)} />
       )}
-      {panel === 'topic' && chat.topic !== undefined && (
+      {panel === 'topic' && chat.topic !== undefined && chat.chatKind !== 'channel' && (
         <TopicPanel chat={chat} onClose={() => setPanel(undefined)} />
+      )}
+      {panel === 'group' && chat.chatKind === 'channel' && (
+        <ChannelPanel chat={chat} onClose={() => setPanel(undefined)} />
       )}
       {pinsPanel !== undefined && (
         <PinsPanel chatId={chat.id} onClose={() => storeApi.getState().setPinsPanel(undefined)} />

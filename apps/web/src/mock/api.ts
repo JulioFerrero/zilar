@@ -1304,6 +1304,15 @@ function chatEntries(): ChatEntry[] {
         groupId: detail?.id ?? chat.id,
         memberCount: chat.memberCount ?? detail?.members.length ?? 0,
         role: membership?.role ?? 'member',
+        // T-0124: the mock channel rides the group entry with its kind,
+        // subscriber count and blurb, like the real server.
+        ...(chat.chatKind === 'channel'
+          ? {
+              chatKind: 'channel',
+              subscriberCount: chat.subscriberCount ?? chat.memberCount ?? 0,
+              description: chat.description ?? null,
+            }
+          : {}),
       } as ChatEntry & { topics?: unknown[] };
       // T-0111: the Dev team group carries its visible topics (archived
       // excluded). The mock has one user, who sees every topic.
@@ -1807,6 +1816,9 @@ export async function mockRequest(
         memberCount: detail.members.length,
         alreadyMember,
         ...(alreadyMember ? { groupId: link.groupId } : {}),
+        // T-0124: the channel kind, so mock-mode JoinPage reads "Join
+        // channel" like the real preview.
+        ...(detail.kind === 'channel' ? { kind: 'channel' as const } : {}),
       });
     }
     if (method === 'POST') {
@@ -1836,6 +1848,56 @@ export async function mockRequest(
     return notImplemented();
   }
 
+  // T-0124: creating groups and channels in mock mode. The row lands in
+  // `mockGroupDetails` under a fresh chat id; the mock user owns it.
+  if (head === 'groups' && first === undefined && method === 'POST') {
+    const body = readJsonBody(init);
+    const title = typeof body.title === 'string' ? body.title.trim().slice(0, 100) : '';
+    if (title === '') {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'title must not be empty' } },
+        400,
+      );
+    }
+    const kind = body.kind === 'channel' ? 'channel' : 'group';
+    const description =
+      typeof body.description === 'string' && body.description.trim() !== ''
+        ? body.description.trim().slice(0, 300)
+        : null;
+    const memberIds = Array.isArray(body.memberIds)
+      ? [...new Set(body.memberIds.filter((item): item is string => typeof item === 'string'))]
+      : [];
+    const groupId = `g-mock-${state.nextTopicSequence}`;
+    const chatId = `c-mock-${state.nextTopicSequence}`;
+    state.nextTopicSequence += 1;
+    const created = {
+      id: groupId,
+      title,
+      createdBy: currentUserId,
+      membersCanCreateTopics: false,
+      ...(kind === 'channel' ? { kind: 'channel' as const, description } : {}),
+      members: [
+        {
+          userId: currentUserId,
+          name: mockPersonName(currentUserId),
+          role: 'owner' as const,
+          roles: [],
+        },
+        ...memberIds
+          .filter((userId) => userId !== currentUserId)
+          .map((userId) => ({
+            userId,
+            name: mockPersonName(userId),
+            role: 'member' as const,
+            roles: [],
+          })),
+      ],
+      ais: [],
+    };
+    mockGroupDetails[chatId] = created;
+    return jsonResponse(created, 201);
+  }
+
   // T-0111: the group's topic settings switch. The mock has one user,
   // the group owner, so PATCH always succeeds for the Dev team group.
   if (head === 'groups' && second === undefined && method === 'PATCH') {
@@ -1855,6 +1917,116 @@ export async function mockRequest(
       return jsonResponse(updated);
     }
     return jsonResponse(detail);
+  }
+
+  // T-0124: channel member routes in mock mode (the mock user owns every
+  // mock group). `GET /groups/:id/members` gives subscribers the admins
+  // slice only (who posts is public); the role route promotes/demotes
+  // against the in-memory detail; DELETE removes (leave). `g-devteam`
+  // keeps its group behaviour through the same routes.
+  if (head === 'groups' && second === 'members') {
+    const segments =
+      path
+        .split('?')[0]
+        ?.split('/')
+        .filter((part) => part !== '') ?? [];
+    const groupId = decodeURIComponent(first ?? '');
+    const detail = Object.values(mockGroupDetails).find((item) => item.id === groupId);
+    if (detail === undefined) {
+      return notFound('Group not found');
+    }
+    const viewer = detail.members.find((member) => member.userId === currentUserId);
+    if (viewer === undefined) {
+      return notFound('Group not found');
+    }
+    const isManager = viewer.role === 'owner' || viewer.role === 'admin';
+    // `/groups/:id/members` — the audience list for admins, the admins
+    // slice for channel subscribers (mirrors `listMembersForViewer`).
+    if (segments.length === 3 && method === 'GET') {
+      const rows =
+        detail.kind === 'channel' && !isManager
+          ? detail.members.filter((member) => member.role !== 'member')
+          : detail.members;
+      const visible = rows.map((member) => ({
+        userId: member.userId,
+        name: member.name,
+        role: member.role,
+        roles: member.roles ?? [],
+      }));
+      return jsonResponse({ members: visible });
+    }
+    // `/groups/:id/members/:userId/role` — channels only, owner only.
+    // Non-owners (and plain groups) 404 like an unknown group, mirroring
+    // the server's same-404 rule.
+    if (segments.length === 5 && segments[4] === 'role' && method === 'PUT') {
+      if (viewer.role !== 'owner' || detail.kind !== 'channel') {
+        return notFound('Group not found');
+      }
+      const userId = decodeURIComponent(segments[3] ?? '');
+      const member = detail.members.find((item) => item.userId === userId);
+      if (member === undefined) {
+        return notFound('That user is not a member');
+      }
+      const body = readJsonBody(init);
+      if (body.role !== 'admin' && body.role !== 'member') {
+        return jsonResponse(
+          { error: { code: 'invalid_request', message: 'role must be admin or member' } },
+          400,
+        );
+      }
+      if (member.role === 'owner' || userId === currentUserId) {
+        return jsonResponse(
+          { error: { code: 'invalid_request', message: 'The owner cannot change roles' } },
+          400,
+        );
+      }
+      if (
+        body.role === 'member' &&
+        detail.kind === 'channel' &&
+        !detail.members.some((item) => item.userId !== userId && item.role === 'admin')
+      ) {
+        return jsonResponse(
+          { error: { code: 'channel_needs_admin', message: 'A channel needs an admin' } },
+          409,
+        );
+      }
+      member.role = body.role;
+      return jsonResponse(detail);
+    }
+    // `/groups/:id/members/:userId` — leave (self) or remove (manager).
+    // Removing a channel admin refuses with `channel_needs_admin` while
+    // they are the last admin, mirroring the server guard (kicking a
+    // subscriber always succeeds).
+    if (segments.length === 4 && method === 'DELETE') {
+      const userId = decodeURIComponent(segments[3] ?? '');
+      const target = detail.members.find((item) => item.userId === userId);
+      if (target === undefined) {
+        return notFound('That user is not a member');
+      }
+      if (userId !== currentUserId && !isManager) {
+        return jsonResponse({ error: { code: 'forbidden', message: 'Forbidden' } }, 403);
+      }
+      if (target.role === 'owner') {
+        return jsonResponse(
+          { error: { code: 'invalid_request', message: 'The owner cannot be removed' } },
+          400,
+        );
+      }
+      if (
+        detail.kind === 'channel' &&
+        target.role === 'admin' &&
+        userId !== currentUserId &&
+        !detail.members.some((item) => item.userId !== userId && item.role === 'admin')
+      ) {
+        return jsonResponse(
+          { error: { code: 'channel_needs_admin', message: 'A channel needs an admin' } },
+          409,
+        );
+      }
+      detail.members = detail.members.filter((item) => item.userId !== userId);
+      return jsonResponse(detail);
+    }
+    return notImplemented();
   }
 
   // T-0111: topics of a group (visible to the mock's single user).

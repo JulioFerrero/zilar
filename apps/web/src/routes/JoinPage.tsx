@@ -15,6 +15,10 @@ import { ApiError, joinByLink, previewJoinLink, type JoinPreview } from '@/lib/a
  * so the stranded-join fallback below navigates to `/` when the list has
  * not refreshed yet.
  *
+ * T-0124: the same page joins channels ("Join channel" wording comes from
+ * `kind` in the preview — see `joinPreviewSchema`); a channel preview
+ * counts subscribers.
+ *
  * `openGroupChat`/`refreshChats` are injected by the app shell (the route
  * tests pass stubs); the real `AppRoutes` wires the store, which resolves
  * the General chat id from the painted list.
@@ -177,11 +181,19 @@ export function JoinPage({
       <div className="w-full max-w-sm rounded-2xl bg-background p-6 text-center shadow-xl">
         <h1 className="text-[24px] leading-8 font-semibold">{preview?.groupTitle ?? 'Group'}</h1>
         <p className="mt-2 text-[15px] text-muted-foreground">
-          {preview?.memberCount ?? 0} {(preview?.memberCount ?? 0) === 1 ? 'member' : 'members'}
+          {preview?.memberCount ?? 0}{' '}
+          {preview?.kind === 'channel'
+            ? (preview?.memberCount ?? 0) === 1
+              ? 'subscriber'
+              : 'subscribers'
+            : (preview?.memberCount ?? 0) === 1
+              ? 'member'
+              : 'members'}
         </p>
         {preview?.alreadyMember === true ? (
           <p className="mt-2 text-[14px] text-muted-foreground">
-            You&apos;re already a member of this group.
+            You&apos;re already a member of this {preview?.kind === 'channel' ? 'channel' : 'group'}
+            .
           </p>
         ) : null}
         {needsName ? (
@@ -212,8 +224,10 @@ export function JoinPage({
             {busy
               ? 'Joining…'
               : preview?.alreadyMember === true
-                ? 'Open the group'
-                : 'Join the group'}
+                ? `Open the ${preview?.kind === 'channel' ? 'channel' : 'group'}`
+                : preview?.kind === 'channel'
+                  ? 'Join the channel'
+                  : 'Join the group'}
           </button>
         )}
       </div>

@@ -57,6 +57,13 @@ const groupEntrySchema = z.object({
   groupId: z.string(),
   memberCount: z.number(),
   role: z.enum(['owner', 'admin', 'member']),
+  // T-0124: `group` behaves as before; `channel` is the broadcast feed (its
+  // General topic is the feed). Optional so older payloads parse as groups.
+  chatKind: z.enum(['group', 'channel']).optional(),
+  // T-0124: the same count under Telegram's name, for channels only.
+  subscriberCount: z.number().optional(),
+  // T-0124: the channel's short blurb. Optional so older payloads parse.
+  description: z.string().nullable().optional(),
   // T-0111: present on servers with topics (T-0108); absent on older ones.
   // Parsed loosely here — each entry is validated by `topicSchema` when
   // mapping to chats — and unknown entries are dropped there.
@@ -111,6 +118,11 @@ const groupDetailSchema = z.object({
   // T-0108: plain members may create topics when the switch is on. Optional
   // so payloads from an older server still parse (treated as off).
   membersCanCreateTopics: z.boolean().optional(),
+  // T-0124: `channel` is the broadcast feed. Optional so older payloads
+  // parse as groups.
+  kind: z.enum(['group', 'channel']).optional(),
+  // T-0124: the channel's short blurb. Optional so older payloads parse.
+  description: z.string().nullable().optional(),
   members: z.array(groupMemberSchema),
   ais: z.array(groupAiSchema),
 });
@@ -201,7 +213,14 @@ export async function getContacts(): Promise<Contact[]> {
   return request('/contacts', z.array(contactSchema));
 }
 
-export function createGroup(input: { title: string; memberIds: string[] }): Promise<GroupDetail> {
+export function createGroup(input: {
+  title: string;
+  memberIds: string[];
+  // T-0124: `channel` creates the broadcast feed (moderated room).
+  kind?: 'group' | 'channel';
+  // T-0124: the channel's short blurb (≤ 300).
+  description?: string;
+}): Promise<GroupDetail> {
   return request('/groups', groupDetailSchema, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -530,6 +549,46 @@ export function setMembersCanCreateTopics(
 // defined further below in this file.
 export type TopicApprovalRule = z.infer<typeof approvalRuleSchema>;
 
+// --- Channels (T-0124) -------------------------------------------------------
+// One-way broadcast feeds: only owner/admins post (the room is moderated and
+// subscribers are visitors), everyone else subscribes, reads and mutes. A
+// channel is a group with one feed (its General topic): no more topics, and
+// the member list is visible to admins only (subscribers see the count).
+export const groupMemberListSchema = z.object({ members: z.array(groupMemberSchema) });
+
+export function listGroupMembers(groupId: string): Promise<GroupMember[]> {
+  return request(`/groups/${encodeURIComponent(groupId)}/members`, groupMemberListSchema).then(
+    ({ members }) => members,
+  );
+}
+
+// Only the owner may promote a member to admin (or demote one back). The
+// room affiliation follows at once, so a channel's voice mapping is enforced
+// by the room. Demoting the last admin answers 409 `channel_needs_admin`.
+export function changeGroupMemberRole(
+  groupId: string,
+  userId: string,
+  role: 'admin' | 'member',
+): Promise<GroupDetail> {
+  return request(
+    `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}/role`,
+    groupDetailSchema,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    },
+  );
+}
+
+export function removeGroupMember(groupId: string, userId: string): Promise<GroupDetail> {
+  return request(
+    `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
+    groupDetailSchema,
+    { method: 'DELETE' },
+  );
+}
+
 export function listTopicApprovalRules(groupId: string): Promise<TopicApprovalRule[]> {
   return listGroupApprovalRules(groupId);
 }
@@ -624,6 +683,9 @@ export const joinPreviewSchema = z.object({
   memberCount: z.number(),
   alreadyMember: z.boolean(),
   groupId: z.string().optional(),
+  // T-0124: `channel` previews read "Join channel" (and count subscribers);
+  // absent on older servers = a group.
+  kind: z.enum(['group', 'channel']).optional(),
 });
 
 export type JoinPreview = z.infer<typeof joinPreviewSchema>;

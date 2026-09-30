@@ -49,6 +49,9 @@ export interface JoinPreview {
   // already knows it, and the join page uses it to open the group chat.
   // Never sent for non-members, so previews leak no ids to strangers.
   groupId?: string | undefined;
+  // T-0124: `channel` previews read "Join channel" on the web (and count
+  // subscribers). The kind of a group the caller may join is not a secret.
+  kind: 'group' | 'channel';
 }
 
 // Byte-identical for an unknown token, an expired link, a revoked link and
@@ -298,15 +301,6 @@ async function findLinkRow(db: ServerDatabase, token: string): Promise<GroupInvi
   return row;
 }
 
-async function groupTitleOf(db: ServerDatabase, groupId: string): Promise<string | null> {
-  const [group] = await db
-    .select({ title: groups.title })
-    .from(groups)
-    .where(eq(groups.id, groupId))
-    .limit(1);
-  return group?.title ?? null;
-}
-
 async function countGroupMembers(db: ServerDatabase, groupId: string): Promise<number> {
   const [row] = await db
     .select({ total: count() })
@@ -331,8 +325,9 @@ async function isGroupMember(
 // The preview for `GET /api/join/:token`: the group title and member count,
 // never member names — and never the group id, unless the caller is already
 // a member (they know it; the join page uses it to open the group chat).
-// Unknown/expired/revoked/exhausted links answer the same 404 `invalid_link`,
-// so failures never reveal why.
+// T-0124: the preview also carries the group's kind, so the page reads
+// "Join channel" for a channel. Unknown/expired/revoked/exhausted links
+// answer the same 404 `invalid_link`, so failures never reveal why.
 export async function previewInviteLink(
   deps: InviteLinkServiceDeps,
   token: string,
@@ -342,8 +337,12 @@ export async function previewInviteLink(
   if (!row || !linkIsUsable(row, serviceNow(deps))) {
     throw toInvalidLink();
   }
-  const title = await groupTitleOf(deps.db, row.groupId);
-  if (title === null) {
+  const [group] = await deps.db
+    .select({ title: groups.title, kind: groups.kind })
+    .from(groups)
+    .where(eq(groups.id, row.groupId))
+    .limit(1);
+  if (!group) {
     throw toInvalidLink();
   }
   const [memberCount, alreadyMember] = await Promise.all([
@@ -351,10 +350,11 @@ export async function previewInviteLink(
     isGroupMember(deps.db, row.groupId, userId),
   ]);
   return {
-    groupTitle: title,
+    groupTitle: group.title,
     memberCount,
     alreadyMember,
     ...(alreadyMember ? { groupId: row.groupId } : {}),
+    kind: group.kind,
   };
 }
 

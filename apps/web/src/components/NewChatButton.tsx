@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 const MENU_ITEM_CLASS =
   'flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none';
 
-type Dialog = 'group' | 'message' | 'invite' | 'ai' | 'topic';
+type Dialog = 'group' | 'channel' | 'message' | 'invite' | 'ai' | 'topic';
 
 /** New chat: a full-width primary key on wide screens, a primary FAB on narrow. */
 export function NewChatButton({ defaultGroupId }: { defaultGroupId?: string } = {}) {
@@ -168,6 +168,14 @@ export function NewChatButton({ defaultGroupId }: { defaultGroupId?: string } = 
               type="button"
               role="menuitem"
               className={MENU_ITEM_CLASS}
+              onClick={() => openDialog('channel')}
+            >
+              New channel
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={MENU_ITEM_CLASS}
               onClick={() => openDialog('message')}
             >
               New message
@@ -225,6 +233,7 @@ export function NewChatButton({ defaultGroupId }: { defaultGroupId?: string } = 
       )}
 
       {dialog === 'group' && <NewGroupDialog onClose={closeDialog} />}
+      {dialog === 'channel' && <NewGroupDialog onClose={closeDialog} channel />}
       {dialog === 'ai' && <NewAiDialog onClose={closeDialog} />}
       {dialog === 'invite' && <InviteDialog onClose={closeDialog} />}
       {dialog === 'topic' &&

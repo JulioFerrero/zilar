@@ -128,6 +128,17 @@ export interface ChatSummary {
   online?: boolean;
   onlineCount?: number;
   memberCount?: number;
+  /**
+   * T-0124: `group` behaves as before; `channel` is the broadcast feed
+   * (its General topic is the feed; only admins post). Absent = group.
+   */
+  chatKind?: 'group' | 'channel';
+  /** T-0124: the same count under Telegram's name, for channels only. */
+  subscriberCount?: number;
+  /** T-0124: the channel's short blurb, or null. Absent on groups. */
+  description?: string | null;
+  /** The caller's membership role, for channels (admins post, members read). */
+  myRole?: 'owner' | 'admin' | 'member';
   aiStatus?: AiStatus;
   lastSeenAt?: Date;
   /** The group this topic belongs to; set on every topic chat. */

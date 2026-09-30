@@ -4,7 +4,7 @@ import { type OpenCodeClient, type SessionModel } from './client.js';
 import type { GitRunner } from './git.js';
 import { loadPrompt, loadRulesFile, renderPrompt, unfilledPlaceholders } from './prompts.js';
 import { loadState, saveState } from './state.js';
-import { assertAllowedModel, parseTaskFrontMatter, splitModel } from './task-file.js';
+import { assertAllowedModel, parseTaskFrontMatter, pickEffort, splitModel } from './task-file.js';
 import { newTaskRecord } from './types.js';
 
 export interface LaunchDeps {
@@ -47,12 +47,17 @@ export function readTaskFrontMatter(
   file: string;
   model: string;
   branch: string;
+  effort: string;
 } {
   const file = findTaskFile(repoRoot, task);
-  const frontMatter = parseTaskFrontMatter(
-    fs.readFileSync(path.join(repoRoot, 'work', file), 'utf8'),
-  );
-  return { file, model: frontMatter.model, branch: frontMatter.branch };
+  const text = fs.readFileSync(path.join(repoRoot, 'work', file), 'utf8');
+  const frontMatter = parseTaskFrontMatter(text);
+  return {
+    file,
+    model: frontMatter.model,
+    branch: frontMatter.branch,
+    effort: pickEffort(text, frontMatter.effort),
+  };
 }
 
 interface StartSessionOptions {
@@ -145,9 +150,9 @@ export async function launchTask(
   if (!/^T-\d+$/.test(task)) {
     throw new Error(`task must look like T-0038, got ${JSON.stringify(task)}`);
   }
-  const { file, model: modelString, branch } = readTaskFrontMatter(deps.repoRoot, task);
+  const { file, model: modelString, branch, effort } = readTaskFrontMatter(deps.repoRoot, task);
   assertAllowedModel(modelString);
-  const model = splitModel(modelString);
+  const model = { ...splitModel(modelString), variant: effort };
   const worktree = worktreeFor(deps.repoRoot, task);
   if (fs.existsSync(worktree)) {
     throw new Error(`worktree already exists: ${worktree}`);

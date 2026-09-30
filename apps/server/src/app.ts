@@ -217,7 +217,10 @@ export function createApp({
       ...(isMachineOnline === undefined ? {} : { isMachineOnline }),
     }),
   );
-  app.route('/api', createGroupsRoutes({ auth, db, config, adminClient, logger }));
+  app.route(
+    '/api',
+    createGroupsRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
+  );
   app.route(
     '/api',
     createInviteLinksRoutes({
@@ -427,11 +430,15 @@ function durationSince(start: number): number {
   return Math.round(performance.now() - start);
 }
 
-// T-0115: the join token is a bearer secret, so the request log redacts every
-// segment after `/api/join/` (`/api/join/<token>` and any variant such as a
-// trailing slash, which 404s in routing but still reaches this log line).
+// Join tokens (T-0115) and sign-up invite codes are bearer secrets, so the
+// request log redacts every segment after `/api/join/` and `/api/invites/`
+// (`/api/join/<token>` and any variant such as a trailing slash, which 404s in
+// routing but still reaches this log line).
 function logPath(path: string): string {
-  return path.startsWith('/api/join/') ? '/api/join/:token' : path;
+  if (path.startsWith('/api/join/')) {
+    return '/api/join/:token';
+  }
+  return path.startsWith('/api/invites/') ? '/api/invites/:code' : path;
 }
 
 function allowedOrigins(config: ServerConfig): string[] {

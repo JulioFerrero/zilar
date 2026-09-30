@@ -165,9 +165,12 @@ function topicApi(overrides: Partial<ApiClient> = {}): ApiClient {
     createInvite: vi.fn(nope),
     createGroupInviteLink: vi.fn(nope),
     listGroupInviteLinks: vi.fn(async () => []),
+    listGroupMembers: vi.fn(async () => []),
     revokeGroupInviteLink: vi.fn(async () => {}),
     previewJoinLink: vi.fn(nope),
     joinByLink: vi.fn(nope),
+    changeGroupMemberRole: vi.fn(nope),
+    removeGroupMember: vi.fn(nope),
     listAis: vi.fn(async () => []),
     addGroupAi: vi.fn(nope),
     removeGroupAi: vi.fn(nope),
@@ -245,6 +248,25 @@ describe('topics store mapping (T-0111)', () => {
   it('summariesFor drops archived topics', () => {
     const rows = summariesFor(groupEntry({ topics: [topic(), { ...bugTopic(), archived: true }] }));
     expect(rows.map((row) => row.id)).toEqual(['team@rooms.galena.test']);
+  });
+
+  it('summariesFor carries the channel fields onto the feed row', () => {
+    const rows = summariesFor(
+      groupEntry({
+        chatKind: 'channel',
+        subscriberCount: 120,
+        description: 'Ship notes',
+        role: 'member',
+        topics: [topic()],
+      }),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      chatKind: 'channel',
+      subscriberCount: 120,
+      description: 'Ship notes',
+      myRole: 'member',
+    });
   });
 
   it('boot joins every visible topic room', async () => {

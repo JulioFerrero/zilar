@@ -18,7 +18,7 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { emitGroupAi, emitTopicAi } from './events';
 import { aiMayBeInTopic } from '../topics/access';
-import { recordAudit } from '../audit/service';
+import { recordAudit, type AuditRecorder } from '../audit/service';
 import { dropMemberRoles, roleHoldersByGroup, topicRoleHolderIds } from '../roles/service';
 import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
 import { deleteRoutinesForAiInGroup } from '../routines/service';
@@ -46,12 +46,20 @@ export interface GroupMemberView {
   roles: Array<{ id: string; name: string }>;
 }
 
+export type ChannelKind = 'group' | 'channel';
+
 export interface GroupDetail {
   id: string;
   title: string;
   createdBy: string;
   createdAt: Date;
   membersCanCreateTopics: boolean;
+  // T-0124: `group` behaves as before; `channel` is the broadcast feed (its
+  // General topic is the feed; no more topics; posting is voice-gated by the
+  // moderated room). Optional in older payloads = `group`.
+  kind: ChannelKind;
+  // T-0124: the channel's short blurb, or null when none.
+  description: string | null;
   members: GroupMemberView[];
   ais: GroupAiView[];
 }
@@ -69,6 +77,8 @@ export interface ChatGroup {
   title: string;
   memberCount: number;
   role: GroupRole;
+  kind: ChannelKind;
+  description: string | null;
 }
 
 export interface CreateGroupInput {
@@ -77,6 +87,11 @@ export interface CreateGroupInput {
   memberIds: string[];
   domain: string;
   logger: InviteLogger;
+  // T-0124: `channel` creates the broadcast feed (moderated room, owner +
+  // admins post). `group` (default) behaves as before. A description (≤ 300)
+  // is accepted for both and stored on the row.
+  kind?: ChannelKind | undefined;
+  description?: string | undefined;
 }
 
 export interface AddGroupMembersInput {
@@ -99,6 +114,8 @@ export interface AddGroupAiInput {
   groupId: string;
   actorId: string;
   aiId: string;
+  domain: string;
+  logger: InviteLogger;
 }
 
 export interface RemoveGroupAiInput {
@@ -157,6 +174,8 @@ export async function createGroup(
 ): Promise<GroupDetail> {
   const memberIds = [...new Set(input.memberIds)].filter((id) => id !== input.creatorId);
   await assertContacts(db, input.creatorId, memberIds);
+  const kind: ChannelKind = input.kind ?? 'group';
+  const description = input.description?.trim() === '' ? null : (input.description ?? null);
 
   const groupId = randomUUID();
   const roomLocalpart = randomRoomLocalpart();
@@ -169,6 +188,8 @@ export async function createGroup(
         roomLocalpart,
         title: input.title,
         createdBy: input.creatorId,
+        kind,
+        description,
       });
       await tx
         .insert(groupMembers)
@@ -178,6 +199,7 @@ export async function createGroup(
         ]);
       // T-0108: the group's room becomes its General topic (same room, same
       // history). The row is created in the same transaction as the group.
+      // T-0124: a channel's General topic is its only topic — the feed.
       await tx.insert(topics).values({
         id: randomUUID(),
         groupId,
@@ -191,12 +213,18 @@ export async function createGroup(
         createdBy: input.creatorId,
       });
 
+      // T-0124: a channel's room is moderated with `members_by_default:
+      // false`, so subscribers (affiliation `member`) join as visitors:
+      // they read but cannot post. Affiliations `admin`/`owner` carry voice,
+      // so admins and the owner post. Group rooms stay unmoderated with the
+      // ejabberd default, so every member keeps voice.
       await adminClient.createRoom(roomLocalpart, {
         title: input.title,
         membersOnly: true,
         persistent: true,
         mam: true,
         anonymous: false,
+        ...(kind === 'channel' ? { moderated: true, membersByDefault: false } : {}),
       });
       roomCreated = true;
       await adminClient.setAffiliation(
@@ -205,6 +233,9 @@ export async function createGroup(
         'owner',
       );
       for (const userId of memberIds) {
+        // T-0124: in a moderated channel room only affiliations admin/owner
+        // carry voice, so every initial member joins as a voice-less member
+        // (a visitor once they enter). Group rooms keep `member` for all.
         await adminClient.setAffiliation(
           roomLocalpart,
           jidFor(localpartFor(userId), input.domain),
@@ -243,6 +274,8 @@ export async function getGroupDetail(
     createdBy: group.createdBy,
     createdAt: group.createdAt,
     membersCanCreateTopics: group.membersCanCreateTopics,
+    kind: group.kind,
+    description: group.description,
     members,
     ais: aiViews,
   };
@@ -352,6 +385,14 @@ export async function removeGroupMember(
   if (target.role === 'owner') {
     throw new HttpError(403, 'forbidden', 'The owner cannot be removed');
   }
+  // T-0124: a channel always keeps its admins' voice (the room is moderated,
+  // so only affiliation admin/owner may post). Removing the last admin is
+  // refused here (demoting one is refused in `changeMemberRole`). The guard
+  // fires only when the target is an admin: kicking a subscriber never takes
+  // voice away, even in a channel that has no admins yet.
+  if (group.kind === 'channel' && !isSelf && target.role === 'admin') {
+    await assertChannelKeepsAnAdmin(db, input.groupId, input.targetUserId);
+  }
 
   try {
     await db.transaction(async (tx) => {
@@ -441,10 +482,228 @@ export async function removeGroupMember(
   return detail;
 }
 
+export interface ChangeMemberRoleInput {
+  groupId: string;
+  actorId: string;
+  targetUserId: string;
+  role: 'admin' | 'member';
+  domain: string;
+  logger: InviteLogger;
+  audit?: AuditRecorder;
+}
+
+// Promotes a member to admin (or demotes an admin back to member). Only the
+// owner may change roles. The database row commits first; the room
+// affiliation follows outside the transaction (best effort + log, like
+// `addGroupMembers`): a room failure never rolls back the committed row,
+// and the caller reconciles with `syncChannelVoice` so the affiliation
+// heals on the next write. In a channel's moderated room an admin gains
+// voice (affiliation `admin`) and a demoted admin loses it (`member`
+// again), so the posting rule is enforced by the room, not by the UI.
+// Demoting the channel's last admin is refused (`channel_needs_admin`), so
+// the feed can never fall silent.
+export async function changeMemberRole(
+  db: ServerDatabase,
+  adminClient: EjabberdAdminClient,
+  input: ChangeMemberRoleInput,
+): Promise<GroupDetail> {
+  const group = await requireGroup(db, input.groupId);
+  const actor = await getMembership(db, input.groupId, input.actorId);
+  // A non-member sees the same 404 as a missing group (like every other
+  // group route). A plain member sees it too: 403 here would tell them the
+  // group exists and they are in it, an oracle strangers don't get.
+  if (!group || !actor || actor.role !== 'owner') {
+    throw new HttpError(404, 'not_found', 'Group not found');
+  }
+  // T-0124: channels only. Plain groups answer the same 404 as an unknown
+  // group — the spec asks for channel rules only, and no group UI calls
+  // this route.
+  if (group.kind !== 'channel') {
+    throw new HttpError(404, 'not_found', 'Group not found');
+  }
+  const target = await getMembership(db, input.groupId, input.targetUserId);
+  if (!target) {
+    throw new HttpError(404, 'not_found', 'That user is not a member of this group');
+  }
+  if (target.role === 'owner') {
+    throw new HttpError(403, 'forbidden', 'The owner cannot be demoted');
+  }
+  if (input.targetUserId === input.actorId) {
+    throw new HttpError(403, 'forbidden', 'The owner cannot change their own role');
+  }
+  if (target.role === input.role) {
+    const detail = await getGroupDetail(db, input.groupId);
+    if (!detail) {
+      throw new Error('group disappeared while changing a member role');
+    }
+    return detail;
+  }
+  if (input.role === 'member' && group.kind === 'channel') {
+    await assertChannelKeepsAnAdmin(db, input.groupId, input.targetUserId);
+  }
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(groupMembers)
+        .set({ role: input.role })
+        .where(
+          and(eq(groupMembers.groupId, input.groupId), eq(groupMembers.userId, input.targetUserId)),
+        );
+    });
+  } catch (error) {
+    throw mapXmppError(error);
+  }
+  // The row is committed: the room follows best-effort. A failure is logged
+  // and the full voice mapping reconciles, so a half-applied change (row
+  // committed, affiliation stale) heals instead of diverging permanently.
+  try {
+    await adminClient.setAffiliation(
+      group.roomLocalpart,
+      jidFor(localpartFor(input.targetUserId), input.domain),
+      input.role,
+    );
+  } catch {
+    input.logger.warn({ groupId: input.groupId }, 'could not set the member role affiliation');
+    await syncChannelVoice(db, adminClient, input.groupId, input.domain, input.logger);
+  }
+  // T-0124: every promote/demote is audited as `group.role_changed` (ids and
+  // roles only — never names). The recorder is injected by the route; a write
+  // failure is logged and never fails the request.
+  if (input.audit) {
+    try {
+      await recordAudit(
+        db,
+        {
+          actorUserId: input.actorId,
+          aiId: null,
+          groupId: input.groupId,
+          action: 'group.role_changed',
+          subjectId: input.targetUserId,
+          argsHash: null,
+          costCurrency: null,
+          costAmount: null,
+          result: 'ok',
+          detail: {
+            groupId: input.groupId,
+            subjectUserId: input.targetUserId,
+            from: target.role,
+            to: input.role,
+          },
+        },
+        new Date(),
+      );
+    } catch {
+      input.logger.warn({ groupId: input.groupId }, 'could not audit a role change');
+    }
+  }
+  const detail = await getGroupDetail(db, input.groupId);
+  if (!detail) {
+    throw new Error('group disappeared while changing a member role');
+  }
+  return detail;
+}
+
+// A channel refuses to lose its last admin voice: after the change, at
+// least one admin besides the target must remain (the owner always counts,
+// so demoting the only admin while the owner stays is refused — the feed
+// must keep someone with voice besides the owner). Answers 409
+// `channel_needs_admin`. The check and the write are not atomic (same known
+// race as the group cap): two concurrent demotions/removals can both pass,
+// and — unlike the claim of an earlier revision — no later write heals it:
+// with no admin left there is nothing left to demote, so the channel stays
+// owner-only-voiced until someone is promoted again (promotions are never
+// refused). Permanent until manual fix, not self-healing.
+async function assertChannelKeepsAnAdmin(
+  db: ServerDatabase,
+  groupId: string,
+  losingUserId: string,
+): Promise<void> {
+  const rows = await db
+    .select({ userId: groupMembers.userId, role: groupMembers.role })
+    .from(groupMembers)
+    .where(eq(groupMembers.groupId, groupId));
+  const adminsLeft = rows.some((row) => row.userId !== losingUserId && row.role === 'admin');
+  if (!adminsLeft) {
+    throw new HttpError(
+      409,
+      'channel_needs_admin',
+      'A channel needs at least one admin besides the owner',
+    );
+  }
+}
+
+// The member list a viewer may see. Admins see everyone, like in a group.
+// A channel subscriber sees only the owner/admins (names + roles): who
+// posts in the feed is public anyway — every admin post carries its name —
+// while the subscriber audience stays hidden. The rows are sorted like
+// `listGroupMembers`. Never 404s for a member: the route answers the
+// (possibly partial) list, so subscribers can tell "hidden" from "gone" by
+// the group detail they already hold.
+export async function listMembersForViewer(
+  db: ServerDatabase,
+  groupId: string,
+  viewerId: string,
+): Promise<{ members: GroupMemberView[]; isAdmin: boolean }> {
+  const viewer = await getMembership(db, groupId, viewerId);
+  if (!viewer) {
+    throw new HttpError(404, 'not_found', 'Group not found');
+  }
+  const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  if (!group) {
+    throw new HttpError(404, 'not_found', 'Group not found');
+  }
+  const isAdmin = viewer.role === 'owner' || viewer.role === 'admin';
+  const all = await listGroupMembers(db, groupId);
+  if (group.kind === 'channel' && !isAdmin) {
+    return { members: all.filter((member) => member.role !== 'member'), isAdmin };
+  }
+  return { members: all, isAdmin };
+}
+
+// After a role change or a drifted room, this re-applies the voice mapping
+// of a channel room: every owner/admin holds affiliation admin/owner, every
+// subscriber `member`. A group room is left untouched. Best effort: failures
+// are logged with the group id (never member names) and never thrown. The
+// role-change path calls this when its own affiliation write fails, so a
+// committed row with a stale affiliation heals instead of diverging.
+export async function syncChannelVoice(
+  db: ServerDatabase,
+  adminClient: EjabberdAdminClient,
+  groupId: string,
+  domain: string,
+  logger: InviteLogger,
+): Promise<void> {
+  const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  if (!group || group.kind !== 'channel') {
+    return;
+  }
+  const rows = await db
+    .select({ userId: groupMembers.userId, role: groupMembers.role })
+    .from(groupMembers)
+    .where(eq(groupMembers.groupId, groupId));
+  for (const row of rows) {
+    const wanted: 'owner' | 'admin' | 'member' =
+      row.role === 'owner' ? 'owner' : row.role === 'admin' ? 'admin' : 'member';
+    try {
+      await adminClient.setAffiliation(
+        group.roomLocalpart,
+        jidFor(localpartFor(row.userId), domain),
+        wanted,
+      );
+    } catch {
+      logger.warn({ groupId }, 'could not sync the channel voice');
+    }
+  }
+}
+
 // Adds an AI to a group: the actor must own or administer the group and own
 // the AI (a foreign AI answers the same 404 as a missing one, so AI ids
 // cannot be probed). Adding an AI that is already there is a no-op returning
 // the detail. People and AIs share MAX_GROUP_MEMBERS.
+// T-0124: in a channel the AI joins with the admin-owned-AI voice rule
+// (`applyChannelAiVoice` outcome: affiliation `admin` while its owner is a
+// channel owner/admin, else `member`), so an admin-owned AI can post from
+// the moment it is added instead of waiting for an unrelated re-sync.
 export async function addGroupAi(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,
@@ -506,6 +765,27 @@ export async function addGroupAi(
     });
   } catch (error) {
     throw mapXmppError(error);
+  }
+  // T-0124: a fresh AI row in a channel feed must carry the voice rule at
+  // once (the transaction above always writes `member`, which is voiceless
+  // for everyone in a channel). `syncChannelVoice` covers people only, so
+  // the feed room re-syncs here: an admin-owned AI is lifted to `admin`,
+  // anything else stays `member`. Best effort after the commit, like the
+  // member flows — a failure is logged, never thrown, and the next sync
+  // heals it.
+  if (group.kind === 'channel') {
+    try {
+      const [feed] = await db
+        .select()
+        .from(topics)
+        .where(and(eq(topics.groupId, input.groupId), eq(topics.isGeneral, true)))
+        .limit(1);
+      if (feed) {
+        await syncTopicRoom({ db, adminClient, domain: input.domain, logger: input.logger }, feed);
+      }
+    } catch {
+      input.logger.warn({ groupId: input.groupId }, 'could not sync the channel feed for a new AI');
+    }
   }
 
   emitGroupAi({ type: 'ai-added', groupId: input.groupId, aiId: input.aiId });
@@ -625,7 +905,13 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
 
   const groupIds = memberships.map((row) => row.groupId);
   const groupRows = await db
-    .select({ id: groups.id, roomLocalpart: groups.roomLocalpart, title: groups.title })
+    .select({
+      id: groups.id,
+      roomLocalpart: groups.roomLocalpart,
+      title: groups.title,
+      kind: groups.kind,
+      description: groups.description,
+    })
     .from(groups)
     .where(inArray(groups.id, groupIds));
   const counts = await db
@@ -649,6 +935,8 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
         title: group.title,
         memberCount: countsById.get(group.id) ?? 0,
         role: membership.role,
+        kind: group.kind,
+        description: group.description,
       },
     ];
   });

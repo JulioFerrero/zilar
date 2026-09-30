@@ -243,11 +243,18 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       throw new Error('not implemented');
     }),
     listGroupInviteLinks: vi.fn(async () => []),
+    listGroupMembers: vi.fn(async () => []),
     revokeGroupInviteLink: vi.fn(async () => {}),
     previewJoinLink: vi.fn(async () => {
       throw new Error('not implemented');
     }),
     joinByLink: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    changeGroupMemberRole: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    removeGroupMember: vi.fn(async () => {
       throw new Error('not implemented');
     }),
     listAis: vi.fn(async () => []),
@@ -1338,6 +1345,51 @@ describe('createRealChatStore', () => {
   it('returns the invite URL', async () => {
     const { store } = await setup();
     await expect(store.getState().createInvite()).resolves.toBe('http://x/invite/c');
+  });
+
+  it('refreshes the chat list after a channel role change so the composer bar flips', async () => {
+    // T-0124: the composer bar reads `myRole` off the chat row. After a
+    // promote, the row must carry the fresh role — the role write triggers
+    // a list refresh that rebuilds the rows from server truth.
+    const feed = {
+      kind: 'group' as const,
+      chatJid: 'acme@rooms.galena.test',
+      title: 'Acme Announcements',
+      groupId: 'g-acme',
+      memberCount: 3,
+      role: 'member' as const,
+      chatKind: 'channel' as const,
+      subscriberCount: 3,
+    };
+    let calls = 0;
+    const getChats = vi.fn(async () => {
+      calls += 1;
+      return calls === 1 ? [feed] : [{ ...feed, role: 'admin' as const }];
+    });
+    const changeGroupMemberRole = vi.fn(async () => ({
+      id: 'g-acme',
+      title: 'Acme Announcements',
+      createdBy: 'u-ana',
+      kind: 'channel' as const,
+      description: null,
+      members: [
+        { userId: 'u-me', name: 'Me', role: 'admin' as const, roles: [] },
+        { userId: 'u-ana', name: 'Ana', role: 'owner' as const, roles: [] },
+      ],
+      ais: [],
+    }));
+    const { store } = await setup({ getChats, changeGroupMemberRole });
+    expect(
+      store.getState().chats.find((chat) => chat.id === 'acme@rooms.galena.test')?.myRole,
+    ).toBe('member');
+
+    await store.getState().changeChannelRole('acme@rooms.galena.test', 'u-me', 'admin');
+
+    expect(changeGroupMemberRole).toHaveBeenCalledWith('g-acme', 'u-me', 'admin');
+    expect(calls).toBeGreaterThan(1);
+    expect(
+      store.getState().chats.find((chat) => chat.id === 'acme@rooms.galena.test')?.myRole,
+    ).toBe('admin');
   });
 
   it('refreshes the chat list on an invitation and joins the new group room', async () => {

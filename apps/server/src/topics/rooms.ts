@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import type { ServerDatabase } from '../db/client';
-import { ais, groupAis, groupMembers, topicAis, topicMembers } from '../db/schema';
+import { ais, groupAis, groupMembers, groups, topicAis, topicMembers } from '../db/schema';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient, RoomAffiliation } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -24,6 +24,10 @@ export interface TopicRoomDeps {
 // owner (when they are still allowed in), everyone else is a member. AIs are
 // always plain members. An AI that is not a member of a private topic is
 // never included, even when it is in the group: the room itself enforces it.
+// T-0124: a channel's General topic (its feed) keeps the voice mapping —
+// owner stays `owner`, admins stay `admin` (voice in the moderated room),
+// subscribers stay `member` (visitors, voiceless) — so a later join/leave
+// re-sync never demotes an admin back to a subscriber.
 export async function desiredMembers(
   db: ServerDatabase,
   topic: TopicRow,
@@ -31,17 +35,36 @@ export async function desiredMembers(
 ): Promise<Map<string, RoomAffiliation>> {
   const wanted = new Map<string, RoomAffiliation>();
   if (topic.visibility !== 'private') {
+    const [group] = await db
+      .select({ kind: groups.kind })
+      .from(groups)
+      .where(eq(groups.id, topic.groupId))
+      .limit(1);
+    const isChannelFeed = topic.isGeneral && group?.kind === 'channel';
     const rows = await db
       .select({ userId: groupMembers.userId, role: groupMembers.role })
       .from(groupMembers)
       .where(eq(groupMembers.groupId, topic.groupId));
     for (const row of rows) {
+      if (isChannelFeed && row.role === 'admin') {
+        wanted.set(jidFor(localpartFor(row.userId), domain), 'admin');
+        continue;
+      }
       const ownerAffiliation = topic.isGeneral
         ? row.role === 'owner'
         : row.userId === topic.createdBy;
       wanted.set(jidFor(localpartFor(row.userId), domain), ownerAffiliation ? 'owner' : 'member');
     }
     await addTopicAiMembers(db, topic, wanted);
+    // T-0124: an AI posts in the feed only while its owner is a channel
+    // admin (the add flow already requires the actor to own the AI and
+    // administer the channel). Admin-owned AIs hold affiliation `admin`
+    // (voice); any other AI stays a voiceless `member`. Evaluated live, so
+    // demoting the owner drops the AI's voice at the next sync without
+    // deleting the row.
+    if (isChannelFeed) {
+      await applyChannelAiVoice(db, topic, wanted);
+    }
     return wanted;
   }
   const groupRows = await db
@@ -123,6 +146,39 @@ async function addTopicAiMembers(
     if (allowed.has(row.id) && !wanted.has(row.jid)) {
       wanted.set(row.jid, 'member');
     }
+  }
+}
+
+// T-0124: voice for AIs in a channel feed. Every active group AI whose
+// owner is currently a channel owner/admin holds affiliation `admin`
+// (voice, so the gateway's post lands); any other AI keeps `member`
+// (a visitor: reads, cannot post). The `group_ais` rows never change —
+// demoting the owner drops the voice at the next sync, re-promoting
+// brings it back.
+async function applyChannelAiVoice(
+  db: ServerDatabase,
+  topic: TopicRow,
+  wanted: Map<string, RoomAffiliation>,
+): Promise<void> {
+  const aiRows = await db
+    .select({ jid: ais.jid, owner: ais.owner, status: ais.status })
+    .from(groupAis)
+    .innerJoin(ais, eq(ais.id, groupAis.aiId))
+    .where(eq(groupAis.groupId, topic.groupId));
+  if (aiRows.length === 0) {
+    return;
+  }
+  const memberRows = await db
+    .select({ userId: groupMembers.userId, role: groupMembers.role })
+    .from(groupMembers)
+    .where(eq(groupMembers.groupId, topic.groupId));
+  const roleById = new Map(memberRows.map((row) => [row.userId, row.role]));
+  for (const ai of aiRows) {
+    if (ai.status !== 'active' || !wanted.has(ai.jid)) {
+      continue;
+    }
+    const ownerRole = roleById.get(ai.owner);
+    wanted.set(ai.jid, ownerRole === 'owner' || ownerRole === 'admin' ? 'admin' : 'member');
   }
 }
 

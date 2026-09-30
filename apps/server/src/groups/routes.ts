@@ -1,17 +1,21 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
+import { createRateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   addGroupAi,
   addGroupMembers,
+  changeMemberRole,
   createGroup,
   getGroupDetail,
   getMembership,
+  listMembersForViewer,
   MAX_GROUP_MEMBERS,
   patchGroup,
   removeGroupAi,
@@ -25,6 +29,9 @@ export interface GroupsRoutesDependencies {
   config: ServerConfig;
   adminClient: EjabberdAdminClient;
   logger: InviteLogger;
+  audit?: AuditRecorder;
+  /** Injected in tests so the rate-limit window can advance without waiting. */
+  now?: () => number;
 }
 
 const titleSchema = z
@@ -33,9 +40,19 @@ const titleSchema = z
   .min(1, { message: 'title must not be empty' })
   .max(100, { message: 'title must be at most 100 characters' });
 
+const descriptionSchema = z
+  .string()
+  .trim()
+  .max(300, { message: 'description must be at most 300 characters' });
+
 const createGroupSchema = z.object({
   title: titleSchema,
   memberIds: z.array(z.string().min(1)).max(MAX_GROUP_MEMBERS).default([]),
+  // T-0124: `channel` creates the broadcast feed (moderated room). A missing
+  // kind is a plain group, like before.
+  kind: z.enum(['group', 'channel']).optional(),
+  // T-0124: the channel's short blurb (≤ 300); an empty string clears to null.
+  description: descriptionSchema.optional(),
 });
 
 const addMembersSchema = z.object({
@@ -52,15 +69,33 @@ const patchGroupSchema = z
   })
   .strict();
 
+const changeRoleSchema = z
+  .object({
+    role: z.enum(['admin', 'member']),
+  })
+  .strict();
+
+export const ROLE_CHANGE_RATE_LIMIT_MAX = 30;
+export const ROLE_CHANGE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+
 export function createGroupsRoutes({
   auth,
   db,
   config,
   adminClient,
   logger,
+  audit,
+  now,
 }: GroupsRoutesDependencies): Hono {
   const routes = new Hono();
   const domain = config.xmpp.domain;
+  // T-0124: role changes hit ejabberd (one affiliation write per call), so
+  // they are capped per owner like topic creation is capped per user.
+  const roleLimiter = createRateLimiter({
+    max: ROLE_CHANGE_RATE_LIMIT_MAX,
+    windowMs: ROLE_CHANGE_RATE_LIMIT_WINDOW_MS,
+    now: now ?? Date.now,
+  });
 
   routes.post('/groups', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
@@ -80,6 +115,8 @@ export function createGroupsRoutes({
       memberIds: parsed.data.memberIds,
       domain,
       logger,
+      ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
+      ...(parsed.data.description === undefined ? {} : { description: parsed.data.description }),
     });
     return c.json(group, 201);
   });
@@ -94,6 +131,60 @@ export function createGroupsRoutes({
     if (!group || !membership) {
       throw new HttpError(404, 'not_found', 'Group not found');
     }
+    // T-0124: a channel subscriber sees the detail without the audience
+    // list (admins see everyone, like in a group). The count still rides
+    // the chat list and the preview.
+    if (group.kind === 'channel' && membership.role === 'member') {
+      return c.json({ ...group, members: [] });
+    }
+    return c.json(group);
+  });
+
+  // T-0124: the channel audience list, for admins only. A subscriber gets
+  // the owner/admins only (who posts is public — every admin post carries
+  // its name — while the subscriber audience stays hidden); a stranger sees
+  // the same 404 as a missing group, so the audience cannot be probed.
+  // Group members keep the full list on the detail itself.
+  routes.get('/groups/:id/members', async (c) => {
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    const groupId = c.req.param('id');
+    const group = await getGroupDetail(db, groupId);
+    if (!group) {
+      throw new HttpError(404, 'not_found', 'Group not found');
+    }
+    const { members } = await listMembersForViewer(db, groupId, user.id);
+    return c.json({ members });
+  });
+
+  // T-0124: promote/demote through the role route (owner only). Channels
+  // only: plain groups answer the same 404 as an unknown group (the spec
+  // asks for channel rules only, and no group UI calls this route). Every
+  // change is audited as `group.role_changed` (ids and roles only). The
+  // room affiliation follows the committed row best-effort (see
+  // `changeMemberRole`).
+  routes.put('/groups/:id/members/:userId/role', async (c) => {
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    if (!roleLimiter.allow(user.id)) {
+      throw new HttpError(429, 'rate_limited', 'Too many role changes, try again later');
+    }
+    const body = await c.req.json().catch(() => null);
+    const parsed = changeRoleSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpError(
+        400,
+        'invalid_request',
+        parsed.error.issues[0]?.message ?? 'Invalid request',
+      );
+    }
+    const group = await changeMemberRole(db, adminClient, {
+      groupId: c.req.param('id'),
+      actorId: user.id,
+      targetUserId: c.req.param('userId'),
+      role: parsed.data.role,
+      domain,
+      logger,
+      ...(audit === undefined ? {} : { audit }),
+    });
     return c.json(group);
   });
 
@@ -147,6 +238,8 @@ export function createGroupsRoutes({
       groupId: c.req.param('id'),
       actorId: user.id,
       aiId: parsed.data.aiId,
+      domain,
+      logger,
     });
     return c.json(group);
   });

@@ -8,6 +8,7 @@ import type { PermissionRule } from './types.js';
 export interface SessionModel {
   providerID: string;
   id: string;
+  variant?: string;
 }
 
 export interface CreateSessionOptions {

@@ -19,6 +19,8 @@ export const taskFrontMatterSchema = z.object({
   id: z.string().regex(/^T-\d+$/, 'task id must look like T-0038'),
   branch: z.string().min(1, 'branch is required'),
   model: z.string().min(1, 'model is required'),
+  // Reasoning effort for the worker session; omitted = picked from the task (pickEffort).
+  effort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh', 'default']).optional(),
   status: z.string().min(1),
 });
 

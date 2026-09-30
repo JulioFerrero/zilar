@@ -11,11 +11,12 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0119](T-0119-pwa-web-push.md) | PWA and web push | planned | meta/muse-spark-1.3-contributor | T-0118, T-0113 | Spec ready (rewritten from the spike); schema task, starts after T-0116 merges |
 | [T-0121](T-0121-sticker-creator.md) | Sticker pack creator, favorites, discover | planned | meta/muse-spark-1.3-contributor | T-0120 |  |
-| [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | planned | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
+| [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | in progress | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
-| [T-0124](T-0124-channels.md) | Channels: only admins post | planned | meta/muse-spark-1.3-contributor | T-0108, T-0115 |  |
 | [T-0106](T-0106-tool-model-side.md) | Model side of AI tools: prompt guide, several rounds per turn, working-on-it line | planned | meta/muse-spark-1.3-contributor | T-0105, T-0125, T-0132 | Ready; starts after T-0132 merges |
 | [T-0139](T-0139-mobile-device-bugs.md) | Mobile bugs found on Android: topics dropped from /api/chats, dead More options, group screen route, repeated group fetch | planned | meta/muse-spark-1.3-contributor | T-0135, T-0136, T-0137 | Spec ready |
+| [T-0140](T-0140-mobile-followups.md) | Mobile deferred review follow-ups (invite links, roles, search) | planned | meta/muse-spark-1.3-contributor | T-0136, T-0137, T-0138 | Spec ready |
+| [T-0141](T-0141-web-server-followups.md) | Web and server deferred review follow-ups (stickers, revoke, approvals) | planned | meta/muse-spark-1.3-contributor | T-0120, T-0133, T-0116 | Spec ready |
 
 ## Follow-ups
 
@@ -169,3 +170,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0135](T-0135-mobile-parity.md) | mobile chat prefs (mute, archive, pin) and pinned messages, mock parity, T-0112 fixes (mobile only) | 2026-09-30 |
 | [T-0120](T-0120-stickers.md) | stickers: user-made packs, storage, sending, rendering (migration 0029) | 2026-09-30 |
 | [T-0134](T-0134-server-followups.md) | server follow-ups: atomic link join, trusted proxy hops, pin 404 parity, preview limiter, approver names, search role scoping test | 2026-09-30 |
+| [T-0124](T-0124-channels.md) | channels: only admins post, subscribers read-only, role route (migration 0030) | 2026-09-30 |

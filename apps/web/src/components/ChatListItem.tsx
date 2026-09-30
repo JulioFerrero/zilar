@@ -6,7 +6,7 @@ import {
   shouldRenderMarkdown,
   type ChatSummary,
 } from '@galena/chat-core';
-import { MoreHorizontal, Pin, VolumeX } from 'lucide-react';
+import { Megaphone, MoreHorizontal, Pin, VolumeX } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { AiBadge } from './AiBadge';
@@ -45,6 +45,9 @@ export function ChatListItem({
   const writing = chat.isAI && (hasDraft || typing !== undefined);
   const typingText = typing === undefined ? undefined : `${typing}…`;
   const [menuOpen, setMenuOpen] = useState(false);
+  // T-0124: channels get a megaphone avatar badge and the CHANNEL tag (as in
+  // the mockup); the header shows "N subscribers".
+  const isChannel = chat.chatKind === 'channel';
 
   return (
     <div className="group relative">
@@ -74,10 +77,21 @@ export function ChatListItem({
             {chat.pinnedAt !== undefined && (
               <Pin aria-label="Pinned" className="size-3.5 shrink-0 text-subtle-foreground" />
             )}
+            {isChannel && (
+              <Megaphone
+                aria-label="Channel"
+                className="size-3.5 shrink-0 text-subtle-foreground"
+              />
+            )}
             <span className="truncate text-[14px] leading-5 font-semibold text-foreground">
               {chat.title}
             </span>
             {chat.isAI && <AiBadge />}
+            {isChannel && (
+              <span className="font-mono shrink-0 rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
+                CHANNEL
+              </span>
+            )}
             <span className="ml-auto flex shrink-0 items-center gap-2 pl-1.5">
               {chat.muted && (
                 <VolumeX aria-label="Muted" className="size-4 text-subtle-foreground" />

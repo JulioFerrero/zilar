@@ -6,6 +6,7 @@ import {
   isCostlyMetaModel,
   isV4Pro,
   parseFrontMatter,
+  pickEffort,
   parseTaskFrontMatter,
   splitModel,
 } from './task-file';
@@ -136,5 +137,32 @@ describe('Meta Model API cost guard', () => {
 
   it('still refuses DeepSeek V4 Pro', () => {
     expect(() => assertAllowedModel('opencode-go/deepseek-v4-pro')).toThrow(/V4 Pro/);
+  });
+});
+
+describe('pickEffort', () => {
+  const task = (allowed: string, estimate = '1 day'): string =>
+    `---\nestimate: ${estimate}\n---\n\n### Allowed files\n${allowed}\n\n### Checks\n`;
+
+  it('is low for a contained job', () => {
+    expect(pickEffort(task('`apps/mobile/**`'), undefined)).toBe('low');
+  });
+
+  it('is high when the allowed files touch the schema or migrations', () => {
+    expect(pickEffort(task('`apps/server/src/db/schema.ts`, `apps/web/**`'), undefined)).toBe(
+      'high',
+    );
+    expect(pickEffort(task('`apps/server/drizzle/**`'), undefined)).toBe('high');
+  });
+
+  it('is high for a long estimate and ignores risky words outside Allowed files', () => {
+    expect(pickEffort(task('`apps/web/**`', '3 days'), undefined)).toBe('high');
+    expect(pickEffort(`${task('`apps/web/**`')}\nmentions schema.ts in prose`, undefined)).toBe(
+      'low',
+    );
+  });
+
+  it('lets the front matter win', () => {
+    expect(pickEffort(task('`apps/server/drizzle/**`'), 'low')).toBe('low');
   });
 });

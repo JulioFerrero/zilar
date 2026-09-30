@@ -21,7 +21,7 @@ type OpenCodeClientLike = Pick<
   | 'replyPermission'
 >;
 
-const TASK_MD = (model: string): string =>
+const TASK_MD = (model: string, effort?: string): string =>
   [
     '---',
     'id: T-0099',
@@ -30,6 +30,7 @@ const TASK_MD = (model: string): string =>
     'milestone: tooling',
     'branch: task/T-0099-demo',
     `model: ${model}`,
+    ...(effort === undefined ? [] : [`effort: ${effort}`]),
     'depends_on: []',
     'estimate: 1 day',
     '---',
@@ -38,14 +39,17 @@ const TASK_MD = (model: string): string =>
     '',
   ].join('\n');
 
-function setupRepo(model = 'opencode-go/muse-spark-1.3-contributor'): {
+function setupRepo(
+  model = 'opencode-go/muse-spark-1.3-contributor',
+  effort?: string,
+): {
   repoRoot: string;
   statePath: string;
 } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-launch-'));
   const repoRoot = path.join(dir, 'galena');
   fs.mkdirSync(path.join(repoRoot, 'work'), { recursive: true });
-  fs.writeFileSync(path.join(repoRoot, 'work', 'T-0099-demo.md'), TASK_MD(model));
+  fs.writeFileSync(path.join(repoRoot, 'work', 'T-0099-demo.md'), TASK_MD(model, effort));
   return { repoRoot, statePath: path.join(dir, 'state.json') };
 }
 
@@ -59,6 +63,21 @@ function stubRunner(calls: string[][]): GitRunner {
 }
 
 describe('launchTask', () => {
+  it('uses the effort from the task front matter instead of the low default', async () => {
+    const { repoRoot, statePath } = setupRepo('opencode-go/muse-spark-1.3-contributor', 'high');
+    const client = new FakeOpenCodeClient();
+
+    await launchTask('T-0099', undefined, {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+      runner: stubRunner([]),
+    });
+
+    expect(client.created[0]?.options.model.variant).toBe('high');
+  });
+
   it('creates the worktree, session, prompt, and state record', async () => {
     const { repoRoot, statePath } = setupRepo();
     const client = new FakeOpenCodeClient();
@@ -88,6 +107,7 @@ describe('launchTask', () => {
     expect(client.created[0]?.options.model).toEqual({
       providerID: 'opencode-go',
       id: 'muse-spark-1.3-contributor',
+      variant: 'low',
     });
     expect(client.created[0]?.options.directory).toBe(worktree);
     expect(client.created[0]?.options.permissions.length).toBeGreaterThan(20);

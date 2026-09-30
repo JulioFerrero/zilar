@@ -47,6 +47,7 @@ interface PreviewBody {
   memberCount: number;
   alreadyMember: boolean;
   groupId?: string;
+  kind?: string;
 }
 
 function errorOf(body: unknown): { code: string; message: string } {
@@ -255,6 +256,7 @@ describe('group invite links', () => {
       groupTitle: 'Hiking club',
       memberCount: 1,
       alreadyMember: false,
+      kind: 'group',
     });
     // Only the title and the count — never member names, never the group id.
     expect(JSON.stringify(previewBody)).not.toContain('owner@example.com');
