@@ -337,7 +337,11 @@ export async function previewInviteLink(
   if (!row || !linkIsUsable(row, serviceNow(deps))) {
     throw toInvalidLink();
   }
-  const [group] = await deps.db.select().from(groups).where(eq(groups.id, row.groupId)).limit(1);
+  const [group] = await deps.db
+    .select({ title: groups.title, kind: groups.kind })
+    .from(groups)
+    .where(eq(groups.id, row.groupId))
+    .limit(1);
   if (!group) {
     throw toInvalidLink();
   }

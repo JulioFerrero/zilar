@@ -6,6 +6,7 @@ import { requireSession } from '../auth/session';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
+import { createRateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   addGroupAi,
@@ -29,6 +30,8 @@ export interface GroupsRoutesDependencies {
   adminClient: EjabberdAdminClient;
   logger: InviteLogger;
   audit?: AuditRecorder;
+  /** Injected in tests so the rate-limit window can advance without waiting. */
+  now?: () => number;
 }
 
 const titleSchema = z
@@ -72,6 +75,9 @@ const changeRoleSchema = z
   })
   .strict();
 
+export const ROLE_CHANGE_RATE_LIMIT_MAX = 30;
+export const ROLE_CHANGE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+
 export function createGroupsRoutes({
   auth,
   db,
@@ -79,9 +85,17 @@ export function createGroupsRoutes({
   adminClient,
   logger,
   audit,
+  now,
 }: GroupsRoutesDependencies): Hono {
   const routes = new Hono();
   const domain = config.xmpp.domain;
+  // T-0124: role changes hit ejabberd (one affiliation write per call), so
+  // they are capped per owner like topic creation is capped per user.
+  const roleLimiter = createRateLimiter({
+    max: ROLE_CHANGE_RATE_LIMIT_MAX,
+    windowMs: ROLE_CHANGE_RATE_LIMIT_WINDOW_MS,
+    now: now ?? Date.now,
+  });
 
   routes.post('/groups', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
@@ -127,9 +141,10 @@ export function createGroupsRoutes({
   });
 
   // T-0124: the channel audience list, for admins only. A subscriber gets
-  // the empty list (the count rides the detail); a stranger sees the same
-  // 404 as a missing group, so the audience cannot be probed. Group members
-  // keep the full list on the detail itself.
+  // the owner/admins only (who posts is public — every admin post carries
+  // its name — while the subscriber audience stays hidden); a stranger sees
+  // the same 404 as a missing group, so the audience cannot be probed.
+  // Group members keep the full list on the detail itself.
   routes.get('/groups/:id/members', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
     const groupId = c.req.param('id');
@@ -147,6 +162,9 @@ export function createGroupsRoutes({
   // `group.role_changed` (ids and roles only).
   routes.put('/groups/:id/members/:userId/role', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
+    if (!roleLimiter.allow(user.id)) {
+      throw new HttpError(429, 'rate_limited', 'Too many role changes, try again later');
+    }
     const body = await c.req.json().catch(() => null);
     const parsed = changeRoleSchema.safeParse(body);
     if (!parsed.success) {
@@ -218,6 +236,8 @@ export function createGroupsRoutes({
       groupId: c.req.param('id'),
       actorId: user.id,
       aiId: parsed.data.aiId,
+      domain,
+      logger,
     });
     return c.json(group);
   });

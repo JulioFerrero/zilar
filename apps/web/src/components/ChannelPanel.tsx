@@ -2,8 +2,13 @@ import type { ChatSummary } from '@galena/chat-core';
 import { Megaphone, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import type { CreatedInviteLink, GroupAi, GroupInviteLink, PublicAi } from '@/lib/api';
-import { createGroupInviteLink, listGroupInviteLinks, revokeGroupInviteLink } from '@/lib/api';
+import type { CreatedInviteLink, GroupAi, GroupInviteLink, GroupMember, PublicAi } from '@/lib/api';
+import {
+  createGroupInviteLink,
+  listGroupInviteLinks,
+  listGroupMembers,
+  revokeGroupInviteLink,
+} from '@/lib/api';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ActivitySection } from './ais/AiActivity';
@@ -27,8 +32,9 @@ function roleLabel(role: 'owner' | 'admin' | 'member'): string | undefined {
  * The channel info panel (T-0124): the feed's description, the subscriber
  * count, invite links (admins), admins management (owner), the AIs that post
  * (admin-level, voice-gated by the room), and Leave channel for subscribers.
- * The audience list itself is visible to admins only — subscribers see the
- * count, never the names.
+ * The subscriber audience is visible to admins only — subscribers see the
+ * count plus who posts (the admins slice, which is public the way every
+ * admin post carries its name), never the audience.
  */
 export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => void }) {
   const storeApi = useChatStoreApi();
@@ -61,6 +67,50 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
   const [linksBusy, setLinksBusy] = useState(false);
   const [linksError, setLinksError] = useState<string | undefined>(undefined);
   const [createdLink, setCreatedLink] = useState<CreatedInviteLink | undefined>(undefined);
+
+  // T-0124: subscribers never see the audience (`GET /api/groups/:id`
+  // strips `members` for them), but the Admins section still names who
+  // posts: the members endpoint answers the admins slice to subscribers
+  // (owner/admins only — who posts is public, every admin post carries its
+  // name — while the subscriber audience stays hidden). Managers read the
+  // full list from the detail they already hold, so no second request.
+  const [adminsState, setAdminsState] = useState<{
+    status: 'loading' | 'ready' | 'error';
+    admins: GroupMember[];
+    message: string;
+  }>({ status: 'loading', admins: [], message: '' });
+
+  useEffect(() => {
+    if (groupId === undefined) {
+      return;
+    }
+    if (isManager) {
+      return;
+    }
+    let active = true;
+    listGroupMembers(groupId)
+      .then((members) => {
+        if (active) {
+          setAdminsState({
+            status: 'ready',
+            admins: members.filter((member) => member.role !== 'member'),
+            message: '',
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setAdminsState({
+            status: 'error',
+            admins: [],
+            message: error instanceof Error ? error.message : 'Could not load the admins.',
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [groupId, isManager]);
 
   useEffect(() => {
     if (!isManager || groupId === undefined) {
@@ -249,12 +299,17 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
   };
 
   const ownerName = (ai: GroupAi): string =>
-    info?.members.find((member) => member.userId === ai.ownerId)?.name ?? 'someone';
+    info?.members.find((member) => member.userId === ai.ownerId)?.name ??
+    adminsState.admins.find((member) => member.userId === ai.ownerId)?.name ??
+    'someone';
 
-  // The audience list: admins see everyone (names + roles); subscribers see
-  // nothing here (the server hides it) — only the count above.
+  // The audience list: admins see everyone (names + roles) from the detail;
+  // subscribers see only who posts (the admins slice, loaded above) — the
+  // subscriber audience stays hidden everywhere.
   const audience = isManager ? (info?.members ?? []) : [];
-  const admins = audience.filter((member) => member.role !== 'member');
+  const admins = isManager
+    ? audience.filter((member) => member.role !== 'member')
+    : adminsState.admins;
 
   return (
     <div
@@ -352,7 +407,11 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
               ) : (
                 <section aria-label="Admins" className="flex flex-col gap-1">
                   <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Admins</h2>
-                  {admins.length === 0 && (
+                  {adminsState.status === 'loading' && (
+                    <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+                  )}
+                  {adminsState.status === 'error' && <FieldError>{adminsState.message}</FieldError>}
+                  {adminsState.status === 'ready' && admins.length === 0 && (
                     <p className="px-2 text-[13px] text-muted-foreground">
                       Only admins can post here.
                     </p>

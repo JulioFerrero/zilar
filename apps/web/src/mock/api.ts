@@ -1917,10 +1917,10 @@ export async function mockRequest(
   }
 
   // T-0124: channel member routes in mock mode (the mock user owns every
-  // mock group). `GET /groups/:id/members` hides the audience from
-  // subscribers (empty list); the role route promotes/demotes against the
-  // in-memory detail; DELETE removes (leave). `g-devteam` keeps its group
-  // behaviour through the same routes.
+  // mock group). `GET /groups/:id/members` gives subscribers the admins
+  // slice only (who posts is public); the role route promotes/demotes
+  // against the in-memory detail; DELETE removes (leave). `g-devteam`
+  // keeps its group behaviour through the same routes.
   if (head === 'groups' && second === 'members') {
     const segments =
       path
@@ -1937,17 +1937,19 @@ export async function mockRequest(
       return notFound('Group not found');
     }
     const isManager = viewer.role === 'owner' || viewer.role === 'admin';
-    // `/groups/:id/members` — the audience list (admins see it all).
+    // `/groups/:id/members` — the audience list for admins, the admins
+    // slice for channel subscribers (mirrors `listMembersForViewer`).
     if (segments.length === 3 && method === 'GET') {
-      const visible =
+      const rows =
         detail.kind === 'channel' && !isManager
-          ? []
-          : detail.members.map((member) => ({
-              userId: member.userId,
-              name: member.name,
-              role: member.role,
-              roles: member.roles ?? [],
-            }));
+          ? detail.members.filter((member) => member.role !== 'member')
+          : detail.members;
+      const visible = rows.map((member) => ({
+        userId: member.userId,
+        name: member.name,
+        role: member.role,
+        roles: member.roles ?? [],
+      }));
       return jsonResponse({ members: visible });
     }
     // `/groups/:id/members/:userId/role` — owner only.

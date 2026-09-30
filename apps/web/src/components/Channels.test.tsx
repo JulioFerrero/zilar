@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import type { ChatSummary } from '@galena/chat-core';
 import { renderApp } from '@/test/renderApp';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function channelChat(role: 'owner' | 'admin' | 'member'): ChatSummary {
   return {
@@ -123,6 +127,20 @@ describe('channels', () => {
   });
 
   it('leaves the channel from the panel', async () => {
+    const fetchMock = vi.fn(async (url: unknown) => {
+      if (String(url).includes('/groups/g-acme/members')) {
+        return new Response(
+          JSON.stringify({
+            members: [{ userId: 'u-ana', name: 'Ana', role: 'owner', roles: [] }],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: { code: 'not_found', message: 'nope' } }), {
+        status: 404,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
     const { store } = renderApp('/c/c-acme', { chats: [channelChat('member')] });
     store.setState({
       groupInfos: {
@@ -130,10 +148,7 @@ describe('channels', () => {
           id: 'g-acme',
           title: 'Acme Announcements',
           createdBy: 'u-ana',
-          members: [
-            { userId: 'u-you', name: 'You', role: 'member', roles: [] },
-            { userId: 'u-ana', name: 'Ana', role: 'owner', roles: [] },
-          ],
+          members: [],
           ais: [],
         },
       },
@@ -153,5 +168,67 @@ describe('channels', () => {
     const dialog = screen.getByRole('dialog', { name: 'Acme Announcements channel info' });
     expect(dialog.textContent).toContain('Release notes and team news.');
     expect(dialog.textContent).toContain('3 subscribers');
+  });
+
+  it('shows the admins to a subscriber by calling the members endpoint', async () => {
+    // The subscriber's detail carries no audience (the server strips it),
+    // so the panel loads the admins slice through the members endpoint.
+    const fetchMock = vi.fn(async (url: unknown) => {
+      if (String(url).includes('/groups/g-acme/members')) {
+        return new Response(
+          JSON.stringify({
+            members: [{ userId: 'u-ana', name: 'Ana', role: 'owner', roles: [] }],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: { code: 'not_found', message: 'nope' } }), {
+        status: 404,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { store } = renderApp('/c/c-acme', { chats: [channelChat('member')] });
+    store.setState({
+      groupInfos: {
+        'c-acme': {
+          id: 'g-acme',
+          title: 'Acme Announcements',
+          createdBy: 'u-ana',
+          members: [],
+          ais: [],
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByLabelText('Open Acme Announcements channel info'));
+    expect(await screen.findByText('Ana')).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/groups/g-acme/members'),
+      expect.anything(),
+    );
+  });
+
+  it('shows an error when the admins cannot be loaded', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network down');
+      }),
+    );
+    const { store } = renderApp('/c/c-acme', { chats: [channelChat('member')] });
+    store.setState({
+      groupInfos: {
+        'c-acme': {
+          id: 'g-acme',
+          title: 'Acme Announcements',
+          createdBy: 'u-ana',
+          members: [],
+          ais: [],
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByLabelText('Open Acme Announcements channel info'));
+    expect(await screen.findByText('Could not reach the server')).toBeTruthy();
   });
 });

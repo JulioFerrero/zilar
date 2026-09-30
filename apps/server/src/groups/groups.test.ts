@@ -1152,15 +1152,17 @@ describe('groups', () => {
       );
     });
 
-    it('hides the member list from subscribers but shows it to admins', async () => {
+    it('hides the audience from subscribers but shows the admins', async () => {
       const { ownerId, ownerCookie, subscriberId, subscriberCookie, groupId } =
         await channelWithSubscriber();
 
+      // The detail carries no audience for subscribers…
       const asSubscriber = (await (
         await groupDetailRequest(subscriberCookie, groupId)
       ).json()) as ChannelDetailBody;
       expect(asSubscriber.members).toEqual([]);
 
+      // …but admins see everyone.
       const asOwner = (await (
         await groupDetailRequest(ownerCookie, groupId)
       ).json()) as ChannelDetailBody;
@@ -1168,11 +1170,18 @@ describe('groups', () => {
         [ownerId, subscriberId].sort(),
       );
 
+      // The members endpoint gives subscribers the admins slice only (who
+      // posts is public — every admin post carries its name), never the
+      // subscriber audience.
       const listAsSubscriber = await membersRequest(subscriberCookie, groupId);
       expect(listAsSubscriber.status).toBe(200);
-      expect(
-        ((await listAsSubscriber.json()) as { members: Array<{ userId: string }> }).members,
-      ).toEqual([]);
+      const subscriberSeen = (
+        (await listAsSubscriber.json()) as { members: Array<{ userId: string; role: string }> }
+      ).members;
+      expect(subscriberSeen.map((member) => [member.userId, member.role])).toEqual([
+        [ownerId, 'owner'],
+      ]);
+      expect(subscriberSeen.some((member) => member.userId === subscriberId)).toBe(false);
       const listAsOwner = await membersRequest(ownerCookie, groupId);
       expect(listAsOwner.status).toBe(200);
       expect(
@@ -1181,7 +1190,8 @@ describe('groups', () => {
     });
 
     it('promotes a subscriber to admin with voice, and refuses to lose the last admin', async () => {
-      const { ownerCookie, ownerId, subscriberId, groupId } = await channelWithSubscriber();
+      const { ownerCookie, ownerId, subscriberId, subscriberCookie, groupId } =
+        await channelWithSubscriber();
       const roomLocalpart = await roomLocalpartOf(groupId);
       const subJid = `${localpartFor(subscriberId)}@${TEST_XMPP_DOMAIN}`;
 
@@ -1224,11 +1234,95 @@ describe('groups', () => {
       );
       expect(context.adminClient.affiliationState.get(roomLocalpart)?.get(subJid)).toBe('admin');
 
-      // Only the owner may change roles; strangers see the same 404.
+      // Only the owner may change roles; members and strangers see the
+      // same 404, so membership cannot be probed through this route.
       const stranger = await bootstrapUser(context, app, 'stranger@example.com');
       expect(
         (await changeRoleRequest(stranger.cookie, groupId, subscriberId, 'member')).status,
       ).toBe(404);
+      expect(
+        (await changeRoleRequest(subscriberCookie, groupId, subscriberId, 'member')).status,
+      ).toBe(404);
+    });
+
+    it('rate-limits role changes like topic creation', async () => {
+      const { ownerCookie, subscriberId, groupId } = await channelWithSubscriber();
+      // The limiter counts attempts before authorization (same as the topic
+      // creation route): 30 rapid role writes go through, the 31st is 429.
+      for (let index = 0; index < 30; index += 1) {
+        const response = await changeRoleRequest(ownerCookie, groupId, subscriberId, 'member');
+        expect([200, 409]).toContain(response.status);
+      }
+      const limited = await changeRoleRequest(ownerCookie, groupId, subscriberId, 'member');
+      expect(limited.status).toBe(429);
+      expect(((await limited.json()) as { error: { code: string } }).error.code).toBe(
+        'rate_limited',
+      );
+    });
+
+    it('commits the role row when the room write fails, and reconciles the voice', async () => {
+      // The affiliation write fails but the recovery sync succeeds: the
+      // response still answers 200 with the committed row, the failure is
+      // logged, and the reconcile pass applies the voice mapping.
+      class FlakyAffiliationClient extends FakeAdminClient {
+        failOnce = false;
+
+        override setAffiliation(
+          roomId: string,
+          jid: string,
+          affiliation: RoomAffiliation,
+        ): Promise<void> {
+          if (this.failOnce) {
+            this.failOnce = false;
+            return Promise.reject(new Error('ejabberd is down'));
+          }
+          return super.setAffiliation(roomId, jid, affiliation);
+        }
+      }
+      const flaky = new FlakyAffiliationClient();
+      const ownContext = await createTestContext({ adminClient: flaky });
+      const ownApp = testApp(ownContext);
+      try {
+        const owner = await bootstrapUser(ownContext, ownApp, 'owner@example.com');
+        const subscriber = await contactOf(ownContext, ownApp, owner.id, 'sub@example.com');
+        const created = await ownApp.request(`${TEST_BASE_URL}/api/groups`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: owner.cookie },
+          body: JSON.stringify({
+            title: 'Releases',
+            memberIds: [subscriber.id],
+            kind: 'channel',
+          }),
+        });
+        expect(created.status).toBe(201);
+        const groupId = ((await created.json()) as ChannelDetailBody).id;
+        const [groupRow] = await ownContext.db.select().from(groups).where(eq(groups.id, groupId));
+        const subJid = `${localpartFor(subscriber.id)}@${TEST_XMPP_DOMAIN}`;
+
+        // Arm the failure for the role change's own affiliation write only.
+        flaky.failOnce = true;
+
+        const promoted = await ownApp.request(
+          `${TEST_BASE_URL}/api/groups/${groupId}/members/${subscriber.id}/role`,
+          {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json', cookie: owner.cookie },
+            body: JSON.stringify({ role: 'admin' }),
+          },
+        );
+        // The row commits despite the failed room write.
+        expect(promoted.status).toBe(200);
+        const [row] = await ownContext.db
+          .select()
+          .from(groupMembers)
+          .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, subscriber.id)));
+        expect(row?.role).toBe('admin');
+        expect(ownContext.logOutput()).toContain('could not set the member role affiliation');
+        // The reconcile pass healed the affiliation: the new admin has voice.
+        expect(flaky.affiliationState.get(groupRow!.roomLocalpart)?.get(subJid)).toBe('admin');
+      } finally {
+        await ownContext.close();
+      }
     });
 
     it('lets a subscriber join by link and leave the channel', async () => {
@@ -1293,7 +1387,7 @@ describe('groups', () => {
       expect(context.adminClient.affiliationState.get(roomLocalpart)?.get(lateJid)).toBe('member');
     });
 
-    it('gives an admin-owned AI voice in the feed, and drops it when the owner is demoted', async () => {
+    it('gives an admin-owned AI voice in the feed at add time', async () => {
       const owner = await bootstrapUser(context, app, 'owner@example.com');
       const member = await contactOf(context, app, owner.id, 'member@example.com');
       const created = await createChannelRequest(owner.cookie, {
@@ -1303,25 +1397,27 @@ describe('groups', () => {
       });
       expect(created.status).toBe(201);
       const { id: groupId } = (await created.json()) as ChannelDetailBody;
+      const roomLocalpart = await roomLocalpartOf(groupId);
 
-      // The owner adds their own AI: the owner is a channel admin, so the AI
-      // joins the feed with voice (affiliation `admin`).
+      // The owner adds their own AI through HTTP: the owner is a channel
+      // admin, so the AI lands in the feed room with voice at once
+      // (affiliation `admin`), without waiting for an unrelated re-sync.
       const { aiId, jid } = await seedAi(owner.id);
-      await context.db.insert(groupAis).values({ groupId, aiId, addedBy: owner.id });
+      expect((await addAiRequest(owner.cookie, groupId, { aiId })).status).toBe(200);
+      expect(context.adminClient.affiliationState.get(roomLocalpart)?.get(jid)).toBe('admin');
+
+      // A member-owned AI never gets voice: the member cannot add it (403),
+      // and even a planted row resolves to a voiceless `member`.
+      const foreign = await seedAi(member.id, 'Member AI');
+      await context.db.insert(groupAis).values({ groupId, aiId: foreign.aiId, addedBy: member.id });
       const { desiredMembers } = await import('../topics/rooms');
       const [general] = await context.db
         .select()
         .from(topics)
         .where(and(eq(topics.groupId, groupId), eq(topics.isGeneral, true)));
       const voice = await desiredMembers(context.db, general!, TEST_XMPP_DOMAIN);
+      expect(voice.get(foreign.jid)).toBe('member');
       expect(voice.get(jid)).toBe('admin');
-
-      // A member-owned AI never gets voice: the member cannot add it (403),
-      // and even a planted row resolves to a voiceless `member`.
-      const foreign = await seedAi(member.id, 'Member AI');
-      await context.db.insert(groupAis).values({ groupId, aiId: foreign.aiId, addedBy: member.id });
-      const voice2 = await desiredMembers(context.db, general!, TEST_XMPP_DOMAIN);
-      expect(voice2.get(foreign.jid)).toBe('member');
       const denied = await addAiRequest(member.cookie, groupId, { aiId: foreign.aiId });
       expect(denied.status).toBe(403);
     });
