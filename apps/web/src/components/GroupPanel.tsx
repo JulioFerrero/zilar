@@ -548,7 +548,9 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   error={linksError}
                   created={createdLink === undefined ? undefined : { url: createdLink.url }}
                   onCreate={(input) => void createLink(input)}
-                  onRevoke={(linkId) => void revokeLink(linkId)}
+                  // Returns the DELETE promise so the section keeps the
+                  // button busy until the revoke settles (T-0141).
+                  onRevoke={(linkId) => revokeLink(linkId)}
                   onDismissCreated={() => setCreatedLink(undefined)}
                 />
               )}

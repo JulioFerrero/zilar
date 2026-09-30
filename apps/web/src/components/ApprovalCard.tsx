@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { ApprovalRequest } from '@galena/protocol';
 import { ShieldAlert } from 'lucide-react';
 import {
   ApiError,
   decideApproval,
   getApproval,
-  getTopic,
   type ApprovalDecision,
   type PublicApproval,
 } from '@/lib/api';
@@ -53,34 +52,11 @@ export function ApprovalCard({
   // rest of this view when the server says the action is not eligible.
   const [confirmingAlways, setConfirmingAlways] = useState(false);
   const [alwaysBlocked, setAlwaysBlocked] = useState(false);
-  // T-0116: the topic's approver role name, so the card can say who else
-  // may decide. One read per card when the approval lives in a topic; a
-  // failure hides the line instead of breaking the card.
-  const [approverName, setApproverName] = useState<string | null>(null);
 
   const approval = state.kind === 'ready' ? state.approval : null;
-  const approvalTopicId = approval?.topicId ?? null;
-
-  useEffect(() => {
-    if (approvalTopicId === null) {
-      return;
-    }
-    let active = true;
-    getTopic(approvalTopicId)
-      .then((topic) => {
-        if (active) {
-          setApproverName(topic.approverRole?.name ?? null);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setApproverName(null);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [approvalTopicId]);
+  // T-0141: the approver names ride the list payload (T-0134), so the card
+  // reads them from the polling state — no per-card `getTopic` (N+1).
+  const approverNames = approval?.approverNames ?? [];
 
   const retry = (): void => {
     setRetryToken((value) => value + 1);
@@ -152,8 +128,10 @@ export function ApprovalCard({
           Worst case: {formatMoney(request.worst_case_cost)}
         </p>
       )}
-      {approverName !== null && (
-        <p className="mt-1 text-[12px] text-muted-foreground">Approvers: {approverName}</p>
+      {approverNames.length > 0 && (
+        <p className="mt-1 text-[12px] text-muted-foreground">
+          Approvers: {approverNames.join(', ')}
+        </p>
       )}
 
       {state.kind === 'loading' && (

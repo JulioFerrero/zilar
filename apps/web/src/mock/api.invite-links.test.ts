@@ -170,4 +170,37 @@ describe('mock invite links API (T-0115)', () => {
       delete mockGroupDetails['c-full'];
     }
   });
+
+  it('lets an existing member re-join a full group (alreadyMember skips the cap)', async () => {
+    // T-0141: the server answers `alreadyMember` before the cap check, so a
+    // member of a 50-member group rejoins with 200, not 409, and consumes
+    // no use. Fails without the `alreadyMember` guard (409).
+    resetMockApi();
+    const { mockGroupDetails } = await import('./groups');
+    const members = Array.from({ length: 49 }, (_, index) => ({
+      userId: `u-full-${index}`,
+      name: `Full ${index}`,
+      role: 'member' as const,
+    }));
+    mockGroupDetails['c-full'] = {
+      id: 'g-full',
+      title: 'Packed group',
+      createdBy: 'u-full-0',
+      members: [...members, { userId: 'u-you', name: 'You', role: 'member' as const }],
+      ais: [],
+    };
+    try {
+      const created = await post('/groups/g-full/invite-links', {});
+      expect(created.status).toBe(201);
+      const token = (created.body as { token: string }).token;
+      const joined = await post(`/join/${token}`, {});
+      expect(joined.status).toBe(200);
+      expect((joined.body as { alreadyMember: boolean }).alreadyMember).toBe(true);
+      const listed = await get('/groups/g-full/invite-links');
+      const links = (listed.body as { links: { uses: number }[] }).links;
+      expect(links[0]?.uses).toBe(0);
+    } finally {
+      delete mockGroupDetails['c-full'];
+    }
+  });
 });

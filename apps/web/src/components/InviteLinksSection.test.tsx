@@ -182,6 +182,54 @@ describe('GroupPanel invite links (T-0115)', () => {
     expect(screen.queryByRole('region', { name: 'Invite links' })).toBeNull();
   });
 
+  // T-0141: the revoke button stays busy until the awaited DELETE settles
+  // (success or failure); a slow revoke must not flip back to "Revoke"
+  // while the request is still in flight.
+  it('keeps the Revoke button busy until a slow revoke settles', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes('/invite-links') && init?.method === 'DELETE') {
+        await gate;
+        return new Response(null, { status: 204 });
+      }
+      if (target.includes('/invite-links')) {
+        return jsonResponse(200, { links: [linkFixture()] });
+      }
+      if (target.includes('/audit')) {
+        return jsonResponse(200, { entries: [], next: null });
+      }
+      if (target.includes('/approval-rules')) {
+        return jsonResponse(200, []);
+      }
+      return jsonResponse(404, { error: { code: 'not_found', message: 'unexpected' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+
+    const section = await screen.findByRole('region', { name: 'Invite links' });
+    fireEvent.click(
+      await within(section).findByRole('button', { name: 'Revoke invite link Friends' }),
+    );
+
+    // Busy while the DELETE is still in flight…
+    expect(await within(section).findByText('Revoking…')).toBeTruthy();
+    expect(
+      within(section).getByRole('button', { name: 'Revoke invite link Friends' }),
+    ).toHaveProperty('disabled', true);
+    // …and clickable again only after it settles.
+    release();
+    await waitFor(() => {
+      expect(
+        within(section).getByRole('button', { name: 'Revoke invite link Friends' }),
+      ).toBeTruthy();
+    });
+    expect(within(section).queryByText('Revoking…')).toBeNull();
+  });
+
   it('unsticks the Revoke button and shows the error when revoking fails', async () => {
     // Fix 6: `revokingId` must clear when the revoke fails — otherwise the
     // button sticks on "Revoking..." and the user sees the error with no

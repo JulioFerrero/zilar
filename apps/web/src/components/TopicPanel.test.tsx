@@ -143,15 +143,15 @@ function openHiringPanelWithStore(): {
   return { dialog, store };
 }
 
-describe('topic member removal errors (T-0130)', () => {
-  // The panel removes through the store only (ONE DELETE). The stubs below
-  // fail the member-removal endpoint like the server does: a 403 or a
-  // network failure keeps the user in the topic with the inline error; a
-  // 404 re-checks the row — alive means stay, gone means navigate away.
-  function stubRemoveMember(status: 403 | 404 | 'network'): void {
-    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) =>
-      mockRequest(String(url), init ?? {}, { delayMs: 0 }),
-    );
+// The panel removes through the store only (ONE DELETE). This stub fails
+// the member-removal endpoint like the server does: a 403 or a network
+// failure keeps the user in the topic with the inline error; a 404
+// re-checks the row — alive means stay, gone means navigate away.
+function stubRemoveMember(status: 403 | 404 | 'network'): void {
+  const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) =>
+    mockRequest(String(url), init ?? {}, { delayMs: 0 }),
+  );
+  {
     vi.stubGlobal('fetch', fetchMock);
     const baseImpl = fetchMock.getMockImplementation();
     if (baseImpl === undefined) {
@@ -185,16 +185,18 @@ describe('topic member removal errors (T-0130)', () => {
       return baseImpl(url, init);
     });
   }
+}
 
+function removeAna(dialog: HTMLElement): void {
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Ana from the topic' }));
+}
+
+describe('topic member removal errors (T-0130)', () => {
   function openHiringPanel(): void {
     renderApp('/c/c-devteam-hiring');
     fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
     expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
-  }
-
-  function removeAna(dialog: HTMLElement): void {
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Ana from the topic' }));
   }
 
   it('keeps the user in the topic with an inline error on a network failure', async () => {
@@ -337,8 +339,11 @@ describe('topic leave errors (T-0133)', () => {
     expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
   });
 
-  it('navigates away when leaving 404s (the topic is gone)', async () => {
-    stubLeave(404);
+  it('navigates away when leaving succeeds (the store folds the row away)', async () => {
+    // `leave()` navigates away after a successful `leaveTopic`: the store
+    // owns the last-seat 404 (it swallows it and drops the row), so the
+    // panel needs no 404 branch of its own. The plain mock DELETE removes
+    // you and folds the row; the panel navigates away with no alert.
     const { dialog } = openHiringPanelAsMember();
     const leaveButton = await within(dialog).findByRole('button', { name: 'Leave topic' });
     fireEvent.click(leaveButton);
@@ -437,5 +442,100 @@ describe('topic add-member/add-AI single call (T-0133)', () => {
     expect(await within(dialog).findByText('QA-1')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(counts.posts).toBe(1);
+  });
+
+  it('removes an AI with a single request', async () => {
+    // T-0141: `removeAi` called the endpoint directly AND the store action
+    // (double DELETE). The panel now calls only the store action; a
+    // recording second DELETE would 409, so one DELETE plus the AI row
+    // gone proves the double call is fixed. Fails on the old code (2
+    // DELETEs).
+    const deletes: string[] = [];
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) =>
+      mockRequest(String(url), init ?? {}, { delayMs: 0 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const baseImpl = fetchMock.getMockImplementation();
+    if (baseImpl === undefined) {
+      throw new Error('expected the mock fetch implementation');
+    }
+    fetchMock.mockImplementation((url: unknown, init?: RequestInit) => {
+      const raw = String(url);
+      if (init?.method === 'DELETE' && /\/topics\/[^/]+\/ais\//.test(raw)) {
+        deletes.push(raw);
+        if (deletes.length > 1) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ error: { code: 'conflict', message: 'Already removed' } }),
+              { status: 409, headers: { 'Content-Type': 'application/json' } },
+            ),
+          );
+        }
+      }
+      return baseImpl(url, init);
+    });
+    // Dev-1 lives on the bug topic (hiring has no AIs).
+    renderApp('/c/c-devteam-bug');
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    expect(await within(dialog).findByText('Dev-1')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Dev-1 from the topic' }));
+    await waitFor(() => {
+      expect(within(dialog).queryByText('Dev-1')).toBeNull();
+    });
+    expect(deletes).toHaveLength(1);
+    expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('topic remove-member superseded re-check (T-0141)', () => {
+  it('retries a superseded row re-check once instead of showing "superseded"', async () => {
+    // A superseded remove-member recheck must not surface the store's "The
+    // chat list refresh was superseded." wording in the panel. The DELETE
+    // 404s (stale list), the first re-check rejects with `stale_refresh`
+    // (the store restarted mid-flight), and the retry finds the row alive
+    // — the panel stays open with the members reloaded and no alert. Fails
+    // without the retry (the panel would show the superseded message).
+    stubRemoveMember(404);
+    const { dialog, store } = openHiringPanelWithStore();
+    expect(await within(dialog).findByText('Ana')).toBeTruthy();
+    let calls = 0;
+    const realRecheck = store.getState().refreshTopicRow;
+    store.setState({
+      refreshTopicRow: async (chatId, topicId) => {
+        calls += 1;
+        if (calls === 1) {
+          throw new ApiError(0, 'stale_refresh', 'The chat list refresh was superseded');
+        }
+        return realRecheck(chatId, topicId);
+      },
+    });
+    removeAna(dialog);
+    await waitFor(() => {
+      expect(calls).toBe(2);
+    });
+    expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/superseded/)).toBeNull();
+  });
+
+  it('shows a generic message when the re-check stays superseded after a retry', async () => {
+    // Both the first re-check and the retry reject with `stale_refresh`
+    // (the store keeps restarting): the panel reports "Could not refresh
+    // the topic. Try again." — never the store's internal wording.
+    stubRemoveMember(404);
+    const { dialog, store } = openHiringPanelWithStore();
+    expect(await within(dialog).findByText('Ana')).toBeTruthy();
+    store.setState({
+      refreshTopicRow: async () => {
+        throw new ApiError(0, 'stale_refresh', 'The chat list refresh was superseded');
+      },
+    });
+    removeAna(dialog);
+    expect(await within(dialog).findByText('Could not refresh the topic. Try again.')).toBeTruthy();
+    expect(screen.queryByText(/superseded/)).toBeNull();
+    expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
   });
 });

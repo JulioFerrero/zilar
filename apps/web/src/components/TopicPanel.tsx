@@ -20,7 +20,6 @@ import {
   listTopicAis,
   listTopicMembers,
   listTopicTools,
-  removeTopicAi,
   type ApproverRole,
   type GroupDetail,
   type GroupRole,
@@ -266,7 +265,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
         await storeApi.getState().removeTopicMember(chat.id, userId);
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) {
-          const gone = await storeApi.getState().refreshTopicRow(chat.id, topic.id);
+          const gone = await refreshTopicRowOnce();
           if (gone) {
             navigate('/');
             onClose();
@@ -280,21 +279,37 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
       await reloadMembers();
     });
 
+  // The row re-check after a removal 404. A superseded refresh (the store
+  // restarted mid-flight) rejects with `stale_refresh` instead of merging:
+  // retry once so a transient restart does not surface the store's
+  // "superseded" wording in the panel; a second supersede is genuinely
+  // stale state, so report a generic message the user can act on.
+  const refreshTopicRowOnce = async (): Promise<boolean> => {
+    try {
+      return await storeApi.getState().refreshTopicRow(chat.id, topic.id);
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'stale_refresh') {
+        try {
+          return await storeApi.getState().refreshTopicRow(chat.id, topic.id);
+        } catch (retryError) {
+          if (retryError instanceof ApiError && retryError.code === 'stale_refresh') {
+            throw new Error('Could not refresh the topic. Try again.');
+          }
+          throw retryError;
+        }
+      }
+      throw error;
+    }
+  };
+
   const leave = (): Promise<void> =>
     run('leave', async () => {
-      try {
-        await storeApi.getState().leaveTopic(chat.id);
-      } catch (error) {
-        // Leaving the last seat archives the topic (server 404): it is
-        // gone, so navigate away. Any other failure (network, 403) means
-        // the caller is still a member — stay with the inline error.
-        if (error instanceof ApiError && error.status === 404) {
-          navigate('/');
-          onClose();
-          return;
-        }
-        throw error;
-      }
+      // The store's `leaveTopic` swallows the last-seat 404 itself (the
+      // topic archived, so there is nothing left to leave): success means
+      // the caller is out either way, so navigate away. Any failure it
+      // rethrows (network, 403) means the caller is still a member — stay
+      // with the inline error.
+      await storeApi.getState().leaveTopic(chat.id);
       navigate('/');
       onClose();
     });
@@ -309,11 +324,10 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
 
   const removeAi = (aiId: string): Promise<void> =>
     run(`removeAi:${aiId}`, async () => {
-      await removeTopicAi(topic.id, aiId);
-      await storeApi
-        .getState()
-        .removeTopicAi(chat.id, aiId)
-        .catch(() => {});
+      // ONE call: the store issues the DELETE and folds the row back in,
+      // like `removeMember` (the old code also called the endpoint
+      // directly, double-issuing the request).
+      await storeApi.getState().removeTopicAi(chat.id, aiId);
       await reloadAis();
     });
 

@@ -51,7 +51,7 @@ export function InviteLinksSection({
   error: string | undefined;
   created: { url: string } | undefined;
   onCreate: (input: { label?: string; expiresInHours?: number; maxUses?: number }) => void;
-  onRevoke: (linkId: string) => void;
+  onRevoke: (linkId: string) => void | Promise<void>;
   onDismissCreated: () => void;
 }) {
   const [label, setLabel] = useState('');
@@ -96,14 +96,18 @@ export function InviteLinksSection({
     void copyText(created.url).then(() => setCopied(true));
   };
 
-  const revoke = (linkId: string): void => {
+  const revoke = async (linkId: string): Promise<void> => {
     setRevokingId(linkId);
-    // The parent owns the request and its error; clear the busy mark when
-    // its promise settles so a failed revoke never sticks on "Revoking…"
-    // (the error renders from the parent's `error` prop).
-    void Promise.resolve()
-      .then(() => onRevoke(linkId))
-      .then(() => setRevokingId((current) => (current === linkId ? undefined : current)));
+    // The parent owns the request and its error; the busy mark clears when
+    // its promise settles (success or failure) so a failed revoke never
+    // sticks on "Revoking…" (the error renders from the parent's `error`
+    // prop). Awaiting the parent's DELETE keeps the button busy until the
+    // request settles instead of clearing on the next microtask.
+    try {
+      await onRevoke(linkId);
+    } finally {
+      setRevokingId((current) => (current === linkId ? undefined : current));
+    }
   };
   return (
     <section aria-label="Invite links" className="flex flex-col gap-2 px-2">
@@ -208,7 +212,7 @@ function LinkStatesList({
 }: {
   links: GroupInviteLink[];
   revokingId: string | undefined;
-  onRevoke: (linkId: string) => void;
+  onRevoke: (linkId: string) => void | Promise<void>;
 }) {
   // Fixed at mount: the expired/exhausted labels only re-render with the
   // list itself (the parent reloads after create/revoke).

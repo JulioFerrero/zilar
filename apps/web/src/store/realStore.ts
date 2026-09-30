@@ -3085,6 +3085,16 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           // previous view); reopening the same chat keeps it.
           topicNotice: state.topicNotice?.chatId === chatId ? state.topicNotice : undefined,
         }));
+        // Navigating away resolves a pending quiet self-archive: the mark
+        // exists so the disappearance refresh moves silently, but leaving
+        // first means no silent move is wanted — a leaked mark would
+        // silence a later, unrelated removal. Drop every mark except one
+        // for the chat just opened.
+        for (const id of quietArchiveIds) {
+          if (id !== chatId) {
+            quietArchiveIds.delete(id);
+          }
+        }
         recordRead(chatId, lastRead[chatId]);
         void ensureGroupMembers(chatId);
         void refreshPinsFor(chatId);

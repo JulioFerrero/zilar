@@ -406,6 +406,16 @@ describe('approvals API', () => {
     expect(parsed.worstCase).toEqual({ currency: 'EUR', amount: 0.4 });
   });
 
+  it('publicApprovalSchema parses approverNames and defaults them to []', () => {
+    // T-0141: the list payload carries the names (T-0134); older servers
+    // omit the field and the card hides the line.
+    expect(
+      publicApprovalSchema.parse({ ...approvalFixture, approverNames: ['Designers', 'Luis'] })
+        .approverNames,
+    ).toEqual(['Designers', 'Luis']);
+    expect(publicApprovalSchema.parse(approvalFixture).approverNames).toEqual([]);
+  });
+
   it('publicApprovalSchema rejects an unknown status', () => {
     expect(publicApprovalSchema.safeParse({ ...approvalFixture, status: 'gone' }).success).toBe(
       false,

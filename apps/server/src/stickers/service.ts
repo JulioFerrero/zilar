@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
@@ -56,10 +57,26 @@ export interface StickersServiceDeps {
 /**
  * Resolves the storage dir once (absolute, normalized), so path comparisons
  * below hold for relative configs like the default `./data/stickers`.
+ *
+ * Relative values resolve against the server package root (`apps/server`),
+ * not the process cwd: the Dockerfile starts from `/app` while a developer
+ * may start from the repo root, and both must land on the same directory.
+ * Absolute values pass through unchanged. Documented in
+ * `docs/SERVER_CONFIG.md` (Stickers).
  */
-export function resolveStorageDir(dir: string): string {
-  return resolve(dir);
+export function resolveStorageDir(dir: string, baseDir: string = SERVER_PACKAGE_ROOT): string {
+  if (isAbsolute(dir)) {
+    return resolve(dir);
+  }
+  return resolve(baseDir, dir);
 }
+
+/** The server package root (`apps/server`), the base for relative storage dirs. */
+export const SERVER_PACKAGE_ROOT: string = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+);
 
 const createPackBodySchema = z
   .object({

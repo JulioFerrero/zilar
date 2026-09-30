@@ -15,6 +15,7 @@ import {
 import { buildAlwaysEligible, buildRegistry } from './actions/registry';
 import { createAgentGateway, type AgentGateway } from './agents/gateway';
 import { createApp } from './app';
+import { resolveStorageDir } from './stickers/service';
 import { startApprovalsSweeper, type ApprovalsSweeperHandle } from './approvals/sweeper';
 import { createAuditRecorder } from './audit/service';
 import { createAuth } from './auth/auth';
@@ -60,8 +61,10 @@ await runMigrations(db);
 
 // Stickers (T-0120): the storage dir must exist or be creatable and
 // writable at startup, so a bad mount fails fast with a clear message
-// instead of failing the first upload.
-await ensureWritableDir(config.STICKER_STORAGE_DIR, 'STICKER_STORAGE_DIR');
+// instead of failing the first upload. Resolved against the server package
+// root like the routes, so a relative value means the same dir here and
+// there whatever the cwd is.
+await ensureWritableDir(resolveStorageDir(config.STICKER_STORAGE_DIR), 'STICKER_STORAGE_DIR');
 
 const adminClient = createEjabberdAdminClient(config.xmpp);
 const auth = createAuth({ db, config, mailer, adminClient, logger });
