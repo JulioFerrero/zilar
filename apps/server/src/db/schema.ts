@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -394,13 +395,15 @@ export const llmVirtualKeys = pgTable('llm_virtual_keys', {
 
 // One stored approval request (T-0073). The AI asked a human to approve a
 // specific action; the args are bound to the row by `args_hash`, so a consumer
-// must present the same hash or the approval does not apply. `group_id` is
-// null for a DM with the AI and set for a group, because who may decide
-// differs between the two. `status` is `pending` until a human decides or the
-// sweeper expires it; `approved_once` is single-use (the verify path flips it
-// to `consumed`); `approved_always` is treated identically to a one-shot for
-// now (standing rules are out of scope). `decided_by` is the deciding user's
-// id; it is intentionally not exposed by the API.
+// must present the same hash or the approval does not apply. T-0110: the
+// scope is (AI, topic) — `group_id` and `topic_id` are either both set (a
+// group chat, always in that topic's room; the group's old scope lives on
+// its General topic) or both null (a DM with the AI). `status` is `pending`
+// until a human decides or the sweeper expires it; `approved_once` is
+// single-use (the verify path flips it to `consumed`); `approved_always` is
+// treated identically to a one-shot for now (standing rules are out of
+// scope). `decided_by` is the deciding user's id; it is intentionally not
+// exposed by the API.
 export const approvals = pgTable(
   'approvals',
   {
@@ -409,6 +412,9 @@ export const approvals = pgTable(
       .notNull()
       .references(() => ais.id, { onDelete: 'cascade' }),
     groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    // T-0110: the topic the request was raised in. Null exactly when
+    // `group_id` is null (personal chat). Cascades with the topic.
+    topicId: text('topic_id').references(() => topics.id, { onDelete: 'cascade' }),
     action: text('action').notNull(),
     summary: text('summary').notNull(),
     details: text('details'),
@@ -430,6 +436,9 @@ export const approvals = pgTable(
   (table) => [
     index('approvals_ai_status_idx').on(table.aiId, table.status),
     index('approvals_group_status_idx').on(table.groupId, table.status),
+    // T-0110: personal scope is `group_id` and `topic_id` both null; group
+    // scope is both set. A row with exactly one of them is rejected.
+    check('approvals_topic_scope_check', sql`("group_id" IS NULL) = ("topic_id" IS NULL)`),
   ],
 );
 
@@ -489,6 +498,9 @@ export const pendingActions = pgTable(
       .notNull()
       .references(() => ais.id, { onDelete: 'cascade' }),
     groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    // T-0110: the topic the pending action was raised in. Null exactly when
+    // `group_id` is null. Cascades with the topic.
+    topicId: text('topic_id').references(() => topics.id, { onDelete: 'cascade' }),
     action: text('action').notNull(),
     args: jsonb('args').$type<unknown>().notNull(),
     argsHash: text('args_hash').notNull(),
@@ -505,16 +517,21 @@ export const pendingActions = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
   },
-  (table) => [index('pending_actions_status_idx').on(table.status)],
+  (table) => [
+    index('pending_actions_status_idx').on(table.status),
+    // T-0110: personal scope is both ids null; group scope is both set.
+    check('pending_actions_topic_scope_check', sql`("group_id" IS NULL) = ("topic_id" IS NULL)`),
+  ],
 );
 
-// One row per "always allow" rule (T-0099). A rule grants a single AI the
-// right to run a single action in one chat (a group, or the personal chat
-// with its owner when `group_id` is null) without a fresh card. The unique
-// partial indexes enforce "at most one active rule per (AI, chat, action)":
-// the inactive ones can pile up so an audit reader sees the history.
-// Revocation is soft (`revoked_at`/`revoked_by`); deletion of the AI or
-// group cascades, leaving nothing usable behind.
+// One row per "always allow" rule (T-0099). T-0110: a rule grants a single
+// AI the right to run a single action in one topic (or the personal chat
+// with its owner when `group_id`/`topic_id` are both null) without a fresh
+// card. The unique partial indexes enforce "at most one active rule per
+// (AI, topic, action)": the inactive ones can pile up so an audit reader
+// sees the history. Revocation is soft (`revoked_at`/`revoked_by`);
+// deletion of the AI, group or topic cascades, leaving nothing usable
+// behind.
 export const approvalRules = pgTable(
   'approval_rules',
   {
@@ -524,6 +541,9 @@ export const approvalRules = pgTable(
       .references(() => ais.id, { onDelete: 'cascade' }),
     // `null` means the personal chat between the AI and its owner.
     groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    // T-0110: the topic the rule applies in. Null exactly when `group_id`
+    // is null (personal chat). Cascades with the topic.
+    topicId: text('topic_id').references(() => topics.id, { onDelete: 'cascade' }),
     action: text('action').notNull(),
     createdBy: text('created_by')
       .notNull()
@@ -533,21 +553,26 @@ export const approvalRules = pgTable(
     revokedBy: text('revoked_by').references(() => user.id, { onDelete: 'set null' }),
   },
   (table) => [
-    uniqueIndex('approval_rules_active_group_idx')
-      .on(table.aiId, table.groupId, table.action)
-      .where(sql`${table.revokedAt} IS NULL`),
+    // T-0110: rules in a topic are unique on (AI, topic, action) while
+    // active. Personal rules (both ids null) keep their own index.
+    uniqueIndex('approval_rules_active_topic_idx')
+      .on(table.aiId, table.topicId, table.action)
+      .where(sql`${table.revokedAt} IS NULL AND ${table.topicId} IS NOT NULL`),
     uniqueIndex('approval_rules_active_personal_idx')
       .on(table.aiId, table.action)
       .where(sql`${table.revokedAt} IS NULL AND ${table.groupId} IS NULL`),
+    // Personal scope is both ids null; group scope is both set.
+    check('approval_rules_topic_scope_check', sql`("group_id" IS NULL) = ("topic_id" IS NULL)`),
   ],
 );
 
-// One stored AI tool (T-0103). A tool belongs to one AI and one chat: a
-// group, or the personal chat between the AI and its owner when `group_id`
-// is null. Same-name tools in different chats are different tools; the
-// active-name uniqueness is enforced per (AI, chat) with the two partial
-// unique indexes, like `approval_rules`. Deletion is soft (`deleted_at`),
-// so a deleted name can be reused while the history rows survive.
+// One stored AI tool (T-0103). T-0110: a tool belongs to one AI and one
+// topic — or the personal chat between the AI and its owner when
+// `group_id`/`topic_id` are both null. Same-name tools in different topics
+// are different tools; the active-name uniqueness is enforced per (AI,
+// topic) with the two partial unique indexes, like `approval_rules`.
+// Deletion is soft (`deleted_at`), so a deleted name can be reused while
+// the history rows survive.
 export const aiTools = pgTable(
   'ai_tools',
   {
@@ -557,6 +582,9 @@ export const aiTools = pgTable(
       .references(() => ais.id, { onDelete: 'cascade' }),
     // `null` means the personal chat between the AI and its owner.
     groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    // T-0110: the topic the tool belongs to. Null exactly when `group_id`
+    // is null (personal chat). Cascades with the topic.
+    topicId: text('topic_id').references(() => topics.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     description: text('description').notNull(),
     currentVersion: integer('current_version').notNull().default(1),
@@ -571,9 +599,13 @@ export const aiTools = pgTable(
     uniqueIndex('ai_tools_active_personal_idx')
       .on(table.aiId, table.name)
       .where(sql`${table.deletedAt} IS NULL AND ${table.groupId} IS NULL`),
-    uniqueIndex('ai_tools_active_group_idx')
-      .on(table.aiId, table.groupId, table.name)
-      .where(sql`${table.deletedAt} IS NULL AND ${table.groupId} IS NOT NULL`),
+    // T-0110: tools in a topic are unique on (AI, topic, name) while
+    // active. Personal tools keep their own index.
+    uniqueIndex('ai_tools_active_topic_idx')
+      .on(table.aiId, table.topicId, table.name)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.topicId} IS NOT NULL`),
+    // Personal scope is both ids null; group scope is both set.
+    check('ai_tools_topic_scope_check', sql`("group_id" IS NULL) = ("topic_id" IS NULL)`),
   ],
 );
 

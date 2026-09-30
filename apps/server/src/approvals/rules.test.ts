@@ -11,6 +11,8 @@ import {
   groupMembers,
   groups,
   providerConnections,
+  topicAis,
+  topics,
   user,
 } from '../db/schema';
 import { createTestContext, type TestContext } from '../test-support';
@@ -21,8 +23,9 @@ import {
   createRule,
   findActiveRule,
   listActiveRulesForAi,
-  listActiveRulesForGroup,
+  listActiveRulesForTopic,
   revokeActiveRulesForAiInGroup,
+  revokeActiveRulesForAiInTopic,
   revokeRule,
 } from './rules';
 import { buildAlwaysEligible, buildRegistry, type ActionAdapter } from '../actions/registry';
@@ -83,7 +86,7 @@ async function seedGroup(
   ownerId: string,
   members: Array<{ userId: string; role: 'owner' | 'admin' | 'member' }>,
   aiIds: string[],
-): Promise<string> {
+): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
   await context.db.insert(groups).values({
     id: groupId,
@@ -101,7 +104,43 @@ async function seedGroup(
   for (const aiId of aiIds) {
     await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
   }
-  return groupId;
+  // Every group has a General topic; group-scoped fixtures use it.
+  const generalTopicId = randomUUID();
+  await context.db.insert(topics).values({
+    id: generalTopicId,
+    groupId,
+    name: 'General',
+    glyph: 'G',
+    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+    visibility: 'public',
+    kind: 'chat',
+    status: 'open',
+    isGeneral: true,
+    createdBy: ownerId,
+  });
+  return { groupId, generalTopicId };
+}
+
+async function seedTopic(
+  context: TestContext,
+  groupId: string,
+  creatorId: string,
+  overrides: { name?: string; visibility?: 'public' | 'private' } = {},
+): Promise<string> {
+  const topicId = randomUUID();
+  await context.db.insert(topics).values({
+    id: topicId,
+    groupId,
+    name: overrides.name ?? `Topic ${topicId.slice(0, 8)}`,
+    glyph: 'T',
+    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+    visibility: overrides.visibility ?? 'public',
+    kind: 'chat',
+    status: 'open',
+    isGeneral: false,
+    createdBy: creatorId,
+  });
+  return topicId;
 }
 
 async function seedApproval(
@@ -109,6 +148,7 @@ async function seedApproval(
   args: {
     aiId: string;
     groupId?: string;
+    topicId?: string;
     action?: string;
     hashSeed?: number;
   },
@@ -119,6 +159,7 @@ async function seedApproval(
     {
       aiId: args.aiId,
       ...(args.groupId === undefined ? {} : { groupId: args.groupId }),
+      ...(args.topicId === undefined ? {} : { topicId: args.topicId }),
       action: args.action ?? 'demo.echo',
       summary: 'Echo a message: "hi"',
       argsHash: argsHash(args.hashSeed ?? 1),
@@ -149,7 +190,7 @@ describe('approval rules service (T-0099)', () => {
       const { aiId } = await seedAi(context, ownerId);
       const { rule, created } = await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       expect(created).toBe(true);
@@ -159,10 +200,10 @@ describe('approval rules service (T-0099)', () => {
       expect(rule.createdBy).toBe(ownerId);
     });
 
-    it('inserts one row for a group', async () => {
+    it('inserts one row for a topic', async () => {
       const ownerId = await seedUser(context);
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         ownerId,
         [{ userId: ownerId, role: 'owner' }],
@@ -170,12 +211,13 @@ describe('approval rules service (T-0099)', () => {
       );
       const { rule, created } = await createRule(
         context.db,
-        { aiId, groupId, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       expect(created).toBe(true);
       expect(rule.scope).toBe('group');
       expect(rule.groupId).toBe(groupId);
+      expect(rule.topicId).toBe(generalTopicId);
     });
 
     it('is idempotent: a second create returns the existing row', async () => {
@@ -183,12 +225,12 @@ describe('approval rules service (T-0099)', () => {
       const { aiId } = await seedAi(context, ownerId);
       const first = await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       const second = await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       expect(first.rule.id).toBe(second.rule.id);
@@ -201,16 +243,20 @@ describe('approval rules service (T-0099)', () => {
       expect(rows).toHaveLength(1);
     });
 
-    it('enforces one active rule per (ai, group, action) at the DB level', async () => {
+    it('enforces one active rule per (ai, topic, action) at the DB level', async () => {
       const ownerId = await seedUser(context);
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         ownerId,
         [{ userId: ownerId, role: 'owner' }],
         [aiId],
       );
-      await createRule(context.db, { aiId, groupId, action: 'demo.echo', createdBy: ownerId }, now);
+      await createRule(
+        context.db,
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: ownerId },
+        now,
+      );
       // The partial unique index refuses the second active rule directly,
       // bypassing the service-level dedupe.
       await expect(
@@ -218,16 +264,48 @@ describe('approval rules service (T-0099)', () => {
           id: randomUUID(),
           aiId,
           groupId,
+          topicId: generalTopicId,
           action: 'demo.echo',
           createdBy: ownerId,
         }),
       ).rejects.toThrow();
     });
 
-    it('lets a personal rule and a group rule for the same AI + action coexist', async () => {
+    it('rejects a row with only one of group_id / topic_id (CHECK)', async () => {
       const ownerId = await seedUser(context);
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        ownerId,
+        [{ userId: ownerId, role: 'owner' }],
+        [aiId],
+      );
+      await expect(
+        context.db.insert(approvalRules).values({
+          id: randomUUID(),
+          aiId,
+          groupId,
+          topicId: null,
+          action: 'demo.echo',
+          createdBy: ownerId,
+        }),
+      ).rejects.toThrow();
+      await expect(
+        context.db.insert(approvalRules).values({
+          id: randomUUID(),
+          aiId,
+          groupId: null,
+          topicId: generalTopicId,
+          action: 'demo.echo',
+          createdBy: ownerId,
+        }),
+      ).rejects.toThrow();
+    });
+
+    it('lets a personal rule and a topic rule for the same AI + action coexist', async () => {
+      const ownerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         ownerId,
         [{ userId: ownerId, role: 'owner' }],
@@ -235,16 +313,41 @@ describe('approval rules service (T-0099)', () => {
       );
       const personal = await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       const group = await createRule(
         context.db,
-        { aiId, groupId, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       expect(personal.created).toBe(true);
       expect(group.created).toBe(true);
+    });
+
+    it('lets the same action have rules in two topics of one group', async () => {
+      const ownerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        ownerId,
+        [{ userId: ownerId, role: 'owner' }],
+        [aiId],
+      );
+      const otherTopicId = await seedTopic(context, groupId, ownerId, { name: 'Other' });
+      const first = await createRule(
+        context.db,
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: ownerId },
+        now,
+      );
+      const second = await createRule(
+        context.db,
+        { aiId, groupId, topicId: otherTopicId, action: 'demo.echo', createdBy: ownerId },
+        now,
+      );
+      expect(first.created).toBe(true);
+      expect(second.created).toBe(true);
+      expect(first.rule.id).not.toBe(second.rule.id);
     });
   });
 
@@ -255,6 +358,7 @@ describe('approval rules service (T-0099)', () => {
       const row = await findActiveRule(context.db, {
         aiId,
         groupId: null,
+        topicId: null,
         action: 'demo.echo',
       });
       expect(row).toBeNull();
@@ -265,22 +369,23 @@ describe('approval rules service (T-0099)', () => {
       const { aiId } = await seedAi(context, ownerId);
       await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       const row = await findActiveRule(context.db, {
         aiId,
         groupId: null,
+        topicId: null,
         action: 'demo.echo',
       });
       expect(row).not.toBeNull();
       expect(row?.action).toBe('demo.echo');
     });
 
-    it('does not return a personal rule for a group query, or vice versa', async () => {
+    it('does not return a personal rule for a topic query, or vice versa', async () => {
       const ownerId = await seedUser(context);
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         ownerId,
         [{ userId: ownerId, role: 'owner' }],
@@ -288,23 +393,53 @@ describe('approval rules service (T-0099)', () => {
       );
       await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       const asGroup = await findActiveRule(context.db, {
         aiId,
         groupId,
+        topicId: generalTopicId,
         action: 'demo.echo',
       });
       expect(asGroup).toBeNull();
-      // And: a group rule does not match a personal query.
-      await createRule(context.db, { aiId, groupId, action: 'demo.echo', createdBy: ownerId }, now);
+      // And: a topic rule does not match a personal query.
+      await createRule(
+        context.db,
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: ownerId },
+        now,
+      );
       const asPersonal = await findActiveRule(context.db, {
         aiId,
         groupId: null,
+        topicId: null,
         action: 'demo.echo',
       });
       expect(asPersonal).not.toBeNull();
+    });
+
+    it('does not return a rule of another topic in the same group', async () => {
+      const ownerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        ownerId,
+        [{ userId: ownerId, role: 'owner' }],
+        [aiId],
+      );
+      const otherTopicId = await seedTopic(context, groupId, ownerId, { name: 'Other' });
+      await createRule(
+        context.db,
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: ownerId },
+        now,
+      );
+      const other = await findActiveRule(context.db, {
+        aiId,
+        groupId,
+        topicId: otherTopicId,
+        action: 'demo.echo',
+      });
+      expect(other).toBeNull();
     });
 
     it('does not return a revoked rule', async () => {
@@ -312,13 +447,14 @@ describe('approval rules service (T-0099)', () => {
       const { aiId } = await seedAi(context, ownerId);
       const { rule } = await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       await revokeRule(context.db, { ruleId: rule.id, actorId: ownerId, now });
       const row = await findActiveRule(context.db, {
         aiId,
         groupId: null,
+        topicId: null,
         action: 'demo.echo',
       });
       expect(row).toBeNull();
@@ -331,12 +467,12 @@ describe('approval rules service (T-0099)', () => {
       const { aiId } = await seedAi(context, ownerId);
       const first = await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.other', createdBy: ownerId },
+        { aiId, groupId: null, topicId: null, action: 'demo.other', createdBy: ownerId },
         now,
       );
       await revokeRule(context.db, { ruleId: first.rule.id, actorId: ownerId, now });
@@ -346,17 +482,21 @@ describe('approval rules service (T-0099)', () => {
       expect(rules[0]?.action).toBe('demo.other');
     });
 
-    it('lists active rules for a group', async () => {
+    it('lists active rules for a topic', async () => {
       const ownerId = await seedUser(context);
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         ownerId,
         [{ userId: ownerId, role: 'owner' }],
         [aiId],
       );
-      await createRule(context.db, { aiId, groupId, action: 'demo.echo', createdBy: ownerId }, now);
-      const rules = await listActiveRulesForGroup(context.db, groupId);
+      await createRule(
+        context.db,
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: ownerId },
+        now,
+      );
+      const rules = await listActiveRulesForTopic(context.db, generalTopicId);
       expect(rules).toHaveLength(1);
     });
 
@@ -365,7 +505,7 @@ describe('approval rules service (T-0099)', () => {
       const { aiId } = await seedAi(context, ownerId);
       const { rule } = await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       const missing = await revokeRule(context.db, {
@@ -410,11 +550,11 @@ describe('approval rules service (T-0099)', () => {
       expect(result?.row.status).toBe('approved_always');
     });
 
-    it('creates a group rule when a group admin approves_always', async () => {
+    it('creates a topic rule when a group admin approves_always', async () => {
       const ownerId = await seedUser(context);
       const adminId = await seedUser(context, { name: 'Admin' });
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         ownerId,
         [
@@ -425,7 +565,7 @@ describe('approval rules service (T-0099)', () => {
       );
       const { id: approvalId } = await seedApproval(
         context,
-        { aiId, groupId, action: 'demo.echo' },
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo' },
         now,
       );
       const result = await decideApproval(
@@ -440,6 +580,7 @@ describe('approval rules service (T-0099)', () => {
       );
       expect(result?.rule?.created).toBe(true);
       expect(result?.rule?.groupId).toBe(groupId);
+      expect(result?.rule?.topicId).toBe(generalTopicId);
     });
 
     it('refuses approve_always with 400 always_not_allowed when the action is not eligible', async () => {
@@ -474,7 +615,7 @@ describe('approval rules service (T-0099)', () => {
       const ownerId = await seedUser(context);
       const memberId = await seedUser(context, { name: 'Member' });
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         ownerId,
         [
@@ -485,7 +626,7 @@ describe('approval rules service (T-0099)', () => {
       );
       const { id: approvalId } = await seedApproval(
         context,
-        { aiId, groupId, action: 'demo.echo' },
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo' },
         now,
       );
       const memberResult = await decideApproval(
@@ -564,7 +705,7 @@ describe('approval rules service (T-0099)', () => {
     it('kills the AI rules for the group but leaves personal rules alone', async () => {
       const ownerId = await seedUser(context);
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         ownerId,
         [{ userId: ownerId, role: 'owner' }],
@@ -572,12 +713,12 @@ describe('approval rules service (T-0099)', () => {
       );
       const personal = await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       const group = await createRule(
         context.db,
-        { aiId, groupId, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       // Run the same revoke helper removeGroupAi uses.
@@ -602,12 +743,54 @@ describe('approval rules service (T-0099)', () => {
       expect(groupRow?.revokedAt).not.toBeNull();
     });
 
+    it('removing the AI from one topic revokes only that topic rules', async () => {
+      const ownerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        ownerId,
+        [{ userId: ownerId, role: 'owner' }],
+        [aiId],
+      );
+      const otherTopicId = await seedTopic(context, groupId, ownerId, { name: 'Other' });
+      const general = await createRule(
+        context.db,
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: ownerId },
+        now,
+      );
+      const other = await createRule(
+        context.db,
+        { aiId, groupId, topicId: otherTopicId, action: 'demo.echo', createdBy: ownerId },
+        now,
+      );
+      // Run the same revoke helper topic-AI removal uses.
+      const revoked = await revokeActiveRulesForAiInTopic(context.db, {
+        aiId,
+        topicId: otherTopicId,
+        actorId: ownerId,
+        now,
+      });
+      expect(revoked).toHaveLength(1);
+      expect(revoked[0]?.id).toBe(other.rule.id);
+
+      const [generalRow] = await context.db
+        .select()
+        .from(approvalRules)
+        .where(eq(approvalRules.id, general.rule.id));
+      expect(generalRow?.revokedAt).toBeNull();
+      const [otherRow] = await context.db
+        .select()
+        .from(approvalRules)
+        .where(eq(approvalRules.id, other.rule.id));
+      expect(otherRow?.revokedAt).not.toBeNull();
+    });
+
     it('deleting the AI row cascades the rules away', async () => {
       const ownerId = await seedUser(context);
       const { aiId } = await seedAi(context, ownerId);
       await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: ownerId },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
         now,
       );
       await context.db.delete(ais).where(eq(ais.id, aiId));
@@ -708,7 +891,7 @@ describe('approval rules service (T-0099)', () => {
       // Insert the rule the route would create after a human approves_always.
       await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: owner.id },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: owner.id },
         now,
       );
 
@@ -753,7 +936,7 @@ describe('approval rules service (T-0099)', () => {
       const { aiId } = await seedAi(context, owner.id);
       await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: owner.id },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: owner.id },
         now,
       );
       // Stop the AI: kill switch.
@@ -796,7 +979,7 @@ describe('approval rules service (T-0099)', () => {
       const { aiId } = await seedAi(context, owner.id);
       const { rule } = await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: owner.id },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: owner.id },
         now,
       );
       await revokeRule(context.db, { ruleId: rule.id, actorId: owner.id, now });
@@ -848,7 +1031,13 @@ describe('approval rules service (T-0099)', () => {
       );
       await createRule(
         context.db,
-        { aiId, groupId: group, action: 'demo.echo', createdBy: owner.id },
+        {
+          aiId,
+          groupId: group.groupId,
+          topicId: group.generalTopicId,
+          action: 'demo.echo',
+          createdBy: owner.id,
+        },
         now,
       );
       const gateway = createActionGateway({
@@ -862,7 +1051,8 @@ describe('approval rules service (T-0099)', () => {
       // Invalid args still fail the schema even though a rule exists.
       const invalid = await gateway.request({
         aiId,
-        groupId: group,
+        groupId: group.groupId,
+        topicId: group.generalTopicId,
         action: 'demo.echo',
         args: { text: '' },
         requestedBy: 'ai-bot@galena.localhost',
@@ -871,10 +1061,11 @@ describe('approval rules service (T-0099)', () => {
 
       // The AI left the room without the rule being revoked (a direct row
       // delete): the rule alone must not let it act there.
-      await context.db.delete(groupAis).where(eq(groupAis.groupId, group));
+      await context.db.delete(groupAis).where(eq(groupAis.groupId, group.groupId));
       const outside = await gateway.request({
         aiId,
-        groupId: group,
+        groupId: group.groupId,
+        topicId: group.generalTopicId,
         action: 'demo.echo',
         args: { text: 'hello' },
         requestedBy: 'ai-bot@galena.localhost',
@@ -883,7 +1074,7 @@ describe('approval rules service (T-0099)', () => {
       expect(calls).toHaveLength(0);
     });
 
-    it('scope is exact: a rule for group G1 does not apply to group G2', async () => {
+    it('scope is exact: a rule for topic A does not fire in topic B, fires in A, never personal', async () => {
       const adapters = buildRegistry([adapter]);
       const alwaysEligible = buildAlwaysEligible(adapters);
       const app = createApp({
@@ -902,6 +1093,14 @@ describe('approval rules service (T-0099)', () => {
         [{ userId: owner.id, role: 'owner' }],
         [aiId],
       );
+      const topicB = await seedTopic(context, group1.groupId, owner.id, { name: 'Topic B' });
+      // The AI works in both topics: membership of topic B (a `topic_ais`
+      // row) lets the request reach the approval path there.
+      await context.db.insert(topicAis).values({
+        topicId: topicB,
+        aiId,
+        addedBy: owner.id,
+      });
       const group2 = await seedGroup(
         context,
         owner.id,
@@ -910,7 +1109,13 @@ describe('approval rules service (T-0099)', () => {
       );
       await createRule(
         context.db,
-        { aiId, groupId: group1, action: 'demo.echo', createdBy: owner.id },
+        {
+          aiId,
+          groupId: group1.groupId,
+          topicId: group1.generalTopicId,
+          action: 'demo.echo',
+          createdBy: owner.id,
+        },
         now,
       );
 
@@ -924,10 +1129,21 @@ describe('approval rules service (T-0099)', () => {
         },
         now: () => now,
       });
+      // Another topic of the same group: still requires approval.
+      const otherTopic = await gateway.request({
+        aiId,
+        groupId: group1.groupId,
+        topicId: topicB,
+        action: 'demo.echo',
+        args: { text: 'wrong topic' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      expect(otherTopic.status).toBe('pending_approval');
       // Different group: still requires approval.
       const g2 = await gateway.request({
         aiId,
-        groupId: group2,
+        groupId: group2.groupId,
+        topicId: group2.generalTopicId,
         action: 'demo.echo',
         args: { text: 'wrong group' },
         requestedBy: 'ai-bot@galena.localhost',
@@ -941,15 +1157,16 @@ describe('approval rules service (T-0099)', () => {
         requestedBy: 'ai-bot@galena.localhost',
       });
       expect(personal.status).toBe('pending_approval');
-      // The original chat: auto-runs.
+      // The original topic: auto-runs.
       const original = await gateway.request({
         aiId,
-        groupId: group1,
+        groupId: group1.groupId,
+        topicId: group1.generalTopicId,
         action: 'demo.echo',
-        args: { text: 'right group' },
+        args: { text: 'right topic' },
         requestedBy: 'ai-bot@galena.localhost',
       });
-      expect(original).toEqual({ status: 'executed', summary: 'Echoed: right group' });
+      expect(original).toEqual({ status: 'executed', summary: 'Echoed: right topic' });
     });
   });
 });

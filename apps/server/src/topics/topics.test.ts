@@ -5,6 +5,8 @@ import { aiLocalpart } from '../ais/service';
 import {
   aiLimits,
   ais,
+  aiTools,
+  approvalRules,
   auditLog,
   groupAis,
   groupMembers,
@@ -827,6 +829,69 @@ describe('topics', () => {
 
       // Removing again answers 404.
       expect((await removeTopicAi(owner.cookie, topicId, aiId)).status).toBe(404);
+    });
+
+    it('removing the AI from a topic revokes its rules and deletes its tools there only', async () => {
+      const { owner, group } = await setup();
+      const { aiId } = await seedAi(owner.id);
+      expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
+      const created = await createTopic(owner.cookie, group.id, { name: 'Backend' });
+      const topicId = created.body.id;
+      expect((await addTopicAi(owner.cookie, topicId, aiId)).status).toBe(200);
+      const general = await generalOf(group.id);
+
+      const ruleNow = new Date('2026-01-01T00:00:00Z');
+      const [topicRule] = await context.db
+        .insert(approvalRules)
+        .values({
+          id: randomUUID(),
+          aiId,
+          groupId: group.id,
+          topicId,
+          action: 'demo.echo',
+          createdBy: owner.id,
+          createdAt: ruleNow,
+        })
+        .returning();
+      const [generalRule] = await context.db
+        .insert(approvalRules)
+        .values({
+          id: randomUUID(),
+          aiId,
+          groupId: group.id,
+          topicId: general.id,
+          action: 'demo.echo',
+          createdBy: owner.id,
+          createdAt: ruleNow,
+        })
+        .returning();
+      const toolNow = new Date('2026-01-01T00:00:00Z');
+      const [topicTool] = await context.db
+        .insert(aiTools)
+        .values({
+          id: randomUUID(),
+          aiId,
+          groupId: group.id,
+          topicId,
+          name: 'topic-tool',
+          description: 'A topic tool',
+          currentVersion: 1,
+          createdBy: owner.id,
+          createdAt: toolNow,
+          updatedAt: toolNow,
+        })
+        .returning();
+
+      const removed = await removeTopicAi(owner.cookie, topicId, aiId);
+      expect(removed.status).toBe(200);
+
+      const rules = await context.db.select().from(approvalRules);
+      const rulesById = new Map(rules.map((row) => [row.id, row]));
+      expect(rulesById.get(topicRule!.id)?.revokedAt).not.toBeNull();
+      expect(rulesById.get(generalRule!.id)?.revokedAt).toBeNull();
+      const tools = await context.db.select().from(aiTools);
+      const toolsById = new Map(tools.map((row) => [row.id, row]));
+      expect(toolsById.get(topicTool!.id)?.deletedAt).not.toBeNull();
     });
 
     it('lets a topic manager who is not the AI owner remove it', async () => {

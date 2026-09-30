@@ -29,14 +29,18 @@ describe('general topics backfill', () => {
         }
       }
     };
-    // Pre-T-0108 state: every migration except the topics ones (0018, 0019)
-    // and the T-0109 topic-AI table (0020), which needs the topics tables.
+    // Pre-T-0108 state: every migration except the topics ones (0018, 0019),
+    // the T-0109 topic-AI table (0020, which needs the topics tables) and
+    // the T-0110 topic-scope columns/backfill (0021, 0022, covered by the
+    // topic-scope backfill test).
     for (const file of fs.readdirSync(drizzleDir).sort()) {
       if (
         !file.endsWith('.sql') ||
         file.startsWith('0018_') ||
         file.startsWith('0019_') ||
-        file.startsWith('0020_')
+        file.startsWith('0020_') ||
+        file.startsWith('0021_') ||
+        file.startsWith('0022_')
       ) {
         continue;
       }

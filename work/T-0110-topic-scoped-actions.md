@@ -1,7 +1,7 @@
 ---
 id: T-0110
 title: Approvals, "always allow" rules and tools are scoped to a topic (AI + topic), not to a whole group
-status: planned
+status: review
 milestone: M5
 branch: task/T-0110-topic-scoped-actions
 model: meta/muse-spark-1.3-contributor
@@ -74,19 +74,44 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Schema (`db/schema.ts`, via `db:generate` only): added nullable `topic_id` (fk `topics`, cascade) to `approvals`, `pending_actions`, `approval_rules`, `ai_tools`; CHECK per table `(group_id IS NULL) = (topic_id IS NULL)`; rules unique index rebuilt as `(ai_id, topic_id, action)` active+topiced (personal index unchanged); tools unique index rebuilt as `(ai_id, topic_id, name)` active+topiced (personal unchanged). Migration `0021` (columns, FKs, new indexes) + custom `0022_topic-scope-backfill` (backfill group rows to General, then CHECKs; idempotent re-runnable). CHECKs live in 0022, not 0021, so pre-T-0110 group rows migrate cleanly (I edited the generated 0021 to drop its CHECKs).
+- Gateway (`actions/gateway.ts`): `RequestParams` gains `topicId?`; a group request without a valid topic (missing, foreign group, archived, non-General without a `topic_ais` row, General without `group_ais`) is `denied: ai_not_in_group`. Rule lookup exact on `(aiId, topicId, action)`. `topic_id` stored on approval + pending rows. All card/outcome announcements carry `topicId`.
+- `agents/gateway.ts`: `RequestActionContext` carries `topicId` from the room subscription into `actions.request`; T-0098 gate unchanged; `ai_not_in_group` model wording extended to "the AI is not in that topic".
+- Approvals (`service.ts`, `routes.ts`): `canDecide`/list/read/decide require `canSeeTopic` for topiced rows (blind admin = 404, omitted from list/badge, cannot decide; removed AI owner loses rights). Public JSON gains `topicId`/`topicName` (name only for visible topics). Group rules route lists per visible topic; AI route filters to visible topics; revoke gated on visibility for owner and admin. `approve_always` rule inherits the approval's topic.
+- Rules (`rules.ts`): `CreateRuleInput`/`findActiveRule` take `topicId`; new `listActiveRulesForTopic` (rows) + `toPublicRule` exported; new `revokeActiveRulesForAiInTopic`; group-wide revoke kept for `removeGroupAi`.
+- Tools (`service.ts`, `routes.ts`): `SaveToolVersionInput`/`listTools`/`findActiveTool`/limit keyed on `topicId` (limit stays 20, now per `(AI, topic)`); new `deleteToolsForAiInTopic` + group-wide variant for `removeGroupAi`; reader/manager = AI owner / topic member / group admin, each only with topic visibility; `GET /api/groups/:id/tools` filters to visible topics; new `GET /api/topics/:id/tools`; `GET /api/ais/:id/tools` filters to visible topics; public JSON gains `topicId`. Audit details unchanged (never carried topic names).
+- `topics/service.ts` `removeTopicAi`: revokes the AI's rules + deletes its tools in that topic (personal rows unaffected).
+- `index.ts`: inline announcer extracted to `actions/production-announcer.ts` (`createProductionAnnouncer`, same behaviour + topic room resolution); `index.ts` now only wires it. Card payload `room` = the topic room; `postToChat` gets `topicId`.
+- Tests: extended `flow.e2e.test.ts` (topic card/outcome topicId, per-topic T-0101, rule fires in A not B), gateway tests (denied cases incl. archived topic, announcer topicId, stored rows), rules/service/routes tests (scope exactness, CHECK violations, two-topics-same-action), private-topic visibility blocks for approvals/rules/tools routes, topic-AI removal cleanup, new `approvals/topic-scope-backfill.test.ts` (SQL replay: backfill to General + CHECK rejects half rows), new `actions/production-announcer.test.ts` (card into topic room not General, General room, DM, silent when gateway absent). Updated `backfill.test.ts` exclusions, groups/topics fixtures to the new scope.
 
 ### Files changed
--
+- `apps/server/src/db/schema.ts`, `apps/server/drizzle/0021_eager_dark_beast.sql`, `apps/server/drizzle/0022_topic-scope-backfill.sql` (+ meta snapshots/journal)
+- `apps/server/src/actions/gateway.ts`, `actions/production-announcer.ts` (new), `apps/server/src/index.ts`
+- `apps/server/src/approvals/service.ts`, `approvals/rules.ts`, `approvals/routes.ts`
+- `apps/server/src/tools/service.ts`, `tools/routes.ts`
+- `apps/server/src/topics/service.ts`, `apps/server/src/agents/gateway.ts`
+- Tests: `actions/{gateway,flow.e2e,announce,production-announcer}.test.ts`, `approvals/{service,rules,rules.routes,routes,topic-scope-backfill}.test.ts`, `tools/{service,routes}.test.ts`, `topics/{topics,backfill}.test.ts`, `groups/groups.test.ts`
+- `work/T-0110-topic-scoped-actions.md` (status + this report)
 
 ### Commands run and real results
--
+- `pnpm install`: pass (6.6s)
+- `pnpm format:check`: pass ("All matched files use Prettier code style!")
+- `pnpm lint`: pass (oxlint clean)
+- `pnpm typecheck`: pass (turbo 10/10)
+- `pnpm --filter @galena/server test --maxWorkers=2`: 66 files passed, 5 skipped; 1139 passed, 7 skipped (~242s, final code)
+- `pnpm build`: pass (2/2 turbo tasks)
+- Scoped runs while iterating: approvals (service+rules+rules.routes+routes+sweeper) 86 passed; actions gateway+announce 51 passed; flow.e2e 12 passed; tools service+routes 61 passed; agents gateway 114 passed; topics+groups+backfill 62 passed; topics.test 32 passed; production-announcer+announce 14 passed; migration backfill 1 passed.
+- `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any|any<` in all touched non-test source: no hits (4 prose "any" matches only).
 
 ### Problems, deviations from the spec, open questions
--
+- The generated `0021` bundled the CHECKs with the column adds, which would fail on pre-T-0110 group rows; I moved the CHECKs into the custom `0022` (backfill first, constraints second). Schema file, journal and snapshots are consistent; the 0022 `DO` blocks make it re-runnable.
+- `findActiveRule`/`CreateRuleInput` keep a `groupId` field (stored on the row, used by the group-wide revoke and the `always_requires_admin` gate) but match on `topicId`; personal scope matches on `topicId IS NULL`.
+- `listDecidableApprovals` re-checks `canDecide` per row (extra queries) so blind admins never count private rows in the badge; acceptable N+1 in line with existing code.
+- The production announcer was extracted to `actions/production-announcer.ts` so the "card goes to the topic room" behaviour is unit-testable; `index.ts` only wires it (allowed: "only the production announcer wiring").
+- T-0104/T-0105/T-0106/T-0107 untouched as instructed. No new dependencies, no `any`, no disable comments.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
 
 ---
 

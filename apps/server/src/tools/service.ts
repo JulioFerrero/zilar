@@ -8,16 +8,16 @@ import type { ToolRunner, ToolRunResult } from './types';
 
 export type { ToolRunner, ToolRunResult };
 
-// T-0103: versioned tool code per AI and chat. A tool belongs to one AI
-// and one chat (`groupId`, or null for the personal chat with the owner).
-// History is append-only: `saveToolVersion` and `revertTool` only insert
-// into `ai_tool_versions`; no function here ever updates or deletes a
-// version row.
+// T-0103: versioned tool code per AI and topic. A tool belongs to one AI
+// and one topic (`groupId` + `topicId`, or both null for the personal chat
+// with the owner). History is append-only: `saveToolVersion` and
+// `revertTool` only insert into `ai_tool_versions`; no function here ever
+// updates or deletes a version row.
 
-// Caps: at most 20 active tools per (AI, chat), at most 200 versions per
+// Caps: at most 20 active tools per (AI, topic), at most 200 versions per
 // tool. The runner output stored on a run row is truncated to 2 KiB, and
 // only the newest 50 runs per tool are kept.
-export const MAX_TOOLS_PER_CHAT = 20;
+export const MAX_TOOLS_PER_TOPIC = 20;
 export const MAX_VERSIONS_PER_TOOL = 200;
 export const MAX_RUNS_PER_TOOL = 50;
 export const MAX_RUN_OUTPUT_BYTES = 2 * 1024;
@@ -38,6 +38,7 @@ type VersionRow = typeof aiToolVersions.$inferSelect;
 export interface SaveToolVersionInput {
   aiId: string;
   groupId: string | null;
+  topicId: string | null;
   name: string;
   description: string;
   source: string;
@@ -52,6 +53,8 @@ export interface PublicTool {
   id: string;
   aiId: string;
   groupId: string | null;
+  /** The topic the tool belongs to. Null for personal-chat tools. */
+  topicId: string | null;
   name: string;
   description: string;
   currentVersion: number;
@@ -110,7 +113,7 @@ interface AppendVersionResult {
   unchanged: boolean;
 }
 
-// Creates the tool with version 1 when the name is new in that chat, or
+// Creates the tool with version 1 when the name is new in that topic, or
 // appends version N+1 when source or hosts differ from the current
 // version. An identical save returns the current version with
 // `unchanged: true` and writes nothing. All in one transaction; the tool
@@ -140,9 +143,9 @@ export async function saveToolVersion(
   }
   const { name, description, source, hosts, message } = parsed.value;
 
-  const existing = await findActiveTool(db, input.aiId, input.groupId, name);
+  const existing = await findActiveTool(db, input.aiId, input.topicId, name);
   if (!existing) {
-    await enforceToolLimit(db, input.aiId, input.groupId);
+    await enforceToolLimit(db, input.aiId, input.topicId);
     const createdResult = await db.transaction(async (rawTx) => {
       const tx = rawTx as unknown as ServerDatabase;
       const [inserted] = await tx
@@ -151,6 +154,7 @@ export async function saveToolVersion(
           id: randomUUID(),
           aiId: input.aiId,
           groupId: input.groupId,
+          topicId: input.topicId,
           name,
           description,
           currentVersion: 1,
@@ -179,7 +183,7 @@ export async function saveToolVersion(
       }
       // Lost the race with a concurrent create of the same name: append
       // to the winner's history instead.
-      const winner = await findActiveTool(tx, input.aiId, input.groupId, name);
+      const winner = await findActiveTool(tx, input.aiId, input.topicId, name);
       if (!winner) {
         throw new Error('Failed to create tool');
       }
@@ -327,21 +331,21 @@ async function appendVersion(
   };
 }
 
-// Lists the non-deleted tools of one AI in one chat (no source). The
-// route decides which chats to query; the helper does not.
+// Lists the non-deleted tools of one AI in one topic (no source). The
+// route decides which topics to query; the helper does not.
 export async function listTools(
   db: ServerDatabase,
-  input: { aiId: string; groupId: string | null },
+  input: { aiId: string; groupId: string | null; topicId: string | null },
 ): Promise<PublicTool[]> {
   const rows = await db
     .select()
     .from(aiTools)
     .where(
-      input.groupId === null
-        ? and(eq(aiTools.aiId, input.aiId), isNull(aiTools.groupId), isNull(aiTools.deletedAt))
+      input.topicId === null
+        ? and(eq(aiTools.aiId, input.aiId), isNull(aiTools.topicId), isNull(aiTools.deletedAt))
         : and(
             eq(aiTools.aiId, input.aiId),
-            eq(aiTools.groupId, input.groupId),
+            eq(aiTools.topicId, input.topicId),
             isNull(aiTools.deletedAt),
           ),
     )
@@ -365,6 +369,7 @@ export async function listTools(
       id: tool.id,
       aiId: tool.aiId,
       groupId: tool.groupId,
+      topicId: tool.topicId,
       name: tool.name,
       description: tool.description,
       currentVersion: tool.currentVersion,
@@ -533,9 +538,31 @@ export async function deleteTool(
   return { deleted: updated !== undefined };
 }
 
-// Soft-deletes every active tool of one AI in one chat. Called from
-// `groups/service.ts` `removeGroupAi` in the same transaction (the `tx`
-// parameter is the caller's transaction). Returns the deleted tool ids.
+// Soft-deletes every active tool of one AI in one topic. Called from
+// topic-AI removal in the same transaction (the `tx` parameter is the
+// caller's transaction). Returns the deleted tool ids.
+export async function deleteToolsForAiInTopic(
+  tx: ServerDatabase,
+  input: { aiId: string; topicId: string; now: Date },
+): Promise<string[]> {
+  const rows = await tx
+    .update(aiTools)
+    .set({ deletedAt: input.now, updatedAt: input.now })
+    .where(
+      and(
+        eq(aiTools.aiId, input.aiId),
+        eq(aiTools.topicId, input.topicId),
+        isNull(aiTools.deletedAt),
+      ),
+    )
+    .returning();
+  return rows.map((row) => row.id);
+}
+
+// Soft-deletes every active tool of one AI in every topic of a group.
+// Called from `groups/service.ts` `removeGroupAi` in the same transaction
+// (the `tx` parameter is the caller's transaction). Returns the deleted
+// tool ids.
 export async function deleteToolsForAiInGroup(
   tx: ServerDatabase,
   input: { aiId: string; groupId: string; now: Date },
@@ -744,23 +771,23 @@ async function recordRun(db: ServerDatabase, input: RecordRunInput): Promise<Pub
 async function findActiveTool(
   db: ServerDatabase,
   aiId: string,
-  groupId: string | null,
+  topicId: string | null,
   name: string,
 ): Promise<ToolRow | null> {
   const [row] = await db
     .select()
     .from(aiTools)
     .where(
-      groupId === null
+      topicId === null
         ? and(
             eq(aiTools.aiId, aiId),
-            isNull(aiTools.groupId),
+            isNull(aiTools.topicId),
             eq(aiTools.name, name),
             isNull(aiTools.deletedAt),
           )
         : and(
             eq(aiTools.aiId, aiId),
-            eq(aiTools.groupId, groupId),
+            eq(aiTools.topicId, topicId),
             eq(aiTools.name, name),
             isNull(aiTools.deletedAt),
           ),
@@ -772,18 +799,18 @@ async function findActiveTool(
 async function enforceToolLimit(
   db: ServerDatabase,
   aiId: string,
-  groupId: string | null,
+  topicId: string | null,
 ): Promise<void> {
   const rows = await db
     .select({ total: count() })
     .from(aiTools)
     .where(
-      groupId === null
-        ? and(eq(aiTools.aiId, aiId), isNull(aiTools.groupId), isNull(aiTools.deletedAt))
-        : and(eq(aiTools.aiId, aiId), eq(aiTools.groupId, groupId), isNull(aiTools.deletedAt)),
+      topicId === null
+        ? and(eq(aiTools.aiId, aiId), isNull(aiTools.topicId), isNull(aiTools.deletedAt))
+        : and(eq(aiTools.aiId, aiId), eq(aiTools.topicId, topicId), isNull(aiTools.deletedAt)),
     );
-  if (Number(rows[0]?.total ?? 0) >= MAX_TOOLS_PER_CHAT) {
-    throw new ToolServiceError('tool_limit', `A chat has at most ${MAX_TOOLS_PER_CHAT} tools`);
+  if (Number(rows[0]?.total ?? 0) >= MAX_TOOLS_PER_TOPIC) {
+    throw new ToolServiceError('tool_limit', `A topic has at most ${MAX_TOOLS_PER_TOPIC} tools`);
   }
 }
 
@@ -822,6 +849,7 @@ function toToolDetail(
     id: tool.id,
     aiId: tool.aiId,
     groupId: tool.groupId,
+    topicId: tool.topicId,
     name: tool.name,
     description: tool.description,
     currentVersion: tool.currentVersion,
@@ -863,7 +891,7 @@ function toPublicRun(row: typeof aiToolRuns.$inferSelect): PublicToolRun {
   };
 }
 
-// Counts the active tools of one AI across every chat, for the route that
+// Counts the active tools of one AI across every topic, for the route that
 // lists all of an AI's tools.
 export async function listToolsForAi(
   db: ServerDatabase,
@@ -871,7 +899,7 @@ export async function listToolsForAi(
 ): Promise<
   Array<
     PublicTool & {
-      /** `personal` means the owner's DM with the AI; `group` a real group. */
+      /** `personal` means the owner's DM with the AI; `group` a real group topic. */
       scope: 'personal' | 'group';
     }
   >
@@ -900,6 +928,7 @@ export async function listToolsForAi(
       id: tool.id,
       aiId: tool.aiId,
       groupId: tool.groupId,
+      topicId: tool.topicId,
       name: tool.name,
       description: tool.description,
       currentVersion: tool.currentVersion,

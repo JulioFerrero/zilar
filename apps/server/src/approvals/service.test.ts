@@ -10,6 +10,7 @@ import {
   groupMembers,
   groups,
   providerConnections,
+  topics,
   user,
 } from '../db/schema';
 import { createTestContext, type TestContext } from '../test-support';
@@ -96,7 +97,7 @@ async function seedGroup(
   ownerId: string,
   members: Array<{ userId: string; role: 'admin' | 'member' | 'owner' }>,
   aiIds: string[],
-): Promise<string> {
+): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
   await context.db.insert(groups).values({
     id: groupId,
@@ -114,12 +115,26 @@ async function seedGroup(
   for (const aiId of aiIds) {
     await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
   }
-  return groupId;
+  const generalTopicId = randomUUID();
+  await context.db.insert(topics).values({
+    id: generalTopicId,
+    groupId,
+    name: 'General',
+    glyph: 'G',
+    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+    visibility: 'public',
+    kind: 'chat',
+    status: 'open',
+    isGeneral: true,
+    createdBy: ownerId,
+  });
+  return { groupId, generalTopicId };
 }
 
 function approvalInput(args: {
   aiId: string;
   groupId?: string;
+  topicId?: string;
   hash: string;
   expiresAt: Date;
   action?: string;
@@ -127,6 +142,7 @@ function approvalInput(args: {
   return {
     aiId: args.aiId,
     ...(args.groupId === undefined ? {} : { groupId: args.groupId }),
+    ...(args.topicId === undefined ? {} : { topicId: args.topicId }),
     action: args.action ?? 'send_email',
     summary: 'Send a campaign email',
     argsHash: args.hash,
@@ -246,13 +262,19 @@ describe('approvals service', () => {
     it('rejects an AI that is not in the named group', async () => {
       const ownerId = await seedUser(context);
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(context, ownerId, [{ userId: ownerId, role: 'owner' }], []);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        ownerId,
+        [{ userId: ownerId, role: 'owner' }],
+        [],
+      );
       await expect(
         createApproval(
           context.db,
           approvalInput({
             aiId,
             groupId,
+            topicId: generalTopicId,
             hash: argsHash(6),
             expiresAt: futureExpiresAt(now, 60_000),
           }),
@@ -313,7 +335,7 @@ describe('approvals service', () => {
       const ownerId = await seedUser(context);
       const memberId = await seedUser(context, { name: 'Member' });
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         ownerId,
         [
@@ -327,6 +349,7 @@ describe('approvals service', () => {
         approvalInput({
           aiId,
           groupId,
+          topicId: generalTopicId,
           hash: argsHash(11),
           expiresAt: futureExpiresAt(now, 60_000),
         }),
@@ -344,7 +367,7 @@ describe('approvals service', () => {
       const ownerId = await seedUser(context);
       const adminId = await seedUser(context, { name: 'Admin' });
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         ownerId,
         [
@@ -358,6 +381,7 @@ describe('approvals service', () => {
         approvalInput({
           aiId,
           groupId,
+          topicId: generalTopicId,
           hash: argsHash(12),
           expiresAt: futureExpiresAt(now, 60_000),
         }),
@@ -376,7 +400,7 @@ describe('approvals service', () => {
       const ownerId = await seedUser(context);
       const memberId = await seedUser(context, { name: 'Plain' });
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         ownerId,
         [
@@ -390,6 +414,7 @@ describe('approvals service', () => {
         approvalInput({
           aiId,
           groupId,
+          topicId: generalTopicId,
           hash: argsHash(13),
           expiresAt: futureExpiresAt(now, 60_000),
         }),
@@ -855,7 +880,7 @@ describe('approvals service', () => {
       const adminId = await seedUser(context, { name: 'Admin' });
       const memberId = await seedUser(context, { name: 'Member' });
       const { aiId } = await seedAi(context, ownerId);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         ownerId,
         [
@@ -870,6 +895,7 @@ describe('approvals service', () => {
         approvalInput({
           aiId,
           groupId,
+          topicId: generalTopicId,
           hash: argsHash(34),
           expiresAt: futureExpiresAt(now, 60_000),
         }),
@@ -1087,21 +1113,24 @@ describe('approvals service', () => {
       aiOwnerId: string;
       roles: Array<{ userId: string; role: 'owner' | 'admin' | 'member' }>;
       action?: string;
-    }): Promise<{ aiId: string; groupId: string; approvalId: string }> {
+    }): Promise<{ aiId: string; groupId: string; topicId: string; approvalId: string }> {
       const { aiId } = await seedAi(context, args.aiOwnerId);
-      const groupId = await seedGroup(context, args.aiOwnerId, args.roles, [aiId]);
+      const { groupId, generalTopicId } = await seedGroup(context, args.aiOwnerId, args.roles, [
+        aiId,
+      ]);
       const row = await createApproval(
         context.db,
         approvalInput({
           aiId,
           groupId,
+          topicId: generalTopicId,
           hash: argsHash(`t101-${args.action ?? 'send_email'}`),
           expiresAt: futureExpiresAt(now, 60_000),
           ...(args.action === undefined ? {} : { action: args.action }),
         }),
         now,
       );
-      return { aiId, groupId, approvalId: row.id };
+      return { aiId, groupId, topicId: generalTopicId, approvalId: row.id };
     }
 
     it('refuses approve_always for an AI owner who is a plain group member, keeps everything unchanged', async () => {
@@ -1147,7 +1176,7 @@ describe('approvals service', () => {
     it('lets a group admin who is not the AI owner decide once and approve_always', async () => {
       const aiOwnerId = await seedUser(context);
       const adminId = await seedUser(context, { name: 'Admin' });
-      const { aiId, groupId, approvalId } = await seedGroupApproval({
+      const { aiId, groupId, topicId, approvalId } = await seedGroupApproval({
         aiOwnerId,
         roles: [
           { userId: aiOwnerId, role: 'member' },
@@ -1160,6 +1189,7 @@ describe('approvals service', () => {
         approvalInput({
           aiId,
           groupId,
+          topicId,
           hash: argsHash('t101-admin-once'),
           expiresAt: futureExpiresAt(now, 60_000),
         }),

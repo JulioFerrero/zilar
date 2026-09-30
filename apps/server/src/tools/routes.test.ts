@@ -10,6 +10,8 @@ import {
   groupMembers,
   groups,
   providerConnections,
+  topicMembers,
+  topics,
 } from '../db/schema';
 import { HttpError } from '../errors';
 import { createAuditRecorder } from '../audit/service';
@@ -59,7 +61,7 @@ async function seedGroup(
   ownerId: string,
   members: Array<{ userId: string; role: 'owner' | 'admin' | 'member' }>,
   aiIds: string[],
-): Promise<string> {
+): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
   await context.db.insert(groups).values({
     id: groupId,
@@ -73,7 +75,20 @@ async function seedGroup(
   for (const aiId of aiIds) {
     await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
   }
-  return groupId;
+  const generalTopicId = randomUUID();
+  await context.db.insert(topics).values({
+    id: generalTopicId,
+    groupId,
+    name: 'General',
+    glyph: 'G',
+    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+    visibility: 'public',
+    kind: 'chat',
+    status: 'open',
+    isGeneral: true,
+    createdBy: ownerId,
+  });
+  return { groupId, generalTopicId };
 }
 
 function fakeRunner(output = 'ok output'): ToolRunner {
@@ -114,13 +129,20 @@ function buildRoutesHarness(
 
 async function seedTool(
   context: TestContext,
-  args: { aiId: string; groupId: string | null; userId: string; name?: string },
+  args: {
+    aiId: string;
+    groupId: string | null;
+    topicId: string | null;
+    userId: string;
+    name?: string;
+  },
 ): Promise<string> {
   const { tool } = await saveToolVersion(
     context.db,
     {
       aiId: args.aiId,
       groupId: args.groupId,
+      topicId: args.topicId,
       name: args.name ?? 'morning-prices',
       description: 'Posts the price of gold, S&P 500 and BTC',
       source: 'return { text: "gold 3000" };',
@@ -166,6 +188,7 @@ describe('tools routes (T-0103)', () => {
       const paths: Array<{ method: string; path: string; body?: unknown }> = [
         { method: 'GET', path: '/api/ais/x/tools' },
         { method: 'GET', path: '/api/groups/x/tools' },
+        { method: 'GET', path: '/api/topics/x/tools' },
         { method: 'GET', path: '/api/tools/x' },
         { method: 'GET', path: '/api/tools/x/versions' },
         { method: 'GET', path: '/api/tools/x/versions/1' },
@@ -192,14 +215,20 @@ describe('tools routes (T-0103)', () => {
   describe('GET /api/ais/:id/tools', () => {
     it('the owner lists every chat tools with scope', async () => {
       const owner = await ownerWithAi(`routes-owner-${emailCounter}@example.com`);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         owner.id,
         [{ userId: owner.id, role: 'owner' }],
         [owner.aiId],
       );
-      await seedTool(context, { aiId: owner.aiId, groupId: null, userId: owner.id });
-      await seedTool(context, { aiId: owner.aiId, groupId, userId: owner.id, name: 'group-tool' });
+      await seedTool(context, { aiId: owner.aiId, groupId: null, topicId: null, userId: owner.id });
+      await seedTool(context, {
+        aiId: owner.aiId,
+        groupId,
+        topicId: generalTopicId,
+        userId: owner.id,
+        name: 'group-tool',
+      });
       const response = await app.request(`${TEST_BASE_URL}/api/ais/${owner.aiId}/tools`, {
         headers: { cookie: owner.cookie },
       });
@@ -243,7 +272,7 @@ describe('tools routes (T-0103)', () => {
         authApp,
         `g-stranger-${emailCounter}@example.com`,
       );
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         owner.id,
         [
@@ -252,7 +281,12 @@ describe('tools routes (T-0103)', () => {
         ],
         [owner.aiId],
       );
-      await seedTool(context, { aiId: owner.aiId, groupId, userId: owner.id });
+      await seedTool(context, {
+        aiId: owner.aiId,
+        groupId,
+        topicId: generalTopicId,
+        userId: owner.id,
+      });
       const memberResponse = await app.request(`${TEST_BASE_URL}/api/groups/${groupId}/tools`, {
         headers: { cookie: member.cookie },
       });
@@ -264,12 +298,137 @@ describe('tools routes (T-0103)', () => {
       });
       expect(strangerResponse.status).toBe(404);
     });
+
+    it('omits tools of a private topic the viewer cannot see', async () => {
+      const owner = await ownerWithAi(`g-priv-owner-${emailCounter}@example.com`);
+      const admin = await bootstrapUser(
+        context,
+        authApp,
+        `g-priv-admin-${emailCounter}@example.com`,
+      );
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        owner.id,
+        [
+          { userId: owner.id, role: 'owner' },
+          { userId: admin.id, role: 'admin' },
+        ],
+        [owner.aiId],
+      );
+      const privateTopicId = randomUUID();
+      await context.db.insert(topics).values({
+        id: privateTopicId,
+        groupId,
+        name: 'Hiring',
+        glyph: 'H',
+        roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+        visibility: 'private',
+        kind: 'chat',
+        status: 'open',
+        isGeneral: false,
+        createdBy: owner.id,
+      });
+      await context.db.insert(topicMembers).values({
+        topicId: privateTopicId,
+        userId: owner.id,
+        addedBy: owner.id,
+      });
+      await seedTool(context, {
+        aiId: owner.aiId,
+        groupId,
+        topicId: generalTopicId,
+        userId: owner.id,
+        name: 'general-tool',
+      });
+      await seedTool(context, {
+        aiId: owner.aiId,
+        groupId,
+        topicId: privateTopicId,
+        userId: owner.id,
+        name: 'private-tool',
+      });
+      const adminResponse = await app.request(`${TEST_BASE_URL}/api/groups/${groupId}/tools`, {
+        headers: { cookie: admin.cookie },
+      });
+      expect(adminResponse.status).toBe(200);
+      const adminTools = (await adminResponse.json()) as Array<{ name: string }>;
+      expect(adminTools.map((tool) => tool.name)).toEqual(['general-tool']);
+      const ownerResponse = await app.request(`${TEST_BASE_URL}/api/groups/${groupId}/tools`, {
+        headers: { cookie: owner.cookie },
+      });
+      const ownerTools = (await ownerResponse.json()) as Array<{ name: string }>;
+      expect(ownerTools.map((tool) => tool.name).sort()).toEqual(['general-tool', 'private-tool']);
+    });
+  });
+
+  describe('GET /api/topics/:id/tools', () => {
+    it('lists the topic tools for a viewer; 404 for a blind admin or a missing id', async () => {
+      const owner = await ownerWithAi(`t-owner-${emailCounter}@example.com`);
+      const admin = await bootstrapUser(context, authApp, `t-admin-${emailCounter}@example.com`);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        owner.id,
+        [
+          { userId: owner.id, role: 'owner' },
+          { userId: admin.id, role: 'admin' },
+        ],
+        [owner.aiId],
+      );
+      const privateTopicId = randomUUID();
+      await context.db.insert(topics).values({
+        id: privateTopicId,
+        groupId,
+        name: 'Hiring',
+        glyph: 'H',
+        roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+        visibility: 'private',
+        kind: 'chat',
+        status: 'open',
+        isGeneral: false,
+        createdBy: owner.id,
+      });
+      await context.db.insert(topicMembers).values({
+        topicId: privateTopicId,
+        userId: owner.id,
+        addedBy: owner.id,
+      });
+      await seedTool(context, {
+        aiId: owner.aiId,
+        groupId,
+        topicId: privateTopicId,
+        userId: owner.id,
+        name: 'private-tool',
+      });
+      const seen = await app.request(`${TEST_BASE_URL}/api/topics/${privateTopicId}/tools`, {
+        headers: { cookie: owner.cookie },
+      });
+      expect(seen.status).toBe(200);
+      expect((await seen.json()) as Array<{ name: string }>).toHaveLength(1);
+      const blind = await app.request(`${TEST_BASE_URL}/api/topics/${privateTopicId}/tools`, {
+        headers: { cookie: admin.cookie },
+      });
+      expect(blind.status).toBe(404);
+      const general = await app.request(`${TEST_BASE_URL}/api/topics/${generalTopicId}/tools`, {
+        headers: { cookie: admin.cookie },
+      });
+      expect(general.status).toBe(200);
+      const missing = await app.request(`${TEST_BASE_URL}/api/topics/no-such-topic/tools`, {
+        headers: { cookie: admin.cookie },
+      });
+      expect(missing.status).toBe(404);
+      expect(await missing.json()).toEqual(await blind.json());
+    });
   });
 
   describe('read routes', () => {
     it('the owner reads tool, versions, one version and runs', async () => {
       const owner = await ownerWithAi(`read-owner-${emailCounter}@example.com`);
-      const toolId = await seedTool(context, { aiId: owner.aiId, groupId: null, userId: owner.id });
+      const toolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId: null,
+        topicId: null,
+        userId: owner.id,
+      });
       for (const path of [
         `/api/tools/${toolId}`,
         `/api/tools/${toolId}/versions`,
@@ -302,7 +461,7 @@ describe('tools routes (T-0103)', () => {
         authApp,
         `mgmt-member-${emailCounter}@example.com`,
       );
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         owner.id,
         [
@@ -311,7 +470,12 @@ describe('tools routes (T-0103)', () => {
         ],
         [owner.aiId],
       );
-      const toolId = await seedTool(context, { aiId: owner.aiId, groupId, userId: owner.id });
+      const toolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId,
+        topicId: generalTopicId,
+        userId: owner.id,
+      });
       const get = await app.request(`${TEST_BASE_URL}/api/tools/${toolId}`, {
         headers: { cookie: member.cookie },
       });
@@ -337,7 +501,7 @@ describe('tools routes (T-0103)', () => {
         authApp,
         `admin-admin-${emailCounter}@example.com`,
       );
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         owner.id,
         [
@@ -346,10 +510,16 @@ describe('tools routes (T-0103)', () => {
         ],
         [owner.aiId],
       );
-      const groupToolId = await seedTool(context, { aiId: owner.aiId, groupId, userId: owner.id });
+      const groupToolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId,
+        topicId: generalTopicId,
+        userId: owner.id,
+      });
       const personalToolId = await seedTool(context, {
         aiId: owner.aiId,
         groupId: null,
+        topicId: null,
         userId: owner.id,
       });
       const personal = await app.request(`${TEST_BASE_URL}/api/tools/${personalToolId}`, {
@@ -382,7 +552,12 @@ describe('tools routes (T-0103)', () => {
         authApp,
         `str-stranger-${emailCounter}@example.com`,
       );
-      const toolId = await seedTool(context, { aiId: owner.aiId, groupId: null, userId: owner.id });
+      const toolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId: null,
+        topicId: null,
+        userId: owner.id,
+      });
       const realNotFound = await app.request(`${TEST_BASE_URL}/api/tools/no-such-tool`, {
         headers: { cookie: owner.cookie },
       });
@@ -399,7 +574,12 @@ describe('tools routes (T-0103)', () => {
   describe('POST /api/tools/:id/revert', () => {
     it('creates the new version and audits tool.reverted without source', async () => {
       const owner = await ownerWithAi(`revert-owner-${emailCounter}@example.com`);
-      const toolId = await seedTool(context, { aiId: owner.aiId, groupId: null, userId: owner.id });
+      const toolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId: null,
+        topicId: null,
+        userId: owner.id,
+      });
       const response = await app.request(`${TEST_BASE_URL}/api/tools/${toolId}/revert`, {
         method: 'POST',
         headers: { cookie: owner.cookie, 'content-type': 'application/json' },
@@ -417,7 +597,12 @@ describe('tools routes (T-0103)', () => {
 
     it('answers 404 for an unknown version', async () => {
       const owner = await ownerWithAi(`revert-missing-${emailCounter}@example.com`);
-      const toolId = await seedTool(context, { aiId: owner.aiId, groupId: null, userId: owner.id });
+      const toolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId: null,
+        topicId: null,
+        userId: owner.id,
+      });
       const response = await app.request(`${TEST_BASE_URL}/api/tools/${toolId}/revert`, {
         method: 'POST',
         headers: { cookie: owner.cookie, 'content-type': 'application/json' },
@@ -430,7 +615,12 @@ describe('tools routes (T-0103)', () => {
   describe('DELETE /api/tools/:id', () => {
     it('soft-deletes, is idempotent, audits tool.deleted without source', async () => {
       const owner = await ownerWithAi(`del-owner-${emailCounter}@example.com`);
-      const toolId = await seedTool(context, { aiId: owner.aiId, groupId: null, userId: owner.id });
+      const toolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId: null,
+        topicId: null,
+        userId: owner.id,
+      });
       const first = await app.request(`${TEST_BASE_URL}/api/tools/${toolId}`, {
         method: 'DELETE',
         headers: { cookie: owner.cookie },
@@ -460,7 +650,7 @@ describe('tools routes (T-0103)', () => {
         authApp,
         `del-stranger-${emailCounter}@example.com`,
       );
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         owner.id,
         [
@@ -469,7 +659,12 @@ describe('tools routes (T-0103)', () => {
         ],
         [owner.aiId],
       );
-      const toolId = await seedTool(context, { aiId: owner.aiId, groupId, userId: owner.id });
+      const toolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId,
+        topicId: generalTopicId,
+        userId: owner.id,
+      });
       const first = await app.request(`${TEST_BASE_URL}/api/tools/${toolId}`, {
         method: 'DELETE',
         headers: { cookie: admin.cookie },
@@ -491,7 +686,12 @@ describe('tools routes (T-0103)', () => {
   describe('POST /api/tools/:id/run', () => {
     it('answers the run result and audits tool.run without output', async () => {
       const owner = await ownerWithAi(`run-owner-${emailCounter}@example.com`);
-      const toolId = await seedTool(context, { aiId: owner.aiId, groupId: null, userId: owner.id });
+      const toolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId: null,
+        topicId: null,
+        userId: owner.id,
+      });
       const response = await app.request(`${TEST_BASE_URL}/api/tools/${toolId}/run`, {
         method: 'POST',
         headers: { cookie: owner.cookie, 'content-type': 'application/json' },
@@ -510,7 +710,12 @@ describe('tools routes (T-0103)', () => {
     it('returns 501 without a runner', async () => {
       const noRunnerApp = buildRoutesHarness(context);
       const owner = await ownerWithAi(`norunner-owner-${emailCounter}@example.com`);
-      const toolId = await seedTool(context, { aiId: owner.aiId, groupId: null, userId: owner.id });
+      const toolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId: null,
+        topicId: null,
+        userId: owner.id,
+      });
       const response = await noRunnerApp.request(`${TEST_BASE_URL}/api/tools/${toolId}/run`, {
         method: 'POST',
         headers: { cookie: owner.cookie, 'content-type': 'application/json' },
@@ -522,7 +727,12 @@ describe('tools routes (T-0103)', () => {
 
     it('returns 409 for a stopped AI', async () => {
       const owner = await ownerWithAi(`stopped-owner-${emailCounter}@example.com`);
-      const toolId = await seedTool(context, { aiId: owner.aiId, groupId: null, userId: owner.id });
+      const toolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId: null,
+        topicId: null,
+        userId: owner.id,
+      });
       await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, owner.aiId));
       const response = await app.request(`${TEST_BASE_URL}/api/tools/${toolId}/run`, {
         method: 'POST',
@@ -540,7 +750,12 @@ describe('tools routes (T-0103)', () => {
         now: () => nowMs,
       });
       const owner = await ownerWithAi(`limited-owner-${emailCounter}@example.com`);
-      const toolId = await seedTool(context, { aiId: owner.aiId, groupId: null, userId: owner.id });
+      const toolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId: null,
+        topicId: null,
+        userId: owner.id,
+      });
       for (let index = 0; index < TOOL_RUN_RATE_LIMIT_MAX; index += 1) {
         const response = await limitedApp.request(`${TEST_BASE_URL}/api/tools/${toolId}/run`, {
           method: 'POST',

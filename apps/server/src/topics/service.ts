@@ -32,6 +32,8 @@ import {
   type TopicRow,
 } from './access';
 import { emitTopicAi } from '../groups/events';
+import { revokeActiveRulesForAiInTopic } from '../approvals/rules';
+import { deleteToolsForAiInTopic } from '../tools/service';
 import { syncTopicRoom } from './rooms';
 
 export const TOPIC_NAME_MAX = 80;
@@ -810,6 +812,11 @@ export async function removeTopicAi(
   await deps.db
     .delete(topicAis)
     .where(and(eq(topicAis.topicId, topic.id), eq(topicAis.aiId, aiId)));
+  // T-0110: removing the AI from the topic revokes its rules and deletes
+  // its tools in that topic. Personal-chat rows are unaffected.
+  const now = new Date();
+  await revokeActiveRulesForAiInTopic(deps.db, { aiId, topicId: topic.id, actorId, now });
+  await deleteToolsForAiInTopic(deps.db, { aiId, topicId: topic.id, now });
   const [updated] = await deps.db.select().from(topics).where(eq(topics.id, topic.id)).limit(1);
   if (!updated) {
     throw toMissingTopic();

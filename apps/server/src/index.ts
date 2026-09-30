@@ -1,11 +1,10 @@
-import { eq } from 'drizzle-orm';
 import { serve } from '@hono/node-server';
 import {
   createLitellmAdminClientFromConfig,
   DEFAULT_LITELLM_BASE_URL,
   redactSecrets,
 } from './ai/litellm-client';
-import { approvalCardBody, buildApprovalCardPayload } from './actions/announce';
+import { createProductionAnnouncer, type PostToChatInput } from './actions/production-announcer';
 import { buildDemoEchoAdapter } from './actions/demo';
 import {
   type ActionAnnouncer,
@@ -24,13 +23,11 @@ import { loadServerConfigOrExit } from './config';
 import { createKeyCipher } from './connections/crypto';
 import { createDb } from './db/client';
 import { runMigrations } from './db/migrate';
-import { approvals, ais, groups } from './db/schema';
 import { sharedDraftHub } from './drafts/hub';
 import { createLogger } from './logger';
 import { assertRunnerHubConfig, startRunnerHub, type RunnerHub } from './machines/hub';
 import { createDbMachineRegistry } from './machines/registry';
 import { createEjabberdAdminClient } from './xmpp/admin-client';
-import { jidFor, localpartFor } from './xmpp/provisioning';
 
 const config = loadServerConfigOrExit(process.env);
 const logger = createLogger(config);
@@ -78,70 +75,21 @@ const isMachineOnline = (machineId: string): boolean => {
 const auditRecorder = createAuditRecorder({ db, logger });
 
 // T-0092: the agent gateway is built below; the action gateway needs an
-// announcer now. The announcer object closes over a mutable reference to
-// the agent gateway, so the action gateway can be built first and the
+// announcer now. The announcer closes over a mutable reference to the
+// agent gateway, so the action gateway can be built first and the
 // `postToChat` calls resolve at runtime once `gateway` exists. When the
 // agent gateway is disabled (`AGENT_GATEWAY_ENABLED=false`) the announcer
 // still exists and simply does nothing — `postToChat` would answer `false`
 // anyway, but the `if (gatewayRef === null)` short-circuit avoids the
 // database lookup entirely.
 let gatewayRef: AgentGateway | null = null;
-const announcer: ActionAnnouncer = {
-  async approvalRequested(input: { aiId: string; groupId: string | null; approvalId: string }) {
-    const { aiId, groupId, approvalId } = input;
-    if (gatewayRef === null) {
-      return;
-    }
-    const [row] = await db.select().from(approvals).where(eq(approvals.id, approvalId)).limit(1);
-    if (row === undefined) {
-      logger.warn({ aiId, approvalId }, 'approval row missing for announcer; skipping card');
-      return;
-    }
-    const [aiRow] = await db
-      .select({ jid: ais.jid, owner: ais.owner })
-      .from(ais)
-      .where(eq(ais.id, aiId))
-      .limit(1);
-    if (aiRow === undefined) {
-      return;
-    }
-    const ownerJid = jidFor(localpartFor(aiRow.owner), config.xmpp.domain);
-    let roomJid: string | null = null;
-    if (groupId !== null) {
-      const [groupRow] = await db
-        .select({ roomLocalpart: groups.roomLocalpart })
-        .from(groups)
-        .where(eq(groups.id, groupId))
-        .limit(1);
-      if (groupRow !== undefined) {
-        roomJid = jidFor(groupRow.roomLocalpart, config.xmpp.mucDomain);
-      }
-    }
-    const payload = buildApprovalCardPayload({
-      approval: row,
-      aiJid: aiRow.jid,
-      ownerJid,
-      roomJid,
-    });
-    if (payload === null) {
-      logger.warn({ aiId, approvalId }, 'approval card is not valid; nothing was posted');
-      return;
-    }
-    await gatewayRef.postToChat({ aiId, groupId, text: approvalCardBody(row), payload });
-  },
-  async outcome(input: {
-    aiId: string;
-    groupId: string | null;
-    status: 'executed' | 'failed' | 'cancelled';
-    summary: string;
-  }) {
-    const { aiId, groupId, summary } = input;
-    if (gatewayRef === null) {
-      return;
-    }
-    await gatewayRef.postToChat({ aiId, groupId, text: summary });
-  },
-};
+const announcer: ActionAnnouncer = createProductionAnnouncer({
+  db,
+  domain: config.xmpp.domain,
+  mucDomain: config.xmpp.mucDomain,
+  logger,
+  getGateway: (): { postToChat(input: PostToChatInput): Promise<boolean> } | null => gatewayRef,
+});
 
 // Action gateway (T-0090): wired in production with an empty adapter
 // registry by default, so every action request is denied `unknown_action`

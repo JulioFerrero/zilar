@@ -12,6 +12,7 @@ import {
   groupMembers,
   groups,
   providerConnections,
+  topics,
 } from '../db/schema';
 import { createAuditRecorder } from '../audit/service';
 import {
@@ -24,6 +25,7 @@ import {
 import {
   deleteTool,
   deleteToolsForAiInGroup,
+  deleteToolsForAiInTopic,
   getTool,
   getVersion,
   listRuns,
@@ -35,7 +37,7 @@ import {
   saveToolVersion,
   ToolServiceError,
   MAX_RUNS_PER_TOOL,
-  MAX_TOOLS_PER_CHAT,
+  MAX_TOOLS_PER_TOPIC,
   MAX_VERSIONS_PER_TOOL,
 } from './service';
 import type { ToolRunResult, ToolRunner } from './types';
@@ -74,7 +76,7 @@ async function seedGroup(
   ownerId: string,
   memberIds: string[],
   aiIds: string[],
-): Promise<string> {
+): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
   await context.db.insert(groups).values({
     id: groupId,
@@ -93,7 +95,42 @@ async function seedGroup(
   for (const aiId of aiIds) {
     await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
   }
-  return groupId;
+  const generalTopicId = randomUUID();
+  await context.db.insert(topics).values({
+    id: generalTopicId,
+    groupId,
+    name: 'General',
+    glyph: 'G',
+    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+    visibility: 'public',
+    kind: 'chat',
+    status: 'open',
+    isGeneral: true,
+    createdBy: ownerId,
+  });
+  return { groupId, generalTopicId };
+}
+
+async function seedTopic(
+  context: TestContext,
+  groupId: string,
+  creatorId: string,
+  name: string,
+): Promise<string> {
+  const topicId = randomUUID();
+  await context.db.insert(topics).values({
+    id: topicId,
+    groupId,
+    name,
+    glyph: 'T',
+    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+    visibility: 'public',
+    kind: 'chat',
+    status: 'open',
+    isGeneral: false,
+    createdBy: creatorId,
+  });
+  return topicId;
 }
 
 function baseInput(overrides: Record<string, unknown> = {}) {
@@ -145,7 +182,13 @@ describe('tools service (T-0103)', () => {
     it('creates the tool with version 1', async () => {
       const { tool, version, unchanged } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       expect(unchanged).toBe(false);
@@ -158,7 +201,13 @@ describe('tools service (T-0103)', () => {
     it('appends v2 when the source changes', async () => {
       const first = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       const second = await saveToolVersion(
@@ -166,6 +215,7 @@ describe('tools service (T-0103)', () => {
         {
           aiId,
           groupId: null,
+          topicId: null,
           userId: ownerId,
           ...baseInput({ source: 'return { text: "v2" };', message: 'Second' }),
         },
@@ -180,12 +230,24 @@ describe('tools service (T-0103)', () => {
     it('an identical save returns unchanged with no new row', async () => {
       const first = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       const second = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       expect(second.unchanged).toBe(true);
@@ -197,7 +259,13 @@ describe('tools service (T-0103)', () => {
     it('a hosts change alone appends a new version', async () => {
       const first = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       const second = await saveToolVersion(
@@ -205,6 +273,7 @@ describe('tools service (T-0103)', () => {
         {
           aiId,
           groupId: null,
+          topicId: null,
           userId: ownerId,
           ...baseInput({ hosts: ['other.example.com'], message: 'Hosts only' }),
         },
@@ -218,7 +287,13 @@ describe('tools service (T-0103)', () => {
     it('two concurrent saves end with consecutive versions and no duplicate', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       const [a, b] = await Promise.all([
@@ -227,6 +302,7 @@ describe('tools service (T-0103)', () => {
           {
             aiId,
             groupId: null,
+            topicId: null,
             userId: ownerId,
             ...baseInput({ source: 'source A', message: 'A' }),
           },
@@ -237,6 +313,7 @@ describe('tools service (T-0103)', () => {
           {
             aiId,
             groupId: null,
+            topicId: null,
             userId: ownerId,
             ...baseInput({ source: 'source B', message: 'B' }),
           },
@@ -252,31 +329,56 @@ describe('tools service (T-0103)', () => {
       expect(rows.map((row) => row.version).sort()).toEqual([1, 2, 3]);
     });
 
-    it('the same name in a personal chat and in a group are two tools', async () => {
-      const groupId = await seedGroup(context, ownerId, [], [aiId]);
+    it('the same name in a personal chat and in two topics are three tools', async () => {
+      const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
+      const otherTopicId = await seedTopic(context, groupId, ownerId, 'Other');
       const personal = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       const group = await saveToolVersion(
         context.db,
-        { aiId, groupId, userId: ownerId, ...baseInput() },
+        { aiId, groupId, topicId: generalTopicId, userId: ownerId, ...baseInput() },
+        NOW,
+      );
+      const other = await saveToolVersion(
+        context.db,
+        { aiId, groupId, topicId: otherTopicId, userId: ownerId, ...baseInput() },
         NOW,
       );
       expect(personal.tool.id).not.toBe(group.tool.id);
+      expect(group.tool.id).not.toBe(other.tool.id);
     });
 
     it('a deleted name can be reused', async () => {
       const first = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       await deleteTool(context.db, first.tool.id, NOW);
       const second = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       expect(second.tool.id).not.toBe(first.tool.id);
@@ -284,17 +386,29 @@ describe('tools service (T-0103)', () => {
     });
 
     it('enforces the 20-tool limit per chat', async () => {
-      for (let index = 0; index < MAX_TOOLS_PER_CHAT; index += 1) {
+      for (let index = 0; index < MAX_TOOLS_PER_TOPIC; index += 1) {
         await saveToolVersion(
           context.db,
-          { aiId, groupId: null, userId: ownerId, ...baseInput({ name: `tool-${index}` }) },
+          {
+            aiId,
+            groupId: null,
+            topicId: null,
+            userId: ownerId,
+            ...baseInput({ name: `tool-${index}` }),
+          },
           NOW,
         );
       }
       await expect(
         saveToolVersion(
           context.db,
-          { aiId, groupId: null, userId: ownerId, ...baseInput({ name: 'one-too-many' }) },
+          {
+            aiId,
+            groupId: null,
+            topicId: null,
+            userId: ownerId,
+            ...baseInput({ name: 'one-too-many' }),
+          },
           NOW,
         ),
       ).rejects.toMatchObject({ errorCode: 'tool_limit' });
@@ -303,7 +417,13 @@ describe('tools service (T-0103)', () => {
     it('enforces the 200-version limit', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       for (let version = 2; version <= MAX_VERSIONS_PER_TOOL; version += 1) {
@@ -312,6 +432,7 @@ describe('tools service (T-0103)', () => {
           {
             aiId,
             groupId: null,
+            topicId: null,
             userId: ownerId,
             ...baseInput({ source: `source ${version}`, message: `v${version}` }),
           },
@@ -324,6 +445,7 @@ describe('tools service (T-0103)', () => {
           {
             aiId,
             groupId: null,
+            topicId: null,
             userId: ownerId,
             ...baseInput({ source: 'source 201', message: 'too many' }),
           },
@@ -342,7 +464,13 @@ describe('tools service (T-0103)', () => {
       await expect(
         saveToolVersion(
           context.db,
-          { aiId, groupId: null, userId: ownerId, ...baseInput({ name }) },
+          {
+            aiId,
+            groupId: null,
+            topicId: null,
+            userId: ownerId,
+            ...baseInput({ name }),
+          },
           NOW,
         ),
       ).rejects.toMatchObject({ errorCode: code });
@@ -352,7 +480,13 @@ describe('tools service (T-0103)', () => {
       await expect(
         saveToolVersion(
           context.db,
-          { aiId, groupId: null, userId: ownerId, ...baseInput({ description: '' }) },
+          {
+            aiId,
+            groupId: null,
+            topicId: null,
+            userId: ownerId,
+            ...baseInput({ description: '' }),
+          },
           NOW,
         ),
       ).rejects.toMatchObject({ errorCode: 'invalid_request' });
@@ -362,6 +496,7 @@ describe('tools service (T-0103)', () => {
           {
             aiId,
             groupId: null,
+            topicId: null,
             userId: ownerId,
             ...baseInput({ description: 'line one\nline two' }),
           },
@@ -392,7 +527,13 @@ describe('tools service (T-0103)', () => {
       await expect(
         saveToolVersion(
           context.db,
-          { aiId, groupId: null, userId: ownerId, ...baseInput({ hosts }) },
+          {
+            aiId,
+            groupId: null,
+            topicId: null,
+            userId: ownerId,
+            ...baseInput({ hosts }),
+          },
           NOW,
         ),
       ).rejects.toMatchObject({ errorCode: 'invalid_request' });
@@ -404,6 +545,7 @@ describe('tools service (T-0103)', () => {
         {
           aiId,
           groupId: null,
+          topicId: null,
           userId: ownerId,
           ...baseInput({ hosts: ['API.Example.COM', 'api.example.com'] }),
         },
@@ -416,7 +558,13 @@ describe('tools service (T-0103)', () => {
       await expect(
         saveToolVersion(
           context.db,
-          { aiId, groupId: null, userId: ownerId, ...baseInput({ source: '' }) },
+          {
+            aiId,
+            groupId: null,
+            topicId: null,
+            userId: ownerId,
+            ...baseInput({ source: '' }),
+          },
           NOW,
         ),
       ).rejects.toMatchObject({ errorCode: 'invalid_request' });
@@ -426,6 +574,7 @@ describe('tools service (T-0103)', () => {
           {
             aiId,
             groupId: null,
+            topicId: null,
             userId: ownerId,
             ...baseInput({ source: `x${'y'.repeat(65 * 1024)}` }),
           },
@@ -439,23 +588,35 @@ describe('tools service (T-0103)', () => {
     it('listTools has no source but has hosts and last run status', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
-      const before = await listTools(context.db, { aiId, groupId: null });
+      const before = await listTools(context.db, { aiId, groupId: null, topicId: null });
       expect(before[0]).not.toHaveProperty('source');
       expect(before[0]?.hosts).toEqual(['api.example.com']);
       expect(before[0]?.lastRunStatus).toBeNull();
       const runner = okRunner();
       await runToolVersion({ db: context.db, runner }, { toolId: tool.id, trigger: 'manual' }, NOW);
-      const after = await listTools(context.db, { aiId, groupId: null });
+      const after = await listTools(context.db, { aiId, groupId: null, topicId: null });
       expect(after[0]?.lastRunStatus).toBe('ok');
     });
 
     it('getTool returns the current source; listVersions has no source', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       const detail = await getTool(context.db, tool.id);
@@ -467,15 +628,27 @@ describe('tools service (T-0103)', () => {
     });
 
     it('listToolsForAi annotates the scope', async () => {
-      const groupId = await seedGroup(context, ownerId, [], [aiId]);
+      const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
       await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput({ name: 'personal-one' }) },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput({ name: 'personal-one' }),
+        },
         NOW,
       );
       await saveToolVersion(
         context.db,
-        { aiId, groupId, userId: ownerId, ...baseInput({ name: 'group-one' }) },
+        {
+          aiId,
+          groupId,
+          topicId: generalTopicId,
+          userId: ownerId,
+          ...baseInput({ name: 'group-one' }),
+        },
         NOW,
       );
       const tools = await listToolsForAi(context.db, aiId);
@@ -490,7 +663,13 @@ describe('tools service (T-0103)', () => {
     it('appends a new version with the old content and the standard message', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       await saveToolVersion(
@@ -498,6 +677,7 @@ describe('tools service (T-0103)', () => {
         {
           aiId,
           groupId: null,
+          topicId: null,
           userId: ownerId,
           ...baseInput({
             source: 'bad change',
@@ -526,7 +706,13 @@ describe('tools service (T-0103)', () => {
     it('accepts a custom message and rejects an unknown version', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       const { version } = await revertTool(
@@ -543,7 +729,13 @@ describe('tools service (T-0103)', () => {
     it('history rows are never modified by revert or delete', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       await saveToolVersion(
@@ -551,6 +743,7 @@ describe('tools service (T-0103)', () => {
         {
           aiId,
           groupId: null,
+          topicId: null,
           userId: ownerId,
           ...baseInput({ source: 'v2 source', message: 'v2' }),
         },
@@ -586,21 +779,39 @@ describe('tools service (T-0103)', () => {
 
   describe('deleteToolsForAiInGroup', () => {
     it('soft-deletes that AI group tools only', async () => {
-      const groupId = await seedGroup(context, ownerId, [], [aiId]);
-      const otherGroupId = await seedGroup(context, ownerId, [], [aiId]);
+      const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
+      const other = await seedGroup(context, ownerId, [], [aiId]);
       const groupTool = await saveToolVersion(
         context.db,
-        { aiId, groupId, userId: ownerId, ...baseInput({ name: 'group-tool' }) },
+        {
+          aiId,
+          groupId,
+          topicId: generalTopicId,
+          userId: ownerId,
+          ...baseInput({ name: 'group-tool' }),
+        },
         NOW,
       );
       const personalTool = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput({ name: 'personal-tool' }) },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput({ name: 'personal-tool' }),
+        },
         NOW,
       );
       const otherTool = await saveToolVersion(
         context.db,
-        { aiId, groupId: otherGroupId, userId: ownerId, ...baseInput({ name: 'other-tool' }) },
+        {
+          aiId,
+          groupId: other.groupId,
+          topicId: other.generalTopicId,
+          userId: ownerId,
+          ...baseInput({ name: 'other-tool' }),
+        },
         NOW,
       );
       const deleted = await context.db.transaction(async (rawTx) =>
@@ -615,13 +826,56 @@ describe('tools service (T-0103)', () => {
       expect(await getTool(context.db, personalTool.tool.id)).not.toBeNull();
       expect(await getTool(context.db, otherTool.tool.id)).not.toBeNull();
     });
+
+    it('deleteToolsForAiInTopic soft-deletes only that topic tools', async () => {
+      const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
+      const otherTopicId = await seedTopic(context, groupId, ownerId, 'Other');
+      const generalTool = await saveToolVersion(
+        context.db,
+        {
+          aiId,
+          groupId,
+          topicId: generalTopicId,
+          userId: ownerId,
+          ...baseInput({ name: 'general-tool' }),
+        },
+        NOW,
+      );
+      const otherTool = await saveToolVersion(
+        context.db,
+        {
+          aiId,
+          groupId,
+          topicId: otherTopicId,
+          userId: ownerId,
+          ...baseInput({ name: 'other-tool' }),
+        },
+        NOW,
+      );
+      const deleted = await context.db.transaction(async (rawTx) =>
+        deleteToolsForAiInTopic(rawTx as unknown as typeof context.db, {
+          aiId,
+          topicId: otherTopicId,
+          now: NOW,
+        }),
+      );
+      expect(deleted).toEqual([otherTool.tool.id]);
+      expect(await getTool(context.db, otherTool.tool.id)).toBeNull();
+      expect(await getTool(context.db, generalTool.tool.id)).not.toBeNull();
+    });
   });
 
   describe('runToolVersion', () => {
     it('the runner receives the chosen version source, input and hosts', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       await saveToolVersion(
@@ -629,6 +883,7 @@ describe('tools service (T-0103)', () => {
         {
           aiId,
           groupId: null,
+          topicId: null,
           userId: ownerId,
           ...baseInput({
             source: 'v2 source',
@@ -655,7 +910,13 @@ describe('tools service (T-0103)', () => {
     it('defaults to the current version and writes a run row', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       const runner = okRunner('hello world');
@@ -675,7 +936,13 @@ describe('tools service (T-0103)', () => {
     it('prunes runs to the newest 50', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       const runner = okRunner();
@@ -696,7 +963,13 @@ describe('tools service (T-0103)', () => {
     it('truncates long output to 2 KiB in the row', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       const runner = okRunner(`x${'y'.repeat(3000)}`);
@@ -712,7 +985,13 @@ describe('tools service (T-0103)', () => {
     it('a stopped AI throws ai_not_active and the runner is not called', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
@@ -731,7 +1010,13 @@ describe('tools service (T-0103)', () => {
     it('a provisioning AI also throws ai_not_active', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       await context.db.update(ais).set({ status: 'disabled' }).where(eq(ais.id, aiId));
@@ -745,7 +1030,13 @@ describe('tools service (T-0103)', () => {
     it('a runner failure is recorded as error with its kind and does not throw', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       const failing: ToolRunner = () =>
@@ -769,7 +1060,13 @@ describe('tools service (T-0103)', () => {
     it('run rows are never modified by later runs or deletes', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       const runner = okRunner('first');
@@ -798,7 +1095,13 @@ describe('tools service (T-0103)', () => {
     it('soft-deletes and is idempotent', async () => {
       const { tool } = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
       );
       expect(await deleteTool(context.db, tool.id, NOW)).toEqual({ deleted: true });
@@ -815,7 +1118,13 @@ describe('tools service (T-0103)', () => {
       const audit = createAuditRecorder({ db: context.db, now: () => NOW });
       const first = await saveToolVersion(
         context.db,
-        { aiId, groupId: null, userId: ownerId, ...baseInput() },
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput(),
+        },
         NOW,
         audit,
       );
@@ -825,6 +1134,7 @@ describe('tools service (T-0103)', () => {
         {
           aiId,
           groupId: null,
+          topicId: null,
           userId: ownerId,
           ...baseInput({ source: 'changed source', message: 'v2' }),
         },
@@ -837,6 +1147,7 @@ describe('tools service (T-0103)', () => {
         {
           aiId,
           groupId: null,
+          topicId: null,
           userId: ownerId,
           ...baseInput({ source: 'changed source', message: 'v2' }),
         },

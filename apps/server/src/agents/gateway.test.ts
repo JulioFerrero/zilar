@@ -1943,7 +1943,7 @@ describe('agent gateway', () => {
         },
         {
           outcome: { status: 'denied', reason: 'ai_not_in_group' },
-          expectedContent: 'denied: the AI is not a member of that group',
+          expectedContent: 'denied: the AI is not in that topic',
         },
       ];
       for (const { outcome, expectedContent } of outcomes) {
@@ -2915,6 +2915,7 @@ describe('agent gateway', () => {
         requests: Array<{
           aiId: string;
           groupId?: string;
+          topicId?: string;
           action: string;
           args: unknown;
           requestedBy: string;
@@ -2997,6 +2998,7 @@ describe('agent gateway', () => {
           name: string;
         }>;
         groupId: string;
+        topicId: string;
         roomJid: string;
         core: FakeCore;
         calls: Call[];
@@ -3035,8 +3037,9 @@ describe('agent gateway', () => {
         await context.db
           .insert(groupAis)
           .values({ groupId, aiId: seeded.aiId, addedBy: creator.userId });
+        const generalTopicId = randomUUID();
         await context.db.insert(topics).values({
-          id: randomUUID(),
+          id: generalTopicId,
           groupId,
           name: 'General',
           glyph: 'G',
@@ -3057,7 +3060,7 @@ describe('agent gateway', () => {
             : harness(cores, fetchImpl, litellm, { actions: input.actions });
         await started.start();
         const core = await coreFor(cores, seeded.aiJid);
-        return { seeded, members, groupId, roomJid, core, calls, logger };
+        return { seeded, members, groupId, topicId: generalTopicId, roomJid, core, calls, logger };
       }
 
       function memberMention(
@@ -3102,6 +3105,7 @@ describe('agent gateway', () => {
         expect(fake.requests[0]).toEqual({
           aiId: seeded.aiId,
           groupId,
+          topicId: setup_.topicId,
           action: 'demo.echo',
           args: { text: 'hello' },
           requestedBy: seeded.aiJid,
@@ -3264,7 +3268,7 @@ describe('agent gateway', () => {
           },
           {
             outcome: { status: 'denied', reason: 'ai_not_in_group' },
-            expectedContent: 'denied: the AI is not a member of that group',
+            expectedContent: 'denied: the AI is not in that topic',
           },
         ];
         for (const { outcome, expectedContent } of outcomes) {

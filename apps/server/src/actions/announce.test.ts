@@ -16,6 +16,7 @@ function approvalRow(overrides: Partial<ApprovalRow> = {}): ApprovalRow {
     id: 'approval-1',
     aiId: 'ai-1',
     groupId: null,
+    topicId: null,
     action: 'demo.echo',
     summary: 'Echo hello',
     details: null,

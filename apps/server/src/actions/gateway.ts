@@ -3,7 +3,7 @@ import { and, eq, lt } from 'drizzle-orm';
 import { ARGS_HASH_PATTERN } from '@galena/protocol';
 import type { AuditEntry, AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, approvals, groupAis, pendingActions } from '../db/schema';
+import { ais, approvals, groupAis, pendingActions, topicAis, topics } from '../db/schema';
 import { createApproval, verifyApproval } from '../approvals/service';
 import { findActiveRule } from '../approvals/rules';
 import { type ActionAnnouncer, summaryForOutcome } from './announce';
@@ -88,6 +88,11 @@ export interface ActionGateway {
 export interface RequestParams {
   aiId: string;
   groupId?: string;
+  /** The topic the request was raised in. Required with `groupId`
+   *  (group scope is always a topic; General is a topic too), absent for
+   *  personal chats. The gateway denies the request when the topic does
+   *  not belong to the group or the AI is not a member of it. */
+  topicId?: string;
   action: string;
   args: unknown;
   requestedBy: string;
@@ -206,7 +211,7 @@ async function runRequest(
 
   let aiInGroup: boolean | null = null;
   if (params.groupId !== undefined && aiRow !== null) {
-    aiInGroup = await isAiInGroup(deps.db, params.aiId, params.groupId);
+    aiInGroup = await isAiInTopic(deps.db, params.aiId, params.groupId, params.topicId);
   }
 
   const verdict = policy({
@@ -236,6 +241,7 @@ async function runRequest(
     const rule = await findActiveRule(deps.db, {
       aiId: params.aiId,
       groupId: params.groupId ?? null,
+      topicId: params.topicId ?? null,
       action: params.action,
     });
     if (rule !== null) {
@@ -366,6 +372,7 @@ async function runAutoApprovedAction(
     outcome: {
       aiId: params.aiId,
       groupId: params.groupId ?? null,
+      ...(params.topicId === undefined ? {} : { topicId: params.topicId }),
       status: outcome === 'ok' ? 'executed' : 'failed',
       summary:
         outcome === 'ok' && summary !== null
@@ -425,6 +432,7 @@ async function runApprovalPath(
         {
           aiId: params.aiId,
           ...(params.groupId === undefined ? {} : { groupId: params.groupId }),
+          ...(params.topicId === undefined ? {} : { topicId: params.topicId }),
           action: params.action,
           summary: truncateText(described.summary, 500),
           ...(described.details === undefined
@@ -443,6 +451,7 @@ async function runApprovalPath(
         approvalId: approval.id,
         aiId: params.aiId,
         groupId: params.groupId ?? null,
+        topicId: params.topicId ?? null,
         action: params.action,
         args: parsedArgs,
         argsHash: hash,
@@ -485,7 +494,12 @@ async function runApprovalPath(
   // enough for the announcer to build the payload; the gateway does not
   // wait on it and a throw never changes the returned outcome.
   await safeAnnounce(deps, {
-    approvalRequested: { aiId: params.aiId, groupId: params.groupId ?? null, approvalId },
+    approvalRequested: {
+      aiId: params.aiId,
+      groupId: params.groupId ?? null,
+      ...(params.topicId === undefined ? {} : { topicId: params.topicId }),
+      approvalId,
+    },
   });
 
   return { status: 'pending_approval', approvalId };
@@ -584,6 +598,7 @@ async function runOnApprovalDecided(
       outcome: {
         aiId: pending.aiId,
         groupId: pending.groupId,
+        ...(pending.topicId === null ? {} : { topicId: pending.topicId }),
         status: 'failed',
         summary: null,
       },
@@ -623,6 +638,7 @@ async function runOnApprovalDecided(
     outcome: {
       aiId: pending.aiId,
       groupId: pending.groupId,
+      ...(pending.topicId === null ? {} : { topicId: pending.topicId }),
       status: outcome === 'ok' ? 'executed' : 'failed',
       summary: outcome === 'ok' ? summary : null,
     },
@@ -706,6 +722,7 @@ async function cancelPending(
     outcome: {
       aiId: row.aiId,
       groupId: row.groupId,
+      ...(row.topicId === null ? {} : { topicId: row.topicId }),
       status: 'cancelled',
       summary: null,
     },
@@ -784,6 +801,46 @@ async function isAiInGroup(db: ServerDatabase, aiId: string, groupId: string): P
   return row !== undefined;
 }
 
+// T-0110: a request with a `groupId` must carry a `topicId` that belongs to
+// that group and to a room the AI is a member of (`topic_ais`, or General
+// via `group_ais`). Anything else — a missing topic, a topic of another
+// group, a topic the AI was never added to — denies with the existing
+// `ai_not_in_group` reason.
+async function isAiInTopic(
+  db: ServerDatabase,
+  aiId: string,
+  groupId: string,
+  topicId: string | undefined,
+): Promise<boolean> {
+  if (topicId === undefined) {
+    return false;
+  }
+  const [topic] = await db
+    .select({
+      id: topics.id,
+      groupId: topics.groupId,
+      isGeneral: topics.isGeneral,
+      archivedAt: topics.archivedAt,
+    })
+    .from(topics)
+    .where(eq(topics.id, topicId))
+    .limit(1);
+  // The topic must belong to the group and be live: an archived topic's
+  // room is gone (the AI left it), so nothing may fire there anymore.
+  if (!topic || topic.groupId !== groupId || topic.archivedAt !== null) {
+    return false;
+  }
+  if (topic.isGeneral) {
+    return isAiInGroup(db, aiId, groupId);
+  }
+  const [row] = await db
+    .select({ aiId: topicAis.aiId })
+    .from(topicAis)
+    .where(and(eq(topicAis.topicId, topicId), eq(topicAis.aiId, aiId)))
+    .limit(1);
+  return row !== undefined;
+}
+
 function truncateText(value: string, max: number): string {
   if (value.length <= max) {
     return value;
@@ -819,11 +876,13 @@ async function safeAnnounce(
     approvalRequested?: {
       aiId: string;
       groupId: string | null;
+      topicId?: string;
       approvalId: string;
     };
     outcome?: {
       aiId: string;
       groupId: string | null;
+      topicId?: string;
       status: 'executed' | 'failed' | 'cancelled';
       summary: string | null;
     };
