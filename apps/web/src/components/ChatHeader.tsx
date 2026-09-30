@@ -109,8 +109,6 @@ export function ChatHeader({
     }
   };
 
-  const muteLabel = chat.muted ? 'Unmute' : 'Mute';
-
   return (
     <header className="flex h-16 shrink-0 items-center gap-2.5 border-b border-divider bg-panel/85 px-4">
       <IconButton aria-label="Back to chats" onClick={() => navigate('/')} className="wide:hidden">
@@ -194,14 +192,6 @@ export function ChatHeader({
                 className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
               >
                 Search
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => setMenuOpen(false)}
-                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
-              >
-                {muteLabel}
               </button>
               <TopicArchiveItem
                 chat={chat}
