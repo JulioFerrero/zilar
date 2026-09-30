@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0104](T-0104-routines-scheduler.md) | Routines: scheduled tool runs that post as the AI | planned | meta/muse-spark-1.3-contributor | T-0102, T-0103, T-0110 | Needs T-0110 first (topic scope) |
 | [T-0105](T-0105-tool-adapters.md) | Tool and routine actions for the gateway; sandbox wiring | planned | meta/muse-spark-1.3-contributor | T-0104, T-0110 | routine.schedule needs a card, never always-allowed |
 | [T-0111](T-0111-topics-web.md) | Topics (web): nested sidebar, task strip, dialogs, panel | planned | meta/muse-spark-1.3-contributor | T-0108 to T-0110 | Visual spec = the topics mockup |
 | [T-0112](T-0112-topics-mobile.md) | Topics (mobile): topics list, topic screen | planned | meta/muse-spark-1.3-contributor | T-0111 |  |
@@ -158,3 +157,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0126](T-0126-production-images-compose.md) | production images + compose (Caddy, Coolify) for the self-hosted install; upload proxy fixed | 2026-09-30 |
 | [T-0128](T-0128-smtp-mailer.md) | SMTP mailer for sign-in codes (nodemailer), production console opt-in, config validation | 2026-09-30 |
 | [T-0117](T-0117-message-search.md) | message search across DMs, groups and topics (server, read-only archive role, web) | 2026-09-30 |
+| [T-0104](T-0104-routines-scheduler.md) | routines: scheduler, DST-correct schedules, host pinning, service and routes (migration 0023) | 2026-09-30 |
