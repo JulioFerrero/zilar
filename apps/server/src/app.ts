@@ -154,7 +154,14 @@ export function createApp({
 
   app.use('*', async (c, next) => {
     const start = performance.now();
-    const fields = { method: c.req.method, path: c.req.path, requestId: c.get('requestId') };
+    // T-0115: the join token is a bearer secret — `/api/join/<token>` is
+    // logged as `/api/join/:token` so the raw token never reaches the
+    // server log, on success or on error.
+    const fields = {
+      method: c.req.method,
+      path: logPath(c.req.path),
+      requestId: c.get('requestId'),
+    };
 
     try {
       await next();
@@ -389,6 +396,15 @@ function statusFor(error: unknown): number {
 
 function durationSince(start: number): number {
   return Math.round(performance.now() - start);
+}
+
+// T-0115: the join token is a bearer secret, so the request log redacts the
+// token segment (`/api/join/<token>` → `/api/join/:token`). Matches the
+// route shape exactly (two segments); anything else passes through.
+function logPath(path: string): string {
+  return path.startsWith('/api/join/') && /^\/api\/join\/[^/]+$/.test(path)
+    ? '/api/join/:token'
+    : path;
 }
 
 function allowedOrigins(config: ServerConfig): string[] {

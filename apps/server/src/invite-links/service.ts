@@ -349,12 +349,14 @@ export interface JoinByLinkResult {
 }
 
 // Adds the caller as a `member` through the existing add-member flow, so
-// room sync, public topics and the audit entry all happen. Consumes one use
-// with a conditional update (not revoked, not expired, under the cap), so
-// two racing joins can never exceed `max_uses`. Already a member answers
-// 200 with `alreadyMember: true` and consumes no use. A full group answers
-// 409 `group_full`. Unknown/expired/revoked/exhausted links answer the same
-// 404 `invalid_link`.
+// room sync, public topics and the audit entry all happen. The group-full
+// check runs before any use is consumed, so a full group never burns a use.
+// The use is claimed atomically (not revoked, not expired, under the cap)
+// right before the add, so two racing joins can never exceed `max_uses`; a
+// failure after a successful claim refunds the use, so a 503 never burns
+// one either. Already a member answers 200 with `alreadyMember: true` and
+// consumes no use. A full group answers 409 `group_full`.
+// Unknown/expired/revoked/exhausted links answer the same 404 `invalid_link`.
 export async function joinByInviteLink(
   deps: InviteLinkServiceDeps,
   token: string,
@@ -372,13 +374,18 @@ export async function joinByInviteLink(
   if (await isGroupMember(deps.db, link.groupId, userId)) {
     return { groupId: link.groupId, alreadyMember: true };
   }
+  await assertGroupHasRoom(deps.db, link.groupId);
 
   const claimed = await claimLinkUse(deps.db, link.id, now);
   if (!claimed) {
     throw toInvalidLink();
   }
-
-  await addMemberByLink(deps, group.roomLocalpart, link.groupId, userId);
+  try {
+    await addMemberByLink(deps, group.roomLocalpart, link.groupId, userId);
+  } catch (error) {
+    await refundLinkUse(deps.db, link.id);
+    throw error;
+  }
   if (deps.audit) {
     await deps.audit.record({
       actorUserId: userId,
@@ -394,6 +401,36 @@ export async function joinByInviteLink(
     });
   }
   return { groupId: link.groupId, alreadyMember: false };
+}
+
+// Refunds one consumed use after a failed add (a 503 or any other error
+// past the claim). Guarded by `uses > 0` so a refund can never drive the
+// counter negative, even if two failures race the same row.
+async function refundLinkUse(db: ServerDatabase, linkId: string): Promise<void> {
+  await db
+    .update(groupInviteLinks)
+    .set({ uses: sql`${groupInviteLinks.uses} - 1` })
+    .where(and(eq(groupInviteLinks.id, linkId), sql`${groupInviteLinks.uses} > 0`));
+}
+
+// The group-full check, run before any use is claimed: people and AIs share
+// MAX_GROUP_MEMBERS. Throws 409 `group_full` when the newcomer would exceed
+// it. A stranger racing the last seat may still pass this check and then
+// lose the claim race (or vice versa) — either way the cap holds, because
+// the claim is conditional and the use is refunded on failure.
+async function assertGroupHasRoom(db: ServerDatabase, groupId: string): Promise<void> {
+  const [row] = await db
+    .select({ total: count() })
+    .from(groupMembers)
+    .where(eq(groupMembers.groupId, groupId));
+  const memberTotal = Number(row?.total ?? 0);
+  const [aiRow] = await db
+    .select({ total: count() })
+    .from(groupAis)
+    .where(eq(groupAis.groupId, groupId));
+  if (memberTotal + Number(aiRow?.total ?? 0) + 1 > MAX_GROUP_MEMBERS) {
+    throw new HttpError(409, 'group_full', 'This group is full');
+  }
 }
 
 // Atomically consumes one use: the update only lands while the link is
@@ -415,33 +452,22 @@ async function claimLinkUse(db: ServerDatabase, linkId: string, now: Date): Prom
   return rows.length > 0;
 }
 
-// The add-member half of a link join: insert the row (the cap counts people
-// and AIs together), set the room affiliation, sync every public topic room
-// and invite the newcomer. Link joins ignore the contacts rule on purpose:
-// the link is the introduction. The group-room affiliation is set first and
-// inside the transaction (like the groups flow), so a room outage there
-// answers 503 before anything commits; the topic sync afterwards is best
-// effort. A full group answers 409 `group_full`.
+// The add-member half of a link join: insert the row, set the room
+// affiliation, sync every public topic room and invite the newcomer. Link
+// joins ignore the contacts rule on purpose: the link is the introduction.
+// The caller already checked membership and room, so the early return below
+// only covers a join that raced another writer (the insert stays
+// idempotent). The group-room affiliation is set inside the transaction
+// (like the groups flow), so a room outage there answers 503 before
+// anything commits; the topic sync afterwards is best effort.
 async function addMemberByLink(
   deps: InviteLinkServiceDeps,
   roomLocalpart: string,
   groupId: string,
   userId: string,
 ): Promise<void> {
-  const existing = await deps.db
-    .select({ userId: groupMembers.userId })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId));
-  const existingIds = new Set(existing.map((row) => row.userId));
-  if (existingIds.has(userId)) {
+  if (await isGroupMember(deps.db, groupId, userId)) {
     return;
-  }
-  const aiRows = await deps.db
-    .select({ aiId: groupAis.aiId })
-    .from(groupAis)
-    .where(eq(groupAis.groupId, groupId));
-  if (existingIds.size + aiRows.length + 1 > MAX_GROUP_MEMBERS) {
-    throw new HttpError(409, 'group_full', 'This group is full');
   }
   try {
     await deps.db.transaction(async (tx) => {

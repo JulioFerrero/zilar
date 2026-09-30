@@ -407,6 +407,65 @@ describe('group invite links', () => {
     const response = await join(link.token, late.cookie);
     expect(response.status).toBe(409);
     expect(errorOf(await response.json()).code).toBe('group_full');
+
+    // A full group never burns a use: the cap check runs before the claim.
+    const [row] = await context.db
+      .select()
+      .from(groupInviteLinks)
+      .where(eq(groupInviteLinks.id, link.id));
+    expect(row!.uses).toBe(0);
+  });
+
+  it('a failing room call answers 503 without burning the use', async () => {
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    const friend = await bootstrapUser(context, app, 'friend@example.com');
+    const groupId = await lonelyGroup(owner);
+    const link = (await (await createLink(owner.cookie, groupId)).json()) as CreatedLinkBody;
+    context.adminClient.failAffiliation = true;
+
+    const response = await join(link.token, friend.cookie);
+    expect(response.status).toBe(503);
+    expect(errorOf(await response.json()).code).toBe('xmpp_unavailable');
+    const [row] = await context.db
+      .select()
+      .from(groupInviteLinks)
+      .where(eq(groupInviteLinks.id, link.id));
+    expect(row!.uses).toBe(0);
+    expect(
+      await context.db
+        .select()
+        .from(groupMembers)
+        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, friend.id))),
+    ).toEqual([]);
+
+    // The link still works once the room is back: the refunded use was not lost.
+    context.adminClient.failAffiliation = false;
+    expect((await join(link.token, friend.cookie)).status).toBe(200);
+    const [after] = await context.db
+      .select()
+      .from(groupInviteLinks)
+      .where(eq(groupInviteLinks.id, link.id));
+    expect(after!.uses).toBe(1);
+  });
+
+  it('never writes the raw join token to the request log', async () => {
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    const friend = await bootstrapUser(context, app, 'friend@example.com');
+    const groupId = await lonelyGroup(owner);
+    const link = (await (await createLink(owner.cookie, groupId)).json()) as CreatedLinkBody;
+    // A second link whose join fails, so the error log line is covered too.
+    const doomed = (await (await createLink(owner.cookie, groupId)).json()) as CreatedLinkBody;
+    await revokeLink(owner.cookie, groupId, doomed.id);
+
+    expect((await preview(link.token, friend.cookie)).status).toBe(200);
+    expect((await join(link.token, friend.cookie)).status).toBe(200);
+    expect((await preview(doomed.token, friend.cookie)).status).toBe(404);
+    expect((await join(doomed.token, friend.cookie)).status).toBe(404);
+
+    const output = context.logOutput();
+    expect(output).not.toContain(link.token);
+    expect(output).not.toContain(doomed.token);
+    expect(output).toContain('/api/join/:token');
   });
 
   it('rate-limits joins per user (20 per hour, windowed)', async () => {
