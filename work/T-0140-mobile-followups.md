@@ -1,7 +1,7 @@
 ---
 id: T-0140
 title: Mobile: deferred review follow-ups (invite links, roles, search)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0140-mobile-followups
 model: meta/muse-spark-1.3-contributor
@@ -75,3 +75,13 @@ Do NOT start simulators, Metro, or `expo run`.
 - Still needs a human look (no simulator): join flow for a stranger link in mock mode, nameless-gate return with a junk token on device, jump-scroll centering with real image settling, aborted page requests against a real server.
 
 ## Review (written by Claude)
+
+**Verdict:** approved, merged. Mobile only, one round.
+
+### Findings
+- Verified in the packet: mock invite membership derived from store state, token-leak tests now feed raw token-bearing errors (with a sanity assert that the raw text does contain the token), junk-token gate keeps the route valid, group-screen first roles load uses `describeRolesError`, `loadMore` aborts the superseded page and drops late results.
+- Deferred should-fix: the roles-load test goes through `describeRolesError` itself, so reverting the wiring in `group/[id].tsx` would stay green; needs a screen-level test.
+- Deferred nits: jump-scroll retries are cancelled by the synchronous `clearJumpTarget` (pre-existing pattern; check on a device); duplicate status/code extraction in `join-link.tsx`; `joinLinkViewFor` still accepts a free-form `joinError` string.
+
+### Follow-ups
+- Screen-level test for the group roles load error; a device check of search jump-scroll.
