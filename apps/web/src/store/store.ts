@@ -262,6 +262,8 @@ export interface ChatStore {
   sendAttachment: (chatId: string, file: File, options?: SendAttachmentOptions) => void;
   /** Sends a sticker payload in the chat (T-0120). */
   sendSticker: (chatId: string, sticker: SendStickerInput, options?: SendTextOptions) => void;
+  /** Re-sends a failed sticker. */
+  retrySticker: (chatId: string, messageId: string) => void;
   /** Re-runs a failed attachment upload, keeping the original file. */
   retryAttachment: (chatId: string, messageId: string) => void;
   /**
@@ -1192,6 +1194,21 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         }));
         window.setTimeout(() => setStatus(chatId, message.id, 'sent'), 300);
         window.setTimeout(() => setStatus(chatId, message.id, 'read'), 1500);
+      },
+      retrySticker: (chatId, messageId) => {
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: (state.messagesByChat[chatId] ?? []).map((item) => {
+              if (item.id !== messageId || item.failed === undefined) {
+                return item;
+              }
+              const next: UiMessage = { ...item };
+              delete next.failed;
+              return next;
+            }),
+          },
+        }));
       },
       retryAttachment: () => {},
       setSearch: (value) => set({ search: value }),

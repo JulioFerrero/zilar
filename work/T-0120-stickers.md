@@ -95,14 +95,25 @@ pnpm build
 ### Commands run and real results (final, post-rebase with migration 0029 committed)
 - `pnpm install`: ok (1021 packages, 7.6s)
 - `pnpm --filter @galena/server db:generate`: produced `drizzle/0029_sloppy_jigsaw.sql` with ONLY the three sticker tables + FKs + index (verified by reading the file); nothing else.
-- `pnpm exec prettier --write` on the generated snapshot + `_journal.json`; `pnpm format:check`: pass
+- `pnpm exec prettier --write` on the generated snapshot + `_journal.json`; `pnpm format:check`: pass (only untracked `PREREVIEW.md`, which I must not touch, is unformatted)
 - `pnpm lint` (oxlint): pass, no findings
 - `pnpm typecheck` per package (protocol/server/web): all pass
-- `pnpm --filter @galena/protocol test --maxWorkers=2`: 11 files, 156 passed
-- `pnpm --filter @galena/server test --maxWorkers=2`: 84 files passed, 5 skipped; 1465 passed, 7 skipped (includes the 14 sticker route tests, now green with the real migration)
-- `pnpm --filter @galena/web test --maxWorkers=2`: 79 files, 858 passed (was 77/820 pre-rebase; +2 files from main)
+- `pnpm --filter @galena/protocol test --maxWorkers=2`: 11 files, 159 passed
+- `pnpm --filter @galena/server test --maxWorkers=2`: 85 files passed, 5 skipped; 1471 passed, 7 skipped (includes the 17 sticker route + 14 probe + 3 startup tests)
+- `pnpm --filter @galena/web test --maxWorkers=2`: 79 files, 867 passed
 - `pnpm build` (turbo): 2 tasks successful
-- Targeted runs while working (all `--maxWorkers=2`): sticker protocol 12 passed; image probe 14 passed; sticker routes 14 passed; config 58 incl. new storage-dir cases; authz sweep 5 passed; web sticker panel/message/recents/url 19 passed; Composer 25 passed after bubble-menu dedupe fix.
+- Targeted runs while working (all `--maxWorkers=2`): sticker protocol 15 passed; image probe 14 passed; sticker routes 17 passed; startup 3 passed; config incl. new storage-dir cases; authz sweep 5 passed; web sticker panel 11, realStore 106, mock 9, recents/url lib, Composer 25 — all pass.
+
+### Pre-review fixes (PREREVIEW.md, untracked — read, not committed)
+All 8 findings fixed inside allowed files, each must-fix with a regression test:
+1. **Relative sticker URL rejected by `z.url()`** (real sends threw in `encodePayload`): `StickerSchema.url` now accepts `/api/stickers/…` relative paths or http(s) URLs (data:/javascript: still rejected). Regression test: relative-URL envelope round-trips through `encodePayload`/`decodePayload` (`sticker.test.ts`).
+2. **`readStickerFile` 404d everything under a relative `STICKER_STORAGE_DIR`**: service resolves the dir once via `resolveStorageDir()` (`resolve()` from `node:path`) and compares resolved paths in upload/delete/read/file-serve. Regression test: upload + serve through a relatively-configured storage dir (`routes.test.ts`).
+3. **Failed `sendSticker` stuck on `sending`**: real store now marks `failed: true` via `markStickerFailed` (incl. when core is absent) and offers Retry through new `retrySticker` (mock store clears the flag too). Regression tests: send-failure→failed + retry→sent in `realStore.test.tsx`; Retry-button test in `StickerPanel.test.tsx`.
+4. **Sticker actions menu**: sticker branch now renders the menu button + `MessageActionsMenu` (react/reply/pin/delete; Edit hidden, Copy-text disabled — stickers carry no editable text) + confirm dialog; failed stickers show Retry instead. Tests: menu items present/absent as specified.
+5. **Orphan DB row when the file write fails**: `uploadSticker` wraps mkdir+write in try/catch that deletes the inserted row before failing. Test: blocked storage dir → 503 + empty sticker list. (`deletePack` row-first/files-after order documented in code as intentional: crash orphans files, never metadata.)
+6. **Discover LIKE wildcards**: `escapeLike()` + explicit `ESCAPE '\\'` raw-SQL pattern (still a bound parameter). Test: `q=%` → only `100% cats`, `q=_` → only `under_score`.
+7. **Panel same-origin gate**: grid thumbnails + hover preview go through `StickerThumb`/`isPanelStickerUrl` (same-origin file URLs, plus the bundled mock `data:image/svg+xml` demo art only). Test: hostile `localStorage` URL renders no `<img>` anywhere.
+8. **Missing tests written**: `sendSticker` XMPP payload shape + incoming mapping (`realStore.test.tsx`); `ensureWritableDir` moved to testable `startup.ts` with 3 tests (`startup.test.ts`); mock demo packs served by panel/discover routes + protocol validity (`mock.test.ts`).
 
 ### Problems, deviations from the spec, open questions
 - Sticker rendering reuses `UiMessage.card` (generic `Payload`) — no `chat-core` change needed, so sticker preview text falls back to the emoji body / empty (no chat-core `previewBody` edit; that package is not in Allowed files).

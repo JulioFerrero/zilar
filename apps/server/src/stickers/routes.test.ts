@@ -416,4 +416,91 @@ describe('stickers routes', () => {
     });
     expect(response.status).toBe(404);
   });
+
+  it('serves files through a relatively-configured storage dir', async () => {
+    // Uses a relative storage dir (like the `./data/stickers` default) with
+    // a per-test subdirectory, so no test files escape the temp area.
+    const { mkdir } = await import('node:fs/promises');
+    const { cwd } = await import('node:process');
+    const leaf = `galena-stickers-rel-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const absolute = join(storageDir, leaf);
+    await mkdir(absolute, { recursive: true });
+    const relative = join((await import('node:path')).relative(cwd(), absolute));
+    expect((await import('node:path')).isAbsolute(relative)).toBe(false);
+    const relativeApp = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+      stickerStorageDir: `./${relative}`,
+    });
+    const created = await relativeApp.request(`${TEST_BASE_URL}/api/sticker-packs`, {
+      method: 'POST',
+      headers: { cookie: owner.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Relative' }),
+    });
+    expect(created.status).toBe(201);
+    const pack = (await created.json()) as { id: string };
+    const uploaded = await uploadBytes(relativeApp, pack.id, owner, pngBytes(40, 40));
+    expect(uploaded.status).toBe(201);
+    const sticker = (await uploaded.json()) as { id: string };
+    const file = await relativeApp.request(`${TEST_BASE_URL}/api/stickers/${sticker.id}/file`, {
+      headers: { cookie: owner.cookie },
+    });
+    expect(file.status).toBe(200);
+    expect(new Uint8Array(await file.arrayBuffer())).toEqual(pngBytes(40, 40));
+  });
+
+  it('escapes LIKE wildcards in discover queries', async () => {
+    await createPack(owner, { title: '100% cats', visibility: 'server' });
+    await createPack(owner, { title: 'under_score', visibility: 'server' });
+    await createPack(owner, { title: 'Plain dogs', visibility: 'server' });
+
+    async function discoverTitles(q: string): Promise<string[]> {
+      const response = await app.request(
+        `${TEST_BASE_URL}/api/sticker-packs/discover?q=${encodeURIComponent(q)}`,
+        { headers: { cookie: stranger.cookie } },
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { packs: Array<{ title: string }> };
+      return body.packs.map((pack) => pack.title);
+    }
+
+    // A bare `%` must not match everything: only the pack with a literal %.
+    expect(await discoverTitles('%')).toEqual(['100% cats']);
+    expect(await discoverTitles('_')).toEqual(['under_score']);
+    expect(await discoverTitles('cats')).toEqual(['100% cats']);
+  });
+
+  it('leaves no orphan sticker row when the file write fails', async () => {
+    // The storage path is blocked by a regular file, so `mkdir` fails after
+    // the metadata row was inserted: the route must fail AND delete the row.
+    const { writeFile } = await import('node:fs/promises');
+    const blocker = join(storageDir, 'blocker');
+    await writeFile(blocker, 'nope');
+    const blockedApp = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+      stickerStorageDir: join(blocker, 'stickers'),
+    });
+    const created = await blockedApp.request(`${TEST_BASE_URL}/api/sticker-packs`, {
+      method: 'POST',
+      headers: { cookie: owner.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Blocked' }),
+    });
+    expect(created.status).toBe(201);
+    const pack = (await created.json()) as { id: string };
+
+    const response = await uploadBytes(blockedApp, pack.id, owner, pngBytes(40, 40));
+    expect(response.status).toBe(503);
+
+    const panel = (await (await jsonRequest(app, 'GET', '/api/sticker-packs', owner)).json()) as {
+      packs: Array<{ id: string; stickers: unknown[] }>;
+    };
+    expect(panel.packs.find((entry) => entry.id === pack.id)?.stickers).toEqual([]);
+  });
 });

@@ -3056,3 +3056,118 @@ describe('attachments (T-0065)', () => {
     expect(untrusted?.attachment?.height).toBeUndefined();
   });
 });
+
+describe('stickers (T-0120)', () => {
+  const stickerInput = {
+    stickerId: '223e4567-e89b-12d3-a456-426614174001',
+    packId: '123e4567-e89b-12d3-a456-426614174000',
+    url: '/api/stickers/223e4567-e89b-12d3-a456-426614174001/file',
+    emoji: '🐱',
+    width: 200,
+    height: 200,
+    mime: 'image/webp' as const,
+  };
+
+  it('sends the sticker payload shape over XMPP with the emoji body', async () => {
+    const { store, xmpp } = await setup();
+
+    store.getState().sendSticker('ana@galena.test', stickerInput);
+    await flush();
+
+    expect(xmpp.core.sendMessage).toHaveBeenCalledWith('ana@galena.test', 'chat', '🐱', {
+      payload: {
+        v: 0,
+        type: 'sticker',
+        data: {
+          pack_id: '123e4567-e89b-12d3-a456-426614174000',
+          sticker_id: '223e4567-e89b-12d3-a456-426614174001',
+          url: '/api/stickers/223e4567-e89b-12d3-a456-426614174001/file',
+          emoji: '🐱',
+          width: 200,
+          height: 200,
+          mime: 'image/webp',
+        },
+      },
+    });
+    const sent = store.getState().messages('ana@galena.test').at(-1);
+    expect(sent?.card).toEqual({
+      v: 0,
+      type: 'sticker',
+      data: {
+        pack_id: '123e4567-e89b-12d3-a456-426614174000',
+        sticker_id: '223e4567-e89b-12d3-a456-426614174001',
+        url: '/api/stickers/223e4567-e89b-12d3-a456-426614174001/file',
+        emoji: '🐱',
+        width: 200,
+        height: 200,
+        mime: 'image/webp',
+      },
+    });
+    expect(sent?.status).toBe('sent');
+  });
+
+  it('marks a failed sticker send failed and retries it', async () => {
+    const { store, xmpp } = await setup();
+    vi.mocked(xmpp.core.sendMessage).mockRejectedValueOnce(new Error('offline'));
+
+    store.getState().sendSticker('ana@galena.test', stickerInput);
+    await flush();
+
+    const failed = store.getState().messages('ana@galena.test').at(-1);
+    expect(failed?.failed).toBe(true);
+    expect(failed?.status).toBe('sending');
+
+    store.getState().retrySticker('ana@galena.test', failed?.id ?? '');
+    expect(store.getState().messages('ana@galena.test').at(-1)?.failed).toBeUndefined();
+    await flush();
+
+    const retried = store.getState().messages('ana@galena.test').at(-1);
+    expect(xmpp.core.sendMessage).toHaveBeenCalledTimes(2);
+    expect(retried?.failed).toBeUndefined();
+    expect(retried?.status).toBe('sent');
+  });
+
+  it('maps an incoming sticker payload onto the card', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'st-in',
+        chatJid: 'ana@galena.test',
+        body: '🐱',
+        payload: {
+          v: 0,
+          type: 'sticker',
+          data: {
+            pack_id: '123e4567-e89b-12d3-a456-426614174000',
+            sticker_id: '223e4567-e89b-12d3-a456-426614174001',
+            url: '/api/stickers/223e4567-e89b-12d3-a456-426614174001/file',
+            emoji: '🐱',
+            width: 200,
+            height: 200,
+            mime: 'image/webp',
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'st-in');
+    expect(incoming?.card).toEqual({
+      v: 0,
+      type: 'sticker',
+      data: {
+        pack_id: '123e4567-e89b-12d3-a456-426614174000',
+        sticker_id: '223e4567-e89b-12d3-a456-426614174001',
+        url: '/api/stickers/223e4567-e89b-12d3-a456-426614174001/file',
+        emoji: '🐱',
+        width: 200,
+        height: 200,
+        mime: 'image/webp',
+      },
+    });
+  });
+});

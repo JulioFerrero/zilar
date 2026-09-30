@@ -29,6 +29,7 @@ import { createLogger } from './logger';
 import { assertRunnerHubConfig, startRunnerHub, type RunnerHub } from './machines/hub';
 import { createDbMachineRegistry } from './machines/registry';
 import { buildRoutineScheduler, type RoutineSchedulerHandle } from './routines/wiring';
+import { ensureWritableDir } from './startup';
 import { createEjabberdAdminClient } from './xmpp/admin-client';
 import { runTool } from './sandbox/run-tool';
 import { buildToolAdapters } from './tools/adapters';
@@ -326,20 +327,6 @@ const routineScheduler: RoutineSchedulerHandle | null = buildRoutineScheduler({
 // point at which a stuck shutdown gives up and exits.
 const CONNECTION_GRACE_MS = 3_000;
 const FORCE_EXIT_MS = 15_000;
-
-/** Creates `dir` when missing and fails fast when it is not writable. */
-export async function ensureWritableDir(dir: string, envName: string): Promise<void> {
-  const { mkdir, access, constants } = await import('node:fs/promises');
-  try {
-    await mkdir(dir, { recursive: true });
-    await access(dir, constants.W_OK);
-  } catch {
-    console.error(
-      `${envName} (${dir}) is not writable: create the directory or fix its permissions`,
-    );
-    process.exit(1);
-  }
-}
 
 let shuttingDown = false;
 

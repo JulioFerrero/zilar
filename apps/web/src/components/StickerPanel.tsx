@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { StickerPack } from '@/lib/api';
 import { discoverStickerPacks, listStickerPacks } from '@/lib/api';
-import { readRecentStickers, rememberRecentSticker } from '@/lib/stickers';
+import { isPanelStickerUrl, readRecentStickers, rememberRecentSticker } from '@/lib/stickers';
 import type { RecentStickerEntry } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +18,40 @@ export interface StickerChoice {
 export interface StickerPanelProps {
   onPick: (sticker: StickerChoice) => void;
   onClose: () => void;
+}
+
+/**
+ * A panel thumbnail: same-origin sticker URLs (and the mock demo packs'
+ * generated `data:` art) load lazily; anything else (e.g. a hostile URL
+ * planted in localStorage recents) shows the emoji tile so the browser
+ * never fetches it.
+ */
+function StickerThumb({ sticker, size }: { sticker: StickerChoice; size: number }) {
+  const trusted = isPanelStickerUrl(sticker.url);
+  const label = sticker.emoji ?? 'Sticker';
+  if (!trusted) {
+    return (
+      <span
+        role="img"
+        aria-label={label}
+        className="flex items-center justify-center text-[26px]"
+        style={{ width: size, height: size }}
+      >
+        {label === 'Sticker' ? '🙂' : label}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={sticker.url}
+      alt={label}
+      loading="lazy"
+      width={size}
+      height={size}
+      style={{ maxWidth: size, maxHeight: size }}
+      className="object-contain"
+    />
+  );
 }
 
 type Tab = 'stickers' | 'gifs' | 'emoji';
@@ -280,20 +314,13 @@ export function StickerPanel({
                   onBlur={() => setPreview(undefined)}
                   className="flex size-[72px] items-center justify-center rounded-[8px] hover:bg-surface-raised focus-visible:bg-surface-raised"
                 >
-                  <img
-                    src={sticker.url}
-                    alt={sticker.emoji ?? 'Sticker'}
-                    loading="lazy"
-                    width={64}
-                    height={64}
-                    className="max-h-[64px] max-w-[64px] object-contain"
-                  />
+                  <StickerThumb sticker={sticker} size={64} />
                 </button>
               ))}
             </div>
           )}
 
-          {preview !== undefined && (
+          {preview !== undefined && isPanelStickerUrl(preview.url) && (
             <div
               aria-hidden="true"
               className="pointer-events-none absolute -top-2 left-1/2 flex -translate-x-1/2 -translate-y-full items-center justify-center rounded-[12px] border border-edge bg-surface p-2 shadow-lg"

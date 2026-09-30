@@ -279,7 +279,7 @@ export function MessageBubble({
         ))}
       <div className={cn('flex min-w-0 flex-col', own ? 'items-end' : 'items-start')}>
         {sticker !== undefined ? (
-          <div className={cn('flex flex-col', own ? 'items-end' : 'items-start')}>
+          <div className={cn('relative flex flex-col', own ? 'items-end' : 'items-start')}>
             {showSender && (
               <div
                 className="flex items-center gap-1.5 pb-1 text-[14px] leading-5 font-semibold"
@@ -295,6 +295,87 @@ export function MessageBubble({
               </div>
             )}
             <StickerMessage sticker={sticker} message={message} own={own} />
+            {message.failed === true ? (
+              <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
+                <span>Send failed</span>
+                <button
+                  type="button"
+                  aria-label="Retry sticker"
+                  onClick={() => storeApi.getState().retrySticker(chat.id, message.id)}
+                  className="font-semibold underline"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              !generating && (
+                <button
+                  ref={menuButtonRef}
+                  type="button"
+                  aria-label="Message actions"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  onClick={() => setMenuOpen(true)}
+                  className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                >
+                  <MoreHorizontal className="size-4" aria-hidden="true" />
+                </button>
+              )
+            )}
+            {!generating && message.failed !== true && menuOpen && (
+              <MessageActionsMenu
+                canCopy={false}
+                canEdit={false}
+                canDelete={canDelete}
+                canPin={canPin}
+                isPinned={pin !== undefined}
+                onReact={(emoji) => {
+                  setMenuOpen(false);
+                  handleReact(emoji);
+                }}
+                onReply={() => {
+                  setMenuOpen(false);
+                  onReply(message);
+                }}
+                onEdit={() => setMenuOpen(false)}
+                onCopy={() => setMenuOpen(false)}
+                onDelete={() => {
+                  setMenuOpen(false);
+                  menuButtonRef.current?.focus();
+                  setConfirmOpen(true);
+                }}
+                onPin={() => {
+                  setMenuOpen(false);
+                  storeApi
+                    .getState()
+                    .pinMessage(chat.id, message.id)
+                    .catch(() => {});
+                }}
+                onUnpin={() => {
+                  setMenuOpen(false);
+                  if (pin !== undefined) {
+                    storeApi
+                      .getState()
+                      .unpinMessage(chat.id, pin.id)
+                      .catch(() => {});
+                  }
+                }}
+                onClose={() => setMenuOpen(false)}
+                align={own ? 'right' : 'left'}
+              />
+            )}
+            {confirmOpen && (
+              <ConfirmDialog
+                title="Delete message?"
+                body="This deletes it for everyone in the chat."
+                confirmLabel="Delete"
+                onCancel={() => setConfirmOpen(false)}
+                onConfirm={() => {
+                  setConfirmOpen(false);
+                  storeApi.getState().deleteForEveryone(chat.id, message.id);
+                }}
+              />
+            )}
           </div>
         ) : (
           <div

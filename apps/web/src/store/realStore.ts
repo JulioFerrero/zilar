@@ -28,6 +28,7 @@ import {
   resolveEdits,
   summarize,
 } from '@galena/chat-core';
+import type { Payload } from '@galena/protocol';
 import { clearChatListCache, readChatListCache, writeChatListCache } from './chatListCache';
 import {
   createXmppCore,
@@ -1205,6 +1206,49 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             : state.chats,
         };
       });
+    }
+
+    // A failed sticker keeps the message and shows a Retry instead of a
+    // silent "sending" state, like attachments do.
+    function markStickerFailed(chatId: string, messageId: string): void {
+      set((state) => ({
+        messagesByChat: {
+          ...state.messagesByChat,
+          [chatId]: listFor(state, chatId).map((item) =>
+            sameMessage(item.id, messageId) ? { ...item, failed: true } : item,
+          ),
+        },
+      }));
+    }
+
+    // The send step of a sticker, re-runnable from a Retry: the payload is
+    // already on the optimistic message, so only the stanza is (re)sent.
+    function runStickerSend(
+      chat: ChatSummary,
+      localId: string,
+      payload: Extract<Payload, { type: 'sticker' }>,
+      body: string,
+      replyTo: ReplyRef | undefined,
+    ): void {
+      const current = core;
+      if (current === undefined) {
+        markStickerFailed(chat.id, localId);
+        return;
+      }
+      current
+        .sendMessage(chat.id, coreKind(chat), body, {
+          payload,
+          ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+        })
+        .then((sent) => {
+          linkMessageIds(localId, sent.id);
+          linkLocalToServer(localId, sent.id);
+          rememberOriginId(localId, sent.id);
+          updateMessageStatus(chat.id, localId, 'sent');
+        })
+        .catch(() => {
+          markStickerFailed(chat.id, localId);
+        });
     }
 
     // A failed upload keeps the message and its local bytes, but shows a Retry
@@ -3376,22 +3420,31 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           rememberBaseText(localId, body);
         }
         if (core === undefined) {
+          markStickerFailed(chatId, localId);
           return;
         }
-        core
-          .sendMessage(chatId, coreKind(chat), body, {
-            payload,
-            ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
-          })
-          .then((sent) => {
-            linkMessageIds(localId, sent.id);
-            linkLocalToServer(localId, sent.id);
-            rememberOriginId(localId, sent.id);
-            updateMessageStatus(chatId, localId, 'sent');
-          })
-          .catch(() => {
-            // The message stays marked as sending; a reconnect can resend later.
-          });
+        runStickerSend(chat, localId, payload, body, replyTo);
+      },
+      retrySticker: (chatId, messageId) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (chat === undefined) {
+          return;
+        }
+        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        const payload =
+          message?.card !== undefined && message.card.type === 'sticker' ? message.card : undefined;
+        if (message === undefined || payload === undefined) {
+          return;
+        }
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: listFor(state, chatId).map((item) =>
+              sameMessage(item.id, messageId) ? clearFailure(item) : item,
+            ),
+          },
+        }));
+        runStickerSend(chat, messageId, payload, message.text ?? '', message.replyTo);
       },
       retryAttachment: (chatId, messageId) => {
         const root = aliasRoot(messageId);

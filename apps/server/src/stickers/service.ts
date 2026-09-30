@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { and, asc, count, desc, eq, ilike, sql } from 'drizzle-orm';
+import { dirname, join, resolve } from 'node:path';
+import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
@@ -46,11 +46,19 @@ export interface StickerPackView {
 
 export interface StickersServiceDeps {
   db: ServerDatabase;
-  /** Absolute directory sticker files are stored under. */
+  /** Directory sticker files are stored under; resolved once, absolutely. */
   storageDir: string;
   /** Base path of the file route, e.g. `/api/stickers`. */
   fileBasePath?: string;
   audit?: AuditRecorder;
+}
+
+/**
+ * Resolves the storage dir once (absolute, normalized), so path comparisons
+ * below hold for relative configs like the default `./data/stickers`.
+ */
+export function resolveStorageDir(dir: string): string {
+  return resolve(dir);
 }
 
 const createPackBodySchema = z
@@ -335,8 +343,11 @@ export async function deletePack(
   const rows = await deps.db.select().from(stickers).where(eq(stickers.packId, packId));
   await deps.db.delete(stickerPacks).where(eq(stickerPacks.id, packId));
   const { rm } = await import('node:fs/promises');
+  // Files are removed after the row: a crash in between orphans files on
+  // disk (harmless — they are never served without the row), never metadata.
+  const storageDir = resolveStorageDir(deps.storageDir);
   for (const row of rows) {
-    await rm(join(deps.storageDir, row.storageKey), { force: true }).catch(() => {});
+    await rm(join(storageDir, row.storageKey), { force: true }).catch(() => {});
   }
   if (deps.audit) {
     await deps.audit.record(toAuditEntry('sticker_pack.deleted', userId, packId));
@@ -356,7 +367,13 @@ export async function discoverPacks(
   const conditions = [eq(stickerPacks.visibility, 'server' as const)];
   const trimmed = query?.trim() ?? '';
   if (trimmed !== '') {
-    conditions.push(ilike(stickerPacks.title, `%${trimmed.slice(0, 60)}%`));
+    // `%`, `_` and the escape char are wildcards in LIKE: escape them so
+    // `q=%` matches a literal percent instead of every pack. Drizzle's
+    // `ilike` emits no ESCAPE clause, so the pattern runs as raw SQL with
+    // an explicit backslash escape (still a bound parameter, no injection).
+    conditions.push(
+      sql`${stickerPacks.title} ILIKE ${`%${escapeLike(trimmed.slice(0, 60))}%`} ESCAPE '\\'`,
+    );
   }
   if (cursor !== undefined && cursor !== '') {
     conditions.push(sql`${stickerPacks.id} > ${cursor}`);
@@ -432,6 +449,11 @@ function extensionFor(mime: 'image/webp' | 'image/png'): string {
   return mime === 'image/webp' ? 'webp' : 'png';
 }
 
+/** Escapes LIKE wildcards (`%`, `_`, `\`) in a user query fragment. */
+export function escapeLike(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
 export async function uploadSticker(
   deps: StickersServiceDeps,
   packId: string,
@@ -499,8 +521,21 @@ export async function uploadSticker(
     }
     throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
-  await mkdir(deps.storageDir, { recursive: true });
-  await writeFile(join(deps.storageDir, storageKey), bytes);
+  const storageDir = resolveStorageDir(deps.storageDir);
+  try {
+    await mkdir(storageDir, { recursive: true });
+    await writeFile(join(storageDir, storageKey), bytes);
+  } catch (error) {
+    // The file never landed: remove the orphan metadata row so the sticker
+    // does not 404 forever, then fail like any other write error.
+    await deps.db
+      .delete(stickers)
+      .where(eq(stickers.id, id))
+      .catch(() => {});
+    throw error instanceof HttpError
+      ? error
+      : new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  }
   const [row] = await deps.db.select().from(stickers).where(eq(stickers.id, id)).limit(1);
   if (!row) {
     throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
@@ -527,7 +562,8 @@ export async function deleteSticker(
   }
   await deps.db.delete(stickers).where(eq(stickers.id, stickerId));
   const { rm } = await import('node:fs/promises');
-  await rm(join(deps.storageDir, row.storageKey), { force: true }).catch(() => {});
+  const storageDir = resolveStorageDir(deps.storageDir);
+  await rm(join(storageDir, row.storageKey), { force: true }).catch(() => {});
   await deps.db
     .update(stickerPacks)
     .set({ updatedAt: new Date() })
@@ -550,15 +586,17 @@ export async function readStickerFile(
   }
   // The path is built from the stored key only (a `<uuid>.<ext>` written at
   // upload); the request id never touches the filesystem, so `..` or a
-  // crafted name cannot escape the storage directory. `dirname` is the
-  // configured dir itself.
-  const dir = dirname(join(deps.storageDir, row.storageKey));
-  if (dir !== deps.storageDir) {
+  // crafted name cannot escape the storage directory. Both sides are
+  // resolved, so a relative `STICKER_STORAGE_DIR` (e.g. `./data/stickers`)
+  // still compares equal to its own join.
+  const storageDir = resolveStorageDir(deps.storageDir);
+  const filePath = join(storageDir, row.storageKey);
+  if (dirname(filePath) !== storageDir) {
     return null;
   }
   const { readFile } = await import('node:fs/promises');
   try {
-    const data = await readFile(join(deps.storageDir, row.storageKey));
+    const data = await readFile(filePath);
     return { bytes: new Uint8Array(data), mime: row.mime, size: row.bytes };
   } catch {
     return null;

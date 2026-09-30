@@ -107,6 +107,31 @@ describe('StickerPanel', () => {
     fireEvent.click(screen.getByLabelText('Open sticker panel'));
     expect(await screen.findByRole('dialog', { name: 'Stickers' })).toBeTruthy();
   });
+
+  it('never fetches a hostile URL planted in recents', async () => {
+    window.localStorage.setItem(
+      'galena:recentStickers',
+      JSON.stringify([
+        {
+          stickerId: 'st-evil',
+          packId: 'pack-evil',
+          url: 'https://evil.example.com/track.png',
+          emoji: '😈',
+        },
+      ]),
+    );
+    renderApp('/c/c-ana');
+
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    const dialog = await screen.findByRole('dialog', { name: 'Stickers' });
+    const grid = within(dialog).getByRole('grid', { name: 'Stickers' });
+    // An emoji tile shows instead of an <img>, so nothing is fetched.
+    expect(grid.querySelector('img')).toBeNull();
+    const images = document.querySelectorAll('img');
+    for (const img of images) {
+      expect(img.getAttribute('src')).not.toContain('evil.example.com');
+    }
+  });
 });
 
 describe('StickerMessage', () => {
@@ -220,5 +245,84 @@ describe('StickerMessage', () => {
     expect(screen.getByAltText('🐱')).toBeTruthy();
     expect(screen.getByText('❤️')).toBeTruthy();
     expect(store.getState().messages('c-ana')[0]?.replyTo?.id).toBe('m-1');
+  });
+
+  it('opens the actions menu on a sticker (react, reply, pin, delete)', () => {
+    renderApp('/c/c-ana', {
+      currentUserId: 'u-you',
+      messagesByChat: {
+        'c-ana': [
+          {
+            id: 'm-st',
+            chatId: 'c-ana',
+            senderId: 'u-you',
+            senderName: 'You',
+            text: '🐱',
+            createdAt: new Date(2026, 8, 27, 12, 41),
+            status: 'read',
+            card: {
+              v: 0,
+              type: 'sticker',
+              data: {
+                pack_id: 'pack-1',
+                sticker_id: 'st-1',
+                url: '/api/stickers/st-1/file',
+                emoji: '🐱',
+                width: 200,
+                height: 200,
+                mime: 'image/webp',
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    fireEvent.click(screen.getByLabelText('Message actions'));
+    const menu = screen.getByRole('menu', { name: 'Message actions' });
+    expect(within(menu).getByRole('menuitem', { name: 'Reply' })).toBeTruthy();
+    expect(within(menu).getByRole('menuitem', { name: 'Delete for everyone' })).toBeTruthy();
+    expect(within(menu).getByRole('menuitem', { name: 'Pin' })).toBeTruthy();
+    // Stickers carry no editable text: Edit is hidden, Copy text is disabled.
+    expect(within(menu).queryByRole('menuitem', { name: 'Edit' })).toBeNull();
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Copy text' }).getAttribute('disabled'),
+    ).not.toBeNull();
+  });
+
+  it('shows a Retry on a failed sticker and resends on click', () => {
+    const { store } = renderApp('/c/c-ana', {
+      currentUserId: 'u-you',
+      messagesByChat: {
+        'c-ana': [
+          {
+            id: 'm-failed',
+            chatId: 'c-ana',
+            senderId: 'u-you',
+            senderName: 'You',
+            text: '🐱',
+            createdAt: new Date(2026, 8, 27, 12, 41),
+            status: 'sending',
+            failed: true,
+            card: {
+              v: 0,
+              type: 'sticker',
+              data: {
+                pack_id: 'pack-1',
+                sticker_id: 'st-1',
+                url: '/api/stickers/st-1/file',
+                emoji: '🐱',
+                width: 200,
+                height: 200,
+                mime: 'image/webp',
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    fireEvent.click(screen.getByLabelText('Retry sticker'));
+    expect(store.getState().messages('c-ana')[0]?.failed).toBeUndefined();
   });
 });

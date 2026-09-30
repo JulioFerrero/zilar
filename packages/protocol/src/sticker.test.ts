@@ -40,6 +40,21 @@ describe('StickerSchema', () => {
     );
   });
 
+  it('rejects a non-/api/stickers/ relative url', () => {
+    expect(StickerSchema.safeParse({ ...validSticker, url: '/evil/track.png' }).success).toBe(
+      false,
+    );
+  });
+
+  it('rejects data: and javascript: urls', () => {
+    expect(
+      StickerSchema.safeParse({ ...validSticker, url: 'data:image/png;base64,AAA' }).success,
+    ).toBe(false);
+    expect(StickerSchema.safeParse({ ...validSticker, url: 'javascript:alert(1)' }).success).toBe(
+      false,
+    );
+  });
+
   it('rejects an oversized url', () => {
     const base = 'http://localhost:3000/api/stickers/';
     const url = `${base}${'a'.repeat(2048 - base.length + 1)}`;
@@ -66,6 +81,18 @@ describe('StickerSchema', () => {
 describe('sticker payload envelope', () => {
   it('round-trips a sticker payload', () => {
     const payload = { v: 0, type: 'sticker', data: validSticker } as const;
+    expect(decodePayload(encodePayload(payload))).toEqual({ ok: true, payload });
+  });
+
+  it('round-trips a server-issued relative sticker url (must-fix: encodePayload threw)', () => {
+    // The server API returns `/api/stickers/<id>/file`; the client sends that
+    // value back verbatim, so the schema must accept it — `z.url()` rejected
+    // it and every real sticker send threw inside `encodePayload`.
+    const payload = {
+      v: 0,
+      type: 'sticker',
+      data: { ...validSticker, url: '/api/stickers/223e4567-e89b-12d3-a456-426614174001/file' },
+    } as const;
     expect(decodePayload(encodePayload(payload))).toEqual({ ok: true, payload });
   });
 
