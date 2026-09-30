@@ -467,6 +467,24 @@ describe('mail transport config', () => {
     expect(loadServerConfig({ ...base, NODE_ENV: 'production' }).MAIL_TRANSPORT).toBeUndefined();
   });
 
+  it('treats empty optional mail settings as unset (Docker Compose renders them empty)', () => {
+    const config = loadServerConfig({
+      ...base,
+      MAIL_TRANSPORT: '',
+      SMTP_HOST: '',
+      SMTP_USER: '',
+      SMTP_PASSWORD: '',
+      MAIL_FROM: '',
+      MAIL_REPLY_TO: '',
+    });
+    expect(config.MAIL_TRANSPORT).toBe('console');
+    expect(config.SMTP_HOST).toBeUndefined();
+    expect(config.MAIL_REPLY_TO).toBeUndefined();
+    expect(
+      loadServerConfig({ ...base, NODE_ENV: 'production', MAIL_TRANSPORT: '' }).MAIL_TRANSPORT,
+    ).toBeUndefined();
+  });
+
   it('defaults the SMTP port to 587 and parses an explicit one', () => {
     expect(loadServerConfig(base).SMTP_PORT).toBe(587);
     expect(

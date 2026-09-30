@@ -197,7 +197,32 @@ export type ServerConfig = z.infer<typeof serverConfigSchema> & {
   xmpp: XmppConfig;
 };
 
-export function loadServerConfig(env: Record<string, string | undefined>): ServerConfig {
+// Docker Compose renders an unset optional as an empty string (`${VAR:-}`),
+// which a bare `.min(1).optional()` would reject. For the optional mail
+// settings an empty value means "not set".
+const EMPTY_MEANS_UNSET_KEYS = [
+  'MAIL_TRANSPORT',
+  'SMTP_HOST',
+  'SMTP_USER',
+  'SMTP_PASSWORD',
+  'MAIL_FROM',
+  'MAIL_REPLY_TO',
+] as const;
+
+function emptyMailSettingsAsUnset(
+  env: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const normalized = { ...env };
+  for (const key of EMPTY_MEANS_UNSET_KEYS) {
+    if (normalized[key] === '') {
+      delete normalized[key];
+    }
+  }
+  return normalized;
+}
+
+export function loadServerConfig(rawEnv: Record<string, string | undefined>): ServerConfig {
+  const env = emptyMailSettingsAsUnset(rawEnv);
   const result = serverConfigSchema.safeParse(env);
   if (!result.success) {
     throw new ConfigError(formatIssues(result.error));
