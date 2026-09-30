@@ -1,7 +1,7 @@
 ---
 id: T-0139
 title: Mobile: bugs found on the Android emulator
-status: review
+status: merged
 milestone: M5
 branch: task/T-0139-mobile-device-bugs
 model: meta/muse-spark-1.3-contributor
@@ -78,3 +78,13 @@ Do NOT start simulators, Metro, or `expo run`. Say in the Report what still need
 - None.
 
 ## Review (written by Claude)
+
+**Verdict:** approved, merged. Two rounds.
+
+### Findings
+- Root cause confirmed and fixed: `parseChat` dropped `topics` from `/api/chats`, so General-only groups had no topic, no Pin, a dead header and no route to the group screen. Header actions, group route, cached group detail on mount (exact relative-count test) and the General-gated group sheet verified in the round-2 packet.
+- Deferred should-fix: a cold deep-link open still costs two `GET /api/groups/<id>` (members fallback starts before the detail load), and an invite/roster push for an N-topic group fans out N GETs. Fix is to start `ensureGroupDetail` before `ensureGroupMembers` in `openChat`/`joinGroups` and let the fallback fill the detail cache. Bounded, not the 18-fetch loop.
+- Still to verify on the Android emulator after merge.
+
+### Follow-ups
+- The ordering fix above.
