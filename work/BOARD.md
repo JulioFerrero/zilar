@@ -18,6 +18,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0124](T-0124-channels.md) | Channels: only admins post | planned | meta/muse-spark-1.3-contributor | T-0108, T-0115 |  |
 | [T-0127](T-0127-install-wizard-backup-baremetal.md) | Install wizard, backup/restore, bare-metal guide | planned | meta/muse-spark-1.3-contributor | T-0126 |
 | [T-0132](T-0132-tool-host-approval.md) | Approve a tool's hosts once per tool before it can reach the network | planned | meta/muse-spark-1.3-contributor | T-0105, T-0116 | Julio's decision 2026-09-30; must merge before TOOLS_ENABLED is turned on; schema task |
+| [T-0133](T-0133-web-followups.md) | Web follow-ups from the topics, invite-links and pins reviews | planned | meta/muse-spark-1.3-contributor | T-0130, T-0115 | Small fixes, web only |
+| [T-0134](T-0134-server-followups.md) | Server follow-ups (join race, trusted proxy hops, pin 404, search with roles, preview limit, approvers in list) | planned | meta/muse-spark-1.3-contributor | T-0116 | No schema |
+| [T-0135](T-0135-mobile-parity.md) | Mobile: chat preferences and pinned messages | planned | meta/muse-spark-1.3-contributor | T-0113, T-0114 | Mobile, not run in a simulator |
 | T-0106 | Model side of AI tools (prompt guide, rounds per turn, working-on-it line) | planned | meta/muse-spark-1.3-contributor | T-0105 | Spec written after T-0105 merges |
 | T-0107 | Web Tools and Routines UI | planned | meta/muse-spark-1.3-contributor | T-0106 | Spec written after T-0105 merges |
 
