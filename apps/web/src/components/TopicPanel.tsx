@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import {
   addTopicAi,
   addTopicMember,
+  ApiError,
   listTopicAis,
   listTopicMembers,
   listTopicTools,
@@ -254,14 +255,32 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
 
   const removeMember = (userId: string): Promise<void> =>
     run(`remove:${userId}`, async () => {
-      await removeTopicMember(topic.id, userId);
+      try {
+        await removeTopicMember(topic.id, userId);
+      } catch (error) {
+        // Only a 404 means the topic is gone (the last member leaving
+        // archives it): navigate away. Any other failure (403, network)
+        // keeps the user here and shows the inline error.
+        if (error instanceof ApiError && error.status === 404) {
+          navigate('/');
+          onClose();
+          return;
+        }
+        throw error;
+      }
       try {
         await storeApi.getState().removeTopicMember(chat.id, userId);
-      } catch {
-        // Removing the last member archives (server 404): navigate away.
-        navigate('/');
-        onClose();
-        return;
+      } catch (error) {
+        // The server removal already succeeded; the store only folds the
+        // row back in. A stale row (404) means the topic is gone: it
+        // refreshes itself away, so still navigate. Any other store
+        // failure keeps the user here with the inline error.
+        if (error instanceof ApiError && error.status === 404) {
+          navigate('/');
+          onClose();
+          return;
+        }
+        throw error;
       }
       await reloadMembers();
     });

@@ -87,3 +87,79 @@ describe('Group panel topic switch (T-0111)', () => {
     expect(screen.getByRole('switch', { name: 'Members can create topics' })).toBeTruthy();
   });
 });
+
+describe('topic member removal errors (T-0130)', () => {
+  // The panel removes through the api client (fetch) first, then the store.
+  // Stubbing the DELETE to fail exercises the panel branch without touching
+  // the store: a 403 keeps the user in the topic with the inline error,
+  // while a 404 (the topic is gone) navigates away.
+  function stubRemoveMember(status: number): void {
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) =>
+      mockRequest(String(url), init ?? {}, { delayMs: 0 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const baseImpl = fetchMock.getMockImplementation();
+    if (baseImpl === undefined) {
+      throw new Error('expected the mock fetch implementation');
+    }
+    fetchMock.mockImplementation((url: unknown, init?: RequestInit) => {
+      const raw = String(url);
+      const withoutBase = raw.includes('/api/')
+        ? raw.slice(raw.indexOf('/api/') + 4)
+        : raw.replace('/api', '');
+      const path = withoutBase.startsWith('/') ? withoutBase : `/${withoutBase}`;
+      if (path === '/topics/t-devteam-hiring/members/u-ana' && init?.method === 'DELETE') {
+        if (status === 404) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ error: { code: 'not_found', message: 'gone' } }), {
+              status: 404,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          );
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ error: { code: 'forbidden', message: 'Only a manager can remove' } }),
+            { status: 403, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return baseImpl(url, init);
+    });
+  }
+
+  function openHiringPanel(): void {
+    renderApp('/c/c-devteam-hiring');
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
+    expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
+  }
+
+  // The mock user owns the Dev team group, so the panel shows Remove for
+  // every other member; "You" has no Remove button.
+  it('keeps the user in the topic with an inline error on a 403', async () => {
+    stubRemoveMember(403);
+    openHiringPanel();
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    expect(await within(dialog).findByText('Ana')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Ana from the topic' }));
+    // The panel stays open and reports the failure inline; the chat view
+    // behind it is still the hiring topic.
+    expect(await within(dialog).findByText('Only a manager can remove')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
+  });
+
+  it('moves the user away on a 404 (the topic is gone)', async () => {
+    stubRemoveMember(404);
+    openHiringPanel();
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    expect(await within(dialog).findByText('Ana')).toBeTruthy();
+    // The stubbed DELETE answers 404, so the panel takes the archived path
+    // (close + navigate away) instead of the inline-error path: the dialog
+    // closes and no inline error appears anywhere.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Ana from the topic' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /topic info/ })).toBeNull();
+    });
+  });
+});

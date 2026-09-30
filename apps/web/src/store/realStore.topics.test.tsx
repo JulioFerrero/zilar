@@ -7,6 +7,7 @@ import {
   type ApiClient,
   type StorageLike,
 } from './realStore';
+import { ApiError } from '@/lib/api';
 import type { ChatEntry } from '@/lib/api';
 
 vi.mock('@/lib/auth', () => ({
@@ -296,6 +297,78 @@ describe('topics store mapping (T-0111)', () => {
     expect(store.getState().activeChatId).toBe('team@rooms.galena.test');
     expect(store.getState().topicNotice?.chatId).toBe('team@rooms.galena.test');
     expect(store.getState().topicNotice?.message).not.toContain('Checkout');
+  });
+
+  it('an archived open topic navigates away at once after a patch', async () => {
+    // Fix 1's store half: patching `archived: true` drops the row from the
+    // visible list immediately (the server excludes archived topics), so the
+    // header can navigate without waiting for the 60 s poll.
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const { topicSchema } = await import('@/lib/api');
+    (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
+      topicSchema.parse({ ...bugTopic(), archived: true }),
+    );
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
+      groupEntry({ topics: [topic()] }),
+    ]);
+    await store.getState().patchTopic(bugId, { archived: true });
+    expect(store.getState().chats.some((chat) => chat.id === bugId)).toBe(false);
+  });
+
+  it('a failed member removal (403) keeps the user in the topic with an inline error', async () => {
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    store.getState().openChat(bugId);
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const getChats = apiMock.getChats as ReturnType<typeof vi.fn>;
+    getChats.mockClear();
+    (apiMock.removeTopicMember as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ApiError(403, 'forbidden', 'Only a manager or the member themselves can remove a member'),
+    );
+    await expect(store.getState().removeTopicMember(bugId, 'u-ana')).rejects.toThrow(
+      /manager or the member/,
+    );
+    // The row stays: no refresh removed anything and the open chat is untouched.
+    expect(store.getState().chats.some((chat) => chat.id === bugId)).toBe(true);
+    expect(store.getState().activeChatId).toBe(bugId);
+    expect(getChats).not.toHaveBeenCalled();
+  });
+
+  it('a failed member removal (network) keeps the user in the topic', async () => {
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    store.getState().openChat(bugId);
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const getChats = apiMock.getChats as ReturnType<typeof vi.fn>;
+    getChats.mockClear();
+    (apiMock.removeTopicMember as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ApiError(0, 'network_error', 'Could not reach the server'),
+    );
+    await expect(store.getState().removeTopicMember(bugId, 'u-ana')).rejects.toThrow(
+      /Could not reach/,
+    );
+    expect(store.getState().chats.some((chat) => chat.id === bugId)).toBe(true);
+    expect(store.getState().activeChatId).toBe(bugId);
+    expect(getChats).not.toHaveBeenCalled();
+  });
+
+  it('a 404 member removal refreshes so the archived row leaves at once', async () => {
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    (apiMock.removeTopicMember as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ApiError(404, 'not_found', 'Topic not found'),
+    );
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
+      groupEntry({ topics: [topic()] }),
+    ]);
+    await expect(store.getState().removeTopicMember(bugId, 'u-ana')).rejects.toThrow(
+      /Topic not found/,
+    );
+    expect(apiMock.getChats as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+    expect(store.getState().chats.some((chat) => chat.id === bugId)).toBe(false);
   });
 
   it('the refresh interval is 60 s', () => {

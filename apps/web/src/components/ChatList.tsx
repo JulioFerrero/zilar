@@ -271,7 +271,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
               <EmptyState variant="no-chats" onInvite={() => setInviteOpen(true)} />
             ) : (
               <>
-                <TopicKeyboardNav activeChatId={activeChatId} groups={groups}>
+                <TopicKeyboardNav>
                   {groups.map((group) =>
                     group.groupId === undefined ? (
                       <ChatListItem

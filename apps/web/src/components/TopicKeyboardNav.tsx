@@ -1,31 +1,26 @@
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import type { ChatGroup } from '@/store/store';
 
 /**
  * Arrow-key navigation across the topic list (T-0111): Up/Down moves focus
  * between topic links, Enter follows the focused one. The rows are plain
  * links, so this only moves DOM focus; activation stays native.
+ *
+ * The wrapper takes no props: it navigates whatever topic links are rendered
+ * inside it. Only links that live in the chat list (`nav[aria-label="Chats"]`
+ * under the same root) are navigated — message links, search hits and the
+ * empty state never take part, even though they share the `/c/` prefix.
  */
-export function TopicKeyboardNav({
-  activeChatId,
-  groups,
-  children,
-}: {
-  activeChatId: string | undefined;
-  groups: ChatGroup[];
-  children: ReactNode;
-}) {
+export function TopicKeyboardNav({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
-  void activeChatId;
-  void groups;
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Enter') {
       return;
     }
     const root = event.currentTarget;
-    const links = Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href^="/c/"]'));
+    const list = root.closest('nav[aria-label="Chats"]') ?? root;
+    const links = Array.from(list.querySelectorAll<HTMLAnchorElement>('a[href^="/c/"]'));
     const current = document.activeElement;
     const index = links.findIndex((link) => link === current);
     if (event.key === 'Enter') {

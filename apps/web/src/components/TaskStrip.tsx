@@ -127,7 +127,16 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
   const status = topic.status;
   const href = httpsUrl(topic.linkUrl);
   const candidates = storeApi.getState().groupMembers(chat.id);
+  // The strip owner id is the server's id: a bare user id for people, the
+  // full AI id for AIs. Derive it the same way for both kinds by stripping
+  // the mention JID's domain (users are `<id>@<domain>`, AIs
+  // `ai-<id>@<domain>`), never by display name: two AIs can share a name.
+  const ownerIdFor = (jid: string): string => {
+    const localpart = jid.split('@')[0] ?? jid;
+    return localpart.startsWith('ai-') ? localpart.slice('ai-'.length) : localpart;
+  };
   const members = candidates.filter((member) => !member.jid.startsWith('ai-'));
+  const aiCandidates = candidates.filter((member) => member.jid.startsWith('ai-'));
 
   const patch = async (input: PatchTopicInput, rollback: () => void): Promise<void> => {
     setError('');
@@ -317,7 +326,7 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
                 No owner
               </button>
               {members.map((member) => {
-                const userId = member.jid.split('@')[0] ?? member.jid;
+                const userId = ownerIdFor(member.jid);
                 return (
                   <button
                     key={member.jid}
@@ -331,20 +340,21 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
                   </button>
                 );
               })}
-              {candidates
-                .filter((member) => member.jid.startsWith('ai-'))
-                .map((member) => (
+              {aiCandidates.map((member) => {
+                const aiId = ownerIdFor(member.jid);
+                return (
                   <button
                     key={member.jid}
                     type="button"
                     role="menuitemradio"
-                    aria-checked={topic.owner?.name === member.name}
-                    onClick={() => chooseOwner({ kind: 'ai', id: member.jid, name: member.name })}
+                    aria-checked={topic.owner?.kind === 'ai' && topic.owner.id === aiId}
+                    onClick={() => chooseOwner({ kind: 'ai', id: aiId, name: member.name })}
                     className="flex w-full items-center px-3 py-2 text-left text-[13px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
                   >
                     {member.name} (AI)
                   </button>
-                ))}
+                );
+              })}
             </div>
           </>
         )}

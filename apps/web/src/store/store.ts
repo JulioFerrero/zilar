@@ -24,6 +24,7 @@ import type {
   Pin,
   PinMessageInput,
   PublicAi,
+  Topic,
 } from '@/lib/api';
 import {
   MUTE_DURATIONS,
@@ -103,6 +104,8 @@ export interface ChatStore {
   historyStateFor: (chatId: string) => HistoryState;
   /** Re-runs the first chat-list load after a failure. */
   retryChats: () => void;
+  /** Reloads the chat list and resolves the group's General topic id. */
+  refreshGeneralTopic: (groupId: string) => Promise<string | undefined>;
   /** Re-runs the first history-page load for one chat after a failure. */
   retryHistory: (chatId: string) => void;
   chats: ChatSummary[];
@@ -496,6 +499,66 @@ function withMockTopicGroupInfos(infos: Record<string, GroupDetail>): Record<str
   return next;
 }
 
+// T-0130: the mock HTTP layer answers topic writes in memory but knows
+// nothing of the painted list, so the mock store folds the returned topic
+// row into its chats itself. Archived rows drop out at once (the manager
+// archive for everyone), everything else upserts by chat id.
+function mockChatIdFor(topic: Topic): string {
+  return topic.isGeneral ? 'c-devteam' : topic.chatJid;
+}
+
+function mockChatFor(topic: Topic, previous: ChatSummary | undefined): ChatSummary {
+  const groupTitle = previous?.groupTitle ?? 'Dev team';
+  return {
+    id: mockChatIdFor(topic),
+    title: topic.name,
+    kind: 'group',
+    isAI: false,
+    space: previous?.space ?? 'work',
+    unread: previous?.unread ?? 0,
+    muted: previous?.muted ?? false,
+    ...(previous?.archived === undefined ? {} : { archived: previous.archived }),
+    ...(previous?.pinnedAt === undefined ? {} : { pinnedAt: previous.pinnedAt }),
+    ...(previous?.lastMessage === undefined ? {} : { lastMessage: previous.lastMessage }),
+    memberCount: topic.memberCount,
+    onlineCount: previous?.onlineCount ?? 2,
+    groupId: 'g-devteam',
+    groupTitle,
+    topic: {
+      id: topic.id,
+      glyph: topic.glyph,
+      kind: topic.kind,
+      status: topic.status,
+      visibility: topic.visibility,
+      isGeneral: topic.isGeneral,
+      archived: topic.archived,
+      owner: topic.owner,
+      linkUrl: topic.linkUrl,
+      linkLabel: topic.linkLabel,
+    },
+  };
+}
+
+function withMockTopicRow(chats: ChatSummary[], topic: Topic): ChatSummary[] {
+  if (topic.archived) {
+    return chats.filter((chat) => chat.topic?.id !== topic.id);
+  }
+  const id = mockChatIdFor(topic);
+  const previous = chats.find((chat) => chat.id === id);
+  const next = mockChatFor(topic, previous);
+  return chats.some((chat) => chat.id === id)
+    ? chats.map((chat) => (chat.id === id ? next : chat))
+    : [...chats, next];
+}
+
+function topicIdForChat(chats: ChatSummary[], chatId: string): string {
+  const topicId = chats.find((chat) => chat.id === chatId)?.topic?.id;
+  if (topicId === undefined) {
+    throw new Error('This topic is not available yet.');
+  }
+  return topicId;
+}
+
 export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreState> {
   let sequence = 0;
 
@@ -565,29 +628,63 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       topicNotice: undefined,
       dismissTopicNotice: () => set({ topicNotice: undefined }),
       refreshChats: () => {},
-      createTopic: async () => {
-        throw new Error('createTopic is not available in the mock store');
+      refreshGeneralTopic: async (groupId) =>
+        get().chats.find((chat) => chat.groupId === groupId && chat.topic?.isGeneral === true)?.id,
+      // Mock-mode topic actions (T-0130): the mock HTTP layer already
+      // implements every topic route in memory, so these go through the
+      // same api client the dialog, the strip and the panel use, then fold
+      // the returned topic row into the painted list. The mock store has no
+      // XMPP core, so no room is joined: messages already render from the
+      // in-memory bundle.
+      createTopic: async (chatId, input) => {
+        const { createTopic: createTopicRequest } = await import('@/lib/api');
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const groupId = chat?.groupId ?? get().groupInfos[chatId]?.id;
+        if (groupId === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const topic = await createTopicRequest(groupId, input);
+        set((state) => ({ chats: withMockTopicRow(state.chats, topic) }));
+        return mockChatIdFor(topic);
       },
-      patchTopic: async () => {
-        throw new Error('patchTopic is not available in the mock store');
+      patchTopic: async (chatId, input) => {
+        const { patchTopic: patchTopicRequest } = await import('@/lib/api');
+        const topicId = topicIdForChat(get().chats, chatId);
+        const topic = await patchTopicRequest(topicId, input);
+        set((state) => ({ chats: withMockTopicRow(state.chats, topic) }));
       },
-      addTopicAi: async () => {
-        throw new Error('addTopicAi is not available in the mock store');
+      addTopicAi: async (chatId, aiId) => {
+        const { addTopicAi: addTopicAiRequest } = await import('@/lib/api');
+        const topicId = topicIdForChat(get().chats, chatId);
+        await addTopicAiRequest(topicId, aiId);
       },
-      removeTopicAi: async () => {
-        throw new Error('removeTopicAi is not available in the mock store');
+      removeTopicAi: async (chatId, aiId) => {
+        const { removeTopicAi: removeTopicAiRequest } = await import('@/lib/api');
+        const topicId = topicIdForChat(get().chats, chatId);
+        await removeTopicAiRequest(topicId, aiId);
       },
-      addTopicMember: async () => {
-        throw new Error('addTopicMember is not available in the mock store');
+      addTopicMember: async (chatId, userId) => {
+        const { addTopicMember: addTopicMemberRequest } = await import('@/lib/api');
+        const topicId = topicIdForChat(get().chats, chatId);
+        await addTopicMemberRequest(topicId, userId);
       },
-      removeTopicMember: async () => {
-        throw new Error('removeTopicMember is not available in the mock store');
+      removeTopicMember: async (chatId, userId) => {
+        const { removeTopicMember: removeTopicMemberRequest } = await import('@/lib/api');
+        const topicId = topicIdForChat(get().chats, chatId);
+        const topic = await removeTopicMemberRequest(topicId, userId);
+        set((state) => ({ chats: withMockTopicRow(state.chats, topic) }));
       },
-      leaveTopic: async () => {
-        throw new Error('leaveTopic is not available in the mock store');
+      leaveTopic: async (chatId) => {
+        await get().removeTopicMember(chatId, get().currentUserId);
       },
-      setMembersCanCreateTopics: async () => {
-        throw new Error('setMembersCanCreateTopics is not available in the mock store');
+      setMembersCanCreateTopics: async (chatId, allowed) => {
+        const { setMembersCanCreateTopics: setSwitchRequest } = await import('@/lib/api');
+        const groupId = get().groupInfos[chatId]?.id;
+        if (groupId === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const updated = await setSwitchRequest(groupId, allowed);
+        set((state) => ({ groupInfos: { ...state.groupInfos, [chatId]: updated } }));
       },
       chatPrefs: {},
       // Mock mode talks to the in-memory mock API (T-0113): the same merge

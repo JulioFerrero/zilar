@@ -56,6 +56,60 @@ describe('Topic header and task strip (T-0111)', () => {
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
   });
 
+  it('compares the AI owner by id, not by display name', () => {
+    // Two AIs share the name "Helper": only the owning one reads checked.
+    // The seed wires the UI topic owner to the second Helper directly, so
+    // the row needs no store update after mount.
+    renderApp('/c/c-devteam-ui', {
+      chats: [
+        {
+          id: 'c-devteam-ui',
+          title: 'New pricing page',
+          kind: 'group',
+          isAI: false,
+          space: 'work',
+          unread: 0,
+          muted: false,
+          groupId: 'g-devteam',
+          groupTitle: 'Dev team',
+          topic: {
+            id: 't-devteam-ui',
+            glyph: 'U',
+            kind: 'ui',
+            status: 'open',
+            visibility: 'public',
+            isGeneral: false,
+            archived: false,
+            owner: { kind: 'ai', id: 'helper-2', name: 'Helper' },
+            linkUrl: null,
+            linkLabel: null,
+          },
+        },
+      ],
+      messagesByChat: {},
+      groupInfos: {
+        'c-devteam-ui': {
+          id: 'g-devteam',
+          title: 'Dev team',
+          createdBy: 'u-you',
+          members: [{ userId: 'u-you', name: 'You', role: 'owner' }],
+          ais: [
+            { aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-you' },
+            { aiId: 'helper-1', jid: 'ai-helper-1@galena.test', name: 'Helper', ownerId: 'u-you' },
+            { aiId: 'helper-2', jid: 'ai-helper-2@galena.test', name: 'Helper', ownerId: 'u-you' },
+          ],
+        },
+      },
+    });
+    const strip = screen.getByLabelText('Topic details');
+    fireEvent.click(within(strip).getByLabelText('Owner: Helper. Change owner'));
+    const picker = screen.getByRole('menu', { name: 'Change owner' });
+    const options = within(picker).getAllByRole('menuitemradio', { name: 'Helper (AI)' });
+    expect(options).toHaveLength(2);
+    expect(options[0]?.getAttribute('aria-checked')).toBe('false');
+    expect(options[1]?.getAttribute('aria-checked')).toBe('true');
+  });
+
   it('rejects a non-https link in the form with an inline error', () => {
     renderApp('/c/c-devteam-ideas');
     const strip = screen.getByLabelText('Topic details');

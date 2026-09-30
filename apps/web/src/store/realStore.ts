@@ -40,6 +40,7 @@ import {
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
 import {
+  ApiError,
   addGroupAi as addGroupAiRequest,
   archiveTopic as archiveTopicRequest,
   addTopicAi as addTopicAiRequest,
@@ -1476,8 +1477,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       const rows = entries.flatMap((entry) => summariesFor(entry));
       const match = rows.find((row) => row.topic?.id === topic.id);
       set((state) => {
-        if (match === undefined) {
-          return state;
+        // An archived topic is gone for everyone: the server excludes it
+        // from the list, so drop the row at once instead of waiting for
+        // the next poll. The open view follows via the removed-while-open
+        // flow in `refreshChats`.
+        if (match === undefined || topic.archived) {
+          const filtered = state.chats.filter((chat) => chat.topic?.id !== topic.id);
+          return filtered.length === state.chats.length ? state : { chats: filtered };
         }
         const before = state.chats.find((chat) => chat.id === match.id);
         const merged: ChatSummary =
@@ -2648,6 +2654,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       refreshChats: () => {
         scheduleChatsRefresh();
       },
+      refreshGeneralTopic: async (groupId) => {
+        await refreshChats().catch(() => {});
+        return get().chats.find(
+          (chat) => chat.groupId === groupId && chat.topic?.isGeneral === true,
+        )?.id;
+      },
       createTopic: async (chatId, input) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
         const groupId = chat?.groupId ?? groupIds.get(chatId);
@@ -2693,10 +2705,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           const topic = await api.removeTopicMember(topicId, userId);
           await applyTopicRow(topic);
         } catch (error) {
-          // Removing the last member archives the topic (server 404): it is
-          // gone from the visible list either way, so refresh like the
-          // removed-while-open flow.
-          await refreshChats().catch(() => {});
+          // Only a 404 means the topic is gone (the last member leaving
+          // archives it): refresh so the stale row leaves at once, like the
+          // removed-while-open flow. Any other failure (403, network) keeps
+          // the row: the caller decides what to show.
+          if (error instanceof ApiError && error.status === 404) {
+            await refreshChats().catch(() => {});
+          }
           throw error;
         }
       },
