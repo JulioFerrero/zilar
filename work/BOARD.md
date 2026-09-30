@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0114](T-0114-pinned-messages.md) | Pinned messages banner and list | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
 | [T-0115](T-0115-invite-links.md) | Join by link for groups | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
 | [T-0116](T-0116-group-roles.md) | Custom roles: private-topic access, approver rights | planned | meta/muse-spark-1.3-contributor | T-0108, T-0110, T-0111 |  |
 | [T-0119](T-0119-pwa-web-push.md) | PWA and web push | planned | meta/muse-spark-1.3-contributor | T-0118, T-0113 | Outline: lead rewrites (SPIKE) sections first |
@@ -161,3 +160,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0113](T-0113-chat-prefs.md) | per-user chat preferences: mute, archive, pin for chats and topics (migration 0024, web) | 2026-09-30 |
 | [T-0125](T-0125-web-tools.md) | keyless web tools for AIs: fetch, wikipedia, price, feed, best-effort search (WEB_TOOLS_ENABLED) | 2026-09-30 |
 | [T-0112](T-0112-topics-mobile.md) | topics on mobile: group list, topics screen, task strip, new-topic sheet (not run in a simulator) | 2026-09-30 |
+| [T-0114](T-0114-pinned-messages.md) | pinned messages in chats, groups and topics: banner, list, 20-pin cap, audit (migration 0025, server + web) | 2026-09-30 |
