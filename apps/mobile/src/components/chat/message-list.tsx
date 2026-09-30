@@ -43,6 +43,10 @@ type MessageListProps = {
 export function MessageList({ chat, onReply, onReact, onEdit, onDelete }: MessageListProps) {
   const currentUserId = useChatStore((state) => state.currentUserId);
   const messages = useChatStore((state) => state.messages(chat.id));
+  const jumpTarget = useChatStore((state) =>
+    state.jumpTarget?.chatId === chat.id ? state.jumpTarget : undefined,
+  );
+  const clearJumpTarget = useChatStore((state) => state.clearJumpTarget);
   // Unknown means never requested: the real store has no data without asking,
   // so the first paint (before `openChat` runs) is loading, never empty.
   const historyLoad = useChatStore((state) => state.historyLoad[chat.id] ?? 'loading');
@@ -110,7 +114,12 @@ export function MessageList({ chat, onReply, onReact, onEdit, onDelete }: Messag
   const atBottomRef = useRef(true);
 
   // Scroll after mount and again a few times while images and the list settle.
+  // A search jump owns the scroll instead: the jump effect below lands on the
+  // message, so the mount scroll stays out of its way.
   useEffect(() => {
+    if (jumpTarget !== undefined) {
+      return;
+    }
     const scroll = () => {
       if (dividerIndex !== null) {
         listRef.current?.scrollToIndex({ index: dividerIndex, viewPosition: 0.5, animated: false });
@@ -121,14 +130,40 @@ export function MessageList({ chat, onReply, onReact, onEdit, onDelete }: Messag
     scroll();
     const timers = [80, 200, 400, 700].map((ms) => setTimeout(scroll, ms));
     return () => timers.forEach((timer) => clearTimeout(timer));
-  }, [chat.id, dividerIndex]);
+  }, [chat.id, dividerIndex, jumpTarget]);
 
   useEffect(() => {
-    if (messages.length > previousCount.current) {
+    // A search jump owns the scroll while its target is set; a live message
+    // arriving in that window must not yank the view to the bottom.
+    if (jumpTarget === undefined && messages.length > previousCount.current) {
       listRef.current?.scrollToEnd({ animated: true });
     }
     previousCount.current = messages.length;
-  }, [messages.length]);
+  }, [messages.length, jumpTarget]);
+
+  // A search hit lands here: once the jump target's message is loaded, scroll
+  // to it (centered) and clear the target so a later message with the same
+  // id does not re-scroll. The retries mirror the mount scroll above: images
+  // and the list settle over a few frames.
+  const jumpMessageId = jumpTarget?.messageId;
+  useEffect(() => {
+    if (jumpMessageId === undefined) {
+      return;
+    }
+    const index = entries.findIndex(
+      (entry) => entry.type === 'message' && entry.item.message.id === jumpMessageId,
+    );
+    if (index === -1) {
+      return;
+    }
+    const scroll = () => {
+      listRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: false });
+    };
+    scroll();
+    const timers = [80, 200, 400].map((ms) => setTimeout(scroll, ms));
+    clearJumpTarget();
+    return () => timers.forEach((timer) => clearTimeout(timer));
+  }, [jumpMessageId, entries, clearJumpTarget]);
 
   // Loading, error and empty are three different states: the empty text and
   // the Retry only appear once the first page has settled. Live messages that

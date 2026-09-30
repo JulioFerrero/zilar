@@ -185,6 +185,28 @@ describe('chat store', () => {
     expect(store.getState().chatsLoad).toBe('loaded');
     expect(store.getState().historyLoad['ana']).toBe('loaded');
   });
+
+  it('openAtMessage opens the chat and lands on the loaded message', async () => {
+    const store = createChatStore();
+
+    const found = await store.getState().openAtMessage('ana', 'ana-12');
+
+    expect(found.id).toBe('ana-12');
+    expect(store.getState().activeChatId).toBe('ana');
+    expect(store.getState().jumpTarget).toEqual({ chatId: 'ana', messageId: 'ana-12' });
+
+    store.getState().clearJumpTarget();
+    expect(store.getState().jumpTarget).toBeUndefined();
+  });
+
+  it('openAtMessage rejects message_not_found for an unknown message', async () => {
+    const store = createChatStore();
+
+    await expect(store.getState().openAtMessage('ana', 'ana-99')).rejects.toThrow(
+      'message_not_found',
+    );
+    expect(store.getState().jumpTarget).toBeUndefined();
+  });
 });
 
 describe('isMockMode', () => {

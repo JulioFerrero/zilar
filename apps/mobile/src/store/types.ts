@@ -158,6 +158,20 @@ export interface ChatStoreState {
   messages: (chatId: string) => UiMessage[];
   hasMore: (chatId: string) => boolean;
   openChat: (chatId: string) => void;
+  /**
+   * Opens a chat and waits until `messageId` is loaded, paging backwards at
+   * most `MESSAGE_JUMP_MAX_PAGES` history pages (T-0138, like web's
+   * `openAtMessage`). Returns the message once it is loaded so the screen
+   * can scroll to it, or throws `message_not_found` when history runs out.
+   */
+  openAtMessage: (chatId: string, messageId: string) => Promise<UiMessage>;
+  /**
+   * The message a search hit asked to land on. Set by `openAtMessage` once
+   * the message is loaded; the chat screen scrolls to it, then clears it.
+   */
+  jumpTarget?: { chatId: string; messageId: string };
+  /** Clears `jumpTarget` after the chat screen has scrolled to it. */
+  clearJumpTarget: () => void;
   loadOlder: (chatId: string) => void;
   /** Refetch the chat list (pull-to-refresh and the list's Retry key). */
   reloadChats: () => void;

@@ -17,6 +17,8 @@ import { useColorScheme } from 'nativewind';
 type ChatHeaderProps = {
   chat: ChatSummary;
   onBack: () => void;
+  /** Opens the full-screen search scoped to this chat ("Search in chat"). */
+  onSearchInChat?: () => void;
   /** The group name shown small above a topic name (T-0112). */
   topicGroupName?: string;
   /** Opens the topic-info sheet when the header is tapped (topics only). */
@@ -28,7 +30,13 @@ type ChatHeaderProps = {
  * a topic (T-0112) the topic name shows with the group name small above it
  * and a Private chip, and tapping the title opens the topic-info sheet.
  */
-export function ChatHeader({ chat, onBack, topicGroupName, onOpenInfo }: ChatHeaderProps) {
+export function ChatHeader({
+  chat,
+  onBack,
+  onSearchInChat,
+  topicGroupName,
+  onOpenInfo,
+}: ChatHeaderProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const iconColor = ICON[scheme];
   const names = useChatStore((state) => state.typing[chat.id]?.names);
@@ -87,7 +95,7 @@ export function ChatHeader({ chat, onBack, topicGroupName, onOpenInfo }: ChatHea
       ) : (
         title
       )}
-      <IconButton label="Search in chat">
+      <IconButton label="Search in chat" onPress={onSearchInChat}>
         <Search size={20} color={iconColor} />
       </IconButton>
       <IconButton label="More options" onPress={isTopic ? onOpenInfo : undefined}>

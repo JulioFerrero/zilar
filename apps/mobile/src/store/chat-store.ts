@@ -48,6 +48,8 @@ type ChatStoreData = Omit<
   ChatStoreState,
   | 'messages'
   | 'openChat'
+  | 'openAtMessage'
+  | 'clearJumpTarget'
   | 'loadOlder'
   | 'reloadChats'
   | 'retryHistory'
@@ -134,6 +136,7 @@ export function createInitialState(phase?: MockDraftPhase, load?: MockLoadScenar
     activeFolder: 'all',
     activeChatId: null,
     historyComplete: {},
+    jumpTarget: undefined,
     typing: {},
     edits: {},
     reactions: {},
@@ -587,6 +590,18 @@ export function createChatStore(
           chats: state.chats.map((chat) => (chat.id === chatId ? { ...chat, unread: 0 } : chat)),
         }));
       },
+      // The mock loads every message at once, so the hit is either there or
+      // it is not: no paging, no wait, same `message_not_found` contract.
+      openAtMessage: async (chatId, messageId) => {
+        get().openChat(chatId);
+        const found = get().messagesByChat[chatId]?.find((item) => item.id === messageId);
+        if (found === undefined) {
+          throw new Error('message_not_found');
+        }
+        set({ jumpTarget: { chatId, messageId } });
+        return found;
+      },
+      clearJumpTarget: () => set({ jumpTarget: undefined }),
       sendText: (chatId, text, options) => {
         const trimmed = text.trim();
         if (!trimmed || !get().chats.some((chat) => chat.id === chatId)) {
