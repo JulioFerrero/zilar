@@ -1,7 +1,7 @@
 ---
 id: T-0126
 title: Production images and a production Docker Compose stack (Galena, ejabberd, Postgres, Caddy) plus a Coolify-ready compose file
-status: review
+status: merged
 milestone: M6
 branch: task/T-0126-production-images-compose
 model: meta/muse-spark-1.3-contributor
