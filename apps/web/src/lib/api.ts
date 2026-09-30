@@ -445,6 +445,96 @@ export function listTopicTools(topicId: string): Promise<TopicTool[]> {
   return request(`/topics/${encodeURIComponent(topicId)}/tools`, z.array(topicToolSchema));
 }
 
+// --- Group invite links (T-0115) -------------------------------------------
+// Shareable links that join a group as `member` (`${WEB}/j/<token>` on the
+// web). The token is shown once at creation and never stored — the list
+// below carries hints, labels, uses and state, never tokens.
+export const groupInviteLinkSchema = z.object({
+  id: z.string(),
+  label: z.string().nullable(),
+  tokenHint: z.string(),
+  uses: z.number(),
+  maxUses: z.number().nullable(),
+  expiresAt: z.string().nullable(),
+  revoked: z.boolean(),
+  createdAt: z.string(),
+});
+
+export type GroupInviteLink = z.infer<typeof groupInviteLinkSchema>;
+
+const groupInviteLinksSchema = z.object({ links: z.array(groupInviteLinkSchema) });
+
+const createdInviteLinkSchema = z.object({
+  id: z.string(),
+  token: z.string(),
+  url: z.string(),
+});
+
+export type CreatedInviteLink = z.infer<typeof createdInviteLinkSchema>;
+
+export interface CreateGroupInviteLinkInput {
+  label?: string;
+  expiresInHours?: number;
+  maxUses?: number;
+}
+
+export function createGroupInviteLink(
+  groupId: string,
+  input: CreateGroupInviteLinkInput = {},
+): Promise<CreatedInviteLink> {
+  return request(`/groups/${encodeURIComponent(groupId)}/invite-links`, createdInviteLinkSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export function listGroupInviteLinks(groupId: string): Promise<GroupInviteLink[]> {
+  return request(
+    `/groups/${encodeURIComponent(groupId)}/invite-links`,
+    groupInviteLinksSchema,
+  ).then(({ links }) => links);
+}
+
+export async function revokeGroupInviteLink(groupId: string, linkId: string): Promise<void> {
+  await request(
+    `/groups/${encodeURIComponent(groupId)}/invite-links/${encodeURIComponent(linkId)}`,
+    z.null(),
+    { method: 'DELETE' },
+  );
+}
+
+// --- Join by link (T-0115) -------------------------------------------------
+// The preview names the group and counts its members — never member names,
+// and never the group id unless the caller is already a member (they know
+// it; the join page opens the group chat with it). Joining adds the caller
+// as `member` and returns the group id; an existing member answers
+// `alreadyMember: true` without consuming a use.
+
+export const joinPreviewSchema = z.object({
+  groupTitle: z.string(),
+  memberCount: z.number(),
+  alreadyMember: z.boolean(),
+  groupId: z.string().optional(),
+});
+
+export type JoinPreview = z.infer<typeof joinPreviewSchema>;
+
+const joinResultSchema = z.object({
+  groupId: z.string(),
+  alreadyMember: z.boolean(),
+});
+
+export type JoinResult = z.infer<typeof joinResultSchema>;
+
+export function previewJoinLink(token: string): Promise<JoinPreview> {
+  return request(`/join/${encodeURIComponent(token)}`, joinPreviewSchema);
+}
+
+export function joinByLink(token: string): Promise<JoinResult> {
+  return request(`/join/${encodeURIComponent(token)}`, joinResultSchema, { method: 'POST' });
+}
+
 // --- Chat preferences (T-0113) -------------------------------------------------
 // Per-user mute/archive/pin rows, synced across devices. The wire contract
 // lives in apps/server/src/chat-prefs/routes.ts and service.ts. Muting a

@@ -25,6 +25,7 @@ import { createContactsRoutes } from './contacts/routes';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
+import { createInviteLinksRoutes, type TestInviteLinksOverrides } from './invite-links/routes';
 import { createPinsRoutes } from './pins/routes';
 import { createSearchRoutes, type SearchRoutesDependencies } from './search/routes';
 import { createTopicsRoutes } from './topics/routes';
@@ -38,6 +39,15 @@ import type { VoiceEngine } from './voice/engine';
 import { createVoiceRoutes } from './voice/routes';
 import type { EjabberdAdminClient } from './xmpp/admin-client';
 import { createXmppRoutes } from './xmpp/routes';
+
+// Test seam for the join rate windows (T-0115): the invite-links tests set
+// an injected clock and client IP through `setTestAppInviteLinks` so the
+// windows can advance without waiting. Production never sets it.
+let testInviteLinksOverrides: TestInviteLinksOverrides | undefined;
+
+export function setTestAppInviteLinks(overrides: TestInviteLinksOverrides | undefined): void {
+  testInviteLinksOverrides = overrides;
+}
 
 export interface AppDependencies {
   db: ServerDatabase;
@@ -144,7 +154,14 @@ export function createApp({
 
   app.use('*', async (c, next) => {
     const start = performance.now();
-    const fields = { method: c.req.method, path: c.req.path, requestId: c.get('requestId') };
+    // T-0115: the join token is a bearer secret — `/api/join/<token>` is
+    // logged as `/api/join/:token` so the raw token never reaches the
+    // server log, on success or on error.
+    const fields = {
+      method: c.req.method,
+      path: logPath(c.req.path),
+      requestId: c.get('requestId'),
+    };
 
     try {
       await next();
@@ -190,6 +207,18 @@ export function createApp({
     }),
   );
   app.route('/api', createGroupsRoutes({ auth, db, config, adminClient, logger }));
+  app.route(
+    '/api',
+    createInviteLinksRoutes({
+      auth,
+      db,
+      config,
+      adminClient,
+      logger,
+      audit: auditRecorder,
+      ...(testInviteLinksOverrides === undefined ? {} : testInviteLinksOverrides),
+    }),
+  );
   app.route('/api', createPinsRoutes({ auth, db, config, audit: auditRecorder }));
   app.route(
     '/api',
@@ -367,6 +396,13 @@ function statusFor(error: unknown): number {
 
 function durationSince(start: number): number {
   return Math.round(performance.now() - start);
+}
+
+// T-0115: the join token is a bearer secret, so the request log redacts every
+// segment after `/api/join/` (`/api/join/<token>` and any variant such as a
+// trailing slash, which 404s in routing but still reaches this log line).
+function logPath(path: string): string {
+  return path.startsWith('/api/join/') ? '/api/join/:token' : path;
 }
 
 function allowedOrigins(config: ServerConfig): string[] {

@@ -78,6 +78,12 @@ function jsonResponse(status: number, body: unknown): Response {
 function stubAudit(entries: unknown[]): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (url: unknown) => {
     const target = String(url);
+    // T-0115: the invite-links section fires alongside Activity for
+    // managers — answer an empty list so the panel renders without a second
+    // alert in tests that do not care about links.
+    if (target.includes('/invite-links')) {
+      return jsonResponse(200, { links: [] });
+    }
     if (target.includes('/audit')) {
       return jsonResponse(200, { entries, next: null });
     }
@@ -218,7 +224,8 @@ describe('GroupPanel', () => {
       }),
     );
     // T-0086: the Activity section fires a `/audit` request when the panel
-    // mounts for a manager, so the test stubs fetch to keep that path quiet.
+    // mounts for a manager, so the test stubs fetch to keep that path quiet
+    // (the shared stub also answers `/invite-links` with an empty list).
     stubAudit([]);
     store.setState({
       addGroupAi: async () => {
@@ -345,6 +352,9 @@ describe('GroupPanel', () => {
     it('a failing audit request leaves the rest of the panel intact', async () => {
       const fetchMock = vi.fn(async (url: unknown) => {
         const target = String(url);
+        if (target.includes('/invite-links')) {
+          return jsonResponse(200, { links: [] });
+        }
         if (target.includes('/audit')) {
           return jsonResponse(500, {
             error: { code: 'server_error', message: 'audit unavailable' },
@@ -380,6 +390,9 @@ describe('GroupPanel', () => {
     function stubRules(rules: unknown[]): ReturnType<typeof vi.fn> {
       const fetchMock = vi.fn(async (url: unknown) => {
         const target = String(url);
+        if (target.includes('/invite-links')) {
+          return jsonResponse(200, { links: [] });
+        }
         if (target.includes('/audit')) {
           return jsonResponse(200, { entries: [], next: null });
         }

@@ -49,6 +49,7 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_SECRET: VALID_SECRET,
       BETTER_AUTH_URL: 'http://localhost:3000',
       WEB_ORIGINS: ['http://localhost:5173'],
+      WEB_BASE_URL: 'http://localhost:5173',
       MAIL_TRANSPORT: 'console',
       SMTP_PORT: 587,
       SMTP_SECURE: false,
@@ -88,6 +89,7 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_SECRET: VALID_SECRET,
       BETTER_AUTH_URL: 'https://auth.example.com',
       WEB_ORIGINS: ['https://app.example.com', 'https://admin.example.com'],
+      WEB_BASE_URL: 'http://localhost:5173',
       MAIL_TRANSPORT: undefined,
       SMTP_PORT: 587,
       SMTP_SECURE: false,
@@ -112,6 +114,32 @@ describe('loadServerConfig', () => {
       ...VALID_XMPP_ENV,
     });
     expect(config.XMPP_ARCHIVE_DATABASE_URL).toBeUndefined();
+  });
+
+  it('defaults WEB_BASE_URL and parses an explicit one without printing it', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig(base).WEB_BASE_URL).toBe('http://localhost:5173');
+    expect(
+      loadServerConfig({ ...base, WEB_BASE_URL: 'https://app.example.com' }).WEB_BASE_URL,
+    ).toBe('https://app.example.com');
+    expect(
+      loadServerConfig({ ...base, WEB_BASE_URL: 'https://app.example.com/join' }).WEB_BASE_URL,
+    ).toBe('https://app.example.com/join');
+  });
+
+  it('rejects an invalid WEB_BASE_URL without printing it', () => {
+    const message = configErrorMessage({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      WEB_BASE_URL: 'not-a-base-url',
+      ...VALID_XMPP_ENV,
+    });
+    expect(message).toContain('WEB_BASE_URL');
+    expect(message).not.toContain('not-a-base-url');
   });
 
   it('rejects a non-postgres archive url without printing it', () => {
@@ -437,6 +465,24 @@ describe('mail transport config', () => {
     expect(loadServerConfig(base).MAIL_TRANSPORT).toBe('console');
     expect(loadServerConfig({ ...base, NODE_ENV: 'test' }).MAIL_TRANSPORT).toBe('console');
     expect(loadServerConfig({ ...base, NODE_ENV: 'production' }).MAIL_TRANSPORT).toBeUndefined();
+  });
+
+  it('treats empty optional mail settings as unset (Docker Compose renders them empty)', () => {
+    const config = loadServerConfig({
+      ...base,
+      MAIL_TRANSPORT: '',
+      SMTP_HOST: '',
+      SMTP_USER: '',
+      SMTP_PASSWORD: '',
+      MAIL_FROM: '',
+      MAIL_REPLY_TO: '',
+    });
+    expect(config.MAIL_TRANSPORT).toBe('console');
+    expect(config.SMTP_HOST).toBeUndefined();
+    expect(config.MAIL_REPLY_TO).toBeUndefined();
+    expect(
+      loadServerConfig({ ...base, NODE_ENV: 'production', MAIL_TRANSPORT: '' }).MAIL_TRANSPORT,
+    ).toBeUndefined();
   });
 
   it('defaults the SMTP port to 587 and parses an explicit one', () => {

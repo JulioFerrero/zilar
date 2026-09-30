@@ -183,6 +183,13 @@
       "when": 1790753621818,
       "tag": "0025_married_hobgoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790765994890,
+      "tag": "0026_simple_spitfire",
+      "breakpoints": true
     }
   ]
 }

@@ -7,7 +7,9 @@ import { ChatShell } from './ChatShell';
 import { AisPage } from './AisPage';
 import { ConnectionsPage } from './ConnectionsPage';
 import { InvitePage } from './InvitePage';
+import { JoinPage } from './JoinPage';
 import { LoginPage } from './LoginPage';
+import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { MachinesPage } from './MachinesPage';
 import { NamePage } from './NamePage';
 import { ApprovalsPage } from './ApprovalsPage';
@@ -56,6 +58,7 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/invite/:code" element={<InvitePage />} />
+      <Route path="/j/:token" element={<JoinRoute />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/welcome/name"
@@ -115,5 +118,18 @@ export function AppRoutes() {
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+  );
+}
+
+// The join page needs the store's chat-list refresh after a successful join
+// plus the General chat id to open; `App` wraps the routes in the provider,
+// so the hook below is valid.
+function JoinRoute() {
+  const storeApi = useChatStoreApi();
+  return (
+    <JoinPage
+      refreshChats={() => storeApi.getState().refreshChats()}
+      openGroupChat={(groupId) => storeApi.getState().refreshGeneralTopic(groupId)}
+    />
   );
 }

@@ -1,7 +1,8 @@
 import type { ChatSummary } from '@galena/chat-core';
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { GroupAi, PublicAi } from '@/lib/api';
+import type { CreatedInviteLink, GroupAi, GroupInviteLink, PublicAi } from '@/lib/api';
+import { createGroupInviteLink, listGroupInviteLinks, revokeGroupInviteLink } from '@/lib/api';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -13,6 +14,7 @@ import { FieldError } from './ais/AiPageShell';
 import { describeAiError } from './ais/errors';
 import { Avatar } from './Avatar';
 import { Button } from './ui/button';
+import { InviteLinksSection } from './InviteLinksSection';
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -47,6 +49,75 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const [errorMessage, setErrorMessage] = useState('');
   const [switchBusy, setSwitchBusy] = useState(false);
   const [switchError, setSwitchError] = useState('');
+
+  // T-0115: invite links for owners/admins. The list carries hints, never
+  // tokens; the created URL is shown once with a Copy button. The load runs
+  // through a small helper so the effect only synchronizes with the group id
+  // (the lint rule flags synchronous setState inside effects).
+  const groupId = info?.id;
+  const [links, setLinks] = useState<GroupInviteLink[]>([]);
+  const [linksBusy, setLinksBusy] = useState(false);
+  const [linksError, setLinksError] = useState<string | undefined>(undefined);
+  const [createdLink, setCreatedLink] = useState<CreatedInviteLink | undefined>(undefined);
+
+  useEffect(() => {
+    if (!isManager || groupId === undefined) {
+      return;
+    }
+    let active = true;
+    void loadLinks(groupId).then((result) => {
+      if (active) {
+        setLinks(result.links);
+        setLinksError(result.error);
+        setLinksBusy(false);
+      }
+    });
+    return () => {
+      active = false;
+    };
+    async function loadLinks(
+      id: string,
+    ): Promise<{ links: GroupInviteLink[]; error: string | undefined }> {
+      try {
+        return { links: await listGroupInviteLinks(id), error: undefined };
+      } catch {
+        return { links: [], error: 'Could not load the invite links.' };
+      }
+    }
+  }, [isManager, groupId]);
+
+  const createLink = async (input: {
+    label?: string;
+    expiresInHours?: number;
+    maxUses?: number;
+  }): Promise<void> => {
+    if (groupId === undefined || linksBusy) {
+      return;
+    }
+    setLinksBusy(true);
+    setLinksError(undefined);
+    try {
+      const created = await createGroupInviteLink(groupId, input);
+      setCreatedLink(created);
+      setLinks(await listGroupInviteLinks(groupId));
+    } catch (error) {
+      setLinksError(error instanceof Error ? error.message : 'Could not create the link.');
+    } finally {
+      setLinksBusy(false);
+    }
+  };
+
+  const revokeLink = async (linkId: string): Promise<void> => {
+    if (groupId === undefined) {
+      return;
+    }
+    try {
+      await revokeGroupInviteLink(groupId, linkId);
+      setLinks(await listGroupInviteLinks(groupId));
+    } catch (error) {
+      setLinksError(error instanceof Error ? error.message : 'Could not revoke the link.');
+    }
+  };
 
   const eligibleAis = myAis.filter(
     (ai) => ai.status === 'active' && info?.ais.some((item) => item.aiId === ai.id) !== true,
@@ -354,6 +425,20 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 chatId={chat.id}
                 onOpen={() => storeApi.getState().setPinsPanel(chat.id)}
               />
+
+              {/* T-0115: shareable invite links, same visibility —
+                  owners and admins only. */}
+              {isManager && (
+                <InviteLinksSection
+                  links={links}
+                  busy={linksBusy}
+                  error={linksError}
+                  created={createdLink === undefined ? undefined : { url: createdLink.url }}
+                  onCreate={(input) => void createLink(input)}
+                  onRevoke={(linkId) => void revokeLink(linkId)}
+                  onDismissCreated={() => setCreatedLink(undefined)}
+                />
+              )}
 
               {/* T-0111: "Members can create topics", same visibility —
                   owners and admins only. */}

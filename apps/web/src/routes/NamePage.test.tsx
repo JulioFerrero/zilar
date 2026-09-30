@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { render } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { updateMe } from '@/lib/api';
 import { NamePage } from './NamePage';
@@ -54,5 +54,29 @@ describe('NamePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByText('Enter your name')).toBeTruthy();
     expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns to `next` after saving (join-by-link round trip)', async () => {
+    render(
+      <AuthProvider
+        value={{
+          status: 'authenticated',
+          user: { id: 'u-1', name: '', email: 'a@b.com' },
+          refetch: async () => {},
+        }}
+      >
+        <MemoryRouter initialEntries={[{ pathname: '/welcome/name', state: { next: '/j/abc' } }]}>
+          <Routes>
+            <Route path="/welcome/name" element={<NamePage />} />
+            <Route path="/j/:token" element={<div>Join page</div>} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(await screen.findByText('Join page')).toBeTruthy();
   });
 });

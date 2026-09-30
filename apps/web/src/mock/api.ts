@@ -44,6 +44,12 @@ interface MockState {
   // in place; archived ids hide from the list (the row survives).
   topics: MockTopic[];
   nextTopicSequence: number;
+  // T-0115: group invite links in memory for the page load. `inviteTokens`
+  // maps each shown-once token to its link id; the `links` rows carry hints
+  // only, like the real server's list.
+  inviteLinks: MockInviteLink[];
+  inviteTokens: Map<string, string>;
+  nextInviteLinkSequence: number;
   // T-0113: per-chat prefs (mute/archive/pin) in memory for the page load.
   chatPrefs: MockChatPref[];
   // T-0114: pinned messages in memory for the page load, keyed by the chat
@@ -78,6 +84,20 @@ interface MockTopic {
   archived: boolean;
   memberIds: string[];
   aiIds: string[];
+}
+
+// T-0115: one group invite link row, mirroring the server's list view
+// (hints, never tokens).
+interface MockInviteLink {
+  id: string;
+  groupId: string;
+  label: string | null;
+  tokenHint: string;
+  uses: number;
+  maxUses: number | null;
+  expiresAt: string | null;
+  revoked: boolean;
+  createdAt: string;
 }
 
 // T-0113: one chat-preference row, mirroring the server's `chat_prefs`.
@@ -378,6 +398,9 @@ function seedState(): MockState {
     approvalRules: [],
     topics: seedTopics(),
     nextTopicSequence: 1,
+    inviteLinks: [],
+    inviteTokens: new Map(),
+    nextInviteLinkSequence: 1,
     chatPrefs: [],
     pins: seedPins(),
     nextPinSequence: 3,
@@ -1014,6 +1037,132 @@ export async function mockRequest(
 
   if (head === 'search' && method === 'GET') {
     return searchMessages(path);
+  }
+
+  // T-0115: invite links in memory for the page load. The mock is the
+  // group owner everywhere it matters, so create/list/revoke always succeed
+  // for known groups. Tokens are random hex shown once at creation; the list
+  // carries hints, never tokens — like the real server. `pathParts` drops
+  // the link id, so the revoke branch matches on raw segments.
+  if (head === 'groups' && second === 'invite-links') {
+    const segments =
+      path
+        .split('?')[0]
+        ?.split('/')
+        .filter((part) => part !== '') ?? [];
+    const groupId = decodeURIComponent(first ?? '');
+    const known = Object.values(mockGroupDetails).some((item) => item.id === groupId);
+    if (!known) {
+      return notFound('Group not found');
+    }
+    // `/groups/:id/invite-links/:linkId` — revoke, idempotent.
+    if (segments.length === 4 && method === 'DELETE') {
+      const linkId = decodeURIComponent(segments[3] ?? '');
+      const link = state.inviteLinks.find((item) => item.id === linkId && item.groupId === groupId);
+      if (link !== undefined) {
+        link.revoked = true;
+      }
+      return noContent();
+    }
+    if (segments.length !== 3) {
+      return notImplemented();
+    }
+    if (method === 'GET') {
+      return jsonResponse({ links: state.inviteLinks.filter((link) => link.groupId === groupId) });
+    }
+    if (method === 'POST') {
+      const body = readJsonBody(init);
+      const active = state.inviteLinks.filter((link) => link.groupId === groupId && !link.revoked);
+      if (active.length >= 10) {
+        return jsonResponse(
+          { error: { code: 'too_many_links', message: 'This group already has 10 links' } },
+          409,
+        );
+      }
+      const label =
+        typeof body.label === 'string' && body.label.trim() !== ''
+          ? body.label.trim().slice(0, 60)
+          : null;
+      const maxUses =
+        typeof body.maxUses === 'number' && Number.isInteger(body.maxUses) && body.maxUses >= 1
+          ? body.maxUses
+          : null;
+      const expiresAt =
+        typeof body.expiresInHours === 'number' &&
+        Number.isInteger(body.expiresInHours) &&
+        body.expiresInHours >= 1
+          ? new Date(Date.now() + body.expiresInHours * 3_600_000).toISOString()
+          : null;
+      const token = Array.from({ length: 64 }, () =>
+        '0123456789abcdef'.charAt(Math.floor(Math.random() * 16)),
+      ).join('');
+      const id = `link-mock-${state.nextInviteLinkSequence}`;
+      state.nextInviteLinkSequence += 1;
+      const created: MockInviteLink = {
+        id,
+        groupId,
+        label,
+        tokenHint: token.slice(-4),
+        uses: 0,
+        maxUses,
+        expiresAt,
+        revoked: false,
+        createdAt: new Date().toISOString(),
+      };
+      state.inviteTokens.set(token, id);
+      state.inviteLinks = [...state.inviteLinks, created];
+      return jsonResponse({ id, token, url: `http://localhost:5173/j/${token}` }, 201);
+    }
+    return notImplemented();
+  }
+
+  // T-0115: join by link. The mock's single user is already in the Dev team
+  // group (so it previews as a member, with the group id); unknown tokens
+  // 404 `invalid_link`. The preview carries `groupId` only for members,
+  // like the real server.
+  if (head === 'join' && first !== undefined && second === undefined) {
+    const token = decodeURIComponent(first);
+    const linkId = state.inviteTokens.get(token);
+    const link =
+      linkId === undefined ? undefined : state.inviteLinks.find((item) => item.id === linkId);
+    if (link === undefined || link.revoked) {
+      return jsonResponse(
+        { error: { code: 'invalid_link', message: 'This invite link is invalid' } },
+        404,
+      );
+    }
+    if (
+      (link.expiresAt !== null && Date.parse(link.expiresAt) <= Date.now()) ||
+      (link.maxUses !== null && link.uses >= link.maxUses)
+    ) {
+      return jsonResponse(
+        { error: { code: 'invalid_link', message: 'This invite link is invalid' } },
+        404,
+      );
+    }
+    const detail = Object.values(mockGroupDetails).find((item) => item.id === link.groupId);
+    if (detail === undefined) {
+      return jsonResponse(
+        { error: { code: 'invalid_link', message: 'This invite link is invalid' } },
+        404,
+      );
+    }
+    const alreadyMember = detail.members.some((member) => member.userId === currentUserId);
+    if (method === 'GET') {
+      return jsonResponse({
+        groupTitle: detail.title,
+        memberCount: detail.members.length,
+        alreadyMember,
+        ...(alreadyMember ? { groupId: link.groupId } : {}),
+      });
+    }
+    if (method === 'POST') {
+      if (!alreadyMember) {
+        link.uses += 1;
+      }
+      return jsonResponse({ groupId: link.groupId, alreadyMember });
+    }
+    return notImplemented();
   }
 
   // T-0111: the group's topic settings switch. The mock has one user,
