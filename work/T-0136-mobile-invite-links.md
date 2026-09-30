@@ -1,7 +1,7 @@
 ---
 id: T-0136
 title: Mobile: group invite links (create, manage, join)
-status: planned
+status: review
 milestone: M5
 branch: task/T-0136-mobile-invite-links
 model: meta/muse-spark-1.3-contributor
@@ -53,19 +53,31 @@ Web changes, server changes, QR codes, native universal-link setup that needs an
 ## Report (written by the worker when done)
 
 ### What I did
--
+- API layer (`lib/invite-links-api.ts`, mobile twin of web `lib/api.ts` invite-links section): `createGroupInviteLink`, `listGroupInviteLinks`, `revokeGroupInviteLink`, `previewJoinLink`, `joinByLink` with hand-rolled type-guard validation (mobile has no zod, same style as `topics-api.ts`); `extractJoinToken` parses `galena://join/<token>`, `https://host/j/<token>`, `https://host/join/<token>` and bare 64-hex (junk never reaches the server); `joinFailureMessage` maps every failure to one neutral text, rate limits to a retry text, taking only status/code — the token never enters error text.
+- Store: 5 new actions on `ChatStoreState` (`list/create/revokeInviteLink`, `previewJoinLink`, `joinByLink`); real store delegates to the API and refreshes chats after join; mock store backed by a new in-memory `mock/invite-links.ts` (seeded Dev-team links, create/list/revoke/preview/join; preview/join report `alreadyMember` like the web mock).
+- Manage UI: `InviteLinksSheet` on the group screen behind a link icon, owner/admin only (same rule as web, derived from group detail roles). Create (label ≤ 60, expiry 1..8760h, max uses 1..10000 — web rules), URL shown once with Copy (`expo-clipboard`) + system Share sheet + anyone-with-the-link warning, list with uses/state, Revoke. The created URL lives in screen state and is dropped on Done — never stored.
+- Join UI: new `app/join/[token].tsx` route (custom scheme `galena://join/<token>` works via the existing `app.json` scheme — no new dependency, no Apple account, no native config change). Preview card (title, member count) with Join/Cancel; Join POSTs and opens the General topic (group screen fallback, chats-list fallback). Signed-out users go through login with `from=/join/<token>` and return; nameless users get an inline name gate linking to `/welcome/name?from=…` (mirrors web). All failure kinds show "This link does not work"; 429 shows the retry text; network failure (status 0) keeps the preview with a retry error. Plus a "Join with a link" paste form in the new-chat menu routing to `/join/<token>`.
+- Tests: API tests (incl. extract/junk-rejection, neutral-message + token-absence assertions), sheet pure-view render tests (`InviteLinkRow`, `CreatedInviteLinkView`), join body render tests (all failure kinds same message), mock-store flow test, real-store wiring test with injected fake API.
 
 ### Files changed
--
+- New: `apps/mobile/src/lib/invite-links-api.ts` (+ `.test.ts`), `apps/mobile/src/mock/invite-links.ts`, `apps/mobile/src/components/chat/invite-links-sheet.tsx` (+ `.test.tsx`), `apps/mobile/src/components/chat/join-link.tsx` (+ `.test.tsx`), `apps/mobile/src/app/join/[token].tsx`, `apps/mobile/src/store/invite-links.test.ts`, `apps/mobile/src/store/real-store.invite-links.test.ts`.
+- Edited: `apps/mobile/src/app/group/[id].tsx` (links button + sheet wiring), `apps/mobile/src/components/chat/new-chat-button.tsx` ("Join with a link"), `apps/mobile/src/store/{types,chat-store,real-store}.ts` (5 actions), `work/T-0136-mobile-invite-links.md`.
+- No shared-type changes (`packages/chat-core` untouched), no new dependencies, no server/web changes.
 
 ### Commands run and real results
--
+- `pnpm install`: pass (~13s)
+- `pnpm format:check`: pass ("All matched files use Prettier code style!")
+- `pnpm lint`: pass (oxlint clean; fixed 2 errors during work: `Date.now()` in render → injected `now` prop, set-state-in-effect → async-helper shape like web `JoinPage`)
+- `pnpm typecheck`: pass (mobile `tsc --noEmit`; full `pnpm typecheck` not run — task Checks list bare `typecheck`, mobile is the only touched package)
+- Scoped: 5 new/affected files 42 passed; + store suites 124 passed (7 files)
+- Full mobile suite at the end: `pnpm --filter @galena/mobile test --maxWorkers=2`: 43 passed, 2 skipped (45 files); 445 passed, 2 skipped (447 tests)
 
 ### Problems, deviations from the spec, open questions
--
-
-### Blocked / needs a decision
-- (only if status is blocked)
+- Universal links: custom scheme only, no `associated-domains`/Apple work (per spec's out-of-scope). Pasted `https://…/j/<token>` and `/join/<token>` links still parse and route in-app.
+- Render tests cover the hook-free views (`InviteLinkRow`, `CreatedInviteLinkView`, `JoinLinkBody`) via the repo's stubbed-`react-native` pattern — not the hook-bearing sheet/route themselves (no testing library on mobile, no new dependency per spec). The join route's guard/name-gate branches are untested for the same reason.
+- Mobile vitest does not resolve the `@/` alias (learned the hard way: "Unexpected token 'typeof'" + "Cannot find package" transform failures). New source uses the repo's dominant relative-import style (`../../lib/…`); tests mock both `@/` and relative paths for `ui/text`.
+- `InviteLinksApiError`/`TopicsApiError`/`ChatApiError` triple the same shape; left as-is to match the file-local convention.
+- Needs a human look (no simulator per instructions): open a real `galena://join/<token>` link on device; Copy/Share sheet behavior; signed-out → login → back-to-join return; nameless gate → name → join; manager vs member visibility of the links button; expired/exhausted link labels against a real server.
 
 ---
 

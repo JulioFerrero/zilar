@@ -44,6 +44,7 @@ import {
   type Me,
 } from '../lib/chat-api';
 import { API_URL } from '../lib/auth';
+import { createInviteLinksApi, type InviteLinksApi } from '../lib/invite-links-api';
 import {
   createTopicsApi,
   type CreateTopicInput,
@@ -106,6 +107,8 @@ export interface AppStateLike {
 export interface RealStoreDeps {
   api?: ChatApi;
   topicsApi?: TopicsApi;
+  /** The group invite-links API (T-0136); tests inject a fake. */
+  inviteLinksApi?: InviteLinksApi;
   ownedAis?: { id: string; name: string }[];
   createXmpp?: (options: XmppCoreOptions) => XmppCore;
   now?: () => Date;
@@ -266,6 +269,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }));
 
   const topics = topicsApi2(deps);
+  const inviteLinks = deps.inviteLinksApi ?? createInviteLinksApi(getSessionToken, fetch, API_URL);
 
   return createStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
@@ -2401,6 +2405,16 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       listTopicAis: async (chatId) => {
         const { topicId } = await topicIdFor(chatId);
         return topics.listTopicAis(topicId);
+      },
+      listInviteLinks: async (groupId) => inviteLinks.listGroupInviteLinks(groupId),
+      createInviteLink: async (groupId, input) => inviteLinks.createGroupInviteLink(groupId, input),
+      revokeInviteLink: async (groupId, linkId) =>
+        inviteLinks.revokeGroupInviteLink(groupId, linkId),
+      previewJoinLink: async (token) => inviteLinks.previewJoinLink(token),
+      joinByLink: async (token) => {
+        const result = await inviteLinks.joinByLink(token);
+        await refreshChats().catch(() => {});
+        return result;
       },
       setSearch: (value) => set({ search: value }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),

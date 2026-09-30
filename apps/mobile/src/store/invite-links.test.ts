@@ -1,0 +1,72 @@
+import { describe, expect, it } from 'vitest';
+
+import { extractJoinToken } from '../lib/invite-links-api';
+import { MOCK_JOIN_TOKEN } from '../mock/invite-links';
+import { createChatStore } from './chat-store';
+
+describe('mock invite links flow (T-0136)', () => {
+  it('lists the seeded Dev team links with hints, never tokens', () => {
+    const store = createChatStore();
+    return store
+      .getState()
+      .listInviteLinks('g-devteam')
+      .then((links) => {
+        expect(links.length).toBeGreaterThan(0);
+        for (const link of links) {
+          expect(link.id).toBeDefined();
+          expect(link.tokenHint).toHaveLength(4);
+          expect(link).not.toHaveProperty('token');
+          expect(JSON.stringify(link)).not.toContain(MOCK_JOIN_TOKEN);
+        }
+      });
+  });
+
+  it('creates a link shown once, then lists it without the token', async () => {
+    const store = createChatStore();
+    const created = await store
+      .getState()
+      .createInviteLink('g-devteam', { label: 'Party', maxUses: 5 });
+    expect(created.token).toHaveLength(64);
+    expect(created.url).toContain(created.token);
+    const links = await store.getState().listInviteLinks('g-devteam');
+    expect(links.some((link) => link.id === created.id)).toBe(true);
+    expect(JSON.stringify(links)).not.toContain(created.token);
+  });
+
+  it('revokes a link and previews Joins against the store', async () => {
+    const store = createChatStore();
+    const created = await store.getState().createInviteLink('g-devteam', {});
+    await store.getState().revokeInviteLink('g-devteam', created.id);
+    const links = await store.getState().listInviteLinks('g-devteam');
+    expect(links.find((link) => link.id === created.id)?.revoked).toBe(true);
+    await expect(store.getState().previewJoinLink(created.token)).rejects.toMatchObject({
+      code: 'invalid_link',
+    });
+  });
+
+  it('previews and joins by a pasted link', async () => {
+    const store = createChatStore();
+    const token = extractJoinToken(`galena://join/${MOCK_JOIN_TOKEN}`);
+    expect(token).toBe(MOCK_JOIN_TOKEN);
+    await expect(store.getState().previewJoinLink(token as string)).resolves.toMatchObject({
+      groupTitle: 'Dev team',
+    });
+    await expect(store.getState().joinByLink(token as string)).resolves.toMatchObject({
+      groupId: 'g-devteam',
+    });
+  });
+
+  it('rejects an unknown token with the neutral error, never the token', async () => {
+    const store = createChatStore();
+    const token = 'c'.repeat(64);
+    const failure = await store
+      .getState()
+      .previewJoinLink(token)
+      .then(
+        () => 'resolved',
+        (error: { message?: string }) => error.message ?? 'no message',
+      );
+    expect(failure).toBe('This link does not work');
+    expect(failure).not.toContain(token);
+  });
+});
