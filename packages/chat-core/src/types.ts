@@ -77,6 +77,36 @@ export interface UiReaction {
   reactors: string[];
 }
 
+export type TopicKind = 'chat' | 'task' | 'bug' | 'ui' | 'routine';
+
+export type TopicStatus = 'open' | 'in_progress' | 'in_review' | 'blocked' | 'done';
+
+export type TopicVisibility = 'public' | 'private';
+
+export interface TopicOwner {
+  kind: 'user' | 'ai';
+  id: string;
+  name: string;
+}
+
+/**
+ * The task strip of a group topic (T-0111). Present only on chats that are
+ * topics; absent on DMs and AI chats. The General topic carries `isGeneral`
+ * and its chat id is the group's old chat id, so old `/c/<jid>` links open it.
+ */
+export interface TopicInfo {
+  id: string;
+  glyph: string;
+  kind: TopicKind;
+  status: TopicStatus;
+  visibility: TopicVisibility;
+  isGeneral: boolean;
+  archived: boolean;
+  owner: TopicOwner | null;
+  linkUrl: string | null;
+  linkLabel: string | null;
+}
+
 export interface ChatSummary {
   id: string;
   title: string;
@@ -92,6 +122,16 @@ export interface ChatSummary {
   memberCount?: number;
   aiStatus?: AiStatus;
   lastSeenAt?: Date;
+  /** The group this topic belongs to; set on every topic chat. */
+  groupId?: string;
+  /**
+   * The group's title, for the `Group › Topic` breadcrumb until the group
+   * detail loads. Never a private topic's name: this row is only ever
+   * created for topics the server returned as visible to the viewer.
+   */
+  groupTitle?: string;
+  /** Present when the chat is a group topic (T-0111). */
+  topic?: TopicInfo;
 }
 
 export interface DateSeparatorItem {

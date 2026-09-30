@@ -57,11 +57,34 @@ const groupEntrySchema = z.object({
   groupId: z.string(),
   memberCount: z.number(),
   role: z.enum(['owner', 'admin', 'member']),
+  // T-0111: present on servers with topics (T-0108); absent on older ones.
+  // Parsed loosely here — each entry is validated by `topicSchema` when
+  // mapping to chats — and unknown entries are dropped there.
+  topics: z.array(z.unknown()).optional(),
 });
 
 const chatEntrySchema = z.discriminatedUnion('kind', [dmEntrySchema, groupEntrySchema]);
 
 export type ChatEntry = z.infer<typeof chatEntrySchema>;
+
+/**
+ * The validated topics of a group chat entry: entries that parse as
+ * `topicSchema` (malformed ones are dropped). An older server omits
+ * `topics` entirely, so the result is empty for it.
+ */
+export function chatEntryTopics(entry: ChatEntry): Topic[] {
+  if (entry.kind !== 'group' || entry.topics === undefined) {
+    return [];
+  }
+  const result: Topic[] = [];
+  for (const raw of entry.topics) {
+    const parsed = topicSchema.safeParse(raw);
+    if (parsed.success) {
+      result.push(parsed.data);
+    }
+  }
+  return result;
+}
 
 const chatsSchema = z.object({ chats: z.array(chatEntrySchema) });
 
@@ -82,6 +105,9 @@ const groupDetailSchema = z.object({
   id: z.string(),
   title: z.string(),
   createdBy: z.string(),
+  // T-0108: plain members may create topics when the switch is on. Optional
+  // so payloads from an older server still parse (treated as off).
+  membersCanCreateTopics: z.boolean().optional(),
   members: z.array(groupMemberSchema),
   ais: z.array(groupAiSchema),
 });
@@ -212,6 +238,211 @@ export function getInvite(code: string): Promise<{ valid: boolean }> {
 
 export function getXmppToken(): Promise<XmppToken> {
   return request('/xmpp/token', xmppTokenSchema, { method: 'POST' });
+}
+
+// --- Topics (T-0111) -------------------------------------------------------
+// The wire contract lives in apps/server/src/topics/{routes,service,access}
+// (T-0108/T-0109/T-0110). Only what the web UI shows is modelled here: list,
+// create, patch (the strip, visibility, archive), members and AIs, plus the
+// group's `membersCanCreateTopics` switch. A group entry in `/api/chats`
+// carries its visible `topics` (archived excluded); older servers omit the
+// field, and the store treats such a group exactly as before. A topic the
+// viewer may not see is a 404 everywhere, byte-identical to a missing id.
+export const topicKindSchema = z.enum(['chat', 'task', 'bug', 'ui', 'routine']);
+
+export type TopicKind = z.infer<typeof topicKindSchema>;
+
+export const topicStatusSchema = z.enum(['open', 'in_progress', 'in_review', 'blocked', 'done']);
+
+export type TopicStatus = z.infer<typeof topicStatusSchema>;
+
+export const topicVisibilitySchema = z.enum(['public', 'private']);
+
+export type TopicVisibility = z.infer<typeof topicVisibilitySchema>;
+
+export const topicOwnerSchema = z.object({
+  kind: z.enum(['user', 'ai']),
+  id: z.string(),
+  name: z.string(),
+});
+
+export type TopicOwner = z.infer<typeof topicOwnerSchema>;
+
+export const topicAiSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
+export type TopicAi = z.infer<typeof topicAiSchema>;
+
+export const topicSchema = z.object({
+  id: z.string(),
+  groupId: z.string(),
+  name: z.string(),
+  glyph: z.string(),
+  chatJid: z.string(),
+  visibility: topicVisibilitySchema,
+  kind: topicKindSchema,
+  status: topicStatusSchema,
+  owner: topicOwnerSchema.nullable(),
+  linkUrl: z.string().nullable(),
+  linkLabel: z.string().nullable(),
+  isGeneral: z.boolean(),
+  archived: z.boolean(),
+  memberCount: z.number(),
+  ais: z.array(topicAiSchema),
+});
+
+export type Topic = z.infer<typeof topicSchema>;
+
+export const topicMemberSchema = z.object({
+  userId: z.string(),
+  name: z.string(),
+});
+
+export type TopicMember = z.infer<typeof topicMemberSchema>;
+
+export interface CreateTopicInput {
+  name: string;
+  kind?: TopicKind;
+  visibility?: TopicVisibility;
+  memberIds?: string[];
+  glyph?: string;
+  owner?: { kind: 'user' | 'ai'; id: string } | null;
+  linkUrl?: string | null;
+  linkLabel?: string | null;
+}
+
+export interface PatchTopicInput {
+  name?: string;
+  glyph?: string;
+  kind?: TopicKind;
+  status?: TopicStatus;
+  owner?: { kind: 'user' | 'ai'; id: string } | null;
+  linkUrl?: string | null;
+  linkLabel?: string | null;
+  archived?: true;
+  visibility?: TopicVisibility;
+  memberIds?: string[];
+  confirmExposeHistory?: boolean;
+}
+
+export function listGroupTopics(groupId: string): Promise<Topic[]> {
+  return request(
+    `/groups/${encodeURIComponent(groupId)}/topics`,
+    z.object({ topics: z.array(topicSchema) }),
+  ).then(({ topics }) => topics);
+}
+
+export function createTopic(groupId: string, input: CreateTopicInput): Promise<Topic> {
+  return request(`/groups/${encodeURIComponent(groupId)}/topics`, topicSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export function getTopic(id: string): Promise<Topic> {
+  return request(`/topics/${encodeURIComponent(id)}`, topicSchema);
+}
+
+export function patchTopic(id: string, input: PatchTopicInput): Promise<Topic> {
+  return request(`/topics/${encodeURIComponent(id)}`, topicSchema, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export function archiveTopic(id: string): Promise<Topic> {
+  return request(`/topics/${encodeURIComponent(id)}/archive`, topicSchema, { method: 'POST' });
+}
+
+export function listTopicMembers(id: string): Promise<TopicMember[]> {
+  return request(
+    `/topics/${encodeURIComponent(id)}/members`,
+    z.object({ members: z.array(topicMemberSchema) }),
+  ).then(({ members }) => members);
+}
+
+export function addTopicMember(id: string, userId: string): Promise<Topic> {
+  return request(`/topics/${encodeURIComponent(id)}/members`, topicSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export function removeTopicMember(id: string, userId: string): Promise<Topic> {
+  return request(
+    `/topics/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
+    topicSchema,
+    {
+      method: 'DELETE',
+    },
+  );
+}
+
+export function listTopicAis(id: string): Promise<TopicAi[]> {
+  return request(
+    `/topics/${encodeURIComponent(id)}/ais`,
+    z.object({ ais: z.array(topicAiSchema) }),
+  ).then(({ ais }) => ais);
+}
+
+export function addTopicAi(id: string, aiId: string): Promise<Topic> {
+  return request(`/topics/${encodeURIComponent(id)}/ais`, topicSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ aiId }),
+  });
+}
+
+export function removeTopicAi(id: string, aiId: string): Promise<Topic> {
+  return request(`/topics/${encodeURIComponent(id)}/ais/${encodeURIComponent(aiId)}`, topicSchema, {
+    method: 'DELETE',
+  });
+}
+
+// T-0108: the group owner/admin switch for plain members creating topics.
+export function setMembersCanCreateTopics(
+  groupId: string,
+  membersCanCreateTopics: boolean,
+): Promise<GroupDetail> {
+  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ membersCanCreateTopics }),
+  });
+}
+
+// Web UI helper for T-0111: the panel shows the rules of one topic, read
+// through the existing per-group list (each row carries its `topicId`).
+// Declared as a type alias (not a const) because the approval schemas are
+// defined further below in this file.
+export type TopicApprovalRule = z.infer<typeof approvalRuleSchema>;
+
+export function listTopicApprovalRules(groupId: string): Promise<TopicApprovalRule[]> {
+  return listGroupApprovalRules(groupId);
+}
+
+export const topicToolSchema = z.object({
+  id: z.string(),
+  aiId: z.string(),
+  groupId: z.string().nullable(),
+  topicId: z.string().nullable(),
+  name: z.string(),
+  description: z.string(),
+  currentVersion: z.number(),
+  hosts: z.array(z.string()),
+  lastRunStatus: z.string().nullable(),
+  updatedAt: z.string(),
+});
+
+export type TopicTool = z.infer<typeof topicToolSchema>;
+
+export function listTopicTools(topicId: string): Promise<TopicTool[]> {
+  return request(`/topics/${encodeURIComponent(topicId)}/tools`, z.array(topicToolSchema));
 }
 
 // --- AIs (T-0032) --------------------------------------------------------
@@ -510,6 +741,10 @@ export const publicApprovalSchema = z.object({
   id: z.string(),
   aiId: z.string(),
   groupId: z.string().nullable(),
+  // T-0110: the topic the approval belongs to. Optional so older payloads
+  // parse (a missing topic reads like a group approval).
+  topicId: z.string().nullable().optional(),
+  topicName: z.string().nullable().optional(),
   action: z.string(),
   summary: z.string(),
   details: z.string().nullable(),
@@ -563,6 +798,9 @@ export const approvalRuleSchema = z.object({
   action: z.string(),
   scope: z.enum(['personal', 'group']),
   groupId: z.string().nullable(),
+  // T-0110: the rule's topic scope. Optional so older payloads parse.
+  topicId: z.string().nullable().optional(),
+  topicName: z.string().nullable().optional(),
   createdAt: z.string(),
   createdBy: z.string(),
 });

@@ -1,7 +1,7 @@
 ---
 id: T-0111
 title: Topics (web): nested sidebar, topic view, task strip on every topic, new-topic dialog, members panel
-status: planned
+status: review
 milestone: M5
 branch: task/T-0111-topics-web
 model: meta/muse-spark-1.3-contributor
@@ -83,19 +83,47 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Data: zod API client for all T-0108/T-0109/T-0110 topic routes (list/create/patch/archive, members, AIs, `membersCanCreateTopics`, per-topic tools); `ChatSummary` gains optional `groupId`, `groupTitle`, `topic {id,glyph,kind,status,visibility,isGeneral,archived,owner,linkUrl,linkLabel}` (backward compatible). Store maps each visible topic to its own chat keyed by room JID (General keeps the group id); joins every topic room; refetches `/api/chats` on invite, on focus and every 60 s while visible; removed-while-open navigates to General with a short, name-free notice. Older servers (no `topics`) keep one row per group.
+- Sidebar: group header row (avatar, title, "N topics", aggregated unread, newest time) with topics nested in a 1 px left rail, General first then by recency; raised glyph tile, ellipsis name, lock for private, preview, unread badge, selected-topic raised segment; chevron collapse persisted per group in localStorage (try/catch); "Archived (n)" toggle; search filters topics keeping the header; folders treat topics like their group; Up/Down/Enter keyboard nav.
+- Header: `Group › Topic` breadcrumb, Private chip with lock, subtitle unchanged; kebab menu (Topic info, Search, Mute, Archive for managers, never General).
+- TaskStrip on every topic: type chip (TOPIC/GENERAL/TASK/BUG/UI/ROUTINE), status chip (dot+text), owner, link chip (https-only, `noopener noreferrer`, hostname fallback); optimistic status/owner/link edits with rollback + inline error; non-https rejected inline.
+- NewTopicDialog from the New-chat menu ("New topic", asks which group when several) and the header "+": name, type chips, Public/Private segmented with help text, private people list (creator ticked+locked) + own AIs in group with the "AIs only read…" note; create → POST topic → one AI add per tick → navigate. Entry hidden when no group qualifies.
+- TopicPanel: visibility, private member list (Add/Remove for managers, Leave for members) / "All N members" for public, topic AIs (owner adds own, manager removes any), read-only AlwaysAllowedList filtered to the topic, tools count, Archive, Make public/private with the history-exposure confirmation dialog.
+- GroupPanel: "Members can create topics" role=switch for owners/admins.
+- Approvals: card confirm copy names the topic when in one ("in … only"); AlwaysAllowedList rows show `Group › Topic`; AI panel rules inherit this via the shared list.
+- Mock mode: Dev team gets the 7 mockup topics with strips/owners/unread; create/patch/members/AIs/archive/visibility-confirm work in memory; dialog works; all existing mock behaviour kept.
 
 ### Files changed
--
+- `packages/chat-core/src/types.ts`: `TopicKind/Status/Visibility/Owner/Info`, `ChatSummary.groupId/groupTitle/topic`.
+- `apps/web/src/lib/api.ts` (+`api.topics.test.ts`, 18 tests): topic schemas/client, `chatEntryTopics`, `membersCanCreateTopics`, topicId/topicName on rules/approvals, per-topic tools.
+- `apps/web/src/store/realStore.ts` (+`realStore.topics.test.tsx`, 7 tests): `summariesFor`, per-topic join/preview/refresh, 60 s + focus polling, removed-while-open navigation, topic actions (create/patch/AIs/members/leave/switch).
+- `apps/web/src/store/store.ts`: `groupChats` (nested/sorted/searched), mock topic bundle wiring, mock store topic action stubs, `topicNotice`.
+- New: `TopicRow.tsx` (TopicRow + GroupHeaderRow), `TopicKeyboardNav.tsx`, `TaskStrip.tsx` (+test, 6), `NewTopicDialog.tsx` (+test, 4), `TopicPanel.tsx` (+test, 6), `lib/topicsUi.ts`, `mock/topics.ts`.
+- Edited: `ChatList.tsx`, `ChatHeader.tsx`, `ChatView.tsx`, `GroupPanel.tsx`, `NewChatButton.tsx`, `MessageBubble.tsx`, `ApprovalCard.tsx`, `AlwaysAllowedList.tsx`, `mock/api.ts` (+`api.topics.test.ts`, 6), `mock/index.ts`.
+- Updated existing tests: `ChatList.test.tsx` (nested titles, topic search), `ChatShell.test.tsx` (bug-topic thread), `realStore.test.tsx`/`reload.test.tsx` (new ApiClient methods).
+- New e2e: `TopicsMockE2E.test.tsx` (create private topic → sidebar with lock), `TopicsSidebar.test.tsx` (6).
 
 ### Commands run and real results
--
+- `pnpm install`: pass (6.2 s).
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint`: pass (oxlint clean).
+- `pnpm typecheck`: pass (10/10 turbo tasks).
+- `pnpm --filter @galena/web test --maxWorkers=2`: 65 files passed, 694 passed (46 s).
+- `pnpm --filter @galena/chat-core test`: 10 files passed, 135 passed.
+- `pnpm build`: pass (2/2 turbo tasks).
+- `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any` in touched non-test source: no hits.
+- Live visual check (own Vite on :5181, `?mock=1` deep links, Chrome screenshots): nested sidebar with lock/unread, bug-topic strip (BUG/In progress/Owner/PR #42 link), hiring private topic + kebab menu, topic panel (members/AIs/rules/tools/Make public/Archive), status menu with dots, new-topic dialog. Panel fetches fail when in-app navigation drops `?mock=1` (known gotcha 31) — verified via deep links.
 
 ### Problems, deviations from the spec, open questions
--
+- The Claude artifact link is not fetchable from this environment (returns "user-generated and unverified" with no content), so the layout follows the text spec + ui-style.md tokens/recipes exactly instead of pixel-matching the boards.
+- No mute API exists on the server (out of scope: per-topic notification settings beyond mute), so the kebab Mute entry is a no-op that closes the menu; muting still follows the existing per-chat flag. Say the word and I will hide it instead.
+- `listTopicApprovalRules(groupId)` reuses the existing per-group rules route filtered by topic (no `/topics/:id/approval-rules` route exists on the server); tools use the real `GET /api/topics/:id/tools`.
+- NewTopicDialog's "asks which group when several": implemented (group picker when >1 eligible group); permission gating is best-effort client-side (shows entry when the detail hasn't loaded; the server enforces and the dialog reports failure).
+- Image budget: 7 screenshots used (states captured once each after code was final).
+- No `any`, no disable comments, no new dependencies.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
 
 ---
 

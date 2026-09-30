@@ -1,0 +1,299 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
+import {
+  TOPIC_REFRESH_INTERVAL_MS,
+  createRealChatStore,
+  summariesFor,
+  type ApiClient,
+  type StorageLike,
+} from './realStore';
+import type { ChatEntry } from '@/lib/api';
+
+vi.mock('@/lib/auth', () => ({
+  authClient: { signOut: vi.fn(async () => ({})) },
+}));
+
+function memoryStorage(): StorageLike {
+  const data = new Map<string, string>();
+  return {
+    getItem: (key) => data.get(key) ?? null,
+    setItem: (key, value) => {
+      data.set(key, value);
+    },
+    removeItem: (key) => {
+      data.delete(key);
+    },
+  };
+}
+
+function topic(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 't-general',
+    groupId: 'g1',
+    name: 'General',
+    glyph: 'G',
+    chatJid: 'team@rooms.galena.test',
+    visibility: 'public',
+    kind: 'chat',
+    status: 'open',
+    owner: null,
+    linkUrl: null,
+    linkLabel: null,
+    isGeneral: true,
+    archived: false,
+    memberCount: 3,
+    ais: [],
+    ...overrides,
+  };
+}
+
+function bugTopic(): Record<string, unknown> {
+  return topic({
+    id: 't-bug',
+    name: 'Checkout bug',
+    glyph: 'B',
+    chatJid: 'bug-topic@rooms.galena.test',
+    kind: 'bug',
+    status: 'in_progress',
+    isGeneral: false,
+  });
+}
+
+function groupEntry(overrides: Record<string, unknown> = {}): ChatEntry {
+  return {
+    kind: 'group',
+    chatJid: 'team@rooms.galena.test',
+    title: 'Team',
+    groupId: 'g1',
+    memberCount: 3,
+    role: 'member',
+    topics: [topic(), bugTopic()],
+    ...overrides,
+  } as ChatEntry;
+}
+
+function fakeXmpp(): {
+  core: XmppCore;
+  joined: string[];
+  history: Record<string, ChatMessage[]>;
+  emit: (event: string, payload: unknown) => void;
+} {
+  const listeners = new Map<string, Set<(payload: unknown) => void>>();
+  const joined: string[] = [];
+  const history: Record<string, ChatMessage[]> = {};
+  const core = {
+    status: () => 'online' as const,
+    me: () => 'me@galena.test',
+    connect: vi.fn(async () => {}),
+    disconnect: vi.fn(async () => {}),
+    joinRoom: vi.fn(async (roomJid: string) => {
+      joined.push(roomJid);
+    }),
+    leaveRoom: vi.fn(async () => {}),
+    occupants: vi.fn((): Occupant[] => []),
+    sendMessage: vi.fn(async () => ({ id: 'srv-1' })),
+    sendReactions: vi.fn(async () => {}),
+    sendCorrection: vi.fn(async () => ({ id: 'edit-1' })),
+    sendRetraction: vi.fn(async () => {}),
+    requestUploadSlot: vi.fn(async () => ({
+      putUrl: 'http://upload.galena.test/put/1',
+      getUrl: 'http://upload.galena.test/get/1/voice.m4a',
+      headers: {},
+    })),
+    loadHistory: vi.fn(async (chatJid: string) => ({
+      messages: history[chatJid] ?? [],
+      complete: true,
+      first: undefined,
+    })),
+    sendTyping: vi.fn(),
+    markDisplayed: vi.fn(),
+    on: ((event: string, callback: (payload: unknown) => void) => {
+      let set = listeners.get(event);
+      if (set === undefined) {
+        set = new Set();
+        listeners.set(event, set);
+      }
+      set.add(callback);
+      return () => {
+        set?.delete(callback);
+      };
+    }) as unknown as XmppCore['on'],
+  } as unknown as XmppCore;
+  return {
+    core,
+    joined,
+    history,
+    emit: (event, payload) => {
+      for (const callback of listeners.get(event) ?? []) {
+        callback(payload);
+      }
+    },
+  };
+}
+
+function topicApi(overrides: Partial<ApiClient> = {}): ApiClient {
+  const nope = async (): Promise<never> => {
+    throw new Error('not implemented');
+  };
+  return {
+    getMe: vi.fn(async () => ({
+      id: 'u-me',
+      email: 'me@galena.test',
+      name: 'Me',
+      image: null,
+      jid: 'me@galena.test',
+    })),
+    getChats: vi.fn(async () => [groupEntry()]),
+    getContacts: vi.fn(async () => []),
+    getGroup: vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [],
+      ais: [],
+    })),
+    getXmppToken: vi.fn(async () => ({
+      jid: 'me@galena.test',
+      token: 'tok',
+      expiresAt: '2026-09-28T12:05:00Z',
+      service: 'ws://x',
+      domain: 'galena.test',
+      mucDomain: 'rooms.galena.test',
+    })),
+    createGroup: vi.fn(nope),
+    createInvite: vi.fn(nope),
+    listAis: vi.fn(async () => []),
+    addGroupAi: vi.fn(nope),
+    removeGroupAi: vi.fn(nope),
+    createTopic: vi.fn(nope),
+    getTopic: vi.fn(nope),
+    patchTopic: vi.fn(nope),
+    archiveTopic: vi.fn(nope),
+    listGroupTopics: vi.fn(async () => []),
+    listTopicMembers: vi.fn(async () => []),
+    addTopicMember: vi.fn(nope),
+    removeTopicMember: vi.fn(nope),
+    listTopicAis: vi.fn(async () => []),
+    addTopicAi: vi.fn(nope),
+    removeTopicAi: vi.fn(nope),
+    setMembersCanCreateTopics: vi.fn(nope),
+    ...overrides,
+  };
+}
+
+async function flush(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function setup(overrides: Partial<ApiClient> = {}) {
+  const api = topicApi(overrides);
+  const xmpp = fakeXmpp();
+  const store = createRealChatStore({
+    api,
+    storage: memoryStorage(),
+    now: () => new Date('2026-09-28T12:00:00Z'),
+    createXmpp: (_options: XmppCoreOptions) => xmpp.core,
+  });
+  store.getState().start();
+  await flush();
+  return { store, api, xmpp };
+}
+
+describe('topics store mapping (T-0111)', () => {
+  it('summariesFor maps each topic to its own chat; General keeps the old id', () => {
+    const rows = summariesFor(groupEntry());
+    expect(rows.map((row) => row.id)).toEqual([
+      'team@rooms.galena.test',
+      'bug-topic@rooms.galena.test',
+    ]);
+    const general = rows[0];
+    expect(general?.topic?.isGeneral).toBe(true);
+    expect(general?.groupId).toBe('g1');
+    expect(general?.groupTitle).toBe('Team');
+    const bug = rows[1];
+    expect(bug?.title).toBe('Checkout bug');
+    expect(bug?.topic?.kind).toBe('bug');
+    expect(bug?.topic?.status).toBe('in_progress');
+  });
+
+  it('summariesFor keeps one row for a group without topics (older server)', () => {
+    const rows = summariesFor({
+      kind: 'group',
+      chatJid: 'team@rooms.galena.test',
+      title: 'Team',
+      groupId: 'g1',
+      memberCount: 3,
+      role: 'member',
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.topic).toBeUndefined();
+  });
+
+  it('summariesFor drops archived topics', () => {
+    const rows = summariesFor(groupEntry({ topics: [topic(), { ...bugTopic(), archived: true }] }));
+    expect(rows.map((row) => row.id)).toEqual(['team@rooms.galena.test']);
+  });
+
+  it('boot joins every visible topic room', async () => {
+    const { xmpp } = await setup();
+    expect(xmpp.joined).toContain('team@rooms.galena.test');
+    expect(xmpp.joined).toContain('bug-topic@rooms.galena.test');
+  });
+
+  it('refresh on invite adds a topic and keeps previews and unread', async () => {
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    store
+      .getState()
+      .chats.filter((chat) => chat.id === bugId)
+      .forEach(() => {});
+    // Simulate unread on the bug topic, then a refresh that adds a topic.
+    store.setState((state) => ({
+      chats: state.chats.map((chat) => (chat.id === bugId ? { ...chat, unread: 3 } : chat)),
+    }));
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
+      groupEntry({
+        topics: [
+          topic(),
+          bugTopic(),
+          topic({
+            id: 't-new',
+            name: 'New topic',
+            glyph: 'N',
+            chatJid: 'new-topic@rooms.galena.test',
+            isGeneral: false,
+          }),
+        ],
+      }),
+    ]);
+    store.getState().refreshChats();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await flush();
+    const ids = store.getState().chats.map((chat) => chat.id);
+    expect(ids).toContain('new-topic@rooms.galena.test');
+    expect(store.getState().chats.find((chat) => chat.id === bugId)?.unread).toBe(3);
+  });
+
+  it('a topic that disappears while open navigates to General with a notice', async () => {
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    store.getState().openChat(bugId);
+    expect(store.getState().activeChatId).toBe(bugId);
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
+      groupEntry({ topics: [topic()] }),
+    ]);
+    store.getState().refreshChats();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await flush();
+    expect(store.getState().activeChatId).toBe('team@rooms.galena.test');
+    expect(store.getState().topicNotice?.chatId).toBe('team@rooms.galena.test');
+    expect(store.getState().topicNotice?.message).not.toContain('Checkout');
+  });
+
+  it('the refresh interval is 60 s', () => {
+    expect(TOPIC_REFRESH_INTERVAL_MS).toBe(60_000);
+  });
+});

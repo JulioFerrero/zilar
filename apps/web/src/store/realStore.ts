@@ -41,21 +41,39 @@ import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
 import {
   addGroupAi as addGroupAiRequest,
+  archiveTopic as archiveTopicRequest,
+  addTopicAi as addTopicAiRequest,
+  addTopicMember as addTopicMemberRequest,
+  chatEntryTopics,
   createGroup as createGroupRequest,
   createInvite as createInviteRequest,
+  createTopic as createTopicRequest,
   getChats,
   getContacts,
   getGroup,
   getMe,
+  getTopic as getTopicRequest,
   getXmppToken,
   listAis as listAisRequest,
+  listGroupTopics as listGroupTopicsRequest,
+  listTopicAis as listTopicAisRequest,
+  listTopicMembers as listTopicMembersRequest,
+  patchTopic as patchTopicRequest,
   removeGroupAi as removeGroupAiRequest,
+  removeTopicAi as removeTopicAiRequest,
+  removeTopicMember as removeTopicMemberRequest,
+  setMembersCanCreateTopics as setMembersCanCreateTopicsRequest,
   type ChatEntry,
   type Contact,
+  type CreateTopicInput,
   type GroupDetail,
   type Invite,
   type Me,
+  type PatchTopicInput,
   type PublicAi,
+  type Topic,
+  type TopicAi,
+  type TopicMember,
   type XmppToken,
 } from '@/lib/api';
 import { authClient } from '@/lib/auth';
@@ -81,6 +99,10 @@ const PREVIEW_HISTORY_MAX = 1;
 const PAGE_HISTORY_MAX = 50;
 const TYPING_CLEAR_MS = 5000;
 const CHAT_REFRESH_DEBOUNCE_MS = 500;
+// Refetch `/api/chats` every 60 s while the tab is visible (T-0111), so a
+// topic created, made private, or where I was removed appears or disappears
+// without a reload.
+export const TOPIC_REFRESH_INTERVAL_MS = 60_000;
 // Waits between XMPP connect attempts after a failed token or login.
 export const CONNECT_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
 
@@ -124,6 +146,18 @@ export interface ApiClient {
   listAis(): Promise<PublicAi[]>;
   addGroupAi(groupId: string, aiId: string): Promise<GroupDetail>;
   removeGroupAi(groupId: string, aiId: string): Promise<GroupDetail>;
+  createTopic(groupId: string, input: CreateTopicInput): Promise<Topic>;
+  getTopic(topicId: string): Promise<Topic>;
+  patchTopic(topicId: string, input: PatchTopicInput): Promise<Topic>;
+  archiveTopic(topicId: string): Promise<Topic>;
+  listGroupTopics(groupId: string): Promise<Topic[]>;
+  listTopicMembers(topicId: string): Promise<TopicMember[]>;
+  addTopicMember(topicId: string, userId: string): Promise<Topic>;
+  removeTopicMember(topicId: string, userId: string): Promise<Topic>;
+  listTopicAis(topicId: string): Promise<TopicAi[]>;
+  addTopicAi(topicId: string, aiId: string): Promise<Topic>;
+  removeTopicAi(topicId: string, aiId: string): Promise<Topic>;
+  setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<GroupDetail>;
 }
 
 export interface StorageLike {
@@ -157,6 +191,18 @@ const realApi: ApiClient = {
   listAis: listAisRequest,
   addGroupAi: addGroupAiRequest,
   removeGroupAi: removeGroupAiRequest,
+  createTopic: createTopicRequest,
+  getTopic: getTopicRequest,
+  patchTopic: patchTopicRequest,
+  archiveTopic: archiveTopicRequest,
+  listGroupTopics: listGroupTopicsRequest,
+  listTopicMembers: listTopicMembersRequest,
+  addTopicMember: addTopicMemberRequest,
+  removeTopicMember: removeTopicMemberRequest,
+  listTopicAis: listTopicAisRequest,
+  addTopicAi: addTopicAiRequest,
+  removeTopicAi: removeTopicAiRequest,
+  setMembersCanCreateTopics: setMembersCanCreateTopicsRequest,
 };
 
 function readLastRead(storage: StorageLike | null, userId: string): Record<string, string> {
@@ -351,6 +397,57 @@ function summaryFor(entry: ChatEntry): ChatSummary {
   };
 }
 
+/**
+ * One topic becomes its own chat row (T-0111), keyed by the topic's room JID.
+ * The General topic keeps the group's old chat id, so existing `/c/<jid>`
+ * deep links open it. A group without a `topics` field (older server) keeps
+ * its single row from `summaryFor`.
+ */
+function summaryForTopic(groupTitle: string, groupId: string, topic: Topic): ChatSummary {
+  return {
+    id: topic.chatJid,
+    title: topic.name,
+    kind: 'group',
+    isAI: false,
+    space: 'personal',
+    unread: 0,
+    muted: false,
+    memberCount: topic.memberCount,
+    onlineCount: 0,
+    groupId,
+    groupTitle,
+    topic: {
+      id: topic.id,
+      glyph: topic.glyph,
+      kind: topic.kind,
+      status: topic.status,
+      visibility: topic.visibility,
+      isGeneral: topic.isGeneral,
+      archived: false,
+      owner: topic.owner,
+      linkUrl: topic.linkUrl,
+      linkLabel: topic.linkLabel,
+    },
+  };
+}
+
+/**
+ * Maps one `/api/chats` entry to its chat rows: DMs and AI chats map to one
+ * row as before; a group with `topics` maps to one row per visible topic
+ * (General keeps the group's old chat id); a group without the field keeps
+ * its single legacy row.
+ */
+export function summariesFor(entry: ChatEntry): ChatSummary[] {
+  if (entry.kind !== 'group') {
+    return [summaryFor(entry)];
+  }
+  const topics = chatEntryTopics(entry).filter((topic) => !topic.archived);
+  if (topics.length === 0) {
+    return [summaryFor(entry)];
+  }
+  return topics.map((topic) => summaryForTopic(entry.title, entry.groupId, topic));
+}
+
 export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStoreState> {
   const api = deps.api ?? realApi;
   const storage = deps.storage === undefined ? defaultStorage() : deps.storage;
@@ -396,6 +493,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // server names, so a chat peer cannot make every viewer fetch a tracker.
     let mediaToken: MediaTokenShape | undefined;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    // The 60 s visible-tab poll for new/removed topics (T-0111), plus its
+    // focus listener. Both stop when the store stops (or restarts).
+    let chatsPollTimer: ReturnType<typeof setInterval> | undefined;
+    let chatsPollFocusHandler: (() => void) | null = null;
     const cursors: Record<string, string | undefined> = {};
     const pendingOutgoing = new Map<string, string[]>();
     // An outgoing attachment's bytes, kept for a Retry after a failed upload.
@@ -1342,7 +1443,89 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     function rememberGroupIds(entries: ChatEntry[]): void {
       for (const entry of entries) {
         if (entry.kind === 'group') {
-          groupIds.set(entry.chatJid, entry.groupId);
+          for (const row of summariesFor(entry)) {
+            groupIds.set(row.id, entry.groupId);
+          }
+        }
+      }
+    }
+
+    async function applyTopicRow(topic: Topic): Promise<void> {
+      const entries = await api.getChats();
+      rememberGroupIds(entries);
+      const rows = entries.flatMap((entry) => summariesFor(entry));
+      const match = rows.find((row) => row.topic?.id === topic.id);
+      set((state) => {
+        if (match === undefined) {
+          return state;
+        }
+        const before = state.chats.find((chat) => chat.id === match.id);
+        const merged: ChatSummary =
+          before === undefined
+            ? match
+            : {
+                ...match,
+                ...(before.lastMessage === undefined ? {} : { lastMessage: before.lastMessage }),
+                unread: before.unread,
+                ...(before.online === undefined ? {} : { online: before.online }),
+                ...(before.onlineCount === undefined ? {} : { onlineCount: before.onlineCount }),
+              };
+        return {
+          chats: state.chats.some((chat) => chat.id === merged.id)
+            ? state.chats.map((chat) => (chat.id === merged.id ? merged : chat))
+            : sortByRecency([...state.chats, merged]),
+        };
+      });
+    }
+
+    async function topicIdFor(chatId: string): Promise<{ topicId: string; groupId: string }> {
+      const chat = get().chats.find((entry) => entry.id === chatId);
+      const topicId = chat?.topic?.id;
+      const groupId = chat?.groupId ?? groupIds.get(chatId);
+      if (topicId === undefined || groupId === undefined) {
+        throw new Error('This topic is not available yet.');
+      }
+      return { topicId, groupId };
+    }
+
+    // The periodic + focus refresh: refetches `/api/chats` while visible so
+    // a topic created, made private, or where I was removed appears or
+    // disappears without a reload. Failures are silent; the next tick retries.
+    function startChatsPolling(gen: number): void {
+      if (typeof window === 'undefined') {
+        return;
+      }
+      if (chatsPollTimer !== undefined) {
+        clearInterval(chatsPollTimer);
+      }
+      const tick = (): void => {
+        if (gen !== generation) {
+          return;
+        }
+        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+          return;
+        }
+        void refreshChats();
+      };
+      chatsPollTimer = window.setInterval(tick, TOPIC_REFRESH_INTERVAL_MS);
+      const onFocus = (): void => {
+        if (gen === generation) {
+          void refreshChats();
+        }
+      };
+      window.addEventListener('focus', onFocus);
+      chatsPollFocusHandler = onFocus;
+    }
+
+    function stopChatsPolling(): void {
+      if (typeof window !== 'undefined') {
+        if (chatsPollTimer !== undefined) {
+          clearInterval(chatsPollTimer);
+          chatsPollTimer = undefined;
+        }
+        if (chatsPollFocusHandler !== null) {
+          window.removeEventListener('focus', chatsPollFocusHandler);
+          chatsPollFocusHandler = null;
         }
       }
     }
@@ -1893,17 +2076,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
       const previous = get().chats;
       const known = new Map(previous.map((chat) => [chat.id, chat]));
-      const fresh = entries.filter((entry) => !known.has(entry.chatJid)).map(summaryFor);
-      const kept = entries
-        .filter((entry) => known.has(entry.chatJid))
-        .map((entry) => {
-          const existing = known.get(entry.chatJid);
-          const summary = summaryFor(entry);
+      const activeChatId = get().activeChatId;
+      const freshRows = entries.flatMap((entry) => summariesFor(entry));
+      const fresh = freshRows.filter((row) => !known.has(row.id));
+      const kept = freshRows
+        .filter((row) => known.has(row.id))
+        .map((row) => {
+          const existing = known.get(row.id);
           if (existing === undefined) {
-            return summary;
+            return row;
           }
           return {
-            ...summary,
+            ...row,
             ...(existing.lastMessage === undefined ? {} : { lastMessage: existing.lastMessage }),
             unread: existing.unread,
             ...(existing.online === undefined ? {} : { online: existing.online }),
@@ -1913,6 +2097,40 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       // New chats appear at the top; the rest keep their recency order.
       set({ chats: [...fresh, ...sortByRecency(kept)] });
       rememberGroupIds(entries);
+      // A topic that disappeared while open (made private, archived, or I was
+      // removed) navigates to the group's General topic with a short notice.
+      const openChat =
+        activeChatId === undefined
+          ? undefined
+          : get().chats.find((chat) => chat.id === activeChatId);
+      if (activeChatId !== undefined && openChat === undefined) {
+        const was = previous.find((chat) => chat.id === activeChatId);
+        const notice =
+          was?.topic === undefined || was.groupId === undefined
+            ? undefined
+            : { groupId: was.groupId, groupTitle: was.groupTitle ?? '' };
+        if (notice !== undefined) {
+          const general = get().chats.find(
+            (chat) => chat.groupId === notice.groupId && chat.topic?.isGeneral === true,
+          );
+          if (general !== undefined) {
+            set({
+              activeChatId: general.id,
+              topicNotice: { chatId: general.id, message: 'This topic is no longer available.' },
+            });
+            if (typeof window !== 'undefined') {
+              window.history.replaceState(null, '', `/c/${encodeURIComponent(general.id)}`);
+            }
+          } else {
+            set({ activeChatId: undefined });
+            if (typeof window !== 'undefined') {
+              window.history.replaceState(null, '', '/');
+            }
+          }
+        } else {
+          set({ activeChatId: undefined });
+        }
+      }
       flushPending();
 
       const current = core;
@@ -1921,17 +2139,22 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         return;
       }
       for (const entry of entries) {
-        if (known.has(entry.chatJid) || entry.kind !== 'group') {
+        if (entry.kind !== 'group') {
           continue;
         }
-        await current.joinRoom(entry.chatJid, nick(me)).catch(() => {});
-        void ensureGroupMembers(entry.chatJid);
+        for (const row of summariesFor(entry)) {
+          if (known.has(row.id)) {
+            continue;
+          }
+          await current.joinRoom(row.id, nick(me)).catch(() => {});
+          void ensureGroupMembers(row.id);
+        }
       }
-      for (const entry of entries) {
-        if (known.has(entry.chatJid)) {
+      for (const row of freshRows) {
+        if (known.has(row.id)) {
           continue;
         }
-        const chat = get().chats.find((item) => item.id === entry.chatJid);
+        const chat = get().chats.find((item) => item.id === row.id);
         if (chat !== undefined) {
           await loadPreview(current, chat);
         }
@@ -2099,11 +2322,16 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       set({
         me,
         currentUserId: me.id,
-        chats: mergeWithPainted(get().chats, entries.map(summaryFor), cachedUserId === me.id),
+        chats: mergeWithPainted(
+          get().chats,
+          entries.flatMap((entry) => summariesFor(entry)),
+          cachedUserId === me.id,
+        ),
         contacts,
         chatsState: 'ready',
       });
       startDraftStream(gen);
+      startChatsPolling(gen);
       flushPending();
       await connectXmpp(gen, me);
     }
@@ -2227,6 +2455,81 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         void ensureGroupMembers(chatId, true);
       },
       listMyAis: () => api.listAis(),
+      topicNotice: undefined,
+      dismissTopicNotice: () => set({ topicNotice: undefined }),
+      refreshChats: () => {
+        scheduleChatsRefresh();
+      },
+      createTopic: async (chatId, input) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const groupId = chat?.groupId ?? groupIds.get(chatId);
+        if (groupId === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const topic = await api.createTopic(groupId, input);
+        await applyTopicRow(topic);
+        const row = get().chats.find((entry) => entry.topic?.id === topic.id);
+        if (row === undefined) {
+          throw new Error('the new topic did not appear in the chat list');
+        }
+        const me = get().me;
+        if (core !== undefined && me !== undefined) {
+          await core.joinRoom(row.id, nick(me)).catch(() => {});
+        }
+        await openHistory(row.id);
+        return row.id;
+      },
+      patchTopic: async (chatId, input) => {
+        const { topicId } = await topicIdFor(chatId);
+        const topic = await api.patchTopic(topicId, input);
+        await applyTopicRow(topic);
+      },
+      addTopicAi: async (chatId, aiId) => {
+        const { topicId } = await topicIdFor(chatId);
+        const topic = await api.addTopicAi(topicId, aiId);
+        await applyTopicRow(topic);
+      },
+      removeTopicAi: async (chatId, aiId) => {
+        const { topicId } = await topicIdFor(chatId);
+        const topic = await api.removeTopicAi(topicId, aiId);
+        await applyTopicRow(topic);
+      },
+      addTopicMember: async (chatId, userId) => {
+        const { topicId } = await topicIdFor(chatId);
+        const topic = await api.addTopicMember(topicId, userId);
+        await applyTopicRow(topic);
+      },
+      removeTopicMember: async (chatId, userId) => {
+        const { topicId } = await topicIdFor(chatId);
+        try {
+          const topic = await api.removeTopicMember(topicId, userId);
+          await applyTopicRow(topic);
+        } catch (error) {
+          // Removing the last member archives the topic (server 404): it is
+          // gone from the visible list either way, so refresh like the
+          // removed-while-open flow.
+          await refreshChats().catch(() => {});
+          throw error;
+        }
+      },
+      leaveTopic: async (chatId) => {
+        const me = get().me;
+        if (me === undefined) {
+          throw new Error('This topic is not available yet.');
+        }
+        await get().removeTopicMember(chatId, me.id);
+      },
+      setMembersCanCreateTopics: async (chatId, allowed) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const groupId = chat?.groupId ?? groupIds.get(chatId);
+        const mine = myJid();
+        if (groupId === undefined || mine === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const domain = mine.slice(mine.indexOf('@') + 1);
+        const detail = await api.setMembersCanCreateTopics(groupId, allowed);
+        applyGroupDetail(chatId, detail, domain);
+      },
       addGroupAi: async (chatId, aiId) => {
         const groupId = groupIds.get(chatId);
         const mine = myJid();
@@ -2249,7 +2552,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
       openChat: (chatId) => {
-        set({ activeChatId: chatId });
+        set((state) => ({
+          activeChatId: chatId,
+          // Opening another chat dismisses the notice (it belongs to the
+          // previous view); reopening the same chat keeps it.
+          topicNotice: state.topicNotice?.chatId === chatId ? state.topicNotice : undefined,
+        }));
         recordRead(chatId, lastRead[chatId]);
         void ensureGroupMembers(chatId);
         if (pendingOpenChatId !== undefined && pendingOpenChatId !== chatId) {
@@ -2646,15 +2954,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         const entries = await api.getChats();
         rememberGroupIds(entries);
         const previous = get().chats;
+        const freshRows = entries.flatMap((entry) => summariesFor(entry));
         set({
           chats: sortByRecency(
-            entries.map((entry) => {
-              const before = previous.find((chat) => chat.id === entry.chatJid);
-              const summary = summaryFor(entry);
+            freshRows.map((row) => {
+              const before = previous.find((chat) => chat.id === row.id);
               return before === undefined
-                ? summary
+                ? row
                 : {
-                    ...summary,
+                    ...row,
                     ...(before.lastMessage === undefined
                       ? {}
                       : { lastMessage: before.lastMessage }),
@@ -2753,6 +3061,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         generation += 1;
         closeDraftStream?.();
         closeDraftStream = undefined;
+        stopChatsPolling();
         clearDraftState();
         set({ drafts: {}, finishedDraftMessages: {} });
         pendingOpenChatId = undefined;

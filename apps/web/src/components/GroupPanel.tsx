@@ -44,6 +44,8 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const [removingId, setRemovingId] = useState<string | undefined>(undefined);
   const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
   const [errorMessage, setErrorMessage] = useState('');
+  const [switchBusy, setSwitchBusy] = useState(false);
+  const [switchError, setSwitchError] = useState('');
 
   const eligibleAis = myAis.filter(
     (ai) => ai.status === 'active' && info?.ais.some((item) => item.aiId === ai.id) !== true,
@@ -148,6 +150,23 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
 
   const ownerName = (ai: GroupAi): string =>
     info?.members.find((member) => member.userId === ai.ownerId)?.name ?? 'someone';
+
+  const flipTopicSwitch = async (): Promise<void> => {
+    if (info === undefined || switchBusy) {
+      return;
+    }
+    setSwitchBusy(true);
+    setSwitchError('');
+    try {
+      await storeApi
+        .getState()
+        .setMembersCanCreateTopics(chat.id, info.membersCanCreateTopics !== true);
+    } catch (error) {
+      setSwitchError(error instanceof Error ? error.message : 'Could not save the setting.');
+    } finally {
+      setSwitchBusy(false);
+    }
+  };
 
   return (
     <div
@@ -329,6 +348,37 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
               {/* T-0100: the standing rules for this group, same visibility
                   as Activity — owners and admins only. */}
               {isManager && <AlwaysAllowedList scope={{ groupId: info.id }} />}
+
+              {/* T-0111: "Members can create topics", same visibility —
+                  owners and admins only. */}
+              {isManager && (
+                <section aria-label="Topic settings" className="flex flex-col gap-2 px-2">
+                  <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-2 py-1.5 hover:bg-list-hover">
+                    <span className="text-[14px]">Members can create topics</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={info.membersCanCreateTopics === true}
+                      aria-label="Members can create topics"
+                      disabled={switchBusy}
+                      onClick={() => void flipTopicSwitch()}
+                      className={cn(
+                        'relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50',
+                        info.membersCanCreateTopics === true ? 'bg-accent' : 'bg-surface-raised',
+                      )}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          'absolute top-0.5 size-5 rounded-full bg-foreground transition-all',
+                          info.membersCanCreateTopics === true ? 'left-[22px]' : 'left-0.5',
+                        )}
+                      />
+                    </button>
+                  </label>
+                  {switchError !== '' && <FieldError>{switchError}</FieldError>}
+                </section>
+              )}
 
               {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
             </>

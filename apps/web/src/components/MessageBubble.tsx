@@ -381,7 +381,10 @@ export function MessageBubble({
                     <ProgressCard progress={message.card.data} />
                   )}
                   {message.card.type === 'approval.request' && (
-                    <ApprovalCard request={message.card.data} />
+                    <ApprovalCard
+                      request={message.card.data}
+                      {...(chat.topic !== undefined ? { topicName: chat.title } : {})}
+                    />
                   )}
                 </div>
               )}

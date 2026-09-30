@@ -4,7 +4,16 @@ import { renderApp } from '@/test/renderApp';
 
 const ALL_TITLES = [
   'Ana',
+  // T-0111: the "Dev team" group now renders as a header with its mockup
+  // topics nested underneath (General keeps the old chat id).
   'Dev team',
+  'General',
+  'Checkout button hidden on Safari',
+  'New pricing page',
+  'Daily standup',
+  'Release 2.4 notes',
+  'Hiring: frontend role',
+  'Ideas',
   'Viernes 🍻',
   'Dev AI',
   'Marta',
@@ -61,10 +70,15 @@ describe('ChatList', () => {
     expect(screen.getByText('Ana')).toBeTruthy();
     expect(screen.queryByText('Dev team')).toBeNull();
 
-    fireEvent.change(input, { target: { value: 'dev' } });
-    expect(screen.getByText('Dev team')).toBeTruthy();
-    expect(screen.getByText('Dev AI')).toBeTruthy();
+    fireEvent.change(input, { target: { value: 'viernes' } });
+    expect(screen.getByText('Viernes 🍻')).toBeTruthy();
     expect(screen.queryByText('Ana')).toBeNull();
+
+    // T-0111: searching a topic name keeps its group header.
+    fireEvent.change(input, { target: { value: 'hiring' } });
+    expect(screen.getByText('Dev team')).toBeTruthy();
+    expect(screen.getByText('Hiring: frontend role')).toBeTruthy();
+    expect(screen.queryByText('Ideas')).toBeNull();
   });
 
   it('focuses the search field with Ctrl/Cmd+K', () => {
@@ -291,7 +305,7 @@ describe('ChatList', () => {
       renderApp('/');
       fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
       expect(await screen.findByLabelText('3 pending approvals')).toBeTruthy();
-      expect(screen.getByText('3')).toBeTruthy();
+      expect(screen.getByLabelText('3 pending approvals')).toBeTruthy();
     } finally {
       vi.useRealTimers();
       vi.unstubAllGlobals();
