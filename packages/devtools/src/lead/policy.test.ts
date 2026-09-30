@@ -27,6 +27,25 @@ const CASES: { name: string; action: string; command: string | string[]; verdict
   },
   { name: 'docker ps', action: 'shell', command: 'docker ps', verdict: 'allow' },
   {
+    name: 'tsc noEmit',
+    action: 'shell',
+    command: 'npx tsc --noEmit -p tsconfig.json',
+    verdict: 'allow',
+  },
+  {
+    name: 'pnpm exec tsc noEmit',
+    action: 'shell',
+    command: 'pnpm exec tsc --noEmit',
+    verdict: 'allow',
+  },
+  { name: 'tsc emit', action: 'shell', command: 'npx tsc -p tsconfig.json', verdict: 'escalate' },
+  {
+    name: 'tsc noEmit with outDir',
+    action: 'shell',
+    command: 'npx tsc --noEmit --outDir /tmp/x',
+    verdict: 'escalate',
+  },
+  {
     name: 'docker images format',
     action: 'shell',
     command: "docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' 2>/dev/null",
@@ -293,7 +312,7 @@ const CASES: { name: string; action: string; command: string | string[]; verdict
     command: 'npx expo install expo-camera',
     verdict: 'escalate',
   },
-  { name: 'npx tsc', action: 'shell', command: 'npx tsc --noEmit', verdict: 'escalate' },
+  { name: 'npx tsc emit', action: 'shell', command: 'npx tsc', verdict: 'escalate' },
   {
     name: 'pnpm dlx',
     action: 'shell',

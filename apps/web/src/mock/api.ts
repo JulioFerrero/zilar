@@ -348,7 +348,7 @@ function seedState(): MockState {
       },
       {
         id: 'mach-approved',
-        name: 'julio-mbp',
+        name: 'dev-mac',
         status: 'approved',
         os: 'macos',
         osVersion: '27.0',

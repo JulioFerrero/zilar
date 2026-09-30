@@ -10,17 +10,19 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0116](T-0116-group-roles.md) | Custom roles: private-topic access, approver rights | planned | meta/muse-spark-1.3-contributor | T-0108, T-0110, T-0111 |  |
-| [T-0119](T-0119-pwa-web-push.md) | PWA and web push | planned | meta/muse-spark-1.3-contributor | T-0118, T-0113 | Outline: lead rewrites (SPIKE) sections first |
+| [T-0119](T-0119-pwa-web-push.md) | PWA and web push | planned | meta/muse-spark-1.3-contributor | T-0118, T-0113 | Spec ready (rewritten from the spike); schema task, starts after T-0116 merges |
 | [T-0120](T-0120-stickers.md) | Stickers: user-made packs, storage, sending, rendering | planned | meta/muse-spark-1.3-contributor | none |  |
 | [T-0121](T-0121-sticker-creator.md) | Sticker pack creator, favorites, discover | planned | meta/muse-spark-1.3-contributor | T-0120 |  |
 | [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | planned | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
 | [T-0124](T-0124-channels.md) | Channels: only admins post | planned | meta/muse-spark-1.3-contributor | T-0108, T-0115 |  |
 | [T-0127](T-0127-install-wizard-backup-baremetal.md) | Install wizard, backup/restore, bare-metal guide | planned | meta/muse-spark-1.3-contributor | T-0126 |
-| [T-0131](T-0131-screenshots-user-docs.md) | Feature screenshots (script) and user guide | planned | meta/muse-spark-1.3-contributor | T-0111, T-0113, T-0117, T-0114 | Julio asked 2026-09-30; after M5 web features settle |
 | [T-0132](T-0132-tool-host-approval.md) | Approve a tool's hosts once per tool before it can reach the network | planned | meta/muse-spark-1.3-contributor | T-0105, T-0116 | Julio's decision 2026-09-30; must merge before TOOLS_ENABLED is turned on; schema task |
-| T-0106 | Model side of AI tools (prompt guide, rounds per turn, working-on-it line) | planned | meta/muse-spark-1.3-contributor | T-0105 | Spec written after T-0105 merges |
-| T-0107 | Web Tools and Routines UI | planned | meta/muse-spark-1.3-contributor | T-0106 | Spec written after T-0105 merges |
+| [T-0133](T-0133-web-followups.md) | Web follow-ups from the topics, invite-links and pins reviews | planned | meta/muse-spark-1.3-contributor | T-0130, T-0115 | Small fixes, web only |
+| [T-0134](T-0134-server-followups.md) | Server follow-ups (join race, trusted proxy hops, pin 404, search with roles, preview limit, approvers in list) | planned | meta/muse-spark-1.3-contributor | T-0116 | No schema |
+| [T-0135](T-0135-mobile-parity.md) | Mobile: chat preferences and pinned messages | planned | meta/muse-spark-1.3-contributor | T-0113, T-0114 | Mobile, not run in a simulator |
+| [T-0106](T-0106-tool-model-side.md) | Model side of AI tools: prompt guide, several rounds per turn, working-on-it line | planned | meta/muse-spark-1.3-contributor | T-0105, T-0125, T-0132 | Ready; starts after T-0132 merges |
+| [T-0107](T-0107-tools-routines-ui.md) | Tools and routines UI (web) | planned | meta/muse-spark-1.3-contributor | T-0105, T-0104, T-0132 | Ready; no schema |
 
 ## Follow-ups
 
@@ -162,3 +164,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0130](T-0130-topics-web-fixes.md) | topics web fixes: kebab archive, safe member removal, mock store actions, AI owner by id, keyboard nav | 2026-09-30 |
 | [T-0129](T-0129-coolify-baked-config.md) | Coolify without bind mounts: ejabberd and Postgres config baked into images, 4-image workflow | 2026-09-30 |
 | [T-0115](T-0115-invite-links.md) | shareable group invite links: expiry, max uses, revoke, join page (migration 0026) | 2026-09-30 |
+| [T-0131](T-0131-screenshots-user-docs.md) | feature screenshots (script + PNGs), user guide, README and FEATURES links | 2026-09-30 |

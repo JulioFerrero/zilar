@@ -19,11 +19,13 @@
     "infra:logs": "docker compose -f infra/docker-compose.dev.yml --env-file infra/.env logs -f",
     "infra:reset": "node infra/reset.mjs",
     "infra:smoke": "pnpm --filter @galena/devtools smoke",
-    "xmpp:e2e": "pnpm --filter @galena/devtools xmpp:e2e"
+    "xmpp:e2e": "pnpm --filter @galena/devtools xmpp:e2e",
+    "screenshots": "node --experimental-strip-types scripts/screenshots.ts"
   },
   "devDependencies": {
     "@types/node": "^24",
     "oxlint": "^1.85.0",
+    "playwright": "^1.63.0",
     "prettier": "^3.9.9",
     "turbo": "^2.11.4",
     "typescript": "^6.0.3",
