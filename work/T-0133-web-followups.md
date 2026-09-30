@@ -1,7 +1,7 @@
 ---
 id: T-0133
 title: Web follow-ups from the topics, invite-links and pins reviews
-status: review
+status: merged
 milestone: M5
 branch: task/T-0133-web-followups
 model: meta/muse-spark-1.3-contributor
@@ -103,10 +103,12 @@ Anything not listed; no new features.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved. Web only, no schema; pre-review packet re-ran all checks green (web 818 tests, build, typecheck). Read the store, panel and invite-links diffs myself: background refresh callers swallow the new `stale_refresh` error, so no unhandled rejection.
 
 ### Findings
--
+- Scope waiver granted for the new `scripts/shots.ts` (needed to test the screenshot script).
+- Should-fix, not blocking: revoke button clears on the next microtask, not when the DELETE settles (type `onRevoke` as `void | Promise<void>` and await); a superseded remove-member recheck can show "The chat list refresh was superseded." in the panel (retry once or show a generic message).
+- Nits: mock join cap ignores `alreadyMember`; `removeAi` still double-issues; unreachable 404 branch in panel `leave()`; `quietArchiveIds` can linger if the user navigates away first.
 
 ### Follow-ups
--
+- Small web cleanup task later covering the two should-fix items and the nits.
