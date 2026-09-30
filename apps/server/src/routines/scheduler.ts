@@ -153,6 +153,7 @@ async function claimDue(
         and(
           eq(routines.id, row.id),
           eq(routines.status, 'active'),
+          isNull(routines.deletedAt),
           eq(routines.nextRunAt, row.nextRunAt),
         ),
       )

@@ -1,7 +1,7 @@
 ---
 id: T-0104
 title: Routines: scheduled tool runs that post into the chat as the AI (scheduler, service, routes)
-status: review
+status: merged
 milestone: M4
 branch: task/T-0104-routines-scheduler
 model: meta/muse-spark-1.3-contributor
@@ -150,10 +150,13 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged with three lead fixes.
 
 ### Findings
--
+- Read line by line: the claim is a conditional update that advances `next_run_at` before the run (exactly once, overdue runs once), the run order matches the spec, audit rows carry status and duration only, failures never post error text, host pinning pauses before any run, and the routes use the topic rules (reader sees the topic, manager is the AI's owner or a group owner/admin who can see it, everyone else gets the missing-id 404, no tool source in rows).
+- Lead fixes: (1) the "is the AI still in the room" step now uses the derived rule (`allowedTopicAiIds`), so in a private topic the tool no longer runs for an AI whose owner left the topic (test added); (2) the claim update also requires `deleted_at is null`; (3) pause and resume ignore soft-deleted rows.
+- The 2-line `backfill.test.ts` change (skip migration 0023 in the pre-topics simulation) is accepted.
 
 ### Follow-ups
--
+- T-0105 wires the real tool runner and creates routines from approved cards; until then `ROUTINES_ENABLED=true` only logs a warning.
+- The 10-routine limit is checked before the insert without a lock; concurrent creations are only possible after human approval, so this is accepted.

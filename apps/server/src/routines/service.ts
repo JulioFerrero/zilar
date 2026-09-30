@@ -255,11 +255,11 @@ export async function pauseRoutine(
   const [updated] = await db
     .update(routines)
     .set({ status: 'paused', pausedReason: 'user', updatedAt: now })
-    .where(and(eq(routines.id, id), eq(routines.status, 'active')))
+    .where(and(eq(routines.id, id), eq(routines.status, 'active'), isNull(routines.deletedAt)))
     .returning();
   if (!updated) {
     const [row] = await db.select().from(routines).where(eq(routines.id, id)).limit(1);
-    if (!row) {
+    if (!row || row.deletedAt !== null) {
       throw new RoutineServiceError('not_found', 'Routine not found');
     }
     return { routine: row, paused: false };
@@ -323,7 +323,7 @@ export async function resumeRoutine(
       nextRunAt: nextRunAfter(schedule.value, now),
       updatedAt: now,
     })
-    .where(and(eq(routines.id, id), eq(routines.status, 'paused')))
+    .where(and(eq(routines.id, id), eq(routines.status, 'paused'), isNull(routines.deletedAt)))
     .returning();
   if (!updated) {
     throw new RoutineServiceError('not_found', 'Routine not found');

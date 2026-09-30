@@ -24,7 +24,8 @@
 import { and, eq } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, aiTools, aiToolVersions, groupAis, routines, topicAis, topics } from '../db/schema';
+import { ais, aiTools, aiToolVersions, groupAis, routines, topics } from '../db/schema';
+import { allowedTopicAiIds } from '../topics/access';
 import { runToolVersion, ToolServiceError } from '../tools/service';
 import type { ToolRunner } from '../tools/types';
 
@@ -154,11 +155,13 @@ export async function executeRoutine(
 }
 
 // Whether the AI is still a member of the routine topic's room: General
-// topics read `group_ais`, other topics read the (AI, topic) row in
-// `topic_ais`. An archived topic's room is gone, so the routine skips.
+// topics read `group_ais`; other topics use the derived rule of
+// `allowedTopicAiIds` (the AI is in `topic_ais` and, in a private topic, its
+// owner still sees the topic), so the tool never runs for an AI that may no
+// longer be there. An archived topic's room is gone, so the routine skips.
 async function isAiInTopicRoom(db: ServerDatabase, row: RoutineRow): Promise<boolean> {
   const [topic] = await db
-    .select({ isGeneral: topics.isGeneral, archivedAt: topics.archivedAt })
+    .select()
     .from(topics)
     .where(eq(topics.id, row.topicId as string))
     .limit(1);
@@ -173,12 +176,7 @@ async function isAiInTopicRoom(db: ServerDatabase, row: RoutineRow): Promise<boo
       .limit(1);
     return match !== undefined;
   }
-  const [match] = await db
-    .select({ aiId: topicAis.aiId })
-    .from(topicAis)
-    .where(and(eq(topicAis.topicId, row.topicId as string), eq(topicAis.aiId, row.aiId)))
-    .limit(1);
-  return match !== undefined;
+  return (await allowedTopicAiIds(db, topic)).has(row.aiId);
 }
 
 async function readCurrentHosts(

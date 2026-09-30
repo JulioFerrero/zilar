@@ -12,6 +12,7 @@ import {
   providerConnections,
   routines,
   topicAis,
+  topicMembers,
   topics,
 } from '../db/schema';
 import { createAuditRecorder } from '../audit/service';
@@ -460,6 +461,40 @@ describe('routine scheduler (T-0104)', () => {
       const row = await readRoutine(context, created.id);
       expect(row?.lastStatus).toBe('skipped');
       expect(row?.status).toBe('active');
+    });
+
+    it('a private topic whose AI owner left it skips and runs nothing; back in, it runs', async () => {
+      const { owner, aiId } = await ownerWithAi(`sched-private-${emailCounter}@example.com`);
+      const { groupId } = await seedGroupWithTopic(context, owner.id, aiId);
+      const topicId = await seedNonGeneralTopic(context, owner.id, groupId, aiId);
+      await context.db.update(topics).set({ visibility: 'private' }).where(eq(topics.id, topicId));
+      const toolId = await seedTool(context, { aiId, groupId, topicId, userId: owner.id });
+      const created = await seedRoutine(context, {
+        aiId,
+        groupId,
+        topicId,
+        toolId,
+        userId: owner.id,
+        nextRunAt: new Date(NOW.getTime() - 1_000),
+      });
+      const runner = vi.fn(okRunner());
+      const posts: Array<unknown> = [];
+      const { scheduler } = schedulerFor(runner, posts as never);
+      await scheduler.tick();
+      expect(runner).not.toHaveBeenCalled();
+      expect(posts).toHaveLength(0);
+      expect((await readRoutine(context, created.id))?.lastStatus).toBe('skipped');
+
+      await context.db
+        .insert(topicMembers)
+        .values({ topicId, userId: owner.id, addedBy: owner.id });
+      await context.db
+        .update(routines)
+        .set({ nextRunAt: new Date(NOW.getTime() - 1_000) })
+        .where(eq(routines.id, created.id));
+      await scheduler.tick();
+      expect(runner).toHaveBeenCalledTimes(1);
+      expect(posts).toHaveLength(1);
     });
 
     it('post returning false records skipped without a failure', async () => {
