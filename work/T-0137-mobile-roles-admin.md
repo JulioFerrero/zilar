@@ -1,7 +1,7 @@
 ---
 id: T-0137
 title: Mobile: group roles and private-topic access
-status: review
+status: merged
 milestone: M5
 branch: task/T-0137-mobile-roles-admin
 model: meta/muse-spark-1.3-contributor
@@ -147,10 +147,10 @@ Web changes, server changes, role-based message permissions beyond what T-0116 b
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved after three rounds. Verified in the packets: the topic screen loads the group detail with a "Checking your role" state, roles load errors show Retry with write/load-aware messages, roles writes take the route's group id directly (empty groups work), both sheet suites exercise the real `@/lib/roles` helpers, the mock matches the server (approver need not be attached; private-to-public clears roles). Roles are keyed per group/topic, ids are URL-encoded, the token only travels in the authorization header. Mobile only; to be run on the Android emulator after the batch merge.
 
 ### Findings
--
+- Nit: the initial roles-load failure on the group screen uses the hardcoded generic line instead of `describeRolesError(error, 'load')`.
 
 ### Follow-ups
--
+- Use `describeRolesError` for the first load on the group screen.
