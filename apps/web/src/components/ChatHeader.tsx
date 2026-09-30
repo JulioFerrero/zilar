@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
+import { ChatPrefMenuItems, CHAT_MENU_ITEM_CLASS } from './ChatActionsMenu';
 import { TypingDots } from './TypingDots';
 import { IconButton } from './ui/icon-button';
 import { chatSubtitle, typingLabel } from '@/lib/format';
@@ -146,13 +147,9 @@ export function ChatHeader({
         <IconButton
           aria-label="Chat menu"
           aria-haspopup="menu"
-          aria-expanded={isTopic ? menuOpen : undefined}
+          aria-expanded={menuOpen}
           onClick={() => {
-            if (isTopic) {
-              setMenuOpen((value) => !value);
-            } else {
-              openPanel?.();
-            }
+            setMenuOpen((value) => !value);
           }}
         >
           <MoreVertical className="size-5" aria-hidden="true" />
@@ -193,11 +190,38 @@ export function ChatHeader({
               >
                 Search
               </button>
-              <TopicArchiveItem
+              <ChatPrefMenuItems
                 chat={chat}
-                archiving={archiving}
-                onArchive={() => void archive()}
-              />
+                onDone={(failed) => {
+                  if (!failed) {
+                    setMenuOpen(false);
+                  }
+                }}
+              >
+                <TopicArchiveItem
+                  chat={chat}
+                  archiving={archiving}
+                  onArchive={() => void archive()}
+                />
+              </ChatPrefMenuItems>
+            </div>
+          </>
+        )}
+        {!isTopic && menuOpen && (
+          <>
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label="Close chat menu"
+              onClick={() => setMenuOpen(false)}
+              className="fixed inset-0 z-10 cursor-default"
+            />
+            <div
+              role="menu"
+              aria-label={`Actions for ${chat.title}`}
+              className="absolute top-full right-0 z-20 mt-1 min-w-[196px] rounded-xl border border-border bg-popover py-1 shadow-lg"
+            >
+              <ChatPrefMenuItems chat={chat} onDone={(failed) => !failed && setMenuOpen(false)} />
             </div>
           </>
         )}
@@ -221,7 +245,8 @@ function TopicArchiveItem({
   const myRole = info?.members.find((member) => member.userId === me)?.role;
   // Archive needs a manager (creator or group owner/admin); the detail may
   // not have loaded yet, so the entry hides until the role is known. Never
-  // for General.
+  // for General. It archives the topic for everyone (manager action), so it
+  // sits last under a divider, below the per-user "Archive chat".
   if (chat.topic?.isGeneral === true) {
     return null;
   }
@@ -229,14 +254,18 @@ function TopicArchiveItem({
     return null;
   }
   return (
-    <button
-      type="button"
-      role="menuitem"
-      disabled={archiving}
-      onClick={onArchive}
-      className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none disabled:opacity-50"
-    >
-      {archiving ? 'Archiving…' : 'Archive topic'}
-    </button>
+    <>
+      <div aria-hidden="true" className="mx-3 my-1 border-t border-border" />
+      <button
+        type="button"
+        role="menuitem"
+        disabled={archiving}
+        aria-label={`Archive topic ${chat.title} for everyone`}
+        onClick={onArchive}
+        className={CHAT_MENU_ITEM_CLASS}
+      >
+        {archiving ? 'Archiving…' : 'Archive topic for everyone'}
+      </button>
+    </>
   );
 }

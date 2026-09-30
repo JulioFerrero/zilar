@@ -55,15 +55,18 @@ import {
   getTopic as getTopicRequest,
   getXmppToken,
   listAis as listAisRequest,
+  listChatPrefs as listChatPrefsRequest,
   listGroupTopics as listGroupTopicsRequest,
   listTopicAis as listTopicAisRequest,
   listTopicMembers as listTopicMembersRequest,
   patchTopic as patchTopicRequest,
+  putChatPref as putChatPrefRequest,
   removeGroupAi as removeGroupAiRequest,
   removeTopicAi as removeTopicAiRequest,
   removeTopicMember as removeTopicMemberRequest,
   setMembersCanCreateTopics as setMembersCanCreateTopicsRequest,
   type ChatEntry,
+  type ChatPref,
   type Contact,
   type CreateTopicInput,
   type GroupDetail,
@@ -71,6 +74,7 @@ import {
   type Me,
   type PatchTopicInput,
   type PublicAi,
+  type PutChatPrefInput,
   type Topic,
   type TopicAi,
   type TopicMember,
@@ -93,6 +97,7 @@ import {
   type MediaTokenShape,
 } from '@/lib/attachments';
 import type { ChatStoreState, ConnectionStatus, DraftState } from './store';
+import { applyChatPrefs, mutedUntilFor } from '@/lib/chatPrefs';
 
 const LAST_READ_PREFIX = 'galena:lastRead:';
 const PREVIEW_HISTORY_MAX = 1;
@@ -158,6 +163,8 @@ export interface ApiClient {
   addTopicAi(topicId: string, aiId: string): Promise<Topic>;
   removeTopicAi(topicId: string, aiId: string): Promise<Topic>;
   setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<GroupDetail>;
+  listChatPrefs(): Promise<ChatPref[]>;
+  putChatPref(chatJid: string, input: PutChatPrefInput): Promise<ChatPref | null>;
 }
 
 export interface StorageLike {
@@ -203,6 +210,8 @@ const realApi: ApiClient = {
   addTopicAi: addTopicAiRequest,
   removeTopicAi: removeTopicAiRequest,
   setMembersCanCreateTopics: setMembersCanCreateTopicsRequest,
+  listChatPrefs: listChatPrefsRequest,
+  putChatPref: putChatPrefRequest,
 };
 
 function readLastRead(storage: StorageLike | null, userId: string): Record<string, string> {
@@ -2065,8 +2074,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     async function refreshChats(): Promise<void> {
       const gen = generation;
       let entries: ChatEntry[];
+      let prefs: ChatPref[];
       try {
-        entries = await api.getChats();
+        [entries, prefs] = await Promise.all([
+          api.getChats(),
+          api.listChatPrefs().catch(() => [] as ChatPref[]),
+        ]);
       } catch {
         return;
       }
@@ -2095,7 +2108,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           };
         });
       // New chats appear at the top; the rest keep their recency order.
-      set({ chats: [...fresh, ...sortByRecency(kept)] });
+      const byJid: Record<string, ChatPref> = {};
+      for (const pref of prefs) {
+        byJid[pref.chatJid.toLowerCase()] = pref;
+      }
+      set({
+        chats: applyChatPrefs([...fresh, ...sortByRecency(kept)], prefs, now().getTime()),
+        chatPrefs: byJid,
+      });
       rememberGroupIds(entries);
       // A topic that disappeared while open (made private, archived, or I was
       // removed) navigates to the group's General topic with a short notice.
@@ -2300,11 +2320,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       let me: Me;
       let entries: ChatEntry[];
       let contacts: Contact[];
+      let prefs: ChatPref[];
       try {
-        [me, entries, contacts] = await Promise.all([
+        [me, entries, contacts, prefs] = await Promise.all([
           api.getMe(),
           api.getChats(),
           api.getContacts(),
+          api.listChatPrefs().catch(() => [] as ChatPref[]),
         ]);
       } catch {
         if (gen === generation) {
@@ -2319,15 +2341,21 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       lastReadUserId = me.id;
       lastRead = readLastRead(storage, me.id);
       rememberGroupIds(entries);
+      const freshRows = entries.flatMap((entry) => summariesFor(entry));
+      const byJid: Record<string, ChatPref> = {};
+      for (const pref of prefs) {
+        byJid[pref.chatJid.toLowerCase()] = pref;
+      }
       set({
         me,
         currentUserId: me.id,
-        chats: mergeWithPainted(
-          get().chats,
-          entries.flatMap((entry) => summariesFor(entry)),
-          cachedUserId === me.id,
+        chats: applyChatPrefs(
+          mergeWithPainted(get().chats, freshRows, cachedUserId === me.id),
+          prefs,
+          now().getTime(),
         ),
         contacts,
+        chatPrefs: byJid,
         chatsState: 'ready',
       });
       startDraftStream(gen);
@@ -2423,6 +2451,81 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
+    // T-0113: pref helpers. `applyPrefs` replaces the pref map and merges it
+    // into the painted list; `updatePref` patches one row optimistically and
+    // rolls back to the previous pref state when the PUT fails.
+    function applyPrefs(prefs: ChatPref[]): void {
+      const byJid: Record<string, ChatPref> = {};
+      for (const pref of prefs) {
+        byJid[pref.chatJid.toLowerCase()] = pref;
+      }
+      set((state) => ({
+        chatPrefs: byJid,
+        chats: applyChatPrefs(state.chats, prefs, now().getTime()),
+      }));
+    }
+
+    async function updatePref(chatId: string, patch: PutChatPrefInput): Promise<void> {
+      const chat = get().chats.find((entry) => entry.id === chatId);
+      if (chat === undefined) {
+        throw new Error('This chat is not available yet.');
+      }
+      const previous = get().chatPrefs;
+      const nowDate = now();
+      const key = chatId.toLowerCase();
+      const optimistic: ChatPref = {
+        chatJid: chatId,
+        mutedUntil:
+          patch.mutedUntil !== undefined ? patch.mutedUntil : (previous[key]?.mutedUntil ?? null),
+        archived:
+          patch.archived !== undefined ? patch.archived : (previous[key]?.archived ?? false),
+        pinnedAt:
+          patch.pinned !== undefined
+            ? patch.pinned
+              ? (previous[key]?.pinnedAt ?? nowDate.toISOString())
+              : null
+            : (previous[key]?.pinnedAt ?? null),
+        updatedAt: nowDate.toISOString(),
+      };
+      const next: Record<string, ChatPref> = { ...previous };
+      if (
+        optimistic.mutedUntil === null &&
+        optimistic.archived === false &&
+        optimistic.pinnedAt === null
+      ) {
+        delete next[key];
+      } else {
+        next[key] = optimistic;
+      }
+      set((state) => ({
+        chatPrefs: next,
+        chats: applyChatPrefs(state.chats, Object.values(next), nowDate.getTime()),
+      }));
+      let saved: ChatPref | null;
+      try {
+        saved = await api.putChatPref(chatId, patch);
+      } catch (error) {
+        // Roll back to the previous prefs and re-merge.
+        set((state) => ({
+          chatPrefs: previous,
+          chats: applyChatPrefs(state.chats, Object.values(previous), now().getTime()),
+        }));
+        throw error;
+      }
+      set((state) => {
+        const merged: Record<string, ChatPref> = { ...get().chatPrefs };
+        if (saved === null) {
+          delete merged[key];
+        } else {
+          merged[key] = saved;
+        }
+        return {
+          chatPrefs: merged,
+          chats: applyChatPrefs(state.chats, Object.values(merged), now().getTime()),
+        };
+      });
+    }
+
     return {
       currentUserId: '',
       me: undefined,
@@ -2434,6 +2537,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       historyStateFor: (chatId) => get().historyState[chatId] ?? 'loading',
       chats: [],
       contacts: [],
+      chatPrefs: {},
       messagesByChat: {},
       reactions: {},
       activeChatId: undefined,
@@ -2951,26 +3055,38 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       createGroup: async (title, memberIds) => {
         const detail = await api.createGroup({ title, memberIds });
-        const entries = await api.getChats();
+        const [entries, prefs] = await Promise.all([
+          api.getChats(),
+          api.listChatPrefs().catch(() => [] as ChatPref[]),
+        ]);
         rememberGroupIds(entries);
         const previous = get().chats;
         const freshRows = entries.flatMap((entry) => summariesFor(entry));
+        const byJid: Record<string, ChatPref> = {};
+        for (const pref of prefs) {
+          byJid[pref.chatJid.toLowerCase()] = pref;
+        }
         set({
-          chats: sortByRecency(
-            freshRows.map((row) => {
-              const before = previous.find((chat) => chat.id === row.id);
-              return before === undefined
-                ? row
-                : {
-                    ...row,
-                    ...(before.lastMessage === undefined
-                      ? {}
-                      : { lastMessage: before.lastMessage }),
-                    unread: before.unread,
-                    ...(before.online === undefined ? {} : { online: before.online }),
-                  };
-            }),
+          chats: applyChatPrefs(
+            sortByRecency(
+              freshRows.map((row) => {
+                const before = previous.find((chat) => chat.id === row.id);
+                return before === undefined
+                  ? row
+                  : {
+                      ...row,
+                      ...(before.lastMessage === undefined
+                        ? {}
+                        : { lastMessage: before.lastMessage }),
+                      unread: before.unread,
+                      ...(before.online === undefined ? {} : { online: before.online }),
+                    };
+              }),
+            ),
+            prefs,
+            now().getTime(),
           ),
+          chatPrefs: byJid,
         });
         const created = entries.find(
           (entry) => entry.kind === 'group' && entry.groupId === detail.id,
@@ -3010,6 +3126,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           historyState: {},
           chats: [],
           contacts: [],
+          chatPrefs: {},
           messagesByChat: {},
           reactions: {},
           edits: {},
@@ -3096,6 +3213,36 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       setSearch: (value) => set({ search: value }),
       setSearchChat: (chatId) => set({ searchChat: chatId }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),
+      refreshChatPrefs: async () => {
+        const gen = generation;
+        let prefs: ChatPref[];
+        try {
+          prefs = await api.listChatPrefs();
+        } catch {
+          return;
+        }
+        if (gen !== generation) {
+          return;
+        }
+        applyPrefs(prefs);
+      },
+      setPinned: async (chatId, pinned) => {
+        await updatePref(chatId, { pinned });
+      },
+      setMuted: async (chatId, duration) => {
+        await updatePref(
+          chatId,
+          duration === null ? { mutedUntil: null } : { mutedUntil: mutedUntilFor(duration, now()) },
+        );
+      },
+      setArchived: async (chatId, archived) => {
+        await updatePref(chatId, { archived });
+        saveChatList();
+      },
+      archivedChats: () =>
+        sortByRecency(
+          get().chats.filter((chat) => chat.archived === true && chat.topic === undefined),
+        ),
     };
   });
 }

@@ -22,9 +22,11 @@ import {
   listAiApprovalRules,
   listAis,
   listAudit,
+  listChatPrefs,
   listConnections,
   listGroupApprovalRules,
   listMachines,
+  putChatPref,
   renameMachine,
   resumeAi,
   revokeApprovalRule,
@@ -72,6 +74,25 @@ describe('mockRequest', () => {
     const contacts = await getContacts();
     expect(contacts.length).toBeGreaterThan(0);
     expect(contacts[0]?.jid).toMatch(/@galena\.test$/);
+  });
+
+  it('stores chat prefs in memory with defaults-delete semantics', async () => {
+    expect(await listChatPrefs()).toEqual([]);
+
+    const pinned = await putChatPref('c-ana', { pinned: true });
+    expect(pinned?.pinnedAt).toBeDefined();
+
+    const muted = await putChatPref('c-ana', { mutedUntil: '2027-01-01T00:00:00.000Z' });
+    expect(muted?.mutedUntil).toBe('2027-01-01T00:00:00.000Z');
+    expect(muted?.pinnedAt).toBe(pinned?.pinnedAt);
+
+    const cleared = await putChatPref('c-ana', {
+      mutedUntil: null,
+      archived: false,
+      pinned: false,
+    });
+    expect(cleared).toBeNull();
+    expect(await listChatPrefs()).toEqual([]);
   });
 
   it('seeds two AIs, one without usage and one at 85% of its daily limit', async () => {

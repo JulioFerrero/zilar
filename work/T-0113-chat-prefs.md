@@ -108,6 +108,24 @@ pnpm build
 - `PUT` response shape: the row on save, `{ prefs: null }` on defaults-delete (a small deviation from a bare `204/200` to let the client drop the row without a refetch).
 - Archiving a group archives its General JID; topics keep their own rows. Web push/native push honouring mute is later work (out of scope), as is mobile UI.
 
+### Round 2 — web half redone on top of T-0111 (topics UI)
+- The server half was left untouched (lead-rebased; two lead fixes noted in the handoff). All work below is `apps/web` + `packages/chat-core`.
+- New files restored from `t0113-orig` and adapted: `components/ChatActionsMenu.tsx` (now exports shared `ChatPrefMenuItems` + `CHAT_MENU_ITEM_CLASS` plus the floating `ChatActionsMenu`), `components/ChatPrefs.test.tsx`, `lib/chatPrefs.ts`, `lib/chatPrefs.test.ts`. `lib/api.ts` regained `ChatPref`/`listChatPrefs`/`putChatPref`; `mock/api.ts` regained the in-memory prefs endpoints.
+- `chat-core/src/types.ts`: added only `archived?`/`pinnedAt?` next to T-0111's `groupId`/`groupTitle`/`topic` fields.
+- Menus combined: the topic header kebab keeps "Topic info" + "Search" (`startChatSearch` untouched), then Pin/Unpin, Mute (duration list + Unmute), "Archive chat"/"Unarchive chat", and last under a divider the manager-only "Archive topic for everyone" (renamed from "Archive topic" so the per-user and manager actions are never confused). Non-topic header kebab now opens the same per-user menu (the info/settings panel stays reachable via the title button). Row menus: `ChatListItem` (DMs/groups) and `TopicRow` both have the hover/focus `…` button with pin icon on pinned rows.
+- List semantics: `groupChats` hides per-user archived DMs/AIs (bottom "Archived (n)" list via `archivedChats()`), while per-user archived topics stay in their group and share the group's existing Archived toggle (manager-archived + per-user in one section, never two). Pinned groups (General row's pref) float first among groups, pinned topics first inside their group with General first among the unpinned, newer pins first. `applyChatPrefs` inherits a group (General) mute into sibling topics unless a topic has its own row (own row only mutes, never archives/pins).
+- Tests: 17 ChatPrefs UI + 7 chatPrefs unit (incl. group-mute inheritance) + 4 realStore prefs + 1 mock api; T-0111 suites (TaskStrip, TopicsSidebar, TopicPanel, ChatList, FolderTabs, api.topics, realStore.topics) all still pass.
+
+### Commands run and real results (round 2)
+- `pnpm install`: pass (already up to date)
+- `pnpm format:check`: pass ("All matched files use Prettier code style!")
+- `pnpm lint`: pass (oxlint clean)
+- `pnpm typecheck`: pass (turbo 10/10)
+- `pnpm --filter @galena/web test --maxWorkers=2`: 69 files passed, 742 passed, exit 0 (the pre-existing `openAtMessage` unhandled rejection from round 1 no longer appears)
+- `pnpm --filter @galena/server test --maxWorkers=2`: 73 files passed, 5 skipped; 1294 passed, 7 skipped (lead's server half, untouched by me)
+- `pnpm build`: pass (2/2 turbo tasks)
+- `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any|as any` in touched source: no hits.
+
 ---
 
 ## Review (written by Claude)

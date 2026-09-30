@@ -15,6 +15,7 @@ import {
   canDeleteMessage,
 } from '@galena/chat-core';
 import type {
+  ChatPref,
   Contact,
   CreateTopicInput,
   GroupDetail,
@@ -22,6 +23,14 @@ import type {
   PatchTopicInput,
   PublicAi,
 } from '@/lib/api';
+import {
+  MUTE_DURATIONS,
+  applyChatPrefs,
+  effectivePrefFor,
+  mutedUntilFor,
+  sortPinnedFirst,
+} from '@/lib/chatPrefs';
+import type { MuteDurationId } from '@/lib/chatPrefs';
 import { classify, cleanFilename, objectUrlFor } from '@/lib/attachments';
 import { sampleVoiceDataUrl } from '@/lib/voice';
 import type { StoreApi } from 'zustand/vanilla';
@@ -146,6 +155,23 @@ export interface ChatStore {
   leaveTopic: (chatId: string) => Promise<void>;
   /** Flips the group's "members can create topics" switch. Rejects on failure. */
   setMembersCanCreateTopics: (chatId: string, allowed: boolean) => Promise<void>;
+  /**
+   * Server chat-preference rows by lowercased chat JID (T-0113). Loaded with
+   * the chat list; mute/archive/pin actions patch one row optimistically and
+   * roll back on failure.
+   */
+  chatPrefs: Record<string, ChatPref>;
+  /** Loads the caller's pref rows and merges them into the chat list. */
+  refreshChatPrefs: () => Promise<void>;
+  /** Pins or unpins a chat/topic. Optimistic with rollback. Rejects on failure. */
+  setPinned: (chatId: string, pinned: boolean) => Promise<void>;
+  /** Mutes a chat/topic for a duration, or unmutes. Optimistic with rollback. */
+  setMuted: (chatId: string, duration: MuteDurationId | null) => Promise<void>;
+  /** Archives or unarchives a chat/topic. Optimistic with rollback. */
+  setArchived: (chatId: string, archived: boolean) => Promise<void>;
+  /** Per-user archived DMs/AI chats/groups (not topics: those hide inside
+   *  their group's own Archived toggle), newest activity first. */
+  archivedChats: () => ChatSummary[];
   typing: Record<string, TypingState>;
   /**
    * Live AI reply drafts by chat id (the AI's bare JID), from
@@ -485,6 +511,81 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       setMembersCanCreateTopics: async () => {
         throw new Error('setMembersCanCreateTopics is not available in the mock store');
       },
+      chatPrefs: {},
+      // Mock mode talks to the in-memory mock API (T-0113): the same merge
+      // and update semantics as the real store, re-merging server truth
+      // after each write.
+      refreshChatPrefs: async () => {
+        try {
+          const { listChatPrefs } = await import('@/lib/api');
+          const prefs = await listChatPrefs();
+          const byJid: Record<string, ChatPref> = {};
+          for (const pref of prefs) {
+            byJid[pref.chatJid.toLowerCase()] = pref;
+          }
+          set((state) => ({
+            chatPrefs: byJid,
+            chats: applyChatPrefs(state.chats, prefs, Date.now()),
+          }));
+        } catch {
+          // Mock prefs are best-effort; the list works without them.
+        }
+      },
+      setPinned: async (chatId, pinned) => {
+        const { putChatPref } = await import('@/lib/api');
+        const saved = await putChatPref(chatId, { pinned });
+        set((state) => {
+          const prefs = { ...state.chatPrefs };
+          if (saved === null) {
+            delete prefs[chatId.toLowerCase()];
+          } else {
+            prefs[chatId.toLowerCase()] = saved;
+          }
+          return {
+            chatPrefs: prefs,
+            chats: applyChatPrefs(state.chats, Object.values(prefs), Date.now()),
+          };
+        });
+      },
+      setMuted: async (chatId, duration) => {
+        const { putChatPref } = await import('@/lib/api');
+        const saved = await putChatPref(
+          chatId,
+          duration === null
+            ? { mutedUntil: null }
+            : { mutedUntil: mutedUntilFor(duration, new Date()) },
+        );
+        set((state) => {
+          const prefs = { ...state.chatPrefs };
+          if (saved === null) {
+            delete prefs[chatId.toLowerCase()];
+          } else {
+            prefs[chatId.toLowerCase()] = saved;
+          }
+          return {
+            chatPrefs: prefs,
+            chats: applyChatPrefs(state.chats, Object.values(prefs), Date.now()),
+          };
+        });
+      },
+      setArchived: async (chatId, archived) => {
+        const { putChatPref } = await import('@/lib/api');
+        const saved = await putChatPref(chatId, { archived });
+        set((state) => {
+          const prefs = { ...state.chatPrefs };
+          if (saved === null) {
+            delete prefs[chatId.toLowerCase()];
+          } else {
+            prefs[chatId.toLowerCase()] = saved;
+          }
+          return {
+            chatPrefs: prefs,
+            chats: applyChatPrefs(state.chats, Object.values(prefs), Date.now()),
+          };
+        });
+      },
+      archivedChats: () =>
+        get().chats.filter((chat) => chat.archived === true && chat.topic === undefined),
       search: '',
       activeFolder: 'all',
       typing: {},
@@ -780,7 +881,13 @@ export function matchesFolder(chat: ChatSummary, folder: FolderId): boolean {
 
 export function visibleChats(state: ChatStoreState): ChatSummary[] {
   const query = state.search.trim().toLowerCase();
+  // Unused by the list itself (it renders `groupChats`), but kept for callers
+  // that need the flat visible rows: per-user archived DMs/AIs are out (they
+  // live in the Archived list); topics stay, grouped or filtered by search.
   return state.chats.filter((chat) => {
+    if (chat.topic === undefined && chat.archived === true) {
+      return false;
+    }
     if (!matchesFolder(chat, state.activeFolder)) {
       return false;
     }
@@ -806,16 +913,26 @@ function groupTitleOf(chat: ChatSummary): string {
 
 /**
  * Folds the flat chat list into sidebar groups: every topic of a group nests
- * under its group header; DMs and AI chats stand alone. General sorts first,
- * then by newest message. Search keeps a group header when any of its topics
- * matches by name. Folders treat a topic like its group (a topic matches when
- * its own row does).
+ * under its group header; DMs and AI chats stand alone. Per-user archived
+ * chats are hidden here (they live in the Archived section). Pinned singles
+ * and pinned groups (via the General room's pref) float to the top, newer
+ * pins first; inside a group, pinned topics float above the rest with
+ * General first among the unpinned. Search keeps a group header when any of
+ * its topics matches by name. Folders treat a topic like its group (a topic
+ * matches when its own row does).
  */
 export function groupChats(state: ChatStoreState): ChatGroup[] {
   const query = state.search.trim().toLowerCase();
   const byGroup = new Map<string, ChatSummary[]>();
   const singles: ChatSummary[] = [];
   for (const chat of state.chats) {
+    // Manager-archived topics never reach the client (the server excludes
+    // them); per-user archived topics stay in their group so the group's own
+    // Archived toggle shows them. Per-user archived DMs/AIs live in the
+    // bottom Archived list instead.
+    if (chat.topic === undefined && chat.archived === true) {
+      continue;
+    }
     if (!matchesFolder(chat, state.activeFolder)) {
       continue;
     }
@@ -845,7 +962,25 @@ export function groupChats(state: ChatStoreState): ChatGroup[] {
   for (const chat of singles) {
     groups.push({ key: `chat:${chat.id}`, title: chat.title, groupId: undefined, topics: [chat] });
   }
-  return groups;
+  return sortGroupsPinnedFirst(groups);
+}
+
+// A group's pin stamp: the General topic's (the pref lives on the General
+// room JID). A singleton group's is its own row's.
+function groupPinTime(group: ChatGroup): number {
+  const general = group.topics.find((topic) => topic.topic?.isGeneral === true);
+  const row = general ?? group.topics[0];
+  return row?.pinnedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+}
+
+function sortGroupsPinnedFirst(groups: ChatGroup[]): ChatGroup[] {
+  if (!groups.some((group) => groupPinTime(group) !== Number.NEGATIVE_INFINITY)) {
+    return groups;
+  }
+  return [...groups].sort((left, right) => {
+    const time = groupPinTime(right) - groupPinTime(left);
+    return time !== 0 ? time : left.title.localeCompare(right.title);
+  });
 }
 
 function topicTime(chat: ChatSummary): number {
@@ -854,6 +989,16 @@ function topicTime(chat: ChatSummary): number {
 
 function sortTopics(topics: ChatSummary[]): ChatSummary[] {
   return [...topics].sort((left, right) => {
+    const leftPinned = left.pinnedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+    const rightPinned = right.pinnedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+    // Pinned topics float above the rest (newer pins first); General stays
+    // first among the unpinned, then the rest by recency.
+    if (leftPinned !== rightPinned) {
+      return rightPinned - leftPinned;
+    }
+    if (leftPinned !== Number.NEGATIVE_INFINITY) {
+      return left.title.localeCompare(right.title);
+    }
     const leftGeneral = left.topic?.isGeneral === true;
     const rightGeneral = right.topic?.isGeneral === true;
     if (leftGeneral !== rightGeneral) {
@@ -865,6 +1010,9 @@ function sortTopics(topics: ChatSummary[]): ChatSummary[] {
 
 export function folderUnread(state: ChatStoreState, folder: FolderId): number {
   return state.chats
-    .filter((chat) => matchesFolder(chat, folder))
+    .filter((chat) => matchesFolder(chat, folder) && !chat.muted)
     .reduce((total, chat) => total + chat.unread, 0);
 }
+
+export { MUTE_DURATIONS, applyChatPrefs, effectivePrefFor, mutedUntilFor, sortPinnedFirst };
+export type { MuteDurationId };

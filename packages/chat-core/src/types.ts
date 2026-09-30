@@ -116,6 +116,14 @@ export interface ChatSummary {
   avatarUrl?: string;
   unread: number;
   muted: boolean;
+  /**
+   * T-0113: per-user archive. Hidden from the main list until unarchived. A
+   * new message never auto-unarchives: archived chats stay archived until
+   * the user unarchives them.
+   */
+  archived?: boolean;
+  /** T-0113: server pin stamp; newer pins sort first. Absent means unpinned. */
+  pinnedAt?: Date;
   lastMessage?: UiMessage;
   online?: boolean;
   onlineCount?: number;

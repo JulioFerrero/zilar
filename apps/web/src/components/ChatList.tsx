@@ -1,4 +1,4 @@
-import { Menu, Loader2 } from 'lucide-react';
+import { Archive, Loader2, Menu } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ChatListItem } from './ChatListItem';
@@ -51,8 +51,10 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const navigate = useNavigate();
   const chats = visibleChats(store);
   const groups = groupChats(store);
+  const archived = store.archivedChats();
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [newTopicGroup, setNewTopicGroup] = useState<string | undefined>(undefined);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedGroups());
   const [archivedOpen, setArchivedOpen] = useState<Set<string>>(() => readArchivedOpen());
@@ -265,39 +267,69 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                 </Button>
               </div>
             )}
-            {chats.length === 0 ? (
+            {chats.length === 0 && archived.length === 0 ? (
               <EmptyState variant="no-chats" onInvite={() => setInviteOpen(true)} />
             ) : (
-              <TopicKeyboardNav activeChatId={activeChatId} groups={groups}>
-                {groups.map((group) =>
-                  group.groupId === undefined ? (
-                    <ChatListItem
-                      key={group.key}
-                      chat={group.topics[0]!}
-                      selected={group.topics[0]!.id === activeChatId}
-                      isWide={isWide}
-                    />
-                  ) : (
-                    <GroupHeaderRow
-                      key={group.key}
-                      groupTitle={group.title}
-                      groupId={group.groupId}
-                      topics={group.topics}
-                      selectedId={activeChatId}
-                      collapsed={collapsed.has(group.groupId)}
-                      onToggleCollapse={() =>
-                        setCollapsed((current) => toggleCollapsedGroup(current, group.groupId!))
-                      }
-                      archivedOpen={archivedOpen.has(group.groupId)}
-                      onToggleArchived={() =>
-                        setArchivedOpen((current) => toggleArchivedOpen(current, group.groupId!))
-                      }
-                      isWide={isWide}
-                      onOpenNewTopic={() => setNewTopicGroup(group.groupId)}
-                    />
-                  ),
+              <>
+                <TopicKeyboardNav activeChatId={activeChatId} groups={groups}>
+                  {groups.map((group) =>
+                    group.groupId === undefined ? (
+                      <ChatListItem
+                        key={group.key}
+                        chat={group.topics[0]!}
+                        selected={group.topics[0]!.id === activeChatId}
+                        isWide={isWide}
+                      />
+                    ) : (
+                      <GroupHeaderRow
+                        key={group.key}
+                        groupTitle={group.title}
+                        groupId={group.groupId}
+                        topics={group.topics}
+                        selectedId={activeChatId}
+                        collapsed={collapsed.has(group.groupId)}
+                        onToggleCollapse={() =>
+                          setCollapsed((current) => toggleCollapsedGroup(current, group.groupId!))
+                        }
+                        archivedOpen={archivedOpen.has(group.groupId)}
+                        onToggleArchived={() =>
+                          setArchivedOpen((current) => toggleArchivedOpen(current, group.groupId!))
+                        }
+                        isWide={isWide}
+                        onOpenNewTopic={() => setNewTopicGroup(group.groupId)}
+                      />
+                    ),
+                  )}
+                </TopicKeyboardNav>
+                {/* Per-user archived chats (T-0113): topics hide inside their
+                    group's own Archived toggle instead; this row covers DMs,
+                    AI chats and legacy groups. */}
+                {archived.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      aria-expanded={showArchived}
+                      onClick={() => setShowArchived((value) => !value)}
+                      className={cn(
+                        'flex shrink-0 items-center gap-2 px-3 py-2 text-left text-[13px] text-muted-foreground hover:text-foreground',
+                        isWide && 'rounded-[12px]',
+                      )}
+                    >
+                      <Archive className="size-4" aria-hidden="true" />
+                      <span className="flex-1">Archived ({archived.length})</span>
+                    </button>
+                    {showArchived &&
+                      archived.map((chat) => (
+                        <ChatListItem
+                          key={chat.id}
+                          chat={chat}
+                          selected={chat.id === activeChatId}
+                          isWide={isWide}
+                        />
+                      ))}
+                  </>
                 )}
-              </TopicKeyboardNav>
+              </>
             )}
             {/* Message hits come after the chat-name matches. `searchChat`
                 scopes "Search only in this chat" from a chat header. */}
