@@ -103,15 +103,42 @@ Web changes, server changes, role-based message permissions beyond what T-0116 b
 - `grep` for `any`/`@ts-ignore`/disable comments in touched non-test source:
   no hits.
 
+### Review round 3 (pre-review round 2: findings 1–2 fixed, nit 3 checked)
+
+1. Roles writes take the group id directly: `create/rename/delete/setMembers`
+   now accept `groupId` (store types, real store, mock store), and the group
+   screen passes its route param — an empty group with zero loaded topic rows
+   can manage roles. Removed the now-unused `groupIdForRolesWrite`. Tests:
+   real-store "writes roles for a group with zero loaded topic rows" (empty
+   chat list, create/assign/delete all hit `g1`) plus mock unknown-group
+   rejection.
+2. `describeRolesError(error, failure)` now takes `'write' | 'load'`: 403 →
+   neutral everywhere; 404 on writes → neutral (same-404 server rule);
+   404 on loads → "This group or role is no longer available. Refresh and
+   try again."; anything else → generic retry lines, never raw server text.
+   Both screens pass the mode at every call site (write saves, load/refresh
+   retries). Unit tests rewritten for the matrix.
+3. Nit (mock approver): read `topics/service.ts` `setTopicRoles` — the
+   approver role must belong to the group but need NOT be attached
+   (lines 794–800). The mock already matches, so no guard added; pinned with
+   a mock test (unattached group role as approver succeeds).
+
+### Commands run and real results (round 3)
+- `pnpm format:check`: pass for all owned files (only warn is the lead's
+  untracked `PREREVIEW.md`, which I must not edit).
+- `pnpm lint` (oxlint): pass. `pnpm typecheck` (turbo 10/10): pass.
+- `pnpm --filter @galena/mobile test --maxWorkers=2`: 45 files passed,
+  2 skipped; 464 passed, 2 skipped, 0 failed.
+- `grep` for `any`/`@ts-ignore`/disable comments in touched non-test source:
+  no hits.
+
 ### Problems, deviations from the spec, open questions
-- Pre-review nit 5 (in-flight Retry resolves instantly; same pre-existing
-  pattern as `ensureGroupDetail`) left as-is per "consider".
-- The Add-roles/approver pickers open on tap, so static markup only pins the
-  entry buttons; row ordering stays covered by the `roles.test.ts` unit
-  tests.
+- Write actions changed signature from `chatId` to `groupId` (both stores +
+  `ChatStoreState`); the only caller is the group screen, updated. Topic
+  actions still resolve via chat row, unchanged.
 - Still not live-checked (no simulator per task rules): needs a human look
-  at the deep-link manager view, the "Checking your role…" state, and the
-  new Retry paths in mock mode.
+  at roles on an empty group, the gone-vs-denied messages, and the Retry
+  paths in mock mode.
 
 ### Blocked / needs a decision
 - None.

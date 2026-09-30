@@ -12,6 +12,9 @@ import {
   sortGroupRoles,
   topicAccessRows,
   topicRoleLabel,
+  ROLE_GONE_MESSAGE,
+  ROLE_LOAD_FAILED_MESSAGE,
+  ROLE_SAVE_FAILED_MESSAGE,
   ROLE_WRITE_DENIED_MESSAGE,
 } from './roles';
 import type { CustomGroupRole } from './roles-api';
@@ -34,16 +37,34 @@ describe('mayManageRoles', () => {
 });
 
 describe('describeRolesError', () => {
-  it('maps 403 and 404 writes to the neutral denied line', () => {
-    expect(describeRolesError({ status: 403, code: 'forbidden' })).toBe(ROLE_WRITE_DENIED_MESSAGE);
-    expect(describeRolesError({ status: 404, code: 'not_found' })).toBe(ROLE_WRITE_DENIED_MESSAGE);
+  it('maps 403 everywhere and 404 on writes to the neutral denied line', () => {
+    expect(describeRolesError({ status: 403, code: 'forbidden' }, 'write')).toBe(
+      ROLE_WRITE_DENIED_MESSAGE,
+    );
+    expect(describeRolesError({ status: 403, code: 'forbidden' }, 'load')).toBe(
+      ROLE_WRITE_DENIED_MESSAGE,
+    );
+    // The server answers the same 404 for unknown and hidden ids, so a
+    // write 404 must not read as "not found".
+    expect(describeRolesError({ status: 404, code: 'not_found' }, 'write')).toBe(
+      ROLE_WRITE_DENIED_MESSAGE,
+    );
   });
 
-  it('passes anything else through', () => {
-    expect(describeRolesError(new Error('offline'))).toBe('offline');
-    expect(describeRolesError({ status: 400, code: 'invalid_request' })).toBe(
-      'Could not save the roles. Try again.',
+  it('maps a 404 on loads to the refreshable gone line', () => {
+    expect(describeRolesError({ status: 404, code: 'not_found' }, 'load')).toBe(ROLE_GONE_MESSAGE);
+  });
+
+  it('never shows raw server messages, only generic retry lines', () => {
+    expect(describeRolesError(new Error('offline'), 'write')).toBe(ROLE_SAVE_FAILED_MESSAGE);
+    expect(describeRolesError(new Error('offline'), 'load')).toBe(ROLE_LOAD_FAILED_MESSAGE);
+    expect(describeRolesError({ status: 400, code: 'invalid_request' }, 'write')).toBe(
+      ROLE_SAVE_FAILED_MESSAGE,
     );
+    expect(describeRolesError({ status: 502, code: 'xmpp_unavailable' }, 'load')).toBe(
+      ROLE_LOAD_FAILED_MESSAGE,
+    );
+    expect(describeRolesError(undefined, 'write')).toBe(ROLE_SAVE_FAILED_MESSAGE);
   });
 });
 

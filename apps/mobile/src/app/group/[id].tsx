@@ -127,22 +127,22 @@ function GroupTopics() {
     [members, groupRoles],
   );
 
-  // Roles writes (T-0137): the store replaces its cache on success, so the
-  // sheet re-renders with server truth. A 403/404 reads as the neutral
-  // denied line, never "not found".
+  // Roles writes (T-0137) take the route's group id directly, so an empty
+  // group with no loaded topic rows still works. The store replaces its
+  // cache on success, so the sheet re-renders with server truth.
   const runRolesWrite = (work: () => Promise<unknown>): Promise<void> => {
     setRolesBusy(true);
     setRolesError('');
     return work()
       .then(() => {})
-      .catch((error: unknown) => setRolesError(describeRolesError(error)))
+      .catch((error: unknown) => setRolesError(describeRolesError(error, 'write')))
       .finally(() => setRolesBusy(false));
   };
 
   const retryRolesLoad = () => {
     setRolesLoadError('');
-    void refreshGroupRoles(groupId).catch(() =>
-      setRolesLoadError('Could not load the roles. Try again.'),
+    void refreshGroupRoles(groupId).catch((error: unknown) =>
+      setRolesLoadError(describeRolesError(error, 'load')),
     );
   };
 
@@ -151,7 +151,7 @@ function GroupTopics() {
     const userIds = held
       ? role.members.filter((holder) => holder.userId !== userId).map((holder) => holder.userId)
       : [...role.members.map((holder) => holder.userId), userId];
-    return runRolesWrite(() => setGroupRoleMembers(groupChatId, role.id, userIds));
+    return runRolesWrite(() => setGroupRoleMembers(groupId, role.id, userIds));
   };
   const notice =
     topicNotice !== undefined && topicNotice.groupId === groupId ? topicNotice.message : undefined;
@@ -437,11 +437,9 @@ function GroupTopics() {
         busy={rolesBusy}
         error={rolesError}
         onRetryRoles={retryRolesLoad}
-        onCreateRole={(name) => runRolesWrite(() => createGroupRole(groupChatId, name))}
-        onRenameRole={(roleId, name) =>
-          runRolesWrite(() => renameGroupRole(groupChatId, roleId, name))
-        }
-        onDeleteRole={(roleId) => runRolesWrite(() => deleteGroupRole(groupChatId, roleId))}
+        onCreateRole={(name) => runRolesWrite(() => createGroupRole(groupId, name))}
+        onRenameRole={(roleId, name) => runRolesWrite(() => renameGroupRole(groupId, roleId, name))}
+        onDeleteRole={(roleId) => runRolesWrite(() => deleteGroupRole(groupId, roleId))}
         onToggleMember={toggleRoleMember}
         onClose={() => {
           if (!rolesBusy) {

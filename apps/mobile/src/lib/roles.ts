@@ -10,31 +10,53 @@ import type { ApproverRole, TopicRole, TopicVisibility } from './topics-api';
  * coverage.
  */
 
-/** A 403/404 from any roles or topic-roles write reads the same to a
- *  stranger or a plain member: a neutral message that reveals nothing. */
+/** A 403 on any roles call reads the same to a stranger or a plain member:
+ *  a neutral message that reveals nothing. */
 export const ROLE_WRITE_DENIED_MESSAGE = 'Only group owners and admins can change roles.';
+
+/** A 404 on a roles load: the group or role is gone (deleted elsewhere, a
+ *  stale cache). Retryable, so it says to refresh. */
+export const ROLE_GONE_MESSAGE =
+  'This group or role is no longer available. Refresh and try again.';
+
+/** Any other roles write failure: generic, never the raw server message. */
+export const ROLE_SAVE_FAILED_MESSAGE = 'Could not save the roles. Try again.';
+
+/** Any other roles load failure: generic, never the raw server message. */
+export const ROLE_LOAD_FAILED_MESSAGE = 'Could not load the roles. Try again.';
+
+export type RolesFailure = 'write' | 'load';
 
 /** Whether the viewer manages roles (create, rename, delete, assign). */
 export function mayManageRoles(viewerRole: 'owner' | 'admin' | 'member' | undefined): boolean {
   return viewerRole === 'owner' || viewerRole === 'admin';
 }
 
+function rolesStatus(error: unknown): number | undefined {
+  if (typeof error === 'object' && error !== null && 'status' in error) {
+    const status = error.status;
+    return typeof status === 'number' ? status : undefined;
+  }
+  return undefined;
+}
+
 /**
- * Maps a roles/topic-roles store failure to the message the UI shows. A
- * 403 or 404 on a write is a permission problem (never "not found": the
- * server answers the same 404 for unknown and for hidden ids), so it reads
- * as the neutral denied line; anything else passes through.
+ * Maps a roles/topic-roles store failure to the message the UI shows. A 403
+ * is always the neutral denied line, and so is a 404 on a write (the server
+ * answers the same 404 for unknown and for hidden ids, so "not found" would
+ * leak). A 404 on a load means the thing is genuinely gone, so it reads as
+ * refresh-and-retry. Anything else is a generic retry line — raw server
+ * messages never reach the UI.
  */
-export function describeRolesError(error: unknown): string {
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'status' in error &&
-    (error.status === 403 || error.status === 404)
-  ) {
+export function describeRolesError(error: unknown, failure: RolesFailure): string {
+  const status = rolesStatus(error);
+  if (status === 403) {
     return ROLE_WRITE_DENIED_MESSAGE;
   }
-  return error instanceof Error ? error.message : 'Could not save the roles. Try again.';
+  if (status === 404) {
+    return failure === 'write' ? ROLE_WRITE_DENIED_MESSAGE : ROLE_GONE_MESSAGE;
+  }
+  return failure === 'write' ? ROLE_SAVE_FAILED_MESSAGE : ROLE_LOAD_FAILED_MESSAGE;
 }
 
 /** "Designers (3)": an attached role with its holder count. */

@@ -1216,16 +1216,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    // The group id behind one chat row for a roles write (create, rename,
-    // delete, assign). Rejects for a chat with no group behind it.
-    function groupIdForRolesWrite(chatId: string): string {
-      const groupId = groupIdForChat(chatId);
-      if (groupId === undefined) {
-        throw new Error('This group is not available yet.');
-      }
-      return groupId;
-    }
-
     // Remembers the roles of one full topic response (create/patch/roles),
     // replacing whatever was cached. The response is the server truth, so a
     // private-to-public flip clears the entry instead of leaving it stale.
@@ -2525,15 +2515,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       refreshGroupRoles: (groupId) => {
         return ensureGroupRoles(groupId, true);
       },
-      createGroupRole: async (chatId, name) => {
-        const groupId = groupIdForRolesWrite(chatId);
+      createGroupRole: async (groupId, name) => {
         const role = await rolesApi.createGroupRole(groupId, name);
         groupRolesById.set(groupId, [...(groupRolesById.get(groupId) ?? []), role]);
         set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
         return role;
       },
-      renameGroupRole: async (chatId, roleId, name) => {
-        const groupId = groupIdForRolesWrite(chatId);
+      renameGroupRole: async (groupId, roleId, name) => {
         const role = await rolesApi.renameGroupRole(groupId, roleId, name);
         groupRolesById.set(
           groupId,
@@ -2542,8 +2530,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
         return role;
       },
-      deleteGroupRole: async (chatId, roleId) => {
-        const groupId = groupIdForRolesWrite(chatId);
+      deleteGroupRole: async (groupId, roleId) => {
         await rolesApi.deleteGroupRole(groupId, roleId);
         groupRolesById.set(
           groupId,
@@ -2551,8 +2538,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         );
         set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
       },
-      setGroupRoleMembers: async (chatId, roleId, userIds) => {
-        const groupId = groupIdForRolesWrite(chatId);
+      setGroupRoleMembers: async (groupId, roleId, userIds) => {
         const role = await rolesApi.setGroupRoleMembers(groupId, roleId, userIds);
         const known = groupRolesById.get(groupId);
         groupRolesById.set(

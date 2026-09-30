@@ -462,9 +462,8 @@ export function createChatStore(
         return groupId === 'g-devteam' ? mockRoles.map((role) => ({ ...role })) : undefined;
       },
       refreshGroupRoles: async () => {},
-      createGroupRole: async (chatId, name) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (chat?.groupId !== 'g-devteam') {
+      createGroupRole: async (groupId, name) => {
+        if (groupId !== 'g-devteam') {
           throw new Error('This group is not available yet.');
         }
         const trimmed = name.trim().slice(0, 30);
@@ -484,7 +483,7 @@ export function createChatStore(
         bumpRolesRevision();
         return { ...role };
       },
-      renameGroupRole: async (_chatId, roleId, name) => {
+      renameGroupRole: async (_groupId, roleId, name) => {
         const role = findMockRole(roleId);
         if (role === undefined) {
           throw new Error('That role is no longer here.');
@@ -505,7 +504,7 @@ export function createChatStore(
         bumpRolesRevision();
         return { ...role, members: [...role.members] };
       },
-      deleteGroupRole: async (_chatId, roleId) => {
+      deleteGroupRole: async (_groupId, roleId) => {
         const index = mockRoles.findIndex((role) => role.id === roleId);
         if (index === -1) {
           throw new Error('That role is no longer here.');
@@ -519,7 +518,7 @@ export function createChatStore(
         }
         bumpRolesRevision();
       },
-      setGroupRoleMembers: async (_chatId, roleId, userIds) => {
+      setGroupRoleMembers: async (_groupId, roleId, userIds) => {
         const role = findMockRole(roleId);
         if (role === undefined) {
           throw new Error('That role is no longer here.');

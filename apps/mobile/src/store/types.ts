@@ -259,18 +259,20 @@ export interface ChatStoreState {
   groupRoles: (groupId: string) => CustomGroupRole[] | undefined;
   /** Loads the custom roles of one group id. Rejects on failure. */
   refreshGroupRoles: (groupId: string) => Promise<void>;
-  /** Creates a role in the group that owns `chatId`. Rejects on failure. */
-  createGroupRole: (chatId: string, name: string) => Promise<CustomGroupRole>;
-  /** Renames a role. Rejects on failure. */
-  renameGroupRole: (chatId: string, roleId: string, name: string) => Promise<CustomGroupRole>;
-  /** Deletes a role everywhere. Rejects on failure. */
-  deleteGroupRole: (chatId: string, roleId: string) => Promise<void>;
+  /** Creates a role in `groupId` (the screen passes its route param, so an
+   *  empty group with no loaded topic rows still works). Rejects on failure. */
+  createGroupRole: (groupId: string, name: string) => Promise<CustomGroupRole>;
+  /** Renames a role in `groupId`. Rejects on failure. */
+  renameGroupRole: (groupId: string, roleId: string, name: string) => Promise<CustomGroupRole>;
+  /** Deletes a role in `groupId` everywhere. Rejects on failure. */
+  deleteGroupRole: (groupId: string, roleId: string) => Promise<void>;
   /**
-   * Replaces a role's holder set (the server diffs inside a transaction, so
-   * the full desired member list goes over the wire). Rejects on failure.
+   * Replaces a role's holder set in `groupId` (the server diffs inside a
+   * transaction, so the full desired member list goes over the wire).
+   * Rejects on failure.
    */
   setGroupRoleMembers: (
-    chatId: string,
+    groupId: string,
     roleId: string,
     userIds: string[],
   ) => Promise<CustomGroupRole>;

@@ -244,28 +244,51 @@ describe('real store group roles (T-0137)', () => {
     expect(store.getState().groupRoles('t-hiring@rooms.galena.test')).toBeUndefined();
   });
 
-  it('creates, renames and deletes roles against the group behind the chat', async () => {
-    const { store } = setup();
+  it('creates, renames and deletes roles in the group id directly', async () => {
+    const { store, roles } = setup();
     store.getState().start();
     await flush();
     await store.getState().refreshGroupRoles('g1');
 
-    const created = await store.getState().createGroupRole('t-hiring@rooms.galena.test', 'QA');
+    const created = await store.getState().createGroupRole('g1', 'QA');
     expect(created).toMatchObject({ id: 'role-new', name: 'QA' });
+    expect(vi.mocked(roles.createGroupRole)).toHaveBeenCalledWith('g1', 'QA');
     expect(store.getState().groupRoles('g1')).toHaveLength(3);
 
-    const renamed = await store
-      .getState()
-      .renameGroupRole('t-hiring@rooms.galena.test', 'role-new', 'Quality');
+    const renamed = await store.getState().renameGroupRole('g1', 'role-new', 'Quality');
     expect(renamed.name).toBe('Quality');
 
-    await store.getState().deleteGroupRole('t-hiring@rooms.galena.test', 'role-new');
+    await store.getState().deleteGroupRole('g1', 'role-new');
     expect(
       store
         .getState()
         .groupRoles('g1')
         ?.some((entry) => entry.id === 'role-new'),
     ).toBe(false);
+  });
+
+  it('writes roles for a group with zero loaded topic rows', async () => {
+    // The group screen passes its route param straight through, so an empty
+    // group (no chat rows loaded, e.g. fresh boot before the chat list
+    // arrives) can still manage roles. Regression test for the
+    // chat-row-routed write path, which threw "not available yet" here.
+    const { store, api, roles } = setup();
+    vi.mocked(api.getChats).mockResolvedValue([]);
+    store.getState().start();
+    await flush();
+    expect(store.getState().chats).toEqual([]);
+
+    const created = await store.getState().createGroupRole('g1', 'QA');
+    expect(created).toMatchObject({ id: 'role-new', name: 'QA' });
+    expect(vi.mocked(roles.createGroupRole)).toHaveBeenCalledWith('g1', 'QA');
+
+    const assigned = (await store
+      .getState()
+      .setGroupRoleMembers('g1', 'role-designers', ['u-me'])) as CustomGroupRole;
+    expect(assigned.members).toEqual([{ userId: 'u-me', name: 'u-me' }]);
+
+    await store.getState().deleteGroupRole('g1', 'role-designers');
+    expect(vi.mocked(roles.deleteGroupRole)).toHaveBeenCalledWith('g1', 'role-designers');
   });
 
   it('sends the full desired member list on assignment', async () => {
@@ -276,9 +299,7 @@ describe('real store group roles (T-0137)', () => {
 
     const updated = (await store
       .getState()
-      .setGroupRoleMembers('t-hiring@rooms.galena.test', 'role-designers', [
-        'u-me',
-      ])) as CustomGroupRole;
+      .setGroupRoleMembers('g1', 'role-designers', ['u-me'])) as CustomGroupRole;
     expect(updated.members).toEqual([{ userId: 'u-me', name: 'u-me' }]);
     expect(roles.bodies).toEqual([{ userIds: ['u-me'] }]);
     expect(
@@ -287,16 +308,6 @@ describe('real store group roles (T-0137)', () => {
         .groupRoles('g1')
         ?.find((entry) => entry.id === 'role-designers')?.members,
     ).toEqual([{ userId: 'u-me', name: 'u-me' }]);
-  });
-
-  it('rejects role writes for a chat with no group behind it', async () => {
-    const { store } = setup();
-    store.getState().start();
-    await flush();
-
-    await expect(store.getState().createGroupRole('missing', 'QA')).rejects.toThrow(
-      'This group is not available yet.',
-    );
   });
 });
 

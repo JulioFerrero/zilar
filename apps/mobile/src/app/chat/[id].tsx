@@ -186,12 +186,14 @@ function Chat() {
   const refreshInfoRoles = () => {
     setInfoRolesError('');
     setInfoGroupRolesError('');
-    void refreshTopicRoles(chat.id).catch(() =>
-      setInfoRolesError('Could not load the roles. Try again.'),
+    // Loads map a 404 to "no longer available" (refreshable) and never show
+    // raw server messages; a 403 stays the neutral denied line.
+    void refreshTopicRoles(chat.id).catch((error: unknown) =>
+      setInfoRolesError(describeRolesError(error, 'load')),
     );
     if (chatGroupId !== undefined) {
-      void refreshGroupRoles(chatGroupId).catch(() =>
-        setInfoGroupRolesError('Could not load the group roles. Try again.'),
+      void refreshGroupRoles(chatGroupId).catch((error: unknown) =>
+        setInfoGroupRolesError(describeRolesError(error, 'load')),
       );
     }
   };
@@ -205,15 +207,16 @@ function Chat() {
     void listTopicAis(chat.id)
       .then(setInfoAis)
       .catch(() => setInfoAis([]));
-    // The access picker reads the attached roles fresh (a 403/404 reads as
-    // the neutral denied line, never "not found").
+    // The access picker reads the attached roles fresh.
     refreshInfoRoles();
   };
 
   const saveTopicRoles = (roleIds: string[], approverRoleId: string | null): void => {
     setInfoRolesError('');
+    // Writes map 403 and 404 to the neutral denied line (the server answers
+    // the same 404 for unknown and hidden ids); nothing raw reaches the UI.
     void setTopicRoles(chat.id, { roleIds, approverRoleId }).catch((error: unknown) =>
-      setInfoRolesError(describeRolesError(error)),
+      setInfoRolesError(describeRolesError(error, 'write')),
     );
   };
 
@@ -419,15 +422,15 @@ function Chat() {
         }
         onRetryRoles={() => {
           setInfoRolesError('');
-          void refreshTopicRoles(chat.id).catch(() =>
-            setInfoRolesError('Could not load the roles. Try again.'),
+          void refreshTopicRoles(chat.id).catch((error: unknown) =>
+            setInfoRolesError(describeRolesError(error, 'load')),
           );
         }}
         onRetryGroupRoles={() => {
           setInfoGroupRolesError('');
           if (chatGroupId !== undefined) {
-            void refreshGroupRoles(chatGroupId).catch(() =>
-              setInfoGroupRolesError('Could not load the group roles. Try again.'),
+            void refreshGroupRoles(chatGroupId).catch((error: unknown) =>
+              setInfoGroupRolesError(describeRolesError(error, 'load')),
             );
           }
         }}
