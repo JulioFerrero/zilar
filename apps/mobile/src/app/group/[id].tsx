@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft, Plus, Search } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -53,6 +53,15 @@ function GroupTopics() {
   const [composerError, setComposerError] = useState('');
   const [sheetBusy, setSheetBusy] = useState(false);
   const [sheetError, setSheetError] = useState('');
+  const [composerAiError, setComposerAiError] = useState('');
+
+  // The detail is keyed by group id (not chat id): load it on mount so the
+  // member list, the "+" gate and the AI count resolve even on first visit.
+  useEffect(() => {
+    if (groupId !== '') {
+      refreshGroupDetail(groupId);
+    }
+  }, [groupId, refreshGroupDetail]);
 
   const topics = useMemo(() => topicsOfGroup(chats, groupId), [chats, groupId]);
   const general = topics.find((topic) => topic.topic?.isGeneral === true);
@@ -100,20 +109,36 @@ function GroupTopics() {
       .finally(() => setSheetBusy(false));
   };
 
+  // Creates the topic, then adds one AI per tick. The sheet stays open
+  // until the topic exists: a `createTopic` failure shows its error in the
+  // open sheet, and a failed AI add names the AI (the topic still exists, so
+  // the user lands in it and can retry from the topic panel).
   const create = (input: NewTopicInput) => {
     setComposerBusy(true);
     setComposerError('');
+    setComposerAiError('');
+    const aiNames = new Map(myAisInGroup.map((ai) => [ai.aiId, ai.name]));
     void createTopic(groupChatId, {
       name: input.name,
       kind: input.kind,
       visibility: input.visibility,
       ...(input.memberIds === undefined ? {} : { memberIds: input.memberIds }),
     })
-      .then((chatId) => {
+      .then(async (chatId) => {
+        const failed: string[] = [];
         for (const aiId of input.aiIds) {
-          void addTopicAi(chatId, aiId).catch(() => {});
+          try {
+            await addTopicAi(chatId, aiId);
+          } catch {
+            failed.push(aiNames.get(aiId) ?? 'An AI');
+          }
         }
         setComposerOpen(false);
+        if (failed.length > 0) {
+          setComposerAiError(
+            `Topic created, but could not add: ${failed.join(', ')}. Add them from the topic panel.`,
+          );
+        }
         router.push({ pathname: '/chat/[id]', params: { id: chatId } });
       })
       .catch(() => setComposerError('Could not create the topic. Try again.'))
@@ -149,6 +174,11 @@ function GroupTopics() {
       {notice !== undefined ? (
         <View className="border-b border-divider bg-surface px-4 py-2">
           <Text className="text-center text-[13px] text-muted-foreground">{notice}</Text>
+        </View>
+      ) : null}
+      {composerAiError !== '' ? (
+        <View className="border-b border-divider bg-surface px-4 py-2">
+          <Text className="text-center text-[13px] text-danger">{composerAiError}</Text>
         </View>
       ) : null}
 
@@ -194,7 +224,7 @@ function GroupTopics() {
           accessibilityLabel="New topic"
           onPress={() => {
             setComposerError('');
-            refreshGroupDetail(groupChatId);
+            setComposerAiError('');
             setComposerOpen(true);
           }}
           className="absolute bottom-6 right-5 h-14 w-14 items-center justify-center rounded-[18px] bg-accent active:opacity-90"

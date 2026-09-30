@@ -289,8 +289,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const pendingOutgoing = new Map<string, string[]>();
     const messageAliases = new Map<string, string>();
     const groupIds = new Map<string, string>();
-    // chatId -> the group detail (people + roles + AIs), loaded on demand by
-    // the topics screen and the task strip owner picker.
+    // groupId -> the group detail (people + roles + AIs), loaded on demand by
+    // the topics screen and the task strip owner picker. Keyed by group id
+    // (not chat id) so every topic row of a group shares one entry; the one
+    // exception is a legacy group row, whose own chat id doubles as the key
+    // until the server answers (see `rememberGroupIds`).
     const groupDetails = new Map<string, GroupDetail>();
     const loadingGroupDetails = new Set<string>();
     // The 60 s active-app poll for new/removed topics (T-0112), plus its
@@ -1121,34 +1124,38 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    // Loads the group detail (people + roles + AIs) of a chat once, so the
-    // topics screen, the owner picker and the role checks can read it.
-    async function ensureGroupDetail(chatId: string, force = false): Promise<void> {
-      if (loadingGroupDetails.has(chatId)) {
+    // Loads the group detail (people + roles + AIs) of a group once, so the
+    // topics screen, the owner picker and the role checks can read it. The
+    // detail is published through `set()` so `groupDetail` selectors re-fire.
+    async function ensureGroupDetail(groupId: string, force = false): Promise<void> {
+      if (groupId === '') {
         return;
       }
-      if (!force && groupDetails.has(chatId)) {
+      if (loadingGroupDetails.has(groupId)) {
         return;
       }
-      const groupId =
-        groupIds.get(chatId) ?? get().chats.find((entry) => entry.id === chatId)?.groupId;
-      if (groupId === undefined) {
+      if (!force && groupDetails.has(groupId)) {
         return;
       }
-      loadingGroupDetails.add(chatId);
+      loadingGroupDetails.add(groupId);
       try {
         const detail = await api.getGroup(groupId);
-        groupDetails.set(chatId, detail);
-        for (const row of get().chats) {
-          if (row.groupId === groupId && !groupDetails.has(row.id)) {
-            groupDetails.set(row.id, detail);
-          }
-        }
+        groupDetails.set(groupId, detail);
+        // Publishing a monotonically increasing revision notifies every
+        // `groupDetail(groupId)` subscriber, including screens mounted before
+        // the fetch resolved.
+        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
       } catch {
         // The sheet falls back to an empty member list and hides creation.
       } finally {
-        loadingGroupDetails.delete(chatId);
+        loadingGroupDetails.delete(groupId);
       }
+    }
+
+    // The group id behind one chat row: topic rows carry it directly, legacy
+    // group rows resolve it through the remembered `/api/chats` entries.
+    function groupIdForChat(chatId: string): string | undefined {
+      return groupIds.get(chatId) ?? get().chats.find((entry) => entry.id === chatId)?.groupId;
     }
 
     // Loads the member names of a group once per chat, so a typing indicator
@@ -1597,7 +1604,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           continue;
         }
         void ensureGroupMembers(chat.id);
-        void ensureGroupDetail(chat.id);
+        {
+          const groupId = groupIdForChat(chat.id);
+          if (groupId !== undefined) {
+            void ensureGroupDetail(groupId);
+          }
+        }
         try {
           await current.joinRoom(chat.id, nick(me));
         } catch {
@@ -2074,7 +2086,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         });
         recordRead(chatId, lastRead[chatId]);
         void ensureGroupMembers(chatId);
-        void ensureGroupDetail(chatId);
+        {
+          const groupId = groupIdForChat(chatId);
+          if (groupId !== undefined) {
+            void ensureGroupDetail(groupId);
+          }
+        }
         if (pendingOpenChatId !== undefined && pendingOpenChatId !== chatId) {
           clearSupersededMarker(pendingOpenChatId);
         }
@@ -2299,9 +2316,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       topicNotice: undefined,
       dismissTopicNotice: () => set({ topicNotice: undefined }),
-      groupDetail: (chatId) => groupDetails.get(chatId),
-      refreshGroupDetail: (chatId) => {
-        void ensureGroupDetail(chatId, true);
+      groupDetailsRevision: 0,
+      groupDetail: (groupId) => {
+        // Reading the revision subscribes the selector to detail loads.
+        void get().groupDetailsRevision;
+        return groupDetails.get(groupId);
+      },
+      refreshGroupDetail: (groupId) => {
+        void ensureGroupDetail(groupId, true);
       },
       ownedAis: deps.ownedAis ?? [],
       muteChat: (chatId, muted) =>

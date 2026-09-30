@@ -84,12 +84,20 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install`: pass (6.9 s).
-- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm format:check`: pass for all owned files (the only warn is the lead's untracked `PREREVIEW.md`, which I must not edit).
 - `pnpm lint`: pass (oxlint clean).
 - `pnpm typecheck`: pass (turbo 10/10).
-- `pnpm --filter @galena/mobile test --maxWorkers=2`: 36 files passed, 2 skipped; 395 passed, 2 skipped.
-- `pnpm build`: pass (2/2 turbo tasks).
+- `pnpm --filter @galena/mobile test --maxWorkers=2`: 38 files passed, 2 skipped; 403 passed, 2 skipped.
+- `pnpm build`: pass (2/2 turbo tasks, after moving the hook-guard test out of `src/app` — see below).
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any` in touched non-test source: no hits.
+
+### Round 2 (lead review fixes)
+1. Topics screen never got its group detail (must-fix): `groupDetail`/`refreshGroupDetail` are now keyed by **group id** (documented in `store/types.ts`), the screen loads the detail on mount via `refreshGroupDetail(groupId)`, the real store publishes loads through `set()` (`groupDetailsRevision`, so selectors re-fire), and the mock returns the Dev team detail for `'g-devteam'`. The chat screen's `groupDetail(chatId)` call now resolves the chat's `groupId` first. Tests: `real-store.topics.test.ts` ("loads the group detail by group id and publishes it to selectors": eager boot load, revision bump, chat id resolves nothing) and new `store/topics-screen.test.ts` (detail by group id, "+" gate for owner vs member/switch, mock create + open flow, owner-name patch). Both fail without the fix (verified by stashing: pre-fix code fails the detail and create tests).
+2. Hook after early return (must-fix): the topicNotice redirect effect in `chat/[id].tsx` now lives above the `!chat` return (guarded by `chat?.topic`). Tested by `lib/hooks-guard.ts` + `hooks-guard.test.ts`: the pre-fix shape reports `['useEffect(']`, the fixed shape `[]` (verified failing on the pre-fix file). Note: the first version of this test lived in `src/app` and used `node:fs`, which broke `expo export` (Metro bundles `src/app`); the guard is now a pure function in `lib` with inline sources, and both screens verified manually to have zero hooks after their early returns.
+3. Lying test name: `real-store.topics.test.ts` case renamed to "applies a strip patch on success and leaves the row unchanged on failure" and now asserts the row's status is unchanged after a rejected patch (still no optimistic update, per the original Report).
+4. Silent partial failure: the create sheet stays open until the topic exists (create errors show in the open sheet); failed AI adds now name the AIs ("Topic created, but could not add: … Add them from the topic panel.") instead of being swallowed.
+5. Nits: removed the dead `optionalString` helper in `lib/topics-api.ts`; removed the unused `listGroupTopics` from `TopicsApi` (refresh goes through `/api/chats`; unit coverage for the remaining client kept); mock `patchTopic` keeps the existing owner display name when re-setting the same owner instead of writing the id into `name`.
+- Incidental fix found while testing: `mock/index.ts` appended topic chats without removing the legacy `dev-team` seed, leaving two `dev-team` rows (the legacy one shadowed group resolution in mock create). It now replaces the legacy row like the web mock (16 chats: 9 seeds + 7 topics); `chat-store.test.ts` counts updated (16/16/16, `no-messages` still 10).
 
 ### Problems, deviations from the spec, open questions
 - The Claude artifact link is not fetchable from this environment, so Mobile 1 / Mobile 2 follow the text spec + ui-style.md tokens/depth recipes exactly instead of pixel-matching the boards.

@@ -121,13 +121,9 @@ describe('createTopicsApi', () => {
       if (url.endsWith('/ais') && (init?.method ?? 'GET') === 'GET') {
         return jsonResponse({ ais: [{ id: 'dev-1', name: 'Dev-1' }] });
       }
-      if (url.endsWith('/topics') && (init?.method ?? 'GET') === 'GET') {
-        return jsonResponse({ topics: [topicRow()] });
-      }
       return jsonResponse(topicRow());
     });
 
-    await expect(api.listGroupTopics('g1')).resolves.toHaveLength(1);
     await expect(api.createTopic('g1', { name: 'Checkout bug' })).resolves.toMatchObject({
       id: 't-1',
     });
@@ -144,7 +140,6 @@ describe('createTopicsApi', () => {
     const switchApi = switchApiFor(async () => jsonResponse({ membersCanCreateTopics: true }));
     await expect(switchApi.setMembersCanCreateTopics('g1', true)).resolves.toBe(true);
 
-    expect(calls).toContain('GET http://127.0.0.1:3188/api/groups/g1/topics');
     expect(calls).toContain('POST http://127.0.0.1:3188/api/groups/g1/topics');
     expect(calls).toContain('GET http://127.0.0.1:3188/api/topics/t-1');
     expect(calls).toContain('PATCH http://127.0.0.1:3188/api/topics/t-1');

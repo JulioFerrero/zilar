@@ -68,7 +68,6 @@ export interface PatchTopicInput {
 }
 
 export interface TopicsApi {
-  listGroupTopics(groupId: string): Promise<Topic[]>;
   createTopic(groupId: string, input: CreateTopicInput): Promise<Topic>;
   getTopic(id: string): Promise<Topic>;
   patchTopic(id: string, input: PatchTopicInput): Promise<Topic>;
@@ -100,10 +99,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isString(value: unknown): value is string {
   return typeof value === 'string';
-}
-
-function optionalString(value: unknown): string | undefined {
-  return isString(value) ? value : undefined;
 }
 
 function nullableString(value: unknown): string | null | undefined {
@@ -315,23 +310,6 @@ export function createTopicsApi(
   });
 
   return {
-    async listGroupTopics(groupId) {
-      const body = await withToken(
-        `/api/groups/${encodeURIComponent(groupId)}/topics`,
-        { method: 'GET' },
-        (value) => {
-          if (!isRecord(value) || !Array.isArray(value['topics'])) return null;
-          const topics: Topic[] = [];
-          for (const entry of value['topics']) {
-            const topic = parseTopic(entry);
-            if (topic === null) return null;
-            topics.push(topic);
-          }
-          return topics;
-        },
-      );
-      return body as Topic[];
-    },
     async createTopic(groupId, input) {
       const body = await withToken(
         `/api/groups/${encodeURIComponent(groupId)}/topics`,
@@ -456,5 +434,3 @@ export function glyphForTopicName(name: string): string {
   const first = [...name.trim()][0] ?? 'G';
   return first.toUpperCase();
 }
-
-export { optionalString };

@@ -48,7 +48,10 @@ function Chat() {
   const removeTopicMember = useChatStore((state) => state.removeTopicMember);
   const listTopicMembers = useChatStore((state) => state.listTopicMembers);
   const listTopicAis = useChatStore((state) => state.listTopicAis);
-  const groupDetail = useChatStore((state) => state.groupDetail(chatId));
+  const chatGroupId = useChatStore(
+    (state) => state.chats.find((item) => item.id === chatId)?.groupId,
+  );
+  const groupDetail = useChatStore((state) => state.groupDetail(chatGroupId ?? ''));
   const me = useChatStore((state) => state.me);
   const topicNotice = useChatStore((state) => state.topicNotice);
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
@@ -77,6 +80,20 @@ function Chat() {
       cancelEdit();
     };
   }, [chatId, cancelEdit]);
+
+  // A topic that disappears while open goes back to the topics screen with a
+  // short notice that never names the topic (the store sets it on refresh).
+  // The effect lives above the `!chat` early return on purpose: every hook
+  // runs on every render, whether or not the chat has loaded yet.
+  const redirectGroupId =
+    chat?.topic !== undefined && topicNotice !== undefined && chat.groupId === topicNotice.groupId
+      ? topicNotice.groupId
+      : undefined;
+  useEffect(() => {
+    if (redirectGroupId !== undefined) {
+      router.replace({ pathname: '/group/[id]', params: { id: redirectGroupId } });
+    }
+  }, [redirectGroupId, router]);
 
   if (!chat) {
     // The chats are still arriving: this is a loading state, not "not found".
@@ -154,15 +171,6 @@ function Chat() {
       .then(setInfoAis)
       .catch(() => setInfoAis([]));
   };
-
-  // A topic that disappears while open goes back to the topics screen with a
-  // short notice that never names the topic (the store sets it on refresh).
-  useEffect(() => {
-    if (isTopic && topicNotice !== undefined && chat.groupId === topicNotice.groupId) {
-      const groupId = topicNotice.groupId;
-      router.replace({ pathname: '/group/[id]', params: { id: groupId } });
-    }
-  }, [isTopic, topicNotice, chat.groupId, router]);
 
   if (!isTopic) {
     return (

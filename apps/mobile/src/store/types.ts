@@ -171,10 +171,19 @@ export interface ChatStoreState {
   topicNotice: { groupId: string; message: string } | undefined;
   /** Dismisses the topic notice (or clears a stale one for another group). */
   dismissTopicNotice: () => void;
-  /** The group detail (people + roles + AIs) of one chat, when loaded. */
-  groupDetail: (chatId: string) => GroupDetail | undefined;
-  /** Loads the group detail of one chat (people + roles + AIs). */
-  refreshGroupDetail: (chatId: string) => void;
+  /**
+   * Bumped every time a group detail finishes loading, so `groupDetail`
+   * selectors re-fire for screens mounted before the fetch resolved.
+   */
+  groupDetailsRevision: number;
+  /**
+   * The group detail (people + roles + AIs) of one group, keyed by **group
+   * id** (not chat id): the topics screen passes its route param straight
+   * through. `undefined` until `refreshGroupDetail` has loaded it.
+   */
+  groupDetail: (groupId: string) => GroupDetail | undefined;
+  /** Loads the group detail of one group id (people + roles + AIs). */
+  refreshGroupDetail: (groupId: string) => void;
   /** The AIs the viewer owns, for the new-topic sheet's unticked list. */
   ownedAis: { id: string; name: string }[];
   /** Mutes or unmutes one chat (per-chat flag, like the web store). */

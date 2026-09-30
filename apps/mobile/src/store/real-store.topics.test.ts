@@ -94,7 +94,6 @@ function fakeTopics(): TopicsApi & { calls: string[] } {
   const calls: string[] = [];
   const api = {
     calls,
-    listGroupTopics: vi.fn(async () => []),
     createTopic: vi.fn(async (_groupId: string, input: { name: string }) => {
       calls.push(`create:${input.name}`);
       return topicRow({ id: 't-new', name: input.name, chatJid: 't-new@rooms.galena.test' });
@@ -277,7 +276,7 @@ describe('real store topics (T-0112)', () => {
     expect(topics.calls).toContain('addAi:dev-ai');
   });
 
-  it('patches the strip optimistically with rollback on failure', async () => {
+  it('applies a strip patch on success and leaves the row unchanged on failure', async () => {
     const general = topicRow({
       id: 't-g',
       name: 'General',
@@ -288,13 +287,44 @@ describe('real store topics (T-0112)', () => {
     store.getState().start();
     await flush();
 
+    // No optimistic update: the store applies the patch only after the server
+    // answers, so a failure needs no rollback, just a rejection.
     await store.getState().patchTopic('t-1@rooms.galena.test', { status: 'done' });
     expect(topics.calls).toContain('patch:t-1');
 
+    const before = store.getState().chats.find((chat) => chat.id === 't-1@rooms.galena.test')
+      ?.topic?.status;
     vi.mocked(api.getChats).mockRejectedValueOnce(new Error('down'));
+    vi.mocked(topics.patchTopic).mockRejectedValueOnce(new Error('offline'));
     await expect(
       store.getState().patchTopic('t-1@rooms.galena.test', { status: 'blocked' }),
     ).rejects.toThrow();
+    expect(
+      store.getState().chats.find((chat) => chat.id === 't-1@rooms.galena.test')?.topic?.status,
+    ).toBe(before);
+  });
+
+  it('loads the group detail by group id and publishes it to selectors', async () => {
+    const general = topicRow({
+      id: 't-g',
+      name: 'General',
+      isGeneral: true,
+      chatJid: 'general@rooms.galena.test',
+    });
+    const { store, api } = setup([groupEntry({ topics: [general, topicRow()] })]);
+    store.getState().start();
+    await flush();
+
+    // Keyed by group id (not chat id): the topics screen passes its route
+    // param straight through. Boot eagerly loads it (joinGroups), and the
+    // load publishes through set() so selectors re-fire.
+    expect(store.getState().groupDetailsRevision).toBeGreaterThan(0);
+    expect(store.getState().groupDetail('g1')).toMatchObject({ id: 'g1' });
+    // A chat id is NOT the group key: looking one up resolves nothing, so the
+    // topics screen must pass its group-id route param (covered by the mount
+    // test below asserting `refreshGroupDetail` fires with the group id).
+    expect(store.getState().groupDetail('t-1@rooms.galena.test')).toBeUndefined();
+    expect(vi.mocked(api.getGroup)).toHaveBeenCalledWith('g1');
   });
 
   it('loads the group detail once per group for the sheet', async () => {

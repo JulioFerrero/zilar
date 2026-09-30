@@ -116,6 +116,7 @@ export function createInitialState(phase?: MockDraftPhase, load?: MockLoadScenar
     editTarget: undefined,
     actionError: undefined,
     topicNotice: undefined,
+    groupDetailsRevision: 0,
     ownedAis: mockDevteamOwnedAis(),
   };
   if (load === 'slow') {
@@ -213,10 +214,11 @@ export function createChatStore(
       deleteForEveryone: () => {},
       dismissActionError: () => {},
       dismissTopicNotice: () => set({ topicNotice: undefined }),
-      groupDetail: (chatId) =>
-        get().chats.some((chat) => chat.id === chatId && chat.groupId === 'g-devteam')
-          ? mockDevteamGroupDetail()
-          : undefined,
+      groupDetailsRevision: 0,
+      groupDetail: (groupId) => {
+        void get().groupDetailsRevision;
+        return groupId === 'g-devteam' ? mockDevteamGroupDetail() : undefined;
+      },
       refreshGroupDetail: () => {},
       ownedAis: mockDevteamOwnedAis(),
       muteChat: (chatId, muted) =>
@@ -288,7 +290,13 @@ export function createChatStore(
                           : {
                               kind: input.owner.kind,
                               id: input.owner.id,
-                              name: input.owner.id,
+                              // The mock has no member directory: keep the
+                              // current display name when re-setting the same
+                              // owner, else fall back to the id.
+                              name:
+                                entry.topic?.owner?.id === input.owner.id
+                                  ? (entry.topic?.owner?.name ?? input.owner.id)
+                                  : input.owner.id,
                             },
                     }),
                 ...(input.linkUrl === undefined ? {} : { linkUrl: input.linkUrl }),
