@@ -5,6 +5,7 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { pinnedMessages } from '../db/schema';
 import { HttpError } from '../errors';
+import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { requirePinManager, requirePinVisible, resolvePinChat, type PinChat } from './access';
 
 export const PINS_MAX_PER_CHAT = 20;
@@ -208,7 +209,17 @@ export async function unpinMessage(
   if (deps.audit) {
     await deps.audit.record(toAuditEntry(chat, 'message.unpinned', userId, row));
   }
-  return toPinView(row, chat.chatJid);
+  return toPinView(row, echoChat(chat, userId, deps.domain));
+}
+
+// DELETE carries no chat parameter, so echo the caller's own form: the peer's
+// bare JID for a DM (never the stored pair key), the room JID for a topic.
+function echoChat(chat: PinChat, userId: string, domain: string): string {
+  if (chat.kind === 'room') {
+    return chat.chatJid;
+  }
+  const ownBare = jidFor(localpartFor(userId), domain).toLowerCase();
+  return chat.chatJid.split('|').find((side) => side !== ownBare) ?? chat.chatJid;
 }
 
 // Audit detail carries ids only — never the snapshot text or sender name —

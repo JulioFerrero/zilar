@@ -1,7 +1,7 @@
 ---
 id: T-0114
 title: Pinned messages in chats, groups and topics (server + web)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0114-pinned-messages
 model: meta/muse-spark-1.3-contributor
@@ -120,10 +120,15 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** merged after two fix rounds and a lead fix.
 
 ### Findings
--
+- Server access is sound (read twice): DM pair key, stranger and unknown chat share one 404, unpin re-resolves visibility, private-topic pins carry no groupId in audit, audit detail has ids only, 20-cap is atomic (advisory lock) with a 25-parallel test.
+- Fixed by the worker: multi-line snapshots (\n, \t) rejected; creator test proved the wrong thing; unpin disabled every row.
+- Fixed by me: unpin echoed the stored pair key in `chat`; it now echoes the peer JID (test added).
+- Accepted: the snapshot text and sender name are client-supplied and display-only; a pin manager could word a snapshot differently from the message, inside a chat they already belong to. Plain-member topic creators cannot pin from the UI (server allows it).
+- Not live-checked: UI verified by tests and mock mode only.
 
 ### Follow-ups
--
+- Unify the 404 message for a missing pin ("Pin not found" vs "Chat not found") if pin ids ever become guessable (they are UUIDs).
+- Spec Checks line: `turbo test` does not accept `--maxWorkers`; run per-package.

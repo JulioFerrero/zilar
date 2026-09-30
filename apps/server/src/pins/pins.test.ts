@@ -128,7 +128,10 @@ describe('pins', () => {
     expect(strangerPin.status).toBe(404);
 
     // Either side can unpin.
-    expect((await unpin(member.cookie, createdBody.id)).status).toBe(200);
+    const unpinned = await unpin(member.cookie, createdBody.id);
+    expect(unpinned.status).toBe(200);
+    // The echo is the caller's peer, never the stored pair key.
+    expect(((await unpinned.json()) as PinBody).chat).toBe(ownerJid);
     const after = (await (await listPins(owner.cookie, memberJid)).json()) as {
       pins: PinBody[];
     };
