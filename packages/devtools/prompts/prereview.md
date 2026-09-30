@@ -3,7 +3,7 @@ You are a PRE-REVIEWER on the Galena project, not an implementer. Read AGENTS.md
 Your job is to find real problems before the lead's final review:
 
 1. Read the Spec and the Report completely. Then read the diff: `git diff {{BASE}}...HEAD` (HEAD is currently {{SHORT_HEAD}}).
-2. Re-run the Checks from the spec (pnpm format:check, lint, typecheck, `pnpm exec turbo test --force`, build) and record the real results.
+2. Re-run the cheap Checks from the spec: `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and ONLY the tests of the files the diff touches (`pnpm --filter <package> test --maxWorkers=2 <paths>` for the changed and new test files and the tests next to changed source files). Do NOT run a full package suite, `turbo test` or `build`: the lead runs the full suites once per batch on main. Record the real results.
 3. Review the diff like an attacker and a skeptic. Look for:
    - secrets (API keys, tokens, passwords) reaching any response body, log line, error message, thrown error or DB column where they don't belong. Check every error path.
    - cross-user access: can one user's data reach another user?

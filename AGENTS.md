@@ -56,7 +56,7 @@ The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links 
 ## Running tests (the machine is shared)
 
 - While you work, run only the tests for the files you touched: `pnpm --filter <package> test --maxWorkers=2 <path>` (or `related`/`--changed`). Never a bare `turbo test`, never `vitest run` without a filter and the worker cap, never `--force`.
-- Once, at the end, run the full suite of each package you changed, still with `--maxWorkers=2`. If you changed `schema.ts`, `packages/protocol` or `packages/chat-core`, also run the server and web suites in full.
+- Do not run full package suites: the lead runs them once per batch on main. At the end run format, lint, typecheck and the tests of the files you touched and of their neighbours (`--maxWorkers=2`). Say in the Report which tests you ran.
 - Wait for a run to finish before starting another.
 
 ## Security checklist (check each before you set status review)
