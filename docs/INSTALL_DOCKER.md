@@ -162,13 +162,21 @@ database itself. Back up first if the install matters to you:
 
 `backup [dir]` writes `galena-backup-<UTC stamp>.tgz` (mode 0600: it
 contains live secrets) with a `pg_dump` custom-format dump of both
-databases taken through the running containers, the ejabberd uploads
-volume, a copy of `deploy/.env`, and a `manifest.json` with versions.
-`restore <archive>` needs an explicit `--yes`: it stops the app
-services, restores both databases (`pg_restore --clean`), restores
-uploads and the `.env` (the current `.env` is kept as `.env.bak-<stamp>`),
-restarts and waits for health. Backups live on the same disk by default —
-copy them off the machine (rsync/scp to another host). For nightly
+databases, a `pg_dumpall -g` roles/globals dump (so a restore to a fresh
+cluster recreates the roles the dumps need), the ejabberd uploads
+volume, a copy of `deploy/.env`, and a `manifest.json` with versions —
+all taken through the running containers. `restore <archive>` needs an
+explicit `--yes`: it stops the app services, recreates roles/globals
+from the archive, restores both databases (`pg_restore --clean`) using
+the *archived* credentials (a restore to a new machine with different
+passwords works), restores uploads and the `.env` (the current `.env` is
+kept as `.env.bak-<stamp>`), restarts and waits for health. If any step
+fails, restore restarts the stack first and tells you what is safe to
+re-run — never leaves the install down silently. Backups live in
+`deploy/backups/` by default: the archive contains live secrets, is
+mode 0600, and the command warns loudly — NEVER commit that directory
+(a `deploy/backups/` `.gitignore` entry is a pending lead decision).
+Copy them off the machine (rsync/scp to another host). For nightly
 backups, a cron line on the host is enough:
 
 ```cron

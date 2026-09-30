@@ -102,10 +102,18 @@ the official binary from processone. Then:
    admin credentials from this section).
 
 Key differences from the Docker config (`deploy/ejabberd/ejabberd.yml`):
-SQL host is `localhost` (not the `postgres` container), the loopback ACL
-is used again (peers are on this machine, not a Compose network), values
-are written out literally (no `EJABBERD_MACRO_*` entrypoint), and
-`certfiles` points at a real file.
+SQL host is `localhost` (not the `postgres` container), both listeners
+bind `127.0.0.1` (peers are on this machine, not a Compose network — the
+loopback ACL applies again), values are written out literally (no
+`EJABBERD_MACRO_*` entrypoint), `jwt_key` points at `/etc/ejabberd/jwt.jwk`
+(step 2 above), `certfiles` points at a real file, and the upload docroot
+is `/var/lib/ejabberd/upload` (create it now, owned by the ejabberd user —
+`mod_http_upload` cannot create it):
+
+```bash
+sudo mkdir -p /var/lib/ejabberd/upload
+sudo chown ejabberd:ejabberd /var/lib/ejabberd/upload
+```
 
 ## 4. Server: Node, pnpm, systemd
 
@@ -197,15 +205,13 @@ the server listen on loopback only.
 
 **First account.** Sign-up needs an invite: there is no
 admin-creation endpoint. Mint the code the sign-up form asks for with
-the invite CLI (as the `galena` user, from `/opt/galena/apps/server` so
-it reads `/etc/galena/galena.env` — the CLI loads the server config
-from the environment; export the file or run through the unit's
-environment):
+the invite CLI, loading the server config from `/etc/galena/galena.env`
+(`set -a` exports every line the file defines, so values with spaces
+like `MAIL_FROM=Galena <…>` survive intact):
 
 ```bash
 cd /opt/galena/apps/server
-sudo -u galena env $(grep -v '^#' /etc/galena/galena.env | xargs) \
-  ./node_modules/.bin/tsx src/auth/invite-cli.ts
+sudo -u galena sh -c 'set -a; . /etc/galena/galena.env; ./node_modules/.bin/tsx src/auth/invite-cli.ts'
 ```
 
 Open `https://chat.example.com`, sign up with your email, paste the
@@ -229,8 +235,8 @@ pg_dump -Fc -U ejabberd -h localhost ejabberd > "ejabberd-$(date -u +%Y%m%dT%H%M
 ```
 
 A systemd timer running those two lines plus the ejabberd upload dir
-(`upload` under ejabberd's spool, e.g. `/var/lib/ejabberd/upload`) and
-an off-machine copy (rsync/scp to another host) is enough for a small
+(`/var/lib/ejabberd/upload` — the `docroot` in `deploy/baremetal/ejabberd.yml`)
+and an off-machine copy (rsync/scp to another host) is enough for a small
 install. Restore = recreate roles/databases (§2), `pg_restore --clean`,
 restore the upload dir, put the env file back, restart ejabberd and
 `galena-server`. Practice the restore once before you need it.
@@ -243,12 +249,15 @@ routes, same env names) and validated only as far as this macOS
 workstation allows:
 
 - `deploy/baremetal/Caddyfile` passes `caddy validate` (via
-  `docker run caddy caddy validate`) — the exact command and result are
-  in the T-0127 report.
+  `docker run caddy caddy validate`) — validated with the literal
+  `chat.example.com` domain from the file plus `{$GALENA_DOMAIN}` /
+  `{$ACME_EMAIL}` placeholders swapped in for the check; the exact
+  commands and results are in the T-0127 report.
 - `deploy/baremetal/ejabberd.yml` was diffed against the proven
   `deploy/ejabberd/ejabberd.yml`; every difference is listed in §3's
-  closing paragraph and is deliberate (localhost SQL, loopback ACL,
-  literal values, certfiles).
+  closing paragraph and is deliberate (localhost SQL, loopback bind +
+  ACL, literal values, `jwt_key` at `/etc/ejabberd/jwt.jwk`, certfiles,
+  `/var/lib/ejabberd/upload` docroot).
 - `deploy/baremetal/setup-postgres.sql` mirrors the proven
   `deploy/postgres/init/*.sql` logically but was never executed — not
   even the `\if :{?...}` / `\gset` guards it shares with
@@ -261,8 +270,9 @@ workstation allows:
   logs tell you which path was denied.
 - The nginx config was never tested with real traffic (`nginx -t` was
   unavailable here); treat the Caddy path as the primary one.
-- The invite CLI command in §7 assumes the config loads from the
-  environment exactly like the container; the first person to follow
+- The invite CLI command in §7 (`set -a; . /etc/galena/galena.env; …`)
+  follows the standard Bourne idiom for loading an env file, but was never
+  run against a real `/etc/galena/galena.env`; the first person to follow
   this guide should confirm the exact invocation and report back.
 
 If you follow this guide, please report what worked and what did not —

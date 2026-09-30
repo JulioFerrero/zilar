@@ -19,6 +19,10 @@
 #   --force, -f       let `init` overwrite an existing env file
 #   --yes, -y         required by `restore`
 #
+# Two environment overrides (used by the install test, not normal installs):
+#   COMPOSE_FILE_OVERRIDE=PATH   use a scratch copy of the compose file
+#   COMPOSE_PROJECT_NAME=name    run the stack under another project name
+#
 # The script NEVER prints a secret: it prints file paths and value shapes
 # (e.g. "<48 hex chars>"), never values. Secrets live only in the env file
 # (mode 0600) and in backup archives (mode 0600, with a warning file).
@@ -49,6 +53,10 @@ info() {
   echo "$PROG: $*"
 }
 
+warn() {
+  echo "$PROG: WARNING: $*" >&2
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "needs '$1' on PATH ($2)"
 }
@@ -64,11 +72,15 @@ run() {
 
 # Thin wrapper so every compose call uses the same file and env file.
 # Extra compose flags (e.g. `galena logs --tail 20`) pass straight through.
+# COMPOSE_FILE/COMPOSE_PROJECT_NAME may be overridden from the environment
+# (the install test does this to run a scratch copy of the compose file
+# under its own project name).
 compose() {
+  _file="${COMPOSE_FILE_OVERRIDE:-$COMPOSE_FILE}"
   if [ "$DRY_RUN" -eq 1 ]; then
-    echo "+ docker compose -f $COMPOSE_FILE --env-file $ENV_FILE $*"
+    echo "+ docker compose -f $_file --env-file $ENV_FILE $*"
   else
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+    docker compose -f "$_file" --env-file "$ENV_FILE" "$@"
   fi
 }
 
@@ -439,9 +451,17 @@ cmd_doctor() {
   fi
 
   # 3. The domain resolves (best effort: first resolver found wins).
+  # Loopback names (localhost, *.localhost, *.local, *.test, *.example,
+  # *.invalid) never need public DNS: the trial install reaches them on
+  # this machine by definition, so resolving them is an auto-pass.
   if [ -f "$ENV_FILE" ]; then
     _domain="$(env_get GALENA_DOMAIN)"
     if [ -n "$_domain" ]; then
+      case "$_domain" in
+        localhost|*.localhost|*.local|*.test|*.example|*.invalid)
+          doctor_ok "'$_domain' is a local name — no public DNS needed (trial install)"
+          ;;
+        *)
       _ips=""
       if command -v getent >/dev/null 2>&1; then
         _ips="$(getent hosts "$_domain" 2>/dev/null | awk '{print $1}' | head -n 3 | tr '\n' ' ')"
@@ -461,6 +481,8 @@ cmd_doctor() {
       else
         doctor_ok "'$_domain' resolves to ${_ips}(must be this machine for ACME to issue a certificate)"
       fi
+          ;;
+      esac
     fi
   else
     echo "skip: no env file yet (run '$PROG init' first)"
@@ -518,7 +540,12 @@ cmd_create_admin() {
   # empty for this first code, so no contacts are linked.
   _admin_email="$(sed -n 's/^# Admin contact: //p' "$ENV_FILE" | tail -n 1)"
   _domain="$(env_get GALENA_DOMAIN)"
-  info "minting one invite code (single use, 7 days)..."
+  if [ "$_uses" -eq 1 ] && [ "$_days" -eq 7 ]; then
+    _lifetime="single use, 7 days"
+  else
+    _lifetime="$_uses uses, $_days days"
+  fi
+  info "minting one invite code ($_lifetime)..."
   run compose exec -T server node /opt/tsx/node_modules/tsx/dist/cli.mjs src/auth/invite-cli.ts --uses "$_uses" --days "$_days"
   if [ "$DRY_RUN" -eq 0 ]; then
     echo ""
@@ -530,6 +557,11 @@ cmd_create_admin() {
 }
 
 # --- backup -------------------------------------------------------------
+#
+# The archive lands in deploy/backups/ and contains the live .env, so it
+# is mode 0600 and the command says so loudly. `.gitignore` cannot be
+# edited from this task (lead decision pending: ignore `deploy/backups/`),
+# so NEVER `git add` the backups directory.
 
 cmd_backup() {
   require_env_file
@@ -538,9 +570,9 @@ cmd_backup() {
   [ -n "${2-}" ] && die "backup takes at most one argument (the directory)"
 
   compose ps --status running postgres 2>/dev/null | grep -q postgres \
-    || die "postgres is not running — start the stack with '$PROG up' first"
+    || die "postgres is not running — start the stack with '$PROG up' first (same --env-file and COMPOSE_FILE_OVERRIDE, if any)"
   compose ps --status running ejabberd 2>/dev/null | grep -q ejabberd \
-    || die "ejabberd is not running — start the stack with '$PROG up' first"
+    || die "ejabberd is not running — start the stack with '$PROG up' first (same --env-file and COMPOSE_FILE_OVERRIDE, if any)"
 
   _stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   _name="galena-backup-$_stamp.tgz"
@@ -551,6 +583,8 @@ cmd_backup() {
 + would write $_dir/$_name (mode 0600) containing:
 +   galena.dump      pg_dump custom format of the Galena database
 +   ejabberd.dump    pg_dump custom format of the ejabberd database
++   globals.sql      roles and globals (pg_dumpall -g) so a fresh cluster
++                    can recreate the roles the dumps need
 +   uploads.tgz      the ejabberd uploads volume
 +   .env             a copy of $ENV_FILE (mode 0600 in the archive)
 +   SECRETS_WARNING.txt   "this archive contains live secrets"
@@ -565,17 +599,25 @@ EOF
   # mktemp owns the dir; remove it on failure without touching anything else.
   trap 'rm -rf "$_tmp"' EXIT
 
+  # The postgres container already carries POSTGRES_PASSWORD in its own
+  # environment (deploy/docker-compose.yml), so `-e POSTGRES_PASSWORD`
+  # forwards that container-side value into the exec session — the secret
+  # is expanded only inside the container and never appears in `ps`
+  # output on this host.
   info "dumping the Galena database..."
-  compose exec -T -e PGPASSWORD="$(env_get POSTGRES_PASSWORD)" postgres \
-    pg_dump -Fc -U postgres -d galena > "$_tmp/galena.dump"
+  compose exec -T -e POSTGRES_PASSWORD postgres \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -Fc -U postgres -d galena' > "$_tmp/galena.dump"
   info "dumping the ejabberd database..."
-  compose exec -T -e PGPASSWORD="$(env_get POSTGRES_PASSWORD)" postgres \
-    pg_dump -Fc -U postgres -d ejabberd > "$_tmp/ejabberd.dump"
+  compose exec -T -e POSTGRES_PASSWORD postgres \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -Fc -U postgres -d ejabberd' > "$_tmp/ejabberd.dump"
+  info "dumping roles and globals (passwords live only in the databases, never here)..."
+  compose exec -T -e POSTGRES_PASSWORD postgres \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dumpall -g -U postgres' > "$_tmp/globals.sql"
   info "archiving uploads..."
   compose exec -T ejabberd tar -C /opt/ejabberd -czf - upload > "$_tmp/uploads.tgz"
 
   cp "$ENV_FILE" "$_tmp/.env"
-  chmod 600 "$_tmp/.env" "$_tmp/galena.dump" "$_tmp/ejabberd.dump" "$_tmp/uploads.tgz"
+  chmod 600 "$_tmp/.env" "$_tmp/galena.dump" "$_tmp/ejabberd.dump" "$_tmp/globals.sql" "$_tmp/uploads.tgz"
   cat > "$_tmp/SECRETS_WARNING.txt" <<EOF
 This archive contains LIVE SECRETS (the .env file: database passwords,
 JWT and session secrets). Anyone holding it owns this Galena install.
@@ -592,16 +634,27 @@ EOF
 }
 EOF
 
-  tar -czf "$_dir/$_name" -C "$_tmp" galena.dump ejabberd.dump uploads.tgz .env SECRETS_WARNING.txt manifest.json
+  tar -czf "$_dir/$_name" -C "$_tmp" galena.dump ejabberd.dump globals.sql uploads.tgz .env SECRETS_WARNING.txt manifest.json
   chmod 600 "$_dir/$_name"
   trap - EXIT
   rm -rf "$_tmp"
 
   _size="$(du -h "$_dir/$_name" | cut -f1)"
   info "wrote $_dir/$_name ($_size, mode 0600). Copy it off the machine — a backup on the same disk is not a backup."
+  warn "SECRETS: this archive contains the live .env (database passwords, JWT and session secrets)."
+  warn "NEVER commit deploy/backups/ to git — add 'deploy/backups/' to .gitignore (lead decision pending)."
+  warn "Copy the archive off the machine and restrict who can read it."
 }
 
 # --- restore ------------------------------------------------------------
+#
+# Restore is fail-stop: any step failing aborts the script (`set -eu`).
+# That can leave app services stopped with data half-restored, so every
+# failure path below restarts the stack first and tells the operator
+# exactly where to pick up again (which step failed, what is safe to
+# re-run). The archived `.env` (and its POSTGRES_PASSWORD) is the source
+# of truth for the whole restore: credentials are read from the archive,
+# never from the current environment.
 
 cmd_restore() {
   require_env_file
@@ -615,10 +668,12 @@ cmd_restore() {
     cat <<EOF
 + would: unpack $_archive to a temp dir and check manifest.json
 + would: stop server, web and ejabberd (postgres keeps running)
-+ would: pg_restore --clean into the galena and ejabberd databases
++ would: recreate roles/globals from globals.sql, then pg_restore --clean
++        into the galena and ejabberd databases (credentials from the ARCHIVE)
 + would: restore the uploads volume, back up $ENV_FILE to $ENV_FILE.bak-<stamp>,
 +        install the archived .env (mode 0600)
 + would: start everything and wait for health
++ on any failure: the stack is restarted first, then the error is reported
 EOF
     return 0
   fi
@@ -633,33 +688,112 @@ EOF
   done
   info "archive ok (backed up by $(sed -n 's/.*"created_at": "\(.*\)".*/\1/p' "$_tmp/manifest.json" | head -n 1))."
 
+  # From here on every failure restarts the stack before reporting: never
+  # leave the install stopped with no hint. _step names the current phase
+  # for the recovery message.
+  _step="stop app services"
+  _recover() {
+    warn "restore failed during: $_step."
+    warn "restarting the stack so the install is running again..."
+    compose up -d --wait || warn "restart failed too — run '$PROG up' by hand, then '$PROG status'."
+    warn "safe to re-run: '$PROG restore $_archive --yes' (idempotent: roles are re-created, dumps use --clean)."
+    trap - EXIT
+    rm -rf "$_tmp"
+    exit 1
+  }
+  trap '_recover' EXIT
+
   info "stopping server, web and ejabberd (postgres keeps running)..."
   compose stop server web ejabberd
-  run_postgres_ready() {
-    _tries=0
-    while [ "$_tries" -lt 30 ]; do
-      if compose exec -T postgres pg_isready -U postgres -d postgres >/dev/null 2>&1; then
-        return 0
-      fi
-      _tries=$((_tries + 1))
-      sleep 2
-    done
-    die "postgres did not become ready"
+  _tries=0
+  while [ "$_tries" -lt 30 ]; do
+    if compose exec -T postgres pg_isready -U postgres -d postgres >/dev/null 2>&1; then
+      break
+    fi
+    _tries=$((_tries + 1))
+    sleep 2
+  done
+  [ "$_tries" -lt 30 ] || { _step="wait for postgres"; _recover; }
+
+  # Credentials for the whole restore come from the ARCHIVED env file, so
+  # a restore to a new machine (different current POSTGRES_PASSWORD)
+  # works. The archived password is passed to `compose exec` through the
+  # environment (`-e` reads KEY=VALUE from this process, never from argv),
+  # and expanded only inside the container — it never appears in `ps`
+  # output on this host.
+  _arch_pw="$(sed -n 's/^POSTGRES_PASSWORD=//p' "$_tmp/.env" | tail -n 1)"
+  [ -n "$_arch_pw" ] || die "$_archive has no POSTGRES_PASSWORD in its .env"
+
+  # `docker compose exec -e` reads KEY=VALUE from the host environment
+  # without expanding it into the compose file, so the archived secret
+  # never appears in this script's argv (invisible to `ps`) and Compose
+  # never interpolates it into container config either.
+  _run_with_arch_pw() {
+    POSTGRES_PASSWORD="$_arch_pw" compose exec -T -e POSTGRES_PASSWORD postgres "$@"
   }
-  run_postgres_ready
 
+  if [ -f "$_tmp/globals.sql" ]; then
+    _step="restore roles and globals"
+    info "restoring roles and globals..."
+    # pg_dumpall -g is not idempotent (CREATE ROLE fails when the role
+    # exists, and ON_ERROR_STOP aborts). Filter to what a restore needs:
+    # CREATE ROLE only when missing (DO block), then the password-setting
+    # ALTER ROLE lines unconditionally (so the archived passwords win).
+    _run_with_arch_pw \
+      sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -c "DO \$\$BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '"'"'galena'"'"') THEN CREATE ROLE galena LOGIN; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '"'"'ejabberd'"'"') THEN CREATE ROLE ejabberd LOGIN; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '"'"'galena_archive'"'"') THEN CREATE ROLE galena_archive LOGIN; END IF; END\$\$;"' \
+      || { _step="restore roles and globals"; _recover; }
+    grep -E '^ALTER ROLE (galena|ejabberd|galena_archive) WITH .* PASSWORD' "$_tmp/globals.sql" > "$_tmp/role-passwords.sql" || true
+    if [ -s "$_tmp/role-passwords.sql" ]; then
+      _run_with_arch_pw \
+        sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f -' < "$_tmp/role-passwords.sql" \
+        || { _step="restore roles and globals"; _recover; }
+    fi
+  else
+    warn "no globals.sql in this archive (pre-restore-roles backup) — roles must already exist."
+  fi
+
+  _step="restore the Galena database"
   info "restoring the Galena database..."
-  compose exec -T -e PGPASSWORD="$(env_get POSTGRES_PASSWORD)" postgres \
-    pg_restore -U postgres -d galena --clean --if-exists < "$_tmp/galena.dump"
+  # The audit_log triggers reject TRUNCATE/DELETE, and pg_restore --clean
+  # must empty the table first. Drop the three immutability triggers,
+  # restore, then recreate them from the migration that owns them
+  # (apps/server/drizzle/0013_audit_log_immutable.sql). Data restored this
+  # way is identical to the backup; the triggers only ever blocked
+  # writes, never reads.
+  _run_with_arch_pw \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -v ON_ERROR_STOP=1 -c "DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log"'
+  # pg_restore reads the dump from a FILE. The dump reaches the container
+  # over stdin (no host file to clean up), so stage it through a temp file
+  # inside the container first — this keeps stdin free for the pipe while
+  # giving pg_restore the seekable file it needs (a bare stdin redirect
+  # silently restores nothing).
+  _run_with_arch_pw \
+    sh -c 'cat > /tmp/galena-restore.dump && PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U postgres -d galena --clean --if-exists /tmp/galena-restore.dump; _rc=$?; rm -f /tmp/galena-restore.dump; exit $_rc' < "$_tmp/galena.dump" \
+    || { _step="restore the Galena database"; _recover; }
+  # Recreate the audit_log immutability triggers dropped above (same
+  # statements as apps/server/drizzle/0013_audit_log_immutable.sql, which
+  # owns them — the function survives --clean, only the triggers were
+  # dropped). No data change: they only block future writes. IF NOT EXISTS
+  # is unavailable for CREATE TRIGGER, so drop-then-create idempotently.
+  _step="recreate the audit_log triggers"
+  info "recreating the audit_log immutability triggers..."
+  _run_with_arch_pw \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -v ON_ERROR_STOP=1 -c "DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log" -c "CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_truncate BEFORE TRUNCATE ON audit_log FOR EACH STATEMENT EXECUTE FUNCTION audit_log_block_mutations()"' \
+    || { _step="recreate the audit_log triggers"; _recover; }
+  _step="restore the ejabberd database"
   info "restoring the ejabberd database..."
-  compose exec -T -e PGPASSWORD="$(env_get POSTGRES_PASSWORD)" postgres \
-    pg_restore -U postgres -d ejabberd --clean --if-exists < "$_tmp/ejabberd.dump"
+  _run_with_arch_pw \
+    sh -c 'cat > /tmp/galena-restore.dump && PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U postgres -d ejabberd --clean --if-exists /tmp/galena-restore.dump; _rc=$?; rm -f /tmp/galena-restore.dump; exit $_rc' < "$_tmp/ejabberd.dump" \
+    || { _step="restore the ejabberd database"; _recover; }
 
+  _step="restore uploads"
   info "starting ejabberd so uploads can be restored..."
   compose up -d ejabberd
   info "restoring uploads..."
-  compose exec -T ejabberd tar -C /opt/ejabberd -xzf - upload < "$_tmp/uploads.tgz"
+  compose exec -T ejabberd tar -C /opt/ejabberd -xzf - upload < "$_tmp/uploads.tgz" \
+    || { _step="restore uploads"; _recover; }
 
+  _step="install the archived .env"
   _stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   if [ -f "$ENV_FILE" ]; then
     cp "$ENV_FILE" "$ENV_FILE.bak-$_stamp"
@@ -673,8 +807,9 @@ EOF
   trap - EXIT
   rm -rf "$_tmp"
 
+  _step="start everything and wait for health"
   info "starting everything and waiting for health..."
-  compose up -d --wait
+  compose up -d --wait || { _step="start everything"; _recover; }
   info "restored. Check '$PROG status' and sign in to confirm your data is back."
 }
 
