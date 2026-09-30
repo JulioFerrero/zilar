@@ -14,7 +14,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | in progress | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
 | [T-0106](T-0106-tool-model-side.md) | Model side of AI tools: prompt guide, several rounds per turn, working-on-it line | planned | meta/muse-spark-1.3-contributor | T-0105, T-0125, T-0132 | Ready; starts after T-0132 merges |
-| [T-0140](T-0140-mobile-followups.md) | Mobile deferred review follow-ups (invite links, roles, search) | planned | meta/muse-spark-1.3-contributor | T-0136, T-0137, T-0138 | Spec ready |
 | [T-0141](T-0141-web-server-followups.md) | Web and server deferred review follow-ups (stickers, revoke, approvals) | planned | meta/muse-spark-1.3-contributor | T-0120, T-0133, T-0116 | Spec ready |
 | [T-0142](T-0142-smarter-search.md) | Smarter message search: prefixes, accent folding, typo tolerance (Julio found "hello" does not match "heello"), no extension, no schema | planned | meta/muse-spark-1.3-contributor | T-0117 | Spec ready |
 
@@ -172,3 +171,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0134](T-0134-server-followups.md) | server follow-ups: atomic link join, trusted proxy hops, pin 404 parity, preview limiter, approver names, search role scoping test | 2026-09-30 |
 | [T-0124](T-0124-channels.md) | channels: only admins post, subscribers read-only, role route (migration 0030) | 2026-09-30 |
 | [T-0139](T-0139-mobile-device-bugs.md) | mobile: topics from /api/chats, group route, header actions, cached group detail | 2026-09-30 |
+| [T-0140](T-0140-mobile-followups.md) | mobile follow-ups: invite mock, roles load error, search jump and abort | 2026-09-30 |
