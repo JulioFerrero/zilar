@@ -156,6 +156,12 @@ export interface ChatStore {
   addTopicMember: (chatId: string, userId: string) => Promise<void>;
   /** Removes a person from a private topic. Rejects on failure. */
   removeTopicMember: (chatId: string, userId: string) => Promise<void>;
+  /**
+   * Re-reads one topic row from the chat list. Resolves true when the topic
+   * is gone (archived, made private, or the viewer removed): the caller
+   * navigates away. Resolves false when the row is still there.
+   */
+  refreshTopicRow: (chatId: string, topicId: string) => Promise<boolean>;
   /** Leaves a private topic. Rejects on failure. */
   leaveTopic: (chatId: string) => Promise<void>;
   /** Flips the group's "members can create topics" switch. Rejects on failure. */
@@ -630,6 +636,11 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       refreshChats: () => {},
       refreshGeneralTopic: async (groupId) =>
         get().chats.find((chat) => chat.groupId === groupId && chat.topic?.isGeneral === true)?.id,
+      // T-0130 (review): re-checks one topic row after a 404, so the panel
+      // can tell "the topic is gone" from "the member was already gone".
+      // The mock list is already the truth: no fetch, just check the row.
+      refreshTopicRow: async (_chatId, topicId) =>
+        !get().chats.some((chat) => chat.topic?.id === topicId),
       // Mock-mode topic actions (T-0130): the mock HTTP layer already
       // implements every topic route in memory, so these go through the
       // same api client the dialog, the strip and the panel use, then fold
@@ -652,6 +663,12 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         const topicId = topicIdForChat(get().chats, chatId);
         const topic = await patchTopicRequest(topicId, input);
         set((state) => ({ chats: withMockTopicRow(state.chats, topic) }));
+        // A deliberate self-archive moves silently in the real store (the
+        // header navigates itself); the mock store has no refresh flow, so
+        // clear any notice that would otherwise linger on General.
+        if (topic.archived) {
+          set({ topicNotice: undefined });
+        }
       },
       addTopicAi: async (chatId, aiId) => {
         const { addTopicAi: addTopicAiRequest } = await import('@/lib/api');

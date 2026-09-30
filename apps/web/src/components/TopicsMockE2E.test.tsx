@@ -89,9 +89,11 @@ describe('mock topics end to end (T-0111)', () => {
     await waitFor(() => {
       expect(store.getState().chats.some((chat) => chat.id === 'c-devteam-ui')).toBe(false);
     });
-    // And the open view follows to General.
+    // And the open view follows to General — with no "no longer available"
+    // notice, since the archive was deliberate (finding 4).
     await waitFor(() => {
       expect(store.getState().activeChatId).toBe('c-devteam');
     });
+    expect(store.getState().topicNotice).toBeUndefined();
   });
 });

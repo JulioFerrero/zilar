@@ -57,21 +57,36 @@ describe('Topics sidebar (T-0111)', () => {
   });
 
   it('does not grab non-topic /c/ links', () => {
-    // A DM row (/c/<id>) renders outside any topic list: keyboard navigation
-    // walks the topic links of one group at a time and never treats an
-    // outside link as a topic step.
+    // A DM singleton row (/c/c-ana) sits between topic rows in the same nav
+    // but carries no `data-topic-row`: Up/Down skips it and Enter on it does
+    // nothing, so keyboard navigation never leaves the topic rows.
     renderApp('/');
     const nav = screen.getByRole('navigation', { name: 'Chats' });
     const anaRow = within(nav)
       .getAllByRole('link')
       .find((link) => (link.getAttribute('href') ?? '').startsWith('/c/c-ana'));
     expect(anaRow).toBeDefined();
-    const general = within(nav).getByRole('link', { name: /General/ });
-    general.focus();
-    fireEvent.keyDown(general.closest('div') ?? nav, { key: 'ArrowDown' });
-    // Focus moves to the next topic link, never to the DM row.
-    expect(document.activeElement).not.toBe(anaRow);
-    expect(document.activeElement instanceof HTMLAnchorElement).toBe(true);
+    expect(anaRow?.hasAttribute('data-topic-row')).toBe(false);
+    // Collect the topic rows in DOM order; the DM row must not be among them.
+    const topicHrefs = Array.from(nav.querySelectorAll('a[data-topic-row]')).map((link) =>
+      link.getAttribute('href'),
+    );
+    expect(topicHrefs.length).toBeGreaterThan(1);
+    expect(topicHrefs).not.toContain('/c/c-ana');
+    // Walk the whole cycle from the first topic row: every stop is a topic
+    // row, never the DM in between.
+    const first = nav.querySelector('a[data-topic-row]');
+    if (!(first instanceof HTMLAnchorElement)) {
+      throw new Error('expected a first topic row');
+    }
+    first.focus();
+    for (let step = 0; step < topicHrefs.length + 1; step += 1) {
+      fireEvent.keyDown(first.closest('div') ?? nav, { key: 'ArrowDown' });
+      const focused = document.activeElement;
+      expect(focused instanceof HTMLAnchorElement).toBe(true);
+      expect((focused as HTMLAnchorElement).hasAttribute('data-topic-row')).toBe(true);
+      expect((focused as HTMLAnchorElement).getAttribute('href')).not.toBe('/c/c-ana');
+    }
   });
 
   it('search filters topics by name and keeps the group header', () => {
@@ -90,7 +105,7 @@ describe('Topics sidebar (T-0111)', () => {
     expect(screen.getByText('Dev team')).toBeTruthy();
   });
 
-  it('shows the Archived toggle and the removed-while-open redirect', () => {
+  it('shows an injected archived row under the Archived toggle', () => {
     // An archived row hides under the group's "Archived (n)" toggle; opening
     // the toggle reveals it without leaking anything else.
     renderApp('/', {

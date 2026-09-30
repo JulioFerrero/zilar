@@ -1153,6 +1153,12 @@ export async function mockRequest(
     }
     if (second === 'members' && subId !== undefined && method === 'DELETE') {
       const userId = decodeURIComponent(subId);
+      // Like the server: removing a user who is not a member answers 404
+      // (`service.ts` "not a member"), so clients cannot read a 404 as
+      // "the topic is gone" without re-checking the row.
+      if (!topic.memberIds.includes(userId)) {
+        return notFound('That user is not a member of this topic');
+      }
       topic.memberIds = topic.memberIds.filter((id) => id !== userId);
       if (topic.memberIds.length === 0 && topic.visibility === 'private') {
         topic.archived = true;

@@ -89,10 +89,10 @@ describe('Group panel topic switch (T-0111)', () => {
 });
 
 describe('topic member removal errors (T-0130)', () => {
-  // The panel removes through the api client (fetch) first, then the store.
-  // Stubbing the DELETE to fail exercises the panel branch without touching
-  // the store: a 403 keeps the user in the topic with the inline error,
-  // while a 404 (the topic is gone) navigates away.
+  // The panel removes through the store only (ONE DELETE). The stubs below
+  // fail the member-removal endpoint like the server does: a 403 keeps the
+  // user in the topic with the inline error; a 404 re-checks the row — the
+  // topic is still there, so the user stays too.
   function stubRemoveMember(status: number): void {
     const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) =>
       mockRequest(String(url), init ?? {}, { delayMs: 0 }),
@@ -149,17 +149,34 @@ describe('topic member removal errors (T-0130)', () => {
     expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
   });
 
-  it('moves the user away on a 404 (the topic is gone)', async () => {
+  it('stays on a live topic when the removal 404s but the row is still there', async () => {
+    // A 404 for a non-member (stale list, double click) must not read as
+    // "the topic is gone": the row re-check finds the topic alive, so the
+    // panel reloads the members and stays open with no inline error.
     stubRemoveMember(404);
     openHiringPanel();
     const dialog = screen.getByRole('dialog', { name: /topic info/ });
     expect(await within(dialog).findByText('Ana')).toBeTruthy();
-    // The stubbed DELETE answers 404, so the panel takes the archived path
-    // (close + navigate away) instead of the inline-error path: the dialog
-    // closes and no inline error appears anywhere.
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Ana from the topic' }));
     await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: /topic info/ })).toBeNull();
+      expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
     });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('leaves when the last member is removed and the topic is gone', async () => {
+    // No stub: the strict mock DELETE really removes Ana from the hiring
+    // topic, and the panel stays open (you are still in it) with her row
+    // gone on reload.
+    openHiringPanel();
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    expect(await within(dialog).findByText('Ana')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Ana from the topic' }));
+    // Ana is really gone from the strict mock: her row disappears on
+    // reload while the panel stays open (you are still in the topic).
+    await waitFor(() => {
+      expect(within(dialog).queryByText('Ana')).toBeNull();
+    });
+    expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
   });
 });

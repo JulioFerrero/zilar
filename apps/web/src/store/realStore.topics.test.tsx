@@ -317,6 +317,50 @@ describe('topics store mapping (T-0111)', () => {
     expect(store.getState().chats.some((chat) => chat.id === bugId)).toBe(false);
   });
 
+  it('a deliberate self-archive moves without the "no longer available" notice', async () => {
+    // Finding 4: archiving the open topic from its own header moves to
+    // General silently. The store half: the self-archive drops the row and
+    // marks the open chat quiet, so the stranded-open check below resolves
+    // to General with no notice. (The full removed-while-open trip with a
+    // notice is covered by the pre-existing test above.)
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const { topicSchema } = await import('@/lib/api');
+    (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
+      topicSchema.parse({ ...bugTopic(), archived: true }),
+    );
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
+      groupEntry({ topics: [topic()] }),
+    ]);
+    store.getState().openChat(bugId);
+    await store.getState().patchTopic(bugId, { archived: true });
+    expect(store.getState().chats.some((chat) => chat.id === bugId)).toBe(false);
+    // The open chat is stranded on a missing row; the quiet mark (set by
+    // the self-archive) is consumed by the very next refresh.
+    store.getState().refreshChats();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await flush();
+    expect(store.getState().topicNotice).toBeUndefined();
+  });
+
+  it('refreshGeneralTopic awaits a real refresh, not the debounce schedule', async () => {
+    // Finding 3: the General row is absent locally and appears only in the
+    // refreshed list. Resolving it proves the action awaited the fetch.
+    const { store, api } = await setup();
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
+      groupEntry({ topics: [topic()] }),
+    ]);
+    store.setState((state) => ({
+      chats: state.chats.filter((chat) => chat.topic?.isGeneral !== true),
+    }));
+    expect(store.getState().chats.some((chat) => chat.topic?.isGeneral === true)).toBe(false);
+    await expect(store.getState().refreshGeneralTopic('g1')).resolves.toBe(
+      'team@rooms.galena.test',
+    );
+  });
+
   it('a failed member removal (403) keeps the user in the topic with an inline error', async () => {
     const { store, api } = await setup();
     const bugId = 'bug-topic@rooms.galena.test';
@@ -354,21 +398,27 @@ describe('topics store mapping (T-0111)', () => {
     expect(getChats).not.toHaveBeenCalled();
   });
 
-  it('a 404 member removal refreshes so the archived row leaves at once', async () => {
+  it('a 404 removal re-checks the row: alive topic stays, gone topic reports true', async () => {
+    // The server 404s both for a non-member and for a gone topic, so
+    // `refreshTopicRow` — not the 404 alone — decides. First with the row
+    // still listed (stale member list): not gone.
     const { store, api } = await setup();
     const bugId = 'bug-topic@rooms.galena.test';
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     (apiMock.removeTopicMember as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new ApiError(404, 'not_found', 'Topic not found'),
+      new ApiError(404, 'not_found', 'That user is not a member of this topic'),
     );
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([groupEntry()]);
+    await expect(store.getState().removeTopicMember(bugId, 'u-ana')).rejects.toThrow(
+      /not a member/,
+    );
+    await expect(store.getState().refreshTopicRow(bugId, 't-bug')).resolves.toBe(false);
+    expect(store.getState().chats.some((chat) => chat.id === bugId)).toBe(true);
+    // Then with the row gone from the list (last member removed → archived).
     (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
       groupEntry({ topics: [topic()] }),
     ]);
-    await expect(store.getState().removeTopicMember(bugId, 'u-ana')).rejects.toThrow(
-      /Topic not found/,
-    );
-    expect(apiMock.getChats as ReturnType<typeof vi.fn>).toHaveBeenCalled();
-    expect(store.getState().chats.some((chat) => chat.id === bugId)).toBe(false);
+    await expect(store.getState().refreshTopicRow(bugId, 't-bug')).resolves.toBe(true);
   });
 
   it('the refresh interval is 60 s', () => {

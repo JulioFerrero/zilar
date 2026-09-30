@@ -19,7 +19,6 @@ import {
   listTopicMembers,
   listTopicTools,
   removeTopicAi,
-  removeTopicMember,
   type GroupDetail,
   type PublicAi,
   type TopicAi,
@@ -255,29 +254,23 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
 
   const removeMember = (userId: string): Promise<void> =>
     run(`remove:${userId}`, async () => {
-      try {
-        await removeTopicMember(topic.id, userId);
-      } catch (error) {
-        // Only a 404 means the topic is gone (the last member leaving
-        // archives it): navigate away. Any other failure (403, network)
-        // keeps the user here and shows the inline error.
-        if (error instanceof ApiError && error.status === 404) {
-          navigate('/');
-          onClose();
-          return;
-        }
-        throw error;
-      }
+      // ONE call: the store issues the DELETE and folds the row back in
+      // (real) or drops it when archived (both). A 404 alone never means
+      // "the topic is gone" — the server also 404s for a user who is not a
+      // member — so only navigate away when the refreshed list no longer
+      // has the topic row. Any other failure keeps the user here with the
+      // inline error.
       try {
         await storeApi.getState().removeTopicMember(chat.id, userId);
       } catch (error) {
-        // The server removal already succeeded; the store only folds the
-        // row back in. A stale row (404) means the topic is gone: it
-        // refreshes itself away, so still navigate. Any other store
-        // failure keeps the user here with the inline error.
         if (error instanceof ApiError && error.status === 404) {
-          navigate('/');
-          onClose();
+          const gone = await storeApi.getState().refreshTopicRow(chat.id, topic.id);
+          if (gone) {
+            navigate('/');
+            onClose();
+            return;
+          }
+          await reloadMembers();
           return;
         }
         throw error;

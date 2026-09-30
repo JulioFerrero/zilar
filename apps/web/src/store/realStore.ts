@@ -514,6 +514,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // server names, so a chat peer cannot make every viewer fetch a tracker.
     let mediaToken: MediaTokenShape | undefined;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    // Open chat ids whose next disappearance moves silently (T-0130 review):
+    // the client just archived that topic itself from its own header, so
+    // the removed-while-open flow navigates without the "no longer
+    // available" notice. Consumed on first use.
+    const quietArchiveIds = new Set<string>();
     // The 60 s visible-tab poll for new/removed topics (T-0111), plus its
     // focus listener. Both stop when the store stops (or restarts).
     let chatsPollTimer: ReturnType<typeof setInterval> | undefined;
@@ -2203,7 +2208,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       });
       rememberGroupIds(entries);
       // A topic that disappeared while open (made private, archived, or I was
-      // removed) navigates to the group's General topic with a short notice.
+      // removed) navigates to the group's General topic with a short notice —
+      // unless the disappearance was just caused by this client on purpose
+      // (e.g. archiving the open topic from its own header): ids in
+      // `quietArchiveIds` move silently.
       const openChat =
         activeChatId === undefined
           ? undefined
@@ -2219,9 +2227,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             (chat) => chat.groupId === notice.groupId && chat.topic?.isGeneral === true,
           );
           if (general !== undefined) {
+            const quiet = quietArchiveIds.has(activeChatId);
+            quietArchiveIds.delete(activeChatId);
             set({
               activeChatId: general.id,
-              topicNotice: { chatId: general.id, message: 'This topic is no longer available.' },
+              topicNotice: quiet
+                ? undefined
+                : { chatId: general.id, message: 'This topic is no longer available.' },
             });
             if (typeof window !== 'undefined') {
               window.history.replaceState(null, '', `/c/${encodeURIComponent(general.id)}`);
@@ -2654,6 +2666,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       refreshChats: () => {
         scheduleChatsRefresh();
       },
+      // T-0130 (review): resolves General from the painted list, refreshing
+      // it first. `refreshChats` only schedules the 500 ms debounce, so this
+      // awaits the real `refreshChats()` closure — never the schedule.
       refreshGeneralTopic: async (groupId) => {
         await refreshChats().catch(() => {});
         return get().chats.find(
@@ -2682,6 +2697,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       patchTopic: async (chatId, input) => {
         const { topicId } = await topicIdFor(chatId);
         const topic = await api.patchTopic(topicId, input);
+        // A deliberate self-archive moves silently: the header already
+        // navigates to General itself, so the removed-while-open flow must
+        // not add a "no longer available" notice on top of it.
+        if (topic.archived && get().activeChatId === chatId) {
+          quietArchiveIds.add(chatId);
+        }
         await applyTopicRow(topic);
       },
       addTopicAi: async (chatId, aiId) => {
@@ -2701,26 +2722,38 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       removeTopicMember: async (chatId, userId) => {
         const { topicId } = await topicIdFor(chatId);
-        try {
-          const topic = await api.removeTopicMember(topicId, userId);
-          await applyTopicRow(topic);
-        } catch (error) {
-          // Only a 404 means the topic is gone (the last member leaving
-          // archives it): refresh so the stale row leaves at once, like the
-          // removed-while-open flow. Any other failure (403, network) keeps
-          // the row: the caller decides what to show.
-          if (error instanceof ApiError && error.status === 404) {
-            await refreshChats().catch(() => {});
-          }
-          throw error;
-        }
+        // ONE DELETE. A 404 here does not always mean the topic is gone:
+        // the server also 404s for a user who is not a member (e.g. a
+        // stale member list, or a second click on Remove). Rethrow as-is;
+        // the caller re-checks the row via `refreshTopicRow`.
+        const topic = await api.removeTopicMember(topicId, userId);
+        await applyTopicRow(topic);
+      },
+      // T-0130 (review): re-reads the chat list and reports whether the
+      // topic row is still there, so a member-removal 404 can be told
+      // apart from a gone topic (last member removed → archived).
+      refreshTopicRow: async (chatId, topicId) => {
+        await refreshChats().catch(() => {});
+        return !get().chats.some((chat) => chat.id === chatId || chat.topic?.id === topicId);
       },
       leaveTopic: async (chatId) => {
         const me = get().me;
         if (me === undefined) {
           throw new Error('This topic is not available yet.');
         }
-        await get().removeTopicMember(chatId, me.id);
+        try {
+          await get().removeTopicMember(chatId, me.id);
+        } catch (error) {
+          // Leaving the last seat archives the topic (server 404): the
+          // row refreshes itself away via `refreshTopicRow`'s caller. A 404
+          // for any other reason also means there is nothing left to
+          // leave: swallow it, the caller navigates away either way.
+          if (error instanceof ApiError && error.status === 404) {
+            await refreshChats().catch(() => {});
+            return;
+          }
+          throw error;
+        }
       },
       setMembersCanCreateTopics: async (chatId, allowed) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
