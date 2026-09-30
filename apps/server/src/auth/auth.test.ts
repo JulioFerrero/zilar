@@ -310,6 +310,13 @@ describe('auth flows', () => {
 
     const afterRevoke = await app.request(`${BASE_URL}/api/invites/${createdBody.code}`);
     expect(await afterRevoke.json()).toEqual({ valid: false });
+
+    // The invite code is a bearer secret: the request log keeps the route
+    // shape only, on success and on error.
+    const output = context.logOutput();
+    expect(output).not.toContain(createdBody.code);
+    expect(output).not.toContain('not-a-real-code');
+    expect(output).toContain('/api/invites/:code');
   });
 
   it('sets an HTTP-only, SameSite=Lax session cookie that is Secure in production', async () => {
