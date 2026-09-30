@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { ChatSummary } from '@galena/chat-core';
 import { renderApp } from '@/test/renderApp';
 
@@ -123,7 +123,10 @@ describe('channels', () => {
     await waitFor(() =>
       expect(createChannel).toHaveBeenCalledWith('Releases', ['u-ana'], 'Ship notes'),
     );
-    expect(await screen.findByText('Releases')).toBeTruthy();
+    // Scoped to the chat list: the dialog's own "Releases" input also
+    // matches a bare text query once the row paints.
+    const list = within(screen.getByRole('navigation', { name: 'Chats' }));
+    expect(await list.findByText('Releases')).toBeTruthy();
   });
 
   it('leaves the channel from the panel', async () => {
@@ -229,6 +232,9 @@ describe('channels', () => {
     });
 
     fireEvent.click(screen.getByLabelText('Open Acme Announcements channel info'));
-    expect(await screen.findByText('Could not reach the server')).toBeTruthy();
+    // Scoped to the Admins section: with every fetch failing, other panel
+    // sections surface the same network text in their own alerts.
+    const admins = within(screen.getByRole('region', { name: 'Admins' }));
+    expect(await admins.findByText('Could not reach the server')).toBeTruthy();
   });
 });
