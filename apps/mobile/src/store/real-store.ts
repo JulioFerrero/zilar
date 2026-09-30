@@ -287,6 +287,10 @@ interface SenderInput {
  * with mobile storage/AppState seams. It loads chats and contacts over HTTP,
  * connects `xmpp-core`, and turns its events into store updates.
  */
+// One shared empty list: a selector must return the same reference while
+// nothing changed, or React re-renders forever ("Maximum update depth").
+const EMPTY_PINS: Pin[] = [];
+
 export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStoreState> {
   const api = deps.api ?? createChatApi(getSessionToken);
   const now = deps.now ?? ((): Date => new Date());
@@ -2697,7 +2701,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         // Reading the revision subscribes the selector to pin publishes
         // for this chat, like `groupDetail` does with its own revision.
         void (pinsRevisionByChat.get(chatId) ?? 0);
-        return pinsByChat.get(chatId) ?? [];
+        return pinsByChat.get(chatId) ?? EMPTY_PINS;
       },
       pinsError: undefined,
       refreshPins: async (chatId) => {
