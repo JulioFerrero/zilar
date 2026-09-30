@@ -59,6 +59,46 @@ const serverConfigSchema = z
     // LITELLM_MASTER_KEY is handled by the AI module). At least 32 bytes, so a
     // weak key fails validation at startup rather than encrypting at rest.
     GALENA_KEY_ENCRYPTION_KEY: z.string().min(32).optional(),
+    // Mail transport (T-0128): `console` writes sign-in codes to the log
+    // (development only), `smtp` sends real mail through nodemailer.
+    // In production the transport must be chosen explicitly: leaving it
+    // unset refuses to start with an error that names these variables.
+    MAIL_TRANSPORT: z.enum(['console', 'smtp']).optional(),
+    // SMTP host, required when MAIL_TRANSPORT=smtp.
+    SMTP_HOST: z.string().min(1, 'must not be empty').optional(),
+    // SMTP port in [1, 65535]. Default: 587.
+    SMTP_PORT: z.preprocess(
+      (value) => value ?? '587',
+      z
+        .string()
+        .regex(/^\d+$/)
+        .transform((value) => Number.parseInt(value, 10))
+        .refine((value) => value >= 1 && value <= 65535),
+    ),
+    // `true` = implicit TLS (normally port 465). `false` = STARTTLS is
+    // required: the mailer sets `requireTLS: true` and never falls back
+    // to plaintext. Default: false.
+    SMTP_SECURE: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    // SMTP credentials. Both are optional together (no auth when absent);
+    // setting only one is a startup error.
+    SMTP_USER: z.string().min(1, 'must not be empty').optional(),
+    SMTP_PASSWORD: z.string().min(1, 'must not be empty').optional(),
+    // Sender shown on sign-in mails, e.g. `Galena <no-reply@example.com>`.
+    // Required when MAIL_TRANSPORT=smtp.
+    MAIL_FROM: z.string().min(1, 'must not be empty').optional(),
+    // Optional Reply-To header for sign-in mails.
+    MAIL_REPLY_TO: z.string().min(1, 'must not be empty').optional(),
+    // Explicit opt-in that lets a single-admin private install run with
+    // MAIL_TRANSPORT=console in production. The server then logs a loud
+    // startup warning and the codes appear in the log. Off by default and
+    // unsuitable for anyone but the operator.
+    MAIL_ALLOW_CONSOLE_IN_PRODUCTION: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     // Agent gateway (T-0034): when true, the server keeps every active AI
     // online over XMPP and replies to owner DMs. Off by default; enabling it
     // is one env line.
@@ -105,9 +145,12 @@ const serverConfigSchema = z
           'GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY and GITHUB_APP_INSTALLATION_ID must be set together',
       });
     }
+    checkMailConfig(value, ctx);
   })
   .transform((value) => ({
     ...value,
+    MAIL_TRANSPORT:
+      value.MAIL_TRANSPORT ?? (value.NODE_ENV === 'production' ? undefined : 'console'),
     BETTER_AUTH_URL: value.BETTER_AUTH_URL ?? value.PUBLIC_URL,
   }));
 
@@ -146,21 +189,93 @@ export function loadServerConfigOrExit(env: Record<string, string | undefined>):
   }
 }
 
-function formatIssues(error: z.ZodError): string {
-  const reasons = new Map<string, string>();
-  for (const issue of error.issues) {
-    const name = issue.path.join('.') || 'env';
-    if (!reasons.has(name)) {
-      reasons.set(name, reasonFor(issue));
+// Mail transport rules (T-0128). Every issue message names the variable and
+// states what is wrong; values are never included, so SMTP_PASSWORD can
+// never leak through a configuration error. The custom issues use
+// `MAIL_TRANSPORT` as the path so `formatIssues` groups them there.
+function checkMailConfig(
+  value: {
+    NODE_ENV: 'development' | 'test' | 'production';
+    MAIL_TRANSPORT?: 'console' | 'smtp' | undefined;
+    SMTP_HOST?: string | undefined;
+    SMTP_USER?: string | undefined;
+    SMTP_PASSWORD?: string | undefined;
+    MAIL_FROM?: string | undefined;
+    MAIL_REPLY_TO?: string | undefined;
+    MAIL_ALLOW_CONSOLE_IN_PRODUCTION: boolean;
+  },
+  ctx: z.core.$RefinementCtx,
+): void {
+  const fail = (message: string): void => {
+    ctx.addIssue({ code: 'custom', message, path: ['MAIL_TRANSPORT'] });
+  };
+
+  if (value.MAIL_TRANSPORT === 'smtp') {
+    if (value.SMTP_HOST === undefined) {
+      fail('SMTP_HOST is required when MAIL_TRANSPORT=smtp');
+    }
+    if (value.MAIL_FROM === undefined) {
+      fail('MAIL_FROM is required when MAIL_TRANSPORT=smtp');
+    }
+    const userSet = value.SMTP_USER !== undefined;
+    const passwordSet = value.SMTP_PASSWORD !== undefined;
+    if (userSet !== passwordSet) {
+      fail('SMTP_USER and SMTP_PASSWORD must be set together');
+    }
+    for (const [name, mailbox] of [
+      ['MAIL_FROM', value.MAIL_FROM],
+      ['MAIL_REPLY_TO', value.MAIL_REPLY_TO],
+    ] as const) {
+      if (mailbox !== undefined && !isMailbox(mailbox)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `${name} must be a valid mailbox (for example: Galena <no-reply@example.com>)`,
+          path: [name],
+        });
+      }
     }
   }
-  const details = [...reasons].map(([name, reason]) => `${name} (${reason})`);
+}
+
+// Accepts a bare address (`no-reply@example.com`) or a display name plus
+// angle-addr (`Galena <no-reply@example.com>`); enough validation to catch a
+// typo in MAIL_FROM at startup without pulling in a mail parser.
+function isMailbox(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.includes('\n') || trimmed.includes('\r')) {
+    return false;
+  }
+  const angle = trimmed.match(/^(.*)<([^<>]+)>$/);
+  const address = (angle?.[2] ?? trimmed).trim();
+  return /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(address);
+}
+
+function formatIssues(error: z.ZodError): string {
+  const seen = new Set<string>();
+  const details: string[] = [];
+  for (const issue of error.issues) {
+    const name = issue.path.join('.') || 'env';
+    const detail = `${name} (${reasonFor(issue)})`;
+    // One entry per issue so several precise messages survive under one
+    // path (for example both SMTP rules); exact duplicates collapse.
+    if (!seen.has(detail)) {
+      seen.add(detail);
+      details.push(detail);
+    }
+  }
   return `Invalid server configuration: ${details.join(', ')}`;
 }
 
 function reasonFor(issue: z.core.$ZodIssue): string {
   if (issue.code === 'invalid_type' && issue.input === undefined) {
     return 'missing';
+  }
+  // superRefine issues carry an exact message (for example the mail rules
+  // naming SMTP_HOST); keep it so operators know what to fix. These
+  // messages are written in code and never include a value, so a long
+  // message cannot leak a secret.
+  if (issue.code === 'custom' && typeof issue.message === 'string' && issue.message.length > 0) {
+    return issue.message;
   }
   return 'invalid';
 }

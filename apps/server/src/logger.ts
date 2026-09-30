@@ -11,6 +11,8 @@ export const redactPaths: string[] = [
   'DATABASE_URL',
   'BETTER_AUTH_SECRET',
   'GALENA_KEY_ENCRYPTION_KEY',
+  'SMTP_PASSWORD',
+  'SMTP_USER',
 ];
 
 export function createLogger(config: ServerConfig, destination?: DestinationStream): Logger {
