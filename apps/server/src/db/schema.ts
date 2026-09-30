@@ -652,3 +652,52 @@ export const aiToolRuns = pgTable(
   },
   (table) => [index('ai_tool_runs_tool_idx').on(table.toolId)],
 );
+
+// One scheduled routine (T-0104): a stored tool plus a schedule in one
+// topic, posting the tool's output as the AI. T-0110 scope: (AI, topic) —
+// `group_id`/`topic_id` are both set (a group topic) or both null (the
+// personal chat with the AI's owner). `approved_hosts` is the exact host
+// set a human approved; the scheduler pauses the routine when the tool's
+// current version contacts new sites. Deletion is soft (`deleted_at`); at
+// most 10 non-deleted routines per (AI, topic), enforced in the service.
+export const routines = pgTable(
+  'routines',
+  {
+    id: text('id').primaryKey(),
+    aiId: text('ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    // `null` means the personal chat between the AI and its owner.
+    groupId: text('group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    // The topic the routine belongs to and posts into. Null exactly when
+    // `group_id` is null (personal chat). Cascades with the topic.
+    topicId: text('topic_id').references(() => topics.id, { onDelete: 'cascade' }),
+    toolId: text('tool_id')
+      .notNull()
+      .references(() => aiTools.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    schedule: jsonb('schedule').$type<unknown>().notNull(),
+    input: jsonb('input').$type<unknown>(),
+    approvedHosts: jsonb('approved_hosts').$type<string[]>().notNull(),
+    status: text('status', { enum: ['active', 'paused', 'needs_approval'] })
+      .notNull()
+      .default('active'),
+    pausedReason: text('paused_reason', { enum: ['user', 'failures', 'hosts_changed'] }),
+    nextRunAt: timestamp('next_run_at', { withTimezone: true }).notNull(),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+    lastStatus: text('last_status', { enum: ['ok', 'error', 'skipped'] }),
+    consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    // The scheduler's due query: active routines ordered by next run.
+    index('routines_status_next_run_idx').on(table.status, table.nextRunAt),
+    // Personal scope is both ids null; group scope is both set.
+    check('routines_topic_scope_check', sql`("group_id" IS NULL) = ("topic_id" IS NULL)`),
+  ],
+);

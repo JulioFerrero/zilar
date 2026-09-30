@@ -1,7 +1,7 @@
 ---
 id: T-0104
 title: Routines: scheduled tool runs that post into the chat as the AI (scheduler, service, routes)
-status: planned
+status: merged
 milestone: M4
 branch: task/T-0104-routines-scheduler
 model: meta/muse-spark-1.3-contributor
@@ -106,28 +106,57 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Implemented T-0104 end to end on the (AI, topic) scope from the scope-update block (T-0108/T-0110 already merged): `routines` table, pure DST-correct schedule module, exactly-once scheduler, run-and-post path with host pinning and failure counting, service + routes, lifecycle hooks, `ROUTINES_ENABLED` wiring.
+- Data model (`db/schema.ts`, migration `drizzle/0023_classy_lester.sql` via `pnpm --filter @galena/server db:generate`): `routines` with `topic_id` FK cascade + `routines_topic_scope_check` (`(group_id is null) = (topic_id is null)`), FKs cascade on AI/group/topic/tool, index on `(status, next_run_at)`. 10-routine limit per (AI, topic) enforced in service (no partial unique index needed since deleted rows share the scope).
+- Schedules (`routines/schedule.ts`, pure, `Intl.DateTimeFormat` only): zod-validated daily (HH:MM, IANA zone, weekdays 1–7 default all, no duplicates) and interval (60–10 080 min hard bounds). `nextRunAfter` is strictly-after; spring-forward gap resolves to first valid moment (02:30 → 03:00), fall-back ambiguity to first occurrence. Verified against real 2026 transitions.
+- Scheduler (`routines/scheduler.ts`): 30 s unref'd timer, `start`/`stop`/`tick`, `maxPerTick` 5, no-overlap guard. Claim = conditional update advancing `next_run_at` from now before the run (loser sees 0 rows); overdue-by-days runs once; crash mid-run skips, never duplicates (trade-off in code comment). Max 2 concurrent runs per tick (batched `Promise.all`).
+- Run path (`routines/execute.ts`): ordered checks AI-active → tool-exists → host-subset → `runToolVersion(trigger 'routine')` → post `"<title>\n<text>"` (4 000 chars + `…`). `post false`/throw = `skipped`; 3rd consecutive failure pauses with the exact fixed notice; new host = `needs_approval`/`hosts_changed` with the exact fixed notice + `routine.paused` audit. Audit `routine.run` detail is `{status, durationMs}` only.
+- Service/routes (`routines/service.ts`, `routes.ts`, mounted `/api`): `createRoutine` (no HTTP create route) validates title/input/schedule, tool-same-(AI,topic), approvedHosts superset else `hosts_not_approved`, limit 10, audits `routine.created` with `{toolId}` only. `GET ais/:id/routines` (owner, scope, no source), `GET groups/:id/routines` (member, visible topics only), pause (manager, idempotent), resume (manager; 409 `needs_approval`; failures resume resets counter + recomputes `next_run_at`), delete (manager, idempotent 204). Same-404-for-strangers everywhere; pause/resume/delete answers verified byte-identical to missing-id 404.
+- Lifecycle: `removeTopicAi` and `removeGroupAi` soft-delete the AI's routines in scope; `deleteTool` soft-deletes the tool's routines. Naming note: group-wide helper is `deleteRoutinesForAiInGroup` (spec text says "the group-wide variant `removeGroupAi` uses", i.e. it names the caller; I mirrored `deleteToolsForAiInGroup`).
+- Wiring (`config.ts`, `index.ts`, `routines/wiring.ts`, `SERVER_CONFIG.md`): `ROUTINES_ENABLED` zod boolean default false; builder starts the scheduler only with flag + runner, one warning for flag-without-runner (unit-tested), silent when off; stops on shutdown. T-0105 passes the runner.
+- Tests: `schedule.test.ts` (22), `scheduler.test.ts` (19: exactly-once incl. concurrent ticks, overdue-once, skips, 4 000-char cut, 1-2-3 failures + single notice, counter reset, host add/remove/code-only, deleted tool, max-2-concurrency, no-overlap, audit cleanliness), `service.test.ts` (18: validation, limit, reads incl. private-topic hiding, manager rules, 409, counter reset, idempotent delete, lifecycle incl. topic-AI removal, audit cleanliness), `wiring.test.ts` (3), `config.test.ts` (+2 + default expectations), `groups.test.ts` (+1 T-0104 removal case). No `authz-sweep.test.ts` edit needed: sweep passes, all 5 new routes answer 401.
 
 ### Files changed
--
+- `apps/server/src/routines/schedule.ts`, `scheduler.ts`, `execute.ts`, `service.ts`, `routes.ts`, `wiring.ts` (new)
+- `apps/server/src/routines/schedule.test.ts` (22 tests), `scheduler.test.ts` (19), `service.test.ts` (18), `wiring.test.ts` (3) (new)
+- `apps/server/src/db/schema.ts` + migration `drizzle/0023_classy_lester.sql` + meta (`_journal.json`, `0023_snapshot.json`)
+- `apps/server/src/app.ts` (mount routines routes), `index.ts` (builder + shutdown), `config.ts` + `config.test.ts` (`ROUTINES_ENABLED`)
+- `apps/server/src/groups/service.ts` (+ test), `apps/server/src/topics/service.ts`, `apps/server/src/tools/service.ts` (lifecycle hooks)
+- `apps/server/src/topics/backfill.test.ts` (OUT-OF-SCOPE 2-line fix, see below), `docs/SERVER_CONFIG.md`, `work/T-0104-routines-scheduler.md`
 
 ### Commands run and real results
--
+- `pnpm install`: done, 6.9s.
+- `pnpm --filter @galena/server db:generate`: created `0023_classy_lester.sql`; re-run: "No schema changes, nothing to migrate".
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint` (oxlint): pass, exit 0, re-run after last edit — pass.
+- `pnpm typecheck`: pass (10 tasks; direct `tsc --noEmit` clean).
+- `pnpm --filter @galena/server test -- --maxWorkers=2 --reporter=basic` (full suite): 70 files passed, 5 skipped; 1204 tests passed, 7 skipped, 0 failed (293s). Scoped re-run after last edit (`src/routines` + `src/config.test.ts`): 84 passed.
+- `pnpm exec vitest run src/authz-sweep.test.ts`: 5/5 pass (new routes auto-discovered, all 401).
+- `pnpm build --force` (fresh, 0 cached): 2 successful.
+- Grep for `: any`/`as any`/`@ts-ignore`/disable comments in touched files: no hits (one pre-existing English "any" in a topics comment).
 
 ### Problems, deviations from the spec, open questions
--
+- OUT-OF-SCOPE EDIT (lead: confirm or revert): `apps/server/src/topics/backfill.test.ts` is not in Allowed files, but my migration broke it: the test applies every migration except `0018_`–`0022_` to simulate a pre-T-0108 DB, and `0023` (FKs to `topics`) fails there with `relation "public.topics" does not exist`. Verified it passes without `0023` and fails with it. Fix is 2 lines following the file's own pattern: exclude `0023_` with a comment. No product code affected; full suite is green only with this fix. Alternative is a lead-owned follow-up edit.
+- Group-wide helper named `deleteRoutinesForAiInGroup` (mirrors `deleteToolsForAiInGroup`); spec sentence names the caller (`removeGroupAi`), not the helper — flagging in case the lead wants the exact name `deleteRoutinesForAiInTopic`-style symmetry instead.
+- `GET /api/ais/:id/routines` and `GET /api/groups/:id/routines` return the full `PublicRoutine` (superset of the spec's row fields: plus aiId/groupId/topicId/toolId/scope); pause/resume return the exact spec field set. Tool routes behave the same way (superset on list).
+- Pausing an already-`needs_approval` routine is a 200 no-op returning current state (spec only defines pause from active; deleteTool-style idempotency seemed closest).
+- Scheduler skips (stopped AI, AI left room, `post false`) keep `next_run_at` as claimed (already advanced), so the next slot fires on schedule rather than immediately retrying — matches "it resumes with the AI".
+- No open questions blocking T-0105: `createRoutine` signature takes everything the approval-card adapter will have (aiId/groupId/topicId/toolId/title/schedule/input/approvedHosts/userId).
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None (status: review). Only ask: confirm the 2-line `backfill.test.ts` exclusion stays.
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged with three lead fixes.
 
 ### Findings
--
+- Read line by line: the claim is a conditional update that advances `next_run_at` before the run (exactly once, overdue runs once), the run order matches the spec, audit rows carry status and duration only, failures never post error text, host pinning pauses before any run, and the routes use the topic rules (reader sees the topic, manager is the AI's owner or a group owner/admin who can see it, everyone else gets the missing-id 404, no tool source in rows).
+- Lead fixes: (1) the "is the AI still in the room" step now uses the derived rule (`allowedTopicAiIds`), so in a private topic the tool no longer runs for an AI whose owner left the topic (test added); (2) the claim update also requires `deleted_at is null`; (3) pause and resume ignore soft-deleted rows.
+- The 2-line `backfill.test.ts` change (skip migration 0023 in the pre-topics simulation) is accepted.
 
 ### Follow-ups
--
+- T-0105 wires the real tool runner and creates routines from approved cards; until then `ROUTINES_ENABLED=true` only logs a warning.
+- The 10-routine limit is checked before the insert without a lock; concurrent creations are only possible after human approval, so this is accepted.

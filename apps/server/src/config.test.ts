@@ -56,6 +56,7 @@ describe('loadServerConfig', () => {
       AGENT_GATEWAY_ENABLED: false,
       RUNNER_HUB_ENABLED: false,
       RUNNER_HUB_PORT: 3189,
+      ROUTINES_ENABLED: false,
       ACTION_DEMO_ENABLED: false,
       xmpp: VALID_XMPP,
     });
@@ -92,6 +93,7 @@ describe('loadServerConfig', () => {
       AGENT_GATEWAY_ENABLED: false,
       RUNNER_HUB_ENABLED: false,
       RUNNER_HUB_PORT: 3189,
+      ROUTINES_ENABLED: false,
       ACTION_DEMO_ENABLED: false,
       xmpp: VALID_XMPP,
     });
@@ -291,6 +293,27 @@ describe('loadServerConfig', () => {
     };
     const message = configErrorMessage({ ...base, ACTION_DEMO_ENABLED: 'maybe' });
     expect(message).toContain('ACTION_DEMO_ENABLED');
+    expect(message).not.toContain('maybe');
+  });
+
+  it('leaves the routines scheduler off by default and enables it with one line', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig(base).ROUTINES_ENABLED).toBe(false);
+    expect(loadServerConfig({ ...base, ROUTINES_ENABLED: 'true' }).ROUTINES_ENABLED).toBe(true);
+  });
+
+  it('rejects junk values for ROUTINES_ENABLED like the sibling flags', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    const message = configErrorMessage({ ...base, ROUTINES_ENABLED: 'maybe' });
+    expect(message).toContain('ROUTINES_ENABLED');
     expect(message).not.toContain('maybe');
   });
 

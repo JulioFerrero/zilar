@@ -108,6 +108,7 @@ The git proxy uses `https://api.github.com` by default (`git/token.ts:12`); no e
 | `AGENT_GATEWAY_ENABLED` | No | `false` | Off by default; set to `'true'` to enable (`config.ts:65-68`). Wires the agent gateway into `index.ts` and starts every active AI over XMPP (`agents/gateway.ts:1353-1364`). Needs `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY` and `GALENA_KEY_ENCRYPTION_KEY` to do anything useful — without any of those the gateway logs `agent gateway needs LiteLLM and the key cipher; staying off` and stays off (`agents/gateway.ts:1361-1364`). | Not a secret. |
 | `RUNNER_HUB_ENABLED` | No | `false` | Off by default; set to `'true'` to enable the tunnel for approved runners (`config.ts:73-76`). When on, the server binds `RUNNER_HUB_PORT` to `127.0.0.1` (`machines/hub.ts:200-344`) and validates that the gateway URL is `http://` (`machines/hub.ts:356-365`). A misconfigured URL exits before the HTTP server starts (`index.ts:56-59`). | Not a secret. |
 | `RUNNER_HUB_PORT` | No | `3189` | TCP port the runner hub tunnel binds to. Integer in `[1, 65535]` (`config.ts:77-84`). | Not a secret. |
+| `ROUTINES_ENABLED` | No | `false` | Off by default; set to `'true'` to enable the routines scheduler (`routines/scheduler.ts`, `config.ts`). When on, the server fires due routines every 30 s through the configured tool runner and posts the output as the AI (`index.ts`). With the flag on but no tool runner configured, the scheduler logs one warning and stays off. | Not a secret. |
 
 ### Voice, git proxy, limits / timeouts
 

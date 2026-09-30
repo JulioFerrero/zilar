@@ -25,6 +25,7 @@ Decisions D25 to D29 in [`PROJECT_PLAN.md`](PROJECT_PLAN.md). Visual spec: the C
 | T-0124 | Channels | One-way feeds, only admins post | T-0108, T-0115 | yes |
 | T-0104 to T-0107 | Routines, AI tool actions, model side, tools UI | "Every morning post gold, S&P and BTC" | T-0110 (T-0104, T-0105 specs are updated for topics; T-0106, T-0107 are written after T-0105) | T-0104 yes |
 | T-0128 | SMTP mailer | Sign-in codes by real email; production installs cannot start without it (found in T-0126) | none | no |
+| T-0129 | Coolify without bind mounts | The pasted Coolify compose file cannot see repository files; bake config into images (found in review of T-0126) | none | no |
 | T-0126 | Production images and compose | Docker Compose and Coolify install, Caddy HTTPS (D30, easy install) | none | no |
 | T-0127 | Install wizard, backup, bare metal | `./galena init`, backup/restore, systemd guide | T-0126 | no |
 | T-0125 | Web tools for AIs | `web.price` (gold, S&P, BTC), Wikipedia, feeds, page reading and a best-effort search, all keyless (no SearXNG/Exa for now) | T-0105 | no |

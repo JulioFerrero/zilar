@@ -10,6 +10,7 @@ import {
   groupMembers,
   groups,
   providerConnections,
+  routines,
   topicAis,
   topics,
 } from '../db/schema';
@@ -920,6 +921,76 @@ describe('groups', () => {
       const byId = new Map(rows.map((row) => [row.id, row]));
       expect(byId.get(groupTool!.id)?.deletedAt).not.toBeNull();
       expect(byId.get(personalTool!.id)?.deletedAt).toBeNull();
+    });
+
+    it('T-0104: removing the AI from the group soft-deletes its group routines only', async () => {
+      const { owner, groupId } = await groupWithMember();
+      const ai = await seedAi(owner.id);
+      expect((await addAiRequest(owner.cookie, groupId, { aiId: ai.aiId })).status).toBe(200);
+
+      const routineNow = new Date('2026-01-01T00:00:00Z');
+      const generalTopicId = await generalTopicOf(groupId);
+      const [groupTool] = await context.db
+        .insert(aiTools)
+        .values({
+          id: randomUUID(),
+          aiId: ai.aiId,
+          groupId,
+          topicId: generalTopicId,
+          name: 'routine-tool',
+          description: 'A tool with a routine',
+          currentVersion: 1,
+          createdBy: owner.id,
+          createdAt: routineNow,
+          updatedAt: routineNow,
+        })
+        .returning();
+      const [groupRoutine] = await context.db
+        .insert(routines)
+        .values({
+          id: randomUUID(),
+          aiId: ai.aiId,
+          groupId,
+          topicId: generalTopicId,
+          toolId: groupTool!.id,
+          title: 'Group routine',
+          schedule: { kind: 'interval', everyMinutes: 60 },
+          approvedHosts: [],
+          status: 'active',
+          nextRunAt: routineNow,
+          consecutiveFailures: 0,
+          createdBy: owner.id,
+          createdAt: routineNow,
+          updatedAt: routineNow,
+        })
+        .returning();
+      const [personalRoutine] = await context.db
+        .insert(routines)
+        .values({
+          id: randomUUID(),
+          aiId: ai.aiId,
+          groupId: null,
+          topicId: null,
+          toolId: groupTool!.id,
+          title: 'Personal routine',
+          schedule: { kind: 'interval', everyMinutes: 60 },
+          approvedHosts: [],
+          status: 'active',
+          nextRunAt: routineNow,
+          consecutiveFailures: 0,
+          createdBy: owner.id,
+          createdAt: routineNow,
+          updatedAt: routineNow,
+        })
+        .returning();
+
+      const removed = await removeAiRequest(owner.cookie, groupId, ai.aiId);
+      expect(removed.status).toBe(200);
+
+      const rows = await context.db.select().from(routines);
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      expect(byId.get(groupRoutine!.id)?.deletedAt).not.toBeNull();
+      expect(byId.get(personalRoutine!.id)?.deletedAt).toBeNull();
     });
 
     it('lists the group AIs in the detail and hides the group from strangers', async () => {

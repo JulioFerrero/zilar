@@ -19,6 +19,7 @@ import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { emitGroupAi, emitTopicAi } from './events';
 import { aiMayBeInTopic } from '../topics/access';
 import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
+import { deleteRoutinesForAiInGroup } from '../routines/service';
 import { deleteToolsForAiInGroup } from '../tools/service';
 import { syncTopicRoom } from '../topics/rooms';
 
@@ -542,6 +543,13 @@ export async function removeGroupAi(
       // membership, like the rules above. Personal-chat tools and
       // other-group tools are unaffected.
       await deleteToolsForAiInGroup(tx as unknown as ServerDatabase, {
+        aiId: input.aiId,
+        groupId: input.groupId,
+        now: new Date(),
+      });
+      // T-0104: the AI's routines in this group die with the membership
+      // too, next to the tools above.
+      await deleteRoutinesForAiInGroup(tx as unknown as ServerDatabase, {
         aiId: input.aiId,
         groupId: input.groupId,
         now: new Date(),
