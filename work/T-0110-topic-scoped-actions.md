@@ -1,7 +1,7 @@
 ---
 id: T-0110
 title: Approvals, "always allow" rules and tools are scoped to a topic (AI + topic), not to a whole group
-status: review
+status: merged
 milestone: M5
 branch: task/T-0110-topic-scoped-actions
 model: meta/muse-spark-1.3-contributor
@@ -117,10 +117,15 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged.
 
 ### Findings
--
+- Read twice (security code). Scope is now (AI, topic) everywhere: `topic_id` on approvals, pending actions, rules and tools with a per-table CHECK `(group_id IS NULL) = (topic_id IS NULL)`; unique indexes rebuilt per (AI, topic); custom migration `0022` backfills every group row to the group's General topic first and adds the CHECKs second (idempotent, safe on data that predates topics). The action gateway denies a group request that carries no topic, a topic of another group, an archived topic, or a topic the AI is not in; rule lookup is exact on (AI, topic, action); all cards and outcomes go to the topic room through the extracted, tested production announcer (this closes the T-0109 follow-up).
+- Visibility holds: a group admin who cannot see a private topic gets the same 404 as a missing id for its approvals, rules and tools, and its rows are left out of lists and the pending badge; an AI owner who lost access to a private topic loses decide, revoke and read rights on its rows; removing an AI from a topic revokes its rules and deletes its tools there.
+- Lead fix: `isAiInTopic` now uses the T-0109 derived rule (`allowedTopicAiIds`), so in a private topic an AI whose owner is no longer a member cannot raise requests either (defence in depth; the AI is also out of the room).
+- Checks: format, lint, typecheck pass; the lead re-ran approvals, actions, tools, agent gateway, topics, groups and authz-sweep: 21 files, 478 tests passed; the worker's full server suite (before the lead fix) 1139 passed, 7 skipped.
 
 ### Follow-ups
--
+- An approval that is still pending when the AI is removed from its topic (or group) can still run if a human decides later; cancelling pending actions on removal is a small hardening task.
+- T-0104 (routines) and T-0105 (tool actions) must use `topicId` from the request context.
+- `listDecidableApprovals` and the visibility helpers query per row (N+1); fine at current sizes.

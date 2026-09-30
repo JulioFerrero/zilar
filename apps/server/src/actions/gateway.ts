@@ -3,8 +3,9 @@ import { and, eq, lt } from 'drizzle-orm';
 import { ARGS_HASH_PATTERN } from '@galena/protocol';
 import type { AuditEntry, AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, approvals, groupAis, pendingActions, topicAis, topics } from '../db/schema';
+import { ais, approvals, groupAis, pendingActions, topics } from '../db/schema';
 import { createApproval, verifyApproval } from '../approvals/service';
+import { allowedTopicAiIds } from '../topics/access';
 import { findActiveRule } from '../approvals/rules';
 import { type ActionAnnouncer, summaryForOutcome } from './announce';
 
@@ -819,6 +820,7 @@ async function isAiInTopic(
     .select({
       id: topics.id,
       groupId: topics.groupId,
+      visibility: topics.visibility,
       isGeneral: topics.isGeneral,
       archivedAt: topics.archivedAt,
     })
@@ -833,12 +835,9 @@ async function isAiInTopic(
   if (topic.isGeneral) {
     return isAiInGroup(db, aiId, groupId);
   }
-  const [row] = await db
-    .select({ aiId: topicAis.aiId })
-    .from(topicAis)
-    .where(and(eq(topicAis.topicId, topicId), eq(topicAis.aiId, aiId)))
-    .limit(1);
-  return row !== undefined;
+  // T-0109 rule: in a private topic the AI counts only while its owner is a
+  // topic member, so an AI that lost its room cannot still raise requests.
+  return (await allowedTopicAiIds(db, topic)).has(aiId);
 }
 
 function truncateText(value: string, max: number): string {
