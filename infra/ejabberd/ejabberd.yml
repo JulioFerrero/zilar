@@ -79,12 +79,14 @@ listen:
       /upload: mod_http_upload
       /api: mod_http_api
   # Push component (T-0119, XEP-0114): our server connects here from the dev
-  # network and receives the XEP-0357 publish IQs. Loopback inside the
-  # container network, plain TCP — the secret is the only credential.
+  # network and receives the XEP-0357 publish IQs. Plain TCP, the secret is
+  # the only credential. It listens on all container interfaces so the
+  # published port works; docker-compose.dev.yml publishes it on 127.0.0.1
+  # only.
   # Overridden by EJABBERD_MACRO_PUSH_COMPONENT_SECRET (see
   # infra/docker-compose.dev.yml and docs/SERVER_CONFIG.md "Push").
   - port: 5347
-    ip: '127.0.0.1'
+    ip: '0.0.0.0'
     module: ejabberd_service
     hosts:
       PUSH_COMPONENT_HOST:

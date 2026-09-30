@@ -50,6 +50,8 @@ services:
     ports:
       - '127.0.0.1:5222:5222'
       - '127.0.0.1:5280:5280'
+      # Push component (T-0119): the server on the host dials it; loopback only.
+      - '127.0.0.1:5347:5347'
     # jwt-entrypoint.sh derives /opt/ejabberd/conf/jwt.jwk from
     # GALENA_XMPP_JWT_SECRET, then runs the image's normal tini + ejabberdctl.
     # command is repeated because overriding entrypoint drops the image CMD.
@@ -62,6 +64,8 @@ services:
       EJABBERD_MACRO_ADMIN: admin@galena.localhost
       REGISTER_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required in infra/.env}
       EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required in infra/.env}
+      # Same value as the server's PUSH_COMPONENT_SECRET (push stays off unless enabled).
+      EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}
       GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required in infra/.env}
     volumes:
       - ./ejabberd/ejabberd.yml:/opt/ejabberd/conf/ejabberd.yml:ro
