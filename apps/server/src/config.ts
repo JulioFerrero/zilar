@@ -167,6 +167,17 @@ const serverConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // Model-side tool rounds (T-0106): how many tool rounds one AI turn
+    // may run. Integer 1 to 10. Unset = 1 when `TOOLS_ENABLED` is off
+    // (today's behaviour, byte for byte) and 6 when it is on. Set
+    // explicitly to force either value whatever the flag says.
+    AGENT_TOOL_MAX_ROUNDS: z.preprocess(
+      (value) => value ?? '',
+      z
+        .string()
+        .regex(/^([1-9]|10)?$/)
+        .transform((value) => (value === '' ? undefined : Number.parseInt(value, 10))),
+    ),
     // The search backend behind the port (T-0125): `duckduckgo-html`
     // parses one DuckDuckGo HTML page per call and may be blocked or
     // change its markup at any time; `none` unregisters `web.search`.
@@ -201,6 +212,8 @@ const serverConfigSchema = z
     MAIL_TRANSPORT:
       value.MAIL_TRANSPORT ?? (value.NODE_ENV === 'production' ? undefined : 'console'),
     BETTER_AUTH_URL: value.BETTER_AUTH_URL ?? value.PUBLIC_URL,
+    // Unset = 1 when tools are off (today's behaviour), 6 when on.
+    AGENT_TOOL_MAX_ROUNDS: value.AGENT_TOOL_MAX_ROUNDS ?? (value.TOOLS_ENABLED ? 6 : 1),
   }));
 
 export type ServerConfig = z.infer<typeof serverConfigSchema> & {

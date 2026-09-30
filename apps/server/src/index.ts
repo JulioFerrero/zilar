@@ -296,6 +296,11 @@ const gateway = createAgentGateway(
     // enabled: `buildTools` returns just the persona tools when the
     // action list is empty, so a missing registry never offers the tool.
     actions: actionGateway,
+    // T-0106: the tool guide rides the system prompt only when tools are
+    // enabled and tool/routine adapters are registered; the multi-round
+    // loop runs `AGENT_TOOL_MAX_ROUNDS` rounds (1 with tools off).
+    toolsEnabled: config.TOOLS_ENABLED,
+    toolMaxRounds: config.AGENT_TOOL_MAX_ROUNDS,
   },
   { enabled: config.AGENT_GATEWAY_ENABLED },
 );

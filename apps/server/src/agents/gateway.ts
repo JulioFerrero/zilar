@@ -55,6 +55,7 @@ import {
   normBareJid,
   type ChatCompletionMessage,
 } from './context';
+import { TOOL_GUIDE } from './tool-guide';
 import { getAiUsage, type AiUsage } from '../ais/usage';
 import {
   dailyLimitReply,
@@ -103,6 +104,14 @@ export interface AgentGatewayDeps {
    * `request_action` tool, and tool calls route through it. Absent = no
    * action tool, no behaviour change for the persona tools. */
   actions?: ActionGateway;
+  /** T-0106: whether `TOOLS_ENABLED` is on. The tool guide rides the system
+   * prompt only when this is true AND tool/routine adapters are registered
+   * for the turn's context. Defaults to false (today's prompts). */
+  toolsEnabled?: boolean;
+  /** T-0106: how many tool rounds one turn may run. Defaults to 1
+   * (today's behaviour, byte for byte). Production passes
+   * `AGENT_TOOL_MAX_ROUNDS` (6 when `TOOLS_ENABLED` is on). */
+  toolMaxRounds?: number;
 }
 
 export interface AgentGatewayConfig {
@@ -775,6 +784,110 @@ export function createAgentGateway(
       return Promise.resolve({ id: '' });
     }
     return session.core.sendMessage(to, kind, text, opts);
+  }
+
+  // T-0106: per-round gate for the multi-round tool loop. Before each model
+  // call the AI must still be live (kill switch) and still under its
+  // daily/monthly limits. A limited AI gets the same fixed budget reply the
+  // single-round turn would send; a stopped AI gets the stopped reply and
+  // sends nothing. Usage null fails open, like the pre-turn check.
+  async function checkDmRoundGate(
+    session: AiSession,
+  ): Promise<{ limited: boolean; reply: string } | null> {
+    if (!sessionIsLive(session)) {
+      return { limited: true, reply: 'The AI was stopped.' };
+    }
+    if (deps.litellm === undefined) {
+      return null;
+    }
+    let usage: AiUsage | null;
+    try {
+      usage = await getAiUsage(
+        {
+          db: deps.db,
+          litellm: deps.litellm,
+          logger,
+          ...(deps.now === undefined ? {} : { now: deps.now }),
+        },
+        session.aiId,
+      );
+    } catch {
+      return null;
+    }
+    if (usage === null || !usage.dailyLimitReached) {
+      return null;
+    }
+    return { limited: true, reply: dailyLimitReply(usage.perDayUsd) };
+  }
+
+  // T-0106: appends the fixed tool guide to the last user turn. The system
+  // prompt builders take no options (their shape is frozen for provider
+  // caching), so the guide rides as a separate user turn right before the
+  // trigger. Only called when tools are enabled and adapters are
+  // registered; otherwise the messages pass through untouched.
+  function withToolGuide(messages: ChatCompletionMessage[]): ChatCompletionMessage[] {
+    return [...messages, { role: 'user', content: TOOL_GUIDE }];
+  }
+
+  // T-0106: posts one live progress message for a multi-round turn and
+  // updates it at each round (XMPP message correction, the same mechanism
+  // streaming replies use). Stage texts come from the fixed table in
+  // `agents/tool-guide.ts` — never model text, never tool output. Best
+  // effort: a failed post or update warns with ids only and the turn
+  // continues. Resolves with the progress message id when one was posted,
+  // else null.
+  function liveProgressReporter(
+    session: AiSession,
+    to: string,
+    kind: ChatKind,
+    aiJid: string,
+  ): {
+    reportProgress: (stage: string) => Promise<string | null>;
+    clearProgress: () => Promise<void>;
+  } {
+    let progressId: string | null = null;
+    return {
+      reportProgress: async (stage: string): Promise<string | null> => {
+        if (!sessionIsLive(session)) {
+          return null;
+        }
+        const payload = { v: 0 as const, type: 'progress' as const, data: { ai: aiJid, stage } };
+        try {
+          if (progressId === null) {
+            const sent = await session.core.sendMessage(to, kind, stage, { payload });
+            progressId = sent.id === '' ? null : sent.id;
+            return progressId;
+          }
+          await session.core.sendCorrection(to, kind, progressId, stage);
+          return progressId;
+        } catch (error) {
+          logger.warn(
+            { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
+            'AI progress message could not be sent',
+          );
+          return progressId;
+        }
+      },
+      clearProgress: async (): Promise<void> => {
+        // The final text replaces the progress line: clients render the
+        // newest message, and the progress card drops out of view. A
+        // correction keeps one bubble instead of leaving a stale
+        // "working on it" line next to the answer. Best effort like
+        // every other progress send.
+        if (progressId === null || !sessionIsLive(session)) {
+          return;
+        }
+        try {
+          await session.core.sendRetraction(to, kind, progressId);
+        } catch (error) {
+          logger.warn(
+            { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
+            'AI progress message could not be cleared',
+          );
+        }
+        progressId = null;
+      },
+    };
   }
 
   function liveSendTyping(
@@ -1466,13 +1579,19 @@ export function createAgentGateway(
       // mention arriving and the LLM call resolving. When `groupTools` is
       // set the room reply goes through the same tool loop as DMs (T-0098);
       // the executor carries the room's group id and the re-check callback.
+      // T-0106: the guide is appended to the last user turn only when tools
+      // are enabled and the room offers `request_action`; the loop runs
+      // `toolMaxRounds` rounds with a live progress message.
+      const groupProgress = liveProgressReporter(session, roomJid, 'groupchat', ai.jid);
+      const groupMessages =
+        deps.toolsEnabled === true && groupTools !== undefined ? withToolGuide(messages) : messages;
       await runGroupTurn({
         aiId: session.aiId,
         roomJid,
         triggerId: trigger.id,
         senderJid: normBareJid(trigger.fromJid),
         senderName,
-        messages,
+        messages: groupMessages,
         baseUrl: baseUrl,
         virtualKey,
         model: modelNameForAi(session.aiId),
@@ -1486,6 +1605,10 @@ export function createAgentGateway(
                 topicId: room.topicId,
                 isStillAllowed,
               }),
+              ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
+              checkRoundGate: () => checkDmRoundGate(session),
+              reportProgress: groupProgress.reportProgress,
+              clearProgress: groupProgress.clearProgress,
             }),
         sendMessage: (to, kind, text, opts) => liveSendMessage(session, to, kind, text, opts),
         sendTyping: (to, kind, state) => {
@@ -1660,6 +1783,14 @@ export function createAgentGateway(
         history: [...history, ...fresh],
         trigger,
       });
+      // T-0106: the guide rides as a trailing user turn only when tools are
+      // enabled and tool/routine adapters are registered (the
+      // `request_action` tool is offered). Otherwise today's messages, byte
+      // for byte.
+      const dmMessages =
+        deps.toolsEnabled === true && deps.actions !== undefined
+          ? withToolGuide(messages)
+          : messages;
 
       // `end` always comes after the final XMPP message: `runDmTurn` sends
       // it before resolving. Every send and draft push is gated by a
@@ -1667,16 +1798,24 @@ export function createAgentGateway(
       // final send drops the reply (and every draft) instead of delivering
       // it. The `end` itself runs unconditionally so the owner's client
       // sees the turn terminate instead of hanging.
+      // T-0106: multi-round turns post one live progress message at the
+      // first tool round and update it per round; it is retracted when the
+      // final text lands. Best effort: the turn never fails over it.
+      const dmProgress = liveProgressReporter(session, ownerJid, 'chat', ai.jid);
       const outcome = await runDmTurn({
         aiId: session.aiId,
         ownerJid,
-        messages,
+        messages: dmMessages,
         baseUrl: baseUrl,
         virtualKey,
         model: modelNameForAi(session.aiId),
         executeTool: executeToolCall(session),
         ...(deps.actions === undefined ? {} : { tools: buildTools(deps.actions.listActions()) }),
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
+        ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
+        checkRoundGate: () => checkDmRoundGate(session),
+        reportProgress: dmProgress.reportProgress,
+        clearProgress: dmProgress.clearProgress,
         onDelta: (textSoFar) => {
           if (sessionIsLive(session)) {
             turnDrafts.push(textSoFar);
