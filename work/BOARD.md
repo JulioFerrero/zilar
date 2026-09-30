@@ -17,7 +17,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0124](T-0124-channels.md) | Channels: only admins post | planned | meta/muse-spark-1.3-contributor | T-0108, T-0115 |  |
 | [T-0134](T-0134-server-followups.md) | Server follow-ups (join race, trusted proxy hops, pin 404, search with roles, preview limit, approvers in list) | planned | meta/muse-spark-1.3-contributor | T-0116 | No schema |
 | [T-0135](T-0135-mobile-parity.md) | Mobile: chat preferences and pinned messages | planned | meta/muse-spark-1.3-contributor | T-0113, T-0114 | Mobile, not run in a simulator |
-| [T-0136](T-0136-mobile-invite-links.md) | Mobile: group invite links (create, manage, join) | planned | meta/muse-spark-1.3-contributor | T-0112, T-0115 | Mobile, not run in a simulator |
 | [T-0137](T-0137-mobile-roles-admin.md) | Mobile: group roles and private-topic access | planned | meta/muse-spark-1.3-contributor | T-0112, T-0116 | Mobile, not run in a simulator |
 | [T-0138](T-0138-mobile-search.md) | Mobile: message search | planned | meta/muse-spark-1.3-contributor | T-0112 | Mobile, not run in a simulator |
 | [T-0106](T-0106-tool-model-side.md) | Model side of AI tools: prompt guide, several rounds per turn, working-on-it line | planned | meta/muse-spark-1.3-contributor | T-0105, T-0125, T-0132 | Ready; starts after T-0132 merges |
@@ -168,3 +167,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0127](T-0127-install-wizard-backup-baremetal.md) | install wizard (./galena init/up/doctor/backup/restore), bare-metal guide, deploy/backups ignored | 2026-09-30 |
 | [T-0133](T-0133-web-followups.md) | web follow-ups: single-call topic adds, revoke unstick, stale refresh guard, quiet-archive leak, screenshot script tests | 2026-09-30 |
 | [T-0132](T-0132-tool-host-approval.md) | tool host approval: hosts approved once per tool, sandbox gets declared ∩ approved (migration 0028) | 2026-09-30 |
+| [T-0136](T-0136-mobile-invite-links.md) | mobile group invite links: create, list, revoke, join by link (mobile only, to be run on Android) | 2026-09-30 |
