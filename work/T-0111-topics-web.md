@@ -1,7 +1,7 @@
 ---
 id: T-0111
 title: Topics (web): nested sidebar, topic view, task strip on every topic, new-topic dialog, members panel
-status: review
+status: merged
 milestone: M5
 branch: task/T-0111-topics-web
 model: meta/muse-spark-1.3-contributor
@@ -133,10 +133,14 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged. NOT yet checked in a real browser on Julio's real chats (no browser was connected during the night); it is covered by the mock-mode end-to-end test and the store/UI tests. Julio should look at the sidebar first thing.
 
 ### Findings
--
+- Each topic is its own chat keyed by its room JID and General keeps the group id, so old deep links and search hits open the right chat; the 60 s and on-focus refresh and the "topic no longer available" flow are handled.
+- The worker could not run `git rebase` (policy), so the lead rebased onto main (T-0117 search conflicted in `ChatHeader.tsx` and `mock/api.ts`): the topic menu "Search" and the header search button now share one action (`startChatSearch`); the no-op Mute entry is gone.
+- Found and fixed on main while running the suite: T-0117's stalled-history test left an unhandled rejection that made the web suite exit 1.
 
 ### Follow-ups
--
+- Live check in Helium: nested sidebar with the five groups, each showing its General topic; open a group, create a topic (public and private), the task strip, the topic panel, archive, and that search still opens hits.
+- The mock search index does not cover topic threads.
+- The kebab has no Mute (no per-topic mute API yet).
