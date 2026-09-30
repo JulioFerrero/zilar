@@ -125,6 +125,20 @@ never published: runners reach it over Tailscale/WireGuard or an SSH tunnel
 to the host. Outbound 443 must work for ACME (Let's Encrypt) http-01/tls-alpn
 validation.
 
+## Runners
+
+The runner hub (port 3189, off by default) has **no public path** in this
+stack: no host port is published and Caddy has no route for it. A runner on
+another machine cannot reach the hub directly. Current options: run the
+runner on the same host (it can reach the internal network), or give the
+runner a private path to the host (Tailscale/WireGuard, SSH tunnel to
+localhost:3189). The hub speaks a raw TCP tunnel protocol on its own port
+(`packages/runner-tunnel/src/server.ts`: plain `WebSocketServer` on path
+`/tunnel`, bound to 127.0.0.1), not HTTP on a path Caddy could route
+without a dedicated port forward — so exposing it is a T-0127/monitoring
+decision, not a one-line Caddy addition. `RUNNER_HUB_ENABLED` stays `false`
+unless you have that private path in place.
+
 ## Troubleshooting
 
 **Certificate not issued.** Check DNS (`dig +short <domain>` must return the
@@ -154,6 +168,16 @@ a production install cannot send sign-in emails — see "Email (required)"
 above. For a local trial only, run the server with `NODE_ENV=development`
 so the console mailer prints OTP codes to the server log.
 
+**Uploads fail.** The app PUTs files to `https://<domain>/upload/<slot>/<file>`
+(XEP-0363 slot URLs from ejabberd). Caddy proxies `/upload/*` to ejabberd
+with the path intact — the strip that used to be here broke every slot URL
+and is gone; a bare `404` with ejabberd's HTML body means the slot expired
+or never existed, while a Caddy-level failure would be a `502/503`. Check
+`docker compose ... logs ejabberd` for `mod_http_upload` errors. Proved in
+the install test: slot request → `put`/`get` URLs under
+`https://localhost/upload/...`, `PUT` → `201 Upload successful.`, `GET` →
+the bytes back.
+
 **Sign-up asks for an invite.** By design: create one with the invite CLI
 above.
 
@@ -163,9 +187,12 @@ T-0126 install test, `GALENA_DOMAIN=localhost`, Caddy on host 18080/18443,
 scratch project `galena-installtest`, throwaway secrets: all 5 services
 `healthy` via `up -d --wait`; `curl -k https://localhost:18443/health` →
 server JSON `ok:true`; `/` → 200 Galena HTML with CSP headers; `/api/me` →
-401; `/ejabberd-api/*` → 403 from outside; `/xmpp-ws/ws` → `101 Switching
-Protocols` with an XMPP `<open>` frame answered; full OTP sign-up + invite
-flow through Caddy ending in a JWT with `service=wss://localhost/xmpp-ws/ws`.
-A real domain (ACME issuance) and the Coolify path were NOT verified live.
-The proof used a scratch-only mailer patch (see the T-0126 Report); real
+401; `/xmpp-ws/ws` → `101 Switching Protocols` with an XMPP `<open>` frame
+answered; full upload round-trip through Caddy (slot request over the
+XMPP WebSocket → `put`/`get` URLs under `https://localhost/upload/...` →
+`PUT` → `201 Upload successful.` → `GET` → the bytes back); full OTP sign-up + invite flow through Caddy ending in a JWT with
+`service=wss://localhost/xmpp-ws/ws`. There is no `/ejabberd-api/*` route:
+the server talks to ejabberd directly on the internal network. A real
+domain (ACME issuance) and the Coolify path were NOT verified live. The
+proof used a scratch-only mailer patch (see the T-0126 Report); real
 production email needs T-0128.
