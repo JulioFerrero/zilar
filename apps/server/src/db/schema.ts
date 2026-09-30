@@ -467,6 +467,62 @@ export const chatPrefs = pgTable(
   ],
 );
 
+// User-made sticker packs (T-0120, decision D27). `server` packs can be
+// found and added by every user of this Galena server; `private` packs only
+// by the owner (usable by others only through stickers already sent).
+export const stickerPacks = pgTable('sticker_packs', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  visibility: text('visibility', { enum: ['private', 'server'] })
+    .notNull()
+    .default('private'),
+  // Set by the Telegram importer (T-0123); null for packs made here.
+  importedFrom: text('imported_from'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// One sticker in a pack (T-0120). The bytes live on the server disk under
+// `storage_key` (a relative `<uuid>.<ext>` path, never user input).
+export const stickers = pgTable(
+  'stickers',
+  {
+    id: text('id').primaryKey(),
+    packId: text('pack_id')
+      .notNull()
+      .references(() => stickerPacks.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    emoji: text('emoji'),
+    mime: text('mime', { enum: ['image/webp', 'image/png'] }).notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    bytes: integer('bytes').notNull(),
+    storageKey: text('storage_key').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('stickers_pack_idx').on(table.packId)],
+);
+
+// The packs in a user's sticker panel, ordered. The owner's own packs are
+// added automatically at pack creation.
+export const userStickerPacks = pgTable(
+  'user_sticker_packs',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    packId: text('pack_id')
+      .notNull()
+      .references(() => stickerPacks.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.packId] })],
+);
+
 // A machine (runner host) an owner paired with the server. `publicKey` is the
 // runner's ed25519 public key (SPKI DER, base64) and is globally unique: a key
 // that was ever registered — including on a revoked machine — can never pair

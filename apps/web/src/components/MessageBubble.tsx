@@ -24,6 +24,7 @@ import { MessageTicks } from './MessageTicks';
 import { ProgressCard } from './ProgressCard';
 import { ReactionChips } from './ReactionChips';
 import { ReplyQuote } from './ReplyQuote';
+import { StickerMessage } from './StickerMessage';
 import { VoiceMessage } from './VoiceMessage';
 import { copyText } from '@/lib/clipboard';
 import { useSmoothText } from '@/lib/useSmoothText';
@@ -174,8 +175,11 @@ export function MessageBubble({
   // the change to the normal look fades instead of jumping.
   const transitioning = draft || revealTurnId !== undefined;
   const isSending = own && message.status === 'sending';
+  const sticker =
+    message.card !== undefined && message.card.type === 'sticker' ? message.card.data : undefined;
   const bigEmoji =
     hasText &&
+    sticker === undefined &&
     message.replyTo === undefined &&
     message.image === undefined &&
     message.voice === undefined &&
@@ -274,130 +278,255 @@ export function MessageBubble({
           <span className="w-[34px] shrink-0" aria-hidden="true" />
         ))}
       <div className={cn('flex min-w-0 flex-col', own ? 'items-end' : 'items-start')}>
-        <div
-          data-bubble-look={
-            bigEmoji ? undefined : own ? 'outgoing' : generating ? 'generating' : 'incoming'
-          }
-          className={cn(
-            'relative flex flex-col',
-            own ? 'max-w-[520px]' : 'max-w-[560px]',
-            bigEmoji
-              ? undefined
-              : cn(
-                  'rounded-[14px] bg-clip-padding text-[14px] leading-[1.5]',
-                  own ? 'bubble-out' : generating ? 'bubble-gen' : 'bubble-in',
-                  transitioning &&
-                    'transition-[color,background,box-shadow,border-color] duration-[400ms] ease-out motion-reduce:transition-none',
-                  lastInGroup && (own ? 'rounded-br-[4px]' : 'rounded-bl-[4px]'),
-                ),
-          )}
-        >
-          {showSender && (
-            <div
-              className="flex items-center gap-1.5 px-3 pt-2 text-[14px] leading-5 font-semibold"
-              style={{ color: senderColor(message.senderId) }}
-            >
-              <span className="truncate">{message.senderName}</span>
-              {senderIsAi && <AiBadge />}
-            </div>
-          )}
+        {sticker !== undefined ? (
+          <div className={cn('relative flex flex-col', own ? 'items-end' : 'items-start')}>
+            {showSender && (
+              <div
+                className="flex items-center gap-1.5 pb-1 text-[14px] leading-5 font-semibold"
+                style={{ color: senderColor(message.senderId) }}
+              >
+                <span className="truncate">{message.senderName}</span>
+                {senderIsAi && <AiBadge />}
+              </div>
+            )}
+            {message.replyTo !== undefined && (
+              <div className="mb-1 w-full max-w-[200px]">
+                <ReplyQuote quote={message.replyTo} />
+              </div>
+            )}
+            <StickerMessage sticker={sticker} message={message} own={own} />
+            {message.failed === true ? (
+              <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
+                <span>Send failed</span>
+                <button
+                  type="button"
+                  aria-label="Retry sticker"
+                  onClick={() => storeApi.getState().retrySticker(chat.id, message.id)}
+                  className="font-semibold underline"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              !generating && (
+                <button
+                  ref={menuButtonRef}
+                  type="button"
+                  aria-label="Message actions"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  onClick={() => setMenuOpen(true)}
+                  className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                >
+                  <MoreHorizontal className="size-4" aria-hidden="true" />
+                </button>
+              )
+            )}
+            {!generating && message.failed !== true && menuOpen && (
+              <MessageActionsMenu
+                canCopy={false}
+                canEdit={false}
+                canDelete={canDelete}
+                canPin={canPin}
+                isPinned={pin !== undefined}
+                onReact={(emoji) => {
+                  setMenuOpen(false);
+                  handleReact(emoji);
+                }}
+                onReply={() => {
+                  setMenuOpen(false);
+                  onReply(message);
+                }}
+                onEdit={() => setMenuOpen(false)}
+                onCopy={() => setMenuOpen(false)}
+                onDelete={() => {
+                  setMenuOpen(false);
+                  menuButtonRef.current?.focus();
+                  setConfirmOpen(true);
+                }}
+                onPin={() => {
+                  setMenuOpen(false);
+                  storeApi
+                    .getState()
+                    .pinMessage(chat.id, message.id)
+                    .catch(() => {});
+                }}
+                onUnpin={() => {
+                  setMenuOpen(false);
+                  if (pin !== undefined) {
+                    storeApi
+                      .getState()
+                      .unpinMessage(chat.id, pin.id)
+                      .catch(() => {});
+                  }
+                }}
+                onClose={() => setMenuOpen(false)}
+                align={own ? 'right' : 'left'}
+              />
+            )}
+            {confirmOpen && (
+              <ConfirmDialog
+                title="Delete message?"
+                body="This deletes it for everyone in the chat."
+                confirmLabel="Delete"
+                onCancel={() => setConfirmOpen(false)}
+                onConfirm={() => {
+                  setConfirmOpen(false);
+                  storeApi.getState().deleteForEveryone(chat.id, message.id);
+                }}
+              />
+            )}
+          </div>
+        ) : (
+          <div
+            data-bubble-look={
+              bigEmoji ? undefined : own ? 'outgoing' : generating ? 'generating' : 'incoming'
+            }
+            className={cn(
+              'relative flex flex-col',
+              own ? 'max-w-[520px]' : 'max-w-[560px]',
+              bigEmoji
+                ? undefined
+                : cn(
+                    'rounded-[14px] bg-clip-padding text-[14px] leading-[1.5]',
+                    own ? 'bubble-out' : generating ? 'bubble-gen' : 'bubble-in',
+                    transitioning &&
+                      'transition-[color,background,box-shadow,border-color] duration-[400ms] ease-out motion-reduce:transition-none',
+                    lastInGroup && (own ? 'rounded-br-[4px]' : 'rounded-bl-[4px]'),
+                  ),
+            )}
+          >
+            {showSender && (
+              <div
+                className="flex items-center gap-1.5 px-3 pt-2 text-[14px] leading-5 font-semibold"
+                style={{ color: senderColor(message.senderId) }}
+              >
+                <span className="truncate">{message.senderName}</span>
+                {senderIsAi && <AiBadge />}
+              </div>
+            )}
 
-          {message.replyTo !== undefined && (
-            <div className="px-3 pt-2">
-              <ReplyQuote quote={message.replyTo} />
-            </div>
-          )}
+            {message.replyTo !== undefined && (
+              <div className="px-3 pt-2">
+                <ReplyQuote quote={message.replyTo} />
+              </div>
+            )}
 
-          {bigEmoji ? (
-            <BigEmoji message={message} text={text} own={own} generating={generating} />
-          ) : (
-            <>
-              {message.image !== undefined && (
-                <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
-                  <ImageMessage
-                    url={message.image.url}
-                    alt="Photo"
-                    width={message.image.width}
-                    height={message.image.height}
-                  />
-                  {imageOnly && (
-                    <MessageMeta
-                      message={message}
-                      showTicks={own}
-                      className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
+            {bigEmoji ? (
+              <BigEmoji message={message} text={text} own={own} generating={generating} />
+            ) : (
+              <>
+                {message.image !== undefined && (
+                  <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
+                    <ImageMessage
+                      url={message.image.url}
+                      alt="Photo"
+                      width={message.image.width}
+                      height={message.image.height}
                     />
-                  )}
-                </div>
-              )}
-
-              {attachmentImage && message.attachment !== undefined && (
-                <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
-                  <ImageMessage
-                    url={message.attachment.url}
-                    alt={message.attachment.name}
-                    width={message.attachment.width}
-                    height={message.attachment.height}
-                  />
-                  {failed ? (
-                    <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
-                      <span>Upload failed</span>
-                      <button
-                        type="button"
-                        aria-label="Retry upload"
-                        onClick={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                        className="font-semibold underline"
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  ) : (
-                    imageOnly && (
+                    {imageOnly && (
                       <MessageMeta
                         message={message}
                         showTicks={own}
                         className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
                       />
-                    )
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
 
-              {attachmentFile && message.attachment !== undefined && (
-                <div className="px-3 py-1.5">
-                  <FileMessage
-                    attachment={message.attachment}
-                    own={own}
-                    uploading={isSending && !failed}
-                    failed={failed}
-                    onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                  />
-                </div>
-              )}
-
-              {message.voice !== undefined && (
-                <div className="px-3 py-1.5">
-                  <VoiceMessage voice={message.voice} own={own} />
-                </div>
-              )}
-
-              {message.card !== undefined && (
-                <div className="px-3 py-1.5">
-                  {message.card.type === 'progress' && (
-                    <ProgressCard progress={message.card.data} />
-                  )}
-                  {message.card.type === 'approval.request' && (
-                    <ApprovalCard
-                      request={message.card.data}
-                      {...(chat.topic !== undefined ? { topicName: chat.title } : {})}
+                {attachmentImage && message.attachment !== undefined && (
+                  <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
+                    <ImageMessage
+                      url={message.attachment.url}
+                      alt={message.attachment.name}
+                      width={message.attachment.width}
+                      height={message.attachment.height}
                     />
-                  )}
-                </div>
-              )}
+                    {failed ? (
+                      <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
+                        <span>Upload failed</span>
+                        <button
+                          type="button"
+                          aria-label="Retry upload"
+                          onClick={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+                          className="font-semibold underline"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    ) : (
+                      imageOnly && (
+                        <MessageMeta
+                          message={message}
+                          showTicks={own}
+                          className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
+                        />
+                      )
+                    )}
+                  </div>
+                )}
 
-              {hasText && markdown && (
-                <div className={cn('md break-words', own ? 'px-3 py-2' : 'px-3 py-2.5')}>
-                  <MarkdownText text={text} />
-                  <span className="md-tail">
+                {attachmentFile && message.attachment !== undefined && (
+                  <div className="px-3 py-1.5">
+                    <FileMessage
+                      attachment={message.attachment}
+                      own={own}
+                      uploading={isSending && !failed}
+                      failed={failed}
+                      onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+                    />
+                  </div>
+                )}
+
+                {message.voice !== undefined && (
+                  <div className="px-3 py-1.5">
+                    <VoiceMessage voice={message.voice} own={own} />
+                  </div>
+                )}
+
+                {message.card !== undefined && (
+                  <div className="px-3 py-1.5">
+                    {message.card.type === 'progress' && (
+                      <ProgressCard progress={message.card.data} />
+                    )}
+                    {message.card.type === 'approval.request' && (
+                      <ApprovalCard
+                        request={message.card.data}
+                        {...(chat.topic !== undefined ? { topicName: chat.title } : {})}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {hasText && markdown && (
+                  <div className={cn('md break-words', own ? 'px-3 py-2' : 'px-3 py-2.5')}>
+                    <MarkdownText text={text} />
+                    <span className="md-tail">
+                      {generating && <DraftCaret />}
+                      <MessageMeta
+                        message={message}
+                        showTicks={own && !generating}
+                        edited={message.edited === true}
+                        className={cn(
+                          'float-right ml-1.5 translate-y-[4px]',
+                          own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
+                          // Keeps the width the final message will have, so the
+                          // swap does not move anything.
+                          generating && 'invisible',
+                        )}
+                      />
+                    </span>
+                  </div>
+                )}
+
+                {hasText && !markdown && (
+                  <p
+                    className={cn(
+                      'break-words whitespace-pre-wrap',
+                      own ? 'px-3 py-2' : 'px-3 py-2.5',
+                    )}
+                  >
+                    <LinkText text={text} mentions={message.mentions} meJid={meJid} />
                     {generating && <DraftCaret />}
                     <MessageMeta
                       message={message}
@@ -411,126 +540,102 @@ export function MessageBubble({
                         generating && 'invisible',
                       )}
                     />
-                  </span>
-                </div>
-              )}
-
-              {hasText && !markdown && (
-                <p
-                  className={cn(
-                    'break-words whitespace-pre-wrap',
-                    own ? 'px-3 py-2' : 'px-3 py-2.5',
-                  )}
-                >
-                  <LinkText text={text} mentions={message.mentions} meJid={meJid} />
-                  {generating && <DraftCaret />}
-                  <MessageMeta
-                    message={message}
-                    showTicks={own && !generating}
-                    edited={message.edited === true}
-                    className={cn(
-                      'float-right ml-1.5 translate-y-[4px]',
-                      own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
-                      // Keeps the width the final message will have, so the
-                      // swap does not move anything.
-                      generating && 'invisible',
-                    )}
-                  />
-                </p>
-              )}
-
-              {generating && hasText && <GeneratingLabel />}
-
-              {!hasText &&
-                (message.voice !== undefined || message.card !== undefined || attachmentFile) && (
-                  <div className="flex justify-end px-3 pb-2">
-                    <MessageMeta
-                      message={message}
-                      showTicks={own}
-                      className={own ? 'text-bubble-out-meta' : 'text-bubble-in-meta'}
-                    />
-                  </div>
+                  </p>
                 )}
-            </>
-          )}
 
-          {!generating && (
-            <button
-              ref={menuButtonRef}
-              type="button"
-              aria-label="Message actions"
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen(true)}
-              className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-            >
-              <MoreHorizontal className="size-4" aria-hidden="true" />
-            </button>
-          )}
+                {generating && hasText && <GeneratingLabel />}
 
-          {!generating && menuOpen && (
-            <MessageActionsMenu
-              canCopy={hasText}
-              canEdit={canEdit}
-              canDelete={canDelete}
-              canPin={canPin}
-              isPinned={pin !== undefined}
-              onReact={(emoji) => {
-                setMenuOpen(false);
-                handleReact(emoji);
-              }}
-              onReply={() => {
-                setMenuOpen(false);
-                onReply(message);
-              }}
-              onEdit={() => {
-                setMenuOpen(false);
-                storeApi.getState().startEdit(chat.id, message.id);
-              }}
-              onCopy={() => {
-                setMenuOpen(false);
-                void copyText(message.text ?? '');
-              }}
-              onDelete={() => {
-                setMenuOpen(false);
-                // Focus the opener so the dialog can restore it on close.
-                menuButtonRef.current?.focus();
-                setConfirmOpen(true);
-              }}
-              onPin={() => {
-                setMenuOpen(false);
+                {!hasText &&
+                  (message.voice !== undefined || message.card !== undefined || attachmentFile) && (
+                    <div className="flex justify-end px-3 pb-2">
+                      <MessageMeta
+                        message={message}
+                        showTicks={own}
+                        className={own ? 'text-bubble-out-meta' : 'text-bubble-in-meta'}
+                      />
+                    </div>
+                  )}
+              </>
+            )}
+
+            {!generating && (
+              <button
+                ref={menuButtonRef}
+                type="button"
+                aria-label="Message actions"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen(true)}
+                className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              >
+                <MoreHorizontal className="size-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {!generating && sticker === undefined && menuOpen && (
+          <MessageActionsMenu
+            canCopy={hasText}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            canPin={canPin}
+            isPinned={pin !== undefined}
+            onReact={(emoji) => {
+              setMenuOpen(false);
+              handleReact(emoji);
+            }}
+            onReply={() => {
+              setMenuOpen(false);
+              onReply(message);
+            }}
+            onEdit={() => {
+              setMenuOpen(false);
+              storeApi.getState().startEdit(chat.id, message.id);
+            }}
+            onCopy={() => {
+              setMenuOpen(false);
+              void copyText(message.text ?? '');
+            }}
+            onDelete={() => {
+              setMenuOpen(false);
+              // Focus the opener so the dialog can restore it on close.
+              menuButtonRef.current?.focus();
+              setConfirmOpen(true);
+            }}
+            onPin={() => {
+              setMenuOpen(false);
+              storeApi
+                .getState()
+                .pinMessage(chat.id, message.id)
+                .catch(() => {});
+            }}
+            onUnpin={() => {
+              setMenuOpen(false);
+              if (pin !== undefined) {
                 storeApi
                   .getState()
-                  .pinMessage(chat.id, message.id)
+                  .unpinMessage(chat.id, pin.id)
                   .catch(() => {});
-              }}
-              onUnpin={() => {
-                setMenuOpen(false);
-                if (pin !== undefined) {
-                  storeApi
-                    .getState()
-                    .unpinMessage(chat.id, pin.id)
-                    .catch(() => {});
-                }
-              }}
-              onClose={() => setMenuOpen(false)}
-              align={own ? 'right' : 'left'}
-            />
-          )}
+              }
+            }}
+            onClose={() => setMenuOpen(false)}
+            align={own ? 'right' : 'left'}
+          />
+        )}
 
-          {confirmOpen && (
-            <ConfirmDialog
-              title="Delete message?"
-              body="This deletes it for everyone in the chat."
-              confirmLabel="Delete"
-              onCancel={() => setConfirmOpen(false)}
-              onConfirm={() => {
-                setConfirmOpen(false);
-                storeApi.getState().deleteForEveryone(chat.id, message.id);
-              }}
-            />
-          )}
-        </div>
+        {sticker === undefined && confirmOpen && (
+          <ConfirmDialog
+            title="Delete message?"
+            body="This deletes it for everyone in the chat."
+            confirmLabel="Delete"
+            onCancel={() => setConfirmOpen(false)}
+            onConfirm={() => {
+              setConfirmOpen(false);
+              storeApi.getState().deleteForEveryone(chat.id, message.id);
+            }}
+          />
+        )}
         {!generating && message.reactions !== undefined && message.reactions.length > 0 && (
           <ReactionChips reactions={message.reactions} own={own} onToggle={handleReact} />
         )}

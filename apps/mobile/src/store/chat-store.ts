@@ -205,8 +205,12 @@ let messageCounter = 0;
  */
 const mockPinsRead: Record<string, Pin[]> = {};
 
+// One shared empty list: a selector must return the same reference while
+// nothing changed, or React re-renders forever ("Maximum update depth").
+const EMPTY_PINS: Pin[] = [];
+
 function mockPinsFor(chatId: string): Pin[] {
-  return mockPinsRead[chatId] ?? [];
+  return mockPinsRead[chatId] ?? EMPTY_PINS;
 }
 
 function setPinsCache(chatId: string, pins: Pin[]): void {
@@ -233,6 +237,18 @@ export function createChatStore(
 
     const bumpRolesRevision = () =>
       set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
+
+    // The roles selectors hand out copies, cached per revision so a
+    // selector returns the same reference until a write bumps it (a fresh
+    // copy on every call would loop React forever).
+    let rolesSnapshot: { revision: number; roles: CustomGroupRole[] } | undefined;
+    const topicRolesSnapshots = new Map<
+      string,
+      {
+        revision: number;
+        value: { roles: TopicRole[]; approverRole: ApproverRole | null };
+      }
+    >();
 
     const findMockRole = (roleId: string): CustomGroupRole | undefined =>
       mockRoles.find((role) => role.id === roleId);
@@ -596,8 +612,14 @@ export function createChatStore(
       previewJoinLink: async (token: string): Promise<JoinPreview> => inviteLinks.preview(token),
       joinByLink: async (token: string): Promise<JoinResult> => inviteLinks.join(token),
       groupRoles: (groupId) => {
-        void get().groupDetailsRevision;
-        return groupId === 'g-devteam' ? mockRoles.map((role) => ({ ...role })) : undefined;
+        const revision = get().groupDetailsRevision;
+        if (groupId !== 'g-devteam') {
+          return undefined;
+        }
+        if (rolesSnapshot?.revision !== revision) {
+          rolesSnapshot = { revision, roles: mockRoles.map((role) => ({ ...role })) };
+        }
+        return rolesSnapshot.roles;
       },
       refreshGroupRoles: async () => {},
       createGroupRole: async (groupId, name) => {
@@ -670,16 +692,22 @@ export function createChatStore(
         return { ...role, members: [...role.members] };
       },
       topicRoles: (chatId) => {
-        void get().groupDetailsRevision;
+        const revision = get().groupDetailsRevision;
         const topicId = get().chats.find((entry) => entry.id === chatId)?.topic?.id;
         if (topicId === undefined) {
           return undefined;
         }
+        const cached = topicRolesSnapshots.get(topicId);
+        if (cached !== undefined && cached.revision === revision) {
+          return cached.value;
+        }
         const entry = topicRolesOf(topicId);
-        return {
+        const value = {
           roles: entry.roles.map((role) => ({ ...role })),
           approverRole: entry.approverRole === null ? null : { ...entry.approverRole },
         };
+        topicRolesSnapshots.set(topicId, { revision, value });
+        return value;
       },
       refreshTopicRoles: async (chatId) => {
         const topicId = get().chats.find((entry) => entry.id === chatId)?.topic?.id;

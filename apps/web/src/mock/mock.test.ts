@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { UiMessage } from '@galena/chat-core';
-import { ApprovalRequestSchema, PayloadSchema } from '@galena/protocol';
+import { ApprovalRequestSchema, PayloadSchema, StickerSchema } from '@galena/protocol';
 import { mockChats, mockMessages } from '@/mock';
+import { mockDemoStickerPacks } from './helpers';
+import { mockRequest, resetMockApi, setMockDelay } from './api';
 
 const allMessages: UiMessage[] = Object.values(mockMessages).flat();
 
@@ -55,5 +57,57 @@ describe('mock data', () => {
     if (approval?.card?.type === 'approval.request') {
       expect(ApprovalRequestSchema.safeParse(approval.card.data).success).toBe(true);
     }
+  });
+});
+
+describe('mock sticker demo packs (T-0120)', () => {
+  it('ships two packs of generated SVG data-URL stickers', () => {
+    const packs = mockDemoStickerPacks();
+    expect(packs).toHaveLength(2);
+    for (const pack of packs) {
+      expect(pack.title.length).toBeGreaterThan(0);
+      expect(pack.stickers.length).toBeGreaterThan(0);
+      for (const sticker of pack.stickers) {
+        expect(sticker.url.startsWith('data:image/svg+xml,')).toBe(true);
+        expect(sticker.emoji.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('serves the demo packs as the panel list and discover results', async () => {
+    setMockDelay(0);
+    resetMockApi();
+    try {
+      const panel = (await (await mockRequest('/sticker-packs')).json()) as {
+        packs: Array<{ id: string; stickers: unknown[] }>;
+      };
+      expect(panel.packs).toHaveLength(2);
+      expect(panel.packs.every((pack) => pack.stickers.length > 0)).toBe(true);
+
+      const discover = (await (await mockRequest('/sticker-packs/discover')).json()) as {
+        packs: Array<{ id: string }>;
+        next: null;
+      };
+      expect(discover.packs).toHaveLength(2);
+      expect(discover.next).toBeNull();
+    } finally {
+      resetMockApi();
+    }
+  });
+
+  it('keeps demo sticker payloads valid against the protocol schema', () => {
+    const packs = mockDemoStickerPacks();
+    const first = packs[0]!.stickers[0]!;
+    expect(
+      StickerSchema.safeParse({
+        pack_id: '123e4567-e89b-12d3-a456-426614174000',
+        sticker_id: '223e4567-e89b-12d3-a456-426614174001',
+        url: '/api/stickers/223e4567-e89b-12d3-a456-426614174001/file',
+        emoji: first.emoji,
+        width: 200,
+        height: 200,
+        mime: 'image/png',
+      }).success,
+    ).toBe(true);
   });
 });

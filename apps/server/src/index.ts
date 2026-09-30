@@ -29,6 +29,7 @@ import { createLogger } from './logger';
 import { assertRunnerHubConfig, startRunnerHub, type RunnerHub } from './machines/hub';
 import { createDbMachineRegistry } from './machines/registry';
 import { buildRoutineScheduler, type RoutineSchedulerHandle } from './routines/wiring';
+import { ensureWritableDir } from './startup';
 import { createEjabberdAdminClient } from './xmpp/admin-client';
 import { runTool } from './sandbox/run-tool';
 import { buildToolAdapters } from './tools/adapters';
@@ -51,6 +52,11 @@ try {
 
 const { db, close } = createDb(config.DATABASE_URL);
 await runMigrations(db);
+
+// Stickers (T-0120): the storage dir must exist or be creatable and
+// writable at startup, so a bad mount fails fast with a clear message
+// instead of failing the first upload.
+await ensureWritableDir(config.STICKER_STORAGE_DIR, 'STICKER_STORAGE_DIR');
 
 const adminClient = createEjabberdAdminClient(config.xmpp);
 const auth = createAuth({ db, config, mailer, adminClient, logger });

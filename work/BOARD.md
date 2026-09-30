@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0119](T-0119-pwa-web-push.md) | PWA and web push | planned | meta/muse-spark-1.3-contributor | T-0118, T-0113 | Spec ready (rewritten from the spike); schema task, starts after T-0116 merges |
-| [T-0120](T-0120-stickers.md) | Stickers: user-made packs, storage, sending, rendering | planned | meta/muse-spark-1.3-contributor | none |  |
 | [T-0121](T-0121-sticker-creator.md) | Sticker pack creator, favorites, discover | planned | meta/muse-spark-1.3-contributor | T-0120 |  |
 | [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | planned | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
@@ -168,3 +167,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0107](T-0107-tools-routines-ui.md) | tools and routines UI (web): tool list, detail, versions, run, revert, routines, approved hosts | 2026-09-30 |
 | [T-0138](T-0138-mobile-search.md) | mobile message search with paging, jump to message, chat scope (mobile only, to be run on Android) | 2026-09-30 |
 | [T-0135](T-0135-mobile-parity.md) | mobile chat prefs (mute, archive, pin) and pinned messages, mock parity, T-0112 fixes (mobile only) | 2026-09-30 |
+| [T-0120](T-0120-stickers.md) | stickers: user-made packs, storage, sending, rendering (migration 0029) | 2026-09-30 |

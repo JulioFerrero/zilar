@@ -29,6 +29,7 @@ import { createInviteLinksRoutes, type TestInviteLinksOverrides } from './invite
 import { createPinsRoutes } from './pins/routes';
 import { createRolesRoutes } from './roles/routes';
 import { createSearchRoutes, type SearchRoutesDependencies } from './search/routes';
+import { createStickersRoutes } from './stickers/routes';
 import { createTopicsRoutes } from './topics/routes';
 import { createMachinesRoutes } from './machines/routes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
@@ -113,6 +114,12 @@ export interface AppDependencies {
   archive?: SearchRoutesDependencies['archive'];
   /** T-0117: injected in tests so the search rate window can advance. */
   searchNow?: () => number;
+  /** T-0120: sticker storage dir override; defaults to the parsed config. */
+  stickerStorageDir?: string;
+  /** T-0120: injected in tests so the upload rate window can advance. */
+  stickerNow?: () => number;
+  /** T-0120: overrides the sticker upload limiter (cap tests inject a pass). */
+  uploadLimiter?: { allow: (key: string) => boolean };
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -136,6 +143,9 @@ export function createApp({
   toolRunner,
   archive,
   searchNow,
+  stickerStorageDir,
+  stickerNow,
+  uploadLimiter,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
   const auditRecorder = audit ?? createAuditRecorder({ db, logger });
@@ -246,6 +256,20 @@ export function createApp({
     }),
   );
   app.route('/api', createDraftsRoutes({ auth }));
+  // Stickers (T-0120): packs, uploads and file serving. The storage dir
+  // comes from `STICKER_STORAGE_DIR`; tests override it with a temp dir.
+  app.route(
+    '/api',
+    createStickersRoutes({
+      auth,
+      db,
+      config,
+      storageDir: stickerStorageDir ?? config.STICKER_STORAGE_DIR,
+      audit: auditRecorder,
+      ...(stickerNow === undefined ? {} : { now: stickerNow }),
+      ...(uploadLimiter === undefined ? {} : { uploadLimiter }),
+    }),
+  );
   app.route('/api', createAuditRoutes({ auth, db }));
   app.route(
     '/api',

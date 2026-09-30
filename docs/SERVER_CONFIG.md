@@ -177,6 +177,16 @@ Chat preferences add no env vars. `chat_prefs` holds one row per (user, chat JID
 
 Shareable links join a **group** as `member` (public topics come with joining; private topics are never joined by link). Only the SHA-256 hash of the 32-byte token is stored — the token is shown once at creation and never logged or audited; the admin list carries the last-4 hint, label, uses and state, never tokens. At most 10 active links per group. Joining consumes one use with a conditional update (not revoked, not expired, under the cap), so two racing joins can never exceed `max_uses`. Unknown/expired/revoked/exhausted links answer the same 404 `invalid_link` (no leak of which); a full group answers 409 `group_full`. Join attempts are rate limited (20/hour/user, 60/hour/IP, in-memory per process, like the other caps in `rate-limit.ts`). Audited as `group.link_created`, `group.link_revoked`, `group.joined_by_link` (link id + hint only, never the token). The web `/j/<token>` page sends a signed-out visitor to the login with `next=/j/<token>` and returns them after sign-in. Invite-only sign-up is unchanged: a person without an account still needs a sign-up invite first.
 
+### Stickers (T-0120)
+
+| Variable | Required? | Default | What it does | Notes |
+|---|---|---|---|---|
+| `STICKER_STORAGE_DIR` | No | `./data/stickers` | Directory sticker files are stored under. File names are `<uuid>.<ext>` (never user input). | Not a secret. Must be writable at startup — the server creates it when missing and exits with `STICKER_STORAGE_DIR (<dir>) is not writable` otherwise (`index.ts`). |
+
+Uploaded stickers are validated by magic bytes (PNG or WebP only, ≤ 512 KiB, ≤ 512 × 512 px) and served with `Content-Type` from the stored mime, `X-Content-Type-Options: nosniff`, `Content-Disposition: inline`, `Cache-Control: public, max-age=31536000, immutable` and `Content-Security-Policy: default-src 'none'; sandbox`. Deleting a pack removes its files; messages already sent keep their sticker URL, which no longer loads a sticker. Uploads are rate limited to 60/hour/user (in-memory, per process, like the other caps in `rate-limit.ts`). Audited as `sticker_pack.created` / `sticker_pack.deleted` (pack id only).
+
+Docker/Coolify note: mount a persistent volume at `STICKER_STORAGE_DIR` (e.g. `./data/stickers`), or the files are lost when the container is replaced. The directory is git-ignored (`data/` is covered by the `*.log`-adjacent local-data rules; add an explicit `data/` entry if one is missing) and never backed up by the database dump — back it up with the volume.
+
 ## 4. Database
 
 ### How migrations run

@@ -48,6 +48,7 @@ import {
 } from '@/lib/chatPrefs';
 import type { MuteDurationId } from '@/lib/chatPrefs';
 import { classify, cleanFilename, objectUrlFor } from '@/lib/attachments';
+import { StickerSchema } from '@galena/protocol';
 import { sampleVoiceDataUrl } from '@/lib/voice';
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
@@ -99,6 +100,17 @@ export interface VoiceRecording {
 export interface SendAttachmentOptions {
   caption?: string;
   replyTo?: ReplyRef;
+}
+
+/** What the sticker panel passes when it sends a sticker (T-0120). */
+export interface SendStickerInput {
+  stickerId: string;
+  packId: string;
+  url: string;
+  emoji?: string | undefined;
+  width: number;
+  height: number;
+  mime: 'image/webp' | 'image/png';
 }
 
 export interface ChatStore {
@@ -249,6 +261,10 @@ export interface ChatStore {
   sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
   sendVoice: (chatId: string, recording: VoiceRecording, options?: SendTextOptions) => void;
   sendAttachment: (chatId: string, file: File, options?: SendAttachmentOptions) => void;
+  /** Sends a sticker payload in the chat (T-0120). */
+  sendSticker: (chatId: string, sticker: SendStickerInput, options?: SendTextOptions) => void;
+  /** Re-sends a failed sticker. */
+  retrySticker: (chatId: string, messageId: string) => void;
   /** Re-runs a failed attachment upload, keeping the original file. */
   retryAttachment: (chatId: string, messageId: string) => void;
   /**
@@ -1144,6 +1160,59 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         }));
         window.setTimeout(() => setStatus(chatId, message.id, 'sent'), 300);
         window.setTimeout(() => setStatus(chatId, message.id, 'read'), 1500);
+      },
+      sendSticker: (chatId, sticker, options) => {
+        const data = {
+          pack_id: sticker.packId,
+          sticker_id: sticker.stickerId,
+          url: sticker.url,
+          ...(sticker.emoji === undefined ? {} : { emoji: sticker.emoji }),
+          width: sticker.width,
+          height: sticker.height,
+          mime: sticker.mime,
+        };
+        // Same guard as the real store: tampered recents must refuse loudly,
+        // never leave a bubble behind.
+        if (!StickerSchema.safeParse(data).success) {
+          set({ actionError: { chatId, message: 'That sticker could not be sent.' } });
+          return;
+        }
+        sequence += 1;
+        const message: UiMessage = {
+          id: `out-${sequence}`,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: 'You',
+          text: sticker.emoji ?? '',
+          createdAt: new Date(),
+          status: 'sending',
+          card: { v: 0, type: 'sticker', data },
+          ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
+        };
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: [...(state.messagesByChat[chatId] ?? []), message],
+          },
+          chats: withLastMessage(state.chats, chatId, message),
+        }));
+        window.setTimeout(() => setStatus(chatId, message.id, 'sent'), 300);
+        window.setTimeout(() => setStatus(chatId, message.id, 'read'), 1500);
+      },
+      retrySticker: (chatId, messageId) => {
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: (state.messagesByChat[chatId] ?? []).map((item) => {
+              if (item.id !== messageId || item.failed === undefined) {
+                return item;
+              }
+              const next: UiMessage = { ...item };
+              delete next.failed;
+              return next;
+            }),
+          },
+        }));
       },
       retryAttachment: () => {},
       setSearch: (value) => set({ search: value }),

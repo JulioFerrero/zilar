@@ -8,4 +8,5 @@ export * from './voice';
 export * from './attachment';
 export * from './handoff';
 export * from './payload';
+export * from './sticker';
 export { protocolVersion } from './version';

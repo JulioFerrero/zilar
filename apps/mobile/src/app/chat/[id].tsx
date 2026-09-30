@@ -56,8 +56,10 @@ function Chat() {
   // re-render on every 60 s tick or unrelated pins change.
   const pinnedIds = useMemo(() => pins.map((pin) => pin.messageId), [pins]);
   const dismissPinsError = useChatStore((state) => state.dismissPinsError);
-  const loadedMessageIds = useChatStore((state) =>
-    state.messagesByChat[chatId]?.map((message) => message.id),
+  const loadedMessages = useChatStore((state) => state.messagesByChat[chatId]);
+  const loadedMessageIds = useMemo(
+    () => loadedMessages?.map((message) => message.id),
+    [loadedMessages],
   );
   const actionError = useChatStore((state) =>
     state.actionError?.chatId === chatId ? state.actionError : undefined,
