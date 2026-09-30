@@ -1,7 +1,7 @@
 ---
 id: T-0113
 title: Chat preferences: mute, archive and pin chats and topics (per user, synced)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0113-chat-prefs
 model: meta/muse-spark-1.3-contributor
@@ -130,10 +130,12 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged. The web half is covered by tests and mock mode but was not checked in a real browser on Julio's chats (no browser was connected during the night).
 
 ### Findings
--
+- Server: per-user rows only, access checked with the topic rules (404 for a chat the caller cannot see), row cap 200, pin cap 20, write rate limit, all-default rows deleted, no audit entries. Lead fixes: the DM check loads only the contacts' accounts, and a malformed percent escape in the JID answers 404.
+- T-0111 merged first and rewrote the shared web files, so the lead kept the server half and had the worker redo the web half on top of topics. The per-user "Archive chat" is separate from the manager's "Archive topic for everyone", and both share one Archived section.
 
 ### Follow-ups
--
+- Live check: pin a group and a topic, mute a group (its topics follow), archive a DM and find it under Archived, and confirm the phone app is unaffected (mobile follows later).
+- Mobile support for chat prefs.
