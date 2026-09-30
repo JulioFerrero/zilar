@@ -262,6 +262,13 @@ export interface XmppCore {
   loadHistory(chatJid: string, kind: ChatKind, opts?: LoadHistoryOptions): Promise<HistoryPage>;
   /** Asks the HTTP upload service for a slot to PUT a file to (XEP-0363). */
   requestUploadSlot(request: UploadRequest): Promise<UploadSlot>;
+  /**
+   * Enables or disables push for this session's push pair (XEP-0357). Sent
+   * over the user's own session, which ejabberd requires; resolves on
+   * `result`, rejects on `error` or timeout. Optional so older or partial
+   * cores still satisfy the interface; callers feature-detect.
+   */
+  setPushEnabled?: (options: { pushJid: string; node: string; enable: boolean }) => Promise<void>;
   sendTyping(to: string, kind: ChatKind, state: 'composing' | 'paused'): void;
   markDisplayed(chatJid: string, kind: ChatKind, messageId: string): void;
   on(event: 'status', cb: (s: ConnectionStatus) => void): () => void;

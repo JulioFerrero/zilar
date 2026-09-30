@@ -122,6 +122,7 @@ import {
 } from '@/lib/attachments';
 import type { ChatStoreState, ConnectionStatus, DraftState } from './store';
 import { applyChatPrefs, mutedUntilFor } from '@/lib/chatPrefs';
+import { dismissChatNotifications, totalBadgeUnread, updateAppBadge } from '@/lib/push';
 
 const LAST_READ_PREFIX = 'galena:lastRead:';
 const PREVIEW_HISTORY_MAX = 1;
@@ -595,6 +596,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       const state = get();
       if (state.chatsState === 'ready') {
         writeChatListCache(storage, state.currentUserId, state.chats);
+        // Every painted-list change re-syncs the badge (mute changes the
+        // total too, not just unread bumps).
+        void syncBadge().catch(() => undefined);
       }
     }
     let firstToken: XmppToken | undefined;
@@ -723,6 +727,16 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           chat.id === chatId && chat.unread > 0 ? { ...chat, unread: 0 } : chat,
         ),
       }));
+      // The chat is read in the app: its push notifications go away and the
+      // app badge drops. Both are best effort.
+      void dismissChatNotifications(chatId).catch(() => undefined);
+      void syncBadge().catch(() => undefined);
+    }
+
+    // Total unread excluding muted chats, mirrored to the installed app's
+    // badge where the platform supports it.
+    function syncBadge(): Promise<void> {
+      return updateAppBadge(totalBadgeUnread(get().chats));
     }
 
     function signatureFor(chatId: string, body: string, replyTo: ReplyRef | undefined): string {
@@ -2164,6 +2178,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       // retraction read earlier, from an older history page.
       resolvePendingEdits(chatId);
       refreshEdits(chatId);
+      if (!isRead) {
+        void syncBadge().catch(() => undefined);
+      }
       if (isRead && core !== undefined) {
         const chat = get().chats.find((entry) => entry.id === chatId);
         if (chat !== undefined) {
@@ -3374,6 +3391,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (core !== undefined && chat !== undefined) {
           core.sendTyping(chatId, coreKind(chat), 'composing');
         }
+      },
+      // XEP-0357 enable/disable over the user's own session (ejabberd
+      // requires it; there is no admin shortcut). Rejects offline or when
+      // the core cannot send raw IQs, so the settings page can roll back.
+      setPushPair: async (input) => {
+        if (core === undefined || core.setPushEnabled === undefined) {
+          throw new Error('the chat connection cannot toggle push');
+        }
+        await core.setPushEnabled(input);
       },
       sendText: (chatId, text, options) => {
         const trimmed = text.trim();

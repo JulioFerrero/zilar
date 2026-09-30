@@ -535,6 +535,48 @@ export const userStickerPacks = pgTable(
   (table) => [primaryKey({ columns: [table.userId, table.packId] })],
 );
 
+// Web push devices (T-0119). One row per browser subscription: the `node`
+// identifies the XEP-0357 push pair ejabberd notifies, `endpoint`/`p256dh`/
+// `auth` are the Web Push subscription (the keys sealed with PUSH_STORAGE_KEY,
+// AES-256-GCM — never plaintext). `last_used_at` is the last successful send;
+// a device with no send for 90 days is listed as inactive. `failed_at` marks
+// the last failed send. Expired subscriptions (404/410 from the push service)
+// are deleted outright.
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    node: text('node').notNull().unique(),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    userAgent: text('user_agent'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    failedAt: timestamp('failed_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('push_subscriptions_user_idx').on(table.userId),
+    check(
+      'push_subscriptions_node_length_check',
+      sql`char_length(${table.node}) BETWEEN 1 AND 256`,
+    ),
+  ],
+);
+
+// Per-user push preferences (T-0119): whether notifications may carry the
+// first 120 characters of the message text. Off means who-and-where only.
+export const pushSettings = pgTable('push_settings', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  showPreviews: boolean('show_previews').notNull().default(true),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // A machine (runner host) an owner paired with the server. `publicKey` is the
 // runner's ed25519 public key (SPKI DER, base64) and is globally unique: a key
 // that was ever registered — including on a revoked machine — can never pair

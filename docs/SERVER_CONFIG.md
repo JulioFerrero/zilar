@@ -169,6 +169,29 @@ Topics add no env vars. Every topic is its own members-only XMPP MUC room on `XM
 
 Chat preferences add no env vars. `chat_prefs` holds one row per (user, chat JID) for mute (`muted_until`, far-future means forever), archive (`archived`) and pin (`pinned_at`); a row back at all defaults is deleted. `GET /api/chat-prefs` returns the caller's rows; `PUT /api/chat-prefs/:chatJid` patches one row (60 writes/minute/user, 200 rows/user, 20 pins/user). A user can only set prefs for DMs with their contacts or own AIs, and for group General/topic rooms they can see — anything else 404s. Prefs never leak (own-rows only, no audit entries).
 
+### Push notifications (T-0119)
+
+Web push through ejabberd's `mod_push` plus an installable web app (PWA). Off by default (`PUSH_ENABLED=false`); when on, the server runs as an XEP-0114 component that receives XEP-0357 publish IQs and fans them out to browsers with `web-push` (VAPID + RFC 8291: the payload is encrypted end to end, relays see ciphertext).
+
+| Variable | Required? | Default | What it does | Notes |
+|---|---|---|---|---|
+| `PUSH_ENABLED` | No | `false` | `'true'` starts the push component and enables the `/api/push/*` routes. With anything else the routes answer 404 and no component starts. | Not a secret. |
+| `PUSH_VAPID_PUBLIC_KEY` / `PUSH_VAPID_PRIVATE_KEY` | With push | — | VAPID key pair the browsers subscribe against. Generate with `web-push generate-vapid-keys` (one-off; needs the `web-push` CLI, not a dependency). | **Secrets** (the private key; the public key is served to logged-in browsers at `GET /api/push/config`). |
+| `PUSH_VAPID_SUBJECT` | With push | — | Contact URI for the push services, e.g. `mailto:admin@example.com`. | Not a secret. |
+| `PUSH_COMPONENT_JID` | With push | — | The component domain, e.g. `push.galena.localhost`. Must match `PUSH_COMPONENT_HOST` in `infra/ejabberd/ejabberd.yml`. | Not a secret. |
+| `PUSH_COMPONENT_SECRET` | With push | — | Shared secret with ejabberd's `ejabberd_service` listener. Must equal the container's `EJABBERD_MACRO_PUSH_COMPONENT_SECRET`. | **Secret.** Generate with `openssl rand -base64 32`. |
+| `PUSH_COMPONENT_PORT` | No | `5347` | Component listener port. Integer in `[1, 65535]`. | Not a secret. Must match the `port` in `infra/ejabberd/ejabberd.yml`. |
+| `PUSH_STORAGE_KEY` | With push | — | Seals browser subscription keys at rest (AES-256-GCM envelope). At least 32 characters. Rotating it orphans existing rows (the component drops undecryptable devices instead of sending). | **Secret.** Generate with `openssl rand -base64 48`. |
+| `XMPP_ARCHIVE_DATABASE_URL` | With push | — | Same read-only archive reader as message search (see "Message search" above). Push **requires** it: without the archive the component cannot resolve who/where and drops notifications instead of guessing. The server refuses to start the component without it. | **Secret.** |
+
+Wiring a new install (all three must agree, then restart ejabberd so the listener and `mod_push_keepalive` take effect):
+
+1. `infra/ejabberd/ejabberd.yml` ships the `ejabberd_service` listener on `127.0.0.1:5347` with the `PUSH_COMPONENT_HOST`/`PUSH_COMPONENT_SECRET` macros (`CHANGE_ME` default, never committed).
+2. `infra/docker-compose.dev.yml` needs one line in the ejabberd `environment:` (not yet added — compose is owned by the lead): `EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:?PUSH_COMPONENT_SECRET is required in infra/.env}`, plus `PUSH_COMPONENT_SECRET=CHANGE_ME` in `infra/.env` (git-ignored).
+3. `apps/server/.env` (git-ignored) needs the seven `PUSH_*` variables above plus `XMPP_ARCHIVE_DATABASE_URL`.
+
+Behaviour: one push node per device (`POST /api/push/subscriptions` returns the `{ jid, node }` the browser enables over its own XMPP session — ejabberd requires the enable IQ from the user's session, there is no admin shortcut). Every topic/group room is created with `allow_subscription: true` (older rooms are reconciled with `change_room_option` at component start); members holding a push device are subscribed to the rooms they may see and unsubscribed when they lose access. At send time the component reads the newest archived message, re-checks mute (topics inherit the group General mute) and private-topic visibility with `canSeeTopic`, and sends `{ title: "Ana in Group › Topic", body: first 120 chars when the user's previews setting is on }` capped at 3000 bytes. Expired endpoints (404/410) delete the row; every publish IQ is answered `result` even when dropped. Devices with no send for 90 days list as `inactive`. `POST /api/push/test` (5 per 10 min per user) sends a fixed "Push notifications work on this device." payload. Logs carry ids only — never message text or endpoint URLs.
+
 ### Group invite links (T-0115)
 
 | Variable | Required? | Default | What it does | Notes |

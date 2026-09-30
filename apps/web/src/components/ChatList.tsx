@@ -17,6 +17,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
+import { useInstallPrompt } from '@/lib/push';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { groupChats, visibleChats } from '@/store/store';
 import { cn } from '@/lib/utils';
@@ -91,6 +92,10 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   // which the UI treats as "show nothing". A failed call leaves the previous
   // count in place.
   const pendingApprovals = usePendingApprovalCount(menuOpen);
+  // Installable app (T-0119): the browser offers `beforeinstallprompt` when
+  // Galena is installable; the menu then carries an Install entry.
+  const { installEvent, promptInstall } = useInstallPrompt();
+  const [installFailed, setInstallFailed] = useState(false);
   const approvalsBadge =
     pendingApprovals !== null && pendingApprovals > 0
       ? pendingApprovals > APPROVAL_BADGE_CAP
@@ -187,6 +192,31 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
             >
               My AIs
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                navigate('/settings/notifications');
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+            >
+              Notifications
+            </button>
+            {installEvent !== null && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setInstallFailed(false);
+                  promptInstall().catch(() => setInstallFailed(true));
+                }}
+                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+              >
+                {installFailed ? 'Install failed — try again' : 'Install app'}
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"

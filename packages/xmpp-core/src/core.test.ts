@@ -32,6 +32,7 @@ import {
   MAM_NAMESPACE,
   MUC_USER_NAMESPACE,
   OCCUPANT_ID_NAMESPACE,
+  PUSH_NAMESPACE,
   REACTIONS_NAMESPACE,
   REFERENCE_NAMESPACE,
   REPLY_NAMESPACE,
@@ -1200,5 +1201,75 @@ describe('createXmppCore: fixed resource and replaced', () => {
     expect(replaced).toBe(0);
     expect(core.status()).toBe('online');
     expect(fake.stopCalls).toBe(0);
+  });
+});
+
+describe('createXmppCore: push enable/disable', () => {
+  it('sends an enable IQ with the push JID and node, resolving on result', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+
+    const setPushEnabled = core.setPushEnabled;
+    expect(setPushEnabled).toBeDefined();
+    const toggled = setPushEnabled!({
+      pushJid: 'push.galena.localhost',
+      node: 'device-1',
+      enable: true,
+    });
+    await flush();
+
+    const iq = fake.sent.at(-1);
+    expect(iq?.attrs['type']).toBe('set');
+    const enable = iq?.getChild('enable', PUSH_NAMESPACE);
+    expect(enable?.attrs['jid']).toBe('push.galena.localhost');
+    expect(enable?.attrs['node']).toBe('device-1');
+
+    fake.emitStanza(xml('iq', { type: 'result', id: iq?.attrs['id'] ?? '' }));
+    await expect(toggled).resolves.toBeUndefined();
+  });
+
+  it('sends a disable IQ and rejects on an error reply', async () => {
+    const fake = createFakeClient();
+    const core = await connectedCore(fake);
+
+    const setPushEnabled = core.setPushEnabled;
+    expect(setPushEnabled).toBeDefined();
+    const toggled = setPushEnabled!({
+      pushJid: 'push.galena.localhost',
+      node: 'device-1',
+      enable: false,
+    });
+    await flush();
+
+    const iq = fake.sent.at(-1);
+    const disable = iq?.getChild('disable', PUSH_NAMESPACE);
+    expect(disable?.attrs['jid']).toBe('push.galena.localhost');
+    expect(disable?.attrs['node']).toBe('device-1');
+
+    fake.emitStanza(
+      xml(
+        'iq',
+        { type: 'error', id: iq?.attrs['id'] ?? '' },
+        xml(
+          'error',
+          { type: 'cancel' },
+          xml('item-not-found', { xmlns: 'urn:ietf:params:xml:ns:xmpp-stanzas' }),
+        ),
+      ),
+    );
+    await expect(toggled).rejects.toThrow('item-not-found');
+  });
+
+  it('refuses to toggle push while offline', async () => {
+    const fake = createFakeClient();
+    const core = createCore(
+      options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+      { createClient: () => fake },
+    );
+    const setPushEnabled = core.setPushEnabled;
+    expect(setPushEnabled).toBeDefined();
+    await expect(
+      setPushEnabled!({ pushJid: 'push.galena.localhost', node: 'device-1', enable: true }),
+    ).rejects.toThrow('not online');
   });
 });

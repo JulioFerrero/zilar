@@ -14,6 +14,10 @@ const NameSchema = z
 
 const PasswordSchema = z.string().min(1, 'must not be empty').max(1024);
 
+// MUC/Sub nodes a push device subscribes to: room messages only. Presence,
+// affiliations and subject changes never notify.
+const PUSH_SUBSCRIPTION_NODES = 'urn:xmpp:mucsub:nodes:messages';
+
 export const RoomAffiliationSchema = z.enum(['owner', 'admin', 'member', 'none']);
 export type RoomAffiliation = z.infer<typeof RoomAffiliationSchema>;
 
@@ -52,6 +56,8 @@ export type CreateRoomOptions = {
   // Channels set this; groups and topic rooms leave it off (ejabberd's
   // default `true`), so every member keeps voice there.
   membersByDefault?: boolean;
+  /** MUC/Sub (XEP-0369): members can subscribe to the room for push. */
+  allowSubscription?: boolean;
 };
 
 export type AddRosterItemOptions = {
@@ -78,6 +84,12 @@ export type EjabberdAdminClient = {
   setAffiliation(roomId: string, jid: string, affiliation: RoomAffiliation): Promise<void>;
   getAffiliations(roomId: string): Promise<RoomAffiliationEntry[]>;
   destroyRoom(roomId: string): Promise<void>;
+  /** Changes one MUC room option (for example `allow_subscription`). */
+  changeRoomOption(roomId: string, option: string, value: string): Promise<void>;
+  /** Subscribes a user to a MUC/Sub room (XEP-0369) for push delivery. */
+  subscribeRoom(roomId: string, userJid: string, nick: string): Promise<void>;
+  /** Removes a MUC/Sub room subscription again. */
+  unsubscribeRoom(roomId: string, userJid: string): Promise<void>;
   sendDirectInvitation(
     roomId: string,
     users: string[],
@@ -275,11 +287,15 @@ export function createEjabberdAdminClient(
         anonymous,
         moderated,
         membersByDefault,
+        allowSubscription = true,
       } = options;
       const roomOptions = [
         { name: 'members_only', value: String(membersOnly) },
         { name: 'persistent', value: String(persistent) },
         { name: 'mam', value: String(mam) },
+        // Push (T-0119): every room allows MUC/Sub subscriptions so members
+        // with a push device can subscribe for offline notifications.
+        { name: 'allow_subscription', value: String(allowSubscription) },
       ];
       if (anonymous !== undefined) {
         roomOptions.push({ name: 'anonymous', value: String(anonymous) });
@@ -344,6 +360,51 @@ export function createEjabberdAdminClient(
       const room = parseName(roomId, 'roomId');
       const response = await call('destroy_room', { room, service: config.mucDomain });
       expectMutationResult('destroy_room', response);
+    },
+
+    async changeRoomOption(roomId: string, option: string, value: string): Promise<void> {
+      const room = parseName(roomId, 'roomId');
+      const optionName = z.string().min(1).max(128).parse(option);
+      const optionValue = z.string().max(4096).parse(value);
+      const response = await call('change_room_option', {
+        name: room,
+        service: config.mucDomain,
+        option: optionName,
+        value: optionValue,
+      });
+      expectMutationResult('change_room_option', response);
+    },
+
+    async subscribeRoom(roomId: string, userJid: string, nick: string): Promise<void> {
+      const room = parseName(roomId, 'roomId');
+      const { user, host } = splitBareJid(userJid);
+      const subscriptionNick = z.string().min(1).max(1024).parse(nick);
+      const response = await call('subscribe_room', {
+        user,
+        host,
+        nick: subscriptionNick,
+        room,
+        service: config.mucDomain,
+        nodes: PUSH_SUBSCRIPTION_NODES,
+      });
+      // The command answers the subscribed node list, not a status code.
+      const result = expectOk('subscribe_room', response);
+      const parsed = z.array(z.string()).safeParse(result);
+      if (!parsed.success) {
+        fail('subscribe_room', response, `unexpected result: ${errorText(result)}`);
+      }
+    },
+
+    async unsubscribeRoom(roomId: string, userJid: string): Promise<void> {
+      const room = parseName(roomId, 'roomId');
+      const { user, host } = splitBareJid(userJid);
+      const response = await call('unsubscribe_room', {
+        user,
+        host,
+        room,
+        service: config.mucDomain,
+      });
+      expectMutationResult('unsubscribe_room', response);
     },
 
     async sendDirectInvitation(

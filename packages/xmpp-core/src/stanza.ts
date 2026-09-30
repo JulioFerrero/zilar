@@ -18,6 +18,7 @@ import {
   MUC_NAMESPACE,
   MUC_USER_NAMESPACE,
   OCCUPANT_ID_NAMESPACE,
+  PUSH_NAMESPACE,
   REACTIONS_NAMESPACE,
   REPLY_NAMESPACE,
   REFERENCE_NAMESPACE,
@@ -304,6 +305,34 @@ export function buildAvailablePresence(): XmppElement {
 
 export function buildCarbonsEnable(id: string): XmppElement {
   return xml('iq', { type: 'set', id }, xml('enable', { xmlns: CARBONS_NAMESPACE }));
+}
+
+// XEP-0357: registers (enable) or removes (disable) this session's push pair
+// with the app server. The browser must send it over its own XMPP session:
+// ejabberd's `enable()` looks up the sender's session and answers
+// `item-not-found` without one, so there is no admin-API shortcut.
+export function buildPushEnable(options: {
+  id: string;
+  pushJid: string;
+  node: string;
+}): XmppElement {
+  return xml(
+    'iq',
+    { type: 'set', id: options.id },
+    xml('enable', { xmlns: PUSH_NAMESPACE, jid: options.pushJid, node: options.node }),
+  );
+}
+
+export function buildPushDisable(options: {
+  id: string;
+  pushJid: string;
+  node: string;
+}): XmppElement {
+  return xml(
+    'iq',
+    { type: 'set', id: options.id },
+    xml('disable', { xmlns: PUSH_NAMESPACE, jid: options.pushJid, node: options.node }),
+  );
 }
 
 // XEP-0363 §4: a slot request addressed to the upload service component.

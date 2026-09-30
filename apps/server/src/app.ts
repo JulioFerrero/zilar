@@ -17,6 +17,7 @@ import { createAuthRoutes } from './auth/routes';
 import { createChatsRoutes } from './chats/routes';
 import { createChatPrefsRoutes } from './chat-prefs/routes';
 import type { ServerConfig } from './config';
+import { loadPushConfig, type PushConfig } from './push/config';
 import { createDraftsRoutes } from './drafts/routes';
 import { createKeyCipher, type KeyCipher } from './connections/crypto';
 import type { ProviderProbe } from './connections/probe';
@@ -27,6 +28,7 @@ import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
 import { createInviteLinksRoutes, type TestInviteLinksOverrides } from './invite-links/routes';
 import { createPinsRoutes } from './pins/routes';
+import { createPushRoutes } from './push/routes';
 import { createRolesRoutes } from './roles/routes';
 import { createSearchRoutes, type SearchRoutesDependencies } from './search/routes';
 import { createStickersRoutes } from './stickers/routes';
@@ -120,6 +122,11 @@ export interface AppDependencies {
   stickerNow?: () => number;
   /** T-0120: overrides the sticker upload limiter (cap tests inject a pass). */
   uploadLimiter?: { allow: (key: string) => boolean };
+  /**
+   * T-0119: push env (kept separate from the server config so push stays
+   * optional). Absent = push off (every push route answers 404).
+   */
+  push?: PushConfig;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -146,6 +153,7 @@ export function createApp({
   stickerStorageDir,
   stickerNow,
   uploadLimiter,
+  push,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
   const auditRecorder = audit ?? createAuditRecorder({ db, logger });
@@ -244,6 +252,20 @@ export function createApp({
   );
   app.route('/api', createChatsRoutes({ auth, db, config }));
   app.route('/api', createChatPrefsRoutes({ auth, db, config }));
+  // Push devices and settings (T-0119) mount always: with push off or
+  // unconfigured every route answers 404/503 instead of disappearing, so
+  // the web can show the matching state.
+  app.route(
+    '/api',
+    createPushRoutes({
+      auth,
+      db,
+      config,
+      push: push ?? loadPushConfig({}),
+      adminClient,
+      logger,
+    }),
+  );
   // Message search (T-0117) mounts always: without an archive pool every
   // search answers 501 `search_unavailable` instead of 404ing, so the web
   // can hide the feature. Never used by the AI gateway.

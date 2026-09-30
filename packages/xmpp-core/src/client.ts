@@ -16,6 +16,8 @@ import {
   buildJoinPresence,
   buildLeavePresence,
   buildMessage,
+  buildPushDisable,
+  buildPushEnable,
   buildReactions,
   buildRetraction,
   buildRosterError,
@@ -61,6 +63,7 @@ const CONNECT_TIMEOUT_MS = 15_000;
 const JOIN_TIMEOUT_MS = 15_000;
 const HISTORY_TIMEOUT_MS = 30_000;
 const UPLOAD_TIMEOUT_MS = 15_000;
+const PUSH_TIMEOUT_MS = 15_000;
 
 export type ClientOptions = {
   service: string;
@@ -792,6 +795,42 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     });
   }
 
+  // XEP-0357: enables or disables push for this session's push pair. The
+  // request goes over the user's own session (ejabberd requires it) and
+  // resolves when the server answers `result`, or rejects on `error`/timeout.
+  async function setPushEnabled(options: {
+    pushJid: string;
+    node: string;
+    enable: boolean;
+  }): Promise<void> {
+    const current = requireOnline();
+    const id = generateId();
+    const stanza =
+      options.enable === true
+        ? buildPushEnable({ id, pushJid: options.pushJid, node: options.node })
+        : buildPushDisable({ id, pushJid: options.pushJid, node: options.node });
+
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingIqs.delete(id);
+        reject(new Error('timed out toggling push notifications'));
+      }, PUSH_TIMEOUT_MS);
+      pendingIqs.set(id, {
+        resolve: () => resolve(),
+        reject,
+        timer,
+      });
+
+      current.send(stanza).catch((error: unknown) => {
+        const pending = pendingIqs.get(id);
+        if (pending === undefined) return;
+        pendingIqs.delete(id);
+        clearTimeout(pending.timer);
+        reject(new Error(`could not toggle push notifications: ${errorMessage(error)}`));
+      });
+    });
+  }
+
   return {
     status: () => currentStatus,
     me: () => meJid,
@@ -803,6 +842,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     sendMessage,
     loadHistory,
     requestUploadSlot,
+    setPushEnabled,
     sendTyping,
     sendReactions,
     sendCorrection,

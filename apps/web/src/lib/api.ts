@@ -1353,6 +1353,96 @@ export async function removeStickerPanelPack(packId: string): Promise<void> {
   });
 }
 
+// --- Push notifications (T-0119) -------------------------------------------
+// The wire contract lives in apps/server/src/push/routes.ts. The browser
+// registers its Web Push subscription, stores it, then enables the push
+// pair over its own XMPP session (ejabberd requires the enable IQ from the
+// user's session). The device list carries labels and dates only — never
+// the endpoint URL or keys.
+
+const pushConfigSchema = z.object({
+  vapidPublicKey: z.string().min(1),
+  pushJid: z.string().min(1),
+});
+
+export type PushConfig = z.infer<typeof pushConfigSchema>;
+
+const registeredDeviceSchema = z.object({
+  id: z.string().min(1),
+  node: z.string().min(1),
+  jid: z.string().min(1),
+});
+
+export type RegisteredDevice = z.infer<typeof registeredDeviceSchema>;
+
+const pushDeviceSchema = z.object({
+  id: z.string(),
+  userAgent: z.string().nullable(),
+  createdAt: z.string(),
+  lastUsedAt: z.string().nullable(),
+  inactive: z.boolean(),
+});
+
+export type PushDevice = z.infer<typeof pushDeviceSchema>;
+
+const pushDevicesSchema = z.object({ devices: z.array(pushDeviceSchema) });
+
+const pushSettingsSchema = z.object({ showPreviews: z.boolean() });
+
+export function getPushConfig(): Promise<PushConfig> {
+  return request('/push/config', pushConfigSchema);
+}
+
+export interface RegisterPushDeviceInput {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  userAgent?: string | undefined;
+}
+
+export function registerPushDevice(input: RegisterPushDeviceInput): Promise<RegisteredDevice> {
+  return request('/push/subscriptions', registeredDeviceSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      endpoint: input.endpoint,
+      keys: input.keys,
+      ...(input.userAgent === undefined ? {} : { userAgent: input.userAgent }),
+    }),
+  });
+}
+
+export function listPushDevices(): Promise<PushDevice[]> {
+  return request('/push/subscriptions', pushDevicesSchema).then((body) => body.devices);
+}
+
+export function removePushDevice(id: string): Promise<void> {
+  return request(
+    `/push/subscriptions/${encodeURIComponent(id)}`,
+    z.object({ removed: z.boolean() }),
+    { method: 'DELETE' },
+  ).then(() => undefined);
+}
+
+export function getPushSettings(): Promise<{ showPreviews: boolean }> {
+  return request('/push/settings', pushSettingsSchema);
+}
+
+export function setPushSettings(showPreviews: boolean): Promise<{ showPreviews: boolean }> {
+  return request('/push/settings', pushSettingsSchema, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ showPreviews }),
+  });
+}
+
+export function sendTestPushNotification(subscriptionId: string): Promise<void> {
+  return request('/push/test', z.object({ sent: z.boolean() }), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subscriptionId }),
+  }).then(() => undefined);
+}
+
 // --- Audit log (T-0079, T-0084) --------------------------------------------
 // The wire contract lives in apps/server/src/audit/routes.ts and service.ts.
 

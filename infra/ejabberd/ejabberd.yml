@@ -12,6 +12,13 @@ define_macro:
   MUC_HOST: rooms.galena.localhost
   # Overridden by EJABBERD_MACRO_ADMIN (infra/docker-compose.dev.yml).
   ADMIN: admin@galena.localhost
+  # The push component domain and shared secret (T-0119). The host default
+  # matches PUSH_COMPONENT_JID's default; the secret default is a placeholder
+  # that must be overridden by EJABBERD_MACRO_PUSH_COMPONENT_SECRET with the
+  # same value as the server's PUSH_COMPONENT_SECRET, or the component can
+  # never authenticate (and everyone knows the placeholder).
+  PUSH_COMPONENT_HOST: push.galena.localhost
+  PUSH_COMPONENT_SECRET: CHANGE_ME_PUSH_COMPONENT_SECRET
   SQL_SERVER: postgres
   SQL_DATABASE: ejabberd
   SQL_USERNAME: ejabberd
@@ -71,6 +78,17 @@ listen:
       /ws: ejabberd_http_ws
       /upload: mod_http_upload
       /api: mod_http_api
+  # Push component (T-0119, XEP-0114): our server connects here from the dev
+  # network and receives the XEP-0357 publish IQs. Loopback inside the
+  # container network, plain TCP — the secret is the only credential.
+  # Overridden by EJABBERD_MACRO_PUSH_COMPONENT_SECRET (see
+  # infra/docker-compose.dev.yml and docs/SERVER_CONFIG.md "Push").
+  - port: 5347
+    ip: '127.0.0.1'
+    module: ejabberd_service
+    hosts:
+      PUSH_COMPONENT_HOST:
+        password: PUSH_COMPONENT_SECRET
 
 acl:
   local:
@@ -183,8 +201,16 @@ modules:
     resend_on_timeout: if_offline
   mod_carboncopy: {}
   mod_ping: {}
-  # Push notifications: enabled with no app server configured yet (see plan 6.5).
-  mod_push: {}
+  # Push notifications (T-0119): mod_push routes offline and MAM events to
+  # our XEP-0114 component (see the listener above). `include_sender` and
+  # `include_body` stay off: the component resolves who and what itself from
+  # the chat archive, honouring mute, visibility and the previews setting —
+  # ejabberd never sees message text for push. `mod_push_keepalive` keeps
+  # the stream-management session up so hibernating sessions still notify.
+  mod_push:
+    include_sender: false
+    include_body: false
+  mod_push_keepalive: {}
   mod_http_api: {}
   mod_admin_extra: {}
   mod_adhoc: {}

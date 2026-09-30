@@ -1,0 +1,186 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, screen } from '@testing-library/react';
+import { renderApp } from '@/test/renderApp';
+
+function jsonResponse(status: number, body: unknown): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  } as Response;
+}
+
+const pushConfig = { vapidPublicKey: 'dGVzdA', pushJid: 'push.galena.test' };
+
+function stubBrowserGlobals(): void {
+  const subscriptions: Array<{ endpoint: string }> = [];
+  const manager = {
+    getSubscription: vi.fn(async () =>
+      subscriptions.length === 0
+        ? null
+        : {
+            endpoint: subscriptions[0]!.endpoint,
+            toJSON: () => ({
+              endpoint: subscriptions[0]!.endpoint,
+              keys: { p256dh: 'p', auth: 'a' },
+            }),
+            unsubscribe: async () => {
+              subscriptions.length = 0;
+              return true;
+            },
+          },
+    ),
+    subscribe: vi.fn(async () => {
+      subscriptions.push({ endpoint: 'https://push.example.com/sub-1' });
+      return {
+        endpoint: 'https://push.example.com/sub-1',
+        toJSON: () => ({
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'p', auth: 'a' },
+        }),
+        unsubscribe: async () => {
+          subscriptions.length = 0;
+          return true;
+        },
+      };
+    }),
+  };
+  const registration = { pushManager: manager };
+  Object.defineProperty(window.navigator, 'serviceWorker', {
+    value: {
+      register: vi.fn(async () => registration),
+      getRegistration: vi.fn(async () => registration),
+    },
+    configurable: true,
+  });
+  Object.defineProperty(window, 'PushManager', { value: class {}, configurable: true });
+  vi.stubGlobal(
+    'Notification',
+    class {
+      static permission = 'granted';
+      static requestPermission = vi.fn(async () => 'granted');
+    },
+  );
+}
+
+function stubFetch(initialDevices: unknown[] = [], showPreviews = true): ReturnType<typeof vi.fn> {
+  let devices: unknown[] = [...initialDevices];
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    const path = url.replace('/api', '');
+    const method = init?.method ?? 'GET';
+    if (path === '/push/config') {
+      return jsonResponse(200, pushConfig);
+    }
+    if (path === '/push/subscriptions' && method === 'GET') {
+      return jsonResponse(200, { devices });
+    }
+    if (path === '/push/subscriptions' && method === 'POST') {
+      devices = [
+        ...devices,
+        {
+          id: 'device-1',
+          userAgent: 'Test · Browser',
+          createdAt: '2026-09-30T00:00:00Z',
+          lastUsedAt: null,
+          inactive: false,
+        },
+      ];
+      return jsonResponse(200, { id: 'device-1', node: 'p-device-1', jid: 'push.galena.test' });
+    }
+    if (path.startsWith('/push/subscriptions/') && method === 'DELETE') {
+      devices = devices.filter(
+        (device) => (device as { id: string }).id !== decodeURIComponent(path.split('/')[3] ?? ''),
+      );
+      return jsonResponse(200, { removed: true });
+    }
+    if (path === '/push/settings' && method === 'GET') {
+      return jsonResponse(200, { showPreviews });
+    }
+    if (path === '/push/settings' && method === 'PUT') {
+      return jsonResponse(200, { showPreviews: JSON.parse(String(init?.body)).showPreviews });
+    }
+    if (path === '/push/test' && method === 'POST') {
+      return jsonResponse(200, { sent: true });
+    }
+    return jsonResponse(404, { error: { code: 'not_found', message: 'Not found' } });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.localStorage.clear();
+});
+
+describe('NotificationsPage', () => {
+  it('shows the unsupported state without browser push APIs', async () => {
+    stubFetch();
+    renderApp('/settings/notifications');
+
+    expect(await screen.findByText(/not supported in this browser/)).toBeTruthy();
+  });
+
+  it('loads devices, previews and the enable flow', async () => {
+    stubBrowserGlobals();
+    stubFetch();
+    renderApp('/settings/notifications');
+
+    expect(await screen.findByText('This device')).toBeTruthy();
+    expect(screen.getByText('Devices')).toBeTruthy();
+    expect(screen.getByText('Message previews')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Enable on this device/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Enable on this device/ }));
+    expect(await screen.findByText(/Push is on for this device/)).toBeTruthy();
+  });
+
+  it('shows the server-off state when push is disabled server-side', async () => {
+    stubBrowserGlobals();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).endsWith('/push/config')) {
+          return jsonResponse(404, { error: { code: 'not_found', message: 'Not found' } });
+        }
+        return jsonResponse(404, { error: { code: 'not_found', message: 'Not found' } });
+      }),
+    );
+    renderApp('/settings/notifications');
+
+    expect(await screen.findByText(/not enabled on this server/)).toBeTruthy();
+  });
+
+  it('toggles previews and sends a test notification', async () => {
+    stubBrowserGlobals();
+    const fetchMock = stubFetch([
+      {
+        id: 'device-1',
+        userAgent: 'Test · Browser',
+        createdAt: '2026-09-30T00:00:00Z',
+        lastUsedAt: null,
+        inactive: false,
+      },
+    ]);
+    window.localStorage.setItem(
+      'galena:pushDevice',
+      JSON.stringify({ id: 'device-1', node: 'p-device-1' }),
+    );
+    renderApp('/settings/notifications');
+
+    expect(await screen.findByText(/Push is on for this device/)).toBeTruthy();
+
+    const checkbox = screen.getByRole('checkbox');
+    expect(checkbox).toBeTruthy();
+    fireEvent.click(checkbox);
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/push/settings',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Send a test notification/ }));
+    expect(await screen.findByText(/Sent — close this tab/)).toBeTruthy();
+  });
+});

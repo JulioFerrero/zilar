@@ -308,6 +308,11 @@ export interface ChatStore {
   deleteForEveryone: (chatId: string, messageId: string) => void;
   /** The inline error of the last edit or delete that failed to send. */
   actionError: { chatId: string; message: string } | undefined;
+  /**
+   * Enables or disables the push pair over the XMPP session (XEP-0357).
+   * Rejects when the chat connection is offline or cannot send raw IQs.
+   */
+  setPushPair: (input: { pushJid: string; node: string; enable: boolean }) => Promise<void>;
   sendTyping: (chatId: string) => void;
   createGroup: (title: string, memberIds: string[]) => Promise<string>;
   createInvite: () => Promise<string>;
@@ -1012,6 +1017,8 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       loadOlder: () => {},
       hasMore: () => false,
       sendTyping: () => {},
+      // Mock mode has no XMPP session, so the enable IQ step is skipped.
+      setPushPair: async () => {},
       react: (chatId, messageId, emoji) => {
         set((state) => {
           const list = state.messagesByChat[chatId];
