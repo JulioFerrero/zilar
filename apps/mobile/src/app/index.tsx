@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { ChatListItem } from '@/components/chat/chat-list-item';
+import { GroupListItem } from '@/components/chat/group-list-item';
 import { FolderTabs } from '@/components/chat/folder-tabs';
 import { LoadError, LoadErrorBanner } from '@/components/chat/load-error';
 import { NewChatButton } from '@/components/chat/new-chat-button';
@@ -18,7 +19,8 @@ import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { connectionLabel } from '@/lib/connection';
 import { well } from '@/lib/depth';
 import { filterChats, unreadCount } from '@/lib/filter';
-import type { ChatFolder } from '@/lib/types';
+import { groupRowFor, groupTopicChats } from '@/lib/topics';
+import type { ChatFolder, ChatSummary } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import { chatsListView, emptyChatsText } from '@/store/types';
 
@@ -56,10 +58,34 @@ function ChatsList() {
     }
   }
 
-  const visibleChats = useMemo(
-    () => filterChats(chats, { folder: activeFolder, search }),
-    [chats, activeFolder, search],
-  );
+  // Groups with topics collapse to one row per group (title, "N topics",
+  // aggregated unread, newest time, last-topic preview); a group without
+  // topics from an older server keeps its chat row as today (T-0112).
+  const visibleRows = useMemo(() => {
+    const filtered = filterChats(chats, { folder: activeFolder, search });
+    const byGroup = groupTopicChats(filtered);
+    const topicIds = new Set([...byGroup.values()].flat().map((chat) => chat.id));
+    const rows: ({ kind: 'chat'; chat: ChatSummary } | { kind: 'group'; groupId: string })[] =
+      filtered.filter((chat) => !topicIds.has(chat.id)).map((chat) => ({ kind: 'chat', chat }));
+    for (const [groupId, topics] of byGroup) {
+      const row = groupRowFor(groupId, topics);
+      if (row !== undefined) {
+        rows.push({ kind: 'group', groupId });
+      }
+    }
+    // Recency order: the newest message of the group (or chat) first.
+    const timeOf = (row: (typeof rows)[number]): number => {
+      if (row.kind === 'chat') {
+        return row.chat.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
+      }
+      const topics = byGroup.get(row.groupId) ?? [];
+      return Math.max(
+        Number.NEGATIVE_INFINITY,
+        ...topics.map((chat) => chat.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY),
+      );
+    };
+    return rows.sort((left, right) => timeOf(right) - timeOf(left));
+  }, [chats, activeFolder, search]);
   const listView = chatsListView(chatsLoad, chats.length);
   const counts = useMemo(
     () =>
@@ -125,8 +151,8 @@ function ChatsList() {
       ) : null}
       <FlatList
         className="flex-1"
-        data={visibleChats}
-        keyExtractor={(chat) => chat.id}
+        data={visibleRows}
+        keyExtractor={(row) => (row.kind === 'chat' ? row.chat.id : `group:${row.groupId}`)}
         contentContainerStyle={{ paddingBottom: 96 }}
         refreshControl={
           <RefreshControl
@@ -138,12 +164,19 @@ function ChatsList() {
             }}
           />
         }
-        renderItem={({ item }) => (
-          <ChatListItem
-            chat={item}
-            onPress={() => router.push({ pathname: '/chat/[id]', params: { id: item.id } })}
-          />
-        )}
+        renderItem={({ item }) =>
+          item.kind === 'chat' ? (
+            <ChatListItem
+              chat={item.chat}
+              onPress={() => router.push({ pathname: '/chat/[id]', params: { id: item.chat.id } })}
+            />
+          ) : (
+            <GroupListItem
+              groupId={item.groupId}
+              onPress={() => router.push({ pathname: '/group/[id]', params: { id: item.groupId } })}
+            />
+          )
+        }
         ListEmptyComponent={
           listView === 'skeleton' ? (
             <ChatListSkeleton />

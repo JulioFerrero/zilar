@@ -3,6 +3,7 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import { CURRENT_USER_ID, CURRENT_USER_NAME } from '../lib/types';
 import { chatSeeds, mockChats, mockMessagesByChat } from '../mock';
+import { mockDevteamGroupDetail, mockDevteamOwnedAis, mockTopicAisById } from '../mock/topics';
 import { mockParamAllowed } from '../mock/gate';
 import {
   MOCK_DRAFT_CHAT_ID,
@@ -43,6 +44,20 @@ type ChatStoreData = Omit<
   | 'editMessage'
   | 'deleteForEveryone'
   | 'dismissActionError'
+  | 'dismissTopicNotice'
+  | 'groupDetail'
+  | 'refreshGroupDetail'
+  | 'muteChat'
+  | 'createTopic'
+  | 'patchTopic'
+  | 'archiveTopic'
+  | 'addTopicAi'
+  | 'removeTopicAi'
+  | 'addTopicMember'
+  | 'removeTopicMember'
+  | 'leaveTopic'
+  | 'listTopicMembers'
+  | 'listTopicAis'
   | 'setSearch'
   | 'setActiveFolder'
   | 'start'
@@ -100,6 +115,8 @@ export function createInitialState(phase?: MockDraftPhase, load?: MockLoadScenar
       phase === 'final' ? { [MOCK_DRAFT_FINAL_MESSAGE_ID]: MOCK_DRAFT_TURN_ID } : {},
     editTarget: undefined,
     actionError: undefined,
+    topicNotice: undefined,
+    ownedAis: mockDevteamOwnedAis(),
   };
   if (load === 'slow') {
     return { ...base, chats: [], chatsLoad: 'loading', messagesByChat: {}, historyLoad: {} };
@@ -195,6 +212,137 @@ export function createChatStore(
       editMessage: () => {},
       deleteForEveryone: () => {},
       dismissActionError: () => {},
+      dismissTopicNotice: () => set({ topicNotice: undefined }),
+      groupDetail: (chatId) =>
+        get().chats.some((chat) => chat.id === chatId && chat.groupId === 'g-devteam')
+          ? mockDevteamGroupDetail()
+          : undefined,
+      refreshGroupDetail: () => {},
+      ownedAis: mockDevteamOwnedAis(),
+      muteChat: (chatId, muted) =>
+        set((state) => ({
+          chats: state.chats.map((chat) => (chat.id === chatId ? { ...chat, muted } : chat)),
+        })),
+      createTopic: async (chatId, input) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const groupId = chat?.groupId;
+        if (groupId === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        messageCounter += 1;
+        const roomId = `t-mock-${Date.now()}-${messageCounter}`;
+        const topicId = roomId;
+        const visibility = input.visibility ?? 'public';
+        const next: (typeof mockChats)[number] = {
+          id: roomId,
+          title: input.name,
+          kind: 'group',
+          isAI: false,
+          space: chat?.space ?? 'personal',
+          unread: 0,
+          muted: false,
+          memberCount: chat?.memberCount ?? 2,
+          onlineCount: 0,
+          groupId,
+          groupTitle: chat?.groupTitle ?? chat?.title ?? 'Group',
+          topic: {
+            id: topicId,
+            glyph: [...input.name.trim()][0]?.toUpperCase() ?? 'G',
+            kind: input.kind ?? 'chat',
+            status: 'open',
+            visibility,
+            isGeneral: false,
+            archived: false,
+            owner: null,
+            linkUrl: null,
+            linkLabel: null,
+          },
+        };
+        set((state) => ({
+          chats: [next, ...state.chats],
+          messagesByChat: { ...state.messagesByChat, [roomId]: [] },
+          historyLoad: { ...state.historyLoad, [roomId]: 'loaded' },
+        }));
+        return roomId;
+      },
+      patchTopic: async (chatId, input) => {
+        set((state) => ({
+          chats: state.chats.map((entry) => {
+            if (entry.id !== chatId || entry.topic === undefined) {
+              return entry;
+            }
+            return {
+              ...entry,
+              ...(input.name === undefined ? {} : { title: input.name }),
+              topic: {
+                ...entry.topic,
+                ...(input.kind === undefined ? {} : { kind: input.kind }),
+                ...(input.status === undefined ? {} : { status: input.status }),
+                ...(input.visibility === undefined ? {} : { visibility: input.visibility }),
+                ...(input.owner === undefined
+                  ? {}
+                  : {
+                      owner:
+                        input.owner === null
+                          ? null
+                          : {
+                              kind: input.owner.kind,
+                              id: input.owner.id,
+                              name: input.owner.id,
+                            },
+                    }),
+                ...(input.linkUrl === undefined ? {} : { linkUrl: input.linkUrl }),
+                ...(input.linkLabel === undefined ? {} : { linkLabel: input.linkLabel }),
+                ...(input.archived === undefined ? {} : { archived: input.archived }),
+              },
+            };
+          }),
+        }));
+      },
+      archiveTopic: async (chatId) => {
+        set((state) => ({
+          chats: state.chats.filter((entry) => entry.id !== chatId),
+        }));
+      },
+      addTopicAi: async () => {
+        throw new Error('addTopicAi is not available in the mock store');
+      },
+      removeTopicAi: async () => {
+        throw new Error('removeTopicAi is not available in the mock store');
+      },
+      addTopicMember: async () => {
+        throw new Error('addTopicMember is not available in the mock store');
+      },
+      removeTopicMember: async (chatId, userId) => {
+        if (userId === get().currentUserId) {
+          set((state) => ({
+            chats: state.chats.filter((entry) => entry.id !== chatId),
+          }));
+        }
+      },
+      leaveTopic: async (chatId) => {
+        await get().removeTopicMember(chatId, get().currentUserId);
+      },
+      listTopicMembers: async (chatId) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const topicId = chat?.topic?.id;
+        if (topicId !== undefined) {
+          const { mockTopicMembersById } = await import('../mock/topics');
+          const members = mockTopicMembersById()[topicId];
+          if (members !== undefined) {
+            return members;
+          }
+        }
+        return [];
+      },
+      listTopicAis: async (chatId) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const topicId = chat?.topic?.id;
+        if (topicId === undefined) {
+          return [];
+        }
+        return mockTopicAisById()[topicId] ?? [];
+      },
       start: () => {},
       stop: () => {},
       openChat: (chatId) => {

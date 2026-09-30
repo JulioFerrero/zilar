@@ -201,7 +201,13 @@ function fakeApi(overrides: Partial<ChatApi> = {}): ChatApi {
       },
     ]),
     getContacts: vi.fn(async () => [{ userId: 'u-ana', name: 'Ana', jid: 'ana@galena.test' }]),
-    getGroup: vi.fn(async () => ({ id: 'g1', title: 'Team', createdBy: 'u-me', members: [] })),
+    getGroup: vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [],
+      ais: [],
+    })),
     getXmppToken: vi.fn(async () => ({
       jid: 'me@galena.test',
       token: 'tok',
@@ -515,6 +521,7 @@ describe('createRealChatStore', () => {
       title: 'Team',
       createdBy: 'u-me',
       members: [{ userId: 'u-luis', name: 'Luis', role: 'member' as const }],
+      ais: [],
     }));
     const { store, xmpp } = await setup({ getGroup });
     await flush();
