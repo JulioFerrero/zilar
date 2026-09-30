@@ -82,7 +82,24 @@ Anything not listed. No live browser check is possible for the worker: say in th
 - Tests: `TaskStrip.test.tsx` (+1 AI-owner-by-id), `TopicPanel.test.tsx` (+3: 403 stays + inline error, 404-on-live stays with no alert, real removal shows row gone and stays), `realStore.topics.test.tsx` (+6: archived-patch drops row, quiet self-archive, `refreshGeneralTopic` awaits fetch, 403 keeps row, network keeps row, 404 row-check alive/gone), `TopicsMockE2E.test.tsx` (+2: dialog create in mock mode, strip status in mock mode; +1 kebab archive → row gone, view on General, no notice), `TopicsSidebar.test.tsx` (+2: full-cycle nav skips DM, archived toggle; renamed overclaiming test), `ChatPrefs.test.tsx` (topic PATCH stub so the pre-existing row/header tests run against the new archive path).
 - `work/T-0130-topics-web-fixes.md`: this Report; status → review.
 
-### Commands run and real results
+### Review round 2 (lead packet, 5 findings — verified already fixed in tree)
+This round's packet (`PREREVIEW.md`, read then deleted, not committed) lists the same 5 findings as the first review round, and all are already implemented in commits `9ab6098` + `3e2a700`. I verified each against the current code and re-ran every check:
+- Finding 1 (double DELETE): `TopicPanel.removeMember` calls only the store action (one DELETE, `TopicPanel.tsx:262-263`); a 404 navigates away only when `refreshTopicRow` proves the row is gone (`realStore.ts:2651-2654`); the mock DELETE 404s for a non-member (`mock/api.ts:1038-1043`), so the strict mock catches the old bug. Tests: `TopicPanel.test.tsx:152` (404-on-live stays, no alert), `:167` (real removal, row gone, stays), `realStore.topics.test.tsx:398` (row-check false-when-listed / true-when-gone).
+- Finding 2 (nav walks DMs): nav selects `a[data-topic-row]` only (`TopicKeyboardNav.tsx:24`); `TopicRow.tsx:59` marks its link. Test `TopicsSidebar.test.tsx:59` walks the full Up/Down cycle asserting no stop is the DM row.
+- Finding 3 (`refreshGeneralTopic` await): awaits the real `refreshChats()` closure (`realStore.ts:2588-2593`), with the comment explaining `refreshChats` action only schedules. Test `realStore.topics.test.tsx:344` removes General locally and resolves it from the fetched list.
+- Finding 4 (self-archive notice): `quietArchiveIds` (`realStore.ts:510,2151-2152,2620`) suppresses the notice for the archiving client. Tests: `realStore.topics.test.tsx:317` (quiet move) + kebab mock test asserting `topicNotice` undefined.
+- Finding 5 (test name): `TopicsSidebar.test.tsx:108` renamed to "shows an injected archived row under the Archived toggle".
+- No code changes were needed this round; only the task file (this Report section + status) changed, plus deletion of the packet.
+
+### Commands run and real results (round 2 verification)
+- `pnpm install`: pass (809 ms, "Already up to date").
+- `pnpm format:check`: pass ("All matched files use Prettier code style!") after deleting the lead's `PREREVIEW.md` packet (it was the only prettier-dirty file; packets are not committed).
+- `pnpm lint`: pass (oxlint clean, exit 0).
+- `pnpm typecheck`: pass (turbo 10/10 tasks successful).
+- `pnpm --filter @galena/web test --maxWorkers=2`: 69 files passed, 756 passed, exit 0, no unhandled errors.
+- `pnpm build`: pass (2/2 turbo tasks).
+
+### Commands run and real results (rounds 0–1)
 - `pnpm install`: pass (6.7 s, first run).
 - `pnpm format:check`: pass ("All matched files use Prettier code style!") after `prettier --write` on touched files. Note: `PREREVIEW.md` (lead's file, not committed) is prettier-dirty; all tracked files pass.
 - `pnpm lint`: pass (oxlint clean, exit 0).
@@ -91,6 +108,7 @@ Anything not listed. No live browser check is possible for the worker: say in th
 - `pnpm build`: pass (2/2 turbo tasks).
 - Per-file Vitest runs during review fixes (one command at a time, `--maxWorkers=2`): `TopicPanel.test.tsx` 9 passed; `realStore.topics.test.tsx` 13 passed; `TopicsSidebar.test.tsx` 8 passed; `TopicsMockE2E.test.tsx` 3 passed.
 - Final full suite (once, at the end): 69 files passed, 756 passed, exit 0. (`format:check`/`lint`/`typecheck`/`build` re-verified above during the review round.)
+- Round 2 verification full suite (once, at the end): 69 files passed, 756 passed, exit 0, no unhandled errors.
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any|as any` in touched non-test source: no hits.
 
 ### Problems, deviations from the spec, open questions
