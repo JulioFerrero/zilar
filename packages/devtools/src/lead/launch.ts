@@ -7,6 +7,12 @@ import { loadState, saveState } from './state.js';
 import { assertAllowedModel, parseTaskFrontMatter, splitModel } from './task-file.js';
 import { newTaskRecord } from './types.js';
 
+// Measured 2026-10-01: `low` was 2-4x faster than the default with the same
+// pass rate on a spec-driven implementation task; the review gates catch the
+// rest. A task can set `effort:` in its front matter (e.g. `high` for schema or
+// security work).
+export const DEFAULT_WORKER_EFFORT = 'low';
+
 export interface LaunchDeps {
   repoRoot: string;
   client: OpenCodeClient;
@@ -47,12 +53,18 @@ export function readTaskFrontMatter(
   file: string;
   model: string;
   branch: string;
+  effort: string;
 } {
   const file = findTaskFile(repoRoot, task);
   const frontMatter = parseTaskFrontMatter(
     fs.readFileSync(path.join(repoRoot, 'work', file), 'utf8'),
   );
-  return { file, model: frontMatter.model, branch: frontMatter.branch };
+  return {
+    file,
+    model: frontMatter.model,
+    branch: frontMatter.branch,
+    effort: frontMatter.effort ?? DEFAULT_WORKER_EFFORT,
+  };
 }
 
 interface StartSessionOptions {
@@ -145,9 +157,9 @@ export async function launchTask(
   if (!/^T-\d+$/.test(task)) {
     throw new Error(`task must look like T-0038, got ${JSON.stringify(task)}`);
   }
-  const { file, model: modelString, branch } = readTaskFrontMatter(deps.repoRoot, task);
+  const { file, model: modelString, branch, effort } = readTaskFrontMatter(deps.repoRoot, task);
   assertAllowedModel(modelString);
-  const model = splitModel(modelString);
+  const model = { ...splitModel(modelString), variant: effort };
   const worktree = worktreeFor(deps.repoRoot, task);
   if (fs.existsSync(worktree)) {
     throw new Error(`worktree already exists: ${worktree}`);
