@@ -6,7 +6,8 @@ import { Avatar } from './Avatar';
 import { TypingDots } from './TypingDots';
 import { IconButton } from './ui/icon-button';
 import { chatSubtitle, typingLabel } from '@/lib/format';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { useMediaQuery } from '@/lib/useMediaQuery';
+import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 export function ChatHeader({
   chat,
@@ -19,6 +20,8 @@ export function ChatHeader({
 }) {
   const navigate = useNavigate();
   const store = useChatStore();
+  const storeApi = useChatStoreApi();
+  const isWide = useMediaQuery('(min-width: 900px)');
   const names = store.typing[chat.id]?.names ?? [];
   const typing = typingLabel(chat, names);
   // An AI draft in flight reads `writing…`, the D24 wording (ui-style.md §5).
@@ -66,7 +69,18 @@ export function ChatHeader({
       ) : (
         <div className="min-w-0 flex-1">{title}</div>
       )}
-      <IconButton aria-label="Search in chat">
+      <IconButton
+        aria-label="Search in chat"
+        onClick={() => {
+          storeApi.getState().setSearchChat(chat.id);
+          if (!isWide) {
+            navigate('/');
+          }
+          // The list search box lives outside this view; focus it on the
+          // next frame so the scope chip is already painted.
+          window.setTimeout(() => window.dispatchEvent(new Event('galena:focus-search')), 0);
+        }}
+      >
         <Search className="size-5" aria-hidden="true" />
       </IconButton>
       <IconButton

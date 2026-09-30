@@ -584,6 +584,103 @@ export async function revokeApprovalRule(id: string): Promise<void> {
   await request(`/approval-rules/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
 }
 
+// --- Message search (T-0117) -----------------------------------------------
+// The wire contract lives in apps/server/src/search/routes.ts. Snippets
+// arrive as plain text plus `marks` ranges; the client highlights with
+// spans and never renders HTML.
+
+const searchMarkSchema = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
+
+const searchItemSchema = z.object({
+  chatJid: z.string(),
+  messageId: z.string(),
+  senderName: z.string(),
+  at: z.string(),
+  snippet: z.string(),
+  marks: z.array(searchMarkSchema),
+});
+
+export type SearchItem = z.infer<typeof searchItemSchema>;
+
+const searchPageSchema = z.object({
+  items: z.array(searchItemSchema),
+  nextBefore: z.string().optional(),
+});
+
+export interface SearchMessagesInput {
+  q: string;
+  chat?: string;
+  limit?: number;
+  before?: string;
+  signal?: AbortSignal;
+}
+
+async function searchRequest<T>(
+  params: URLSearchParams,
+  schema: z.ZodType<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  let response: Response;
+  if (isMockApiEnabled()) {
+    response = await mockRequest(`/search?${params.toString()}`, { method: 'GET' });
+  } else {
+    if (signal?.aborted === true) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+    try {
+      response = await fetch(`${API_BASE}/search?${params.toString()}`, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        ...(signal === undefined ? {} : { signal }),
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      throw new ApiError(0, 'network_error', 'Could not reach the server');
+    }
+  }
+  if (signal?.aborted === true) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+
+  const raw: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const parsed = errorBodySchema.safeParse(raw);
+    throw new ApiError(
+      response.status,
+      parsed.success ? parsed.data.error.code : 'request_failed',
+      parsed.success ? parsed.data.error.message : `Request failed (${response.status})`,
+    );
+  }
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ApiError(
+      response.status,
+      'invalid_response',
+      'The server sent an unexpected response',
+    );
+  }
+  return parsed.data;
+}
+
+export function searchMessages(
+  input: SearchMessagesInput,
+): Promise<{ items: SearchItem[]; nextBefore?: string | undefined }> {
+  const params = new URLSearchParams();
+  params.set('q', input.q);
+  if (input.chat !== undefined && input.chat !== '') {
+    params.set('chat', input.chat);
+  }
+  if (input.limit !== undefined) {
+    params.set('limit', String(input.limit));
+  }
+  if (input.before !== undefined && input.before !== '') {
+    params.set('before', input.before);
+  }
+  return searchRequest(params, searchPageSchema, input.signal);
+}
+
 // --- Audit log (T-0079, T-0084) --------------------------------------------
 // The wire contract lives in apps/server/src/audit/routes.ts and service.ts.
 

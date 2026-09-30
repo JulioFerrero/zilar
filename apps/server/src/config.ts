@@ -47,6 +47,10 @@ const serverConfigSchema = z
     // environments without a gateway; the AI module refuses to call LiteLLM
     // when the master key is absent. The base URL has a default applied there.
     LITELLM_BASE_URL: z.url().optional(),
+    // Search (T-0117): connection string for a read-only role on the
+    // ejabberd MAM archive. Absent → GET /api/search answers 501 and the
+    // web hides the feature.
+    XMPP_ARCHIVE_DATABASE_URL: databaseUrlSchema.optional(),
     LITELLM_MASTER_KEY: z.string().min(1).optional(),
     // GitHub App (one App for the platform). Optional so the server still
     // boots without git integration; all three must be set together.

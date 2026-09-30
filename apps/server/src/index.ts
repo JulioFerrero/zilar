@@ -23,6 +23,7 @@ import { loadServerConfigOrExit } from './config';
 import { createKeyCipher } from './connections/crypto';
 import { createDb } from './db/client';
 import { runMigrations } from './db/migrate';
+import { createArchivePool } from './search/service';
 import { sharedDraftHub } from './drafts/hub';
 import { createLogger } from './logger';
 import { assertRunnerHubConfig, startRunnerHub, type RunnerHub } from './machines/hub';
@@ -123,6 +124,11 @@ const app = createApp({
   auth,
   adminClient,
   machineRegistry,
+  // Message search (T-0117): a separate small pool on the ejabberd archive
+  // with a 3 s statement timeout. Absent = GET /api/search answers 501.
+  ...(config.XMPP_ARCHIVE_DATABASE_URL === undefined
+    ? {}
+    : { archive: createArchivePool(config.XMPP_ARCHIVE_DATABASE_URL) }),
   ...(config.RUNNER_HUB_ENABLED ? { isMachineOnline } : {}),
   actionGateway,
   alwaysEligible,

@@ -5,6 +5,7 @@ import { ChatListItem } from './ChatListItem';
 import { EmptyState } from './EmptyState';
 import { FolderTabs } from './FolderTabs';
 import { InviteDialog } from './InviteDialog';
+import { MessageSearchResults } from './MessageSearchResults';
 import { NewChatButton } from './NewChatButton';
 import { SearchBar } from './SearchBar';
 import { ChatListSkeleton } from './Skeleton';
@@ -262,6 +263,15 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                   isWide={isWide}
                 />
               ))
+            )}
+            {/* Message hits come after the chat-name matches. `searchChat`
+                scopes "Search only in this chat" from a chat header. */}
+            {store.search.trim().length >= 2 && (
+              <MessageSearchResults
+                query={store.search}
+                {...(store.searchChat === undefined ? {} : { chatFilter: store.searchChat })}
+                onNotFound={() => {}}
+              />
             )}
           </>
         )}

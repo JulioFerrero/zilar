@@ -114,6 +114,12 @@ export interface ChatStore {
   openChat: (chatId: string) => void;
   loadOlder: (chatId: string) => void;
   hasMore: (chatId: string) => boolean;
+  /**
+   * Opens a chat at one message (message search): loads history until the
+   * message is present, then resolves with it. Rejects with
+   * `message_not_found` when history runs out first.
+   */
+  openAtMessage: (chatId: string, messageId: string) => Promise<UiMessage>;
   sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
   sendVoice: (chatId: string, recording: VoiceRecording, options?: SendTextOptions) => void;
   sendAttachment: (chatId: string, file: File, options?: SendAttachmentOptions) => void;
@@ -153,6 +159,9 @@ export interface ChatStore {
   stop: () => void;
   search: string;
   setSearch: (value: string) => void;
+  /** Scopes message search to one chat ("Search only in this chat"). */
+  searchChat: string | undefined;
+  setSearchChat: (chatId: string | undefined) => void;
   activeFolder: FolderId;
   setActiveFolder: (folder: FolderId) => void;
 }
@@ -415,6 +424,14 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
             chat.id === chatId && chat.unread > 0 ? { ...chat, unread: 0 } : chat,
           ),
         })),
+      openAtMessage: async (chatId, messageId) => {
+        get().openChat(chatId);
+        const found = (get().messagesByChat[chatId] ?? []).find((item) => item.id === messageId);
+        if (found === undefined) {
+          throw new Error('message_not_found');
+        }
+        return found;
+      },
       loadOlder: () => {},
       hasMore: () => false,
       sendTyping: () => {},
@@ -619,6 +636,8 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       },
       retryAttachment: () => {},
       setSearch: (value) => set({ search: value }),
+      searchChat: undefined,
+      setSearchChat: (chatId) => set({ searchChat: chatId }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),
     };
   });

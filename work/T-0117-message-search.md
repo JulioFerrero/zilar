@@ -1,7 +1,7 @@
 ---
 id: T-0117
 title: Message search across chats, groups and topics (server + web)
-status: planned
+status: review
 milestone: M5
 branch: task/T-0117-message-search
 model: meta/muse-spark-1.3-contributor
@@ -71,19 +71,111 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Discovery first: with `pnpm infra:up` running I ran only `\d archive` and
+  `select count(*)` (3 524 rows) against the live ejabberd DB — per the lead's
+  privacy note I never selected message rows. Column semantics
+  (`username`/`bare_peer`/`peer`/`kind`/`nick`/`txt`/`origin_id`/`xml`,
+  per-side DM rows, per-room group rows, correction/retraction row shapes)
+  were derived from the ejabberd 26.07 sources (`mod_mam.erl`,
+  `mod_mam_sql.erl`, `pg.sql`) plus our own client stanza builders
+  (`packages/xmpp-core/src/stanza.ts`: XEP-0308 `<replace/>`, XEP-0424
+  `<retract/>` + fallback body). Written up in `docs/SEARCH_NOTES.md`
+  (48 lines, ≤ 60 as required) before the code.
+- Server (`apps/server/src/search/`): `GET /api/search`
+  (`q` 2–100 chars trimmed, optional `chat` JID, `limit` ≤ 50 default 20,
+  `before` microsecond cursor). Full-text match
+  `to_tsvector('simple', txt) @@ websearch_to_tsquery('simple', $q)`,
+  snippet via `ts_headline` with `StartSel=/StopSel=` sentinels converted
+  to plain-text `snippet` + `marks` ranges (never HTML). Scan capped to the
+  last 12 months and 5 000 candidates; `WHERE username … AND timestamp > …`
+  stays on the existing `(username, timestamp)` index.
+  - Authz: allowed archives computed from our tables only — caller's own
+    `username` + `bare_peer` filter for DMs (contacts incl. names, own AIs),
+    General + `visibleTopics` room JIDs for groups. `chat` outside the set
+    → 404 `not_found`. DMs are never read under the peer's `username`.
+    Corrections: latest text per `(chat, origin_id)` target wins (via a
+    second bounded `xml LIKE` query, since edit rows need not contain `q`);
+    retracted messages and retract rows themselves are excluded (detected
+    from namespaced `xml` tags only). Fully parameterized `$n` bindings.
+  - `XMPP_ARCHIVE_DATABASE_URL` (zod, optional): separate pool
+    (`max` 3, `statement_timeout` 3 s). Absent → 501 `search_unavailable`.
+    Rate limit 30/min/user. Logs `{ userId, results, durationMs }` only —
+    never `q`. No audit rows. AI gateway untouched.
+  - Infra/docs: `infra/postgres/init/20-search-reader.sql` creates the
+    `galena_archive` login role with only `GRANT SELECT ON archive`
+    (`CHANGE_ME` placeholder, password from `infra/.env`, git-ignored);
+    `docs/SERVER_CONFIG.md` documents the var + role setup.
+- Web: `SearchBar`/`⌘K` keeps filtering chat names; typing 2+ chars adds a
+  **Messages** section below (chat-name matches first), hits grouped by
+  chat with avatar, `senderName`, time, and snippet marks rendered as
+  text-only spans (`SearchSnippet`). `useMessageSearch`: 250 ms debounce,
+  `AbortController` cancel of superseded requests, empty/error states,
+  hidden entirely on 501. Enter/click → `openAtMessage` (new store action:
+  opens the chat, pages history until the message loads, max 20 pages,
+  else "Message not found") + scroll to `[data-message-id]`. Chat header
+  "Search in chat" now scopes via a `searchChat` chip in the search box
+  (click the chip to clear). Mock mode: in-memory substring search over
+  mock messages in `mock/api.ts`.
+- T-0116 (roles) is not merged, so role-based topic access is not in the
+  allowed set; the spec's "including role access if T-0116 is merged" is
+  noted in code for that task. T-0114 (pinned jump loader) is not merged,
+  so jumping uses `loadOlder` paging with the "Message not found" fallback.
 
 ### Files changed
--
+- `apps/server/src/search/service.ts` (new: pool, `allowedArchives`, `resolveChatFilter`),
+  `routes.ts` (new: endpoint, `buildArchiveQuery`, `headlineToSnippet`,
+  correction/retraction targets), `search.test.ts` (new: 15 tests)
+- `apps/server/src/config.ts` (+`config.test.ts`), `app.ts`, `index.ts`
+  (pool wiring); `authz-sweep.test.ts` untouched (covers `/api/search` → 401)
+- `infra/postgres/init/20-search-reader.sql` (new),
+  `docs/SERVER_CONFIG.md`, `docs/SEARCH_NOTES.md` (new, 48 lines)
+- `apps/web/src/lib/api.ts` (`searchMessages` + schemas),
+  `lib/useMessageSearch.ts` (new), `lib/scrollToMessage.ts` (new),
+  `components/MessageSearchResult(s).tsx` (new),
+  `components/ChatList.tsx`, `ChatHeader.tsx`, `SearchBar.tsx`,
+  `store/store.ts` + `realStore.ts` (`searchChat`, `openAtMessage`;
+  `loadOlder` refactored to share `loadOlderPage`), `mock/api.ts`
+- Tests: `MessageSearch.test.tsx` (11), `MessageSearchList.test.tsx` (6),
+  `mock/api.test.ts` (+2), `realStore.test.tsx` (+3 `openAtMessage`)
+- `work/T-0117-message-search.md` (this report + status)
 
 ### Commands run and real results
--
+- `pnpm install`: pass (6.3 s)
+- Discovery: `\d archive` (columns + 5 indexes as spec'd), `select
+  count(*)` → 3524; ejabberd sources fetched via webfetch
+  (`mod_mam.erl`, `mod_mam_sql.erl` 26.07). No message contents read.
+- `pnpm format:check`: pass ("All matched files use Prettier code style!")
+- `pnpm lint`: pass (oxlint clean; fixed a spread lint and two
+  `set-state-in-effect` lints by restructuring the hook)
+- `pnpm typecheck`: pass (turbo 10/10)
+- `pnpm --filter @galena/server test --maxWorkers=2`: 65 files passed,
+  5 skipped; 1111 passed, 7 skipped (~539 s)
+- `pnpm --filter @galena/web test --maxWorkers=2`: full suite 662 passed
+  (24.8 s)
+- `pnpm build`: pass (2/2 turbo tasks)
+- Scoped: `src/search` 15 passed; `config.test.ts` 22 passed (incl. 3 new);
+  `authz-sweep` 5 passed (`GET /api/search → 401` listed);
+  `MessageSearch*.test.tsx` 17 passed; `realStore.test.tsx` 94 passed.
+- `grep` for `any|@ts-ignore|disable` in all new/touched source: no hits.
 
 ### Problems, deviations from the spec, open questions
--
+- `before` is documented as microsecond `archive.timestamp` units (the only
+  cursor that pages exactly); ISO cursors would need lossy conversion.
+- Mock-mode `before` compares ISO strings; server `before` compares
+  microsecond ints. Same newest-first paging semantics, different units —
+  acceptable for a mock, noted here.
+- `openAtMessage` pages back at most 20 history pages, then "Message not
+  found". A direct MAM `before`-cursor jump (T-0114's loader, not merged)
+  would be faster; this follows the spec's fallback path.
+- `SEARCH_WINDOW_MS` is 365 days as "12 months"; leap-day precision is
+  irrelevant for a scan cap.
+- The `galena_archive` role script only takes effect on first start of an
+  empty volume (like `10-create-databases.sql`); existing volumes need the
+  manual `GRANT SELECT ON archive TO galena_archive;` from SERVER_CONFIG.
+- No new dependencies. No secrets read or committed (`infra/.env` never opened).
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
 
 ---
 

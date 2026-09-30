@@ -70,6 +70,18 @@ Mails are plain text plus a minimal HTML alternative, English only, with one sub
 | `XMPP_MUC_DOMAIN` | No | `rooms.galena.localhost` | MUC (group chat) domain. Same shape rules as `XMPP_DOMAIN` (`xmpp/config.ts:18`). | Not a secret. |
 | `XMPP_WS_PUBLIC_URL` | No | `ws://127.0.0.1:5280/ws` | Public WebSocket URL clients connect to. Must be `ws://` or `wss://` (`xmpp/config.ts:19`). | Not a secret. In production use `wss://`. |
 | `GALENA_XMPP_JWT_SECRET` | Yes | — | HS256 secret the server signs short-lived XMPP login JWTs with. Must be at least 32 characters and match `GALENA_XMPP_JWT_SECRET` in `infra/.env` so the ejabberd container's `jwt-entrypoint.sh` derives the same JWK (`infra/docker-compose.dev.yml:63`). | **Secret.** Generate with `openssl rand -base64 48`. Changing it later invalidates every issued token. |
+| `XMPP_ARCHIVE_DATABASE_URL` | No | — | Connection string for the read-only `galena_archive` role on the ejabberd MAM database (`search/service.ts`, `search/routes.ts`). Absent → `GET /api/search` answers 501 `search_unavailable` and the web hides the feature. The pool is separate from the app pool (`max` 3) with a 3 s statement timeout. | **Secret.** Password goes here. See "Message search" below. |
+
+### Message search (T-0117)
+
+Search reads the ejabberd `archive` table through a **read-only** role. Create it:
+
+1. Add `GALENA_ARCHIVE_DB_PASSWORD=CHANGE_ME` to `infra/.env` (git-ignored; generate with `openssl rand -base64 32`).
+2. `infra/postgres/init/20-search-reader.sql` creates the `galena_archive` role on first start of an empty data volume and grants it only `GRANT SELECT ON archive TO galena_archive` (plus `CONNECT` and `USAGE ON SCHEMA public`, which `SELECT` needs).
+3. On an existing volume, apply the same grant manually: `GRANT SELECT ON archive TO galena_archive;`
+4. Point the server at it: `XMPP_ARCHIVE_DATABASE_URL=postgres://galena_archive:CHANGE_ME@127.0.0.1:5432/ejabberd` (in `apps/server/.env`, git-ignored).
+
+The shape of the table and the query design are in `docs/SEARCH_NOTES.md` (≤ 60 lines). The query text is never logged or stored: the route logs only the result count and duration.
 
 ### AI (LiteLLM) and provider-key encryption
 
