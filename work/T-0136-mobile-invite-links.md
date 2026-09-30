@@ -1,7 +1,7 @@
 ---
 id: T-0136
 title: Mobile: group invite links (create, manage, join)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0136-mobile-invite-links
 model: meta/muse-spark-1.3-contributor
@@ -97,10 +97,12 @@ Web changes, server changes, QR codes, native universal-link setup that needs an
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved after three rounds. Round-1 fixes (per-group mock, dead code, loop test) and round-2 fixes (join opens the group with chats read at call time, link list timestamp taken on open, network error on the preview is retryable, refresh asserted) verified in the second packet. The real paths are clean: tokens never reach logs, errors, audit or analytics, junk tokens are rejected before any fetch, every failure kind shows one neutral message, create/list/revoke are group-scoped and gated like web. Mobile only; to be run on the Android emulator after the batch merge.
 
 ### Findings
--
+- Mock `preview`/`join` hardcode `alreadyMember: true`, so the real Join POST path is never exercised in mock mode.
+- The "same neutral message" and "never carries the token" render tests feed already-mapped strings back in, so they are partly vacuous; the store-level tests carry the acceptance criteria.
+- Nameless signed-in user with a junk pasted token is sent to `/welcome/name?from=/join`, which matches no route (edge case).
 
 ### Follow-ups
--
+- Derive `alreadyMember` from the mock store state; re-point the vacuous token tests; keep the raw param through the name gate.
