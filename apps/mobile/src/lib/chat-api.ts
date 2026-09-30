@@ -1,5 +1,6 @@
 import { API_URL } from './auth';
 import type { Me } from './auth-api';
+import { parseTopic, type Topic } from './topics-api';
 
 export type { Me };
 
@@ -28,7 +29,8 @@ export type ChatEntry =
       // T-0108: a group entry may carry its visible `topics` (archived
       // excluded). Optional so older servers still parse; the store maps such
       // a group to one row per topic (General keeps the old chat id).
-      topics?: unknown[];
+      // Validated `Topic` rows (T-0139), malformed wire rows dropped.
+      topics?: Topic[];
     };
 
 export type GroupRole = 'owner' | 'admin' | 'member';
@@ -149,7 +151,32 @@ function parseChatEntry(value: unknown): ChatEntry | null {
     const memberCount = value['memberCount'];
     const role = value['role'];
     if (!isString(groupId) || typeof memberCount !== 'number' || !isGroupRole(role)) return null;
-    return { kind: 'group', chatJid, title, groupId, memberCount, role };
+    // T-0139: keep the server's `topics` on the entry (validated with
+    // `parseTopic`, the same shape the topics API uses — never trust the
+    // wire; malformed rows are dropped, never rendered), so the store maps
+    // a General-only group to its topic row. Absent on older servers
+    // (still parses, as before).
+    const rawTopics = value['topics'];
+    let topics: Topic[] | undefined;
+    if (rawTopics !== undefined) {
+      if (!Array.isArray(rawTopics)) return null;
+      topics = [];
+      for (const raw of rawTopics) {
+        const topic = parseTopic(raw);
+        if (topic !== null) {
+          topics.push(topic);
+        }
+      }
+    }
+    return {
+      kind: 'group',
+      chatJid,
+      title,
+      groupId,
+      memberCount,
+      role,
+      ...(topics === undefined ? {} : { topics }),
+    };
   }
   return null;
 }

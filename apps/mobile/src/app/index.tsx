@@ -135,10 +135,11 @@ function ChatsList() {
   };
 
   // The rows behind the open action sheet: a group resolves to its General
-  // topic row (the pref row a group mute/pin sits on). A group row's sheet
-  // titles itself from the group; the pin/mute/archive rows stay disabled
-  // until the General row arrives (older servers send no `topics`, so there
-  // is no single row a group-level pref could sit on).
+  // topic row (the pref row a group mute/pin sits on). T-0139: when no
+  // General row has arrived yet (older servers send no `topics`), fall back
+  // to any topic row of the group so the sheet still opens the group
+  // screen (invite links, roles, members); the pin/mute/archive rows stay
+  // disabled only when the group has no row at all.
   const actionContext = useMemo(() => {
     if (actionFor === null) {
       return undefined;
@@ -147,8 +148,9 @@ function ChatsList() {
       const groupId = actionFor.slice('group:'.length);
       const topics = topicsOfGroup(chats, groupId);
       const general = topics.find((topic) => topic.topic?.isGeneral === true);
-      const groupTitle = general?.groupTitle ?? topics[0]?.groupTitle ?? topics[0]?.title;
-      return { chat: general, groupId, groupTitle };
+      const fallback = general ?? topics[0];
+      const groupTitle = general?.groupTitle ?? fallback?.groupTitle ?? fallback?.title ?? 'Group';
+      return { chat: fallback, groupId, groupTitle };
     }
     const chat = chats.find((entry) => entry.id === actionFor);
     return chat === undefined ? undefined : { chat, groupId: undefined, groupTitle: undefined };
@@ -356,6 +358,7 @@ function ChatsList() {
       <ChatActionsSheet
         chat={actionContext?.chat ?? null}
         groupTitle={actionContext?.groupTitle}
+        groupId={actionContext?.groupId}
         busy={actionBusy}
         error={actionError}
         muteOpen={actionMuteOpen}
@@ -386,6 +389,10 @@ function ChatsList() {
                 archived: actionContext.chat.archived !== true,
               })
         }
+        onOpenGroup={(groupId) => {
+          closeActions();
+          router.push({ pathname: '/group/[id]', params: { id: groupId } });
+        }}
         onClose={closeActions}
       />
       <NewChatButton />

@@ -1332,10 +1332,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    // The group id behind one chat row: topic rows carry it directly, legacy
-    // group rows resolve it through the remembered `/api/chats` entries.
+    // The group id behind one chat row: topic rows carry it directly
+    // (T-0139: the live row first, so a deep-linked topic works before any
+    // entry flowed through `rememberGroupIds`), legacy group rows resolve it
+    // through the remembered `/api/chats` entries.
     function groupIdForChat(chatId: string): string | undefined {
-      return groupIds.get(chatId) ?? get().chats.find((entry) => entry.id === chatId)?.groupId;
+      return get().chats.find((entry) => entry.id === chatId)?.groupId ?? groupIds.get(chatId);
     }
 
     // Loads the custom roles (T-0137) of a group once, so the group screen

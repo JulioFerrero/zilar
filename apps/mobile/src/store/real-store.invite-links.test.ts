@@ -155,6 +155,8 @@ describe('real store invite links (T-0136)', () => {
           archived: false,
           memberCount: 7,
           ais: [],
+          roles: [],
+          approverRole: null,
         },
       ],
     };

@@ -64,7 +64,11 @@ export function summariesForTopicsEntry(entry: ChatEntry): ChatSummary[] {
   if (entry.kind !== 'group') {
     return [];
   }
-  const raw = (entry as { topics?: unknown }).topics;
+  // T-0139: the entry's rows come from `parseChat`'s `parseTopic`
+  // validation, but untyped callers (older tests) may pass raw wire rows:
+  // re-validate every row with the same shape so a malformed one is
+  // dropped, never rendered.
+  const raw = entry.topics !== undefined ? entry.topics : [];
   const topics = chatEntryTopics({ topics: raw }).filter((topic) => !topic.archived);
   if (topics.length === 0) {
     return [baseSummaryForGroup(entry)];

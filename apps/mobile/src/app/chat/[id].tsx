@@ -318,6 +318,12 @@ function Chat() {
             chat={chat}
             onBack={() => router.back()}
             onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
+            onOpenGroup={
+              chat.groupId === undefined
+                ? undefined
+                : (groupId: string) =>
+                    router.push({ pathname: '/group/[id]', params: { id: groupId } })
+            }
           />
         </SafeAreaView>
         <PinnedBanner
@@ -423,6 +429,12 @@ function Chat() {
           onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
           topicGroupName={groupName}
           onOpenInfo={openInfo}
+          onOpenGroup={
+            chat.groupId === undefined
+              ? undefined
+              : (groupId: string) =>
+                  router.push({ pathname: '/group/[id]', params: { id: groupId } })
+          }
         />
       </SafeAreaView>
       <TaskStrip
