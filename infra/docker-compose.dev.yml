@@ -26,6 +26,8 @@ services:
       GALENA_DB_PASSWORD: ${GALENA_DB_PASSWORD:?GALENA_DB_PASSWORD is required in infra/.env}
       EJABBERD_DB_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required in infra/.env}
       LITELLM_DB_PASSWORD: ${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD is required in infra/.env}
+      # Optional: creates the read-only search role on a fresh data volume.
+      GALENA_ARCHIVE_DB_PASSWORD: ${GALENA_ARCHIVE_DB_PASSWORD:-}
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
