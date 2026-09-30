@@ -16,6 +16,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0106](T-0106-tool-model-side.md) | Model side of AI tools: prompt guide, several rounds per turn, working-on-it line | planned | meta/muse-spark-1.3-contributor | T-0105, T-0125, T-0132 | Ready; starts after T-0132 merges |
 | [T-0140](T-0140-mobile-followups.md) | Mobile deferred review follow-ups (invite links, roles, search) | planned | meta/muse-spark-1.3-contributor | T-0136, T-0137, T-0138 | Spec ready |
 | [T-0141](T-0141-web-server-followups.md) | Web and server deferred review follow-ups (stickers, revoke, approvals) | planned | meta/muse-spark-1.3-contributor | T-0120, T-0133, T-0116 | Spec ready |
+| [T-0142](T-0142-smarter-search.md) | Smarter message search: prefixes, accent folding, typo tolerance (Julio found "hello" does not match "heello"), no extension, no schema | planned | meta/muse-spark-1.3-contributor | T-0117 | Spec ready |
 
 ## Follow-ups
 
