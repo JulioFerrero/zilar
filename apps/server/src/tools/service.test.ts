@@ -1007,6 +1007,29 @@ describe('tools service (T-0103)', () => {
       expect(JSON.stringify(rows)).not.toContain('SECRET-SOURCE-DO-NOT-LOG');
     });
 
+    it('approveToolHosts normalises hosts and refuses invalid ones', async () => {
+      const { tool } = await saveToolVersion(
+        context.db,
+        { aiId, groupId: null, topicId: null, userId: ownerId, ...baseInput() },
+        NOW,
+      );
+      const approved = await approveToolHosts(
+        context.db,
+        { toolId: tool.id, hosts: ['API.Example.com', 'api.example.com'], userId: ownerId },
+        NOW,
+      );
+      expect(approved.approvedHosts).toEqual(['api.example.com']);
+      await expect(
+        approveToolHosts(
+          context.db,
+          { toolId: tool.id, hosts: ['*.example.com'], userId: ownerId },
+          NOW,
+        ),
+      ).rejects.toThrow();
+      const current = await getTool(context.db, tool.id);
+      expect(current?.approvedHosts).toEqual(['api.example.com']);
+    });
+
     it('defaults to the current version and writes a run row', async () => {
       const { tool } = await saveToolVersion(
         context.db,

@@ -1,7 +1,7 @@
 ---
 id: T-0132
 title: Approve a tool's hosts once, before it can reach the network
-status: review
+status: merged
 milestone: M4
 branch: task/T-0132-tool-host-approval
 model: meta/muse-spark-1.3-contributor
@@ -98,10 +98,14 @@ UI (T-0107 shows approved hosts later), changing the tier of `tool.save`/`tool.r
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved after two lead fixes. Read the gateway `prepareArgs` hook, both adapters, `runToolVersion`, `createRoutine` and the migration myself. The design holds: hosts on the card are read from the DB at card time (never from model text) and stored in the args, so the args hash covers them; `execute` fails safe if the tool's hosts changed after the card; every run trigger goes through `runToolVersion`, which passes declared ∩ approved hosts; routine creation re-checks against the tool's approved set. Audit detail is ids, name and host names only. Pre-review packet re-ran server suite (1434 passed).
 
 ### Findings
--
+- Fixed: `approveToolHosts` stored `input.hosts` unvalidated; it now parses with `toolHostsSchema` (lowercase, dedupe, reject wildcards/invalid) and audits the normalised set; test added.
+- Fixed: schema comment claimed a backfill that does not exist; corrected (no production rows, tools off by default).
+- Fixed: drizzle meta files for 0028 formatted with prettier so `format:check` passes.
+- Nit, waived: a stale pending `approve_hosts` card approved after a revoke re-approves the hosts. It needs a human to approve the card, and the hosts are re-checked against the current version.
+- Nit: `isSubsetOf` duplicates `hostsEqualAsSets`; leave.
 
 ### Follow-ups
--
+- Tool host approval UI belongs to T-0107 (tools and routines UI).

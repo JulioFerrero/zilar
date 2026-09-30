@@ -4,7 +4,7 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { ais, aiToolRuns, aiTools, aiToolVersions } from '../db/schema';
 import { deleteRoutinesForTool } from '../routines/service';
-import { parseToolVersionInput } from './schemas';
+import { parseToolVersionInput, toolHostsSchema } from './schemas';
 import type { ToolRunner, ToolRunResult } from './types';
 
 export type { ToolRunner, ToolRunResult };
@@ -669,6 +669,7 @@ export async function approveToolHosts(
   now: Date,
   audit?: AuditRecorder,
 ): Promise<ToolDetail> {
+  const hosts = toolHostsSchema.parse(input.hosts);
   const tool = await getToolRow(db, input.toolId);
   if (!tool) {
     throw new ToolServiceError('not_found', 'Tool not found');
@@ -683,7 +684,7 @@ export async function approveToolHosts(
   }
   const [updated] = await db
     .update(aiTools)
-    .set({ approvedHosts: [...input.hosts], updatedAt: now })
+    .set({ approvedHosts: hosts, updatedAt: now })
     .where(eq(aiTools.id, tool.id))
     .returning();
   if (!updated) {
@@ -706,7 +707,7 @@ export async function approveToolHosts(
       costCurrency: null,
       costAmount: null,
       result: 'ok',
-      detail: { name: tool.name, version: current.version, hosts: [...input.hosts] },
+      detail: { name: tool.name, version: current.version, hosts },
     });
   }
   return toToolDetail(updated, current, run?.status ?? null);
