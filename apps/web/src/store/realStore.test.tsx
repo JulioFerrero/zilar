@@ -977,8 +977,11 @@ describe('createRealChatStore', () => {
       // The opening page never settles: openAtMessage must not hang forever.
       vi.mocked(xmpp.core.loadHistory).mockImplementationOnce(() => new Promise(() => {}));
       const pending = store.getState().openAtMessage('ana@galena.test', 'ana-2');
+      // Attach the assertion before the timers fire, so the rejection never
+      // sits unhandled while the fake clock advances.
+      const rejected = expect(pending).rejects.toThrow('message_not_found');
       await vi.advanceTimersByTimeAsync(11_000);
-      await expect(pending).rejects.toThrow('message_not_found');
+      await rejected;
     } finally {
       vi.useRealTimers();
     }
