@@ -6,7 +6,8 @@ import type {
   UiMessage,
 } from '@galena/chat-core';
 
-import type { Contact, Me } from '../lib/chat-api';
+import type { Contact, GroupDetail, Me } from '../lib/chat-api';
+import type { CreateTopicInput, PatchTopicInput } from '../lib/topics-api';
 import type { ChatFolder } from '../lib/types';
 
 /** Connection state shown by the thin "Connecting…" bar in the chat list. */
@@ -162,6 +163,57 @@ export interface ChatStoreState {
   deleteForEveryone: (chatId: string, messageId: string) => void;
   /** Dismiss the current `actionError` inline notice. */
   dismissActionError: () => void;
+  /**
+   * The short notice shown when the open topic disappeared (made private,
+   * archived, or I was removed) and the view moved to the topics screen.
+   * Private topic names never appear here: the text is fixed.
+   */
+  topicNotice: { groupId: string; message: string } | undefined;
+  /** Dismisses the topic notice (or clears a stale one for another group). */
+  dismissTopicNotice: () => void;
+  /**
+   * Bumped every time a group detail finishes loading, so `groupDetail`
+   * selectors re-fire for screens mounted before the fetch resolved.
+   */
+  groupDetailsRevision: number;
+  /**
+   * The group detail (people + roles + AIs) of one group, keyed by **group
+   * id** (not chat id): the topics screen passes its route param straight
+   * through. `undefined` until `refreshGroupDetail` has loaded it.
+   */
+  groupDetail: (groupId: string) => GroupDetail | undefined;
+  /** Loads the group detail of one group id (people + roles + AIs). */
+  refreshGroupDetail: (groupId: string) => void;
+  /** The AIs the viewer owns, for the new-topic sheet's unticked list. */
+  ownedAis: { id: string; name: string }[];
+  /** Mutes or unmutes one chat (per-chat flag, like the web store). */
+  muteChat: (chatId: string, muted: boolean) => void;
+  /**
+   * Creates a topic in the group that owns `chatId` and opens it. Rejects on
+   * failure. Returns the new topic's chat id (its room JID).
+   */
+  createTopic: (chatId: string, input: CreateTopicInput) => Promise<string>;
+  /**
+   * Patches the topic that owns `chatId` (status, owner, link, visibility,
+   * archive), updating the row. Rejects on failure.
+   */
+  patchTopic: (chatId: string, input: PatchTopicInput) => Promise<void>;
+  /** Archives the topic that owns `chatId`. Rejects on failure. */
+  archiveTopic: (chatId: string) => Promise<void>;
+  /** Adds an AI to the topic and refreshes the row. Rejects on failure. */
+  addTopicAi: (chatId: string, aiId: string) => Promise<void>;
+  /** Removes an AI from the topic and refreshes the row. Rejects on failure. */
+  removeTopicAi: (chatId: string, aiId: string) => Promise<void>;
+  /** Adds a person to a private topic and refreshes the row. Rejects on failure. */
+  addTopicMember: (chatId: string, userId: string) => Promise<void>;
+  /** Removes a person from a private topic. Rejects on failure. */
+  removeTopicMember: (chatId: string, userId: string) => Promise<void>;
+  /** Leaves a private topic. Rejects on failure. */
+  leaveTopic: (chatId: string) => Promise<void>;
+  /** Reads the members of a private topic (public topics read the group). */
+  listTopicMembers: (chatId: string) => Promise<{ userId: string; name: string }[]>;
+  /** Reads the AIs in a topic. */
+  listTopicAis: (chatId: string) => Promise<{ id: string; name: string }[]>;
   setSearch: (search: string) => void;
   setActiveFolder: (folder: ChatFolder) => void;
   start: () => void;

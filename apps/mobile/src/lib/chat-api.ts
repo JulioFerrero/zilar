@@ -25,6 +25,10 @@ export type ChatEntry =
       groupId: string;
       memberCount: number;
       role: GroupRole;
+      // T-0108: a group entry may carry its visible `topics` (archived
+      // excluded). Optional so older servers still parse; the store maps such
+      // a group to one row per topic (General keeps the old chat id).
+      topics?: unknown[];
     };
 
 export type GroupRole = 'owner' | 'admin' | 'member';
@@ -35,11 +39,22 @@ export interface GroupMember {
   role: GroupRole;
 }
 
+/** The group detail the new-topic sheet reads (people + roles + AIs). */
 export interface GroupDetail {
   id: string;
   title: string;
   createdBy: string;
+  membersCanCreateTopics?: boolean;
   members: GroupMember[];
+  ais: GroupAi[];
+}
+
+/** One AI in the group, so the sheet can offer the viewer's own unticked. */
+export interface GroupAi {
+  aiId: string;
+  jid: string;
+  name: string;
+  ownerId: string;
 }
 
 export interface XmppToken {
@@ -154,7 +169,37 @@ function parseGroupDetail(value: unknown): GroupDetail | null {
     if (!isString(userId) || !isString(name) || !isGroupRole(role)) return null;
     parsed.push({ userId, name, role });
   }
-  return { id, title, createdBy, members: parsed };
+  // T-0108: the plain-members-may-create switch. Optional so older servers
+  // still parse (treated as off).
+  const membersCanCreateTopics =
+    value['membersCanCreateTopics'] === true
+      ? true
+      : value['membersCanCreateTopics'] === false
+        ? false
+        : undefined;
+  // The group AIs ride along when present, so the new-topic sheet can offer
+  // the viewer's own unticked; ignored when absent.
+  const ais: GroupAi[] = [];
+  const rawAis = value['ais'];
+  if (Array.isArray(rawAis)) {
+    for (const entry of rawAis) {
+      if (!isRecord(entry)) return null;
+      const aiId = entry['aiId'];
+      const jid = entry['jid'];
+      const name = entry['name'];
+      const ownerId = entry['ownerId'];
+      if (!isString(aiId) || !isString(jid) || !isString(name) || !isString(ownerId)) return null;
+      ais.push({ aiId, jid, name, ownerId });
+    }
+  }
+  return {
+    id,
+    title,
+    createdBy,
+    members: parsed,
+    ais,
+    ...(membersCanCreateTopics === undefined ? {} : { membersCanCreateTopics }),
+  };
 }
 
 function parseXmppToken(value: unknown): XmppToken | null {
