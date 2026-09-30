@@ -33,7 +33,9 @@ describe('general topics backfill', () => {
     // the T-0109 topic-AI table (0020, which needs the topics tables),
     // the T-0110 topic-scope columns/backfill (0021, 0022, covered by the
     // topic-scope backfill test) and the T-0104 routines table (0023,
-    // whose foreign keys need the topics table too).
+    // whose foreign keys need the topics table too). T-0116's group-roles
+    // tables (0026, temporary until the lead runs `db:generate` after the
+    // T-0115 rebase) reference topics as well, so they are excluded too.
     for (const file of fs.readdirSync(drizzleDir).sort()) {
       if (
         !file.endsWith('.sql') ||
@@ -42,7 +44,8 @@ describe('general topics backfill', () => {
         file.startsWith('0020_') ||
         file.startsWith('0021_') ||
         file.startsWith('0022_') ||
-        file.startsWith('0023_')
+        file.startsWith('0023_') ||
+        file.startsWith('0026_')
       ) {
         continue;
       }

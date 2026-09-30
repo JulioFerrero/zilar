@@ -50,6 +50,9 @@ interface MockState {
   inviteLinks: MockInviteLink[];
   inviteTokens: Map<string, string>;
   nextInviteLinkSequence: number;
+  // T-0116: custom group roles of the Dev team group, with their holders.
+  groupRoles: MockGroupRole[];
+  nextRoleSequence: number;
   // T-0113: per-chat prefs (mute/archive/pin) in memory for the page load.
   chatPrefs: MockChatPref[];
   // T-0114: pinned messages in memory for the page load, keyed by the chat
@@ -84,6 +87,19 @@ interface MockTopic {
   archived: boolean;
   memberIds: string[];
   aiIds: string[];
+  // T-0116: attached role ids, and the approver role id (null = owners and
+  // admins only).
+  roleIds: string[];
+  approverRoleId: string | null;
+}
+
+// T-0116: one custom group role, mirroring the server's `group_roles` plus
+// its holder ids.
+interface MockGroupRole {
+  id: string;
+  groupId: string;
+  name: string;
+  memberIds: string[];
 }
 
 // T-0115: one group invite link row, mirroring the server's list view
@@ -227,11 +243,47 @@ function seedTopics(): MockTopic[] {
           ? (members[info.id] ?? []).map((member) => member.userId)
           : [],
       aiIds: (ais[info.id] ?? []).map((ai) => ai.id),
+      // T-0116: the private hiring topic starts with the Designers role
+      // attached (Ana + you hold it), so the pickers show real data.
+      roleIds: info.id === 't-devteam-hiring' ? ['role-designers'] : [],
+      approverRoleId: info.id === 't-devteam-ui' ? 'role-designers' : null,
     };
   });
 }
 
+// T-0116: the Dev team group's seeded roles. The mock user is the group
+// owner, so every write succeeds — like the real server's manager check
+// with the mock's single user.
+function seedGroupRoles(): MockGroupRole[] {
+  return [
+    {
+      id: 'role-designers',
+      groupId: 'g-devteam',
+      name: 'Designers',
+      memberIds: ['u-you', 'u-ana'],
+    },
+    { id: 'role-devs', groupId: 'g-devteam', name: 'Devs', memberIds: ['u-you', 'u-luis'] },
+  ];
+}
+
+function roleToView(role: MockGroupRole): Record<string, unknown> {
+  return {
+    id: role.id,
+    name: role.name,
+    members: role.memberIds.map((userId) => ({ userId, name: mockPersonName(userId) })),
+  };
+}
+
+function findRole(id: string): MockGroupRole | undefined {
+  return state.groupRoles.find((role) => role.id === id);
+}
+
 function topicToView(topic: MockTopic): Record<string, unknown> {
+  const roleViews = topic.roleIds
+    .map((roleId) => findRole(roleId))
+    .filter((role): role is MockGroupRole => role !== undefined)
+    .map((role) => ({ id: role.id, name: role.name, memberCount: role.memberIds.length }));
+  const approver = topic.approverRoleId === null ? null : findRole(topic.approverRoleId);
   return {
     id: topic.id,
     groupId: topic.groupId,
@@ -248,9 +300,15 @@ function topicToView(topic: MockTopic): Record<string, unknown> {
     archived: topic.archived,
     memberCount:
       topic.visibility === 'private'
-        ? topic.memberIds.length
+        ? new Set([
+            ...topic.memberIds,
+            ...roleViews.flatMap((role) => findRole(role.id)?.memberIds ?? []),
+          ]).size
         : (mockGroupDetails['c-devteam']?.members.length ?? topic.memberIds.length),
     ais: topic.aiIds.map((aiId) => ({ id: aiId, name: mockAiName(aiId) })),
+    roles: roleViews,
+    approverRole:
+      approver === undefined || approver === null ? null : { id: approver.id, name: approver.name },
   };
 }
 
@@ -261,6 +319,16 @@ function findTopic(id: string): MockTopic | undefined {
 function glyphForTopic(name: string): string {
   const first = [...name.trim()][0] ?? 'G';
   return first.toUpperCase();
+}
+
+function hasMockControlCharacters(value: string): boolean {
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code <= 0x1f || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // T-0114: two seeded pins so the banner and the panel show in mock mode
@@ -401,6 +469,8 @@ function seedState(): MockState {
     inviteLinks: [],
     inviteTokens: new Map(),
     nextInviteLinkSequence: 1,
+    groupRoles: seedGroupRoles(),
+    nextRoleSequence: 3,
     chatPrefs: [],
     pins: seedPins(),
     nextPinSequence: 3,
@@ -1240,9 +1310,102 @@ export async function mockRequest(
               ]
             : [],
         aiIds: [],
+        roleIds: [],
+        approverRoleId: null,
       };
       state.topics = [...state.topics, created];
       return jsonResponse(topicToView(created), 201);
+    }
+    return notImplemented();
+  }
+
+  // T-0116: custom group roles. The mock has one user (the group owner), so
+  // every write succeeds, like the real server's manager check with the
+  // mock's single user. Names stay unique ignoring case; at most 20 roles.
+  if (head === 'groups' && second === 'roles') {
+    const groupId = decodeURIComponent(first ?? '');
+    if (groupId !== 'g-devteam') {
+      return notFound('Group not found');
+    }
+    const segments = pathParts(path);
+    const roleId = segments[3];
+    if (roleId === undefined) {
+      if (method === 'GET') {
+        return jsonResponse({ roles: state.groupRoles.map((role) => roleToView(role)) });
+      }
+      if (method === 'POST') {
+        const body = readJsonBody(init);
+        const name = typeof body.name === 'string' ? body.name.trim().slice(0, 30) : '';
+        if (name === '' || hasMockControlCharacters(name)) {
+          return jsonResponse(
+            { error: { code: 'invalid_request', message: 'name must not be empty' } },
+            400,
+          );
+        }
+        if (state.groupRoles.some((role) => role.name.toLowerCase() === name.toLowerCase())) {
+          return conflict('role_exists', 'A role with that name already exists');
+        }
+        if (state.groupRoles.length >= 20) {
+          return jsonResponse(
+            { error: { code: 'invalid_request', message: 'A group has at most 20 roles' } },
+            400,
+          );
+        }
+        const created: MockGroupRole = {
+          id: `role-mock-${state.nextRoleSequence}`,
+          groupId: 'g-devteam',
+          name,
+          memberIds: [],
+        };
+        state.nextRoleSequence += 1;
+        state.groupRoles = [...state.groupRoles, created];
+        return jsonResponse(roleToView(created), 201);
+      }
+      return notImplemented();
+    }
+    const role = findRole(roleId);
+    if (role === undefined || role.groupId !== groupId) {
+      return notFound('Role not found');
+    }
+    if (segments[4] === undefined) {
+      if (method === 'PATCH') {
+        const body = readJsonBody(init);
+        const name = typeof body.name === 'string' ? body.name.trim().slice(0, 30) : '';
+        if (name === '' || hasMockControlCharacters(name)) {
+          return jsonResponse(
+            { error: { code: 'invalid_request', message: 'name must not be empty' } },
+            400,
+          );
+        }
+        if (
+          state.groupRoles.some(
+            (item) => item.id !== role.id && item.name.toLowerCase() === name.toLowerCase(),
+          )
+        ) {
+          return conflict('role_exists', 'A role with that name already exists');
+        }
+        role.name = name;
+        return jsonResponse(roleToView(role));
+      }
+      if (method === 'DELETE') {
+        state.groupRoles = state.groupRoles.filter((item) => item.id !== role.id);
+        for (const topic of state.topics) {
+          topic.roleIds = topic.roleIds.filter((id) => id !== role.id);
+          if (topic.approverRoleId === role.id) {
+            topic.approverRoleId = null;
+          }
+        }
+        return noContent();
+      }
+      return notImplemented();
+    }
+    if (segments[4] === 'members' && method === 'PUT') {
+      const body = readJsonBody(init);
+      const userIds = Array.isArray(body.userIds)
+        ? [...new Set(body.userIds.filter((item): item is string => typeof item === 'string'))]
+        : [];
+      role.memberIds = userIds;
+      return jsonResponse(roleToView(role));
     }
     return notImplemented();
   }
@@ -1337,6 +1500,46 @@ export async function mockRequest(
     if (second === 'ais' && subId !== undefined && method === 'DELETE') {
       const aiId = decodeURIComponent(subId);
       topic.aiIds = topic.aiIds.filter((id) => id !== aiId);
+      return jsonResponse(topicToView(topic));
+    }
+    // T-0116: attach roles and pick the approver role. Only roles of the
+    // topic's group count, and only on private topics.
+    if (second === 'roles' && method === 'PUT') {
+      if (topic.visibility !== 'private' || topic.isGeneral) {
+        return jsonResponse(
+          { error: { code: 'not_private', message: 'Only private topics have roles' } },
+          400,
+        );
+      }
+      const body = readJsonBody(init);
+      const roleIds = Array.isArray(body.roleIds)
+        ? [...new Set(body.roleIds.filter((item): item is string => typeof item === 'string'))]
+        : [];
+      const approverRoleId =
+        body.approverRoleId === null || body.approverRoleId === undefined
+          ? null
+          : typeof body.approverRoleId === 'string'
+            ? body.approverRoleId
+            : undefined;
+      if (approverRoleId === undefined) {
+        return jsonResponse(
+          {
+            error: { code: 'invalid_request', message: 'approverRoleId must be a string or null' },
+          },
+          400,
+        );
+      }
+      if (
+        roleIds.some((id) => findRole(id) === undefined) ||
+        (approverRoleId !== null && findRole(approverRoleId) === undefined)
+      ) {
+        return jsonResponse(
+          { error: { code: 'invalid_request', message: 'Roles must belong to the topic’s group' } },
+          400,
+        );
+      }
+      topic.roleIds = roleIds;
+      topic.approverRoleId = approverRoleId;
       return jsonResponse(topicToView(topic));
     }
     if (second === 'tools' && method === 'GET') {

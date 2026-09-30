@@ -3,7 +3,16 @@ import { and, desc, eq, inArray, lt, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { ARGS_HASH_PATTERN } from '@galena/protocol';
 import type { ServerDatabase } from '../db/client';
-import { ais, auditLog, groupMembers, groups, topicMembers, topics } from '../db/schema';
+import {
+  ais,
+  auditLog,
+  groupMemberRoles,
+  groupMembers,
+  groups,
+  topicMembers,
+  topicRoleAccess,
+  topics,
+} from '../db/schema';
 
 // `action` is dotted: `domain.verb`, lowercase + underscores. Same regex the
 // protocol's approval schema already enforces for similar dotted ids.
@@ -333,6 +342,17 @@ async function filterHiddenTopicEntries(
       .from(topicMembers)
       .where(and(inArray(topicMembers.topicId, privateIds), eq(topicMembers.userId, userId)));
     privateSeen = new Set(memberRows.map((row) => row.topicId));
+    // T-0116: topics reached through a role, not a direct row.
+    const roleRows = await db
+      .select({ topicId: topicRoleAccess.topicId })
+      .from(topicRoleAccess)
+      .innerJoin(groupMemberRoles, eq(groupMemberRoles.roleId, topicRoleAccess.roleId))
+      .where(
+        and(inArray(topicRoleAccess.topicId, privateIds), eq(groupMemberRoles.userId, userId)),
+      );
+    for (const row of roleRows) {
+      privateSeen.add(row.topicId);
+    }
   }
   return entries.filter((entry) => {
     if (!entry.action.startsWith('topic.') || entry.subjectId === null) {

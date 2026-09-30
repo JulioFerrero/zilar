@@ -9,9 +9,11 @@ import {
   approvalRuleSchema,
   approveMachine,
   createConnection,
+  createGroupRole,
   createPairingCode,
   decideApproval,
   deleteConnection,
+  deleteGroupRole,
   deleteMachine,
   denyMachine,
   getApproval,
@@ -20,15 +22,19 @@ import {
   listApprovals,
   listAudit,
   listGroupApprovalRules,
+  listGroupRoles,
   listMachines,
   listConnections,
   machineSchema,
   publicApprovalSchema,
+  renameGroupRole,
   renameMachine,
   resumeAi,
   revokeApprovalRule,
   revokeMachine,
   setAiMachine,
+  setGroupRoleMembers,
+  setTopicRoles,
   stopAi,
   testConnection,
 } from '@/lib/api';
@@ -919,5 +925,118 @@ describe('AI home machine API (T-0091)', () => {
       status: 400,
       code: 'invalid_request',
     } satisfies Partial<ApiError>);
+  });
+});
+
+// T-0116: the group-roles wire. Each helper hits its path with the
+// expected method and parses the role (or topic) shape back.
+describe('group roles API (T-0116)', () => {
+  const role = { id: 'role-1', name: 'Designers', members: [] };
+
+  it('listGroupRoles hits GET /api/groups/:id/roles', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { roles: [role] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const roles = await listGroupRoles('g-devteam');
+    expect(roles).toEqual([role]);
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/groups/g-devteam/roles');
+  });
+
+  it('createGroupRole POSTs the name and renameGroupRole PATCHes it', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, role));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createGroupRole('g-devteam', 'Designers');
+    const [postUrl, postInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(postUrl).toBe('/api/groups/g-devteam/roles');
+    expect(postInit.method).toBe('POST');
+    expect(JSON.parse(postInit.body as string)).toEqual({ name: 'Designers' });
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { ...role, name: 'Design' }));
+    const renamed = await renameGroupRole('g-devteam', 'role-1', 'Design');
+    expect(renamed.name).toBe('Design');
+  });
+
+  it('deleteGroupRole DELETEs the id-specific path', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(204, null));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await deleteGroupRole('g-devteam', 'role-1');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/groups/g-devteam/roles/role-1');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('setGroupRoleMembers PUTs the userIds', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { ...role, members: [{ userId: 'u-1', name: 'Ana' }] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const updated = await setGroupRoleMembers('g-devteam', 'role-1', ['u-1']);
+    expect(updated.members).toEqual([{ userId: 'u-1', name: 'Ana' }]);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/groups/g-devteam/roles/role-1/members');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(init.body as string)).toEqual({ userIds: ['u-1'] });
+  });
+
+  it('setTopicRoles PUTs roleIds and approverRoleId and parses the topic', async () => {
+    const topic = {
+      id: 't-1',
+      groupId: 'g-devteam',
+      name: 'Hiring',
+      glyph: 'H',
+      chatJid: 'hiring@rooms.galena.test',
+      visibility: 'private',
+      kind: 'chat',
+      status: 'open',
+      owner: null,
+      linkUrl: null,
+      linkLabel: null,
+      isGeneral: false,
+      archived: false,
+      memberCount: 2,
+      ais: [],
+      roles: [{ id: 'role-1', name: 'Designers', memberCount: 1 }],
+      approverRole: { id: 'role-1', name: 'Designers' },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, topic));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const updated = await setTopicRoles('t-1', { roleIds: ['role-1'], approverRoleId: 'role-1' });
+    expect(updated.roles).toEqual([{ id: 'role-1', name: 'Designers', memberCount: 1 }]);
+    expect(updated.approverRole).toEqual({ id: 'role-1', name: 'Designers' });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/topics/t-1/roles');
+    expect(init.method).toBe('PUT');
+  });
+
+  it('parses a topic from a server without roles keys (backwards compatible)', async () => {
+    const oldTopic = {
+      id: 't-1',
+      groupId: 'g-devteam',
+      name: 'Hiring',
+      glyph: 'H',
+      chatJid: 'hiring@rooms.galena.test',
+      visibility: 'private',
+      kind: 'chat',
+      status: 'open',
+      owner: null,
+      linkUrl: null,
+      linkLabel: null,
+      isGeneral: false,
+      archived: false,
+      memberCount: 2,
+      ais: [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, oldTopic));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { getTopic } = await import('@/lib/api');
+    const topic = await getTopic('t-1');
+    expect(topic.roles).toBeUndefined();
+    expect(topic.approverRole).toBeUndefined();
   });
 });

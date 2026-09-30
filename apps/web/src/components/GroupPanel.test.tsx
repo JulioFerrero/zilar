@@ -91,6 +91,11 @@ function stubAudit(entries: unknown[]): ReturnType<typeof vi.fn> {
     if (target.includes('/approval-rules')) {
       return jsonResponse(200, []);
     }
+    // T-0116: the panel loads the group's roles on mount; the older tests
+    // answer an empty list so the Roles section stays quiet.
+    if (target.includes('/roles')) {
+      return jsonResponse(200, { roles: [] });
+    }
     return jsonResponse(404, { error: { code: 'not_found', message: 'unexpected' } });
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -249,6 +254,93 @@ describe('GroupPanel', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  // T-0116: custom group roles. Managers see the Roles section (create,
+  // rename, delete, assign); everyone sees the chips next to member names.
+  describe('group roles (T-0116)', () => {
+    const roles = [
+      {
+        id: 'role-designers',
+        name: 'Designers',
+        members: [{ userId: 'u-ana', name: 'Ana' }],
+      },
+    ];
+
+    function stubRoles(): ReturnType<typeof vi.fn> {
+      const fetchMock = vi.fn(async (url: unknown, init?: unknown) => {
+        const target = String(url);
+        if (target.includes('/audit')) {
+          return jsonResponse(200, { entries: [], next: null });
+        }
+        if (target.includes('/approval-rules')) {
+          return jsonResponse(200, []);
+        }
+        if (target.includes('/roles') && (init as RequestInit | undefined)?.method === 'POST') {
+          const body = JSON.parse(String((init as RequestInit).body ?? '{}')) as {
+            name: string;
+          };
+          return jsonResponse(201, { id: 'role-new', name: body.name, members: [] });
+        }
+        if (target.includes('/roles')) {
+          return jsonResponse(200, { roles });
+        }
+        return jsonResponse(404, { error: { code: 'not_found', message: 'unexpected' } });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+
+    it('shows role chips next to member names for everyone', async () => {
+      const store = createChatStore(seedWith({}));
+      stubRoles();
+      renderStore(store);
+
+      const members = within(screen.getByRole('region', { name: 'Members' }));
+      await waitFor(() => expect(members.getByText('Designers')).toBeTruthy());
+    });
+
+    it('shows the Roles section for a manager and creates a role', async () => {
+      const store = createChatStore(seedWith({}));
+      const fetchMock = stubRoles();
+      renderStore(store);
+
+      const section = await screen.findByRole('region', { name: 'Roles' });
+      expect(within(section).getByText(/Designers/)).toBeTruthy();
+
+      fireEvent.change(screen.getByLabelText('New role name'), {
+        target: { value: 'Devs' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Add role' }));
+
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith(
+          '/api/groups/g-devteam/roles',
+          expect.objectContaining({ method: 'POST' }),
+        ),
+      );
+    });
+
+    it('hides the Roles section for a plain member but keeps the chips', async () => {
+      const store = createChatStore(
+        seedWith({
+          groupInfos: {
+            'c-devteam': detail({
+              members: [
+                { userId: 'u-you', name: 'You', role: 'member' },
+                { userId: 'u-ana', name: 'Ana', role: 'owner' },
+              ],
+            }),
+          },
+        }),
+      );
+      stubRoles();
+      renderStore(store);
+
+      const members = within(screen.getByRole('region', { name: 'Members' }));
+      await waitFor(() => expect(members.getByText('Designers')).toBeTruthy());
+      expect(screen.queryByRole('region', { name: 'Roles' })).toBeNull();
+    });
+  });
+
   // T-0086: the room activity section is the same ActivitySection the AI
   // panel mounts, fed by `?groupId=…` instead of `?aiId=…`. The rules:
   // owners and admins see it, plain members don't (and no request fires for
@@ -362,6 +454,10 @@ describe('GroupPanel', () => {
         }
         if (target.includes('/approval-rules')) {
           return jsonResponse(200, []);
+        }
+        // T-0116: the Roles section loads quietly alongside Activity.
+        if (target.includes('/roles')) {
+          return jsonResponse(200, { roles: [] });
         }
         return jsonResponse(404, { error: { code: 'not_found', message: 'unexpected' } });
       });

@@ -15,14 +15,19 @@ import {
   addTopicAi,
   addTopicMember,
   ApiError,
+  getTopic,
+  listGroupRoles,
   listTopicAis,
   listTopicMembers,
   listTopicTools,
   removeTopicAi,
+  type ApproverRole,
   type GroupDetail,
+  type GroupRole,
   type PublicAi,
   type TopicAi,
   type TopicMember,
+  type TopicRole,
   type TopicTool,
 } from '@/lib/api';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -641,6 +646,17 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
             <TopicRulesSection groupId={chat.groupId} topicId={topic.id} topicName={chat.title} />
           )}
 
+          {/* T-0116: roles with access + the approver role, for private
+              topics. Everyone sees the attached list; managers edit it. */}
+          {isPrivate && chat.groupId !== undefined && (
+            <TopicRolesSection
+              chatId={chat.id}
+              topicId={topic.id}
+              groupId={chat.groupId}
+              isManager={isManager}
+            />
+          )}
+
           {toolsCount !== null && (
             <p className="px-2 text-[13px] text-muted-foreground">
               {toolsCount} {toolsCount === 1 ? 'tool' : 'tools'} in this topic
@@ -730,6 +746,249 @@ function TopicRulesSection({
   return (
     <section aria-label={`Always allowed in ${topicName}`}>
       <AlwaysAllowedList scope={{ groupId }} topicId={topicId} topicName={topicName} readOnly />
+    </section>
+  );
+}
+
+/**
+ * The topic's roles (T-0116): attached roles with holder counts next to the
+ * people list, and the approver select ("Owner and admins only" or one
+ * role). Managers edit; everyone else reads. Saving goes through the
+ * store so the chat row refreshes.
+ */
+function TopicRolesSection({
+  chatId,
+  topicId,
+  groupId,
+  isManager,
+}: {
+  chatId: string;
+  topicId: string;
+  groupId: string;
+  isManager: boolean;
+}) {
+  const storeApi = useChatStoreApi();
+  const [rolesState, setRolesState] = useState<{
+    status: PanelStatus;
+    roles: TopicRole[];
+    approverRole: ApproverRole | null;
+    message: string;
+  }>({ status: 'loading', roles: [], approverRole: null, message: '' });
+  const [groupRoles, setGroupRoles] = useState<GroupRole[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const reload = async (): Promise<void> => {
+    setRolesState({ status: 'loading', roles: [], approverRole: null, message: '' });
+    try {
+      const [topic, roles] = await Promise.all([getTopic(topicId), listGroupRoles(groupId)]);
+      setGroupRoles(roles);
+      setRolesState({
+        status: 'ready',
+        roles: topic.roles ?? [],
+        approverRole: topic.approverRole ?? null,
+        message: '',
+      });
+    } catch (error) {
+      setRolesState({
+        status: 'error',
+        roles: [],
+        approverRole: null,
+        message: error instanceof Error ? error.message : 'Could not load the roles.',
+      });
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const [topic, roles] = await Promise.all([getTopic(topicId), listGroupRoles(groupId)]);
+        if (active) {
+          setGroupRoles(roles);
+          setRolesState({
+            status: 'ready',
+            roles: topic.roles ?? [],
+            approverRole: topic.approverRole ?? null,
+            message: '',
+          });
+        }
+      } catch (error) {
+        if (active) {
+          setRolesState({
+            status: 'error',
+            roles: [],
+            approverRole: null,
+            message: error instanceof Error ? error.message : 'Could not load the roles.',
+          });
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [topicId, groupId]);
+
+  const save = async (roleIds: string[], approverRoleId: string | null): Promise<void> => {
+    setBusy(true);
+    setErrorMessage('');
+    try {
+      await storeApi.getState().setTopicRoles(chatId, { roleIds, approverRoleId });
+      await reload();
+      setPickerOpen(false);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not save the roles.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleRole = (roleId: string): void => {
+    if (rolesState.status !== 'ready') {
+      return;
+    }
+    const attached = rolesState.roles.some((role) => role.id === roleId);
+    const roleIds = attached
+      ? rolesState.roles.filter((role) => role.id !== roleId).map((role) => role.id)
+      : [...rolesState.roles.map((role) => role.id), roleId];
+    void save(roleIds, rolesState.approverRole?.id ?? null);
+  };
+
+  const pickApprover = (value: string): void => {
+    if (rolesState.status !== 'ready') {
+      return;
+    }
+    void save(
+      rolesState.roles.map((role) => role.id),
+      value === '' ? null : value,
+    );
+  };
+
+  return (
+    <section aria-label="Roles" className="flex flex-col gap-1">
+      <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Roles</h2>
+      {rolesState.status === 'loading' && (
+        <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+      )}
+      {rolesState.status === 'error' && (
+        <div className="flex flex-col gap-2 px-2">
+          <FieldError>{rolesState.message}</FieldError>
+          <Button
+            type="button"
+            size="lg"
+            className="self-start rounded-full px-4"
+            onClick={() => void reload()}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+      {rolesState.status === 'ready' && (
+        <>
+          {rolesState.roles.length === 0 ? (
+            <p className="px-2 text-[13px] text-muted-foreground">
+              No roles here yet — only the people above can see this topic.
+            </p>
+          ) : (
+            rolesState.roles.map((role) => (
+              <div
+                key={role.id}
+                className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
+              >
+                <span className="min-w-0 flex-1 truncate text-[14px]">
+                  {role.name} ({role.memberCount})
+                </span>
+                {isManager && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    aria-label={`Remove ${role.name} from the topic`}
+                    className="shrink-0"
+                    disabled={busy}
+                    onClick={() => void toggleRole(role.id)}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+            ))
+          )}
+          {isManager && (
+            <>
+              {pickerOpen ? (
+                <div className="mt-1 flex flex-col gap-1 px-2">
+                  {groupRoles
+                    .filter((role) => !rolesState.roles.some((item) => item.id === role.id))
+                    .map((role) => (
+                      <button
+                        key={role.id}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void toggleRole(role.id)}
+                        className={cn(
+                          'flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-2 py-1.5 text-left text-[14px]',
+                          'hover:bg-surface-raised disabled:opacity-50',
+                        )}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{role.name}</span>
+                        <span className="text-[12px] text-muted-foreground">
+                          {role.members.length}
+                        </span>
+                      </button>
+                    ))}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="self-start"
+                    onClick={() => setPickerOpen(false)}
+                  >
+                    Done
+                  </Button>
+                </div>
+              ) : (
+                groupRoles.some(
+                  (role) => !rolesState.roles.some((item) => item.id === role.id),
+                ) && (
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="mx-2 self-start rounded-full px-4"
+                    onClick={() => setPickerOpen(true)}
+                  >
+                    Add roles
+                  </Button>
+                )
+              )}
+              <label className="mt-1 flex flex-col gap-1 px-2">
+                <span className="text-[13px] font-medium text-muted-foreground">Approvers</span>
+                <select
+                  aria-label="Approvers"
+                  value={rolesState.approverRole?.id ?? ''}
+                  disabled={busy}
+                  onChange={(event) => pickApprover(event.target.value)}
+                  className="well-surface rounded-[10px] px-3 py-2 text-[14px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                >
+                  <option value="">Owner and admins only</option>
+                  {rolesState.roles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+          {!isManager && rolesState.approverRole !== null && (
+            <p className="px-2 text-[13px] text-muted-foreground">
+              Approvers: {rolesState.approverRole.name}
+            </p>
+          )}
+          {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
+        </>
+      )}
     </section>
   );
 }

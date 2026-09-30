@@ -1,7 +1,7 @@
 ---
 id: T-0116
 title: Group roles (Designers, Devs …): grant access to private topics and approver rights by role
-status: planned
+status: review
 milestone: M5
 branch: task/T-0116-group-roles
 model: meta/muse-spark-1.3-contributor
@@ -77,19 +77,104 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Server: new `apps/server/src/roles/` module (service + routes + 12 tests).
+  `group_roles` / `group_member_roles` / `topic_role_access` tables plus
+  `topics.approver_role_id` (SET NULL) in `db/schema.ts` — schema only, **no
+  migration committed** (per the lead's T-0115 ordering instruction).
+  - CRUD: manager-only create/rename/delete/assign (replace-the-set PUT);
+    names 1–30 chars, unique per group ignoring case, no control chars, max
+    20 roles/group; every member reads the list with holders. 409
+    `role_exists`, 400s, 403 for plain members, same 404s as elsewhere.
+  - `canSeeTopic`/`visibleTopics`: private topic visible via
+    `topic_members` OR a role in `topic_role_access`; `desiredMembers`,
+    `countTopicMembers`, `listTopicMembers` and the AI rule
+    (`allowedTopicAiIds`) all count role holders (still group members).
+    Assign/unassign, topic attach/detach, role delete and group leave all
+    re-sync the affected rooms through the same `syncTopicRoom`.
+  - `canDecide`: holder of the topic's `approver_role_id` who can see the
+    topic may decide; blind holders get the same false as missing ids.
+    `approve_always` still needs a group admin (unchanged T-0101 path).
+  - `PUT /api/topics/:id/roles` `{roleIds, approverRoleId}`: topic manager
+    who can see the topic, private-only, group-local roles; re-syncs.
+  - Group leave flow drops the member's role rows and re-syncs; role delete
+    captures affected topics first (cascade would erase them), syncs each
+    room and audits `topic.role_removed` per topic.
+  - Audit: `group.role_created/renamed/deleted/assigned/unassigned`,
+    `topic.role_added/removed`, `topic.approver_role_set` — ids only, never
+    names. Audit list filter also counts role holders for hidden topics.
+  - `GET group detail` members gain `roles: [{id, name}]`. Note: there is no
+    `GET /api/groups/:id/members` route on this codebase — the member list
+    rides the group detail, so the roles land there.
+  - Routes mounted in `app.ts`; all require a session (sweep passes).
+- Web: `lib/api.ts` roles helpers + `roles`/`approverRole` on `Topic`
+  (optional, old servers still parse) and `roles` on `GroupMember`;
+  `setTopicRoles` in both stores; GroupPanel Roles section (manager CRUD +
+  multi-select assign) with chips for everyone; TopicPanel Roles section
+  (attached `Name (count)`, Add-roles picker, Approvers select, read-only
+  approver line for non-managers); NewTopicDialog roles picker + Approvers
+  select applied after create (failure keeps the topic); ApprovalCard
+  "Approvers: Name" line via one `getTopic` read; full mock-mode support
+  (seeded Designers/Devs roles, handlers for all new routes).
+- Tests: server `roles/roles.test.ts` (12: CRUD/limits, access for current
+  and future holders, unassign removal, leave cleanup, delete re-sync,
+  approver decide + blind-holder 404, always-allow still admin-gated,
+  id-only audit, auth + 404 shapes). Web: mock API (4), GroupPanel (3),
+  TopicPanel (3), NewTopicDialog (1), ApprovalCard (2), lib/api (6), store
+  (1). Existing suites updated where the panel's new roles fetch needed a
+  stub (`GroupPanel.test.tsx`), and `setTopicRoles` added to ApiClient
+  fakes.
 
 ### Files changed
--
+- Server: `apps/server/src/roles/service.ts`, `roles/routes.ts`,
+  `roles/roles.test.ts` (new); `db/schema.ts` (schema only, no migration);
+  `topics/access.ts`, `topics/rooms.ts`, `topics/routes.ts`,
+  `topics/service.ts`, `topics/backfill.test.ts` (excludes the future
+  group-roles migration from the pre-T-0108 simulation); `approvals/service.ts`
+  (`canDecide` only); `groups/service.ts` (member `roles`, leave cleanup);
+  `audit/service.ts` (hidden-topic filter); `app.ts` (mount).
+- Web: `lib/api.ts`, `store/store.ts`, `store/realStore.ts`,
+  `components/GroupPanel.tsx`, `components/TopicPanel.tsx`,
+  `components/NewTopicDialog.tsx`, `components/ApprovalCard.tsx`,
+  `mock/api.ts`, `mock/groups.ts`, plus tests listed above.
 
 ### Commands run and real results
--
+- `pnpm install`: ok (11.8s).
+- `pnpm format:check`: pass. `pnpm lint` (oxlint): pass. `pnpm typecheck`
+  (10 tasks): pass.
+- `pnpm --filter @galena/server test --maxWorkers=2`: 81 files passed,
+  5 skipped; 1389 passed, 7 skipped, 0 failed.
+- `pnpm --filter @galena/web test --maxWorkers=2`: 71 files passed;
+  797 passed, 0 failed.
+- `pnpm build`: pass (2 tasks).
+- During development the full server suite failed once in
+  `src/topics/backfill.test.ts` (`relation "public.topics" does not exist`):
+  my temporary local-only migration `0026` sorted into that test's
+  pre-T-0108 simulation. Fixed by excluding `0026_` there (with a comment);
+  the backfill test passes and the temp migration is now deleted (see
+  below). One backfill timeout mid-way was resource contention from my own
+  concurrent runs; passes alone and in the final full suite.
 
 ### Problems, deviations from the spec, open questions
--
+- **No migration committed, by instruction.** I wrote `schema.ts` changes
+  and validated them with a hand-written temporary `0026` migration +
+  journal/snapshot (mirroring drizzle-kit output) to run the PGlite suite,
+  then deleted all three files. Current tree has **no** migration for the
+  new tables. After T-0115 merges and this branch rebases, run
+  `pnpm --filter @galena/server db:generate` once: it will also need the
+  `0026_` exclusion in `backfill.test.ts` extended to the real migration
+  number (the real file will reference `topics` the same way).
+- Spec route `GET /api/groups/:id/members` does not exist in this codebase;
+  member roles ride the group detail (`GET /api/groups/:id`), which is the
+  only member-read path. Same coverage, different shape location.
+- `memberCount` on `roles[]` counts role holders (per the "Designers (3)"
+  example), not topic members.
+- `deleteRole` audits one `topic.role_removed` per affected topic (subject
+  = topic id, detail carries topic/role/group ids) — the spec lists the
+  action but not the subject; topic id matches the `topic.*` convention.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None. Waiting on the lead for the T-0115 merge + rebase signal, then
+  `db:generate` + one commit with the migration.
 
 ---
 

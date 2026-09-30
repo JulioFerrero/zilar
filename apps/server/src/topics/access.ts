@@ -1,8 +1,18 @@
 import { and, count, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ServerDatabase } from '../db/client';
-import { ais, groupMembers, topicAis, topicMembers, topics, user } from '../db/schema';
+import {
+  ais,
+  groupMemberRoles,
+  groupMembers,
+  topicAis,
+  topicMembers,
+  topicRoleAccess,
+  topics,
+  user,
+} from '../db/schema';
 import { HttpError } from '../errors';
+import { holdsTopicRole, rolesOfTopic, topicRoleHolderIds } from '../roles/service';
 
 export const topicVisibilitySchema = z.enum(['public', 'private']);
 export type TopicVisibility = z.infer<typeof topicVisibilitySchema>;
@@ -19,6 +29,12 @@ export interface TopicOwnerView {
   kind: 'user' | 'ai';
   id: string;
   name: string;
+}
+
+export interface TopicRoleView {
+  id: string;
+  name: string;
+  memberCount: number;
 }
 
 export interface TopicView {
@@ -38,6 +54,10 @@ export interface TopicView {
   memberCount: number;
   /** AIs added to this topic (never private names). */
   ais: TopicAiView[];
+  /** T-0116: roles with access to this topic (empty for public topics). */
+  roles: TopicRoleView[];
+  /** T-0116: the role whose holders may decide approvals here, if any. */
+  approverRole: { id: string; name: string } | null;
 }
 
 export interface TopicAiView {
@@ -90,8 +110,9 @@ async function isPrivateMember(
 }
 
 // Whether the user may see the topic: group member, topic not archived, and
-// (for private topics) a row in `topic_members`. Never throws for a missing
-// topic: callers answer the same 404 either way.
+// (for private topics) a row in `topic_members` or a role in
+// `topic_role_access` (T-0116). Never throws for a missing topic: callers
+// answer the same 404 either way.
 export async function canSeeTopic(
   db: ServerDatabase,
   topic: TopicRow,
@@ -107,7 +128,10 @@ export async function canSeeTopic(
   if (topic.visibility !== 'private') {
     return true;
   }
-  return isPrivateMember(db, topic.id, userId);
+  if (await isPrivateMember(db, topic.id, userId)) {
+    return true;
+  }
+  return holdsTopicRole(db, topic.id, userId);
 }
 
 // The same check starting from an id, or false when the topic does not exist.
@@ -161,6 +185,17 @@ export async function visibleTopics(
       .from(topicMembers)
       .where(and(inArray(topicMembers.topicId, privateIds), eq(topicMembers.userId, userId)));
     privateSeen = new Set(memberRows.map((row) => row.topicId));
+    // T-0116: topics reached through a role, not a direct row.
+    const roleRows = await db
+      .select({ topicId: topicRoleAccess.topicId })
+      .from(topicRoleAccess)
+      .innerJoin(groupMemberRoles, eq(groupMemberRoles.roleId, topicRoleAccess.roleId))
+      .where(
+        and(inArray(topicRoleAccess.topicId, privateIds), eq(groupMemberRoles.userId, userId)),
+      );
+    for (const row of roleRows) {
+      privateSeen.add(row.topicId);
+    }
   }
   return active.filter((row) => row.visibility !== 'private' || privateSeen.has(row.id));
 }
@@ -232,11 +267,20 @@ export async function countTopicMembers(db: ServerDatabase, topic: TopicRow): Pr
       .where(eq(groupMembers.groupId, topic.groupId));
     return Number(row?.total ?? 0);
   }
-  const [row] = await db
-    .select({ total: count() })
-    .from(topicMembers)
-    .where(eq(topicMembers.topicId, topic.id));
-  return Number(row?.total ?? 0);
+  // T-0116: `topic_members` plus the holders of its roles (still group
+  // members). A holder who is also a direct member counts once.
+  const [direct, holders] = await Promise.all([
+    db
+      .select({ userId: topicMembers.userId })
+      .from(topicMembers)
+      .where(eq(topicMembers.topicId, topic.id)),
+    topicRoleHolderIds(db, topic.id, topic.groupId),
+  ]);
+  const ids = new Set(direct.map((row) => row.userId));
+  for (const id of holders) {
+    ids.add(id);
+  }
+  return ids.size;
 }
 
 export async function resolveOwnerName(
@@ -273,10 +317,11 @@ export async function toTopicView(
   topic: TopicRow,
   mucDomain: string,
 ): Promise<TopicView> {
-  const [memberCount, owner, aiList] = await Promise.all([
+  const [memberCount, owner, aiList, roleInfo] = await Promise.all([
     countTopicMembers(db, topic),
     resolveOwnerName(db, topic),
     listTopicAis(db, topic.id),
+    rolesOfTopic(db, topic.id, topic.groupId),
   ]);
   return {
     id: topic.id,
@@ -294,6 +339,8 @@ export async function toTopicView(
     archived: topic.archivedAt !== null,
     memberCount,
     ais: aiList,
+    roles: roleInfo.roles,
+    approverRole: roleInfo.approverRole,
   };
 }
 
@@ -355,6 +402,11 @@ export async function allowedTopicAiIds(
     .from(topicMembers)
     .where(eq(topicMembers.topicId, topic.id));
   const memberIds = new Set(memberRows.map((row) => row.userId));
+  // T-0116: an owner who reaches the private topic only through a role
+  // keeps their AI in the room, like the room sync does.
+  for (const holder of await topicRoleHolderIds(db, topic.id, topic.groupId)) {
+    memberIds.add(holder);
+  }
   const groupRows = await db
     .select({ userId: groupMembers.userId })
     .from(groupMembers)

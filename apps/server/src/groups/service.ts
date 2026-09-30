@@ -18,6 +18,7 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { emitGroupAi, emitTopicAi } from './events';
 import { aiMayBeInTopic } from '../topics/access';
+import { dropMemberRoles, roleHoldersByGroup } from '../roles/service';
 import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
 import { deleteRoutinesForAiInGroup } from '../routines/service';
 import { deleteToolsForAiInGroup } from '../tools/service';
@@ -40,6 +41,8 @@ export interface GroupMemberView {
   userId: string;
   name: string;
   role: GroupRole;
+  /** T-0116: the custom group roles this member holds. */
+  roles: Array<{ id: string; name: string }>;
 }
 
 export interface GroupDetail {
@@ -382,6 +385,20 @@ export async function removeGroupMember(
   } catch (error) {
     throw mapXmppError(error);
   }
+  // T-0116: leaving the group drops the member's role rows, and the topics
+  // they reached only through a role re-sync. Best effort after the commit,
+  // like the room syncs above. Logged with the ids only, never names; the
+  // audit rows for a private topic never carry its name either.
+  await dropMemberRoles(
+    {
+      db,
+      adminClient,
+      domain: input.domain,
+      logger: input.logger,
+    },
+    input.groupId,
+    input.targetUserId,
+  );
   // T-0108: public topics lose the person; private topics drop them when
   // their row is gone. Best effort after the database commit: a failure is
   // logged with the group id (never a topic name), never thrown. The sync
@@ -619,8 +636,16 @@ async function listGroupMembers(db: ServerDatabase, groupId: string): Promise<Gr
     .innerJoin(user, eq(user.id, groupMembers.userId))
     .where(eq(groupMembers.groupId, groupId));
 
+  // T-0116: fold each member's custom roles into the same row. Role
+  // membership is not secret: every group member sees the same list.
+  const byUser = await roleHoldersByGroup(db, groupId);
   return rows
-    .map((row) => ({ userId: row.userId, name: row.name, role: row.role }))
+    .map((row) => ({
+      userId: row.userId,
+      name: row.name,
+      role: row.role,
+      roles: byUser.get(row.userId) ?? [],
+    }))
     .sort(
       (a, b) =>
         ROOM_ROLES[a.role] - ROOM_ROLES[b.role] ||

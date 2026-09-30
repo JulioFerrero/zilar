@@ -23,6 +23,8 @@ interface ApprovalFixture {
   action?: string;
   alwaysEligible?: boolean;
   groupId?: string | null;
+  topicId?: string | null;
+  topicName?: string | null;
 }
 
 function approvalFixture({
@@ -32,11 +34,15 @@ function approvalFixture({
   action = 'merge_pull_request',
   alwaysEligible = false,
   groupId = 'dev-team',
+  topicId = null,
+  topicName = null,
 }: Partial<ApprovalFixture> = {}): unknown {
   return {
     id,
     aiId: 'ai-dev-1',
     groupId,
+    topicId,
+    topicName,
     action,
     summary: 'Merge PR #42',
     details: null,
@@ -544,5 +550,65 @@ describe('ApprovalCard always allow (T-0100)', () => {
 
     expect(await screen.findByText('Approved')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Always allow here' })).toBeNull();
+  });
+});
+
+describe('ApprovalCard approvers line (T-0116)', () => {
+  it('shows "Approvers: Designers" when the topic names an approver role', async () => {
+    const fetchMock = makeFetch((url) => {
+      if (url === '/api/approvals/apr-42') {
+        return Promise.resolve(
+          jsonResponse(200, approvalFixture({ topicId: 't-hiring', topicName: 'Hiring' })),
+        );
+      }
+      if (url === '/api/topics/t-hiring') {
+        return Promise.resolve(
+          jsonResponse(200, {
+            id: 't-hiring',
+            groupId: 'g-team',
+            name: 'Hiring',
+            glyph: 'H',
+            chatJid: 'hiring@rooms.galena.test',
+            visibility: 'private',
+            kind: 'chat',
+            status: 'open',
+            owner: null,
+            linkUrl: null,
+            linkLabel: null,
+            isGeneral: false,
+            archived: false,
+            memberCount: 2,
+            ais: [],
+            roles: [{ id: 'role-designers', name: 'Designers', memberCount: 2 }],
+            approverRole: { id: 'role-designers', name: 'Designers' },
+          }),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApprovalCard request={request} />);
+    await screen.findByRole('button', { name: 'Approve' });
+    expect(await screen.findByText('Approvers: Designers')).toBeTruthy();
+  });
+
+  it('hides the line when the topic has no approver role', async () => {
+    const fetchMock = makeFetch((url) => {
+      if (url === '/api/approvals/apr-42') {
+        return Promise.resolve(
+          jsonResponse(200, approvalFixture({ topicId: 't-hiring', topicName: 'Hiring' })),
+        );
+      }
+      if (url === '/api/topics/t-hiring') {
+        return Promise.resolve(errorResponse(404, 'not_found', 'Topic not found'));
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ApprovalCard request={request} />);
+    await screen.findByRole('button', { name: 'Approve' });
+    expect(screen.queryByText(/Approvers:/)).toBeNull();
   });
 });

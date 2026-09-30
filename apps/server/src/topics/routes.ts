@@ -29,6 +29,8 @@ import {
   patchTopicBodySchema,
   removeTopicAi,
   removeTopicMember,
+  setTopicRoles,
+  setTopicRolesBodySchema,
 } from './service';
 
 export const TOPIC_CREATE_RATE_LIMIT_MAX = 30;
@@ -169,6 +171,28 @@ export function createTopicsRoutes(deps: TopicsRoutesDependencies): Hono {
     if (topic.archivedAt !== null) {
       throw toMissingTopic();
     }
+    return c.json(await toTopicView(deps.db, topic, mucDomain));
+  });
+
+  // T-0116: attach roles to a private topic and pick its approver role.
+  // The actor must be a topic manager who can see the topic; a stranger
+  // gets the same 404 as a missing id.
+  routes.put('/topics/:id/roles', async (c) => {
+    const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    const body = await c.req.json().catch(() => null);
+    const parsed = setTopicRolesBodySchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpError(
+        400,
+        'invalid_request',
+        parsed.error.issues[0]?.message ?? 'Invalid request',
+      );
+    }
+    const topic = await setTopicRoles(serviceDeps(deps), {
+      ...parsed.data,
+      topicId: c.req.param('id'),
+      actorId: user.id,
+    });
     return c.json(await toTopicView(deps.db, topic, mucDomain));
   });
 

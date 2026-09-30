@@ -76,4 +76,37 @@ describe('New topic dialog (T-0111)', () => {
       true,
     );
   });
+
+  it('picks roles and an approver for a private topic (T-0116)', async () => {
+    const { store } = renderApp('/');
+    const createTopic = vi.fn(async () => 't-secret');
+    const addTopicAi = vi.fn(async () => {});
+    const setTopicRoles = vi.fn(async () => {});
+    store.setState({ createTopic, addTopicAi, setTopicRoles });
+    // The dialog reads the group's roles through the api client (fetch);
+    // route fetch to the mock API like the topic panel tests do.
+    const { mockRequest } = await import('@/mock/api');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown, init?: RequestInit) =>
+        mockRequest(String(url), init ?? {}, { delayMs: 0 }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New topic' }));
+    fireEvent.change(screen.getByLabelText('Topic name'), { target: { value: 'Secret work' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Private' }));
+
+    fireEvent.click(await screen.findByLabelText('Designers (2)'));
+    const approvers = (await screen.findByLabelText('Approvers')) as HTMLSelectElement;
+    fireEvent.change(approvers, { target: { value: 'role-designers' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create topic' }));
+
+    await waitFor(() => {
+      expect(setTopicRoles).toHaveBeenCalledWith('t-secret', {
+        roleIds: ['role-designers'],
+        approverRoleId: 'role-designers',
+      });
+    });
+  });
 });

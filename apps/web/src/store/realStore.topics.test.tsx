@@ -182,6 +182,7 @@ function topicApi(overrides: Partial<ApiClient> = {}): ApiClient {
     listTopicAis: vi.fn(async () => []),
     addTopicAi: vi.fn(nope),
     removeTopicAi: vi.fn(nope),
+    setTopicRoles: vi.fn(nope),
     setMembersCanCreateTopics: vi.fn(nope),
     listChatPrefs: vi.fn(async () => []),
     putChatPref: vi.fn(async () => null),
@@ -451,5 +452,30 @@ describe('topics store mapping (T-0111)', () => {
 
   it('the refresh interval is 60 s', () => {
     expect(TOPIC_REFRESH_INTERVAL_MS).toBe(60_000);
+  });
+
+  it('setTopicRoles calls the API with the topic id and refreshes the row (T-0116)', async () => {
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const { topicSchema } = await import('@/lib/api');
+    const updated = topicSchema.parse({
+      ...bugTopic(),
+      visibility: 'private',
+      roles: [{ id: 'role-designers', name: 'Designers', memberCount: 2 }],
+      approverRole: { id: 'role-designers', name: 'Designers' },
+    });
+    (apiMock.setTopicRoles as ReturnType<typeof vi.fn>).mockResolvedValue(updated);
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
+      groupEntry({ topics: [topic(), { ...bugTopic(), visibility: 'private' }] }),
+    ]);
+    await store.getState().setTopicRoles(bugId, {
+      roleIds: ['role-designers'],
+      approverRoleId: 'role-designers',
+    });
+    expect(apiMock.setTopicRoles).toHaveBeenCalledWith('t-bug', {
+      roleIds: ['role-designers'],
+      approverRoleId: 'role-designers',
+    });
   });
 });

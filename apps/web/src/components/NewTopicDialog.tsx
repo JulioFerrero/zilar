@@ -5,7 +5,8 @@ import { AiBadge } from './AiBadge';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
-import type { GroupDetail, PublicAi, TopicKind, TopicVisibility } from '@/lib/api';
+import type { GroupDetail, GroupRole, PublicAi, TopicKind, TopicVisibility } from '@/lib/api';
+import { listGroupRoles } from '@/lib/api';
 
 const TYPE_CHIPS: { kind: TopicKind; label: string }[] = [
   { kind: 'chat', label: 'Topic' },
@@ -42,6 +43,11 @@ export function NewTopicDialog({
   const [visibility, setVisibility] = useState<TopicVisibility>('public');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedAis, setSelectedAis] = useState<string[]>([]);
+  // T-0116: roles with access + the approver role, applied with one
+  // `setTopicRoles` after the topic exists.
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [approverRoleId, setApproverRoleId] = useState<string | null>(null);
+  const [groupRoles, setGroupRoles] = useState<GroupRole[]>([]);
   const [myAis, setMyAis] = useState<PublicAi[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -56,6 +62,29 @@ export function NewTopicDialog({
   useEffect(() => {
     storeApi.getState().refreshGroupInfo(groupId);
   }, [storeApi, groupId]);
+
+  // The group's roles feed the Roles picker for private topics.
+  useEffect(() => {
+    let active = true;
+    const id = detail?.id;
+    if (id === undefined) {
+      return;
+    }
+    listGroupRoles(id)
+      .then((roles) => {
+        if (active) {
+          setGroupRoles(roles);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setGroupRoles([]);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [detail?.id]);
 
   useEffect(() => {
     let active = true;
@@ -107,6 +136,16 @@ export function NewTopicDialog({
     );
   };
 
+  const toggleRole = (roleId: string): void => {
+    // Unpicking the approver role clears the Approvers select with it.
+    if (selectedRoles.includes(roleId) && approverRoleId === roleId) {
+      setApproverRoleId(null);
+    }
+    setSelectedRoles((current) =>
+      current.includes(roleId) ? current.filter((id) => id !== roleId) : [...current, roleId],
+    );
+  };
+
   const create = async (): Promise<void> => {
     const trimmed = name.trim();
     if (trimmed.length === 0) {
@@ -128,6 +167,19 @@ export function NewTopicDialog({
           await storeApi.getState().addTopicAi(chatJid, aiId);
         } catch {
           // One AI failing must not lose the topic: the panel can add it.
+        }
+      }
+      // T-0116: attach the picked roles (and approver) to the new private
+      // topic. A failure here must not lose the topic either: the panel
+      // can attach them.
+      if (visibility === 'private' && selectedRoles.length > 0) {
+        try {
+          await storeApi.getState().setTopicRoles(chatJid, {
+            roleIds: selectedRoles,
+            approverRoleId,
+          });
+        } catch {
+          // The topic exists; the panel can attach the roles.
         }
       }
       onClose();
@@ -284,6 +336,55 @@ export function NewTopicDialog({
                     </label>
                   );
                 })}
+              </>
+            )}
+            {groupRoles.length > 0 && (
+              <>
+                <span className="mt-2 text-[14px] font-medium">Roles</span>
+                <p className="text-[13px] text-muted-foreground">
+                  Everyone holding a picked role can see this topic.
+                </p>
+                {groupRoles.map((role) => {
+                  const checked = selectedRoles.includes(role.id);
+                  return (
+                    <label
+                      key={role.id}
+                      className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        aria-label={`${role.name} (${role.members.length})`}
+                        onChange={() => toggleRole(role.id)}
+                        className="size-4 accent-white"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-[14px]">{role.name}</span>
+                      <span className="text-[12px] text-muted-foreground">
+                        {role.members.length}
+                      </span>
+                    </label>
+                  );
+                })}
+                <label className="mt-1 flex flex-col gap-1">
+                  <span className="text-[14px] font-medium">Approvers</span>
+                  <select
+                    aria-label="Approvers"
+                    value={approverRoleId ?? ''}
+                    onChange={(event) =>
+                      setApproverRoleId(event.target.value === '' ? null : event.target.value)
+                    }
+                    className="well-surface rounded-[10px] px-3 py-2 text-[14px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                  >
+                    <option value="">Owner and admins only</option>
+                    {groupRoles
+                      .filter((role) => selectedRoles.includes(role.id))
+                      .map((role) => (
+                        <option key={role.id} value={role.id}>
+                          {role.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
               </>
             )}
           </div>
