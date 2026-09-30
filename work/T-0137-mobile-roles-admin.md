@@ -1,7 +1,7 @@
 ---
 id: T-0137
 title: Mobile: group roles and private-topic access
-status: planned
+status: review
 milestone: M5
 branch: task/T-0137-mobile-roles-admin
 model: meta/muse-spark-1.3-contributor
@@ -54,19 +54,36 @@ Web changes, server changes, role-based message permissions beyond what T-0116 b
 ## Report (written by the worker when done)
 
 ### What I did
--
+- API clients (`lib/roles-api.ts` new, `lib/topics-api.ts` extended, `lib/chat-api.ts` extended): hand-written guards, no zod (mobile pattern). Roles CRUD + replace-the-set member PUT; `setTopicRoles` PUT; `Topic.roles`/`approverRole` parsed (absent = none, for older servers); `GroupMember.roles` parsed (absent = none).
+- Pure logic (`lib/roles.ts` new): `mayManageRoles`, `describeRolesError` (403/404 → one neutral line), `topicRoleLabel` ("Designers (3)"), `approverLine`, `deleteRoleConfirmText`, `attachedRoleIds`, `sortGroupRoles`, `rolesByUserId`, `membersWithChips`, `topicAccessRows`, `approverOptions`, `showsTopicAccess`.
+- Real store: `groupRoles`/`refreshGroupRoles`/`createGroupRole`/`renameGroupRole`/`deleteGroupRole`/`setGroupRoleMembers` (group-id keyed cache, revision-bump publish) and `topicRoles`/`refreshTopicRoles`/`setTopicRoles` (topic-id keyed cache). `create/patch/setTopicRoles` replace the cache from the full response, so the private→public flip leaves no roles behind. Loaders reject so screens can show Retry.
+- Mock store + seeds (`mock/topics.ts`): Designers (you+Ana) / Devs (you+Luis) like the web mock; hiring topic carries Designers, UI topic names Designers approver; all writes in-memory incl. the public flip clearing roles and public topics refusing roles.
+- UI: topics-screen header "Members and roles" button → `GroupRolesSheet` (members + chips for all; CRUD + assign multi-select for managers; delete confirm says holders lose access). `TopicInfoSheet` gains the access section for private topics (attached "Name (count)" + Add-roles picker + Approvers picker for managers; read-only list + "Approvers: X" for others) and "Roles are only available on private topics." for public ones. `RoleChips` component.
+- Tests: 9 (roles-api) + 14 (roles) + 6 (mock store) + 8 (real store) + 2 (chips render) + 4 (roles sheet render: manager CRUD vs member read-only, loading/error) + 4 (topic sheet render: manager/private, non-manager, public, error) + 4 (topic roles parse/PUT) + 2 (member roles parse/reject). Existing fixtures updated for the new required fields.
 
 ### Files changed
--
+- New: `apps/mobile/src/lib/{roles-api.ts,roles.ts}`, `apps/mobile/src/components/chat/{role-chips.tsx,group-roles-sheet.tsx}`, `apps/mobile/src/types/react-dom-server.d.ts` (ambient, `@types/react-dom` would be a new dep).
+- Tests (new): `lib/{roles-api,roles}.test.ts`, `components/chat/{role-chips,group-roles-sheet,topic-sheets-roles}.test.tsx`, `store/{real-store.roles,roles-mock}.test.ts`; extended `lib/{topics-api,chat-api}.test.ts`.
+- Edited: `lib/{topics-api.ts,chat-api.ts}` (roles parsing), `lib/topics.test.ts` + `store/real-store.test.ts` (fixtures for new required fields), `store/{types,real-store,chat-store}.ts`, `mock/topics.ts`, `app/{group/[id],chat/[id]}.tsx`, `components/chat/topic-sheets.tsx`.
 
 ### Commands run and real results
--
+- `pnpm install`: ok (9.9s).
+- `pnpm format:check`: pass (after `prettier --write` on touched files).
+- `pnpm lint` (oxlint): pass (fixed 2: TDZ capture of `chatGroupId`, set-state-in-effect).
+- `pnpm typecheck` (turbo 10/10): pass.
+- `pnpm --filter @galena/mobile test --maxWorkers=2`: 45 files passed, 2 skipped; 456 passed, 2 skipped, 0 failed.
+- `grep` for `any`/`@ts-ignore`/disable comments in touched non-test source: no hits.
 
 ### Problems, deviations from the spec, open questions
--
+- No `packages/chat-core` change (nothing to say beyond "not needed"): topic rows never carried roles (web reads them via `getTopic`), so the store keeps a separate topic-roles cache; member roles ride the mobile-local `GroupMember.roles`.
+- `membersWithChips` differs slightly from web: once the fresh roles list loads it wins for everyone (absent = holds nothing); the detail snapshot only fills in before the first load. Otherwise a stale snapshot would leak chips after unassignment.
+- `ensureGroupRoles`/`ensureTopicRoles` reject on failure (the detail loader swallows); the sheets need the rejection for Retry. A group-roles load failure inside the topic info sheet is swallowed (add-picker degrades to attached-only).
+- Render tests use `renderToStaticMarkup` with mocked native primitives (no renderer on mobile, T-0112 pattern); interactions (taps) are not covered, only presence/absence of controls and labels.
+- Security checklist: no secrets logged (bearer only in the header, as elsewhere); no new routes; 403/404 writes map to one neutral line; client sends full desired sets, server diffs atomically (T-0116).
+- NOT live-checked (no simulator per task rules): needs a human look at the Members/Roles sheet, the topic access picker + approver rows, the delete confirm, and a mock-mode walkthrough (create/rename/delete/assign, private flip, non-admin view).
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
 
 ---
 

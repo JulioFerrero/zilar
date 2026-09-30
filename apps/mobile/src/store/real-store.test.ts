@@ -520,7 +520,7 @@ describe('createRealChatStore', () => {
       id: 'g1',
       title: 'Team',
       createdBy: 'u-me',
-      members: [{ userId: 'u-luis', name: 'Luis', role: 'member' as const }],
+      members: [{ userId: 'u-luis', name: 'Luis', role: 'member' as const, roles: [] }],
       ais: [],
     }));
     const { store, xmpp } = await setup({ getGroup });

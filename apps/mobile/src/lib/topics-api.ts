@@ -35,10 +35,28 @@ export interface Topic {
   archived: boolean;
   memberCount: number;
   ais: TopicAi[];
+  // T-0116: roles with access and the approver role. Absent on payloads from
+  // an older server (treated as none); never stale, the store replaces them
+  // on every topic refresh (going public clears them server-side too).
+  roles: TopicRole[];
+  approverRole: ApproverRole | null;
 }
 
 export interface TopicMember {
   userId: string;
+  name: string;
+}
+
+/** A custom group role attached to a topic, with its holder count (T-0116). */
+export interface TopicRole {
+  id: string;
+  name: string;
+  memberCount: number;
+}
+
+/** The role whose holders may decide approval cards in this topic (T-0116). */
+export interface ApproverRole {
+  id: string;
   name: string;
 }
 
@@ -67,6 +85,12 @@ export interface PatchTopicInput {
   confirmExposeHistory?: boolean;
 }
 
+/** Replaces a private topic's roles and picks its approver role (T-0116). */
+export interface SetTopicRolesInput {
+  roleIds: string[];
+  approverRoleId: string | null;
+}
+
 export interface TopicsApi {
   createTopic(groupId: string, input: CreateTopicInput): Promise<Topic>;
   getTopic(id: string): Promise<Topic>;
@@ -78,6 +102,7 @@ export interface TopicsApi {
   listTopicAis(id: string): Promise<TopicAi[]>;
   addTopicAi(id: string, aiId: string): Promise<Topic>;
   removeTopicAi(id: string, aiId: string): Promise<Topic>;
+  setTopicRoles(id: string, input: SetTopicRolesInput): Promise<Topic>;
   setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<boolean>;
 }
 
@@ -162,6 +187,24 @@ function parseTopicAi(value: unknown): TopicAi | null {
   return { id, name };
 }
 
+function parseTopicRole(value: unknown): TopicRole | null {
+  if (!isRecord(value)) return null;
+  const id = value['id'];
+  const name = value['name'];
+  const memberCount = value['memberCount'];
+  if (!isString(id) || !isString(name) || typeof memberCount !== 'number') return null;
+  return { id, name, memberCount };
+}
+
+function parseApproverRole(value: unknown): ApproverRole | null | undefined {
+  if (value === null) return null;
+  if (!isRecord(value)) return undefined;
+  const id = value['id'];
+  const name = value['name'];
+  if (!isString(id) || !isString(name)) return undefined;
+  return { id, name };
+}
+
 /** A topic row the viewer may see: malformed rows return null and are dropped. */
 export function parseTopic(value: unknown): Topic | null {
   if (!isRecord(value)) return null;
@@ -199,6 +242,20 @@ export function parseTopic(value: unknown): Topic | null {
     if (ai === null) return null;
     parsedAis.push(ai);
   }
+  // T-0116: roles with access and the approver role. Absent on payloads from
+  // an older server (treated as none); a malformed entry drops the whole row.
+  const roles: TopicRole[] = [];
+  const rawRoles = value['roles'];
+  if (rawRoles !== undefined) {
+    if (!Array.isArray(rawRoles)) return null;
+    for (const entry of rawRoles) {
+      const role = parseTopicRole(entry);
+      if (role === null) return null;
+      roles.push(role);
+    }
+  }
+  const approverRole = parseApproverRole(value['approverRole'] ?? null);
+  if (approverRole === undefined) return null;
   return {
     id,
     groupId,
@@ -215,6 +272,8 @@ export function parseTopic(value: unknown): Topic | null {
     archived,
     memberCount,
     ais: parsedAis,
+    roles,
+    approverRole,
   };
 }
 
@@ -302,7 +361,12 @@ export function createTopicsApi(
   };
 
   const json = (
-    input: CreateTopicInput | PatchTopicInput | { userId: string } | { aiId: string },
+    input:
+      | CreateTopicInput
+      | PatchTopicInput
+      | SetTopicRolesInput
+      | { userId: string }
+      | { aiId: string },
   ): RequestInit => ({
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -404,6 +468,14 @@ export function createTopicsApi(
       const body = await withToken(
         `/api/topics/${encodeURIComponent(id)}/ais/${encodeURIComponent(aiId)}`,
         { method: 'DELETE' },
+        parseTopic,
+      );
+      return body as Topic;
+    },
+    async setTopicRoles(id, input) {
+      const body = await withToken(
+        `/api/topics/${encodeURIComponent(id)}/roles`,
+        { ...json(input), method: 'PUT' },
         parseTopic,
       );
       return body as Topic;

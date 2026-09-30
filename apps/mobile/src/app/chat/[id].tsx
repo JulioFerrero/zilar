@@ -13,6 +13,7 @@ import { TaskStrip } from '@/components/chat/task-strip';
 import { TopicInfoSheet } from '@/components/chat/topic-sheets';
 import { Text } from '@/components/ui/text';
 import { replyRef } from '@/lib/format';
+import { attachedRoleIds, describeRolesError, mayManageRoles } from '@/lib/roles';
 import { httpsTopicUrl, mayArchiveTopic } from '@/lib/topics';
 import type { TopicStatus } from '@/lib/topics-api';
 import type { ReplyRef, UiMessage } from '@/lib/types';
@@ -48,10 +49,15 @@ function Chat() {
   const removeTopicMember = useChatStore((state) => state.removeTopicMember);
   const listTopicMembers = useChatStore((state) => state.listTopicMembers);
   const listTopicAis = useChatStore((state) => state.listTopicAis);
+  const setTopicRoles = useChatStore((state) => state.setTopicRoles);
+  const topicRoles = useChatStore((state) => state.topicRoles(chatId));
+  const refreshTopicRoles = useChatStore((state) => state.refreshTopicRoles);
   const chatGroupId = useChatStore(
     (state) => state.chats.find((item) => item.id === chatId)?.groupId,
   );
   const groupDetail = useChatStore((state) => state.groupDetail(chatGroupId ?? ''));
+  const groupRoles = useChatStore((state) => state.groupRoles(chatGroupId ?? ''));
+  const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
   const me = useChatStore((state) => state.me);
   const topicNotice = useChatStore((state) => state.topicNotice);
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
@@ -66,6 +72,7 @@ function Chat() {
   const [infoAis, setInfoAis] = useState<{ id: string; name: string }[]>([]);
   const [infoBusy, setInfoBusy] = useState(false);
   const [infoError, setInfoError] = useState('');
+  const [infoRolesError, setInfoRolesError] = useState('');
 
   useEffect(() => {
     if (chatId) {
@@ -163,6 +170,7 @@ function Chat() {
 
   const openInfo = () => {
     setInfoError('');
+    setInfoRolesError('');
     setInfoOpen(true);
     void listTopicMembers(chat.id)
       .then(setInfoMembers)
@@ -170,6 +178,29 @@ function Chat() {
     void listTopicAis(chat.id)
       .then(setInfoAis)
       .catch(() => setInfoAis([]));
+    // The access picker reads the attached roles fresh (a 403/404 reads as
+    // the neutral denied line, never "not found").
+    void refreshTopicRoles(chat.id).catch(() =>
+      setInfoRolesError('Could not load the roles. Try again.'),
+    );
+    if (chatGroupId !== undefined) {
+      void refreshGroupRoles(chatGroupId).catch(() => {});
+    }
+  };
+
+  const saveTopicRoles = (roleIds: string[], approverRoleId: string | null): void => {
+    setInfoRolesError('');
+    void setTopicRoles(chat.id, { roleIds, approverRoleId }).catch((error: unknown) =>
+      setInfoRolesError(describeRolesError(error)),
+    );
+  };
+
+  const toggleTopicRole = (roleId: string): void => {
+    const attached = topicRoles?.roles ?? [];
+    const next = attached.some((role) => role.id === roleId)
+      ? attached.filter((role) => role.id !== roleId).map((role) => role.id)
+      : [...attached.map((role) => role.id), roleId];
+    saveTopicRoles(next, topicRoles?.approverRole?.id ?? null);
   };
 
   if (!isTopic) {
@@ -350,6 +381,23 @@ function Chat() {
           if (!infoBusy) {
             setInfoOpen(false);
           }
+        }}
+        roles={topicRoles?.roles ?? []}
+        rolesError={infoRolesError}
+        approverRole={topicRoles?.approverRole ?? null}
+        groupRoles={groupRoles ?? []}
+        canManageRoles={mayManageRoles(
+          detail?.members.find((member) => member.userId === myUserId)?.role,
+        )}
+        onToggleTopicRole={toggleTopicRole}
+        onPickApprover={(roleId) =>
+          saveTopicRoles(attachedRoleIds(topicRoles?.roles ?? []), roleId)
+        }
+        onRetryRoles={() => {
+          setInfoRolesError('');
+          void refreshTopicRoles(chat.id).catch(() =>
+            setInfoRolesError('Could not load the roles. Try again.'),
+          );
         }}
       />
     </View>

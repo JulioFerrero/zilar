@@ -37,6 +37,9 @@ export interface GroupMember {
   userId: string;
   name: string;
   role: GroupRole;
+  // T-0116: the custom group roles this member holds, shown as chips. Absent
+  // on payloads from an older server (treated as none).
+  roles: { id: string; name: string }[];
 }
 
 /** The group detail the new-topic sheet reads (people + roles + AIs). */
@@ -167,7 +170,21 @@ function parseGroupDetail(value: unknown): GroupDetail | null {
     const name = member['name'];
     const role = member['role'];
     if (!isString(userId) || !isString(name) || !isGroupRole(role)) return null;
-    parsed.push({ userId, name, role });
+    // T-0116: custom role chips. Absent on older servers (treated as none);
+    // a malformed entry rejects the detail rather than rendering half of it.
+    const roles: { id: string; name: string }[] = [];
+    const rawRoles = member['roles'];
+    if (rawRoles !== undefined) {
+      if (!Array.isArray(rawRoles)) return null;
+      for (const entry of rawRoles) {
+        if (!isRecord(entry)) return null;
+        const id = entry['id'];
+        const roleName = entry['name'];
+        if (!isString(id) || !isString(roleName)) return null;
+        roles.push({ id, name: roleName });
+      }
+    }
+    parsed.push({ userId, name, role, roles });
   }
   // T-0108: the plain-members-may-create switch. Optional so older servers
   // still parse (treated as off).

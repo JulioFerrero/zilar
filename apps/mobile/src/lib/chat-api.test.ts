@@ -85,6 +85,52 @@ describe('createChatApi', () => {
     });
   });
 
+  it('parses member roles for the chips, absent on older servers', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        id: 'g1',
+        title: 'Team',
+        createdBy: 'u-me',
+        members: [
+          {
+            userId: 'u-ana',
+            name: 'Ana',
+            role: 'admin',
+            roles: [{ id: 'role-designers', name: 'Designers' }],
+          },
+          { userId: 'u-luis', name: 'Luis', role: 'member' },
+        ],
+      }),
+    );
+    const api = createChatApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.getGroup('g1')).resolves.toMatchObject({
+      members: [
+        {
+          userId: 'u-ana',
+          name: 'Ana',
+          role: 'admin',
+          roles: [{ id: 'role-designers', name: 'Designers' }],
+        },
+        { userId: 'u-luis', name: 'Luis', role: 'member', roles: [] },
+      ],
+    });
+  });
+
+  it('rejects a group detail with malformed member roles', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        id: 'g1',
+        title: 'Team',
+        createdBy: 'u-me',
+        members: [{ userId: 'u-ana', name: 'Ana', role: 'admin', roles: [{ id: 'r1' }] }],
+      }),
+    );
+    const api = createChatApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.getGroup('g1')).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
   it('throws a typed error on a failed request', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({ error: { code: 'unauthorized', message: 'No session' } }, 401),
