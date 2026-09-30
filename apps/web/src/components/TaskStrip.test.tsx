@@ -56,6 +56,76 @@ describe('Topic header and task strip (T-0111)', () => {
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
   });
 
+  it('compares the AI owner by id, not by display name', async () => {
+    // Two AIs share the name "Helper": only the owning one reads checked,
+    // and choosing one sends the server AI id (`helper-2`), never the
+    // mention JID (`ai-helper-2@…`, which the server would 400).
+    // The seed wires the UI topic owner to the second Helper directly, so
+    // the row needs no store update after mount.
+    const { store } = renderApp('/c/c-devteam-ui', {
+      chats: [
+        {
+          id: 'c-devteam-ui',
+          title: 'New pricing page',
+          kind: 'group',
+          isAI: false,
+          space: 'work',
+          unread: 0,
+          muted: false,
+          groupId: 'g-devteam',
+          groupTitle: 'Dev team',
+          topic: {
+            id: 't-devteam-ui',
+            glyph: 'U',
+            kind: 'ui',
+            status: 'open',
+            visibility: 'public',
+            isGeneral: false,
+            archived: false,
+            owner: { kind: 'ai', id: 'helper-2', name: 'Helper' },
+            linkUrl: null,
+            linkLabel: null,
+          },
+        },
+      ],
+      messagesByChat: {},
+      groupInfos: {
+        'c-devteam-ui': {
+          id: 'g-devteam',
+          title: 'Dev team',
+          createdBy: 'u-you',
+          members: [{ userId: 'u-you', name: 'You', role: 'owner' }],
+          ais: [
+            { aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-you' },
+            { aiId: 'helper-1', jid: 'ai-helper-1@galena.test', name: 'Helper', ownerId: 'u-you' },
+            { aiId: 'helper-2', jid: 'ai-helper-2@galena.test', name: 'Helper', ownerId: 'u-you' },
+          ],
+        },
+      },
+    });
+    const strip = screen.getByLabelText('Topic details');
+    fireEvent.click(within(strip).getByLabelText('Owner: Helper. Change owner'));
+    const picker = screen.getByRole('menu', { name: 'Change owner' });
+    const options = within(picker).getAllByRole('menuitemradio', { name: 'Helper (AI)' });
+    expect(options).toHaveLength(2);
+    expect(options[0]?.getAttribute('aria-checked')).toBe('false');
+    expect(options[1]?.getAttribute('aria-checked')).toBe('true');
+    // Choosing the first (non-owning) Helper PATCHes its server id. The
+    // mock PATCH echoes the saved row, so the store + UI follow to it —
+    // which also proves the request carried `helper-1`, not a JID.
+    const patchTopic = vi.spyOn(store.getState(), 'patchTopic');
+    fireEvent.click(options[0]!);
+    await waitFor(() => {
+      expect(patchTopic).toHaveBeenCalledWith(
+        'c-devteam-ui',
+        expect.objectContaining({ owner: { kind: 'ai', id: 'helper-1' } }),
+      );
+    });
+    expect(
+      within(screen.getByLabelText('Topic details')).getByLabelText('Owner: Helper. Change owner'),
+    ).toBeTruthy();
+  });
+
   it('rejects a non-https link in the form with an inline error', () => {
     renderApp('/c/c-devteam-ideas');
     const strip = screen.getByLabelText('Topic details');

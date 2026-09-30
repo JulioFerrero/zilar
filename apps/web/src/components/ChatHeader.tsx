@@ -105,8 +105,24 @@ export function ChatHeader({
       await storeApi.getState().patchTopic(chat.id, { archived: true });
     } catch {
       setActionError('Could not archive the topic.');
-    } finally {
       setArchiving(false);
+      return;
+    }
+    setArchiving(false);
+    // The archived row is gone for everyone: leave the dead topic exactly
+    // like the topic panel does (to General when it exists, else `/`).
+    const groupId = chat.groupId;
+    const generalId =
+      groupId === undefined
+        ? undefined
+        : (storeApi
+            .getState()
+            .chats.find((entry) => entry.groupId === groupId && entry.topic?.isGeneral === true)
+            ?.id ?? (await storeApi.getState().refreshGeneralTopic(groupId)));
+    if (generalId !== undefined) {
+      navigate(`/c/${encodeURIComponent(generalId)}`);
+    } else {
+      navigate('/');
     }
   };
 

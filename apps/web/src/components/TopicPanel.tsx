@@ -14,11 +14,11 @@ import { cn } from '@/lib/utils';
 import {
   addTopicAi,
   addTopicMember,
+  ApiError,
   listTopicAis,
   listTopicMembers,
   listTopicTools,
   removeTopicAi,
-  removeTopicMember,
   type GroupDetail,
   type PublicAi,
   type TopicAi,
@@ -254,14 +254,26 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
 
   const removeMember = (userId: string): Promise<void> =>
     run(`remove:${userId}`, async () => {
-      await removeTopicMember(topic.id, userId);
+      // ONE call: the store issues the DELETE and folds the row back in
+      // (real) or drops it when archived (both). A 404 alone never means
+      // "the topic is gone" — the server also 404s for a user who is not a
+      // member — so only navigate away when the refreshed list no longer
+      // has the topic row. Any other failure keeps the user here with the
+      // inline error.
       try {
         await storeApi.getState().removeTopicMember(chat.id, userId);
-      } catch {
-        // Removing the last member archives (server 404): navigate away.
-        navigate('/');
-        onClose();
-        return;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          const gone = await storeApi.getState().refreshTopicRow(chat.id, topic.id);
+          if (gone) {
+            navigate('/');
+            onClose();
+            return;
+          }
+          await reloadMembers();
+          return;
+        }
+        throw error;
       }
       await reloadMembers();
     });

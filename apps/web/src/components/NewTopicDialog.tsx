@@ -47,8 +47,10 @@ export function NewTopicDialog({
   const [error, setError] = useState('');
 
   const chat = store.chats.find((entry) => entry.id === groupId);
-  const detail: GroupDetail | undefined =
-    store.groupInfo(groupId) ?? store.groupInfo(chat?.topic !== undefined ? groupId : groupId);
+  // The group detail is keyed by the chat that loaded it (a topic row id or
+  // the legacy group id); the loader runs for the id the dialog was opened
+  // with, so that exact key is the one to read.
+  const detail: GroupDetail | undefined = store.groupInfo(groupId);
   const me = store.currentUserId;
 
   useEffect(() => {

@@ -56,6 +56,7 @@ export function TopicRow({
     <div className="group relative">
       <Link
         to={`/c/${encodeURIComponent(chat.id)}`}
+        data-topic-row=""
         aria-current={selected ? 'page' : undefined}
         aria-label={`${groupTitle} ${chat.title}${isPrivate ? ', private topic' : ''}`}
         className={cn(

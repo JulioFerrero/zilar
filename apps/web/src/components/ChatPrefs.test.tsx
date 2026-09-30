@@ -129,6 +129,49 @@ function stubPrefApi() {
   return { prefs, fetchMock };
 }
 
+// The kebab "Archive topic for everyone" patches the topic through the api
+// client (fetch), so those tests answer the PATCH with one topic row. An
+// archived row (`archived: true`) leaves the list at once; otherwise the
+// row stays.
+function stubTopicApi({ archived }: { archived: boolean }) {
+  const { fetchMock } = stubPrefApi();
+  const baseImpl = fetchMock.getMockImplementation();
+  if (baseImpl === undefined) {
+    throw new Error('expected the pref stub implementation');
+  }
+  fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+    const path = url.replace('/api', '');
+    if (path === '/topics/t-t-bug' && init?.method === 'PATCH') {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 't-t-bug',
+            groupId: 'g1',
+            name: 'Bugs',
+            glyph: 'B',
+            chatJid: 't-bug',
+            visibility: 'public',
+            kind: 'chat',
+            status: 'open',
+            owner: null,
+            linkUrl: null,
+            linkLabel: null,
+            isGeneral: false,
+            archived,
+            memberCount: 1,
+            ais: [],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+      );
+    }
+    return baseImpl(url, init);
+  });
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -262,7 +305,7 @@ describe('chat preferences UI', () => {
   });
 
   it('mutes and archives a topic from its row menu', async () => {
-    stubPrefApi();
+    stubTopicApi({ archived: false });
     const { store } = renderApp('/', {
       chats: [general('g', 'g1'), topic('t-bug', 'Bugs', 'g1')],
       messagesByChat: {},
@@ -284,7 +327,7 @@ describe('chat preferences UI', () => {
   });
 
   it('combines per-user items with the manager entry in the topic header menu', async () => {
-    stubPrefApi();
+    stubTopicApi({ archived: false });
     const { store } = renderApp('/c/t-bug', {
       chats: [general('g', 'g1'), topic('t-bug', 'Bugs', 'g1')],
       messagesByChat: {},
