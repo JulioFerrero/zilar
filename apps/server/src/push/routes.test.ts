@@ -267,6 +267,68 @@ describe('push routes', () => {
     expect(unknown.status).toBe(404);
   });
 
+  it('deletes the row before answering 410 for an expired test endpoint (F4)', async () => {
+    const goneError = Object.assign(new Error('gone'), { statusCode: 410 });
+    const routes = createPushRoutes({
+      auth: context.auth,
+      db: context.db,
+      config: context.config,
+      push: pushConfig(),
+      adminClient: context.adminClient,
+      logger: context.logger,
+      sender: {
+        send: async () => {
+          throw goneError;
+        },
+      },
+    });
+    const app = new Hono();
+    app.route('/api', routes);
+    app.onError((error, c) => {
+      if (error instanceof HttpError) {
+        return c.json({ error: { code: error.code, message: error.message } }, error.status);
+      }
+      throw error;
+    });
+    const full = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+    });
+    const ana = await bootstrapUser(context, full, 'ana-gone@example.com');
+    const bob = await contactOf(context, full, ana.id, 'bob-gone@example.com');
+    const headers = { cookie: ana.cookie, 'content-type': 'application/json' };
+    const bobHeaders = { cookie: bob.cookie, 'content-type': 'application/json' };
+
+    const registered = await app.request(`${TEST_BASE_URL}/api/push/subscriptions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(deviceBody('https://push.example.com/gone-1')),
+    });
+    expect(registered.status).toBe(200);
+    const { id } = (await registered.json()) as { id: string };
+
+    // Bob cannot burn Ana's device with a forged id: his 404 leaves it intact.
+    const forged = await app.request(`${TEST_BASE_URL}/api/push/test`, {
+      method: 'POST',
+      headers: bobHeaders,
+      body: JSON.stringify({ subscriptionId: id }),
+    });
+    expect(forged.status).toBe(404);
+
+    const test = await app.request(`${TEST_BASE_URL}/api/push/test`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ subscriptionId: id }),
+    });
+    expect(test.status).toBe(410);
+    expect(((await test.json()) as { error: { code: string } }).error.code).toBe('device_gone');
+    const { devicesForUser } = await import('./store');
+    expect(await devicesForUser(context.db, ana.id)).toEqual([]);
+  });
+
   it('stamps failed_at when the test send fails without expiring', async () => {
     const routes = createPushRoutes({
       auth: context.auth,

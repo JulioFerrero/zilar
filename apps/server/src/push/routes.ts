@@ -280,6 +280,9 @@ export function createPushRoutes(deps: PushRoutesDependencies): Hono {
       );
     } catch (error) {
       if (isExpiredSubscription(error)) {
+        // Spec part 6: expired subscriptions are deleted. Scoped by id AND
+        // userId like every other device delete, before answering 410.
+        await removeDevice(deps.db, user.id, target.id);
         throw new HttpError(410, 'device_gone', 'The push device is no longer usable');
       }
       // Like the component path: a failed send stamps `failed_at`, so the

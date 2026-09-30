@@ -136,6 +136,15 @@ pnpm build
 - Push suite with the real migration in place (`src/push/`: 8 files pass, 56 tests pass, 1 skipped live gate). Neighbours: topics + groups + authz-sweep + app + chat-prefs — 6 files, 98 tests pass. `format:check`, `lint`, `typecheck` (10/10) all pass.
 - Note: `push/test-tables.ts` (`CREATE TABLE IF NOT EXISTS`) is now redundant with the migration but harmless — kept so the push tests stay self-sufficient.
 
+### Round 5 — lead review round 3 (F1, F3–F6; F2 fixed by lead, F7 skipped; no new migration)
+- **F1:** channel-room `createRoom` expectation in `admin-client.test.ts` gains the `allow_subscription` default (same one-line ripple as the two older expectations; rebase collision with T-0124).
+- **F3:** `markNotified` moved to after a successful send in `push/service.ts` (per-node serialization already prevents double-buzz; `gone` needs no marking since the row is deleted). New test: failed send → retried publish still notifies with the same message.
+- **F4:** `POST /push/test` deletes the device row (scoped by id AND userId) before throwing 410 `device_gone` for an expired endpoint. New test pins it, including that another user's forged id 404s and leaves the row intact.
+- **F5:** live-gate stage B is now an honest skip in both branches — reachable or not, it calls `ctx.skip("stage B needs a connected component and runs in the lead's live check")`; the 20 s sleep and `expect(true)` placeholder are gone, as are the "would run here" log and the now-unused `sleep`/`WAIT_TIMEOUT_MS`/`expect` imports. Report no longer claims stage B is "ready to run": only stage A (MUC/Sub setup path) is proven; IQ observation is the lead's live check.
+- **F6:** `NotificationsPage` calls `unsubscribeBrowser` in the enable-IQ failure rollback (server row + browser subscription both removed). New test forces `setPushPair` to reject and asserts the `PushManager` subscription is gone, no device id is stored, and the offline-connection error shows.
+- Infra untouched (lead owns F2's compose/yml changes — built on HEAD, pulled nothing).
+- Checks (scoped, `--maxWorkers=2`): `format:check` pass (only untracked PREREVIEW.md warns), `lint` pass, server + web `typecheck` pass; `service` + `routes` + `admin-client` tests 48 pass, live gate reports 1 skipped, `NotificationsPage` 5 pass.
+
 ---
 
 ## Review (written by Claude)

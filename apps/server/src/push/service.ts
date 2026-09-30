@@ -154,14 +154,20 @@ async function resolveAndSend(
   if (payload === undefined) {
     return { kind: 'dropped', userId: device.userId, deviceId: device.id, reason: 'muted' };
   }
-  markNotified(deps, device.userId, scan.notify);
   const outcome = await sendPayload(deps, device, subscription, payload);
   // `last_used_at` is the last successful send; a failed send only stamps
   // `failed_at` (inside `sendPayload`), so the 90-day inactivity rule keeps
   // measuring receipt, not attempts.
   if (outcome === 'failed') {
+    // Not marked: a retried publish IQ for the same message must still
+    // notify (F3). Only a successful send (or an expired device, whose row
+    // is gone) suppresses later retries.
     return { kind: 'dropped', userId: device.userId, deviceId: device.id, reason: 'send-failed' };
   }
+  // Marked only after a successful send. Per-node serialization keeps
+  // concurrent IQs ordered, so a retry cannot double-buzz: the retry finds
+  // the origin id already seen and drops as `duplicate`.
+  markNotified(deps, device.userId, scan.notify);
   return { kind: 'sent', userId: device.userId, deviceId: device.id };
 }
 

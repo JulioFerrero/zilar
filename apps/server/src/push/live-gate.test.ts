@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { setTimeout as sleep } from 'node:timers/promises';
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'vitest';
 import { createEjabberdAdminClient } from '../xmpp/admin-client';
 import { loadXmppConfig, type XmppConfig } from '../xmpp/config';
 
@@ -19,7 +18,6 @@ import { loadXmppConfig, type XmppConfig } from '../xmpp/config';
 // from `infra/ejabberd/ejabberd.yml` plus a restart; without a listener on
 // 127.0.0.1:5347 it reports SKIP with the reason instead of failing.
 const gateEnabled = process.env.GALENA_PUSH_GATE === '1';
-const WAIT_TIMEOUT_MS = 20_000;
 
 function loadConfig(): XmppConfig {
   const envFile = fileURLToPath(new URL('../../../../infra/.env', import.meta.url));
@@ -74,18 +72,14 @@ describe.skipIf(!gateEnabled)('push live gate (T-0119)', () => {
       await admin.unsubscribeRoom(roomId, bobJid);
       console.log('PASS  unsubscribe_room accepted');
 
-      // Stage B: the IQ itself. Needs the component listener; without it the
-      // gate stays open and the run reports a real skip, not a pass.
+      // Stage B: observing the XEP-0357 IQ needs a connected component and
+      // runs in the lead's live check — not here. Skip honestly either way:
+      // without a listener the setup cannot even start; with one, this
+      // script still performs no observation, so claiming a pass would lie.
       if (!(await canReachComponentPort())) {
-        console.log(
-          'stage B needs the listener: add the ejabberd_service block from ' +
-            'infra/ejabberd/ejabberd.yml and restart ejabberd, then re-run the gate',
-        );
-        skip('no component listener on 127.0.0.1:5347 — stage B (IQ observation) unproven');
+        skip('stage B needs a connected component and runs in the lead’s live check');
       }
-      console.log('PASS  component listener reachable; stage B would run here');
-      await sleep(WAIT_TIMEOUT_MS);
-      expect(true).toBe(true);
+      skip('stage B needs a connected component and runs in the lead’s live check');
     } finally {
       await admin.destroyRoom(roomId).catch(() => undefined);
       await admin.unregisterUser(aliceLocal).catch(() => undefined);

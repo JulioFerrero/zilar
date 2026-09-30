@@ -220,8 +220,10 @@ export function NotificationsPage() {
           .setPushPair({ pushJid: registered.jid, node: registered.node, enable: true });
       } catch (pairError) {
         // The enable IQ needs a live XMPP session: without it the device
-        // would never ring, so roll the row back instead of orphaning it.
+        // would never ring, so roll everything back instead of orphaning
+        // it — the server row and the browser subscription (F6).
         await removePushDevice(registered.id).catch(() => undefined);
+        await unsubscribeBrowser(browser).catch(() => undefined);
         throw pairError;
       }
       const stored = { id: registered.id, node: registered.node };

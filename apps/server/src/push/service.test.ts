@@ -322,6 +322,32 @@ describe('push send-time service', () => {
     expect(context.logOutput()).not.toContain('push.example.com');
   });
 
+  it('retries a failed send on the next publish IQ (F3)', async () => {
+    // A transient relay failure must not suppress the message: the origin
+    // id is marked only after a successful send, so the retried publish
+    // notifies instead of dropping as `duplicate`.
+    const app = testApp(context);
+    const ana = await bootstrapUser(context, app, 'ana@example.com');
+    const bob = await contactOf(context, app, ana.id, 'bob@example.com');
+    await registerDevice(ana.id, 'p-ana-retry');
+    const bobJid = `${localpartFor(bob.id)}@${TEST_XMPP_DOMAIN}`;
+    archiveRows = [dmRow(localpartFor(ana.id), bobJid, 'retry me', 'dm-retry')];
+
+    const shared = deps();
+    sendBehavior = 'error';
+    expect(
+      await handleIncomingPush(shared, { node: 'p-ana-retry', from: TEST_XMPP_DOMAIN }),
+    ).toMatchObject({ kind: 'dropped', reason: 'send-failed' });
+    expect(sent).toHaveLength(0);
+
+    sendBehavior = 'ok';
+    expect(
+      await handleIncomingPush(shared, { node: 'p-ana-retry', from: TEST_XMPP_DOMAIN }),
+    ).toMatchObject({ kind: 'sent' });
+    expect(sent).toHaveLength(1);
+    expect(JSON.parse(sent[0]!.payload)).toMatchObject({ body: 'retry me' });
+  });
+
   it('answers unknown nodes without sending', async () => {
     const outcome = await handleIncomingPush(deps(), {
       node: 'p-nothing',

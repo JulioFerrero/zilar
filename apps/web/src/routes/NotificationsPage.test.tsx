@@ -12,7 +12,12 @@ function jsonResponse(status: number, body: unknown): Response {
 
 const pushConfig = { vapidPublicKey: 'dGVzdA', pushJid: 'push.galena.test' };
 
-function stubBrowserGlobals(): void {
+function stubBrowserGlobals(): {
+  manager: {
+    getSubscription: ReturnType<typeof vi.fn>;
+    subscribe: ReturnType<typeof vi.fn>;
+  };
+} {
   const subscriptions: Array<{ endpoint: string }> = [];
   const manager = {
     getSubscription: vi.fn(async () =>
@@ -61,6 +66,7 @@ function stubBrowserGlobals(): void {
       static requestPermission = vi.fn(async () => 'granted');
     },
   );
+  return { manager };
 }
 
 function stubFetch(initialDevices: unknown[] = [], showPreviews = true): ReturnType<typeof vi.fn> {
@@ -133,6 +139,32 @@ describe('NotificationsPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Enable on this device/ }));
     expect(await screen.findByText(/Push is on for this device/)).toBeTruthy();
+  });
+
+  it('unsubscribes the browser subscription when the enable IQ fails (F6)', async () => {
+    const { manager } = stubBrowserGlobals();
+    stubFetch();
+    const { store } = renderApp('/settings/notifications');
+    store.setState({
+      setPushPair: async () => {
+        throw new Error('the chat connection cannot toggle push');
+      },
+    });
+
+    expect(await screen.findByText('This device')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Enable on this device/ }));
+
+    // The enable fails: the browser subscription created mid-flow is
+    // removed again (no orphaned PushManager subscription), and the page
+    // reports the offline connection.
+    await vi.waitFor(() => {
+      expect(manager.subscribe).toHaveBeenCalledTimes(1);
+    });
+    await screen.findByText(/chat connection is offline/);
+    const registration = await window.navigator.serviceWorker.getRegistration();
+    const subscription = await registration?.pushManager.getSubscription();
+    expect(subscription).toBeNull();
+    expect(window.localStorage.getItem('galena:pushDevice')).toBeNull();
   });
 
   it('shows the server-off state when push is disabled server-side', async () => {
