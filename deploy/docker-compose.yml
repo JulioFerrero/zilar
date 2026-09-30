@@ -9,8 +9,14 @@
 # committed or baked into an image. Only `caddy` publishes ports (80/443 by
 # default, HTTP_PORT/HTTPS_PORT to override for a local trial). TLS
 # terminates at Caddy; every backend speaks plain HTTP on the internal
-# `galena` network.
+# `galena` network. `IMAGE_OWNER`/`IMAGE_TAG` pick the published server and
+# web images; postgres and ejabberd always build locally from deploy/ (no
+# registry login needed).
 #
+# Images for `postgres` and `ejabberd` are published by
+# .github/workflows/images.yml as ghcr.io/<owner>/galena-postgres and
+# galena-ejabberd; the plain stack builds them from deploy/postgres/Dockerfile
+# and deploy/ejabberd/Dockerfile, so a fresh clone needs no registry login.
 # Images for `server` and `web` are published by .github/workflows/images.yml
 # as ghcr.io/<owner>/galena-server and galena-web. Building them locally
 # from the repo root also works:
@@ -22,8 +28,13 @@ name: galena
 
 services:
   postgres:
-    # Same pgvector image as the dev stack, pinned on purpose.
-    image: pgvector/pgvector:0.8.6-pg18-trixie
+    # Config is baked into the galena-postgres image (built from
+    # deploy/postgres/Dockerfile, same pgvector 0.8.6-pg18-trixie pin as the
+    # dev stack), so a fresh clone builds locally with no registry login.
+    image: galena-postgres:local
+    build:
+      context: .
+      dockerfile: postgres/Dockerfile
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -35,7 +46,6 @@ services:
       GALENA_ARCHIVE_DB_PASSWORD: ${GALENA_ARCHIVE_DB_PASSWORD:?GALENA_ARCHIVE_DB_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql
-      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
       interval: 5s
@@ -46,16 +56,19 @@ services:
       - galena
 
   ejabberd:
-    # XMPP server, pinned to the 26.07 release like the dev stack.
-    image: ghcr.io/processone/ejabberd:26.07
+    # Config is baked into the galena-ejabberd image (built from
+    # deploy/ejabberd/Dockerfile, same ejabberd 26.07 release as the dev
+    # stack), so a fresh clone builds locally with no registry login.
+    image: galena-ejabberd:local
+    build:
+      context: .
+      dockerfile: ejabberd/Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-    # jwt-entrypoint.sh derives /opt/ejabberd/conf/jwt.jwk from
-    # GALENA_XMPP_JWT_SECRET, then runs the image's normal tini + ejabberdctl.
-    # command is repeated because overriding entrypoint drops the image CMD.
-    entrypoint: ['/bin/sh', '/galena/jwt-entrypoint.sh']
+    # command is repeated because the image ENTRYPOINT drops the base CMD
+    # (deploy/ejabberd/Dockerfile sets ENTRYPOINT + CMD identically).
     command: ['foreground']
     environment:
       EJABBERD_MACRO_HOST: ${GALENA_DOMAIN:?GALENA_DOMAIN is required}
@@ -66,8 +79,6 @@ services:
       GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required}
       EJABBERD_MACRO_UPLOAD_URL: https://${GALENA_DOMAIN:?GALENA_DOMAIN is required}/upload
     volumes:
-      - ./ejabberd/ejabberd.yml:/opt/ejabberd/conf/ejabberd.yml:ro
-      - ./ejabberd/jwt-entrypoint.sh:/galena/jwt-entrypoint.sh:ro
       - ejabberd-database:/opt/ejabberd/database
       - ejabberd-uploads:/opt/ejabberd/upload
     healthcheck:
