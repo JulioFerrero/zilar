@@ -5,8 +5,9 @@ import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, approvalRules, groupMembers } from '../db/schema';
+import { ais, approvalRules, groupMembers, topics } from '../db/schema';
 import { HttpError } from '../errors';
+import { canSeeTopic } from '../topics/access';
 import {
   ApprovalServiceError,
   type AlwaysEligiblePredicate,
@@ -15,7 +16,14 @@ import {
   listDecidableApprovals,
   toPublicApproval,
 } from './service';
-import { isGroupAdmin, listActiveRulesForAi, listActiveRulesForGroup, revokeRule } from './rules';
+import {
+  isGroupAdmin,
+  listActiveRulesForAi,
+  listActiveRulesForTopic,
+  revokeRule,
+  toPublicRule,
+  type PublicApprovalRule,
+} from './rules';
 
 // The minimum slice of pino the route needs to log a hook failure. The
 // server wires its own logger; tests can pass a captor.
@@ -75,10 +83,14 @@ export function createApprovalsRoutes({
     const { user } = await requireSession(auth, c.req.raw.headers);
     const approvals = await listDecidableApprovals(db, user.id, new Date(now()));
     const managedGroupIds = await managedGroupIdsForUser(db, user.id);
+    const topicNames = await visibleTopicNames(db, user.id, approvals);
     return c.json(
       approvals.map((row) =>
         decoratePublic(
-          row,
+          {
+            ...row,
+            topicName: row.topicId === null ? null : (topicNames.get(row.topicId) ?? null),
+          },
           alwaysEligibleFn,
           row.groupId === null || managedGroupIds.has(row.groupId),
         ),
@@ -94,7 +106,13 @@ export function createApprovalsRoutes({
     }
     const isManager =
       approval.groupId === null || (await isGroupAdmin(db, approval.groupId, user.id));
-    return c.json(decoratePublic(approval, alwaysEligibleFn, isManager));
+    return c.json(
+      decoratePublic(
+        { ...approval, topicName: await visibleTopicName(db, user.id, approval) },
+        alwaysEligibleFn,
+        isManager,
+      ),
+    );
   });
 
   routes.post('/approvals/:id/decision', async (c) => {
@@ -175,7 +193,14 @@ export function createApprovalsRoutes({
       }
       return c.json(
         decoratePublic(
-          toPublicApproval(updated, new Date(now())),
+          toPublicApproval(
+            updated,
+            new Date(now()),
+            false,
+            await visibleTopicName(db, user.id, {
+              topicId: updated.topicId,
+            }),
+          ),
           alwaysEligibleFn,
           updated.groupId === null || (await isGroupAdmin(db, updated.groupId, user.id)),
         ),
@@ -195,6 +220,9 @@ export function createApprovalsRoutes({
   });
 
   // T-0099: rule management routes. All three require a session.
+  // T-0110: rules are scoped to (AI, topic). The AI route returns rules of
+  // topics the AI owner can see; the group route returns rules of topics
+  // the viewer can see. Rows carry `topicId` and `topicName`.
   routes.get('/ais/:id/approval-rules', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
     const aiId = c.req.param('id');
@@ -209,7 +237,20 @@ export function createApprovalsRoutes({
       throw new HttpError(404, 'not_found', 'AI not found');
     }
     const rules = await listActiveRulesForAi(db, aiId);
-    return c.json(rules);
+    // Only rules of topics the owner can see: a rule in a private topic
+    // the owner was removed from stays hidden until they are added back.
+    const visible = [];
+    for (const rule of rules) {
+      if (rule.topicId === null) {
+        visible.push({ ...rule, topicName: null });
+        continue;
+      }
+      const [topic] = await db.select().from(topics).where(eq(topics.id, rule.topicId)).limit(1);
+      if (topic && (await canSeeTopic(db, topic, user.id))) {
+        visible.push({ ...rule, topicName: topic.name });
+      }
+    }
+    return c.json(visible);
   });
 
   routes.get('/groups/:id/approval-rules', async (c) => {
@@ -219,7 +260,22 @@ export function createApprovalsRoutes({
     if (!allowed) {
       throw new HttpError(404, 'not_found', 'Group not found');
     }
-    const rules = await listActiveRulesForGroup(db, groupId);
+    const topicRows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+    const rules: PublicApprovalRule[] = [];
+    for (const topic of topicRows) {
+      if (topic.archivedAt !== null) {
+        continue;
+      }
+      // A group admin who cannot see a private topic must not see its
+      // rules either: only topics the viewer can see contribute rows.
+      if (!(await canSeeTopic(db, topic, user.id))) {
+        continue;
+      }
+      const topicRules = await listActiveRulesForTopic(db, topic.id);
+      for (const rule of topicRules) {
+        rules.push({ ...toPublicRule(rule), topicName: topic.name });
+      }
+    }
     return c.json(rules);
   });
 
@@ -276,12 +332,19 @@ export function createApprovalsRoutes({
 
 // Looks up the AI ownership directly and adds the group-admin check via
 // the rules module. Kept in this file because it composes the two
-// checks the route needs in one place.
+// checks the route needs in one place. T-0110: both the AI owner and a
+// group admin may revoke, but only for topics they can see.
 async function canManageRuleFor(
   db: ServerDatabase,
   rule: typeof approvalRules.$inferSelect,
   userId: string,
 ): Promise<boolean> {
+  if (rule.topicId !== null) {
+    const [topic] = await db.select().from(topics).where(eq(topics.id, rule.topicId)).limit(1);
+    if (!topic || !(await canSeeTopic(db, topic, userId))) {
+      return false;
+    }
+  }
   const [aiRow] = await db
     .select({ owner: ais.owner })
     .from(ais)
@@ -309,6 +372,37 @@ function decoratePublic(
   isManager: boolean,
 ): ReturnType<typeof toPublicApproval> {
   return { ...row, alwaysEligible: isManager && alwaysEligible(row.action) };
+}
+
+// The topic names for rows the viewer can see, keyed by topic id. A row
+// whose topic the viewer cannot see gets no entry (callers map it to
+// `topicName: null`); that cannot happen for a returned approval or rule,
+// since visibility is already gated — the null is for the client shape.
+async function visibleTopicNames(
+  db: ServerDatabase,
+  userId: string,
+  rows: Array<{ topicId: string | null }>,
+): Promise<Map<string, string>> {
+  const ids = [...new Set(rows.map((row) => row.topicId).filter((id) => id !== null))];
+  const names = new Map<string, string>();
+  for (const id of ids) {
+    const [topic] = await db.select().from(topics).where(eq(topics.id, id)).limit(1);
+    if (topic && (await canSeeTopic(db, topic, userId))) {
+      names.set(id, topic.name);
+    }
+  }
+  return names;
+}
+
+async function visibleTopicName(
+  db: ServerDatabase,
+  userId: string,
+  row: { topicId: string | null },
+): Promise<string | null> {
+  if (row.topicId === null) {
+    return null;
+  }
+  return (await visibleTopicNames(db, userId, [row])).get(row.topicId) ?? null;
 }
 
 // The group ids where the user is an owner/admin. One query for the

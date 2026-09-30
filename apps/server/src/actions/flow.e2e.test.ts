@@ -23,6 +23,7 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
+import { topics, topicAis } from '../db/schema';
 import {
   type ActionAdapter,
   type ActionRegistry,
@@ -656,11 +657,27 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       { groupId, userId: admin.id, role: 'admin' },
     ]);
     await harness.context.db.insert(groupAis).values({ groupId, aiId, addedBy: admin.id });
+    // T-0110: group scope is always a topic; the old group scope lives on
+    // the General topic.
+    const generalTopicId = randomUUID();
+    await harness.context.db.insert(topics).values({
+      id: generalTopicId,
+      groupId,
+      name: 'General',
+      glyph: 'G',
+      roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
+      visibility: 'public',
+      kind: 'chat',
+      status: 'open',
+      isGeneral: true,
+      createdBy: admin.id,
+    });
 
     async function requestInGroup(value: string): Promise<string> {
       const outcome = await harness.gateway.request({
         aiId,
         groupId,
+        topicId: generalTopicId,
         action: 'flow.always',
         args: { value },
         requestedBy: 'ai-bot@galena.localhost',
@@ -719,6 +736,7 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     const auto = await harness.gateway.request({
       aiId,
       groupId,
+      topicId: generalTopicId,
       action: 'flow.always',
       args: { value: 'third' },
       requestedBy: 'ai-bot@galena.localhost',
@@ -726,5 +744,197 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     expect(auto).toEqual({ status: 'executed', summary: 'always-ran:third' });
     const approvalCountAfter = (await harness.context.db.select().from(approvals)).length;
     expect(approvalCountAfter).toBe(approvalCountBefore);
+  });
+
+  // 12) T-0110: a tier-2 request raised in a topic stores the topic on the
+  // approval and the pending action, and the card + outcome notice carry
+  // the topic id to the announcer (which posts them into the topic room).
+  // A standing rule created in topic A fires in A only, never in topic B.
+  it('a topic request stores topic_id and announces the card and outcome into the topic', async () => {
+    const alwaysAdapter: ActionAdapter<unknown> = {
+      name: 'flow.always',
+      description: 'Tier-2 adapter that opts into always-allow.',
+      tier: 2,
+      argsSchema: z.object({ value: z.string().min(1).max(64) }),
+      describe: (args) => ({ summary: `always ${(args as { value: string }).value}` }),
+      allowAlways: true,
+      execute: async (_ctx, args) => {
+        return { summary: `always-ran:${(args as { value: string }).value}` };
+      },
+    };
+    const adapters: ActionRegistry = buildRegistry([
+      harness.tier0.adapter,
+      harness.tier2.adapter,
+      alwaysAdapter,
+    ]);
+    const alwaysEligible = buildAlwaysEligible(adapters);
+    const gateway = createActionGateway({
+      db: harness.context.db,
+      adapters,
+      audit: harness.audit,
+      logger: {
+        warn: () => undefined,
+        error: () => undefined,
+      },
+      now: () => new Date(),
+      announce: {
+        approvalRequested: async (input) => {
+          harness.announcerCalls.approvalRequested.push(input);
+        },
+        outcome: async (input) => {
+          harness.announcerCalls.outcome.push(input);
+        },
+      },
+    });
+    const app = createApp({
+      db: harness.context.db,
+      logger: harness.context.logger,
+      config: harness.context.config,
+      auth: harness.context.auth,
+      adminClient: harness.context.adminClient,
+      audit: harness.audit,
+      actionGateway: gateway,
+      alwaysEligible,
+    });
+    harness.app = app;
+    harness.gateway = gateway;
+
+    const owner = await bootstrapUser(
+      harness.context,
+      harness.app,
+      `owner-topic-${testCounter}@example.com`,
+    );
+    const admin = await bootstrapUser(
+      harness.context,
+      harness.app,
+      `admin-topic-${testCounter}@example.com`,
+    );
+    const { aiId } = await seedAi(harness.context, owner.id);
+    const groupId = randomUUID();
+    await harness.context.db.insert(groups).values({
+      id: groupId,
+      roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
+      title: 'Topic group',
+      createdBy: admin.id,
+    });
+    await harness.context.db.insert(groupMembers).values([
+      { groupId, userId: owner.id, role: 'member' },
+      { groupId, userId: admin.id, role: 'admin' },
+    ]);
+    await harness.context.db.insert(groupAis).values({ groupId, aiId, addedBy: admin.id });
+    const topicA = randomUUID();
+    const topicB = randomUUID();
+    await harness.context.db.insert(topics).values([
+      {
+        id: topicA,
+        groupId,
+        name: 'General',
+        glyph: 'G',
+        roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
+        visibility: 'public',
+        kind: 'chat',
+        status: 'open',
+        isGeneral: true,
+        createdBy: admin.id,
+      },
+      {
+        id: topicB,
+        groupId,
+        name: 'Build',
+        glyph: 'B',
+        roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
+        visibility: 'public',
+        kind: 'chat',
+        status: 'open',
+        isGeneral: false,
+        createdBy: admin.id,
+      },
+    ]);
+    // The AI works in both topics (General via `group_ais`, Build via a
+    // `topic_ais` row); the rule created below still fires in A only.
+    await harness.context.db.insert(topicAis).values({ topicId: topicB, aiId, addedBy: admin.id });
+
+    // The request in topic A is pending; the card carries topic A.
+    // (`flow.always` is the always-eligible action, so the member-owner
+    // 403 check below exercises the admin gate, not eligibility.)
+    const outcome = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: topicA,
+      action: 'flow.always',
+      args: { value: 'spicy' },
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    if (outcome.status !== 'pending_approval') {
+      throw new Error(`expected pending_approval, got ${outcome.status}`);
+    }
+    expect(harness.announcerCalls.approvalRequested).toEqual([
+      { aiId, groupId, topicId: topicA, approvalId: outcome.approvalId },
+    ]);
+    const [approval] = await harness.context.db
+      .select()
+      .from(approvals)
+      .where(eq(approvals.id, outcome.approvalId));
+    expect(approval?.topicId).toBe(topicA);
+
+    // The plain-member AI owner still cannot always-allow in the topic
+    // (T-0101 holds per topic): 403, then approve_once runs and the
+    // outcome notice carries the topic.
+    const refused = await decide(harness, owner.cookie, outcome.approvalId, 'approve_always');
+    expect(refused.status).toBe(403);
+    const approved = await decide(harness, owner.cookie, outcome.approvalId, 'approve_once');
+    expect(approved.status).toBe(200);
+    await waitForPendingStatus(harness, outcome.approvalId, 'executed');
+    expect(harness.announcerCalls.outcome).toEqual([
+      {
+        aiId,
+        groupId,
+        topicId: topicA,
+        status: 'executed',
+        summary: 'always-ran:spicy',
+      },
+    ]);
+
+    // An admin's approve_always in topic A creates a rule scoped to A: the
+    // next request in A auto-runs, while B still needs a card.
+    const adminOutcome = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: topicA,
+      action: 'flow.always',
+      args: { value: 'second' },
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    if (adminOutcome.status !== 'pending_approval') {
+      throw new Error(`expected pending_approval, got ${adminOutcome.status}`);
+    }
+    const adminDecision = await decide(
+      harness,
+      admin.cookie,
+      adminOutcome.approvalId,
+      'approve_always',
+    );
+    expect(adminDecision.status).toBe(200);
+    await waitForPendingStatus(harness, adminOutcome.approvalId, 'executed');
+
+    const auto = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: topicA,
+      action: 'flow.always',
+      args: { value: 'third' },
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    expect(auto).toEqual({ status: 'executed', summary: 'always-ran:third' });
+
+    const inB = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: topicB,
+      action: 'flow.always',
+      args: { value: 'other-topic' },
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    expect(inB.status).toBe('pending_approval');
   });
 });

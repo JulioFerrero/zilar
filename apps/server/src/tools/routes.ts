@@ -4,10 +4,11 @@ import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, aiTools, groupAis, groupMembers } from '../db/schema';
+import { ais, aiTools, groupAis, groupMembers, topicAis, topics } from '../db/schema';
 import { and, eq } from 'drizzle-orm';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
+import { canSeeTopic } from '../topics/access';
 import type { ToolRunner } from './types';
 import {
   deleteTool,
@@ -70,7 +71,21 @@ export function createToolsRoutes({
     if (!ai) {
       throw new HttpError(404, 'not_found', 'AI not found');
     }
-    return c.json(await listToolsForAi(db, ai.id));
+    // Only tools of topics the owner can see: tools in a private topic the
+    // owner was removed from stay hidden until they are added back.
+    const tools = await listToolsForAi(db, ai.id);
+    const visible: typeof tools = [];
+    for (const tool of tools) {
+      if (tool.topicId === null) {
+        visible.push(tool);
+        continue;
+      }
+      const [topic] = await db.select().from(topics).where(eq(topics.id, tool.topicId)).limit(1);
+      if (topic && (await canSeeTopic(db, topic, user.id))) {
+        visible.push(tool);
+      }
+    }
+    return c.json(visible);
   });
 
   routes.get('/groups/:id/tools', async (c) => {
@@ -80,8 +95,41 @@ export function createToolsRoutes({
     if (!membership) {
       throw new HttpError(404, 'not_found', 'Group not found');
     }
-    const tools = await listToolsForGroup(db, groupId);
+    // Only tools of topics the viewer can see: a group admin who is not in
+    // a private topic never sees its tools.
+    const tools = await listToolsForGroup(db, groupId, user.id);
     return c.json(tools);
+  });
+
+  // T-0110: the tools of one topic. Anyone who can see the topic reads;
+  // anyone else gets the same 404 as a missing id.
+  routes.get('/topics/:id/tools', async (c) => {
+    const { user } = await requireSession(auth, c.req.raw.headers);
+    const topicId = c.req.param('id');
+    const [topic] = await db.select().from(topics).where(eq(topics.id, topicId)).limit(1);
+    if (!topic || topic.archivedAt !== null || !(await canSeeTopic(db, topic, user.id))) {
+      throw new HttpError(404, 'not_found', 'Topic not found');
+    }
+    const result: Array<Record<string, unknown>> = [];
+    const aiRows = await db
+      .select({ aiId: groupAis.aiId })
+      .from(groupAis)
+      .where(eq(groupAis.groupId, topic.groupId));
+    const topicAiRows = await db
+      .select({ aiId: topicAis.aiId })
+      .from(topicAis)
+      .where(eq(topicAis.topicId, topic.id));
+    const aiIds = new Set([
+      ...aiRows.map((row) => row.aiId),
+      ...topicAiRows.map((row) => row.aiId),
+    ]);
+    for (const aiId of aiIds) {
+      const tools = await listTools(db, { aiId, groupId: topic.groupId, topicId: topic.id });
+      for (const tool of tools) {
+        result.push({ ...tool, scope: 'group' as const });
+      }
+    }
+    return c.json(result);
   });
 
   routes.get('/tools/:id', async (c) => {
@@ -231,10 +279,11 @@ export function createToolsRoutes({
   return routes;
 }
 
-// Reader = the AI's owner, or (for a group tool) any member of that group.
-// Manager = the AI's owner, or (for a group tool) a group owner/admin.
-// Returns null for a missing/deleted tool or a stranger (same shape for
-// both, so existence is never leaked).
+// Reader = the AI's owner who can see the topic, or a member of the
+// topic. Manager = the AI's owner who can see the topic, or a group
+// owner/admin who can see the topic. Returns null for a missing/deleted
+// tool, a blind viewer, or a stranger (same shape for all, so existence
+// is never leaked).
 async function toolAccess(
   db: ServerDatabase,
   toolId: string,
@@ -252,13 +301,18 @@ async function toolAccess(
   if (!ai) {
     return null;
   }
+  if (tool.topicId === null) {
+    // Personal-chat tool: the AI owner only.
+    return ai.owner === userId ? { tool, manager: true } : null;
+  }
+  const [topic] = await db.select().from(topics).where(eq(topics.id, tool.topicId)).limit(1);
+  if (!topic || !(await canSeeTopic(db, topic, userId))) {
+    return null;
+  }
   if (ai.owner === userId) {
     return { tool, manager: true };
   }
-  if (tool.groupId === null) {
-    return null;
-  }
-  const membership = await findMembership(db, tool.groupId, userId);
+  const membership = await findMembership(db, tool.groupId as string, userId);
   if (!membership) {
     return null;
   }
@@ -274,13 +328,20 @@ async function toolAccessIncludingDeleted(
   toolId: string,
   userId: string,
 ): Promise<{
-  tool: { aiId: string; groupId: string | null; name: string; currentVersion: number };
+  tool: {
+    aiId: string;
+    groupId: string | null;
+    topicId: string | null;
+    name: string;
+    currentVersion: number;
+  };
   manager: boolean;
 } | null> {
   const [row] = await db
     .select({
       aiId: aiTools.aiId,
       groupId: aiTools.groupId,
+      topicId: aiTools.topicId,
       name: aiTools.name,
       currentVersion: aiTools.currentVersion,
     })
@@ -292,6 +353,13 @@ async function toolAccessIncludingDeleted(
   }
   const [ai] = await db.select({ owner: ais.owner }).from(ais).where(eq(ais.id, row.aiId)).limit(1);
   if (!ai) {
+    return null;
+  }
+  if (row.topicId === null) {
+    return ai.owner === userId ? { tool: row, manager: true } : null;
+  }
+  const [topic] = await db.select().from(topics).where(eq(topics.id, row.topicId)).limit(1);
+  if (!topic || !(await canSeeTopic(db, topic, userId))) {
     return null;
   }
   if (ai.owner === userId) {
@@ -370,18 +438,35 @@ async function requireReadableRuns(db: ServerDatabase, toolId: string, userId: s
 }
 
 // All non-deleted tools of every AI attached to a group, each with its
-// scope. The caller is a member (checked by the route); the helper does
-// not gate further.
-async function listToolsForGroup(db: ServerDatabase, groupId: string) {
-  const aiRows = await db
-    .select({ aiId: groupAis.aiId })
-    .from(groupAis)
-    .where(eq(groupAis.groupId, groupId));
+// scope — but only in topics the viewer can see. The caller is a member
+// (checked by the route); the helper additionally gates each topic.
+async function listToolsForGroup(db: ServerDatabase, groupId: string, userId: string) {
+  const topicRows = await db.select().from(topics).where(eq(topics.groupId, groupId));
   const result: Array<Record<string, unknown>> = [];
-  for (const { aiId } of aiRows) {
-    const tools = await listTools(db, { aiId, groupId });
-    for (const tool of tools) {
-      result.push({ ...tool, scope: 'group' as const });
+  for (const topic of topicRows) {
+    if (topic.archivedAt !== null) {
+      continue;
+    }
+    if (!(await canSeeTopic(db, topic, userId))) {
+      continue;
+    }
+    const aiRows = await db
+      .select({ aiId: groupAis.aiId })
+      .from(groupAis)
+      .where(eq(groupAis.groupId, groupId));
+    const topicAiRows = await db
+      .select({ aiId: topicAis.aiId })
+      .from(topicAis)
+      .where(eq(topicAis.topicId, topic.id));
+    const aiIds = new Set([
+      ...aiRows.map((row) => row.aiId),
+      ...topicAiRows.map((row) => row.aiId),
+    ]);
+    for (const aiId of aiIds) {
+      const tools = await listTools(db, { aiId, groupId, topicId: topic.id });
+      for (const tool of tools) {
+        result.push({ ...tool, scope: 'group' as const });
+      }
     }
   }
   return result;
@@ -410,6 +495,7 @@ function toToolWire(tool: NonNullable<Awaited<ReturnType<typeof getTool>>>) {
     id: tool.id,
     aiId: tool.aiId,
     groupId: tool.groupId,
+    topicId: tool.topicId,
     name: tool.name,
     description: tool.description,
     currentVersion: tool.currentVersion,

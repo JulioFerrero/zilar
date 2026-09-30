@@ -12,6 +12,8 @@ import {
   groupMembers,
   groups,
   providerConnections,
+  topicMembers,
+  topics,
 } from '../db/schema';
 import { HttpError } from '../errors';
 import { createAuditRecorder } from '../audit/service';
@@ -67,7 +69,7 @@ async function seedGroup(
   ownerId: string,
   members: Array<{ userId: string; role: 'owner' | 'admin' | 'member' }>,
   aiIds: string[],
-): Promise<string> {
+): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
   await context.db.insert(groups).values({
     id: groupId,
@@ -85,7 +87,20 @@ async function seedGroup(
   for (const aiId of aiIds) {
     await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
   }
-  return groupId;
+  const generalTopicId = randomUUID();
+  await context.db.insert(topics).values({
+    id: generalTopicId,
+    groupId,
+    name: 'General',
+    glyph: 'G',
+    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+    visibility: 'public',
+    kind: 'chat',
+    status: 'open',
+    isGeneral: true,
+    createdBy: ownerId,
+  });
+  return { groupId, generalTopicId };
 }
 
 function buildRoutesHarness(
@@ -168,12 +183,12 @@ describe('approval rules routes (T-0099)', () => {
       const { aiId } = await seedAi(context, owner.id);
       await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: owner.id },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: owner.id },
         now,
       );
       await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.other', createdBy: owner.id },
+        { aiId, groupId: null, topicId: null, action: 'demo.other', createdBy: owner.id },
         now,
       );
       const response = await app.request(`${TEST_BASE_URL}/api/ais/${aiId}/approval-rules`, {
@@ -204,7 +219,7 @@ describe('approval rules routes (T-0099)', () => {
         `group-stranger-${testCounter}@example.com`,
       );
       const { aiId } = await seedAi(context, owner.id);
-      const groupId = await seedGroup(
+      const { groupId } = await seedGroup(
         context,
         owner.id,
         [
@@ -235,7 +250,7 @@ describe('approval rules routes (T-0099)', () => {
       );
       const admin = await bootstrapUser(context, authApp, `group-admin-${testCounter}@example.com`);
       const { aiId } = await seedAi(context, owner.id);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         owner.id,
         [
@@ -246,7 +261,7 @@ describe('approval rules routes (T-0099)', () => {
       );
       await createRule(
         context.db,
-        { aiId, groupId, action: 'demo.echo', createdBy: owner.id },
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: owner.id },
         now,
       );
       for (const cookie of [owner.cookie, admin.cookie]) {
@@ -287,7 +302,7 @@ describe('approval rules routes (T-0099)', () => {
         `revoke-stranger-${testCounter}@example.com`,
       );
       const { aiId } = await seedAi(context, owner.id);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         owner.id,
         [
@@ -298,7 +313,7 @@ describe('approval rules routes (T-0099)', () => {
       );
       const { rule } = await createRule(
         context.db,
-        { aiId, groupId, action: 'demo.echo', createdBy: owner.id },
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: owner.id },
         now,
       );
       // Stranger and a plain member see the same 404 as a missing rule.
@@ -327,7 +342,7 @@ describe('approval rules routes (T-0099)', () => {
       const { aiId } = await seedAi(context, owner.id);
       const { rule } = await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: owner.id },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: owner.id },
         now,
       );
       const response = await app.request(`${TEST_BASE_URL}/api/approval-rules/${rule.id}`, {
@@ -354,7 +369,7 @@ describe('approval rules routes (T-0099)', () => {
         `revoke-group-admin-${testCounter}@example.com`,
       );
       const { aiId } = await seedAi(context, owner.id);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         owner.id,
         [
@@ -365,7 +380,7 @@ describe('approval rules routes (T-0099)', () => {
       );
       const { rule } = await createRule(
         context.db,
-        { aiId, groupId, action: 'demo.echo', createdBy: owner.id },
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: owner.id },
         now,
       );
       for (const cookie of [owner.cookie, admin.cookie]) {
@@ -382,7 +397,7 @@ describe('approval rules routes (T-0099)', () => {
       const { aiId } = await seedAi(context, owner.id);
       const { rule } = await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: owner.id },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: owner.id },
         now,
       );
       const first = await app.request(`${TEST_BASE_URL}/api/approval-rules/${rule.id}`, {
@@ -406,7 +421,7 @@ describe('approval rules routes (T-0099)', () => {
       const { aiId } = await seedAi(context, owner.id);
       const { rule } = await createRule(
         context.db,
-        { aiId, groupId: null, action: 'demo.echo', createdBy: owner.id },
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: owner.id },
         now,
       );
       const response = await app.request(`${TEST_BASE_URL}/api/approval-rules/${rule.id}`, {
@@ -525,6 +540,7 @@ describe('approval rules routes (T-0099)', () => {
     }): Promise<{
       aiId: string;
       groupId: string;
+      topicId: string;
       ownerCookie: string;
       memberCookie: string;
       adminCookie: string;
@@ -533,7 +549,7 @@ describe('approval rules routes (T-0099)', () => {
       const member = await bootstrapUser(context, authApp, args.memberEmail);
       const admin = await bootstrapUser(context, authApp, args.adminEmail);
       const { aiId } = await seedAi(context, aiOwner.id);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         aiOwner.id,
         [
@@ -548,6 +564,7 @@ describe('approval rules routes (T-0099)', () => {
       return {
         aiId,
         groupId,
+        topicId: generalTopicId,
         ownerCookie: aiOwner.cookie,
         memberCookie: member.cookie,
         adminCookie: admin.cookie,
@@ -556,13 +573,14 @@ describe('approval rules routes (T-0099)', () => {
 
     async function createGroupApproval(
       context2: TestContext,
-      args: { aiId: string; groupId: string; seed: number },
+      args: { aiId: string; groupId: string; topicId: string; seed: number },
     ): Promise<string> {
       const row = await createApproval(
         context2.db,
         {
           aiId: args.aiId,
           groupId: args.groupId,
+          topicId: args.topicId,
           action: 'demo.echo',
           summary: 'Echo',
           argsHash: argsHash(args.seed),
@@ -594,7 +612,7 @@ describe('approval rules routes (T-0099)', () => {
       );
       const admin = await bootstrapUser(context, authApp, `t101-admin-${testCounter}@example.com`);
       const { aiId } = await seedAi(context, aiOwner.id);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         aiOwner.id,
         [
@@ -603,7 +621,12 @@ describe('approval rules routes (T-0099)', () => {
         ],
         [aiId],
       );
-      const approvalId = await createGroupApproval(context, { aiId, groupId, seed: 60 });
+      const approvalId = await createGroupApproval(context, {
+        aiId,
+        groupId,
+        topicId: generalTopicId,
+        seed: 60,
+      });
 
       const refused = await decideRequest(localApp, {
         cookie: aiOwner.cookie,
@@ -641,12 +664,14 @@ describe('approval rules routes (T-0099)', () => {
       const approvalId = await createGroupApproval(context, {
         aiId: seeded.aiId,
         groupId: seeded.groupId,
+        topicId: seeded.topicId,
         seed: 61,
       });
 
       const onceId = await createGroupApproval(context, {
         aiId: seeded.aiId,
         groupId: seeded.groupId,
+        topicId: seeded.topicId,
         seed: 62,
       });
       const once = await decideRequest(localApp, {
@@ -682,6 +707,7 @@ describe('approval rules routes (T-0099)', () => {
       const approvalId = await createGroupApproval(context, {
         aiId: seeded.aiId,
         groupId: seeded.groupId,
+        topicId: seeded.topicId,
         seed: 63,
       });
       for (const decision of ['approve_once', 'approve_always']) {
@@ -704,6 +730,7 @@ describe('approval rules routes (T-0099)', () => {
       const groupApprovalId = await createGroupApproval(context, {
         aiId: seeded.aiId,
         groupId: seeded.groupId,
+        topicId: seeded.topicId,
         seed: 64,
       });
       // A personal-chat approval for the same AI, so the list mixes scopes.
@@ -780,7 +807,7 @@ describe('approval rules routes (T-0099)', () => {
         `t101-order-admin-${testCounter}@example.com`,
       );
       const { aiId } = await seedAi(context, aiOwner.id);
-      const groupId = await seedGroup(
+      const { groupId, generalTopicId } = await seedGroup(
         context,
         aiOwner.id,
         [
@@ -790,7 +817,12 @@ describe('approval rules routes (T-0099)', () => {
         [aiId],
       );
 
-      const notEligibleId = await createGroupApproval(context, { aiId, groupId, seed: 65 });
+      const notEligibleId = await createGroupApproval(context, {
+        aiId,
+        groupId,
+        topicId: generalTopicId,
+        seed: 65,
+      });
       const notEligible = await decideRequest(ineligibleApp, {
         cookie: aiOwner.cookie,
         approvalId: notEligibleId,
@@ -799,7 +831,12 @@ describe('approval rules routes (T-0099)', () => {
       expect(notEligible.status).toBe(400);
       expect((await errorOf(notEligible)).code).toBe('always_not_allowed');
 
-      const expiredId = await createGroupApproval(context, { aiId, groupId, seed: 66 });
+      const expiredId = await createGroupApproval(context, {
+        aiId,
+        groupId,
+        topicId: generalTopicId,
+        seed: 66,
+      });
       await context.db
         .update(approvals)
         .set({ expiresAt: new Date(now.getTime() - 1) })
@@ -811,6 +848,119 @@ describe('approval rules routes (T-0099)', () => {
       });
       expect(expired.status).toBe(409);
       expect((await errorOf(expired)).code).toBe('expired');
+    });
+  });
+
+  describe('private topic visibility (T-0110)', () => {
+    async function seedPrivateRule(): Promise<{
+      ownerCookie: string;
+      adminCookie: string;
+      aiId: string;
+      groupId: string;
+      topicId: string;
+      ruleId: string;
+    }> {
+      const owner = await bootstrapUser(context, authApp, `pr-owner-${testCounter}@example.com`);
+      const admin = await bootstrapUser(context, authApp, `pr-admin-${testCounter}@example.com`);
+      const { aiId } = await seedAi(context, owner.id);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        owner.id,
+        [
+          { userId: owner.id, role: 'owner' },
+          { userId: admin.id, role: 'admin' },
+        ],
+        [aiId],
+      );
+      const topicId = randomUUID();
+      await context.db.insert(topics).values({
+        id: topicId,
+        groupId,
+        name: 'Hiring',
+        glyph: 'H',
+        roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+        visibility: 'private',
+        kind: 'chat',
+        status: 'open',
+        isGeneral: false,
+        createdBy: owner.id,
+      });
+      await context.db
+        .insert(topicMembers)
+        .values({ topicId, userId: owner.id, addedBy: owner.id });
+      const { rule } = await createRule(
+        context.db,
+        { aiId, groupId, topicId, action: 'demo.echo', createdBy: owner.id },
+        now,
+      );
+      void generalTopicId;
+      return {
+        ownerCookie: owner.cookie,
+        adminCookie: admin.cookie,
+        aiId,
+        groupId,
+        topicId,
+        ruleId: rule.id,
+      };
+    }
+
+    it('the group list omits rules of a private topic the admin cannot see', async () => {
+      const seeded = await seedPrivateRule();
+      const adminList = await app.request(
+        `${TEST_BASE_URL}/api/groups/${seeded.groupId}/approval-rules`,
+        { headers: { cookie: seeded.adminCookie } },
+      );
+      expect(adminList.status).toBe(200);
+      expect(await adminList.json()).toEqual([]);
+      const ownerList = await app.request(
+        `${TEST_BASE_URL}/api/groups/${seeded.groupId}/approval-rules`,
+        { headers: { cookie: seeded.ownerCookie } },
+      );
+      expect(ownerList.status).toBe(200);
+      const rules = (await ownerList.json()) as Array<{
+        topicId: string | null;
+        topicName: string | null;
+      }>;
+      expect(rules).toHaveLength(1);
+      expect(rules[0]?.topicId).toBe(seeded.topicId);
+      expect(rules[0]?.topicName).toBe('Hiring');
+    });
+
+    it('revoke answers 404 for a blind admin and a removed owner', async () => {
+      const seeded = await seedPrivateRule();
+      const blind = await app.request(`${TEST_BASE_URL}/api/approval-rules/${seeded.ruleId}`, {
+        method: 'DELETE',
+        headers: { cookie: seeded.adminCookie },
+      });
+      expect(blind.status).toBe(404);
+      // The owner revokes fine while they can see the topic.
+      const owner = await app.request(`${TEST_BASE_URL}/api/approval-rules/${seeded.ruleId}`, {
+        method: 'DELETE',
+        headers: { cookie: seeded.ownerCookie },
+      });
+      expect(owner.status).toBe(204);
+    });
+
+    it('the AI route omits rules of a private topic the owner was removed from', async () => {
+      const seeded = await seedPrivateRule();
+      const before = await app.request(`${TEST_BASE_URL}/api/ais/${seeded.aiId}/approval-rules`, {
+        headers: { cookie: seeded.ownerCookie },
+      });
+      expect(before.status).toBe(200);
+      expect(await before.json()).toHaveLength(1);
+      // The owner leaves the private topic: the rule disappears from the
+      // AI route and revoke answers 404, until they are added back.
+      await context.db.delete(topicMembers).where(eq(topicMembers.topicId, seeded.topicId));
+      const after = await app.request(`${TEST_BASE_URL}/api/ais/${seeded.aiId}/approval-rules`, {
+        headers: { cookie: seeded.ownerCookie },
+      });
+      expect(after.status).toBe(200);
+      expect(await after.json()).toEqual([]);
+      const revoke = await app.request(`${TEST_BASE_URL}/api/approval-rules/${seeded.ruleId}`, {
+        method: 'DELETE',
+        headers: { cookie: seeded.ownerCookie },
+      });
+      expect(revoke.status).toBe(404);
     });
   });
 });

@@ -239,7 +239,7 @@ function denialReasonForModel(reason: DeniedReason): string {
     case 'ai_not_active':
       return 'the AI is not active';
     case 'ai_not_in_group':
-      return 'the AI is not a member of that group';
+      return 'the AI is not in that topic';
   }
 }
 
@@ -580,14 +580,15 @@ export function createAgentGateway(
   }
 
   // Per-turn context for a `request_action` call in a group (T-0098). The
-  // `groupId` is the room the AI was woken in — it rides along to the
-  // action gateway and is used to pick the model-facing wording. The
-  // `isStillAllowed` callback re-queries the database right before the
-  // action gateway runs, so a role change that landed between the turn
-  // starting and the tool executing short-circuits to `denied: not allowed`
-  // without calling the gateway.
+  // `groupId` and `topicId` are the room the AI was woken in — they ride
+  // along to the action gateway and are used to pick the model-facing
+  // wording. The `isStillAllowed` callback re-queries the database right
+  // before the action gateway runs, so a role change that landed between
+  // the turn starting and the tool executing short-circuits to
+  // `denied: not allowed` without calling the gateway.
   interface RequestActionContext {
     groupId: string;
+    topicId: string;
     isStillAllowed: () => Promise<boolean>;
   }
 
@@ -632,7 +633,13 @@ export function createAgentGateway(
             return { content: 'denied: not allowed' };
           }
         }
-        return runRequestAction(session, call, context?.groupId);
+        return runRequestAction(
+          session,
+          call,
+          context === undefined
+            ? undefined
+            : { groupId: context.groupId, topicId: context.topicId },
+        );
       }
       const outcome = await revertPersonaFromChat(deps.db, aiId);
       logger.info({ aiId, tool: call.tool, ok: true }, 'AI persona revert by chat');
@@ -644,17 +651,17 @@ export function createAgentGateway(
   }
 
   // Routes a `request_action` call into the action gateway. The ai id and
-  // group id always come from the session, never from the call: a model
+  // chat ids always come from the session, never from the call: a model
   // that smuggles `aiId` or `groupId` inside `args` cannot change who is
   // asked. The mapping below is the exact model-facing wording per
   // outcome (see spec); no adapter text beyond the success `summary`
   // reaches the AI. The group context (when present) adjusts the
   // pending-approval wording — owners see "in this chat", admins see "in
-  // this room" — and tags the request with the room's group id.
+  // this room" — and tags the request with the room's group and topic ids.
   async function runRequestAction(
     session: AiSession,
     call: Extract<ValidToolCall, { tool: typeof REQUEST_ACTION_TOOL }>,
-    groupId?: string,
+    chat?: { groupId: string; topicId: string },
   ): Promise<ToolExecution> {
     const actions = deps.actions;
     if (actions === undefined) {
@@ -666,7 +673,7 @@ export function createAgentGateway(
     try {
       outcome = await actions.request({
         aiId: session.aiId,
-        ...(groupId === undefined ? {} : { groupId }),
+        ...(chat === undefined ? {} : { groupId: chat.groupId, topicId: chat.topicId }),
         action: call.action,
         args: call.args,
         requestedBy: session.aiJid,
@@ -691,7 +698,7 @@ export function createAgentGateway(
         // AI's owner get the buttons.
         return {
           content:
-            groupId === undefined
+            chat === undefined
               ? "waiting for your owner's approval; a card was posted in this chat"
               : "waiting for an admin's approval; a card was posted in this room",
         };
@@ -1464,6 +1471,7 @@ export function createAgentGateway(
               tools: groupTools,
               executeTool: executeToolCall(session, {
                 groupId: room.groupId,
+                topicId: room.topicId,
                 isStillAllowed,
               }),
             }),

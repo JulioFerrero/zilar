@@ -16,13 +16,20 @@ import { approvalRules, groupMembers } from '../db/schema';
 export type ApprovalRuleScope = 'personal' | 'group';
 
 // One row, exactly as the public routes return it. `id`, the action, the
-// scope, the optional `groupId`, who created it and when. Never the args
-// or the `revokedAt`/`revokedBy` — those are internal.
+// scope, the optional `groupId`/`topicId` pair (or the topic name, for rows
+// the viewer may see), who created it and when. Never the args or the
+// `revokedAt`/`revokedBy` — those are internal.
 export interface PublicApprovalRule {
   id: string;
   action: string;
   scope: ApprovalRuleScope;
   groupId: string | null;
+  /** The topic the rule applies in. Null for personal-chat rules. */
+  topicId: string | null;
+  /** The topic's name, or null for personal rules. The route blanks this
+   *  for topics the viewer cannot see (which cannot happen for a returned
+   *  row); the field stays for the client. */
+  topicName: string | null;
   createdAt: Date;
   createdBy: string;
 }
@@ -31,7 +38,7 @@ type ApprovalRuleRow = typeof approvalRules.$inferSelect;
 
 // The atomic idempotent write that turns an "approve_always" decision
 // into a standing rule. Three guarantees:
-//   - one rule per (aiId, groupIdOrNull, action) when active, enforced by
+//   - one rule per (aiId, topicIdOrNull, action) when active, enforced by
 //     the partial unique indexes on `approval_rules`
 //   - if an active rule already exists, the existing row is returned and
 //     `created === false`
@@ -44,6 +51,7 @@ type ApprovalRuleRow = typeof approvalRules.$inferSelect;
 export interface CreateRuleInput {
   aiId: string;
   groupId: string | null;
+  topicId: string | null;
   action: string;
   createdBy: string;
 }
@@ -55,19 +63,19 @@ export interface CreateRuleResult {
 
 export async function findActiveRuleForUpdate(
   tx: ServerDatabase,
-  input: { aiId: string; groupId: string | null; action: string },
+  input: { aiId: string; groupId: string | null; topicId: string | null; action: string },
 ): Promise<ApprovalRuleRow | null> {
   const baseFilter =
-    input.groupId === null
+    input.topicId === null
       ? and(
           eq(approvalRules.aiId, input.aiId),
-          isNull(approvalRules.groupId),
+          isNull(approvalRules.topicId),
           eq(approvalRules.action, input.action),
           isNull(approvalRules.revokedAt),
         )
       : and(
           eq(approvalRules.aiId, input.aiId),
-          eq(approvalRules.groupId, input.groupId),
+          eq(approvalRules.topicId, input.topicId),
           eq(approvalRules.action, input.action),
           isNull(approvalRules.revokedAt),
         );
@@ -88,6 +96,7 @@ export async function createRule(
   const existing = await findActiveRuleForUpdate(tx, {
     aiId: input.aiId,
     groupId: input.groupId,
+    topicId: input.topicId,
     action: input.action,
   });
   if (existing !== null) {
@@ -103,6 +112,7 @@ export async function createRule(
       id: randomUUID(),
       aiId: input.aiId,
       groupId: input.groupId,
+      topicId: input.topicId,
       action: input.action,
       createdBy: input.createdBy,
       createdAt: now,
@@ -115,6 +125,7 @@ export async function createRule(
   const winner = await findActiveRuleForUpdate(tx, {
     aiId: input.aiId,
     groupId: input.groupId,
+    topicId: input.topicId,
     action: input.action,
   });
   if (winner === null) {
@@ -124,11 +135,11 @@ export async function createRule(
 }
 
 // One-shot lookup the action gateway uses before creating an approval:
-// "is there an active rule for (ai, chat, action)?" Returns null when
-// there is not, or when the rule is for a different chat/action.
+// "is there an active rule for (ai, topic, action)?" Returns null when
+// there is not, or when the rule is for a different topic/action.
 export async function findActiveRule(
   db: ServerDatabase,
-  input: { aiId: string; groupId: string | null; action: string },
+  input: { aiId: string; groupId: string | null; topicId: string | null; action: string },
 ): Promise<ApprovalRuleRow | null> {
   return findActiveRuleForUpdate(db, input);
 }
@@ -146,17 +157,16 @@ export async function listActiveRulesForAi(
   return rows.map(toPublicRule);
 }
 
-// Lists the active rules for a group. The route gates callers to the
-// group's owner/admin; the helper does not.
-export async function listActiveRulesForGroup(
+// Lists the active rules of one topic. The route gates callers to viewers
+// of the topic; the helper does not.
+export async function listActiveRulesForTopic(
   db: ServerDatabase,
-  groupId: string,
-): Promise<PublicApprovalRule[]> {
-  const rows = await db
+  topicId: string,
+): Promise<ApprovalRuleRow[]> {
+  return db
     .select()
     .from(approvalRules)
-    .where(and(eq(approvalRules.groupId, groupId), isNull(approvalRules.revokedAt)));
-  return rows.map(toPublicRule);
+    .where(and(eq(approvalRules.topicId, topicId), isNull(approvalRules.revokedAt)));
 }
 
 // Soft-revoke one rule by id. Returns:
@@ -200,9 +210,29 @@ export async function revokeRule(
   return { row: updated };
 }
 
-// Bulk revoke helper used by the lifecycle tests and `removeGroupAi`. The
-// AI/group pair is unique enough (it's the AI's rules in this group) that
-// we don't need to return ids. `now` is supplied so the caller's
+// Bulk revoke helper used by the lifecycle tests and topic-AI removal.
+// Revokes the AI's active rules in one topic. `now` is supplied so the
+// caller's transaction and the revocation share a timestamp.
+export async function revokeActiveRulesForAiInTopic(
+  tx: ServerDatabase,
+  input: { aiId: string; topicId: string; actorId: string | null; now: Date },
+): Promise<Array<{ id: string; action: string }>> {
+  const rows = await tx
+    .update(approvalRules)
+    .set({ revokedAt: input.now, revokedBy: input.actorId })
+    .where(
+      and(
+        eq(approvalRules.aiId, input.aiId),
+        eq(approvalRules.topicId, input.topicId),
+        isNull(approvalRules.revokedAt),
+      ),
+    )
+    .returning();
+  return rows.map((row) => ({ id: row.id, action: row.action }));
+}
+
+// Bulk revoke helper used by `removeGroupAi`: revokes the AI's active rules
+// in every topic of the group. `now` is supplied so the caller's
 // transaction and the revocation share a timestamp.
 export async function revokeActiveRulesForAiInGroup(
   tx: ServerDatabase,
@@ -238,13 +268,16 @@ export async function isGroupAdmin(
 }
 
 // Maps a row to the public shape. `scope` is derived from `group_id`:
-// null means personal chat, anything else means a group.
-function toPublicRule(row: ApprovalRuleRow): PublicApprovalRule {
+// null means personal chat, anything else means a group topic. `topicName`
+// is left null here; the route fills it in for topics the viewer can see.
+export function toPublicRule(row: ApprovalRuleRow): PublicApprovalRule {
   return {
     id: row.id,
     action: row.action,
     scope: row.groupId === null ? 'personal' : 'group',
     groupId: row.groupId,
+    topicId: row.topicId,
+    topicName: null,
     createdAt: row.createdAt,
     createdBy: row.createdBy,
   };

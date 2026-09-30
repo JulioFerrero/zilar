@@ -5,7 +5,18 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { createAuditRecorder, type AuditRecorder } from '../audit/service';
-import { aiLimits, ais, approvals, auditLog, providerConnections } from '../db/schema';
+import {
+  aiLimits,
+  ais,
+  approvals,
+  auditLog,
+  groupAis,
+  groupMembers,
+  groups,
+  providerConnections,
+  topicMembers,
+  topics,
+} from '../db/schema';
 import * as schema from '../db/schema';
 import { HttpError } from '../errors';
 import {
@@ -233,6 +244,8 @@ describe('approvals routes', () => {
           'requestedBy',
           'status',
           'summary',
+          'topicId',
+          'topicName',
           'worstCase',
         ].sort(),
       );
@@ -702,5 +715,169 @@ describe('approvals routes', () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(loggerCalls).toHaveLength(1);
     expect(loggerCalls[0]?.message).toBe('onDecided hook threw');
+  });
+
+  describe('private topic visibility (T-0110)', () => {
+    async function seedPrivateTopic(): Promise<{
+      ownerCookie: string;
+      ownerId: string;
+      adminCookie: string;
+      aiId: string;
+      groupId: string;
+      topicId: string;
+      approvalId: string;
+    }> {
+      const owner = await bootstrapUser(context, authApp, `pt-owner${testCounter}@example.com`);
+      const admin = await bootstrapUser(context, authApp, `pt-admin${testCounter}@example.com`);
+      const { aiId } = await seedAi(context, owner.id);
+      const groupId = randomUUID();
+      await context.db.insert(groups).values({
+        id: groupId,
+        roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+        title: 'Crew',
+        createdBy: owner.id,
+      });
+      await context.db.insert(groupMembers).values([
+        { groupId, userId: owner.id, role: 'owner' },
+        { groupId, userId: admin.id, role: 'admin' },
+      ]);
+      await context.db.insert(groupAis).values({ groupId, aiId, addedBy: owner.id });
+      const topicId = randomUUID();
+      await context.db.insert(topics).values({
+        id: topicId,
+        groupId,
+        name: 'Hiring',
+        glyph: 'H',
+        roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+        visibility: 'private',
+        kind: 'chat',
+        status: 'open',
+        isGeneral: false,
+        createdBy: owner.id,
+      });
+      // The AI owner sees the private topic; the group admin does not.
+      await context.db
+        .insert(topicMembers)
+        .values({ topicId, userId: owner.id, addedBy: owner.id });
+      const created = await createApproval(
+        context.db,
+        {
+          aiId,
+          groupId,
+          topicId,
+          action: 'send',
+          summary: 'Send',
+          argsHash: argsHash(90),
+          requestedBy: 'ai-bot@galena.localhost',
+          expiresAt: new Date(now.getTime() + 60_000),
+        },
+        now,
+      );
+      return {
+        ownerCookie: owner.cookie,
+        ownerId: owner.id,
+        adminCookie: admin.cookie,
+        aiId,
+        groupId,
+        topicId,
+        approvalId: created.id,
+      };
+    }
+
+    it('a blind group admin gets 404 on the card, the list omits it, and decide answers 404', async () => {
+      const seeded = await seedPrivateTopic();
+      const missing = await app.request(`${TEST_BASE_URL}/api/approvals/no-such-id`, {
+        headers: { cookie: seeded.adminCookie },
+      });
+      expect(missing.status).toBe(404);
+      const missingBody = await missing.json();
+
+      const single = await app.request(`${TEST_BASE_URL}/api/approvals/${seeded.approvalId}`, {
+        headers: { cookie: seeded.adminCookie },
+      });
+      expect(single.status).toBe(404);
+      expect(await single.json()).toEqual(missingBody);
+
+      const list = await app.request(`${TEST_BASE_URL}/api/approvals`, {
+        headers: { cookie: seeded.adminCookie },
+      });
+      expect(list.status).toBe(200);
+      expect(await list.json()).toEqual([]);
+
+      const decide = await app.request(
+        `${TEST_BASE_URL}/api/approvals/${seeded.approvalId}/decision`,
+        approvalsRequest({
+          cookie: seeded.adminCookie,
+          method: 'POST',
+          body: JSON.stringify({ decision: 'approve_once' }),
+        }),
+      );
+      expect(decide.status).toBe(404);
+      expect(await decide.json()).toEqual(missingBody);
+    });
+
+    it('the AI owner who can see the topic reads topicId/topicName and can decide', async () => {
+      const seeded = await seedPrivateTopic();
+      const single = await app.request(`${TEST_BASE_URL}/api/approvals/${seeded.approvalId}`, {
+        headers: { cookie: seeded.ownerCookie },
+      });
+      expect(single.status).toBe(200);
+      const body = (await single.json()) as { topicId: string | null; topicName: string | null };
+      expect(body.topicId).toBe(seeded.topicId);
+      expect(body.topicName).toBe('Hiring');
+
+      const list = await app.request(`${TEST_BASE_URL}/api/approvals`, {
+        headers: { cookie: seeded.ownerCookie },
+      });
+      expect(list.status).toBe(200);
+      const rows = (await list.json()) as Array<{ id: string; topicName: string | null }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.topicName).toBe('Hiring');
+
+      const decide = await app.request(
+        `${TEST_BASE_URL}/api/approvals/${seeded.approvalId}/decision`,
+        approvalsRequest({
+          cookie: seeded.ownerCookie,
+          method: 'POST',
+          body: JSON.stringify({ decision: 'approve_once' }),
+        }),
+      );
+      expect(decide.status).toBe(200);
+    });
+
+    it('the AI owner removed from the topic loses decision rights', async () => {
+      const seeded = await seedPrivateTopic();
+      await context.db.delete(topicMembers).where(eq(topicMembers.topicId, seeded.topicId));
+      const single = await app.request(`${TEST_BASE_URL}/api/approvals/${seeded.approvalId}`, {
+        headers: { cookie: seeded.ownerCookie },
+      });
+      expect(single.status).toBe(404);
+      const decide = await app.request(
+        `${TEST_BASE_URL}/api/approvals/${seeded.approvalId}/decision`,
+        approvalsRequest({
+          cookie: seeded.ownerCookie,
+          method: 'POST',
+          body: JSON.stringify({ decision: 'approve_once' }),
+        }),
+      );
+      expect(decide.status).toBe(404);
+    });
+
+    it('the decision audit row carries ids only, never the private topic name', async () => {
+      const seeded = await seedPrivateTopic();
+      const decide = await app.request(
+        `${TEST_BASE_URL}/api/approvals/${seeded.approvalId}/decision`,
+        approvalsRequest({
+          cookie: seeded.ownerCookie,
+          method: 'POST',
+          body: JSON.stringify({ decision: 'approve_once' }),
+        }),
+      );
+      expect(decide.status).toBe(200);
+      const rows = await context.db.select().from(auditLog);
+      const decided = rows.find((row) => row.action === 'approval.decided');
+      expect(decided).toBeDefined();
+      expect(JSON.stringify(decided)).not.toContain('Hiring');
+    });
   });
 });

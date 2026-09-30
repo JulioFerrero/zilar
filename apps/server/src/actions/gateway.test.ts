@@ -13,6 +13,7 @@ import {
   groups,
   pendingActions,
   providerConnections,
+  topics,
   user,
 } from '../db/schema';
 import { decideApproval } from '../approvals/service';
@@ -106,7 +107,7 @@ async function seedGroup(
   context: TestContext,
   ownerId: string,
   aiIds: string[],
-): Promise<{ groupId: string }> {
+): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
   const roomLocalpart = `g${randomUUID().replace(/-/g, '').slice(0, 15)}`;
   await context.db.insert(groups).values({
@@ -119,7 +120,42 @@ async function seedGroup(
   for (const aiId of aiIds) {
     await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
   }
-  return { groupId };
+  const generalTopicId = randomUUID();
+  await context.db.insert(topics).values({
+    id: generalTopicId,
+    groupId,
+    name: 'General',
+    glyph: 'G',
+    roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
+    visibility: 'public',
+    kind: 'chat',
+    status: 'open',
+    isGeneral: true,
+    createdBy: ownerId,
+  });
+  return { groupId, generalTopicId };
+}
+
+async function seedTopic(
+  context: TestContext,
+  groupId: string,
+  creatorId: string,
+  name: string,
+): Promise<string> {
+  const topicId = randomUUID();
+  await context.db.insert(topics).values({
+    id: topicId,
+    groupId,
+    name,
+    glyph: 'T',
+    roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
+    visibility: 'public',
+    kind: 'chat',
+    status: 'open',
+    isGeneral: false,
+    createdBy: creatorId,
+  });
+  return topicId;
 }
 
 async function buildHarness(adapters: FakeAdapter[]): Promise<Harness> {
@@ -270,15 +306,67 @@ describe('action gateway', () => {
     it('denies an AI not in the requested group with reason ai_not_in_group', async () => {
       const ownerId = await seedUser(harness.context);
       const { aiId } = await seedAi(harness.context, ownerId);
-      const { groupId } = await seedGroup(harness.context, ownerId, []);
+      const { groupId, generalTopicId } = await seedGroup(harness.context, ownerId, []);
       const result = await harness.gateway.request({
         aiId,
         groupId,
+        topicId: generalTopicId,
         action: 'tier0.echo',
         args: { value: 'x' },
         requestedBy: 'ai-bot@galena.localhost',
       });
       expect(result).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
+    });
+
+    it('denies a group request without a topic, and a topic of another group', async () => {
+      const ownerId = await seedUser(harness.context);
+      const { aiId } = await seedAi(harness.context, ownerId);
+      const first = await seedGroup(harness.context, ownerId, [aiId]);
+      const second = await seedGroup(harness.context, ownerId, [aiId]);
+      // No topic: denied even though the AI is in the group.
+      const missing = await harness.gateway.request({
+        aiId,
+        groupId: first.groupId,
+        action: 'tier0.echo',
+        args: { value: 'x' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      expect(missing).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
+      // A topic of another group: denied.
+      const foreign = await harness.gateway.request({
+        aiId,
+        groupId: first.groupId,
+        topicId: second.generalTopicId,
+        action: 'tier0.echo',
+        args: { value: 'x' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      expect(foreign).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
+      // A non-General topic the AI was never added to: denied.
+      const other = await seedTopic(harness.context, first.groupId, ownerId, 'Other');
+      const unjoined = await harness.gateway.request({
+        aiId,
+        groupId: first.groupId,
+        topicId: other,
+        action: 'tier0.echo',
+        args: { value: 'x' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      expect(unjoined).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
+      // An archived topic: denied, the room is gone.
+      await harness.context.db
+        .update(topics)
+        .set({ archivedAt: new Date() })
+        .where(eq(topics.id, first.generalTopicId));
+      const archived = await harness.gateway.request({
+        aiId,
+        groupId: first.groupId,
+        topicId: first.generalTopicId,
+        action: 'tier0.echo',
+        args: { value: 'x' },
+        requestedBy: 'ai-bot@galena.localhost',
+      });
+      expect(archived).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
     });
 
     it('denies invalid args with reason invalid_args', async () => {
@@ -972,13 +1060,14 @@ describe('action gateway', () => {
       expect(harness.announcerCalls.outcome).toEqual([]);
     });
 
-    it('passes groupId for a tier-2 request raised in a group', async () => {
+    it('passes groupId and topicId for a tier-2 request raised in a topic', async () => {
       const ownerId = await seedUser(harness.context);
       const { aiId } = await seedAi(harness.context, ownerId);
-      const { groupId } = await seedGroup(harness.context, ownerId, [aiId]);
+      const { groupId, generalTopicId } = await seedGroup(harness.context, ownerId, [aiId]);
       const result = await harness.gateway.request({
         aiId,
         groupId,
+        topicId: generalTopicId,
         action: 'tier2.echo',
         args: { value: 'spicy' },
         requestedBy: 'ai-bot@galena.localhost',
@@ -988,8 +1077,19 @@ describe('action gateway', () => {
         return;
       }
       expect(harness.announcerCalls.approvalRequested).toEqual([
-        { aiId, groupId, approvalId: result.approvalId },
+        { aiId, groupId, topicId: generalTopicId, approvalId: result.approvalId },
       ]);
+      // The stored rows carry the topic.
+      const [approval] = await harness.context.db
+        .select()
+        .from(approvals)
+        .where(eq(approvals.id, result.approvalId));
+      expect(approval?.topicId).toBe(generalTopicId);
+      const [pending] = await harness.context.db
+        .select()
+        .from(pendingActions)
+        .where(eq(pendingActions.approvalId, result.approvalId));
+      expect(pending?.topicId).toBe(generalTopicId);
     });
 
     it('does not call the announcer for tier 0 or tier 1 actions', async () => {
@@ -1329,7 +1429,7 @@ describe('action gateway', () => {
         const { aiId } = await seedAi(ruled.context, ownerId);
         const { rule } = await createRule(
           ruled.context.db,
-          { aiId, groupId: null, action: 'rules.echo', createdBy: ownerId },
+          { aiId, groupId: null, topicId: null, action: 'rules.echo', createdBy: ownerId },
           ruleNow,
         );
         const approvalsBefore = await ruled.context.db.select().from(approvals);
@@ -1388,7 +1488,7 @@ describe('action gateway', () => {
         const { aiId } = await seedAi(context, ownerId);
         await createRule(
           context.db,
-          { aiId, groupId: null, action: 'rules.echo', createdBy: ownerId },
+          { aiId, groupId: null, topicId: null, action: 'rules.echo', createdBy: ownerId },
           ruleNow,
         );
         const outcome = await gateway.request({
@@ -1414,7 +1514,7 @@ describe('action gateway', () => {
         const { aiId } = await seedAi(ruled.context, ownerId, { status: 'stopped' });
         await createRule(
           ruled.context.db,
-          { aiId, groupId: null, action: 'rules.echo', createdBy: ownerId },
+          { aiId, groupId: null, topicId: null, action: 'rules.echo', createdBy: ownerId },
           ruleNow,
         );
         const outcome = await ruled.gateway.request({
@@ -1455,7 +1555,7 @@ describe('action gateway', () => {
         const { aiId } = await seedAi(context, ownerId);
         await createRule(
           context.db,
-          { aiId, groupId: null, action: 'rules.echo', createdBy: ownerId },
+          { aiId, groupId: null, topicId: null, action: 'rules.echo', createdBy: ownerId },
           ruleNow,
         );
         const outcome = await gateway.request({

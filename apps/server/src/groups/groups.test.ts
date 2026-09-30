@@ -11,6 +11,7 @@ import {
   groups,
   providerConnections,
   topicAis,
+  topics,
 } from '../db/schema';
 import { user } from '../auth/auth-schema';
 import { aiLocalpart } from '../ais/service';
@@ -80,6 +81,19 @@ describe('groups', () => {
       throw new Error(`no group ${groupId}`);
     }
     return row.roomLocalpart;
+  }
+
+  // The General topic of a group created through HTTP (groups always have
+  // one since T-0108; group scope lives on it since T-0110).
+  async function generalTopicOf(groupId: string): Promise<string> {
+    const [row] = await context.db
+      .select({ id: topics.id })
+      .from(topics)
+      .where(and(eq(topics.groupId, groupId), eq(topics.isGeneral, true)));
+    if (!row) {
+      throw new Error(`no General topic for group ${groupId}`);
+    }
+    return row.id;
   }
 
   async function seedAi(
@@ -814,12 +828,15 @@ describe('groups', () => {
         .values({ groupId: otherGroupId, aiId: ai.aiId, addedBy: owner.id });
 
       const ruleNow = new Date('2026-01-01T00:00:00Z');
+      const generalTopicId = await generalTopicOf(groupId);
+      const otherGeneralTopicId = await generalTopicOf(otherGroupId);
       const [groupRule] = await context.db
         .insert(approvalRules)
         .values({
           id: randomUUID(),
           aiId: ai.aiId,
           groupId,
+          topicId: generalTopicId,
           action: 'demo.echo',
           createdBy: owner.id,
           createdAt: ruleNow,
@@ -842,6 +859,7 @@ describe('groups', () => {
           id: randomUUID(),
           aiId: ai.aiId,
           groupId: otherGroupId,
+          topicId: otherGeneralTopicId,
           action: 'demo.echo',
           createdBy: owner.id,
           createdAt: ruleNow,
@@ -864,12 +882,14 @@ describe('groups', () => {
       expect((await addAiRequest(owner.cookie, groupId, { aiId: ai.aiId })).status).toBe(200);
 
       const toolNow = new Date('2026-01-01T00:00:00Z');
+      const generalTopicId = await generalTopicOf(groupId);
       const [groupTool] = await context.db
         .insert(aiTools)
         .values({
           id: randomUUID(),
           aiId: ai.aiId,
           groupId,
+          topicId: generalTopicId,
           name: 'group-tool',
           description: 'A group tool',
           currentVersion: 1,

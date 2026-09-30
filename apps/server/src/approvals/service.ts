@@ -3,7 +3,8 @@ import { and, count, desc, eq, gt, inArray, lt, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { ARGS_HASH_PATTERN } from '@galena/protocol';
 import type { ServerDatabase } from '../db/client';
-import { ais, approvals, groupAis, groupMembers } from '../db/schema';
+import { ais, approvals, groupAis, groupMembers, topics } from '../db/schema';
+import { canSeeTopic } from '../topics/access';
 import { createRule, isGroupAdmin } from './rules';
 
 // `approved_always` is treated exactly like `approved_once` for the
@@ -25,6 +26,7 @@ const argsHashSchema = z.string().regex(ARGS_HASH_PATTERN);
 const noteSchema = z.string().max(500).optional();
 const requestedBySchema = z.string().min(1).max(3071);
 const groupIdSchema = z.string().min(1).max(128).optional();
+const topicIdSchema = z.string().min(1).max(128).optional();
 const aiIdSchema = z.string().min(1).max(128);
 
 const worstCaseSchema = z
@@ -38,6 +40,7 @@ export const CreateApprovalInputSchema = z
   .object({
     aiId: aiIdSchema,
     groupId: groupIdSchema,
+    topicId: topicIdSchema,
     action: actionSchema,
     summary: summarySchema,
     details: detailsSchema,
@@ -46,7 +49,11 @@ export const CreateApprovalInputSchema = z
     requestedBy: requestedBySchema,
     expiresAt: z.date(),
   })
-  .strict();
+  .strict()
+  // T-0110: the scope is (AI, topic) — group and topic ids travel together.
+  .refine((data) => (data.groupId === undefined) === (data.topicId === undefined), {
+    message: 'groupId and topicId must be set together',
+  });
 
 export type CreateApprovalInput = z.infer<typeof CreateApprovalInputSchema>;
 
@@ -64,6 +71,7 @@ export interface CreatedApprovalRule {
   id: string;
   action: string;
   groupId: string | null;
+  topicId: string | null;
   created: boolean;
 }
 
@@ -71,6 +79,12 @@ export interface PublicApproval {
   id: string;
   aiId: string;
   groupId: string | null;
+  /** The topic the request was raised in. Null for personal chats. */
+  topicId: string | null;
+  /** The topic's name, or null for personal chats. The route blanks this
+   *  for topics the viewer cannot see (which cannot happen for a returned
+   *  row); the field stays for the client. */
+  topicName: string | null;
   action: string;
   summary: string;
   details: string | null;
@@ -117,8 +131,9 @@ export class ApprovalServiceError extends Error {
 type ApprovalRow = typeof approvals.$inferSelect;
 
 // Validates input at the boundary and writes one row. The AI must exist; if
-// `groupId` is set, the AI must be an AI of that group. `expiresAt` must be in
-// the future and at most 24 hours ahead. Per-AI pending cap is 50.
+// `groupId` is set, `topicId` must name a topic of that group (both set or
+// both absent — personal chat). `expiresAt` must be in the future and at
+// most 24 hours ahead. Per-AI pending cap is 50.
 export async function createApproval(
   db: ServerDatabase,
   input: CreateApprovalInput,
@@ -155,7 +170,17 @@ export async function createApproval(
       .where(and(eq(groupAis.groupId, data.groupId), eq(groupAis.aiId, data.aiId)))
       .limit(1);
     if (!link) {
-      throw new ApprovalServiceError('ai_not_in_group', 'AI is not in that group');
+      throw new ApprovalServiceError('ai_not_in_group', 'The AI is not in that topic');
+    }
+    // The topic must belong to the group; the AI's membership of the topic
+    // is checked by the gateway before this service is reached.
+    const [topic] = await db
+      .select({ id: topics.id, groupId: topics.groupId })
+      .from(topics)
+      .where(eq(topics.id, data.topicId as string))
+      .limit(1);
+    if (!topic || topic.groupId !== data.groupId) {
+      throw new ApprovalServiceError('ai_not_in_group', 'The AI is not in that topic');
     }
   }
 
@@ -175,6 +200,7 @@ export async function createApproval(
     id,
     aiId: data.aiId,
     groupId: data.groupId ?? null,
+    topicId: data.topicId ?? null,
     action: data.action,
     summary: data.summary,
     details: data.details ?? null,
@@ -295,10 +321,22 @@ export async function decideApproval(
       // The rule shares the decision's transaction: both commit or neither.
       const { rule, created } = await createRule(
         tx as unknown as ServerDatabase,
-        { aiId: row.aiId, groupId: row.groupId, action: row.action, createdBy: params.userId },
+        {
+          aiId: row.aiId,
+          groupId: row.groupId,
+          topicId: row.topicId,
+          action: row.action,
+          createdBy: params.userId,
+        },
         now,
       );
-      createdRule = { id: rule.id, action: rule.action, groupId: rule.groupId, created };
+      createdRule = {
+        id: rule.id,
+        action: rule.action,
+        groupId: rule.groupId,
+        topicId: rule.topicId,
+        created,
+      };
     }
 
     return decisionRow;
@@ -368,7 +406,9 @@ export async function verifyApproval(
 }
 
 // Lists the pending, unexpired approval requests `userId` may decide: their
-// own AIs, plus groups they own or administer. Newest first, capped at 100.
+// own AIs, plus groups they own or administer — in both cases only for
+// topics they can see (a blind admin never counts a private topic's rows).
+// Newest first, capped at 100.
 export async function listDecidableApprovals(
   db: ServerDatabase,
   userId: string,
@@ -406,7 +446,15 @@ export async function listDecidableApprovals(
     .where(or(...conditions))
     .orderBy(desc(approvals.createdAt))
     .limit(100);
-  return rows.map((row) => toPublicApproval(row, now));
+  // A group admin who cannot see a private topic must not count its rows
+  // in the pending badge: drop anything outside their visible topics.
+  const visible = [];
+  for (const row of rows) {
+    if (await canDecide(db, row, userId)) {
+      visible.push(toPublicApproval(row, now));
+    }
+  }
+  return visible;
 }
 
 // One request by id, visible only to a user who may decide it. The read model
@@ -444,8 +492,11 @@ export async function expireStale(
   return updated.map((row) => ({ id: row.id, aiId: row.aiId, groupId: row.groupId }));
 }
 
-// Whether `userId` may decide `row`: the AI owner, or — when the request was
-// raised in a group — that group's owner or admin.
+// Whether `userId` may decide `row`: the AI owner, or — when the request
+// was raised in a topic — that group's owner or admin who can also see the
+// topic. A group admin who cannot see a private topic gets the same false
+// as a missing id, so existence is never leaked. The AI owner keeps
+// deciding only while they can see the topic.
 export async function canDecide(
   db: ServerDatabase,
   row: ApprovalRow,
@@ -454,6 +505,12 @@ export async function canDecide(
   const [ai] = await db.select({ owner: ais.owner }).from(ais).where(eq(ais.id, row.aiId)).limit(1);
   if (!ai) {
     return false;
+  }
+  if (row.topicId !== null) {
+    const [topic] = await db.select().from(topics).where(eq(topics.id, row.topicId)).limit(1);
+    if (!topic || !(await canSeeTopic(db, topic, userId))) {
+      return false;
+    }
   }
   if (ai.owner === userId) {
     return true;
@@ -498,10 +555,14 @@ async function decidableGroupIdsForUser(db: ServerDatabase, userId: string): Pro
 // `alwaysEligible` is supplied by the caller because the service does not
 // own the action registry — the gateway does. The route passes the
 // predicate it built from the registry.
+// `topicName` is supplied by the caller (the route) because the service
+// does not gate visibility — the route passes the name only for topics the
+// viewer can see, else null.
 export function toPublicApproval(
   row: ApprovalRow,
   now: Date,
   alwaysEligible: boolean = false,
+  topicName: string | null = null,
 ): PublicApproval {
   const isPending = row.status === 'pending';
   const sweptByTimer = row.status === 'denied' && row.note === 'expired' && row.decidedBy === null;
@@ -522,6 +583,8 @@ export function toPublicApproval(
     id: row.id,
     aiId: row.aiId,
     groupId: row.groupId,
+    topicId: row.topicId,
+    topicName,
     action: row.action,
     summary: row.summary,
     details: row.details,
