@@ -44,6 +44,7 @@ interface PreviewBody {
   groupTitle: string;
   memberCount: number;
   alreadyMember: boolean;
+  groupId?: string;
 }
 
 function errorOf(body: unknown): { code: string; message: string } {
@@ -253,8 +254,9 @@ describe('group invite links', () => {
       memberCount: 1,
       alreadyMember: false,
     });
-    // Only the title and the count — never member names.
+    // Only the title and the count — never member names, never the group id.
     expect(JSON.stringify(previewBody)).not.toContain('owner@example.com');
+    expect(previewBody.groupId).toBeUndefined();
 
     const joined = await join(created.token, friend.cookie);
     expect(joined.status).toBe(200);
@@ -282,9 +284,11 @@ describe('group invite links', () => {
       .where(eq(groupInviteLinks.id, created.id));
     expect(linkRow!.uses).toBe(1);
 
-    // Preview now reports membership.
+    // Preview now reports membership, with the group id the join page
+    // uses to open the group chat.
     const reshown = (await (await preview(created.token, friend.cookie)).json()) as PreviewBody;
     expect(reshown.alreadyMember).toBe(true);
+    expect(reshown.groupId).toBe(groupId);
   });
 
   it('an existing member joins idempotently without consuming a use', async () => {

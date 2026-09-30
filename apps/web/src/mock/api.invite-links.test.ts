@@ -73,9 +73,11 @@ describe('mock invite links API (T-0115)', () => {
       groupTitle: string;
       memberCount: number;
       alreadyMember: boolean;
+      groupId?: string;
     };
     expect(previewBody.groupTitle).toBe('Dev team');
     expect(previewBody.alreadyMember).toBe(true);
+    expect(previewBody.groupId).toBe('g-devteam');
 
     const joined = await post(`/join/${token}`, {});
     expect(joined.status).toBe(200);

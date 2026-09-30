@@ -6,13 +6,26 @@ import { ApiError, joinByLink, previewJoinLink, type JoinPreview } from '@/lib/a
 /**
  * Join-by-link page (T-0115): `/j/:token`. Shows a preview card (group
  * title, member count) and a Join button. A signed-out visitor is sent to
- * the login with `next=/j/<token>` and returns here after sign-in.
+ * the login with `next=/j/<token>` and returns here after sign-in; a
+ * signed-in user without a display name sees the name gate inline and joins
+ * only after choosing a name (joining nameless would plant a blank member
+ * row in the group). After joining (or when the preview already reports
+ * membership) the page opens the group chat `/c/<groupId>` — the General
+ * chat uses the group id. The preview carries `groupId` only for members,
+ * so the stranded-join fallback below navigates to `/` when the list has
+ * not refreshed yet.
  *
- * `refreshChats` is injected by the app shell (the route tests pass a
- * stub); the real `AppRoutes` wires the store's refresh so the new group
- * appears in the list after joining.
+ * `openGroupChat`/`refreshChats` are injected by the app shell (the route
+ * tests pass stubs); the real `AppRoutes` wires the store, which resolves
+ * the General chat id from the painted list.
  */
-export function JoinPage({ refreshChats = () => {} }: { refreshChats?: () => void }) {
+export function JoinPage({
+  openGroupChat = async () => undefined,
+  refreshChats = () => {},
+}: {
+  openGroupChat?: (groupId: string) => Promise<string | undefined>;
+  refreshChats?: () => void;
+}) {
   const { token } = useParams<{ token: string }>();
   const auth = useAuth();
   const navigate = useNavigate();
@@ -85,6 +98,12 @@ export function JoinPage({ refreshChats = () => {} }: { refreshChats?: () => voi
     );
   }
 
+  // A signed-in user without a display name must pick one before joining:
+  // the join would otherwise plant a blank member row in the group. The
+  // gate is inline (not a redirect), so the loaded preview survives the
+  // name step and the token never leaves the page.
+  const needsName = (auth.user?.name ?? '').trim() === '';
+
   if (state === 'checking') {
     return (
       <div className="chat-background flex min-h-dvh items-center justify-center text-[15px] text-muted-foreground">
@@ -112,22 +131,34 @@ export function JoinPage({ refreshChats = () => {} }: { refreshChats?: () => voi
   }
 
   const join = async (): Promise<void> => {
-    if (busy || preview === undefined) {
+    if (busy || preview === undefined || needsName) {
       return;
     }
+    // Opens the group chat for a group id: resolves the General chat (the
+    // General chat id is the group id) from the painted list first, so the
+    // new membership had a chance to arrive; falls back to `/` when the
+    // list has not refreshed yet.
+    const openGroup = async (groupId: string): Promise<void> => {
+      refreshChats();
+      const chatId = await openGroupChat(groupId).catch(() => undefined);
+      navigate(chatId === undefined ? '/' : `/c/${encodeURIComponent(chatId)}`, {
+        replace: true,
+      });
+    };
     // Already a member: just open the group.
     if (preview.alreadyMember) {
-      refreshChats();
-      navigate('/', { replace: true });
+      if (preview.groupId === undefined) {
+        navigate('/', { replace: true });
+        return;
+      }
+      await openGroup(preview.groupId);
       return;
     }
     setBusy(true);
     setError(undefined);
     try {
       const result = await joinByLink(token);
-      void result;
-      refreshChats();
-      navigate('/', { replace: true });
+      await openGroup(result.groupId);
     } catch (joinError) {
       if (joinError instanceof ApiError && joinError.code === 'group_full') {
         setState('full');
@@ -153,23 +184,38 @@ export function JoinPage({ refreshChats = () => {} }: { refreshChats?: () => voi
             You&apos;re already a member of this group.
           </p>
         ) : null}
+        {needsName ? (
+          <p className="mt-3 text-[14px] text-muted-foreground">
+            Choose a display name first — your new group will see it.
+          </p>
+        ) : null}
         {error !== undefined && (
           <p role="alert" className="mt-3 text-[14px] text-danger">
             {error}
           </p>
         )}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void join()}
-          className="mt-5 w-full rounded-full bg-accent px-4 py-2.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-        >
-          {busy
-            ? 'Joining…'
-            : preview?.alreadyMember === true
-              ? 'Open the group'
-              : 'Join the group'}
-        </button>
+        {needsName ? (
+          <Link
+            to="/welcome/name"
+            state={{ next: `/j/${token}` }}
+            className="mt-5 inline-block w-full rounded-full bg-accent px-4 py-2.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
+          >
+            Choose a name
+          </Link>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void join()}
+            className="mt-5 w-full rounded-full bg-accent px-4 py-2.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+          >
+            {busy
+              ? 'Joining…'
+              : preview?.alreadyMember === true
+                ? 'Open the group'
+                : 'Join the group'}
+          </button>
+        )}
       </div>
     </div>
   );

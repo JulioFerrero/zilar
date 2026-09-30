@@ -107,6 +107,14 @@ pnpm build
 - Open question (no code change, per review): the per-IP join limiter keys on the socket address, so behind Caddy every user shares the proxy IP and the 60/hour per-IP budget becomes effectively global — one person's guessing (or a busy hour) could lock out everyone else's joins. Kept as-is; a trusted-proxy setting (e.g. trusting `x-forwarded-for` from Caddy only) is the follow-up when the deployment task lands.
 - No new dependencies, no `any`, no disable comments.
 
+### Round 3 (lead round-2 fixes)
+- Fix 1 (open the group chat): after a successful join, and when the preview says `alreadyMember`, JoinPage now opens the group chat `/c/<chatId>` — the General chat id, resolved from the painted list via the store's `refreshGeneralTopic(groupId)` (same helper `ChatHeader` uses), falling back to `/` when the list has not refreshed yet. Server preview carries `groupId` ONLY when `alreadyMember` is true (a member already knows it; non-members get no id); web `joinPreviewSchema` gains optional `groupId`, mock mirrors it. Tests: server asserts no `groupId` for non-members and the id for members; JoinPage asserts the `/c/` navigation, the `/` fallback, and the no-join `alreadyMember` path.
+- Fix 2 (nameless users): JoinPage gates the Join button behind an inline name gate ("Choose a display name first") linking to `/welcome/name` with `next=/j/<token>`; `NamePage` returns to `next` after saving (default `/`). `AuthFlow` forwards a post-login `from` through the name step the same way (nameless sign-in → name → back to `from`). Tests: JoinPage nameless renders the gate and fires no join POST; NamePage `next` round-trips to the join page.
+- Fix 3 (cap-race comment): `assertGroupHasRoom` now says plainly that two strangers racing the last seat can exceed the cap by one — same known race as `addGroupMembers`, accepted.
+- Skipped per instruction: findings 3 (mock fidelity) and 4 (unrated preview GET).
+- Note: repo-root `pnpm format:check` flags an untracked `PREREVIEW.md` that is not mine (another worker's/lead's file, left untouched); all tracked files I touched are Prettier-clean, verified with an explicit file list.
+- Round 3 scoped runs: web `JoinPage` + `NamePage` + invite-links api/mock + `AuthFlow` 26 passed; server `invite-links` 16 passed; typecheck 10/10; lint clean.
+
 ---
 
 ## Review (written by Claude)

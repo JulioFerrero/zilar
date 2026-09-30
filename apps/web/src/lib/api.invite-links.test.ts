@@ -124,8 +124,24 @@ describe('group invite links API (T-0115)', () => {
 
     const preview = await previewJoinLink('a'.repeat(64));
     expect(preview).toEqual({ groupTitle: 'Hiking club', memberCount: 4, alreadyMember: false });
+    expect(preview.groupId).toBeUndefined();
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(url).toBe(`/api/join/${'a'.repeat(64)}`);
+  });
+
+  it('previewJoinLink parses the member-only groupId', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        groupTitle: 'Hiking club',
+        memberCount: 4,
+        alreadyMember: true,
+        groupId: 'g-1',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const preview = await previewJoinLink('a'.repeat(64));
+    expect(preview.groupId).toBe('g-1');
   });
 
   it('joinByLink POSTs and returns the group id', async () => {

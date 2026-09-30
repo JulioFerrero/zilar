@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
 import { updateMe } from '@/lib/api';
 
 export function NamePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const auth = useAuth();
   const [name, setName] = useState(auth.user?.name ?? '');
   const [error, setError] = useState<string | undefined>(undefined);
@@ -22,7 +23,10 @@ export function NamePage() {
     try {
       await updateMe(trimmed);
       await auth.refetch();
-      navigate('/', { replace: true });
+      // Callers (e.g. the join-by-link page) pass `next` to come back
+      // after the name step; the default stays the chat list.
+      const next = (location.state as { next?: string } | null)?.next;
+      navigate(next ?? '/', { replace: true });
     } catch {
       setBusy(false);
       setError('Could not save your name. Try again.');

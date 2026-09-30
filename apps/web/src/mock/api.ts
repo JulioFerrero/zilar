@@ -1117,7 +1117,9 @@ export async function mockRequest(
   }
 
   // T-0115: join by link. The mock's single user is already in the Dev team
-  // group (so it previews as a member); unknown tokens 404 `invalid_link`.
+  // group (so it previews as a member, with the group id); unknown tokens
+  // 404 `invalid_link`. The preview carries `groupId` only for members,
+  // like the real server.
   if (head === 'join' && first !== undefined && second === undefined) {
     const token = decodeURIComponent(first);
     const linkId = state.inviteTokens.get(token);
@@ -1151,6 +1153,7 @@ export async function mockRequest(
         groupTitle: detail.title,
         memberCount: detail.members.length,
         alreadyMember,
+        ...(alreadyMember ? { groupId: link.groupId } : {}),
       });
     }
     if (method === 'POST') {

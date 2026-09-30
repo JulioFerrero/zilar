@@ -505,14 +505,17 @@ export async function revokeGroupInviteLink(groupId: string, linkId: string): Pr
 }
 
 // --- Join by link (T-0115) -------------------------------------------------
-// The preview names the group and counts its members — never member names.
-// Joining adds the caller as `member`; an existing member answers
+// The preview names the group and counts its members — never member names,
+// and never the group id unless the caller is already a member (they know
+// it; the join page opens the group chat with it). Joining adds the caller
+// as `member` and returns the group id; an existing member answers
 // `alreadyMember: true` without consuming a use.
 
 export const joinPreviewSchema = z.object({
   groupTitle: z.string(),
   memberCount: z.number(),
   alreadyMember: z.boolean(),
+  groupId: z.string().optional(),
 });
 
 export type JoinPreview = z.infer<typeof joinPreviewSchema>;

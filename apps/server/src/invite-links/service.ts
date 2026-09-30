@@ -41,6 +41,10 @@ export interface JoinPreview {
   groupTitle: string;
   memberCount: number;
   alreadyMember: boolean;
+  // The group id, present only when `alreadyMember` is true: a member
+  // already knows it, and the join page uses it to open the group chat.
+  // Never sent for non-members, so previews leak no ids to strangers.
+  groupId?: string | undefined;
 }
 
 // Byte-identical for an unknown token, an expired link, a revoked link and
@@ -321,8 +325,10 @@ async function isGroupMember(
 }
 
 // The preview for `GET /api/join/:token`: the group title and member count,
-// never member names. Unknown/expired/revoked/exhausted links answer the
-// same 404 `invalid_link`, so failures never reveal why.
+// never member names — and never the group id, unless the caller is already
+// a member (they know it; the join page uses it to open the group chat).
+// Unknown/expired/revoked/exhausted links answer the same 404 `invalid_link`,
+// so failures never reveal why.
 export async function previewInviteLink(
   deps: InviteLinkServiceDeps,
   token: string,
@@ -340,7 +346,12 @@ export async function previewInviteLink(
     countGroupMembers(deps.db, row.groupId),
     isGroupMember(deps.db, row.groupId, userId),
   ]);
-  return { groupTitle: title, memberCount, alreadyMember };
+  return {
+    groupTitle: title,
+    memberCount,
+    alreadyMember,
+    ...(alreadyMember ? { groupId: row.groupId } : {}),
+  };
 }
 
 export interface JoinByLinkResult {
@@ -415,9 +426,10 @@ async function refundLinkUse(db: ServerDatabase, linkId: string): Promise<void> 
 
 // The group-full check, run before any use is claimed: people and AIs share
 // MAX_GROUP_MEMBERS. Throws 409 `group_full` when the newcomer would exceed
-// it. A stranger racing the last seat may still pass this check and then
-// lose the claim race (or vice versa) — either way the cap holds, because
-// the claim is conditional and the use is refunded on failure.
+// it. This check and the insert are not atomic: two strangers racing for the
+// last seat can both pass it and both join, exceeding the cap by one — the
+// same known race as the existing add-member flow (`addGroupMembers`), which
+// checks the cap before its transaction without a serializing lock. Accepted.
 async function assertGroupHasRoom(db: ServerDatabase, groupId: string): Promise<void> {
   const [row] = await db
     .select({ total: count() })

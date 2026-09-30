@@ -101,7 +101,14 @@ export function AuthFlow({
     const session = await authClient.getSession();
     const name = session.data?.user.name ?? '';
     const from = (location.state as { from?: string } | null)?.from;
-    navigate(name.trim() === '' ? '/welcome/name' : (from ?? '/'), { replace: true });
+    // A nameless user picks a name first, then continues to `from` — the
+    // name step reads the same `next` state JoinPage writes.
+    navigate(
+      name.trim() === '' ? '/welcome/name' : (from ?? '/'),
+      name.trim() === ''
+        ? { replace: true, state: from === undefined ? undefined : { next: from } }
+        : { replace: true },
+    );
   };
 
   return (

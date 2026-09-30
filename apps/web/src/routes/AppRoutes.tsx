@@ -121,9 +121,15 @@ export function AppRoutes() {
   );
 }
 
-// The join page needs the store's chat-list refresh after a successful join;
-// `App` wraps the routes in the provider, so the hook below is valid.
+// The join page needs the store's chat-list refresh after a successful join
+// plus the General chat id to open; `App` wraps the routes in the provider,
+// so the hook below is valid.
 function JoinRoute() {
   const storeApi = useChatStoreApi();
-  return <JoinPage refreshChats={() => storeApi.getState().refreshChats()} />;
+  return (
+    <JoinPage
+      refreshChats={() => storeApi.getState().refreshChats()}
+      openGroupChat={(groupId) => storeApi.getState().refreshGeneralTopic(groupId)}
+    />
+  );
 }

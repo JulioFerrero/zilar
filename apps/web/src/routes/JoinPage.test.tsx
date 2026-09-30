@@ -12,23 +12,41 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderJoin(token: string, signedIn: boolean) {
+function renderJoin(
+  token: string,
+  auth: 'signed-in' | 'guest' | 'nameless',
+  pages: { openGroupChat?: (groupId: string) => Promise<string | undefined> } = {},
+) {
+  const value =
+    auth === 'guest'
+      ? { status: 'guest' as const, user: undefined, refetch: async () => {} }
+      : auth === 'nameless'
+        ? {
+            status: 'authenticated' as const,
+            user: { id: 'u-you', name: '  ', email: 'you@galena.test' },
+            refetch: async () => {},
+          }
+        : {
+            status: 'authenticated' as const,
+            user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+            refetch: async () => {},
+          };
   render(
-    <AuthProvider
-      value={
-        signedIn
-          ? {
-              status: 'authenticated',
-              user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
-              refetch: async () => {},
-            }
-          : { status: 'guest', user: undefined, refetch: async () => {} }
-      }
-    >
+    <AuthProvider value={value}>
       <MemoryRouter initialEntries={[`/j/${token}`]}>
         <Routes>
-          <Route path="/j/:token" element={<JoinPage />} />
+          <Route
+            path="/j/:token"
+            element={
+              <JoinPage
+                openGroupChat={pages.openGroupChat ?? (async () => 'general-chat')}
+                refreshChats={() => {}}
+              />
+            }
+          />
           <Route path="/login" element={<div>Login page</div>} />
+          <Route path="/welcome/name" element={<div>Name page</div>} />
+          <Route path="/c/:chatJid" element={<div>Group chat</div>} />
           <Route path="/" element={<div>Chats</div>} />
         </Routes>
       </MemoryRouter>
@@ -37,7 +55,7 @@ function renderJoin(token: string, signedIn: boolean) {
 }
 
 describe('JoinPage (T-0115)', () => {
-  it('shows the preview card and joins on click', async () => {
+  it('shows the preview card and opens the group chat on join', async () => {
     const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
       const target = String(url);
       if (target.includes('/api/join/')) {
@@ -53,17 +71,42 @@ describe('JoinPage (T-0115)', () => {
       return jsonResponse(404, { error: { code: 'not_found', message: 'unexpected' } });
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderJoin('a'.repeat(64), true);
+    renderJoin('a'.repeat(64), 'signed-in', {
+      openGroupChat: async (groupId: string) => {
+        expect(groupId).toBe('g-1');
+        return 'general-chat';
+      },
+    });
 
     expect(await screen.findByText('Hiking club')).toBeTruthy();
     expect(screen.getByText('4 members')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Join the group' }));
-    await waitFor(() => expect(screen.getByText('Chats')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Group chat')).toBeTruthy());
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/join/${'a'.repeat(64)}`,
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+
+  it('falls back to the chat list when the group chat id is unknown', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown, init?: RequestInit) => {
+        if (String(url).includes('/api/join/') && init?.method === 'POST') {
+          return jsonResponse(200, { groupId: 'g-1', alreadyMember: false });
+        }
+        return jsonResponse(200, {
+          groupTitle: 'Hiking club',
+          memberCount: 4,
+          alreadyMember: false,
+        });
+      }),
+    );
+    renderJoin('a'.repeat(64), 'signed-in', { openGroupChat: async () => undefined });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Join the group' }));
+    await waitFor(() => expect(screen.getByText('Chats')).toBeTruthy());
   });
 
   it('shows an invalid card when the link is bad', async () => {
@@ -71,7 +114,7 @@ describe('JoinPage (T-0115)', () => {
       'fetch',
       vi.fn(async () => jsonResponse(404, { error: { code: 'invalid_link', message: 'bad' } })),
     );
-    renderJoin('b'.repeat(64), true);
+    renderJoin('b'.repeat(64), 'signed-in');
 
     expect(await screen.findByText('Invite link not valid')).toBeTruthy();
   });
@@ -90,7 +133,7 @@ describe('JoinPage (T-0115)', () => {
         });
       }),
     );
-    renderJoin('c'.repeat(64), true);
+    renderJoin('c'.repeat(64), 'signed-in');
 
     expect(await screen.findByText('Hiking club')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Join the group' }));
@@ -104,24 +147,51 @@ describe('JoinPage (T-0115)', () => {
         jsonResponse(200, { groupTitle: 'Hiking', memberCount: 2, alreadyMember: false }),
       ),
     );
-    renderJoin('d'.repeat(64), false);
+    renderJoin('d'.repeat(64), 'guest');
 
     expect(await screen.findByText("You're invited")).toBeTruthy();
     fireEvent.click(screen.getByRole('link', { name: 'Sign in' }));
     expect(await screen.findByText('Login page')).toBeTruthy();
   });
 
-  it('offers to open the group when already a member', async () => {
+  it('gates a nameless signed-in user behind the name step, preserving the token', async () => {
+    let posts = 0;
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      if (String(url).includes('/api/join/') && init?.method === 'POST') {
+        posts += 1;
+        return jsonResponse(200, { groupId: 'g-1', alreadyMember: false });
+      }
+      return jsonResponse(200, { groupTitle: 'Hiking', memberCount: 2, alreadyMember: false });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderJoin('d'.repeat(64), 'nameless');
+
+    // The preview loads (so the card names the group), but the Join button
+    // is replaced by the name gate — no join POST fires without a name.
+    expect(await screen.findByText('Hiking')).toBeTruthy();
+    expect(screen.getByText(/Choose a display name first/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Join the group' })).toBeNull();
+    fireEvent.click(screen.getByRole('link', { name: 'Choose a name' }));
+    expect(await screen.findByText('Name page')).toBeTruthy();
+    expect(posts).toBe(0);
+  });
+
+  it('opens the group chat from the member preview without joining', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
-        jsonResponse(200, { groupTitle: 'Hiking club', memberCount: 4, alreadyMember: true }),
+        jsonResponse(200, {
+          groupTitle: 'Hiking club',
+          memberCount: 4,
+          alreadyMember: true,
+          groupId: 'g-1',
+        }),
       ),
     );
-    renderJoin('e'.repeat(64), true);
+    renderJoin('e'.repeat(64), 'signed-in');
 
     expect(await screen.findByText("You're already a member of this group.")).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open the group' }));
-    expect(await screen.findByText('Chats')).toBeTruthy();
+    expect(await screen.findByText('Group chat')).toBeTruthy();
   });
 });
