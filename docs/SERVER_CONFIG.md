@@ -77,8 +77,8 @@ Mails are plain text plus a minimal HTML alternative, English only, with one sub
 Search reads the ejabberd `archive` table through a **read-only** role. Create it:
 
 1. Add `GALENA_ARCHIVE_DB_PASSWORD=CHANGE_ME` to `infra/.env` (git-ignored; generate with `openssl rand -base64 32`).
-2. `infra/postgres/init/20-search-reader.sql` creates the `galena_archive` role on first start of an empty data volume and grants it only `GRANT SELECT ON archive TO galena_archive` (plus `CONNECT` and `USAGE ON SCHEMA public`, which `SELECT` needs).
-3. On an existing volume, apply the same grant manually: `GRANT SELECT ON archive TO galena_archive;`
+2. `infra/postgres/init/20-search-reader.sql` creates the `galena_archive` role on first start of an empty data volume, grants it `CONNECT` + `USAGE ON SCHEMA public`, grants `SELECT` on `archive` when the table already exists, and sets `ALTER DEFAULT PRIVILEGES FOR ROLE ejabberd … GRANT SELECT ON TABLES TO galena_archive` so tables ejabberd creates later (including its `archive`) are readable too.
+3. On an existing volume, apply the same grants manually: `GRANT SELECT ON archive TO galena_archive;` (plus the `ALTER DEFAULT PRIVILEGES` line above if the role predates it).
 4. Point the server at it: `XMPP_ARCHIVE_DATABASE_URL=postgres://galena_archive:CHANGE_ME@127.0.0.1:5432/ejabberd` (in `apps/server/.env`, git-ignored).
 
 The shape of the table and the query design are in `docs/SEARCH_NOTES.md` (≤ 60 lines). The query text is never logged or stored: the route logs only the result count and duration.

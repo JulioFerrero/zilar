@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { SearchItem } from '@/lib/api';
 import { useMessageSearch } from '@/lib/useMessageSearch';
@@ -23,6 +23,48 @@ export function MessageSearchResults({
   const navigate = useNavigate();
   const search = useMessageSearch(query, chatFilter);
   const [jumpError, setJumpError] = useState<string | null>(null);
+
+  const openHit = useCallback(
+    (item: SearchItem): void => {
+      setJumpError(null);
+      void storeApi
+        .getState()
+        .openAtMessage(item.chatJid, item.messageId)
+        .then(
+          () => {
+            navigate(`/c/${encodeURIComponent(item.chatJid)}`);
+            scrollToMessage(item.messageId);
+          },
+          () => {
+            setJumpError(item.chatJid);
+            onNotFound(item.chatJid);
+          },
+        );
+    },
+    [storeApi, navigate, onNotFound],
+  );
+
+  // The search input lives in `SearchBar`, outside this subtree, so Enter
+  // there arrives as a window event. The ref mirrors the current top hit
+  // (or undefined while loading); it is only read inside the listener and
+  // written from an effect, never touched during render.
+  const topHitRef = useRef<SearchItem | undefined>(undefined);
+
+  const topHit = search.status === 'ready' ? search.items[0] : undefined;
+  useEffect(() => {
+    topHitRef.current = topHit;
+  }, [topHit]);
+
+  useEffect(() => {
+    const onSearchEnter = (): void => {
+      const top = topHitRef.current;
+      if (top !== undefined) {
+        openHit(top);
+      }
+    };
+    window.addEventListener('galena:search-enter', onSearchEnter);
+    return () => window.removeEventListener('galena:search-enter', onSearchEnter);
+  }, [openHit]);
 
   if (search.status === 'idle' || search.status === 'unavailable') {
     return null;
@@ -54,38 +96,27 @@ export function MessageSearchResults({
     );
   }
 
-  const openHit = (item: SearchItem): void => {
-    setJumpError(null);
-    void storeApi
-      .getState()
-      .openAtMessage(item.chatJid, item.messageId)
-      .then(
-        () => {
-          navigate(`/c/${encodeURIComponent(item.chatJid)}`);
-          scrollToMessage(item.messageId);
-        },
-        () => {
-          setJumpError(item.chatJid);
-          onNotFound(item.chatJid);
-        },
-      );
-  };
-
   const groups = groupByChat(
     search.items,
     store.chats.map((chat) => ({ id: chat.id, title: chat.title })),
   );
+
+  // Enter on this list opens the top hit (Enter in the search input takes
+  // the window-event path above, which reads the same ref).
+  const openTopFromList = (): void => {
+    const top = topHitRef.current;
+    if (top !== undefined) {
+      openHit(top);
+    }
+  };
 
   return (
     <div
       className="flex flex-col gap-0.5 px-2"
       onKeyDown={(event) => {
         if (event.key === 'Enter') {
-          const top = search.items[0];
-          if (top !== undefined) {
-            event.preventDefault();
-            openHit(top);
-          }
+          event.preventDefault();
+          openTopFromList();
         }
       }}
     >

@@ -59,6 +59,13 @@ export function SearchBar() {
         type="search"
         value={store.search}
         onChange={(event) => store.setSearch(event.target.value)}
+        onKeyDown={(event) => {
+          // Enter opens the top message hit when the Messages section has
+          // one; the results list (a separate subtree) listens for this.
+          if (event.key === 'Enter') {
+            window.dispatchEvent(new Event('galena:search-enter'));
+          }
+        }}
         placeholder={scopedChat === undefined ? 'Search' : `Search in ${scopedChat.title}`}
         aria-label={scopedChat === undefined ? 'Search chats' : `Search in ${scopedChat.title}`}
         className="h-full min-w-0 flex-1 bg-transparent text-[14px] text-foreground outline-none placeholder:text-subtle-foreground"

@@ -40,11 +40,15 @@ SELECT EXISTS (SELECT FROM pg_database WHERE datname = 'ejabberd') AS has_ejabbe
 GRANT CONNECT ON DATABASE ejabberd TO galena_archive;
 GRANT USAGE ON SCHEMA public TO galena_archive;
 -- `archive` is created by ejabberd itself on first start (`update_sql_schema`),
--- so it may not exist yet when this runs: grant only when it does.
+-- so it usually does not exist yet when this runs. The direct GRANT below
+-- covers volumes where it already does; the default privilege covers every
+-- table the `ejabberd` role (its owner, created by 10-create-databases.sql)
+-- creates afterwards — including a future `archive`.
 SELECT EXISTS (SELECT FROM pg_class WHERE relname = 'archive') AS has_archive \gset
 \if :has_archive
 GRANT SELECT ON public.archive TO galena_archive;
 \endif
+ALTER DEFAULT PRIVILEGES FOR ROLE ejabberd IN SCHEMA public GRANT SELECT ON TABLES TO galena_archive;
 \endif
 \endif
 \endif

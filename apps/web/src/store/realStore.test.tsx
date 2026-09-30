@@ -970,6 +970,20 @@ describe('createRealChatStore', () => {
     );
   });
 
+  it('gives up with message_not_found when a history fetch stalls', async () => {
+    const { store, xmpp } = await setup();
+    vi.useFakeTimers();
+    try {
+      // The opening page never settles: openAtMessage must not hang forever.
+      vi.mocked(xmpp.core.loadHistory).mockImplementationOnce(() => new Promise(() => {}));
+      const pending = store.getState().openAtMessage('ana@galena.test', 'ana-2');
+      await vi.advanceTimersByTimeAsync(11_000);
+      await expect(pending).rejects.toThrow('message_not_found');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('reflects connection status changes', async () => {
     const { store, xmpp } = await setup();
     expect(store.getState().status).toBe('online');

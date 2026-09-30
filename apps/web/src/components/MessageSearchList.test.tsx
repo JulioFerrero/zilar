@@ -70,6 +70,34 @@ describe('message search in the chat list (mock mode)', () => {
     await waitFor(() => expect(store.getState().activeChatId).toBe('c-ana'));
   });
 
+  it('opens the top hit on Enter in the search box', async () => {
+    stubFetchToMock();
+    const { store } = renderApp('/');
+    const openAtMessage = vi.spyOn(store.getState(), 'openAtMessage');
+    const input = screen.getByLabelText('Search chats');
+    fireEvent.change(input, { target: { value: 'concert' } });
+    await waitFor(() =>
+      expect(screen.getByText(/concert/i, { selector: '[data-search-mark]' })).toBeTruthy(),
+    );
+    fireEvent.keyDown(input, { key: 'Enter' });
+    // The top mock hit for "concert" is Ana's message ana-1.
+    await waitFor(() => expect(openAtMessage).toHaveBeenCalledWith('c-ana', 'ana-1'));
+    await waitFor(() => expect(store.getState().activeChatId).toBe('c-ana'));
+  });
+
+  it('Enter with no message hits opens nothing', async () => {
+    stubFetchToMock();
+    const { store } = renderApp('/');
+    const openAtMessage = vi.spyOn(store.getState(), 'openAtMessage');
+    const input = screen.getByLabelText('Search chats');
+    fireEvent.change(input, { target: { value: 'zzzqqqxxx' } });
+    await waitFor(() => expect(screen.getByText('No messages found')).toBeTruthy());
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByText('No messages found')).toBeTruthy());
+    expect(openAtMessage).not.toHaveBeenCalled();
+    expect(store.getState().activeChatId).toBeUndefined();
+  });
+
   it('mock store openAtMessage resolves loaded messages and rejects ghosts', async () => {
     const { store } = renderApp('/');
     const found = await store.getState().openAtMessage('c-ana', 'ana-1');

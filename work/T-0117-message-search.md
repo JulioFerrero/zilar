@@ -221,8 +221,55 @@ pnpm build
 - Nit — `SEARCH_NOTES.md` (now 50 lines, still ≤ 60) says the query is a
   sequential scan capped at 12 months / 5 000 rows and that the 3 s
   statement timeout protects the database on very large archives.
+### Round 3 (review fixes 2)
+- Fix 1 — fresh installs get the GRANT: inside the same guarded block,
+  after `\connect ejabberd`, added `ALTER DEFAULT PRIVILEGES FOR ROLE
+  ejabberd IN SCHEMA public GRANT SELECT ON TABLES TO galena_archive;`
+  (the `ejabberd` role owns the tables ejabberd creates; role name from
+  `10-create-databases.sql`). The direct `GRANT SELECT ON public.archive`
+  stays for volumes where the table already exists. `SERVER_CONFIG.md`
+  step 2–3 updated to match.
+  Proved on a fresh `pgvector/pgvector:0.8.6-pg18-trixie` scratch
+  container (throwaway passwords, no published ports, never
+  `galena-dev-*`): init ran with zero ERROR/FATAL lines; then, as role
+  `ejabberd`, created stand-in `archive` + `other_stuff` tables (mirroring
+  real ownership); then as `galena_archive`: `SELECT count(*) FROM
+  archive` → `0` (exit 0); `INSERT INTO archive` → `ERROR: permission
+  denied for table archive`; `SELECT` on a table planted by another role
+  (`planted_by_dba`, superuser-owned) → `ERROR: permission denied`
+  (exit 1). Honest nuance for the record: default privileges necessarily
+  cover every future table owned by role `ejabberd` in that database
+  (Postgres cannot filter them by table name) — `other_stuff` created by
+  `ejabberd` IS readable. That database holds only ejabberd's own
+  operational tables, the role still cannot write anywhere, and it gains
+  nothing outside that database (no USAGE/SELECT grants elsewhere; the
+  PUBLIC connect grants everyone relies on are untouched). Scratch tables
+  dropped, container stopped and removed.
+- Fix 2 — Enter in the search box opens the top hit: `SearchBar`'s input
+  dispatches `galena:search-enter` on Enter (mirroring the existing
+  `galena:focus-search` pattern; no other input behavior changes, so the
+  `ChatList` search-filter tests are unaffected); `MessageSearchResults`
+  listens and opens the current top hit through the same `openHit` path
+  as click (a `topHitRef` mirrors the ready-state top item; written from
+  an effect, read only in listeners — no render-time ref access, `openHit`
+  memoized with `useCallback` so both lint rules pass). New tests: type
+  2+ chars + Enter in the input → `openAtMessage` called with the top hit
+  (`c-ana`, `ana-1`) and the chat activates; Enter with "No messages
+  found" → `openAtMessage` never called, nothing opens.
+- Fix 3 — `waitForHistory` bounded: resolves `false` after
+  `MESSAGE_JUMP_WAIT_MS = 10_000`; `openAtMessage` breaks out to the
+  existing `message_not_found` rejection instead of hanging. New store
+  test with a never-settling `loadHistory` under fake timers: after
+  advancing 11 s the jump rejects `message_not_found`.
 - The compose pass-through of `GALENA_ARCHIVE_DB_PASSWORD` is left to the
   lead as instructed; the script assumes the variable may be absent.
+- Round-3 verification (one Vitest command at a time): targeted
+  `MessageSearchList` + `ChatList` + `realStore` 123 passed;
+  `ChatList` + `MessageSearch` 31 passed; full server suite 65 files /
+  1114 passed; full web suite 59 files / 665 passed (incl. the 2 new
+  Enter tests and the stall test); owned-file `format:check` clean
+  (repo-wide flag is only the lead's untracked `PREREVIEW.md`);
+  `lint` clean; `typecheck --force` 10/10; `build` 2/2.
 
 ### Blocked / needs a decision
 - None.

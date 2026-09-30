@@ -425,15 +425,25 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // Message search jumps at most this many history pages back looking for
     // the hit before giving up with "Message not found".
     const MESSAGE_JUMP_MAX_PAGES = 20;
-    // Resolves once the in-flight first-page load for a chat settles.
-    function waitForHistory(chatId: string): Promise<void> {
-      return new Promise<void>((resolve) => {
+    // Upper bound for one stalled history wait inside `openAtMessage`: after
+    // this the jump gives up with "Message not found" instead of hanging.
+    const MESSAGE_JUMP_WAIT_MS = 10_000;
+    // Resolves true once the in-flight first-page load for a chat settles,
+    // false after MESSAGE_JUMP_WAIT_MS so a stalled fetch cannot hang the
+    // jump: the caller then shows "Message not found".
+    function waitForHistory(chatId: string): Promise<boolean> {
+      return new Promise<boolean>((resolve) => {
         const timer = window.setInterval(() => {
           if (!loadingHistory.has(chatId)) {
             window.clearInterval(timer);
-            resolve();
+            window.clearTimeout(timeout);
+            resolve(true);
           }
         }, 25);
+        const timeout = window.setTimeout(() => {
+          window.clearInterval(timer);
+          resolve(false);
+        }, MESSAGE_JUMP_WAIT_MS);
       });
     }
     // One backwards history page, shared with `loadOlder` below.
@@ -2270,7 +2280,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           return found;
         }
         // Wait for the opening page when it is still in flight, then page
-        // backwards until the message is loaded or history runs out.
+        // backwards until the message is loaded or history runs out. A
+        // stalled wait (false) breaks out to "Message not found".
         for (let pages = 0; pages < MESSAGE_JUMP_MAX_PAGES; pages += 1) {
           const loaded = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
           if (loaded !== undefined) {
@@ -2280,12 +2291,16 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             break;
           }
           if (loadingHistory.has(chatId)) {
-            await waitForHistory(chatId);
+            if (!(await waitForHistory(chatId))) {
+              break;
+            }
             continue;
           }
           const cursor = cursors[chatId];
           if (cursor === undefined) {
-            await waitForHistory(chatId);
+            if (!(await waitForHistory(chatId))) {
+              break;
+            }
             continue;
           }
           await loadOlderPage(chatId, cursor);
