@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/chat/avatar';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
+import { MUTE_DURATIONS, type MuteDurationId } from '@/lib/chat-prefs';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { approverLine, approverOptions, topicAccessRows } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
@@ -13,33 +14,48 @@ import type { ApproverRole, TopicMember, TopicRole } from '@/lib/topics-api';
 import type { ChatSummary } from '@/lib/types';
 import { useColorScheme } from 'nativewind';
 
-export type TopicSheetAction = 'mute' | 'archive';
+export type TopicSheetAction = 'archive';
+export type TopicPrefAction =
+  | { kind: 'mute'; duration: MuteDurationId }
+  | { kind: 'unmute' }
+  | { kind: 'pin'; pinned: boolean }
+  | { kind: 'archive'; archived: boolean };
 
 /**
- * The long-press sheet on a topic row (T-0112): Mute always, Archive for
- * managers (never General — the caller hides it). Thin view; the screen
- * performs the actions.
+ * The long-press sheet on a topic row (T-0112, extended in T-0135): Pin /
+ * Unpin, Mute with the durations (Unmute when muted), Archive chat /
+ * Unarchive for the per-user archive, plus Archive topic for everyone for
+ * managers (never General — the caller hides it). Pure view (no hooks) so
+ * it stays render-testable like `ReactionChips`: the screen owns the mute
+ * submenu and performs the actions.
  */
 export function TopicActionsSheet({
   chat,
   canArchive,
+  muteOpen,
+  onOpenMute,
   onAction,
+  onPref,
   onClose,
 }: {
   chat: ChatSummary | null;
   canArchive: boolean;
+  muteOpen: boolean;
+  onOpenMute: () => void;
   onAction: (action: TopicSheetAction) => void;
+  onPref: (action: TopicPrefAction) => void;
   onClose: () => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
-  const insets = useSafeAreaInsets();
+  const pinned = chat?.pinnedAt !== undefined;
+  const archived = chat?.archived === true;
+  const muted = chat?.muted === true;
   return (
     <Modal visible={chat !== null} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable
         accessibilityLabel="Close topic actions"
         onPress={onClose}
         className="flex-1 justify-end bg-black/40 px-2"
-        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+        style={{ paddingBottom: 16 }}
       >
         <Pressable onPress={() => {}} className="overflow-hidden rounded-2xl bg-background">
           {chat !== null ? (
@@ -52,27 +68,71 @@ export function TopicActionsSheet({
               <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] font-semibold">
                 {chat.title}
               </Text>
-              {chat.topic?.visibility === 'private' ? (
-                <Lock size={16} color={MUTED_FOREGROUND[scheme]} />
-              ) : null}
+              {chat.topic?.visibility === 'private' ? <Lock size={16} color="#8a8a8a" /> : null}
             </View>
           ) : null}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Mute topic"
-            onPress={() => onAction('mute')}
+            accessibilityLabel={pinned ? 'Unpin topic' : 'Pin topic'}
+            onPress={() => onPref({ kind: 'pin', pinned: !pinned })}
             className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
           >
-            <Text className="text-[16px] text-foreground">Mute</Text>
+            <Text className="text-[16px] text-foreground">{pinned ? 'Unpin' : 'Pin'}</Text>
+          </Pressable>
+          {muteOpen ? (
+            <>
+              {MUTE_DURATIONS.map((option) => (
+                <Pressable
+                  key={option.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Mute for ${option.label.toLowerCase()}`}
+                  onPress={() => onPref({ kind: 'mute', duration: option.id })}
+                  className="border-b border-divider px-4 py-3 active:bg-surface-raised"
+                >
+                  <Text className="text-[16px] text-foreground">{option.label}</Text>
+                </Pressable>
+              ))}
+              {muted ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Unmute topic"
+                  onPress={() => onPref({ kind: 'unmute' })}
+                  className="border-b border-divider px-4 py-3 active:bg-surface-raised"
+                >
+                  <Text className="text-[16px] text-foreground">Unmute</Text>
+                </Pressable>
+              ) : null}
+            </>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Mute topic"
+              onPress={onOpenMute}
+              className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
+            >
+              <Text className="text-[16px] text-foreground">
+                {muted ? 'Muted: change' : 'Mute'}
+              </Text>
+            </Pressable>
+          )}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={archived ? 'Unarchive chat' : 'Archive chat'}
+            onPress={() => onPref({ kind: 'archive', archived: !archived })}
+            className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
+          >
+            <Text className="text-[16px] text-foreground">
+              {archived ? 'Unarchive' : 'Archive'}
+            </Text>
           </Pressable>
           {canArchive ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Archive topic"
+              accessibilityLabel="Archive topic for everyone"
               onPress={() => onAction('archive')}
               className="px-4 py-3.5 active:bg-surface-raised"
             >
-              <Text className="text-[16px] text-danger">Archive</Text>
+              <Text className="text-[16px] text-danger">Archive topic for everyone</Text>
             </Pressable>
           ) : null}
         </Pressable>

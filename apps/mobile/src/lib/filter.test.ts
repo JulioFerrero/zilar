@@ -69,4 +69,10 @@ describe('unreadCount', () => {
     expect(unreadCount(CHATS, 'ai')).toBe(1);
     expect(unreadCount(CHATS, 'work')).toBe(4);
   });
+
+  it('excludes muted chats from the totals', () => {
+    const chats = [...CHATS, chat('Muted group', { kind: 'group', unread: 9, muted: true })];
+    expect(unreadCount(chats, 'all')).toBe(6);
+    expect(unreadCount(chats, 'personal')).toBe(2);
+  });
 });

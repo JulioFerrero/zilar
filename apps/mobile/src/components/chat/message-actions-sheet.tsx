@@ -11,12 +11,16 @@ type MessageActionsSheetProps = {
   canCopy: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  /** Pin/Unpin for those allowed (undefined hides the row). */
+  canPin?: boolean | undefined;
+  isPinned?: boolean | undefined;
   /** My current reactions, so a chip I already reacted with is highlighted. */
   myReactions: UiReaction[];
   onReply: () => void;
   onEdit: () => void;
   onCopy: () => void;
   onDelete: () => void;
+  onPin?: () => void;
   /** Confirm-delete dialog state, controlled by the parent so the bubble can
    *  restore focus on close. */
   confirmOpen: boolean;
@@ -36,11 +40,14 @@ export function MessageActionsSheet({
   canCopy,
   canEdit,
   canDelete,
+  canPin,
+  isPinned,
   myReactions,
   onReply,
   onEdit,
   onCopy,
   onDelete,
+  onPin,
   confirmOpen,
   onCloseConfirm,
   onConfirmDelete,
@@ -155,10 +162,23 @@ export function MessageActionsSheet({
                 className={cn(
                   'px-4 py-3.5',
                   !canDelete ? 'opacity-40' : 'active:bg-surface-raised',
+                  canPin === true ? 'border-b border-divider' : null,
                 )}
               >
                 <Text className="text-[16px] text-danger">Delete for everyone</Text>
               </Pressable>
+              {canPin === true ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={isPinned === true ? 'Unpin message' : 'Pin message'}
+                  onPress={onPin}
+                  className="px-4 py-3.5 active:bg-surface-raised"
+                >
+                  <Text className="text-[16px] text-foreground">
+                    {isPinned === true ? 'Unpin' : 'Pin'}
+                  </Text>
+                </Pressable>
+              ) : null}
             </>
           )}
         </Pressable>

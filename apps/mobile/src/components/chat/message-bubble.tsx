@@ -205,6 +205,12 @@ type MessageBubbleProps = {
   onEdit?: (message: UiMessage) => void;
   /** Called when the user confirms a delete-for-everyone. */
   onDelete?: (message: UiMessage) => void;
+  /** Pin/unpin gating for chat of this message (T-0135). */
+  canPin?: boolean;
+  isPinned?: boolean;
+  /** Called when the sheet asks to pin or unpin the message. */
+  onPin?: (message: UiMessage) => void;
+  onUnpin?: (message: UiMessage) => void;
 };
 
 export function MessageBubble({
@@ -219,6 +225,10 @@ export function MessageBubble({
   onReact,
   onEdit,
   onDelete,
+  canPin,
+  isPinned,
+  onPin,
+  onUnpin,
 }: MessageBubbleProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const colors = BUBBLE_COLORS[scheme];
@@ -486,6 +496,8 @@ export function MessageBubble({
         canCopy={hasText}
         canEdit={canEdit}
         canDelete={canDelete}
+        canPin={canPin}
+        isPinned={isPinned}
         myReactions={myReactions}
         confirmOpen={confirmOpen}
         onReply={() => {
@@ -502,6 +514,14 @@ export function MessageBubble({
         }}
         onDelete={() => {
           setConfirmOpen(true);
+        }}
+        onPin={() => {
+          setMenuOpen(false);
+          if (isPinned === true) {
+            onUnpin?.(message);
+          } else {
+            onPin?.(message);
+          }
         }}
         onCloseConfirm={() => setConfirmOpen(false)}
         onConfirmDelete={() => {

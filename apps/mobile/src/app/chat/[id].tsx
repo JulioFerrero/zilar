@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,12 +9,16 @@ import { ChatHeader } from '@/components/chat/chat-header';
 import { Composer } from '@/components/chat/composer';
 import { MessageList } from '@/components/chat/message-list';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
+import { PinnedBanner } from '@/components/chat/pinned-banner';
+import { PinsSheet } from '@/components/chat/pins-sheet';
 import { TaskStrip } from '@/components/chat/task-strip';
 import { TopicInfoSheet } from '@/components/chat/topic-sheets';
 import { Text } from '@/components/ui/text';
 import { replyRef } from '@/lib/format';
 import { attachedRoleIds, describeRolesError, mayManageRoles } from '@/lib/roles';
 import { httpsTopicUrl, mayArchiveTopic } from '@/lib/topics';
+import type { BannerPin } from '@/components/chat/pinned-banner';
+import type { SheetPin } from '@/components/chat/pins-sheet';
 import type { TopicStatus } from '@/lib/topics-api';
 import type { ReplyRef, UiMessage } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -39,6 +43,22 @@ function Chat() {
   const react = useChatStore((state) => state.react);
   const startEdit = useChatStore((state) => state.startEdit);
   const deleteForEveryone = useChatStore((state) => state.deleteForEveryone);
+  const pinMessage = useChatStore((state) => state.pinMessage);
+  const unpinMessage = useChatStore((state) => state.unpinMessage);
+  const canPinChat = useChatStore((state) => state.canPin(chatId));
+  const pinFor = useChatStore((state) => state.pinFor);
+  const pins = useChatStore((state) => state.pins(chatId));
+  const pinsError = useChatStore((state) =>
+    state.pinsError?.chatId === chatId ? state.pinsError.message : undefined,
+  );
+  // One memoized ids array for the message list: a pins publish with
+  // unchanged membership keeps the reference, so the list does not
+  // re-render on every 60 s tick or unrelated pins change.
+  const pinnedIds = useMemo(() => pins.map((pin) => pin.messageId), [pins]);
+  const dismissPinsError = useChatStore((state) => state.dismissPinsError);
+  const loadedMessageIds = useChatStore((state) =>
+    state.messagesByChat[chatId]?.map((message) => message.id),
+  );
   const actionError = useChatStore((state) =>
     state.actionError?.chatId === chatId ? state.actionError : undefined,
   );
@@ -72,6 +92,13 @@ function Chat() {
   const [linkUrl, setLinkUrl] = useState('');
   const [linkLabel, setLinkLabel] = useState('');
   const [stripError, setStripError] = useState('');
+  const [pinsOpen, setPinsOpen] = useState(false);
+  const [pinIndex, setPinIndex] = useState(0);
+  const [jumpToMessageId, setJumpToMessageId] = useState<string | undefined>(undefined);
+  const [jumpError, setJumpError] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [unpinningId, setUnpinningId] = useState<string | null>(null);
+  const [pinsSheetError, setPinsSheetError] = useState('');
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoMembers, setInfoMembers] = useState<{ userId: string; name: string }[]>([]);
   const [infoAis, setInfoAis] = useState<{ id: string; name: string }[]>([]);
@@ -85,6 +112,16 @@ function Chat() {
       openChat(chatId);
     }
   }, [chatId, openChat]);
+
+  // Leaving the chat stops its 60 s pins poll. `openChat` of another chat
+  // stops it too; this effect only covers the leave/unmount case. The
+  // effect stays above the `!chat` return, like the redirect effect below.
+  const stopPinsPoll = useChatStore((state) => state.stopPinsPoll);
+  useEffect(() => {
+    return () => {
+      stopPinsPoll();
+    };
+  }, [stopPinsPoll]);
 
   // An edit belongs to one chat: leaving it (or switching chats) drops the
   // edit mode so the composer of another chat never shows a stale edit bar.
@@ -139,6 +176,44 @@ function Chat() {
 
   const startReply = (message: UiMessage) => setReplyTo(replyRef(message, currentUserId));
   const cancelReply = () => setReplyTo(undefined);
+
+  const jumpToPin = (pin: BannerPin | SheetPin) => {
+    const messageId = pin.messageId;
+    if ((loadedMessageIds ?? []).includes(messageId)) {
+      setJumpError('');
+      setJumpToMessageId(messageId);
+      return;
+    }
+    // No history paging on mobile yet (no `openAtMessage` seam): say so.
+    setJumpError('Message not found');
+  };
+
+  const sheetUnpin = (pin: SheetPin) => {
+    setUnpinningId(pin.id);
+    setPinsSheetError('');
+    void unpinMessage(chatId, pin.id)
+      .catch(() => setPinsSheetError('Could not unpin. Try again.'))
+      .finally(() => setUnpinningId(null));
+  };
+
+  const pin = (message: UiMessage) => {
+    setPinError('');
+    void pinMessage(chatId, message.id).catch(() =>
+      setPinError('Could not pin the message. Try again.'),
+    );
+  };
+
+  const unpin = (message: UiMessage) => {
+    const pinRow = pinFor(chatId, message.id);
+    if (pinRow === undefined) {
+      return;
+    }
+    setPinError('');
+    const pinId = pinRow.id;
+    void unpinMessage(chatId, pinId).catch(() =>
+      setPinError('Could not unpin the message. Try again.'),
+    );
+  };
 
   const isTopic = chat.topic !== undefined;
   const groupName = chat.groupTitle ?? '';
@@ -243,6 +318,19 @@ function Chat() {
             onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
           />
         </SafeAreaView>
+        <PinnedBanner
+          pins={pins}
+          pinsError={pinsError}
+          index={Math.min(pinIndex, Math.max(pins.length - 1, 0))}
+          jumpError={jumpError}
+          onCycle={() => {
+            setJumpError('');
+            setPinIndex((value) => (pins.length === 0 ? 0 : (value + 1) % pins.length));
+          }}
+          onTapPin={jumpToPin}
+          onOpenList={() => setPinsOpen(true)}
+          onDismissError={() => dismissPinsError()}
+        />
         <KeyboardAvoidingView
           className="flex-1"
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -253,7 +341,25 @@ function Chat() {
             onReact={(message, emoji) => react(chat.id, message.id, emoji)}
             onEdit={(message) => startEdit(chat.id, message.id)}
             onDelete={(message) => deleteForEveryone(chat.id, message.id)}
+            onPin={pin}
+            onUnpin={unpin}
+            pinnedIds={pinnedIds}
+            jumpToMessageId={jumpToMessageId}
+            onJumped={() => setJumpToMessageId(undefined)}
           />
+          {pinError !== '' ? (
+            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
+              <Text className="flex-1 text-[13px] text-danger">{pinError}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss error"
+                onPress={() => setPinError('')}
+                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+              >
+                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
+              </Pressable>
+            </View>
+          ) : null}
           {actionError !== undefined ? (
             <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
               <Text className="flex-1 text-[13px] text-danger">{actionError.message}</Text>
@@ -291,6 +397,16 @@ function Chat() {
             onTyping={() => sendTyping(chat.id)}
           />
         </KeyboardAvoidingView>
+        <PinsSheet
+          open={pinsOpen}
+          pins={pins}
+          canUnpin={canPinChat}
+          unpinningId={unpinningId}
+          error={pinsSheetError}
+          onUnpin={sheetUnpin}
+          onJump={jumpToPin}
+          onClose={() => setPinsOpen(false)}
+        />
       </View>
     );
   }
@@ -363,6 +479,19 @@ function Chat() {
         }}
         error={stripError}
       />
+      <PinnedBanner
+        pins={pins}
+        pinsError={pinsError}
+        index={Math.min(pinIndex, Math.max(pins.length - 1, 0))}
+        jumpError={jumpError}
+        onCycle={() => {
+          setJumpError('');
+          setPinIndex((value) => (pins.length === 0 ? 0 : (value + 1) % pins.length));
+        }}
+        onTapPin={jumpToPin}
+        onOpenList={() => setPinsOpen(true)}
+        onDismissError={() => dismissPinsError()}
+      />
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -373,7 +502,25 @@ function Chat() {
           onReact={(message, emoji) => react(chat.id, message.id, emoji)}
           onEdit={(message) => startEdit(chat.id, message.id)}
           onDelete={(message) => deleteForEveryone(chat.id, message.id)}
+          onPin={pin}
+          onUnpin={unpin}
+          pinnedIds={pinnedIds}
+          jumpToMessageId={jumpToMessageId}
+          onJumped={() => setJumpToMessageId(undefined)}
         />
+        {pinError !== '' ? (
+          <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
+            <Text className="flex-1 text-[13px] text-danger">{pinError}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss error"
+              onPress={() => setPinError('')}
+              className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+            >
+              <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
+            </Pressable>
+          </View>
+        ) : null}
         {actionError !== undefined ? (
           <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
             <Text className="flex-1 text-[13px] text-danger">{actionError.message}</Text>
@@ -469,6 +616,16 @@ function Chat() {
             );
           }
         }}
+      />
+      <PinsSheet
+        open={pinsOpen}
+        pins={pins}
+        canUnpin={canPinChat}
+        unpinningId={unpinningId}
+        error={pinsSheetError}
+        onUnpin={sheetUnpin}
+        onJump={jumpToPin}
+        onClose={() => setPinsOpen(false)}
       />
     </View>
   );

@@ -22,6 +22,8 @@ import type {
   SetTopicRolesInput,
   TopicRole,
 } from '../lib/topics-api';
+import type { PutChatPrefInput } from '../lib/chat-prefs-api';
+import type { Pin } from '../lib/pins-api';
 import type { ChatFolder } from '../lib/types';
 
 /** Connection state shown by the thin "Connecting…" bar in the chat list. */
@@ -214,8 +216,41 @@ export interface ChatStoreState {
   refreshGroupDetail: (groupId: string) => void;
   /** The AIs the viewer owns, for the new-topic sheet's unticked list. */
   ownedAis: { id: string; name: string }[];
-  /** Mutes or unmutes one chat (per-chat flag, like the web store). */
-  muteChat: (chatId: string, muted: boolean) => void;
+  /**
+   * Sets a per-user pref on one chat (mute/archive/pin), optimistic with a
+   * re-fetch of the row on success and a state restore on failure. Rejects
+   * on failure. For topics the caller passes the row chat id (a topic room
+   * JID); group mute = a pref on the General row, inherited by its topics.
+   */
+  setChatPref: (chatId: string, input: PutChatPrefInput) => Promise<void>;
+  /**
+   * Pins of one chat, newest first. Loaded when the chat opens (and on
+   * focus), refreshed while it is open, optimistic on pin/unpin.
+   */
+  pins: (chatId: string) => Pin[];
+  /** A user-facing pins failure for one chat (load/pin/unpin). */
+  pinsError?: { chatId: string; message: string };
+  /** Loads the pins of one chat (called on open; silent while open). */
+  refreshPins: (chatId: string) => Promise<void>;
+  /** The pin for a loaded message, if it is pinned. */
+  pinFor: (chatId: string, messageId: string) => Pin | undefined;
+  /**
+   * Whether the viewer may pin in a chat: either side of a DM, a group
+   * owner/admin for topics (the manager rule, minus the topic-creator edge
+   * the client cannot see — the server still enforces it).
+   */
+  canPin: (chatId: string) => boolean;
+  /** Pins a loaded message with its display-only snapshot. Rejects on failure. */
+  pinMessage: (chatId: string, messageId: string) => Promise<void>;
+  /** Unpins by pin id, echoing the removed row. Rejects on failure. */
+  unpinMessage: (chatId: string, pinId: string) => Promise<void>;
+  /** Dismisses the current `pinsError` inline notice. */
+  dismissPinsError: () => void;
+  /**
+   * Stops the open chat's pins poll (leaving the chat). The store also
+   * stops it when another chat opens, the app goes idle, or it stops.
+   */
+  stopPinsPoll: () => void;
   /**
    * Creates a topic in the group that owns `chatId` and opens it. Rejects on
    * failure. Returns the new topic's chat id (its room JID).

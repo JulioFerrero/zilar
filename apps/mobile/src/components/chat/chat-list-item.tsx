@@ -1,5 +1,5 @@
 import { formatListTime } from '@galena/chat-core';
-import { VolumeX } from 'lucide-react-native';
+import { Pin, VolumeX } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
@@ -20,6 +20,7 @@ import { useColorScheme } from 'nativewind';
 type ChatListItemProps = {
   chat: ChatSummary;
   onPress: () => void;
+  onLongPress?: () => void;
 };
 
 function UnreadBadge({ count, muted }: { count: number; muted: boolean }) {
@@ -41,7 +42,7 @@ function UnreadBadge({ count, muted }: { count: number; muted: boolean }) {
 }
 
 /** The 76 px chat row, restyled for D24 (ui-style.md §5). */
-export function ChatListItem({ chat, onPress }: ChatListItemProps) {
+export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const names = useChatStore((state) => state.typing[chat.id]?.names);
   const hasDraft = useChatStore((state) => state.drafts[chat.id] !== undefined);
@@ -62,6 +63,7 @@ export function ChatListItem({ chat, onPress }: ChatListItemProps) {
       accessibilityRole="button"
       accessibilityLabel={chat.title}
       onPress={onPress}
+      {...(onLongPress === undefined ? {} : { onLongPress })}
       className="h-[76px] flex-row items-center bg-background pl-4 active:bg-surface-raised"
     >
       <Avatar id={chat.id} name={chat.title} size={52} online={chat.online} ai={chat.isAI} />
@@ -73,6 +75,11 @@ export function ChatListItem({ chat, onPress }: ChatListItemProps) {
                 {chat.title}
               </Text>
               {chat.isAI ? <AiBadge className="ml-1.5" /> : null}
+              {chat.pinnedAt !== undefined ? (
+                <View className="ml-2" accessibilityRole="image" accessibilityLabel="Pinned chat">
+                  <Pin size={14} color={MUTED_FOREGROUND[scheme]} />
+                </View>
+              ) : null}
               {chat.muted ? (
                 <View className="ml-2">
                   <VolumeX size={16} color={MUTED_FOREGROUND[scheme]} />

@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, Link2, Plus, Search, Users } from 'lucide-react-native';
+import { Archive, ChevronLeft, Link2, Plus, Search, Users } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, Share, TextInput, View } from 'react-native';
@@ -11,17 +11,28 @@ import { Avatar } from '@/components/chat/avatar';
 import { InviteLinksSheet, type CreateInviteLinkForm } from '@/components/chat/invite-links-sheet';
 import { GroupRolesSheet } from '@/components/chat/group-roles-sheet';
 import { NewTopicSheet, type NewTopicInput } from '@/components/chat/new-topic-sheet';
-import { TopicActionsSheet, type TopicSheetAction } from '@/components/chat/topic-sheets';
+import {
+  TopicActionsSheet,
+  type TopicPrefAction,
+  type TopicSheetAction,
+} from '@/components/chat/topic-sheets';
 import { TopicRow } from '@/components/chat/topic-row';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
+import { mutedUntilFor } from '@/lib/chat-prefs';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
 import { describeRolesError, mayManageRoles, membersWithChips } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
-import { mayArchiveTopic, mayCreateTopic, topicsHeaderSubtitle, topicsOfGroup } from '@/lib/topics';
+import {
+  mayArchiveTopic,
+  mayCreateTopic,
+  splitGroupTopics,
+  topicsHeaderSubtitle,
+  topicsOfGroup,
+} from '@/lib/topics';
 import type { ChatSummary } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 
@@ -64,12 +75,13 @@ function GroupTopics() {
   const [createdUrl, setCreatedUrl] = useState<string | undefined>(undefined);
   const [revokingId, setRevokingId] = useState<string | undefined>(undefined);
   const archiveTopic = useChatStore((state) => state.archiveTopic);
-  const muteChat = useChatStore((state) => state.muteChat);
+  const setChatPref = useChatStore((state) => state.setChatPref);
   const topicNotice = useChatStore((state) => state.topicNotice);
   const dismissTopicNotice = useChatStore((state) => state.dismissTopicNotice);
 
   const [search, setSearch] = useState('');
   const [sheetFor, setSheetFor] = useState<ChatSummary | null>(null);
+  const [sheetMuteOpen, setSheetMuteOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerBusy, setComposerBusy] = useState(false);
   const [composerError, setComposerError] = useState('');
@@ -98,9 +110,26 @@ function GroupTopics() {
   const groupTitle = general?.groupTitle ?? general?.title ?? 'Group';
   const groupChatId = general?.id ?? topics[0]?.id ?? groupId;
 
+  // Per-user archived topics hide like manager-archived ones (web parity):
+  // both share one Archived toggle at the bottom, never two sections.
+  // The effect-free `useState` below the memos above keeps every hook above
+  // the early return (see `lib/hooks-guard`).
+  const [archivedOpen, setArchivedOpen] = useState(false);
+  const { active: activeTopics, archived: archivedTopics } = useMemo(
+    () => splitGroupTopics(topics),
+    [topics],
+  );
+
   const query = search.trim().toLowerCase();
-  const visible =
-    query === '' ? topics : topics.filter((topic) => topic.title.toLowerCase().includes(query));
+  const listed =
+    query === ''
+      ? activeTopics
+      : activeTopics.filter((topic) => topic.title.toLowerCase().includes(query));
+  const listedArchived =
+    query === ''
+      ? archivedTopics
+      : archivedTopics.filter((topic) => topic.title.toLowerCase().includes(query));
+  const visible = [...listed, ...(archivedOpen ? listedArchived : [])];
 
   const members = useMemo(() => groupDetail?.members ?? [], [groupDetail]);
   const groupAis = useMemo(() => groupDetail?.ais ?? [], [groupDetail]);
@@ -218,22 +247,50 @@ function GroupTopics() {
     router.push({ pathname: '/chat/[id]', params: { id: chat.id } });
   };
 
-  const runSheetAction = (action: TopicSheetAction) => {
+  const runSheetAction = (_action: TopicSheetAction) => {
     const chat = sheetFor;
     if (chat === null) {
-      return;
-    }
-    if (action === 'mute') {
-      muteChat(chat.id, !chat.muted);
-      setSheetFor(null);
       return;
     }
     setSheetBusy(true);
     setSheetError('');
     void archiveTopic(chat.id)
-      .then(() => setSheetFor(null))
+      .then(() => {
+        setSheetFor(null);
+        setSheetMuteOpen(false);
+      })
       .catch(() => setSheetError('Could not archive the topic. Try again.'))
       .finally(() => setSheetBusy(false));
+  };
+
+  const runSheetPref = (action: TopicPrefAction) => {
+    const chat = sheetFor;
+    if (chat === null) {
+      return;
+    }
+    setSheetBusy(true);
+    setSheetError('');
+    const input =
+      action.kind === 'mute'
+        ? { mutedUntil: mutedUntilFor(action.duration, new Date()) }
+        : action.kind === 'unmute'
+          ? { mutedUntil: null }
+          : action.kind === 'pin'
+            ? { pinned: action.pinned }
+            : { archived: action.archived };
+    void setChatPref(chat.id, input)
+      .then(() => {
+        setSheetFor(null);
+        setSheetMuteOpen(false);
+      })
+      .catch(() => setSheetError('Could not save. Try again.'))
+      .finally(() => setSheetBusy(false));
+  };
+
+  const openSheetFor = (chat: ChatSummary) => {
+    setSheetError('');
+    setSheetMuteOpen(false);
+    setSheetFor(chat);
   };
 
   // Creates the topic, then adds one AI per tick. The sheet stays open
@@ -292,7 +349,7 @@ function GroupTopics() {
             {topicsHeaderSubtitle({
               memberCount: general?.memberCount ?? members.length,
               aiCount: groupAis.length,
-              topicCount: topics.length,
+              topicCount: activeTopics.length,
             })}
           </Text>
         </View>
@@ -340,16 +397,32 @@ function GroupTopics() {
           <TopicRow
             chat={item}
             onPress={() => openTopic(item)}
-            onLongPress={() => {
-              setSheetError('');
-              setSheetFor(item);
-            }}
+            onLongPress={() => openSheetFor(item)}
           />
         )}
         ListEmptyComponent={
           <View className="items-center px-6 pt-16">
             <Text className="text-[15px] text-muted-foreground">No topics found</Text>
           </View>
+        }
+        ListFooterComponent={
+          listedArchived.length > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                archivedOpen
+                  ? 'Hide archived topics'
+                  : `Show archived topics, ${listedArchived.length}`
+              }
+              onPress={() => setArchivedOpen((value) => !value)}
+              className="flex-row items-center justify-center gap-1.5 px-4 py-3 active:bg-surface-raised"
+            >
+              <Archive size={16} color={ICON[scheme]} />
+              <Text className="text-[14px] font-medium text-muted-foreground">
+                Archived ({listedArchived.length})
+              </Text>
+            </Pressable>
+          ) : null
         }
       />
 
@@ -381,10 +454,14 @@ function GroupTopics() {
             sheetFor.topic,
           )
         }
+        muteOpen={sheetMuteOpen}
+        onOpenMute={() => setSheetMuteOpen(true)}
         onAction={runSheetAction}
+        onPref={runSheetPref}
         onClose={() => {
           if (!sheetBusy) {
             setSheetFor(null);
+            setSheetMuteOpen(false);
           }
         }}
       />
@@ -395,6 +472,7 @@ function GroupTopics() {
       ) : null}
 
       <NewTopicSheet
+        key={composerOpen ? 'open' : 'closed'}
         visible={composerOpen}
         groupTitle={groupTitle}
         members={members}
