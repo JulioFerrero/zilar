@@ -34,13 +34,31 @@ type MessageListProps = {
   onReact?: (message: UiMessage, emoji: string) => void;
   onEdit?: (message: UiMessage) => void;
   onDelete?: (message: UiMessage) => void;
+  onPin?: (message: UiMessage) => void;
+  onUnpin?: (message: UiMessage) => void;
+  /** Message ids with a pin, from the screen's single pins subscription. */
+  pinnedIds: readonly string[];
+  /** The message id to scroll to once it renders (a pin jump). */
+  jumpToMessageId?: string | undefined;
+  onJumped?: () => void;
 };
 
 /**
  * Message list grouped by sender and day. Opening a chat with unread messages
  * scrolls to the "Unread messages" divider instead of the bottom.
  */
-export function MessageList({ chat, onReply, onReact, onEdit, onDelete }: MessageListProps) {
+export function MessageList({
+  chat,
+  onReply,
+  onReact,
+  onEdit,
+  onDelete,
+  onPin,
+  onUnpin,
+  pinnedIds,
+  jumpToMessageId,
+  onJumped,
+}: MessageListProps) {
   const currentUserId = useChatStore((state) => state.currentUserId);
   const messages = useChatStore((state) => state.messages(chat.id));
   const jumpTarget = useChatStore((state) =>
@@ -55,6 +73,7 @@ export function MessageList({ chat, onReply, onReact, onEdit, onDelete }: Messag
   const finishedDraftMessages = useChatStore((state) => state.finishedDraftMessages);
   const loadOlder = useChatStore((state) => state.loadOlder);
   const hasMore = useChatStore((state) => state.hasMore(chat.id));
+  const canPinChat = useChatStore((state) => state.canPin(chat.id));
   const draftText = draft?.text.trim() ?? '';
   // The draft is rendered as the AI's next message, so grouping, styles and size
   // are identical to the final message that replaces it.
@@ -165,6 +184,26 @@ export function MessageList({ chat, onReply, onReact, onEdit, onDelete }: Messag
     return () => timers.forEach((timer) => clearTimeout(timer));
   }, [jumpMessageId, entries, clearJumpTarget]);
 
+  // A pin jump scrolls to the target bubble once it renders. Only fires
+  // when the message is loaded (the banner shows "Message not found" when
+  // it is not — mobile has no history paging yet).
+  useEffect(() => {
+    if (jumpToMessageId === undefined) {
+      return;
+    }
+    const index = entries.findIndex(
+      (entry) => entry.type === 'message' && entry.item.message.id === jumpToMessageId,
+    );
+    if (index === -1) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      listRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: true });
+      onJumped?.();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [jumpToMessageId, entries, onJumped]);
+
   // Loading, error and empty are three different states: the empty text and
   // the Retry only appear once the first page has settled. Live messages that
   // arrive while loading render immediately, as before.
@@ -242,6 +281,10 @@ export function MessageList({ chat, onReply, onReact, onEdit, onDelete }: Messag
             {...(onReact === undefined ? {} : { onReact })}
             {...(onEdit === undefined ? {} : { onEdit })}
             {...(onDelete === undefined ? {} : { onDelete })}
+            canPin={canPinChat}
+            isPinned={pinnedIds.includes(item.item.message.id)}
+            {...(onPin === undefined ? {} : { onPin })}
+            {...(onUnpin === undefined ? {} : { onUnpin })}
             draft={item.isDraft}
             revealTurnId={item.revealTurnId}
           />

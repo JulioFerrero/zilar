@@ -54,13 +54,21 @@ function fakeApi(entries: ChatEntry[]): ChatApi {
     })),
     getChats: vi.fn(async () => entries),
     getContacts: vi.fn(async () => []),
-    getGroup: vi.fn(async () => ({
-      id: 'g1',
-      title: 'Dev team',
-      createdBy: 'u-me',
-      members: [],
-      ais: [],
-    })),
+    // T-0112 should-fix: the old fake ignored its argument, so a test
+    // passing a chat JID where a group id belongs still resolved. It now
+    // answers only the known group id and throws otherwise.
+    getGroup: vi.fn(async (groupId: string) => {
+      if (groupId !== 'g1') {
+        throw new Error(`unknown group ${groupId}`);
+      }
+      return {
+        id: 'g1',
+        title: 'Dev team',
+        createdBy: 'u-me',
+        members: [],
+        ais: [],
+      };
+    }),
     getXmppToken: vi.fn(async () => ({
       jid: 'me@galena.test',
       token: 'tok',
@@ -276,6 +284,30 @@ describe('real store topics (T-0112)', () => {
     expect(topics.calls).toContain('addAi:dev-ai');
   });
 
+  it('resolves the created topic even when the follow-up re-read fails', async () => {
+    // T-0112 should-fix: `createTopic` used to report "Could not create"
+    // when only the follow-up chat-list re-read failed, inviting a retry
+    // that makes a duplicate topic. The topic exists on the server now, so
+    // the row id falls back to the created topic's chat JID.
+    const general = topicRow({
+      id: 't-g',
+      name: 'General',
+      isGeneral: true,
+      chatJid: 'general@rooms.galena.test',
+    });
+    const { store, api } = setup([groupEntry({ topics: [general] })]);
+    store.getState().start();
+    await flush();
+
+    vi.mocked(api.getChats).mockRejectedValue(new Error('down'));
+    const chatId = await store.getState().createTopic('general@rooms.galena.test', {
+      name: 'Checkout bug',
+      kind: 'bug',
+      visibility: 'public',
+    });
+    expect(chatId).toBe('t-new@rooms.galena.test');
+  });
+
   it('applies a strip patch on success and leaves the row unchanged on failure', async () => {
     const general = topicRow({
       id: 't-g',
@@ -338,11 +370,20 @@ describe('real store topics (T-0112)', () => {
     store.getState().start();
     await flush();
 
+    // T-0112 should-fix: the old test passed a chat JID where a group id
+    // belongs and the fake `getGroup` ignored it, resolving `g1` for any
+    // argument. The fake now throws for a non-group id (like the server's
+    // 404), so a chat JID resolves nothing — silently, like any detail
+    // failure — while the real group id still does.
+    expect(store.getState().groupDetail('t-1@rooms.galena.test')).toBeUndefined();
     store.getState().refreshGroupDetail('t-1@rooms.galena.test');
     await flush();
-    expect(store.getState().groupDetail('t-1@rooms.galena.test')).toMatchObject({ id: 'g1' });
+    expect(store.getState().groupDetail('t-1@rooms.galena.test')).toBeUndefined();
+    store.getState().refreshGroupDetail('g1');
+    await flush();
+    expect(store.getState().groupDetail('g1')).toMatchObject({ id: 'g1' });
     const calls = vi.mocked(api.getGroup).mock.calls.length;
-    store.getState().refreshGroupDetail('t-1@rooms.galena.test');
+    store.getState().refreshGroupDetail('g1');
     await flush();
     // A forced refresh reloads; the non-forced openChat path loads once.
     expect(vi.mocked(api.getGroup).mock.calls.length).toBe(calls + 1);

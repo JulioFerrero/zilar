@@ -1,5 +1,5 @@
 import { formatListTime } from '@galena/chat-core';
-import { Lock } from 'lucide-react-native';
+import { Lock, Pin, VolumeX } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { Pressable, View } from 'react-native';
 
@@ -46,8 +46,9 @@ const STATUS_DOT: Record<string, string> = {
 
 /**
  * One topic row on the topics screen (T-0112): the raised glyph tile, name
- * with a lock for private topics, the status chip (dot + text, never color
- * alone), a one-line preview, the time and the unread badge. General renders
+ * with a lock for private topics, pin/muted icons like the chat list rows
+ * (T-0135), the status chip (dot + text, never color alone), a one-line
+ * preview, the time and the unread badge (grey while muted). General renders
  * like every other topic; ordering lives in `lib/topics`.
  */
 export function TopicRow({
@@ -102,6 +103,16 @@ export function TopicRow({
                 </View>
               ) : null}
               {chat.isAI ? <AiBadge className="ml-1.5" /> : null}
+              {chat.pinnedAt !== undefined ? (
+                <View className="ml-2" accessibilityRole="image" accessibilityLabel="Pinned chat">
+                  <Pin size={14} color={MUTED_FOREGROUND[scheme]} />
+                </View>
+              ) : null}
+              {chat.muted ? (
+                <View className="ml-2" accessibilityRole="image" accessibilityLabel="Muted chat">
+                  <VolumeX size={14} color={MUTED_FOREGROUND[scheme]} />
+                </View>
+              ) : null}
             </View>
             {last ? (
               <Text className="ml-2 shrink-0 font-mono text-[12px] text-subtle-foreground">

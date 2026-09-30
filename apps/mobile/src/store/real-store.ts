@@ -43,6 +43,15 @@ import {
   type GroupDetail,
   type Me,
 } from '../lib/chat-api';
+import type { ChatPref, ChatPrefsApi, PutChatPrefInput } from '../lib/chat-prefs-api';
+import { applyChatPrefs, optimisticPrefRow } from '../lib/chat-prefs';
+import {
+  createPinsApi,
+  pinKindFor,
+  pinSnapshotText,
+  type Pin,
+  type PinsApi,
+} from '../lib/pins-api';
 import { API_URL } from '../lib/auth';
 import { createInviteLinksApi, type InviteLinksApi } from '../lib/invite-links-api';
 import {
@@ -121,6 +130,8 @@ export interface RealStoreDeps {
   /** The group invite-links API (T-0136); tests inject a fake. */
   inviteLinksApi?: InviteLinksApi;
   rolesApi?: RolesApi;
+  chatPrefsApi?: ChatPrefsApi;
+  pinsApi?: PinsApi;
   ownedAis?: { id: string; name: string }[];
   createXmpp?: (options: XmppCoreOptions) => XmppCore;
   now?: () => Date;
@@ -132,11 +143,21 @@ export interface RealStoreDeps {
 /** Refetch `/api/chats` every 60 s while the app is active (T-0112). */
 export const TOPIC_REFRESH_INTERVAL_MS = 60_000;
 
+/** Refetch pins while a chat is open, same cadence as the topic poll. */
+export const PINS_REFRESH_INTERVAL_MS = 60_000;
+
 function topicsApi2(deps: RealStoreDeps): TopicsApi {
   if (deps.topicsApi !== undefined) {
     return deps.topicsApi;
   }
   return createTopicsApi(getSessionToken, fetch, API_URL);
+}
+
+function pinsApi2(deps: RealStoreDeps): PinsApi {
+  if (deps.pinsApi !== undefined) {
+    return deps.pinsApi;
+  }
+  return createPinsApi(getSessionToken, fetch, API_URL);
 }
 
 function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
@@ -291,6 +312,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
   }
 
   const rolesApi = rolesApi2(deps);
+  const pinsApi = pinsApi2(deps);
 
   return createStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
@@ -337,6 +359,25 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       { roles: TopicRole[]; approverRole: ApproverRole | null }
     >();
     const loadingTopicRoles = new Set<string>();
+    // Per-user chat prefs (T-0135), keyed by lowercase chat JID. Loaded with
+    // the chat list at boot and after every background refresh. The API
+    // client is injected by the app (`RealStoreDeps.chatPrefsApi`); tests
+    // that never touch prefs inject nothing and read empty rows.
+    let chatPrefRows: ChatPref[] = [];
+
+    /** The prefs rows: server truth when injected, empty otherwise. */
+    async function loadPrefRows(): Promise<ChatPref[]> {
+      const api = deps.chatPrefsApi;
+      if (api === undefined) {
+        return [];
+      }
+      return api.listChatPrefs().catch((): ChatPref[] => chatPrefRows);
+    }
+    // Pins by chat id (T-0135), newest first. Loaded when a chat opens and
+    // refreshed on focus and every 60 s while it is open.
+    const pinsByChat = new Map<string, Pin[]>();
+    let pinsPollTimer: ReturnType<typeof setInterval> | undefined;
+    let removePinsPollListener: (() => void) | undefined;
     // The 60 s active-app poll for new/removed topics (T-0112), plus its
     // AppState listener. Both stop when the store stops (or restarts).
     let topicsPollTimer: ReturnType<typeof setInterval> | undefined;
@@ -1094,14 +1135,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           return state;
         }
         const before = state.chats.find((chat) => chat.id === match.id);
+        const prefed = applyChatPrefs([match], chatPrefRows, now().getTime())[0] ?? match;
         const merged: ChatSummary =
           before === undefined
-            ? match
+            ? prefed
             : {
-                ...match,
+                ...prefed,
                 ...(before.lastMessage === undefined ? {} : { lastMessage: before.lastMessage }),
                 unread: before.unread,
-                muted: before.muted,
                 ...(before.online === undefined ? {} : { online: before.online }),
                 ...(before.onlineCount === undefined ? {} : { onlineCount: before.onlineCount }),
               };
@@ -1123,6 +1164,98 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         throw new Error('This topic is not available yet.');
       }
       return { topicId, groupId };
+    }
+
+    // Pins (T-0135): load on open, focus + 60 s poll while open. A failure
+    // surfaces as `pinsError` for an explicit load, stays silent on the
+    // background tick (the next tick retries). Only the latest opened chat
+    // polls: opening another chat, or stopping its poll, ends this one.
+    // Each publish bumps the chat's revision once, so `pins(chatId)`
+    // selectors re-fire exactly once per publish.
+    let pinsRevision = 0;
+    const pinsRevisionByChat = new Map<string, number>();
+
+    // Publishes one chat's pins and bumps its revision, so selectors for
+    // that chat re-fire exactly once per publish.
+    function publishPins(chatId: string, pins: Pin[]): void {
+      pinsByChat.set(chatId, pins);
+      pinsRevision += 1;
+      pinsRevisionByChat.set(chatId, pinsRevision);
+      set((state) => ({
+        pinsError: state.pinsError?.chatId === chatId ? undefined : state.pinsError,
+      }));
+    }
+
+    // Publishes an optimistic pins change (pin/unpin/rollback) for one
+    // chat: same single bump, so the revision always matches the map.
+    function publishOptimisticPins(chatId: string, pins: Pin[]): void {
+      pinsByChat.set(chatId, pins);
+      pinsRevision += 1;
+      pinsRevisionByChat.set(chatId, pinsRevision);
+      set((state) => ({ pinsError: state.pinsError }));
+    }
+
+    async function loadPins(chatId: string, loud: boolean): Promise<void> {
+      try {
+        publishPins(chatId, await pinsApi.listPins(chatId));
+      } catch {
+        if (loud) {
+          set({ pinsError: { chatId, message: 'Could not load pins. Try again.' } });
+        }
+      }
+    }
+
+    function startPinsPolling(chatId: string, gen: number): void {
+      stopPinsPolling();
+      const tick = (): void => {
+        if (gen !== generation || get().activeChatId !== chatId) {
+          return;
+        }
+        if (!isVisible()) {
+          return;
+        }
+        void loadPins(chatId, false);
+      };
+      pinsPollTimer = setInterval(tick, PINS_REFRESH_INTERVAL_MS);
+      removePinsPollListener = appState.subscribe((state) => {
+        if (state === 'active' && gen === generation && get().activeChatId === chatId) {
+          void loadPins(chatId, false);
+        }
+      });
+    }
+
+    // Ends the pins poll of the open chat: leaving the chat, opening
+    // another one, or stopping the store. Ends a no-op when nothing polls.
+    function stopPinsPolling(): void {
+      if (pinsPollTimer !== undefined) {
+        clearInterval(pinsPollTimer);
+        pinsPollTimer = undefined;
+      }
+      if (removePinsPollListener !== undefined) {
+        removePinsPollListener();
+        removePinsPollListener = undefined;
+      }
+    }
+
+    // Whether the viewer may pin in a chat: either side of a DM; for topics
+    // a group owner/admin whose detail has loaded (roles ride `getGroup`).
+    // The topic-creator edge is server-enforced only, like on web.
+    function canPinIn(chatId: string): boolean {
+      const state = get();
+      const chat = state.chats.find((entry) => entry.id === chatId);
+      if (chat === undefined) {
+        return false;
+      }
+      if (chat.kind === 'dm') {
+        return true;
+      }
+      if (chat.topic === undefined || chat.groupId === undefined) {
+        return false;
+      }
+      const detail = groupDetails.get(chat.groupId);
+      const meId = state.me?.id ?? state.currentUserId;
+      const role = detail?.members.find((member) => member.userId === meId)?.role;
+      return role === 'owner' || role === 'admin';
     }
 
     // The periodic + foreground refresh: refetches `/api/chats` while active
@@ -1163,6 +1296,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         removeTopicsPollListener();
         removeTopicsPollListener = undefined;
       }
+      stopPinsPolling();
     }
 
     // Loads the group detail (people + roles + AIs) of a group once, so the
@@ -1740,6 +1874,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // (T-0112) expand to one row per visible topic; rows that disappeared
     // (made private, archived, or I was removed) vanish here, and the open
     // topic moves to the topics screen with a short, name-free notice.
+    // Chat prefs (T-0135) are applied after the merge so server rows pin,
+    // mute and archive the summaries; a pref whose chat is gone is ignored.
     // Returns the previous chats so the caller can tell which rows are new.
     function mergeChatEntries(entries: ChatEntry[]): Map<string, ChatSummary> {
       const previous = get().chats;
@@ -1758,13 +1894,17 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             ...row,
             ...(existing.lastMessage === undefined ? {} : { lastMessage: existing.lastMessage }),
             unread: existing.unread,
-            muted: existing.muted,
             ...(existing.online === undefined ? {} : { online: existing.online }),
             ...(existing.onlineCount === undefined ? {} : { onlineCount: existing.onlineCount }),
           };
         });
       // New chats appear at the top; the rest keep their recency order.
-      set({ chats: [...fresh, ...sortByRecency(kept)] });
+      const merged = applyChatPrefs(
+        [...fresh, ...sortByRecency(kept)],
+        chatPrefRows,
+        now().getTime(),
+      );
+      set({ chats: merged });
       rememberGroupIds(entries);
       // A topic that disappeared while open navigates back to its group's
       // topics screen with a short notice that never names the topic.
@@ -1815,8 +1955,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     async function refreshChats(): Promise<void> {
       const gen = generation;
       let entries: ChatEntry[];
+      let prefs: ChatPref[];
       try {
-        entries = await api.getChats();
+        [entries, prefs] = await Promise.all([api.getChats(), loadPrefRows()]);
       } catch {
         // A background refresh failure stays silent; the manual reload reports it.
         return;
@@ -1825,6 +1966,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         return;
       }
 
+      chatPrefRows = prefs;
       const known = mergeChatEntries(entries);
       flushPending();
       await adoptChatEntries(entries, known);
@@ -1836,8 +1978,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     async function reloadChatsList(): Promise<void> {
       const gen = generation;
       let entries: ChatEntry[];
+      let prefs: ChatPref[];
       try {
-        entries = await api.getChats();
+        [entries, prefs] = await Promise.all([api.getChats(), loadPrefRows()]);
       } catch {
         if (gen === generation) {
           set({ chatsLoad: 'error' });
@@ -1847,6 +1990,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (gen !== generation) {
         return;
       }
+      chatPrefRows = prefs;
       const known = mergeChatEntries(entries);
       set({ chatsLoad: 'loaded' });
       flushPending();
@@ -2057,11 +2201,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       let me: Me;
       let entries: ChatEntry[];
       let contacts: Contact[];
+      let prefs: ChatPref[];
       try {
-        [me, entries, contacts] = await Promise.all([
+        [me, entries, contacts, prefs] = await Promise.all([
           api.getMe(),
           api.getChats(),
           api.getContacts(),
+          // Prefs ride the boot like the web store; a failure reads as no
+          // rows (older server, offline) rather than failing the boot.
+          loadPrefRows().catch((): ChatPref[] => []),
         ]);
       } catch {
         if (gen === generation) {
@@ -2075,10 +2223,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
       lastRead = {};
       rememberGroupIds(entries);
+      chatPrefRows = prefs;
       set({
         me,
         currentUserId: me.id,
-        chats: entries.flatMap((entry) => summariesFor(entry)),
+        chats: applyChatPrefs(
+          entries.flatMap((entry) => summariesFor(entry)),
+          prefs,
+          now().getTime(),
+        ),
         contacts,
         chatsLoad: 'loaded',
         ownedAis: deps.ownedAis ?? get().ownedAis,
@@ -2216,6 +2369,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             void ensureGroupDetail(groupId);
           }
         }
+        // Pins load when the chat opens and refresh on focus + 60 s while
+        // it is open, like the web store (no realtime channel yet).
+        void loadPins(chatId, true);
+        startPinsPolling(chatId, generation);
         if (pendingOpenChatId !== undefined && pendingOpenChatId !== chatId) {
           clearSupersededMarker(pendingOpenChatId);
         }
@@ -2497,10 +2654,127 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         void ensureGroupDetail(groupId, true);
       },
       ownedAis: deps.ownedAis ?? [],
-      muteChat: (chatId, muted) =>
-        set((state) => ({
-          chats: state.chats.map((chat) => (chat.id === chatId ? { ...chat, muted } : chat)),
-        })),
+      setChatPref: async (chatId, input) => {
+        const api = deps.chatPrefsApi;
+        if (api === undefined) {
+          throw new Error('Chat preferences are not available.');
+        }
+        const nowMs = now().getTime();
+        // Optimistic: merge the intended row into a copy of the full saved
+        // rows first, like the web store; the saved truth below replaces
+        // it. Merging into the full rows (not a single-row list) keeps
+        // every other chat's prefs, and seeding from the chat's own saved
+        // row keeps its kept fields on a partial write: a single row built
+        // from the input alone would strip both until the PUT returns.
+        const optimisticRows = [
+          ...chatPrefRows.filter((row) => row.chatJid.toLowerCase() !== chatId.toLowerCase()),
+          optimisticPrefRow(chatId, chatPrefRows, input as PutChatPrefInput, new Date(nowMs)),
+        ];
+        set((state) => ({ chats: applyChatPrefs(state.chats, optimisticRows, nowMs) }));
+        try {
+          const saved = await api.putChatPref(chatId, input as PutChatPrefInput);
+          chatPrefRows =
+            saved === null
+              ? chatPrefRows.filter((row) => row.chatJid.toLowerCase() !== chatId.toLowerCase())
+              : [
+                  ...chatPrefRows.filter(
+                    (row) => row.chatJid.toLowerCase() !== chatId.toLowerCase(),
+                  ),
+                  saved,
+                ];
+          const refreshed = now().getTime();
+          set((state) => ({ chats: applyChatPrefs(state.chats, chatPrefRows, refreshed) }));
+        } catch (error) {
+          // A failure re-merges the saved rows instead of restoring the
+          // pre-write snapshot: anything that landed mid-flight (a new
+          // message, an unread bump, a background refresh) survives, and
+          // only the failed pref change is dropped.
+          set((state) => ({ chats: applyChatPrefs(state.chats, chatPrefRows, now().getTime()) }));
+          throw error;
+        }
+      },
+      pins: (chatId) => {
+        // Reading the revision subscribes the selector to pin publishes
+        // for this chat, like `groupDetail` does with its own revision.
+        void (pinsRevisionByChat.get(chatId) ?? 0);
+        return pinsByChat.get(chatId) ?? [];
+      },
+      pinsError: undefined,
+      refreshPins: async (chatId) => {
+        await loadPins(chatId, true);
+      },
+      pinFor: (chatId, messageId) =>
+        pinsByChat.get(chatId)?.find((pin) => pin.messageId === messageId),
+      canPin: (chatId) => canPinIn(chatId),
+      pinMessage: async (chatId, messageId) => {
+        if (!canPinIn(chatId)) {
+          throw new Error('You cannot pin here.');
+        }
+        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        if (message === undefined) {
+          throw new Error('Message not found');
+        }
+        const shape = {
+          text: message.text,
+          image: message.image,
+          voice: message.voice,
+          card: message.card,
+          attachment: message.attachment,
+        };
+        const snapshot = {
+          chat: chatId,
+          messageId: message.id,
+          senderName: message.senderName,
+          text: pinSnapshotText({ ...shape, deleted: message.deleted }),
+          kind: pinKindFor(shape),
+        };
+        const before = pinsByChat.get(chatId) ?? [];
+        const optimistic: Pin = {
+          ...snapshot,
+          id: `pin-local-${now().getTime()}`,
+          pinnedBy: get().me?.id ?? get().currentUserId,
+          pinnedAt: new Date(now().getTime()).toISOString(),
+        };
+        publishOptimisticPins(chatId, [optimistic, ...before]);
+        try {
+          const saved = await pinsApi.pinMessage(snapshot);
+          const current = pinsByChat.get(chatId) ?? [];
+          publishOptimisticPins(
+            chatId,
+            current.some((pin) => pin.id === saved.id)
+              ? current.map((pin) => (pin.id === optimistic.id ? saved : pin))
+              : [saved, ...current.filter((pin) => pin.id !== optimistic.id)],
+          );
+        } catch (error) {
+          publishOptimisticPins(chatId, before);
+          throw error;
+        }
+      },
+      unpinMessage: async (chatId, pinId) => {
+        const before = pinsByChat.get(chatId) ?? [];
+        publishOptimisticPins(
+          chatId,
+          before.filter((pin) => pin.id !== pinId),
+        );
+        try {
+          const echoed = await pinsApi.unpinMessage(pinId);
+          const current = pinsByChat.get(chatId) ?? [];
+          publishOptimisticPins(
+            chatId,
+            current.filter((pin) => pin.id !== echoed.id),
+          );
+        } catch (error) {
+          publishOptimisticPins(chatId, before);
+          set({ pinsError: { chatId, message: 'Could not unpin. Try again.' } });
+          throw error;
+        }
+      },
+      dismissPinsError: () => {
+        set({ pinsError: undefined });
+      },
+      stopPinsPoll: () => {
+        stopPinsPolling();
+      },
       createTopic: async (chatId, input) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
         const groupId = chat?.groupId ?? groupIds.get(chatId);
@@ -2509,16 +2783,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
         const topic = await topics.createTopic(groupId, input as CreateTopicInput);
         rememberTopicRoles(topic);
-        await applyTopicRow(topic);
+        // The topic exists on the server now: a failed follow-up re-read
+        // must not report "Could not create" (the sheet would invite a
+        // retry that makes a duplicate). Refresh best-effort and fall back
+        // to the created topic's own chat JID.
+        await applyTopicRow(topic).catch(() => {});
         const row = get().chats.find((entry) => entry.topic?.id === topic.id);
-        if (row === undefined) {
-          throw new Error('the new topic did not appear in the chat list');
-        }
+        const rowId = row?.id ?? topic.chatJid;
         const me = get().me;
         if (core !== undefined && me !== undefined) {
-          await core.joinRoom(row.id, nick(me)).catch(() => {});
+          await core.joinRoom(rowId, nick(me)).catch(() => {});
         }
-        return row.id;
+        return rowId;
       },
       patchTopic: async (chatId, input) => {
         const { topicId } = await topicIdFor(chatId);

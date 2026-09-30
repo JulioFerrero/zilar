@@ -101,6 +101,27 @@ export function topicsOfGroup(chats: readonly ChatSummary[], groupId: string): C
   return sortTopics(chats.filter((chat) => chat.groupId === groupId && chat.topic !== undefined));
 }
 
+/**
+ * Splits one group's topics like the web group row (T-0113): the active
+ * list hides manager-archived topics (`topic.archived`) and per-user
+ * archived ones (`archived`); both share one Archived section, never two.
+ */
+export function splitGroupTopics(topics: readonly ChatSummary[]): {
+  active: ChatSummary[];
+  archived: ChatSummary[];
+} {
+  const active: ChatSummary[] = [];
+  const archived: ChatSummary[] = [];
+  for (const topic of topics) {
+    if (topic.topic?.archived === true || topic.archived === true) {
+      archived.push(topic);
+    } else {
+      active.push(topic);
+    }
+  }
+  return { active, archived };
+}
+
 /** One row per group shown on the chat list, aggregated from its topics. */
 export interface GroupRow {
   groupId: string;
@@ -315,8 +336,12 @@ export function topicsHeaderSubtitle(options: {
 }): string {
   const members = options.memberCount === 1 ? '1 member' : `${options.memberCount} members`;
   const ais = options.aiCount === 1 ? '1 AI' : `${options.aiCount} AIs`;
-  const topics = options.topicCount === 1 ? '1 topic' : `${options.topicCount} topics`;
-  return `${members}, ${ais}, ${topics}`;
+  return `${members}, ${ais}, ${topicCountLabel(options.topicCount)}`;
+}
+
+/** "N topics" for a group row, singular for one (T-0112 should-fix). */
+export function topicCountLabel(topicCount: number): string {
+  return topicCount === 1 ? '1 topic' : `${topicCount} topics`;
 }
 
 /**

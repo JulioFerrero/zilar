@@ -10,8 +10,10 @@ import {
   mayArchiveTopic,
   mayCreateTopic,
   mayManageTopic,
+  splitGroupTopics,
   summariesForTopicsEntry,
   sortTopics,
+  topicCountLabel,
   topicInFolder,
   topicLinkText,
   topicOwnerLabel,
@@ -193,6 +195,23 @@ describe('topicsOfGroup and groupTopicChats', () => {
     expect(groups.get('g1')?.map((row) => row.id)).toEqual(['b', 'a']);
     expect(groups.has('dm-1')).toBe(false);
   });
+
+  it('splits manager-archived and per-user archived topics into one section', () => {
+    const general = topicChat('general', {
+      topic: { ...topicChat('general').topic!, isGeneral: true, id: 't-general' },
+    });
+    const chats = [
+      general,
+      topicChat('manager-archived', {
+        topic: { ...topicChat('x').topic!, archived: true, id: 't-arch' },
+      }),
+      topicChat('mine-archived', { archived: true }),
+      topicChat('open'),
+    ];
+    const { active, archived } = splitGroupTopics(chats);
+    expect(active.map((row) => row.id)).toEqual(['general', 'open']);
+    expect(archived.map((row) => row.id)).toEqual(['manager-archived', 'mine-archived']);
+  });
 });
 
 describe('groupRowFor', () => {
@@ -328,6 +347,12 @@ describe('header and notice', () => {
     expect(topicsHeaderSubtitle({ memberCount: 1, aiCount: 1, topicCount: 1 })).toBe(
       '1 member, 1 AI, 1 topic',
     );
+  });
+
+  it('singularises one topic for a filtered group', () => {
+    expect(topicCountLabel(1)).toBe('1 topic');
+    expect(topicCountLabel(2)).toBe('2 topics');
+    expect(topicCountLabel(0)).toBe('0 topics');
   });
 
   it('never names the missing topic in the notice', () => {

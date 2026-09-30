@@ -1,12 +1,16 @@
 import { formatListTime } from '@galena/chat-core';
+import { Pin } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
+import { useColorScheme } from 'nativewind';
 
 import { Avatar } from '@/components/chat/avatar';
 import { plainPreviewBody } from '@/components/chat/markdown-decision';
 import { Text } from '@/components/ui/text';
+import { asColorScheme } from '@/lib/color-scheme';
+import { MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { previewParts } from '@/lib/format';
-import { groupRowFor, topicsOfGroup } from '@/lib/topics';
+import { groupRowFor, topicCountLabel, topicsOfGroup } from '@/lib/topics';
 import { CURRENT_USER_ID } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -35,7 +39,16 @@ function GroupUnreadBadge({ count, muted }: { count: number; muted: boolean }) {
  * ("Dev AI: Preview ready"). Tapping opens the topics screen. A group
  * without topics from an older server keeps its `ChatListItem` row as today.
  */
-export function GroupListItem({ groupId, onPress }: { groupId: string; onPress: () => void }) {
+export function GroupListItem({
+  groupId,
+  onPress,
+  onLongPress,
+}: {
+  groupId: string;
+  onPress: () => void;
+  onLongPress?: () => void;
+}) {
+  const scheme = asColorScheme(useColorScheme().colorScheme);
   const chats = useChatStore((state) => state.chats);
   const row = groupRowFor(groupId, topicsOfGroup(chats, groupId));
   if (row === undefined) {
@@ -57,12 +70,14 @@ export function GroupListItem({ groupId, onPress }: { groupId: string; onPress: 
   });
   const body =
     last === undefined ? '' : plainPreviewBody(newest!, last, preview.body, CURRENT_USER_ID);
-  const subtitle = row.topicCount === 1 ? '1 topic' : `${row.topicCount} topics`;
+  const subtitle = topicCountLabel(row.topicCount);
+  const anyPinned = row.topics.some((topic) => topic.pinnedAt !== undefined);
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${row.title}, ${subtitle}`}
       onPress={onPress}
+      {...(onLongPress === undefined ? {} : { onLongPress })}
       className="h-[76px] flex-row items-center bg-background pl-4 active:bg-surface-raised"
     >
       <Avatar id={groupId} name={row.title} size={52} />
@@ -73,6 +88,11 @@ export function GroupListItem({ groupId, onPress }: { groupId: string; onPress: 
               <Text numberOfLines={1} className="shrink text-[16px] font-semibold text-foreground">
                 {row.title}
               </Text>
+              {anyPinned ? (
+                <View accessibilityRole="image" accessibilityLabel="Pinned chat">
+                  <Pin size={14} color={MUTED_FOREGROUND[scheme]} />
+                </View>
+              ) : null}
               <Text numberOfLines={1} className="shrink-0 text-[12px] text-subtle-foreground">
                 {subtitle}
               </Text>

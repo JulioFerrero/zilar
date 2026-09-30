@@ -8,6 +8,10 @@ import { useSession } from '@/auth/session';
 
 import { createChatStore, isMockMode } from './chat-store';
 import { createRealChatStore, type AppStateLike } from './real-store';
+import { createChatPrefsApi } from '../lib/chat-prefs-api';
+import { createPinsApi } from '../lib/pins-api';
+import { getSessionToken } from '../lib/session-token';
+import { API_URL } from '../lib/auth';
 import type { ChatStoreState } from './types';
 
 const ChatStoreContext = createContext<StoreApi<ChatStoreState> | null>(null);
@@ -36,7 +40,11 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
       nodeEnv: process.env.NODE_ENV,
     })
       ? createChatStore()
-      : createRealChatStore({ appState: rnAppState }),
+      : createRealChatStore({
+          appState: rnAppState,
+          chatPrefsApi: createChatPrefsApi(getSessionToken, fetch, API_URL),
+          pinsApi: createPinsApi(getSessionToken, fetch, API_URL),
+        }),
   );
 
   useEffect(() => {

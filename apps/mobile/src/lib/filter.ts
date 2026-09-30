@@ -21,8 +21,11 @@ export function inFolder(chat: ChatSummary, folder: ChatFolder): boolean {
 }
 
 export function unreadCount(chats: readonly ChatSummary[], folder: ChatFolder): number {
+  // T-0135: muted chats keep their own grey badge but never count towards a
+  // tab total (the server `mutedUntil` is authoritative; expired mutes
+  // already read as unmuted on the rows).
   return chats
-    .filter((chat) => inFolder(chat, folder))
+    .filter((chat) => inFolder(chat, folder) && !chat.muted)
     .reduce((total, chat) => total + chat.unread, 0);
 }
 

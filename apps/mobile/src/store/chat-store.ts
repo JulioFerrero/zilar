@@ -20,6 +20,8 @@ import {
   mockTopicAisById,
   mockTopicRolesOf,
 } from '../mock/topics';
+import { mockListPins, resetMockPins } from '../mock/pins';
+import { resetMockChatPrefs } from '../mock/chat-prefs';
 import { mockParamAllowed } from '../mock/gate';
 import {
   MOCK_DRAFT_CHAT_ID,
@@ -32,6 +34,7 @@ import {
 } from '../mock/drafts';
 import { MOCK_LOAD_DELAY_MS, readMockLoadScenario, type MockLoadScenario } from '../mock/load';
 import type { ChatStoreState, LoadState } from './types';
+import type { Pin } from '../lib/pins-api';
 
 /** Simulated send states, from T-0018 step 5. */
 export const SENT_DELAY_MS = 300;
@@ -65,7 +68,15 @@ type ChatStoreData = Omit<
   | 'dismissTopicNotice'
   | 'groupDetail'
   | 'refreshGroupDetail'
-  | 'muteChat'
+  | 'setChatPref'
+  | 'pins'
+  | 'refreshPins'
+  | 'pinFor'
+  | 'canPin'
+  | 'pinMessage'
+  | 'unpinMessage'
+  | 'dismissPinsError'
+  | 'stopPinsPoll'
   | 'createTopic'
   | 'patchTopic'
   | 'archiveTopic'
@@ -151,6 +162,7 @@ export function createInitialState(phase?: MockDraftPhase, load?: MockLoadScenar
     topicNotice: undefined,
     groupDetailsRevision: 0,
     ownedAis: mockDevteamOwnedAis(),
+    pinsError: undefined,
   };
   if (load === 'slow') {
     return { ...base, chats: [], chatsLoad: 'loading', messagesByChat: {}, historyLoad: {} };
@@ -185,6 +197,21 @@ function scheduleTypingSimulation(set: (partial: Partial<ChatStoreState>) => voi
 }
 
 let messageCounter = 0;
+
+/**
+ * The mock pins read by the mock store's `pins` selector. `refreshPins`
+ * and the pin/unpin actions rewrite one chat's entry; `resetMockPins`
+ * (called when a mock store is created) clears the whole cache.
+ */
+const mockPinsRead: Record<string, Pin[]> = {};
+
+function mockPinsFor(chatId: string): Pin[] {
+  return mockPinsRead[chatId] ?? [];
+}
+
+function setPinsCache(chatId: string, pins: Pin[]): void {
+  mockPinsRead[chatId] = pins;
+}
 
 /** The mock store kept for `?mock=1` dev mode and unit tests. */
 export function createChatStore(
@@ -239,6 +266,13 @@ export function createChatStore(
         });
       }
     };
+    // Each mock store starts from the seeded mock data (T-0135): the pin
+    // seeds and any pref writes from an earlier store never leak across.
+    resetMockChatPrefs();
+    resetMockPins();
+    for (const chatId of Object.keys(mockPinsRead)) {
+      delete mockPinsRead[chatId];
+    }
     const setStatus = (chatId: string, messageId: string, status: MessageStatus) => {
       set((state) => {
         const messages = state.messagesByChat[chatId];
@@ -306,10 +340,109 @@ export function createChatStore(
       },
       refreshGroupDetail: () => {},
       ownedAis: mockDevteamOwnedAis(),
-      muteChat: (chatId, muted) =>
+      pinsError: undefined,
+      setChatPref: async (chatId, input) => {
+        // The mock goes through the in-memory mock API and re-merges the
+        // saved truth (a null answer drops the row), like the web mock store.
+        const { mockListChatPrefs, mockPutChatPref } = await import('../mock/chat-prefs');
+        const { applyChatPrefs, optimisticPrefRow } = await import('../lib/chat-prefs');
+        const now = Date.now();
+        // Optimistic: merge the intended row into a copy of the full mock
+        // rows first, like the real store. Merging a single row built from
+        // the partial input would strip every other chat's prefs and drop
+        // this chat's kept fields until the saved truth below replaces it.
+        const rows = mockListChatPrefs();
         set((state) => ({
-          chats: state.chats.map((chat) => (chat.id === chatId ? { ...chat, muted } : chat)),
-        })),
+          chats: applyChatPrefs(
+            state.chats,
+            [
+              ...rows.filter((row) => row.chatJid.toLowerCase() !== chatId.toLowerCase()),
+              optimisticPrefRow(chatId, rows, input, new Date(now)),
+            ],
+            now,
+          ),
+        }));
+        mockPutChatPref(chatId, input, new Date(now));
+        const truth = mockListChatPrefs();
+        set((state) => ({ chats: applyChatPrefs(state.chats, truth, Date.now()) }));
+      },
+      pins: (chatId) => {
+        // Pins are synchronous per-row reads on the in-memory mock list, so
+        // the selector stays synchronous. Reading the error subscribes the
+        // selector to pin loads, like `groupDetail` does with its revision.
+        void get().pinsError;
+        return mockPinsFor(chatId);
+      },
+      refreshPins: (chatId) => {
+        setPinsCache(chatId, mockListPins(chatId));
+        set({ pinsError: undefined });
+        return Promise.resolve();
+      },
+      pinFor: (chatId, messageId) => mockPinsFor(chatId).find((pin) => pin.messageId === messageId),
+      canPin: (chatId) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (chat === undefined) {
+          return false;
+        }
+        // Either side of a DM may pin.
+        if (chat.kind === 'dm') {
+          return true;
+        }
+        // A topic manager: the mock viewer owns the Dev team group (see
+        // `mockDevteamGroupDetail`), so topics there may pin. The
+        // topic-creator-who-is-a-plain-member edge is server-enforced only.
+        if (chat.topic !== undefined && chat.groupId === 'g-devteam') {
+          return true;
+        }
+        return false;
+      },
+      pinMessage: async (chatId, messageId) => {
+        const state = get();
+        if (!state.canPin(chatId)) {
+          throw new Error('You cannot pin here.');
+        }
+        const message = state.messagesByChat[chatId]?.find((item) => item.id === messageId);
+        if (message === undefined) {
+          throw new Error('Message not found');
+        }
+        const { mockPinMessage } = await import('../mock/pins');
+        const { pinKindFor, pinSnapshotText } = await import('../lib/pins-api');
+        const shape = {
+          text: message.text,
+          image: message.image,
+          voice: message.voice,
+          card: message.card,
+          attachment: message.attachment,
+        };
+        const pin = mockPinMessage({
+          chat: chatId,
+          messageId,
+          senderName: message.senderName,
+          text: pinSnapshotText({ ...shape, deleted: message.deleted }),
+          kind: pinKindFor(shape),
+        });
+        // The cache stays newest-first like the server: the banner shows
+        // the latest pin.
+        setPinsCache(chatId, [pin, ...mockPinsFor(chatId)]);
+        set({ pinsError: undefined });
+      },
+      unpinMessage: async (chatId, pinId) => {
+        const { mockUnpinMessage } = await import('../mock/pins');
+        const removed = mockUnpinMessage(pinId);
+        if (removed === undefined) {
+          set({ pinsError: { chatId, message: 'Could not unpin. Try again.' } });
+          throw new Error('Pin not found');
+        }
+        setPinsCache(
+          chatId,
+          mockPinsFor(chatId).filter((pin) => pin.id !== pinId),
+        );
+        set({ pinsError: undefined });
+      },
+      dismissPinsError: () => set({ pinsError: undefined }),
+      // Mock mode has no background poll: leaving a chat is a no-op for
+      // pins (the cache stays until the next open re-reads the seeds).
+      stopPinsPoll: () => {},
       createTopic: async (chatId, input) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
         const groupId = chat?.groupId;
@@ -412,7 +545,9 @@ export function createChatStore(
         }));
       },
       addTopicAi: async () => {
-        throw new Error('addTopicAi is not available in the mock store');
+        // T-0112 should-fix: the mock new-topic sheet ticks AIs (the viewer
+        // owns two in the Dev team group), so adding one must not throw.
+        // Like `createTopic` above, this stays in memory only.
       },
       removeTopicAi: async () => {
         throw new Error('removeTopicAi is not available in the mock store');
@@ -589,6 +724,9 @@ export function createChatStore(
           activeChatId: chatId,
           chats: state.chats.map((chat) => (chat.id === chatId ? { ...chat, unread: 0 } : chat)),
         }));
+        // Pins load when the chat opens, like the real store (the seeded
+        // mock pins would otherwise never show in the banner).
+        void get().refreshPins(chatId);
       },
       // The mock loads every message at once, so the hit is either there or
       // it is not: no paging, no wait, same `message_not_found` contract.

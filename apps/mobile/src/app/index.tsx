@@ -1,11 +1,12 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Bot, Search, X } from 'lucide-react-native';
+import { Archive, Bot, Search, X } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { ChatActionsSheet } from '@/components/chat/chat-actions-sheet';
 import { ChatListItem } from '@/components/chat/chat-list-item';
 import { GroupListItem } from '@/components/chat/group-list-item';
 import { FolderTabs } from '@/components/chat/folder-tabs';
@@ -15,15 +16,17 @@ import { NewChatButton } from '@/components/chat/new-chat-button';
 import { ChatListSkeleton } from '@/components/chat/skeleton';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
+import { mutedUntilFor } from '@/lib/chat-prefs';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { connectionLabel } from '@/lib/connection';
 import { well } from '@/lib/depth';
-import { filterChats, unreadCount } from '@/lib/filter';
+import { chatListModel } from '@/lib/chat-list';
+import { unreadCount } from '@/lib/filter';
 import { createSearchApi } from '@/lib/search-api';
 import { getSessionToken } from '@/lib/session-token';
-import { groupRowFor, groupTopicChats } from '@/lib/topics';
-import type { ChatFolder, ChatSummary } from '@/lib/types';
+import { topicsOfGroup } from '@/lib/topics';
+import type { ChatFolder } from '@/lib/types';
 import { createMockSearchApi } from '@/mock/search';
 import { useChatStore } from '@/store/chat-store-provider';
 import { chatsListView, emptyChatsText } from '@/store/types';
@@ -81,6 +84,14 @@ function ChatsList() {
   // A search hit that lands nowhere ("Message not found"): the chat still
   // opens at its bottom; the inline notice says the message is not there.
   const [searchMiss, setSearchMiss] = useState<string | null>(null);
+  const [archivedOpen, setArchivedOpen] = useState(false);
+  // The chat id (or `group:<groupId>`) whose action sheet is open; the
+  // sheet resolves it to the underlying rows below.
+  const [actionFor, setActionFor] = useState<string | null>(null);
+  const [actionMuteOpen, setActionMuteOpen] = useState(false);
+  const setChatPref = useChatStore((state) => state.setChatPref);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState('');
   // Clear the pull-to-refresh spinner as soon as the reload settles, however it
   // ends. Adjusted during render (as ChatList does on web), not in an effect.
   const [lastChatsLoad, setLastChatsLoad] = useState(chatsLoad);
@@ -94,31 +105,12 @@ function ChatsList() {
   // Groups with topics collapse to one row per group (title, "N topics",
   // aggregated unread, newest time, last-topic preview); a group without
   // topics from an older server keeps its chat row as today (T-0112).
-  const visibleRows = useMemo(() => {
-    const filtered = filterChats(chats, { folder: activeFolder, search });
-    const byGroup = groupTopicChats(filtered);
-    const topicIds = new Set([...byGroup.values()].flat().map((chat) => chat.id));
-    const rows: ({ kind: 'chat'; chat: ChatSummary } | { kind: 'group'; groupId: string })[] =
-      filtered.filter((chat) => !topicIds.has(chat.id)).map((chat) => ({ kind: 'chat', chat }));
-    for (const [groupId, topics] of byGroup) {
-      const row = groupRowFor(groupId, topics);
-      if (row !== undefined) {
-        rows.push({ kind: 'group', groupId });
-      }
-    }
-    // Recency order: the newest message of the group (or chat) first.
-    const timeOf = (row: (typeof rows)[number]): number => {
-      if (row.kind === 'chat') {
-        return row.chat.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
-      }
-      const topics = byGroup.get(row.groupId) ?? [];
-      return Math.max(
-        Number.NEGATIVE_INFINITY,
-        ...topics.map((chat) => chat.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY),
-      );
-    };
-    return rows.sort((left, right) => timeOf(right) - timeOf(left));
-  }, [chats, activeFolder, search]);
+  // Pinned chats/topics float first and archived chats leave the main list
+  // for the Archived entry at the bottom (T-0135, `lib/chat-list`).
+  const { rows: visibleRows, archived } = useMemo(
+    () => chatListModel(chats, { folder: activeFolder, search }),
+    [chats, activeFolder, search],
+  );
   const listView = chatsListView(chatsLoad, chats.length);
   const counts = useMemo(
     () =>
@@ -129,11 +121,57 @@ function ChatsList() {
     [chats],
   );
 
+  const openActions = (id: string) => {
+    setActionMuteOpen(false);
+    setActionError('');
+    setActionFor(id);
+  };
+
   const closeSearch = () => {
     setSearch('');
     setSearchOpen(false);
     setSearchMiss(null);
     setSearchChat(undefined);
+  };
+
+  // The rows behind the open action sheet: a group resolves to its General
+  // topic row (the pref row a group mute/pin sits on). A group row's sheet
+  // titles itself from the group; the pin/mute/archive rows stay disabled
+  // until the General row arrives (older servers send no `topics`, so there
+  // is no single row a group-level pref could sit on).
+  const actionContext = useMemo(() => {
+    if (actionFor === null) {
+      return undefined;
+    }
+    if (actionFor.startsWith('group:')) {
+      const groupId = actionFor.slice('group:'.length);
+      const topics = topicsOfGroup(chats, groupId);
+      const general = topics.find((topic) => topic.topic?.isGeneral === true);
+      const groupTitle = general?.groupTitle ?? topics[0]?.groupTitle ?? topics[0]?.title;
+      return { chat: general, groupId, groupTitle };
+    }
+    const chat = chats.find((entry) => entry.id === actionFor);
+    return chat === undefined ? undefined : { chat, groupId: undefined, groupTitle: undefined };
+  }, [actionFor, chats]);
+
+  const runChatPref = (chatId: string, input: Parameters<typeof setChatPref>[1]) => {
+    setActionBusy(true);
+    setActionError('');
+    void setChatPref(chatId, input)
+      .then(() => {
+        setActionFor(null);
+        setActionMuteOpen(false);
+      })
+      .catch(() => setActionError('Could not save. Try again.'))
+      .finally(() => setActionBusy(false));
+  };
+
+  const closeActions = () => {
+    if (!actionBusy) {
+      setActionFor(null);
+      setActionMuteOpen(false);
+      setActionError('');
+    }
   };
 
   const onSearchChange = (value: string) => {
@@ -264,11 +302,13 @@ function ChatsList() {
             <ChatListItem
               chat={item.chat}
               onPress={() => router.push({ pathname: '/chat/[id]', params: { id: item.chat.id } })}
+              onLongPress={() => openActions(item.chat.id)}
             />
           ) : (
             <GroupListItem
               groupId={item.groupId}
               onPress={() => router.push({ pathname: '/group/[id]', params: { id: item.groupId } })}
+              onLongPress={() => openActions(`group:${item.groupId}`)}
             />
           )
         }
@@ -285,6 +325,68 @@ function ChatsList() {
             </View>
           )
         }
+      />
+      {archived.length > 0 ? (
+        <View className="border-t border-divider">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              archivedOpen ? 'Hide archived chats' : `Show archived chats, ${archived.length}`
+            }
+            onPress={() => setArchivedOpen((value) => !value)}
+            className="flex-row items-center justify-center gap-1.5 px-4 py-3 active:bg-surface-raised"
+          >
+            <Archive size={16} color={ICON[scheme]} />
+            <Text className="text-[14px] font-medium text-muted-foreground">
+              Archived ({archived.length})
+            </Text>
+          </Pressable>
+          {archivedOpen
+            ? archived.map((chat) => (
+                <ChatListItem
+                  key={chat.id}
+                  chat={chat}
+                  onPress={() => router.push({ pathname: '/chat/[id]', params: { id: chat.id } })}
+                  onLongPress={() => openActions(chat.id)}
+                />
+              ))
+            : null}
+        </View>
+      ) : null}
+      <ChatActionsSheet
+        chat={actionContext?.chat ?? null}
+        groupTitle={actionContext?.groupTitle}
+        busy={actionBusy}
+        error={actionError}
+        muteOpen={actionMuteOpen}
+        onOpenMute={() => setActionMuteOpen(true)}
+        onMute={(duration) =>
+          actionContext?.chat === undefined
+            ? undefined
+            : runChatPref(actionContext.chat.id, {
+                mutedUntil: mutedUntilFor(duration, new Date()),
+              })
+        }
+        onUnmute={() =>
+          actionContext?.chat === undefined
+            ? undefined
+            : runChatPref(actionContext.chat.id, { mutedUntil: null })
+        }
+        onTogglePin={() =>
+          actionContext?.chat === undefined
+            ? undefined
+            : runChatPref(actionContext.chat.id, {
+                pinned: actionContext.chat.pinnedAt === undefined,
+              })
+        }
+        onToggleArchive={() =>
+          actionContext?.chat === undefined
+            ? undefined
+            : runChatPref(actionContext.chat.id, {
+                archived: actionContext.chat.archived !== true,
+              })
+        }
+        onClose={closeActions}
       />
       <NewChatButton />
     </SafeAreaView>
