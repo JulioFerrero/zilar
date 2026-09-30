@@ -81,8 +81,11 @@ const titleSchema = z
 // this). Validates the title, schedule and input; checks the tool belongs
 // to the same (AI, topic) and is not deleted; requires `approvedHosts`
 // to be a superset of the tool's current version hosts (otherwise
-// `hosts_not_approved`); enforces the 10-routines limit; computes
-// `next_run_at` from `now`; audits `routine.created` with ids only.
+// `hosts_not_approved`); T-0132 additionally requires every host in
+// `approvedHosts` to be inside the TOOL's approved set (otherwise
+// `tool_hosts_not_approved`, model told to run `tool.approve_hosts`);
+// enforces the 10-routines limit; computes `next_run_at` from `now`;
+// audits `routine.created` with ids only.
 export async function createRoutine(
   db: ServerDatabase,
   input: CreateRoutineInput,
@@ -123,6 +126,7 @@ export async function createRoutine(
       topicId: aiTools.topicId,
       name: aiTools.name,
       currentVersion: aiTools.currentVersion,
+      approvedHosts: aiTools.approvedHosts,
       deletedAt: aiTools.deletedAt,
     })
     .from(aiTools)
@@ -150,6 +154,17 @@ export async function createRoutine(
     throw new RoutineServiceError(
       'hosts_not_approved',
       'The approved hosts must include every host the tool contacts',
+    );
+  }
+  // T-0132: the routine's card hosts must also sit inside the tool's
+  // approved set, so a routine can never reach a host the tool itself may
+  // not contact. (The adapter checks this first with a model-actionable
+  // summary; this is the defence in depth for direct service callers.)
+  const toolApproved = new Set(tool.approvedHosts ?? []);
+  if (!approved.every((host) => toolApproved.has(host))) {
+    throw new RoutineServiceError(
+      'tool_hosts_not_approved',
+      'The tool hosts are not approved yet; run tool.approve_hosts first',
     );
   }
   await enforceRoutineLimit(db, input.aiId, input.topicId);

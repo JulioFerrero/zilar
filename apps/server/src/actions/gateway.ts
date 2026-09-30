@@ -416,7 +416,29 @@ async function runApprovalPath(
   if (!parse.success) {
     return { status: 'denied', reason: 'invalid_args' };
   }
-  const parsedArgs = parse.data;
+  // T-0132: an adapter may bind server-side state into the stored args
+  // before the hash is computed (card-time hosts read from the DB). The
+  // hook runs before policy-relevant checks below so a stale card can
+  // never be described or stored; a throw (e.g. a missing tool) becomes
+  // the gateway's generic `failed`, never a leak and never `denied`.
+  let parsedArgs: unknown = parse.data;
+  if (adapter.prepareArgs !== undefined) {
+    const prepareCtx: ActionContext = {
+      aiId: params.aiId,
+      groupId: params.groupId ?? null,
+      topicId: params.topicId ?? null,
+      requestId: 'prepare-' + randomUUID(),
+    };
+    try {
+      parsedArgs = await adapter.prepareArgs(prepareCtx, parse.data);
+    } catch (error) {
+      deps.logger.warn(
+        { err: errorName(error), action: params.action, aiId: params.aiId },
+        'action adapter prepareArgs threw',
+      );
+      return { status: 'failed' };
+    }
+  }
   const serialised = safeStringify(parsedArgs);
   if (serialised === null || Buffer.byteLength(serialised, 'utf8') > MAX_STORED_ARGS_BYTES) {
     return { status: 'denied', reason: 'invalid_args' };

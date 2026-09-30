@@ -522,6 +522,7 @@ function toToolWire(tool: NonNullable<Awaited<ReturnType<typeof getTool>>>) {
     currentVersion: tool.currentVersion,
     source: tool.source,
     hosts: tool.hosts,
+    approvedHosts: tool.approvedHosts,
     lastRunStatus: tool.lastRunStatus,
     updatedAt: tool.updatedAt,
     scope: tool.groupId === null ? ('personal' as const) : ('group' as const),

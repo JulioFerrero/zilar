@@ -17,7 +17,7 @@ import {
 } from '../db/schema';
 import { HttpError } from '../errors';
 import { createAuditRecorder } from '../audit/service';
-import { deleteTool, saveToolVersion } from '../tools/service';
+import { approveToolHosts, deleteTool, saveToolVersion } from '../tools/service';
 import {
   bootstrapUser,
   contactOf,
@@ -123,6 +123,8 @@ async function seedTool(
   context: TestContext,
   args: { aiId: string; groupId: string | null; topicId: string | null; userId: string },
 ): Promise<string> {
+  // T-0132: newly saved tools start with an empty approved set, so seed
+  // the approval too — every existing test predates the tool-host check.
   const { tool } = await saveToolVersion(
     context.db,
     {
@@ -136,6 +138,11 @@ async function seedTool(
       message: 'First version',
       userId: args.userId,
     },
+    NOW,
+  );
+  await approveToolHosts(
+    context.db,
+    { toolId: tool.id, hosts: ['api.example.com'], userId: args.userId },
     NOW,
   );
   return tool.id;
@@ -356,6 +363,53 @@ describe('routines service and routes (T-0104)', () => {
       expect(created[0]?.subjectId).toBe(routine.id);
       expect(created[0]?.detail).toEqual({ toolId });
       expect(JSON.stringify(created)).not.toContain('gold 3000');
+    });
+  });
+
+  describe('tool approved-set check (T-0132)', () => {
+    it('rejects card hosts outside the tool approved set with tool_hosts_not_approved', async () => {
+      const { owner, aiId } = await ownerWithAi(`toolhosts-${emailCounter}@example.com`);
+      const { groupId, generalTopicId } = await seedGroup(context, owner.id, 'owner', [aiId]);
+      // seedTool approves api.example.com; the card names one host more.
+      const toolId = await seedTool(context, {
+        aiId,
+        groupId,
+        topicId: generalTopicId,
+        userId: owner.id,
+      });
+      await expect(
+        createRoutine(
+          context.db,
+          {
+            aiId,
+            groupId,
+            topicId: generalTopicId,
+            toolId,
+            title: 'Extra host',
+            schedule: INTERVAL_60,
+            approvedHosts: ['api.example.com', 'new.example.com'],
+            userId: owner.id,
+          },
+          NOW,
+        ),
+      ).rejects.toMatchObject({ errorCode: 'tool_hosts_not_approved' });
+      // An exact-subset card still works, and the service error message is
+      // model-actionable without leaking anything sensitive.
+      const created = await createRoutine(
+        context.db,
+        {
+          aiId,
+          groupId,
+          topicId: generalTopicId,
+          toolId,
+          title: 'Subset host',
+          schedule: INTERVAL_60,
+          approvedHosts: ['api.example.com'],
+          userId: owner.id,
+        },
+        NOW,
+      );
+      expect(created.approvedHosts).toEqual(['api.example.com']);
     });
   });
 

@@ -29,6 +29,7 @@ import {
   describeSchedule,
   MAX_SAVE_MODEL_TEXT_CHARS,
   MAX_TOOL_INPUT_BYTES,
+  type ApproveHostsBoundArgs,
   type BuildToolAdaptersDeps,
 } from './adapters';
 import type { ToolRunResult, ToolRunner } from './types';
@@ -254,9 +255,11 @@ describe('tool adapters (T-0105)', () => {
       'routine.delete',
       'routine.pause',
       'routine.schedule',
+      'tool.approve_hosts',
       'tool.list',
       'tool.read',
       'tool.revert',
+      'tool.revoke_hosts',
       'tool.run',
       'tool.save',
     ]);
@@ -266,6 +269,8 @@ describe('tool adapters (T-0105)', () => {
     expect(tiers.get('tool.save')).toBe(1);
     expect(tiers.get('tool.run')).toBe(1);
     expect(tiers.get('tool.revert')).toBe(1);
+    expect(tiers.get('tool.approve_hosts')).toBe(2);
+    expect(tiers.get('tool.revoke_hosts')).toBe(1);
     expect(tiers.get('routine.schedule')).toBe(2);
     expect(tiers.get('routine.pause')).toBe(1);
     expect(tiers.get('routine.delete')).toBe(1);
@@ -278,7 +283,7 @@ describe('tool adapters (T-0105)', () => {
   it('omits routine.schedule when routines are disabled', () => {
     const { adapters } = adaptersFor({ routinesEnabled: false });
     expect(adapters.map((adapter) => adapter.name)).not.toContain('routine.schedule');
-    expect(adapters).toHaveLength(7);
+    expect(adapters).toHaveLength(9);
   });
 
   it('routine.schedule never opts into always-allow', () => {
@@ -288,14 +293,24 @@ describe('tool adapters (T-0105)', () => {
     expect(byName(adapters, 'routine.schedule').allowAlways).not.toBe(true);
   });
 
-  it('tool.save then tool.run: the runner sees the saved source and hosts, the post is formatted', async () => {
+  it('tool.approve_hosts never opts into always-allow', () => {
+    const { adapters } = adaptersFor();
+    const alwaysEligible = buildAlwaysEligible(buildRegistry(adapters));
+    expect(alwaysEligible('tool.approve_hosts')).toBe(false);
+    expect(byName(adapters, 'tool.approve_hosts').allowAlways).not.toBe(true);
+  });
+
+  it('tool.save then tool.run: the runner sees the saved source and the approved hosts only', async () => {
     const runner = okRunner('BTC 100');
     const { adapters, posts } = adaptersFor({ runner });
     const saved = await run(adapters, 'tool.save', ctxFor(), baseToolInput());
-    expect(saved.summary).toBe('saved morning-prices v1: test run ok');
-    expect(saved.modelText).toBe('BTC 100');
+    expect(saved.summary).toContain('saved morning-prices v1: test run ok');
+    expect(saved.summary).toContain('tool.approve_hosts');
+    expect(saved.modelText).toContain('BTC 100');
+    // Nothing approved yet: the test run reached the sandbox with no
+    // network, so the runner saw an empty intersection.
     expect(runner.calls).toHaveLength(1);
-    expect(runner.calls[0]).toEqual({ source: SOURCE, input: null, allowedHosts: HOSTS });
+    expect(runner.calls[0]).toEqual({ source: SOURCE, input: null, allowedHosts: [] });
 
     const ran = await run(adapters, 'tool.run', ctxFor(), { name: 'morning-prices' });
     expect(ran.summary).toBe('ok');
@@ -307,8 +322,8 @@ describe('tool adapters (T-0105)', () => {
     const runner = failingRunner();
     const { adapters } = adaptersFor({ runner });
     const saved = await run(adapters, 'tool.save', ctxFor(), baseToolInput());
-    expect(saved.summary).toBe('saved morning-prices v1: test run failed: runtime');
-    expect(saved.modelText).toBe('boom\nline one\nline two');
+    expect(saved.summary).toContain('saved morning-prices v1: test run failed: runtime');
+    expect(saved.modelText).toContain('boom\nline one\nline two');
     expect(runner.calls).toHaveLength(1);
 
     const read = await run(adapters, 'tool.read', ctxFor(), { name: 'morning-prices' });
@@ -339,7 +354,12 @@ describe('tool adapters (T-0105)', () => {
     }
     const limited = await run(adapters, 'tool.run', ctxFor(), { name: 'morning-prices' });
     expect(limited.summary).toBe('run limit reached, try later');
+    // One test run at save time plus six real runs: none reached the network
+    // (nothing approved), but every run still executed.
     expect(runner.calls).toHaveLength(7);
+    for (const call of runner.calls) {
+      expect(call.allowedHosts).toEqual([]);
+    }
   });
 
   it('tool.run caps its input at 16 KiB serialised', () => {
@@ -467,6 +487,7 @@ describe('tool adapters (T-0105)', () => {
     const { groupId, generalTopicId } = await seedGroup(context, ownerId, [aiId]);
     const groupCtx = ctxFor({ groupId, topicId: generalTopicId });
     await run(adapters, 'tool.save', groupCtx, baseToolInput());
+    await approveHostsThroughGateway(adapters, groupCtx, 'morning-prices');
     const scheduled = await scheduleDaily(adapters, groupCtx, 'Morning prices');
     expect(scheduled.summary).toContain('Scheduled "Morning prices"');
 
@@ -555,6 +576,7 @@ describe('tool adapters (T-0105)', () => {
     const source = 'return { text: "SECRET-SOURCE-DO-NOT-LOG" };';
     await run(adapters, 'tool.save', ctxFor(), baseToolInput({ source }));
     await run(adapters, 'tool.run', ctxFor(), { name: 'morning-prices' });
+    await approveHostsThroughGateway(adapters, ctxFor(), 'morning-prices');
     await scheduleDaily(adapters, ctxFor(), 'Routine one');
 
     const rows = await context.db.select().from(auditLog);
@@ -575,6 +597,144 @@ describe('tool adapters (T-0105)', () => {
       hosts: [],
     });
     expect(badSchedule.summary).toBe('invalid_args');
+    const badApprove = await run(adapters, 'tool.approve_hosts', ctxFor(), { name: 'Bad' });
+    expect(badApprove.summary).toBe('invalid_args');
+  });
+
+  it('tool.approve_hosts approves the DB hosts; the runner then sees the intersection', async () => {
+    const runner = okRunner('BTC 100');
+    const { adapters } = adaptersFor({ runner });
+    await run(adapters, 'tool.save', ctxFor(), baseToolInput());
+    expect(runner.calls[0]?.allowedHosts).toEqual([]);
+
+    const approved = await approveHostsThroughGateway(adapters, ctxFor(), 'morning-prices');
+    expect(approved.summary).toBe('approved morning-prices to contact: api.example.com');
+
+    const ran = await run(adapters, 'tool.run', ctxFor(), { name: 'morning-prices' });
+    expect(ran.summary).toBe('ok');
+    expect(runner.calls[1]).toEqual({ source: SOURCE, input: null, allowedHosts: HOSTS });
+  });
+
+  it('tool.approve_hosts card lists hosts read from the DB, not from the model', async () => {
+    const { adapters } = adaptersFor();
+    await run(adapters, 'tool.save', ctxFor(), baseToolInput());
+    const adapter = byName(adapters, 'tool.approve_hosts');
+    // A hostile `hosts` field in the raw args is ignored: prepareArgs
+    // binds the current version's hosts from the DB.
+    const parsed = (adapter.argsSchema as z.ZodType<unknown>).safeParse({
+      name: 'morning-prices',
+      hosts: ['evil.example.com'],
+    });
+    expect(parsed.success).toBe(false);
+    const bound = (await adapter.prepareArgs?.(ctxFor(), { name: 'morning-prices' })) as
+      ApproveHostsBoundArgs | undefined;
+    expect(bound).toEqual({ name: 'morning-prices', hosts: HOSTS });
+    const card = adapter.describe(bound ?? { name: 'morning-prices' });
+    expect(card.summary).toBe('Allow the tool "morning-prices" to contact: api.example.com');
+    expect(card.details).toContain('api.example.com');
+    expect(card.details).not.toContain('evil.example.com');
+  });
+
+  it('tool.approve_hosts fails safe when hosts change between card and execution', async () => {
+    const { adapters } = adaptersFor();
+    await run(adapters, 'tool.save', ctxFor(), baseToolInput());
+    const adapter = byName(adapters, 'tool.approve_hosts');
+    const bound = (await adapter.prepareArgs?.(ctxFor(), { name: 'morning-prices' })) as
+      ApproveHostsBoundArgs | undefined;
+    // A new version declaring a new host lands after the card was shown.
+    await run(
+      adapters,
+      'tool.save',
+      ctxFor(),
+      baseToolInput({ source: 'return "v2";', hosts: ['api.example.com', 'new.example.com'] }),
+    );
+    await expect(
+      adapter.execute({ ...ctxFor(), requestId: randomUUID() }, bound ?? { name: 'x' }),
+    ).rejects.toThrow('tool hosts changed after the approval card was shown');
+  });
+
+  it('a new version with an extra host does not reach it until re-approved', async () => {
+    const runner = okRunner('BTC 100');
+    const { adapters } = adaptersFor({ runner });
+    await run(adapters, 'tool.save', ctxFor(), baseToolInput());
+    await approveHostsThroughGateway(adapters, ctxFor(), 'morning-prices');
+
+    const saved = await run(
+      adapters,
+      'tool.save',
+      ctxFor(),
+      baseToolInput({
+        source: 'return "v2";',
+        hosts: ['api.example.com', 'new.example.com'],
+      }),
+    );
+    expect(saved.summary).toContain('saved morning-prices v2');
+    expect(saved.summary).toContain('new.example.com');
+    expect(saved.modelText).toContain('new.example.com');
+    // The test run that just happened reached only the approved subset.
+    const lastCall = runner.calls[runner.calls.length - 1];
+    expect(lastCall?.allowedHosts).toEqual(['api.example.com']);
+
+    // A re-approval covers the new set; the tool then reaches both hosts.
+    const reapproved = await approveHostsThroughGateway(adapters, ctxFor(), 'morning-prices');
+    expect(reapproved.summary).toContain('api.example.com, new.example.com');
+    await run(adapters, 'tool.run', ctxFor(), { name: 'morning-prices' });
+    const afterReapproval = runner.calls[runner.calls.length - 1];
+    expect(afterReapproval?.allowedHosts).toEqual(['api.example.com', 'new.example.com']);
+  });
+
+  it('routine.schedule rejects hosts outside the tool approved set', async () => {
+    const { adapters } = adaptersFor();
+    await run(adapters, 'tool.save', ctxFor(), baseToolInput());
+    // Nothing approved yet: even the exact declared hosts are refused.
+    const refused = await run(adapters, 'routine.schedule', ctxFor(), {
+      tool: 'morning-prices',
+      title: 'Morning prices',
+      schedule: { kind: 'daily', time: '09:00', timezone: 'Europe/Madrid' },
+      hosts: HOSTS,
+    });
+    expect(refused.summary).toBe(
+      'the tool hosts are not approved yet; run tool.approve_hosts first',
+    );
+    expect((await run(adapters, 'tool.list', ctxFor(), {})).summary).toBe('1 tool, 0 routines');
+
+    await approveHostsThroughGateway(adapters, ctxFor(), 'morning-prices');
+    const scheduled = await scheduleDaily(adapters, ctxFor(), 'Morning prices');
+    expect(scheduled.summary).toContain('Scheduled "Morning prices"');
+    expect((await run(adapters, 'tool.list', ctxFor(), {})).summary).toBe('1 tool, 1 routine');
+  });
+
+  it('tool.revoke_hosts empties the set and is audited without code or output', async () => {
+    const runner = okRunner('BTC 100');
+    const { adapters } = adaptersFor({ runner });
+    const source = 'return { text: "SECRET-SOURCE-DO-NOT-LOG" };';
+    await run(adapters, 'tool.save', ctxFor(), baseToolInput({ source }));
+    await approveHostsThroughGateway(adapters, ctxFor(), 'morning-prices');
+
+    const revoked = await run(adapters, 'tool.revoke_hosts', ctxFor(), {
+      name: 'morning-prices',
+    });
+    expect(revoked.summary).toBe('revoked the approved hosts of "morning-prices"');
+
+    await run(adapters, 'tool.run', ctxFor(), { name: 'morning-prices' });
+    expect(runner.calls[runner.calls.length - 1]?.allowedHosts).toEqual([]);
+
+    const rows = await context.db.select().from(auditLog);
+    const revokedRow = rows.find((row) => row.action === 'tool.hosts_revoked');
+    expect(revokedRow?.subjectId).toBeDefined();
+    expect(revokedRow?.detail).toEqual({ name: 'morning-prices' });
+    const approvedRow = rows.find((row) => row.action === 'tool.hosts_approved');
+    expect(approvedRow?.detail).toEqual({
+      name: 'morning-prices',
+      version: 1,
+      hosts: HOSTS,
+    });
+    const serialised = JSON.stringify(rows);
+    expect(serialised).not.toContain('SECRET-SOURCE-DO-NOT-LOG');
+    expect(serialised).not.toContain('BTC 100');
+    expect((await run(adapters, 'tool.revoke_hosts', ctxFor(), { name: 'missing' })).summary).toBe(
+      'no such tool',
+    );
   });
 
   async function scheduleDaily(
@@ -588,5 +748,25 @@ describe('tool adapters (T-0105)', () => {
       schedule: { kind: 'daily', time: '09:00', timezone: 'Europe/Madrid' },
       hosts: HOSTS,
     });
+  }
+
+  // Drives `tool.approve_hosts` through the full approval flow (prepare →
+  // card → execute), like the gateway does in production: binding the
+  // hosts from the DB, describing the card, then executing the bound args.
+  async function approveHostsThroughGateway(
+    adapters: ActionAdapter<unknown>[],
+    ctx: ActionContext,
+    name: string,
+  ): Promise<{ summary: string }> {
+    const adapter = byName(adapters, 'tool.approve_hosts');
+    const parsed = (adapter.argsSchema as z.ZodType<unknown>).safeParse({ name });
+    if (!parsed.success) {
+      throw new Error('approve_hosts args did not parse');
+    }
+    const bound = (await adapter.prepareArgs?.(ctx, parsed.data)) as
+      ApproveHostsBoundArgs | undefined;
+    const card = adapter.describe(bound ?? parsed.data);
+    expect(card.summary).toContain(name);
+    return adapter.execute({ ...ctx, requestId: randomUUID() }, bound ?? parsed.data);
   }
 });
