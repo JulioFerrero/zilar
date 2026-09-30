@@ -362,7 +362,7 @@ function webWikipediaAdapter(state: WebToolsState): ActionAdapter<unknown> {
       }
       const urlLine = article.url.length > 0 ? `\n${article.url}` : '';
       return {
-        summary: `wikipedia: ${article.title}`,
+        summary: 'wikipedia article found',
         modelText: `${article.title}\n${article.extract}${urlLine}`,
       };
     },

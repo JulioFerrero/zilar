@@ -240,7 +240,8 @@ describe('web adapters (T-0125)', () => {
       }) as PinnedFetcher,
     });
     const result = await run(twoStep, 'web.wikipedia', ctxFor(), { query: 'gold' });
-    expect(result.summary).toBe('wikipedia: Gold');
+    expect(result.summary).toBe('wikipedia article found');
+    expect(result.summary).not.toContain('Gold');
     expect(result.modelText).toBe(
       'Gold\nGold is a chemical element with symbol Au.\nhttps://en.wikipedia.org/wiki/Gold',
     );
@@ -488,13 +489,8 @@ describe('web adapters (T-0125)', () => {
     expect(limited).toEqual({ summary: 'web limit reached, try later' });
     expect(limited.modelText).toBeUndefined();
     // Mixed actions share the one window: a search also hits the cap.
-    const searchLimited = await run(
-      adaptersWith([], { searchProvider: { search: async () => [] } }).adapters,
-      'web.search',
-      ctxFor(),
-      { query: 'gold' },
-    );
-    expect(searchLimited.summary).toBe('search unavailable right now');
+    const searchLimited = await run(adapters, 'web.search', ctxFor(), { query: 'gold' });
+    expect(searchLimited).toEqual({ summary: 'web limit reached, try later' });
     // A different topic has its own window.
     const otherTopic = await run(adapters, 'web.fetch', ctxFor({ topicId: randomUUID() }), {
       url: 'https://example.com/',

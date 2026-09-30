@@ -1,7 +1,7 @@
 ---
 id: T-0125
 title: Web tools for AIs: web.fetch, keyless sources (Wikipedia, feeds, prices) and a best-effort web.search
-status: review
+status: merged
 milestone: M5
 branch: task/T-0125-web-tools
 model: meta/muse-spark-1.3-contributor
@@ -134,10 +134,13 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged with lead fixes. Off by default (`WEB_TOOLS_ENABLED=false`).
 
 ### Findings
--
+- Read the network guard line by line: https only, no credentials or ports, no IP literals, DNS resolved and every address classified, the request is pinned to the validated address with the hostname as SNI and Host, no redirects, 2 MiB cap, content types allow-listed, GET only.
+- Lead fixes: (1) a redirect's `Location` is text controlled by the remote server and was placed in the summary, outside the untrusted block; it now travels as `modelText` only. (2) The 10 s timeout was an idle timeout, so a server sending one byte at a time could hold a connection open; there is now a hard overall deadline. (3) The Wikipedia article title (remote text) was in the summary; the summary is now fixed wording and the title is in `modelText` (from the pre-review). (4) The shared rate-limit-window test passed for the wrong reason; it now asserts the search hits the same cap.
 
 ### Follow-ups
--
+- `web.fetch` drops the page `<title>` (the extractor drops `<head>`); the spec wanted it kept.
+- Dead code: `anchorParts` in `html.ts` is only used by its own test; `coingeckoLines` returns `unknownIds` that nobody reads.
+- Live check with `WEB_TOOLS_ENABLED=true` and `TOOLS_ENABLED=true` (the AI needs the action gateway on) once Julio is around; results go in `docs/LIVE_CHECKS_2026-09-29.md`.
