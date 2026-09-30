@@ -27,6 +27,24 @@ const CASES: { name: string; action: string; command: string | string[]; verdict
   },
   { name: 'docker ps', action: 'shell', command: 'docker ps', verdict: 'allow' },
   {
+    name: 'docker images format',
+    action: 'shell',
+    command: "docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' 2>/dev/null",
+    verdict: 'allow',
+  },
+  {
+    name: 'docker ps format',
+    action: 'shell',
+    command: "docker ps --format '{{.Names}}'",
+    verdict: 'allow',
+  },
+  {
+    name: 'docker ps redirect out',
+    action: 'shell',
+    command: 'docker ps > /tmp/x',
+    verdict: 'escalate',
+  },
+  {
     name: 'docker compose exec',
     action: 'shell',
     command: 'docker compose exec server ps',
