@@ -13,6 +13,32 @@ const CTX: PolicyContext = {
 // string) or several (the split pipeline segments OpenCode really sends).
 const CASES: { name: string; action: string; command: string | string[]; verdict: Verdict }[] = [
   // Own cleanup and read-only commands: allow.
+  {
+    name: 'docker compose ps',
+    action: 'shell',
+    command: 'docker compose -p t0129probe ps',
+    verdict: 'allow',
+  },
+  {
+    name: 'docker compose config',
+    action: 'shell',
+    command: 'docker compose --env-file .env.example config',
+    verdict: 'allow',
+  },
+  { name: 'docker ps', action: 'shell', command: 'docker ps', verdict: 'allow' },
+  {
+    name: 'docker compose exec',
+    action: 'shell',
+    command: 'docker compose exec server ps',
+    verdict: 'escalate',
+  },
+  { name: 'docker inspect', action: 'shell', command: 'docker inspect x', verdict: 'escalate' },
+  {
+    name: 'docker compose up',
+    action: 'shell',
+    command: 'docker compose up -d',
+    verdict: 'reject',
+  },
   { name: 'rm node_modules', action: 'shell', command: 'rm -rf node_modules', verdict: 'allow' },
   { name: 'rm dist', action: 'shell', command: 'rm -rf dist', verdict: 'allow' },
   { name: 'rm .turbo', action: 'shell', command: 'rm -rf .turbo', verdict: 'allow' },
@@ -268,7 +294,7 @@ const CASES: { name: string; action: string; command: string | string[]; verdict
     command: 'wget https://example.com/x.tar.gz',
     verdict: 'escalate',
   },
-  { name: 'docker ps', action: 'shell', command: 'docker ps', verdict: 'escalate' },
+  { name: 'docker logs', action: 'shell', command: 'docker logs x', verdict: 'escalate' },
   {
     name: 'docker compose logs',
     action: 'shell',

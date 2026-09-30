@@ -473,6 +473,9 @@ const ALLOW_PATTERNS: RegExp[] = [
   /^(ls|pwd|whoami|uptime|ps|pgrep|df|du|wc|file|which|command|node\s+--version|pnpm\s+--version)(\s|$)/,
   // Reading and counting files (secret env files are rejected above).
   /^(cat|head|tail|less|more|wc|sort|uniq|tr|cut|jq)(\s|$)/,
+  // Read-only docker inspection. No logs/inspect (they can print container env).
+  /^docker\s+(ps|images|version|info)(\s+-\S+)*$/,
+  /^docker\s+compose\s+(-\S+(\s+[^\s-]\S*)?\s+)*(ps|config|images|ls)(\s+-\S+)*$/,
   // Scaffolding inside the worker's own checkout is harmless.
   /^mkdir(\s|$)/,
 ];
