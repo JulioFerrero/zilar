@@ -11,6 +11,7 @@ import { canSeeTopic } from '../topics/access';
 import {
   ApprovalServiceError,
   type AlwaysEligiblePredicate,
+  approverNamesForTopics,
   decideApproval,
   getDecidableApproval,
   listDecidableApprovals,
@@ -200,6 +201,10 @@ export function createApprovalsRoutes({
             await visibleTopicName(db, user.id, {
               topicId: updated.topicId,
             }),
+            approverNamesForRow(
+              await approverNamesForTopics(db, [updated.topicId]),
+              updated.topicId,
+            ),
           ),
           alwaysEligibleFn,
           updated.groupId === null || (await isGroupAdmin(db, updated.groupId, user.id)),
@@ -403,6 +408,12 @@ async function visibleTopicName(
     return null;
   }
   return (await visibleTopicNames(db, userId, [row])).get(row.topicId) ?? null;
+}
+
+// The approver names for one row from a batch map (empty when the row has
+// no topic or the topic has no approver role).
+function approverNamesForRow(names: Map<string, string[]>, topicId: string | null): string[] {
+  return topicId === null ? [] : (names.get(topicId) ?? []);
 }
 
 // The group ids where the user is an owner/admin. One query for the

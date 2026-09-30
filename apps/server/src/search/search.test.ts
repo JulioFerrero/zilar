@@ -630,6 +630,89 @@ describe('GET /api/search', () => {
     expect(body.items.map((item) => item.chatJid)).toEqual([aiJid]);
   });
 
+  it('shows a private topic room to a role holder, never to a non-holder or a leaver', async () => {
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    const holder = await contactOf(context, app, owner.id, 'holder@example.com');
+    const outsider = await contactOf(context, app, owner.id, 'outsider@example.com');
+    const group = await createGroup(owner.cookie, 'Team', [holder.id, outsider.id]);
+    const secret = await createTopic(owner.cookie, group.id, {
+      name: 'Design',
+      visibility: 'private',
+      memberIds: [],
+    });
+
+    // A role attached to the private topic: every holder sees the room.
+    const created = await app.request(`${TEST_BASE_URL}/api/groups/${group.id}/roles`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: owner.cookie },
+      body: JSON.stringify({ name: 'Designers' }),
+    });
+    expect(created.status).toBe(201);
+    const role = (await created.json()) as { id: string };
+    const assigned = await app.request(
+      `${TEST_BASE_URL}/api/groups/${group.id}/roles/${role.id}/members`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ userIds: [holder.id] }),
+      },
+    );
+    expect(assigned.status).toBe(200);
+    const attached = await app.request(`${TEST_BASE_URL}/api/topics/${secret.id}/roles`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: owner.cookie },
+      body: JSON.stringify({ roleIds: [role.id], approverRoleId: null }),
+    });
+    expect(attached.status).toBe(200);
+
+    await seedArchive(archiveClient, [
+      {
+        owner: secret.chatJid,
+        peer: 'someone@x/r',
+        barePeer: 'someone@x',
+        kind: 'groupchat',
+        nick: 'Owner',
+        originId: 'o-design',
+        timestamp: 1_785_000_000_000_000,
+        txt: 'quasar design tokens',
+        xml: messageXml('quasar design tokens'),
+      },
+    ]);
+
+    // The role holder finds the room's messages; the non-holder does not.
+    const holderFound = await search(holder.cookie, '?q=quasar');
+    expect(holderFound.status).toBe(200);
+    expect(holderFound.body.items.map((item) => item.messageId)).toEqual(['o-design']);
+    const holderFiltered = await search(
+      holder.cookie,
+      `?q=quasar&chat=${encodeURIComponent(secret.chatJid)}`,
+    );
+    expect(holderFiltered.status).toBe(200);
+    expect(holderFiltered.body.items).toHaveLength(1);
+
+    const outsiderFound = await search(outsider.cookie, '?q=quasar');
+    expect(outsiderFound.body.items).toHaveLength(0);
+    const outsiderFiltered = await search(
+      outsider.cookie,
+      `?q=quasar&chat=${encodeURIComponent(secret.chatJid)}`,
+    );
+    expect(outsiderFiltered.status).toBe(404);
+
+    // The holder leaves the group: the room drops out of their allowed set.
+    const leave = await app.request(
+      `${TEST_BASE_URL}/api/groups/${group.id}/members/${holder.id}`,
+      { method: 'DELETE', headers: { cookie: holder.cookie } },
+    );
+    expect(leave.status).toBe(200);
+    const leaverFound = await search(holder.cookie, '?q=quasar');
+    expect(leaverFound.body.items).toHaveLength(0);
+    const leaverFiltered = await search(
+      holder.cookie,
+      `?q=quasar&chat=${encodeURIComponent(secret.chatJid)}`,
+    );
+    expect(leaverFiltered.status).toBe(404);
+  });
+
   it('rejects a private topic for a group admin who was not added', async () => {
     const owner = await bootstrapUser(context, app, 'owner@example.com');
     const admin = await contactOf(context, app, owner.id, 'admin@example.com');

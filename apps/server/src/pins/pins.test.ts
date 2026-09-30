@@ -393,12 +393,31 @@ describe('pins', () => {
     expect(removed.status).toBe(401);
   });
 
-  it('answers 404 for unknown pins and chats', async () => {
+  it('answers 404 for unknown pins and chats with the same message and body', async () => {
     const { owner, member } = await setup();
-    expect((await unpin(owner.cookie, 'missing')).status).toBe(404);
-    expect((await listPins(owner.cookie, 'not-a-jid')).status).toBe(404);
-    expect((await listPins(owner.cookie, 'room@unknown.example')).status).toBe(404);
+    const missing = await unpin(owner.cookie, 'missing');
+    expect(missing.status).toBe(404);
+    const missingBody = (await missing.json()) as { error: { code: string; message: string } };
+    expect(missingBody.error.code).toBe('not_found');
+    expect(missingBody.error.message).toBe('Chat not found');
+    // Unknown chat answers the identical message and body (requestId
+    // aside), so pin ids cannot be told apart from invisible chats.
+    const sameBody = (body: unknown): { code: string; message: string } => {
+      const parsed = body as { error: { code: string; message: string } };
+      return { code: parsed.error.code, message: parsed.error.message };
+    };
+    // Unknown chat answers the identical message and body, so pin ids
+    // cannot be told apart from invisible chats.
+    const unknownChat = await listPins(owner.cookie, 'not-a-jid');
+    expect(unknownChat.status).toBe(404);
+    expect(sameBody(await unknownChat.json())).toEqual(sameBody(missingBody));
+    const unknownRoom = await listPins(owner.cookie, 'room@unknown.example');
+    expect(unknownRoom.status).toBe(404);
+    expect(sameBody(await unknownRoom.json())).toEqual(sameBody(missingBody));
     expect((await pin(owner.cookie, pinBody('not-a-jid'))).status).toBe(404);
+    expect(sameBody(await (await pin(owner.cookie, pinBody('not-a-jid'))).json())).toEqual(
+      sameBody(missingBody),
+    );
     expect((await listPins(owner.cookie, expectedJid(member.id))).status).toBe(200);
   });
 });

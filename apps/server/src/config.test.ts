@@ -51,6 +51,7 @@ describe('loadServerConfig', () => {
       WEB_ORIGINS: ['http://localhost:5173'],
       WEB_BASE_URL: 'http://localhost:5173',
       STICKER_STORAGE_DIR: './data/stickers',
+      TRUSTED_PROXY_HOPS: 0,
       MAIL_TRANSPORT: 'console',
       SMTP_PORT: 587,
       SMTP_SECURE: false,
@@ -92,6 +93,7 @@ describe('loadServerConfig', () => {
       WEB_ORIGINS: ['https://app.example.com', 'https://admin.example.com'],
       WEB_BASE_URL: 'http://localhost:5173',
       STICKER_STORAGE_DIR: './data/stickers',
+      TRUSTED_PROXY_HOPS: 0,
       MAIL_TRANSPORT: undefined,
       SMTP_PORT: 587,
       SMTP_SECURE: false,
@@ -131,6 +133,30 @@ describe('loadServerConfig', () => {
     expect(
       loadServerConfig({ ...base, WEB_BASE_URL: 'https://app.example.com/join' }).WEB_BASE_URL,
     ).toBe('https://app.example.com/join');
+  });
+
+  it('defaults TRUSTED_PROXY_HOPS to 0 and parses 0 to 5 without printing it', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig(base).TRUSTED_PROXY_HOPS).toBe(0);
+    expect(loadServerConfig({ ...base, TRUSTED_PROXY_HOPS: '1' }).TRUSTED_PROXY_HOPS).toBe(1);
+    expect(loadServerConfig({ ...base, TRUSTED_PROXY_HOPS: '5' }).TRUSTED_PROXY_HOPS).toBe(5);
+  });
+
+  it('rejects out-of-range TRUSTED_PROXY_HOPS without printing it', () => {
+    for (const hops of ['-1', '6', 'two']) {
+      const message = configErrorMessage({
+        DATABASE_URL: VALID_DATABASE_URL,
+        BETTER_AUTH_SECRET: VALID_SECRET,
+        TRUSTED_PROXY_HOPS: hops,
+        ...VALID_XMPP_ENV,
+      });
+      expect(message).toContain('TRUSTED_PROXY_HOPS');
+      expect(message).not.toContain(hops);
+    }
   });
 
   it('rejects an invalid WEB_BASE_URL without printing it', () => {

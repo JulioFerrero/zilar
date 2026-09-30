@@ -1,7 +1,7 @@
 ---
 id: T-0134
 title: Server follow-ups from the invite-links, pins and roles reviews
-status: planned
+status: review
 milestone: M5
 branch: task/T-0134-server-followups
 model: meta/muse-spark-1.3-contributor
@@ -53,19 +53,44 @@ Schema changes, UI, new features.
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Fix 1 (same-user racing joins): `joinByInviteLink` now runs the membership re-check, the atomic claim and the insert in ONE transaction. The loser (`onConflictDoNothing` returns no row, or the in-tx re-check sees the row) answers 200 `alreadyMember: true` and consumes nothing — its claim rolls back. The old `refundLinkUse` is gone (a 503 rolls back automatically); post-commit topic sync + invitation + audit unchanged.
+- Fix 2 (proxy IP): new `TRUSTED_PROXY_HOPS` env (zod `z.coerce.number().int().min(0).max(5).default(0)`), documented in `docs/SERVER_CONFIG.md`, comment in `deploy/.env.example`. `clientIpFor(hops)` resolves the Nth address from the RIGHT of `x-forwarded-for` (`trustedClientIp`, exported for tests); 0 hops = socket address as before. Used only by the join limiter. Test seam extended (`trustedProxyHops`, `joinLimiters.preview`).
+- Fix 3 (pin 404): `unpinMessage` missing-pin path now throws `toMissingChat()` — byte-identical code/message to the invisible-chat 404 (`not_found`/`Chat not found`). Test asserts identical bodies.
+- Fix 4 (search with roles): no code change needed — `allowedArchives` already reads `visibleTopics`, which includes role-held rooms. Added the spec's test: role holder finds the private room (unfiltered + `chat` filter), non-holder gets nothing + 404 on the filter, and the holder finds nothing + 404 after leaving the group. Sensitivity-checked by temporarily disabling the role block in `visibleTopics` (test failed, then restored byte-identical).
+- Fix 5 (preview rate limit): `GET /api/join/:token` now has a 120/hour per-user limiter (`JOIN_PREVIEW_RATE_LIMIT_*`), checked after the session, before the token parse. Test with a budget of 3 + window advance.
+- Fix 6 (ApprovalCard N+1): `PublicApproval` gains `approverNames: string[]` (sorted holder names, `[]` for personal chats / no approver role / departed holders excluded via a group-membership join). Resolved in ONE batched query per list (`approverNamesForTopics`, keyed by topic) and reused for single + decision reads. Only topics the viewer can see ever reach the list; role membership is not secret. Web change out of scope: `apps/web/src/lib/api.ts` `publicApprovalSchema` still needs the optional `approverNames` field (follow-up; the web parses with zod, so an unknown key is fine until then — actually `z.object` strips unknown keys by default, so old web keeps working).
+- Each fix has a test that fails without it (verified by stashing the fix and re-running: fix 1 `uses` 2 vs 1; fix 5 4th preview 200 vs 429; fix 6 `undefined` vs names; fix 3 new assertions on the unified body; fix 2 new unit + integration cases against the old socket-only path; fix 4 sensitivity check described above).
 
 ### Files changed
--
+- `apps/server/src/invite-links/service.ts` (single-tx join, preview limit constants, refund removed)
+- `apps/server/src/invite-links/routes.ts` (`clientIpFor`/`trustedClientIp`, preview limiter, seam fields)
+- `apps/server/src/invite-links/invite-links.test.ts` (+5 tests: same-user race, hops unit cases, 0-vs-1-hop limiter, 2-hop limiter, preview limiter)
+- `apps/server/src/pins/service.ts` (unified 404), `pins/pins.test.ts` (identical-body assertions)
+- `apps/server/src/search/search.test.ts` (+1 role-holder/non-holder/leaver test; no source change)
+- `apps/server/src/approvals/service.ts` (`approverNames`, `approverNamesForTopics`, wired into list/get), `approvals/routes.ts` (decision path), `approvals/routes.test.ts` (key-shape + names test incl. departed-holder exclusion and decision response)
+- `apps/server/src/config.ts` (+ `TRUSTED_PROXY_HOPS`), `config.test.ts` (default/explicit/reject cases; `toEqual` bodies updated)
+- `docs/SERVER_CONFIG.md` (row + join paragraph), `deploy/.env.example` (comment only)
+- `work/T-0134-server-followups.md` (this report + status)
 
 ### Commands run and real results
--
+- `pnpm install`: pass (~13 s)
+- `pnpm format:check`: pass (after `prettier --write` on my 12 touched files; `.env.example` has no parser, skipped)
+- `pnpm lint` (oxlint): pass, clean
+- `pnpm typecheck`: 10/10 pass
+- Affected suites while working: pins 10 + config 44 + approvals/service 100 (3 files, one run); approvals routes/rules 72; search + sweep + app 30; roles + topics + groups 85; invite-links 20/20 full file (~175 s); each new test also run solo
+- Full `pnpm --filter @galena/server test --maxWorkers=2`: 82 files passed, 5 skipped; 1427 passed, 7 skipped, 0 failed (~463 s), EXIT 0
+- `pnpm build --force`: 2/2 pass (~41 s)
+- `grep` for `any|@ts-ignore|disable` in new/changed lines: no hits (two false positives: the words "forged"/"rate_limited" context and a comment)
 
 ### Problems, deviations from the spec, open questions
--
+- No schema change (none needed). No new dependencies, no `any`, no disable comments.
+- Fix 1 subtlety: on Postgres two same-user txs can both pass the in-tx re-check (neither committed); both claim, then the loser's `onConflictDoNothing` insert returns no row → `alreadyMember`, claim rolls back. Deterministic on PGlite via the tx-start gate test; on Postgres the unique index is the backstop.
+- Fix 4: genuinely no source change — the T-0116 `visibleTopics` role block already feeds `allowedArchives`. The test pins the behavior so a regression fails loudly.
+- Fix 6 follow-up for the lead: add optional `approverNames: z.array(z.string()).default([])` to web `publicApprovalSchema` and use it in `ApprovalCard` instead of `getTopic` (web is outside my Allowed files).
+- Preview limiter counts before token validation, so invalid-token probes also consume the budget — intended (that is the probing being limited).
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
 
 ---
 

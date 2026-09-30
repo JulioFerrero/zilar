@@ -6,7 +6,13 @@ import type { ServerDatabase } from '../db/client';
 import { pinnedMessages } from '../db/schema';
 import { HttpError } from '../errors';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
-import { requirePinManager, requirePinVisible, resolvePinChat, type PinChat } from './access';
+import {
+  requirePinManager,
+  requirePinVisible,
+  resolvePinChat,
+  toMissingChat,
+  type PinChat,
+} from './access';
 
 export const PINS_MAX_PER_CHAT = 20;
 export const PIN_SENDER_NAME_MAX = 80;
@@ -199,9 +205,10 @@ export async function unpinMessage(
     .where(eq(pinnedMessages.id, pinId))
     .limit(1);
   // A missing pin and a pin in a chat the caller may not see are the same
-  // 404, so pin ids cannot be probed.
+  // 404 ("Chat not found" either way), so pin ids cannot be told apart from
+  // invisible chats.
   if (!row) {
-    throw new HttpError(404, 'not_found', 'Pin not found');
+    throw toMissingChat();
   }
   const chat = await requirePinVisible(deps.db, row.chatJid, userId, deps.domain);
   await requirePinManager(deps.db, chat, userId);

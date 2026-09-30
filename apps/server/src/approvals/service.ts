@@ -11,6 +11,7 @@ import {
   groupMembers,
   groupRoles,
   topics,
+  user,
 } from '../db/schema';
 import { canSeeTopic } from '../topics/access';
 import { createRule, isGroupAdmin } from './rules';
@@ -109,6 +110,12 @@ export interface PublicApproval {
   // client uses this to decide whether to show the "Approve always"
   // button.
   alwaysEligible: boolean;
+  // T-0134: the display names of the holders of the topic's approver role,
+  // resolved server-side so the card does not call `getTopic` per approval
+  // (N+1). Sorted by name, empty for personal chats and topics without an
+  // approver role. Only topics the viewer can see ever reach the list, and
+  // role membership is not secret, so no names leak.
+  approverNames: string[];
 }
 
 export interface ApprovalVerifyResult {
@@ -413,6 +420,59 @@ export async function verifyApproval(
   };
 }
 
+// The approver-role holder names for a batch of topics, keyed by topic id.
+// One batched query for the whole list response — never one query per row.
+// Only holders who are still group members are named (a departed user is
+// never listed even if their row survived the leave cleanup); topics
+// without an approver role get no entry (callers map them to `[]`).
+export async function approverNamesForTopics(
+  db: ServerDatabase,
+  topicIds: Array<string | null>,
+): Promise<Map<string, string[]>> {
+  const unique = [...new Set(topicIds.filter((id): id is string => id !== null))];
+  const names = new Map<string, string[]>();
+  if (unique.length === 0) {
+    return names;
+  }
+  const topicRows = await db.select().from(topics).where(inArray(topics.id, unique));
+  const withRole = topicRows.filter((topic) => topic.approverRoleId !== null);
+  if (withRole.length === 0) {
+    return names;
+  }
+  const roleToTopic = new Map(withRole.map((topic) => [topic.approverRoleId as string, topic.id]));
+  const holderRows = await db
+    .select({ roleId: groupMemberRoles.roleId, name: user.name, userId: user.id })
+    .from(groupMemberRoles)
+    .innerJoin(user, eq(user.id, groupMemberRoles.userId))
+    .innerJoin(groupRoles, eq(groupRoles.id, groupMemberRoles.roleId))
+    .innerJoin(
+      groupMembers,
+      and(
+        eq(groupMembers.groupId, groupRoles.groupId),
+        eq(groupMembers.userId, groupMemberRoles.userId),
+      ),
+    )
+    .where(inArray(groupMemberRoles.roleId, [...roleToTopic.keys()]));
+  const byTopic = new Map<string, Array<{ name: string; userId: string }>>();
+  for (const row of holderRows) {
+    const topicId = roleToTopic.get(row.roleId);
+    if (topicId === undefined) {
+      continue;
+    }
+    const list = byTopic.get(topicId) ?? [];
+    list.push({ name: row.name, userId: row.userId });
+    byTopic.set(topicId, list);
+  }
+  for (const [topicId, holders] of byTopic) {
+    holders.sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
+    names.set(
+      topicId,
+      holders.map((holder) => holder.name),
+    );
+  }
+  return names;
+}
+
 // Lists the pending, unexpired approval requests `userId` may decide: their
 // own AIs, plus groups they own or administer — in both cases only for
 // topics they can see (a blind admin never counts a private topic's rows).
@@ -456,13 +516,22 @@ export async function listDecidableApprovals(
     .limit(100);
   // A group admin who cannot see a private topic must not count its rows
   // in the pending badge: drop anything outside their visible topics.
+  // Approver names ride the same batch so the card needs no extra read.
+  const approverNames = await approverNamesForTopics(
+    db,
+    rows.map((row) => row.topicId),
+  );
   const visible = [];
   for (const row of rows) {
     if (await canDecide(db, row, userId)) {
-      visible.push(toPublicApproval(row, now));
+      visible.push(toPublicApproval(row, now, false, null, approverNamesFor(row, approverNames)));
     }
   }
   return visible;
+}
+
+function approverNamesFor(row: { topicId: string | null }, names: Map<string, string[]>): string[] {
+  return row.topicId === null ? [] : (names.get(row.topicId) ?? []);
 }
 
 // One request by id, visible only to a user who may decide it. The read model
@@ -480,7 +549,8 @@ export async function getDecidableApproval(
   if (!(await canDecide(db, row, userId))) {
     return null;
   }
-  return toPublicApproval(row, now);
+  const names = await approverNamesForTopics(db, [row.topicId]);
+  return toPublicApproval(row, now, false, null, approverNamesFor(row, names));
 }
 
 // Used by the future sweeper (and the tests). Marks past-due `pending` rows
@@ -591,12 +661,15 @@ async function decidableGroupIdsForUser(db: ServerDatabase, userId: string): Pro
 // predicate it built from the registry.
 // `topicName` is supplied by the caller (the route) because the service
 // does not gate visibility — the route passes the name only for topics the
-// viewer can see, else null.
+// viewer can see, else null. Same for `approverNames`: the list/single
+// readers above resolve them, and the decision route resolves them for the
+// decided row.
 export function toPublicApproval(
   row: ApprovalRow,
   now: Date,
   alwaysEligible: boolean = false,
   topicName: string | null = null,
+  approverNames: string[] = [],
 ): PublicApproval {
   const isPending = row.status === 'pending';
   const sweptByTimer = row.status === 'denied' && row.note === 'expired' && row.decidedBy === null;
@@ -619,6 +692,7 @@ export function toPublicApproval(
     groupId: row.groupId,
     topicId: row.topicId,
     topicName,
+    approverNames,
     action: row.action,
     summary: row.summary,
     details: row.details,

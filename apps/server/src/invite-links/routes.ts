@@ -18,6 +18,8 @@ import {
   INVITE_LINK_MIN_EXPIRY_HOURS,
   INVITE_LINK_MIN_MAX_USES,
   INVITE_LINK_TOKEN_HEX_LENGTH,
+  JOIN_PREVIEW_RATE_LIMIT_MAX_PER_USER,
+  JOIN_PREVIEW_RATE_LIMIT_WINDOW_MS,
   JOIN_RATE_LIMIT_MAX_PER_IP,
   JOIN_RATE_LIMIT_MAX_PER_USER,
   JOIN_RATE_LIMIT_WINDOW_MS,
@@ -38,8 +40,10 @@ export interface InviteLinksRoutesDependencies {
   now?: () => number;
   /** Injected in tests; production uses the socket address. */
   getClientIp?: (c: Context) => string;
+  /** Injected in tests; production reads TRUSTED_PROXY_HOPS from config. */
+  trustedProxyHops?: number;
   /** Overrides the join limiters (tests inject small budgets). */
-  joinLimiters?: { user: RateLimiter; ip: RateLimiter };
+  joinLimiters?: { user: RateLimiter; ip: RateLimiter; preview?: RateLimiter };
 }
 
 // Test seam for the join rate windows, set on the app module by
@@ -47,6 +51,10 @@ export interface InviteLinksRoutesDependencies {
 export interface TestInviteLinksOverrides {
   now?: () => number;
   getClientIp?: (c: Context) => string;
+  /** Overrides TRUSTED_PROXY_HOPS in tests (the test config has no env seam). */
+  trustedProxyHops?: number;
+  /** Overrides the join limiters (tests inject small budgets). */
+  joinLimiters?: { user: RateLimiter; ip: RateLimiter; preview?: RateLimiter };
 }
 
 const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
@@ -98,7 +106,17 @@ export function createInviteLinksRoutes(deps: InviteLinksRoutesDependencies): Ho
       windowMs: JOIN_RATE_LIMIT_WINDOW_MS,
       now: deps.now ?? Date.now,
     });
-  const clientIp = deps.getClientIp ?? socketAddress;
+  const clientIp =
+    deps.getClientIp ?? clientIpFor(deps.trustedProxyHops ?? deps.config.TRUSTED_PROXY_HOPS);
+  // The preview is a cheap read, but an unrated GET would let tokens be
+  // probed at full speed: a generous per-user budget keeps that expensive.
+  const previewLimiter =
+    deps.joinLimiters?.preview ??
+    createRateLimiter({
+      max: JOIN_PREVIEW_RATE_LIMIT_MAX_PER_USER,
+      windowMs: JOIN_PREVIEW_RATE_LIMIT_WINDOW_MS,
+      now: deps.now ?? Date.now,
+    });
 
   // Group owner/admin creates a link: the token is shown once here and
   // never stored. Rate limit the join side, not creation (creation needs
@@ -144,9 +162,13 @@ export function createInviteLinksRoutes(deps: InviteLinksRoutesDependencies): Ho
 
   // Join preview: group title and member count only, never member names.
   // Unknown/expired/revoked/exhausted links answer the same 404
-  // `invalid_link`, so failures never reveal why.
+  // `invalid_link`, so failures never reveal why. Rate limited per user so
+  // tokens cannot be probed at full speed.
   routes.get('/join/:token', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    if (!previewLimiter.allow(user.id)) {
+      throw new HttpError(429, 'rate_limited', 'Too many join attempts, try again later');
+    }
     const token = tokenSchema.safeParse(c.req.param('token'));
     if (!token.success) {
       throw new HttpError(404, 'invalid_link', 'This invite link is invalid or has expired');
@@ -176,10 +198,45 @@ export function createInviteLinksRoutes(deps: InviteLinksRoutesDependencies): Ho
   return routes;
 }
 
-// The socket address as the server sees it. Proxy headers (x-forwarded-for
-// and friends) are deliberately not trusted here — anyone can forge them —
-// until the deployment task puts the server behind a configured trusted
-// proxy. Tests inject getClientIp instead.
+// The client IP for the per-IP join limiter. With 0 trusted proxy hops
+// (the default) the socket address is used and proxy headers are ignored —
+// anyone can forge them. With N > 0 (behind N proxies, e.g. Caddy) the
+// client IP is the Nth address from the RIGHT of `x-forwarded-for`: the
+// proxies append truthfully on the right while an attacker controls only
+// the left side. Only the join limiter uses this; everything else keeps
+// the socket address. Tests inject getClientIp instead.
+export function clientIpFor(trustedProxyHops: number): (c: Context) => string {
+  return (c: Context) => {
+    if (trustedProxyHops > 0) {
+      const forwarded = trustedClientIp(c.req.header('x-forwarded-for'), trustedProxyHops);
+      if (forwarded !== null) {
+        return forwarded;
+      }
+    }
+    return socketAddress(c);
+  };
+}
+
+// The Nth address from the right of an `x-forwarded-for` header, or null
+// when the header is missing or has fewer than N addresses. Empty entries
+// never count as an address. Exported for tests.
+export function trustedClientIp(header: string | undefined, hops: number): string | null {
+  if (header === undefined) {
+    return null;
+  }
+  const addresses = header
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  if (addresses.length < hops || hops < 1) {
+    return null;
+  }
+  return addresses[addresses.length - hops] ?? null;
+}
+
+// The socket address as the server sees it: the fallback when no proxy
+// hops are trusted (or the header is missing), and what everything beside
+// the join limiter uses.
 function socketAddress(c: Context): string {
   try {
     const address = getConnInfo(c).remote.address;

@@ -65,6 +65,12 @@ const serverConfigSchema = z
     // File names are `<uuid>.<ext>`; the dir must exist or be creatable and
     // writable at startup (checked in `index.ts`).
     STICKER_STORAGE_DIR: z.string().min(1).default('./data/stickers'),
+    // Join limiter behind a proxy (T-0134): how many right-most
+    // `x-forwarded-for` hops to trust when resolving the client IP for the
+    // per-IP join limiter. 0 (default) ignores proxy headers entirely and
+    // uses the socket address; N > 0 takes the Nth address from the right
+    // (an attacker controls the left side). Only the join limiter reads it.
+    TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
     // Envelope-encryption master key for provider keys stored in
     // `provider_connections`. Optional so the server still boots without it;
     // the connections module refuses to start when it is absent (mirrors how
