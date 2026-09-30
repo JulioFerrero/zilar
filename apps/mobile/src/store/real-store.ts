@@ -1307,6 +1307,34 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // Loads the group detail (people + roles + AIs) of a group once, so the
     // topics screen, the owner picker and the role checks can read it. The
     // detail is published through `set()` so `groupDetail` selectors re-fire.
+    // Waiters (e.g. `ensureGroupMembers`) subscribe through
+    // `groupDetailSettled` so one in-flight GET serves them all.
+    const groupDetailWaiters = new Map<string, Set<() => void>>();
+
+    // Resolves once the in-flight detail load for a group settles (success
+    // or failure), so waiters share the single GET instead of fetching.
+    function groupDetailSettled(groupId: string): Promise<void> {
+      return new Promise<void>((resolve) => {
+        let set = groupDetailWaiters.get(groupId);
+        if (set === undefined) {
+          set = new Set();
+          groupDetailWaiters.set(groupId, set);
+        }
+        set.add(resolve);
+      });
+    }
+
+    function notifyGroupDetailSettled(groupId: string): void {
+      const set = groupDetailWaiters.get(groupId);
+      if (set === undefined) {
+        return;
+      }
+      groupDetailWaiters.delete(groupId);
+      for (const resolve of set) {
+        resolve();
+      }
+    }
+
     async function ensureGroupDetail(groupId: string, force = false): Promise<void> {
       if (groupId === '') {
         return;
@@ -1329,6 +1357,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         // The sheet falls back to an empty member list and hides creation.
       } finally {
         loadingGroupDetails.delete(groupId);
+        notifyGroupDetailSettled(groupId);
       }
     }
 
@@ -1398,12 +1427,42 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     // Loads the member names of a group once per chat, so a typing indicator
     // or a message from a member who is not a contact can still show a name.
+    // T-0139: resolves through the cached group detail when present, so one
+    // GET serves every topic row of the group (boot joins N rooms, but the
+    // member names come from the single shared detail). Falls back to a
+    // direct fetch only when no detail is cached or in flight.
     async function ensureGroupMembers(chatId: string): Promise<void> {
       if (groupMembers.has(chatId) || loadingGroupMembers.has(chatId)) {
         return;
       }
-      const groupId = groupIds.get(chatId);
+      const groupId = groupIdForChat(chatId);
       if (groupId === undefined) {
+        return;
+      }
+      const cached = groupDetails.get(groupId);
+      if (cached !== undefined) {
+        const members = new Map<string, string>();
+        for (const member of cached.members) {
+          members.set(member.userId.toLowerCase(), member.name);
+        }
+        groupMembers.set(chatId, members);
+        return;
+      }
+      if (loadingGroupDetails.has(groupId)) {
+        try {
+          await groupDetailSettled(groupId);
+        } catch {
+          return;
+        }
+        const settled = groupDetails.get(groupId);
+        if (settled === undefined) {
+          return;
+        }
+        const members = new Map<string, string>();
+        for (const member of settled.members) {
+          members.set(member.userId.toLowerCase(), member.name);
+        }
+        groupMembers.set(chatId, members);
         return;
       }
       loadingGroupMembers.add(chatId);
@@ -2659,6 +2718,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       refreshGroupDetail: (groupId) => {
         void ensureGroupDetail(groupId, true);
+      },
+      ensureGroupDetail: (groupId) => {
+        void ensureGroupDetail(groupId);
       },
       ownedAis: deps.ownedAis ?? [],
       setChatPref: async (chatId, input) => {

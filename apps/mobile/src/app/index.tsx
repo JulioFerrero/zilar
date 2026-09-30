@@ -135,11 +135,11 @@ function ChatsList() {
   };
 
   // The rows behind the open action sheet: a group resolves to its General
-  // topic row (the pref row a group mute/pin sits on). T-0139: when no
-  // General row has arrived yet (older servers send no `topics`), fall back
-  // to any topic row of the group so the sheet still opens the group
-  // screen (invite links, roles, members); the pin/mute/archive rows stay
-  // disabled only when the group has no row at all.
+  // topic row (the pref row a group mute/pin sits on). T-0139: only a
+  // General row enables the pref rows — when General is absent (older
+  // servers send no `topics`, or it is archived/filtered out) the sheet
+  // still opens the group screen, but pin/mute/archive stay disabled, since
+  // a group pref on a non-General JID would mute one topic, not the group.
   const actionContext = useMemo(() => {
     if (actionFor === null) {
       return undefined;
@@ -150,7 +150,7 @@ function ChatsList() {
       const general = topics.find((topic) => topic.topic?.isGeneral === true);
       const fallback = general ?? topics[0];
       const groupTitle = general?.groupTitle ?? fallback?.groupTitle ?? fallback?.title ?? 'Group';
-      return { chat: fallback, groupId, groupTitle };
+      return { chat: general, groupId, groupTitle };
     }
     const chat = chats.find((entry) => entry.id === actionFor);
     return chat === undefined ? undefined : { chat, groupId: undefined, groupTitle: undefined };

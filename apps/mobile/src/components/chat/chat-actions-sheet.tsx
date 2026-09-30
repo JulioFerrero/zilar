@@ -13,8 +13,11 @@ import { cn } from '../../lib/utils';
  * with invite links, roles and members). Pure view (no hooks) so it stays
  * render-testable like `ReactionChips`: the screen owns the mute submenu
  * and performs the pref writes. For a group row the caller passes the
- * General topic row (plus the group title for the header), so a group mute
- * sits on the General JID and applies to every topic of the group.
+ * General topic row (plus the group title and id for the header and the
+ * "Open group" row), so a group mute sits on the General JID and applies
+ * to every topic of the group. Without a General row the pref rows stay
+ * disabled — a group pref on a non-General JID would hit one topic, not
+ * the group — while "Open group" stays enabled.
  */
 export function ChatActionsSheet({
   chat,

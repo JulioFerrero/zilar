@@ -215,7 +215,12 @@ describe('real store General-only group (T-0139)', () => {
 });
 
 describe('real store group detail fetch count (T-0139)', () => {
-  it('fetches the group detail once per open plus explicit refreshes', async () => {
+  it('fetches the group detail once for boot, chat open and group screen mount', async () => {
+    // The reported symptom: opening a chat and then the group screen fired
+    // a forced GET per mount (openChat + chat screen effect + group screen
+    // effect). Mounts now use the cached path and member-name loads share
+    // the in-flight detail, so the whole flow costs only the boot GETs;
+    // only explicit refreshes fetch again.
     const wires = [
       topicWire({
         id: 't-g',
@@ -267,24 +272,37 @@ describe('real store group detail fetch count (T-0139)', () => {
       openDrafts: () => () => {},
       createXmpp: () => fakeCore() as never,
     });
+    const getGroup = api.getGroup as unknown as { mock: { calls: string[] } };
     store.getState().start();
     await flush();
-    const getGroup = api.getGroup as unknown as { mock: { calls: unknown[] } };
+    // Boot loads the detail once per group: joinGroups + member-name loads
+    // fire together per topic row, but the in-flight waiter collapses them
+    // into the boot GETs. The exact boot count is an implementation detail
+    // — what matters is no new fetch afterwards.
     const afterBoot = getGroup.mock.calls.length;
+    expect(afterBoot).toBeGreaterThan(0);
 
+    // Opening two topics of the same group: the deduped path, no new fetch.
     store.getState().openChat('t-1@rooms.galena.test');
     await flush();
     store.getState().openChat('t-2@rooms.galena.test');
     await flush();
-    const afterOpens = getGroup.mock.calls.length;
-    expect(afterOpens - afterBoot).toBeLessThanOrEqual(1);
+    expect(getGroup.mock.calls.length).toBe(afterBoot);
 
-    const before = getGroup.mock.calls.length;
+    // The chat screen mount and the group screen mount: the cached path, no
+    // new fetch (both used to force one GET per mount).
+    store.getState().ensureGroupDetail('g1');
+    await flush();
+    store.getState().ensureGroupDetail('g1');
+    await flush();
+    expect(getGroup.mock.calls.length).toBe(afterBoot);
+
+    // Explicit user refreshes still force one fetch each.
     store.getState().refreshGroupDetail('g1');
     await flush();
     store.getState().refreshGroupDetail('g1');
     await flush();
-    expect(getGroup.mock.calls.length).toBe(before + 2);
+    expect(getGroup.mock.calls.length).toBe(afterBoot + 2);
     store.getState().stop();
   });
 });

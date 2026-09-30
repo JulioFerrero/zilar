@@ -78,7 +78,11 @@ function Chat() {
     (state) => state.chats.find((item) => item.id === chatId)?.groupId,
   );
   const groupDetail = useChatStore((state) => state.groupDetail(chatGroupId ?? ''));
-  const refreshGroupDetail = useChatStore((state) => state.refreshGroupDetail);
+  // Mount loads the detail only when nothing fresh is cached: the cached
+  // path dedupes in-flight loads too, so opening the chat and the group
+  // screen costs one GET, not one per mount (T-0139). Explicit refreshes
+  // after a write still force through `refreshGroupDetail`.
+  const ensureGroupDetail = useChatStore((state) => state.ensureGroupDetail);
   const groupRoles = useChatStore((state) => state.groupRoles(chatGroupId ?? ''));
   const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
   const me = useChatStore((state) => state.me);
@@ -141,9 +145,9 @@ function Chat() {
   const detailGroupId = chat?.groupId ?? chatGroupId;
   useEffect(() => {
     if (detailGroupId !== undefined && detailGroupId !== '') {
-      refreshGroupDetail(detailGroupId);
+      ensureGroupDetail(detailGroupId);
     }
-  }, [detailGroupId, refreshGroupDetail]);
+  }, [detailGroupId, ensureGroupDetail]);
 
   // A topic that disappears while open goes back to the topics screen with a
   // short notice that never names the topic (the store sets it on refresh).

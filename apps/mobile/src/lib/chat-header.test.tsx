@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { headerActionsFor } from './chat';
 import { ChatHeader } from '../components/chat/chat-header';
 import type { ChatSummary } from './types';
 
@@ -136,20 +135,6 @@ function buttonsFor(node: unknown): TestElement[] {
 function labels(elements: TestElement[]): (string | undefined)[] {
   return elements.map((element) => element.props.accessibilityLabel);
 }
-
-describe('headerActionsFor', () => {
-  it('lists info, search and menu when all are wired', () => {
-    expect(
-      headerActionsFor({ kind: 'topic', hasSearch: true, hasInfo: true, hasMenu: true }),
-    ).toEqual(['info', 'search', 'menu']);
-  });
-
-  it('lists nothing when nothing is wired, so the screen hides the buttons', () => {
-    expect(
-      headerActionsFor({ kind: 'dm', hasSearch: false, hasInfo: false, hasMenu: false }),
-    ).toEqual([]);
-  });
-});
 
 describe('ChatHeader buttons (T-0139)', () => {
   it('topics keep the info title tap, the scoped search and the menu', () => {

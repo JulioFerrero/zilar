@@ -212,7 +212,15 @@ export interface ChatStoreState {
    * through. `undefined` until `refreshGroupDetail` has loaded it.
    */
   groupDetail: (groupId: string) => GroupDetail | undefined;
-  /** Loads the group detail of one group id (people + roles + AIs). */
+  /**
+   * Loads the group detail of one group id (people + roles + AIs), unless a
+   * fresh detail is already cached or a load is in flight. Mount effects use
+   * this (T-0139): opening the chat and then the group screen costs one GET,
+   * not one per mount. `refreshGroupDetail` forces instead.
+   */
+  ensureGroupDetail: (groupId: string) => void;
+  /** Reloads the group detail of one group id, even when cached. Use for an
+   *  explicit user refresh or after a write that changes the group. */
   refreshGroupDetail: (groupId: string) => void;
   /** The AIs the viewer owns, for the new-topic sheet's unticked list. */
   ownedAis: { id: string; name: string }[];

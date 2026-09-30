@@ -208,6 +208,32 @@ describe('ChatActionsSheet', () => {
     }
   });
 
+  it('keeps pin/mute/archive disabled without a General row, Open group enabled', () => {
+    // T-0139 should-fix: a group whose General row is absent (older server,
+    // or General archived/filtered out) must not write a group pref onto a
+    // non-General topic JID. The sheet still titles itself from the group
+    // and opens the group screen, but the pref rows stay disabled.
+    const seen: string[] = [];
+    const elements = collect(
+      ChatActionsSheet({
+        ...BASE,
+        chat: null,
+        groupTitle: 'Dev team',
+        groupId: 'g1',
+        onOpenGroup: (id) => seen.push(id),
+      }),
+    );
+    const byLabel = (label: string) =>
+      elements.find((element) => element.props.accessibilityLabel === label);
+    expect(byLabel('Pin chat')?.props.disabled).toBe(true);
+    expect(byLabel('Mute chat')?.props.disabled).toBe(true);
+    expect(byLabel('Archive chat')?.props.disabled).toBe(true);
+    const open = byLabel('Open group');
+    expect(open?.props.disabled).toBe(false);
+    open?.props.onPress?.();
+    expect(seen).toEqual(['g1']);
+  });
+
   it('shows Open group for a group row and calls onOpenGroup with the id', () => {
     // T-0139: the long-press sheet is the chat list's way to the group
     // screen (invite links, roles, members), including a General-only
