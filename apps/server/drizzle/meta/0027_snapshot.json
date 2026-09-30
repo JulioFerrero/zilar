@@ -1,5 +1,5 @@
 {
-  "id": "154d3fcd-bf89-4715-beae-5d9c8f0deb09",
+  "id": "68da4180-5503-4de5-b194-e3b97766cb58",
   "prevId": "0071657b-b940-437f-a6be-f4bce44536ec",
   "version": "7",
   "dialect": "postgresql",
@@ -1705,6 +1705,27 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "group_roles_group_name_idx": {
+          "name": "group_roles_group_name_idx",
+          "columns": [
+            {
+              "expression": "group_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}

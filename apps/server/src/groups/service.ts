@@ -18,7 +18,7 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { emitGroupAi, emitTopicAi } from './events';
 import { aiMayBeInTopic } from '../topics/access';
-import { dropMemberRoles, roleHoldersByGroup } from '../roles/service';
+import { dropMemberRoles, roleHoldersByGroup, topicRoleHolderIds } from '../roles/service';
 import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
 import { deleteRoutinesForAiInGroup } from '../routines/service';
 import { deleteToolsForAiInGroup } from '../tools/service';
@@ -778,7 +778,9 @@ async function emitDroppedGroupTopicAis(db: ServerDatabase, groupId: string): Pr
   }
 }
 
-// T-0108: a private topic with no members left is archived.
+// T-0108: a private topic with no members left is archived. T-0116: role
+// holders count as members — a topic a role still grants access to stays
+// alive even with zero direct rows.
 async function archiveDrainedPrivateTopics(db: ServerDatabase, groupId: string): Promise<void> {
   const rows = await db.select().from(topics).where(eq(topics.groupId, groupId));
   for (const topic of rows) {
@@ -789,7 +791,11 @@ async function archiveDrainedPrivateTopics(db: ServerDatabase, groupId: string):
       .select({ total: count() })
       .from(topicMembers)
       .where(eq(topicMembers.topicId, topic.id));
-    if (Number(row?.total ?? 0) === 0) {
+    if (Number(row?.total ?? 0) !== 0) {
+      continue;
+    }
+    const holders = await topicRoleHolderIds(db, topic.id, groupId);
+    if (holders.size === 0) {
       await db
         .update(topics)
         .set({ archivedAt: new Date(), updatedAt: new Date() })

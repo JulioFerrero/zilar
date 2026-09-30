@@ -750,4 +750,260 @@ describe('group roles (T-0116)', () => {
     };
     expect(missingRoleBody.error).toMatchObject({ code: 'not_found', message: 'Role not found' });
   });
+
+  it('leaving one group keeps the role rows of another group (review 1)', async () => {
+    const { owner, member, group } = await setup();
+    // A second group with the same two people.
+    const second = await createGroup(owner.cookie, 'Side', [member.id]);
+    const firstRole = (await (
+      await createRole(owner.cookie, group.id, {
+        name: 'Designers',
+      })
+    ).json()) as RoleBody;
+    const secondRole = (await (
+      await createRole(owner.cookie, second.id, {
+        name: 'Devs',
+      })
+    ).json()) as RoleBody;
+    expect((await setMembers(owner.cookie, group.id, firstRole.id, [member.id])).status).toBe(200);
+    expect((await setMembers(owner.cookie, second.id, secondRole.id, [member.id])).status).toBe(
+      200,
+    );
+
+    // A private topic in each group, each with its group's role attached.
+    const firstTopic = (await (
+      await createTopic(owner.cookie, group.id, { name: 'One', visibility: 'private' })
+    ).json()) as TopicBody;
+    const secondTopic = (await (
+      await createTopic(owner.cookie, second.id, { name: 'Two', visibility: 'private' })
+    ).json()) as TopicBody;
+    expect(
+      (
+        await setTopicRoles(owner.cookie, firstTopic.id, {
+          roleIds: [firstRole.id],
+          approverRoleId: null,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await setTopicRoles(owner.cookie, secondTopic.id, {
+          roleIds: [secondRole.id],
+          approverRoleId: null,
+        })
+      ).status,
+    ).toBe(200);
+    const secondRoom = secondTopic.chatJid.split('@')[0]!;
+    expect(context.adminClient.affiliationState.get(secondRoom)?.get(expectedJid(member.id))).toBe(
+      'member',
+    );
+
+    // `member` leaves the first group: their rows there vanish, but the
+    // second group's rows — and room affiliation — stay.
+    const left = await app.request(`${TEST_BASE_URL}/api/groups/${group.id}/members/${member.id}`, {
+      method: 'DELETE',
+      headers: { cookie: member.cookie },
+    });
+    expect(left.status).toBe(200);
+    const rows = await context.db.select().from(groupMemberRoles);
+    expect(rows.map((row) => [row.roleId, row.userId])).toEqual([[secondRole.id, member.id]]);
+    expect(context.adminClient.affiliationState.get(secondRoom)?.get(expectedJid(member.id))).toBe(
+      'member',
+    );
+    const seen = await app.request(`${TEST_BASE_URL}/api/topics/${secondTopic.id}`, {
+      headers: { cookie: member.cookie },
+    });
+    expect(seen.status).toBe(200);
+  });
+
+  it('keeps a private topic alive while a role holder remains (review 2)', async () => {
+    const { owner, member, other, group } = await setup();
+    const role = (await (
+      await createRole(owner.cookie, group.id, {
+        name: 'Designers',
+      })
+    ).json()) as RoleBody;
+    expect((await setMembers(owner.cookie, group.id, role.id, [other.id])).status).toBe(200);
+    const topicResponse = await createTopic(owner.cookie, group.id, {
+      name: 'Hiring',
+      visibility: 'private',
+      memberIds: [member.id],
+    });
+    const topic = (await topicResponse.json()) as TopicBody;
+    expect(
+      (
+        await setTopicRoles(owner.cookie, topic.id, {
+          roleIds: [role.id],
+          approverRoleId: null,
+        })
+      ).status,
+    ).toBe(200);
+
+    // Draining the direct rows leaves the role holder: no archive.
+    const removed = await app.request(
+      `${TEST_BASE_URL}/api/topics/${topic.id}/members/${member.id}`,
+      { method: 'DELETE', headers: { cookie: member.cookie } },
+    );
+    expect(removed.status).toBe(200);
+    const selfLeave = await app.request(
+      `${TEST_BASE_URL}/api/topics/${topic.id}/members/${owner.id}`,
+      { method: 'DELETE', headers: { cookie: owner.cookie } },
+    );
+    expect(selfLeave.status).toBe(200);
+    const [row] = await context.db
+      .select()
+      .from((await import('../db/schema')).topics)
+      .where(eq((await import('../db/schema')).topics.id, topic.id));
+    expect(row?.archivedAt).toBeNull();
+    const seen = await app.request(`${TEST_BASE_URL}/api/topics/${topic.id}`, {
+      headers: { cookie: other.cookie },
+    });
+    expect(seen.status).toBe(200);
+
+    // Removing `other` from the group drains the last holder through
+    // `archiveDrainedPrivateTopics`: now the topic archives.
+    const left = await app.request(`${TEST_BASE_URL}/api/groups/${group.id}/members/${other.id}`, {
+      method: 'DELETE',
+      headers: { cookie: owner.cookie },
+    });
+    expect(left.status).toBe(200);
+    const [archived] = await context.db
+      .select()
+      .from((await import('../db/schema')).topics)
+      .where(eq((await import('../db/schema')).topics.id, topic.id));
+    expect(archived?.archivedAt).not.toBeNull();
+  });
+
+  it('audits topic role changes even when the room sync fails (review 3)', async () => {
+    const { owner, member, group } = await setup();
+    const role = (await (
+      await createRole(owner.cookie, group.id, {
+        name: 'Designers',
+      })
+    ).json()) as RoleBody;
+    // A holder, so the attach really changes the room (otherwise the sync
+    // writes nothing and cannot fail).
+    expect((await setMembers(owner.cookie, group.id, role.id, [member.id])).status).toBe(200);
+    const topic = (await (
+      await createTopic(owner.cookie, group.id, { name: 'Hiring', visibility: 'private' })
+    ).json()) as TopicBody;
+
+    context.adminClient.failAffiliation = true;
+    const attached = await setTopicRoles(owner.cookie, topic.id, {
+      roleIds: [role.id],
+      approverRoleId: role.id,
+    });
+    // The room is stale, so the caller sees the 502 — but the database
+    // committed, and the audit rows are there anyway.
+    expect(attached.status).toBe(502);
+    const rows = await context.db.select().from(auditLog);
+    const actions = rows.map((row) => row.action).sort();
+    expect(actions).toEqual(
+      expect.arrayContaining(['topic.approver_role_set', 'topic.role_added']),
+    );
+    const access = await context.db.select().from(topicRoleAccess);
+    expect(access.map((entry) => entry.roleId)).toEqual([role.id]);
+  });
+
+  it('answers 409 for a duplicate name differing only by case (review 4)', async () => {
+    const { owner, group } = await setup();
+    expect((await createRole(owner.cookie, group.id, { name: 'Designers' })).status).toBe(201);
+    const clash = await createRole(owner.cookie, group.id, { name: 'dEsIgNeRs' });
+    expect(clash.status).toBe(409);
+    expect(((await clash.json()) as { error: { code: string } }).error.code).toBe('role_exists');
+    // The unique index owns the race below the pre-check: renaming onto a
+    // case-clashing name answers the same 409.
+    const other = (await (
+      await createRole(owner.cookie, group.id, {
+        name: 'Devs',
+      })
+    ).json()) as RoleBody;
+    const renamed = await app.request(`${TEST_BASE_URL}/api/groups/${group.id}/roles/${other.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie: owner.cookie },
+      body: JSON.stringify({ name: 'DESIGNERS' }),
+    });
+    expect(renamed.status).toBe(409);
+  });
+
+  it('ignores a stale approver-role row from another group (review 5)', async () => {
+    const { owner, member, group } = await setup();
+    const foreign = await createGroup(owner.cookie, 'Foreign', [member.id]);
+    const foreignRole = (await (
+      await createRole(owner.cookie, foreign.id, {
+        name: 'Designers',
+      })
+    ).json()) as RoleBody;
+    // A stale membership row for the foreign role (as if a leave-cleanup
+    // missed it): without the group join this would grant decide rights.
+    await context.db.insert(groupMemberRoles).values({
+      roleId: foreignRole.id,
+      userId: member.id,
+      assignedBy: owner.id,
+    });
+    const topic = (await (
+      await createTopic(owner.cookie, group.id, {
+        name: 'Hiring',
+        visibility: 'private',
+        memberIds: [member.id],
+      })
+    ).json()) as TopicBody;
+    // Point the topic at the foreign role directly (stale data the service
+    // must not trust).
+    await context.db
+      .update((await import('../db/schema')).topics)
+      .set({ approverRoleId: foreignRole.id })
+      .where(eq((await import('../db/schema')).topics.id, topic.id));
+
+    const schema = await import('../db/schema');
+    const { randomUUID } = await import('node:crypto');
+    const { aiLocalpart } = await import('../ais/service');
+    const connectionId = randomUUID();
+    await context.db.insert(schema.providerConnections).values({
+      id: connectionId,
+      owner: owner.id,
+      provider: 'openai',
+      encryptedKey: 'sealed-placeholder',
+      label: null,
+    });
+    const aiId = randomUUID();
+    await context.db.insert(schema.ais).values({
+      id: aiId,
+      owner: owner.id,
+      name: 'Helper',
+      template: 'dev',
+      persona: 'A helpful persona.',
+      providerConnectionId: connectionId,
+      model: 'gpt-4o-mini',
+      localpart: aiLocalpart(aiId),
+      jid: `${aiLocalpart(aiId)}@galena.localhost`,
+      status: 'active',
+    });
+    await context.db.insert(schema.aiLimits).values({
+      aiId,
+      perDayUsd: '1.00',
+      perMonthUsd: '20.00',
+    });
+    await context.db.insert(schema.groupAis).values({ groupId: group.id, aiId, addedBy: owner.id });
+    const { createApproval } = await import('../approvals/service');
+    const approval = await createApproval(
+      context.db,
+      {
+        aiId,
+        groupId: group.id,
+        topicId: topic.id,
+        action: 'demo.echo',
+        summary: 'Echo once',
+        argsHash: 'a'.repeat(64),
+        requestedBy: 'someone@galena.localhost',
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+      new Date(),
+    );
+    // `member` sees the topic but the approver role belongs to another
+    // group: no decide rights (the owner still has them).
+    const { canDecide } = await import('../approvals/service');
+    expect(await canDecide(context.db, approval, member.id)).toBe(false);
+    expect(await canDecide(context.db, approval, owner.id)).toBe(true);
+  });
 });

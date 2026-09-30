@@ -264,7 +264,12 @@ export const groupRoles = pgTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('group_roles_group_idx').on(table.groupId)],
+  (table) => [
+    index('group_roles_group_idx').on(table.groupId),
+    // Names are unique per group ignoring case (the service maps a
+    // violation to 409 `role_exists`, so concurrent creates race safely).
+    uniqueIndex('group_roles_group_name_idx').on(table.groupId, sql`lower(${table.name})`),
+  ],
 );
 
 // Who holds a custom group role (T-0116). The holder must be a group member:

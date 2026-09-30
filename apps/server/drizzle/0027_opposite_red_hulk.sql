@@ -29,4 +29,5 @@ ALTER TABLE "group_roles" ADD CONSTRAINT "group_roles_created_by_user_id_fk" FOR
 ALTER TABLE "topic_role_access" ADD CONSTRAINT "topic_role_access_topic_id_topics_id_fk" FOREIGN KEY ("topic_id") REFERENCES "public"."topics"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "topic_role_access" ADD CONSTRAINT "topic_role_access_role_id_group_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "public"."group_roles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "group_roles_group_idx" ON "group_roles" USING btree ("group_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "group_roles_group_name_idx" ON "group_roles" USING btree ("group_id",lower("name"));--> statement-breakpoint
 ALTER TABLE "topics" ADD CONSTRAINT "topics_approver_role_id_group_roles_id_fk" FOREIGN KEY ("approver_role_id") REFERENCES "public"."group_roles"("id") ON DELETE set null ON UPDATE no action;

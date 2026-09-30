@@ -657,8 +657,14 @@ export async function removeTopicMember(
     .select({ userId: topicMembers.userId })
     .from(topicMembers)
     .where(eq(topicMembers.topicId, topic.id));
+  // T-0116: the topic drains only when the direct rows AND the role holders
+  // are gone — a holder the role still grants access to keeps it alive.
+  const holders =
+    remaining.length === 0
+      ? await topicRoleHolderIds(deps.db, topic.id, topic.groupId)
+      : new Set<string>();
   let updated = (await getTopic(deps.db, topic.id)) ?? topic;
-  if (remaining.length === 0) {
+  if (remaining.length === 0 && holders.size === 0) {
     await deps.db
       .update(topics)
       .set({ archivedAt: new Date(), updatedAt: new Date() })
@@ -806,13 +812,9 @@ export async function setTopicRoles(
   if (!updated) {
     throw toMissingTopic();
   }
-  try {
-    await syncTopicRoom(deps, updated);
-  } catch (error) {
-    throw error instanceof HttpError
-      ? error
-      : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
-  }
+  // The audit block runs even when the room sync below fails: the database
+  // already committed, so the change is real and the log must say so. The
+  // caller still sees the 502 and the room heals on the next write.
   if (deps.audit) {
     for (const roleId of added) {
       await deps.audit.record(toAuditEntry(updated, 'topic.role_added', input.actorId, { roleId }));
@@ -832,6 +834,13 @@ export async function setTopicRoles(
         ),
       );
     }
+  }
+  try {
+    await syncTopicRoom(deps, updated);
+  } catch (error) {
+    throw error instanceof HttpError
+      ? error
+      : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
   return updated;
 }

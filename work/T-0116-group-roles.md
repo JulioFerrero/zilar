@@ -137,6 +137,40 @@ pnpm build
   coexistence test proves it); both keep their tests. Only follow-up edit
   on my side was prettier import collapsing in `GroupPanel.tsx`.
 
+### Review round (findings 1–6 fixed, one test each; 7 noted as follow-up)
+1. `dropMemberRoles` was deleting the user's role rows in ALL groups.
+   Scoped to this group's roles
+   (`and(eq(userId), inArray(roleId, own))`). Test: roles in two groups,
+   leave one — the other group's rows, room affiliation and visibility
+   stay.
+2. Drained-private-topic auto-archive ignored role holders. Both
+   `removeTopicMember` and `archiveDrainedPrivateTopics` now archive only
+   when direct rows AND role holders are empty. Test: drain direct rows
+   with a holder attached — no archive, holder still sees it; then remove
+   the holder from the group — archives.
+3. `setTopicRoles` skipped the audit block when the room sync threw after
+   commit. Chose the rollback-free variant: audit writes now run before
+   `syncTopicRoom`, so the log matches the committed state even on a 502
+   (room heals on the next write). Test: `failAffiliation` → 502 response
+   with `topic.role_added` + `topic.approver_role_set` rows present.
+4. Case-insensitive name uniqueness and the 20-role cap were check-then-act.
+   Added `uniqueIndex(group_id, lower(name))` mapped to 409 `role_exists`
+   (pins-style `isUniqueViolation`), and moved the cap check + insert
+   (`createRole`) and the replace-the-set (`setRoleMembers`) into single
+   transactions under a per-group `pg_advisory_xact_lock` (pins pattern).
+   Migration 0027 deleted and regenerated as ONE migration
+   (`0027_opposite_red_hulk.sql`) containing tables + the new index —
+   verified the SQL holds only roles content. Test: duplicate name
+   differing only by case → 409 on create and on rename.
+5. `canDecide` now joins `groupRoles` on the approval's `groupId`, so a
+   stale cross-group membership row cannot grant decide rights. Test:
+   foreign role set as approver + stale holder row → `canDecide` false for
+   the holder, true for the owner.
+6. Deleted unused `roleIdsOfUser`.
+- Finding 7 (N+1 `getTopic` per ApprovalCard) skipped as instructed —
+  follow-up for the lead: batch the approver name via the approvals list
+  payload if card lists grow.
+
 ### Files changed
 - Server: `apps/server/src/roles/service.ts`, `roles/routes.ts`,
   `roles/roles.test.ts` (new); `db/schema.ts` + generated migration
@@ -168,15 +202,20 @@ pnpm build
   migration (since deleted); fixed via the exclusion mechanism above. One
   backfill timeout was contention from my own concurrent runs.
 
+### Review round commands (final)
+- `pnpm --filter @galena/server db:generate` after deleting the old 0027
+  files + journal entry: regenerated ONE `0027_opposite_red_hulk.sql`
+  (tables + `group_roles_group_name_idx`, roles-only — read and verified).
+- `pnpm format:check`: pass. `pnpm lint`: pass. `pnpm typecheck`
+  (10 tasks): pass.
+- `pnpm --filter @galena/server test --maxWorkers=2`: 82 files passed,
+  5 skipped; 1413 passed, 7 skipped, 0 failed (12 pre-existing + 5 new
+  role tests).
+- `pnpm --filter @galena/web test --maxWorkers=2`: 75 files passed;
+  822 passed, 0 failed (review fixes are server-only).
+- `pnpm build`: pass.
+
 ### Problems, deviations from the spec, open questions
-- **No migration committed, by instruction.** I wrote `schema.ts` changes
-  and validated them with a hand-written temporary `0026` migration +
-  journal/snapshot (mirroring drizzle-kit output) to run the PGlite suite,
-  then deleted all three files. Current tree has **no** migration for the
-  new tables. After T-0115 merges and this branch rebases, run
-  `pnpm --filter @galena/server db:generate` once: it will also need the
-  `0026_` exclusion in `backfill.test.ts` extended to the real migration
-  number (the real file will reference `topics` the same way).
 - Spec route `GET /api/groups/:id/members` does not exist in this codebase;
   member roles ride the group detail (`GET /api/groups/:id`), which is the
   only member-read path. Same coverage, different shape location.
@@ -185,6 +224,9 @@ pnpm build
 - `deleteRole` audits one `topic.role_removed` per affected topic (subject
   = topic id, detail carries topic/role/group ids) — the spec lists the
   action but not the subject; topic id matches the `topic.*` convention.
+- Finding 7 (N+1 `getTopic` per ApprovalCard) skipped per instruction —
+  follow-up: batch the approver name via the approvals list payload if
+  card lists grow.
 
 ### Blocked / needs a decision
 - None.

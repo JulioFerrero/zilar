@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, count, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
@@ -207,35 +207,6 @@ export async function roleHoldersByGroup(
   return result;
 }
 
-// The role ids `userId` holds in the group. Used by `canSeeTopic` and
-// `canDecide` without loading names.
-export async function roleIdsOfUser(
-  db: ServerDatabase,
-  groupId: string,
-  userId: string,
-): Promise<Set<string>> {
-  const roles = await db
-    .select({ id: groupRoles.id })
-    .from(groupRoles)
-    .where(eq(groupRoles.groupId, groupId));
-  if (roles.length === 0) {
-    return new Set();
-  }
-  const rows = await db
-    .select({ roleId: groupMemberRoles.roleId })
-    .from(groupMemberRoles)
-    .where(
-      and(
-        eq(groupMemberRoles.userId, userId),
-        inArray(
-          groupMemberRoles.roleId,
-          roles.map((role) => role.id),
-        ),
-      ),
-    );
-  return new Set(rows.map((row) => row.roleId));
-}
-
 // The user ids holding any of `roleIds` that are still group members.
 // Used to re-sync the affected topic rooms after an assignment change.
 async function holderUserIds(
@@ -287,6 +258,25 @@ async function syncTopicsWithRoles(
   }
 }
 
+function mapRoleError(error: unknown): HttpError {
+  if (error instanceof HttpError) {
+    return error;
+  }
+  // A concurrent create/rename that clashed on the case-insensitive name
+  // lands here (the pre-check passed, the unique index refused): answer 409
+  // like the pre-check does, not 503.
+  if (isUniqueViolation(error)) {
+    return new HttpError(409, 'role_exists', 'A role with that name already exists');
+  }
+  return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' && error !== null && (error as { code?: unknown }).code === '23505'
+  );
+}
+
 function auditEntry(
   groupId: string,
   action: string,
@@ -317,15 +307,34 @@ export async function createRole(
   name: string,
 ): Promise<GroupRoleDetail> {
   await requireGroupManager(deps.db, groupId, actorId);
+  // The duplicate check stays outside (the unique index + 409 mapping below
+  // keep it race-safe), but the count check and the insert run in one
+  // transaction under a per-group advisory lock: two concurrent creates
+  // past the cap would otherwise both read under 20 and both insert.
   const existing = await deps.db.select().from(groupRoles).where(eq(groupRoles.groupId, groupId));
   if (existing.some((row) => row.name.toLowerCase() === name.toLowerCase())) {
     throw new HttpError(409, 'role_exists', 'A role with that name already exists');
   }
-  if (existing.length >= MAX_ROLES_PER_GROUP) {
-    throw new HttpError(400, 'invalid_request', `A group has at most ${MAX_ROLES_PER_GROUP} roles`);
-  }
   const id = randomUUID();
-  await deps.db.insert(groupRoles).values({ id, groupId, name, createdBy: actorId });
+  try {
+    await deps.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${groupId}))`);
+      const [counter] = await tx
+        .select({ total: count() })
+        .from(groupRoles)
+        .where(eq(groupRoles.groupId, groupId));
+      if (Number(counter?.total ?? 0) >= MAX_ROLES_PER_GROUP) {
+        throw new HttpError(
+          400,
+          'invalid_request',
+          `A group has at most ${MAX_ROLES_PER_GROUP} roles`,
+        );
+      }
+      await tx.insert(groupRoles).values({ id, groupId, name, createdBy: actorId });
+    });
+  } catch (error) {
+    throw mapRoleError(error);
+  }
   const [role] = await deps.db.select().from(groupRoles).where(eq(groupRoles.id, id)).limit(1);
   if (!role) {
     throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
@@ -349,7 +358,13 @@ export async function renameRole(
   if (siblings.some((row) => row.id !== role.id && row.name.toLowerCase() === name.toLowerCase())) {
     throw new HttpError(409, 'role_exists', 'A role with that name already exists');
   }
-  await deps.db.update(groupRoles).set({ name }).where(eq(groupRoles.id, role.id));
+  // The unique index owns the race: a concurrent rename to the same name
+  // lands in `mapRoleError` as a 409, like the pre-check.
+  try {
+    await deps.db.update(groupRoles).set({ name }).where(eq(groupRoles.id, role.id));
+  } catch (error) {
+    throw mapRoleError(error);
+  }
   const [updated] = await deps.db.select().from(groupRoles).where(eq(groupRoles.id, role.id));
   if (!updated) {
     throw toMissingRole();
@@ -446,16 +461,28 @@ export async function setRoleMembers(
   const wantedIds = new Set(wanted);
   const added = wanted.filter((id) => !currentIds.has(id));
   const removed = [...currentIds].filter((id) => !wantedIds.has(id));
-  if (added.length > 0) {
-    await deps.db
-      .insert(groupMemberRoles)
-      .values(added.map((userId) => ({ roleId: role.id, userId, assignedBy: actorId })))
-      .onConflictDoNothing();
-  }
-  if (removed.length > 0) {
-    await deps.db
-      .delete(groupMemberRoles)
-      .where(and(eq(groupMemberRoles.roleId, role.id), inArray(groupMemberRoles.userId, removed)));
+  // One transaction under the group's advisory lock: two concurrent
+  // replace-the-set calls serialize instead of interleaving (rooms
+  // self-heal via the re-sync, but the audit rows must match the commit).
+  try {
+    await deps.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${groupId}))`);
+      if (added.length > 0) {
+        await tx
+          .insert(groupMemberRoles)
+          .values(added.map((userId) => ({ roleId: role.id, userId, assignedBy: actorId })))
+          .onConflictDoNothing();
+      }
+      if (removed.length > 0) {
+        await tx
+          .delete(groupMemberRoles)
+          .where(
+            and(eq(groupMemberRoles.roleId, role.id), inArray(groupMemberRoles.userId, removed)),
+          );
+      }
+    });
+  } catch (error) {
+    throw mapRoleError(error);
   }
   await syncTopicsWithRoles(deps, groupId, [role.id]);
   if (deps.audit) {
@@ -473,26 +500,32 @@ export async function setRoleMembers(
   return toRoleDetail(deps.db, role);
 }
 
-// Drops every role row of a user who left (or was removed from) the group,
-// then re-syncs the topics whose access they held through a role. Called
-// from the remove/leave flow after the membership row is gone; never throws
-// for a user with no roles.
+// Drops the member's role rows of this group when they leave (or are
+// removed), then re-syncs the topics whose access they held through a role.
+// Called from the remove/leave flow after the membership row is gone; never
+// throws for a user with no roles. Scoped to this group's roles: rows held
+// in other groups survive untouched.
 export async function dropMemberRoles(
   deps: RolesServiceDeps,
   groupId: string,
   userId: string,
 ): Promise<void> {
+  const roles = await deps.db.select().from(groupRoles).where(eq(groupRoles.groupId, groupId));
+  if (roles.length === 0) {
+    return;
+  }
+  const ownIds = roles.map((role) => role.id);
   const rows = await deps.db
     .select({ roleId: groupMemberRoles.roleId })
     .from(groupMemberRoles)
-    .where(eq(groupMemberRoles.userId, userId));
+    .where(and(eq(groupMemberRoles.userId, userId), inArray(groupMemberRoles.roleId, ownIds)));
   if (rows.length === 0) {
     return;
   }
-  const roles = await deps.db.select().from(groupRoles).where(eq(groupRoles.groupId, groupId));
-  const ownIds = new Set(roles.map((role) => role.id));
-  const own = rows.map((row) => row.roleId).filter((id) => ownIds.has(id));
-  await deps.db.delete(groupMemberRoles).where(eq(groupMemberRoles.userId, userId));
+  const own = rows.map((row) => row.roleId);
+  await deps.db
+    .delete(groupMemberRoles)
+    .where(and(eq(groupMemberRoles.userId, userId), inArray(groupMemberRoles.roleId, own)));
   await syncTopicsWithRoles(deps, groupId, own);
 }
 

@@ -3,7 +3,15 @@ import { and, count, desc, eq, gt, inArray, lt, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { ARGS_HASH_PATTERN } from '@galena/protocol';
 import type { ServerDatabase } from '../db/client';
-import { ais, approvals, groupAis, groupMemberRoles, groupMembers, topics } from '../db/schema';
+import {
+  ais,
+  approvals,
+  groupAis,
+  groupMemberRoles,
+  groupMembers,
+  groupRoles,
+  topics,
+} from '../db/schema';
 import { canSeeTopic } from '../topics/access';
 import { createRule, isGroupAdmin } from './rules';
 
@@ -514,15 +522,22 @@ export async function canDecide(
     }
     // The approver role grants decide rights and nothing else: the holder
     // must see the topic (checked above), and the role never widens AI
-    // management, rules or other topics.
-    if (topic.approverRoleId !== null) {
+    // management, rules or other topics. The join ties the role to the
+    // approval's group, so the check is self-sufficient even if a stale
+    // membership row ever survived a group leave. (`topicId` set implies
+    // `groupId` set by the topic-scope CHECK; the guard below is for the
+    // type checker.)
+    if (topic.approverRoleId !== null && row.groupId !== null) {
+      const groupId = row.groupId;
       const [held] = await db
         .select({ userId: groupMemberRoles.userId })
         .from(groupMemberRoles)
+        .innerJoin(groupRoles, eq(groupRoles.id, groupMemberRoles.roleId))
         .where(
           and(
             eq(groupMemberRoles.roleId, topic.approverRoleId),
             eq(groupMemberRoles.userId, userId),
+            eq(groupRoles.groupId, groupId),
           ),
         )
         .limit(1);
