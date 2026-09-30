@@ -198,7 +198,7 @@ cmd_init() {
     # slashes, $, backticks, =, shell metacharacters — is rejected, so a
     # hostile or mistyped value can never reach the env file or Compose
     # interpolation (where `$` would silently expand).
-    *[!A-Za-z0-9.:-]*|*"."*"."*"."*"."*|*".."*|*":"*":"*|*":") die "init: bad domain '$_domain' — give a bare host like chat.example.com" ;;
+    *[!A-Za-z0-9.:-]*|*".."*|*":"*":"*|*":") die "init: bad domain '$_domain' — give a bare host like chat.example.com" ;;
   esac
   case "$_admin_email" in
     *"@"*.*) ;;
@@ -209,8 +209,11 @@ cmd_init() {
     *) die "init: bad ACME email '$_acme_email' (hint: --acme-email you@example.com)" ;;
   esac
   [ -n "$_owner" ] || die "init: the image owner is required (hint: --image-owner <github-org>)"
-  case "$_http_port$_https_port" in
-    *[!0-9]*) die "init: ports must be numbers" ;;
+  case "$_http_port" in
+    ""|*[!0-9]*) die "init: the HTTP port must be a number (hint: --http-port 80)" ;;
+  esac
+  case "$_https_port" in
+    ""|*[!0-9]*) die "init: the HTTPS port must be a number (hint: --https-port 443)" ;;
   esac
 
   # Empty here means the operator passed --domain= explicitly (the prompt
@@ -738,12 +741,17 @@ EOF
     warn "restore failed during: $_step."
     warn "restarting the stack so the install is running again..."
     compose up -d --wait || warn "restart failed too — run '$PROG up' by hand, then '$PROG status'."
-    _ensure_audit_triggers
+    # Before the archived password is read nothing was dropped yet, so there
+    # is nothing to recreate (and no credential to do it with).
+    if [ -n "$_arch_pw" ]; then
+      _ensure_audit_triggers
+    fi
     warn "safe to re-run: '$PROG restore $_archive --yes' (idempotent: roles are re-created, dumps use --clean)."
     trap - EXIT
     rm -rf "$_tmp"
     exit 1
   }
+  _arch_pw=""
   trap '_recover' EXIT
 
   info "stopping server, web and ejabberd (postgres keeps running)..."

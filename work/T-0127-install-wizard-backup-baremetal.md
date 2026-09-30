@@ -1,7 +1,7 @@
 ---
 id: T-0127
 title: Install wizard, backup/restore and the bare-metal install guide
-status: review
+status: merged
 milestone: M6
 branch: task/T-0127-install-wizard-backup-baremetal
 model: meta/muse-spark-1.3-contributor
@@ -131,10 +131,15 @@ D30: installing Galena must be easy, including for people who do not want Docker
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** merged after four rounds and two lead fixes.
 
 ### Findings
--
+- The worker proved the round trip on real containers under its own names and spare ports: `init`, `up`, sign-in, `create-admin`, `backup`, `restore` into a fresh project (users, uploads and the audit triggers survived), then teardown of every test container, volume and image.
+- Pre-review round 1 found a boot blocker (Compose renders unset mail settings as empty strings and the server rejected them); fixed on main as `41ffe78`.
+- Rounds 2 and 3 found and fixed: the restore path could restart the stack without the three audit_log triggers; `MAIL_FROM` unquoted in the bare-metal env file broke the guide's `set -a; . file`; the JWT key path, ejabberd binding and the uploads directory in the bare-metal guide; passwords in the process list; doctor failing on loopback; `create-admin --uses=5`.
+- Lead fixes in this merge: deep subdomains were rejected by the domain check; the restore recovery trap could crash under `set -u` before the archived password was read; empty ports were accepted. I also ran `deploy/baremetal/setup-postgres.sql` on a scratch Postgres 18 (twice, and once with an empty archive password): roles, databases and pgvector are created and reruns are clean. `deploy/backups/` is now in `.gitignore`.
+- Not proven: a run of the bare-metal guide on a real Linux host with systemd and a real ejabberd package.
 
 ### Follow-ups
--
+- The bare-metal guide's invite step does not mention `--uses` and `--days`.
+- Try the bare-metal guide once on a clean Linux VM before the first release.

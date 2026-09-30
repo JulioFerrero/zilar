@@ -38,3 +38,6 @@ infra/data/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# backup archives contain a live .env (T-0127)
+deploy/backups/
