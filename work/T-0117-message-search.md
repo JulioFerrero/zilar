@@ -1,7 +1,7 @@
 ---
 id: T-0117
 title: Message search across chats, groups and topics (server + web)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0117-message-search
 model: meta/muse-spark-1.3-contributor
@@ -278,10 +278,12 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged after three review rounds.
 
 ### Findings
--
+- Authorization design checked twice: the allowed archives come from our tables only (contacts, own AIs, groups and `visibleTopics`), DMs are read only under the caller's own username with a peer filter, a chat outside the set is a 404, SQL is fully parameterized, the query text is never logged, snippets are plain text plus mark ranges.
+- Round 1 and 2 fixes verified: the init script no longer breaks a fresh database, the reader role gets SELECT on future ejabberd tables through default privileges (proved in a scratch Postgres; the honest nuance is that every future table owned by the ejabberd role is readable, still read-only), DM hits from the caller say "You", Enter in the search box opens the top hit, and a stalled history fetch ends in "Message not found".
 
 ### Follow-ups
--
+- Compose pass-through of `GALENA_ARCHIVE_DB_PASSWORD` (dev and production) is done by the lead.
+- Role-based rooms (T-0116) will widen the room set in `allowedArchives`.
