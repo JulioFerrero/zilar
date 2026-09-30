@@ -18,6 +18,7 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { emitGroupAi, emitTopicAi } from './events';
 import { aiMayBeInTopic } from '../topics/access';
+import { recordAudit } from '../audit/service';
 import { dropMemberRoles, roleHoldersByGroup, topicRoleHolderIds } from '../roles/service';
 import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
 import { deleteRoutinesForAiInGroup } from '../routines/service';
@@ -387,9 +388,11 @@ export async function removeGroupMember(
   }
   // T-0116: leaving the group drops the member's role rows, and the topics
   // they reached only through a role re-sync. Best effort after the commit,
-  // like the room syncs above. Logged with the ids only, never names; the
-  // audit rows for a private topic never carry its name either.
-  await dropMemberRoles(
+  // like the room syncs above. The dropped rows are audited as
+  // `group.role_unassigned` (ids only) so the log keeps who-held-what;
+  // a failed audit write is logged and never thrown. The audit rows for a
+  // private topic never carry its name either.
+  const droppedRoleIds = await dropMemberRoles(
     {
       db,
       adminClient,
@@ -399,6 +402,28 @@ export async function removeGroupMember(
     input.groupId,
     input.targetUserId,
   );
+  for (const roleId of droppedRoleIds) {
+    try {
+      await recordAudit(
+        db,
+        {
+          actorUserId: input.actorId,
+          aiId: null,
+          groupId: input.groupId,
+          action: 'group.role_unassigned',
+          subjectId: roleId,
+          argsHash: null,
+          costCurrency: null,
+          costAmount: null,
+          result: 'ok',
+          detail: { groupId: input.groupId, subjectUserId: input.targetUserId },
+        },
+        new Date(),
+      );
+    } catch {
+      input.logger.warn({ groupId: input.groupId }, 'could not audit a role loss on leave');
+    }
+  }
   // T-0108: public topics lose the person; private topics drop them when
   // their row is gone. Best effort after the database commit: a failure is
   // logged with the group id (never a topic name), never thrown. The sync

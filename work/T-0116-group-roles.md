@@ -137,39 +137,30 @@ pnpm build
   coexistence test proves it); both keep their tests. Only follow-up edit
   on my side was prettier import collapsing in `GroupPanel.tsx`.
 
-### Review round (findings 1–6 fixed, one test each; 7 noted as follow-up)
-1. `dropMemberRoles` was deleting the user's role rows in ALL groups.
-   Scoped to this group's roles
-   (`and(eq(userId), inArray(roleId, own))`). Test: roles in two groups,
-   leave one — the other group's rows, room affiliation and visibility
-   stay.
-2. Drained-private-topic auto-archive ignored role holders. Both
-   `removeTopicMember` and `archiveDrainedPrivateTopics` now archive only
-   when direct rows AND role holders are empty. Test: drain direct rows
-   with a holder attached — no archive, holder still sees it; then remove
-   the holder from the group — archives.
-3. `setTopicRoles` skipped the audit block when the room sync threw after
-   commit. Chose the rollback-free variant: audit writes now run before
-   `syncTopicRoom`, so the log matches the committed state even on a 502
-   (room heals on the next write). Test: `failAffiliation` → 502 response
-   with `topic.role_added` + `topic.approver_role_set` rows present.
-4. Case-insensitive name uniqueness and the 20-role cap were check-then-act.
-   Added `uniqueIndex(group_id, lower(name))` mapped to 409 `role_exists`
-   (pins-style `isUniqueViolation`), and moved the cap check + insert
-   (`createRole`) and the replace-the-set (`setRoleMembers`) into single
-   transactions under a per-group `pg_advisory_xact_lock` (pins pattern).
-   Migration 0027 deleted and regenerated as ONE migration
-   (`0027_opposite_red_hulk.sql`) containing tables + the new index —
-   verified the SQL holds only roles content. Test: duplicate name
-   differing only by case → 409 on create and on rename.
-5. `canDecide` now joins `groupRoles` on the approval's `groupId`, so a
-   stale cross-group membership row cannot grant decide rights. Test:
-   foreign role set as approver + stale holder row → `canDecide` false for
-   the holder, true for the owner.
-6. Deleted unused `roleIdsOfUser`.
-- Finding 7 (N+1 `getTopic` per ApprovalCard) skipped as instructed —
-  follow-up for the lead: batch the approver name via the approvals list
-  payload if card lists grow.
+### Review round 2 (findings 1–4 fixed, one test each; 5 blessed as-is)
+1. Stale-baseline race: `setRoleMembers` and `setTopicRoles` now read the
+   current set INSIDE the advisory-lock transaction and diff from that
+   read; `setTopicRoles` gained the same per-group `pg_advisory_xact_lock`
+   (its approver update rides the same transaction). Tests: sequential
+   replacements from different baselines end exactly last-writer-wins, and
+   two concurrent PUTs end as exactly one of the two sets (probed first:
+   PGlite serializes the pair, so the assertion is deterministic here; on
+   Postgres the lock gives the same guarantee).
+2. `dropMemberRoles` returns the removed role ids and `removeGroupMember`
+   audits one id-only `group.role_unassigned` per dropped role (subject =
+   role id, detail = `{groupId, subjectUserId}`). Deviation: groups routes
+   are outside my Allowed files, so the recorder could not be threaded
+   through `createGroupsRoutes` — the write uses `recordAudit` directly
+   with try/catch + warn in the best-effort post-commit section, where
+   sync failures are already swallowed the same way. The lead may want to
+   rewire it through the routes file. Test pins the row + id-only detail.
+3. `schema.ts` comment rewritten: names the real unique index and the
+   advisory-lock cap check instead of the stale "enforced in code"
+   wording. No migration change (comment only).
+4. `holdersOfRole` joins `groupMembers`, so a departed user is never
+   listed even if their row survived leave cleanup. Test: stale row for a
+   non-member is excluded from the list.
+- Nit 5 (backfill scope touch) skipped per instruction — unchanged.
 
 ### Files changed
 - Server: `apps/server/src/roles/service.ts`, `roles/routes.ts`,
@@ -202,18 +193,17 @@ pnpm build
   migration (since deleted); fixed via the exclusion mechanism above. One
   backfill timeout was contention from my own concurrent runs.
 
-### Review round commands (final)
-- `pnpm --filter @galena/server db:generate` after deleting the old 0027
-  files + journal entry: regenerated ONE `0027_opposite_red_hulk.sql`
-  (tables + `group_roles_group_name_idx`, roles-only — read and verified).
+### Review round 2 commands (final)
+- Touched files: `roles/roles.test.ts` (21 passed), `topics/topics.test.ts`
+  + `groups/groups.test.ts` (63 passed), `approvals/service.test.ts` +
+  `approvals/routes.test.ts` + `db/migrate.test.ts` +
+  `topics/backfill.test.ts` (69 passed) — each run as
+  `pnpm --filter @galena/server test --maxWorkers=2 <path>`.
 - `pnpm format:check`: pass. `pnpm lint`: pass. `pnpm typecheck`
   (10 tasks): pass.
-- `pnpm --filter @galena/server test --maxWorkers=2`: 82 files passed,
-  5 skipped; 1413 passed, 7 skipped, 0 failed (12 pre-existing + 5 new
-  role tests).
-- `pnpm --filter @galena/web test --maxWorkers=2`: 75 files passed;
-  822 passed, 0 failed (review fixes are server-only).
-- `pnpm build`: pass.
+- Full `pnpm --filter @galena/server test --maxWorkers=2`: 82 files
+  passed, 5 skipped; 1417 passed, 7 skipped, 0 failed.
+- Web untouched this round (review fixes are server-only).
 
 ### Problems, deviations from the spec, open questions
 - Spec route `GET /api/groups/:id/members` does not exist in this codebase;

@@ -1006,4 +1006,111 @@ describe('group roles (T-0116)', () => {
     expect(await canDecide(context.db, approval, member.id)).toBe(false);
     expect(await canDecide(context.db, approval, owner.id)).toBe(true);
   });
+
+  it('replaces the assignment set last-writer-wins, sequential and concurrent (round 2.1)', async () => {
+    const { owner, member, other, group } = await setup();
+    const role = (await (
+      await createRole(owner.cookie, group.id, {
+        name: 'Designers',
+      })
+    ).json()) as RoleBody;
+
+    // Sequential replacements from different baselines: the second wins
+    // exactly, with no leftovers from the first.
+    expect((await setMembers(owner.cookie, group.id, role.id, [member.id])).status).toBe(200);
+    expect((await setMembers(owner.cookie, group.id, role.id, [other.id])).status).toBe(200);
+    expect((await context.db.select().from(groupMemberRoles)).map((row) => row.userId)).toEqual([
+      other.id,
+    ]);
+
+    // Concurrent replacements: the final set is exactly one of the two
+    // inputs — never a merge of the stale baselines. (PGlite serializes
+    // the two requests; on Postgres the advisory lock + read-inside
+    // guarantees the same.)
+    expect((await setMembers(owner.cookie, group.id, role.id, [])).status).toBe(200);
+    const [first, second] = await Promise.all([
+      setMembers(owner.cookie, group.id, role.id, [member.id]),
+      setMembers(owner.cookie, group.id, role.id, [other.id]),
+    ]);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const final = (await context.db.select().from(groupMemberRoles)).map((row) => row.userId);
+    expect([[member.id], [other.id]]).toContainEqual(final);
+  });
+
+  it('replaces a topic’s roles last-writer-wins under concurrency (round 2.1)', async () => {
+    const { owner, group } = await setup();
+    const roleA = (await (
+      await createRole(owner.cookie, group.id, {
+        name: 'Designers',
+      })
+    ).json()) as RoleBody;
+    const roleB = (await (
+      await createRole(owner.cookie, group.id, {
+        name: 'Devs',
+      })
+    ).json()) as RoleBody;
+    const topic = (await (
+      await createTopic(owner.cookie, group.id, { name: 'Hiring', visibility: 'private' })
+    ).json()) as TopicBody;
+
+    const [first, second] = await Promise.all([
+      setTopicRoles(owner.cookie, topic.id, { roleIds: [roleA.id], approverRoleId: null }),
+      setTopicRoles(owner.cookie, topic.id, { roleIds: [roleB.id], approverRoleId: null }),
+    ]);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const access = await context.db.select().from(topicRoleAccess);
+    expect([[roleA.id], [roleB.id]]).toContainEqual(access.map((row) => row.roleId));
+  });
+
+  it('audits role_unassigned when a leaver’s roles are dropped (round 2.2)', async () => {
+    const { owner, member, group } = await setup();
+    const role = (await (
+      await createRole(owner.cookie, group.id, {
+        name: 'Designers',
+      })
+    ).json()) as RoleBody;
+    expect((await setMembers(owner.cookie, group.id, role.id, [member.id])).status).toBe(200);
+
+    const left = await app.request(`${TEST_BASE_URL}/api/groups/${group.id}/members/${member.id}`, {
+      method: 'DELETE',
+      headers: { cookie: member.cookie },
+    });
+    expect(left.status).toBe(200);
+    const rows = await context.db.select().from(auditLog);
+    const dropped = rows.filter((row) => row.action === 'group.role_unassigned');
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0]?.subjectId).toBe(role.id);
+    // Ids only: the leaver's id travels in `detail`, never a name.
+    expect(dropped[0]?.detail).toEqual({ groupId: group.id, subjectUserId: member.id });
+  });
+
+  it('never lists a departed user as a role holder (round 2.4)', async () => {
+    const { owner, member, other, group } = await setup();
+    const role = (await (
+      await createRole(owner.cookie, group.id, {
+        name: 'Designers',
+      })
+    ).json()) as RoleBody;
+    expect((await setMembers(owner.cookie, group.id, role.id, [member.id])).status).toBe(200);
+    // A stale row for a non-member (as if a leave cleanup missed it, or a
+    // concurrent leave raced the read): the list must not show them.
+    await context.db.insert(groupMemberRoles).values({
+      roleId: role.id,
+      userId: other.id,
+      assignedBy: owner.id,
+    });
+    await context.db
+      .delete((await import('../db/schema')).groupMembers)
+      .where(eq((await import('../db/schema')).groupMembers.userId, other.id));
+
+    const listed = await app.request(`${TEST_BASE_URL}/api/groups/${group.id}/roles`, {
+      headers: { cookie: owner.cookie },
+    });
+    expect(listed.status).toBe(200);
+    const body = (await listed.json()) as RolesBody;
+    expect(body.roles).toHaveLength(1);
+    expect(body.roles[0]?.members.map((entry) => entry.userId)).toEqual([member.id]);
+  });
 });

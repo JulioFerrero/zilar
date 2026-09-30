@@ -248,9 +248,10 @@ export const topics = pgTable(
 // role can be added to a private topic (every holder gets access, now and
 // later) and a topic can name an approver role whose holders may decide
 // approval cards in that topic. The built-in owner/admin/member stay as
-// they are. Names are unique per group ignoring case (enforced in code: a
-// partial lower() index would need a generated column drizzle-kit may not
-// diff cleanly); at most 20 roles per group (enforced in code).
+// they are. Names are unique per group ignoring case
+// (`group_roles_group_name_idx` on `(group_id, lower(name))`; the service
+// maps a violation to 409 `role_exists`); at most 20 roles per group
+// (checked in code under a per-group advisory lock).
 export const groupRoles = pgTable(
   'group_roles',
   {

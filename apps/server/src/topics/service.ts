@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
@@ -782,32 +782,44 @@ export async function setTopicRoles(
       'The approver role must belong to the topic’s group',
     );
   }
-  const current = await deps.db
-    .select({ roleId: topicRoleAccess.roleId })
-    .from(topicRoleAccess)
-    .where(eq(topicRoleAccess.topicId, topic.id));
-  const currentIds = new Set(current.map((row) => row.roleId));
   const wantedIds = new Set(wanted);
-  const added = wanted.filter((id) => !currentIds.has(id));
-  const removed = [...currentIds].filter((id) => !wantedIds.has(id));
-  if (added.length > 0) {
-    await deps.db
-      .insert(topicRoleAccess)
-      .values(added.map((roleId) => ({ topicId: topic.id, roleId })))
-      .onConflictDoNothing();
-  }
-  if (removed.length > 0) {
-    await deps.db
-      .delete(topicRoleAccess)
-      .where(and(eq(topicRoleAccess.topicId, topic.id), inArray(topicRoleAccess.roleId, removed)));
-  }
+  // One transaction under the group's advisory lock, reading the current
+  // set INSIDE it: two concurrent PUTs serialize and the second diffs
+  // against the first's commit (last-writer-wins, like `setRoleMembers`).
+  // The approver update rides the same transaction so access and approver
+  // can never disagree.
   const approverChanged = (topic.approverRoleId ?? null) !== input.approverRoleId;
-  if (approverChanged) {
-    await deps.db
-      .update(topics)
-      .set({ approverRoleId: input.approverRoleId, updatedAt: new Date() })
-      .where(eq(topics.id, topic.id));
-  }
+  const diff = await deps.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${topic.groupId}))`);
+    const rows = await tx
+      .select({ roleId: topicRoleAccess.roleId })
+      .from(topicRoleAccess)
+      .where(eq(topicRoleAccess.topicId, topic.id));
+    const liveIds = new Set(rows.map((row) => row.roleId));
+    const nextAdded = wanted.filter((id) => !liveIds.has(id));
+    const nextRemoved = [...liveIds].filter((id) => !wantedIds.has(id));
+    if (nextAdded.length > 0) {
+      await tx
+        .insert(topicRoleAccess)
+        .values(nextAdded.map((roleId) => ({ topicId: topic.id, roleId })))
+        .onConflictDoNothing();
+    }
+    if (nextRemoved.length > 0) {
+      await tx
+        .delete(topicRoleAccess)
+        .where(
+          and(eq(topicRoleAccess.topicId, topic.id), inArray(topicRoleAccess.roleId, nextRemoved)),
+        );
+    }
+    if (approverChanged) {
+      await tx
+        .update(topics)
+        .set({ approverRoleId: input.approverRoleId, updatedAt: new Date() })
+        .where(eq(topics.id, topic.id));
+    }
+    return { added: nextAdded, removed: nextRemoved };
+  });
+  const { added, removed } = diff;
   const [updated] = await deps.db.select().from(topics).where(eq(topics.id, topic.id)).limit(1);
   if (!updated) {
     throw toMissingTopic();

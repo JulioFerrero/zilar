@@ -134,17 +134,23 @@ async function requireRoleInGroup(
   return role;
 }
 
-// The holders of one role with their names, sorted by name. Shared by the
-// list and the single-role reads so every shape agrees.
+// The holders of one role with their names, sorted by name. Joined to the
+// group's membership, so a departed user is never listed even if their row
+// somehow survived the leave cleanup. Shared by the list and the
+// single-role reads so every shape agrees.
 async function holdersOfRole(
   db: ServerDatabase,
-  roleId: string,
+  role: GroupRoleRow,
 ): Promise<Array<{ userId: string; name: string }>> {
   const rows = await db
     .select({ userId: groupMemberRoles.userId, name: user.name })
     .from(groupMemberRoles)
     .innerJoin(user, eq(user.id, groupMemberRoles.userId))
-    .where(eq(groupMemberRoles.roleId, roleId));
+    .innerJoin(
+      groupMembers,
+      and(eq(groupMembers.groupId, role.groupId), eq(groupMembers.userId, groupMemberRoles.userId)),
+    )
+    .where(eq(groupMemberRoles.roleId, role.id));
   return rows.sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
 }
 
@@ -152,7 +158,7 @@ export async function toRoleDetail(
   db: ServerDatabase,
   role: GroupRoleRow,
 ): Promise<GroupRoleDetail> {
-  return { id: role.id, name: role.name, members: await holdersOfRole(db, role.id) };
+  return { id: role.id, name: role.name, members: await holdersOfRole(db, role) };
 }
 
 export async function listRoles(
@@ -453,34 +459,44 @@ export async function setRoleMembers(
       throw new HttpError(400, 'invalid_request', 'Role holders must be group members');
     }
   }
-  const current = await deps.db
-    .select({ userId: groupMemberRoles.userId })
-    .from(groupMemberRoles)
-    .where(eq(groupMemberRoles.roleId, role.id));
-  const currentIds = new Set(current.map((row) => row.userId));
-  const wantedIds = new Set(wanted);
-  const added = wanted.filter((id) => !currentIds.has(id));
-  const removed = [...currentIds].filter((id) => !wantedIds.has(id));
-  // One transaction under the group's advisory lock: two concurrent
-  // replace-the-set calls serialize instead of interleaving (rooms
-  // self-heal via the re-sync, but the audit rows must match the commit).
+  // The whole replace-the-set runs in one transaction under the group's
+  // advisory lock, and the current set is read INSIDE it: two concurrent
+  // PUTs serialize, and the second diffs against the first's commit, so
+  // the result is last-writer-wins instead of a merge of stale baselines.
+  // The room re-sync and the audit rows below use that same read.
+  let added: string[] = [];
+  let removed: string[] = [];
   try {
-    await deps.db.transaction(async (tx) => {
+    const diff = await deps.db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${groupId}))`);
-      if (added.length > 0) {
+      const rows = await tx
+        .select({ userId: groupMemberRoles.userId })
+        .from(groupMemberRoles)
+        .where(eq(groupMemberRoles.roleId, role.id));
+      const currentIds = new Set(rows.map((row) => row.userId));
+      const wantedIds = new Set(wanted);
+      const nextAdded = wanted.filter((id) => !currentIds.has(id));
+      const nextRemoved = [...currentIds].filter((id) => !wantedIds.has(id));
+      if (nextAdded.length > 0) {
         await tx
           .insert(groupMemberRoles)
-          .values(added.map((userId) => ({ roleId: role.id, userId, assignedBy: actorId })))
+          .values(nextAdded.map((userId) => ({ roleId: role.id, userId, assignedBy: actorId })))
           .onConflictDoNothing();
       }
-      if (removed.length > 0) {
+      if (nextRemoved.length > 0) {
         await tx
           .delete(groupMemberRoles)
           .where(
-            and(eq(groupMemberRoles.roleId, role.id), inArray(groupMemberRoles.userId, removed)),
+            and(
+              eq(groupMemberRoles.roleId, role.id),
+              inArray(groupMemberRoles.userId, nextRemoved),
+            ),
           );
       }
+      return { added: nextAdded, removed: nextRemoved };
     });
+    added = diff.added;
+    removed = diff.removed;
   } catch (error) {
     throw mapRoleError(error);
   }
@@ -504,15 +520,16 @@ export async function setRoleMembers(
 // removed), then re-syncs the topics whose access they held through a role.
 // Called from the remove/leave flow after the membership row is gone; never
 // throws for a user with no roles. Scoped to this group's roles: rows held
-// in other groups survive untouched.
+// in other groups survive untouched. Returns the removed role ids so the
+// caller can audit the loss.
 export async function dropMemberRoles(
   deps: RolesServiceDeps,
   groupId: string,
   userId: string,
-): Promise<void> {
+): Promise<string[]> {
   const roles = await deps.db.select().from(groupRoles).where(eq(groupRoles.groupId, groupId));
   if (roles.length === 0) {
-    return;
+    return [];
   }
   const ownIds = roles.map((role) => role.id);
   const rows = await deps.db
@@ -520,13 +537,14 @@ export async function dropMemberRoles(
     .from(groupMemberRoles)
     .where(and(eq(groupMemberRoles.userId, userId), inArray(groupMemberRoles.roleId, ownIds)));
   if (rows.length === 0) {
-    return;
+    return [];
   }
   const own = rows.map((row) => row.roleId);
   await deps.db
     .delete(groupMemberRoles)
     .where(and(eq(groupMemberRoles.userId, userId), inArray(groupMemberRoles.roleId, own)));
   await syncTopicsWithRoles(deps, groupId, own);
+  return own;
 }
 
 // The private member list of one topic: `topic_members` plus the holders of
