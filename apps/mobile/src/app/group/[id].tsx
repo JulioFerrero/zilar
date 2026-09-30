@@ -48,6 +48,7 @@ function GroupTopics() {
   const createTopic = useChatStore((state) => state.createTopic);
   const addTopicAi = useChatStore((state) => state.addTopicAi);
   const [linksOpen, setLinksOpen] = useState(false);
+  const [linksNow, setLinksNow] = useState(() => Date.now());
   const [links, setLinks] = useState<GroupInviteLink[]>([]);
   const [linksBusy, setLinksBusy] = useState(false);
   const [linksError, setLinksError] = useState('');
@@ -122,6 +123,9 @@ function GroupTopics() {
     setLinksError('');
     setCreatedUrl(undefined);
     setRevokingId(undefined);
+    // Fresh clock for the expired/exhausted labels on every open: the sheet
+    // stays mounted while hidden, so a mount-time stamp would go stale.
+    setLinksNow(Date.now());
     setLinksOpen(true);
     void reloadLinks();
   };
@@ -360,6 +364,7 @@ function GroupTopics() {
         error={linksError}
         createdUrl={createdUrl}
         revokingId={revokingId}
+        now={linksNow}
         share={linksShare}
         onCreate={createLink}
         onRevoke={revokeLink}

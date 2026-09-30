@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatEntry } from '../lib/chat-api';
 import type { InviteLinksApi } from '../lib/invite-links-api';
+import { resolveGroupChat } from '../lib/invite-links-api';
 import { createRealChatStore, type RealStoreDeps } from './real-store';
 import type { AppStateLike } from './real-store';
 
@@ -100,7 +101,7 @@ describe('real store invite links (T-0136)', () => {
   }
 
   it('creates, lists, revokes, previews and joins through the API layer', async () => {
-    const { store, inviteLinksApi } = setup();
+    const { store, api, inviteLinksApi } = setup();
 
     await expect(store.getState().listInviteLinks('g1')).resolves.toHaveLength(1);
     expect(inviteLinksApi.listGroupInviteLinks).toHaveBeenCalledWith('g1');
@@ -116,10 +117,52 @@ describe('real store invite links (T-0136)', () => {
       groupTitle: 'Dev team',
     });
     // Join refreshes the chat list, so the new membership appears.
+    const chatsBefore = vi.mocked(api.getChats).mock.calls.length;
     await expect(store.getState().joinByLink('a'.repeat(64))).resolves.toMatchObject({
       groupId: 'g1',
     });
     expect(inviteLinksApi.joinByLink).toHaveBeenCalledWith('a'.repeat(64));
+    expect(vi.mocked(api.getChats).mock.calls.length).toBeGreaterThan(chatsBefore);
+  });
+
+  it('joining then opens the group: the refresh lands before resolve', async () => {
+    // The round-2 bug: the route resolved against its render-time chats, so
+    // the just-joined group was never found and every success fell through
+    // to `/`. The route now reads the store fresh at call time; this proves
+    // the store's chats contain the group right after the join resolves.
+    const { store, api } = setup();
+    const groupRow: ChatEntry = {
+      kind: 'group',
+      chatJid: 'general@rooms.galena.test',
+      title: 'Dev team',
+      groupId: 'g1',
+      memberCount: 7,
+      role: 'member',
+      topics: [
+        {
+          id: 't-g',
+          groupId: 'g1',
+          name: 'General',
+          glyph: 'G',
+          chatJid: 'general@rooms.galena.test',
+          visibility: 'public',
+          kind: 'chat',
+          status: 'open',
+          owner: null,
+          linkUrl: null,
+          linkLabel: null,
+          isGeneral: true,
+          archived: false,
+          memberCount: 7,
+          ais: [],
+        },
+      ],
+    };
+    vi.mocked(api.getChats).mockResolvedValue([groupRow]);
+    const result = await store.getState().joinByLink('a'.repeat(64));
+    expect(result.groupId).toBe('g1');
+    const target = resolveGroupChat(store.getState().chats, result.groupId);
+    expect(target).toEqual({ kind: 'chat', chatId: 'general@rooms.galena.test' });
   });
 
   it('propagates API failures without adding the token', async () => {

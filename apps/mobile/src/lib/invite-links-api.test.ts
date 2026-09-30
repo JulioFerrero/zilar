@@ -5,6 +5,7 @@ import {
   extractJoinToken,
   InviteLinksApiError,
   joinFailureMessage,
+  resolveGroupChat,
 } from './invite-links-api';
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -172,5 +173,23 @@ describe('joinFailureMessage', () => {
     for (const code of ['invalid_link', 'group_full', 'rate_limited']) {
       expect(joinFailureMessage({ status: 404, code })).not.toContain(token);
     }
+  });
+});
+
+describe('resolveGroupChat', () => {
+  const general = { id: 'general@rooms.test', groupId: 'g1', topic: { isGeneral: true } };
+  const other = { id: 't-1@rooms.test', groupId: 'g1', topic: { isGeneral: false } };
+
+  it('opens the General topic chat when present', () => {
+    expect(resolveGroupChat([other, general], 'g1')).toEqual({
+      kind: 'chat',
+      chatId: 'general@rooms.test',
+    });
+  });
+
+  it('falls back to the group screen and then the chats list', () => {
+    expect(resolveGroupChat([other], 'g1')).toEqual({ kind: 'group', groupId: 'g1' });
+    expect(resolveGroupChat([], 'g1')).toEqual({ kind: 'list' });
+    expect(resolveGroupChat([general], 'g2')).toEqual({ kind: 'list' });
   });
 });

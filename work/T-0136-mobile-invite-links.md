@@ -69,15 +69,22 @@ Web changes, server changes, QR codes, native universal-link setup that needs an
 - `pnpm format:check`: pass ("All matched files use Prettier code style!")
 - `pnpm lint`: pass (oxlint clean; fixed 2 errors during work: `Date.now()` in render → injected `now` prop, set-state-in-effect → async-helper shape like web `JoinPage`)
 - `pnpm typecheck`: pass (mobile `tsc --noEmit`; full `pnpm typecheck` not run — task Checks list bare `typecheck`, mobile is the only touched package)
-- Scoped: 5 files 45 passed (invite-links-api, mock + real store flows, sheet, join body)
-- Full mobile suite at the end: `pnpm --filter @galena/mobile test --maxWorkers=2`: 43 passed, 2 skipped (45 files); 448 passed, 2 skipped (450 tests)
-- Note: repo-root `pnpm format:check` flags untracked `PREREVIEW.md`, not mine (another worker's/lead's file, left untouched); all my files are Prettier-clean per explicit file list.
+- Scoped: 5 files 53 passed (invite-links-api, mock + real store flows, sheet, join body)
+- Full mobile suite at the end: `pnpm --filter @galena/mobile test --maxWorkers=2`: 43 passed, 2 skipped (45 files); 458 passed, 2 skipped (460 tests)
+- Note: repo-root `pnpm format:check` flags untracked `PREREVIEW.md`, not mine (another worker's/lead's file, left untouched and uncommitted); all my files are Prettier-clean per explicit file list.
 
 ### Round 2 (pre-review fixes)
 - Mock store keyed per groupId (`mock/invite-links.ts` + `chat-store.ts` pass the id through instead of hardcoding `g-devteam`); mock preview/join now enforce revoked/expired/exhausted via `isUsable` with the same neutral 404 `invalid_link` (preview mirrors the server: it also rejects unusable links, not just join). New tests: two-group isolation (list/create/revoke/join resolve each group's own links), one-use exhaustion, expiry via fake timers.
 - Collapsed the `[false]`-only loop in `join-link.test.tsx` to a direct assertion.
 - Deleted unused `JoinLinkCard`; the route's network-failure branch now uses `joinLinkViewFor({ … joinError })` instead of its inline object, so `joinError` has a caller.
 - The join route resets `view` to `checking` when `token` changes.
+
+### Round 3 (pre-review round 2 fixes)
+- Finding 1 (stale chats): the route's `openGroup` read the render-time `chats` snapshot, so a just-joined group was never found and every success fell through to `/`. It now reads fresh at call time via a new `useChatStoreApi()` accessor (raw `StoreApi` from the provider context) and a pure `resolveGroupChat(chats, groupId)` helper (General chat → group screen → chats list). The helper lives UI-free in `lib/invite-links-api.ts` (re-exported from the join view) so store tests can import it. New test: real store joins with `getChats` answering the new group, then `resolveGroupChat(store.getState().chats, …)` opens its General chat.
+- Finding 2 (stale labels): the sheet takes a `now` prop, fixed by the group screen's `openLinks` (`setLinksNow(Date.now())`) on every open instead of a mount-time stamp. New test: rows rendered with a stale vs fresh stamp flip an expiring link from active to expired.
+- Nit 4: the real-store join test now asserts `getChats` is called again on join.
+- Nit 6: new `offline` join state — an unreachable server on initial preview shows "Could not load the link / Check your connection" with Try again (retry re-runs the load); the neutral message stays reserved for invalid/expired/revoked/full.
+- Skipped per instruction: nits 3 (vacuous token-absence tests) and 5 (nameless gate refetch).
 
 ### Problems, deviations from the spec, open questions
 - Universal links: custom scheme only, no `associated-domains`/Apple work (per spec's out-of-scope). Pasted `https://…/j/<token>` and `/join/<token>` links still parse and route in-app.

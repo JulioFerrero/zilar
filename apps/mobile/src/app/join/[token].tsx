@@ -1,17 +1,22 @@
 import { Redirect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColorScheme } from 'nativewind';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { LoadingScreen } from '@/auth/RequireAuth';
 import { useSession } from '@/auth/session';
-import { JoinLinkBody, joinLinkViewFor, type JoinLinkView } from '@/components/chat/join-link';
+import {
+  JoinLinkBody,
+  joinLinkViewFor,
+  resolveGroupChat,
+  type JoinLinkView,
+} from '@/components/chat/join-link';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
 import { extractJoinToken } from '@/lib/invite-links-api';
-import { useChatStore } from '@/store/chat-store-provider';
+import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
 
 /**
  * Join-by-link screen (T-0136): `galena://join/<token>` (custom scheme,
@@ -79,28 +84,23 @@ function Join({ token }: { token: string | undefined }) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const previewJoinLink = useChatStore((state) => state.previewJoinLink);
   const joinByLink = useChatStore((state) => state.joinByLink);
-  const chats = useChatStore((state) => state.chats);
+  const store = useChatStoreApi();
   // A missing token is invalid from the first render — no effect needed.
   const [view, setView] = useState<JoinLinkView>(
     token === undefined
-      ? joinLinkViewFor({ failed: true, rateLimited: false })
+      ? joinLinkViewFor({ failed: true, rateLimited: false, offline: true })
       : { state: 'checking' },
   );
   const [busy, setBusy] = useState(false);
-  const loadedFor = useRef<string | undefined>(undefined);
+  const [retries, setRetries] = useState(0);
 
   useEffect(() => {
     if (token === undefined) {
       return;
     }
-    if (loadedFor.current === token) {
-      return;
-    }
-    loadedFor.current = token;
-    setView({ state: 'checking' });
-    // The effect only synchronizes with the token (the lint rule flags
-    // synchronous setState inside effects); the fetch helper resolves the
-    // next view, applied once.
+    // The effect only synchronizes with the token and the retry count (the
+    // lint rule flags synchronous setState inside effects); the fetch helper
+    // resolves the next view, applied once.
     let active = true;
     void loadPreview(token).then((next) => {
       if (active) {
@@ -117,16 +117,28 @@ function Join({ token }: { token: string | undefined }) {
       } catch (error: unknown) {
         const status = (error as { status?: number }).status;
         const code = (error as { code?: string }).code;
-        return joinLinkViewFor({
-          failed: true,
-          rateLimited: status === 429 || code === 'rate_limited',
-        });
+        // An unreachable server is a retryable connection error, not a dead
+        // link (nit 6): only invalid, expired, revoked and full links read
+        // the same neutral message.
+        if (status === 429 || code === 'rate_limited') {
+          return joinLinkViewFor({ failed: true, rateLimited: true });
+        }
+        if (status === 0 || code === 'network_error') {
+          return joinLinkViewFor({ failed: true, rateLimited: false, offline: true });
+        }
+        return joinLinkViewFor({ failed: true, rateLimited: false });
       }
     }
-  }, [token, previewJoinLink]);
+    // `retries` re-runs the load after the offline card's Try again.
+  }, [token, previewJoinLink, retries]);
 
   const cancel = () => {
     router.replace('/');
+  };
+
+  const retry = () => {
+    setView({ state: 'checking' });
+    setRetries((count) => count + 1);
   };
 
   const join = () => {
@@ -173,25 +185,24 @@ function Join({ token }: { token: string | undefined }) {
   // falling back to the group screen and then the chats list when the
   // refresh has not landed yet. The group id comes from the server's join
   // result (or from the preview when already a member) — never the token.
+  // Reads the chats fresh at call time: the store refreshes them before the
+  // join promise resolves, so a render-time snapshot would never contain
+  // the new group and every success would fall through to `/`.
   const openGroup = (groupId: string | undefined) => {
     if (groupId === undefined) {
       router.replace('/');
       return;
     }
-    const general = chats.find(
-      (chat) => chat.groupId === groupId && chat.topic?.isGeneral === true,
-    );
-    const first = chats.find((chat) => chat.groupId === groupId);
-    const chatId = general?.id ?? first?.id;
-    if (chatId === undefined) {
-      router.replace('/');
+    const target = resolveGroupChat(store.getState().chats, groupId);
+    if (target.kind === 'chat') {
+      router.replace({ pathname: '/chat/[id]', params: { id: target.chatId } });
       return;
     }
-    if (general !== undefined) {
-      router.replace({ pathname: '/chat/[id]', params: { id: chatId } });
+    if (target.kind === 'group') {
+      router.replace({ pathname: '/group/[id]', params: { id: target.groupId } });
       return;
     }
-    router.replace({ pathname: '/group/[id]', params: { id: groupId } });
+    router.replace('/');
   };
 
   return (
@@ -203,7 +214,7 @@ function Join({ token }: { token: string | undefined }) {
           </Text>
         </View>
       ) : (
-        <JoinLinkBody view={view} busy={busy} onJoin={join} onCancel={cancel} />
+        <JoinLinkBody view={view} busy={busy} onJoin={join} onCancel={cancel} onRetry={retry} />
       )}
     </JoinBackground>
   );

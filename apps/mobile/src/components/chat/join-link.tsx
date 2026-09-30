@@ -3,16 +3,17 @@ import { Pressable, TextInput, View } from 'react-native';
 
 import { Text } from '../../components/ui/text';
 import { extractJoinToken, joinFailureMessage } from '../../lib/invite-links-api';
-import type { JoinPreview } from '../../lib/invite-links-api';
+import type { GroupChatTarget, JoinPreview } from '../../lib/invite-links-api';
 
 /**
  * The join-by-link states (T-0136, mirrors the web `JoinPage`): checking the
- * preview, ready to join, and one neutral invalid state for every failure
- * kind (invalid, expired, revoked, full). Rate limits get a friendly retry
- * text instead. The token never appears in any message — only the neutral
- * texts below are shown.
+ * preview, ready to join, one neutral invalid state for every failure kind
+ * (invalid, expired, revoked, full), and a retryable offline state for an
+ * unreachable server (never confused with a dead link). Rate limits get a
+ * friendly retry text instead. The token never appears in any message —
+ * only the neutral texts below are shown.
  */
-export type JoinLinkState = 'checking' | 'ready' | 'invalid';
+export type JoinLinkState = 'checking' | 'ready' | 'invalid' | 'offline';
 
 export interface JoinLinkView {
   state: JoinLinkState;
@@ -21,15 +22,17 @@ export interface JoinLinkView {
 }
 
 /**
- * Reduces a preview/join outcome to its view state. `retryable` is true for
- * rate-limit answers (429), which show the retry text; every other failure
- * shows the same neutral message. Takes only the error code/status, never
- * the token.
+ * Reduces a preview/join outcome to its view state. `rateLimited` is true
+ * for rate-limit answers (429), which show the retry text; `offline` is true
+ * for an unreachable server, which shows a connection retry; every other
+ * failure shows the same neutral message. Takes only the error code/status,
+ * never the token.
  */
 export function joinLinkViewFor(input: {
   preview?: JoinPreview;
   failed: boolean;
   rateLimited: boolean;
+  offline?: boolean;
   joinError?: string;
 }): JoinLinkView {
   if (!input.failed && input.preview !== undefined) {
@@ -38,6 +41,9 @@ export function joinLinkViewFor(input: {
       preview: input.preview,
       ...(input.joinError === undefined ? {} : { error: input.joinError }),
     };
+  }
+  if (input.offline === true) {
+    return { state: 'offline' };
   }
   return {
     state: 'invalid',
@@ -52,6 +58,12 @@ export function joinPreviewSubtitle(preview: JoinPreview): string {
   return `${preview.memberCount} ${preview.memberCount === 1 ? 'member' : 'members'}`;
 }
 
+// Re-exported for the route: the implementation lives UI-free in
+// `lib/invite-links-api` so store tests can import it without pulling in
+// `react-native`.
+export type { GroupChatTarget };
+export { resolveGroupChat } from '../../lib/invite-links-api';
+
 /**
  * The join screen body (T-0136): the preview card (group title, member
  * count) with Join and Cancel, the neutral failure card, and the checking
@@ -64,14 +76,38 @@ export function JoinLinkBody(props: {
   busy: boolean;
   onJoin: () => void;
   onCancel: () => void;
+  onRetry: () => void;
 }) {
-  const { view, busy, onJoin, onCancel } = props;
+  const { view, busy, onJoin, onCancel, onRetry } = props;
   if (view.state === 'checking') {
     return (
       <View className="w-full max-w-sm rounded-2xl bg-background p-6 shadow-xl">
         <Text className="text-center text-[18px] font-semibold text-foreground">
           Checking your invite link…
         </Text>
+      </View>
+    );
+  }
+  if (view.state === 'offline') {
+    return (
+      <View className="w-full max-w-sm rounded-2xl bg-background p-6 shadow-xl">
+        <Text className="text-center text-[24px] font-semibold leading-8 text-foreground">
+          Could not load the link
+        </Text>
+        <Text className="mt-2 text-center text-[15px] text-muted-foreground">
+          Check your connection and try again.
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading the link"
+          onPress={onRetry}
+          className="mt-5 items-center rounded-full bg-accent px-4 py-2.5 active:opacity-90"
+        >
+          <Text className="text-[15px] font-medium text-accent-foreground">Try again</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cancel" onPress={onCancel}>
+          <Text className="mt-3 text-center text-[14px] text-muted-foreground">Cancel</Text>
+        </Pressable>
       </View>
     );
   }

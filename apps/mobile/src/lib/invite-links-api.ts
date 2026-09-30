@@ -310,7 +310,6 @@ export function extractJoinToken(raw: string): string | undefined {
 
 const INVITE_LINK_FAILURE_MESSAGE = 'This link does not work';
 const INVITE_LINK_RETRY_MESSAGE = 'Too many attempts. Try again later.';
-
 /**
  * The neutral join failure text (T-0115): invalid, expired, revoked and full
  * links all read the same, so failures never reveal why; rate-limit answers
@@ -322,4 +321,28 @@ export function joinFailureMessage(error: { status: number; code: string }): str
     return INVITE_LINK_RETRY_MESSAGE;
   }
   return INVITE_LINK_FAILURE_MESSAGE;
+}
+
+export type GroupChatTarget =
+  { kind: 'chat'; chatId: string } | { kind: 'group'; groupId: string } | { kind: 'list' };
+
+/**
+ * Resolves where a joined group opens: its General topic chat, else any of
+ * its rows' group screen, else the chats list. Pure and UI-free (lives here
+ * rather than the join view so store tests can import it without pulling in
+ * `react-native`), so the route — which reads the chats fresh at call time —
+ * and tests share it.
+ */
+export function resolveGroupChat(
+  chats: { id: string; groupId?: string; topic?: { isGeneral?: boolean } }[],
+  groupId: string,
+): GroupChatTarget {
+  const general = chats.find((chat) => chat.groupId === groupId && chat.topic?.isGeneral === true);
+  if (general !== undefined) {
+    return { kind: 'chat', chatId: general.id };
+  }
+  if (chats.some((chat) => chat.groupId === groupId)) {
+    return { kind: 'group', groupId };
+  }
+  return { kind: 'list' };
 }

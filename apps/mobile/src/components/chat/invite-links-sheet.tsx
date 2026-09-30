@@ -98,6 +98,7 @@ export function InviteLinksSheet({
   error,
   createdUrl,
   revokingId,
+  now,
   share,
   onCreate,
   onRevoke,
@@ -110,6 +111,10 @@ export function InviteLinksSheet({
   error: string;
   createdUrl: string | undefined;
   revokingId: string | undefined;
+  /** Fixed by the screen each time the sheet opens: the expired/exhausted
+   *  labels render against it. A mount-time stamp would go stale (the Modal
+   *  stays mounted while hidden). */
+  now: number;
   share: InviteLinkShareBridge;
   onCreate: (input: CreateInviteLinkForm) => void;
   onRevoke: (linkId: string) => void;
@@ -148,9 +153,8 @@ export function InviteLinksSheet({
   };
 
   const shownError = formError !== '' ? formError : error;
-  // Fixed when the sheet opens (the screen reloads the list on open): the
-  // expired/exhausted labels only re-render with the list itself.
-  const [listNow] = useState(() => Date.now());
+  // The expired/exhausted labels render against `now`, which the screen
+  // fixes on every open (see `openLinks`), so they never go stale.
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -252,7 +256,7 @@ export function InviteLinksSheet({
                 <InviteLinkRow
                   key={link.id}
                   link={link}
-                  now={listNow}
+                  now={now}
                   revoking={revokingId === link.id}
                   onRevoke={onRevoke}
                 />

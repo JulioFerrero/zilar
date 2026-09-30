@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { JoinLinkBody, joinLinkViewFor, joinPreviewSubtitle } from './join-link';
+import { JoinLinkBody, joinLinkViewFor, joinPreviewSubtitle, resolveGroupChat } from './join-link';
 import type { JoinPreview } from '@/lib/invite-links-api';
 
 // The hook-free body is called as a plain function with `react-native`
@@ -97,6 +97,11 @@ describe('joinLinkViewFor', () => {
     expect(view.error).toBe('Too many attempts. Try again later.');
   });
 
+  it('maps an unreachable server to the offline state, not the dead-link one', () => {
+    const view = joinLinkViewFor({ failed: true, rateLimited: false, offline: true });
+    expect(view).toEqual({ state: 'offline' });
+  });
+
   it('keeps a join error on the ready preview', () => {
     const view = joinLinkViewFor({
       preview: preview(),
@@ -133,18 +138,57 @@ describe('joinPreviewSubtitle', () => {
   });
 });
 
+describe('resolveGroupChat', () => {
+  const general = { id: 'general@rooms.test', groupId: 'g1', topic: { isGeneral: true } };
+  const other = { id: 't-1@rooms.test', groupId: 'g1', topic: { isGeneral: false } };
+
+  it('opens the General topic chat when present', () => {
+    expect(resolveGroupChat([other, general], 'g1')).toEqual({
+      kind: 'chat',
+      chatId: 'general@rooms.test',
+    });
+  });
+
+  it('falls back to the group screen when only non-General rows exist', () => {
+    expect(resolveGroupChat([other], 'g1')).toEqual({ kind: 'group', groupId: 'g1' });
+  });
+
+  it('falls back to the chats list when the refresh has not landed yet', () => {
+    expect(resolveGroupChat([], 'g1')).toEqual({ kind: 'list' });
+    expect(resolveGroupChat([general], 'g2')).toEqual({ kind: 'list' });
+  });
+
+  it('finds a group that arrived after the Join press (fresh read)', () => {
+    // The bug: the route resolved against the render-time chats, which never
+    // contain the just-joined group. The route now reads the store fresh at
+    // call time; this proves the resolution sees a group that appeared after
+    // the press (the store refreshes chats before the join resolves).
+    const before: (typeof general)[] = [];
+    expect(resolveGroupChat(before, 'g1')).toEqual({ kind: 'list' });
+    const after = [...before, general];
+    expect(resolveGroupChat(after, 'g1')).toEqual({
+      kind: 'chat',
+      chatId: 'general@rooms.test',
+    });
+  });
+});
+
 describe('JoinLinkBody', () => {
+  function body(
+    view: Parameters<typeof JoinLinkBody>[0]['view'],
+    handlers: { onJoin?: () => void; onCancel?: () => void; onRetry?: () => void } = {},
+  ) {
+    return JoinLinkBody({
+      view,
+      busy: false,
+      onJoin: handlers.onJoin ?? (() => {}),
+      onCancel: handlers.onCancel ?? (() => {}),
+      onRetry: handlers.onRetry ?? (() => {}),
+    });
+  }
+
   it('renders the preview card with the title, count and Join', () => {
-    const all = textOf(
-      collect(
-        JoinLinkBody({
-          view: { state: 'ready', preview: preview() },
-          busy: false,
-          onJoin: () => {},
-          onCancel: () => {},
-        }),
-      ),
-    );
+    const all = textOf(collect(body({ state: 'ready', preview: preview() })));
     expect(all).toContain('Dev team');
     expect(all).toContain('6 members');
     expect(all).toContain('Join the group');
@@ -152,46 +196,36 @@ describe('JoinLinkBody', () => {
 
   it('renders Open the group for an existing member', () => {
     const all = textOf(
-      collect(
-        JoinLinkBody({
-          view: { state: 'ready', preview: preview({ alreadyMember: true }) },
-          busy: false,
-          onJoin: () => {},
-          onCancel: () => {},
-        }),
-      ),
+      collect(body({ state: 'ready', preview: preview({ alreadyMember: true }) })),
     );
     expect(all).toContain('Open the group');
     expect(all).toContain('already a member');
   });
 
   it('shows the checking state', () => {
-    expect(
-      textOf(
-        collect(
-          JoinLinkBody({
-            view: { state: 'checking' },
-            busy: false,
-            onJoin: () => {},
-            onCancel: () => {},
-          }),
-        ),
-      ),
-    ).toContain('Checking your invite link');
+    expect(textOf(collect(body({ state: 'checking' })))).toContain('Checking your invite link');
+  });
+
+  it('shows the retryable offline state, distinct from a dead link', () => {
+    const calls: string[] = [];
+    const elements = collect(body({ state: 'offline' }, { onRetry: () => calls.push('retry') }));
+    const all = textOf(elements);
+    expect(all).toContain('Could not load the link');
+    expect(all).toContain('Check your connection');
+    expect(all).not.toContain('This link does not work');
+    const retry = elements.find(
+      (element) => element.props.accessibilityLabel === 'Retry loading the link',
+    );
+    expect(retry).toBeDefined();
+    const onPress = (retry as TestElement).props.onPress;
+    expect(typeof onPress).toBe('function');
+    (onPress as () => void)();
+    expect(calls).toEqual(['retry']);
   });
 
   it('shows the same neutral message for every failure kind', () => {
     for (const error of ['This link does not work', 'Too many attempts. Try again later.']) {
-      const all = textOf(
-        collect(
-          JoinLinkBody({
-            view: { state: 'invalid', error },
-            busy: false,
-            onJoin: () => {},
-            onCancel: () => {},
-          }),
-        ),
-      );
+      const all = textOf(collect(body({ state: 'invalid', error })));
       expect(all).toContain('This link does not work');
       if (error !== 'This link does not work') {
         expect(all).toContain(error);
@@ -201,28 +235,17 @@ describe('JoinLinkBody', () => {
 
   it('never renders a token', () => {
     const token = 'a'.repeat(64);
-    const all = textOf(
-      collect(
-        JoinLinkBody({
-          view: { state: 'invalid', error: 'This link does not work' },
-          busy: false,
-          onJoin: () => {},
-          onCancel: () => {},
-        }),
-      ),
-    );
+    const all = textOf(collect(body({ state: 'invalid', error: 'This link does not work' })));
     expect(all).not.toContain(token);
   });
 
   it('joins and cancels on press', () => {
     const calls: string[] = [];
     const elements = collect(
-      JoinLinkBody({
-        view: { state: 'ready', preview: preview() },
-        busy: false,
-        onJoin: () => calls.push('join'),
-        onCancel: () => calls.push('cancel'),
-      }),
+      body(
+        { state: 'ready', preview: preview() },
+        { onJoin: () => calls.push('join'), onCancel: () => calls.push('cancel') },
+      ),
     );
     const join = elements.find((element) => element.props.accessibilityLabel === 'Join the group');
     expect(join).toBeDefined();

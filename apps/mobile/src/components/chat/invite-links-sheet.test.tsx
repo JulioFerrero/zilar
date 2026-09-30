@@ -149,10 +149,12 @@ describe('validateInviteLinkForm', () => {
 const NOW = Date.parse('2026-09-30T12:00:00.000Z');
 
 describe('InviteLinkRow', () => {
+  function row(link_: Parameters<typeof InviteLinkRow>[0]['link'], now: number) {
+    return InviteLinkRow({ link: link_, now, revoking: false, onRevoke: () => {} });
+  }
+
   it('renders the name, the uses line and a Revoke button for an active link', () => {
-    const elements = collect(
-      InviteLinkRow({ link: link(), now: NOW, revoking: false, onRevoke: () => {} }),
-    );
+    const elements = collect(row(link(), NOW));
     const all = textOf(elements);
     expect(all).toContain('Friends');
     expect(all).toContain('2/10 uses');
@@ -163,15 +165,20 @@ describe('InviteLinkRow', () => {
     expect(revokes).toHaveLength(1);
   });
 
+  it('renders against the passed timestamp, so a per-open `now` never goes stale', () => {
+    // The regression: the sheet froze the clock at first mount, so a link
+    // that expired afterwards kept reading "active". The screen now passes a
+    // fresh `now` on every open; rows rendered with the fresh stamp flip to
+    // expired while the stale stamp still says active.
+    const expiring = link({ expiresAt: '2026-09-30T13:00:00.000Z' });
+    const stale = textOf(collect(row(expiring, Date.parse('2026-09-30T12:00:00.000Z'))));
+    expect(stale).not.toContain('expired');
+    const fresh = textOf(collect(row(expiring, Date.parse('2026-09-30T14:00:00.000Z'))));
+    expect(fresh).toContain('expired');
+  });
+
   it('shows a revoked label and no button for a revoked link', () => {
-    const elements = collect(
-      InviteLinkRow({
-        link: link({ revoked: true }),
-        now: NOW,
-        revoking: false,
-        onRevoke: () => {},
-      }),
-    );
+    const elements = collect(row(link({ revoked: true }), NOW));
     expect(textOf(elements)).toContain('revoked');
     expect(
       elements.filter(
@@ -181,9 +188,7 @@ describe('InviteLinkRow', () => {
   });
 
   it('carries only the last-4 hint, never the full token', () => {
-    const elements = collect(
-      InviteLinkRow({ link: link({ label: null }), now: NOW, revoking: false, onRevoke: () => {} }),
-    );
+    const elements = collect(row(link({ label: null }), NOW));
     expect(textOf(elements)).toContain('····abcd');
     expect(textOf(elements)).not.toContain('a'.repeat(64));
   });
