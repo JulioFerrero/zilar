@@ -72,6 +72,40 @@ function fakeApi(): ApiClient {
       members: [],
       ais: [],
     })),
+    createTopic: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    getTopic: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    patchTopic: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    archiveTopic: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    listGroupTopics: vi.fn(async () => []),
+    listTopicMembers: vi.fn(async () => []),
+    addTopicMember: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    removeTopicMember: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    listTopicAis: vi.fn(async () => []),
+    addTopicAi: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    removeTopicAi: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    setMembersCanCreateTopics: vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [],
+      ais: [],
+    })),
   };
 }
 

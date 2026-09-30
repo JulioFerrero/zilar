@@ -4,6 +4,7 @@ import { mockChats } from './chats';
 import { mockGroupDetails } from './groups';
 import { mockMessages } from './messages';
 import { approvalCard } from './helpers';
+import { mockTopicAisById, mockTopicChats, mockTopicMembersById } from './topics';
 
 /**
  * The standalone mock HTTP layer (T-0069). In mock mode the app needs no
@@ -39,6 +40,38 @@ interface MockState {
   // Listed by the AI panel (`?aiId`) and the group panel (`?groupId`).
   approvalRules: MockApprovalRule[];
   audit: MockAuditEntry[];
+  // T-0111: the Dev team topics. Created topics append here; patches edit
+  // in place; archived ids hide from the list (the row survives).
+  topics: MockTopic[];
+  nextTopicSequence: number;
+}
+
+type TopicVisibility = 'public' | 'private';
+type TopicKind = 'chat' | 'task' | 'bug' | 'ui' | 'routine';
+type TopicStatus = 'open' | 'in_progress' | 'in_review' | 'blocked' | 'done';
+
+interface MockTopicOwner {
+  kind: 'user' | 'ai';
+  id: string;
+  name: string;
+}
+
+interface MockTopic {
+  id: string;
+  groupId: string;
+  name: string;
+  glyph: string;
+  chatJid: string;
+  visibility: TopicVisibility;
+  kind: TopicKind;
+  status: TopicStatus;
+  owner: MockTopicOwner | null;
+  linkUrl: string | null;
+  linkLabel: string | null;
+  isGeneral: boolean;
+  archived: boolean;
+  memberIds: string[];
+  aiIds: string[];
 }
 
 interface MockAuditEntry {
@@ -89,6 +122,97 @@ function seedAi(name: string, template: PublicAi['template'], id: string): Publi
     machineId: 'mach-approved',
     createdAt: '2026-09-20T10:00:00.000Z',
   };
+}
+
+const MOCK_PEOPLE_NAMES: Record<string, string> = {
+  'u-you': 'You',
+  'u-ana': 'Ana',
+  'u-luis': 'Luis',
+  'u-marco': 'Marco',
+  'u-marta': 'Marta',
+  'u-sofia': 'Sofía',
+};
+
+const MOCK_AI_NAMES: Record<string, string> = {
+  'dev-1': 'Dev-1',
+  'qa-1': 'QA-1',
+  marketing: 'Marketing AI',
+  'research-1': 'Researcher',
+};
+
+function mockPersonName(userId: string): string {
+  return MOCK_PEOPLE_NAMES[userId] ?? 'Someone';
+}
+
+function mockAiName(aiId: string): string {
+  return MOCK_AI_NAMES[aiId] ?? 'An AI';
+}
+
+// T-0111: the Dev team topics from the mock bundle, as API rows. General
+// keeps the group's old chat id; every other topic gets its own chat id.
+// Private hiring starts with Ana + you; the bug topic starts with Dev-1.
+function seedTopics(): MockTopic[] {
+  const chats = mockTopicChats();
+  const members = mockTopicMembersById();
+  const ais = mockTopicAisById();
+  return chats.map((chat) => {
+    const info = chat.topic;
+    if (info === undefined) {
+      throw new Error('mockTopicChats must carry a topic');
+    }
+    return {
+      id: info.id,
+      groupId: 'g-devteam',
+      name: chat.title,
+      glyph: info.glyph,
+      chatJid: chat.id,
+      visibility: info.visibility,
+      kind: info.kind,
+      status: info.status,
+      owner: info.owner,
+      linkUrl: info.linkUrl,
+      linkLabel: info.linkLabel,
+      isGeneral: info.isGeneral,
+      archived: false,
+      memberIds:
+        info.visibility === 'private'
+          ? (members[info.id] ?? []).map((member) => member.userId)
+          : [],
+      aiIds: (ais[info.id] ?? []).map((ai) => ai.id),
+    };
+  });
+}
+
+function topicToView(topic: MockTopic): Record<string, unknown> {
+  return {
+    id: topic.id,
+    groupId: topic.groupId,
+    name: topic.name,
+    glyph: topic.glyph,
+    chatJid: topic.chatJid,
+    visibility: topic.visibility,
+    kind: topic.kind,
+    status: topic.status,
+    owner: topic.owner,
+    linkUrl: topic.linkUrl,
+    linkLabel: topic.linkLabel,
+    isGeneral: topic.isGeneral,
+    archived: topic.archived,
+    memberCount:
+      topic.visibility === 'private'
+        ? topic.memberIds.length
+        : (mockGroupDetails['c-devteam']?.members.length ?? topic.memberIds.length),
+    ais: topic.aiIds.map((aiId) => ({ id: aiId, name: mockAiName(aiId) })),
+  };
+}
+
+function findTopic(id: string): MockTopic | undefined {
+  return state.topics.find((topic) => topic.id === id);
+}
+
+function glyphForTopic(name: string): string {
+  const first = [...name.trim()][0] ?? 'G';
+  return first.toUpperCase();
 }
 
 function seedState(): MockState {
@@ -197,6 +321,8 @@ function seedState(): MockState {
       },
     ],
     approvalRules: [],
+    topics: seedTopics(),
+    nextTopicSequence: 1,
     audit: [
       {
         id: 'audit-dev-stopped',
@@ -478,14 +604,22 @@ function chatEntries(): ChatEntry[] {
     if (chat.kind === 'group') {
       const detail = mockGroupDetails[chat.id];
       const membership = detail?.members.find((member) => member.userId === currentUserId);
-      return {
+      const entry = {
         kind: 'group',
         chatJid: chat.id,
         title: chat.title,
         groupId: detail?.id ?? chat.id,
         memberCount: chat.memberCount ?? detail?.members.length ?? 0,
         role: membership?.role ?? 'member',
-      };
+      } as ChatEntry & { topics?: unknown[] };
+      // T-0111: the Dev team group carries its visible topics (archived
+      // excluded). The mock has one user, who sees every topic.
+      if (detail?.id === 'g-devteam') {
+        entry.topics = state.topics
+          .filter((topic) => !topic.archived)
+          .map((topic) => topicToView(topic));
+      }
+      return entry;
     }
     return {
       kind: 'dm',
@@ -516,6 +650,91 @@ function pathParts(path: string): string[] {
   return normalizedPath(path)
     .split('/')
     .filter((part) => part !== '');
+}
+
+function patchMockTopic(topic: MockTopic, init: RequestInit): Response {
+  const body = readJsonBody(init);
+  if (typeof body.name === 'string' && body.name.trim() !== '') {
+    topic.name = body.name.trim().slice(0, 80);
+  }
+  if (typeof body.glyph === 'string' && body.glyph !== '') {
+    topic.glyph = body.glyph;
+  }
+  if (
+    body.kind === 'chat' ||
+    body.kind === 'task' ||
+    body.kind === 'bug' ||
+    body.kind === 'ui' ||
+    body.kind === 'routine'
+  ) {
+    topic.kind = body.kind;
+  }
+  if (
+    body.status === 'open' ||
+    body.status === 'in_progress' ||
+    body.status === 'in_review' ||
+    body.status === 'blocked' ||
+    body.status === 'done'
+  ) {
+    topic.status = body.status;
+  }
+  if (body.owner === null) {
+    topic.owner = null;
+  } else if (
+    body.owner !== undefined &&
+    typeof body.owner === 'object' &&
+    body.owner !== null &&
+    (body.owner as Record<string, unknown>).kind !== undefined
+  ) {
+    const owner = body.owner as Record<string, unknown>;
+    if (owner.kind === 'user' && typeof owner.id === 'string') {
+      topic.owner = { kind: 'user', id: owner.id, name: mockPersonName(owner.id) };
+    } else if (owner.kind === 'ai' && typeof owner.id === 'string') {
+      topic.owner = { kind: 'ai', id: owner.id, name: mockAiName(owner.id) };
+    }
+  }
+  if (body.linkUrl === null || body.linkUrl === undefined) {
+    if ('linkUrl' in body) {
+      topic.linkUrl = null;
+    }
+  } else if (typeof body.linkUrl === 'string') {
+    topic.linkUrl = body.linkUrl;
+  }
+  if (body.linkLabel === null || body.linkLabel === undefined) {
+    if ('linkLabel' in body) {
+      topic.linkLabel = null;
+    }
+  } else if (typeof body.linkLabel === 'string') {
+    topic.linkLabel = body.linkLabel.slice(0, 40);
+  }
+  if (body.archived === true) {
+    if (topic.isGeneral) {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'General cannot be archived' } },
+        400,
+      );
+    }
+    topic.archived = true;
+  }
+  if (body.visibility === 'public' || body.visibility === 'private') {
+    if (body.visibility === 'public' && topic.visibility === 'private') {
+      if (body.confirmExposeHistory !== true) {
+        return jsonResponse(
+          { error: { code: 'confirmation_required', message: 'Confirm exposing the history' } },
+          400,
+        );
+      }
+      topic.visibility = 'public';
+      topic.memberIds = [];
+    } else if (body.visibility === 'private' && topic.visibility === 'public') {
+      const memberIds = Array.isArray(body.memberIds)
+        ? body.memberIds.filter((item): item is string => typeof item === 'string')
+        : [];
+      topic.visibility = 'private';
+      topic.memberIds = [...new Set([currentUserId, ...memberIds])];
+    }
+  }
+  return jsonResponse(topicToView(topic));
 }
 
 /** Answers one API path; the shape of the body matches the real zod schemas. */
@@ -583,6 +802,180 @@ export async function mockRequest(
 
   if (head === 'search' && method === 'GET') {
     return searchMessages(path);
+  }
+
+  // T-0111: the group's topic settings switch. The mock has one user,
+  // the group owner, so PATCH always succeeds for the Dev team group.
+  if (head === 'groups' && second === undefined && method === 'PATCH') {
+    const groupId = decodeURIComponent(first ?? '');
+    const detail = Object.values(mockGroupDetails).find((item) => item.id === groupId);
+    if (detail === undefined) {
+      return notFound('Group not found');
+    }
+    const body = readJsonBody(init);
+    if (typeof body.membersCanCreateTopics === 'boolean') {
+      const updated = { ...detail, membersCanCreateTopics: body.membersCanCreateTopics };
+      for (const [chatId, entry] of Object.entries(mockGroupDetails)) {
+        if (entry.id === groupId) {
+          mockGroupDetails[chatId] = updated;
+        }
+      }
+      return jsonResponse(updated);
+    }
+    return jsonResponse(detail);
+  }
+
+  // T-0111: topics of a group (visible to the mock's single user).
+  if (head === 'groups' && second === 'topics') {
+    const groupId = decodeURIComponent(first ?? '');
+    if (groupId !== 'g-devteam') {
+      return notFound('Group not found');
+    }
+    if (method === 'GET') {
+      return jsonResponse({
+        topics: state.topics.filter((topic) => !topic.archived).map((topic) => topicToView(topic)),
+      });
+    }
+    if (method === 'POST') {
+      const body = readJsonBody(init);
+      const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '';
+      if (name === '') {
+        return jsonResponse(
+          { error: { code: 'invalid_request', message: 'name is required' } },
+          400,
+        );
+      }
+      const visibility = body.visibility === 'private' ? 'private' : 'public';
+      const kind =
+        body.kind === 'task' || body.kind === 'bug' || body.kind === 'ui' || body.kind === 'routine'
+          ? body.kind
+          : 'chat';
+      const id = `t-mock-${state.nextTopicSequence}`;
+      state.nextTopicSequence += 1;
+      const created: MockTopic = {
+        id,
+        groupId: 'g-devteam',
+        name,
+        glyph:
+          typeof body.glyph === 'string' && body.glyph !== '' ? body.glyph : glyphForTopic(name),
+        chatJid: `${id}@rooms.galena.test`,
+        visibility,
+        kind,
+        status: 'open',
+        owner: null,
+        linkUrl: null,
+        linkLabel: null,
+        isGeneral: false,
+        archived: false,
+        memberIds:
+          visibility === 'private'
+            ? [
+                ...new Set([
+                  currentUserId,
+                  ...(Array.isArray(body.memberIds)
+                    ? body.memberIds.filter((item): item is string => typeof item === 'string')
+                    : []),
+                ]),
+              ]
+            : [],
+        aiIds: [],
+      };
+      state.topics = [...state.topics, created];
+      return jsonResponse(topicToView(created), 201);
+    }
+    return notImplemented();
+  }
+
+  if (head === 'topics' && first !== undefined) {
+    const topicId = decodeURIComponent(first);
+    // `/topics/:id/members/:userId` and `/topics/:id/ais/:aiId` carry a
+    // fourth segment; `second` is the sub-resource, `third` its id.
+    const segments = pathParts(path);
+    const subId = segments[3];
+    const topic = findTopic(topicId);
+    if (topic === undefined || topic.archived) {
+      return notFound('Topic not found');
+    }
+    if (second === undefined) {
+      if (method === 'GET') {
+        return jsonResponse(topicToView(topic));
+      }
+      if (method === 'PATCH') {
+        return patchMockTopic(topic, init);
+      }
+      return notImplemented();
+    }
+    if (second === 'archive' && method === 'POST') {
+      if (topic.isGeneral) {
+        return jsonResponse(
+          { error: { code: 'invalid_request', message: 'General cannot be archived' } },
+          400,
+        );
+      }
+      topic.archived = true;
+      return jsonResponse(topicToView(topic));
+    }
+    if (second === 'members' && subId === undefined) {
+      if (method === 'GET') {
+        if (topic.visibility !== 'private') {
+          return jsonResponse({
+            members: (mockGroupDetails['c-devteam']?.members ?? []).map((member) => ({
+              userId: member.userId,
+              name: member.name,
+            })),
+          });
+        }
+        return jsonResponse({
+          members: topic.memberIds.map((userId) => ({ userId, name: mockPersonName(userId) })),
+        });
+      }
+      if (method === 'POST') {
+        const body = readJsonBody(init);
+        const userId = typeof body.userId === 'string' ? body.userId : '';
+        if (userId !== '' && !topic.memberIds.includes(userId)) {
+          topic.memberIds = [...topic.memberIds, userId];
+        }
+        return jsonResponse(topicToView(topic));
+      }
+      return notImplemented();
+    }
+    if (second === 'members' && subId !== undefined && method === 'DELETE') {
+      const userId = decodeURIComponent(subId);
+      topic.memberIds = topic.memberIds.filter((id) => id !== userId);
+      if (topic.memberIds.length === 0 && topic.visibility === 'private') {
+        topic.archived = true;
+        return notFound('Topic not found');
+      }
+      return jsonResponse(topicToView(topic));
+    }
+    if (second === 'ais' && subId === undefined) {
+      if (method === 'GET') {
+        return jsonResponse({
+          ais: topic.aiIds.map((aiId) => ({ id: aiId, name: mockAiName(aiId) })),
+        });
+      }
+      if (method === 'POST') {
+        const body = readJsonBody(init);
+        const aiId = typeof body.aiId === 'string' ? body.aiId : '';
+        if (aiId === '' || mockAiName(aiId) === 'An AI') {
+          return jsonResponse({ error: { code: 'invalid_request', message: 'Unknown AI' } }, 400);
+        }
+        if (!topic.aiIds.includes(aiId)) {
+          topic.aiIds = [...topic.aiIds, aiId];
+        }
+        return jsonResponse(topicToView(topic));
+      }
+      return notImplemented();
+    }
+    if (second === 'ais' && subId !== undefined && method === 'DELETE') {
+      const aiId = decodeURIComponent(subId);
+      topic.aiIds = topic.aiIds.filter((id) => id !== aiId);
+      return jsonResponse(topicToView(topic));
+    }
+    if (second === 'tools' && method === 'GET') {
+      return jsonResponse([]);
+    }
+    return notImplemented();
   }
 
   if (head === 'audit' && method === 'GET') {

@@ -30,13 +30,14 @@ function seededMessage(
 
 describe('ChatShell', () => {
   it('shows the header subtitle, date separators and grouped bubbles', () => {
-    renderApp('/c/c-devteam');
+    // T-0111: `c-devteam` is the General topic now, with its own short
+    // thread; the legacy full thread moved to the bug topic.
+    renderApp('/c/c-devteam-bug');
     const messageList = screen.getByTestId('message-list');
 
-    expect(screen.getByText('6 members, 2 online')).toBeTruthy();
-    expect(screen.getByText('Today')).toBeTruthy();
-    expect(screen.getByText('Yesterday')).toBeTruthy();
-    expect(within(messageList).getByText('Tests pass. Merge?')).toBeTruthy();
+    expect(screen.getAllByText('Dev team').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Checkout button hidden on Safari').length).toBeGreaterThan(0);
+    expect(within(messageList).getByText('Opening Checkout button hidden on Safari.')).toBeTruthy();
   });
 
   it('shows the sender name only on the first bubble of a group', () => {

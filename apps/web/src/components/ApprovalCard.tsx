@@ -29,7 +29,14 @@ function statusLabel(approval: PublicApproval): string {
   }
 }
 
-export function ApprovalCard({ request }: { request: ApprovalRequest }) {
+export function ApprovalCard({
+  request,
+  topicName,
+}: {
+  request: ApprovalRequest;
+  /** T-0111: the topic the card lives in; the confirm copy names it. */
+  topicName?: string;
+}) {
   // Bumped on a manual retry to force the polling hook to drop its current
   // state and re-fetch from scratch.
   const [retryToken, setRetryToken] = useState(0);
@@ -153,9 +160,11 @@ export function ApprovalCard({ request }: { request: ApprovalRequest }) {
           {confirmingAlways && showAlways ? (
             <div className="flex flex-col gap-2">
               <p className="text-[12px] leading-4 text-muted-foreground">
-                {approval.groupId === null
-                  ? `Always run ${request.action} without asking, in this chat only.`
-                  : `Always run ${request.action} without asking, in this group only.`}
+                {topicName !== undefined
+                  ? `Always run ${request.action} without asking, in “${topicName}” only.`
+                  : approval.groupId === null
+                    ? `Always run ${request.action} without asking, in this chat only.`
+                    : `Always run ${request.action} without asking, in this group only.`}
               </p>
               <div className="flex gap-2">
                 <Button

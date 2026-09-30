@@ -14,7 +14,14 @@ import {
   canEditMessage,
   canDeleteMessage,
 } from '@galena/chat-core';
-import type { Contact, GroupDetail, Me, PublicAi } from '@/lib/api';
+import type {
+  Contact,
+  CreateTopicInput,
+  GroupDetail,
+  Me,
+  PatchTopicInput,
+  PublicAi,
+} from '@/lib/api';
 import { classify, cleanFilename, objectUrlFor } from '@/lib/attachments';
 import { sampleVoiceDataUrl } from '@/lib/voice';
 import type { StoreApi } from 'zustand/vanilla';
@@ -26,6 +33,8 @@ import {
   mockGroupMembers,
   mockMessages,
   mockOwnedAis,
+  mockTopicChats,
+  mockTopicMessages,
 } from '@/mock';
 
 export type FolderId = 'all' | 'personal' | 'ais' | 'work';
@@ -100,6 +109,43 @@ export interface ChatStore {
   removeGroupAi: (chatId: string, aiId: string) => Promise<void>;
   /** The AIs I own, for the group panel's add picker. */
   listMyAis: () => Promise<PublicAi[]>;
+  /**
+   * The short notice shown when the open topic disappeared (made private,
+   * archived, or I was removed) and the view moved to General. Cleared
+   * when dismissed or when the chat changes. Private topic names never
+   * appear in it.
+   */
+  topicNotice: { chatId: string; message: string } | undefined;
+  /** Dismisses the topic notice (or clears a stale one for another chat). */
+  dismissTopicNotice: () => void;
+  /**
+   * Re-reads the chat list from the server (topics included): joins new
+   * topic rooms and moves the open view to General when its topic is gone.
+   */
+  refreshChats: () => void;
+  /**
+   * Creates a topic in the group that owns `chatId` and opens it. Rejects
+   * on failure.
+   */
+  createTopic: (chatId: string, input: CreateTopicInput) => Promise<string>;
+  /**
+   * Applies a strip edit (status, owner, link, kind) or a manager edit
+   * (name, visibility, archive) to the topic that owns `chatId`, updating
+   * the row optimistically with rollback on failure. Rejects on failure.
+   */
+  patchTopic: (chatId: string, input: PatchTopicInput) => Promise<void>;
+  /** Adds an AI to the topic and refreshes the row. Rejects on failure. */
+  addTopicAi: (chatId: string, aiId: string) => Promise<void>;
+  /** Removes an AI from the topic and refreshes the row. Rejects on failure. */
+  removeTopicAi: (chatId: string, aiId: string) => Promise<void>;
+  /** Adds a person to a private topic and refreshes the row. Rejects on failure. */
+  addTopicMember: (chatId: string, userId: string) => Promise<void>;
+  /** Removes a person from a private topic. Rejects on failure. */
+  removeTopicMember: (chatId: string, userId: string) => Promise<void>;
+  /** Leaves a private topic. Rejects on failure. */
+  leaveTopic: (chatId: string) => Promise<void>;
+  /** Flips the group's "members can create topics" switch. Rejects on failure. */
+  setMembersCanCreateTopics: (chatId: string, allowed: boolean) => Promise<void>;
   typing: Record<string, TypingState>;
   /**
    * Live AI reply drafts by chat id (the AI's bare JID), from
@@ -308,6 +354,44 @@ function scheduleTypingSimulation(set: (partial: Partial<ChatStoreState>) => voi
   }, TYPING_START_MS + TYPING_DURATION_MS);
 }
 
+// T-0111: the mock "Dev team" group carries the mockup's topics. The legacy
+// single `c-devteam` row is replaced by its topics (General keeps `c-devteam`
+// so old deep links open it). Every other chat stays untouched.
+function withMockTopics(chats: ChatSummary[]): ChatSummary[] {
+  const topics = mockTopicChats();
+  if (topics.length === 0) {
+    return chats;
+  }
+  const generalId = topics.find((topic) => topic.topic?.isGeneral === true)?.id;
+  return chats.flatMap((chat) => {
+    if (chat.id !== generalId) {
+      return [chat];
+    }
+    return topics;
+  });
+}
+
+function withMockTopicMessages(messages: Record<string, UiMessage[]>): Record<string, UiMessage[]> {
+  return { ...messages, ...mockTopicMessages() };
+}
+
+// T-0111: every mock topic chat shares the Dev team group detail (people +
+// AIs), so the topic panel, the strip owner picker and the header role
+// checks read the same members as the legacy group row did.
+function withMockTopicGroupInfos(infos: Record<string, GroupDetail>): Record<string, GroupDetail> {
+  const devteam = infos['c-devteam'];
+  if (devteam === undefined) {
+    return infos;
+  }
+  const next = { ...infos };
+  for (const topic of mockTopicChats()) {
+    if (next[topic.id] === undefined) {
+      next[topic.id] = devteam;
+    }
+  }
+  return next;
+}
+
 export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreState> {
   let sequence = 0;
 
@@ -337,6 +421,14 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
     // work in mock mode exactly as they do against the real store.
     const meUserId = seed.currentUserId ?? defaultCurrentUserId;
     const ownedAis = seed.ownedAis ?? mockOwnedAis;
+    // T-0111: the mock "Dev team" group carries mockup topics. The legacy
+    // single `c-devteam` row is replaced by its topics (General keeps the id
+    // so old deep links open it); other groups stay single rows. Seeded chats
+    // (tests) win over the bundle.
+    const seededChats = seed.chats;
+    const baseChats = seededChats ?? withMockTopics(mockChats);
+    const seededMessages = seed.messagesByChat;
+    const baseMessages = seededMessages ?? withMockTopicMessages(mockMessages);
 
     return {
       currentUserId: meUserId,
@@ -357,15 +449,42 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       retryChats: () => {},
       retryHistory: () => {},
       contacts: seed.contacts ?? [],
-      chats: seed.chats ?? mockChats,
-      messagesByChat: cloneMessages(seed.messagesByChat ?? mockMessages),
+      chats: baseChats,
+      messagesByChat: cloneMessages(baseMessages),
       reactions: {},
       edits: {},
       editTarget: undefined,
       actionError: undefined,
       activeChatId: undefined,
       historyComplete: {},
-      groupInfos: { ...(seed.groupInfos ?? mockGroupDetails) },
+      groupInfos: seed.groupInfos ?? withMockTopicGroupInfos(mockGroupDetails),
+      topicNotice: undefined,
+      dismissTopicNotice: () => set({ topicNotice: undefined }),
+      refreshChats: () => {},
+      createTopic: async () => {
+        throw new Error('createTopic is not available in the mock store');
+      },
+      patchTopic: async () => {
+        throw new Error('patchTopic is not available in the mock store');
+      },
+      addTopicAi: async () => {
+        throw new Error('addTopicAi is not available in the mock store');
+      },
+      removeTopicAi: async () => {
+        throw new Error('removeTopicAi is not available in the mock store');
+      },
+      addTopicMember: async () => {
+        throw new Error('addTopicMember is not available in the mock store');
+      },
+      removeTopicMember: async () => {
+        throw new Error('removeTopicMember is not available in the mock store');
+      },
+      leaveTopic: async () => {
+        throw new Error('leaveTopic is not available in the mock store');
+      },
+      setMembersCanCreateTopics: async () => {
+        throw new Error('setMembersCanCreateTopics is not available in the mock store');
+      },
       search: '',
       activeFolder: 'all',
       typing: {},
@@ -420,6 +539,9 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       openChat: (chatId) =>
         set((state) => ({
           activeChatId: chatId,
+          // Opening another chat dismisses the "topic no longer available"
+          // notice (it belongs to the previous view).
+          topicNotice: state.topicNotice?.chatId === chatId ? state.topicNotice : undefined,
           chats: state.chats.map((chat) =>
             chat.id === chatId && chat.unread > 0 ? { ...chat, unread: 0 } : chat,
           ),
@@ -663,6 +785,81 @@ export function visibleChats(state: ChatStoreState): ChatSummary[] {
       return false;
     }
     return query.length === 0 || chat.title.toLowerCase().includes(query);
+  });
+}
+
+/**
+ * One sidebar group (T-0111): the group's title plus its topic rows. DMs and
+ * AI chats are singleton groups with a stable key.
+ */
+export interface ChatGroup {
+  key: string;
+  title: string;
+  /** The group's id for avatar + collapse state; undefined for DMs/AIs. */
+  groupId: string | undefined;
+  topics: ChatSummary[];
+}
+
+function groupTitleOf(chat: ChatSummary): string {
+  return chat.groupTitle ?? chat.title;
+}
+
+/**
+ * Folds the flat chat list into sidebar groups: every topic of a group nests
+ * under its group header; DMs and AI chats stand alone. General sorts first,
+ * then by newest message. Search keeps a group header when any of its topics
+ * matches by name. Folders treat a topic like its group (a topic matches when
+ * its own row does).
+ */
+export function groupChats(state: ChatStoreState): ChatGroup[] {
+  const query = state.search.trim().toLowerCase();
+  const byGroup = new Map<string, ChatSummary[]>();
+  const singles: ChatSummary[] = [];
+  for (const chat of state.chats) {
+    if (!matchesFolder(chat, state.activeFolder)) {
+      continue;
+    }
+    if (chat.topic !== undefined && chat.groupId !== undefined) {
+      const list = byGroup.get(chat.groupId) ?? [];
+      list.push(chat);
+      byGroup.set(chat.groupId, list);
+    } else {
+      if (query.length > 0 && !chat.title.toLowerCase().includes(query)) {
+        continue;
+      }
+      singles.push(chat);
+    }
+  }
+  const groups: ChatGroup[] = [];
+  for (const [groupId, topics] of byGroup) {
+    const matching =
+      query.length === 0
+        ? topics
+        : topics.filter((topic) => topic.title.toLowerCase().includes(query));
+    if (matching.length === 0) {
+      continue;
+    }
+    const title = groupTitleOf(matching[0] ?? topics[0]!);
+    groups.push({ key: `group:${groupId}`, title, groupId, topics: sortTopics(matching) });
+  }
+  for (const chat of singles) {
+    groups.push({ key: `chat:${chat.id}`, title: chat.title, groupId: undefined, topics: [chat] });
+  }
+  return groups;
+}
+
+function topicTime(chat: ChatSummary): number {
+  return chat.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
+}
+
+function sortTopics(topics: ChatSummary[]): ChatSummary[] {
+  return [...topics].sort((left, right) => {
+    const leftGeneral = left.topic?.isGeneral === true;
+    const rightGeneral = right.topic?.isGeneral === true;
+    if (leftGeneral !== rightGeneral) {
+      return leftGeneral ? -1 : 1;
+    }
+    return topicTime(right) - topicTime(left) || left.title.localeCompare(right.title);
   });
 }
 

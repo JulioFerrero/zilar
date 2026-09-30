@@ -7,16 +7,25 @@ import { FolderTabs } from './FolderTabs';
 import { InviteDialog } from './InviteDialog';
 import { MessageSearchResults } from './MessageSearchResults';
 import { NewChatButton } from './NewChatButton';
+import { NewTopicDialog } from './NewTopicDialog';
 import { SearchBar } from './SearchBar';
 import { ChatListSkeleton } from './Skeleton';
+import { GroupHeaderRow } from './TopicRow';
+import { TopicKeyboardNav } from './TopicKeyboardNav';
 import { useDelayed } from '@/lib/useDelayed';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { visibleChats } from '@/store/store';
+import { groupChats, visibleChats } from '@/store/store';
 import { cn } from '@/lib/utils';
+import {
+  readArchivedOpen,
+  readCollapsedGroups,
+  toggleArchivedOpen,
+  toggleCollapsedGroup,
+} from '@/lib/topicsUi';
 
 // A normal (re)connect takes well under this; only a slow one gets a banner.
 const CONNECTION_BANNER_DELAY_MS = 1500;
@@ -41,8 +50,12 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const storeApi = useChatStoreApi();
   const navigate = useNavigate();
   const chats = visibleChats(store);
+  const groups = groupChats(store);
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [newTopicGroup, setNewTopicGroup] = useState<string | undefined>(undefined);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedGroups());
+  const [archivedOpen, setArchivedOpen] = useState<Set<string>>(() => readArchivedOpen());
   const isWide = useMediaQuery('(min-width: 900px)');
   const connection = useDelayed(statusLabel(store.status), CONNECTION_BANNER_DELAY_MS);
   // A retry keeps the list that is already painted: the store's `loading` flag
@@ -255,14 +268,36 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
             {chats.length === 0 ? (
               <EmptyState variant="no-chats" onInvite={() => setInviteOpen(true)} />
             ) : (
-              chats.map((chat) => (
-                <ChatListItem
-                  key={chat.id}
-                  chat={chat}
-                  selected={chat.id === activeChatId}
-                  isWide={isWide}
-                />
-              ))
+              <TopicKeyboardNav activeChatId={activeChatId} groups={groups}>
+                {groups.map((group) =>
+                  group.groupId === undefined ? (
+                    <ChatListItem
+                      key={group.key}
+                      chat={group.topics[0]!}
+                      selected={group.topics[0]!.id === activeChatId}
+                      isWide={isWide}
+                    />
+                  ) : (
+                    <GroupHeaderRow
+                      key={group.key}
+                      groupTitle={group.title}
+                      groupId={group.groupId}
+                      topics={group.topics}
+                      selectedId={activeChatId}
+                      collapsed={collapsed.has(group.groupId)}
+                      onToggleCollapse={() =>
+                        setCollapsed((current) => toggleCollapsedGroup(current, group.groupId!))
+                      }
+                      archivedOpen={archivedOpen.has(group.groupId)}
+                      onToggleArchived={() =>
+                        setArchivedOpen((current) => toggleArchivedOpen(current, group.groupId!))
+                      }
+                      isWide={isWide}
+                      onOpenNewTopic={() => setNewTopicGroup(group.groupId)}
+                    />
+                  ),
+                )}
+              </TopicKeyboardNav>
             )}
             {/* Message hits come after the chat-name matches. `searchChat`
                 scopes "Search only in this chat" from a chat header. */}
@@ -278,6 +313,9 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
       </nav>
       <NewChatButton />
       {inviteOpen && <InviteDialog onClose={() => setInviteOpen(false)} />}
+      {newTopicGroup !== undefined && (
+        <NewTopicDialog groupId={newTopicGroup} onClose={() => setNewTopicGroup(undefined)} />
+      )}
     </div>
   );
 }

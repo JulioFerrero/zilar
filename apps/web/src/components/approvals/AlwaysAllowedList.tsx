@@ -13,10 +13,13 @@ import { Button, FieldError } from '@/components/ais/AiPageShell';
 // T-0100: whose rules to list. Mirrors `AuditScope` in AiActivity: exactly
 // one of the two keys, and the callers guard their own mounting (the AI
 // panel mounts it for the AI owner, the group panel for owners/admins).
+// T-0111: the topic panel passes `topicId` to show one topic's rows only;
+// the subtitle names the topic (rows show `Group › Topic` there).
 export type AlwaysAllowedScope = { aiId: string } | { groupId: string };
 
-function scopeKeyOf(scope: AlwaysAllowedScope): string {
-  return 'aiId' in scope ? `ai:${scope.aiId}` : `group:${scope.groupId}`;
+function scopeKeyOf(scope: AlwaysAllowedScope, topicId?: string): string {
+  const base = 'aiId' in scope ? `ai:${scope.aiId}` : `group:${scope.groupId}`;
+  return topicId === undefined ? base : `${base}#${topicId}`;
 }
 
 function loadScopeRules(scope: AlwaysAllowedScope): Promise<ApprovalRule[]> {
@@ -27,17 +30,23 @@ function loadScopeRules(scope: AlwaysAllowedScope): Promise<ApprovalRule[]> {
  * Resolves a rule's group id to the chat title when the store knows it.
  * Group details are keyed by chat id with the group's id inside, so the
  * lookup walks the known details; unknown ids fall back to plain words.
+ * T-0111: a rule with a `topicName` shows `Group › Topic`.
  */
-export function scopeTextFor(rule: ApprovalRule, groupInfos: Record<string, GroupDetail>): string {
+export function scopeTextFor(
+  rule: ApprovalRule,
+  groupInfos: Record<string, GroupDetail>,
+  topicName?: string | null,
+): string {
+  const name = topicName ?? rule.topicName ?? undefined;
   if (rule.scope === 'personal' || rule.groupId === null) {
-    return 'Personal chat';
+    return name === undefined || name === '' ? 'Personal chat' : `Personal chat › ${name}`;
   }
   for (const info of Object.values(groupInfos)) {
     if (info.id === rule.groupId) {
-      return `In ${info.title}`;
+      return name === undefined || name === '' ? `In ${info.title}` : `In ${info.title} › ${name}`;
     }
   }
-  return 'In a group';
+  return name === undefined || name === '' ? 'In a group' : `In a group › ${name}`;
 }
 
 type ListStatus = 'loading' | 'ready' | 'error';
@@ -57,7 +66,20 @@ interface RulesListState {
  * already gone, so the row drops quietly); any other failure keeps the
  * row and shows an inline error.
  */
-export function AlwaysAllowedList({ scope }: { scope: AlwaysAllowedScope }) {
+export function AlwaysAllowedList({
+  scope,
+  topicId,
+  topicName,
+  readOnly = false,
+}: {
+  scope: AlwaysAllowedScope;
+  /** T-0111: when set, only this topic's rows show and Revoke hides. */
+  topicId?: string;
+  /** T-0111: the topic's display name for the row subtitles. */
+  topicName?: string;
+  /** T-0111: the topic panel reads the list without revoke actions. */
+  readOnly?: boolean;
+}) {
   const { groupInfos } = useChatStore();
   const [state, setState] = useState<RulesListState>({ status: 'loading', rules: [], message: '' });
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -65,14 +87,16 @@ export function AlwaysAllowedList({ scope }: { scope: AlwaysAllowedScope }) {
   const [revokeError, setRevokeError] = useState('');
   const [refreshTick, setRefreshTick] = useState(0);
 
-  const scopeKey = scopeKeyOf(scope);
+  const scopeKey = scopeKeyOf(scope, topicId);
   // A ref tracks the latest scope so the effect body can spread it without
   // re-running on every render: callers pass a fresh `{ aiId }` / `{
   // groupId }` literal each render, and including `scope` in the deps would
   // loop. Same shape as `ActivitySection`.
   const scopeRef = useRef<AlwaysAllowedScope>(scope);
+  const topicIdRef = useRef<string | undefined>(topicId);
   useEffect(() => {
     scopeRef.current = scope;
+    topicIdRef.current = topicId;
   });
 
   // Reset to `loading` while rendering (not inside the effect body): when
@@ -89,10 +113,16 @@ export function AlwaysAllowedList({ scope }: { scope: AlwaysAllowedScope }) {
 
   useEffect(() => {
     let active = true;
+    const onlyTopic = topicIdRef.current;
     void loadScopeRules(scopeRef.current).then(
       (rules) => {
         if (active) {
-          setState({ status: 'ready', rules, message: '' });
+          setState({
+            status: 'ready',
+            rules:
+              onlyTopic === undefined ? rules : rules.filter((rule) => rule.topicId === onlyTopic),
+            message: '',
+          });
         }
       },
       (error: unknown) => {
@@ -181,10 +211,10 @@ export function AlwaysAllowedList({ scope }: { scope: AlwaysAllowedScope }) {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[14px]">{rule.action}</p>
                   <p className="truncate text-[12px] text-muted-foreground">
-                    {scopeTextFor(rule, groupInfos)}
+                    {scopeTextFor(rule, groupInfos, topicName)}
                   </p>
                 </div>
-                {confirming ? (
+                {readOnly ? null : confirming ? (
                   <div className="flex shrink-0 items-center gap-1">
                     <span className="text-[12px] text-muted-foreground">
                       Stop always allowing {rule.action}?

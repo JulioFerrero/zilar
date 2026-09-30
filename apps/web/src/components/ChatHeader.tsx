@@ -1,5 +1,6 @@
 import type { ChatSummary } from '@galena/chat-core';
-import { ArrowLeft, MoreVertical, Search } from 'lucide-react';
+import { ArrowLeft, Lock, MoreVertical, Search } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
@@ -13,10 +14,12 @@ export function ChatHeader({
   chat,
   onOpenAiPanel,
   onOpenGroupPanel,
+  onOpenTopicPanel,
 }: {
   chat: ChatSummary;
   onOpenAiPanel?: () => void;
   onOpenGroupPanel?: () => void;
+  onOpenTopicPanel?: () => void;
 }) {
   const navigate = useNavigate();
   const store = useChatStore();
@@ -28,14 +31,63 @@ export function ChatHeader({
   const writing = chat.isAI && store.drafts[chat.id] !== undefined;
   const working = chat.isAI && chat.aiStatus === 'working';
   const subtitle = writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date()));
-  const openPanel = onOpenAiPanel ?? onOpenGroupPanel;
-  const panelLabel = chat.isAI ? `Open ${chat.title} settings` : `Open ${chat.title} info`;
+  const isTopic = chat.topic !== undefined;
+  // One search path for the header button and the topic menu entry: scope the
+  // list search to this chat and focus its box.
+  const startChatSearch = (): void => {
+    storeApi.getState().setSearchChat(chat.id);
+    if (!isWide) {
+      navigate('/');
+    }
+    // The list search box lives outside this view; focus it on the next
+    // frame so the scope chip is already painted.
+    window.setTimeout(() => window.dispatchEvent(new Event('galena:focus-search')), 0);
+  };
+  const groupTitle = chat.groupTitle ?? store.groupInfo(chat.id)?.title;
+  const openPanel = onOpenTopicPanel ?? onOpenAiPanel ?? onOpenGroupPanel;
+  const panelLabel = isTopic
+    ? `Open ${chat.title} topic info`
+    : chat.isAI
+      ? `Open ${chat.title} settings`
+      : `Open ${chat.title} info`;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [archiving, setArchiving] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Esc closes the kebab menu.
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [menuOpen]);
+
+  // A topic's Archive entry needs a manager; the entry hides until the
+  // group detail loads and the role is known (see `TopicArchiveItem`).
 
   const title = (
     <>
       <div className="flex items-center gap-1.5">
+        {isTopic && groupTitle !== undefined && groupTitle !== '' && (
+          <span className="shrink-0 truncate text-[15px] leading-5 font-semibold text-muted-foreground">
+            {groupTitle} <span aria-hidden="true">›</span>
+          </span>
+        )}
         <span className="truncate text-[15px] leading-5 font-semibold">{chat.title}</span>
         {chat.isAI && <AiBadge />}
+        {isTopic && chat.topic?.visibility === 'private' && (
+          <span className="flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+            <Lock className="size-3" aria-hidden="true" />
+            Private
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-1 text-[12px] leading-4 text-muted-foreground">
         <span className="truncate">{subtitle}</span>
@@ -43,6 +95,19 @@ export function ChatHeader({
       </div>
     </>
   );
+
+  const archive = async (): Promise<void> => {
+    setMenuOpen(false);
+    setArchiving(true);
+    setActionError('');
+    try {
+      await storeApi.getState().patchTopic(chat.id, { archived: true });
+    } catch {
+      setActionError('Could not archive the topic.');
+    } finally {
+      setArchiving(false);
+    }
+  };
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-2.5 border-b border-divider bg-panel/85 px-4">
@@ -69,26 +134,109 @@ export function ChatHeader({
       ) : (
         <div className="min-w-0 flex-1">{title}</div>
       )}
-      <IconButton
-        aria-label="Search in chat"
-        onClick={() => {
-          storeApi.getState().setSearchChat(chat.id);
-          if (!isWide) {
-            navigate('/');
-          }
-          // The list search box lives outside this view; focus it on the
-          // next frame so the scope chip is already painted.
-          window.setTimeout(() => window.dispatchEvent(new Event('galena:focus-search')), 0);
-        }}
-      >
+      {actionError !== '' && (
+        <span role="alert" className="hidden shrink-0 text-[12px] text-danger">
+          {actionError}
+        </span>
+      )}
+      <IconButton aria-label="Search in chat" onClick={startChatSearch}>
         <Search className="size-5" aria-hidden="true" />
       </IconButton>
-      <IconButton
-        aria-label="Chat menu"
-        {...(openPanel === undefined ? {} : { onClick: openPanel })}
-      >
-        <MoreVertical className="size-5" aria-hidden="true" />
-      </IconButton>
+      <div ref={menuRef} className="relative">
+        <IconButton
+          aria-label="Chat menu"
+          aria-haspopup="menu"
+          aria-expanded={isTopic ? menuOpen : undefined}
+          onClick={() => {
+            if (isTopic) {
+              setMenuOpen((value) => !value);
+            } else {
+              openPanel?.();
+            }
+          }}
+        >
+          <MoreVertical className="size-5" aria-hidden="true" />
+        </IconButton>
+        {isTopic && menuOpen && (
+          <>
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label="Close chat menu"
+              onClick={() => setMenuOpen(false)}
+              className="fixed inset-0 z-10 cursor-default"
+            />
+            <div
+              role="menu"
+              aria-label="Topic actions"
+              className="absolute top-full right-0 z-20 mt-1 min-w-[180px] rounded-xl border border-border bg-popover py-1 shadow-lg"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openPanel?.();
+                }}
+                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
+              >
+                Topic info
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  startChatSearch();
+                }}
+                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
+              >
+                Search
+              </button>
+              <TopicArchiveItem
+                chat={chat}
+                archiving={archiving}
+                onArchive={() => void archive()}
+              />
+            </div>
+          </>
+        )}
+      </div>
     </header>
+  );
+}
+
+function TopicArchiveItem({
+  chat,
+  archiving,
+  onArchive,
+}: {
+  chat: ChatSummary;
+  archiving: boolean;
+  onArchive: () => void;
+}) {
+  const store = useChatStore();
+  const me = store.currentUserId;
+  const info = store.groupInfo(chat.id);
+  const myRole = info?.members.find((member) => member.userId === me)?.role;
+  // Archive needs a manager (creator or group owner/admin); the detail may
+  // not have loaded yet, so the entry hides until the role is known. Never
+  // for General.
+  if (chat.topic?.isGeneral === true) {
+    return null;
+  }
+  if (myRole !== 'owner' && myRole !== 'admin') {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={archiving}
+      onClick={onArchive}
+      className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none disabled:opacity-50"
+    >
+      {archiving ? 'Archiving…' : 'Archive topic'}
+    </button>
   );
 }
