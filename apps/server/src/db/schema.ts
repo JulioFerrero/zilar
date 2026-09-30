@@ -747,6 +747,14 @@ export const aiTools = pgTable(
     name: text('name').notNull(),
     description: text('description').notNull(),
     currentVersion: integer('current_version').notNull().default(1),
+    // T-0132: the host set a human approved for this tool (per tool in its
+    // (AI, topic) scope). The sandbox may only contact declared hosts ∩
+    // this set; default empty, so a tool with no approval still runs, with
+    // no network. Never expanded automatically — only `tool.approve_hosts`
+    // (tier 2 card) sets it, `tool.revoke_hosts` empties it. The migration
+    // (number assigned by the lead after T-0116 merges) backfills each
+    // tool with the union of `approved_hosts` of its live routines.
+    approvedHosts: jsonb('approved_hosts').$type<string[]>().notNull().default([]),
     createdBy: text('created_by')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),

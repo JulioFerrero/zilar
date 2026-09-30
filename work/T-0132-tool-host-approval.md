@@ -1,7 +1,7 @@
 ---
 id: T-0132
 title: Approve a tool's hosts once, before it can reach the network
-status: planned
+status: in-progress
 milestone: M4
 branch: task/T-0132-tool-host-approval
 model: meta/muse-spark-1.3-contributor
