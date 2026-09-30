@@ -1,7 +1,7 @@
 ---
 id: T-0130
 title: Topics web fixes found by the T-0111 pre-review
-status: review
+status: merged
 milestone: M5
 branch: task/T-0130-topics-web-fixes
 model: meta/muse-spark-1.3-contributor
@@ -140,10 +140,15 @@ Packet (`PREREVIEW.md`, read then deleted, not committed) verified against HEAD 
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** merged after three rounds; no must-fix left.
 
 ### Findings
--
+- Fixed across the rounds: kebab archive navigates away and the row drops at once; a failed member removal no longer kicks you out (single DELETE, 404 re-check throws on refresh failure); mock store topic actions work; AI owner compared by id (PATCH carries the AI id); topic-only keyboard navigation; quiet notice for a self-archive; tests for the gone path, 403 and network error.
+- UI verified by tests and mock mode only, not live.
 
 ### Follow-ups
--
+- `TopicPanel.leave()` swallows every error and always navigates away; on a network error the user is moved but still a member. Stay and show the inline error on non-404.
+- `quietArchiveIds` is not cleared when General is absent after a self-archive.
+- `addMember`/`addAi` in the panel still call the endpoint and then the store (double write, second error swallowed).
+- Kebab archive failure sets `actionError` on a hidden element (no visible feedback).
+- `refreshTopicRow` can read a stale list if a generation bump aborts the refresh.
