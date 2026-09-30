@@ -200,7 +200,7 @@ function webFetchAdapter(state: WebToolsState): ActionAdapter<unknown> {
       const maxChars = parsed.maxChars ?? DEFAULT_FETCH_CHARS;
       const fetched = await guardedGet(parsed.url, guardedOptions(state, { allowedHosts: [host] }));
       if (!fetched.ok) {
-        return { summary: fetched.summary };
+        return failureResult(fetched);
       }
       const text =
         fetched.body.contentType === 'text/html'
@@ -510,7 +510,7 @@ function webFeedAdapter(state: WebToolsState): ActionAdapter<unknown> {
       }
       const fetched = await guardedGet(parsed.url, guardedOptions(state, { allowedHosts: [host] }));
       if (!fetched.ok) {
-        return { summary: fetched.summary };
+        return failureResult(fetched);
       }
       const feed = parseFeed(fetched.body.text);
       if (!feed.ok) {
@@ -570,6 +570,18 @@ function webSearchAdapter(state: WebToolsState): ActionAdapter<unknown> {
       };
     },
   };
+}
+
+// A failed get: the fixed summary, plus any text that came from the remote
+// server (a redirect target) as `modelText` so it sits inside the untrusted
+// block instead of the summary.
+function failureResult(failed: { summary: string; detail?: string }): {
+  summary: string;
+  modelText?: string;
+} {
+  return failed.detail === undefined
+    ? { summary: failed.summary }
+    : { summary: failed.summary, modelText: failed.detail };
 }
 
 function hostOf(rawUrl: string): string {

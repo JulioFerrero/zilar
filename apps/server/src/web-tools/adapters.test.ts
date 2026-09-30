@@ -189,10 +189,9 @@ describe('web adapters (T-0125)', () => {
     const redirect = await run(adapters, 'web.fetch', ctxFor(), {
       url: 'https://redirect.example/',
     });
-    expect(redirect).toEqual({
-      summary: 'not followed: redirect to https://example.com/x',
-    });
-    expect(redirect.modelText).toBeUndefined();
+    expect(redirect.summary).toBe('not followed: redirect');
+    expect(redirect.summary).not.toContain('example.com');
+    expect(redirect.modelText).toContain('https://example.com/x');
   });
 
   it('web.fetch validates urls: oversize refused, out-of-range maxChars refused', async () => {

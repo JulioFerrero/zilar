@@ -62,7 +62,11 @@ export interface GuardedBody {
   text: string;
 }
 
-export type GuardedGetResult = { ok: true; body: GuardedBody } | { ok: false; summary: string };
+// A failed get. `summary` is fixed wording only; `detail` carries text that
+// came from the remote server (a redirect's `Location`) and must reach the
+// model only as `modelText`, never in a summary.
+export type GuardedGetResult =
+  { ok: true; body: GuardedBody } | { ok: false; summary: string; detail?: string };
 
 // Read-only, GET only, https only. No cookies, no auth headers, no body.
 export async function guardedGet(
@@ -124,12 +128,13 @@ export async function guardedGet(
     return { ok: false, summary: explainFetchError(error) };
   }
   if (response.status >= 300 && response.status < 400) {
-    return {
-      ok: false,
-      summary: response.location
-        ? `not followed: redirect to ${response.location}`
-        : `not followed: redirect (status ${response.status})`,
-    };
+    return response.location
+      ? {
+          ok: false,
+          summary: 'not followed: redirect',
+          detail: `The page redirects to ${response.location.slice(0, 2048)}. Call the tool again with that URL if you want to follow it.`,
+        }
+      : { ok: false, summary: `not followed: redirect (status ${response.status})` };
   }
   if (response.status < 200 || response.status >= 300) {
     return { ok: false, summary: `fetch failed with status ${response.status}` };
@@ -246,6 +251,16 @@ function fetchPinned(
         });
       },
     );
+    // `setTimeout` on the request is an idle timeout, so a server that drips
+    // one byte at a time could hold the connection for ever: a hard overall
+    // deadline ends the request whatever the server does.
+    const deadline = setTimeout(() => {
+      req.destroy(new Error('fetch timeout'));
+    }, timeoutMs);
+    deadline.unref();
+    req.on('close', () => {
+      clearTimeout(deadline);
+    });
     req.setTimeout(timeoutMs, () => {
       req.destroy(new Error('fetch timeout'));
     });

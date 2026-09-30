@@ -131,7 +131,9 @@ describe('guardedGet SSRF and limits (T-0125)', () => {
     });
     expect(result).toEqual({
       ok: false,
-      summary: 'not followed: redirect to https://other.example/x',
+      summary: 'not followed: redirect',
+      detail:
+        'The page redirects to https://other.example/x. Call the tool again with that URL if you want to follow it.',
     });
     expect(calls).toHaveLength(1);
   });
