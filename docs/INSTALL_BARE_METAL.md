@@ -206,13 +206,18 @@ the server listen on loopback only.
 **First account.** Sign-up needs an invite: there is no
 admin-creation endpoint. Mint the code the sign-up form asks for with
 the invite CLI, loading the server config from `/etc/galena/galena.env`
-(`set -a` exports every line the file defines, so values with spaces
-like `MAIL_FROM=Galena <…>` survive intact):
+(`set -a` exports every line the file defines; values with spaces such
+as `MAIL_FROM` are double-quoted in `.env.example`, which both the shell
+and systemd's `EnvironmentFile=` handle — verified with `sh` and `bash`):
 
 ```bash
 cd /opt/galena/apps/server
 sudo -u galena sh -c 'set -a; . /etc/galena/galena.env; ./node_modules/.bin/tsx src/auth/invite-cli.ts'
 ```
+
+(If you hand-edit the file, keep quotes around any value containing
+spaces: an unquoted `MAIL_FROM=Galena <…>` breaks the load and every
+variable after that line stays unset.)
 
 Open `https://chat.example.com`, sign up with your email, paste the
 code. The sign-in code arrives by email (SMTP from §4). Sign-ups after

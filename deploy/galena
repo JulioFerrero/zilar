@@ -193,7 +193,12 @@ cmd_init() {
   _tag="${_tag:-latest}"
 
   case "$_domain" in
-    ""|*"://"*|*"/"*|*" "*) die "init: bad domain '$_domain' — give a bare host like chat.example.com" ;;
+    # A bare host (optionally with a port for trials): letters, digits,
+    # dots, hyphens, and one optional :port. Anything else — spaces,
+    # slashes, $, backticks, =, shell metacharacters — is rejected, so a
+    # hostile or mistyped value can never reach the env file or Compose
+    # interpolation (where `$` would silently expand).
+    *[!A-Za-z0-9.:-]*|*"."*"."*"."*"."*|*".."*|*":"*":"*|*":") die "init: bad domain '$_domain' — give a bare host like chat.example.com" ;;
   esac
   case "$_admin_email" in
     *"@"*.*) ;;
@@ -207,6 +212,11 @@ cmd_init() {
   case "$_http_port$_https_port" in
     *[!0-9]*) die "init: ports must be numbers" ;;
   esac
+
+  # Empty here means the operator passed --domain= explicitly (the prompt
+  # defaults to localhost otherwise): fall back to localhost rather than
+  # writing an empty GALENA_DOMAIN.
+  _domain="${_domain:-localhost}"
 
   # The server image ships no dev-only packages (no pino-pretty), so even a
   # localhost trial runs NODE_ENV=production. The trial keeps the console
@@ -422,11 +432,20 @@ cmd_doctor() {
   fi
 
   # 2. Ports free (best effort: ss, netstat or lsof; skip when none exist).
+  # A listener that is OUR OWN caddy (same project) does not count: after
+  # `up`, doctor must stay green. Detection is by container name through
+  # the same compose file/project the other commands use.
   if [ -f "$ENV_FILE" ]; then
     _http_port="$(env_get HTTP_PORT)"; _https_port="$(env_get HTTPS_PORT)"
     _http_port="${_http_port:-80}"; _https_port="${_https_port:-443}"
   else
     _http_port=80; _https_port=443
+  fi
+  _own_caddy=""
+  if _own_caddy="$(compose ps --status running caddy 2>/dev/null | grep -c caddy)"; then
+    [ "$_own_caddy" -ge 1 ] || _own_caddy=""
+  else
+    _own_caddy=""
   fi
   _checker=""
   command -v ss >/dev/null 2>&1 && _checker="ss"
@@ -443,7 +462,11 @@ cmd_doctor() {
         lsof) lsof -iTCP:"$_p" -sTCP:LISTEN >/dev/null 2>&1 && _busy=1 ;;
       esac
       if [ "$_busy" -eq 1 ]; then
-        doctor_bad "port $_p is already in use" "stop whatever listens on $_p, or set HTTP_PORT/HTTPS_PORT in $ENV_FILE"
+        if [ -n "$_own_caddy" ]; then
+          doctor_ok "port $_p is held by this install's own caddy"
+        else
+          doctor_bad "port $_p is already in use" "stop whatever listens on $_p, or set HTTP_PORT/HTTPS_PORT in $ENV_FILE"
+        fi
       else
         doctor_ok "port $_p is free"
       fi
@@ -511,14 +534,17 @@ cmd_create_admin() {
   require_env_file
   require_docker
   _uses=1 _days=7
-  while [ "$#" -gt 1 ]; do
+  _ca_total=$#
+  while [ $# -gt 0 ]; do
     case "$1" in
       --uses=*|--days=*)
         _opt="${1%%=*}"; _val="${1#*=}"
         shift
         ;;
       --uses|--days)
-        _opt="$1"; _val="$2"; shift 2
+        _opt="$1"
+        [ "$#" -ge 2 ] || die "create-admin: $1 needs a value (hint: $1=value)"
+        _val="$2"; shift 2
         ;;
       *) die "create-admin: unknown option '$1'" ;;
     esac
@@ -527,9 +553,9 @@ cmd_create_admin() {
       --days) _days="$_val" ;;
     esac
   done
-  [ "$#" -eq 0 ] || die "create-admin: unknown option '$1'"
+  [ "$_ca_total" -ge 0 ]
   case "$_uses$_days" in
-    *[!0-9]*) die "create-admin: --uses and --days must be numbers" ;;
+    *[!0-9]*|"") die "create-admin: --uses and --days must be numbers" ;;
   esac
 
   compose ps --status running server 2>/dev/null | grep -q server \
@@ -588,7 +614,8 @@ cmd_backup() {
 +   uploads.tgz      the ejabberd uploads volume
 +   .env             a copy of $ENV_FILE (mode 0600 in the archive)
 +   SECRETS_WARNING.txt   "this archive contains live secrets"
-+   manifest.json    versions and provenance (domain, image tag, date)
++   manifest.json    versions and provenance (domain, image tag,
++                    postgres version, ejabberd status line, date)
 + databases would be dumped through the running containers; nothing else changes
 EOF
     return 0
@@ -610,9 +637,14 @@ EOF
   info "dumping the ejabberd database..."
   compose exec -T -e POSTGRES_PASSWORD postgres \
     sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -Fc -U postgres -d ejabberd' > "$_tmp/ejabberd.dump"
-  info "dumping roles and globals (passwords live only in the databases, never here)..."
+  info "dumping roles and globals..."
+  # globals.sql holds role definitions including SCRAM password hashes
+  # (not plaintext, but still secret material — the archive stays 0600).
   compose exec -T -e POSTGRES_PASSWORD postgres \
     sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dumpall -g -U postgres' > "$_tmp/globals.sql"
+  info "recording service versions for the manifest..."
+  _pg_version="$(compose exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d postgres -tAc "SHOW server_version"' 2>/dev/null | tr -d '[:space:]')"
+  _ej_version="$(compose exec -T ejabberd ejabberdctl status 2>/dev/null | head -n 1 | tr -d '\r\n' || true)"
   info "archiving uploads..."
   compose exec -T ejabberd tar -C /opt/ejabberd -czf - upload > "$_tmp/uploads.tgz"
 
@@ -630,6 +662,8 @@ EOF
   "domain": "$_domain",
   "image_owner": "$(env_get IMAGE_OWNER)",
   "image_tag": "$(env_get IMAGE_TAG)",
+  "postgres_version": "${_pg_version:-unknown}",
+  "ejabberd_status": "${_ej_version:-unknown}",
   "databases": ["galena", "ejabberd"]
 }
 EOF
@@ -692,10 +726,19 @@ EOF
   # leave the install stopped with no hint. _step names the current phase
   # for the recovery message.
   _step="stop app services"
+  # Recreate the three audit_log immutability triggers (same statements as
+  # apps/server/drizzle/0013_audit_log_immutable.sql, which owns them).
+  # Runs best-effort: failures are reported but never abort recovery.
+  _ensure_audit_triggers() {
+    POSTGRES_PASSWORD="$_arch_pw" compose exec -T -e POSTGRES_PASSWORD postgres \
+      sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -v ON_ERROR_STOP=1 -c "DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log" -c "CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_truncate BEFORE TRUNCATE ON audit_log FOR EACH STATEMENT EXECUTE FUNCTION audit_log_block_mutations()"' 2>/dev/null \
+      || warn "could not recreate the audit_log triggers — run the CREATE TRIGGER statements from apps/server/drizzle/0013_audit_log_immutable.sql by hand, then verify with: SELECT tgname FROM pg_trigger WHERE tgrelid='audit_log'::regclass;"
+  }
   _recover() {
     warn "restore failed during: $_step."
     warn "restarting the stack so the install is running again..."
     compose up -d --wait || warn "restart failed too — run '$PROG up' by hand, then '$PROG status'."
+    _ensure_audit_triggers
     warn "safe to re-run: '$PROG restore $_archive --yes' (idempotent: roles are re-created, dumps use --clean)."
     trap - EXIT
     rm -rf "$_tmp"
@@ -810,6 +853,18 @@ EOF
   _step="start everything and wait for health"
   info "starting everything and waiting for health..."
   compose up -d --wait || { _step="start everything"; _recover; }
+  # The stack must never run without audit immutability: verify all three
+  # triggers exist and fail loudly (non-zero, clear message) if not.
+  _step="verify the audit_log triggers"
+  _found="$(POSTGRES_PASSWORD="$_arch_pw" compose exec -T -e POSTGRES_PASSWORD postgres \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -tAc "SELECT count(*) FROM pg_trigger WHERE tgrelid='"'"'audit_log'"'"'::regclass AND tgname IN ('"'"'audit_log_no_update'"'"','"'"'audit_log_no_delete'"'"','"'"'audit_log_no_truncate'"'"')"' 2>/dev/null | tr -d '[:space:]')"
+  if [ "$_found" != "3" ]; then
+    _ensure_audit_triggers
+    _found="$(POSTGRES_PASSWORD="$_arch_pw" compose exec -T -e POSTGRES_PASSWORD postgres \
+      sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -tAc "SELECT count(*) FROM pg_trigger WHERE tgrelid='"'"'audit_log'"'"'::regclass AND tgname IN ('"'"'audit_log_no_update'"'"','"'"'audit_log_no_delete'"'"','"'"'audit_log_no_truncate'"'"')"' 2>/dev/null | tr -d '[:space:]')"
+    [ "$_found" = "3" ] || die "restore finished but the audit_log immutability triggers are missing (found $_found of 3). The stack is running WITHOUT append-only audit protection. Recreate them from apps/server/drizzle/0013_audit_log_immutable.sql, verify with: SELECT tgname FROM pg_trigger WHERE tgrelid='audit_log'::regclass;"
+  fi
+  info "audit_log immutability triggers verified (3 of 3)."
   info "restored. Check '$PROG status' and sign in to confirm your data is back."
 }
 

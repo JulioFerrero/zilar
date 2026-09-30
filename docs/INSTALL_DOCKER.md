@@ -162,17 +162,21 @@ database itself. Back up first if the install matters to you:
 
 `backup [dir]` writes `galena-backup-<UTC stamp>.tgz` (mode 0600: it
 contains live secrets) with a `pg_dump` custom-format dump of both
-databases, a `pg_dumpall -g` roles/globals dump (so a restore to a fresh
-cluster recreates the roles the dumps need), the ejabberd uploads
-volume, a copy of `deploy/.env`, and a `manifest.json` with versions —
-all taken through the running containers. `restore <archive>` needs an
+databases, a `pg_dumpall -g` roles/globals dump (role definitions incl.
+SCRAM password hashes — secret material, hence 0600), the ejabberd
+uploads volume, a copy of `deploy/.env`, and a `manifest.json` with
+versions (domain, image owner/tag, postgres version, ejabberd status
+line, date) — all taken through the running containers. `restore <archive>` needs an
 explicit `--yes`: it stops the app services, recreates roles/globals
 from the archive, restores both databases (`pg_restore --clean`) using
 the *archived* credentials (a restore to a new machine with different
-passwords works), restores uploads and the `.env` (the current `.env` is
+passwords works), recreates the `audit_log` immutability triggers and
+verifies all three exist before finishing (a missing trigger fails the
+restore loudly — the stack never runs without append-only audit
+protection), restores uploads and the `.env` (the current `.env` is
 kept as `.env.bak-<stamp>`), restarts and waits for health. If any step
-fails, restore restarts the stack first and tells you what is safe to
-re-run — never leaves the install down silently. Backups live in
+fails, restore recreates the triggers, restarts the stack first and tells
+you what is safe to re-run — never leaves the install down silently. Backups live in
 `deploy/backups/` by default: the archive contains live secrets, is
 mode 0600, and the command warns loudly — NEVER commit that directory
 (a `deploy/backups/` `.gitignore` entry is a pending lead decision).
