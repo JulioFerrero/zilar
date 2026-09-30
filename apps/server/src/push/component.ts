@@ -51,11 +51,7 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
   xmpp.on('stanza', (stanza: PushXmppElement) => {
     const notification = parsePushIq(stanza);
     if (notification === undefined) {
-      // Includes disco and any other IQ addressed to the component: answer
-      // result so ejabberd does not treat us as dead.
-      if (stanza.is('iq') && stanza.attrs['type'] === 'set') {
-        void answerIq(xmpp, stanza, 'result');
-      }
+      handleNonPushStanza(xmpp, stanza, options.domain);
       return;
     }
     // One node belongs to one device of one user. The chain always advances,
@@ -87,6 +83,36 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
   };
 }
 
+// Anything that is not a push publish: answer disco `get` with our identity
+// (ejabberd probes the component on connect) and every other IQ `set` with
+// a bare `result`, so ejabberd never treats us as dead.
+function handleNonPushStanza(xmpp: PushComponent, stanza: PushXmppElement, domain: string): void {
+  if (!stanza.is('iq')) {
+    return;
+  }
+  const type = stanza.attrs['type'];
+  const id = stanza.attrs['id'];
+  const from = stanza.attrs['from'];
+  if (id === undefined || from === undefined) {
+    return;
+  }
+  if (
+    type === 'get' &&
+    stanza.getChild('query', 'http://jabber.org/protocol/disco#info') !== undefined
+  ) {
+    void xmpp.send(withEnvelope(discoInfoHandler(domain), id, from)).catch(() => undefined);
+    return;
+  }
+  if (type === 'set') {
+    void answerIq(xmpp, stanza, 'result');
+  }
+}
+
+function withEnvelope(stanza: PushXmppElement, id: string, to: string): PushXmppElement {
+  const attrs = { ...stanza.attrs, id, to };
+  return xml('iq', attrs, ...stanza.getChildElements());
+}
+
 async function handleNotification(
   xmpp: PushComponent,
   service: PushServiceDeps,
@@ -99,12 +125,6 @@ async function handleNotification(
     switch (outcome.kind) {
       case 'sent':
         logger.info({ userId: outcome.userId, deviceId: outcome.deviceId }, 'push sent');
-        break;
-      case 'generic':
-        logger.info(
-          { userId: outcome.userId, deviceId: outcome.deviceId },
-          'push sent without content',
-        );
         break;
       case 'dropped':
         logger.info(

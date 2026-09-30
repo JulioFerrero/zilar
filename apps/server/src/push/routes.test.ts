@@ -266,4 +266,56 @@ describe('push routes', () => {
     });
     expect(unknown.status).toBe(404);
   });
+
+  it('stamps failed_at when the test send fails without expiring', async () => {
+    const routes = createPushRoutes({
+      auth: context.auth,
+      db: context.db,
+      config: context.config,
+      push: pushConfig(),
+      adminClient: context.adminClient,
+      logger: context.logger,
+      sender: {
+        send: async () => {
+          throw new Error('relay refused the request');
+        },
+      },
+    });
+    const app = new Hono();
+    app.route('/api', routes);
+    app.onError((error, c) => {
+      if (error instanceof HttpError) {
+        return c.json({ error: { code: error.code, message: error.message } }, error.status);
+      }
+      throw error;
+    });
+    const full = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+    });
+    const ana = await bootstrapUser(context, full, 'ana-failed@example.com');
+    const headers = { cookie: ana.cookie, 'content-type': 'application/json' };
+
+    const registered = await app.request(`${TEST_BASE_URL}/api/push/subscriptions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(deviceBody('https://push.example.com/failed-1')),
+    });
+    expect(registered.status).toBe(200);
+    const { id } = (await registered.json()) as { id: string };
+
+    const test = await app.request(`${TEST_BASE_URL}/api/push/test`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ subscriptionId: id }),
+    });
+    expect(test.status).toBe(502);
+    const { devicesForUser } = await import('./store');
+    const [device] = await devicesForUser(context.db, ana.id);
+    expect(device?.failedAt).not.toBeNull();
+    expect(device?.lastUsedAt).toBeNull();
+  });
 });

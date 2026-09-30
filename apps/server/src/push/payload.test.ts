@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildGenericPushPayload,
-  buildPushPayload,
-  PushPayloadSchema,
-  type ResolvedPushMessage,
-} from './payload';
+import { buildPushPayload, PushPayloadSchema, type ResolvedPushMessage } from './payload';
 
 const message: ResolvedPushMessage = {
   chatJid: 'bug@rooms.galena.localhost',
@@ -83,11 +78,5 @@ describe('buildPushPayload', () => {
     expect(Buffer.byteLength(JSON.stringify(payload), 'utf8')).toBeLessThanOrEqual(
       PushPayloadSchema.MAX_BYTES,
     );
-  });
-});
-
-describe('buildGenericPushPayload', () => {
-  it('carries no chat reference and no text', () => {
-    expect(buildGenericPushPayload()).toEqual({ title: 'Galena', body: 'New message' });
   });
 });

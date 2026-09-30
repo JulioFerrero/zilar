@@ -6,12 +6,7 @@ import { allowedArchives, type ArchivePool, type SearchOwner } from '../search/s
 import { stanzaFrom } from '../search/routes';
 import { canSeeTopic } from '../topics/access';
 import type { PushCipher } from './crypto';
-import {
-  buildGenericPushPayload,
-  buildPushPayload,
-  type PushPayload,
-  type ResolvedPushMessage,
-} from './payload';
+import { buildPushPayload, type PushPayload, type ResolvedPushMessage } from './payload';
 import type { PushNotification } from './protocol';
 import type { WebPushDelivery } from './sender';
 import {
@@ -47,13 +42,18 @@ export interface PushServiceDeps {
 
 export type PushOutcome =
   | { kind: 'sent'; userId: string; deviceId: string }
-  | { kind: 'generic'; userId: string; deviceId: string }
   | {
       kind: 'dropped';
       userId: string;
       deviceId: string;
       reason:
-        'muted' | 'hidden' | 'duplicate' | 'archive-unavailable' | 'undecryptable' | 'send-failed';
+        | 'muted'
+        | 'hidden'
+        | 'duplicate'
+        | 'no-message'
+        | 'archive-unavailable'
+        | 'undecryptable'
+        | 'send-failed';
     }
   | { kind: 'unknown-device'; node: string };
 
@@ -90,7 +90,7 @@ export async function handleIncomingPush(
     return { kind: 'unknown-device', node: notification.node };
   }
   const outcome = await resolveAndSend(deps, device, now);
-  if (outcome.kind === 'sent' || outcome.kind === 'generic') {
+  if (outcome.kind === 'sent') {
     await markDeviceUsed(deps.db, device.id, now);
   }
   return outcome;
@@ -134,16 +134,14 @@ async function resolveAndSend(
   }
   const newest = scan.newest;
   if (newest === undefined) {
-    // Nothing acceptable to show. When the archive simply has no rows in
-    // scope (a transient race ejabberd won) the trigger is real but
-    // unresolvable, so the content-free generic buzzes rather than silence.
-    // When rows exist but every one is muted, hidden or already notified,
-    // silence is correct — especially for mute.
-    if (scan.saw === 'empty') {
-      await sendPayload(deps, device, subscription, buildGenericPushPayload());
-      return { kind: 'generic', userId: device.userId, deviceId: device.id };
-    }
-    const reason = scan.saw === 'muted' ? 'muted' : scan.saw === 'hidden' ? 'hidden' : 'duplicate';
+    // Nothing acceptable to show: persistent emptiness (the trigger may be
+    // a muted or hidden message whose MAM row never landed), mute,
+    // invisibility, or an already-notified message all stay silent. A muted
+    // or hidden message never produces even a generic notification.
+    const reason =
+      scan.saw === 'muted' || scan.saw === 'hidden' || scan.saw === 'no-message'
+        ? scan.saw
+        : 'duplicate';
     return { kind: 'dropped', userId: device.userId, deviceId: device.id, reason };
   }
 
@@ -156,7 +154,7 @@ async function resolveAndSend(
   if (payload === undefined) {
     return { kind: 'dropped', userId: device.userId, deviceId: device.id, reason: 'muted' };
   }
-  markNotified(deps, device.userId, scan.observed);
+  markNotified(deps, device.userId, scan.notify);
   const outcome = await sendPayload(deps, device, subscription, payload);
   // `last_used_at` is the last successful send; a failed send only stamps
   // `failed_at` (inside `sendPayload`), so the 90-day inactivity rule keeps
@@ -201,47 +199,59 @@ const NOTIFIED_REMEMBERED = 500;
 
 interface NewestScan {
   newest: { message: ResolvedPushMessage } | undefined;
-  /** Every origin id the winning read observed. On send all are marked
-   * notified: one publish IQ produces at most one notification, and a
-   * burst while offline buzzes once with the latest — an older message the
-   * same read already saw is superseded, never re-announced later. */
-  observed: string[];
+  /** Origin ids to mark as notified when a message is sent: the sent
+   * message plus the older rows the winning read evaluated past
+   * (`superseded` below). Rows skipped as muted or hidden above the sent
+   * row are never marked — a later change can still notify them; rows that
+   * were already seen stay as they are. */
+  notify: string[];
   /** What the scan ran into when nothing was acceptable. */
-  saw: 'empty' | 'muted' | 'hidden' | 'duplicate';
+  saw: 'muted' | 'hidden' | 'duplicate' | 'no-message';
 }
 
 // The newest notifiable message across every chat the user may see (DMs with
 // contacts/AIs plus visible group and topic rooms), newest first. One publish
 // IQ produces at most one notification — the newest acceptable row wins, and
 // a burst while offline buzzes once with the latest, never once per message.
-// Rows in muted chats and private topics the user cannot see never notify,
-// as retraction rows (their text is the stock fallback), body-less reaction
-// rows, the user's own outgoing DM rows, and rows already notified do not
-// either.
+// Rows in muted chats and private topics the user cannot see never notify —
+// not even generically: when the trigger's MAM row has not landed yet the
+// scan cannot tell a muted message from a race, so an empty scope stays
+// silent. Retraction rows (their text is the stock fallback), body-less
+// reaction rows, the user's own outgoing DM rows, and rows already notified
+// do not notify either.
 async function newestMessageForUser(deps: PushServiceDeps, userId: string): Promise<NewestScan> {
   const allowed = await allowedArchives(deps.db, deps.config, userId);
   const seen = deps.recentlyNotified.get(userId) ?? new Set<string>();
   // A muted or hidden newest sticks across the MAM-race retries: the trigger
-  // itself must stay silent, and older rows behind it are superseded.
+  // itself must stay silent, and older rows behind it are not evaluated.
   let sticky: 'muted' | 'hidden' | undefined;
-  let observed: string[] = [];
+  let everSawRows = false;
   for (let attempt = 0; attempt < ARCHIVE_LOOKUP_ATTEMPTS; attempt += 1) {
     const rows = await readNewestCandidates(deps.archive, allowed);
     if (rows.length > 0) {
-      observed = rows.map((row) => row.originId).filter((originId) => originId !== '');
+      everSawRows = true;
     }
+    const superseded: string[] = [];
     for (const row of rows) {
       if (row.originId === '' || seen.has(row.originId)) {
         continue;
       }
       const verdict = await resolveCandidate(deps, userId, allowed, row);
       if (verdict.status === 'ok') {
-        return { newest: { message: verdict.message }, observed, saw: 'duplicate' };
+        // The sent message plus every older row this read superseded. Rows
+        // skipped as muted/hidden above it are deliberately excluded (see
+        // the interface comment): they were never notified for.
+        return {
+          newest: { message: verdict.message },
+          notify: [row.originId, ...superseded],
+          saw: 'duplicate',
+        };
       }
       if (verdict.status === 'muted' || verdict.status === 'hidden') {
         sticky = verdict.status;
         break;
       }
+      superseded.push(row.originId);
     }
     // Something new resolved to silence: the verdict already covers the
     // trigger, so stop. Anything else (only skipped rows, or nothing unseen
@@ -254,9 +264,16 @@ async function newestMessageForUser(deps: PushServiceDeps, userId: string): Prom
     }
   }
   if (sticky !== undefined) {
-    return { newest: undefined, observed, saw: sticky };
+    return { newest: undefined, notify: [], saw: sticky };
   }
-  return { newest: undefined, observed, saw: observed.length === 0 ? 'empty' : 'duplicate' };
+  // No acceptable row and nothing known muted: the trigger's MAM row may
+  // still have been landing (or the message is one we never show, like a
+  // retraction). Either way there is nothing to show, and — decision from
+  // finding 2 — the scan stays silent rather than risking a generic buzz
+  // for a muted or hidden message whose row never landed. Reads that held
+  // only already-notified rows report `duplicate`; persistent emptiness
+  // reports `no-message`.
+  return { newest: undefined, notify: [], saw: everSawRows ? 'duplicate' : 'no-message' };
 }
 
 function buildNewestQuery(allowed: SearchOwner): { text: string; values: unknown[] } {

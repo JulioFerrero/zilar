@@ -220,6 +220,16 @@ describe('push component', () => {
       createComponent: () => fake,
     });
 
+    const discoQuery: PushXmppElement = {
+      is: (name) => name === 'query',
+      attrs: { xmlns: 'http://jabber.org/protocol/disco#info' },
+      getChild: () => undefined,
+      getChildren: () => [],
+      getChildText: () => undefined,
+      getName: () => 'query',
+      getChildElements: () => [],
+      text: () => '',
+    };
     for (const stanza of listeners.get('stanza') ?? []) {
       const emit = stanza as (value: PushXmppElement) => void;
       emit(publishStanza('p-unknown'));
@@ -233,17 +243,35 @@ describe('push component', () => {
         getChildElements: () => [],
         text: () => '',
       });
+      emit({
+        is: (name) => name === 'iq',
+        attrs: { type: 'get', id: 'disco-2', from: TEST_XMPP_DOMAIN },
+        getChild: (name: string) => (name === 'query' ? discoQuery : undefined),
+        getChildren: () => [],
+        getChildText: () => undefined,
+        getName: () => 'iq',
+        getChildElements: () => [],
+        text: () => '',
+      });
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(sent).toHaveLength(0);
     expect(
       sentStanzas.filter((stanza) => stanza.is('iq') && stanza.attrs['type'] === 'result'),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
+    const disco = sentStanzas.find((stanza) => stanza.attrs['id'] === 'disco-2');
+    expect(disco?.attrs['to']).toBe(TEST_XMPP_DOMAIN);
+    expect(
+      disco
+        ?.getChild('query', 'http://jabber.org/protocol/disco#info')
+        ?.getChildren('feature')
+        .map((feature) => feature.attrs['var']),
+    ).toEqual(['urn:xmpp:push:0', 'http://jabber.org/protocol/pubsub']);
     await handle.stop();
   });
 
-  it('serializes two publish IQs for one node in order', async () => {
+  it('handles two publish IQs for one node without losing either', async () => {
     const app = testApp(context);
     const ana = await bootstrapUser(context, app, 'ana@example.com');
     const bob = await contactOf(context, app, ana.id, 'bob@example.com');
@@ -297,9 +325,19 @@ describe('push component', () => {
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // Both IQs resolve the same newest message; the second is a duplicate.
-    // One notification, two result answers.
-    expect(sent).toHaveLength(1);
+    // The per-node chain serializes the two handlers: the first sends the
+    // newest message, the second sends the older one it had not seen (no
+    // cross-IQ suppression — finding 4). Both publish IQs get a result.
+    expect(sent).toHaveLength(2);
+    expect(JSON.parse(sent[0]!.payload)).toMatchObject({ body: 'second' });
+    expect(JSON.parse(sent[1]!.payload)).toMatchObject({ body: 'first' });
+
+    // And a third IQ for the same node stays silent: both are now seen.
+    for (const stanza of listeners.get('stanza') ?? []) {
+      (stanza as (value: PushXmppElement) => void)(publishStanza('p-comp-2', 'n3'));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(sent).toHaveLength(2);
     await handle.stop();
   });
 });

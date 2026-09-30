@@ -370,15 +370,182 @@ describe('push send-time service', () => {
     expect(payload.body).toBe('still here');
   });
 
-  it('sends the content-free generic when the archive has nothing in scope', async () => {
+  it('stays silent when the archive has nothing in scope (finding 2)', async () => {
+    // Persistent emptiness may be a muted or hidden message whose MAM row
+    // never landed: no generic buzz, so existence never leaks.
     const app = testApp(context);
     const ana = await bootstrapUser(context, app, 'ana@example.com');
     await registerDevice(ana.id, 'p-ana-8');
     archiveRows = [];
 
     const outcome = await handleIncomingPush(deps(), { node: 'p-ana-8', from: TEST_XMPP_DOMAIN });
-    expect(outcome).toMatchObject({ kind: 'generic' });
-    expect(JSON.parse(sent[0]!.payload)).toEqual({ title: 'Galena', body: 'New message' });
+    expect(outcome).toMatchObject({ kind: 'dropped', reason: 'no-message' });
+    expect(sent).toHaveLength(0);
+  });
+
+  it('notifies a message whose MAM row lands during the retry race', async () => {
+    // Attempts 1-2 see nothing (the publish IQ won the race); attempt 3
+    // sees the acceptable row and notifies it.
+    const app = testApp(context);
+    const ana = await bootstrapUser(context, app, 'ana@example.com');
+    const bob = await contactOf(context, app, ana.id, 'bob@example.com');
+    await registerDevice(ana.id, 'p-ana-race');
+    const bobJid = `${localpartFor(bob.id)}@${TEST_XMPP_DOMAIN}`;
+    const late = dmRow(localpartFor(ana.id), bobJid, 'landed late', 'dm-late');
+    let reads = 0;
+    const racing: ArchivePool = {
+      query: async () => {
+        reads += 1;
+        return (reads < 3 ? [] : [late]) as unknown as import('../search/service').ArchiveRow[];
+      },
+      close: async () => {},
+    };
+    const racingDeps = (): PushServiceDeps => ({ ...deps(), archive: racing });
+
+    const outcome = await handleIncomingPush(racingDeps(), {
+      node: 'p-ana-race',
+      from: TEST_XMPP_DOMAIN,
+    });
+    expect(reads).toBe(3);
+    expect(outcome).toMatchObject({ kind: 'sent' });
+    expect(JSON.parse(sent[0]!.payload)).toMatchObject({ body: 'landed late' });
+  });
+
+  it('stays silent when only a muted row lands during the retry race', async () => {
+    // Empty, empty, then a muted row: the trigger itself may have been the
+    // muted message all along — silence, never a generic.
+    const app = testApp(context);
+    const ana = await bootstrapUser(context, app, 'ana@example.com');
+    const bob = await contactOf(context, app, ana.id, 'bob@example.com');
+    await registerDevice(ana.id, 'p-ana-racer');
+    const bobJid = `${localpartFor(bob.id)}@${TEST_XMPP_DOMAIN}`;
+    await context.db.insert(chatPrefs).values({
+      userId: ana.id,
+      chatJid: bobJid,
+      mutedUntil: new Date('2026-10-30T00:00:00Z'),
+      archived: false,
+      pinnedAt: null,
+      updatedAt: new Date(),
+    });
+    const mutedRow = dmRow(localpartFor(ana.id), bobJid, 'muted late', 'dm-muted-late');
+    let reads = 0;
+    const racing: ArchivePool = {
+      query: async () => {
+        reads += 1;
+        return (reads < 3 ? [] : [mutedRow]) as unknown as import('../search/service').ArchiveRow[];
+      },
+      close: async () => {},
+    };
+    const racingDeps = (): PushServiceDeps => ({ ...deps(), archive: racing });
+
+    const outcome = await handleIncomingPush(racingDeps(), {
+      node: 'p-ana-racer',
+      from: TEST_XMPP_DOMAIN,
+    });
+    expect(outcome).toMatchObject({ kind: 'dropped', reason: 'muted' });
+    expect(sent).toHaveLength(0);
+  });
+
+  it('notifies a hidden message once it becomes visible (finding 4)', async () => {
+    // A row skipped as hidden is never marked seen: after the user is
+    // added to the private topic, the next IQ notifies it.
+    const app = testApp(context);
+    const ana = await bootstrapUser(context, app, 'ana@example.com');
+    const bob = await contactOf(context, app, ana.id, 'bob@example.com');
+    const groupId = randomUUID();
+    const generalRoom = 'gracegeneral00001';
+    const secretRoom = 'gracesecret000001';
+    const privateTopicId = randomUUID();
+    await context.db.insert(groups).values({
+      id: groupId,
+      roomLocalpart: generalRoom,
+      title: 'Grace Group',
+      createdBy: ana.id,
+    });
+    await context.db.insert(groupMembers).values([
+      { groupId, userId: ana.id, role: 'owner' },
+      { groupId, userId: bob.id, role: 'member' },
+    ]);
+    await context.db.insert(topics).values({
+      id: randomUUID(),
+      groupId,
+      name: 'General',
+      glyph: 'G',
+      roomLocalpart: generalRoom,
+      visibility: 'public',
+      kind: 'chat',
+      status: 'open',
+      isGeneral: true,
+      createdBy: ana.id,
+    });
+    await context.db.insert(topics).values({
+      id: privateTopicId,
+      groupId,
+      name: 'Secrets',
+      glyph: 'S',
+      roomLocalpart: secretRoom,
+      visibility: 'private',
+      kind: 'chat',
+      status: 'open',
+      isGeneral: false,
+      createdBy: ana.id,
+    });
+    await context.db.insert(topicMembers).values({
+      topicId: privateTopicId,
+      userId: ana.id,
+      addedBy: ana.id,
+    });
+    await registerDevice(bob.id, 'p-bob-race');
+    archiveRows = [roomRow(`${secretRoom}@${MUC}`, 'Ana', 'hidden plan text', 'room-hidden-1')];
+
+    const shared = deps();
+    const first = await handleIncomingPush(shared, { node: 'p-bob-race', from: TEST_XMPP_DOMAIN });
+    expect(first).toMatchObject({ kind: 'dropped', reason: 'hidden' });
+    expect(sent).toHaveLength(0);
+
+    // Bob joins the private topic; the same row is still unmarked, so the
+    // next IQ notifies it.
+    await context.db.insert(topicMembers).values({
+      topicId: privateTopicId,
+      userId: bob.id,
+      addedBy: ana.id,
+    });
+    const second = await handleIncomingPush(shared, { node: 'p-bob-race', from: TEST_XMPP_DOMAIN });
+    expect(second).toMatchObject({ kind: 'sent' });
+    expect(JSON.parse(sent[0]!.payload)).toMatchObject({
+      title: 'Ana in Grace Group › Secrets',
+      body: 'hidden plan text',
+    });
+  });
+
+  it('pins the archive query text and params (finding 1)', async () => {
+    const app = testApp(context);
+    const ana = await bootstrapUser(context, app, 'ana@example.com');
+    await registerDevice(ana.id, 'p-ana-query');
+    const seen: Array<{ text: string; values: unknown[] }> = [];
+    const spying: ArchivePool = {
+      query: async (text, values) => {
+        seen.push({ text, values });
+        return [];
+      },
+      close: async () => {},
+    };
+    const spyingDeps = (): PushServiceDeps => ({ ...deps(), archive: spying });
+
+    await handleIncomingPush(spyingDeps(), { node: 'p-ana-query', from: TEST_XMPP_DOMAIN });
+    expect(seen.length).toBeGreaterThan(0);
+    for (const call of seen) {
+      // Rooms are compared as full JIDs (`username = ANY($1)`), DMs under
+      // the caller's own localpart with a `bare_peer` filter — values
+      // travel as bindings, never string-built SQL.
+      expect(call.text).toContain('username = ANY($1)');
+      expect(call.text).toContain('username = $2 AND bare_peer = ANY($3)');
+      const [rooms, ownLocalpart, dmPeers, cap] = call.values;
+      expect(Array.isArray(rooms)).toBe(true);
+      expect(ownLocalpart).toBe(localpartFor(ana.id));
+      expect(Array.isArray(dmPeers)).toBe(true);
+      expect(cap).toBe(25);
+    }
   });
 
   it('drops when the archive is down instead of guessing', async () => {

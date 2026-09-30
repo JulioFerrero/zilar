@@ -67,13 +67,6 @@ export function buildPushPayload(
   return payload;
 }
 
-// The no-archive fallback: ejabberd notified us but the chat archive is not
-// configured (or has nothing newer), so who and where are unknown. Never
-// carries text.
-export function buildGenericPushPayload(): PushPayload {
-  return { title: 'Galena', body: 'New message' };
-}
-
 // DMs read as just the name ("Ana"); groups read as who plus where
 // ("Ana in Acme Web › Bug: checkout…").
 function titleFor(message: ResolvedPushMessage): string {

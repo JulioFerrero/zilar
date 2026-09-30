@@ -115,6 +115,16 @@ pnpm build
 ### Blocked / needs a decision
 - **Lead follow-ups needed (not blocked on my side):** (1) assign the migration number so the `push_subscriptions`/`push_settings` migration can be generated + committed; (2) add the one compose line `EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:?...}` to `infra/docker-compose.dev.yml` (+ the secret in `infra/.env`); (3) restart ejabberd, then run the stage-B gate (`GALENA_PUSH_GATE=1 … live-gate.test.ts`) before the Helium live check.
 
+### Round 2 — pre-review findings (PREREVIEW.md, untracked, not committed)
+- **Finding 2 (must-fix, generic-fallback existence leak):** removed the generic fallback from the send path entirely. Persistent archive emptiness now reports `dropped/no-message` — a muted/hidden message whose MAM row never landed can never produce even a generic buzz. `PushOutcome` loses the `generic` kind; `buildGenericPushPayload` deleted (was dead after the removal) with its test. New retry-race tests with the fake archive: empty→empty→acceptable sends; empty→empty→muted drops `muted`; persistent emptiness drops `no-message`. `markDeviceUsed` now runs on `sent` only.
+- **Finding 1:** new test pins the archive query text/params (`username = ANY($1)`, `username = $2 AND bare_peer = ANY($3)`, bindings incl. cap 25).
+- **Finding 4:** seen-marking scoped to the sent message + superseded older rows only; muted/hidden-skipped rows are never marked (new test: hidden row notifies once the user joins the topic). The component two-IQ test updated to the new semantics (both messages send in chain order; a third IQ stays silent).
+- **Finding 5:** `POST /push/test` stamps `failed_at` on non-gone send failures (new routes test).
+- **Finding 7:** `discoInfoHandler` wired — disco `get` IQs get the identity payload, other `set` IQs a bare `result` (new component test asserts the disco features).
+- **Finding 3 (migration):** per lead instruction, still no `db:generate`; will run it for 0031 after the rebase (T-0120=0029, T-0124=0030 merge first).
+- **Finding 8 (stage B):** unchanged — Report stays honest, lead does the live proof.
+- Checks rerun (scoped only, `--maxWorkers=2`): `format:check` pass (only PREREVIEW.md warns — untracked, untouched), `lint` pass, server `typecheck` pass; push 8 files 56 tests pass; neighbours `topics` + `authz-sweep` + `admin-client` + `config` 101 pass. No full suites (per rule change; pre-reviewer already ran them).
+
 ---
 
 ## Review (written by Claude)

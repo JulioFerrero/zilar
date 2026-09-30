@@ -16,6 +16,7 @@ import { parseNode, randomNode } from './protocol';
 import { createWebPushSender, isExpiredSubscription, type WebPushDelivery } from './sender';
 import {
   devicesForUser,
+  markDeviceFailed,
   removeDevice,
   saveDevice,
   setShowPreviewsForUser,
@@ -281,6 +282,9 @@ export function createPushRoutes(deps: PushRoutesDependencies): Hono {
       if (isExpiredSubscription(error)) {
         throw new HttpError(410, 'device_gone', 'The push device is no longer usable');
       }
+      // Like the component path: a failed send stamps `failed_at`, so the
+      // device list and the 90-day rule see the failure.
+      await markDeviceFailed(deps.db, target.id, new Date(now()));
       throw new HttpError(502, 'push_failed', 'The test notification could not be sent');
     }
     return c.json({ sent: true });
