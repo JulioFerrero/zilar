@@ -1,7 +1,7 @@
 ---
 id: T-0138
 title: Mobile: message search
-status: review
+status: merged
 milestone: M5
 branch: task/T-0138-mobile-search
 model: meta/muse-spark-1.3-contributor
@@ -103,10 +103,11 @@ Web changes, server changes, search filters beyond chat scope, semantic search.
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved after two rounds. The real-server break (paging sent an ISO date instead of the microsecond `nextBefore` cursor) is fixed with a regression test using a realistic cursor; 400 on paging ends with an inline error and Retry. No secrets: bearer only in the authorization header, no `console.*` in the new code, error bodies do not echo the query. Snippets render as plain text; mark offsets are bounds-checked. Mobile only; to be run on the Android emulator after the batch merge.
 
 ### Findings
--
+- Should-fix, deferred: the jump-scroll retry timers capture an index, so a new message arriving within 400 ms could scroll to a stale row.
+- Should-fix, deferred: `loadMore` creates an AbortController that is never stored or aborted, so a superseded page request runs to completion (wasted request only; its result is dropped).
 
 ### Follow-ups
--
+- Re-resolve the jump index on each retry; keep and abort the load-more controller.
