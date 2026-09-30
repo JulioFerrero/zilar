@@ -53,6 +53,22 @@ The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links 
 - Never change `AGENTS.md`, `docs/PROJECT_PLAN.md`, `work/BOARD.md`, or any other task's file.
 - Don't guess on architecture or security decisions. Ask in the Report instead.
 
+## Running tests (the machine is shared)
+
+- While you work, run only the tests for the files you touched: `pnpm --filter <package> test --maxWorkers=2 <path>` (or `related`/`--changed`). Never a bare `turbo test`, never `vitest run` without a filter and the worker cap, never `--force`.
+- Once, at the end, run the full suite of each package you changed, still with `--maxWorkers=2`. If you changed `schema.ts`, `packages/protocol` or `packages/chat-core`, also run the server and web suites in full.
+- Wait for a run to finish before starting another.
+
+## Security checklist (check each before you set status review)
+
+- Secrets and bearer tokens (invite links, OTPs, API keys) never reach logs, audit detail, errors or URLs you log. Check request logging too.
+- Deletes and updates are scoped: a `where` that names only a user id, a chat id or a role id without the group is a bug.
+- Every cap or uniqueness rule is enforced atomically (unique index, or a transaction with an advisory lock), never check-then-insert. Read the state you diff INSIDE the transaction.
+- Nothing has an effect before its permission check passes; a failure after a claim refunds it.
+- An unknown thing and a thing the caller may not see answer the same 404.
+- Every new route is covered by the 401 sweep; every write has a rate limit or a cap.
+- Audit entries carry ids only, never message text, code or output.
+
 ## Honesty
 
 - Report what actually happened. If something doesn't work, say so. A task marked "done" that doesn't work is worse than one marked "blocked".
