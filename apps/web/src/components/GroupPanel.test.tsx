@@ -339,6 +339,33 @@ describe('GroupPanel', () => {
       await waitFor(() => expect(members.getByText('Designers')).toBeTruthy());
       expect(screen.queryByRole('region', { name: 'Roles' })).toBeNull();
     });
+
+    it('renders the Roles and invite-links sections side by side for a manager', async () => {
+      // The T-0115 merge kept both sections: roles answer here, links
+      // answer empty, and both regions paint without errors.
+      const store = createChatStore(seedWith({}));
+      const fetchMock = vi.fn(async (url: unknown) => {
+        const target = String(url);
+        if (target.includes('/invite-links')) {
+          return jsonResponse(200, { links: [] });
+        }
+        if (target.includes('/audit')) {
+          return jsonResponse(200, { entries: [], next: null });
+        }
+        if (target.includes('/approval-rules')) {
+          return jsonResponse(200, []);
+        }
+        if (target.includes('/roles')) {
+          return jsonResponse(200, { roles: [] });
+        }
+        return jsonResponse(404, { error: { code: 'not_found', message: 'unexpected' } });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      renderStore(store);
+
+      expect(await screen.findByRole('region', { name: 'Roles' })).toBeTruthy();
+      expect(screen.getByRole('region', { name: 'Invite links' })).toBeTruthy();
+    });
   });
 
   // T-0086: the room activity section is the same ActivitySection the AI

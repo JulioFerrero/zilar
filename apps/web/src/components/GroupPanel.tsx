@@ -1,13 +1,7 @@
 import type { ChatSummary } from '@galena/chat-core';
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type {
-  CreatedInviteLink,
-  GroupAi,
-  GroupInviteLink,
-  GroupRole,
-  PublicAi,
-} from '@/lib/api';
+import type { CreatedInviteLink, GroupAi, GroupInviteLink, GroupRole, PublicAi } from '@/lib/api';
 import {
   createGroupInviteLink,
   createGroupRole,

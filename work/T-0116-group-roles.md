@@ -79,8 +79,8 @@ pnpm build
 ### What I did
 - Server: new `apps/server/src/roles/` module (service + routes + 12 tests).
   `group_roles` / `group_member_roles` / `topic_role_access` tables plus
-  `topics.approver_role_id` (SET NULL) in `db/schema.ts` — schema only, **no
-  migration committed** (per the lead's T-0115 ordering instruction).
+  `topics.approver_role_id` (SET NULL) in `db/schema.ts`, with generated
+  migration `0027_nice_roland_deschain.sql` (see "After the rebase" below).
   - CRUD: manager-only create/rename/delete/assign (replace-the-set PUT);
     names 1–30 chars, unique per group ignoring case, no control chars, max
     20 roles/group; every member reads the list with holders. 409
@@ -118,41 +118,55 @@ pnpm build
 - Tests: server `roles/roles.test.ts` (12: CRUD/limits, access for current
   and future holders, unassign removal, leave cleanup, delete re-sync,
   approver decide + blind-holder 404, always-allow still admin-gated,
-  id-only audit, auth + 404 shapes). Web: mock API (4), GroupPanel (3),
+  id-only audit, auth + 404 shapes). Web: mock API (4), GroupPanel (4:
+  chips, manager CRUD, member hiding, roles + invite-links coexistence),
   TopicPanel (3), NewTopicDialog (1), ApprovalCard (2), lib/api (6), store
   (1). Existing suites updated where the panel's new roles fetch needed a
   stub (`GroupPanel.test.tsx`), and `setTopicRoles` added to ApiClient
   fakes.
 
+### After the rebase (T-0115 merged, branch rebased by the lead)
+- Ran `pnpm --filter @galena/server db:generate`: produced exactly
+  `drizzle/0027_nice_roland_deschain.sql` + snapshot + journal entry, with
+  only the three roles tables, the `topics.approver_role_id` column and
+  their FKs/index — nothing unrelated. Verified the SQL by reading it.
+- `backfill.test.ts` now excludes `0027_` (was the temporary `0026_`
+  exclusion) from the pre-T-0108 simulation, with the reason in a comment.
+- The lead's merge kept both sides in `app.ts`, `GroupPanel.tsx` and
+  `mock/api.ts`: invite-links section and roles section both render (new
+  coexistence test proves it); both keep their tests. Only follow-up edit
+  on my side was prettier import collapsing in `GroupPanel.tsx`.
+
 ### Files changed
 - Server: `apps/server/src/roles/service.ts`, `roles/routes.ts`,
-  `roles/roles.test.ts` (new); `db/schema.ts` (schema only, no migration);
+  `roles/roles.test.ts` (new); `db/schema.ts` + generated migration
+  `drizzle/0027_nice_roland_deschain.sql` (snapshot + journal);
   `topics/access.ts`, `topics/rooms.ts`, `topics/routes.ts`,
-  `topics/service.ts`, `topics/backfill.test.ts` (excludes the future
-  group-roles migration from the pre-T-0108 simulation); `approvals/service.ts`
-  (`canDecide` only); `groups/service.ts` (member `roles`, leave cleanup);
-  `audit/service.ts` (hidden-topic filter); `app.ts` (mount).
+  `topics/service.ts`, `topics/backfill.test.ts` (excludes `0027_` from the
+  pre-T-0108 simulation); `approvals/service.ts` (`canDecide` only);
+  `groups/service.ts` (member `roles`, leave cleanup); `audit/service.ts`
+  (hidden-topic filter); `app.ts` (mount).
 - Web: `lib/api.ts`, `store/store.ts`, `store/realStore.ts`,
   `components/GroupPanel.tsx`, `components/TopicPanel.tsx`,
   `components/NewTopicDialog.tsx`, `components/ApprovalCard.tsx`,
   `mock/api.ts`, `mock/groups.ts`, plus tests listed above.
 
-### Commands run and real results
-- `pnpm install`: ok (11.8s).
+### Commands run and real results (post-rebase, final)
+- `pnpm install`: ok.
+- `pnpm --filter @galena/server db:generate`: produced
+  `drizzle/0027_nice_roland_deschain.sql` (roles tables/columns only, read
+  and verified) + `drizzle/meta/0027_snapshot.json` + journal entry.
 - `pnpm format:check`: pass. `pnpm lint` (oxlint): pass. `pnpm typecheck`
   (10 tasks): pass.
-- `pnpm --filter @galena/server test --maxWorkers=2`: 81 files passed,
-  5 skipped; 1389 passed, 7 skipped, 0 failed.
-- `pnpm --filter @galena/web test --maxWorkers=2`: 71 files passed;
-  797 passed, 0 failed.
-- `pnpm build`: pass (2 tasks).
-- During development the full server suite failed once in
-  `src/topics/backfill.test.ts` (`relation "public.topics" does not exist`):
-  my temporary local-only migration `0026` sorted into that test's
-  pre-T-0108 simulation. Fixed by excluding `0026_` there (with a comment);
-  the backfill test passes and the temp migration is now deleted (see
-  below). One backfill timeout mid-way was resource contention from my own
-  concurrent runs; passes alone and in the final full suite.
+- `pnpm --filter @galena/server test --maxWorkers=2`: 82 files passed,
+  5 skipped; 1408 passed, 7 skipped, 0 failed.
+- `pnpm --filter @galena/web test --maxWorkers=2`: 75 files passed;
+  822 passed, 0 failed.
+- `pnpm build`: pass.
+- Pre-rebase history (kept for the record): the full server suite failed
+  once in `backfill.test.ts` under my temporary local-only `0026`
+  migration (since deleted); fixed via the exclusion mechanism above. One
+  backfill timeout was contention from my own concurrent runs.
 
 ### Problems, deviations from the spec, open questions
 - **No migration committed, by instruction.** I wrote `schema.ts` changes
@@ -173,8 +187,7 @@ pnpm build
   action but not the subject; topic id matches the `topic.*` convention.
 
 ### Blocked / needs a decision
-- None. Waiting on the lead for the T-0115 merge + rebase signal, then
-  `db:generate` + one commit with the migration.
+- None.
 
 ---
 
