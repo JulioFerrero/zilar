@@ -73,6 +73,13 @@ const PAGE_HISTORY_MAX = 50;
 const TYPING_CLEAR_MS = 5000;
 const CHAT_REFRESH_DEBOUNCE_MS = 500;
 
+// A search jump loads at most this many history pages back looking for the
+// hit before giving up with "Message not found" (web uses the same cap).
+export const MESSAGE_JUMP_MAX_PAGES = 20;
+// Upper bound for one stalled history wait inside `openAtMessage`: after
+// this the jump gives up with "Message not found" instead of hanging.
+export const MESSAGE_JUMP_WAIT_MS = 10_000;
+
 // A finished draft is kept until its final XMPP message arrives. If that never
 // happens (XMPP down), it is dropped after this long so it cannot stick.
 export const DRAFT_END_FALLBACK_MS = 5_000;
@@ -1978,46 +1985,72 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       flushPending();
     }
 
-    function loadOlder(chatId: string): void {
+    // One backwards history page, shared by `loadOlder` and `openAtMessage`.
+    async function loadOlderPage(chatId: string, cursor: string): Promise<void> {
       const chat = get().chats.find((entry) => entry.id === chatId);
-      const cursor = cursors[chatId];
-      if (
-        core === undefined ||
-        chat === undefined ||
-        cursor === undefined ||
-        loadingOlder.has(chatId)
-      ) {
+      const current = core;
+      if (chat === undefined || current === undefined || loadingOlder.has(chatId)) {
         return;
       }
       loadingOlder.add(chatId);
-      void core
-        .loadHistory(chatId, coreKind(chat), { before: cursor, max: PAGE_HISTORY_MAX })
-        .then((page) => {
-          // Edits and reactions update derived state and never render as a
-          // bubble or preview row.
-          ingestHistoryReactions(page.messages);
-          ingestHistoryEdits(page.messages);
-          const older = page.messages
-            .filter((message) => !isReactionOnly(message) && !isEditStanza(message))
-            .map((message) => toUiMessage(message, get().currentUserId));
-          resolvePendingEdits(chatId);
-          const withEditsApplied = older.map((message) => withEdits(message, chatId));
-          set((state) => ({
-            messagesByChat: {
-              ...state.messagesByChat,
-              [chatId]: sortMessages([...withEditsApplied, ...listFor(state, chatId)]),
-            },
-            historyComplete: { ...state.historyComplete, [chatId]: page.complete },
-          }));
-          cursors[chatId] = page.first;
-          refreshEdits(chatId);
-        })
-        .catch(() => {
-          // A failed page load leaves the cursor for a later retry.
-        })
-        .finally(() => {
-          loadingOlder.delete(chatId);
+      try {
+        const page = await current.loadHistory(chatId, coreKind(chat), {
+          before: cursor,
+          max: PAGE_HISTORY_MAX,
         });
+        // Edits and reactions update derived state and never render as a
+        // bubble or preview row.
+        ingestHistoryReactions(page.messages);
+        ingestHistoryEdits(page.messages);
+        const older = page.messages
+          .filter((message) => !isReactionOnly(message) && !isEditStanza(message))
+          .map((message) => toUiMessage(message, get().currentUserId));
+        resolvePendingEdits(chatId);
+        const withEditsApplied = older.map((message) => withEdits(message, chatId));
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: sortMessages([...withEditsApplied, ...listFor(state, chatId)]),
+          },
+          historyComplete: { ...state.historyComplete, [chatId]: page.complete },
+        }));
+        cursors[chatId] = page.first;
+        refreshEdits(chatId);
+      } catch {
+        // A failed page load leaves the cursor for a later retry.
+      } finally {
+        loadingOlder.delete(chatId);
+      }
+    }
+
+    function loadOlder(chatId: string): void {
+      const cursor = cursors[chatId];
+      if (cursor === undefined) {
+        return;
+      }
+      void loadOlderPage(chatId, cursor);
+    }
+
+    // Resolves true once the in-flight first-page load for a chat settles,
+    // so a search jump never pages past a page that is still arriving.
+    function waitForHistory(chatId: string): Promise<boolean> {
+      return new Promise<boolean>((resolve) => {
+        if (!loadingHistory.has(chatId)) {
+          resolve(true);
+          return;
+        }
+        const timer = setInterval(() => {
+          if (!loadingHistory.has(chatId)) {
+            clearInterval(timer);
+            clearTimeout(timeout);
+            resolve(true);
+          }
+        }, 25);
+        const timeout = setTimeout(() => {
+          clearInterval(timer);
+          resolve(false);
+        }, MESSAGE_JUMP_WAIT_MS);
+      });
     }
 
     async function boot(gen: number): Promise<void> {
@@ -2161,6 +2194,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       actionError: undefined,
       messages: (chatId) => get().messagesByChat[chatId] ?? [],
       hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
+      jumpTarget: undefined,
       openChat: (chatId) => {
         set((state) => {
           const chat = state.chats.find((entry) => entry.id === chatId);
@@ -2203,6 +2237,53 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         void openHistory(chatId);
       },
       loadOlder,
+      openAtMessage: async (chatId, messageId) => {
+        get().openChat(chatId);
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const current = core;
+        if (chat === undefined || current === undefined || !canLoadHistory(chat)) {
+          const found = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+          if (found === undefined) {
+            throw new Error('message_not_found');
+          }
+          set({ jumpTarget: { chatId, messageId } });
+          return found;
+        }
+        // Wait for the opening page when it is still in flight, then page
+        // backwards until the message is loaded or history runs out. A
+        // stalled wait (false) breaks out to "Message not found".
+        for (let pages = 0; pages < MESSAGE_JUMP_MAX_PAGES; pages += 1) {
+          const loaded = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+          if (loaded !== undefined) {
+            set({ jumpTarget: { chatId, messageId } });
+            return loaded;
+          }
+          if (get().historyComplete[chatId] === true) {
+            break;
+          }
+          if (loadingHistory.has(chatId)) {
+            if (!(await waitForHistory(chatId))) {
+              break;
+            }
+            continue;
+          }
+          const cursor = cursors[chatId];
+          if (cursor === undefined) {
+            if (!(await waitForHistory(chatId))) {
+              break;
+            }
+            continue;
+          }
+          await loadOlderPage(chatId, cursor);
+        }
+        const found = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        if (found === undefined) {
+          throw new Error('message_not_found');
+        }
+        set({ jumpTarget: { chatId, messageId } });
+        return found;
+      },
+      clearJumpTarget: () => set({ jumpTarget: undefined }),
       sendTyping: (chatId) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
         if (core !== undefined && chat !== undefined) {

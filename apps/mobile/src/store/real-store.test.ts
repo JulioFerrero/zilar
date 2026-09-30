@@ -7,6 +7,7 @@ import type { DraftEventListener, DraftHubEvent } from '../lib/drafts';
 import {
   DRAFT_END_FALLBACK_MS,
   DRAFT_IDLE_MS,
+  MESSAGE_JUMP_MAX_PAGES,
   createRealChatStore,
   type AppStateLike,
   type RealStoreDeps,
@@ -1129,6 +1130,73 @@ describe('loading states (T-0067)', () => {
         .messages(ANA)
         .map((item) => item.id),
     ).toContain('ana-2');
+  });
+
+  it('openAtMessage returns a loaded message without paging', async () => {
+    const { store } = await setup();
+
+    const found = await store.getState().openAtMessage(ANA, 'ana-1');
+
+    expect(found.id).toBe('ana-1');
+    expect(store.getState().jumpTarget).toEqual({ chatId: ANA, messageId: 'ana-1' });
+  });
+
+  it('openAtMessage pages backwards until the message loads', async () => {
+    const { store, xmpp } = await setup();
+    // An old message buried past the first page: the opening page (the
+    // newest 50) cannot contain it, so the jump must page backwards.
+    const filler = Array.from({ length: 55 }, (_, index) =>
+      message({
+        id: `ana-f${index}`,
+        chatJid: ANA,
+        body: `filler ${index}`,
+        timestamp: new Date(`2026-09-28T08:${String(index % 60).padStart(2, '0')}:00Z`),
+      }),
+    );
+    xmpp.history[ANA] = [
+      message({
+        id: 'ana-old',
+        chatJid: ANA,
+        body: 'older',
+        timestamp: new Date('2026-09-28T07:00:00Z'),
+      }),
+      ...filler,
+    ];
+
+    const found = await store.getState().openAtMessage(ANA, 'ana-old');
+
+    expect(found.id).toBe('ana-old');
+    expect(vi.mocked(xmpp.core.loadHistory)).toHaveBeenCalledWith(
+      ANA,
+      'chat',
+      expect.objectContaining({ before: expect.any(String) }),
+    );
+    expect(store.getState().jumpTarget).toEqual({ chatId: ANA, messageId: 'ana-old' });
+  });
+
+  it('openAtMessage gives up after the history runs out', async () => {
+    const { store } = await setup();
+
+    await expect(store.getState().openAtMessage(ANA, 'ana-99')).rejects.toThrow(
+      'message_not_found',
+    );
+    expect(store.getState().jumpTarget).toBeUndefined();
+  });
+
+  it('openAtMessage gives up after the page cap, not forever', async () => {
+    const { store, xmpp } = await setup();
+    // An endless archive: every page answers "not complete" with a fresh
+    // cursor, so only the cap stops the jump.
+    let pages = 0;
+    vi.mocked(xmpp.core.loadHistory).mockImplementation(async () => {
+      pages += 1;
+      return { messages: [], complete: false, first: `cursor-${pages}` };
+    });
+
+    await expect(
+      store.getState().openAtMessage('team@rooms.galena.test', 'team-99'),
+    ).rejects.toThrow('message_not_found');
+    expect(pages).toBeLessThanOrEqual(MESSAGE_JUMP_MAX_PAGES + 1);
   });
 
   it('re-flushes the pending open after a reconnect', async () => {

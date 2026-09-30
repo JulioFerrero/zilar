@@ -29,7 +29,7 @@ export default function ChatScreen() {
 
 function Chat() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; notFound?: string }>();
   const chatId = typeof params.id === 'string' ? params.id : '';
   const chat = useChatStore((state) => state.chats.find((item) => item.id === chatId));
   const chatsLoad = useChatStore((state) => state.chatsLoad);
@@ -62,6 +62,10 @@ function Chat() {
   const me = useChatStore((state) => state.me);
   const topicNotice = useChatStore((state) => state.topicNotice);
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
+  // A search jump that gave up ("Message not found") lands here with
+  // `?notFound=1`: the chat opens at its bottom with a short inline notice.
+  // Local state, dismissed once, so going back and re-entering clears it.
+  const [jumpMissed, setJumpMissed] = useState(params.notFound === '1');
   const [statusOpen, setStatusOpen] = useState(false);
   const [ownerOpen, setOwnerOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -233,7 +237,11 @@ function Chat() {
       <View className="flex-1 bg-background">
         <ChatBackground />
         <SafeAreaView edges={['top']} className="bg-surface">
-          <ChatHeader chat={chat} onBack={() => router.back()} />
+          <ChatHeader
+            chat={chat}
+            onBack={() => router.back()}
+            onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
+          />
         </SafeAreaView>
         <KeyboardAvoidingView
           className="flex-1"
@@ -259,6 +267,19 @@ function Chat() {
               </Pressable>
             </View>
           ) : null}
+          {jumpMissed ? (
+            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-surface-raised px-3 py-2">
+              <Text className="flex-1 text-[13px] text-muted-foreground">Message not found</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss notice"
+                onPress={() => setJumpMissed(false)}
+                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+              >
+                <Text className="text-[13px] font-semibold text-muted-foreground">Dismiss</Text>
+              </Pressable>
+            </View>
+          ) : null}
           <Composer
             title={chat.title}
             onSend={(text) => {
@@ -281,6 +302,7 @@ function Chat() {
         <ChatHeader
           chat={chat}
           onBack={() => router.back()}
+          onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
           topicGroupName={groupName}
           onOpenInfo={openInfo}
         />
@@ -362,6 +384,19 @@ function Chat() {
               className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
             >
               <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {jumpMissed ? (
+          <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-surface-raised px-3 py-2">
+            <Text className="flex-1 text-[13px] text-muted-foreground">Message not found</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss notice"
+              onPress={() => setJumpMissed(false)}
+              className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+            >
+              <Text className="text-[13px] font-semibold text-muted-foreground">Dismiss</Text>
             </Pressable>
           </View>
         ) : null}
