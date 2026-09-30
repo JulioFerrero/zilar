@@ -725,6 +725,23 @@ describe('tools routes (T-0103)', () => {
       expect(await errorCodeOf(response)).toBe('runner_unavailable');
     });
 
+    it('answers 400 invalid_request when the input serialises past 16 KiB', async () => {
+      const owner = await ownerWithAi(`biginput-owner-${emailCounter}@example.com`);
+      const toolId = await seedTool(context, {
+        aiId: owner.aiId,
+        groupId: null,
+        topicId: null,
+        userId: owner.id,
+      });
+      const response = await app.request(`${TEST_BASE_URL}/api/tools/${toolId}/run`, {
+        method: 'POST',
+        headers: { cookie: owner.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ input: 'x'.repeat(16 * 1024 + 1) }),
+      });
+      expect(response.status).toBe(400);
+      expect(await errorCodeOf(response)).toBe('invalid_request');
+    });
+
     it('returns 409 for a stopped AI', async () => {
       const owner = await ownerWithAi(`stopped-owner-${emailCounter}@example.com`);
       const toolId = await seedTool(context, {

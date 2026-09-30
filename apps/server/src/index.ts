@@ -30,6 +30,9 @@ import { assertRunnerHubConfig, startRunnerHub, type RunnerHub } from './machine
 import { createDbMachineRegistry } from './machines/registry';
 import { buildRoutineScheduler, type RoutineSchedulerHandle } from './routines/wiring';
 import { createEjabberdAdminClient } from './xmpp/admin-client';
+import { runTool } from './sandbox/run-tool';
+import { buildToolAdapters } from './tools/adapters';
+import type { ToolRunner } from './tools/types';
 
 const config = loadServerConfigOrExit(process.env);
 const logger = createLogger(config);
@@ -107,7 +110,41 @@ const announcer: ActionAnnouncer = createProductionAnnouncer({
 // T-0099: `alwaysEligible` is built from the same registry. Adapters
 // that opted in (`allowAlways: true`) and report no cost are always
 // eligible; money adapters and non-opted-in adapters never are.
-const actionAdapters = config.ACTION_DEMO_ENABLED ? [buildDemoEchoAdapter()] : [];
+//
+// T-0105: when `TOOLS_ENABLED=true`, the real sandbox runner is built
+// from T-0102 (`runTool` with default limits) and the tool/routine
+// adapters are registered next to (not instead of) the demo adapter.
+// When false, none of this exists and manual runs answer 501
+// `runner_unavailable` (T-0103). `TOOLS_ENABLED=true` with
+// `ROUTINES_ENABLED=false` is valid: tools work and `routine.schedule`
+// is not registered. Tool code written by models runs on this server in
+// the sandbox (see `docs/TOOL_SANDBOX.md`).
+const toolRunner: ToolRunner | undefined = config.TOOLS_ENABLED
+  ? (params) =>
+      runTool({ source: params.source, input: params.input, allowedHosts: params.allowedHosts })
+  : undefined;
+const actionAdapters = [
+  ...(config.ACTION_DEMO_ENABLED ? [buildDemoEchoAdapter()] : []),
+  ...(toolRunner === undefined
+    ? []
+    : buildToolAdapters({
+        db,
+        runner: toolRunner,
+        routinesEnabled: config.ROUTINES_ENABLED,
+        post: ({ aiId, groupId, topicId, text }) => {
+          const gateway = gatewayRef;
+          if (gateway === null) {
+            return Promise.resolve(false);
+          }
+          return gateway.postToChat({
+            aiId,
+            groupId,
+            ...(topicId === undefined ? {} : { topicId }),
+            text,
+          });
+        },
+      })),
+];
 const actionRegistry = buildRegistry(actionAdapters);
 const alwaysEligible = buildAlwaysEligible(actionRegistry);
 const actionGateway = createActionGateway({
@@ -133,6 +170,9 @@ const app = createApp({
   ...(config.RUNNER_HUB_ENABLED ? { isMachineOnline } : {}),
   actionGateway,
   alwaysEligible,
+  // T-0105: the same sandbox runner the adapters use. Absent = manual
+  // runs answer 501 `runner_unavailable`.
+  ...(toolRunner === undefined ? {} : { toolRunner }),
 });
 
 // Agent gateway (T-0034): off unless AGENT_GATEWAY_ENABLED=true, and inert
@@ -240,13 +280,14 @@ void actionGateway.recoverStuck().catch((error: unknown) => {
 
 // Routines scheduler (T-0104): starts after `serve()` resolves when
 // `ROUTINES_ENABLED=true`, with the gateway's `postToChat` (via the same
-// `gatewayRef` closure the announcer uses). No tool runner is configured
-// yet (T-0105 wires the sandbox and passes it here), so with the flag on
-// the builder logs its one warning and stays off; with the flag off it
-// stays off silently. Stops on shutdown like the other timers.
+// `gatewayRef` closure the announcer uses). T-0105 wires the sandbox as
+// the runner: with the flag on but `TOOLS_ENABLED=false` the builder logs
+// its one warning and stays off; with both flags off it stays off
+// silently. Stops on shutdown like the other timers.
 const routineScheduler: RoutineSchedulerHandle | null = buildRoutineScheduler({
   db,
   routinesEnabled: config.ROUTINES_ENABLED,
+  ...(toolRunner === undefined ? {} : { toolRunner }),
   audit: auditRecorder,
   logger,
   post: ({ aiId, groupId, topicId, text }) => {

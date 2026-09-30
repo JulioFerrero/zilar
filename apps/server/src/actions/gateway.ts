@@ -12,17 +12,24 @@ import { type ActionAnnouncer, summaryForOutcome } from './announce';
 export type { ActionAnnouncer };
 import { argsHash } from './canonical';
 import { policy, type PolicyDenialReason } from './policy';
-import type { ActionAdapter, ActionContext, ActionRegistry, ActionResult } from './registry';
+import {
+  stripModelTextCloseTag,
+  truncateModelText,
+  type ActionAdapter,
+  type ActionContext,
+  type ActionRegistry,
+  type ActionResult,
+} from './registry';
 
 // The result of `request`. The gateway never throws for a policy decision;
-// it answers one of these four shapes. `executed` and `failed` are the
-// "the action ran" pair; `pending_approval` means a card is up; `denied`
-// is the policy answer. Only `executed` carries a `summary`, and only
+// it answers one of these four shapes. `executed` carries a `summary` and,
+// when the adapter returned one, a `modelText` for the model only (never
+// stored, never audited, never announced — see `ActionResult.modelText`);
 // `denied` carries a `reason`. `failed` returns nothing: the gateway
 // audited the failure, and the caller learns it failed, not why (the
 // adapter's error text must never leak).
 export type RequestOutcome =
-  | { status: 'executed'; summary: string }
+  | { status: 'executed'; summary: string; modelText?: string }
   | { status: 'failed' }
   | { status: 'denied'; reason: PolicyDenialReason }
   | { status: 'pending_approval'; approvalId: string };
@@ -269,15 +276,18 @@ async function runAllowedAction(
   const ctx: ActionContext = {
     aiId: params.aiId,
     groupId: params.groupId ?? null,
+    topicId: params.topicId ?? null,
     requestId: 'allow-' + randomUUID(),
   };
 
   let outcome: 'ok' | 'error';
   let summary: string | null = null;
+  let modelText: string | undefined;
   try {
     const result: ActionResult = await adapter.execute(ctx, parsedArgs);
     outcome = 'ok';
     summary = truncateSummary(result.summary);
+    modelText = sanitiseModelText(result.modelText);
   } catch (error) {
     outcome = 'error';
     // The error text is never stored, never returned, never logged with
@@ -290,8 +300,12 @@ async function runAllowedAction(
   }
 
   await writeAllowAudit(deps, params, outcome);
+  // `modelText` rides back to the model only: it is never stored on a row
+  // (there is no row on this path), never audited, never announced below.
   return outcome === 'ok' && summary !== null
-    ? { status: 'executed', summary }
+    ? modelText === undefined
+      ? { status: 'executed', summary }
+      : { status: 'executed', summary, modelText }
     : { status: 'failed' };
 }
 
@@ -321,15 +335,18 @@ async function runAutoApprovedAction(
   const ctx: ActionContext = {
     aiId: params.aiId,
     groupId: params.groupId ?? null,
+    topicId: params.topicId ?? null,
     requestId: 'rule-' + ruleId,
   };
 
   let outcome: 'ok' | 'error';
   let summary: string | null = null;
+  let modelText: string | undefined;
   try {
     const result: ActionResult = await adapter.execute(ctx, parsedArgs);
     outcome = 'ok';
     summary = truncateSummary(result.summary);
+    modelText = sanitiseModelText(result.modelText);
   } catch (error) {
     outcome = 'error';
     // Adapter error text is never stored, never returned, never logged
@@ -383,7 +400,9 @@ async function runAutoApprovedAction(
   });
 
   return outcome === 'ok' && summary !== null
-    ? { status: 'executed', summary }
+    ? modelText === undefined
+      ? { status: 'executed', summary }
+      : { status: 'executed', summary, modelText }
     : { status: 'failed' };
 }
 
@@ -614,6 +633,7 @@ async function runOnApprovalDecided(
       {
         aiId: pending.aiId,
         groupId: pending.groupId,
+        topicId: pending.topicId,
         requestId: pending.id,
       },
       pending.args,
@@ -849,6 +869,18 @@ function truncateText(value: string, max: number): string {
 
 function truncateSummary(value: string): string {
   return truncateText(value, RESULT_SUMMARY_MAX);
+}
+
+// Sanitises an adapter's `modelText` for the `executed` outcome: stripped
+// of the wrapper's closing tag, truncated at 16 KiB. `undefined` (the
+// adapter returned none) stays `undefined` so the outcome carries no key.
+// Never called for `failed` outcomes — a throw has no `modelText`, and a
+// post-approval `execute` return is not forwarded to any model.
+function sanitiseModelText(value: string | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return truncateModelText(stripModelTextCloseTag(value));
 }
 
 function safeStringify(value: unknown): string | null {

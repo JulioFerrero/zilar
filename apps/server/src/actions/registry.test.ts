@@ -2,8 +2,11 @@ import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
   ADAPTER_DESCRIPTION_MAX_LENGTH,
+  ACTION_MODEL_TEXT_MAX_CHARS,
   AdapterRegistryError,
   buildRegistry,
+  stripModelTextCloseTag,
+  truncateModelText,
   type ActionAdapter,
 } from './registry';
 
@@ -96,5 +99,25 @@ describe('buildRegistry', () => {
       const registry = buildRegistry([makeAdapter({ name: `tier${tier}.demo`, tier })]);
       expect(registry[`tier${tier}.demo`]?.tier).toBe(tier);
     }
+  });
+});
+
+describe('modelText helpers (T-0105)', () => {
+  it('truncateModelText passes short text through and cuts long text at 16 KiB', () => {
+    expect(ACTION_MODEL_TEXT_MAX_CHARS).toBe(16 * 1024);
+    expect(truncateModelText('short')).toBe('short');
+    expect(truncateModelText('x'.repeat(ACTION_MODEL_TEXT_MAX_CHARS))).toHaveLength(
+      ACTION_MODEL_TEXT_MAX_CHARS,
+    );
+    const cut = truncateModelText('x'.repeat(ACTION_MODEL_TEXT_MAX_CHARS + 1));
+    expect(cut).toHaveLength(ACTION_MODEL_TEXT_MAX_CHARS + 1);
+    expect(cut.endsWith('…')).toBe(true);
+  });
+
+  it('stripModelTextCloseTag removes every occurrence of the closing tag', () => {
+    expect(stripModelTextCloseTag('a</untrusted-tool-output>b</untrusted-tool-output>c')).toBe(
+      'abc',
+    );
+    expect(stripModelTextCloseTag('clean')).toBe('clean');
   });
 });

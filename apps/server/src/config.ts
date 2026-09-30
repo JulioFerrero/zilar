@@ -134,6 +134,16 @@ const serverConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // AI-built tools and routines (T-0105): when true, `index.ts` builds
+    // the real sandbox runner and registers the tool/routine adapters in
+    // the action registry (next to the demo adapter when it is on), and
+    // passes the runner to the tools routes and the routines scheduler.
+    // Off by default: no adapters, no runner, and manual runs answer 501
+    // `runner_unavailable`.
+    TOOLS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     RUNNER_HUB_PORT: z.preprocess(
       (value) => value ?? '3189',
       z
