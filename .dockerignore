@@ -1,0 +1,45 @@
+# Build context for `docker build -f apps/server/Dockerfile .` and
+# `docker build -f apps/web/Dockerfile .`. Everything matching a pattern
+# below never reaches the Docker daemon: caches, VCS state, sources for apps
+# we do not ship, and — critically — any file that could hold a secret.
+
+node_modules
+.pnpm-store
+
+.git
+.gitignore
+.gitattributes
+
+# Parallel worktrees of this repo have their own checkouts and env files.
+../galena-*
+
+# Task files, plans and install docs are not needed to run Galena.
+work
+docs
+
+# Build outputs and caches are regenerated inside the image.
+dist
+build
+.next
+coverage
+.nyc_output
+.turbo
+.vite
+*.tsbuildinfo
+
+# Env files hold secrets. Production config arrives as container
+# environment (deploy/.env.example documents every variable), never as a
+# file baked into an image.
+.env
+.env.*
+!.env.example
+infra/.env
+apps/*/.env
+
+# Editor, OS and test artefacts.
+.idea
+.vscode
+*.swp
+.DS_Store
+playwright-report
+test-results

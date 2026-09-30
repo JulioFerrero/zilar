@@ -1,7 +1,7 @@
 ---
 id: T-0126
 title: Production images and a production Docker Compose stack (Galena, ejabberd, Postgres, Caddy) plus a Coolify-ready compose file
-status: planned
+status: merged
 milestone: M6
 branch: task/T-0126-production-images-compose
 model: meta/muse-spark-1.3-contributor
@@ -64,28 +64,73 @@ D30 (Julio, 2026-09-30): anyone must be able to install their own Galena easily 
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Built all 9 spec items under `deploy/` + two Dockerfiles (details in "Files changed").
+- Proved the stack in the scratch project `galena-installtest` (`GALENA_DOMAIN=localhost`, Caddy on 18080/18443): all 5 services reached `healthy` via `up -d --wait`, then proved routing through Caddy (`/health` → server JSON, `/` → web HTML with CSP headers, `/api/me` → 401, `/xmpp-ws/ws` → `101 Switching Protocols` with an XMPP `<open>` frame answered).
+- Registered a user end to end through the public HTTPS port: invite CLI in the server container → OTP send → OTP from the server log → sign-in → `/api/me` shows the user with a `localhost` JID → `/api/xmpp/token` returns a JWT with `service=wss://localhost/xmpp-ws/ws`. This used the scratch-only mailer patch (see below); without email, sign-in cannot be tested end to end.
+- Lead review fixes (second proof round, same scratch project, fresh `up -d --wait` → all 5 `healthy`): `/ejabberd-api/*` Caddy route deleted — `GET /ejabberd-api/api/status` now falls through to the web catch-all (200 Galena HTML), confirming no admin API is exposed through Caddy; full XMPP upload round-trip through Caddy with a real logged-in user (slot request over the WebSocket via @xmpp/client → `put`/`get` URLs under `https://localhost/upload/...` → `PUT` → `201 Upload successful.` → `GET` → the bytes back); dead second catch-all `handle` removed (single web catch-all remains).
+- Answered the runner-hub reachability question (open questions) and added a "Runners" note to docs/INSTALL_DOCKER.md.
+- Tore the scratch stack down with `down -v`; no `galena-installtest` containers remain.
+- `pnpm format:check` passes, `pnpm lint` passes (no findings), `pnpm typecheck` passes (10 tasks successful). No application code touched, so the Vitest suite was skipped per the spec. No Dockerfile changed in the review round, so no rebuild was needed.
+- ejabberd dev-vs-prod diff recorded below; Coolify file validated with `config` (syntax only).
 
 ### Files changed
--
+- `apps/server/Dockerfile` (new): multi-stage from repo root; pnpm install with corepack; `pnpm deploy --prod --legacy`; npm-installed tsx@4.23.15 into /opt/tsx (pinned to pnpm-lock.yaml); non-root `galena` user; HEALTHCHECK via /app/deploy-scripts/healthcheck.mjs; EXPOSE 3000 3189; CMD `node /opt/tsx/.../cli.mjs src/index.ts`. Built image: 861MB.
+- `apps/web/Dockerfile` (new): multi-stage; `pnpm --filter @galena/web build`; Caddy 2.10.2-alpine serving /srv/galena-web. Built image: 81.4MB.
+- `apps/web/Caddyfile` (new): static server inside the web image; SPA fallback; `Cache-Control: immutable` on /assets, `no-store` on index; CSP + nosniff + Referrer-Policy + `frame-ancestors 'none'`.
+- `.dockerignore` (new): node_modules, .git, work/, docs/, dist, `.env*`, `infra/.env`, coverage, editor artefacts. No secret can be baked in (env files excluded).
+- `deploy/docker-compose.yml` (new): postgres (same pgvector image), ejabberd (26.07 + JWT entrypoint), server, web, caddy (only publisher: `${HTTP_PORT:-80}`/`${HTTPS_PORT:-443}`). Caddy routes `/`→web (single catch-all), `/api/*`→server, `/health`→server, `/xmpp-ws/*`→ejabberd (strip_prefix to the `/ws` handler), `/upload/*`→ejabberd (path intact — the handler IS `/upload`). No ejabberd-admin route: the server calls ejabberd directly on the internal network. Healthchecks + `service_healthy` deps everywhere; named volumes; network `galena`.
+- `deploy/.env.example` (new): every variable with CHANGE_ME + one-line comments, incl. final T-0128 mail names (MAIL_TRANSPORT/SMTP_*/MAIL_FROM/MAIL_REPLY_TO/MAIL_ALLOW_CONSOLE_IN_PRODUCTION) and TOOLS/ROUTINES/PUSH/WEB_TOOLS default false.
+- `deploy/ejabberd/ejabberd.yml` + `jwt-entrypoint.sh` (new): prod ejabberd config (executable bit on the script). Differences vs `infra/ejabberd/ejabberd.yml`: (1) header/comments point at deploy paths; (2) new UPLOAD_URL macro (default `http://galena.localhost:5280/upload`, overridden per-install to `https://<domain>/upload`) wired into `mod_http_upload.put_url` instead of the hardcoded `http://@HOST@:5280/upload`; (3) `certfiles: /opt/ejabberd/conf/server.pem` removed (TLS terminates at Caddy; the file does not exist in this deployment); (4) `loopback` ACL (127.0.0.0/8, ::1/128) replaced by `internal` ACL (10/8, 172.16/12, 192.168/16) and `trusted_network` now allows `internal` (prod peers are not loopback); (5) api_permissions comment updated (reachability via internal network + Caddy allow-list). Same modules/rules/auth (jwt+sql, jwt_only, mod_mam on SQL, uploads, no mod_register, no s2s).
+- `deploy/postgres/init/10-create-databases.sql` (new): same as dev minus the litellm role/database (no LiteLLM service in prod).
+- `deploy/caddy/Caddyfile` (new): `{$GALENA_DOMAIN}` site with automatic HTTPS from `{$ACME_EMAIL}`; routes `/`→web, `/api/*`→server, `/health`→server, `/xmpp-ws/*`→ejabberd (stripped), `/upload/*`→ejabberd (intact).
+- `deploy/scripts/healthcheck.mjs` (new): server container HEALTHCHECK without shell-quoting fragility.
+- `deploy/coolify/docker-compose.yml` (new): same stack for Coolify (no caddy; `expose` only; SERVICE_URL_*/SERVICE_PASSWORD_* magic vars; per-component domains documented). `config` validates (syntax only — see open questions).
+- `.github/workflows/images.yml` (new): PR = build only; tag `v*` = buildx amd64+arm64 push to ghcr.io/<owner>/galena-server and galena-web with GITHUB_TOKEN only. Not run (per spec).
+- `docs/INSTALL_DOCKER.md` (new): 5-minute path, Coolify path, Email (required) section, updating, ports, troubleshooting, honest "What was tested" (localhost proof only).
 
 ### Commands run and real results
--
+- `pnpm install`: Done in 7.5s.
+- `docker build -f apps/server/Dockerfile -t galena-server:installtest .`: success. 861MB (was 790MB before tsx/pino fix; +71MB is the isolated /opt/tsx runner).
+- `docker build -f apps/web/Dockerfile -t galena-web:installtest .`: success after adding root `tsconfig.base.json` to the builder context (Vite needed it). 81.4MB.
+- `docker run --rm galena-server:installtest node /opt/tsx/node_modules/tsx/dist/cli.mjs --version`: `tsx v4.23.15`.
+- Scratch env: throwaway secrets via `openssl rand` into /tmp/galena-scratch/installtest/test.env only (never read infra/.env).
+- `docker compose -f deploy/docker-compose.yml --env-file <scratch env> config`: exit 0; only `caddy` has `ports:` (18080/18443 in test).
+- `up -d --wait` (with scratch override, see below): all 5 services `healthy`; `curl -k https://localhost:18443/health` → `{"ok":true,"name":"galena-server","version":"0.1.0","protocolVersion":"0.2.0","db":"ok"}`; `/` → 200 Galena HTML with CSP/`frame-ancestors 'none'`/nosniff headers; `/api/me` → 401; raw-TLS WS handshake `GET /xmpp-ws/ws` → `HTTP/1.1 101 Switching Protocols`, XMPP `<open>` answered.
+- Review round re-proof (after removing the upload strip, deleting `/ejabberd-api/*`, dropping the dead catch-all; fresh volumes, `up -d --wait` → all 5 `healthy`): `GET /ejabberd-api/api/status` → 200 Galena web HTML (falls through to the single web catch-all; no admin API exposed via Caddy); full upload round-trip through Caddy as logged-in user `uploadtest@example.com` (slot IQ over the WSS WebSocket via @xmpp/client → slot with `put`+`get` URLs under `https://localhost/upload/<slot>/probe.txt` → `PUT hello` → `HTTP/2 201 Upload successful.` → `GET` → `hello`). This proves the `/upload/*` path (no strip) reaches ejabberd's `mod_http_upload` handler end to end — not just a handler-shaped error. It does NOT prove large-file streaming, concurrent uploads, or the slot URLs on a real domain (put_url macro is per-install).
+- Invite CLI in server container (first round): `Invite link: https://localhost/invite/vztbDaiJDB0ePLYPtpV2tA` (max uses 5).
+- OTP flow through Caddy: send-verification-otp → `{"success":true}`; OTP `069434` from server log; sign-in → user `installtest@example.com`; `/api/me` → `jid wvhuixww3yepapnwiquhvjhsajzhowmb@localhost`; `/api/xmpp/token` → JWT, `service=wss://localhost/xmpp-ws/ws`, `domain=localhost`, `muc=rooms.localhost`.
+- `docker compose -f deploy/coolify/docker-compose.yml --env-file <coolify scratch env> config`: exit 0 (syntax only; SERVICE_URL_* values supplied as placeholders since Coolify generates them).
+- `pnpm format:check`: pass. `pnpm lint`: pass, no findings. `pnpm typecheck`: 10 tasks successful. Re-run after the review fixes with the same results.
+- Vitest: skipped (no application code touched), per spec §"Tests and checks".
+- `down -v` (both proof rounds): all scratch containers/volumes/network removed; filters confirm clean.
 
 ### Problems, deviations from the spec, open questions
--
+- Server image is 861MB (spec: "sensible"). The bulk is the workspace + tsx toolchain; shrinking (node --experimental-strip-types, compiled bundle) is future work, noted, not done.
+- `pnpm deploy --prod` needed `--legacy` (workspace has no injected deps); tsx installed via npm into /opt/tsx because pnpm/npm both refuse the deployed `workspace:*` tree (lead-suggested fix; version pinned to lockfile).
+- Healthcheck: inline `node -e` with backticks never evaluated (unhealthy despite 200s); replaced by `deploy/scripts/healthcheck.mjs`. Caddy healthcheck probes HTTPS with `--resolve localhost:443:127.0.0.1` (busybox wget cannot do the redirect→TLS hop inside the container). Web image healthcheck (`wget --spider http://127.0.0.1/`) follows Caddy's 308→HTTPS fine.
+- `EJABBERD_API_URL` points the server directly at `http://ejabberd:5280/api`, NOT through Caddy: hairpinning through Caddy's public HTTPS failed inside the container (TLS alert, local-CA trust). The deleted `/ejabberd-api/*` route is not missed — the server never used it.
+- Caddy `/xmpp-ws/*` needs `uri strip_prefix /xmpp-ws` (ejabberd handler lives at `/ws`); `/upload/*` must NOT be stripped (handler lives at `/upload` and slot URLs are `https://<domain>/upload/<slot>/<file>`). The first proof round had both stripped: WS worked, uploads 404'd with ejabberd's own `Not found.` body — proof the proxy path stripped too much, not a missing handler. Fixed and re-proved with a full PUT→GET round-trip.
+- Runner-hub reachability (lead question): a runner on another machine currently has NO public path to the hub. The hub is a raw TCP tunnel (`packages/runner-tunnel/src/server.ts`: `WebSocketServer` on path `/tunnel`, `listen(port, '127.0.0.1')`), bound to loopback inside the server container with no published port and no Caddy route. Not HTTP-on-a-path, so no trivial Caddy addition; options are same-host runner, private overlay (Tailscale/WireGuard/SSH tunnel), or a future T-0127 decision to publish/route it. Documented in docs/INSTALL_DOCKER.md "Runners"; `RUNNER_HUB_ENABLED` stays false by default.
+- Coolify file NOT verified on live Coolify: SERVICE_URL_* per-component domain generation, multi-domain routing to one ejabberd listener, and whether `SERVICE_URL_EJABBERD_WS_5280: /ws` (path suffix on a generated domain) behaves as documented. Stated in docs + Report per spec.
+- `docs/INSTALL_DOCKER.md` "What was tested" = localhost proof only; real-domain ACME issuance untested.
+- No secret in any image layer or committed file: `.env.example` holds CHANGE_ME only (14 occurrences); scratch secrets lived in /tmp only; `git status` shows no `.env` files.
+- Only Caddy publishes ports in the committed compose; server runs as non-root `galena` (verified `whoami`=galena); web/ejabberd/postgres/caddy run as their images' default users (web Caddy = root in container — base-image default, noted).
+- `MAIL_ALLOW_CONSOLE_IN_PRODUCTION` is passed through but unknown to current app source (T-0128 adds it); harmless today.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- PRODUCTION EMAIL (T-0128 dependency): Galena signs in only by emailed OTP and the only mailer throws in production, so a real production install cannot boot or sign in until T-0128's SMTP mailer merges. Committed files carry the final variable names (`MAIL_TRANSPORT`, `SMTP_HOST/PORT/SECURE/USER/PASSWORD`, `MAIL_FROM`, `MAIL_REPLY_TO`, `MAIL_ALLOW_CONSOLE_IN_PRODUCTION`) and docs/INSTALL_DOCKER.md "Email (required)" says plainly that production needs T-0128. The scratch proof used a SCRATCH-ONLY workaround (never committed): override `/tmp/galena-scratch/installtest/override.yml` bind-mounts a patched copy of `apps/server/src/auth/mailer.ts` (production throw removed) over `/app/src/auth/mailer.ts` with `NODE_ENV=production`. The committed repo is untouched; do not treat the scratch proof as proof that production email works.
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged.
 
 ### Findings
--
+- Fixed in the review round: Caddy `strip_prefix /upload` broke every upload slot URL (proved now with a real slot request, PUT 201 and GET through Caddy); the public `/ejabberd-api/*` route is gone; the duplicate catch-all is gone.
+- Runner hub has no public path in this stack (documented under "Runners").
+- Not proved: ACME on a real domain, the Coolify file on a live Coolify, production email (needs T-0128).
 
 ### Follow-ups
--
+- Lead end-to-end proof with real `MAIL_TRANSPORT=smtp` against a fake SMTP after T-0128 merges.
+- Add `GALENA_ARCHIVE_DB_PASSWORD` to the production compose once T-0117 merges.

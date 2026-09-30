@@ -1,0 +1,45 @@
+# Caddy reverse proxy for a Galena production install.
+#
+# Rendered by the `caddy` service in deploy/docker-compose.yml from
+# GALENA_DOMAIN and ACME_EMAIL. {$GALENA_DOMAIN} is the public domain
+# (chat.example.com); `localhost` keeps Caddy on its local CA for trying the
+# stack out. Only Caddy publishes ports; every backend is reachable on the
+# internal `galena` network only.
+
+{
+  admin off
+  email {$ACME_EMAIL}
+}
+
+{$GALENA_DOMAIN} {
+  # Web app.
+  handle {
+    reverse_proxy web:80
+  }
+
+  # Server API (same-origin for the web app; cookies stay first-party).
+  handle /api/* {
+    reverse_proxy server:3000
+  }
+
+  # Server health, used by the install test and external monitors.
+  # Caddy strips nothing: the server answers GET /health itself.
+  handle /health {
+    reverse_proxy server:3000
+  }
+
+  # XMPP over WebSocket (RFC 7395) straight to ejabberd. The /xmpp-ws
+  # prefix is stripped so ejabberd sees the /ws path its request_handlers
+  # expect.
+  handle /xmpp-ws/* {
+    uri strip_prefix /xmpp-ws
+    reverse_proxy ejabberd:5280
+  }
+
+  # File uploads (XEP-0363) straight to ejabberd. No strip here: ejabberd
+  # registers the handler at /upload and hands out slot URLs of the form
+  # https://<domain>/upload/<slot>/<file>, so the path must arrive intact.
+  handle /upload/* {
+    reverse_proxy ejabberd:5280
+  }
+}
