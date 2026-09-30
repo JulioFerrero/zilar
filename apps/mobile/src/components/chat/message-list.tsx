@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, View } from 'react-native';
 
 import { DateSeparator } from '@/components/chat/date-separator';
+import { startJumpScroll } from '@/components/chat/jump-scroll';
 import { LoadError } from '@/components/chat/load-error';
 import { MessageBubble } from '@/components/chat/message-bubble';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
@@ -162,26 +163,23 @@ export function MessageList({
 
   // A search hit lands here: once the jump target's message is loaded, scroll
   // to it (centered) and clear the target so a later message with the same
-  // id does not re-scroll. The retries mirror the mount scroll above: images
-  // and the list settle over a few frames.
+  // id does not re-scroll. `startJumpScroll` re-resolves the index on every
+  // retry: a message arriving within 400 ms of the jump moves every row
+  // below it, so a captured index would scroll to a stale row.
   const jumpMessageId = jumpTarget?.messageId;
   useEffect(() => {
     if (jumpMessageId === undefined) {
       return;
     }
-    const index = entries.findIndex(
-      (entry) => entry.type === 'message' && entry.item.message.id === jumpMessageId,
-    );
-    if (index === -1) {
-      return;
-    }
-    const scroll = () => {
-      listRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: false });
-    };
-    scroll();
-    const timers = [80, 200, 400].map((ms) => setTimeout(scroll, ms));
-    clearJumpTarget();
-    return () => timers.forEach((timer) => clearTimeout(timer));
+    return startJumpScroll({
+      findIndex: () =>
+        entries.findIndex(
+          (entry) => entry.type === 'message' && entry.item.message.id === jumpMessageId,
+        ),
+      scrollToIndex: (index) =>
+        listRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: false }),
+      onDone: clearJumpTarget,
+    });
   }, [jumpMessageId, entries, clearJumpTarget]);
 
   // A pin jump scrolls to the target bubble once it renders. Only fires

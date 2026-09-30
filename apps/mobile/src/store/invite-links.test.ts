@@ -76,8 +76,13 @@ describe('mock invite links flow (T-0136)', () => {
   });
 
   it('fails used-up and expired links with the same neutral error', async () => {
+    // The viewer is a Dev team member, so a Dev team join consumes no use
+    // (server fast path): exhaustion needs a group the viewer is not in.
     const store = createChatStore();
-    const oneUse = await store.getState().createInviteLink('g-devteam', { maxUses: 1 });
+    const oneUse = await store.getState().createInviteLink('g-neighbors', { maxUses: 1 });
+    await expect(store.getState().previewJoinLink(oneUse.token)).resolves.toMatchObject({
+      alreadyMember: false,
+    });
     await store.getState().joinByLink(oneUse.token);
     await expect(store.getState().previewJoinLink(oneUse.token)).rejects.toMatchObject({
       code: 'invalid_link',
@@ -121,6 +126,43 @@ describe('mock invite links flow (T-0136)', () => {
     await expect(store.getState().joinByLink(token as string)).resolves.toMatchObject({
       groupId: 'g-devteam',
     });
+  });
+
+  it('derives alreadyMember from the store: a member opens, a stranger joins', async () => {
+    const store = createChatStore();
+    // The mock viewer owns the Dev team group, so its links preview as a
+    // member (the real Join POST path stays untouched for them).
+    await expect(store.getState().previewJoinLink(MOCK_JOIN_TOKEN)).resolves.toMatchObject({
+      groupTitle: 'Dev team',
+      alreadyMember: true,
+      groupId: 'g-devteam',
+    });
+    // The viewer is not in Neighbors: the preview names no group id (like
+    // the server) and the join consumes a use and reports the real path.
+    const created = await store.getState().createInviteLink('g-neighbors', { maxUses: 10 });
+    await expect(store.getState().previewJoinLink(created.token)).resolves.toEqual({
+      groupTitle: 'Neighbors',
+      memberCount: 8,
+      alreadyMember: false,
+    });
+    await expect(store.getState().joinByLink(created.token)).resolves.toEqual({
+      groupId: 'g-neighbors',
+      alreadyMember: false,
+    });
+    const after = await store.getState().listInviteLinks('g-neighbors');
+    expect(after.find((link) => link.id === created.id)?.uses).toBe(1);
+    // Joined now: the next preview reads as a member, and a second join
+    // consumes no use (like the server's already-a-member fast path).
+    await expect(store.getState().previewJoinLink(created.token)).resolves.toMatchObject({
+      alreadyMember: true,
+      groupId: 'g-neighbors',
+    });
+    await expect(store.getState().joinByLink(created.token)).resolves.toEqual({
+      groupId: 'g-neighbors',
+      alreadyMember: true,
+    });
+    const again = await store.getState().listInviteLinks('g-neighbors');
+    expect(again.find((link) => link.id === created.id)?.uses).toBe(1);
   });
 
   it('rejects an unknown token with the neutral error, never the token', async () => {

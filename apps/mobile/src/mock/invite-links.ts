@@ -102,10 +102,31 @@ export interface MockInviteLinksStore {
   join(token: string): JoinResult;
 }
 
+/**
+ * Who the mock viewer already is: preview answers `alreadyMember` from this
+ * (like the server's membership check) instead of hardcoding `true`, so a
+ * link for a group the viewer is not in exercises the real Join path in mock
+ * mode. The chat store answers from its group detail; standalone users pass
+ * their own.
+ */
+export interface MockInviteLinksMembership {
+  isMember: (groupId: string) => boolean;
+}
+
 /** One invite-links store per mock store, seeded with two Dev team links. */
-export function createMockInviteLinksStore(): MockInviteLinksStore {
+export function createMockInviteLinksStore(
+  membership: MockInviteLinksMembership = { isMember: () => true },
+): MockInviteLinksStore {
   let links = mockLinkSeed();
   let counter = 0;
+  // Groups the viewer joined through this store. The server records the
+  // membership on join while the seeded detail snapshots never change, so
+  // the store tracks its own joins (a second preview then reads
+  // `alreadyMember`, and a second join consumes no use, like the server).
+  const joined = new Set<string>();
+
+  const isMember = (groupId: string): boolean =>
+    joined.has(groupId) || membership.isMember(groupId);
 
   const byToken = (token: string): MockLink | undefined =>
     links.find((link) => link.token === token.toLowerCase());
@@ -147,11 +168,14 @@ export function createMockInviteLinksStore(): MockInviteLinksStore {
         throw invalidLinkError();
       }
       const group = MOCK_GROUPS[link.groupId] ?? { title: 'Group', memberCount: 0 };
+      const alreadyMember = isMember(link.groupId);
       return {
         groupTitle: group.title,
         memberCount: group.memberCount,
-        alreadyMember: true,
-        groupId: link.groupId,
+        alreadyMember,
+        // Like the server: the preview only names the group id to a member
+        // (they know it; the join screen uses it to open the group).
+        ...(alreadyMember ? { groupId: link.groupId } : {}),
       };
     },
     join(token) {
@@ -160,10 +184,15 @@ export function createMockInviteLinksStore(): MockInviteLinksStore {
       if (link === undefined || !isUsable(link, now)) {
         throw invalidLinkError();
       }
+      // Already a member: no use consumed, like the server.
+      if (isMember(link.groupId)) {
+        return { groupId: link.groupId, alreadyMember: true };
+      }
+      joined.add(link.groupId);
       links = links.map((entry) =>
         entry.id === link.id ? { ...entry, uses: entry.uses + 1 } : entry,
       );
-      return { groupId: link.groupId, alreadyMember: true };
+      return { groupId: link.groupId, alreadyMember: false };
     },
   };
 }
