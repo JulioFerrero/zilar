@@ -167,8 +167,3 @@ export function approverOptions(
   }
   return options;
 }
-
-/** True when the topic access picker renders: private topics only. */
-export function showsTopicAccess(visibility: TopicVisibility): boolean {
-  return visibility === 'private';
-}

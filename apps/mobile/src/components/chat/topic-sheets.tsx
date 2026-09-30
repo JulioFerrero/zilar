@@ -7,7 +7,7 @@ import { Avatar } from '@/components/chat/avatar';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
-import { approverLine, topicRoleLabel } from '@/lib/roles';
+import { approverLine, approverOptions, topicAccessRows } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
 import type { ApproverRole, TopicMember, TopicRole } from '@/lib/topics-api';
 import type { ChatSummary } from '@/lib/types';
@@ -102,12 +102,15 @@ export function TopicInfoSheet({
   onClose,
   roles,
   rolesError,
+  rolesLoading,
+  groupRolesError,
   approverRole,
   groupRoles,
   canManageRoles,
   onToggleTopicRole,
   onPickApprover,
   onRetryRoles,
+  onRetryGroupRoles,
 }: {
   chat: ChatSummary | null;
   groupTitle: string;
@@ -121,9 +124,16 @@ export function TopicInfoSheet({
   onLeave: () => void;
   onArchive: () => void;
   onClose: () => void;
-  /** The roles attached to this topic (`undefined` while loading). */
+  /** The roles attached to this topic (empty until the first load). */
   roles: TopicRole[];
   rolesError: string;
+  /** True while the group detail behind the manager bit is still loading:
+   *  the sheet says the controls are loading instead of silently hiding
+   *  them as a read-only view. */
+  rolesLoading: boolean;
+  /** A group-roles load failure: the add picker names it with a Retry
+   *  instead of silently degrading to attached-only. */
+  groupRolesError: string;
   approverRole: ApproverRole | null;
   /** The group's roles, for the manager's add picker. */
   groupRoles: CustomGroupRole[];
@@ -131,6 +141,7 @@ export function TopicInfoSheet({
   onToggleTopicRole: (roleId: string) => void;
   onPickApprover: (roleId: string | null) => void;
   onRetryRoles: () => void;
+  onRetryGroupRoles: () => void;
 }) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const insets = useSafeAreaInsets();
@@ -138,8 +149,13 @@ export function TopicInfoSheet({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [approverOpen, setApproverOpen] = useState(false);
   const isPrivate = topic?.visibility === 'private';
-  const attachedIds = new Set(roles.map((role) => role.id));
-  const addable = groupRoles.filter((role) => !attachedIds.has(role.id));
+  // The picker rows and approver options come from the shared helpers, so
+  // the sheet renders exactly what the unit tests pin (attached first, the
+  // rest sorted by name).
+  const accessRows = topicAccessRows(topic?.visibility ?? 'public', roles, groupRoles);
+  const attachedRows = accessRows.filter((row) => row.attached);
+  const addableRows = accessRows.filter((row) => !row.attached);
+  const approverOpts = approverOptions(roles, approverRole);
   const line = approverLine(approverRole);
   return (
     <Modal visible={chat !== null} transparent animationType="fade" onRequestClose={onClose}>
@@ -229,6 +245,10 @@ export function TopicInfoSheet({
                         <Text className="text-[14px] text-foreground">Retry</Text>
                       </Pressable>
                     </View>
+                  ) : rolesLoading ? (
+                    <Text className="py-1 text-[14px] text-muted-foreground">
+                      Checking your role…
+                    </Text>
                   ) : (
                     <View>
                       {roles.length === 0 ? (
@@ -236,16 +256,16 @@ export function TopicInfoSheet({
                           No roles here yet — only the people above can see this topic.
                         </Text>
                       ) : null}
-                      {roles.map((role) => (
-                        <View key={role.id} className="flex-row items-center gap-2 py-1">
+                      {attachedRows.map((row) => (
+                        <View key={row.id} className="flex-row items-center gap-2 py-1">
                           <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px]">
-                            {topicRoleLabel(role)}
+                            {row.label}
                           </Text>
                           {canManageRoles ? (
                             <Pressable
                               accessibilityRole="button"
-                              accessibilityLabel={`Remove ${role.name} from the topic`}
-                              onPress={() => onToggleTopicRole(role.id)}
+                              accessibilityLabel={`Remove ${row.label} from the topic`}
+                              onPress={() => onToggleTopicRole(row.id)}
                               className="rounded-[10px] border border-border-strong px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                             >
                               <Text className="text-[14px] text-foreground">Remove</Text>
@@ -253,22 +273,34 @@ export function TopicInfoSheet({
                           ) : null}
                         </View>
                       ))}
+                      {groupRolesError !== '' ? (
+                        <View className="gap-2 py-1">
+                          <Text accessibilityRole="alert" className="text-[13px] text-danger">
+                            {groupRolesError}
+                          </Text>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Retry loading group roles"
+                            onPress={onRetryGroupRoles}
+                            className="self-start rounded-[10px] border border-border-strong px-4 py-2 active:bg-surface-raised disabled:opacity-50"
+                          >
+                            <Text className="text-[14px] text-foreground">Retry</Text>
+                          </Pressable>
+                        </View>
+                      ) : null}
                       {canManageRoles ? (
                         pickerOpen ? (
                           <View className="gap-1 py-1">
-                            {addable.map((role) => (
+                            {addableRows.map((row) => (
                               <Pressable
-                                key={role.id}
+                                key={row.id}
                                 accessibilityRole="button"
-                                accessibilityLabel={`Add ${role.name} to the topic`}
-                                onPress={() => onToggleTopicRole(role.id)}
+                                accessibilityLabel={`Add ${row.label} to the topic`}
+                                onPress={() => onToggleTopicRole(row.id)}
                                 className="flex-row items-center gap-2 rounded-xl border border-border-strong px-2 py-1.5 active:bg-surface-raised disabled:opacity-50"
                               >
                                 <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px]">
-                                  {role.name}
-                                </Text>
-                                <Text className="text-[12px] text-muted-foreground">
-                                  {role.members.length}
+                                  {row.label}
                                 </Text>
                               </Pressable>
                             ))}
@@ -281,7 +313,7 @@ export function TopicInfoSheet({
                               <Text className="text-[14px] text-foreground">Done</Text>
                             </Pressable>
                           </View>
-                        ) : addable.length > 0 ? (
+                        ) : addableRows.length > 0 ? (
                           <Pressable
                             accessibilityRole="button"
                             accessibilityLabel="Add roles to the topic"
@@ -297,35 +329,21 @@ export function TopicInfoSheet({
                       {canManageRoles ? (
                         approverOpen ? (
                           <View className="gap-1 py-1">
-                            <Pressable
-                              accessibilityRole="radio"
-                              accessibilityState={{ selected: approverRole === null }}
-                              accessibilityLabel="Approvers: owner and admins only"
-                              onPress={() => {
-                                setApproverOpen(false);
-                                onPickApprover(null);
-                              }}
-                              className="flex-row items-center gap-2 rounded-xl border border-border-strong px-2 py-1.5 active:bg-surface-raised disabled:opacity-50"
-                            >
-                              <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px]">
-                                Owner and admins only{approverRole === null ? ' ✓' : ''}
-                              </Text>
-                            </Pressable>
-                            {roles.map((role) => (
+                            {approverOpts.map((option) => (
                               <Pressable
-                                key={role.id}
+                                key={option.id ?? 'none'}
                                 accessibilityRole="radio"
-                                accessibilityState={{ selected: approverRole?.id === role.id }}
-                                accessibilityLabel={`Approvers: ${role.name}`}
+                                accessibilityState={{ selected: option.selected }}
+                                accessibilityLabel={`Approvers: ${option.label}`}
                                 onPress={() => {
                                   setApproverOpen(false);
-                                  onPickApprover(role.id);
+                                  onPickApprover(option.id);
                                 }}
                                 className="flex-row items-center gap-2 rounded-xl border border-border-strong px-2 py-1.5 active:bg-surface-raised disabled:opacity-50"
                               >
                                 <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px]">
-                                  {role.name}
-                                  {approverRole?.id === role.id ? ' ✓' : ''}
+                                  {option.label}
+                                  {option.selected ? ' ✓' : ''}
                                 </Text>
                               </Pressable>
                             ))}

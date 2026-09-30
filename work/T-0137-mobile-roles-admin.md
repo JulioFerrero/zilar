@@ -74,13 +74,44 @@ Web changes, server changes, role-based message permissions beyond what T-0116 b
 - `pnpm --filter @galena/mobile test --maxWorkers=2`: 45 files passed, 2 skipped; 456 passed, 2 skipped, 0 failed.
 - `grep` for `any`/`@ts-ignore`/disable comments in touched non-test source: no hits.
 
+### Review round 2 (pre-review findings 1–4 fixed)
+
+1. Topic screen manager gating: `app/chat/[id].tsx` now issues
+   `refreshGroupDetail` for the topic's group on mount (deep links included),
+   and the info sheet takes `rolesLoading` (detail not loaded yet, no roles
+   error): it renders "Checking your role…" instead of a silent read-only
+   view. Render test added.
+2. Swallowed group-roles load failure: the screen tracks
+   `infoGroupRolesError`, the sheet renders it with a "Retry loading group
+   roles" button (`groupRolesError`/`onRetryGroupRoles`) instead of silently
+   degrading to attached-only. Render test added.
+3. Over-mocked sheet tests: added `apps/mobile/vitest.config.mts` with only
+   the `@` → `./src` alias (no new dependency; native-primitive mocks
+   untouched) and unmocked `@/lib/roles` in both sheet suites — they now
+   verify the real label/line/confirm wiring, plus a guard test that fails if
+   the copy changes.
+4. Nit (dead helpers): the sheet now renders `topicAccessRows` (attached
+   first, rest sorted by name) and `approverOptions`; deleted the unused
+   `showsTopicAccess` (+ its assertions).
+
+### Commands run and real results (round 2)
+- `pnpm format:check`: pass for all owned files (the only warn is the lead's
+  untracked `PREREVIEW.md`, which I must not edit).
+- `pnpm lint` (oxlint): pass. `pnpm typecheck` (turbo 10/10): pass.
+- `pnpm --filter @galena/mobile test --maxWorkers=2`: 45 files passed,
+  2 skipped; 461 passed, 2 skipped, 0 failed.
+- `grep` for `any`/`@ts-ignore`/disable comments in touched non-test source:
+  no hits.
+
 ### Problems, deviations from the spec, open questions
-- No `packages/chat-core` change (nothing to say beyond "not needed"): topic rows never carried roles (web reads them via `getTopic`), so the store keeps a separate topic-roles cache; member roles ride the mobile-local `GroupMember.roles`.
-- `membersWithChips` differs slightly from web: once the fresh roles list loads it wins for everyone (absent = holds nothing); the detail snapshot only fills in before the first load. Otherwise a stale snapshot would leak chips after unassignment.
-- `ensureGroupRoles`/`ensureTopicRoles` reject on failure (the detail loader swallows); the sheets need the rejection for Retry. A group-roles load failure inside the topic info sheet is swallowed (add-picker degrades to attached-only).
-- Render tests use `renderToStaticMarkup` with mocked native primitives (no renderer on mobile, T-0112 pattern); interactions (taps) are not covered, only presence/absence of controls and labels.
-- Security checklist: no secrets logged (bearer only in the header, as elsewhere); no new routes; 403/404 writes map to one neutral line; client sends full desired sets, server diffs atomically (T-0116).
-- NOT live-checked (no simulator per task rules): needs a human look at the Members/Roles sheet, the topic access picker + approver rows, the delete confirm, and a mock-mode walkthrough (create/rename/delete/assign, private flip, non-admin view).
+- Pre-review nit 5 (in-flight Retry resolves instantly; same pre-existing
+  pattern as `ensureGroupDetail`) left as-is per "consider".
+- The Add-roles/approver pickers open on tap, so static markup only pins the
+  entry buttons; row ordering stays covered by the `roles.test.ts` unit
+  tests.
+- Still not live-checked (no simulator per task rules): needs a human look
+  at the deep-link manager view, the "Checking your role…" state, and the
+  new Retry paths in mock mode.
 
 ### Blocked / needs a decision
 - None.

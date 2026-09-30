@@ -56,6 +56,7 @@ function Chat() {
     (state) => state.chats.find((item) => item.id === chatId)?.groupId,
   );
   const groupDetail = useChatStore((state) => state.groupDetail(chatGroupId ?? ''));
+  const refreshGroupDetail = useChatStore((state) => state.refreshGroupDetail);
   const groupRoles = useChatStore((state) => state.groupRoles(chatGroupId ?? ''));
   const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
   const me = useChatStore((state) => state.me);
@@ -73,6 +74,7 @@ function Chat() {
   const [infoBusy, setInfoBusy] = useState(false);
   const [infoError, setInfoError] = useState('');
   const [infoRolesError, setInfoRolesError] = useState('');
+  const [infoGroupRolesError, setInfoGroupRolesError] = useState('');
 
   useEffect(() => {
     if (chatId) {
@@ -87,6 +89,18 @@ function Chat() {
       cancelEdit();
     };
   }, [chatId, cancelEdit]);
+
+  // The manager bit (archive gate, role controls) and the owner picker read
+  // the group detail, so load it for the topic's group: opening a topic
+  // directly (deep link) must not demote a manager to a silent read-only
+  // view. A load failure keeps the read-only view with a neutral notice in
+  // the info sheet.
+  const detailGroupId = chat?.groupId ?? chatGroupId;
+  useEffect(() => {
+    if (detailGroupId !== undefined && detailGroupId !== '') {
+      refreshGroupDetail(detailGroupId);
+    }
+  }, [detailGroupId, refreshGroupDetail]);
 
   // A topic that disappears while open goes back to the topics screen with a
   // short notice that never names the topic (the store sets it on refresh).
@@ -125,6 +139,7 @@ function Chat() {
   const isTopic = chat.topic !== undefined;
   const groupName = chat.groupTitle ?? '';
   const detail = groupDetail;
+  const detailLoaded = detail !== undefined;
   const myUserId = me?.id ?? currentUserId;
   const permissions = {
     members:
@@ -168,9 +183,21 @@ function Chat() {
     void patch({ status: next });
   };
 
+  const refreshInfoRoles = () => {
+    setInfoRolesError('');
+    setInfoGroupRolesError('');
+    void refreshTopicRoles(chat.id).catch(() =>
+      setInfoRolesError('Could not load the roles. Try again.'),
+    );
+    if (chatGroupId !== undefined) {
+      void refreshGroupRoles(chatGroupId).catch(() =>
+        setInfoGroupRolesError('Could not load the group roles. Try again.'),
+      );
+    }
+  };
+
   const openInfo = () => {
     setInfoError('');
-    setInfoRolesError('');
     setInfoOpen(true);
     void listTopicMembers(chat.id)
       .then(setInfoMembers)
@@ -180,12 +207,7 @@ function Chat() {
       .catch(() => setInfoAis([]));
     // The access picker reads the attached roles fresh (a 403/404 reads as
     // the neutral denied line, never "not found").
-    void refreshTopicRoles(chat.id).catch(() =>
-      setInfoRolesError('Could not load the roles. Try again.'),
-    );
-    if (chatGroupId !== undefined) {
-      void refreshGroupRoles(chatGroupId).catch(() => {});
-    }
+    refreshInfoRoles();
   };
 
   const saveTopicRoles = (roleIds: string[], approverRoleId: string | null): void => {
@@ -384,6 +406,8 @@ function Chat() {
         }}
         roles={topicRoles?.roles ?? []}
         rolesError={infoRolesError}
+        rolesLoading={!detailLoaded && infoRolesError === ''}
+        groupRolesError={infoGroupRolesError}
         approverRole={topicRoles?.approverRole ?? null}
         groupRoles={groupRoles ?? []}
         canManageRoles={mayManageRoles(
@@ -398,6 +422,14 @@ function Chat() {
           void refreshTopicRoles(chat.id).catch(() =>
             setInfoRolesError('Could not load the roles. Try again.'),
           );
+        }}
+        onRetryGroupRoles={() => {
+          setInfoGroupRolesError('');
+          if (chatGroupId !== undefined) {
+            void refreshGroupRoles(chatGroupId).catch(() =>
+              setInfoGroupRolesError('Could not load the group roles. Try again.'),
+            );
+          }
         }}
       />
     </View>

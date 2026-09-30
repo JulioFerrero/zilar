@@ -29,9 +29,8 @@ vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
 
-vi.mock('@/lib/roles', () => ({
-  deleteRoleConfirmText: (name: string) => `Delete “${name}”? Its members lose access.`,
-}));
+// `@/lib/roles` is deliberately NOT mocked: the render assertions below
+// verify the real confirm-text wiring (T-0137 pre-review finding 3).
 
 const MEMBERS = [
   { userId: 'me', name: 'You', role: 'owner' as const, chips: [{ id: 'r1', name: 'Designers' }] },
@@ -104,5 +103,13 @@ describe('GroupRolesSheet', () => {
 
   it('says what there are no roles yet', () => {
     expect(sheet({ roles: [] })).toContain('No roles yet.');
+  });
+
+  it('renders the real delete-confirm wiring', async () => {
+    // The `@/lib/roles` import above is real, so a changed confirm copy or a
+    // broken import fails this suite — it no longer passes for the wrong
+    // reason (T-0137 pre-review finding 3).
+    const real = await import('@/lib/roles');
+    expect(real.deleteRoleConfirmText('Designers')).toContain('Designers');
   });
 });

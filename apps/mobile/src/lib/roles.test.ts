@@ -9,7 +9,6 @@ import {
   membersWithChips,
   mayManageRoles,
   rolesByUserId,
-  showsTopicAccess,
   sortGroupRoles,
   topicAccessRows,
   topicRoleLabel,
@@ -121,8 +120,6 @@ describe('topicAccessRows', () => {
 
   it('shows no rows for public topics', () => {
     expect(topicAccessRows('public', attached, [role('r2', 'Devs')])).toEqual([]);
-    expect(showsTopicAccess('public')).toBe(false);
-    expect(showsTopicAccess('private')).toBe(true);
   });
 });
 

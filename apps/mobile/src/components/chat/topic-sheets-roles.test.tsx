@@ -31,12 +31,9 @@ vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
 
-vi.mock('@/lib/roles', () => ({
-  approverLine: (approver: { name: string } | null) =>
-    approver === null ? undefined : `Approvers: ${approver.name}`,
-  topicRoleLabel: (role: { name: string; memberCount: number }) =>
-    `${role.name} (${role.memberCount})`,
-}));
+// `@/lib/roles` is deliberately NOT mocked: the render assertions below
+// verify the real label/line wiring (T-0137 pre-review finding 3). The
+// module is types-only apart from pure functions, so it loads cleanly.
 
 vi.mock('@/lib/color-scheme', () => ({
   asColorScheme: () => 'dark',
@@ -107,12 +104,15 @@ function sheet(overrides: Record<string, unknown> = {}): string {
       onClose: () => {},
       roles: ATTACHED,
       rolesError: '',
+      rolesLoading: false,
+      groupRolesError: '',
       approverRole: null,
       groupRoles: GROUP_ROLES,
       canManageRoles: true,
       onToggleTopicRole: () => {},
       onPickApprover: () => {},
       onRetryRoles: () => {},
+      onRetryGroupRoles: () => {},
       ...overrides,
     }),
   );
@@ -149,5 +149,47 @@ describe('TopicInfoSheet roles (T-0137)', () => {
     const html = sheet({ rolesError: 'Could not load the roles. Try again.' });
     expect(html).toContain('Could not load the roles. Try again.');
     expect(html).toContain('Retry');
+  });
+
+  it('says the controls are loading while the manager bit resolves', () => {
+    const html = sheet({ rolesLoading: true });
+    expect(html).toContain('Checking your role…');
+    expect(html).not.toContain('Add roles');
+    expect(html).not.toContain('Remove');
+  });
+
+  it('names a group-roles load failure with a Retry instead of degrading silently', () => {
+    const html = sheet({ groupRolesError: 'Could not load the group roles. Try again.' });
+    expect(html).toContain('Could not load the group roles. Try again.');
+    expect(html).toContain('Retry');
+  });
+
+  it('fails loudly if the label wiring breaks', async () => {
+    // The `@/lib/roles` import above is real, so importing this test with a
+    // broken `topicRoleLabel`/`approverLine` (or a changed confirm copy)
+    // fails here too — the suite no longer passes for the wrong reason.
+    const real = await import('@/lib/roles');
+    expect(real.topicRoleLabel({ id: 'r1', name: 'Designers', memberCount: 2 })).toBe(
+      'Designers (2)',
+    );
+    expect(real.approverLine({ id: 'r1', name: 'Designers' })).toBe('Approvers: Designers');
+    expect(sheet()).toContain('Designers (2)');
+    expect(
+      sheet({ canManageRoles: false, approverRole: { id: 'r1', name: 'Designers' } }),
+    ).toContain('Approvers: Designers');
+  });
+
+  it('offers the Add-roles picker entry when group roles are addable', () => {
+    // The picker itself opens on tap (not covered statically); the rows it
+    // shows come from `topicAccessRows`, pinned sorted by the unit tests.
+    const html = sheet({
+      roles: [],
+      groupRoles: [
+        { id: 'r2', name: 'Zebras', members: [{ userId: 'me', name: 'You' }] },
+        { id: 'r1', name: 'Designers', members: [{ userId: 'me', name: 'You' }] },
+      ],
+    });
+    expect(html).toContain('Add roles');
+    expect(html).toContain('No roles here yet');
   });
 });
