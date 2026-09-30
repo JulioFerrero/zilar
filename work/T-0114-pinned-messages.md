@@ -92,7 +92,9 @@ pnpm build
 - `pnpm lint`: pass (oxlint clean)
 - `pnpm typecheck`: pass (10/10 turbo tasks)
 - `pnpm --filter @galena/server test --maxWorkers=2`: 80 files passed, 5 skipped; 1375 passed, 7 skipped (~279 s)
+- `pnpm --filter @galena/server test --maxWorkers=2 src/pins/pins.test.ts` (round 2): 10 passed
 - `pnpm --filter @galena/web test --maxWorkers=2`: 70 files passed; 759 passed
+- `pnpm --filter @galena/web test --maxWorkers=2` (round 2): 70 files passed; 760 passed
 - `pnpm build`: pass (2/2)
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any` in touched files: no hits (one false positive: the word "anyone" in a test name)
 
@@ -102,6 +104,14 @@ pnpm build
 - Mock pins key by client chat id (no JID access model in mock); seeds: one text pin in the Ana DM, one photo pin in Viernes.
 - Raw BEL byte briefly landed in `pins.test.ts` from my editor; replaced with `\u0007` escape (file is ASCII, verified with `file`).
 - No new dependencies. No realtime XMPP pin updates (out of scope, polling instead).
+
+### Round 2 (review fixes)
+- Finding 1 (MUST): pin text now allows `\t`/`\n` like message bodies (new `allowWhitespace` flag on the control-char check; sender names stay strict). Server test pins a 3-line message and reads it back; client test pins a 3-line bubble and asserts every line in the banner.
+- Finding 2: the creator/admin test now proves its case — `other` is promoted to group admin via a direct row update (groups.test.ts precedent) so the 404s assert the admin-who-cannot-see path, and `topics.createdBy` is rewritten to the plain member (simulating a post-creation demotion, which T-0116 will do via API) so the 201 asserts the `createdBy` branch itself.
+- Finding 3: count + insert run in one transaction under `pg_advisory_xact_lock(hashtext(chatJid))`; new concurrent test fires 25 parallel pins and asserts exactly 20 × 201, 5 × 400, 20 rows. Migration untouched (no schema change).
+- Finding 4: panel unpin buttons disable per row (`unpinningId === pin.id`).
+- Finding 5: removed the duplicated `expect(attachment.status).toBe(201)` line.
+- Pre-review packet `PREREVIEW.md` read and deleted.
 
 ### Blocked / needs a decision
 - None.

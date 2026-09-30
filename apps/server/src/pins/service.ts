@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
@@ -30,11 +30,17 @@ export interface PinView {
 
 const CONTROL_CHAR_MAX = 0x1f;
 const CONTROL_CHAR_DEL = 0x7f;
+// Message bodies may carry tab and newline (Shift+Enter); the snapshot keeps
+// the same rule and rejects every other control character.
+const SNAPSHOT_WHITESPACE = new Set(['\t', '\n']);
 
-function hasControlCharacters(value: string): boolean {
+function hasControlCharacters(value: string, allowWhitespace = false): boolean {
   for (const char of value) {
     const code = char.codePointAt(0) ?? 0;
     if (code <= CONTROL_CHAR_MAX || code === CONTROL_CHAR_DEL) {
+      if (allowWhitespace && SNAPSHOT_WHITESPACE.has(char)) {
+        continue;
+      }
       return true;
     }
   }
@@ -61,7 +67,7 @@ export const createPinBodySchema = z
     text: z
       .string()
       .max(PIN_TEXT_MAX, { message: `text must be at most ${PIN_TEXT_MAX} characters` })
-      .refine((value) => !hasControlCharacters(value), {
+      .refine((value) => !hasControlCharacters(value, true), {
         message: 'text must not contain control characters',
       })
       .optional(),
@@ -124,6 +130,16 @@ export async function pinMessage(deps: PinsServiceDeps, input: PinMessageInput):
     mucDomain: deps.mucDomain,
   });
   await requirePinManager(deps.db, chat, input.actorId);
+  const text = input.text ?? '';
+  const kind = input.kind ?? 'text';
+  if (kind !== 'text' && text !== '') {
+    throw new HttpError(400, 'invalid_request', 'Only text pins carry a text snapshot');
+  }
+  const id = randomUUID();
+  // The duplicate check stays outside (the unique index + 409 mapping below
+  // keep it race-safe), but the count check and the insert run in one
+  // transaction under a per-chat advisory lock: two concurrent pins past the
+  // cap would otherwise both read under 20 and both insert.
   const [existing] = await deps.db
     .select({ id: pinnedMessages.id })
     .from(pinnedMessages)
@@ -134,28 +150,25 @@ export async function pinMessage(deps: PinsServiceDeps, input: PinMessageInput):
   if (existing) {
     throw new HttpError(409, 'pin_exists', 'That message is already pinned');
   }
-  const [counter] = await deps.db
-    .select({ total: count() })
-    .from(pinnedMessages)
-    .where(eq(pinnedMessages.chatJid, chat.chatJid));
-  if (Number(counter?.total ?? 0) >= PINS_MAX_PER_CHAT) {
-    throw new HttpError(400, 'pin_limit', `A chat has at most ${PINS_MAX_PER_CHAT} pins`);
-  }
-  const text = input.text ?? '';
-  const kind = input.kind ?? 'text';
-  if (kind !== 'text' && text !== '') {
-    throw new HttpError(400, 'invalid_request', 'Only text pins carry a text snapshot');
-  }
-  const id = randomUUID();
   try {
-    await deps.db.insert(pinnedMessages).values({
-      id,
-      chatJid: chat.chatJid,
-      messageId: input.messageId,
-      senderName: input.senderName,
-      text,
-      kind,
-      pinnedBy: input.actorId,
+    await deps.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${chat.chatJid}))`);
+      const [counter] = await tx
+        .select({ total: count() })
+        .from(pinnedMessages)
+        .where(eq(pinnedMessages.chatJid, chat.chatJid));
+      if (Number(counter?.total ?? 0) >= PINS_MAX_PER_CHAT) {
+        throw new HttpError(400, 'pin_limit', `A chat has at most ${PINS_MAX_PER_CHAT} pins`);
+      }
+      await tx.insert(pinnedMessages).values({
+        id,
+        chatJid: chat.chatJid,
+        messageId: input.messageId,
+        senderName: input.senderName,
+        text,
+        kind,
+        pinnedBy: input.actorId,
+      });
     });
   } catch (error) {
     throw mapPinError(error);

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { auditLog, pinnedMessages } from '../db/schema';
+import { and, eq } from 'drizzle-orm';
+import { auditLog, groupMembers, pinnedMessages, topics } from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
@@ -165,8 +166,6 @@ describe('pins', () => {
 
   it('lets the topic creator pin even as a plain member; hides private topics from non-member admins', async () => {
     const { owner, member, other, group } = await setup();
-    // The owner creates the topic, then hands the group to `other` as admin
-    // and steps back: `other` is an admin who cannot see the private topic.
     const created = await createTopic(owner.cookie, group.id, {
       name: 'Hiring',
       visibility: 'private',
@@ -175,11 +174,27 @@ describe('pins', () => {
     expect(created.status).toBe(201);
     const chatJid = created.body.chatJid;
 
-    // A plain member of the private topic cannot pin (only managers may).
-    expect((await pin(member.cookie, pinBody(chatJid))).status).toBe(403);
-    // The creator (owner here) can.
-    expect((await pin(owner.cookie, pinBody(chatJid))).status).toBe(201);
-    // `other` sees the same 404 as for a missing chat.
+    // `other` becomes a real group admin (direct row update, like
+    // groups.test.ts) who still cannot see the private topic: the admin path
+    // below is the "cannot see" path, not the stranger path.
+    await context.db
+      .update(groupMembers)
+      .set({ role: 'admin' })
+      .where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, other.id)));
+    // The creator is demoted to a plain member after creating the topic
+    // (T-0116 will do this through the API): the `createdBy` branch is what
+    // lets them pin, not any current role.
+    await context.db
+      .update(topics)
+      .set({ createdBy: member.id })
+      .where(eq(topics.id, created.body.id));
+
+    // A plain member of the private topic who did not create it cannot pin.
+    expect((await pin(other.cookie, pinBody(chatJid, 'msg-x'))).status).toBe(404);
+    // The demoted creator still can.
+    expect((await pin(member.cookie, pinBody(chatJid))).status).toBe(201);
+    // The non-member admin sees the same 404 as for a missing chat, on every
+    // route.
     expect((await listPins(other.cookie, chatJid)).status).toBe(404);
     expect((await pin(other.cookie, pinBody(chatJid, 'msg-9'))).status).toBe(404);
   });
@@ -252,7 +267,53 @@ describe('pins', () => {
       kind: 'image',
     });
     expect(attachment.status).toBe(201);
-    expect(attachment.status).toBe(201);
+  });
+
+  it('pins a multiline message: tabs and newlines are kept, other control chars rejected', async () => {
+    const { owner, member } = await setup();
+    const memberJid = expectedJid(member.id);
+    const text = 'Agenda:\n1.\ttabu\u0007lated\n2. done';
+    const response = await pin(owner.cookie, {
+      chat: memberJid,
+      messageId: 'multi-1',
+      senderName: 'Owner',
+      text,
+      kind: 'text',
+    });
+    // BEL (0x07) is rejected; the same text without it pins fine.
+    expect(response.status).toBe(400);
+    const clean = await pin(owner.cookie, {
+      chat: memberJid,
+      messageId: 'multi-1',
+      senderName: 'Owner',
+      text: 'Agenda:\n1.\ttabulated\n2. done',
+      kind: 'text',
+    });
+    expect(clean.status).toBe(201);
+    expect(((await clean.json()) as PinBody).text).toBe('Agenda:\n1.\ttabulated\n2. done');
+    const listed = (await (await listPins(member.cookie, expectedJid(owner.id))).json()) as {
+      pins: PinBody[];
+    };
+    expect(listed.pins.map((entry) => entry.text)).toEqual(['Agenda:\n1.\ttabulated\n2. done']);
+  });
+
+  it('holds the 20-pin cap under concurrent writes', async () => {
+    const { owner, member } = await setup();
+    const memberJid = expectedJid(member.id);
+    // PGlite runs every query on one connection, so these interleave rather
+    // than truly racing; the advisory lock is what serializes the same chat
+    // on real Postgres. Either way the chat must never hold more than 20.
+    const attempts = await Promise.all(
+      Array.from({ length: 25 }, (_, index) =>
+        pin(owner.cookie, pinBody(memberJid, `race-${index}`)),
+      ),
+    );
+    const created = attempts.filter((response) => response.status === 201);
+    const limited = attempts.filter((response) => response.status === 400);
+    expect(created).toHaveLength(20);
+    expect(limited).toHaveLength(5);
+    const stored = await context.db.select().from(pinnedMessages);
+    expect(stored).toHaveLength(20);
   });
 
   it('audits pin and unpin with ids only, and keeps private-topic pins out of group activity', async () => {

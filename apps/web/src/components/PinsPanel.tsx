@@ -184,7 +184,7 @@ export function PinsPanel({ chatId, onClose }: { chatId: string; onClose: () => 
                     size="sm"
                     aria-label={`Unpin message from ${pin.senderName}`}
                     className="shrink-0"
-                    disabled={unpinningId !== undefined}
+                    disabled={unpinningId === pin.id}
                     onClick={() => unpin(pin)}
                   >
                     {unpinningId === pin.id ? 'Unpinning…' : 'Unpin'}

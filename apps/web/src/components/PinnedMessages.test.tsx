@@ -271,6 +271,29 @@ describe('pinned messages (T-0114)', () => {
     await waitFor(() => expect(store.getState().pins('c-x')).toHaveLength(0));
   });
 
+  it('pins a multiline message and shows its lines in the banner', async () => {
+    stubPinsApi();
+    const { store } = renderApp('/c/c-x', {
+      chats: [dm('c-x', 'Ana')],
+      messagesByChat: {
+        'c-x': [textMessage('c-x', 'm-1', 'Agenda:\n1. tabulated\n2. done')],
+      },
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const bubble = within(screen.getByTestId('message-list')).getByText(/Agenda:/);
+    fireEvent.contextMenu(bubble);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin' }));
+    await waitFor(() => expect(store.getState().pins('c-x')).toHaveLength(1));
+    expect(store.getState().pins('c-x')[0]?.text).toBe('Agenda:\n1. tabulated\n2. done');
+    // The banner keeps every line as inert text.
+    const jump = screen.getByRole('button', { name: 'Jump to pinned message from You' });
+    expect(jump.textContent).toContain('Agenda:');
+    expect(jump.textContent).toContain('1. tabulated');
+  });
+
   it('gates the menu items: anyone in a DM, only managers in a topic', async () => {
     stubPinsApi();
     // Plain member in a topic: no Pin entry.
