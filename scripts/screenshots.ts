@@ -11,7 +11,8 @@
  * are committed.
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync, statSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, renameSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -119,7 +120,7 @@ async function waitForServer(url: string, tries = 60): Promise<void> {
   throw new Error(`The dev server never came up at ${url}`);
 }
 
-function startDevServer(): ReturnType<typeof spawn> {
+function startDevServer(onError: (error: Error) => void): ReturnType<typeof spawn> {
   const child = spawn(
     'pnpm',
     ['--filter', '@galena/web', 'exec', 'vite', '--port', String(PORT), '--strictPort'],
@@ -128,9 +129,9 @@ function startDevServer(): ReturnType<typeof spawn> {
       stdio: 'ignore',
     },
   );
-  child.on('error', (error) => {
-    throw error;
-  });
+  // A spawn failure (missing binary, bad cwd) must reject the startup wait
+  // instead of escaping as an uncaught exception from the event handler.
+  child.on('error', onError);
   return child;
 }
 
@@ -167,26 +168,28 @@ async function runSetup(page: Page, setup: string): Promise<void> {
   }
 }
 
-async function capture(browser: Browser, shot: Shot): Promise<void> {
+async function capture(browser: Browser, dir: string, shot: Shot): Promise<void> {
   const context = await browser.newContext({ viewport: shot.viewport });
   const page = await context.newPage();
   // Mock mode only: the dev build serves fake chats locally, so no real
   // request ever leaves the machine (the mock API answers in memory).
+  // Every shot carries `mock=1`, including `/login` (the dev build renders
+  // the email form without a session; mock mode only skips the auth gate).
   const separator = shot.path.includes('?') ? '&' : '?';
   await page.goto(`${BASE}${shot.path}${separator}mock=1`, { waitUntil: 'networkidle' });
   // Past the mock API delay, the typing simulation and the search debounce.
   await page.waitForTimeout(7000);
   await runSetup(page, shot.setup);
   await page.screenshot({
-    path: join(outDir, shot.name),
+    path: join(dir, shot.name),
     animations: 'disabled',
   });
   await context.close();
 }
 
-function checkSizes(shots: Shot[]): void {
+function checkSizes(dir: string, shots: Shot[]): void {
   const oversized = shots
-    .map((shot) => ({ name: shot.name, bytes: statSync(join(outDir, shot.name)).size }))
+    .map((shot) => ({ name: shot.name, bytes: statSync(join(dir, shot.name)).size }))
     .filter((entry) => entry.bytes > MAX_PNG_BYTES);
   if (oversized.length > 0) {
     throw new Error(
@@ -197,23 +200,39 @@ function checkSizes(shots: Shot[]): void {
 
 async function main(): Promise<void> {
   const shots = shotTable();
-  mkdirSync(outDir, { recursive: true });
-  const server = startDevServer();
+  // Capture into a temp dir first: a mid-run failure must never leave a
+  // half-fresh set in `docs/screenshots/`. Only a complete run swaps in.
+  const staging = mkdtempSync(join(tmpdir(), 'galena-screenshots-'));
+  let server: ReturnType<typeof spawn> | undefined;
+  let serverError: Error | undefined;
   try {
+    server = startDevServer((error) => {
+      serverError = error;
+    });
     await waitForServer(`${BASE}/`);
+    if (serverError !== undefined) {
+      throw serverError;
+    }
     const browser = await chromium.launch();
     try {
       for (const shot of shots) {
-        await capture(browser, shot);
+        await capture(browser, staging, shot);
         console.log(`captured ${shot.name}`);
       }
     } finally {
       await browser.close();
     }
-    checkSizes(shots);
+    checkSizes(staging, shots);
+    mkdirSync(outDir, { recursive: true });
+    for (const shot of shots) {
+      renameSync(join(staging, shot.name), join(outDir, shot.name));
+    }
     console.log(`All ${shots.length} screenshots are under 400 KB.`);
   } finally {
-    await stopDevServer(server);
+    rmSync(staging, { recursive: true, force: true });
+    if (server !== undefined) {
+      await stopDevServer(server);
+    }
   }
 }
 

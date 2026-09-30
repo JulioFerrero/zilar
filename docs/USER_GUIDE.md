@@ -16,13 +16,15 @@ The left column lists every conversation: direct messages (DMs) with people, gro
 
 - **New chat** (the button at the bottom) starts a group, a DM (by inviting a friend), a new AI, or a new topic.
 - **Invite a friend** is also in the menu. Friends join with an invite link and a sign-in code, like you did.
-- Inside a chat you can reply, react with emoji, edit or delete your own messages, and send images and files (paste, drag-and-drop, or the paperclip button).
+- Inside a chat you can reply, react with emoji, edit or delete your own messages, and send images and files (paste, drag-and-drop, or the paperclip button). The phone view below shows a DM with a reply, an image, a file, and a deleted message.
 
 ![Chat list with topics](screenshots/topics-desktop.png)
 
 On a phone the same list fills the screen; opening a chat slides it in, and the back arrow returns to the list.
 
 ![Chat list on a phone](screenshots/topics-phone.png)
+
+![DM on a phone](screenshots/chat-phone.png)
 
 ## Topics
 
@@ -40,6 +42,10 @@ Groups hold **topics**: one thread per subject, like a forum. The Dev team group
 Every topic has a strip under its title: the type chip (BUG, TASK, UI…), the status (**Open**, **In progress**, **In review**, **Blocked**, **Done**), the owner (a person or an AI, or nobody yet), and an optional link (a PR, a page, anything on `https:`). Anyone who can see the topic can change these — click the status, the owner, or the link to edit.
 
 ![Topic with the task strip](screenshots/topic-desktop.png)
+
+On a phone the same strip sits under the topic title, above the messages.
+
+![Topic with the task strip on a phone](screenshots/topic-phone.png)
 
 The topic panel (click the topic title) holds the full settings: rename, members, AIs, visibility, and archive.
 
@@ -70,6 +76,10 @@ Type two or more letters in the search box: matching chat names appear first, th
 
 ![Message search](screenshots/search-desktop.png)
 
+On a phone the same Messages section appears under the list while you type.
+
+![Message search on a phone](screenshots/search-phone.png)
+
 ## Pins
 
 Any message can be pinned. The banner under the chat title shows the newest pin (sender plus a line or two); with several pins it cycles ("1 of N"), and **List** opens every pin. Clicking a pin jumps to the message. Pin from the message's menu, unpin from the pins list. Up to 20 pins per chat.
@@ -84,7 +94,7 @@ Every chat row has a menu (hover, or the chat header's menu) with three per-user
 - **Mute**: silences notifications for 1 hour, 8 hours, 1 day, 1 week, or forever; muted chats still collect their unread count, shown grey.
 - **Archive chat**: hides the chat behind an **Archived** row at the bottom of the list; unarchive from the same menu to bring it back.
 
-Topics share the same menu; archiving a topic hides it inside its group's own Archived toggle instead. (A group manager can also archive a topic *for everyone* — that one removes it for all members, not just you.)
+Topics share the same menu; archiving a topic hides it inside its group's own Archived toggle instead. (A group manager can also archive a topic *for everyone* — but only topics they can see themselves, so a private topic they are not a member of is out of reach. Manager-archiving removes it for all members, not just you.)
 
 ![Chat preferences](screenshots/prefs-desktop.png)
 
