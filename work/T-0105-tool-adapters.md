@@ -1,7 +1,7 @@
 ---
 id: T-0105
 title: Tool and routine actions for the action gateway (tool.save, tool.run, routine.schedule …) and wiring the sandbox
-status: review
+status: merged
 milestone: M4
 branch: task/T-0105-tool-adapters
 model: meta/muse-spark-1.3-contributor
@@ -147,10 +147,13 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged with two lead fixes. Reviewed twice (gateway and adapters).
 
 ### Findings
--
+- Gateway: `modelText` is returned only on the immediate paths, never stored, audited or announced; the topic id comes from the session; `routine.schedule` is tier 2 with `allowAlways` unset; the post-approval re-check of the tool's hosts fails safe.
+- Lead fix 1 (security): `stripModelTextCloseTag` removed the closing tag in one pass, so `</untrusted-tool-<untrusted-tool-output>output>` turned back into a working closing tag and a fetched page or tool output could break out of the untrusted block. It now repeats until nothing is left and ignores case and inner spaces (test added).
+- Lead fix 2: `index.ts` did not pass the audit recorder to `buildToolAdapters`, so `tool.saved`, `routine.created`, `routine.paused` and `routine.deleted` would not have been audited. Now passed.
 
 ### Follow-ups
--
+- Decision for Julio before turning `TOOLS_ENABLED` on: `tool.save` and `tool.run` are tier 1 and the tool declares its own hosts, so once the AI may act in a chat it can run code that contacts hosts it chose, without a card (only `routine.schedule` shows the hosts to a human). An AI that has read a private chat could send text to such a host. Options: make `tool.save`/`tool.run` tier 2 whenever `hosts` is not empty, or require a one-time approval of the host list per tool. Off by default, so nothing is exposed today.
+- T-0106 (model prompt guide) and T-0107 (web UI for tools and routines) come next.

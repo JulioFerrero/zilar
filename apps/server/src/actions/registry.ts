@@ -49,8 +49,22 @@ export const MODEL_TEXT_WRAPPER_CLOSE = '</untrusted-tool-output>';
 
 // Removes every occurrence of the wrapper's closing tag from `modelText`
 // so a hostile tool output cannot close the labelled block early.
+//
+// Matching is case-insensitive and tolerates whitespace inside the tag, and it
+// repeats until nothing is left to remove: a single pass would let
+// `</untrusted-tool-<untrusted-tool-output>output>` collapse into a working
+// closing tag once the inner one is removed.
+const MODEL_TEXT_CLOSE_PATTERN = /<\/\s*untrusted-tool-output\s*>/gi;
+
 export function stripModelTextCloseTag(value: string): string {
-  return value.split(MODEL_TEXT_WRAPPER_CLOSE).join('');
+  let current = value;
+  for (;;) {
+    const next = current.replace(MODEL_TEXT_CLOSE_PATTERN, '');
+    if (next === current) {
+      return current;
+    }
+    current = next;
+  }
 }
 
 // The optional worst-case cost the adapter reports so the approval card can

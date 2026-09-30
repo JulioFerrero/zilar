@@ -131,6 +131,7 @@ const actionAdapters = [
         db,
         runner: toolRunner,
         routinesEnabled: config.ROUTINES_ENABLED,
+        audit: auditRecorder,
         post: ({ aiId, groupId, topicId, text }) => {
           const gateway = gatewayRef;
           if (gateway === null) {
