@@ -2161,18 +2161,25 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }, CHAT_REFRESH_DEBOUNCE_MS);
     }
 
+    // The throwing half of `refreshChats`: fetches the list and merges it,
+    // reporting fetch failures to the caller. The background callers
+    // (poll, focus, roster) swallow them and retry on the next tick; the
+    // row re-check (`refreshTopicRow`) lets them throw instead of reading
+    // a stale list as "alive".
     async function refreshChats(): Promise<void> {
-      const gen = generation;
-      let entries: ChatEntry[];
-      let prefs: ChatPref[];
       try {
-        [entries, prefs] = await Promise.all([
-          api.getChats(),
-          api.listChatPrefs().catch(() => [] as ChatPref[]),
-        ]);
+        await refreshChatsOrThrow();
       } catch {
         return;
       }
+    }
+
+    async function refreshChatsOrThrow(): Promise<void> {
+      const gen = generation;
+      const [entries, prefs] = await Promise.all([
+        api.getChats(),
+        api.listChatPrefs().catch(() => [] as ChatPref[]),
+      ]);
       if (gen !== generation) {
         return;
       }
@@ -2731,9 +2738,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       // T-0130 (review): re-reads the chat list and reports whether the
       // topic row is still there, so a member-removal 404 can be told
-      // apart from a gone topic (last member removed → archived).
+      // apart from a gone topic (last member removed → archived). A
+      // failed refresh throws (instead of reading a stale list as
+      // "alive"), so the panel shows the inline removal error.
       refreshTopicRow: async (chatId, topicId) => {
-        await refreshChats().catch(() => {});
+        await refreshChatsOrThrow();
         return !get().chats.some((chat) => chat.id === chatId || chat.topic?.id === topicId);
       },
       leaveTopic: async (chatId) => {

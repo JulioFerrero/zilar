@@ -27,6 +27,17 @@ import type {
   Topic,
 } from '@/lib/api';
 import {
+  addTopicAi,
+  addTopicMember,
+  createTopic,
+  listChatPrefs,
+  patchTopic,
+  putChatPref,
+  removeTopicAi,
+  removeTopicMember,
+  setMembersCanCreateTopics,
+} from '@/lib/api';
+import {
   MUTE_DURATIONS,
   applyChatPrefs,
   effectivePrefFor,
@@ -648,20 +659,18 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       // XMPP core, so no room is joined: messages already render from the
       // in-memory bundle.
       createTopic: async (chatId, input) => {
-        const { createTopic: createTopicRequest } = await import('@/lib/api');
         const chat = get().chats.find((entry) => entry.id === chatId);
         const groupId = chat?.groupId ?? get().groupInfos[chatId]?.id;
         if (groupId === undefined) {
           throw new Error('This group is not available yet.');
         }
-        const topic = await createTopicRequest(groupId, input);
+        const topic = await createTopic(groupId, input);
         set((state) => ({ chats: withMockTopicRow(state.chats, topic) }));
         return mockChatIdFor(topic);
       },
       patchTopic: async (chatId, input) => {
-        const { patchTopic: patchTopicRequest } = await import('@/lib/api');
         const topicId = topicIdForChat(get().chats, chatId);
-        const topic = await patchTopicRequest(topicId, input);
+        const topic = await patchTopic(topicId, input);
         set((state) => ({ chats: withMockTopicRow(state.chats, topic) }));
         // A deliberate self-archive moves silently in the real store (the
         // header navigates itself); the mock store has no refresh flow, so
@@ -671,36 +680,31 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         }
       },
       addTopicAi: async (chatId, aiId) => {
-        const { addTopicAi: addTopicAiRequest } = await import('@/lib/api');
         const topicId = topicIdForChat(get().chats, chatId);
-        await addTopicAiRequest(topicId, aiId);
+        await addTopicAi(topicId, aiId);
       },
       removeTopicAi: async (chatId, aiId) => {
-        const { removeTopicAi: removeTopicAiRequest } = await import('@/lib/api');
         const topicId = topicIdForChat(get().chats, chatId);
-        await removeTopicAiRequest(topicId, aiId);
+        await removeTopicAi(topicId, aiId);
       },
       addTopicMember: async (chatId, userId) => {
-        const { addTopicMember: addTopicMemberRequest } = await import('@/lib/api');
         const topicId = topicIdForChat(get().chats, chatId);
-        await addTopicMemberRequest(topicId, userId);
+        await addTopicMember(topicId, userId);
       },
       removeTopicMember: async (chatId, userId) => {
-        const { removeTopicMember: removeTopicMemberRequest } = await import('@/lib/api');
         const topicId = topicIdForChat(get().chats, chatId);
-        const topic = await removeTopicMemberRequest(topicId, userId);
+        const topic = await removeTopicMember(topicId, userId);
         set((state) => ({ chats: withMockTopicRow(state.chats, topic) }));
       },
       leaveTopic: async (chatId) => {
         await get().removeTopicMember(chatId, get().currentUserId);
       },
       setMembersCanCreateTopics: async (chatId, allowed) => {
-        const { setMembersCanCreateTopics: setSwitchRequest } = await import('@/lib/api');
         const groupId = get().groupInfos[chatId]?.id;
         if (groupId === undefined) {
           throw new Error('This group is not available yet.');
         }
-        const updated = await setSwitchRequest(groupId, allowed);
+        const updated = await setMembersCanCreateTopics(groupId, allowed);
         set((state) => ({ groupInfos: { ...state.groupInfos, [chatId]: updated } }));
       },
       chatPrefs: {},
@@ -709,7 +713,6 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       // after each write.
       refreshChatPrefs: async () => {
         try {
-          const { listChatPrefs } = await import('@/lib/api');
           const prefs = await listChatPrefs();
           const byJid: Record<string, ChatPref> = {};
           for (const pref of prefs) {
@@ -724,7 +727,6 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         }
       },
       setPinned: async (chatId, pinned) => {
-        const { putChatPref } = await import('@/lib/api');
         const saved = await putChatPref(chatId, { pinned });
         set((state) => {
           const prefs = { ...state.chatPrefs };
@@ -740,7 +742,6 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         });
       },
       setMuted: async (chatId, duration) => {
-        const { putChatPref } = await import('@/lib/api');
         const saved = await putChatPref(
           chatId,
           duration === null
@@ -761,7 +762,6 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         });
       },
       setArchived: async (chatId, archived) => {
-        const { putChatPref } = await import('@/lib/api');
         const saved = await putChatPref(chatId, { archived });
         set((state) => {
           const prefs = { ...state.chatPrefs };

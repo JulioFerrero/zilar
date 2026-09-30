@@ -398,6 +398,29 @@ describe('topics store mapping (T-0111)', () => {
     expect(getChats).not.toHaveBeenCalled();
   });
 
+  it('a failed removal re-check throws on refresh failure instead of reading stale state', async () => {
+    // Finding 3: the DELETE 404s, then the list refresh fails. The
+    // re-check must throw (so the panel shows the inline removal error),
+    // never resolve "alive" from the untouched stale list.
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    (apiMock.removeTopicMember as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ApiError(404, 'not_found', 'That user is not a member of this topic'),
+    );
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ApiError(0, 'network_error', 'Could not reach the server'),
+    );
+    await expect(store.getState().removeTopicMember(bugId, 'u-ana')).rejects.toThrow(
+      /not a member/,
+    );
+    await expect(store.getState().refreshTopicRow(bugId, 't-bug')).rejects.toThrow(
+      /Could not reach/,
+    );
+    // The row is untouched: no silent drop, no navigation decision.
+    expect(store.getState().chats.some((chat) => chat.id === bugId)).toBe(true);
+  });
+
   it('a 404 removal re-checks the row: alive topic stays, gone topic reports true', async () => {
     // The server 404s both for a non-member and for a gone topic, so
     // `refreshTopicRow` — not the 404 alone — decides. First with the row

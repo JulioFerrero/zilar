@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { ApiError } from '@/lib/api';
 import { renderApp } from '@/test/renderApp';
 import { mockRequest, resetMockApi, setMockDelay } from '@/mock/api';
 
@@ -90,10 +91,10 @@ describe('Group panel topic switch (T-0111)', () => {
 
 describe('topic member removal errors (T-0130)', () => {
   // The panel removes through the store only (ONE DELETE). The stubs below
-  // fail the member-removal endpoint like the server does: a 403 keeps the
-  // user in the topic with the inline error; a 404 re-checks the row — the
-  // topic is still there, so the user stays too.
-  function stubRemoveMember(status: number): void {
+  // fail the member-removal endpoint like the server does: a 403 or a
+  // network failure keeps the user in the topic with the inline error; a
+  // 404 re-checks the row — alive means stay, gone means navigate away.
+  function stubRemoveMember(status: 403 | 404 | 'network'): void {
     const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) =>
       mockRequest(String(url), init ?? {}, { delayMs: 0 }),
     );
@@ -109,6 +110,9 @@ describe('topic member removal errors (T-0130)', () => {
         : raw.replace('/api', '');
       const path = withoutBase.startsWith('/') ? withoutBase : `/${withoutBase}`;
       if (path === '/topics/t-devteam-hiring/members/u-ana' && init?.method === 'DELETE') {
+        if (status === 'network') {
+          throw new ApiError(0, 'network_error', 'Could not reach the server');
+        }
         if (status === 404) {
           return Promise.resolve(
             new Response(JSON.stringify({ error: { code: 'not_found', message: 'gone' } }), {
@@ -137,12 +141,56 @@ describe('topic member removal errors (T-0130)', () => {
 
   // The mock user owns the Dev team group, so the panel shows Remove for
   // every other member; "You" has no Remove button.
+  function openHiringPanelWithStore(): {
+    dialog: HTMLElement;
+    store: ReturnType<typeof renderApp>['store'];
+  } {
+    const { store } = renderApp('/c/c-devteam-hiring');
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    return { dialog, store };
+  }
+
+  function removeAna(dialog: HTMLElement): void {
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Ana from the topic' }));
+  }
+
+  it('keeps the user in the topic with an inline error on a network failure', async () => {
+    // The DELETE itself throws (unreachable server): the panel never
+    // reaches the row re-check and reports the failure inline, staying
+    // exactly where the user was.
+    stubRemoveMember('network');
+    const { dialog } = openHiringPanelWithStore();
+    expect(await within(dialog).findByText('Ana')).toBeTruthy();
+    removeAna(dialog);
+    expect(await within(dialog).findByText('Could not reach the server')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
+  });
+
+  it('navigates away when the row re-check finds the topic gone', async () => {
+    // The DELETE 404s and the refreshed list no longer has the hiring row
+    // (last member removed → archived): the panel navigates to `/` and
+    // closes. The mock store's `refreshTopicRow` checks the local list, so
+    // drop the row after opening the panel to simulate the archived server
+    // truth the re-check would read.
+    stubRemoveMember(404);
+    const { dialog, store } = openHiringPanelWithStore();
+    expect(await within(dialog).findByText('Ana')).toBeTruthy();
+    store.setState((state) => ({
+      chats: state.chats.filter((chat) => chat.id !== 'c-devteam-hiring'),
+    }));
+    removeAna(dialog);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /topic info/ })).toBeNull();
+    });
+  });
+
   it('keeps the user in the topic with an inline error on a 403', async () => {
     stubRemoveMember(403);
-    openHiringPanel();
-    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    const { dialog } = openHiringPanelWithStore();
     expect(await within(dialog).findByText('Ana')).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Ana from the topic' }));
+    removeAna(dialog);
     // The panel stays open and reports the failure inline; the chat view
     // behind it is still the hiring topic.
     expect(await within(dialog).findByText('Only a manager can remove')).toBeTruthy();
@@ -154,20 +202,20 @@ describe('topic member removal errors (T-0130)', () => {
     // "the topic is gone": the row re-check finds the topic alive, so the
     // panel reloads the members and stays open with no inline error.
     stubRemoveMember(404);
-    openHiringPanel();
-    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    const { dialog } = openHiringPanelWithStore();
     expect(await within(dialog).findByText('Ana')).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Ana from the topic' }));
+    removeAna(dialog);
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
     });
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('leaves when the last member is removed and the topic is gone', async () => {
-    // No stub: the strict mock DELETE really removes Ana from the hiring
-    // topic, and the panel stays open (you are still in it) with her row
-    // gone on reload.
+  it('stays on a live topic when the removal removes Ana but the topic lives on', async () => {
+    // Renamed from the overclaiming "leaves when the last member is removed
+    // and the topic is gone": removing Ana from the 2-member hiring topic
+    // does NOT archive it (per the mock + server rules), so this proves
+    // the panel stays open with her row gone — not a redirect.
     openHiringPanel();
     const dialog = screen.getByRole('dialog', { name: /topic info/ });
     expect(await within(dialog).findByText('Ana')).toBeTruthy();

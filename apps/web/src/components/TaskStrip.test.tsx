@@ -56,11 +56,13 @@ describe('Topic header and task strip (T-0111)', () => {
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
   });
 
-  it('compares the AI owner by id, not by display name', () => {
-    // Two AIs share the name "Helper": only the owning one reads checked.
+  it('compares the AI owner by id, not by display name', async () => {
+    // Two AIs share the name "Helper": only the owning one reads checked,
+    // and choosing one sends the server AI id (`helper-2`), never the
+    // mention JID (`ai-helper-2@…`, which the server would 400).
     // The seed wires the UI topic owner to the second Helper directly, so
     // the row needs no store update after mount.
-    renderApp('/c/c-devteam-ui', {
+    const { store } = renderApp('/c/c-devteam-ui', {
       chats: [
         {
           id: 'c-devteam-ui',
@@ -108,6 +110,20 @@ describe('Topic header and task strip (T-0111)', () => {
     expect(options).toHaveLength(2);
     expect(options[0]?.getAttribute('aria-checked')).toBe('false');
     expect(options[1]?.getAttribute('aria-checked')).toBe('true');
+    // Choosing the first (non-owning) Helper PATCHes its server id. The
+    // mock PATCH echoes the saved row, so the store + UI follow to it —
+    // which also proves the request carried `helper-1`, not a JID.
+    const patchTopic = vi.spyOn(store.getState(), 'patchTopic');
+    fireEvent.click(options[0]!);
+    await waitFor(() => {
+      expect(patchTopic).toHaveBeenCalledWith(
+        'c-devteam-ui',
+        expect.objectContaining({ owner: { kind: 'ai', id: 'helper-1' } }),
+      );
+    });
+    expect(
+      within(screen.getByLabelText('Topic details')).getByLabelText('Owner: Helper. Change owner'),
+    ).toBeTruthy();
   });
 
   it('rejects a non-https link in the form with an inline error', () => {

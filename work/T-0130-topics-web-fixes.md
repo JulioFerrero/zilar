@@ -91,13 +91,22 @@ This round's packet (`PREREVIEW.md`, read then deleted, not committed) lists the
 - Finding 5 (test name): `TopicsSidebar.test.tsx:108` renamed to "shows an injected archived row under the Archived toggle".
 - No code changes were needed this round; only the task file (this Report section + status) changed, plus deletion of the packet.
 
-### Commands run and real results (round 2 verification)
+### Review round 3 (lead packet, findings 1–4; 5–6 skipped per instructions)
+Packet (`PREREVIEW.md`, read then deleted, not committed) verified against HEAD `64c2fd5`:
+- Finding 1 (gone-path untested + overclaiming name): renamed `TopicPanel.test.tsx:167` to "stays on a live topic when the removal removes Ana but the topic lives on" with a comment explaining why it does not archive. Added "navigates away when the row re-check finds the topic gone" (DELETE 404s, row dropped to simulate archived server truth → asserts dialog closes, i.e. `navigate('/')` + `onClose`). Added "keeps the user in the topic with an inline error on a network failure" (DELETE throws `ApiError` 0/network → inline error shown, dialog stays). Fail-without: dropping the `navigate`/`onClose` calls fails the gone test (dialog stays open); the old single-DELETE-without-recheck code fails the new tests the same way as round 1.
+- Finding 2 (PATCH payload unasserted): the AI-owner test now clicks the non-owning Helper and asserts `patchTopic` was called with `{ owner: { kind: 'ai', id: 'helper-1' } }` — a JID-as-id regression fails it (verified by temporarily reintroducing `id: member.jid`: test fails with the JID in the received payload, passes after revert).
+- Finding 3 (stale-state row check): split `refreshChats` into a swallowing wrapper + throwing `refreshChatsOrThrow`; `refreshTopicRow` awaits the throwing half so a failed refresh rejects and the panel shows the inline removal error instead of misreading stale state as "alive". New store test: DELETE 404s + `getChats` rejects → `refreshTopicRow` rejects with the network error and the row is untouched. Background callers (poll, focus, roster, schedule) keep the old swallow-and-retry behavior — only the re-check throws.
+- Finding 4 (static import): all `await import('@/lib/api')` in `store.ts` (topic actions + chat-prefs actions) replaced with one static import block; `tsc` clean, which rules out an import cycle (`store.ts` → `api.ts` → `mock/*`, none import the store back). The vite `INEFFECTIVE_DYNAMIC_IMPORT` warning source is gone (full-build re-verification below).
+- Findings 5–6 skipped per instructions (no changes).
+
+### Commands run and real results (round 3)
 - `pnpm install`: pass (809 ms, "Already up to date").
 - `pnpm format:check`: pass ("All matched files use Prettier code style!") after deleting the lead's `PREREVIEW.md` packet (it was the only prettier-dirty file; packets are not committed).
 - `pnpm lint`: pass (oxlint clean, exit 0).
 - `pnpm typecheck`: pass (turbo 10/10 tasks successful).
 - `pnpm --filter @galena/web test --maxWorkers=2`: 69 files passed, 756 passed, exit 0, no unhandled errors.
 - `pnpm build`: pass (2/2 turbo tasks).
+- Round 3 full suite (once, at the end, restricted form): 69 files passed, 759 passed, exit 0, no unhandled errors. `pnpm build`: 2/2 pass with no `INEFFECTIVE_DYNAMIC_IMPORT` warning. (`format:check`/`lint`/`typecheck` re-verified above in this round.)
 
 ### Commands run and real results (rounds 0–1)
 - `pnpm install`: pass (6.7 s, first run).
@@ -122,6 +131,7 @@ This round's packet (`PREREVIEW.md`, read then deleted, not committed) lists the
 - Review finding 3 note: `refreshGeneralTopic` awaits the real `refreshChats()` closure directly. `refreshChats` as an action still only schedules (debounce for background events); only this action awaits the closure. The test pins the await.
 - Review finding 4 note: the quiet mark is consumed by the next `refreshChats()` run for that chat id. If a *genuine* disappearance of the same topic lands in the same refresh batch (vanishingly unlikely — the row was just archived by this client), the notice would be suppressed once. Acceptable.
 - `PREREVIEW.md` in the worktree is the lead's file: read, not edited, not committed.
+- Round 3 packet likewise read then deleted (`rm PREREVIEW.md`), not committed.
 
 ### Blocked / needs a decision
 - None.
