@@ -1,0 +1,215 @@
+###
+### Galena production ejabberd configuration.
+###
+### Mounted read-only at /opt/ejabberd/conf/ejabberd.yml by
+### deploy/docker-compose.yml. Macros are the placeholders for environment
+### values: the container overrides them with EJABBERD_MACRO_* variables.
+### Derived from infra/ejabberd/ejabberd.yml; the differences are listed in
+### work/T-0126-production-images-compose.md. Docs:
+### https://docs.ejabberd.im/admin/configuration/
+###
+
+define_macro:
+  HOST: galena.localhost
+  MUC_HOST: rooms.galena.localhost
+  # Overridden by EJABBERD_MACRO_ADMIN (deploy/docker-compose.yml).
+  ADMIN: admin@galena.localhost
+  SQL_SERVER: postgres
+  SQL_DATABASE: ejabberd
+  SQL_USERNAME: ejabberd
+  # Overridden by EJABBERD_MACRO_SQL_PASSWORD (deploy/docker-compose.yml).
+  SQL_PASSWORD: CHANGE_ME
+  # Public base URL for file uploads (XEP-0363 put_url). Overridden by
+  # EJABBERD_MACRO_UPLOAD_URL so the slot URLs point at the public domain
+  # (through Caddy) instead of the container-local address.
+  UPLOAD_URL: 'http://galena.localhost:5280/upload'
+  PORT_C2S: 5222
+  PORT_HTTP: 5280
+  STARTTLS_REQUIRED: false
+
+hosts:
+  - HOST
+
+loglevel: info
+
+## Production terminates TLS at Caddy, so ejabberd serves plain HTTP on the
+## internal Compose network only. No certfiles entry: the dev file's
+## /opt/ejabberd/conf/server.pem does not exist in this deployment.
+
+## Storage: everything goes to Postgres (database "ejabberd", created by
+## deploy/postgres/init/10-create-databases.sql). update_sql_schema lets
+## ejabberd create or update its tables on start.
+default_db: sql
+sql_type: pgsql
+sql_server: SQL_SERVER
+sql_database: SQL_DATABASE
+sql_username: SQL_USERNAME
+sql_password: SQL_PASSWORD
+update_sql_schema: true
+
+## Federation off: no s2s listener below and every s2s connection is denied.
+s2s_access: s2s
+
+## Authentication. Our server creates XMPP accounts and issues short-lived
+## HS256 JWTs; clients send the token as their SASL PLAIN password. `jwt` is
+## listed first and `jwt_auth_only_rule` restricts every non-admin account to
+## JWT, so a stored account password can never be used to log in. `sql` stays
+## only for the admin account (used by /api basic auth). jwt_key is written at
+## container start by deploy/ejabberd/jwt-entrypoint.sh from
+## GALENA_XMPP_JWT_SECRET. See "Authentication" and "Top-Level Options ->
+## jwt_auth_only_rule" in the ejabberd 26.07 docs.
+auth_method: [jwt, sql]
+jwt_key: /opt/ejabberd/conf/jwt.jwk
+jwt_auth_only_rule: jwt_only
+
+listen:
+  - port: PORT_C2S
+    ip: '0.0.0.0'
+    module: ejabberd_c2s
+    max_stanza_size: 262144
+    shaper: c2s_shaper
+    access: c2s
+    starttls_required: STARTTLS_REQUIRED
+  - # No s2s listener on 5269: federation is off.
+    port: PORT_HTTP
+    ip: '0.0.0.0'
+    module: ejabberd_http
+    request_handlers:
+      /ws: ejabberd_http_ws
+      /upload: mod_http_upload
+      /api: mod_http_api
+
+acl:
+  local:
+    user_regexp: ''
+  # Production reaches ejabberd only through Caddy or the server container,
+  # so the XMPP hosts' own addresses are not loopback. Trust the internal
+  # Compose network instead of 127.0.0.0/8.
+  internal:
+    ip:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+  admin:
+    user:
+      - ADMIN
+
+access_rules:
+  local:
+    allow: local
+  # Accounts that must use JWT only: every account except the admin, which
+  # keeps SQL password auth for the /api basic auth. Referenced by
+  # jwt_auth_only_rule above.
+  jwt_only:
+    deny: admin
+    allow: all
+  c2s:
+    deny: blocked
+    allow: all
+  muc_create:
+    # Only the admin (server) account creates rooms (T-0002 follow-up 4).
+    allow: admin
+  configure:
+    allow: admin
+  announce:
+    allow: admin
+  trusted_network:
+    allow: internal
+  s2s:
+    deny: all
+
+api_permissions:
+  'console commands':
+    from: ejabberd_ctl
+    who: all
+    what: '*'
+  'http api':
+    # /api requires admin authentication. Reachability is limited by the
+    # internal Compose network: only Caddy (and the server via Caddy)
+    # can reach this listener, and Caddy exposes /api to the server only.
+    from: mod_http_api
+    who:
+      access:
+        allow:
+          - acl: admin
+    what:
+      - '*'
+      - '!stop'
+      - '!start'
+
+shaper:
+  normal:
+    rate: 3000
+    burst_size: 20000
+  fast: 100000
+
+shaper_rules:
+  max_user_sessions: 10
+  max_user_offline_messages:
+    5000: admin
+    100: all
+  c2s_shaper:
+    none: admin
+    normal: all
+  s2s_shaper: fast
+
+modules:
+  # Group chats on the MUC host: persistent and members-only by default,
+  # with MAM enabled.
+  mod_muc:
+    hosts:
+      - MUC_HOST
+    db_type: sql
+    access:
+      - allow
+    access_admin:
+      - allow: admin
+    access_create: muc_create
+    access_persistent: muc_create
+    access_mam:
+      - allow
+    default_room_options:
+      members_only: true
+      persistent: true
+      mam: true
+      # Non-anonymous: every occupant sees members' real JIDs, so clients can
+      # show who sent each message (Galena groups are between known contacts).
+      anonymous: false
+  # MUC room management commands (create_room_with_opts, set_room_affiliation,
+  # get_room_affiliations, destroy_room) used through /api.
+  mod_muc_admin: {}
+  # History in the database, on by default for every chat.
+  mod_mam:
+    db_type: sql
+    default: always
+    assume_mam_usage: true
+  mod_http_upload:
+    max_size: 52428800
+    docroot: /opt/ejabberd/upload
+    put_url: UPLOAD_URL
+    custom_headers:
+      'Access-Control-Allow-Origin': '*'
+      'Access-Control-Allow-Methods': 'GET,HEAD,PUT,OPTIONS'
+      'Access-Control-Allow-Headers': 'Content-Type'
+  mod_stream_mgmt:
+    resend_on_timeout: if_offline
+  mod_carboncopy: {}
+  mod_ping: {}
+  # Push notifications: enabled with no app server configured yet (see plan 6.5).
+  mod_push: {}
+  mod_http_api: {}
+  mod_admin_extra: {}
+  mod_adhoc: {}
+  mod_blocking: {}
+  mod_caps: {}
+  mod_disco: {}
+  mod_last: {}
+  mod_offline:
+    access_max_user_messages: max_user_offline_messages
+  mod_privacy: {}
+  mod_private: {}
+  mod_roster:
+    versioning: true
+  mod_vcard: {}
+  # No mod_register: in-band registration is disabled. Accounts are created
+  # through the admin API (T-0003).

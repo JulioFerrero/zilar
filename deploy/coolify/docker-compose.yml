@@ -1,0 +1,196 @@
+# Galena production stack shaped for Coolify.
+#
+# Coolify supplies the reverse proxy and HTTPS, so there is no `caddy`
+# service here: every service exposes its internal port and Coolify routes a
+# generated domain to it. Deploy as a Coolify Service of type
+# "Docker Compose Empty", paste this file as the Source Compose, and fill
+# the variables under Configuration > Environment Variables (see
+# docs/INSTALL_DOCKER.md, "The Coolify path").
+#
+# Coolify conventions used (https://coolify.io/docs/services/configuration/docker-compose):
+# - `${VAR:?}` marks a variable required and blocks deployment while empty;
+#   `${VAR:-default}` supplies the initial fallback.
+# - `SERVICE_URL_<SERVICE>_<PORT>` (with an optional path suffix) asks
+#   Coolify to generate a domain for that Compose service on that internal
+#   port; the same value is reused through the Service as a normal variable.
+# - `SERVICE_PASSWORD_<ID>` asks Coolify to generate and persist a random
+#   password, shared by every component that references the same name.
+# - Components in one stack reach each other by Compose service name; no
+#   `ports:` are published because Coolify's Traefik proxy is the entry point.
+# - Health checks live in Compose (Services have no separate health-check UI).
+#
+# Images are published by .github/workflows/images.yml as
+# ghcr.io/<owner>/galena-server and galena-web; IMAGE_OWNER/IMAGE_TAG pick
+# the release to run.
+#
+# What this file does NOT do (Coolify limitation, verified in the docs but
+# not on a live Coolify — see the T-0126 Report):
+# - Path-based routing (`/`, `/api`, `/xmpp-ws`, `/upload` on ONE domain)
+#   through a single Coolify Service. Each SERVICE_URL_* domain maps to one
+#   component and one internal port, with an optional path prefix appended
+#   to the URL value — it is not a reverse-proxy rule. The supported shape
+#   is one domain (Coolify "Domain" entry) per component below: the web app,
+#   the API (same-origin for cookies cannot hold here, so the API gets its
+#   own subdomain and WEB_ORIGINS allows the web origin), the XMPP WebSocket
+#   and the uploads path each get their own routed port on ejabberd.
+# - ejabberd serves XMPP over WebSocket, uploads and the admin API on one
+#   HTTP listener (port 5280). Traefik routes each domain to that port; the
+#   path decides the handler inside ejabberd, exactly like the Caddy setup.
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg18-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES:?}
+      POSTGRES_DB: postgres
+      GALENA_DB_PASSWORD: ${SERVICE_PASSWORD_GALENA_DB:?}
+      EJABBERD_DB_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_DB:?}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      # The init script is stored in git (same SQL as the plain compose
+      # stack) and mounted read-only; passwords arrive as environment.
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  ejabberd:
+    image: ghcr.io/processone/ejabberd:26.07
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ['/bin/sh', '/galena/jwt-entrypoint.sh']
+    command: ['foreground']
+    environment:
+      # Traefik terminates TLS; ejabberd serves plain HTTP on the Service
+      # network. HOST/MUC_HOST/ADMIN come from the public domain you set in
+      # Coolify (SERVICE_FQDN roots), passed here as plain variables.
+      EJABBERD_MACRO_HOST: ${XMPP_DOMAIN:?}
+      EJABBERD_MACRO_MUC_HOST: ${XMPP_MUC_DOMAIN:?}
+      EJABBERD_MACRO_ADMIN: admin@${XMPP_DOMAIN:?}
+      REGISTER_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_ADMIN:?}
+      EJABBERD_MACRO_SQL_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_DB}
+      GALENA_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
+      EJABBERD_MACRO_UPLOAD_URL: ${EJABBERD_UPLOAD_URL:-https://uploads.example.com/upload}
+      # Routed entry points on ejabberd's single HTTP listener (port 5280).
+      # Coolify generates one domain per SERVICE_URL_* variable below; set
+      # the hostnames in the Domains configuration after pasting this file.
+      # The path suffixes are ejabberd-internal paths (the WS handler and
+      # the upload handler), not reverse-proxy rules: Traefik routes each
+      # domain to port 5280 and the path picks the handler inside ejabberd.
+      SERVICE_URL_EJABBERD_WS_5280: /ws
+      SERVICE_URL_EJABBERD_UPLOAD_5280: /upload
+    expose:
+      - '5280'
+    volumes:
+      - ./ejabberd/ejabberd.yml:/opt/ejabberd/conf/ejabberd.yml:ro
+      - ./ejabberd/jwt-entrypoint.sh:/galena/jwt-entrypoint.sh:ro
+      - ejabberd-database:/opt/ejabberd/database
+      - ejabberd-uploads:/opt/ejabberd/upload
+    healthcheck:
+      test: ['CMD', 'ejabberdctl', 'status']
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+
+  server:
+    image: ghcr.io/${IMAGE_OWNER:?}/galena-server:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ejabberd:
+        condition: service_healthy
+    environment:
+      # See deploy/docker-compose.yml: the SMTP mailer lands in T-0128 and
+      # the server refuses NODE_ENV=production without a mail transport.
+      # Until then Coolify operators keep the console mailer by setting
+      # NODE_ENV=development (OTP codes go to the server log); switch to
+      # production with MAIL_TRANSPORT=smtp once T-0128 is merged.
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      DATABASE_URL: postgres://galena:${SERVICE_PASSWORD_GALENA_DB:?}@postgres:5432/galena
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_URL: ${SERVICE_URL_SERVER_3000:?}
+      BETTER_AUTH_SECRET: ${SERVICE_PASSWORD_BETTER_AUTH:?}
+      # The web app lives on its own domain under Coolify, so the API must
+      # allow that origin for cookie auth. Set WEB_ORIGIN to the web app's
+      # public URL after Coolify generates it.
+      WEB_ORIGINS: ${WEB_ORIGIN:?}
+      EJABBERD_API_URL: http://ejabberd:5280/api
+      EJABBERD_ADMIN_JID: admin@${XMPP_DOMAIN:?}
+      EJABBERD_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_ADMIN:?}
+      XMPP_DOMAIN: ${XMPP_DOMAIN:?}
+      XMPP_MUC_DOMAIN: ${XMPP_MUC_DOMAIN:?}
+      # The WS handler answers at ejabberd's /ws path, so the public token
+      # URL is the routed WS domain plus /ws.
+      XMPP_WS_PUBLIC_URL: ${SERVICE_URL_EJABBERD_WS_5280:?}/ws
+      GALENA_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
+      GALENA_KEY_ENCRYPTION_KEY: ${GALENA_KEY_ENCRYPTION_KEY:-@empty@}
+      # See deploy/docker-compose.yml: an empty string fails the `z.url()`
+      # schema, so the default is an unreachable placeholder URL. The AI
+      # module treats "no master key" as "no gateway" and the placeholder is
+      # never called.
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://127.0.0.1:9}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-@empty@}
+      AGENT_GATEWAY_ENABLED: ${AGENT_GATEWAY_ENABLED:-false}
+      ACTION_DEMO_ENABLED: ${ACTION_DEMO_ENABLED:-false}
+      RUNNER_HUB_ENABLED: ${RUNNER_HUB_ENABLED:-false}
+      RUNNER_HUB_PORT: 3189
+      # Outgoing email: sign-in codes are sent by email. Same final variable
+      # names as deploy/docker-compose.yml; empty means unset.
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
+      MAIL_ALLOW_CONSOLE_IN_PRODUCTION: ${MAIL_ALLOW_CONSOLE_IN_PRODUCTION:-false}
+      PUSH_ENABLED: ${PUSH_ENABLED:-false}
+      TOOLS_ENABLED: ${TOOLS_ENABLED:-false}
+      ROUTINES_ENABLED: ${ROUTINES_ENABLED:-false}
+      WEB_TOOLS_ENABLED: ${WEB_TOOLS_ENABLED:-false}
+      # Public domain for the API itself, routed to the server's port.
+      SERVICE_URL_SERVER_3000: /api
+    expose:
+      - '3000'
+    healthcheck:
+      # Plain node script (no backticks/quoting games through CMD-SHELL):
+      # exit 0 only when GET /health answers 2xx within 5 s.
+      test: ['CMD', 'node', '/app/deploy-scripts/healthcheck.mjs']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  web:
+    image: ghcr.io/${IMAGE_OWNER:?}/galena-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      # The web app's public domain, routed to the static file server.
+      SERVICE_URL_WEB_80: /
+    expose:
+      - '80'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  postgres-data:
+  ejabberd-database:
+  ejabberd-uploads:

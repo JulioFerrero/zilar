@@ -1,0 +1,214 @@
+# Galena production stack: Postgres (pgvector), ejabberd, the Galena
+# server, the web app and Caddy as the only entry point.
+#
+# From a fresh clone with a filled deploy/.env:
+#
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --wait
+#
+# Secrets come from the env file (see deploy/.env.example); nothing secret is
+# committed or baked into an image. Only `caddy` publishes ports (80/443 by
+# default, HTTP_PORT/HTTPS_PORT to override for a local trial). TLS
+# terminates at Caddy; every backend speaks plain HTTP on the internal
+# `galena` network.
+#
+# Images for `server` and `web` are published by .github/workflows/images.yml
+# as ghcr.io/<owner>/galena-server and galena-web. Building them locally
+# from the repo root also works:
+#
+#   docker build -f apps/server/Dockerfile -t galena-server:local .
+#   docker build -f apps/web/Dockerfile -t galena-web:local .
+
+name: galena
+
+services:
+  postgres:
+    # Same pgvector image as the dev stack, pinned on purpose.
+    image: pgvector/pgvector:0.8.6-pg18-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: postgres
+      GALENA_DB_PASSWORD: ${GALENA_DB_PASSWORD:?GALENA_DB_PASSWORD is required}
+      EJABBERD_DB_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - galena
+
+  ejabberd:
+    # XMPP server, pinned to the 26.07 release like the dev stack.
+    image: ghcr.io/processone/ejabberd:26.07
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # jwt-entrypoint.sh derives /opt/ejabberd/conf/jwt.jwk from
+    # GALENA_XMPP_JWT_SECRET, then runs the image's normal tini + ejabberdctl.
+    # command is repeated because overriding entrypoint drops the image CMD.
+    entrypoint: ['/bin/sh', '/galena/jwt-entrypoint.sh']
+    command: ['foreground']
+    environment:
+      EJABBERD_MACRO_HOST: ${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      EJABBERD_MACRO_MUC_HOST: rooms.${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      EJABBERD_MACRO_ADMIN: admin@${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      REGISTER_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required}
+      EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required}
+      GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required}
+      EJABBERD_MACRO_UPLOAD_URL: https://${GALENA_DOMAIN:?GALENA_DOMAIN is required}/upload
+    volumes:
+      - ./ejabberd/ejabberd.yml:/opt/ejabberd/conf/ejabberd.yml:ro
+      - ./ejabberd/jwt-entrypoint.sh:/galena/jwt-entrypoint.sh:ro
+      - ejabberd-database:/opt/ejabberd/database
+      - ejabberd-uploads:/opt/ejabberd/upload
+    healthcheck:
+      test: ['CMD', 'ejabberdctl', 'status']
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+    networks:
+      - galena
+
+  server:
+    image: ghcr.io/${IMAGE_OWNER:?IMAGE_OWNER is required}/galena-server:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ejabberd:
+        condition: service_healthy
+    environment:
+      # Galena signs people in with an emailed one-time code. The SMTP mailer
+      # lands in T-0128; until then the server refuses NODE_ENV=production
+      # without a mail transport, so the stack pins NODE_ENV from the env
+      # file (development = console mailer, OTP codes go to the server log).
+      # NOTE: development mode needs `pino-pretty` (a devDependency the
+      # image does not ship), so either keep production + set
+      # MAIL_ALLOW_CONSOLE_IN_PRODUCTION=true (scratch only), or wait for
+      # T-0128's SMTP mailer for a real install.
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      DATABASE_URL: postgres://galena:${GALENA_DB_PASSWORD:?GALENA_DB_PASSWORD is required}@postgres:5432/galena
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_URL: https://${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      WEB_ORIGINS: https://${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      EJABBERD_API_URL: http://ejabberd:5280/api
+      EJABBERD_ADMIN_JID: admin@${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      EJABBERD_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required}
+      XMPP_DOMAIN: ${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      XMPP_MUC_DOMAIN: rooms.${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      XMPP_WS_PUBLIC_URL: wss://${GALENA_DOMAIN:?GALENA_DOMAIN is required}/xmpp-ws/ws
+      GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required}
+      GALENA_KEY_ENCRYPTION_KEY: ${GALENA_KEY_ENCRYPTION_KEY:-@empty@}
+      # Compose has no way to say "unset if empty": an empty LITELLM_BASE_URL
+      # fails the `z.url()` schema, so default to an unreachable placeholder
+      # URL instead. The AI module treats "no master key" as "no gateway",
+      # and with no key every AI route answers 503, so the placeholder URL
+      # is never called. Set both LITELLM_* variables for real AI features.
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://127.0.0.1:9}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-@empty@}
+      AGENT_GATEWAY_ENABLED: ${AGENT_GATEWAY_ENABLED:-false}
+      ACTION_DEMO_ENABLED: ${ACTION_DEMO_ENABLED:-false}
+      RUNNER_HUB_ENABLED: ${RUNNER_HUB_ENABLED:-false}
+      RUNNER_HUB_PORT: 3189
+      # Outgoing email: sign-in codes are sent by email. The SMTP mailer
+      # lands in T-0128; the variable names below are final and pass through
+      # today so a filled .env keeps working once T-0128 is merged. Empty
+      # defaults: the server treats an empty value as unset.
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
+      MAIL_ALLOW_CONSOLE_IN_PRODUCTION: ${MAIL_ALLOW_CONSOLE_IN_PRODUCTION:-false}
+      PUSH_ENABLED: ${PUSH_ENABLED:-false}
+      TOOLS_ENABLED: ${TOOLS_ENABLED:-false}
+      ROUTINES_ENABLED: ${ROUTINES_ENABLED:-false}
+      WEB_TOOLS_ENABLED: ${WEB_TOOLS_ENABLED:-false}
+    healthcheck:
+      # Plain node script (no backticks/quoting games through CMD-SHELL):
+      # exit 0 only when GET /health answers 2xx within 5 s.
+      test: ['CMD', 'node', '/app/deploy-scripts/healthcheck.mjs']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - galena
+
+  web:
+    image: ghcr.io/${IMAGE_OWNER:?IMAGE_OWNER is required}/galena-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - galena
+
+  caddy:
+    # Reverse proxy with automatic HTTPS. The only service publishing ports.
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+      ejabberd:
+        condition: service_healthy
+    ports:
+      - '${HTTP_PORT:-80}:80'
+      - '${HTTPS_PORT:-443}:443'
+    environment:
+      GALENA_DOMAIN: ${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@${GALENA_DOMAIN:?GALENA_DOMAIN is required}}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    # Ask Caddy itself whether the site is served: HTTPS through the local
+    # CA with curl. curl ships in the image; -k trusts the local CA for
+    # `localhost`, and for a real domain the public chain validates.
+    # --resolve pins SNI/host `localhost` to 127.0.0.1: connections from
+    # outside always carry the real domain, so this only affects the probe.
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'curl -k -s --resolve localhost:443:127.0.0.1 https://localhost/ -o /dev/null; test $$? -le 1',
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    networks:
+      - galena
+
+networks:
+  galena:
+    name: galena
+
+volumes:
+  postgres-data:
+  ejabberd-database:
+  ejabberd-uploads:
+  caddy-data:
+  caddy-config:

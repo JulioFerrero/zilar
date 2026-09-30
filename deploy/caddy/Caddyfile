@@ -1,0 +1,65 @@
+# Caddy reverse proxy for a Galena production install.
+#
+# Rendered by the `caddy` service in deploy/docker-compose.yml from
+# GALENA_DOMAIN and ACME_EMAIL. {$GALENA_DOMAIN} is the public domain
+# (chat.example.com); `localhost` keeps Caddy on its local CA for trying the
+# stack out. Only Caddy publishes ports; every backend is reachable on the
+# internal `galena` network only.
+
+{
+  admin off
+  email {$ACME_EMAIL}
+}
+
+{$GALENA_DOMAIN} {
+  # Web app.
+  handle {
+    reverse_proxy web:80
+  }
+
+  # Server API (same-origin for the web app; cookies stay first-party).
+  handle /api/* {
+    reverse_proxy server:3000
+  }
+
+  # Server health, used by the install test and external monitors.
+  # Caddy strips nothing: the server answers GET /health itself.
+  handle /health {
+    reverse_proxy server:3000
+  }
+
+  # XMPP over WebSocket (RFC 7395) straight to ejabberd. The prefix is
+  # stripped so ejabberd sees the /ws path its request_handlers expect.
+  handle /xmpp-ws/* {
+    uri strip_prefix /xmpp-ws
+    reverse_proxy ejabberd:5280
+  }
+
+  # File uploads (XEP-0363) straight to ejabberd. Same strip: ejabberd
+  # serves /upload, not /upload/upload.
+  handle /upload/* {
+    uri strip_prefix /upload
+    reverse_proxy ejabberd:5280
+  }
+
+  # ejabberd's admin API, reachable from inside the stack. Caddy answers
+  # 403 to outside callers so the API is never public; the server reaches
+  # ejabberd directly over the internal network (EJABBERD_API_URL) instead
+  # of hairpinning through Caddy's public HTTPS port.
+  @ejabberd_api {
+    path /ejabberd-api/*
+    not remote_ip 172.16.0.0/12 10.0.0.0/8 192.168.0.0/16
+  }
+  handle @ejabberd_api {
+    respond "Forbidden" 403
+  }
+  handle /ejabberd-api/* {
+    uri strip_prefix /ejabberd-api
+    reverse_proxy ejabberd:5280
+  }
+
+  # Everything else is denied rather than served.
+  handle {
+    respond "Not found" 404
+  }
+}

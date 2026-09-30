@@ -1,0 +1,69 @@
+name: Production images
+
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build server and web images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Needed only when pushing on a version tag; harmless on pull requests.
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build galena-server (no push)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: docker/build-push-action@v8
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+
+      - name: Build galena-web (no push)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: docker/build-push-action@v8
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+
+      - name: Build and push galena-server
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v8
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/galena-server:${{ github.ref_name }}
+
+      - name: Build and push galena-web
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v8
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/galena-web:${{ github.ref_name }}
