@@ -193,6 +193,20 @@ describe('mockRequest', () => {
     await expect(searchMessages({ q: 'x' })).rejects.toMatchObject({ status: 400 });
   });
 
+  it('mock search finds messages inside topic threads', async () => {
+    // Fix 8: the index used to cover `mockMessages` only, so the short
+    // per-topic threads (`mockTopicMessages`) were invisible to search.
+    const { searchMessages } = await import('@/lib/api');
+    const page = await searchMessages({ q: 'checkout' });
+    const topicHit = page.items.find((item) => item.chatJid === 'c-devteam-bug');
+    expect(topicHit).toBeDefined();
+    expect(topicHit?.snippet.toLowerCase()).toContain('checkout');
+    // ...and the chat filter reaches a topic chat id too.
+    const narrowed = await searchMessages({ q: 'checkout', chat: 'c-devteam-bug' });
+    expect(narrowed.items.length).toBeGreaterThan(0);
+    expect(narrowed.items.every((item) => item.chatJid === 'c-devteam-bug')).toBe(true);
+  });
+
   it('seeds three machines (1 pending, 1 approved, 1 revoked)', async () => {
     const machines = await listMachines();
     expect(machines).toHaveLength(3);

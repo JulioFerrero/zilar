@@ -22,11 +22,15 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 const outDir = join(root, 'docs', 'screenshots');
 
-// Playwright and zod live in workspace packages, not at the root, so resolve
-// them from the web app like the app's own tooling does.
+// Playwright and zod live in workspace packages, not at the root, so
+// resolve them from the web app like the app's own tooling does. The shot
+// table lives in `./shots.ts` (side-effect free, so tests can import it
+// too); zod is injected into it here.
 const requireFromWeb = createRequire(join(root, 'apps', 'web', 'package.json'));
 const { chromium } = requireFromWeb('playwright') as typeof import('playwright');
 const zod = requireFromWeb('zod') as typeof import('zod');
+import type { Shot } from './shots.ts';
+import { shotTable } from './shots.ts';
 type Browser = import('playwright').Browser;
 type Page = import('playwright').Page;
 
@@ -34,76 +38,8 @@ type Page = import('playwright').Page;
 const PORT = 4319;
 const BASE = `http://localhost:${PORT}`;
 
-const DESKTOP = { width: 1440, height: 900 };
-const PHONE = { width: 390, height: 844 };
-
 /** PNGs must stay under 400 KB (task checks). */
 const MAX_PNG_BYTES = 400 * 1024;
-
-const shotSchema = zod.object({
-  name: zod.string(),
-  path: zod.string(),
-  viewport: zod.object({ width: zod.number(), height: zod.number() }),
-  setup: zod.string(),
-});
-
-interface Shot {
-  name: string;
-  path: string;
-  viewport: { width: number; height: number };
-  setup: string;
-}
-
-interface ShotDef {
-  /** File name under `docs/screenshots/`. */
-  name: string;
-  /** Path after {@link BASE} (mock query appended automatically). */
-  path: string;
-  viewport: { width: number; height: number };
-  /**
-   * Named setup, implemented in {@link runSetup}. Keeps the shot table
-   * serializable so it can be validated with zod.
-   */
-  setup: string;
-}
-
-const DESKTOP_SHOTS: ShotDef[] = [
-  { name: 'signin-desktop.png', path: '/login', viewport: DESKTOP, setup: 'none' },
-  { name: 'topics-desktop.png', path: '/', viewport: DESKTOP, setup: 'none' },
-  { name: 'topic-desktop.png', path: '/c/c-devteam-bug', viewport: DESKTOP, setup: 'none' },
-  { name: 'group-desktop.png', path: '/c/c-qa?panel=group', viewport: DESKTOP, setup: 'none' },
-  {
-    name: 'approval-desktop.png',
-    path: '/settings/approvals',
-    viewport: DESKTOP,
-    setup: 'none',
-  },
-  { name: 'search-desktop.png', path: '/c/c-ana', viewport: DESKTOP, setup: 'searchTickets' },
-  { name: 'pins-desktop.png', path: '/c/c-ana', viewport: DESKTOP, setup: 'none' },
-  { name: 'prefs-desktop.png', path: '/c/c-ana', viewport: DESKTOP, setup: 'openChatMenu' },
-  { name: 'newtopic-desktop.png', path: '/', viewport: DESKTOP, setup: 'openNewTopic' },
-  {
-    name: 'aisettings-desktop.png',
-    path: '/c/c-devai?panel=ai',
-    viewport: DESKTOP,
-    setup: 'none',
-  },
-  { name: 'machines-desktop.png', path: '/settings/machines', viewport: DESKTOP, setup: 'none' },
-];
-
-const PHONE_SHOTS: ShotDef[] = [
-  { name: 'topics-phone.png', path: '/', viewport: PHONE, setup: 'none' },
-  { name: 'topic-phone.png', path: '/c/c-devteam-bug', viewport: PHONE, setup: 'none' },
-  { name: 'chat-phone.png', path: '/c/c-ana', viewport: PHONE, setup: 'none' },
-  // The search box lives in the list pane, which a phone hides while a chat
-  // is open — so the phone search shot starts from the list.
-  { name: 'search-phone.png', path: '/', viewport: PHONE, setup: 'searchTickets' },
-];
-
-/** Every shot as plain data, validated before the browser even starts. */
-function shotTable(): Shot[] {
-  return shotSchema.array().parse([...DESKTOP_SHOTS, ...PHONE_SHOTS]) as Shot[];
-}
 
 async function waitForServer(url: string, tries = 60): Promise<void> {
   for (let attempt = 0; attempt < tries; attempt += 1) {
@@ -199,7 +135,7 @@ function checkSizes(dir: string, shots: Shot[]): void {
 }
 
 async function main(): Promise<void> {
-  const shots = shotTable();
+  const shots = shotTable(zod);
   // Capture into a temp dir first: a mid-run failure must never leave a
   // half-fresh set in `docs/screenshots/`. Only a complete run swaps in.
   const staging = mkdtempSync(join(tmpdir(), 'galena-screenshots-'));

@@ -478,4 +478,81 @@ describe('topics store mapping (T-0111)', () => {
       approverRoleId: 'role-designers',
     });
   });
+
+  it('a self-archive with no General consumes the quiet mark', async () => {
+    // Fix 2: archiving the open topic when General is absent navigates to
+    // `/`. `applyTopicRow` already dropped the row, so the stranded-open
+    // flow must still consume the quiet mark — otherwise it leaks and
+    // would silence the notice for a later, unrelated removal.
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const { topicSchema } = await import('@/lib/api');
+    (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
+      topicSchema.parse({ ...bugTopic(), archived: true }),
+    );
+    // No General anywhere: the refreshed list has no topic from this group.
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    store.getState().openChat(bugId);
+    await store.getState().patchTopic(bugId, { archived: true });
+    store.getState().refreshChats();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await flush();
+    expect(store.getState().activeChatId).toBeUndefined();
+  });
+
+  it('a leaked quiet mark does not silence a genuine later removal', async () => {
+    // Companion to the test above: after a self-archive with no General,
+    // stranding a *topic* row must still raise the notice.
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const { topicSchema } = await import('@/lib/api');
+    (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
+      topicSchema.parse({ ...bugTopic(), archived: true }),
+    );
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    store.getState().openChat(bugId);
+    await store.getState().patchTopic(bugId, { archived: true });
+    store.getState().refreshChats();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await flush();
+    // Re-open the bug topic (list has it again), then lose it genuinely.
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([groupEntry()]);
+    store.getState().refreshChats();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await flush();
+    store.getState().openChat(bugId);
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
+      groupEntry({ topics: [topic()] }),
+    ]);
+    store.getState().refreshChats();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await flush();
+    expect(store.getState().activeChatId).toBe('team@rooms.galena.test');
+    expect(store.getState().topicNotice?.message).toBe('This topic is no longer available.');
+  });
+
+  it('a superseded row re-check rejects instead of reading stale state', async () => {
+    // Fix 5: if `stop()`/`start()` (or a retry) bumps the generation while
+    // the re-check's fetch is in flight, the refresh is stale — rejecting
+    // keeps the panel from reading the untouched list as "topic alive".
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      await gate;
+      return [groupEntry()];
+    });
+    const recheck = store.getState().refreshTopicRow(bugId, 't-bug');
+    store.getState().stop();
+    release?.();
+    await expect(recheck).rejects.toThrow(/superseded/);
+    // Untouched: the row is still there and no navigation happened.
+    expect(store.getState().chats.some((chat) => chat.id === bugId)).toBe(true);
+  });
 });

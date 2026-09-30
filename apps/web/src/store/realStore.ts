@@ -2208,7 +2208,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         api.listChatPrefs().catch(() => [] as ChatPref[]),
       ]);
       if (gen !== generation) {
-        return;
+        // A newer `start()`/`stop()` superseded this refresh (boot,
+        // retry, sign-out): the list below is stale, so say so instead
+        // of merging it — the caller (`refreshTopicRow`) rejects rather
+        // than read stale state as "topic alive".
+        throw new ApiError(0, 'stale_refresh', 'The chat list refresh was superseded');
       }
 
       const previous = get().chats;
@@ -2251,6 +2255,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           ? undefined
           : get().chats.find((chat) => chat.id === activeChatId);
       if (activeChatId !== undefined && openChat === undefined) {
+        // A deliberate self-archive moves silently: consume the quiet mark
+        // while resolving this disappearance, whichever branch handles it.
+        // Deleting only inside the General branch leaks the id when General
+        // is absent — or when `applyTopicRow` already dropped the row, so
+        // `was` below is undefined — and the leaked mark would silence a
+        // later, unrelated removal.
+        const quiet = quietArchiveIds.has(activeChatId);
+        quietArchiveIds.delete(activeChatId);
         const was = previous.find((chat) => chat.id === activeChatId);
         const notice =
           was?.topic === undefined || was.groupId === undefined
@@ -2261,8 +2273,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             (chat) => chat.groupId === notice.groupId && chat.topic?.isGeneral === true,
           );
           if (general !== undefined) {
-            const quiet = quietArchiveIds.has(activeChatId);
-            quietArchiveIds.delete(activeChatId);
             set({
               activeChatId: general.id,
               topicNotice: quiet

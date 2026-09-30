@@ -97,4 +97,77 @@ describe('mock invite links API (T-0115)', () => {
     expect(revoked.status).toBe(404);
     expect((revoked.body as { error: { code: string } }).error.code).toBe('invalid_link');
   });
+
+  it('rejects out-of-bounds create options like the server (400, never silent)', async () => {
+    // Fix 7: the mock used to ignore the upper bounds (`expiresInHours`
+    // 8760, `maxUses` 10000). Values above them now 400 `invalid_request`.
+    resetMockApi();
+    expect((await post('/groups/g-devteam/invite-links', { expiresInHours: 8761 })).status).toBe(
+      400,
+    );
+    expect((await post('/groups/g-devteam/invite-links', { maxUses: 10001 })).status).toBe(400);
+    expect(
+      (
+        (await post('/groups/g-devteam/invite-links', { maxUses: 10001 })).body as {
+          error: { code: string };
+        }
+      ).error.code,
+    ).toBe('invalid_request');
+    // ...while the bounds themselves still create.
+    const edge = await post('/groups/g-devteam/invite-links', {
+      expiresInHours: 8760,
+      maxUses: 10000,
+    });
+    expect(edge.status).toBe(201);
+  });
+
+  it('answers 409 group_full and 429 rate_limited on join like the server', async () => {
+    // Fix 7: the mock join never answered 409 or 429, so the join page's
+    // `full` state was unreachable in mock mode.
+    resetMockApi();
+    const created = await post('/groups/g-devteam/invite-links', {});
+    const token = (created.body as { token: string }).token;
+    // 20 attempts pass the per-link window; the 21st is rate limited.
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      expect((await post(`/join/${token}`, {})).status).toBe(200);
+    }
+    const limited = await post(`/join/${token}`, {});
+    expect(limited.status).toBe(429);
+    expect((limited.body as { error: { code: string } }).error.code).toBe('rate_limited');
+  });
+
+  it('answers 409 group_full for a group at the member cap, without consuming a use', async () => {
+    // Like the server (`MAX_GROUP_MEMBERS`, 50): the cap is checked before
+    // the claim, so a full group 409s and the link keeps its uses.
+    resetMockApi();
+    const { mockGroupDetails } = await import('./groups');
+    const members = Array.from({ length: 50 }, (_, index) => ({
+      userId: `u-full-${index}`,
+      name: `Full ${index}`,
+      role: 'member' as const,
+    }));
+    mockGroupDetails['c-full'] = {
+      id: 'g-full',
+      title: 'Packed group',
+      createdBy: 'u-full-0',
+      members,
+      ais: [],
+    };
+    try {
+      const created = await post('/groups/g-full/invite-links', {});
+      expect(created.status).toBe(201);
+      const token = (created.body as { token: string }).token;
+      const preview = await get(`/join/${token}`);
+      expect(preview.status).toBe(200);
+      expect((preview.body as { alreadyMember: boolean }).alreadyMember).toBe(false);
+      const joined = await post(`/join/${token}`, {});
+      expect(joined.status).toBe(409);
+      expect((joined.body as { error: { code: string } }).error.code).toBe('group_full');
+      const listed = await get('/groups/g-full/invite-links');
+      const links = (listed.body as { links: { uses: number }[] }).links;
+      expect(links[0]?.uses).toBe(0);
+    } finally {
+      delete mockGroupDetails['c-full'];
+    }
+  });
 });

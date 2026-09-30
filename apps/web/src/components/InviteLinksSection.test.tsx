@@ -59,11 +59,19 @@ function linkFixture(overrides: Record<string, unknown> = {}): Record<string, un
   };
 }
 
-function stubFetch(links: Record<string, unknown>[] = [linkFixture()]): ReturnType<typeof vi.fn> {
+function stubFetch(
+  links: Record<string, unknown>[] = [linkFixture()],
+  options: { failRevoke?: boolean } = {},
+): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
     const target = String(url);
     if (target.includes('/invite-links')) {
       if (init?.method === 'DELETE') {
+        if (options.failRevoke === true) {
+          return jsonResponse(500, {
+            error: { code: 'server_error', message: 'Try again later' },
+          });
+        }
         return new Response(null, { status: 204 });
       }
       if (init?.method === 'POST') {
@@ -172,5 +180,28 @@ describe('GroupPanel invite links (T-0115)', () => {
       expect(screen.getByRole('region', { name: 'Members' }).textContent).toContain('Ana'),
     );
     expect(screen.queryByRole('region', { name: 'Invite links' })).toBeNull();
+  });
+
+  it('unsticks the Revoke button and shows the error when revoking fails', async () => {
+    // Fix 6: `revokingId` must clear when the revoke fails — otherwise the
+    // button sticks on "Revoking..." and the user sees the error with no
+    // way to retry.
+    stubFetch(undefined, { failRevoke: true });
+    renderPanel();
+
+    const section = await screen.findByRole('region', { name: 'Invite links' });
+    fireEvent.click(
+      await within(section).findByRole('button', { name: 'Revoke invite link Friends' }),
+    );
+
+    // The parent surfaces the failure...
+    expect(await within(section).findByText('Try again later')).toBeTruthy();
+    // ...and the button is clickable again (not stuck on "Revoking...").
+    await waitFor(() => {
+      expect(
+        within(section).getByRole('button', { name: 'Revoke invite link Friends' }),
+      ).toBeTruthy();
+    });
+    expect(within(section).queryByText('Revoking…')).toBeNull();
   });
 });
