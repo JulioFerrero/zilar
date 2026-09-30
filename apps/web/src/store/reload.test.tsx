@@ -108,6 +108,11 @@ function fakeApi(): ApiClient {
     })),
     listChatPrefs: vi.fn(async () => []),
     putChatPref: vi.fn(async () => null),
+    listPins: vi.fn(async () => []),
+    pinMessage: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    unpinMessage: vi.fn(async () => {}),
   };
 }
 

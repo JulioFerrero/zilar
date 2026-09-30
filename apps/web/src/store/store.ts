@@ -21,6 +21,8 @@ import type {
   GroupDetail,
   Me,
   PatchTopicInput,
+  Pin,
+  PinMessageInput,
   PublicAi,
 } from '@/lib/api';
 import {
@@ -171,6 +173,31 @@ export interface ChatStore {
   setArchived: (chatId: string, archived: boolean) => Promise<void>;
   /** Per-user archived DMs/AI chats/groups (not topics: those hide inside
    *  their group's own Archived toggle), newest activity first. */
+  /** Pins of a chat, newest first; empty until `loadPins` resolves. */
+  pins: (chatId: string) => Pin[];
+  /** Whether the pins of a chat were ever loaded (mock store: always true). */
+  pinsLoaded: (chatId: string) => boolean;
+  /** Loads the pins of a chat from the server. Never rejects. */
+  loadPins: (chatId: string) => Promise<void>;
+  /** Whether the caller may pin in a chat: DMs either side, topics a manager. */
+  canPin: (chatId: string) => boolean;
+  /** The pin for a message, when the message is pinned. */
+  pinFor: (chatId: string, messageId: string) => Pin | undefined;
+  /**
+   * Pins a message (snapshot from the loaded message). Optimistic with
+   * rollback. Rejects on failure.
+   */
+  pinMessage: (chatId: string, messageId: string) => Promise<void>;
+  /** Removes a pin. Optimistic with rollback. Rejects on failure. */
+  unpinMessage: (chatId: string, pinId: string) => Promise<void>;
+  /** The pins panel target: which chat's pins are shown, if any. */
+  pinsPanel: { chatId: string } | undefined;
+  /** Opens or closes the pins panel for a chat. */
+  setPinsPanel: (chatId: string | undefined) => void;
+  /** The inline error of the last pin or unpin that failed. */
+  pinsError: { chatId: string; message: string } | undefined;
+  /** Clears the pins error (dismissed by the banner). */
+  dismissPinsError: () => void;
   archivedChats: () => ChatSummary[];
   typing: Record<string, TypingState>;
   /**
@@ -241,6 +268,14 @@ export interface ChatStore {
 export type ChatStoreState = ChatStore & {
   messagesByChat: Record<string, UiMessage[]>;
   /**
+   * Pinned messages by chat id, newest first (T-0114). The real store fills
+   * them from `/api/pins`; the mock store keeps them in memory through the
+   * mock API.
+   */
+  pinsByChat: Record<string, Pin[]>;
+  /** Chat ids whose pins were ever loaded (real store only). */
+  pinsReady: Record<string, boolean>;
+  /**
    * XEP-0444 reaction updates by chat id, keyed by the alias-resolved target
    * message id. Kept even for targets that are not loaded yet.
    */
@@ -308,6 +343,49 @@ function withReplacedLastMessage(
       ? { ...chat, lastMessage: message }
       : chat,
   );
+}
+
+// Whether the mock user may pin in a chat (T-0114): anyone in a DM, a
+// group owner/admin in a topic or legacy group. Mirrors the server's
+// manager rule, minus the topic-creator edge (the mock bundle has no
+// creator ids to compare).
+function mockCanPin(state: ChatStoreState, chatId: string): boolean {
+  const chat = state.chats.find((entry) => entry.id === chatId);
+  if (chat === undefined) {
+    return false;
+  }
+  if (chat.kind === 'dm') {
+    return true;
+  }
+  const info = state.groupInfos[chatId];
+  const role = info?.members.find((member) => member.userId === state.currentUserId)?.role;
+  return role === 'owner' || role === 'admin';
+}
+
+// The pin snapshot for a loaded message (T-0114): sender name plus up to 300
+// chars of text, or the attachment kind with empty text.
+function mockPinSnapshot(
+  state: ChatStoreState,
+  chatId: string,
+  messageId: string,
+): Omit<PinMessageInput, 'chat' | 'messageId'> {
+  const message = (state.messagesByChat[chatId] ?? []).find((item) => item.id === messageId);
+  if (message === undefined) {
+    throw new Error('Message not found');
+  }
+  const kind: Pin['kind'] =
+    message.voice !== undefined
+      ? 'voice'
+      : message.image !== undefined ||
+          (message.attachment !== undefined && message.attachment.kind === 'image')
+        ? 'image'
+        : message.attachment !== undefined
+          ? 'file'
+          : message.card !== undefined
+            ? 'card'
+            : 'text';
+  const text = kind === 'text' ? (message.text ?? '').slice(0, 300) : '';
+  return { senderName: message.senderName.slice(0, 80) || 'Someone', text, kind };
 }
 
 // Toggles my reaction on a mock message. Mock data carries the chips directly
@@ -586,6 +664,90 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       },
       archivedChats: () =>
         get().chats.filter((chat) => chat.archived === true && chat.topic === undefined),
+      // T-0114: pinned messages. The mock talks to the in-memory mock API
+      // (like chat prefs above); the single mock user may pin anywhere.
+      pinsByChat: {},
+      pinsReady: {},
+      pinsPanel: undefined,
+      pinsError: undefined,
+      dismissPinsError: () => set({ pinsError: undefined }),
+      setPinsPanel: (chatId) => set({ pinsPanel: chatId === undefined ? undefined : { chatId } }),
+      pins: (chatId) => get().pinsByChat[chatId] ?? [],
+      pinsLoaded: () => true,
+      loadPins: async (chatId) => {
+        try {
+          const { listPins } = await import('@/lib/api');
+          const pins = await listPins(chatId);
+          set((state) => ({
+            pinsByChat: { ...state.pinsByChat, [chatId]: pins },
+            pinsReady: { ...state.pinsReady, [chatId]: true },
+          }));
+        } catch {
+          // Mock pins are best-effort; the chat works without them.
+        }
+      },
+      canPin: (chatId) => mockCanPin(get(), chatId),
+      pinFor: (chatId, messageId) =>
+        (get().pinsByChat[chatId] ?? []).find((pin) => pin.messageId === messageId),
+      pinMessage: async (chatId, messageId) => {
+        const { pinMessage: pinRequest } = await import('@/lib/api');
+        const snapshot = mockPinSnapshot(get(), chatId, messageId);
+        const before = get().pinsByChat[chatId] ?? [];
+        const optimistic: Pin = {
+          id: `pin-local-${Date.now()}`,
+          chat: chatId,
+          messageId,
+          senderName: snapshot.senderName,
+          text: snapshot.text,
+          kind: snapshot.kind,
+          pinnedBy: get().currentUserId,
+          pinnedAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          pinsByChat: {
+            ...state.pinsByChat,
+            [chatId]: [optimistic, ...(state.pinsByChat[chatId] ?? [])],
+          },
+          pinsError: undefined,
+        }));
+        try {
+          const saved = await pinRequest({ chat: chatId, messageId, ...snapshot });
+          set((state) => ({
+            pinsByChat: {
+              ...state.pinsByChat,
+              [chatId]: (state.pinsByChat[chatId] ?? []).map((pin) =>
+                pin.id === optimistic.id ? saved : pin,
+              ),
+            },
+          }));
+        } catch (error) {
+          set((state) => ({
+            pinsByChat: { ...state.pinsByChat, [chatId]: before },
+            pinsError: { chatId, message: 'Could not pin the message. Try again.' },
+          }));
+          throw error;
+        }
+      },
+      unpinMessage: async (chatId, pinId) => {
+        const { unpinMessage: unpinRequest } = await import('@/lib/api');
+        const before = get().pinsByChat[chatId] ?? [];
+        set((state) => ({
+          pinsByChat: {
+            ...state.pinsByChat,
+            [chatId]: (state.pinsByChat[chatId] ?? []).filter((pin) => pin.id !== pinId),
+          },
+          pinsError: undefined,
+        }));
+        try {
+          await unpinRequest(pinId);
+        } catch (error) {
+          set((state) => ({
+            pinsByChat: { ...state.pinsByChat, [chatId]: before },
+            pinsError: { chatId, message: 'Could not unpin the message. Try again.' },
+          }));
+          throw error;
+        }
+      },
       search: '',
       activeFolder: 'all',
       typing: {},

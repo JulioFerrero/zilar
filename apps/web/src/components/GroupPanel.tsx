@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ActivitySection } from './ais/AiActivity';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
+import { PinsSection } from './PinsPanel';
 import { AiBadge } from './AiBadge';
 import { FieldError } from './ais/AiPageShell';
 import { describeAiError } from './ais/errors';
@@ -348,6 +349,11 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
               {/* T-0100: the standing rules for this group, same visibility
                   as Activity — owners and admins only. */}
               {isManager && <AlwaysAllowedList scope={{ groupId: info.id }} />}
+
+              <PinsSection
+                chatId={chat.id}
+                onOpen={() => storeApi.getState().setPinsPanel(chat.id)}
+              />
 
               {/* T-0111: "Members can create topics", same visibility —
                   owners and admins only. */}

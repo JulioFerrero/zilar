@@ -46,6 +46,10 @@ interface MockState {
   nextTopicSequence: number;
   // T-0113: per-chat prefs (mute/archive/pin) in memory for the page load.
   chatPrefs: MockChatPref[];
+  // T-0114: pinned messages in memory for the page load, keyed by the chat
+  // id the client names the chat with (the mock has no JID access model).
+  pins: MockPin[];
+  nextPinSequence: number;
 }
 
 type TopicVisibility = 'public' | 'private';
@@ -83,6 +87,19 @@ interface MockChatPref {
   archived: boolean;
   pinnedAt: string | null;
   updatedAt: string;
+}
+
+// T-0114: one pinned message row, mirroring the server's `pinned_messages`
+// (the mock keys by the client chat id instead of the canonical pair key).
+interface MockPin {
+  id: string;
+  chat: string;
+  messageId: string;
+  senderName: string;
+  text: string;
+  kind: 'text' | 'image' | 'file' | 'voice' | 'card';
+  pinnedBy: string;
+  pinnedAt: string;
 }
 
 interface MockAuditEntry {
@@ -226,6 +243,33 @@ function glyphForTopic(name: string): string {
   return first.toUpperCase();
 }
 
+// T-0114: two seeded pins so the banner and the panel show in mock mode
+// (one text pin in the Ana DM, one photo pin in the Viernes group).
+function seedPins(): MockPin[] {
+  return [
+    {
+      id: 'pin-1',
+      chat: 'c-ana',
+      messageId: 'ana-17',
+      senderName: 'You',
+      text: 'Deal',
+      kind: 'text',
+      pinnedBy: currentUserId,
+      pinnedAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+    },
+    {
+      id: 'pin-2',
+      chat: 'c-viernes',
+      messageId: 'vie-7',
+      senderName: 'Marta',
+      text: '',
+      kind: 'image',
+      pinnedBy: currentUserId,
+      pinnedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    },
+  ];
+}
+
 function seedState(): MockState {
   return {
     me: {
@@ -335,6 +379,8 @@ function seedState(): MockState {
     topics: seedTopics(),
     nextTopicSequence: 1,
     chatPrefs: [],
+    pins: seedPins(),
+    nextPinSequence: 3,
     audit: [
       {
         id: 'audit-dev-stopped',
@@ -855,6 +901,78 @@ export async function mockRequest(
       );
     }
     return jsonResponse(row);
+  }
+
+  // T-0114: in-memory pins. The mock has one user who may pin anywhere;
+  // permission gating lives in the store and the menu, like the real
+  // server's manager check. Newest first, at most 20 per chat.
+  if (head === 'pins' && first === undefined) {
+    if (method === 'GET') {
+      const params = new URLSearchParams(
+        path.includes('?') ? path.slice(path.indexOf('?') + 1) : '',
+      );
+      const chat = params.get('chat') ?? '';
+      const pins = state.pins
+        .filter((pin) => pin.chat === chat)
+        .sort((a, b) => (a.pinnedAt < b.pinnedAt ? 1 : a.pinnedAt > b.pinnedAt ? -1 : 0));
+      return jsonResponse({ pins });
+    }
+    if (method === 'POST') {
+      const body = readJsonBody(init);
+      const chat = typeof body.chat === 'string' ? body.chat : '';
+      const messageId = typeof body.messageId === 'string' ? body.messageId : '';
+      const senderName =
+        typeof body.senderName === 'string' ? body.senderName.trim().slice(0, 80) : '';
+      const text = typeof body.text === 'string' ? body.text.slice(0, 300) : '';
+      const kind =
+        body.kind === 'image' ||
+        body.kind === 'file' ||
+        body.kind === 'voice' ||
+        body.kind === 'card'
+          ? body.kind
+          : 'text';
+      if (chat === '' || messageId === '' || senderName === '') {
+        return jsonResponse(
+          {
+            error: {
+              code: 'invalid_request',
+              message: 'chat, messageId and senderName are required',
+            },
+          },
+          400,
+        );
+      }
+      if (state.pins.some((pin) => pin.chat === chat && pin.messageId === messageId)) {
+        return conflict('pin_exists', 'That message is already pinned');
+      }
+      if (state.pins.filter((pin) => pin.chat === chat).length >= 20) {
+        return jsonResponse({ error: { code: 'pin_limit', message: 'Too many pins' } }, 400);
+      }
+      const created: MockPin = {
+        id: `pin-mock-${state.nextPinSequence}`,
+        chat,
+        messageId,
+        senderName,
+        text: kind === 'text' ? text : '',
+        kind,
+        pinnedBy: currentUserId,
+        pinnedAt: new Date().toISOString(),
+      };
+      state.nextPinSequence += 1;
+      state.pins = [...state.pins, created];
+      return jsonResponse(created, 201);
+    }
+    return notImplemented();
+  }
+
+  if (head === 'pins' && first !== undefined && second === undefined && method === 'DELETE') {
+    const pinId = decodeURIComponent(first);
+    const pin = state.pins.find((item) => item.id === pinId);
+    if (pin === undefined) {
+      return notFound('Pin not found');
+    }
+    state.pins = state.pins.filter((item) => item.id !== pinId);
+    return jsonResponse(pin);
   }
 
   if (head === 'contacts' && method === 'GET') {

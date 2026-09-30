@@ -15,6 +15,7 @@ import {
   type RealStoreDeps,
   type StorageLike,
 } from './realStore';
+import type { Pin } from '@/lib/api';
 
 // Sign-out must not hit Better Auth over the network in a test.
 vi.mock('@/lib/auth', () => ({
@@ -289,6 +290,11 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     })),
     listChatPrefs: vi.fn(async () => []),
     putChatPref: vi.fn(async () => null),
+    listPins: vi.fn(async () => []),
+    pinMessage: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    unpinMessage: vi.fn(async () => {}),
     ...overrides,
   };
 }
@@ -1088,6 +1094,147 @@ describe('createRealChatStore', () => {
     await expect(store.getState().openAtMessage('ana@galena.test', 'ghost')).rejects.toThrow(
       'message_not_found',
     );
+  });
+
+  describe('pinned messages (T-0114)', () => {
+    function pinRow(messageId: string, text = 'pinned text'): Pin {
+      return {
+        id: `pin-${messageId}`,
+        chat: 'ana@galena.test',
+        messageId,
+        senderName: 'Ana',
+        text,
+        kind: 'text',
+        pinnedBy: 'u-me',
+        pinnedAt: '2026-09-28T11:00:00.000Z',
+      };
+    }
+
+    it('loads pins when a chat opens', async () => {
+      const { store, api } = await setup({ listPins: vi.fn(async () => [pinRow('ana-2')]) });
+      expect(api.listPins).not.toHaveBeenCalled();
+      store.getState().openChat('ana@galena.test');
+      await flush();
+      expect(api.listPins).toHaveBeenCalledWith('ana@galena.test');
+      expect(
+        store
+          .getState()
+          .pins('ana@galena.test')
+          .map((pin) => pin.messageId),
+      ).toEqual(['ana-2']);
+      expect(store.getState().pinsLoaded('ana@galena.test')).toBe(true);
+    });
+
+    it('refreshes pins on focus and every 60 s while the chat is open', async () => {
+      vi.useFakeTimers();
+      try {
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          get: () => 'visible',
+        });
+        const api = fakeApi({ listPins: vi.fn(async () => [pinRow('ana-2')]) });
+        const xmpp = fakeXmpp();
+        xmpp.history['ana@galena.test'] = [
+          message({
+            id: 'ana-1',
+            chatJid: 'ana@galena.test',
+            body: 'older',
+            timestamp: new Date('2026-09-28T09:00:00Z'),
+          }),
+          message({
+            id: 'ana-2',
+            chatJid: 'ana@galena.test',
+            body: 'newest',
+            timestamp: new Date('2026-09-28T10:00:00Z'),
+          }),
+        ];
+        const store = createRealChatStore({
+          api,
+          storage: memoryStorage(),
+          now: () => new Date('2026-09-28T12:00:00Z'),
+          createXmpp: () => xmpp.core,
+        });
+        store.getState().start();
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(0);
+        store.getState().openChat('ana@galena.test');
+        await vi.advanceTimersByTimeAsync(0);
+        expect(api.listPins).toHaveBeenCalledTimes(1);
+
+        window.dispatchEvent(new Event('focus'));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(api.listPins).toHaveBeenCalledTimes(2);
+
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(api.listPins).toHaveBeenCalledTimes(3);
+        expect(store.getState().pins('ana@galena.test')).toHaveLength(1);
+        store.getState().stop();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('pins and unpins optimistically, rolling back on failure', async () => {
+      const saved = pinRow('ana-2');
+      const { store, api } = await setup({
+        listPins: vi.fn(async () => []),
+        pinMessage: vi.fn(async () => saved),
+        unpinMessage: vi.fn(async () => {}),
+      });
+      store.getState().openChat('ana@galena.test');
+      await flush();
+
+      await store.getState().pinMessage('ana@galena.test', 'ana-2');
+      expect(api.pinMessage).toHaveBeenCalledWith({
+        chat: 'ana@galena.test',
+        messageId: 'ana-2',
+        senderName: 'Ana',
+        text: 'newest',
+        kind: 'text',
+      });
+      expect(
+        store
+          .getState()
+          .pins('ana@galena.test')
+          .map((pin) => pin.id),
+      ).toEqual([saved.id]);
+
+      await store.getState().unpinMessage('ana@galena.test', saved.id);
+      expect(api.unpinMessage).toHaveBeenCalledWith(saved.id);
+      expect(store.getState().pins('ana@galena.test')).toEqual([]);
+
+      // A failed pin rolls back and reports inline.
+      vi.mocked(api.pinMessage).mockRejectedValueOnce(new Error('offline'));
+      await expect(store.getState().pinMessage('ana@galena.test', 'ana-1')).rejects.toThrow(
+        'offline',
+      );
+      expect(store.getState().pins('ana@galena.test')).toEqual([]);
+      expect(store.getState().pinsError).toEqual({
+        chatId: 'ana@galena.test',
+        message: 'Could not pin the message. Try again.',
+      });
+    });
+
+    it('gates pinning: anyone in a DM, only managers in a topic', async () => {
+      const { store } = await setup({
+        listPins: vi.fn(async () => []),
+        getGroup: vi.fn(async () => ({
+          id: 'g1',
+          title: 'Team',
+          createdBy: 'u-me',
+          members: [{ userId: 'u-me', name: 'Me', role: 'member' as const }],
+          ais: [],
+        })),
+      });
+      // DMs: either side may pin.
+      expect(store.getState().canPin('ana@galena.test')).toBe(true);
+      // The legacy group row starts unknown (detail not loaded yet).
+      expect(store.getState().canPin('team@rooms.galena.test')).toBe(false);
+      store.getState().openChat('team@rooms.galena.test');
+      await flush();
+      // A plain member may not pin.
+      expect(store.getState().canPin('team@rooms.galena.test')).toBe(false);
+    });
   });
 
   it('gives up with message_not_found when a history fetch stalls', async () => {

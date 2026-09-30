@@ -176,6 +176,13 @@
       "when": 1790736270005,
       "tag": "0024_abandoned_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790753621818,
+      "tag": "0025_married_hobgoblin",
+      "breakpoints": true
     }
   ]
 }

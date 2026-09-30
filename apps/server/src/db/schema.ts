@@ -308,6 +308,36 @@ export const aiLimits = pgTable('ai_limits', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Pinned messages (T-0114, decision D28). One row per pin: the chat is a
+// room bare JID for groups/topics, or the canonical DM pair key
+// `min(jidA,jidB)|max(jidA,jidB)` (lowercased bare JIDs) so both people share
+// one list. `message_id` is the same identifier clients use for corrections,
+// retractions and reactions (T-0059/T-0061). The sender/text snapshot is for
+// display only — the server never authorizes against it — so a client that
+// has not loaded the message can still show the pin. Unique
+// `(chat_jid, message_id)`; at most 20 pins per chat (enforced in code).
+export const pinnedMessages = pgTable(
+  'pinned_messages',
+  {
+    id: text('id').primaryKey(),
+    chatJid: text('chat_jid').notNull(),
+    messageId: text('message_id').notNull(),
+    senderName: text('sender_name').notNull(),
+    text: text('text').notNull().default(''),
+    kind: text('kind', { enum: ['text', 'image', 'file', 'voice', 'card'] })
+      .notNull()
+      .default('text'),
+    pinnedBy: text('pinned_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('pinned_messages_chat_message_idx').on(table.chatJid, table.messageId),
+    index('pinned_messages_chat_idx').on(table.chatJid),
+  ],
+);
+
 // Per-user chat preferences (T-0113): mute (with a duration), archive and
 // pin, for a DM, a group General room, or an individual topic room. One row
 // per (user, chat JID); a row back at all defaults is deleted, not kept.

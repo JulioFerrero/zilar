@@ -8,10 +8,16 @@ export interface MessageActionsMenuProps {
   canEdit: boolean;
   /** True when the message can be deleted for everyone (my own message). */
   canDelete: boolean;
+  /** True when the caller may pin in this chat (DM either side, topic manager). */
+  canPin: boolean;
+  /** True when this message is already pinned. */
+  isPinned: boolean;
   onReply: () => void;
   onCopy: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onPin: () => void;
+  onUnpin: () => void;
   onReact: (emoji: string) => void;
   onClose: () => void;
   /** Which bubble edge the menu hangs from; incoming bubbles align left. */
@@ -20,15 +26,19 @@ export interface MessageActionsMenuProps {
 
 const ITEM_CLASS = 'flex w-full items-center px-3 py-2 text-left text-[15px]';
 
-/** Reaction bar / Reply / Edit / Copy / Delete menu for a message bubble. */
+/** Reaction bar / Reply / Edit / Copy / Pin / Delete menu for a message bubble. */
 export function MessageActionsMenu({
   canCopy,
   canEdit,
   canDelete,
+  canPin,
+  isPinned,
   onReply,
   onCopy,
   onEdit,
   onDelete,
+  onPin,
+  onUnpin,
   onReact,
   onClose,
   align = 'right',
@@ -125,6 +135,32 @@ export function MessageActionsMenu({
         >
           Delete for everyone
         </button>
+        {canPin &&
+          (isPinned ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={onUnpin}
+              className={cn(
+                ITEM_CLASS,
+                'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
+              )}
+            >
+              Unpin
+            </button>
+          ) : (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={onPin}
+              className={cn(
+                ITEM_CLASS,
+                'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
+              )}
+            >
+              Pin
+            </button>
+          ))}
       </div>
     </>
   );

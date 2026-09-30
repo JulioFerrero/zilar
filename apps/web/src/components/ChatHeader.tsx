@@ -184,6 +184,17 @@ export function ChatHeader({
                 role="menuitem"
                 onClick={() => {
                   setMenuOpen(false);
+                  storeApi.getState().setPinsPanel(chat.id);
+                }}
+                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
+              >
+                Pinned messages
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
                   startChatSearch();
                 }}
                 className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
@@ -221,6 +232,17 @@ export function ChatHeader({
               aria-label={`Actions for ${chat.title}`}
               className="absolute top-full right-0 z-20 mt-1 min-w-[196px] rounded-xl border border-border bg-popover py-1 shadow-lg"
             >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  storeApi.getState().setPinsPanel(chat.id);
+                }}
+                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
+              >
+                Pinned messages
+              </button>
               <ChatPrefMenuItems chat={chat} onDone={(failed) => !failed && setMenuOpen(false)} />
             </div>
           </>

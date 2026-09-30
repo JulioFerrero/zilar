@@ -57,14 +57,17 @@ import {
   listAis as listAisRequest,
   listChatPrefs as listChatPrefsRequest,
   listGroupTopics as listGroupTopicsRequest,
+  listPins as listPinsRequest,
   listTopicAis as listTopicAisRequest,
   listTopicMembers as listTopicMembersRequest,
   patchTopic as patchTopicRequest,
+  pinMessage as pinMessageRequest,
   putChatPref as putChatPrefRequest,
   removeGroupAi as removeGroupAiRequest,
   removeTopicAi as removeTopicAiRequest,
   removeTopicMember as removeTopicMemberRequest,
   setMembersCanCreateTopics as setMembersCanCreateTopicsRequest,
+  unpinMessage as unpinMessageRequest,
   type ChatEntry,
   type ChatPref,
   type Contact,
@@ -73,6 +76,8 @@ import {
   type Invite,
   type Me,
   type PatchTopicInput,
+  type Pin,
+  type PinMessageInput,
   type PublicAi,
   type PutChatPrefInput,
   type Topic,
@@ -165,6 +170,9 @@ export interface ApiClient {
   setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<GroupDetail>;
   listChatPrefs(): Promise<ChatPref[]>;
   putChatPref(chatJid: string, input: PutChatPrefInput): Promise<ChatPref | null>;
+  listPins(chat: string): Promise<Pin[]>;
+  pinMessage(input: PinMessageInput): Promise<Pin>;
+  unpinMessage(id: string): Promise<void>;
 }
 
 export interface StorageLike {
@@ -212,6 +220,9 @@ const realApi: ApiClient = {
   setMembersCanCreateTopics: setMembersCanCreateTopicsRequest,
   listChatPrefs: listChatPrefsRequest,
   putChatPref: putChatPrefRequest,
+  listPins: listPinsRequest,
+  pinMessage: pinMessageRequest,
+  unpinMessage: unpinMessageRequest,
 };
 
 function readLastRead(storage: StorageLike | null, userId: string): Record<string, string> {
@@ -1500,6 +1511,74 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // The periodic + focus refresh: refetches `/api/chats` while visible so
     // a topic created, made private, or where I was removed appears or
     // disappears without a reload. Failures are silent; the next tick retries.
+    // T-0114: the open chat's pins refresh on the same tick and on focus (no
+    // realtime channel yet).
+    const PINS_REFRESH_INTERVAL_MS = 60_000;
+    let pinsPollTimer: ReturnType<typeof setInterval> | undefined;
+    let pinsPollFocusHandler: (() => void) | null = null;
+
+    function activePinsChatId(): string | undefined {
+      return get().activeChatId;
+    }
+
+    async function refreshPinsFor(chatId: string): Promise<void> {
+      try {
+        const pins = await api.listPins(chatId);
+        set((state) => ({
+          pinsByChat: { ...state.pinsByChat, [chatId]: pins },
+          pinsReady: { ...state.pinsReady, [chatId]: true },
+        }));
+      } catch {
+        // Pins are best-effort; the chat works without them.
+      }
+    }
+
+    function startPinsPolling(gen: number): void {
+      if (typeof window === 'undefined') {
+        return;
+      }
+      if (pinsPollTimer !== undefined) {
+        clearInterval(pinsPollTimer);
+      }
+      const tick = (): void => {
+        if (gen !== generation) {
+          return;
+        }
+        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+          return;
+        }
+        const chatId = activePinsChatId();
+        if (chatId !== undefined) {
+          void refreshPinsFor(chatId);
+        }
+      };
+      pinsPollTimer = window.setInterval(tick, PINS_REFRESH_INTERVAL_MS);
+      const onFocus = (): void => {
+        if (gen !== generation) {
+          return;
+        }
+        const chatId = activePinsChatId();
+        if (chatId !== undefined) {
+          void refreshPinsFor(chatId);
+        }
+      };
+      window.addEventListener('focus', onFocus);
+      pinsPollFocusHandler = onFocus;
+    }
+
+    function stopPinsPolling(): void {
+      if (typeof window !== 'undefined') {
+        if (pinsPollTimer !== undefined) {
+          clearInterval(pinsPollTimer);
+          pinsPollTimer = undefined;
+        }
+        if (pinsPollFocusHandler !== null) {
+          window.removeEventListener('focus', pinsPollFocusHandler);
+          pinsPollFocusHandler = null;
+        }
+      }
+    }
+
     function startChatsPolling(gen: number): void {
       if (typeof window === 'undefined') {
         return;
@@ -2360,6 +2439,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       });
       startDraftStream(gen);
       startChatsPolling(gen);
+      startPinsPolling(gen);
       flushPending();
       await connectXmpp(gen, me);
     }
@@ -2540,6 +2620,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       chatPrefs: {},
       messagesByChat: {},
       reactions: {},
+      pinsByChat: {},
+      pinsReady: {},
+      pinsError: undefined,
+      dismissPinsError: () => set({ pinsError: undefined }),
       activeChatId: undefined,
       historyComplete: {},
       groupInfos: {},
@@ -2664,6 +2748,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }));
         recordRead(chatId, lastRead[chatId]);
         void ensureGroupMembers(chatId);
+        void refreshPinsFor(chatId);
         if (pendingOpenChatId !== undefined && pendingOpenChatId !== chatId) {
           clearSupersededMarker(pendingOpenChatId);
         }
@@ -2680,6 +2765,108 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         void openHistory(chatId);
       },
       loadOlder,
+      pins: (chatId) => get().pinsByChat[chatId] ?? [],
+      pinsLoaded: (chatId) => get().pinsReady[chatId] === true,
+      loadPins: async (chatId) => {
+        await refreshPinsFor(chatId);
+      },
+      canPin: (chatId) => {
+        const state = get();
+        const chat = state.chats.find((entry) => entry.id === chatId);
+        if (chat === undefined) {
+          return false;
+        }
+        // Either side of a DM may pin.
+        if (chat.kind === 'dm') {
+          return true;
+        }
+        // A topic manager: a group owner/admin (roles ride the group
+        // detail loaded on open), or the topic creator. The creator edge
+        // without a manager role is enforced by the server; the menu hides
+        // until the detail loads rather than guessing.
+        const role = state.groupInfos[chatId]?.members.find(
+          (member) => member.userId === state.currentUserId,
+        )?.role;
+        return role === 'owner' || role === 'admin';
+      },
+      pinFor: (chatId, messageId) =>
+        (get().pinsByChat[chatId] ?? []).find((pin) => pin.messageId === messageId),
+      pinMessage: async (chatId, messageId) => {
+        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        if (message === undefined) {
+          throw new Error('Message not found');
+        }
+        const kind: Pin['kind'] =
+          message.voice !== undefined
+            ? 'voice'
+            : message.image !== undefined ||
+                (message.attachment !== undefined && message.attachment.kind === 'image')
+              ? 'image'
+              : message.attachment !== undefined
+                ? 'file'
+                : message.card !== undefined
+                  ? 'card'
+                  : 'text';
+        const snapshot: PinMessageInput = {
+          chat: chatId,
+          messageId: message.id,
+          senderName: message.senderName.slice(0, 80) || 'Someone',
+          ...(kind === 'text' ? { text: (message.text ?? '').slice(0, 300) } : { text: '' }),
+          kind,
+        };
+        const before = get().pinsByChat[chatId] ?? [];
+        const optimistic: Pin = {
+          ...snapshot,
+          id: `pin-local-${message.id}`,
+          pinnedBy: get().currentUserId,
+          pinnedAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          pinsByChat: {
+            ...state.pinsByChat,
+            [chatId]: [optimistic, ...(state.pinsByChat[chatId] ?? [])],
+          },
+          pinsError: undefined,
+        }));
+        try {
+          const saved = await api.pinMessage(snapshot);
+          set((state) => ({
+            pinsByChat: {
+              ...state.pinsByChat,
+              [chatId]: (state.pinsByChat[chatId] ?? []).map((pin) =>
+                pin.id === optimistic.id ? saved : pin,
+              ),
+            },
+          }));
+        } catch (error) {
+          set((state) => ({
+            pinsByChat: { ...state.pinsByChat, [chatId]: before },
+            pinsError: { chatId, message: 'Could not pin the message. Try again.' },
+          }));
+          throw error;
+        }
+      },
+      unpinMessage: async (chatId, pinId) => {
+        const before = get().pinsByChat[chatId] ?? [];
+        set((state) => ({
+          pinsByChat: {
+            ...state.pinsByChat,
+            [chatId]: (state.pinsByChat[chatId] ?? []).filter((pin) => pin.id !== pinId),
+          },
+          pinsError: undefined,
+        }));
+        try {
+          await api.unpinMessage(pinId);
+        } catch (error) {
+          set((state) => ({
+            pinsByChat: { ...state.pinsByChat, [chatId]: before },
+            pinsError: { chatId, message: 'Could not unpin the message. Try again.' },
+          }));
+          throw error;
+        }
+      },
+      pinsPanel: undefined,
+      setPinsPanel: (chatId) => set({ pinsPanel: chatId === undefined ? undefined : { chatId } }),
       openAtMessage: async (chatId, messageId) => {
         get().openChat(chatId);
         const chat = get().chats.find((entry) => entry.id === chatId);
@@ -3130,6 +3317,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           messagesByChat: {},
           reactions: {},
           edits: {},
+          pinsByChat: {},
+          pinsReady: {},
+          pinsPanel: undefined,
+          pinsError: undefined,
           editTarget: undefined,
           actionError: undefined,
           activeChatId: undefined,
@@ -3179,6 +3370,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         closeDraftStream?.();
         closeDraftStream = undefined;
         stopChatsPolling();
+        stopPinsPolling();
         clearDraftState();
         set({ drafts: {}, finishedDraftMessages: {} });
         pendingOpenChatId = undefined;
