@@ -366,15 +366,25 @@ export interface JoinByLinkResult {
 // Adds the caller as a `member` through the existing add-member flow, so
 // room sync, public topics and the audit entry all happen. The group-full
 // check runs before any use is consumed, so a full group never burns a use.
-// The claim and the insert share one transaction: the membership is
-// re-checked inside it, so two racing joins (two strangers on a 1-use link,
-// or two tabs of the same user) serialize on the row. The loser inserts no
-// membership — `onConflictDoNothing` returns no row — answers 200 with
-// `alreadyMember: true` for a same-user race (or 404 for an exhausted link),
-// and consumes nothing: its claim rolls back with the transaction. A room
-// failure after the claim rolls the claim back too, so a 503 never burns a
-// use either. Already a member answers 200 with `alreadyMember: true` and
-// consumes no use. A full group answers 409 `group_full`.
+// The membership re-check, the claim and the insert share one transaction.
+// What that guarantees, per race:
+// - Same user twice: the loser either sees the committed row in the in-tx
+//   re-check, or both claimed and its insert is a no-op (`onConflictDoNothing`
+//   returns no row, the unique index is the backstop). Either way it answers
+//   200 with `alreadyMember: true` and consumes nothing: its own claim rolls
+//   back with the transaction.
+// - Two strangers on a 1-use link: the conditional claim UPDATE is the
+//   backstop — at most `max_uses` of them win. The loser's claim updates no
+//   row, so it answers the same 404 `invalid_link` (never `alreadyMember`).
+// - A room failure after the claim answers 503 and the claim rolls back,
+//   so a 503 never burns a use either.
+// There is no `SELECT ... FOR UPDATE` or advisory lock here: strangers
+// serialize on the link row through the conditional claim, and same-user
+// claims on an under-cap link can both land momentarily — the unique index
+// plus the no-row check is what makes the loser consume nothing.
+// Already a member answers 200 with `alreadyMember: true` and consumes no
+// use (fast path, before the transaction). A full group answers 409
+// `group_full`.
 // Unknown/expired/revoked/exhausted links answer the same 404 `invalid_link`.
 export async function joinByInviteLink(
   deps: InviteLinkServiceDeps,

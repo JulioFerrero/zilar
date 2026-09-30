@@ -640,6 +640,8 @@ describe('GET /api/search', () => {
       visibility: 'private',
       memberIds: [],
     });
+    const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, group.id));
+    const generalJid = `${groupRow?.roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
 
     // A role attached to the private topic: every holder sees the room.
     const created = await app.request(`${TEST_BASE_URL}/api/groups/${group.id}/roles`, {
@@ -677,12 +679,29 @@ describe('GET /api/search', () => {
         txt: 'quasar design tokens',
         xml: messageXml('quasar design tokens'),
       },
+      // Negative control: a public General-room message the outsider must
+      // keep finding throughout, proving the test shows scoping rather
+      // than total blindness.
+      {
+        owner: generalJid,
+        peer: 'someone@x/r',
+        barePeer: 'someone@x',
+        kind: 'groupchat',
+        nick: 'Owner',
+        originId: 'o-general',
+        timestamp: 1_785_000_000_000_000,
+        txt: 'quasar team standup',
+        xml: messageXml('quasar team standup'),
+      },
     ]);
 
-    // The role holder finds the room's messages; the non-holder does not.
+    // The role holder finds the room's messages (plus the public room's);
+    // the non-holder never sees the secret one.
     const holderFound = await search(holder.cookie, '?q=quasar');
     expect(holderFound.status).toBe(200);
-    expect(holderFound.body.items.map((item) => item.messageId)).toEqual(['o-design']);
+    expect(holderFound.body.items.map((item) => item.messageId).sort()).toEqual(
+      ['o-design', 'o-general'].sort(),
+    );
     const holderFiltered = await search(
       holder.cookie,
       `?q=quasar&chat=${encodeURIComponent(secret.chatJid)}`,
@@ -691,7 +710,8 @@ describe('GET /api/search', () => {
     expect(holderFiltered.body.items).toHaveLength(1);
 
     const outsiderFound = await search(outsider.cookie, '?q=quasar');
-    expect(outsiderFound.body.items).toHaveLength(0);
+    // The secret room stays hidden, but the public room stays visible.
+    expect(outsiderFound.body.items.map((item) => item.messageId)).toEqual(['o-general']);
     const outsiderFiltered = await search(
       outsider.cookie,
       `?q=quasar&chat=${encodeURIComponent(secret.chatJid)}`,
@@ -711,6 +731,10 @@ describe('GET /api/search', () => {
       `?q=quasar&chat=${encodeURIComponent(secret.chatJid)}`,
     );
     expect(leaverFiltered.status).toBe(404);
+
+    // The outsider never left: the public control is still visible to them.
+    const outsiderAfter = await search(outsider.cookie, '?q=quasar');
+    expect(outsiderAfter.body.items.map((item) => item.messageId)).toEqual(['o-general']);
   });
 
   it('rejects a private topic for a group admin who was not added', async () => {

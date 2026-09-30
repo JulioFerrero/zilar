@@ -424,7 +424,9 @@ export async function verifyApproval(
 // One batched query for the whole list response — never one query per row.
 // Only holders who are still group members are named (a departed user is
 // never listed even if their row survived the leave cleanup); topics
-// without an approver role get no entry (callers map them to `[]`).
+// without an approver role get no entry (callers map them to `[]`). One
+// role may approve several topics: holder names fan out to every topic
+// sharing the role.
 export async function approverNamesForTopics(
   db: ServerDatabase,
   topicIds: Array<string | null>,
@@ -439,7 +441,13 @@ export async function approverNamesForTopics(
   if (withRole.length === 0) {
     return names;
   }
-  const roleToTopic = new Map(withRole.map((topic) => [topic.approverRoleId as string, topic.id]));
+  const roleToTopics = new Map<string, string[]>();
+  for (const topic of withRole) {
+    const roleId = topic.approverRoleId as string;
+    const list = roleToTopics.get(roleId) ?? [];
+    list.push(topic.id);
+    roleToTopics.set(roleId, list);
+  }
   const holderRows = await db
     .select({ roleId: groupMemberRoles.roleId, name: user.name, userId: user.id })
     .from(groupMemberRoles)
@@ -452,16 +460,15 @@ export async function approverNamesForTopics(
         eq(groupMembers.userId, groupMemberRoles.userId),
       ),
     )
-    .where(inArray(groupMemberRoles.roleId, [...roleToTopic.keys()]));
+    .where(inArray(groupMemberRoles.roleId, [...roleToTopics.keys()]));
   const byTopic = new Map<string, Array<{ name: string; userId: string }>>();
   for (const row of holderRows) {
-    const topicId = roleToTopic.get(row.roleId);
-    if (topicId === undefined) {
-      continue;
+    const topicIds = roleToTopics.get(row.roleId) ?? [];
+    for (const topicId of topicIds) {
+      const list = byTopic.get(topicId) ?? [];
+      list.push({ name: row.name, userId: row.userId });
+      byTopic.set(topicId, list);
     }
-    const list = byTopic.get(topicId) ?? [];
-    list.push({ name: row.name, userId: row.userId });
-    byTopic.set(topicId, list);
   }
   for (const [topicId, holders] of byTopic) {
     holders.sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));

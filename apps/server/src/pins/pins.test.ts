@@ -406,8 +406,6 @@ describe('pins', () => {
       const parsed = body as { error: { code: string; message: string } };
       return { code: parsed.error.code, message: parsed.error.message };
     };
-    // Unknown chat answers the identical message and body, so pin ids
-    // cannot be told apart from invisible chats.
     const unknownChat = await listPins(owner.cookie, 'not-a-jid');
     expect(unknownChat.status).toBe(404);
     expect(sameBody(await unknownChat.json())).toEqual(sameBody(missingBody));

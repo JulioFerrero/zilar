@@ -919,6 +919,72 @@ describe('approvals routes', () => {
       ]);
     });
 
+    it('fans approver names out to every topic sharing the role', async () => {
+      const seeded = await seedPrivateTopic();
+      await context.db.update(user).set({ name: 'Amy Owner' }).where(eq(user.id, seeded.ownerId));
+      const roleId = randomUUID();
+      await context.db.insert(groupRoles).values({
+        id: roleId,
+        groupId: seeded.groupId,
+        name: 'Designers',
+        createdBy: seeded.ownerId,
+      });
+      await context.db
+        .insert(groupMemberRoles)
+        .values({ roleId, userId: seeded.ownerId, assignedBy: seeded.ownerId });
+      await context.db
+        .update(topics)
+        .set({ approverRoleId: roleId })
+        .where(eq(topics.id, seeded.topicId));
+      // A second private topic approved by the SAME role, with its own
+      // approval. Nothing forbids sharing the role, so both cards must
+      // carry the names.
+      const secondTopicId = randomUUID();
+      await context.db.insert(topics).values({
+        id: secondTopicId,
+        groupId: seeded.groupId,
+        name: 'Logos',
+        glyph: 'L',
+        roomLocalpart: `t${randomUUID().replaceAll('-', '').slice(0, 15)}`,
+        visibility: 'private',
+        kind: 'chat',
+        status: 'open',
+        isGeneral: false,
+        createdBy: seeded.ownerId,
+      });
+      await context.db
+        .insert(topicMembers)
+        .values({ topicId: secondTopicId, userId: seeded.ownerId, addedBy: seeded.ownerId });
+      await context.db
+        .update(topics)
+        .set({ approverRoleId: roleId })
+        .where(eq(topics.id, secondTopicId));
+      const secondApproval = await createApproval(
+        context.db,
+        {
+          aiId: seeded.aiId,
+          groupId: seeded.groupId,
+          topicId: secondTopicId,
+          action: 'send',
+          summary: 'Send',
+          argsHash: argsHash(91),
+          requestedBy: 'ai-bot@galena.localhost',
+          expiresAt: new Date(now.getTime() + 60_000),
+        },
+        now,
+      );
+
+      const list = await app.request(`${TEST_BASE_URL}/api/approvals`, {
+        headers: { cookie: seeded.ownerCookie },
+      });
+      expect(list.status).toBe(200);
+      const rows = (await list.json()) as Array<{ id: string; approverNames: string[] }>;
+      expect(rows).toHaveLength(2);
+      const byId = new Map(rows.map((row) => [row.id, row.approverNames]));
+      expect(byId.get(seeded.approvalId)).toEqual(['Amy Owner']);
+      expect(byId.get(secondApproval.id)).toEqual(['Amy Owner']);
+    });
+
     it('the AI owner removed from the topic loses decision rights', async () => {
       const seeded = await seedPrivateTopic();
       await context.db.delete(topicMembers).where(eq(topicMembers.topicId, seeded.topicId));

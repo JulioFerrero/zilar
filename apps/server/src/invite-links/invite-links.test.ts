@@ -367,16 +367,20 @@ describe('group invite links', () => {
     );
   });
 
-  it('two concurrent joins by the same user consume a single use', async () => {
+  it('the loser of a same-user race answers alreadyMember and consumes no use', async () => {
     const owner = await bootstrapUser(context, app, 'owner@example.com');
     const friend = await bootstrapUser(context, app, 'friend@example.com');
     const groupId = await lonelyGroup(owner);
     const link = (await (await createLink(owner.cookie, groupId)).json()) as CreatedLinkBody;
 
-    // Park the first join at the start of its transaction (before the claim,
-    // while it holds no lock) so the second join passes the already-member
-    // check too. Both then claim; the loser's insert is a no-op that must
-    // consume nothing.
+    // Park the first join at the start of its transaction — past its
+    // pre-transaction member check, before its claim, while it holds no
+    // lock — so the second join commits first. The first join's in-tx
+    // re-check must then see the committed membership and answer
+    // `alreadyMember` without claiming. (A true both-claimed interleave is
+    // impossible on PGlite: parking inside the open transaction blocks the
+    // second join's queries behind it. The `onConflictDoNothing` no-row
+    // backstop only triggers under real Postgres concurrency.)
     let releaseFirst!: () => void;
     const firstGate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
@@ -406,8 +410,12 @@ describe('group invite links', () => {
 
       const second = await join(link.token, friend.cookie);
       expect(second.status).toBe(200);
+      expect(await second.json()).toEqual({ groupId, alreadyMember: false });
       releaseFirst();
-      expect((await first).status).toBe(200);
+      const firstResponse = await first;
+      expect(firstResponse.status).toBe(200);
+      // The loser path: 200 with `alreadyMember: true`, not a second join.
+      expect(await firstResponse.json()).toEqual({ groupId, alreadyMember: true });
     } finally {
       releaseFirst();
     }
@@ -422,7 +430,7 @@ describe('group invite links', () => {
       .from(groupInviteLinks)
       .where(eq(groupInviteLinks.id, link.id));
     // One membership was created, so exactly one use was consumed — the
-    // loser's no-op insert consumed nothing.
+    // loser never claimed.
     expect(row!.uses).toBe(1);
   });
 
