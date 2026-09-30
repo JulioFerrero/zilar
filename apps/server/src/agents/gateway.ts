@@ -243,6 +243,18 @@ function denialReasonForModel(reason: DeniedReason): string {
   }
 }
 
+// Appends an adapter's `modelText` to an executed outcome as a labelled
+// untrusted block (T-0105): the model's only way to read a tool's source
+// or a test run's output. `undefined` (the adapter returned none) appends
+// nothing. Tool output is data, never instructions: the wrapper names it
+// as untrusted so the model treats it accordingly.
+function formatModelText(modelText: string | undefined): string {
+  if (modelText === undefined) {
+    return '';
+  }
+  return `\n\n<untrusted-tool-output>\n${modelText}\n</untrusted-tool-output>`;
+}
+
 function toRedactedError(error: unknown, secrets: readonly string[]): Error {
   if (error instanceof Error) {
     const redacted = new Error(redactSecrets(error.message, secrets));
@@ -689,7 +701,7 @@ export function createAgentGateway(
     }
     switch (outcome.status) {
       case 'executed':
-        return { content: `done: ${outcome.summary}` };
+        return { content: `done: ${outcome.summary}${formatModelText(outcome.modelText)}` };
       case 'pending_approval':
         // The card message is the owner's view; the model just gets a
         // short fixed line so it knows to wait. The wording differs by

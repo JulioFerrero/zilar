@@ -36,6 +36,10 @@ import {
   type ActionGateway,
   type ActionGatewayLogger,
 } from './gateway';
+import { buildToolAdapters } from '../tools/adapters';
+import { saveToolVersion } from '../tools/service';
+import type { ToolRunner } from '../tools/types';
+import { listRoutinesForAi } from '../routines/service';
 
 interface AdapterCall {
   ctx: { aiId: string; groupId: string | null; requestId: string };
@@ -936,5 +940,395 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       requestedBy: 'ai-bot@galena.localhost',
     });
     expect(inB.status).toBe('pending_approval');
+  });
+});
+
+describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)', () => {
+  let harness: Harness;
+  let testCounter = 0;
+
+  const fakeRunner: ToolRunner = () =>
+    Promise.resolve({
+      ok: true,
+      output: { text: 'BTC 100' },
+      logs: '',
+      durationMs: 5,
+      fetchCount: 0,
+    });
+
+  async function buildToolsHarness(): Promise<{
+    owner: SignedInUser;
+    aiId: string;
+    groupId: string;
+    generalTopicId: string;
+    posts: Array<{ aiId: string; groupId: string | null; topicId?: string; text: string }>;
+  }> {
+    const context = harness.context;
+    const owner = await bootstrapUser(
+      context,
+      harness.app,
+      `tools-owner-${testCounter}@example.com`,
+    );
+    const { aiId } = await seedAi(context, owner.id);
+    const groupId = randomUUID();
+    await context.db.insert(groups).values({
+      id: groupId,
+      roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
+      title: 'Tools group',
+      createdBy: owner.id,
+    });
+    await context.db.insert(groupMembers).values([{ groupId, userId: owner.id, role: 'member' }]);
+    await context.db.insert(groupAis).values({ groupId, aiId, addedBy: owner.id });
+    const generalTopicId = randomUUID();
+    await context.db.insert(topics).values({
+      id: generalTopicId,
+      groupId,
+      name: 'General',
+      glyph: 'G',
+      roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
+      visibility: 'public',
+      kind: 'chat',
+      status: 'open',
+      isGeneral: true,
+      createdBy: owner.id,
+    });
+
+    const posts: Array<{
+      aiId: string;
+      groupId: string | null;
+      topicId?: string;
+      text: string;
+    }> = [];
+    const audit = harness.audit;
+    const gateway = createActionGateway({
+      db: context.db,
+      adapters: buildRegistry(
+        buildToolAdapters({
+          db: context.db,
+          runner: fakeRunner,
+          audit,
+          now: () => new Date(),
+          post: async (post) => {
+            posts.push(post);
+            return true;
+          },
+        }),
+      ),
+      audit,
+      logger: {
+        warn: () => undefined,
+        error: () => undefined,
+      },
+      now: () => new Date(),
+      announce: {
+        approvalRequested: async (input) => {
+          harness.announcerCalls.approvalRequested.push(input);
+        },
+        outcome: async (input) => {
+          harness.announcerCalls.outcome.push(input);
+        },
+      },
+    });
+    harness.gateway = gateway;
+    harness.app = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+      audit,
+      actionGateway: gateway,
+      alwaysEligible: buildAlwaysEligible(
+        buildRegistry(
+          buildToolAdapters({
+            db: context.db,
+            runner: fakeRunner,
+            now: () => new Date(),
+            post: async () => true,
+          }),
+        ),
+      ),
+    });
+    return { owner, aiId, groupId, generalTopicId, posts };
+  }
+
+  async function saveTool(
+    aiId: string,
+    groupId: string,
+    topicId: string,
+    ownerId: string,
+    hosts: string[] = ['api.example.com'],
+  ): Promise<void> {
+    await saveToolVersion(
+      harness.context.db,
+      {
+        aiId,
+        groupId,
+        topicId,
+        name: 'prices',
+        description: 'Posts the prices',
+        source: 'return { text: "BTC 100" };',
+        hosts,
+        message: 'First version',
+        userId: ownerId,
+      },
+      new Date(),
+    );
+  }
+
+  function scheduleArgs(hosts: string[] = ['api.example.com']) {
+    return {
+      tool: 'prices',
+      title: 'Morning prices',
+      schedule: { kind: 'daily', time: '09:00', timezone: 'Europe/Madrid' },
+      hosts,
+    };
+  }
+
+  beforeEach(async () => {
+    testCounter += 1;
+    harness = await buildHarness();
+  });
+
+  afterEach(async () => {
+    await harness.context.close();
+  });
+
+  // 13) `routine.schedule` end to end: request → approval card lists the
+  // hosts → approve once → the routine exists with `approvedHosts`; the
+  // card payload reached the announcer with the hosts in the details.
+  it('routine.schedule runs through the approval flow and creates the routine', async () => {
+    const { owner, aiId, groupId, generalTopicId } = await buildToolsHarness();
+    await saveTool(aiId, groupId, generalTopicId, owner.id);
+
+    const outcome = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: generalTopicId,
+      action: 'routine.schedule',
+      args: scheduleArgs(),
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    if (outcome.status !== 'pending_approval') {
+      throw new Error(`expected pending_approval, got ${outcome.status}`);
+    }
+    const [approval] = await harness.context.db
+      .select()
+      .from(approvals)
+      .where(eq(approvals.id, outcome.approvalId));
+    expect(approval?.summary).toBe('Schedule "Morning prices": daily at 09:00 Europe/Madrid');
+    expect(approval?.details).toContain('api.example.com');
+    expect(approval?.topicId).toBe(generalTopicId);
+
+    const response = await decide(harness, owner.cookie, outcome.approvalId, 'approve_once');
+    expect(response.status).toBe(200);
+    await waitForPendingStatus(harness, outcome.approvalId, 'executed');
+
+    const routines = await listRoutinesForAi(harness.context.db, aiId);
+    expect(routines).toHaveLength(1);
+    expect(routines[0]?.title).toBe('Morning prices');
+    expect(routines[0]?.approvedHosts).toEqual(['api.example.com']);
+    expect(routines[0]?.topicId).toBe(generalTopicId);
+
+    // No tool source, output or fetched string reaches the audit rows or
+    // the announcer payloads made during the full scenario. (The tool
+    // hosts legitimately appear in the approval card details — the human
+    // must see which sites the routine will contact — so only source and
+    // output are asserted absent here.)
+    const auditRows = await harness.context.db.select().from(auditLog);
+    const withoutCardDetails = JSON.stringify({
+      rows: auditRows,
+      entries: harness.audit.entries,
+    });
+    expect(withoutCardDetails).not.toContain('return { text: "BTC 100" };');
+    expect(withoutCardDetails).not.toContain('BTC 100');
+    const announcerWithoutOutcomes = JSON.stringify(harness.announcerCalls.approvalRequested);
+    expect(announcerWithoutOutcomes).not.toContain('return { text: "BTC 100" };');
+  });
+
+  // 14) A tool update that changes hosts between request and approval fails
+  // safe: the gateway reports `failed` and no routine is created.
+  it('a hosts change between request and approval fails without creating a routine', async () => {
+    const { owner, aiId, groupId, generalTopicId } = await buildToolsHarness();
+    await saveTool(aiId, groupId, generalTopicId, owner.id);
+
+    const outcome = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: generalTopicId,
+      action: 'routine.schedule',
+      args: scheduleArgs(),
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    if (outcome.status !== 'pending_approval') {
+      throw new Error(`expected pending_approval, got ${outcome.status}`);
+    }
+    await saveToolVersion(
+      harness.context.db,
+      {
+        aiId,
+        groupId,
+        topicId: generalTopicId,
+        name: 'prices',
+        description: 'Posts the prices',
+        source: 'return { text: "BTC 100" };',
+        hosts: ['changed.example.com'],
+        message: 'New host',
+        userId: owner.id,
+      },
+      new Date(),
+    );
+
+    const response = await decide(harness, owner.cookie, outcome.approvalId, 'approve_once');
+    expect(response.status).toBe(200);
+    await waitForPendingStatus(harness, outcome.approvalId, 'failed');
+    expect(await listRoutinesForAi(harness.context.db, aiId)).toHaveLength(0);
+  });
+
+  // 15) `approve_always` on `routine.schedule` is refused with 400
+  // `always_not_allowed`, and a second request still creates a new card
+  // (no standing rule is ever stored).
+  it('routine.schedule can never be always-allowed and every request needs a card', async () => {
+    const { owner, aiId, groupId, generalTopicId } = await buildToolsHarness();
+    await saveTool(aiId, groupId, generalTopicId, owner.id);
+
+    const outcome = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: generalTopicId,
+      action: 'routine.schedule',
+      args: scheduleArgs(),
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    if (outcome.status !== 'pending_approval') {
+      throw new Error(`expected pending_approval, got ${outcome.status}`);
+    }
+    const refused = await decide(harness, owner.cookie, outcome.approvalId, 'approve_always');
+    expect(refused.status).toBe(400);
+    const refusedBody = (await refused.json()) as { error: { code: string } };
+    expect(refusedBody.error.code).toBe('always_not_allowed');
+
+    const second = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: generalTopicId,
+      action: 'routine.schedule',
+      args: scheduleArgs(),
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    expect(second.status).toBe('pending_approval');
+  });
+
+  // 16) In a group, a plain member cannot decide the schedule card (the
+  // approvals route answers 404, the action never runs) while an admin can
+  // approve it. (The `request_action` trigger gate itself — member cannot
+  // ask, admin can — is T-0098 behaviour covered in `agents/gateway.test.ts`.)
+  it('a plain group member cannot decide the schedule card but an admin can', async () => {
+    const { aiId, groupId, generalTopicId } = await buildToolsHarness();
+    const ownerRow = await harness.context.db
+      .select({ owner: ais.owner })
+      .from(ais)
+      .where(eq(ais.id, aiId))
+      .limit(1);
+    const ownerId = ownerRow[0]?.owner as string;
+    const member = await bootstrapUser(
+      harness.context,
+      harness.app,
+      `plain-member-${testCounter}@example.com`,
+    );
+    const admin = await bootstrapUser(
+      harness.context,
+      harness.app,
+      `group-admin-${testCounter}@example.com`,
+    );
+    await harness.context.db.insert(groupMembers).values([
+      { groupId, userId: member.id, role: 'member' },
+      { groupId, userId: admin.id, role: 'admin' },
+    ]);
+    await saveTool(aiId, groupId, generalTopicId, ownerId);
+
+    const outcome = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: generalTopicId,
+      action: 'routine.schedule',
+      args: scheduleArgs(),
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    if (outcome.status !== 'pending_approval') {
+      throw new Error(`expected pending_approval, got ${outcome.status}`);
+    }
+
+    const memberResponse = await decide(harness, member.cookie, outcome.approvalId, 'approve_once');
+    expect(memberResponse.status).toBe(404);
+    const memberBody = (await memberResponse.json()) as { error: { code: string } };
+    expect(memberBody.error.code).toBe('not_found');
+
+    // The card is still waiting: the member's attempt changed nothing.
+
+    const adminOutcome = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: generalTopicId,
+      action: 'routine.schedule',
+      args: scheduleArgs(),
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    if (adminOutcome.status !== 'pending_approval') {
+      throw new Error(`expected pending_approval, got ${adminOutcome.status}`);
+    }
+    const adminResponse = await decide(
+      harness,
+      admin.cookie,
+      adminOutcome.approvalId,
+      'approve_once',
+    );
+    expect(adminResponse.status).toBe(200);
+    await waitForPendingStatus(harness, adminOutcome.approvalId, 'executed');
+    expect(await listRoutinesForAi(harness.context.db, aiId)).toHaveLength(1);
+  });
+
+  // 17) Stopped AI: the gateway denies before `execute`, so the runner is
+  // never called and no post goes out.
+  it('a stopped AI denies tool.run before the runner is called', async () => {
+    const built = await buildToolsHarness();
+    await saveTool(built.aiId, built.groupId, built.generalTopicId, built.owner.id);
+    let runnerCalls = 0;
+    const countingRunner: ToolRunner = () => {
+      runnerCalls += 1;
+      return fakeRunner({ source: '', input: null, allowedHosts: [] });
+    };
+    const gateway = createActionGateway({
+      db: harness.context.db,
+      adapters: buildRegistry(
+        buildToolAdapters({
+          db: harness.context.db,
+          runner: countingRunner,
+          now: () => new Date(),
+          post: async (post) => {
+            built.posts.push(post);
+            return true;
+          },
+        }),
+      ),
+      audit: harness.audit,
+      logger: {
+        warn: () => undefined,
+        error: () => undefined,
+      },
+      now: () => new Date(),
+    });
+    await harness.context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, built.aiId));
+    const outcome = await gateway.request({
+      aiId: built.aiId,
+      groupId: built.groupId,
+      topicId: built.generalTopicId,
+      action: 'tool.run',
+      args: { name: 'prices' },
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    expect(outcome).toEqual({ status: 'denied', reason: 'ai_not_active' });
+    expect(runnerCalls).toBe(0);
+    expect(built.posts).toHaveLength(0);
   });
 });

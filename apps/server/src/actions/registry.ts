@@ -1,22 +1,70 @@
 import type { z } from 'zod';
 
-// The context the adapter receives at execution time. `aiId` and `groupId`
-// come from the gateway (never from the request), so an adapter can never be
-// tricked into acting on a different AI's behalf. `requestId` is the id of
-// the pending-action row the gateway wrote, in case the adapter wants to
-// log it for its own bookkeeping (the adapter never sees the stored args
-// outside of the `args` argument).
+// The context the adapter receives at execution time. `aiId`, `groupId`
+// and `topicId` come from the gateway (never from the request), so an
+// adapter can never be tricked into acting on a different AI's behalf.
+// Personal chat = `groupId` and `topicId` both null; group chat = both
+// set (T-0110 scope). `requestId` is the id of the pending-action row the
+// gateway wrote, in case the adapter wants to log it for its own
+// bookkeeping (the adapter never sees the stored args outside of the
+// `args` argument).
 export interface ActionContext {
   aiId: string;
   groupId: string | null;
+  topicId: string | null;
   requestId: string;
 }
 
 // The result an adapter returns on success. `summary` is what gets stored on
 // the pending-action row (truncated to 500 chars) and bubbled up to the
 // gateway caller; it must not include the adapter's internal error text.
+// `modelText` (T-0105) carries a larger payload for the model only (tool
+// source, a test run's output): the gateway returns it in the outcome of an
+// immediately executed action, never stores it, never audits or logs it,
+// never puts it in an announcement or an approval row.
 export interface ActionResult {
   summary: string;
+  modelText?: string;
+}
+
+// The hard ceiling on an adapter's `modelText`: longer text is truncated
+// with `…`. 16 KiB is enough for a tool source or a failing test run's
+// logs, small enough that it never bloats a turn.
+export const ACTION_MODEL_TEXT_MAX_CHARS = 16 * 1024;
+
+// Truncates an adapter's `modelText` to the ceiling above, appending `…`
+// when cut. Pure so adapters and the gateway share it.
+export function truncateModelText(value: string): string {
+  if (value.length <= ACTION_MODEL_TEXT_MAX_CHARS) {
+    return value;
+  }
+  return `${value.slice(0, ACTION_MODEL_TEXT_MAX_CHARS)}…`;
+}
+
+// The closing tag of the wrapper the agent gateway puts around `modelText`
+// (see `agents/gateway.ts`). Adapters must never emit it: the gateway
+// strips every occurrence before wrapping so a tool's output cannot break
+// out of the labelled block.
+export const MODEL_TEXT_WRAPPER_CLOSE = '</untrusted-tool-output>';
+
+// Removes every occurrence of the wrapper's closing tag from `modelText`
+// so a hostile tool output cannot close the labelled block early.
+//
+// Matching is case-insensitive and tolerates whitespace inside the tag, and it
+// repeats until nothing is left to remove: a single pass would let
+// `</untrusted-tool-<untrusted-tool-output>output>` collapse into a working
+// closing tag once the inner one is removed.
+const MODEL_TEXT_CLOSE_PATTERN = /<\/\s*untrusted-tool-output\s*>/gi;
+
+export function stripModelTextCloseTag(value: string): string {
+  let current = value;
+  for (;;) {
+    const next = current.replace(MODEL_TEXT_CLOSE_PATTERN, '');
+    if (next === current) {
+      return current;
+    }
+    current = next;
+  }
 }
 
 // The optional worst-case cost the adapter reports so the approval card can

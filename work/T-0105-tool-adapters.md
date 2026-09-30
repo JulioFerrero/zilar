@@ -1,7 +1,7 @@
 ---
 id: T-0105
 title: Tool and routine actions for the action gateway (tool.save, tool.run, routine.schedule …) and wiring the sandbox
-status: planned
+status: merged
 milestone: M4
 branch: task/T-0105-tool-adapters
 model: meta/muse-spark-1.3-contributor
@@ -110,28 +110,50 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Gateway extension (§1): `ActionResult` gains `modelText?`; `registry.ts` adds `ACTION_MODEL_TEXT_MAX_CHARS` (16 KiB), `truncateModelText`, `MODEL_TEXT_WRAPPER_CLOSE` and `stripModelTextCloseTag`. `ActionContext` gains `topicId: string | null` (scope is (AI, topic) per the T-0110 scope update; all three gateway paths populate it). `gateway.ts` returns sanitised `modelText` (tag stripped, truncated) only on the immediately-executed outcomes (tier 0/1 allow path and auto-approved path); it is never stored, audited or announced. `agents/gateway.ts` appends it after the summary as `done: <summary>\n\n<untrusted-tool-output>\n…\n</untrusted-tool-output>` (nothing appended when absent).
+- New `apps/server/src/tools/adapters.ts` with `buildToolAdapters({ db, runner, post, now, routinesEnabled, audit })`: `tool.list` (t0), `tool.read` (t0), `tool.save` (t1, test-run via `runToolVersion` trigger `ai`, not rolled back on failure), `tool.run` (t1, posts `<name>\n<text>` cut at 4 000 chars, best-effort, 6 runs/AI/chat/hour), `tool.revert` (t1), `routine.schedule` (t2, card shows hosts, execute re-reads the tool and throws when current hosts ≠ card hosts as sets, `createRoutine` with `approvedHosts = hosts`, no `allowAlways`), `routine.pause` / `routine.delete` (t1). All lookups are (aiId, topicId)-scoped; expected problems return summaries, never throw. `created_by` is the AI's owner (gateway carries no human yet; noted in a file comment). Shared `describeSchedule` / `formatNextRun` helpers exported for tests.
+- Wiring (§3): `TOOLS_ENABLED` (zod boolean, default false) in `config.ts`; `index.ts` builds the real runner (`runTool` with default limits), registers the adapters next to the demo adapter, passes the runner to the tools routes and the routines scheduler; `routine.schedule` is registered only when `ROUTINES_ENABLED` is also true. `docs/SERVER_CONFIG.md` documents the flag with the sandbox warning linking `docs/TOOL_SANDBOX.md`. `POST /api/tools/:id/run` `input` capped at 16 KiB serialised (400 `invalid_request`); the `tool.run` adapter applies the same cap via its schema.
+- Tests: new `adapters.test.ts` (20 tests: tiers/descriptions, save→run with fake runner seeing source+hosts and exact post text, failing test run keeps version, unchanged save, 6-run limit, 16 KiB cap, cross-chat/AI invisibility, revert, pause/delete scoping, schedule fail-safe, card text, no-sites, schedule words, audit cleanliness, invalid_args); `gateway.test.ts` modelText block (outcome-only, absent nowhere else, 20 KiB cut at 16 KiB + tag neutralised); `agents/gateway.test.ts` modelText block format; `flow.e2e.test.ts` routine.schedule e2e (card hosts → approve → routine with approvedHosts; hosts-change fail-safe; approve_always → 400 `always_not_allowed` + second request still cards; member 404 / admin approves; stopped-AI denies before runner; audit/announcer carry no source/output); `registry.test.ts` helper units; `config.test.ts` TOOLS_ENABLED; `routes.test.ts` 16 KiB input cap.
 
 ### Files changed
--
+- `apps/server/src/tools/adapters.ts` (+ `adapters.test.ts`, new)
+- `apps/server/src/actions/registry.ts` (+ `registry.test.ts`), `gateway.ts` (+ `gateway.test.ts`), `flow.e2e.test.ts` (new scenarios)
+- `apps/server/src/agents/gateway.ts` (+ its test) — only the `modelText` message format
+- `apps/server/src/tools/routes.ts` (+ test) — 16 KiB input cap
+- `apps/server/src/index.ts`, `config.ts`, `config.test.ts`
+- `docs/SERVER_CONFIG.md`
+- `work/T-0105-tool-adapters.md` (this Report + status)
 
 ### Commands run and real results
--
+- `pnpm install`: done, 7.2s
+- `pnpm format:check`: initially 5 files unformatted; after `prettier --write`: "All matched files use Prettier code style!"
+- `pnpm lint` (oxlint): clean, no output
+- `pnpm typecheck`: 10 tasks successful
+- `pnpm --filter @galena/server test`: 72 files passed, 5 skipped; 1283 tests passed, 7 skipped, 0 failed (~250s)
+- `pnpm build`: 2 tasks successful
 
 ### Problems, deviations from the spec, open questions
--
+- `routine.schedule` success summary format is `Scheduled "<title>"; next run 2026-09-30T09:00 (Europe/Madrid)` (zone name appended for daily schedules; plain UTC ISO for intervals) — reads as "ISO time in the schedule's zone".
+- The `tool.run` hourly limiter counts every call against the key, including calls that then resolve to `no such tool`; only successful lookups consume a real run. Documented here, not in code.
+- Card `details` boundedness relies on the gateway's 20 000-char truncation plus schema caps (title ≤ 80, hosts ≤ 5 × 253); no extra truncation in the adapter.
+- `formatNextRun` wraps the `Intl` call in try/catch falling back to UTC ISO (schedule already validated, so unreachable in practice).
+- Pre-existing test-local `AdapterCall` interfaces in `gateway.test.ts` / `flow.e2e.test.ts` still declare `ctx` without `topicId`; they only record what fake adapters receive, so I left them untouched.
+- No dependencies added. No `any`, no `@ts-ignore`, no disable comments.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- (none)
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged with two lead fixes. Reviewed twice (gateway and adapters).
 
 ### Findings
--
+- Gateway: `modelText` is returned only on the immediate paths, never stored, audited or announced; the topic id comes from the session; `routine.schedule` is tier 2 with `allowAlways` unset; the post-approval re-check of the tool's hosts fails safe.
+- Lead fix 1 (security): `stripModelTextCloseTag` removed the closing tag in one pass, so `</untrusted-tool-<untrusted-tool-output>output>` turned back into a working closing tag and a fetched page or tool output could break out of the untrusted block. It now repeats until nothing is left and ignores case and inner spaces (test added).
+- Lead fix 2: `index.ts` did not pass the audit recorder to `buildToolAdapters`, so `tool.saved`, `routine.created`, `routine.paused` and `routine.deleted` would not have been audited. Now passed.
 
 ### Follow-ups
--
+- Decision for Julio before turning `TOOLS_ENABLED` on: `tool.save` and `tool.run` are tier 1 and the tool declares its own hosts, so once the AI may act in a chat it can run code that contacts hosts it chose, without a card (only `routine.schedule` shows the hosts to a human). An AI that has read a private chat could send text to such a host. Options: make `tool.save`/`tool.run` tier 2 whenever `hosts` is not empty, or require a one-time approval of the host list per tool. Off by default, so nothing is exposed today.
+- T-0106 (model prompt guide) and T-0107 (web UI for tools and routines) come next.

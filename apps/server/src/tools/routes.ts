@@ -44,9 +44,30 @@ const revertBodySchema = z
   })
   .strict();
 
+// `input` serialises to at most 16 KiB (T-0105, shared with the `tool.run`
+// adapter): anything larger is 400 `invalid_request` before any run.
+export const MAX_TOOL_RUN_INPUT_BYTES = 16 * 1024;
+
 const runBodySchema = z
   .object({
-    input: z.unknown().optional(),
+    input: z
+      .unknown()
+      .optional()
+      .refine(
+        (value) => {
+          if (value === undefined) {
+            return true;
+          }
+          let serialised: string | null;
+          try {
+            serialised = JSON.stringify(value) ?? 'null';
+          } catch {
+            return false;
+          }
+          return Buffer.byteLength(serialised, 'utf8') <= MAX_TOOL_RUN_INPUT_BYTES;
+        },
+        { message: `input must serialise to at most ${MAX_TOOL_RUN_INPUT_BYTES} bytes` },
+      ),
     version: z.number().int().min(1).optional(),
   })
   .strict();

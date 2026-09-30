@@ -58,6 +58,7 @@ describe('loadServerConfig', () => {
       RUNNER_HUB_PORT: 3189,
       ROUTINES_ENABLED: false,
       ACTION_DEMO_ENABLED: false,
+      TOOLS_ENABLED: false,
       xmpp: VALID_XMPP,
     });
   });
@@ -95,6 +96,7 @@ describe('loadServerConfig', () => {
       RUNNER_HUB_PORT: 3189,
       ROUTINES_ENABLED: false,
       ACTION_DEMO_ENABLED: false,
+      TOOLS_ENABLED: false,
       xmpp: VALID_XMPP,
     });
   });
@@ -314,6 +316,27 @@ describe('loadServerConfig', () => {
     };
     const message = configErrorMessage({ ...base, ROUTINES_ENABLED: 'maybe' });
     expect(message).toContain('ROUTINES_ENABLED');
+    expect(message).not.toContain('maybe');
+  });
+
+  it('leaves tool adapters off by default and enables them with one line', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig(base).TOOLS_ENABLED).toBe(false);
+    expect(loadServerConfig({ ...base, TOOLS_ENABLED: 'true' }).TOOLS_ENABLED).toBe(true);
+  });
+
+  it('rejects junk values for TOOLS_ENABLED like the sibling flags', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    const message = configErrorMessage({ ...base, TOOLS_ENABLED: 'maybe' });
+    expect(message).toContain('TOOLS_ENABLED');
     expect(message).not.toContain('maybe');
   });
 

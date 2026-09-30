@@ -1972,6 +1972,34 @@ describe('agent gateway', () => {
       }
     });
 
+    it('appends an executed modelText as a labelled untrusted block', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = requestActionScriptedFetch(
+        requestActionResponse({ action: 'demo.echo', args: { text: 'hi' } }),
+      );
+      const fake = fakeActionGateway({
+        status: 'executed',
+        summary: 'Echoed: hi',
+        modelText: 'the tool said hello',
+      });
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm(), {
+        actions: fake.gateway,
+      });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'echo hi'));
+      await waitFor(() => calls.length === 2);
+      const second = JSON.parse(String(calls[1]!.init.body)) as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      const toolMessage = second.messages.find((message) => message.role === 'tool');
+      expect(toolMessage?.content).toBe(
+        'done: Echoed: hi\n\n<untrusted-tool-output>\nthe tool said hello\n</untrusted-tool-output>',
+      );
+    });
+
     it('a stopped AI answers "the AI was stopped" and never calls the action gateway', async () => {
       const seeded = await seedAi(context);
       const cores: FakeCore[] = [];
