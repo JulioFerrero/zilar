@@ -86,11 +86,9 @@ describe('joinLinkViewFor', () => {
   });
 
   it('shows the same neutral message for every failure kind', () => {
-    for (const rateLimited of [false]) {
-      const view = joinLinkViewFor({ failed: true, rateLimited });
-      expect(view.state).toBe('invalid');
-      expect(view.error).toBe('This link does not work');
-    }
+    const view = joinLinkViewFor({ failed: true, rateLimited: false });
+    expect(view.state).toBe('invalid');
+    expect(view.error).toBe('This link does not work');
   });
 
   it('shows the retry text for rate limits', () => {

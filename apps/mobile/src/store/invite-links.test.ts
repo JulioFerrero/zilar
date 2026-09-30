@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { extractJoinToken } from '../lib/invite-links-api';
 import { MOCK_JOIN_TOKEN } from '../mock/invite-links';
@@ -44,6 +44,73 @@ describe('mock invite links flow (T-0136)', () => {
     });
   });
 
+  it('keys links per group: two groups see only their own', async () => {
+    const store = createChatStore();
+    const devteam = await store.getState().createInviteLink('g-devteam', { label: 'Devs' });
+    const neighbors = await store.getState().createInviteLink('g-neighbors', { label: 'Hood' });
+    const devLinks = await store.getState().listInviteLinks('g-devteam');
+    const neighborLinks = await store.getState().listInviteLinks('g-neighbors');
+    expect(devLinks.some((link) => link.id === devteam.id)).toBe(true);
+    expect(devLinks.some((link) => link.id === neighbors.id)).toBe(false);
+    expect(neighborLinks.some((link) => link.id === neighbors.id)).toBe(true);
+    expect(neighborLinks.some((link) => link.id === devteam.id)).toBe(false);
+    // A revoke in one group leaves the other group's links alone.
+    await store.getState().revokeInviteLink('g-neighbors', neighbors.id);
+    expect(
+      (await store.getState().listInviteLinks('g-neighbors')).find(
+        (link) => link.id === neighbors.id,
+      )?.revoked,
+    ).toBe(true);
+    expect(
+      (await store.getState().listInviteLinks('g-devteam')).find((link) => link.id === devteam.id)
+        ?.revoked,
+    ).toBe(false);
+    // Joining resolves the link's own group.
+    await expect(store.getState().joinByLink(neighbors.token)).rejects.toMatchObject({
+      code: 'invalid_link',
+    });
+    await expect(store.getState().previewJoinLink(devteam.token)).resolves.toMatchObject({
+      groupTitle: 'Dev team',
+      groupId: 'g-devteam',
+    });
+  });
+
+  it('fails used-up and expired links with the same neutral error', async () => {
+    const store = createChatStore();
+    const oneUse = await store.getState().createInviteLink('g-devteam', { maxUses: 1 });
+    await store.getState().joinByLink(oneUse.token);
+    await expect(store.getState().previewJoinLink(oneUse.token)).rejects.toMatchObject({
+      code: 'invalid_link',
+      status: 404,
+    });
+    await expect(store.getState().joinByLink(oneUse.token)).rejects.toMatchObject({
+      code: 'invalid_link',
+      status: 404,
+    });
+  });
+
+  it('fails an expired link with the same neutral error', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-30T12:00:00.000Z'));
+      const store = createChatStore();
+      const link = await store.getState().createInviteLink('g-devteam', { expiresInHours: 1 });
+      await expect(store.getState().previewJoinLink(link.token)).resolves.toMatchObject({
+        groupTitle: 'Dev team',
+      });
+      vi.setSystemTime(new Date('2026-09-30T14:00:00.000Z'));
+      await expect(store.getState().previewJoinLink(link.token)).rejects.toMatchObject({
+        code: 'invalid_link',
+        status: 404,
+      });
+      await expect(store.getState().joinByLink(link.token)).rejects.toMatchObject({
+        code: 'invalid_link',
+        status: 404,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('previews and joins by a pasted link', async () => {
     const store = createChatStore();
     const token = extractJoinToken(`galena://join/${MOCK_JOIN_TOKEN}`);

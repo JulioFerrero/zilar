@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text } from '../../components/ui/text';
 import { extractJoinToken, joinFailureMessage } from '../../lib/invite-links-api';
@@ -185,14 +184,5 @@ export function JoinLinkForm({ onSubmit }: { onSubmit: (token: string) => void }
         <Text className="text-[15px] font-medium text-accent-foreground">Continue</Text>
       </Pressable>
     </View>
-  );
-}
-
-/** The gradient card wrapper the join route shares with the invite screen. */
-export function JoinLinkCard(props: { children: unknown }) {
-  return (
-    <SafeAreaView className="flex-1 items-center justify-center p-4">
-      <View className="w-full max-w-sm items-center">{props.children as never}</View>
-    </SafeAreaView>
   );
 }

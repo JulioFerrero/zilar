@@ -97,6 +97,7 @@ function Join({ token }: { token: string | undefined }) {
       return;
     }
     loadedFor.current = token;
+    setView({ state: 'checking' });
     // The effect only synchronizes with the token (the lint rule flags
     // synchronous setState inside effects); the fetch helper resolves the
     // next view, applied once.
@@ -153,11 +154,14 @@ function Join({ token }: { token: string | undefined }) {
         // failure never reveals why. Only an unreachable server keeps the
         // preview with a retry error.
         if (error?.status === 0) {
-          setView({
-            state: 'ready',
-            preview,
-            error: 'Could not join the group. Try again.',
-          });
+          setView(
+            joinLinkViewFor({
+              preview,
+              failed: false,
+              rateLimited: false,
+              joinError: 'Could not join the group. Try again.',
+            }),
+          );
           return;
         }
         setView(joinLinkViewFor({ failed: true, rateLimited: false }));

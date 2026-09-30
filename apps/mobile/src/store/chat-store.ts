@@ -368,13 +368,13 @@ export function createChatStore(
         }
         return mockTopicAisById()[topicId] ?? [];
       },
-      listInviteLinks: async () => inviteLinks.list('g-devteam'),
+      listInviteLinks: async (groupId: string) => inviteLinks.list(groupId),
       createInviteLink: async (
-        _groupId: string,
+        groupId: string,
         input: CreateGroupInviteLinkInput,
-      ): Promise<CreatedInviteLink> => inviteLinks.create('g-devteam', input),
-      revokeInviteLink: async (_groupId: string, linkId: string): Promise<void> => {
-        inviteLinks.revoke('g-devteam', linkId);
+      ): Promise<CreatedInviteLink> => inviteLinks.create(groupId, input),
+      revokeInviteLink: async (groupId: string, linkId: string): Promise<void> => {
+        inviteLinks.revoke(groupId, linkId);
       },
       previewJoinLink: async (token: string): Promise<JoinPreview> => inviteLinks.preview(token),
       joinByLink: async (token: string): Promise<JoinResult> => inviteLinks.join(token),
