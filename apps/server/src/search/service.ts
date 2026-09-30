@@ -55,9 +55,9 @@ export interface SearchOwner {
   peerNames: Map<string, string>;
 }
 
-// Every archive the caller may read, computed from our tables only. T-0116
-// (role access) is not merged: when it lands, its holders widen the room set
-// here. DMs are always read under the caller's own `username` with a
+// Every archive the caller may read, computed from our tables only. Rooms
+// come from `visibleTopics`, which includes the topics a role holder reaches
+// through a role (T-0116). DMs are always read under the caller's own `username` with a
 // `bare_peer` filter — never under the peer's `username`, which would expose
 // the peer's other conversations.
 export async function allowedArchives(

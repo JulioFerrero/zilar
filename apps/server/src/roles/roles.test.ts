@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { auditLog, groupMemberRoles, groupRoles, topicRoleAccess } from '../db/schema';
+import { auditLog, groupMemberRoles, groupRoles, topicRoleAccess, topics } from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
@@ -1112,5 +1112,39 @@ describe('group roles (T-0116)', () => {
     const body = (await listed.json()) as RolesBody;
     expect(body.roles).toHaveLength(1);
     expect(body.roles[0]?.members.map((entry) => entry.userId)).toEqual([member.id]);
+  });
+  it('clears attached roles and the approver role when a private topic goes public (round 3)', async () => {
+    const { owner, member, group } = await setup();
+    const role = (await (
+      await createRole(owner.cookie, group.id, { name: 'Designers' })
+    ).json()) as RoleBody;
+    expect((await setMembers(owner.cookie, group.id, role.id, [member.id])).status).toBe(200);
+    const topic = (await (
+      await createTopic(owner.cookie, group.id, { name: 'Hiring', visibility: 'private' })
+    ).json()) as TopicBody;
+    expect(
+      (await setTopicRoles(owner.cookie, topic.id, { roleIds: [role.id], approverRoleId: role.id }))
+        .status,
+    ).toBe(200);
+
+    const patch = (body: unknown) =>
+      app.request(`${TEST_BASE_URL}/api/topics/${topic.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify(body),
+      });
+    expect((await patch({ visibility: 'public', confirmExposeHistory: true })).status).toBe(200);
+    expect(
+      await context.db.select().from(topicRoleAccess).where(eq(topicRoleAccess.topicId, topic.id)),
+    ).toEqual([]);
+    const [afterPublic] = await context.db.select().from(topics).where(eq(topics.id, topic.id));
+    expect(afterPublic?.approverRoleId).toBeNull();
+
+    // Making it private again with only the owner must not bring the role back.
+    expect((await patch({ visibility: 'private', memberIds: [owner.id] })).status).toBe(200);
+    const hidden = await app.request(`${TEST_BASE_URL}/api/topics/${topic.id}`, {
+      headers: { cookie: member.cookie },
+    });
+    expect(hidden.status).toBe(404);
   });
 });

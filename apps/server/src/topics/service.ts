@@ -491,8 +491,19 @@ export async function patchTopic(
       .values(memberIds.map((userId) => ({ topicId: topic.id, userId, addedBy: input.actorId })))
       .onConflictDoNothing();
   }
+  // Going public ends everything private access rested on: direct members,
+  // attached roles and the approver role. Clearing the roles now keeps them
+  // from silently coming back if the topic is made private again.
+  let clearedRoleIds: string[] = [];
   if (goingPublic) {
     await deps.db.delete(topicMembers).where(eq(topicMembers.topicId, topic.id));
+    const attached = await deps.db
+      .select({ roleId: topicRoleAccess.roleId })
+      .from(topicRoleAccess)
+      .where(eq(topicRoleAccess.topicId, topic.id));
+    clearedRoleIds = attached.map((row) => row.roleId);
+    await deps.db.delete(topicRoleAccess).where(eq(topicRoleAccess.topicId, topic.id));
+    await deps.db.update(topics).set({ approverRoleId: null }).where(eq(topics.id, topic.id));
   }
 
   const [updated] = await deps.db.select().from(topics).where(eq(topics.id, topic.id)).limit(1);
@@ -521,6 +532,11 @@ export async function patchTopic(
           ? 'topic.visibility_changed'
           : 'topic.updated';
     await deps.audit.record(toAuditEntry(updated, action, input.actorId));
+    for (const roleId of clearedRoleIds) {
+      await deps.audit.record(
+        toAuditEntry(updated, 'topic.role_removed', input.actorId, { roleId }),
+      );
+    }
   }
   return updated;
 }

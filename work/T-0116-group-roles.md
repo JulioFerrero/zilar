@@ -1,7 +1,7 @@
 ---
 id: T-0116
 title: Group roles (Designers, Devs …): grant access to private topics and approver rights by role
-status: review
+status: merged
 milestone: M5
 branch: task/T-0116-group-roles
 model: meta/muse-spark-1.3-contributor
@@ -225,10 +225,15 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** merged after three rounds and a lead fix. Security code read twice.
 
 ### Findings
--
+- Round 1 (pre-review): leaving one group deleted the leaver's role rows in every group (must-fix); a drained private topic was archived even with role holders; a room-sync failure skipped the audit; role name and cap races; `canDecide` did not tie the approver role to the group. All fixed with tests; the unique `lower(name)` index is in migration 0027.
+- Round 2: a stale-baseline race in `setRoleMembers` and `setTopicRoles` (now read inside the advisory lock); leaver role audit; holder list joins group membership.
+- Lead fix: making a private topic public left its attached roles and approver role behind, so re-privatizing brought them back silently. Going public now clears both, with `topic.role_removed` audit rows (test fails without the fix). Also updated a stale comment in search.
+- Blessed scope touch: `topics/backfill.test.ts` excludes migration 0027 from the pre-T-0108 simulation.
+- Not live-checked: UI verified by tests and mock mode only.
 
 ### Follow-ups
--
+- ApprovalCard fires one `getTopic` per card (N+1); T-0134 puts approver names in the list payload.
+- The concurrent role tests document that PGlite serializes writes; a real Postgres race test is still missing.
