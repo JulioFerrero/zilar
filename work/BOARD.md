@@ -15,7 +15,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | planned | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
 | [T-0124](T-0124-channels.md) | Channels: only admins post | planned | meta/muse-spark-1.3-contributor | T-0108, T-0115 |  |
-| [T-0132](T-0132-tool-host-approval.md) | Approve a tool's hosts once per tool before it can reach the network | planned | meta/muse-spark-1.3-contributor | T-0105, T-0116 | Julio's decision 2026-09-30; must merge before TOOLS_ENABLED is turned on; schema task |
 | [T-0134](T-0134-server-followups.md) | Server follow-ups (join race, trusted proxy hops, pin 404, search with roles, preview limit, approvers in list) | planned | meta/muse-spark-1.3-contributor | T-0116 | No schema |
 | [T-0135](T-0135-mobile-parity.md) | Mobile: chat preferences and pinned messages | planned | meta/muse-spark-1.3-contributor | T-0113, T-0114 | Mobile, not run in a simulator |
 | [T-0136](T-0136-mobile-invite-links.md) | Mobile: group invite links (create, manage, join) | planned | meta/muse-spark-1.3-contributor | T-0112, T-0115 | Mobile, not run in a simulator |
@@ -168,3 +167,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0116](T-0116-group-roles.md) | group roles: private-topic access and approver rights (migration 0027) | 2026-09-30 |
 | [T-0127](T-0127-install-wizard-backup-baremetal.md) | install wizard (./galena init/up/doctor/backup/restore), bare-metal guide, deploy/backups ignored | 2026-09-30 |
 | [T-0133](T-0133-web-followups.md) | web follow-ups: single-call topic adds, revoke unstick, stale refresh guard, quiet-archive leak, screenshot script tests | 2026-09-30 |
+| [T-0132](T-0132-tool-host-approval.md) | tool host approval: hosts approved once per tool, sandbox gets declared ∩ approved (migration 0028) | 2026-09-30 |
