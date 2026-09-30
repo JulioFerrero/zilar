@@ -28,6 +28,7 @@ import { sharedDraftHub } from './drafts/hub';
 import { createLogger } from './logger';
 import { assertRunnerHubConfig, startRunnerHub, type RunnerHub } from './machines/hub';
 import { createDbMachineRegistry } from './machines/registry';
+import { buildRoutineScheduler, type RoutineSchedulerHandle } from './routines/wiring';
 import { createEjabberdAdminClient } from './xmpp/admin-client';
 
 const config = loadServerConfigOrExit(process.env);
@@ -237,6 +238,31 @@ void actionGateway.recoverStuck().catch((error: unknown) => {
   logger.error({ err: message }, 'initial recoverStuck sweep failed');
 });
 
+// Routines scheduler (T-0104): starts after `serve()` resolves when
+// `ROUTINES_ENABLED=true`, with the gateway's `postToChat` (via the same
+// `gatewayRef` closure the announcer uses). No tool runner is configured
+// yet (T-0105 wires the sandbox and passes it here), so with the flag on
+// the builder logs its one warning and stays off; with the flag off it
+// stays off silently. Stops on shutdown like the other timers.
+const routineScheduler: RoutineSchedulerHandle | null = buildRoutineScheduler({
+  db,
+  routinesEnabled: config.ROUTINES_ENABLED,
+  audit: auditRecorder,
+  logger,
+  post: ({ aiId, groupId, topicId, text }) => {
+    const gateway = gatewayRef;
+    if (gateway === null) {
+      return Promise.resolve(false);
+    }
+    return gateway.postToChat({
+      aiId,
+      groupId,
+      ...(topicId === undefined ? {} : { topicId }),
+      text,
+    });
+  },
+});
+
 // How long open connections (SSE streams) get before they are closed, and the
 // point at which a stuck shutdown gives up and exits.
 const CONNECTION_GRACE_MS = 3_000;
@@ -274,6 +300,9 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   await gateway.stop();
   approvalsSweeper.close();
   recoveryStuck.close();
+  if (routineScheduler !== null) {
+    routineScheduler.stop();
+  }
   await close();
   process.exit(0);
 }

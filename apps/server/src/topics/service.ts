@@ -33,6 +33,7 @@ import {
 } from './access';
 import { emitTopicAi } from '../groups/events';
 import { revokeActiveRulesForAiInTopic } from '../approvals/rules';
+import { deleteRoutinesForAiInTopic } from '../routines/service';
 import { deleteToolsForAiInTopic } from '../tools/service';
 import { syncTopicRoom } from './rooms';
 
@@ -817,6 +818,7 @@ export async function removeTopicAi(
   const now = new Date();
   await revokeActiveRulesForAiInTopic(deps.db, { aiId, topicId: topic.id, actorId, now });
   await deleteToolsForAiInTopic(deps.db, { aiId, topicId: topic.id, now });
+  await deleteRoutinesForAiInTopic(deps.db, { aiId, topicId: topic.id, now });
   const [updated] = await deps.db.select().from(topics).where(eq(topics.id, topic.id)).limit(1);
   if (!updated) {
     throw toMissingTopic();

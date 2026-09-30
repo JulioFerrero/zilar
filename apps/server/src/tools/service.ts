@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { ais, aiToolRuns, aiTools, aiToolVersions } from '../db/schema';
+import { deleteRoutinesForTool } from '../routines/service';
 import { parseToolVersionInput } from './schemas';
 import type { ToolRunner, ToolRunResult } from './types';
 
@@ -523,8 +524,9 @@ export async function revertTool(
   });
 }
 
-// Soft-deletes one tool by id. Idempotent: a missing id or an already
-// deleted tool returns `deleted: false` and writes nothing.
+// Soft-deletes one tool by id, and soft-deletes the tool's routines with
+// it (T-0104). Idempotent: a missing id or an already deleted tool
+// returns `deleted: false` and writes nothing.
 export async function deleteTool(
   db: ServerDatabase,
   toolId: string,
@@ -535,7 +537,11 @@ export async function deleteTool(
     .set({ deletedAt: now, updatedAt: now })
     .where(and(eq(aiTools.id, toolId), isNull(aiTools.deletedAt)))
     .returning();
-  return { deleted: updated !== undefined };
+  if (updated === undefined) {
+    return { deleted: false };
+  }
+  await deleteRoutinesForTool(db, { toolId, now });
+  return { deleted: true };
 }
 
 // Soft-deletes every active tool of one AI in one topic. Called from

@@ -126,6 +126,14 @@ const serverConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // Routines scheduler (T-0104): when true, `index.ts` starts the
+    // scheduler that fires due routines. Off by default; enabling it also
+    // needs a tool runner (the sandbox wiring), otherwise the scheduler
+    // stays off with one warning.
+    ROUTINES_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     RUNNER_HUB_PORT: z.preprocess(
       (value) => value ?? '3189',
       z

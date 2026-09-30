@@ -30,6 +30,7 @@ import { createMachinesRoutes } from './machines/routes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
 import { serverVersion } from './version';
 import { createToolsRoutes, type ToolsRoutesDependencies } from './tools/routes';
+import { createRoutinesRoutes } from './routines/routes';
 import type { ToolRunner } from './tools/types';
 import type { VoiceEngine } from './voice/engine';
 import { createVoiceRoutes } from './voice/routes';
@@ -226,6 +227,7 @@ export function createApp({
     ...(toolRunner === undefined ? {} : { toolRunner }),
   };
   app.route('/api', createToolsRoutes(toolsDeps));
+  app.route('/api', createRoutinesRoutes({ auth, db, audit: auditRecorder }));
   app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));
   app.route(
     '/api',
