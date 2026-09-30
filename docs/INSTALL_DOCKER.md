@@ -33,6 +33,10 @@ Fill in every `CHANGE_ME` in `deploy/.env`:
 | `IMAGE_OWNER` | The GitHub org/user that publishes the images (lowercase). |
 | `IMAGE_TAG` | The release tag to run, e.g. `v0.1.0` (a tag `v*` is what publishes images). |
 
+`IMAGE_OWNER`/`IMAGE_TAG` pick the published server and web images (postgres
+and ejabberd always build locally from `deploy/` in the plain stack, so they
+need no registry pull).
+
 DNS first (real domain only): point an `A` record for `GALENA_DOMAIN` at the
 host. Caddy cannot issue a certificate until the domain resolves to it.
 
@@ -56,13 +60,20 @@ code links the two accounts as contacts).
 
 ## The Coolify path
 
+No checkout of this repository is needed: Coolify runs everything from the
+images named below, and the compose file is a lone paste.
+
 1. In Coolify, create a Service of type **Docker Compose Empty**.
 2. Paste `deploy/coolify/docker-compose.yml` as the Source Compose and save.
+   The file references only images and environment variables — no bind
+   mounts, no relative paths.
 3. Under Configuration → Environment Variables fill every required value:
-   passwords are `SERVICE_PASSWORD_*` (generated), `XMPP_DOMAIN` /
-   `XMPP_MUC_DOMAIN` are your domains, `WEB_ORIGIN` is the web app's public
-   URL (copy it after Coolify generates the web domain), `IMAGE_OWNER` /
-   `IMAGE_TAG` pick the release.
+    `IMAGE_OWNER` / `IMAGE_TAG` pick the release whose images you want (all
+    four `galena-*` images are published per `v*` tag by
+    `.github/workflows/images.yml`); passwords are `SERVICE_PASSWORD_*`
+    (generated); `XMPP_DOMAIN` / `XMPP_MUC_DOMAIN` are your domains;
+    `WEB_ORIGIN` is the web app's public URL (copy it after Coolify
+    generates the web domain).
 4. In the Domains configuration give the `web` component your main domain,
    the `server` component an API domain, and the `ejabberd` component two
    entries (WebSocket and uploads). The compose file declares the

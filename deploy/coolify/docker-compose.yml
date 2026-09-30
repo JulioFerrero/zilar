@@ -20,8 +20,10 @@
 # - Health checks live in Compose (Services have no separate health-check UI).
 #
 # Images are published by .github/workflows/images.yml as
-# ghcr.io/<owner>/galena-server and galena-web; IMAGE_OWNER/IMAGE_TAG pick
-# the release to run.
+# ghcr.io/<owner>/galena-postgres and galena-ejabberd; IMAGE_OWNER/IMAGE_TAG
+# pick the release to run. No repository files are mounted: the config is
+# baked into the images, so this file works as a lone paste into a Coolify
+# "Docker Compose Empty" service (which has no checkout of this repository).
 #
 # What this file does NOT do (Coolify limitation, verified in the docs but
 # not on a live Coolify — see the T-0126 Report):
@@ -39,7 +41,7 @@
 
 services:
   postgres:
-    image: pgvector/pgvector:0.8.6-pg18-trixie
+    image: ghcr.io/${IMAGE_OWNER:?}/galena-postgres:${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -50,9 +52,6 @@ services:
       GALENA_ARCHIVE_DB_PASSWORD: ${SERVICE_PASSWORD_ARCHIVE_DB:?}
     volumes:
       - postgres-data:/var/lib/postgresql
-      # The init script is stored in git (same SQL as the plain compose
-      # stack) and mounted read-only; passwords arrive as environment.
-      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
       interval: 5s
@@ -61,12 +60,14 @@ services:
       start_period: 10s
 
   ejabberd:
-    image: ghcr.io/processone/ejabberd:26.07
+    # Production config (ejabberd.yml + jwt-entrypoint.sh) is baked into the
+    # image by deploy/ejabberd/Dockerfile; hosts, passwords, the upload URL
+    # and the JWT secret arrive as environment below.
+    image: ghcr.io/${IMAGE_OWNER:?}/galena-ejabberd:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-    entrypoint: ['/bin/sh', '/galena/jwt-entrypoint.sh']
     command: ['foreground']
     environment:
       # Traefik terminates TLS; ejabberd serves plain HTTP on the Service
@@ -90,8 +91,6 @@ services:
     expose:
       - '5280'
     volumes:
-      - ./ejabberd/ejabberd.yml:/opt/ejabberd/conf/ejabberd.yml:ro
-      - ./ejabberd/jwt-entrypoint.sh:/galena/jwt-entrypoint.sh:ro
       - ejabberd-database:/opt/ejabberd/database
       - ejabberd-uploads:/opt/ejabberd/upload
     healthcheck:
