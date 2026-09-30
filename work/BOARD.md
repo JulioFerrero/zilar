@@ -22,6 +22,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0125](T-0125-web-tools.md) | Web tools for AIs: web.fetch, Wikipedia, feeds, prices, best-effort search (no keys) | planned | meta/muse-spark-1.3-contributor | T-0105 |
 | [T-0127](T-0127-install-wizard-backup-baremetal.md) | Install wizard, backup/restore, bare-metal guide | planned | meta/muse-spark-1.3-contributor | T-0126 |
 | [T-0129](T-0129-coolify-baked-config.md) | Coolify without bind mounts (bake ejabberd + Postgres config into images) | planned | meta/muse-spark-1.3-contributor | T-0126 |
+| [T-0130](T-0130-topics-web-fixes.md) | Topics web fixes found by the T-0111 pre-review | planned | meta/muse-spark-1.3-contributor | T-0111, T-0113 |
 | T-0106 | Model side of AI tools (prompt guide, rounds per turn, working-on-it line) | planned | meta/muse-spark-1.3-contributor | T-0105 | Spec written after T-0105 merges |
 | T-0107 | Web Tools and Routines UI | planned | meta/muse-spark-1.3-contributor | T-0106 | Spec written after T-0105 merges |
 
