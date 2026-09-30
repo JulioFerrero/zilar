@@ -194,6 +194,21 @@ export interface ChatStore {
   refreshTopicRow: (chatId: string, topicId: string) => Promise<boolean>;
   /** Leaves a private topic. Rejects on failure. */
   leaveTopic: (chatId: string) => Promise<void>;
+  /**
+   * T-0124: creates a channel (the broadcast feed: moderated room, only
+   * admins post) and opens it. Rejects on failure.
+   */
+  createChannel: (title: string, memberIds: string[], description?: string) => Promise<string>;
+  /**
+   * T-0124: leaves a channel (subscribers) through the member route. Admins
+   * remove others the same way. Rejects on failure.
+   */
+  leaveChannel: (chatId: string) => Promise<void>;
+  /**
+   * T-0124: promotes a member to admin (or demotes one back). Owner only;
+   * the room affiliation follows at once. Rejects on failure.
+   */
+  changeChannelRole: (chatId: string, userId: string, role: 'admin' | 'member') => Promise<void>;
   /** Flips the group's "members can create topics" switch. Rejects on failure. */
   setMembersCanCreateTopics: (chatId: string, allowed: boolean) => Promise<void>;
   /**
@@ -726,6 +741,41 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       },
       leaveTopic: async (chatId) => {
         await get().removeTopicMember(chatId, get().currentUserId);
+      },
+      createChannel: async () => {
+        throw new Error('createChannel is not available in the mock store');
+      },
+      leaveChannel: async (chatId) => {
+        const info = get().groupInfos[chatId];
+        if (info === undefined) {
+          throw new Error('This channel is not available yet.');
+        }
+        set((state) => ({
+          chats: state.chats.filter((chat) => chat.groupId !== info.id),
+        }));
+      },
+      changeChannelRole: async (chatId, userId, role) => {
+        const info = get().groupInfos[chatId];
+        if (info === undefined) {
+          throw new Error('This channel is not available yet.');
+        }
+        set((state) => {
+          const detail = state.groupInfos[chatId];
+          if (detail === undefined) {
+            return state;
+          }
+          return {
+            groupInfos: {
+              ...state.groupInfos,
+              [chatId]: {
+                ...detail,
+                members: detail.members.map((member) =>
+                  member.userId === userId ? { ...member, role } : member,
+                ),
+              },
+            },
+          };
+        });
       },
       setMembersCanCreateTopics: async (chatId, allowed) => {
         const groupId = get().groupInfos[chatId]?.id;

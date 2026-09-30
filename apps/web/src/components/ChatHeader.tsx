@@ -33,6 +33,9 @@ export function ChatHeader({
   const working = chat.isAI && chat.aiStatus === 'working';
   const subtitle = writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date()));
   const isTopic = chat.topic !== undefined;
+  // T-0124: a channel feed is one row (General keeps the group chat id), not
+  // a topic row; the panel is the channel panel, like the group panel.
+  const isChannel = chat.chatKind === 'channel';
   // One search path for the header button and the topic menu entry: scope the
   // list search to this chat and focus its box.
   const startChatSearch = (): void => {
@@ -50,7 +53,9 @@ export function ChatHeader({
     ? `Open ${chat.title} topic info`
     : chat.isAI
       ? `Open ${chat.title} settings`
-      : `Open ${chat.title} info`;
+      : isChannel
+        ? `Open ${chat.title} channel info`
+        : `Open ${chat.title} info`;
   const [menuOpen, setMenuOpen] = useState(false);
   const [actionError, setActionError] = useState('');
   const [archiving, setArchiving] = useState(false);

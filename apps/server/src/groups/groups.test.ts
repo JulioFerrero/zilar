@@ -1032,4 +1032,289 @@ describe('groups', () => {
       expect((await groupDetailRequest(stranger.cookie, groupId)).status).toBe(404);
     });
   });
+
+  describe('channels', () => {
+    interface ChannelDetailBody extends GroupDetailBody {
+      kind: string;
+      description: string | null;
+    }
+
+    async function createChannelRequest(cookie: string, body: unknown) {
+      return app.request(`${TEST_BASE_URL}/api/groups`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(body),
+      });
+    }
+
+    function changeRoleRequest(cookie: string, groupId: string, userId: string, role: unknown) {
+      return app.request(`${TEST_BASE_URL}/api/groups/${groupId}/members/${userId}/role`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({ role }),
+      });
+    }
+
+    function membersRequest(cookie: string, groupId: string) {
+      return app.request(`${TEST_BASE_URL}/api/groups/${groupId}/members`, {
+        headers: { cookie },
+      });
+    }
+
+    async function channelWithSubscriber(): Promise<{
+      ownerId: string;
+      ownerCookie: string;
+      subscriberId: string;
+      subscriberCookie: string;
+      groupId: string;
+    }> {
+      const owner = await bootstrapUser(context, app, 'owner@example.com');
+      const subscriber = await contactOf(context, app, owner.id, 'sub@example.com');
+      const response = await createChannelRequest(owner.cookie, {
+        title: 'Releases',
+        memberIds: [subscriber.id],
+        kind: 'channel',
+        description: 'Ship notes',
+      });
+      expect(response.status).toBe(201);
+      const body = (await response.json()) as ChannelDetailBody;
+      return {
+        ownerId: owner.id,
+        ownerCookie: owner.cookie,
+        subscriberId: subscriber.id,
+        subscriberCookie: subscriber.cookie,
+        groupId: body.id,
+      };
+    }
+
+    it('creates the channel room moderated and stores kind + description', async () => {
+      const { ownerCookie, subscriberId, groupId } = await channelWithSubscriber();
+
+      const detail = (await (
+        await groupDetailRequest(ownerCookie, groupId)
+      ).json()) as ChannelDetailBody;
+      expect(detail.kind).toBe('channel');
+      expect(detail.description).toBe('Ship notes');
+
+      const roomLocalpart = await roomLocalpartOf(groupId);
+      expect(context.adminClient.roomOptions).toContainEqual(
+        expect.objectContaining({ roomId: roomLocalpart, moderated: true }),
+      );
+      // The owner posts (voice via affiliation `owner`); the subscriber
+      // never holds more than `member` (a visitor once inside the room).
+      const ownerJid = `${localpartFor(detail.createdBy)}@${TEST_XMPP_DOMAIN}`;
+      const subJid = `${localpartFor(subscriberId)}@${TEST_XMPP_DOMAIN}`;
+      const affiliations = context.adminClient.affiliationState.get(roomLocalpart);
+      expect(affiliations?.get(ownerJid)).toBe('owner');
+      expect(affiliations?.get(subJid)).toBe('member');
+      // The feed is the General topic, and only it.
+      const rows = await context.db.select().from(topics).where(eq(topics.groupId, groupId));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.isGeneral).toBe(true);
+    });
+
+    it('creates plain groups without the moderated option, as before', async () => {
+      const owner = await bootstrapUser(context, app, 'owner@example.com');
+      const response = await createChannelRequest(owner.cookie, {
+        title: 'Weekend trip',
+        memberIds: [],
+      });
+      expect(response.status).toBe(201);
+      const body = (await response.json()) as ChannelDetailBody;
+      expect(body.kind).toBe('group');
+      expect(body.description).toBeNull();
+
+      const roomLocalpart = await roomLocalpartOf(body.id);
+      const options = context.adminClient.roomOptions.find(
+        (entry) => entry.roomId === roomLocalpart,
+      );
+      expect(options).toMatchObject({ membersOnly: true, persistent: true, mam: true });
+      expect(options).not.toHaveProperty('moderated');
+    });
+
+    it('refuses topic creation in a channel with channel_has_no_topics', async () => {
+      const { ownerCookie, groupId } = await channelWithSubscriber();
+      const response = await app.request(`${TEST_BASE_URL}/api/groups/${groupId}/topics`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: ownerCookie },
+        body: JSON.stringify({ name: 'Extra' }),
+      });
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+        'channel_has_no_topics',
+      );
+    });
+
+    it('hides the member list from subscribers but shows it to admins', async () => {
+      const { ownerId, ownerCookie, subscriberId, subscriberCookie, groupId } =
+        await channelWithSubscriber();
+
+      const asSubscriber = (await (
+        await groupDetailRequest(subscriberCookie, groupId)
+      ).json()) as ChannelDetailBody;
+      expect(asSubscriber.members).toEqual([]);
+
+      const asOwner = (await (
+        await groupDetailRequest(ownerCookie, groupId)
+      ).json()) as ChannelDetailBody;
+      expect(asOwner.members.map((member) => member.userId).sort()).toEqual(
+        [ownerId, subscriberId].sort(),
+      );
+
+      const listAsSubscriber = await membersRequest(subscriberCookie, groupId);
+      expect(listAsSubscriber.status).toBe(200);
+      expect(
+        ((await listAsSubscriber.json()) as { members: Array<{ userId: string }> }).members,
+      ).toEqual([]);
+      const listAsOwner = await membersRequest(ownerCookie, groupId);
+      expect(listAsOwner.status).toBe(200);
+      expect(
+        ((await listAsOwner.json()) as { members: Array<{ userId: string }> }).members,
+      ).toHaveLength(2);
+    });
+
+    it('promotes a subscriber to admin with voice, and refuses to lose the last admin', async () => {
+      const { ownerCookie, subscriberId, groupId } = await channelWithSubscriber();
+      const roomLocalpart = await roomLocalpartOf(groupId);
+      const subJid = `${localpartFor(subscriberId)}@${TEST_XMPP_DOMAIN}`;
+
+      const promoted = await changeRoleRequest(ownerCookie, groupId, subscriberId, 'admin');
+      expect(promoted.status).toBe(200);
+      expect(context.adminClient.affiliationState.get(roomLocalpart)?.get(subJid)).toBe('admin');
+
+      // The new admin sees the audience list now.
+      const list = await membersRequest(ownerCookie, groupId);
+      expect(list.status).toBe(200);
+
+      // Demoting the only admin back is refused: the feed must keep a voice.
+      const demoted = await changeRoleRequest(ownerCookie, groupId, subscriberId, 'member');
+      expect(demoted.status).toBe(409);
+      expect(((await demoted.json()) as { error: { code: string } }).error.code).toBe(
+        'channel_needs_admin',
+      );
+      expect(context.adminClient.affiliationState.get(roomLocalpart)?.get(subJid)).toBe('admin');
+
+      // Only the owner may change roles; strangers see the same 404.
+      const stranger = await bootstrapUser(context, app, 'stranger@example.com');
+      expect(
+        (await changeRoleRequest(stranger.cookie, groupId, subscriberId, 'member')).status,
+      ).toBe(404);
+    });
+
+    it('lets a subscriber join by link and leave the channel', async () => {
+      const owner = await bootstrapUser(context, app, 'owner@example.com');
+      const created = await createChannelRequest(owner.cookie, {
+        title: 'Releases',
+        memberIds: [],
+        kind: 'channel',
+      });
+      const { id: groupId } = (await created.json()) as ChannelDetailBody;
+
+      const link = await app.request(`${TEST_BASE_URL}/api/groups/${groupId}/invite-links`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({}),
+      });
+      expect(link.status).toBe(201);
+      const { token } = (await link.json()) as { token: string };
+
+      const newcomer = await bootstrapUser(context, app, 'newcomer@example.com');
+      const preview = await app.request(`${TEST_BASE_URL}/api/join/${token}`, {
+        headers: { cookie: newcomer.cookie },
+      });
+      expect(preview.status).toBe(200);
+      expect(((await preview.json()) as { groupTitle: string }).groupTitle).toBe('Releases');
+
+      const joined = await app.request(`${TEST_BASE_URL}/api/join/${token}`, {
+        method: 'POST',
+        headers: { cookie: newcomer.cookie },
+      });
+      expect(joined.status).toBe(200);
+      const roomLocalpart = await roomLocalpartOf(groupId);
+      const newcomerJid = `${localpartFor(newcomer.id)}@${TEST_XMPP_DOMAIN}`;
+      expect(context.adminClient.affiliationState.get(roomLocalpart)?.get(newcomerJid)).toBe(
+        'member',
+      );
+
+      // The subscriber leaves through the same member route as groups.
+      const left = await removeMemberRequest(newcomer.cookie, groupId, newcomer.id);
+      expect(left.status).toBe(200);
+      expect(context.adminClient.affiliationState.get(roomLocalpart)?.get(newcomerJid)).toBe(
+        undefined,
+      );
+    });
+
+    it('keeps an admin voice after a later member joins the channel', async () => {
+      const { ownerCookie, ownerId, subscriberId, groupId } = await channelWithSubscriber();
+      const roomLocalpart = await roomLocalpartOf(groupId);
+      const subJid = `${localpartFor(subscriberId)}@${TEST_XMPP_DOMAIN}`;
+
+      expect((await changeRoleRequest(ownerCookie, groupId, subscriberId, 'admin')).status).toBe(
+        200,
+      );
+      expect(context.adminClient.affiliationState.get(roomLocalpart)?.get(subJid)).toBe('admin');
+
+      // A later join re-syncs the feed room: the admin keeps voice instead
+      // of being clobbered back to a subscriber.
+      const late = await contactOf(context, app, ownerId, 'late@example.com');
+      expect((await addMembersRequest(ownerCookie, groupId, [late.id])).status).toBe(200);
+      expect(context.adminClient.affiliationState.get(roomLocalpart)?.get(subJid)).toBe('admin');
+      const lateJid = `${localpartFor(late.id)}@${TEST_XMPP_DOMAIN}`;
+      expect(context.adminClient.affiliationState.get(roomLocalpart)?.get(lateJid)).toBe('member');
+    });
+
+    it('gives an admin-owned AI voice in the feed, and drops it when the owner is demoted', async () => {
+      const owner = await bootstrapUser(context, app, 'owner@example.com');
+      const member = await contactOf(context, app, owner.id, 'member@example.com');
+      const created = await createChannelRequest(owner.cookie, {
+        title: 'Releases',
+        memberIds: [member.id],
+        kind: 'channel',
+      });
+      expect(created.status).toBe(201);
+      const { id: groupId } = (await created.json()) as ChannelDetailBody;
+
+      // The owner adds their own AI: the owner is a channel admin, so the AI
+      // joins the feed with voice (affiliation `admin`).
+      const { aiId, jid } = await seedAi(owner.id);
+      await context.db.insert(groupAis).values({ groupId, aiId, addedBy: owner.id });
+      const { desiredMembers } = await import('../topics/rooms');
+      const [general] = await context.db
+        .select()
+        .from(topics)
+        .where(and(eq(topics.groupId, groupId), eq(topics.isGeneral, true)));
+      const voice = await desiredMembers(context.db, general!, TEST_XMPP_DOMAIN);
+      expect(voice.get(jid)).toBe('admin');
+
+      // A member-owned AI never gets voice: the member cannot add it (403),
+      // and even a planted row resolves to a voiceless `member`.
+      const foreign = await seedAi(member.id, 'Member AI');
+      await context.db.insert(groupAis).values({ groupId, aiId: foreign.aiId, addedBy: member.id });
+      const voice2 = await desiredMembers(context.db, general!, TEST_XMPP_DOMAIN);
+      expect(voice2.get(foreign.jid)).toBe('member');
+      const denied = await addAiRequest(member.cookie, groupId, { aiId: foreign.aiId });
+      expect(denied.status).toBe(403);
+    });
+
+    it('exposes kind and subscriberCount on the chat list', async () => {
+      const { subscriberCookie } = await channelWithSubscriber();
+      const response = await app.request(`${TEST_BASE_URL}/api/chats`, {
+        headers: { cookie: subscriberCookie },
+      });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        chats: Array<{
+          kind: string;
+          title: string;
+          chatKind?: string;
+          memberCount: number;
+          subscriberCount?: number;
+          description?: string | null;
+        }>;
+      };
+      const entry = body.chats.find((chat) => chat.title === 'Releases');
+      expect(entry).toMatchObject({ kind: 'group', chatKind: 'channel', subscriberCount: 2 });
+      expect(entry?.description).toBe('Ship notes');
+    });
+  });
 });

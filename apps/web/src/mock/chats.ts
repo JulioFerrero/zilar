@@ -16,6 +16,25 @@ export const mockChats: ChatSummary[] = [
     lastSeenAt: atHour(0, 12, 41),
     lastMessage: mockLastMessage('c-ana'),
   },
+  // T-0124: one channel in mock mode ("Acme Announcements"): the feed its
+  // General topic row carries; the mock user is its owner, so the composer
+  // shows.
+  {
+    id: 'c-acme',
+    title: 'Acme Announcements',
+    kind: 'group',
+    isAI: false,
+    space: 'work',
+    unread: 0,
+    muted: false,
+    memberCount: 120,
+    onlineCount: 0,
+    chatKind: 'channel',
+    subscriberCount: 120,
+    description: 'Release notes and team news.',
+    myRole: 'owner',
+    lastMessage: mockLastMessage('c-acme'),
+  },
   {
     id: 'c-devteam',
     title: 'Dev team',

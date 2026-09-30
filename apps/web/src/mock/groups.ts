@@ -91,6 +91,21 @@ export const mockGroupDetails: Record<string, GroupDetail> = {
     members: [member('u-you', 'You', 'owner'), member('u-ana', 'Ana', 'member')],
     ais: [],
   },
+  // T-0124: the mock channel's detail (the feed id is the chat id). The mock
+  // user is its owner; Ana is an admin, Luis a subscriber.
+  'c-acme': {
+    id: 'g-acme',
+    title: 'Acme Announcements',
+    createdBy: OWNER,
+    kind: 'channel',
+    description: 'Release notes and team news.',
+    members: [
+      member('u-you', 'You', 'owner'),
+      member('u-ana', 'Ana', 'admin'),
+      member('u-luis', 'Luis', 'member'),
+    ],
+    ais: [],
+  },
 };
 
 /** The AIs the mock user owns, for the group panel's add picker. */

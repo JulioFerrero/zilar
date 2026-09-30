@@ -1116,6 +1116,18 @@ export const mockMessages: Record<string, UiMessage[]> = {
   'c-luis': luisMessages,
   'c-gym': gymMessages,
   'c-product': productMessages,
+  // T-0124: the mock channel's feed (the mock user posts as its owner).
+  'c-acme': [
+    message({
+      id: 'acme-1',
+      chatId: 'c-acme',
+      senderId: ME.id,
+      senderName: ME.name,
+      text: 'Acme 2.4 is out: faster sync, quieter badges.',
+      createdAt: atHour(2, 9, 30),
+      status: 'read',
+    }),
+  ],
 };
 
 /** The newest message of a chat, used to seed the list preview. */

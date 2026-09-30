@@ -4,13 +4,21 @@ import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 
 /** Two-step dialog: pick contacts, set a title, then create the group. */
-export function NewGroupDialog({ onClose }: { onClose: () => void }) {
+export function NewGroupDialog({
+  onClose,
+  channel = false,
+}: {
+  onClose: () => void;
+  channel?: boolean;
+}) {
   const storeApi = useChatStoreApi();
   const { contacts } = useChatStore();
   const navigate = useNavigate();
   const [step, setStep] = useState<'members' | 'title'>('members');
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState('');
+  // T-0124: the channel's short blurb (≤ 300), stored in groups.description.
+  const [description, setDescription] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
@@ -34,26 +42,35 @@ export function NewGroupDialog({ onClose }: { onClose: () => void }) {
   const create = async (): Promise<void> => {
     const trimmed = title.trim();
     if (trimmed.length === 0) {
-      setError('Enter a group name');
+      setError(channel ? 'Enter a channel name' : 'Enter a group name');
       return;
     }
     setBusy(true);
     setError(undefined);
     try {
-      const chatJid = await storeApi.getState().createGroup(trimmed, selected);
+      const chatJid = channel
+        ? await storeApi.getState().createChannel(trimmed, selected, description)
+        : await storeApi.getState().createGroup(trimmed, selected);
       onClose();
       navigate(`/c/${encodeURIComponent(chatJid)}`);
     } catch {
       setBusy(false);
-      setError('Could not create the group. Try again.');
+      setError(
+        channel
+          ? 'Could not create the channel. Try again.'
+          : 'Could not create the group. Try again.',
+      );
     }
   };
+
+  const dialogLabel = channel ? 'New channel' : 'New group';
+  const nameLabel = channel ? 'Channel name' : 'Group name';
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="New group"
+      aria-label={dialogLabel}
       onClick={onClose}
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
     >
@@ -62,7 +79,7 @@ export function NewGroupDialog({ onClose }: { onClose: () => void }) {
         className="flex max-h-[80vh] w-full max-w-sm flex-col rounded-2xl bg-background p-5 shadow-xl"
       >
         <h2 className="text-[18px] font-semibold">
-          {step === 'members' ? 'Add members' : 'Group name'}
+          {step === 'members' ? 'Add members' : channel ? 'Channel name' : 'Group name'}
         </h2>
 
         {step === 'members' ? (
@@ -114,10 +131,21 @@ export function NewGroupDialog({ onClose }: { onClose: () => void }) {
               value={title}
               maxLength={100}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="Group name"
-              aria-label="Group name"
+              placeholder={nameLabel}
+              aria-label={nameLabel}
               className="mt-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
             />
+            {channel && (
+              <textarea
+                value={description}
+                maxLength={300}
+                rows={2}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Description (optional)"
+                aria-label="Channel description"
+                className="mt-2 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+              />
+            )}
             {error !== undefined && (
               <p role="alert" className="mt-2 text-[14px] text-danger">
                 {error}

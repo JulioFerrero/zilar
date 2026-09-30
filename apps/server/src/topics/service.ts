@@ -298,6 +298,10 @@ export async function createTopic(
   if (!group || !membership) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
+  // T-0124: a channel has no topics beyond its General feed.
+  if (group.kind === 'channel') {
+    throw new HttpError(400, 'channel_has_no_topics', 'Channels have no topics');
+  }
   if (
     !(await canCreateTopic(deps.db, input.groupId, input.actorId, group.membersCanCreateTopics))
   ) {

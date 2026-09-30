@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { z } from 'zod';
 import {
   boolean,
   check,
@@ -80,6 +81,9 @@ export const contacts = pgTable(
 
 // A group is backed by a members-only XMPP MUC room. The room localpart is
 // random and never derived from the title.
+export const groupKindSchema = z.enum(['group', 'channel']);
+export type GroupKind = z.infer<typeof groupKindSchema>;
+
 export const groups = pgTable('groups', {
   id: text('id').primaryKey(),
   roomLocalpart: text('room_localpart').notNull().unique(),
@@ -90,6 +94,14 @@ export const groups = pgTable('groups', {
   // T-0108: plain members may create topics only when this is true.
   // Owners/admins always may.
   membersCanCreateTopics: boolean('members_can_create_topics').notNull().default(false),
+  // T-0124: a channel is a group with one read-only broadcast feed: only
+  // owner/admins post (the room is moderated and subscribers are visitors);
+  // members subscribe, read and mute. Defaults to a plain group.
+  kind: text('kind', { enum: ['group', 'channel'] })
+    .notNull()
+    .default('group'),
+  // T-0124: the channel's short blurb, shown in its panel. Null = none.
+  description: text('description'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -43,6 +43,10 @@ export type CreateRoomOptions = {
   persistent?: boolean;
   mam?: boolean;
   anonymous?: boolean;
+  // T-0124: a moderated room gives plain members the visitor role (no voice,
+  // so they cannot post); admins/owners keep voice. Channels use this; group
+  // rooms leave it off so every member can write.
+  moderated?: boolean;
 };
 
 export type AddRosterItemOptions = {
@@ -258,7 +262,14 @@ export function createEjabberdAdminClient(
 
     async createRoom(roomId: string, options: CreateRoomOptions = {}): Promise<CreatedResult> {
       const room = parseName(roomId, 'roomId');
-      const { title, membersOnly = true, persistent = true, mam = true, anonymous } = options;
+      const {
+        title,
+        membersOnly = true,
+        persistent = true,
+        mam = true,
+        anonymous,
+        moderated,
+      } = options;
       const roomOptions = [
         { name: 'members_only', value: String(membersOnly) },
         { name: 'persistent', value: String(persistent) },
@@ -266,6 +277,9 @@ export function createEjabberdAdminClient(
       ];
       if (anonymous !== undefined) {
         roomOptions.push({ name: 'anonymous', value: String(anonymous) });
+      }
+      if (moderated !== undefined) {
+        roomOptions.push({ name: 'moderated', value: String(moderated) });
       }
       if (title !== undefined) {
         roomOptions.push({ name: 'title', value: title });

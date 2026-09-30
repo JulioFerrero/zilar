@@ -243,11 +243,18 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       throw new Error('not implemented');
     }),
     listGroupInviteLinks: vi.fn(async () => []),
+    listGroupMembers: vi.fn(async () => []),
     revokeGroupInviteLink: vi.fn(async () => {}),
     previewJoinLink: vi.fn(async () => {
       throw new Error('not implemented');
     }),
     joinByLink: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    changeGroupMemberRole: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    removeGroupMember: vi.fn(async () => {
       throw new Error('not implemented');
     }),
     listAis: vi.fn(async () => []),

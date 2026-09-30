@@ -25,6 +25,13 @@ export type ChatListEntry =
       groupId: string;
       memberCount: number;
       role: GroupRole;
+      // T-0124: `group` behaves as before; `channel` is the broadcast feed
+      // (its General topic is the feed). Channels also carry the count under
+      // `subscriberCount` (same number, Telegram's wording).
+      chatKind: 'group' | 'channel';
+      subscriberCount?: number;
+      /** The channel's short blurb, or null. Absent on groups. */
+      description?: string | null;
       /** Visible topics (archived excluded); General keeps the group chatJid. */
       topics: TopicView[];
     };
@@ -73,6 +80,12 @@ export function createChatsRoutes({ auth, db, config }: ChatsRoutesDependencies)
         groupId: group.id,
         memberCount: group.memberCount,
         role: group.role,
+        chatKind: group.kind,
+        // T-0124: the same count under Telegram's name, for channels only.
+        // Groups keep exactly the shape they had (no extra keys).
+        ...(group.kind === 'channel'
+          ? { subscriberCount: group.memberCount, description: group.description }
+          : {}),
         topics: [],
       })),
     ];
