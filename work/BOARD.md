@@ -19,6 +19,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0124](T-0124-channels.md) | Channels: only admins post | planned | meta/muse-spark-1.3-contributor | T-0108, T-0115 |  |
 | [T-0127](T-0127-install-wizard-backup-baremetal.md) | Install wizard, backup/restore, bare-metal guide | planned | meta/muse-spark-1.3-contributor | T-0126 |
 | [T-0131](T-0131-screenshots-user-docs.md) | Feature screenshots (script) and user guide | planned | meta/muse-spark-1.3-contributor | T-0111, T-0113, T-0117, T-0114 | Julio asked 2026-09-30; after M5 web features settle |
+| [T-0132](T-0132-tool-host-approval.md) | Approve a tool's hosts once per tool before it can reach the network | planned | meta/muse-spark-1.3-contributor | T-0105, T-0116 | Julio's decision 2026-09-30; must merge before TOOLS_ENABLED is turned on; schema task |
 | T-0106 | Model side of AI tools (prompt guide, rounds per turn, working-on-it line) | planned | meta/muse-spark-1.3-contributor | T-0105 | Spec written after T-0105 merges |
 | T-0107 | Web Tools and Routines UI | planned | meta/muse-spark-1.3-contributor | T-0106 | Spec written after T-0105 merges |
 
