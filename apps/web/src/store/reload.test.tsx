@@ -106,6 +106,8 @@ function fakeApi(): ApiClient {
       members: [],
       ais: [],
     })),
+    listChatPrefs: vi.fn(async () => []),
+    putChatPref: vi.fn(async () => null),
   };
 }
 

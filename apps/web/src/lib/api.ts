@@ -445,6 +445,53 @@ export function listTopicTools(topicId: string): Promise<TopicTool[]> {
   return request(`/topics/${encodeURIComponent(topicId)}/tools`, z.array(topicToolSchema));
 }
 
+// --- Chat preferences (T-0113) -------------------------------------------------
+// Per-user mute/archive/pin rows, synced across devices. The wire contract
+// lives in apps/server/src/chat-prefs/routes.ts and service.ts. Muting a
+// group covers its topics (the pref sits on the General room JID and the
+// client applies it to every topic unless the topic has its own row).
+
+const chatPrefSchema = z.object({
+  chatJid: z.string(),
+  mutedUntil: z.string().nullable(),
+  archived: z.boolean(),
+  pinnedAt: z.string().nullable(),
+  updatedAt: z.string(),
+});
+
+export type ChatPref = z.infer<typeof chatPrefSchema>;
+
+const chatPrefsSchema = z.object({ prefs: z.array(chatPrefSchema) });
+
+export interface PutChatPrefInput {
+  mutedUntil?: string | null | undefined;
+  archived?: boolean | undefined;
+  pinned?: boolean | undefined;
+}
+
+export function listChatPrefs(): Promise<ChatPref[]> {
+  return request('/chat-prefs', chatPrefsSchema).then((body) => body.prefs);
+}
+
+export async function putChatPref(
+  chatJid: string,
+  input: PutChatPrefInput,
+): Promise<ChatPref | null> {
+  const raw: unknown = await request(
+    `/chat-prefs/${encodeURIComponent(chatJid)}`,
+    z.union([chatPrefSchema, z.object({ prefs: z.null() })]),
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+  if (typeof raw === 'object' && raw !== null && 'prefs' in raw) {
+    return null;
+  }
+  return chatPrefSchema.parse(raw);
+}
+
 // --- AIs (T-0032) --------------------------------------------------------
 // The wire contract lives in apps/server/src/ais/routes.ts and service.ts.
 // `ApiError` already carries the server's `code` and `status`, so callers can

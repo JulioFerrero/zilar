@@ -308,6 +308,33 @@ export const aiLimits = pgTable('ai_limits', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Per-user chat preferences (T-0113): mute (with a duration), archive and
+// pin, for a DM, a group General room, or an individual topic room. One row
+// per (user, chat JID); a row back at all defaults is deleted, not kept.
+// Mute semantics live with the clients: while `muted_until` is in the future
+// the chat counts no unread in list totals and makes no notification or
+// sound. A far-future `muted_until` means "forever". Pinning a group mutes
+// nothing: muting a group covers its topics via the General room's row,
+// applied by the client unless a topic has its own row.
+export const chatPrefs = pgTable(
+  'chat_prefs',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    chatJid: text('chat_jid').notNull(),
+    mutedUntil: timestamp('muted_until', { withTimezone: true }),
+    archived: boolean('archived').notNull().default(false),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.chatJid] }),
+    check('chat_prefs_jid_length_check', sql`char_length(${table.chatJid}) BETWEEN 1 AND 255`),
+    index('chat_prefs_user_idx').on(table.userId),
+  ],
+);
+
 // A machine (runner host) an owner paired with the server. `publicKey` is the
 // runner's ed25519 public key (SPKI DER, base64) and is globally unique: a key
 // that was ever registered — including on a revoked machine — can never pair

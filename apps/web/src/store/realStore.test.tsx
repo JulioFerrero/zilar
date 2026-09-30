@@ -287,6 +287,8 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       members: [],
       ais: [],
     })),
+    listChatPrefs: vi.fn(async () => []),
+    putChatPref: vi.fn(async () => null),
     ...overrides,
   };
 }
@@ -361,6 +363,90 @@ describe('createRealChatStore', () => {
       'group hello',
     );
     expect(store.getState().currentUserId).toBe('u-me');
+  });
+
+  it('merges server prefs into summaries on boot', async () => {
+    const { store } = await setup({
+      listChatPrefs: vi.fn(async () => [
+        {
+          chatJid: 'ana@galena.test',
+          mutedUntil: '2026-09-28T13:00:00.000Z',
+          archived: false,
+          pinnedAt: '2026-09-28T11:00:00.000Z',
+          updatedAt: '2026-09-28T11:00:00.000Z',
+        },
+      ]),
+    });
+    const ana = store.getState().chats.find((chat) => chat.id === 'ana@galena.test');
+    expect(ana?.muted).toBe(true);
+    expect(ana?.pinnedAt).toEqual(new Date('2026-09-28T11:00:00.000Z'));
+    expect(store.getState().chatPrefs['ana@galena.test']?.mutedUntil).toBe(
+      '2026-09-28T13:00:00.000Z',
+    );
+  });
+
+  it('pins optimistically and rolls back when the PUT fails', async () => {
+    const putChatPref = vi.fn(async () => ({
+      chatJid: 'ana@galena.test',
+      mutedUntil: null,
+      archived: false,
+      pinnedAt: '2026-09-28T12:00:00.000Z',
+      updatedAt: '2026-09-28T12:00:00.000Z',
+    }));
+    const { store } = await setup({ putChatPref });
+
+    await store.getState().setPinned('ana@galena.test', true);
+    expect(putChatPref).toHaveBeenCalledWith('ana@galena.test', { pinned: true });
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.pinnedAt).toEqual(
+      new Date('2026-09-28T12:00:00.000Z'),
+    );
+
+    putChatPref.mockRejectedValueOnce(new Error('offline'));
+    await expect(store.getState().setPinned('ana@galena.test', false)).rejects.toThrow('offline');
+    // The rollback restores the pinned state.
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.pinnedAt).toEqual(
+      new Date('2026-09-28T12:00:00.000Z'),
+    );
+  });
+
+  it('mutes and archives with rollback on failure', async () => {
+    const putChatPref = vi.fn(async () => null);
+    const { store } = await setup({ putChatPref });
+
+    await store.getState().setMuted('ana@galena.test', 'hour');
+    expect(putChatPref).toHaveBeenCalledWith('ana@galena.test', {
+      mutedUntil: '2026-09-28T13:00:00.000Z',
+    });
+    // The mock PUT answered null (defaults deleted), so the chat reads unmuted.
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.muted).toBe(false);
+
+    putChatPref.mockRejectedValueOnce(new Error('offline'));
+    await expect(store.getState().setArchived('team@rooms.galena.test', true)).rejects.toThrow(
+      'offline',
+    );
+    expect(
+      store.getState().chats.find((chat) => chat.id === 'team@rooms.galena.test')?.archived,
+    ).toBeUndefined();
+  });
+
+  it('drops the pref row when the PUT answers defaults-deleted', async () => {
+    const putChatPref = vi.fn(async () => null);
+    const { store } = await setup({
+      putChatPref,
+      listChatPrefs: vi.fn(async () => [
+        {
+          chatJid: 'ana@galena.test',
+          mutedUntil: '2026-09-28T13:00:00.000Z',
+          archived: false,
+          pinnedAt: null,
+          updatedAt: '2026-09-28T11:00:00.000Z',
+        },
+      ]),
+    });
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.muted).toBe(true);
+    await store.getState().setMuted('ana@galena.test', null);
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.muted).toBe(false);
+    expect(store.getState().chatPrefs['ana@galena.test']).toBeUndefined();
   });
 
   it('updates the preview and unread count from a live message', async () => {

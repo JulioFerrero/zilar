@@ -177,6 +177,8 @@ function topicApi(overrides: Partial<ApiClient> = {}): ApiClient {
     addTopicAi: vi.fn(nope),
     removeTopicAi: vi.fn(nope),
     setMembersCanCreateTopics: vi.fn(nope),
+    listChatPrefs: vi.fn(async () => []),
+    putChatPref: vi.fn(async () => null),
     ...overrides,
   };
 }

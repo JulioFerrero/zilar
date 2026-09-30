@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0112](T-0112-topics-mobile.md) | Topics (mobile): topics list, topic screen | planned | meta/muse-spark-1.3-contributor | T-0111 |  |
-| [T-0113](T-0113-chat-prefs.md) | Mute, archive, pin chats and topics (synced) | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
 | [T-0114](T-0114-pinned-messages.md) | Pinned messages banner and list | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
 | [T-0115](T-0115-invite-links.md) | Join by link for groups | planned | meta/muse-spark-1.3-contributor | T-0108 |  |
 | [T-0116](T-0116-group-roles.md) | Custom roles: private-topic access, approver rights | planned | meta/muse-spark-1.3-contributor | T-0108, T-0110, T-0111 |  |
@@ -23,6 +22,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0125](T-0125-web-tools.md) | Web tools for AIs: web.fetch, Wikipedia, feeds, prices, best-effort search (no keys) | planned | meta/muse-spark-1.3-contributor | T-0105 |
 | [T-0127](T-0127-install-wizard-backup-baremetal.md) | Install wizard, backup/restore, bare-metal guide | planned | meta/muse-spark-1.3-contributor | T-0126 |
 | [T-0129](T-0129-coolify-baked-config.md) | Coolify without bind mounts (bake ejabberd + Postgres config into images) | planned | meta/muse-spark-1.3-contributor | T-0126 |
+| [T-0130](T-0130-topics-web-fixes.md) | Topics web fixes found by the T-0111 pre-review | planned | meta/muse-spark-1.3-contributor | T-0111, T-0113 |
 | T-0106 | Model side of AI tools (prompt guide, rounds per turn, working-on-it line) | planned | meta/muse-spark-1.3-contributor | T-0105 | Spec written after T-0105 merges |
 | T-0107 | Web Tools and Routines UI | planned | meta/muse-spark-1.3-contributor | T-0106 | Spec written after T-0105 merges |
 
@@ -159,3 +159,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0104](T-0104-routines-scheduler.md) | routines: scheduler, DST-correct schedules, host pinning, service and routes (migration 0023) | 2026-09-30 |
 | [T-0105](T-0105-tool-adapters.md) | tool and routine action adapters + sandbox wiring (TOOLS_ENABLED), modelText for the model | 2026-09-30 |
 | [T-0111](T-0111-topics-web.md) | topics web UI: nested sidebar, task strip, new-topic dialog, topic panel (not yet live-checked) | 2026-09-30 |
+| [T-0113](T-0113-chat-prefs.md) | per-user chat preferences: mute, archive, pin for chats and topics (migration 0024, web) | 2026-09-30 |

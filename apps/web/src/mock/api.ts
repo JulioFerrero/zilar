@@ -44,6 +44,8 @@ interface MockState {
   // in place; archived ids hide from the list (the row survives).
   topics: MockTopic[];
   nextTopicSequence: number;
+  // T-0113: per-chat prefs (mute/archive/pin) in memory for the page load.
+  chatPrefs: MockChatPref[];
 }
 
 type TopicVisibility = 'public' | 'private';
@@ -72,6 +74,15 @@ interface MockTopic {
   archived: boolean;
   memberIds: string[];
   aiIds: string[];
+}
+
+// T-0113: one chat-preference row, mirroring the server's `chat_prefs`.
+interface MockChatPref {
+  chatJid: string;
+  mutedUntil: string | null;
+  archived: boolean;
+  pinnedAt: string | null;
+  updatedAt: string;
 }
 
 interface MockAuditEntry {
@@ -323,6 +334,7 @@ function seedState(): MockState {
     approvalRules: [],
     topics: seedTopics(),
     nextTopicSequence: 1,
+    chatPrefs: [],
     audit: [
       {
         id: 'audit-dev-stopped',
@@ -761,6 +773,88 @@ export async function mockRequest(
 
   if (head === 'chats' && method === 'GET') {
     return jsonResponse({ chats: chatEntries() });
+  }
+
+  // T-0113: in-memory chat prefs. The mock has no access model, so any JID
+  // can carry a row; a write back at all defaults deletes the row.
+  if (head === 'chat-prefs' && first === undefined && method === 'GET') {
+    return jsonResponse({ prefs: state.chatPrefs });
+  }
+
+  if (head === 'chat-prefs' && first !== undefined && second === undefined && method === 'PUT') {
+    const chatJid = decodeURIComponent(first);
+    const body = readJsonBody(init);
+    const allowed = new Set(['mutedUntil', 'archived', 'pinned']);
+    for (const key of Object.keys(body)) {
+      if (!allowed.has(key)) {
+        return jsonResponse(
+          { error: { code: 'invalid_request', message: `Unknown field: ${key}` } },
+          400,
+        );
+      }
+    }
+    if (Object.keys(body).length === 0) {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'Nothing to update' } },
+        400,
+      );
+    }
+    if (
+      ('mutedUntil' in body && body.mutedUntil !== null && typeof body.mutedUntil !== 'string') ||
+      ('archived' in body && typeof body.archived !== 'boolean') ||
+      ('pinned' in body && typeof body.pinned !== 'boolean')
+    ) {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'Invalid preference body' } },
+        400,
+      );
+    }
+    const key = chatJid.toLowerCase();
+    const existing = state.chatPrefs.find((pref) => pref.chatJid.toLowerCase() === key);
+    const mutedUntil = !('mutedUntil' in body)
+      ? (existing?.mutedUntil ?? null)
+      : (body.mutedUntil as string | null);
+    if (mutedUntil !== null && Number.isNaN(Date.parse(mutedUntil))) {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'mutedUntil must be a valid date' } },
+        400,
+      );
+    }
+    const archived = !('archived' in body)
+      ? (existing?.archived ?? false)
+      : (body.archived as boolean);
+    const pinnedAt = !('pinned' in body)
+      ? (existing?.pinnedAt ?? null)
+      : (body.pinned as boolean)
+        ? (existing?.pinnedAt ?? new Date().toISOString())
+        : null;
+    if (mutedUntil === null && archived === false && pinnedAt === null) {
+      state.chatPrefs = state.chatPrefs.filter((pref) => pref.chatJid.toLowerCase() !== key);
+      return jsonResponse({ prefs: null });
+    }
+    const row: MockChatPref = {
+      chatJid,
+      mutedUntil,
+      archived,
+      pinnedAt,
+      updatedAt: new Date().toISOString(),
+    };
+    state.chatPrefs =
+      existing === undefined
+        ? [...state.chatPrefs, row]
+        : state.chatPrefs.map((pref) => (pref.chatJid.toLowerCase() === key ? row : pref));
+    // Pin cap of 20, mirroring the server.
+    if (state.chatPrefs.filter((pref) => pref.pinnedAt !== null).length > 20) {
+      state.chatPrefs = state.chatPrefs.filter((pref) => pref.chatJid.toLowerCase() !== key);
+      if (existing !== undefined) {
+        state.chatPrefs = [...state.chatPrefs, existing];
+      }
+      return jsonResponse(
+        { error: { code: 'too_many_pins', message: 'Too many pinned chats' } },
+        409,
+      );
+    }
+    return jsonResponse(row);
   }
 
   if (head === 'contacts' && method === 'GET') {

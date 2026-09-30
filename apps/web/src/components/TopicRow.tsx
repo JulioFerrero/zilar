@@ -1,7 +1,9 @@
 import type { ChatSummary } from '@galena/chat-core';
-import { ChevronDown, ChevronRight, Lock, VolumeX } from 'lucide-react';
+import { ChevronDown, ChevronRight, Lock, MoreHorizontal, Pin, VolumeX } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router';
 import { Avatar } from './Avatar';
+import { ChatActionsMenu } from './ChatActionsMenu';
 import { cn } from '@/lib/utils';
 import {
   formatListTime,
@@ -48,84 +50,110 @@ export function TopicRow({
   const typingText = typing === undefined ? undefined : `${typing}…`;
   const isPrivate = chat.topic?.visibility === 'private';
   const glyph = chat.topic?.glyph ?? chat.title.charAt(0).toUpperCase() ?? '?';
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <Link
-      to={`/c/${encodeURIComponent(chat.id)}`}
-      aria-current={selected ? 'page' : undefined}
-      aria-label={`${groupTitle} ${chat.title}${isPrivate ? ', private topic' : ''}`}
-      className={cn(
-        'flex items-center gap-2.5 transition-colors',
-        isWide
-          ? 'rounded-[12px] py-[8px] pr-[10px] pl-[10px] hover:bg-surface-raised hover:[--avatar-ring:var(--surface-raised)]'
-          : 'px-4 py-2.5',
-        selected &&
-          isWide &&
-          'raised-segment bg-surface-raised [--avatar-ring:var(--surface-raised)]',
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className="flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-edge bg-gradient-to-b from-[#2c2c2c] to-[#151515] text-[15px] font-semibold text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.16),inset_0_-1px_0_rgba(0,0,0,0.65),0_1px_0_rgba(0,0,0,0.95),0_3px_6px_-1px_rgba(0,0,0,0.75)]"
+    <div className="group relative">
+      <Link
+        to={`/c/${encodeURIComponent(chat.id)}`}
+        aria-current={selected ? 'page' : undefined}
+        aria-label={`${groupTitle} ${chat.title}${isPrivate ? ', private topic' : ''}`}
+        className={cn(
+          'flex items-center gap-2.5 transition-colors',
+          isWide
+            ? 'rounded-[12px] py-[8px] pr-[10px] pl-[10px] hover:bg-surface-raised hover:[--avatar-ring:var(--surface-raised)]'
+            : 'px-4 py-2.5',
+          selected &&
+            isWide &&
+            'raised-segment bg-surface-raised [--avatar-ring:var(--surface-raised)]',
+        )}
       >
-        {glyph}
-      </span>
-      <span className={cn('min-w-0 flex-1', !isWide && 'border-b border-[#1a1a1a] pb-2.5')}>
-        <span className="flex items-center gap-1.5">
-          <span className="truncate text-[14px] leading-5 font-semibold text-foreground">
-            {chat.title}
+        <span
+          aria-hidden="true"
+          className="flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-edge bg-gradient-to-b from-[#2c2c2c] to-[#151515] text-[15px] font-semibold text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.16),inset_0_-1px_0_rgba(0,0,0,0.65),0_1px_0_rgba(0,0,0,0.95),0_3px_6px_-1px_rgba(0,0,0,0.75)]"
+        >
+          {glyph}
+        </span>
+        <span className={cn('min-w-0 flex-1', !isWide && 'border-b border-[#1a1a1a] pb-2.5')}>
+          <span className="flex items-center gap-1.5">
+            {chat.pinnedAt !== undefined && (
+              <Pin aria-label="Pinned" className="size-3.5 shrink-0 text-subtle-foreground" />
+            )}
+            <span className="truncate text-[14px] leading-5 font-semibold text-foreground">
+              {chat.title}
+            </span>
+            {isPrivate && (
+              <Lock
+                aria-label="Private topic"
+                className="size-3.5 shrink-0 text-subtle-foreground"
+              />
+            )}
+            {chat.isAI && <AiBadge />}
+            <span className="ml-auto flex shrink-0 items-center gap-2 pl-1.5">
+              {chat.muted && (
+                <VolumeX aria-label="Muted" className="size-4 text-subtle-foreground" />
+              )}
+              {last !== undefined && (
+                <span className="font-mono text-[11px] text-subtle-foreground">
+                  {formatListTime(last.createdAt, new Date())}
+                </span>
+              )}
+            </span>
           </span>
-          {isPrivate && (
-            <Lock aria-label="Private topic" className="size-3.5 shrink-0 text-subtle-foreground" />
-          )}
-          {chat.isAI && <AiBadge />}
-          <span className="ml-auto flex shrink-0 items-center gap-2 pl-1.5">
-            {chat.muted && <VolumeX aria-label="Muted" className="size-4 text-subtle-foreground" />}
-            {last !== undefined && (
-              <span className="font-mono text-[11px] text-subtle-foreground">
-                {formatListTime(last.createdAt, new Date())}
+          <span className="mt-0.5 flex items-center gap-1.5">
+            {writing ? (
+              <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
+                <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-muted-foreground" />
+                <span className="truncate">writing…</span>
+              </span>
+            ) : typingText !== undefined ? (
+              <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
+                <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-muted-foreground" />
+                <span className="truncate">{typingText}</span>
+              </span>
+            ) : (
+              <span className="truncate text-[13px] leading-5 text-muted-foreground">
+                {prefix.length > 0 && <span className="text-[#d4d4d4]">{prefix}</span>}
+                {body}
               </span>
             )}
+            {chat.unread > 0 ? (
+              <span
+                className={cn(
+                  'ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold',
+                  chat.muted ? 'bg-badge-muted text-foreground' : 'key-primary',
+                )}
+                aria-label={`${chat.unread} unread`}
+              >
+                {chat.unread}
+              </span>
+            ) : (
+              own &&
+              last !== undefined && (
+                <span className="ml-auto flex shrink-0 items-center text-subtle-foreground">
+                  <MessageTicks status={last.status} />
+                </span>
+              )
+            )}
+            <button
+              type="button"
+              aria-label={`Chat actions for ${chat.title}`}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setMenuOpen((value) => !value);
+              }}
+              className="shrink-0 rounded-md p-1 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none"
+            >
+              <MoreHorizontal className="size-4" aria-hidden="true" />
+            </button>
           </span>
         </span>
-        <span className="mt-0.5 flex items-center gap-1.5">
-          {writing ? (
-            <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
-              <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-muted-foreground" />
-              <span className="truncate">writing…</span>
-            </span>
-          ) : typingText !== undefined ? (
-            <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
-              <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-muted-foreground" />
-              <span className="truncate">{typingText}</span>
-            </span>
-          ) : (
-            <span className="truncate text-[13px] leading-5 text-muted-foreground">
-              {prefix.length > 0 && <span className="text-[#d4d4d4]">{prefix}</span>}
-              {body}
-            </span>
-          )}
-          {chat.unread > 0 ? (
-            <span
-              className={cn(
-                'ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold',
-                chat.muted ? 'bg-badge-muted text-foreground' : 'key-primary',
-              )}
-              aria-label={`${chat.unread} unread`}
-            >
-              {chat.unread}
-            </span>
-          ) : (
-            own &&
-            last !== undefined && (
-              <span className="ml-auto flex shrink-0 items-center text-subtle-foreground">
-                <MessageTicks status={last.status} />
-              </span>
-            )
-          )}
-        </span>
-      </span>
-    </Link>
+      </Link>
+      {menuOpen && <ChatActionsMenu chat={chat} onClose={() => setMenuOpen(false)} />}
+    </div>
   );
 }
 
@@ -159,8 +187,15 @@ export function GroupHeaderRow({
   isWide?: boolean;
   onOpenNewTopic?: () => void;
 }) {
-  const active = topics.filter((topic) => topic.topic?.archived !== true);
-  const archived = topics.filter((topic) => topic.topic?.archived === true);
+  const active = topics.filter(
+    (topic) => topic.topic?.archived !== true && topic.archived !== true,
+  );
+  // Archived topics hide under the "Archived (n)" toggle: manager-archived
+  // ones (archived for everyone) and per-user archived ones (hidden only for
+  // the viewer, T-0113) share the same section — never two toggles.
+  const archived = topics.filter(
+    (topic) => topic.topic?.archived === true || topic.archived === true,
+  );
   const unread = topics.reduce((total, topic) => total + (topic.muted ? 0 : topic.unread), 0);
   const mutedUnread = topics.reduce((total, topic) => total + topic.unread, 0) - unread;
   const newest = topics
