@@ -124,10 +124,13 @@ D30 (Julio, 2026-09-30): anyone must be able to install their own Galena easily 
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged.
 
 ### Findings
--
+- Fixed in the review round: Caddy `strip_prefix /upload` broke every upload slot URL (proved now with a real slot request, PUT 201 and GET through Caddy); the public `/ejabberd-api/*` route is gone; the duplicate catch-all is gone.
+- Runner hub has no public path in this stack (documented under "Runners").
+- Not proved: ACME on a real domain, the Coolify file on a live Coolify, production email (needs T-0128).
 
 ### Follow-ups
--
+- Lead end-to-end proof with real `MAIL_TRANSPORT=smtp` against a fake SMTP after T-0128 merges.
+- Add `GALENA_ARCHIVE_DB_PASSWORD` to the production compose once T-0117 merges.
