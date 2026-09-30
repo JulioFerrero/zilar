@@ -96,4 +96,51 @@ describe('mock topics end to end (T-0111)', () => {
     });
     expect(store.getState().topicNotice).toBeUndefined();
   });
+
+  it('shows a visible error when the kebab archive fails', async () => {
+    // Fix 4: the failure used to sit on a `hidden` element, so the user
+    // saw nothing. The alert must be visible (no `hidden` class) while the
+    // user stays on the topic.
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) =>
+      mockRequest(String(url), init ?? {}, { delayMs: 0 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const baseImpl = fetchMock.getMockImplementation();
+    if (baseImpl === undefined) {
+      throw new Error('expected the mock fetch implementation');
+    }
+    fetchMock.mockImplementation((url: unknown, init?: RequestInit) => {
+      const raw = String(url);
+      if (raw.includes('/topics/t-devteam-ui') && init?.method === 'PATCH') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: { code: 'forbidden', message: 'no' } }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return baseImpl(url, init);
+    });
+    const { store } = renderApp('/c/c-devteam-ui', {
+      groupInfos: {
+        'c-devteam-ui': {
+          id: 'g-devteam',
+          title: 'Dev team',
+          createdBy: 'u-you',
+          members: [{ userId: 'u-you', name: 'You', role: 'owner' }],
+          ais: [],
+        },
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Archive topic New pricing page for everyone' }),
+    );
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('Could not archive the topic.');
+    expect(alert.className).not.toContain('hidden');
+    // Still on the topic: the row survives and the view stays open.
+    expect(store.getState().chats.some((chat) => chat.id === 'c-devteam-ui')).toBe(true);
+    expect(store.getState().activeChatId).toBe('c-devteam-ui');
+  });
 });

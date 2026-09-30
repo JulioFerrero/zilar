@@ -12,8 +12,6 @@ import { Button } from './ui/button';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import {
-  addTopicAi,
-  addTopicMember,
   ApiError,
   getTopic,
   listGroupRoles,
@@ -248,11 +246,8 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
 
   const addMember = (userId: string): Promise<void> =>
     run(`add:${userId}`, async () => {
-      await addTopicMember(topic.id, userId);
-      await storeApi
-        .getState()
-        .addTopicMember(chat.id, userId)
-        .catch(() => {});
+      // ONE call: the store issues the POST and folds the row back in.
+      await storeApi.getState().addTopicMember(chat.id, userId);
       await reloadMembers();
       setMemberPickerOpen(false);
     });
@@ -287,8 +282,16 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
     run('leave', async () => {
       try {
         await storeApi.getState().leaveTopic(chat.id);
-      } catch {
-        // Leaving the last seat archives the topic: it is gone either way.
+      } catch (error) {
+        // Leaving the last seat archives the topic (server 404): it is
+        // gone, so navigate away. Any other failure (network, 403) means
+        // the caller is still a member — stay with the inline error.
+        if (error instanceof ApiError && error.status === 404) {
+          navigate('/');
+          onClose();
+          return;
+        }
+        throw error;
       }
       navigate('/');
       onClose();
@@ -296,11 +299,8 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
 
   const addAi = (aiId: string): Promise<void> =>
     run(`addAi:${aiId}`, async () => {
-      await addTopicAi(topic.id, aiId);
-      await storeApi
-        .getState()
-        .addTopicAi(chat.id, aiId)
-        .catch(() => {});
+      // ONE call: the store issues the POST and folds the row back in.
+      await storeApi.getState().addTopicAi(chat.id, aiId);
       await reloadAis();
       setAiPickerOpen(false);
     });

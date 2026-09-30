@@ -4,7 +4,12 @@ import { mockChats } from './chats';
 import { mockGroupDetails } from './groups';
 import { mockMessages } from './messages';
 import { approvalCard } from './helpers';
-import { mockTopicAisById, mockTopicChats, mockTopicMembersById } from './topics';
+import {
+  mockTopicAisById,
+  mockTopicChats,
+  mockTopicMembersById,
+  mockTopicMessages,
+} from './topics';
 
 /**
  * The standalone mock HTTP layer (T-0069). In mock mode the app needs no
@@ -53,6 +58,11 @@ interface MockState {
   // T-0116: custom group roles of the Dev team group, with their holders.
   groupRoles: MockGroupRole[];
   nextRoleSequence: number;
+  // T-0133: join-by-link attempts per invite link, for the mock's 429
+  // `rate_limited` window (20 attempts per link per page load, so the join
+  // page can reach its rate-limited state in mock mode). Reset with the
+  // rest of the state by `resetMockApi`.
+  joinAttempts: Map<string, number>;
   // T-0113: per-chat prefs (mute/archive/pin) in memory for the page load.
   chatPrefs: MockChatPref[];
   // T-0114: pinned messages in memory for the page load, keyed by the chat
@@ -471,6 +481,7 @@ function seedState(): MockState {
     nextInviteLinkSequence: 1,
     groupRoles: seedGroupRoles(),
     nextRoleSequence: 3,
+    joinAttempts: new Map(),
     chatPrefs: [],
     pins: seedPins(),
     nextPinSequence: 3,
@@ -733,6 +744,33 @@ function stopOrResumeAi(ai: PublicAi, target: 'stopped' | 'active'): Response {
   const updated: PublicAi = { ...ai, status: target };
   state.ais = state.ais.map((item) => (item.id === ai.id ? updated : item));
   return jsonResponse(updated);
+}
+
+// T-0133: the server's create bounds for invite links
+// (`INVITE_LINK_CREATE_MAX_EXPIRY_HOURS` / `INVITE_LINK_CREATE_MAX_USES`):
+// outside 1..8760 hours or 1..10000 uses is a 400, never a silent clamp.
+function validInviteLinkOptions(expiresInHours: unknown, maxUses: unknown): boolean {
+  if (expiresInHours !== undefined) {
+    if (
+      typeof expiresInHours !== 'number' ||
+      !Number.isInteger(expiresInHours) ||
+      expiresInHours < 1 ||
+      expiresInHours > 8760
+    ) {
+      return false;
+    }
+  }
+  if (maxUses !== undefined) {
+    if (
+      typeof maxUses !== 'number' ||
+      !Number.isInteger(maxUses) ||
+      maxUses < 1 ||
+      maxUses > 10000
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function createConnection(init: RequestInit): Response {
@@ -1109,11 +1147,15 @@ export async function mockRequest(
     return searchMessages(path);
   }
 
-  // T-0115: invite links in memory for the page load. The mock is the
+  // T-0115: group invite links in memory for the page load. The mock is the
   // group owner everywhere it matters, so create/list/revoke always succeed
   // for known groups. Tokens are random hex shown once at creation; the list
   // carries hints, never tokens — like the real server. `pathParts` drops
-  // the link id, so the revoke branch matches on raw segments.
+  // the link id, so the revoke branch matches on raw segments. Create
+  // enforces the server's upper bounds (400 `invalid_request` above 8760
+  // hours or 10000 uses); join answers 409 `group_full` and 429
+  // `rate_limited` like the server, with a per-link attempt window the
+  // tests reset via `resetMockApi`.
   if (head === 'groups' && second === 'invite-links') {
     const segments =
       path
@@ -1147,6 +1189,14 @@ export async function mockRequest(
         return jsonResponse(
           { error: { code: 'too_many_links', message: 'This group already has 10 links' } },
           409,
+        );
+      }
+      // Like the server's create schema (400 `invalid_request` outside
+      // 1..8760 hours or 1..10000 uses, never a silent clamp).
+      if (!validInviteLinkOptions(body.expiresInHours, body.maxUses)) {
+        return jsonResponse(
+          { error: { code: 'invalid_request', message: 'Invalid invite link options' } },
+          400,
         );
       }
       const label =
@@ -1189,7 +1239,10 @@ export async function mockRequest(
   // T-0115: join by link. The mock's single user is already in the Dev team
   // group (so it previews as a member, with the group id); unknown tokens
   // 404 `invalid_link`. The preview carries `groupId` only for members,
-  // like the real server.
+  // like the real server. Join answers 409 `group_full` at the 50-member
+  // cap (without consuming a use) and 429 `rate_limited` past 20 attempts
+  // per link per page load, so the join page's `full` and rate-limited
+  // states are reachable in mock mode.
   if (head === 'join' && first !== undefined && second === undefined) {
     const token = decodeURIComponent(first);
     const linkId = state.inviteTokens.get(token);
@@ -1227,6 +1280,24 @@ export async function mockRequest(
       });
     }
     if (method === 'POST') {
+      // Like the server's per-user join limiter (20 attempts per hour):
+      // past the budget the link answers 429 `rate_limited`. The mock
+      // counts per link per page load; the count resets with `resetMockApi`.
+      const attempts = (state.joinAttempts.get(link.id) ?? 0) + 1;
+      state.joinAttempts.set(link.id, attempts);
+      if (attempts > 20) {
+        return jsonResponse(
+          { error: { code: 'rate_limited', message: 'Too many join attempts, try again later' } },
+          429,
+        );
+      }
+      // Like the server's add-member cap check (`MAX_GROUP_MEMBERS`, 50):
+      // a group that already reached the cap answers 409 `group_full`
+      // without consuming a use.
+      const memberTotal = detail.members.length;
+      if (memberTotal >= 50) {
+        return jsonResponse({ error: { code: 'group_full', message: 'This group is full' } }, 409);
+      }
       if (!alreadyMember) {
         link.uses += 1;
       }
@@ -1755,7 +1826,10 @@ export async function mockRequest(
   return notImplemented();
 }
 
-// T-0117: a small in-memory index over the mock messages. Case-insensitive
+// T-0117: a small in-memory index over the mock messages — the DM/group
+// threads plus every topic thread (T-0133: `mockTopicMessages()` has one
+// entry per topic chat id, and General's legacy `c-devteam` thread is
+// untouched since topics carry their own chat ids). Case-insensitive
 // substring match over text bodies (deleted messages and cards have no
 // searchable text); newest first; `chat` narrows to one mock chat id.
 function searchMessages(path: string): Response {
@@ -1782,7 +1856,8 @@ function searchMessages(path: string): Response {
     snippet: string;
     marks: Array<[number, number]>;
   }> = [];
-  for (const [chatId, messages] of Object.entries(mockMessages)) {
+  const index = { ...mockMessages, ...mockTopicMessages() };
+  for (const [chatId, messages] of Object.entries(index)) {
     if (chat !== null && chat !== chatId) {
       continue;
     }

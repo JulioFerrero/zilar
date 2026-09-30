@@ -1,15 +1,24 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { AuthProvider } from '@/auth/AuthProvider';
+import { mockRequest, resetMockApi, setMockDelay } from '@/mock/api';
+import { mockGroupDetails } from '@/mock/groups';
+import { renderApp } from '@/test/renderApp';
 import { JoinPage } from './JoinPage';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status });
 }
 
+beforeEach(() => {
+  setMockDelay(0);
+  resetMockApi();
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  delete mockGroupDetails['c-full'];
 });
 
 function renderJoin(
@@ -193,5 +202,39 @@ describe('JoinPage (T-0115)', () => {
     expect(await screen.findByText("You're already a member of this group.")).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open the group' }));
     expect(await screen.findByText('Group chat')).toBeTruthy();
+  });
+
+  it('shows the group-full card in mock mode for a group at the member cap', async () => {
+    // Fix 7: the `full` state must be reachable through the mock HTTP
+    // layer (a 50-member group the mock user is not in), not just through
+    // a hand-stubbed fetch.
+    mockGroupDetails['c-full'] = {
+      id: 'g-full',
+      title: 'Packed group',
+      createdBy: 'u-full-0',
+      members: Array.from({ length: 50 }, (_, index) => ({
+        userId: `u-full-${index}`,
+        name: `Full ${index}`,
+        role: 'member' as const,
+      })),
+      ais: [],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown, init?: RequestInit) =>
+        mockRequest(String(url), init ?? {}, { delayMs: 0 }),
+      ),
+    );
+    const created = await mockRequest(
+      '/groups/g-full/invite-links',
+      { method: 'POST', body: '{}' },
+      { delayMs: 0 },
+    );
+    const { token } = (await created.json()) as { token: string };
+    renderApp(`/j/${token}`);
+
+    expect(await screen.findByText('Packed group')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Join the group' }));
+    expect(await screen.findByText('This group is full')).toBeTruthy();
   });
 });

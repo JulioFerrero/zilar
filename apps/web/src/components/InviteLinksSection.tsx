@@ -98,9 +98,13 @@ export function InviteLinksSection({
 
   const revoke = (linkId: string): void => {
     setRevokingId(linkId);
-    onRevoke(linkId);
+    // The parent owns the request and its error; clear the busy mark when
+    // its promise settles so a failed revoke never sticks on "Revoking…"
+    // (the error renders from the parent's `error` prop).
+    void Promise.resolve()
+      .then(() => onRevoke(linkId))
+      .then(() => setRevokingId((current) => (current === linkId ? undefined : current)));
   };
-
   return (
     <section aria-label="Invite links" className="flex flex-col gap-2 px-2">
       <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Invite links</h2>

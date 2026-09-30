@@ -129,6 +129,20 @@ describe('topic roles (T-0116)', () => {
   });
 });
 
+// Shared opener for the removal/leave/add tests: the mock user owns the
+// Dev team group, so the panel shows Remove for every other member ("You"
+// has no Remove button) alongside the Add pickers.
+function openHiringPanelWithStore(): {
+  dialog: HTMLElement;
+  store: ReturnType<typeof renderApp>['store'];
+} {
+  const { store } = renderApp('/c/c-devteam-hiring');
+  fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
+  const dialog = screen.getByRole('dialog', { name: /topic info/ });
+  return { dialog, store };
+}
+
 describe('topic member removal errors (T-0130)', () => {
   // The panel removes through the store only (ONE DELETE). The stubs below
   // fail the member-removal endpoint like the server does: a 403 or a
@@ -177,19 +191,6 @@ describe('topic member removal errors (T-0130)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
     expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
-  }
-
-  // The mock user owns the Dev team group, so the panel shows Remove for
-  // every other member; "You" has no Remove button.
-  function openHiringPanelWithStore(): {
-    dialog: HTMLElement;
-    store: ReturnType<typeof renderApp>['store'];
-  } {
-    const { store } = renderApp('/c/c-devteam-hiring');
-    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
-    const dialog = screen.getByRole('dialog', { name: /topic info/ });
-    return { dialog, store };
   }
 
   function removeAna(dialog: HTMLElement): void {
@@ -266,5 +267,175 @@ describe('topic member removal errors (T-0130)', () => {
       expect(within(dialog).queryByText('Ana')).toBeNull();
     });
     expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
+  });
+});
+
+describe('topic leave errors (T-0133)', () => {
+  // `leave()` must not swallow every error: a 404 means the topic is gone
+  // (last seat → archived), so navigate away; any other failure keeps the
+  // panel open with the inline error because the caller is still a member.
+  function stubLeave(status: 403 | 404): void {
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) =>
+      mockRequest(String(url), init ?? {}, { delayMs: 0 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const baseImpl = fetchMock.getMockImplementation();
+    if (baseImpl === undefined) {
+      throw new Error('expected the mock fetch implementation');
+    }
+    fetchMock.mockImplementation((url: unknown, init?: RequestInit) => {
+      const raw = String(url);
+      const withoutBase = raw.includes('/api/')
+        ? raw.slice(raw.indexOf('/api/') + 4)
+        : raw.replace('/api', '');
+      const path = withoutBase.startsWith('/') ? withoutBase : `/${withoutBase}`;
+      if (path === '/topics/t-devteam-hiring/members/u-you' && init?.method === 'DELETE') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: { code: status === 404 ? 'not_found' : 'forbidden', message: 'gone' },
+            }),
+            { status, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+      return baseImpl(url, init);
+    });
+  }
+
+  function openHiringPanelAsMember(): {
+    dialog: HTMLElement;
+    store: ReturnType<typeof renderApp>['store'];
+  } {
+    // Ana is NOT a manager here, so the panel shows the Leave button.
+    const { store } = renderApp('/c/c-devteam-hiring', {
+      groupInfos: {
+        'c-devteam-hiring': {
+          id: 'g-devteam',
+          title: 'Dev team',
+          createdBy: 'u-you',
+          members: [
+            { userId: 'u-you', name: 'You', role: 'member' },
+            { userId: 'u-ana', name: 'Ana', role: 'owner' },
+          ],
+          ais: [],
+        },
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    return { dialog, store };
+  }
+
+  it('stays open with an inline error when leaving fails with a non-404', async () => {
+    stubLeave(403);
+    const { dialog } = openHiringPanelAsMember();
+    const leaveButton = await within(dialog).findByRole('button', { name: 'Leave topic' });
+    fireEvent.click(leaveButton);
+    expect(await within(dialog).findByText('gone')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
+  });
+
+  it('navigates away when leaving 404s (the topic is gone)', async () => {
+    stubLeave(404);
+    const { dialog } = openHiringPanelAsMember();
+    const leaveButton = await within(dialog).findByRole('button', { name: 'Leave topic' });
+    fireEvent.click(leaveButton);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /topic info/ })).toBeNull();
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('topic add-member/add-AI single call (T-0133)', () => {
+  // `addMember`/`addAi` must issue ONE request each: like `removeMember`,
+  // the panel calls only the store action (which sends the request). A
+  // recording double lets a second request through with a 409 — a second
+  // call would fail the happy path, and the old fire-then-store code fails
+  // the single-call assertion.
+  function stubSingleCall(counts: { posts: number }): void {
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) =>
+      mockRequest(String(url), init ?? {}, { delayMs: 0 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const baseImpl = fetchMock.getMockImplementation();
+    if (baseImpl === undefined) {
+      throw new Error('expected the mock fetch implementation');
+    }
+    fetchMock.mockImplementation((url: unknown, init?: RequestInit) => {
+      const raw = String(url);
+      if (init?.method === 'POST' && /\/topics\/[^/]+\/(members|ais)$/.test(raw)) {
+        counts.posts += 1;
+        if (counts.posts > 1) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ error: { code: 'conflict', message: 'Already added' } }),
+              { status: 409, headers: { 'Content-Type': 'application/json' } },
+            ),
+          );
+        }
+      }
+      return baseImpl(url, init);
+    });
+  }
+
+  it('adds a member with a single request', async () => {
+    const counts = { posts: 0 };
+    stubSingleCall(counts);
+    const { store } = openHiringPanelWithStore();
+    const added: string[] = [];
+    const realAdd = store.getState().addTopicMember;
+    store.setState({
+      addTopicMember: async (chatId, userId) => {
+        added.push(`${chatId}/${userId}`);
+        await realAdd(chatId, userId);
+      },
+    });
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    expect(await within(dialog).findByText('Ana')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add people' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /Luis/ }));
+    // Luis joins on one POST through the store action only; a second POST
+    // would 409, so the happy path proves the old fire-then-store double
+    // call is gone.
+    await waitFor(() => expect(added).toEqual(['c-devteam-hiring/u-luis']));
+    // The picker closes (the "Add people" opener is back) and Luis shows
+    // in the reloaded member list with no inline error.
+    await waitFor(() => {
+      expect(within(dialog).getByRole('button', { name: 'Add people' })).toBeTruthy();
+    });
+    expect(within(dialog).getByRole('button', { name: 'Remove Luis from the topic' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(counts.posts).toBe(1);
+  });
+
+  it('adds an AI with a single request', async () => {
+    const counts = { posts: 0 };
+    stubSingleCall(counts);
+    const { store } = openHiringPanelWithStore();
+    const added: string[] = [];
+    const realAdd = store.getState().addTopicAi;
+    store.setState({
+      addTopicAi: async (chatId, aiId) => {
+        added.push(`${chatId}/${aiId}`);
+        await realAdd(chatId, aiId);
+      },
+    });
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    expect(await within(dialog).findByText('Ana')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add my AI' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /QA-1/ }));
+    // QA-1 joins on one POST through the store action only.
+    await waitFor(() => expect(added).toEqual(['c-devteam-hiring/qa-1']));
+    // The picker closes (the "Add my AI" opener is back) and QA-1 shows in
+    // the reloaded AI list with no inline error.
+    await waitFor(() => {
+      expect(within(dialog).getByRole('button', { name: 'Add my AI' })).toBeTruthy();
+    });
+    expect(await within(dialog).findByText('QA-1')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(counts.posts).toBe(1);
   });
 });

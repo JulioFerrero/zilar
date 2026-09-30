@@ -127,7 +127,7 @@ export function ChatHeader({
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2.5 border-b border-divider bg-panel/85 px-4">
+    <header className="relative flex h-16 shrink-0 items-center gap-2.5 border-b border-divider bg-panel/85 px-4">
       <IconButton aria-label="Back to chats" onClick={() => navigate('/')} className="wide:hidden">
         <ArrowLeft className="size-5" aria-hidden="true" />
       </IconButton>
@@ -152,7 +152,10 @@ export function ChatHeader({
         <div className="min-w-0 flex-1">{title}</div>
       )}
       {actionError !== '' && (
-        <span role="alert" className="hidden shrink-0 text-[12px] text-danger">
+        <span
+          role="alert"
+          className="absolute top-full right-0 z-30 mt-1 max-w-[280px] rounded-xl border border-danger/40 bg-popover px-3 py-2 text-[12px] text-danger shadow-lg"
+        >
           {actionError}
         </span>
       )}
