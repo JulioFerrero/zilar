@@ -15,6 +15,7 @@ import { createAuditRoutes } from './audit/routes';
 import type { Auth } from './auth/auth';
 import { createAuthRoutes } from './auth/routes';
 import { createChatsRoutes } from './chats/routes';
+import { createChatPrefsRoutes } from './chat-prefs/routes';
 import type { ServerConfig } from './config';
 import { createDraftsRoutes } from './drafts/routes';
 import { createKeyCipher, type KeyCipher } from './connections/crypto';
@@ -193,6 +194,7 @@ export function createApp({
     createTopicsRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
   );
   app.route('/api', createChatsRoutes({ auth, db, config }));
+  app.route('/api', createChatPrefsRoutes({ auth, db, config }));
   // Message search (T-0117) mounts always: without an archive pool every
   // search answers 501 `search_unavailable` instead of 404ing, so the web
   // can hide the feature. Never used by the AI gateway.

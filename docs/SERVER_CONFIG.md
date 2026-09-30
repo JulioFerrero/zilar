@@ -163,6 +163,10 @@ Neither has an env flag today. The voice engine and routes always mount (`app.ts
 
 Topics add no env vars. Every topic is its own members-only XMPP MUC room on `XMPP_MUC_DOMAIN`, created through the same ejabberd admin API as groups (`create_room_with_opts` with `members_only`, `persistent`, `mam`, non-`anonymous`). The server syncs each room's affiliations from the database (`topics` + `topic_members` + `group_members`): a topic creation or membership change that cannot reach ejabberd answers `502`/`503` instead of leaving the database and the rooms disagreeing. Creation is rate-limited to 30 topics per hour per user (in-memory, per process, like the other caps in `rate-limit.ts`).
 
+### Chat preferences (T-0113)
+
+Chat preferences add no env vars. `chat_prefs` holds one row per (user, chat JID) for mute (`muted_until`, far-future means forever), archive (`archived`) and pin (`pinned_at`); a row back at all defaults is deleted. `GET /api/chat-prefs` returns the caller's rows; `PUT /api/chat-prefs/:chatJid` patches one row (60 writes/minute/user, 200 rows/user, 20 pins/user). A user can only set prefs for DMs with their contacts or own AIs, and for group General/topic rooms they can see — anything else 404s. Prefs never leak (own-rows only, no audit entries).
+
 ## 4. Database
 
 ### How migrations run
