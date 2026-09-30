@@ -33,6 +33,7 @@ import { createEjabberdAdminClient } from './xmpp/admin-client';
 import { runTool } from './sandbox/run-tool';
 import { buildToolAdapters } from './tools/adapters';
 import type { ToolRunner } from './tools/types';
+import { buildWebToolsAdapters } from './web-tools/adapters';
 
 const config = loadServerConfigOrExit(process.env);
 const logger = createLogger(config);
@@ -123,8 +124,19 @@ const toolRunner: ToolRunner | undefined = config.TOOLS_ENABLED
   ? (params) =>
       runTool({ source: params.source, input: params.input, allowedHosts: params.allowedHosts })
   : undefined;
+// T-0125: when `WEB_TOOLS_ENABLED=true`, the gateway-level web tools
+// (`web.fetch`, `web.wikipedia`, `web.price`, `web.feed`, best-effort
+// `web.search`) are registered next to the tool/routine adapters. They
+// are separate from the sandbox: AI-written tools still fetch only
+// their approved hosts through `host-fetch`. `WEB_SEARCH_PROVIDER=none`
+// unregisters `web.search`. Nothing changes when the flag is off.
+const webToolsAdapters =
+  config.WEB_TOOLS_ENABLED === true
+    ? buildWebToolsAdapters({ searchProviderName: config.WEB_SEARCH_PROVIDER })
+    : [];
 const actionAdapters = [
   ...(config.ACTION_DEMO_ENABLED ? [buildDemoEchoAdapter()] : []),
+  ...webToolsAdapters,
   ...(toolRunner === undefined
     ? []
     : buildToolAdapters({

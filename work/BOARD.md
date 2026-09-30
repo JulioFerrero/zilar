@@ -19,7 +19,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | planned | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
 | [T-0124](T-0124-channels.md) | Channels: only admins post | planned | meta/muse-spark-1.3-contributor | T-0108, T-0115 |  |
-| [T-0125](T-0125-web-tools.md) | Web tools for AIs: web.fetch, Wikipedia, feeds, prices, best-effort search (no keys) | planned | meta/muse-spark-1.3-contributor | T-0105 |
 | [T-0127](T-0127-install-wizard-backup-baremetal.md) | Install wizard, backup/restore, bare-metal guide | planned | meta/muse-spark-1.3-contributor | T-0126 |
 | [T-0129](T-0129-coolify-baked-config.md) | Coolify without bind mounts (bake ejabberd + Postgres config into images) | planned | meta/muse-spark-1.3-contributor | T-0126 |
 | [T-0130](T-0130-topics-web-fixes.md) | Topics web fixes found by the T-0111 pre-review | planned | meta/muse-spark-1.3-contributor | T-0111, T-0113 |
@@ -160,3 +159,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0105](T-0105-tool-adapters.md) | tool and routine action adapters + sandbox wiring (TOOLS_ENABLED), modelText for the model | 2026-09-30 |
 | [T-0111](T-0111-topics-web.md) | topics web UI: nested sidebar, task strip, new-topic dialog, topic panel (not yet live-checked) | 2026-09-30 |
 | [T-0113](T-0113-chat-prefs.md) | per-user chat preferences: mute, archive, pin for chats and topics (migration 0024, web) | 2026-09-30 |
+| [T-0125](T-0125-web-tools.md) | keyless web tools for AIs: fetch, wikipedia, price, feed, best-effort search (WEB_TOOLS_ENABLED) | 2026-09-30 |

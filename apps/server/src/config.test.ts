@@ -59,6 +59,8 @@ describe('loadServerConfig', () => {
       ROUTINES_ENABLED: false,
       ACTION_DEMO_ENABLED: false,
       TOOLS_ENABLED: false,
+      WEB_TOOLS_ENABLED: false,
+      WEB_SEARCH_PROVIDER: 'duckduckgo-html',
       xmpp: VALID_XMPP,
     });
   });
@@ -97,6 +99,8 @@ describe('loadServerConfig', () => {
       ROUTINES_ENABLED: false,
       ACTION_DEMO_ENABLED: false,
       TOOLS_ENABLED: false,
+      WEB_TOOLS_ENABLED: false,
+      WEB_SEARCH_PROVIDER: 'duckduckgo-html',
       xmpp: VALID_XMPP,
     });
   });
@@ -328,7 +332,6 @@ describe('loadServerConfig', () => {
     expect(loadServerConfig(base).TOOLS_ENABLED).toBe(false);
     expect(loadServerConfig({ ...base, TOOLS_ENABLED: 'true' }).TOOLS_ENABLED).toBe(true);
   });
-
   it('rejects junk values for TOOLS_ENABLED like the sibling flags', () => {
     const base = {
       DATABASE_URL: VALID_DATABASE_URL,
@@ -338,6 +341,35 @@ describe('loadServerConfig', () => {
     const message = configErrorMessage({ ...base, TOOLS_ENABLED: 'maybe' });
     expect(message).toContain('TOOLS_ENABLED');
     expect(message).not.toContain('maybe');
+  });
+
+  it('leaves web tools off by default and enables them with one line', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    const defaults = loadServerConfig(base);
+    expect(defaults.WEB_TOOLS_ENABLED).toBe(false);
+    expect(defaults.WEB_SEARCH_PROVIDER).toBe('duckduckgo-html');
+    expect(loadServerConfig({ ...base, WEB_TOOLS_ENABLED: 'true' }).WEB_TOOLS_ENABLED).toBe(true);
+    expect(loadServerConfig({ ...base, WEB_SEARCH_PROVIDER: 'none' }).WEB_SEARCH_PROVIDER).toBe(
+      'none',
+    );
+  });
+
+  it('rejects junk values for WEB_TOOLS_ENABLED and WEB_SEARCH_PROVIDER', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    const flag = configErrorMessage({ ...base, WEB_TOOLS_ENABLED: 'maybe' });
+    expect(flag).toContain('WEB_TOOLS_ENABLED');
+    expect(flag).not.toContain('maybe');
+    const provider = configErrorMessage({ ...base, WEB_SEARCH_PROVIDER: 'google' });
+    expect(provider).toContain('WEB_SEARCH_PROVIDER');
+    expect(provider).not.toContain('google');
   });
 
   it('leaves the runner hub off by default on port 3189', () => {
