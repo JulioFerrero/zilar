@@ -375,6 +375,34 @@ describe('push send-time service', () => {
     expect(sent).toHaveLength(1);
   });
 
+  it('notifies every device of one user for the same message (S1)', async () => {
+    // Dedup is keyed by node: the phone's send must not make the laptop's
+    // IQ drop the same message as a duplicate — but a retried IQ for the
+    // same node still dedups.
+    const app = testApp(context);
+    const ana = await bootstrapUser(context, app, 'ana@example.com');
+    const bob = await contactOf(context, app, ana.id, 'bob@example.com');
+    await registerDevice(ana.id, 'p-ana-phone');
+    await registerDevice(ana.id, 'p-ana-laptop');
+    const bobJid = `${localpartFor(bob.id)}@${TEST_XMPP_DOMAIN}`;
+    archiveRows = [dmRow(localpartFor(ana.id), bobJid, 'both devices ring', 'dm-s1')];
+
+    const shared = deps();
+    expect(
+      await handleIncomingPush(shared, { node: 'p-ana-phone', from: TEST_XMPP_DOMAIN }),
+    ).toMatchObject({ kind: 'sent' });
+    expect(
+      await handleIncomingPush(shared, { node: 'p-ana-laptop', from: TEST_XMPP_DOMAIN }),
+    ).toMatchObject({ kind: 'sent' });
+    expect(sent).toHaveLength(2);
+    expect(new Set(sent.map((entry) => entry.endpoint)).size).toBe(2);
+    // Same node again: retry protection holds.
+    expect(
+      await handleIncomingPush(shared, { node: 'p-ana-phone', from: TEST_XMPP_DOMAIN }),
+    ).toMatchObject({ kind: 'dropped', reason: 'duplicate' });
+    expect(sent).toHaveLength(2);
+  });
+
   it('skips retraction rows and notifies the older visible message', async () => {
     const app = testApp(context);
     const ana = await bootstrapUser(context, app, 'ana@example.com');

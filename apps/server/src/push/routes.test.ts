@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
 import { HttpError } from '../errors';
@@ -124,6 +125,35 @@ describe('push routes', () => {
     expect(remove.status).toBe(200);
     const relisted = await app.request(`${TEST_BASE_URL}/api/push/subscriptions`, { headers });
     expect(((await relisted.json()) as { devices: unknown[] }).devices).toEqual([]);
+  });
+
+  it('answers success when the room sync fails after the row committed (S2)', async () => {
+    const app = appWithPush();
+    const ana = await bootstrapUser(context, app, 'ana@example.com');
+    const headers = { cookie: ana.cookie, 'content-type': 'application/json' };
+    // Break the sync's own DB reads: without group_members the room listing
+    // throws after the device row committed (subscribe) and after the delete
+    // committed (delete). Both routes must still answer success.
+    await context.db.execute(sql`DROP TABLE group_members`);
+
+    const subscribe = await app.request(`${TEST_BASE_URL}/api/push/subscriptions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(deviceBody('https://push.example.com/s2-1')),
+    });
+    expect(subscribe.status).toBe(200);
+    const { id } = (await subscribe.json()) as { id: string };
+    const { devicesForUser } = await import('./store');
+    expect((await devicesForUser(context.db, ana.id)).map((row) => row.id)).toEqual([id]);
+
+    const remove = await app.request(`${TEST_BASE_URL}/api/push/subscriptions/${id}`, {
+      method: 'DELETE',
+      headers,
+    });
+    expect(remove.status).toBe(200);
+    expect(await devicesForUser(context.db, ana.id)).toEqual([]);
+    // Ids only in the sync-failure logs: no endpoint, no keys, no text.
+    expect(context.logOutput()).not.toContain('push.example.com');
   });
 
   it('rejects invalid subscriptions and 404s other users devices like unknown ones', async () => {
@@ -258,6 +288,10 @@ describe('push routes', () => {
       title: 'Galena',
       body: 'Push notifications work on this device.',
     });
+    // A successful test proves receipt: last_used_at is stamped (N1).
+    const { devicesForUser } = await import('./store');
+    const [device] = await devicesForUser(context.db, ana.id);
+    expect(device?.lastUsedAt).not.toBeNull();
 
     const unknown = await app.request(`${TEST_BASE_URL}/api/push/test`, {
       method: 'POST',

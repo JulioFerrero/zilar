@@ -34,8 +34,10 @@ export interface PushServiceDeps {
   cipher: PushCipher;
   sender: WebPushDelivery;
   logger: PushLogger;
-  /** Per-process record of notified message origin ids per user, so a
-   * retried publish IQ or a re-scan never buzzes twice. Capped per user. */
+  /** Per-process record of notified message origin ids per device node, so
+   * a retried publish IQ or a re-scan never buzzes twice. Capped per node.
+   * Keyed by node (not user): ejabberd sends one publish IQ per node and
+   * each device must buzz independently (S1). */
   recentlyNotified: Map<string, Set<string>>;
   now?: () => Date;
 }
@@ -89,7 +91,7 @@ export async function handleIncomingPush(
   if (device === undefined) {
     return { kind: 'unknown-device', node: notification.node };
   }
-  const outcome = await resolveAndSend(deps, device, now);
+  const outcome = await resolveAndSend(deps, device, notification.node, now);
   if (outcome.kind === 'sent') {
     await markDeviceUsed(deps.db, device.id, now);
   }
@@ -99,6 +101,7 @@ export async function handleIncomingPush(
 async function resolveAndSend(
   deps: PushServiceDeps,
   device: PushDeviceRow,
+  node: string,
   _now: Date,
 ): Promise<PushOutcome> {
   let subscription: { endpoint: string; keys: { p256dh: string; auth: string } };
@@ -119,7 +122,7 @@ async function resolveAndSend(
 
   let scan: NewestScan;
   try {
-    scan = await newestMessageForUser(deps, device.userId);
+    scan = await newestMessageForUser(deps, device.userId, node);
   } catch {
     deps.logger.warn(
       { userId: device.userId, deviceId: device.id },
@@ -165,9 +168,9 @@ async function resolveAndSend(
     return { kind: 'dropped', userId: device.userId, deviceId: device.id, reason: 'send-failed' };
   }
   // Marked only after a successful send. Per-node serialization keeps
-  // concurrent IQs ordered, so a retry cannot double-buzz: the retry finds
-  // the origin id already seen and drops as `duplicate`.
-  markNotified(deps, device.userId, scan.notify);
+  // concurrent IQs for one node ordered, so a retry cannot double-buzz:
+  // the retry finds the origin id already seen and drops as `duplicate`.
+  markNotified(deps, device.node, scan.notify);
   return { kind: 'sent', userId: device.userId, deviceId: device.id };
 }
 
@@ -199,8 +202,9 @@ async function sendPayload(
   }
 }
 
-// How many notified origin ids to remember per user before forgetting the
-// oldest (a retried publish IQ or a re-scan then stays silent for those).
+// How many notified origin ids to remember per device node before
+// forgetting the oldest (a retried publish IQ or a re-scan then stays
+// silent for those).
 const NOTIFIED_REMEMBERED = 500;
 
 interface NewestScan {
@@ -225,9 +229,15 @@ interface NewestScan {
 // silent. Retraction rows (their text is the stock fallback), body-less
 // reaction rows, the user's own outgoing DM rows, and rows already notified
 // do not notify either.
-async function newestMessageForUser(deps: PushServiceDeps, userId: string): Promise<NewestScan> {
+async function newestMessageForUser(
+  deps: PushServiceDeps,
+  userId: string,
+  node: string,
+): Promise<NewestScan> {
   const allowed = await allowedArchives(deps.db, deps.config, userId);
-  const seen = deps.recentlyNotified.get(userId) ?? new Set<string>();
+  // Per node (device): one publish IQ per node means each device buzzes
+  // independently, while a retried IQ for the same node still dedups (S1).
+  const seen = deps.recentlyNotified.get(node) ?? new Set<string>();
   // A muted or hidden newest sticks across the MAM-race retries: the trigger
   // itself must stay silent, and older rows behind it are not evaluated.
   let sticky: 'muted' | 'hidden' | undefined;
@@ -450,20 +460,20 @@ function bareJidOf(jid: string): string {
   return jid.split('/')[0]?.toLowerCase() ?? '';
 }
 
-// Remembers every scanned origin id as notified, so a retried publish IQ or
-// a later re-scan stays silent for them. Capped per user.
-function markNotified(deps: PushServiceDeps, userId: string, originIds: string[]): void {
-  let seen = deps.recentlyNotified.get(userId);
+// Remembers origin ids as notified per device node, so a retried publish
+// IQ or a later re-scan for the same node stays silent. Capped per node.
+function markNotified(deps: PushServiceDeps, node: string, originIds: string[]): void {
+  let seen = deps.recentlyNotified.get(node);
   if (seen === undefined) {
     seen = new Set();
-    deps.recentlyNotified.set(userId, seen);
+    deps.recentlyNotified.set(node, seen);
   }
   for (const originId of originIds) {
     seen.add(originId);
   }
   if (seen.size > NOTIFIED_REMEMBERED) {
     const fresh = [...seen].slice(seen.size - NOTIFIED_REMEMBERED);
-    deps.recentlyNotified.set(userId, new Set(fresh));
+    deps.recentlyNotified.set(node, new Set(fresh));
   }
 }
 

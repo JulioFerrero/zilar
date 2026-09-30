@@ -17,6 +17,7 @@ import { createWebPushSender, isExpiredSubscription, type WebPushDelivery } from
 import {
   devicesForUser,
   markDeviceFailed,
+  markDeviceUsed,
   removeDevice,
   saveDevice,
   setShowPreviewsForUser,
@@ -78,6 +79,12 @@ function isUniqueViolation(error: unknown): boolean {
     current = record.cause;
   }
   return false;
+}
+
+// Logs the error class only, never the message: a sync failure surfaces
+// driver text that could echo query parameters.
+function errorName(error: unknown): string {
+  return error instanceof Error ? error.constructor.name : typeof error;
 }
 
 export function createPushRoutes(deps: PushRoutesDependencies): Hono {
@@ -147,16 +154,25 @@ export function createPushRoutes(deps: PushRoutesDependencies): Hono {
         // The device is stored: subscribe the user to every room they may
         // see so MUC/Sub events reach them while offline. Best effort — a
         // room failure never fails the registration (membership changes
-        // re-sync later).
-        await syncPushSubscriptionsForUser(
-          {
-            db: deps.db,
-            adminClient: deps.adminClient,
-            domain: deps.config.xmpp.domain,
-            logger: deps.logger,
-          },
-          user.id,
-        );
+        // re-sync later). The sync's own DB reads can throw after the row
+        // committed, so a failure here must not 500 an operation that
+        // already succeeded: log ids only and answer success (S2).
+        try {
+          await syncPushSubscriptionsForUser(
+            {
+              db: deps.db,
+              adminClient: deps.adminClient,
+              domain: deps.config.xmpp.domain,
+              logger: deps.logger,
+            },
+            user.id,
+          );
+        } catch (error) {
+          deps.logger.warn(
+            { userId: user.id, err: errorName(error) },
+            'push room sync failed after registration; membership changes re-sync later',
+          );
+        }
         return c.json({ id: row.id, node: row.node, jid: pushJid });
       } catch (error) {
         if (isUniqueViolation(error)) {
@@ -195,18 +211,27 @@ export function createPushRoutes(deps: PushRoutesDependencies): Hono {
       throw new HttpError(404, 'not_found', 'Push device not found');
     }
     // No devices left: drop the MUC/Sub room subscriptions too, so ejabberd
-    // stops publishing for a user who cannot receive anything. Best effort.
+    // stops publishing for a user who cannot receive anything. Best effort
+    // after the committed delete: a sync failure logs and still answers
+    // success (S2).
     const remaining = await devicesForUser(deps.db, user.id);
     if (remaining.length === 0) {
-      await syncPushSubscriptionsForUser(
-        {
-          db: deps.db,
-          adminClient: deps.adminClient,
-          domain: deps.config.xmpp.domain,
-          logger: deps.logger,
-        },
-        user.id,
-      );
+      try {
+        await syncPushSubscriptionsForUser(
+          {
+            db: deps.db,
+            adminClient: deps.adminClient,
+            domain: deps.config.xmpp.domain,
+            logger: deps.logger,
+          },
+          user.id,
+        );
+      } catch (error) {
+        deps.logger.warn(
+          { userId: user.id, err: errorName(error) },
+          'push room sync failed after device removal; membership changes re-sync later',
+        );
+      }
     }
     return c.json({ removed: true });
   });
@@ -278,6 +303,9 @@ export function createPushRoutes(deps: PushRoutesDependencies): Hono {
           body: 'Push notifications work on this device.',
         }),
       );
+      // A successful test proves receipt, so it counts for the 90-day
+      // inactivity rule like a real notification (N1).
+      await markDeviceUsed(deps.db, target.id, new Date(now()));
     } catch (error) {
       if (isExpiredSubscription(error)) {
         // Spec part 6: expired subscriptions are deleted. Scoped by id AND

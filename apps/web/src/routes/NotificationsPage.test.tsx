@@ -167,6 +167,47 @@ describe('NotificationsPage', () => {
     expect(window.localStorage.getItem('galena:pushDevice')).toBeNull();
   });
 
+  it('unsubscribes the browser subscription when registration fails (N2)', async () => {
+    const { manager } = stubBrowserGlobals();
+    // Registration throws after the browser subscription was created.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const path = String(url).replace('/api', '');
+        if (path === '/push/config') {
+          return jsonResponse(200, pushConfig);
+        }
+        if (path === '/push/subscriptions' && (init?.method ?? 'GET') === 'POST') {
+          return jsonResponse(400, {
+            error: { code: 'invalid_subscription', message: 'The push subscription is invalid' },
+          });
+        }
+        if (path === '/push/subscriptions') {
+          return jsonResponse(200, { devices: [] });
+        }
+        if (path === '/push/settings') {
+          return jsonResponse(200, { showPreviews: true });
+        }
+        return jsonResponse(404, { error: { code: 'not_found', message: 'Not found' } });
+      }),
+    );
+    renderApp('/settings/notifications');
+
+    expect(await screen.findByText('This device')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Enable on this device/ }));
+
+    // The browser subscription created mid-flow is removed again even
+    // though the server row never existed, and the page shows the error.
+    await vi.waitFor(() => {
+      expect(manager.subscribe).toHaveBeenCalledTimes(1);
+    });
+    await screen.findByText(/invalid/i);
+    const registration = await window.navigator.serviceWorker.getRegistration();
+    const subscription = await registration?.pushManager.getSubscription();
+    expect(subscription).toBeNull();
+    expect(window.localStorage.getItem('galena:pushDevice')).toBeNull();
+  });
+
   it('shows the server-off state when push is disabled server-side', async () => {
     stubBrowserGlobals();
     vi.stubGlobal(

@@ -145,7 +145,12 @@ pnpm build
 - Infra untouched (lead owns F2's compose/yml changes — built on HEAD, pulled nothing).
 - Checks (scoped, `--maxWorkers=2`): `format:check` pass (only untracked PREREVIEW.md warns), `lint` pass, server + web `typecheck` pass; `service` + `routes` + `admin-client` tests 48 pass, live gate reports 1 skipped, `NotificationsPage` 5 pass.
 
----
+### Round 6 — lead review round 4 (S1, S2, N1, N2; no new migration)
+- **S1:** dedup seen-set re-keyed from user to device node (`recentlyNotified`, `newestMessageForUser`, `markNotified` all take the node; per-node serialization already orders retries). New test: two devices of one user both get the same message (`sent` + `sent`, distinct endpoints), and a same-node retry still drops `duplicate`.
+- **S2:** both `syncPushSubscriptionsForUser` call sites in `routes.ts` (subscribe after commit, delete-last after commit) wrapped in try/catch + ids-only warn log (new `errorName` helper: class name only, never driver text) and answer success. New test drops `group_members` mid-flight so the sync's own reads throw: subscribe and delete both still 200 with the row committed/removed, and no endpoint leaks into logs.
+- **N1:** successful `POST /push/test` now stamps `last_used_at` (counts for the 90-day rule); existing test extended to assert it.
+- **N2:** `registerPushDevice` failure now rolls back the live browser subscription via `unsubscribeBrowser` (the enable-IQ path already did both). New test: failed registration removes the `PushManager` subscription, stores nothing, shows the error.
+- Checks (scoped, `--maxWorkers=2`): `format:check` pass (only untracked PREREVIEW.md warns), `lint` pass, server + web `typecheck` pass; server service + routes + component + admin-client 53 pass, web NotificationsPage + push lib 17 pass.
 
 ## Review (written by Claude)
 

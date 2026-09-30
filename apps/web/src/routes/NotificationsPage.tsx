@@ -11,6 +11,7 @@ import {
   sendTestPushNotification,
   setPushSettings,
   type PushDevice,
+  type RegisteredDevice,
 } from '@/lib/api';
 import {
   deviceLabel,
@@ -209,11 +210,20 @@ export function NotificationsPage() {
       // The permission prompt fires only from this click (browsers ignore
       // it anywhere else).
       const { subscription } = await subscribeBrowser(browser, config.vapidPublicKey);
-      const registered = await registerPushDevice({
-        endpoint: subscription.endpoint,
-        keys: subscription.keys,
-        userAgent: deviceLabel(),
-      });
+      let registered: RegisteredDevice;
+      try {
+        registered = await registerPushDevice({
+          endpoint: subscription.endpoint,
+          keys: subscription.keys,
+          userAgent: deviceLabel(),
+        });
+      } catch (registerError) {
+        // The server row was never created, but the browser subscription
+        // above is live: remove it so a failed registration leaves no
+        // orphaned PushManager subscription behind (N2).
+        await unsubscribeBrowser(browser).catch(() => undefined);
+        throw registerError;
+      }
       try {
         await storeApi
           .getState()
