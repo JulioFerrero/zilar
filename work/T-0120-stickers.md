@@ -1,7 +1,7 @@
 ---
 id: T-0120
 title: Stickers: user-made packs, storage, sending and rendering (protocol, server, web)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0120-stickers
 model: meta/muse-spark-1.3-contributor
@@ -132,10 +132,12 @@ All 8 findings fixed inside allowed files, each must-fix with a regression test:
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved after three rounds (migration 0029). Verified in the packets and in the code: sticker URLs are absolute-path and pass the protocol; the file route resolves the storage dir once; a failed send ends as failed with retry; the send path validates the payload with `StickerSchema` before the optimistic insert; uploads probe magic bytes first (PNG/WebP/GIF header math, bombs and truncation rejected, lying content types ignored); private packs answer the same 404 as missing ones; caps (100 packs per user, 120 per pack) sit in advisory-lock transactions with in-transaction reads; reorder holds the pack lock; the LIKE wildcards in discover are escaped; upload has a per-user rate limit; no pack ids or bytes beyond ids reach audit or logs.
 
 ### Findings
--
+- Should-fix, deferred: `resolveStorageDir` resolves against the process cwd; a service started from another directory puts files elsewhere (document or resolve against a configured base).
+- Should-fix, deferred: in mock/demo mode the panel thumbnails are `data:` URLs, which `StickerSchema` rejects at send time, so sending a demo sticker shows "That sticker could not be sent".
+- Nits: echo reconciliation signature shares the pre-existing FIFO pattern; `panelRef` in `StickerPanel` is unused; `.gitignore` lacked the storage dir (added by the lead: `/apps/server/data/`).
 
 ### Follow-ups
--
+- Make mock stickers sendable (relative mock URLs); resolve the storage dir against a stable base; T-0121 (creator, favorites, discover) is unblocked.
