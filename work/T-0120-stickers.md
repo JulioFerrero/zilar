@@ -104,7 +104,11 @@ pnpm build
 - `pnpm build` (turbo): 2 tasks successful
 - Targeted runs while working (all `--maxWorkers=2`): sticker protocol 15 passed; image probe 14 passed; sticker routes 17 passed; startup 3 passed; config incl. new storage-dir cases; authz sweep 5 passed; web sticker panel 11, realStore 106, mock 9, recents/url lib, Composer 25 — all pass.
 
-### Pre-review fixes (PREREVIEW.md, untracked — read, not committed)
+### Pre-review fixes round 2 (PREREVIEW.md, untracked — read, not committed)
+1. **MUST — unvalidated sticker payload threw synchronously in the store**: `sendSticker` (real + mock stores) now `safeParse`s against `StickerSchema` before the optimistic insert; invalid input (tampered recents, drifted dims) sets a visible `actionError` ("That sticker could not be sent.") with no bubble. `retrySticker` re-validates the stored card. Tests: hostile-recents send refused with no bubble + visible alert (real store and panel level).
+2. **SHOULD — reorder lock**: `patchPack` now does the read, exact-once validation and all writes (positions + title/visibility + `updatedAt`) inside one transaction holding `pg_advisory_xact_lock(hashtext(packId))`. Title/visibility UPDATE also re-states `ownerId` (finding 4, one line). Test: two concurrent reorders both 200 with the final order exactly one of the two (no mix, no silent loss — as far as PGlite serial execution allows).
+3. **SHOULD — echo signature**: sticker sends and sticker echoes use `stickerSignatureFor` (body + `sticker_id`), so two quick stickers sharing one emoji link the right server ids even when echoes swap order. Test: two 🐱 stickers, swapped echoes, each echo keeps its own `sticker_id`.
+5. **Nit — `onEmoji` merged into `StickerPanelProps`** (was tacked on at the call site).
 All 8 findings fixed inside allowed files, each must-fix with a regression test:
 1. **Relative sticker URL rejected by `z.url()`** (real sends threw in `encodePayload`): `StickerSchema.url` now accepts `/api/stickers/…` relative paths or http(s) URLs (data:/javascript: still rejected). Regression test: relative-URL envelope round-trips through `encodePayload`/`decodePayload` (`sticker.test.ts`).
 2. **`readStickerFile` 404d everything under a relative `STICKER_STORAGE_DIR`**: service resolves the dir once via `resolveStorageDir()` (`resolve()` from `node:path`) and compares resolved paths in upload/delete/read/file-serve. Regression test: upload + serve through a relatively-configured storage dir (`routes.test.ts`).

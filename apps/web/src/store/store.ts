@@ -48,6 +48,7 @@ import {
 } from '@/lib/chatPrefs';
 import type { MuteDurationId } from '@/lib/chatPrefs';
 import { classify, cleanFilename, objectUrlFor } from '@/lib/attachments';
+import { StickerSchema } from '@galena/protocol';
 import { sampleVoiceDataUrl } from '@/lib/voice';
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
@@ -1161,6 +1162,21 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         window.setTimeout(() => setStatus(chatId, message.id, 'read'), 1500);
       },
       sendSticker: (chatId, sticker, options) => {
+        const data = {
+          pack_id: sticker.packId,
+          sticker_id: sticker.stickerId,
+          url: sticker.url,
+          ...(sticker.emoji === undefined ? {} : { emoji: sticker.emoji }),
+          width: sticker.width,
+          height: sticker.height,
+          mime: sticker.mime,
+        };
+        // Same guard as the real store: tampered recents must refuse loudly,
+        // never leave a bubble behind.
+        if (!StickerSchema.safeParse(data).success) {
+          set({ actionError: { chatId, message: 'That sticker could not be sent.' } });
+          return;
+        }
         sequence += 1;
         const message: UiMessage = {
           id: `out-${sequence}`,
@@ -1170,19 +1186,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
           text: sticker.emoji ?? '',
           createdAt: new Date(),
           status: 'sending',
-          card: {
-            v: 0,
-            type: 'sticker',
-            data: {
-              pack_id: sticker.packId,
-              sticker_id: sticker.stickerId,
-              url: sticker.url,
-              ...(sticker.emoji === undefined ? {} : { emoji: sticker.emoji }),
-              width: sticker.width,
-              height: sticker.height,
-              mime: sticker.mime,
-            },
-          },
+          card: { v: 0, type: 'sticker', data },
           ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
         };
         set((state) => ({

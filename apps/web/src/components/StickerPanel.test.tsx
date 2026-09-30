@@ -4,30 +4,30 @@ import * as api from '@/lib/api';
 import { renderApp } from '@/test/renderApp';
 
 const demoPack = {
-  id: 'pack-1',
+  id: '123e4567-e89b-12d3-a456-426614174000',
   ownerId: 'u-you',
   title: 'Cats',
   visibility: 'server' as const,
   stickers: [
     {
-      id: 'st-1',
-      packId: 'pack-1',
+      id: '223e4567-e89b-12d3-a456-426614174001',
+      packId: '123e4567-e89b-12d3-a456-426614174000',
       emoji: '🐱',
       mime: 'image/webp' as const,
       width: 200,
       height: 200,
       bytes: 1024,
-      url: '/api/stickers/st-1/file',
+      url: '/api/stickers/223e4567-e89b-12d3-a456-426614174001/file',
     },
     {
-      id: 'st-2',
-      packId: 'pack-1',
+      id: '323e4567-e89b-12d3-a456-426614174002',
+      packId: '123e4567-e89b-12d3-a456-426614174000',
       emoji: '😹',
       mime: 'image/png' as const,
       width: 200,
       height: 200,
       bytes: 2048,
-      url: '/api/stickers/st-2/file',
+      url: '/api/stickers/323e4567-e89b-12d3-a456-426614174002/file',
     },
   ],
   createdAt: new Date().toISOString(),
@@ -86,9 +86,9 @@ describe('StickerPanel', () => {
       v: 0,
       type: 'sticker',
       data: {
-        pack_id: 'pack-1',
-        sticker_id: 'st-1',
-        url: '/api/stickers/st-1/file',
+        pack_id: '123e4567-e89b-12d3-a456-426614174000',
+        sticker_id: '223e4567-e89b-12d3-a456-426614174001',
+        url: '/api/stickers/223e4567-e89b-12d3-a456-426614174001/file',
         emoji: '🐱',
         width: 200,
         height: 200,
@@ -97,7 +97,32 @@ describe('StickerPanel', () => {
     });
     // The dialog closes and the sticker lands in recents.
     expect(screen.queryByRole('dialog', { name: 'Stickers' })).toBeNull();
-    expect(window.localStorage.getItem('galena:recentStickers')).toContain('st-1');
+    expect(window.localStorage.getItem('galena:recentStickers')).toContain(
+      '223e4567-e89b-12d3-a456-426614174001',
+    );
+  });
+
+  it('refuses a tampered recents entry with a visible error and no bubble', async () => {
+    window.localStorage.setItem(
+      'galena:recentStickers',
+      JSON.stringify([
+        { stickerId: 'not-a-uuid', packId: 'also-not-a-uuid', url: '/api/stickers/x/file' },
+      ]),
+    );
+    const { store } = renderApp('/c/c-ana');
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    const dialog = await screen.findByRole('dialog', { name: 'Stickers' });
+    const grid = within(dialog).getByRole('grid', { name: 'Stickers' });
+    const before = store.getState().messages('c-ana').length;
+
+    fireEvent.click(within(grid).getAllByRole('button')[0]!);
+
+    expect(store.getState().messages('c-ana')).toHaveLength(before);
+    expect(store.getState().actionError).toEqual({
+      chatId: 'c-ana',
+      message: 'That sticker could not be sent.',
+    });
+    expect(screen.getByRole('alert')).toBeTruthy();
   });
 
   it('keeps hostile localStorage recents from breaking the panel', async () => {

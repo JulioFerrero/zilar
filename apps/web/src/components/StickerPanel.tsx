@@ -18,6 +18,8 @@ export interface StickerChoice {
 export interface StickerPanelProps {
   onPick: (sticker: StickerChoice) => void;
   onClose: () => void;
+  /** Appends an emoji to the composer draft (the Emoji tab has no server). */
+  onEmoji: (emoji: string) => void;
 }
 
 /**
@@ -95,11 +97,7 @@ const COMMON_EMOJI = [
  * hover/keyboard focus preview, click sends. GIFs show "Coming soon" until
  * T-0122; the Emoji tab appends a common emoji to the draft.
  */
-export function StickerPanel({
-  onPick,
-  onClose,
-  onEmoji,
-}: StickerPanelProps & { onEmoji: (emoji: string) => void }) {
+export function StickerPanel({ onPick, onClose, onEmoji }: StickerPanelProps) {
   const [tab, setTab] = useState<Tab>('stickers');
   const [packs, setPacks] = useState<StickerPack[] | undefined>(undefined);
   const [activePackId, setActivePackId] = useState<string | undefined>(undefined);

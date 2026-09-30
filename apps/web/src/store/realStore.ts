@@ -29,6 +29,7 @@ import {
   summarize,
 } from '@galena/chat-core';
 import type { Payload } from '@galena/protocol';
+import { StickerSchema } from '@galena/protocol';
 import { clearChatListCache, readChatListCache, writeChatListCache } from './chatListCache';
 import {
   createXmppCore,
@@ -666,6 +667,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     function signatureFor(chatId: string, body: string, replyTo: ReplyRef | undefined): string {
       return `${chatId}|${body}|${replyTo?.id ?? ''}`;
+    }
+
+    // Sticker sends share one emoji body per pack ("🐱" for every cat), so the
+    // echo queue is keyed by sticker id too — otherwise two quick stickers
+    // with the same emoji can link the wrong server id.
+    function stickerSignatureFor(
+      chatId: string,
+      body: string,
+      stickerId: string,
+      replyTo: ReplyRef | undefined,
+    ): string {
+      return `${signatureFor(chatId, body, replyTo)}|sticker:${stickerId}`;
     }
 
     // A message may be known under its optimistic local id and later under its
@@ -2001,12 +2014,20 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       const ui = toUiMessage(message, meId);
 
       if (message.outgoing) {
-        // Reconcile our optimistic message with the server echo.
-        const signature = signatureFor(
-          chatId,
-          message.body ?? '',
-          message.replyTo === undefined ? undefined : { id: message.replyTo.id, senderName: '' },
-        );
+        // Reconcile our optimistic message with the server echo. Sticker
+        // echoes carry the sticker id in the payload, so they match the
+        // sticker-scoped signature (not the bare emoji body).
+        const replyRef =
+          message.replyTo === undefined ? undefined : { id: message.replyTo.id, senderName: '' };
+        const signature =
+          message.payload !== undefined && message.payload.type === 'sticker'
+            ? stickerSignatureFor(
+                chatId,
+                message.body ?? '',
+                message.payload.data.sticker_id,
+                replyRef,
+              )
+            : signatureFor(chatId, message.body ?? '', replyRef);
         const queue = pendingOutgoing.get(signature);
         const localId = queue?.shift();
         if (queue !== undefined && queue.length === 0) {
@@ -3379,23 +3400,28 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (chat === undefined) {
           return;
         }
+        // The choice may come from tampered localStorage recents or drifted
+        // pack rows: validate before the optimistic insert, because
+        // `encodePayload` throws synchronously on an invalid payload and
+        // would otherwise leave a stuck `sending` bubble with no retry.
+        const data = {
+          pack_id: sticker.packId,
+          sticker_id: sticker.stickerId,
+          url: sticker.url,
+          ...(sticker.emoji === undefined ? {} : { emoji: sticker.emoji }),
+          width: sticker.width,
+          height: sticker.height,
+          mime: sticker.mime,
+        };
+        if (!StickerSchema.safeParse(data).success) {
+          set({ actionError: { chatId, message: 'That sticker could not be sent.' } });
+          return;
+        }
         sequence += 1;
         const localId = `local-${sequence}`;
         const replyTo = options?.replyTo;
         const body = sticker.emoji ?? '';
-        const payload = {
-          v: 0,
-          type: 'sticker',
-          data: {
-            pack_id: sticker.packId,
-            sticker_id: sticker.stickerId,
-            url: sticker.url,
-            ...(sticker.emoji === undefined ? {} : { emoji: sticker.emoji }),
-            width: sticker.width,
-            height: sticker.height,
-            mime: sticker.mime,
-          },
-        } as const;
+        const payload = { v: 0, type: 'sticker', data } as const;
         const message: UiMessage = {
           id: localId,
           chatId,
@@ -3407,7 +3433,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           card: payload,
           ...(replyTo === undefined ? {} : { replyTo }),
         };
-        const signature = signatureFor(chatId, body, replyTo);
+        const signature = stickerSignatureFor(chatId, body, sticker.stickerId, replyTo);
         const queue = pendingOutgoing.get(signature) ?? [];
         queue.push(localId);
         pendingOutgoing.set(signature, queue);
@@ -3434,6 +3460,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         const payload =
           message?.card !== undefined && message.card.type === 'sticker' ? message.card : undefined;
         if (message === undefined || payload === undefined) {
+          return;
+        }
+        if (!StickerSchema.safeParse(payload.data).success) {
+          markStickerFailed(chatId, messageId);
           return;
         }
         set((state) => ({

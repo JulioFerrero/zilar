@@ -289,35 +289,36 @@ export async function patchPack(
   body: PatchPackBody,
 ): Promise<StickerPackView> {
   await requireOwnedPack(deps, packId, userId);
-  if (body.order !== undefined) {
-    const rows = await deps.db.select().from(stickers).where(eq(stickers.packId, packId));
-    const ids = new Set(rows.map((row) => row.id));
-    if (body.order.length !== rows.length || !body.order.every((id) => ids.has(id))) {
-      throw new HttpError(400, 'invalid_request', 'order must list every sticker exactly once');
-    }
-    await deps.db.transaction(async (tx) => {
-      for (let index = 0; index < body.order!.length; index += 1) {
+  // The read, the order validation and all writes run inside one transaction
+  // holding the pack's advisory lock: two concurrent reorders serialize
+  // instead of interleaving positions, and a concurrent deleteSticker fails
+  // the exact-once validation instead of silently dropping rows.
+  await deps.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`);
+    if (body.order !== undefined) {
+      const rows = await tx.select().from(stickers).where(eq(stickers.packId, packId));
+      const ids = new Set(rows.map((row) => row.id));
+      if (body.order.length !== rows.length || !body.order.every((id) => ids.has(id))) {
+        throw new HttpError(400, 'invalid_request', 'order must list every sticker exactly once');
+      }
+      for (let index = 0; index < body.order.length; index += 1) {
         await tx
           .update(stickers)
           .set({ position: index })
-          .where(and(eq(stickers.id, body.order![index]!), eq(stickers.packId, packId)));
+          .where(and(eq(stickers.id, body.order[index]!), eq(stickers.packId, packId)));
       }
+    }
+    if (body.title !== undefined || body.visibility !== undefined || body.order !== undefined) {
       await tx
         .update(stickerPacks)
-        .set({ updatedAt: new Date() })
-        .where(eq(stickerPacks.id, packId));
-    });
-  }
-  if (body.title !== undefined || body.visibility !== undefined) {
-    await deps.db
-      .update(stickerPacks)
-      .set({
-        ...(body.title === undefined ? {} : { title: body.title }),
-        ...(body.visibility === undefined ? {} : { visibility: body.visibility }),
-        updatedAt: new Date(),
-      })
-      .where(eq(stickerPacks.id, packId));
-  }
+        .set({
+          ...(body.title === undefined ? {} : { title: body.title }),
+          ...(body.visibility === undefined ? {} : { visibility: body.visibility }),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(stickerPacks.id, packId), eq(stickerPacks.ownerId, userId)));
+    }
+  });
   const [updated] = await deps.db
     .select()
     .from(stickerPacks)

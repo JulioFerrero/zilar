@@ -3170,4 +3170,93 @@ describe('stickers (T-0120)', () => {
       },
     });
   });
+
+  it('refuses a hostile sticker without leaving a sending bubble', async () => {
+    // A tampered recents entry (non-uuid ids): `encodePayload` would throw
+    // synchronously, so the send must refuse with a visible error and no
+    // bubble — never a stuck `sending` message.
+    const { store, xmpp } = await setup();
+    const before = store.getState().messages('ana@galena.test').length;
+
+    store.getState().sendSticker('ana@galena.test', {
+      ...stickerInput,
+      stickerId: 'not-a-uuid',
+      packId: 'also-not-a-uuid',
+    });
+    await flush();
+
+    expect(xmpp.core.sendMessage).not.toHaveBeenCalled();
+    expect(store.getState().messages('ana@galena.test')).toHaveLength(before);
+    expect(store.getState().actionError).toEqual({
+      chatId: 'ana@galena.test',
+      message: 'That sticker could not be sent.',
+    });
+  });
+
+  it('links each echo to the right sticker when two share one emoji', async () => {
+    const { store, xmpp } = await setup();
+    const second = { ...stickerInput, stickerId: '323e4567-e89b-12d3-a456-426614174002' };
+
+    store.getState().sendSticker('ana@galena.test', stickerInput);
+    store.getState().sendSticker('ana@galena.test', second);
+    await flush();
+
+    const sent = store.getState().messages('ana@galena.test').slice(-2);
+    expect(sent).toHaveLength(2);
+    const [firstLocal, secondLocal] = sent.map((m) => m.id);
+
+    // Echoes arrive swapped: each must still resolve its own optimistic id.
+    const secondData = {
+      pack_id: second.packId,
+      sticker_id: second.stickerId,
+      url: second.url,
+      emoji: second.emoji,
+      width: second.width,
+      height: second.height,
+      mime: second.mime,
+    };
+    const firstData = {
+      pack_id: stickerInput.packId,
+      sticker_id: stickerInput.stickerId,
+      url: stickerInput.url,
+      emoji: stickerInput.emoji,
+      width: stickerInput.width,
+      height: stickerInput.height,
+      mime: stickerInput.mime,
+    };
+    xmpp.emit(
+      'message',
+      message({
+        id: 'srv-second',
+        chatJid: 'ana@galena.test',
+        body: '🐱',
+        outgoing: true,
+        timestamp: new Date('2026-09-28T12:00:01Z'),
+        payload: { v: 0, type: 'sticker', data: secondData },
+      }),
+    );
+    xmpp.emit(
+      'message',
+      message({
+        id: 'srv-first',
+        chatJid: 'ana@galena.test',
+        body: '🐱',
+        outgoing: true,
+        timestamp: new Date('2026-09-28T12:00:02Z'),
+        payload: { v: 0, type: 'sticker', data: firstData },
+      }),
+    );
+
+    const list = store.getState().messages('ana@galena.test');
+    expect(list.some((m) => m.id === firstLocal)).toBe(false);
+    expect(list.some((m) => m.id === secondLocal)).toBe(false);
+    const firstEcho = list.find((m) => m.id === 'srv-first');
+    const secondEcho = list.find((m) => m.id === 'srv-second');
+    expect(firstEcho?.card).toMatchObject({ type: 'sticker' });
+    expect(secondEcho?.card).toMatchObject({ type: 'sticker' });
+    if (firstEcho?.card?.type === 'sticker' && secondEcho?.card?.type === 'sticker') {
+      expect(firstEcho.card.data.sticker_id).toBe(stickerInput.stickerId);
+      expect(secondEcho.card.data.sticker_id).toBe(second.stickerId);
+    }
+  });
 });

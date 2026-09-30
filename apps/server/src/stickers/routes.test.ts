@@ -503,4 +503,35 @@ describe('stickers routes', () => {
     };
     expect(panel.packs.find((entry) => entry.id === pack.id)?.stickers).toEqual([]);
   });
+
+  it('serializes concurrent reorders instead of interleaving positions', async () => {
+    const { json } = await createPack(owner);
+    const ids: string[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      const uploaded = (await (
+        await uploadBytes(app, json.id, owner, pngBytes(8 + index, 8))
+      ).json()) as { id: string };
+      ids.push(uploaded.id);
+    }
+    const [a, b, c, d] = ids as [string, string, string, string];
+    const orderA = [d, c, b, a];
+    const orderB = [b, a, d, c];
+
+    // PGlite runs statements serially per connection, so true row-level
+    // interleaving cannot be forced here; the assertion is that both
+    // requests resolve and the final positions form exactly one of the two
+    // complete orders — never a mix, and never a silent row loss.
+    const [first, second] = await Promise.all([
+      jsonRequest(app, 'PATCH', `/api/sticker-packs/${json.id}`, owner, { order: orderA }),
+      jsonRequest(app, 'PATCH', `/api/sticker-packs/${json.id}`, owner, { order: orderB }),
+    ]);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    const final = (await (await jsonRequest(app, 'GET', '/api/sticker-packs', owner)).json()) as {
+      packs: Array<{ id: string; stickers: Array<{ id: string }> }>;
+    };
+    const stickers = final.packs.find((entry) => entry.id === json.id)?.stickers.map((s) => s.id);
+    expect([orderA, orderB]).toContainEqual(stickers);
+  });
 });
