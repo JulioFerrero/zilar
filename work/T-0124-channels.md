@@ -1,7 +1,7 @@
 ---
 id: T-0124
 title: Channels: one-way broadcast feeds (only admins post, members subscribe)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0124-channels
 model: meta/muse-spark-1.3-contributor
@@ -167,10 +167,10 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved, merged.
 
 ### Findings
--
-
-### Follow-ups
--
+- Round 1 fixes verified: subscriber-kick guard only for admin targets, role route channels-only (same 404), composer refresh after a role change, mock parity, migration 0030 regenerated.
+- Blessed: subscribers see the owner/admins slice of the member list (poster names are public); `docs/SERVER_CONFIG.md` edit and the join-preview `kind` in `invite-links/service.ts` are accepted scope.
+- Deferred nits: mock 400 vs server 403 for owner role change; `GET /groups/:id/members` also serves plain groups.
+- To verify after merge on the real ejabberd: subscribers are read-only (`members_by_default: false`).
