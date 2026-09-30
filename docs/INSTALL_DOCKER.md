@@ -3,15 +3,44 @@
 Five minutes from a fresh clone to your own Galena behind HTTPS: Postgres,
 ejabberd (chat), the Galena server, the web app and Caddy (automatic HTTPS)
 as Docker containers. No LiteLLM ships in this stack — AI features stay off
-unless you point Galena at your own gateway (see below).
+unless you point Galena at your own gateway (see below). The fastest way
+uses the install helper (`deploy/galena`); the manual steps are underneath
+so you can see everything the helper does.
 
 What was actually tested: the full stack on `localhost` with Caddy's local
 CA (see "What was tested" at the bottom). A real domain and the Coolify path
 follow the documented conventions but were **not** verified live.
 
-## The five-minute path
+## The five-minute path (with the helper)
 
 Prerequisites: Docker with the Compose plugin, `openssl`, `curl`.
+
+```bash
+git clone <galena-repo-url> galena
+cd galena
+./deploy/galena init     # asks for domain, emails, image owner; writes deploy/.env (0600)
+./deploy/galena up       # starts everything and waits until it is healthy
+./deploy/galena create-admin   # mints the invite code for the first account
+```
+
+`init` takes flags for non-interactive use (`--domain`, `--admin-email`,
+`--acme-email`, `--image-owner`, `--image-tag`, `--http-port`,
+`--https-port`) and `--dry-run` to print the plan without writing.
+It refuses to overwrite an existing `deploy/.env` unless `--force` is
+given, and it never prints a secret. A `localhost` domain gives a trial
+install (Caddy's local CA, console mailer with OTP codes in the server
+log); a real domain needs DNS first (an `A` record at the host, or Caddy
+cannot issue a certificate) plus SMTP settings in `deploy/.env` (the
+helper tells you). `doctor` checks all of this with fix hints.
+
+Open `https://<GALENA_DOMAIN>` and sign up with the admin email,
+pasting the invite code from `create-admin`. `update` pulls and
+restarts, `backup`/`restore` are covered below, `logs`/`status`/`down`
+do what they say.
+
+## The five-minute path (manual)
+
+The same steps the helper runs, by hand:
 
 ```bash
 git clone <galena-repo-url> galena
@@ -125,8 +154,32 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --wait
 ```
 
 Migrations run at server startup, so the new server container migrates the
-database itself. Back up the `postgres-data` volume first if the install
-matters to you (database backups are T-0127's job; there is no script yet).
+database itself. Back up first if the install matters to you:
+
+```bash
+./deploy/galena backup          # timestamped archive (databases, uploads, .env + manifest)
+```
+
+`backup [dir]` writes `galena-backup-<UTC stamp>.tgz` (mode 0600: it
+contains live secrets) with a `pg_dump` custom-format dump of both
+databases taken through the running containers, the ejabberd uploads
+volume, a copy of `deploy/.env`, and a `manifest.json` with versions.
+`restore <archive>` needs an explicit `--yes`: it stops the app
+services, restores both databases (`pg_restore --clean`), restores
+uploads and the `.env` (the current `.env` is kept as `.env.bak-<stamp>`),
+restarts and waits for health. Backups live on the same disk by default —
+copy them off the machine (rsync/scp to another host). For nightly
+backups, a cron line on the host is enough:
+
+```cron
+# Every night at 03:00, keep 7 days, sync off the machine.
+0 3 * * * /opt/galena/deploy/galena backup >>/var/log/galena-backup.log 2>&1 && find /opt/galena/deploy/backups -name 'galena-backup-*.tgz' -mtime +7 -delete && rsync -a /opt/galena/deploy/backups/ backup-host:/srv/galena-backups/
+```
+
+(Prefer a systemd timer if your host already uses them; the commands are
+the same.) Practice a restore to a scratch checkout before you need it:
+create data, back up, `down -v`, restore with `--yes`, confirm the data
+is back.
 
 ## What ports must be open
 

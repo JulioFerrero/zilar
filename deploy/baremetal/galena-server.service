@@ -1,0 +1,38 @@
+[Unit]
+Description=Galena chat server (TypeScript API)
+Documentation=https://github.com/<owner>/galena/blob/main/docs/INSTALL_BARE_METAL.md
+After=network-online.target postgresql.service ejabberd.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=galena
+Group=galena
+# The checkout lives at /opt/galena (see the guide); the server runs the
+# same entry point as the production image (no build step: tsx runs the
+# TypeScript sources directly).
+WorkingDirectory=/opt/galena/apps/server
+EnvironmentFile=/etc/galena/galena.env
+ExecStart=/opt/galena/apps/server/node_modules/.bin/tsx src/index.ts
+Restart=on-failure
+RestartSec=5
+
+# Only the checkout's server tree and the data dir are writable; any other
+# write (/, /usr, /home) fails the process. /etc/galena (the env file) is
+# readable but not writable.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/galena/apps/server /var/lib/galena
+# The env file may be world-unreadable already (mode 0600 galena:galena),
+# but pass the service name check anyway.
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

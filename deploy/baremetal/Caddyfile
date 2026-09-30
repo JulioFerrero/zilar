@@ -1,0 +1,60 @@
+# Caddy reverse proxy for a bare-metal Galena install.
+#
+# Install Caddy, copy this file to /etc/caddy/Caddyfile, replace
+# chat.example.com with your domain and your@email.example with your
+# address, then `systemctl reload caddy`. Caddy issues and renews the
+# certificate itself (ports 80/443 must be reachable from the internet).
+#
+# The three backends run on this same machine: the web app's static files
+# are served by Caddy directly from /srv/galena-web (the Vite build
+# output), the server listens on 127.0.0.1:3000, ejabberd on
+# 127.0.0.1:5280. Validated with `caddy validate` (see guide §9).
+{
+  admin off
+  email your@email.example
+}
+
+chat.example.com {
+  # Web app: static files built by `pnpm --filter @galena/web build`
+  # (output copied to /srv/galena-web). Long cache for hashed assets,
+  # no cache for the entry point, same security headers as the Docker
+  # image (apps/web/Caddyfile).
+  handle {
+    root * /srv/galena-web
+    header {
+      X-Content-Type-Options nosniff
+      Referrer-Policy strict-origin-when-cross-origin
+      Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' wss: ws:; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+      -Server
+    }
+    @hashed path /assets/*
+    header @hashed Cache-Control "public, max-age=31536000, immutable"
+    try_files {path} /index.html
+    file_server
+  }
+
+  # Server API (same-origin for the web app; cookies stay first-party).
+  handle /api/* {
+    reverse_proxy 127.0.0.1:3000
+  }
+
+  # Server health, for monitors and the install test.
+  handle /health {
+    reverse_proxy 127.0.0.1:3000
+  }
+
+  # XMPP over WebSocket (RFC 7395) straight to ejabberd. The /xmpp-ws
+  # prefix is stripped so ejabberd sees the /ws path its request_handlers
+  # expect.
+  handle /xmpp-ws/* {
+    uri strip_prefix /xmpp-ws
+    reverse_proxy 127.0.0.1:5280
+  }
+
+  # File uploads (XEP-0363) straight to ejabberd. No strip here: ejabberd
+  # registers the handler at /upload and hands out slot URLs of the form
+  # https://<domain>/upload/<slot>/<file>, so the path must arrive intact.
+  handle /upload/* {
+    reverse_proxy 127.0.0.1:5280
+  }
+}

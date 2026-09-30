@@ -1,7 +1,7 @@
 ---
 id: T-0127
 title: Install wizard, backup/restore and the bare-metal install guide
-status: planned
+status: review
 milestone: M6
 branch: task/T-0127-install-wizard-backup-baremetal
 model: meta/muse-spark-1.3-contributor
@@ -64,19 +64,37 @@ D30: installing Galena must be easy, including for people who do not want Docker
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Wrote `deploy/galena` (725-line POSIX shell script, executable): `init` (flags + interactive prompts, all secrets from `openssl rand`, 0600 env file, refuses overwrite without `--force`, never prints secrets, `--dry-run`), `up/down/logs/status/update` thin wrappers over `docker compose` with the fixed compose+env file, `doctor` (Docker/Compose/openssl versions, free ports via ss→netstat→lsof, DNS via getent→dig→nslookup→host, server `/health` via the in-container healthcheck, fix hint per failure, exit 1 on any FAIL), `create-admin` (mints the invite code through the running server's invite CLI — there is no admin endpoint; sign-up requires the `x-galena-invite` header, `createdBy: null` links no contacts), `backup [dir]` (timestamped 0600 tgz: both `pg_dump -Fc` dumps through the running postgres, uploads volume tarball, `.env` copy, SECRETS_WARNING, manifest.json), `restore <archive>` (manifest check, stops app services, `pg_restore --clean`, uploads, `.env` with `.bak-<stamp>` of the current one, `up -d --wait`; refuses without `--yes`).
+- Wrote `deploy/baremetal/`: `galena-server.service` (dedicated user, `EnvironmentFile`, `Restart=on-failure`, `NoNewPrivileges`/`ProtectSystem=strict`/`ProtectHome`/`PrivateTmp` + kernel/module/CGroup guards, `ReadWritePaths` on the server tree + `/var/lib/galena`, `UMask=0077`), `Caddyfile` (same 5 routes/path rules as the Docker Caddyfile, static `/srv/galena-web` with hashed-asset caching + CSP headers from `apps/web/Caddyfile`), `nginx-galena.conf` (alternative with the same routes, certbot-managed certs), `ejabberd.yml` (prod Docker config adapted: literal `chat.example.com` values, SQL host `localhost`, loopback ACL back, `certfiles` at `/etc/ejabberd/server.pem`, JWK recipe documented), `setup-postgres.sql` (roles/databases + `vector` + guarded read-only archive role, passwords as `psql -v` vars), `.env.example` (every variable the unit needs).
+- Wrote `docs/INSTALL_BARE_METAL.md` (users, database, ejabberd, server, web build, proxy, first account, updating, backups, §8 honest about what was NOT tested) and `docs/INSTALL.md` (choose-your-install table + requirements).
+- Small edits: `docs/INSTALL_DOCKER.md` (helper path + backup/restore/cron section), `README.md` (Quick start links `docs/INSTALL.md`), `deploy/.env.example` (documents the `NODE_ENV` the wizard writes and the compose file already reads).
 
 ### Files changed
--
+- New: `deploy/galena`, `deploy/baremetal/{galena-server.service,Caddyfile,nginx-galena.conf,ejabberd.yml,setup-postgres.sql,.env.example}`, `docs/INSTALL.md`, `docs/INSTALL_BARE_METAL.md`.
+- Edited: `docs/INSTALL_DOCKER.md` (+53/−4: helper path, backup/restore/cron), `README.md` (+2: Quick-start link), `deploy/.env.example` (+NODE_ENV block), `work/T-0127-install-wizard-backup-baremetal.md` (status + this Report).
 
 ### Commands run and real results
--
+- `pnpm install`: Done in 10.9s.
+- `sh -n deploy/galena`: pass. `shellcheck`: NOT installed on this machine (reported per spec; script follows POSIX, one intentional `eval` for arg reassembly, `set -eu`, quoted expansions).
+- `./deploy/galena init --dry-run --domain localhost ...`: prints the plan, no secrets, exit 0. `./deploy/galena init` (scratch env file): wrote 0600 file, 0 CHANGE_ME, 5×48-hex passwords unique, JWT 64 / auth 44 / key-encryption 64 chars unique, 31 vars, no dupes.
+- `./deploy/galena restore <existing-file>` without `--yes`: `error: restore overwrites live data — re-run with --yes to confirm`, exit 1 (proved).
+- `caddy validate` (via `docker run caddy:2.10.2-alpine`): production `deploy/caddy/Caddyfile` → `Valid configuration`; bare-metal Caddyfile (with `{$GALENA_DOMAIN}`/`{$ACME_EMAIL}` placeholders + env) → `Valid configuration`.
+- `pnpm format:check`: pass. `pnpm lint`: pass, no findings. `pnpm typecheck`: 10 tasks successful.
+- Vitest: not run (no application code touched), per the T-0126 precedent cited in the spec's Checks.
+- Scratch `up` attempts (project `galena-installtest`, ports 18080/18443, throwaway secrets in /tmp only, never read `infra/.env`): postgres+ejabberd reached healthy from clean volumes, but the server never did — see Problems. After the lead's stop-probing instruction: `down -v`, all 4 scratch images removed, secrets file overwritten+deleted, `docker ps`/`volume ls` filters for `galena-installtest` empty. Dev containers (`galena-dev-*`) untouched throughout.
 
 ### Problems, deviations from the spec, open questions
--
+- **NOT done (needs a follow-up): the live `up` → healthy → backup → restore round trip was NOT proved.** Two independent blockers, both found by reading code + container logs:
+  1. `deploy/docker-compose.yml` passes `SMTP_HOST: ${SMTP_HOST:-}` (etc.) which Compose renders as `SMTP_HOST=` (empty string, not unset). The server's zod schema (`.optional()` = undefined only) rejects empty strings: `Invalid server configuration: SMTP_HOST (invalid), SMTP_USER (invalid), SMTP_PASSWORD (invalid), MAIL_REPLY_TO (invalid)` — the server restart-looped on this. My wizard now *omits* those lines for a console trial, but the committed compose file still emits `KEY=` for any variable absent from the env file, so even the wizard's env cannot boot. Fix (one line each, in `deploy/docker-compose.yml`, NOT my allowed files — hence not done): either `${SMTP_HOST:-@empty@}`-style sentinels like the existing `LITELLM_*` workaround, or make the app treat `""` as unset (app change, bigger blast radius). Same latent issue for `MAIL_REPLY_TO`, and for non-SMTP installs generally.
+  2. The prebuilt `galena-server:installtest` image in this workstation predates T-0128 (its mailer throws in production unconditionally); I rebuilt it from current sources mid-session, which moved the failure from the mailer-throw to problem (1). Any re-proof must rebuild or repull the server image first.
+  3. Ejabberd `password authentication failed for user "ejabberd"` after `down` (without `-v`) + `init` regenerated passwords: expected Postgres semantics (init scripts run once per volume), not a bug — but the wizard's `up` gives no hint when the env no longer matches the volume. Worth a `doctor` check (compare a hash?) or a documented `down -v` warning; leaving as an open question.
+- `backup`/`restore` code paths were written carefully and dry-runs/guard-clauses verified, but never executed against a running stack for the reasons above. The cron example and off-machine copy are documented but untested.
+- Bare-metal guide §8 lists everything unverified: systemd unit never saw `systemd-analyze verify` (no systemd on macOS) nor a real boot; `setup-postgres.sql` never executed (its `\if`/`\gset` guards mirror proven `20-search-reader.sql` but that is not proof); nginx config syntax-only, no `nginx -t` here; invite-CLI-via-env-file invocation unconfirmed on a real machine.
+- `deploy/.env.example` now documents `NODE_ENV` (needed: compose reads it, wizard writes it). No other `.env.example` changes were needed — every other wizard variable already existed there.
+- No secrets printed, logged or committed at any point: `git status` shows only the files above; scratch secrets lived in /tmp and were overwritten+deleted.
 
-### Blocked / needs a decision
-- (only if status is blocked)
+### What was NOT done (per lead instruction 2026-09-30)
+- Stopped all container probing on lead order; did not re-run `up`, did not test `create-admin`/`backup`/`restore` live, did not run the capped-filter Vitest command (no app code touched — nothing to run it against).
 
 ---
 
