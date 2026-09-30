@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { aiLimits, ais, groups, providerConnections } from '../db/schema';
-import { headlineToSnippet, correctionTarget, retractTarget } from './routes';
+import { headlineToSnippet, correctionTarget, retractTarget, stanzaFrom } from './routes';
 import {
   bootstrapUser,
   contactOf,
@@ -34,8 +34,8 @@ const ARCHIVE_DDL = `CREATE TABLE archive (
   origin_id text NOT NULL
 );`;
 
-function messageXml(body: string): string {
-  return `<message type="chat"><body>${body}</body></message>`;
+function messageXml(body: string, from?: string): string {
+  return `<message type="chat"${from === undefined ? '' : ` from="${from}"`}><body>${body}</body></message>`;
 }
 
 function correctionXml(body: string, originalId: string): string {
@@ -177,8 +177,19 @@ describe('GET /api/search', () => {
   async function setupDm() {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
     const bob = await contactOf(context, app, alice.id, 'bob@example.com');
+    await renameUser(alice.cookie, 'Alice');
+    await renameUser(bob.cookie, 'Bob');
     const stranger = await bootstrapUser(context, app, 'stranger@example.com');
     return { alice, bob, stranger };
+  }
+
+  async function renameUser(cookie: string, name: string) {
+    const response = await app.request(`${TEST_BASE_URL}/api/me`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ name }),
+    });
+    expect(response.status).toBe(200);
   }
 
   function dmJid(userId: string): string {
@@ -226,6 +237,53 @@ describe('GET /api/search', () => {
     for (const [start, end] of first?.marks ?? []) {
       expect([...(first?.snippet ?? '')].slice(start, end).join('')).toMatch(/concert|tickets/i);
     }
+  });
+
+  it('attributes DM senders from the stanza: mine say You, theirs name the peer', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const ownJid = dmJid(alice.id);
+    const peer = dmJid(bob.id);
+    await seedArchive(archiveClient, [
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-mine',
+        timestamp: 1_785_000_000_000_000,
+        txt: 'papaya outgoing plans',
+        xml: messageXml('papaya outgoing plans', `${ownJid}/desk`),
+      },
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-theirs',
+        timestamp: 1_784_000_000_000_000,
+        txt: 'papaya incoming answer',
+        xml: messageXml('papaya incoming answer', `${peer}/phone`),
+      },
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-broken',
+        timestamp: 1_783_000_000_000_000,
+        txt: 'papaya broken stanza',
+        xml: '<message type="chat"><body>papaya broken stanza</body></message',
+      },
+    ]);
+
+    const { status, body } = await search(alice.cookie, '?q=papaya');
+    expect(status).toBe(200);
+    expect(body.items.map((item) => item.messageId)).toEqual(['o-mine', 'o-theirs', 'o-broken']);
+    expect(body.items.map((item) => item.senderName)).toEqual(['You', 'Bob', 'Bob']);
   });
 
   it('pages with a before cursor and a limit', async () => {
@@ -604,6 +662,31 @@ describe('GET /api/search', () => {
     );
     expect(filtered.status).toBe(404);
   });
+
+  it('uses the room nick for group hits', async () => {
+    const { alice, bob } = await setupDm();
+    const group = await createGroup(alice.cookie, 'Team', [bob.id]);
+    const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, group.id));
+    const generalJid = `${groupRow?.roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
+    await seedArchive(archiveClient, [
+      {
+        owner: generalJid,
+        peer: `${dmJid(bob.id)}/r`,
+        barePeer: dmJid(bob.id),
+        kind: 'groupchat',
+        nick: 'Bobby',
+        originId: 'o-room',
+        timestamp: 1_785_000_000_000_000,
+        txt: 'durian team lunch',
+        xml: `<message type="groupchat" from="${generalJid}/Bobby"><body>durian team lunch</body></message>`,
+      },
+    ]);
+    const { status, body } = await search(alice.cookie, '?q=durian');
+    expect(status).toBe(200);
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]?.senderName).toBe('Bobby');
+    expect(body.items[0]?.chatJid).toBe(generalJid);
+  });
 });
 
 describe('headlineToSnippet', () => {
@@ -628,5 +711,16 @@ describe('stanza targets', () => {
     expect(
       retractTarget('<message><retract xmlns="urn:xmpp:message-retract:1" id="o-9"/></message>'),
     ).toBe('o-9');
+  });
+
+  it('reads the stanza from defensively', () => {
+    expect(stanzaFrom('<message type="chat" from="alice@x/desk"><body>hi</body></message>')).toBe(
+      'alice@x/desk',
+    );
+    expect(stanzaFrom("<message from='bob@x/r'><body>hi</body></message>")).toBe('bob@x/r');
+    expect(stanzaFrom('<message type="chat"><body>hi</body></message>')).toBeNull();
+    expect(stanzaFrom('<message from=""><body>hi</body></message>')).toBeNull();
+    expect(stanzaFrom('not xml at all')).toBeNull();
+    expect(stanzaFrom('<message type="chat"><body>hi</body></message')).toBeNull();
   });
 });

@@ -96,15 +96,46 @@ function timestampToIso(value: ArchiveRow['timestamp']): string {
   return new Date(Number(micros / 1000n)).toISOString();
 }
 
-function senderNameFor(row: ArchiveRow, peerNames: Map<string, string>): string {
+function senderNameFor(
+  row: ArchiveRow,
+  ownBareJid: string,
+  peerNames: Map<string, string>,
+): string {
   if (row.kind === 'groupchat') {
     return row.nick === '' ? 'Unknown' : row.nick;
+  }
+  // In a DM archive the caller's own outgoing messages are stored under the
+  // same `bare_peer` as incoming ones. The stanza's `from` decides: a `from`
+  // naming the caller means the caller sent it.
+  const from = stanzaFrom(row.xml);
+  if (from !== null && bareJid(from) === ownBareJid) {
+    return 'You';
   }
   return peerNames.get(row.barePeer) ?? 'Unknown';
 }
 
+// Bare JID, lowercased: the comparison key for sender direction.
+function bareJid(jid: string): string {
+  return jid.split('/')[0]?.toLowerCase() ?? '';
+}
+
+// The stanza's `from` attribute, parsed defensively like the other tag
+// readers: a missing or malformed attribute is null, never a throw.
+export function stanzaFrom(xml: string): string | null {
+  const match = xml.match(/<message\b[^>]*\bfrom\s*=\s*(["'])(.*?)\1/s);
+  const value = match?.[2]?.trim();
+  return value === undefined || value === '' ? null : value;
+}
+
 function chatJidFor(row: Pick<ArchiveRow, 'owner' | 'kind' | 'barePeer'>): string {
   return row.kind === 'groupchat' ? row.owner : row.barePeer;
+}
+
+// The caller's own bare JID: the `from` a stanza carries when the caller
+// sent it. The localpart is authoritative (it scopes the archive query);
+// the domain comes from config.
+function ownBareJid(allowed: SearchOwner, domain: string): string {
+  return `${allowed.ownLocalpart}@${domain.toLowerCase()}`;
 }
 
 export interface ArchiveQueryInput {
@@ -304,7 +335,11 @@ export function createSearchRoutes(deps: SearchRoutesDependencies): Hono {
       items.push({
         chatJid,
         messageId: row.originId,
-        senderName: senderNameFor(row, allowed.peerNames),
+        senderName: senderNameFor(
+          row,
+          ownBareJid(allowed, deps.config.xmpp.domain),
+          allowed.peerNames,
+        ),
         at: timestampToIso(row.timestamp),
         snippet,
         marks,

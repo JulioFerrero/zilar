@@ -40,9 +40,11 @@ Indexes (live `\d`): `(timestamp)`, `(username, bare_peer)`,
 - Query only rows the caller owns: `username` = caller localpart with
   a `bare_peer` filter for DMs, or a visible room JID for groups and
   topics. The allowed set comes from our tables, never client input.
-- No expression index is possible in the ejabberd database: cap the
-  scan to the last 12 months and 5 000 candidate rows; the
-  `WHERE username … AND timestamp > …` prefix stays on the existing
-  `(username, timestamp)` index.
+- No expression index is possible in the ejabberd database, so every
+  query runs as a sequential scan capped to the last 12 months and 5 000
+  candidate rows; the `WHERE username … AND timestamp > …` prefix keeps
+  the scan on the existing `(username, timestamp)` index. Very large
+  archives may still be slow, but the 3 s statement timeout protects the
+  database from any single search.
 - `messageId` is `origin_id`; `at` is `timestamp` as ISO; the chat JID
   is reconstructed per owner row, not taken from client input.

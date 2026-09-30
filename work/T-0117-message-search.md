@@ -124,11 +124,12 @@ pnpm build
 ### Files changed
 - `apps/server/src/search/service.ts` (new: pool, `allowedArchives`, `resolveChatFilter`),
   `routes.ts` (new: endpoint, `buildArchiveQuery`, `headlineToSnippet`,
-  correction/retraction targets), `search.test.ts` (new: 15 tests)
+  correction/retraction targets, `stanzaFrom` + direction-aware `senderNameFor`),
+  `search.test.ts` (new: 18 tests)
 - `apps/server/src/config.ts` (+`config.test.ts`), `app.ts`, `index.ts`
   (pool wiring); `authz-sweep.test.ts` untouched (covers `/api/search` → 401)
-- `infra/postgres/init/20-search-reader.sql` (new),
-  `docs/SERVER_CONFIG.md`, `docs/SEARCH_NOTES.md` (new, 48 lines)
+- `infra/postgres/init/20-search-reader.sql` (new, fully guarded),
+  `docs/SERVER_CONFIG.md`, `docs/SEARCH_NOTES.md` (new, 50 lines)
 - `apps/web/src/lib/api.ts` (`searchMessages` + schemas),
   `lib/useMessageSearch.ts` (new), `lib/scrollToMessage.ts` (new),
   `components/MessageSearchResult(s).tsx` (new),
@@ -144,16 +145,20 @@ pnpm build
 - Discovery: `\d archive` (columns + 5 indexes as spec'd), `select
   count(*)` → 3524; ejabberd sources fetched via webfetch
   (`mod_mam.erl`, `mod_mam_sql.erl` 26.07). No message contents read.
-- `pnpm format:check`: pass ("All matched files use Prettier code style!")
-- `pnpm lint`: pass (oxlint clean; fixed a spread lint and two
-  `set-state-in-effect` lints by restructuring the hook)
-- `pnpm typecheck`: pass (turbo 10/10)
-- `pnpm --filter @galena/server test --maxWorkers=2`: 65 files passed,
-  5 skipped; 1111 passed, 7 skipped (~539 s)
+- `pnpm format:check`: pass for all owned files (the repo-wide check also
+  flags the lead's untracked `PREREVIEW.md`, which is not mine and I left
+  untouched; `.sql` has no Prettier parser, same as before)
+- `pnpm lint`: pass (oxlint clean)
+- `pnpm typecheck`: pass — server `tsc --noEmit` clean (full turbo
+  typecheck passed pre-review at 10/10; rerunning per the one-command rule)
+- `pnpm --filter @galena/server test --maxWorkers=2` (full suite, rerun
+  after review fixes): 65 files passed, 5 skipped; 1114 passed, 7 skipped
+  (includes the 3 new sender-attribution tests)
 - `pnpm --filter @galena/web test --maxWorkers=2`: full suite 662 passed
-  (24.8 s)
-- `pnpm build`: pass (2/2 turbo tasks)
-- Scoped: `src/search` 15 passed; `config.test.ts` 22 passed (incl. 3 new);
+  (24.8 s, pre-review; web code untouched by review fixes — `You` renders
+  as plain text through the existing sender slot, no test breakage)
+- `pnpm build`: pass (2/2 turbo tasks, pre-review; rerunning below)
+- Scoped: `src/search` 18 passed; `config.test.ts` 22 passed (incl. 3 new);
   `authz-sweep` 5 passed (`GET /api/search → 401` listed);
   `MessageSearch*.test.tsx` 17 passed; `realStore.test.tsx` 94 passed.
 - `grep` for `any|@ts-ignore|disable` in all new/touched source: no hits.
@@ -172,7 +177,52 @@ pnpm build
 - The `galena_archive` role script only takes effect on first start of an
   empty volume (like `10-create-databases.sql`); existing volumes need the
   manual `GRANT SELECT ON archive TO galena_archive;` from SERVER_CONFIG.
+  When ejabberd creates `archive` after postgres init (the normal order),
+  the DBA runs that same GRANT once the table exists — also documented.
 - No new dependencies. No secrets read or committed (`infra/.env` never opened).
+
+### Round 2 (review fixes)
+- Fix 1 — init script no longer breaks fresh installs: the whole body is
+  guarded by `\if :{?galena_archive_password}` plus an empty-string check
+  (`SELECT … \gset` → `\if :has_pw`), and the `ejabberd`-database and
+  `archive`-table steps are each guarded by `EXISTS` checks, so the script
+  is a no-op whenever the variable, database, or table is absent. I first
+  added `REVOKE CONNECT … FROM PUBLIC` for least privilege, then removed
+  it before proving: it would have broken the existing
+  `galena`/`ejabberd`/`litellm` roles, which rely on the stock PUBLIC
+  connect grant and get no explicit grant in `10-create-databases.sql`.
+  The reader now gains only `CONNECT` on `ejabberd` + `SELECT` on one
+  table; everything else keeps working exactly as before.
+  Proved on real `pgvector/pgvector:0.8.6-pg18-trixie` scratch containers
+  (never `galena-dev-*`; only throwaway passwords; `galena-dev-postgres-1`
+  untouched): (a) WITHOUT the variable → init starts cleanly, no ERROR or
+  FATAL in the logs, all four databases created, `galena_archive` role
+  count 0. (b) WITH `GALENA_ARCHIVE_DB_PASSWORD=throwawayarchive` →
+  clean start, role exists with LOGIN and a password. (c) Empty-string
+  variable → clean start, role count 0. (d) With the var set but no
+  `archive` table yet (the real boot order) → clean start, role exists;
+  after creating a stand-in `archive` table + manual GRANT, the reader
+  `SELECT count(*)` returns 0, `SELECT` on another table → permission
+  denied, `INSERT` → permission denied, `CONNECT` to `galena`/`postgres`
+  (tested after removing the REVOKE lines) still works for existing roles
+  — i.e. least privilege holds without touching PUBLIC grants. All
+  scratch containers stopped and removed afterwards.
+- Fix 2 — DM sender attribution: `senderNameFor` now parses the stanza's
+  `from` (`stanzaFrom`, defensive regex like the other tag readers) and
+  returns `You` when its bare JID equals the caller's
+  (`ownLocalpart@xmpp.domain` from config; localpart authoritative, domain
+  lowercased for the comparison). Malformed/missing `from` falls back to
+  the peer's name; group hits still use the room nick. New tests: outgoing
+  DM → `You`, incoming → peer name (`Bob`, via renamed test users),
+  malformed xml → peer name; group hit → nick; `stanzaFrom` unit cases
+  (single quotes, missing/empty/garbage). Web renders `senderName` as
+  plain text already, so `You` needs no special handling and no web test
+  broke (web suite untouched by this change).
+- Nit — `SEARCH_NOTES.md` (now 50 lines, still ≤ 60) says the query is a
+  sequential scan capped at 12 months / 5 000 rows and that the 3 s
+  statement timeout protects the database on very large archives.
+- The compose pass-through of `GALENA_ARCHIVE_DB_PASSWORD` is left to the
+  lead as instructed; the script assumes the variable may be absent.
 
 ### Blocked / needs a decision
 - None.
