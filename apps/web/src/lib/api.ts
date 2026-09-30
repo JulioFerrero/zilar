@@ -492,6 +492,58 @@ export async function putChatPref(
   return chatPrefSchema.parse(raw);
 }
 
+// --- Pinned messages (T-0114) ------------------------------------------------
+// The wire contract lives in apps/server/src/pins/{routes,service,access}.
+// `chat` is a room bare JID for groups/topics, or a DM peer's bare JID (the
+// server keeps the canonical pair key, so both sides share one list). Pins
+// arrive newest first. The snapshot (`senderName`/`text`/`kind`) is display
+// only: the server trusts it for rendering, never for authorization.
+
+export const pinKindSchema = z.enum(['text', 'image', 'file', 'voice', 'card']);
+
+export type PinKind = z.infer<typeof pinKindSchema>;
+
+export const pinSchema = z.object({
+  id: z.string(),
+  chat: z.string(),
+  messageId: z.string(),
+  senderName: z.string(),
+  text: z.string(),
+  kind: pinKindSchema,
+  pinnedBy: z.string(),
+  pinnedAt: z.string(),
+});
+
+export type Pin = z.infer<typeof pinSchema>;
+
+const pinsSchema = z.object({ pins: z.array(pinSchema) });
+
+export interface PinMessageInput {
+  chat: string;
+  messageId: string;
+  senderName: string;
+  text: string;
+  kind: PinKind;
+}
+
+export function listPins(chat: string): Promise<Pin[]> {
+  const params = new URLSearchParams();
+  params.set('chat', chat);
+  return request(`/pins?${params.toString()}`, pinsSchema).then((body) => body.pins);
+}
+
+export function pinMessage(input: PinMessageInput): Promise<Pin> {
+  return request('/pins', pinSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function unpinMessage(id: string): Promise<void> {
+  await request(`/pins/${encodeURIComponent(id)}`, pinSchema, { method: 'DELETE' });
+}
+
 // --- AIs (T-0032) --------------------------------------------------------
 // The wire contract lives in apps/server/src/ais/routes.ts and service.ts.
 // `ApiError` already carries the server's `code` and `status`, so callers can

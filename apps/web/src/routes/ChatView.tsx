@@ -6,6 +6,8 @@ import { ChatHeader } from '@/components/ChatHeader';
 import { Composer } from '@/components/Composer';
 import { GroupPanel } from '@/components/GroupPanel';
 import { MessageList } from '@/components/MessageList';
+import { PinnedBanner } from '@/components/PinnedBanner';
+import { PinsPanel } from '@/components/PinsPanel';
 import { TaskStrip } from '@/components/TaskStrip';
 import { TopicPanel } from '@/components/TopicPanel';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -68,6 +70,13 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
   };
 
   const notice = store.topicNotice?.chatId === chat.id ? store.topicNotice : undefined;
+  const pinsPanel = store.pinsPanel?.chatId === chat.id ? store.pinsPanel : undefined;
+
+  // Pins load when the chat opens (the store also refreshes them on focus
+  // and every 60 s while the chat is open; there is no realtime channel yet).
+  useEffect(() => {
+    void storeApi.getState().loadPins(chat.id);
+  }, [storeApi, chat.id]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -80,6 +89,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         {...(chat.topic !== undefined ? { onOpenTopicPanel: () => setPanel('topic') } : {})}
       />
       {chat.topic !== undefined && <TaskStrip chat={chat} />}
+      <PinnedBanner chatId={chat.id} />
       {notice !== undefined && (
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-divider bg-panel px-4 py-2">
           <p role="status" className="text-[13px] text-muted-foreground">
@@ -103,6 +113,9 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
       )}
       {panel === 'topic' && chat.topic !== undefined && (
         <TopicPanel chat={chat} onClose={() => setPanel(undefined)} />
+      )}
+      {pinsPanel !== undefined && (
+        <PinsPanel chatId={chat.id} onClose={() => storeApi.getState().setPinsPanel(undefined)} />
       )}
     </div>
   );

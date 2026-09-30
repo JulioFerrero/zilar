@@ -1,7 +1,7 @@
 ---
 id: T-0114
 title: Pinned messages in chats, groups and topics (server + web)
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0114-pinned-messages
 model: meta/muse-spark-1.3-contributor
@@ -69,28 +69,66 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Server (`apps/server/src/pins/`): `access.ts` (chat resolution + permissions), `service.ts` (list/pin/unpin + audit), `routes.ts` (`GET /api/pins?chat=`, `POST /api/pins`, `DELETE /api/pins/:id`, 60 writes/min/user limiter), mounted in `app.ts`. Schema `pinned_messages` + migration `0025_married_hobgoblin.sql` via `db:generate`.
+  - DMs: canonical pair key `min|max` so both sides share one list; either side may pin. Rooms: stored bare JID; read needs `canSeeTopic`, write needs creator or owner/admin who can see it (plain members 403, strangers 404).
+  - Snapshots validated (sender ≤ 80, text ≤ 300, no control chars, attachment kinds carry no text); unique `(chat_jid, message_id)` → 409 `pin_exists`; 20-pin cap → 400 `pin_limit`. Audit `message.pinned`/`message.unpinned` with ids only (`pinId`, `chatJid`, `messageId`); private-topic pins carry no `groupId` so they never surface in group activity.
+- Web: `lib/api.ts` pins client; `mock/api.ts` in-memory pins (+2 seeds); store interface + mock-store impl + real-store impl (load on open, focus + 60 s poll while open, optimistic pin/unpin with rollback, `pinsError`); `PinnedBanner.tsx` (sender + LinkText snapshot or kind label, 1-of-N cycling, jump via `openAtMessage` + scroll, "Message not found" inline); `PinsPanel.tsx` (+ `PinsSection` row); Pin/Unpin in `MessageActionsMenu`/`MessageBubble` gated by `canPin` (DMs anyone, topics owner/admin); panel wired in `ChatView` (banner under header/task strip) and reachable from banner List, header menu, TopicPanel and GroupPanel.
+  - No realtime channel (polling only), as specced; said here.
+- Tests: server `pins.test.ts` (8: DM sharing, topic manager/member/stranger, creator edge, private-topic invisibility, dup/cap/validation, audit shape, rate limit, auth/404); web `PinnedMessages.test.tsx` (13: banner, cycling, jump loaded/missing, kind label, pin/unpin menu, DM/topic gating, hostile snapshot, panel jump/unpin + member gating, tombstone, failure inline, mock API); realStore pins (4: load on open, focus + 60 s refresh, optimistic + rollback, gating).
 
 ### Files changed
--
+- `apps/server/src/db/schema.ts`, `apps/server/drizzle/0025_married_hobgoblin.sql` (+ meta journal/snapshot)
+- `apps/server/src/pins/access.ts`, `service.ts`, `routes.ts`, `pins.test.ts` (new)
+- `apps/server/src/app.ts` (mount)
+- `apps/web/src/lib/api.ts`, `apps/web/src/mock/api.ts`
+- `apps/web/src/store/store.ts`, `apps/web/src/store/realStore.ts`, `realStore.test.tsx`, `realStore.topics.test.tsx`, `reload.test.tsx` (fake-API pins stubs)
+- `apps/web/src/components/PinnedBanner.tsx`, `PinsPanel.tsx` (new), `MessageActionsMenu.tsx`, `MessageBubble.tsx`, `ChatHeader.tsx`, `GroupPanel.tsx`, `TopicPanel.tsx`, `PinnedMessages.test.tsx` (new)
+- `apps/web/src/routes/ChatView.tsx`
+- `work/T-0114-pinned-messages.md`
 
 ### Commands run and real results
--
+- `pnpm install`: up to date (969 ms)
+- `pnpm format:check`: pass ("All matched files use Prettier code style!")
+- `pnpm lint`: pass (oxlint clean)
+- `pnpm typecheck`: pass (10/10 turbo tasks)
+- `pnpm --filter @galena/server test --maxWorkers=2`: 80 files passed, 5 skipped; 1375 passed, 7 skipped (~279 s)
+- `pnpm --filter @galena/server test --maxWorkers=2 src/pins/pins.test.ts` (round 2): 10 passed
+- `pnpm --filter @galena/web test --maxWorkers=2`: 70 files passed; 759 passed
+- `pnpm --filter @galena/web test --maxWorkers=2` (round 2): 70 files passed; 760 passed
+- `pnpm build`: pass (2/2)
+- `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any` in touched files: no hits (one false positive: the word "anyone" in a test name)
 
 ### Problems, deviations from the spec, open questions
--
+- Client gating is owner/admin for topics; the topic-creator-who-is-a-plain-member edge is server-enforced only (the menu hides for them because `createdBy` is not exposed on `TopicView`, which I may not change). Noted, not blocked.
+- Unpin echoes the deleted row (DELETE returns the pin), so the panel can animate/remove without a refetch; the store still reconciles on next poll.
+- Mock pins key by client chat id (no JID access model in mock); seeds: one text pin in the Ana DM, one photo pin in Viernes.
+- Raw BEL byte briefly landed in `pins.test.ts` from my editor; replaced with `\u0007` escape (file is ASCII, verified with `file`).
+- No new dependencies. No realtime XMPP pin updates (out of scope, polling instead).
+
+### Round 2 (review fixes)
+- Finding 1 (MUST): pin text now allows `\t`/`\n` like message bodies (new `allowWhitespace` flag on the control-char check; sender names stay strict). Server test pins a 3-line message and reads it back; client test pins a 3-line bubble and asserts every line in the banner.
+- Finding 2: the creator/admin test now proves its case — `other` is promoted to group admin via a direct row update (groups.test.ts precedent) so the 404s assert the admin-who-cannot-see path, and `topics.createdBy` is rewritten to the plain member (simulating a post-creation demotion, which T-0116 will do via API) so the 201 asserts the `createdBy` branch itself.
+- Finding 3: count + insert run in one transaction under `pg_advisory_xact_lock(hashtext(chatJid))`; new concurrent test fires 25 parallel pins and asserts exactly 20 × 201, 5 × 400, 20 rows. Migration untouched (no schema change).
+- Finding 4: panel unpin buttons disable per row (`unpinningId === pin.id`).
+- Finding 5: removed the duplicated `expect(attachment.status).toBe(201)` line.
+- Pre-review packet `PREREVIEW.md` read and deleted.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** merged after two fix rounds and a lead fix.
 
 ### Findings
--
+- Server access is sound (read twice): DM pair key, stranger and unknown chat share one 404, unpin re-resolves visibility, private-topic pins carry no groupId in audit, audit detail has ids only, 20-cap is atomic (advisory lock) with a 25-parallel test.
+- Fixed by the worker: multi-line snapshots (\n, \t) rejected; creator test proved the wrong thing; unpin disabled every row.
+- Fixed by me: unpin echoed the stored pair key in `chat`; it now echoes the peer JID (test added).
+- Accepted: the snapshot text and sender name are client-supplied and display-only; a pin manager could word a snapshot differently from the message, inside a chat they already belong to. Plain-member topic creators cannot pin from the UI (server allows it).
+- Not live-checked: UI verified by tests and mock mode only.
 
 ### Follow-ups
--
+- Unify the 404 message for a missing pin ("Pin not found" vs "Chat not found") if pin ids ever become guessable (they are UUIDs).
+- Spec Checks line: `turbo test` does not accept `--maxWorkers`; run per-package.

@@ -28,7 +28,7 @@ import { VoiceMessage } from './VoiceMessage';
 import { copyText } from '@/lib/clipboard';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
-import { useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 /** Monochrome-friendly sender name colors (ui-style.md §5). */
 const SENDER_COLORS = ['#d4d4d4', '#a1a1a1', '#8a8a8a', '#ededed'] as const;
@@ -158,6 +158,7 @@ export function MessageBubble({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const storeApi = useChatStoreApi();
+  const store = useChatStore();
   const own = message.senderId === currentUserId;
   const deleted = message.deleted === true;
   const markdown = shouldRenderMarkdown(chat, message, currentUserId);
@@ -203,12 +204,16 @@ export function MessageBubble({
 
   // Sender-side limits: Edit is for my own text messages under 48 h, Delete for
   // everyone is for my own messages of any kind. Neither applies to a tombstone.
+  // Pin is for anyone who may pin in the chat (DM either side, topic manager),
+  // on any loaded message that is not deleted.
   const canEdit =
     !generating &&
     !deleted &&
     message.attachment === undefined &&
     canEditMessage(message, currentUserId, new Date());
   const canDelete = !generating && !deleted && canDeleteMessage(message, currentUserId);
+  const canPin = !generating && !deleted && store.canPin(chat.id);
+  const pin = store.pinFor(chat.id, message.id);
 
   // A retracted message keeps its place as a slim tombstone and has no actions.
   if (deleted) {
@@ -468,6 +473,8 @@ export function MessageBubble({
               canCopy={hasText}
               canEdit={canEdit}
               canDelete={canDelete}
+              canPin={canPin}
+              isPinned={pin !== undefined}
               onReact={(emoji) => {
                 setMenuOpen(false);
                 handleReact(emoji);
@@ -489,6 +496,22 @@ export function MessageBubble({
                 // Focus the opener so the dialog can restore it on close.
                 menuButtonRef.current?.focus();
                 setConfirmOpen(true);
+              }}
+              onPin={() => {
+                setMenuOpen(false);
+                storeApi
+                  .getState()
+                  .pinMessage(chat.id, message.id)
+                  .catch(() => {});
+              }}
+              onUnpin={() => {
+                setMenuOpen(false);
+                if (pin !== undefined) {
+                  storeApi
+                    .getState()
+                    .unpinMessage(chat.id, pin.id)
+                    .catch(() => {});
+                }
               }}
               onClose={() => setMenuOpen(false)}
               align={own ? 'right' : 'left'}

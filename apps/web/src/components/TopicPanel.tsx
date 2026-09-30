@@ -6,6 +6,7 @@ import { Avatar } from './Avatar';
 import { AiBadge } from './AiBadge';
 import { ConfirmDialog } from './ConfirmDialog';
 import { FieldError } from './ais/AiPageShell';
+import { PinsSection } from './PinsPanel';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { Button } from './ui/button';
 import { useMediaQuery } from '@/lib/useMediaQuery';
@@ -633,6 +634,8 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
               {toolsCount} {toolsCount === 1 ? 'tool' : 'tools'} in this topic
             </p>
           )}
+
+          <PinsSection chatId={chat.id} onOpen={() => storeApi.getState().setPinsPanel(chat.id)} />
 
           {topic.isGeneral !== true && (
             <section aria-label="Danger zone" className="flex flex-col gap-2 px-2">
