@@ -1,12 +1,14 @@
+import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, Plus, Search } from 'lucide-react-native';
+import { ChevronLeft, Link2, Plus, Search } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, TextInput, View } from 'react-native';
+import { FlatList, Pressable, Share, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Avatar } from '@/components/chat/avatar';
+import { InviteLinksSheet, type CreateInviteLinkForm } from '@/components/chat/invite-links-sheet';
 import { NewTopicSheet, type NewTopicInput } from '@/components/chat/new-topic-sheet';
 import { TopicActionsSheet, type TopicSheetAction } from '@/components/chat/topic-sheets';
 import { TopicRow } from '@/components/chat/topic-row';
@@ -15,6 +17,7 @@ import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
+import type { GroupInviteLink } from '@/lib/invite-links-api';
 import { mayArchiveTopic, mayCreateTopic, topicsHeaderSubtitle, topicsOfGroup } from '@/lib/topics';
 import type { ChatSummary } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -39,8 +42,18 @@ function GroupTopics() {
   const refreshGroupDetail = useChatStore((state) => state.refreshGroupDetail);
   const ownedAis = useChatStore((state) => state.ownedAis);
   const currentUserId = useChatStore((state) => state.currentUserId);
+  const listInviteLinks = useChatStore((state) => state.listInviteLinks);
+  const createInviteLink = useChatStore((state) => state.createInviteLink);
+  const revokeInviteLink = useChatStore((state) => state.revokeInviteLink);
   const createTopic = useChatStore((state) => state.createTopic);
   const addTopicAi = useChatStore((state) => state.addTopicAi);
+  const [linksOpen, setLinksOpen] = useState(false);
+  const [linksNow, setLinksNow] = useState(() => Date.now());
+  const [links, setLinks] = useState<GroupInviteLink[]>([]);
+  const [linksBusy, setLinksBusy] = useState(false);
+  const [linksError, setLinksError] = useState('');
+  const [createdUrl, setCreatedUrl] = useState<string | undefined>(undefined);
+  const [revokingId, setRevokingId] = useState<string | undefined>(undefined);
   const archiveTopic = useChatStore((state) => state.archiveTopic);
   const muteChat = useChatStore((state) => state.muteChat);
   const topicNotice = useChatStore((state) => state.topicNotice);
@@ -78,6 +91,14 @@ function GroupTopics() {
     () => groupAis.filter((ai) => ownedAis.some((owned) => owned.id === ai.aiId)),
     [groupAis, ownedAis],
   );
+  const canManageLinks = useMemo(
+    () =>
+      members.some(
+        (member) =>
+          member.userId === currentUserId && (member.role === 'owner' || member.role === 'admin'),
+      ),
+    [members, currentUserId],
+  );
   const canCreate = mayCreateTopic({
     members,
     meUserId: currentUserId,
@@ -85,6 +106,63 @@ function GroupTopics() {
   });
   const notice =
     topicNotice !== undefined && topicNotice.groupId === groupId ? topicNotice.message : undefined;
+
+  // Invite links (T-0136): owner/admin only, like the web panel. The list
+  // loads when the sheet opens; the created URL is kept only until
+  // dismissed, never stored.
+  const reloadLinks = async (): Promise<void> => {
+    setLinksError('');
+    try {
+      setLinks(await listInviteLinks(groupId));
+    } catch {
+      setLinksError('Could not load invite links. Try again.');
+    }
+  };
+
+  const openLinks = () => {
+    setLinksError('');
+    setCreatedUrl(undefined);
+    setRevokingId(undefined);
+    // Fresh clock for the expired/exhausted labels on every open: the sheet
+    // stays mounted while hidden, so a mount-time stamp would go stale.
+    setLinksNow(Date.now());
+    setLinksOpen(true);
+    void reloadLinks();
+  };
+
+  const createLink = (input: CreateInviteLinkForm) => {
+    setLinksBusy(true);
+    setLinksError('');
+    void createInviteLink(groupId, input)
+      .then((created) => {
+        setCreatedUrl(created.url);
+        return reloadLinks();
+      })
+      .catch(() => setLinksError('Could not create the invite link. Try again.'))
+      .finally(() => setLinksBusy(false));
+  };
+
+  const revokeLink = (linkId: string) => {
+    setRevokingId(linkId);
+    setLinksError('');
+    void revokeInviteLink(groupId, linkId)
+      .then(() => reloadLinks())
+      .catch(() => setLinksError('Could not revoke the invite link. Try again.'))
+      .finally(() => setRevokingId(undefined));
+  };
+
+  // The clipboard/share bridge for the shown-once block: `expo-clipboard`
+  // and React Native's `Share` cannot run in Node tests, so the sheet takes
+  // callbacks and this screen wires the real modules at the edge.
+  const linksShare = useMemo(
+    () => ({
+      copyText: (text: string) => Clipboard.setStringAsync(text).then(() => {}),
+      shareText: async (text: string): Promise<void> => {
+        await Share.share({ message: text });
+      },
+    }),
+    [],
+  );
 
   const openTopic = (chat: ChatSummary) => {
     dismissTopicNotice();
@@ -169,6 +247,11 @@ function GroupTopics() {
             })}
           </Text>
         </View>
+        {canManageLinks ? (
+          <IconButton label="Invite links" onPress={openLinks}>
+            <Link2 size={20} color={ICON[scheme]} />
+          </IconButton>
+        ) : null}
       </View>
 
       {notice !== undefined ? (
@@ -271,6 +354,24 @@ function GroupTopics() {
         onClose={() => {
           if (!composerBusy) {
             setComposerOpen(false);
+          }
+        }}
+      />
+      <InviteLinksSheet
+        visible={linksOpen}
+        links={links}
+        busy={linksBusy}
+        error={linksError}
+        createdUrl={createdUrl}
+        revokingId={revokingId}
+        now={linksNow}
+        share={linksShare}
+        onCreate={createLink}
+        onRevoke={revokeLink}
+        onDismissCreated={() => setCreatedUrl(undefined)}
+        onClose={() => {
+          if (!linksBusy) {
+            setLinksOpen(false);
           }
         }}
       />

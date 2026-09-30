@@ -58,3 +58,16 @@ export function useChatStore<T>(selector: (state: ChatStoreState) => T): T {
   }
   return useStore(store, selector);
 }
+
+/**
+ * The raw store for call-time reads outside render (T-0136): the join route
+ * resolves the just-joined group after the store refreshes chats, so it
+ * must read the chats fresh rather than from its render-time snapshot.
+ */
+export function useChatStoreApi(): StoreApi<ChatStoreState> {
+  const store = useContext(ChatStoreContext);
+  if (store === null) {
+    throw new Error('useChatStoreApi must be used inside ChatStoreProvider');
+  }
+  return store;
+}

@@ -1,8 +1,15 @@
 import type { MessageStatus, UiMessage } from '@galena/chat-core';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
+import type {
+  CreatedInviteLink,
+  CreateGroupInviteLinkInput,
+  JoinPreview,
+  JoinResult,
+} from '../lib/invite-links-api';
 import { CURRENT_USER_ID, CURRENT_USER_NAME } from '../lib/types';
 import { chatSeeds, mockChats, mockMessagesByChat } from '../mock';
+import { createMockInviteLinksStore } from '../mock/invite-links';
 import { mockDevteamGroupDetail, mockDevteamOwnedAis, mockTopicAisById } from '../mock/topics';
 import { mockParamAllowed } from '../mock/gate';
 import {
@@ -58,6 +65,11 @@ type ChatStoreData = Omit<
   | 'leaveTopic'
   | 'listTopicMembers'
   | 'listTopicAis'
+  | 'listInviteLinks'
+  | 'createInviteLink'
+  | 'revokeInviteLink'
+  | 'previewJoinLink'
+  | 'joinByLink'
   | 'setSearch'
   | 'setActiveFolder'
   | 'start'
@@ -183,6 +195,11 @@ export function createChatStore(
     };
 
     scheduleTypingSimulation(set);
+
+    // The mock invite-links backend (T-0136): create, list, revoke, preview
+    // and join against in-memory links, so the manage and join UI work in
+    // mock mode without a server.
+    const inviteLinks = createMockInviteLinksStore();
 
     // The `slow` scenario is the only one that settles: the real list arrives
     // after the delay, the same way a slow backend would.
@@ -351,6 +368,16 @@ export function createChatStore(
         }
         return mockTopicAisById()[topicId] ?? [];
       },
+      listInviteLinks: async (groupId: string) => inviteLinks.list(groupId),
+      createInviteLink: async (
+        groupId: string,
+        input: CreateGroupInviteLinkInput,
+      ): Promise<CreatedInviteLink> => inviteLinks.create(groupId, input),
+      revokeInviteLink: async (groupId: string, linkId: string): Promise<void> => {
+        inviteLinks.revoke(groupId, linkId);
+      },
+      previewJoinLink: async (token: string): Promise<JoinPreview> => inviteLinks.preview(token),
+      joinByLink: async (token: string): Promise<JoinResult> => inviteLinks.join(token),
       start: () => {},
       stop: () => {},
       openChat: (chatId) => {

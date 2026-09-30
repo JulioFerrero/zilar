@@ -7,6 +7,13 @@ import type {
 } from '@galena/chat-core';
 
 import type { Contact, GroupDetail, Me } from '../lib/chat-api';
+import type {
+  CreatedInviteLink,
+  CreateGroupInviteLinkInput,
+  GroupInviteLink,
+  JoinPreview,
+  JoinResult,
+} from '../lib/invite-links-api';
 import type { CreateTopicInput, PatchTopicInput } from '../lib/topics-api';
 import type { ChatFolder } from '../lib/types';
 
@@ -214,6 +221,29 @@ export interface ChatStoreState {
   listTopicMembers: (chatId: string) => Promise<{ userId: string; name: string }[]>;
   /** Reads the AIs in a topic. */
   listTopicAis: (chatId: string) => Promise<{ id: string; name: string }[]>;
+  /**
+   * The active invite links of one group (owner/admin only, same rule as
+   * web): hints, labels, uses and state — never tokens (T-0136). Rejects on
+   * failure.
+   */
+  listInviteLinks: (groupId: string) => Promise<GroupInviteLink[]>;
+  /**
+   * Creates an invite link for one group. Resolves with the link shown once
+   * (the URL carries the token); the caller shows it and never stores it.
+   */
+  createInviteLink: (
+    groupId: string,
+    input: CreateGroupInviteLinkInput,
+  ) => Promise<CreatedInviteLink>;
+  /** Revokes an invite link. Idempotent; rejects on failure. */
+  revokeInviteLink: (groupId: string, linkId: string) => Promise<void>;
+  /** Previews a join-by-link token: group title and member count only. */
+  previewJoinLink: (token: string) => Promise<JoinPreview>;
+  /**
+   * Joins the group behind a link token as `member` and refreshes the chat
+   * list. Resolves with the group id. Rejects on failure.
+   */
+  joinByLink: (token: string) => Promise<JoinResult>;
   setSearch: (search: string) => void;
   setActiveFolder: (folder: ChatFolder) => void;
   start: () => void;
