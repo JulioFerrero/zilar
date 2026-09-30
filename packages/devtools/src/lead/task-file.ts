@@ -84,3 +84,23 @@ export function extractBlockedText(text: string): string {
   }
   return collected.join('\n').trim();
 }
+
+// Paths where a subtle mistake costs more than the extra thinking time:
+// schema and migrations, auth, crypto, the XMPP server config.
+const RISKY_PATHS = /schema\.ts|drizzle|\/auth\/|crypto|ejabberd|authz/i;
+
+// Picks the reasoning effort for a worker from the task file. `effort:` in
+// the front matter always wins. Otherwise a task is `high` when its Allowed
+// files touch risky paths or its estimate is 3 days or more, and `low` when it
+// is a clear, contained job (measured 2026-10-01: same pass rate, 2-4x faster).
+export function pickEffort(taskText: string, explicit: string | undefined): string {
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  const allowed = /###\s*Allowed files\s*\n([\s\S]*?)(?=\n#{2,3}\s|$)/i.exec(taskText)?.[1] ?? '';
+  if (RISKY_PATHS.test(allowed)) {
+    return 'high';
+  }
+  const days = /^estimate:\s*([\d.]+)\s*day/im.exec(taskText)?.[1];
+  return days !== undefined && Number(days) >= 3 ? 'high' : 'low';
+}

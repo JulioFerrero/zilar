@@ -4,14 +4,8 @@ import { type OpenCodeClient, type SessionModel } from './client.js';
 import type { GitRunner } from './git.js';
 import { loadPrompt, loadRulesFile, renderPrompt, unfilledPlaceholders } from './prompts.js';
 import { loadState, saveState } from './state.js';
-import { assertAllowedModel, parseTaskFrontMatter, splitModel } from './task-file.js';
+import { assertAllowedModel, parseTaskFrontMatter, pickEffort, splitModel } from './task-file.js';
 import { newTaskRecord } from './types.js';
-
-// Measured 2026-10-01: `low` was 2-4x faster than the default with the same
-// pass rate on a spec-driven implementation task; the review gates catch the
-// rest. A task can set `effort:` in its front matter (e.g. `high` for schema or
-// security work).
-export const DEFAULT_WORKER_EFFORT = 'low';
 
 export interface LaunchDeps {
   repoRoot: string;
@@ -56,14 +50,13 @@ export function readTaskFrontMatter(
   effort: string;
 } {
   const file = findTaskFile(repoRoot, task);
-  const frontMatter = parseTaskFrontMatter(
-    fs.readFileSync(path.join(repoRoot, 'work', file), 'utf8'),
-  );
+  const text = fs.readFileSync(path.join(repoRoot, 'work', file), 'utf8');
+  const frontMatter = parseTaskFrontMatter(text);
   return {
     file,
     model: frontMatter.model,
     branch: frontMatter.branch,
-    effort: frontMatter.effort ?? DEFAULT_WORKER_EFFORT,
+    effort: pickEffort(text, frontMatter.effort),
   };
 }
 
