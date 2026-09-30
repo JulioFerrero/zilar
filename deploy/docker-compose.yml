@@ -31,6 +31,8 @@ services:
       POSTGRES_DB: postgres
       GALENA_DB_PASSWORD: ${GALENA_DB_PASSWORD:?GALENA_DB_PASSWORD is required}
       EJABBERD_DB_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required}
+      # Read-only role for message search (see 20-search-reader.sql).
+      GALENA_ARCHIVE_DB_PASSWORD: ${GALENA_ARCHIVE_DB_PASSWORD:?GALENA_ARCHIVE_DB_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
@@ -97,6 +99,7 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
       DATABASE_URL: postgres://galena:${GALENA_DB_PASSWORD:?GALENA_DB_PASSWORD is required}@postgres:5432/galena
+      XMPP_ARCHIVE_DATABASE_URL: postgres://galena_archive:${GALENA_ARCHIVE_DB_PASSWORD:?GALENA_ARCHIVE_DB_PASSWORD is required}@postgres:5432/ejabberd
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PUBLIC_URL: https://${GALENA_DOMAIN:?GALENA_DOMAIN is required}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}

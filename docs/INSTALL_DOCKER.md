@@ -25,7 +25,7 @@ Fill in every `CHANGE_ME` in `deploy/.env`:
 |---|---|
 | `GALENA_DOMAIN` | Your domain, e.g. `chat.example.com`. Use `localhost` only to try it out. |
 | `ACME_EMAIL` | Your email for the Let's Encrypt account. |
-| `POSTGRES_PASSWORD`, `GALENA_DB_PASSWORD`, `EJABBERD_DB_PASSWORD` | `openssl rand -hex 24` each (URL-safe). |
+| `POSTGRES_PASSWORD`, `GALENA_DB_PASSWORD`, `EJABBERD_DB_PASSWORD`, `GALENA_ARCHIVE_DB_PASSWORD` | `openssl rand -hex 24` each (URL-safe). |
 | `EJABBERD_ADMIN_PASSWORD` | `openssl rand -hex 24`. |
 | `GALENA_XMPP_JWT_SECRET` | `openssl rand -base64 48`. |
 | `BETTER_AUTH_SECRET` | `openssl rand -base64 32`. |

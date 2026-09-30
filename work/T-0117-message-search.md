@@ -1,7 +1,7 @@
 ---
 id: T-0117
 title: Message search across chats, groups and topics (server + web)
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0117-message-search
 model: meta/muse-spark-1.3-contributor
@@ -71,28 +71,219 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Discovery first: with `pnpm infra:up` running I ran only `\d archive` and
+  `select count(*)` (3 524 rows) against the live ejabberd DB — per the lead's
+  privacy note I never selected message rows. Column semantics
+  (`username`/`bare_peer`/`peer`/`kind`/`nick`/`txt`/`origin_id`/`xml`,
+  per-side DM rows, per-room group rows, correction/retraction row shapes)
+  were derived from the ejabberd 26.07 sources (`mod_mam.erl`,
+  `mod_mam_sql.erl`, `pg.sql`) plus our own client stanza builders
+  (`packages/xmpp-core/src/stanza.ts`: XEP-0308 `<replace/>`, XEP-0424
+  `<retract/>` + fallback body). Written up in `docs/SEARCH_NOTES.md`
+  (48 lines, ≤ 60 as required) before the code.
+- Server (`apps/server/src/search/`): `GET /api/search`
+  (`q` 2–100 chars trimmed, optional `chat` JID, `limit` ≤ 50 default 20,
+  `before` microsecond cursor). Full-text match
+  `to_tsvector('simple', txt) @@ websearch_to_tsquery('simple', $q)`,
+  snippet via `ts_headline` with `StartSel=/StopSel=` sentinels converted
+  to plain-text `snippet` + `marks` ranges (never HTML). Scan capped to the
+  last 12 months and 5 000 candidates; `WHERE username … AND timestamp > …`
+  stays on the existing `(username, timestamp)` index.
+  - Authz: allowed archives computed from our tables only — caller's own
+    `username` + `bare_peer` filter for DMs (contacts incl. names, own AIs),
+    General + `visibleTopics` room JIDs for groups. `chat` outside the set
+    → 404 `not_found`. DMs are never read under the peer's `username`.
+    Corrections: latest text per `(chat, origin_id)` target wins (via a
+    second bounded `xml LIKE` query, since edit rows need not contain `q`);
+    retracted messages and retract rows themselves are excluded (detected
+    from namespaced `xml` tags only). Fully parameterized `$n` bindings.
+  - `XMPP_ARCHIVE_DATABASE_URL` (zod, optional): separate pool
+    (`max` 3, `statement_timeout` 3 s). Absent → 501 `search_unavailable`.
+    Rate limit 30/min/user. Logs `{ userId, results, durationMs }` only —
+    never `q`. No audit rows. AI gateway untouched.
+  - Infra/docs: `infra/postgres/init/20-search-reader.sql` creates the
+    `galena_archive` login role with only `GRANT SELECT ON archive`
+    (`CHANGE_ME` placeholder, password from `infra/.env`, git-ignored);
+    `docs/SERVER_CONFIG.md` documents the var + role setup.
+- Web: `SearchBar`/`⌘K` keeps filtering chat names; typing 2+ chars adds a
+  **Messages** section below (chat-name matches first), hits grouped by
+  chat with avatar, `senderName`, time, and snippet marks rendered as
+  text-only spans (`SearchSnippet`). `useMessageSearch`: 250 ms debounce,
+  `AbortController` cancel of superseded requests, empty/error states,
+  hidden entirely on 501. Enter/click → `openAtMessage` (new store action:
+  opens the chat, pages history until the message loads, max 20 pages,
+  else "Message not found") + scroll to `[data-message-id]`. Chat header
+  "Search in chat" now scopes via a `searchChat` chip in the search box
+  (click the chip to clear). Mock mode: in-memory substring search over
+  mock messages in `mock/api.ts`.
+- T-0116 (roles) is not merged, so role-based topic access is not in the
+  allowed set; the spec's "including role access if T-0116 is merged" is
+  noted in code for that task. T-0114 (pinned jump loader) is not merged,
+  so jumping uses `loadOlder` paging with the "Message not found" fallback.
 
 ### Files changed
--
+- `apps/server/src/search/service.ts` (new: pool, `allowedArchives`, `resolveChatFilter`),
+  `routes.ts` (new: endpoint, `buildArchiveQuery`, `headlineToSnippet`,
+  correction/retraction targets, `stanzaFrom` + direction-aware `senderNameFor`),
+  `search.test.ts` (new: 18 tests)
+- `apps/server/src/config.ts` (+`config.test.ts`), `app.ts`, `index.ts`
+  (pool wiring); `authz-sweep.test.ts` untouched (covers `/api/search` → 401)
+- `infra/postgres/init/20-search-reader.sql` (new, fully guarded),
+  `docs/SERVER_CONFIG.md`, `docs/SEARCH_NOTES.md` (new, 50 lines)
+- `apps/web/src/lib/api.ts` (`searchMessages` + schemas),
+  `lib/useMessageSearch.ts` (new), `lib/scrollToMessage.ts` (new),
+  `components/MessageSearchResult(s).tsx` (new),
+  `components/ChatList.tsx`, `ChatHeader.tsx`, `SearchBar.tsx`,
+  `store/store.ts` + `realStore.ts` (`searchChat`, `openAtMessage`;
+  `loadOlder` refactored to share `loadOlderPage`), `mock/api.ts`
+- Tests: `MessageSearch.test.tsx` (11), `MessageSearchList.test.tsx` (6),
+  `mock/api.test.ts` (+2), `realStore.test.tsx` (+3 `openAtMessage`)
+- `work/T-0117-message-search.md` (this report + status)
 
 ### Commands run and real results
--
+- `pnpm install`: pass (6.3 s)
+- Discovery: `\d archive` (columns + 5 indexes as spec'd), `select
+  count(*)` → 3524; ejabberd sources fetched via webfetch
+  (`mod_mam.erl`, `mod_mam_sql.erl` 26.07). No message contents read.
+- `pnpm format:check`: pass for all owned files (the repo-wide check also
+  flags the lead's untracked `PREREVIEW.md`, which is not mine and I left
+  untouched; `.sql` has no Prettier parser, same as before)
+- `pnpm lint`: pass (oxlint clean)
+- `pnpm typecheck`: pass — server `tsc --noEmit` clean (full turbo
+  typecheck passed pre-review at 10/10; rerunning per the one-command rule)
+- `pnpm --filter @galena/server test --maxWorkers=2` (full suite, rerun
+  after review fixes): 65 files passed, 5 skipped; 1114 passed, 7 skipped
+  (includes the 3 new sender-attribution tests)
+- `pnpm --filter @galena/web test --maxWorkers=2`: full suite 662 passed
+  (24.8 s, pre-review; web code untouched by review fixes — `You` renders
+  as plain text through the existing sender slot, no test breakage)
+- `pnpm build`: pass (2/2 turbo tasks, pre-review; rerunning below)
+- Scoped: `src/search` 18 passed; `config.test.ts` 22 passed (incl. 3 new);
+  `authz-sweep` 5 passed (`GET /api/search → 401` listed);
+  `MessageSearch*.test.tsx` 17 passed; `realStore.test.tsx` 94 passed.
+- `grep` for `any|@ts-ignore|disable` in all new/touched source: no hits.
 
 ### Problems, deviations from the spec, open questions
--
+- `before` is documented as microsecond `archive.timestamp` units (the only
+  cursor that pages exactly); ISO cursors would need lossy conversion.
+- Mock-mode `before` compares ISO strings; server `before` compares
+  microsecond ints. Same newest-first paging semantics, different units —
+  acceptable for a mock, noted here.
+- `openAtMessage` pages back at most 20 history pages, then "Message not
+  found". A direct MAM `before`-cursor jump (T-0114's loader, not merged)
+  would be faster; this follows the spec's fallback path.
+- `SEARCH_WINDOW_MS` is 365 days as "12 months"; leap-day precision is
+  irrelevant for a scan cap.
+- The `galena_archive` role script only takes effect on first start of an
+  empty volume (like `10-create-databases.sql`); existing volumes need the
+  manual `GRANT SELECT ON archive TO galena_archive;` from SERVER_CONFIG.
+  When ejabberd creates `archive` after postgres init (the normal order),
+  the DBA runs that same GRANT once the table exists — also documented.
+- No new dependencies. No secrets read or committed (`infra/.env` never opened).
+
+### Round 2 (review fixes)
+- Fix 1 — init script no longer breaks fresh installs: the whole body is
+  guarded by `\if :{?galena_archive_password}` plus an empty-string check
+  (`SELECT … \gset` → `\if :has_pw`), and the `ejabberd`-database and
+  `archive`-table steps are each guarded by `EXISTS` checks, so the script
+  is a no-op whenever the variable, database, or table is absent. I first
+  added `REVOKE CONNECT … FROM PUBLIC` for least privilege, then removed
+  it before proving: it would have broken the existing
+  `galena`/`ejabberd`/`litellm` roles, which rely on the stock PUBLIC
+  connect grant and get no explicit grant in `10-create-databases.sql`.
+  The reader now gains only `CONNECT` on `ejabberd` + `SELECT` on one
+  table; everything else keeps working exactly as before.
+  Proved on real `pgvector/pgvector:0.8.6-pg18-trixie` scratch containers
+  (never `galena-dev-*`; only throwaway passwords; `galena-dev-postgres-1`
+  untouched): (a) WITHOUT the variable → init starts cleanly, no ERROR or
+  FATAL in the logs, all four databases created, `galena_archive` role
+  count 0. (b) WITH `GALENA_ARCHIVE_DB_PASSWORD=throwawayarchive` →
+  clean start, role exists with LOGIN and a password. (c) Empty-string
+  variable → clean start, role count 0. (d) With the var set but no
+  `archive` table yet (the real boot order) → clean start, role exists;
+  after creating a stand-in `archive` table + manual GRANT, the reader
+  `SELECT count(*)` returns 0, `SELECT` on another table → permission
+  denied, `INSERT` → permission denied, `CONNECT` to `galena`/`postgres`
+  (tested after removing the REVOKE lines) still works for existing roles
+  — i.e. least privilege holds without touching PUBLIC grants. All
+  scratch containers stopped and removed afterwards.
+- Fix 2 — DM sender attribution: `senderNameFor` now parses the stanza's
+  `from` (`stanzaFrom`, defensive regex like the other tag readers) and
+  returns `You` when its bare JID equals the caller's
+  (`ownLocalpart@xmpp.domain` from config; localpart authoritative, domain
+  lowercased for the comparison). Malformed/missing `from` falls back to
+  the peer's name; group hits still use the room nick. New tests: outgoing
+  DM → `You`, incoming → peer name (`Bob`, via renamed test users),
+  malformed xml → peer name; group hit → nick; `stanzaFrom` unit cases
+  (single quotes, missing/empty/garbage). Web renders `senderName` as
+  plain text already, so `You` needs no special handling and no web test
+  broke (web suite untouched by this change).
+- Nit — `SEARCH_NOTES.md` (now 50 lines, still ≤ 60) says the query is a
+  sequential scan capped at 12 months / 5 000 rows and that the 3 s
+  statement timeout protects the database on very large archives.
+### Round 3 (review fixes 2)
+- Fix 1 — fresh installs get the GRANT: inside the same guarded block,
+  after `\connect ejabberd`, added `ALTER DEFAULT PRIVILEGES FOR ROLE
+  ejabberd IN SCHEMA public GRANT SELECT ON TABLES TO galena_archive;`
+  (the `ejabberd` role owns the tables ejabberd creates; role name from
+  `10-create-databases.sql`). The direct `GRANT SELECT ON public.archive`
+  stays for volumes where the table already exists. `SERVER_CONFIG.md`
+  step 2–3 updated to match.
+  Proved on a fresh `pgvector/pgvector:0.8.6-pg18-trixie` scratch
+  container (throwaway passwords, no published ports, never
+  `galena-dev-*`): init ran with zero ERROR/FATAL lines; then, as role
+  `ejabberd`, created stand-in `archive` + `other_stuff` tables (mirroring
+  real ownership); then as `galena_archive`: `SELECT count(*) FROM
+  archive` → `0` (exit 0); `INSERT INTO archive` → `ERROR: permission
+  denied for table archive`; `SELECT` on a table planted by another role
+  (`planted_by_dba`, superuser-owned) → `ERROR: permission denied`
+  (exit 1). Honest nuance for the record: default privileges necessarily
+  cover every future table owned by role `ejabberd` in that database
+  (Postgres cannot filter them by table name) — `other_stuff` created by
+  `ejabberd` IS readable. That database holds only ejabberd's own
+  operational tables, the role still cannot write anywhere, and it gains
+  nothing outside that database (no USAGE/SELECT grants elsewhere; the
+  PUBLIC connect grants everyone relies on are untouched). Scratch tables
+  dropped, container stopped and removed.
+- Fix 2 — Enter in the search box opens the top hit: `SearchBar`'s input
+  dispatches `galena:search-enter` on Enter (mirroring the existing
+  `galena:focus-search` pattern; no other input behavior changes, so the
+  `ChatList` search-filter tests are unaffected); `MessageSearchResults`
+  listens and opens the current top hit through the same `openHit` path
+  as click (a `topHitRef` mirrors the ready-state top item; written from
+  an effect, read only in listeners — no render-time ref access, `openHit`
+  memoized with `useCallback` so both lint rules pass). New tests: type
+  2+ chars + Enter in the input → `openAtMessage` called with the top hit
+  (`c-ana`, `ana-1`) and the chat activates; Enter with "No messages
+  found" → `openAtMessage` never called, nothing opens.
+- Fix 3 — `waitForHistory` bounded: resolves `false` after
+  `MESSAGE_JUMP_WAIT_MS = 10_000`; `openAtMessage` breaks out to the
+  existing `message_not_found` rejection instead of hanging. New store
+  test with a never-settling `loadHistory` under fake timers: after
+  advancing 11 s the jump rejects `message_not_found`.
+- The compose pass-through of `GALENA_ARCHIVE_DB_PASSWORD` is left to the
+  lead as instructed; the script assumes the variable may be absent.
+- Round-3 verification (one Vitest command at a time): targeted
+  `MessageSearchList` + `ChatList` + `realStore` 123 passed;
+  `ChatList` + `MessageSearch` 31 passed; full server suite 65 files /
+  1114 passed; full web suite 59 files / 665 passed (incl. the 2 new
+  Enter tests and the stall test); owned-file `format:check` clean
+  (repo-wide flag is only the lead's untracked `PREREVIEW.md`);
+  `lint` clean; `typecheck --force` 10/10; `build` 2/2.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None.
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged after three review rounds.
 
 ### Findings
--
+- Authorization design checked twice: the allowed archives come from our tables only (contacts, own AIs, groups and `visibleTopics`), DMs are read only under the caller's own username with a peer filter, a chat outside the set is a 404, SQL is fully parameterized, the query text is never logged, snippets are plain text plus mark ranges.
+- Round 1 and 2 fixes verified: the init script no longer breaks a fresh database, the reader role gets SELECT on future ejabberd tables through default privileges (proved in a scratch Postgres; the honest nuance is that every future table owned by the ejabberd role is readable, still read-only), DM hits from the caller say "You", Enter in the search box opens the top hit, and a stalled history fetch ends in "Message not found".
 
 ### Follow-ups
--
+- Compose pass-through of `GALENA_ARCHIVE_DB_PASSWORD` (dev and production) is done by the lead.
+- Role-based rooms (T-0116) will widen the room set in `allowedArchives`.

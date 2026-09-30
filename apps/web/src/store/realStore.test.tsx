@@ -934,6 +934,56 @@ describe('createRealChatStore', () => {
     expect(store.getState().hasMore('ana@galena.test')).toBe(false);
   });
 
+  it('opens a chat at a loaded message without paging', async () => {
+    const { store } = await setup();
+    const found = await store.getState().openAtMessage('ana@galena.test', 'ana-2');
+    expect(found.id).toBe('ana-2');
+    expect(store.getState().activeChatId).toBe('ana@galena.test');
+  });
+
+  it('pages backwards until a far-back message is loaded', async () => {
+    const history = Array.from({ length: 60 }, (_, index) =>
+      message({
+        id: `ana-${index}`,
+        chatJid: 'ana@galena.test',
+        body: `msg ${index}`,
+        timestamp: new Date(Date.UTC(2026, 8, 28, 8, index)),
+      }),
+    );
+    const { store, xmpp } = await setup();
+    xmpp.history['ana@galena.test'] = history;
+
+    const found = await store.getState().openAtMessage('ana@galena.test', 'ana-3');
+    expect(found.text).toBe('msg 3');
+    expect(
+      store
+        .getState()
+        .messages('ana@galena.test')
+        .some((item) => item.id === 'ana-3'),
+    ).toBe(true);
+  });
+
+  it('rejects message_not_found when history runs out', async () => {
+    const { store } = await setup();
+    await expect(store.getState().openAtMessage('ana@galena.test', 'ghost')).rejects.toThrow(
+      'message_not_found',
+    );
+  });
+
+  it('gives up with message_not_found when a history fetch stalls', async () => {
+    const { store, xmpp } = await setup();
+    vi.useFakeTimers();
+    try {
+      // The opening page never settles: openAtMessage must not hang forever.
+      vi.mocked(xmpp.core.loadHistory).mockImplementationOnce(() => new Promise(() => {}));
+      const pending = store.getState().openAtMessage('ana@galena.test', 'ana-2');
+      await vi.advanceTimersByTimeAsync(11_000);
+      await expect(pending).rejects.toThrow('message_not_found');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('reflects connection status changes', async () => {
     const { store, xmpp } = await setup();
     expect(store.getState().status).toBe('online');

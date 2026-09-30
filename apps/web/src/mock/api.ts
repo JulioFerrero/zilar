@@ -2,6 +2,7 @@ import type { ChatEntry, Connection, Contact, Machine, Me, PublicAi } from '@/li
 import { currentUserId, PEOPLE } from './ids';
 import { mockChats } from './chats';
 import { mockGroupDetails } from './groups';
+import { mockMessages } from './messages';
 import { approvalCard } from './helpers';
 
 /**
@@ -580,6 +581,10 @@ export async function mockRequest(
     return notImplemented();
   }
 
+  if (head === 'search' && method === 'GET') {
+    return searchMessages(path);
+  }
+
   if (head === 'audit' && method === 'GET') {
     const params = new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
     const aiId = params.get('aiId');
@@ -785,6 +790,78 @@ export async function mockRequest(
   }
 
   return notImplemented();
+}
+
+// T-0117: a small in-memory index over the mock messages. Case-insensitive
+// substring match over text bodies (deleted messages and cards have no
+// searchable text); newest first; `chat` narrows to one mock chat id.
+function searchMessages(path: string): Response {
+  const params = new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
+  const q = (params.get('q') ?? '').trim();
+  if (q.length < 2 || q.length > 100) {
+    return jsonResponse(
+      { error: { code: 'invalid_request', message: 'Invalid search query' } },
+      400,
+    );
+  }
+  const chat = params.get('chat');
+  const limitParam = params.get('limit');
+  const limit = limitParam === null ? 20 : Math.max(1, Math.min(50, Number(limitParam)));
+  const before = params.get('before');
+  const beforeTime = before === null ? null : Date.parse(before);
+  const needle = q.toLowerCase();
+
+  const items: Array<{
+    chatJid: string;
+    messageId: string;
+    senderName: string;
+    at: string;
+    snippet: string;
+    marks: Array<[number, number]>;
+  }> = [];
+  for (const [chatId, messages] of Object.entries(mockMessages)) {
+    if (chat !== null && chat !== chatId) {
+      continue;
+    }
+    for (const message of messages) {
+      if (message.text === undefined || message.deleted === true) {
+        continue;
+      }
+      const index = message.text.toLowerCase().indexOf(needle);
+      if (index < 0) {
+        continue;
+      }
+      const at = message.createdAt;
+      if (beforeTime !== null && !Number.isNaN(beforeTime) && at.getTime() >= beforeTime) {
+        continue;
+      }
+      const begin = codePointIndex(message.text, index);
+      items.push({
+        chatJid: chatId,
+        messageId: message.id,
+        senderName: message.senderName,
+        at: at.toISOString(),
+        snippet: message.text,
+        marks: [[begin, begin + [...needle].length]],
+      });
+    }
+  }
+  items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+  const page = items.slice(0, limit);
+  const last = page.at(-1);
+  return jsonResponse({
+    items: page,
+    ...(last === undefined || items.length <= limit ? {} : { nextBefore: last.at }),
+  });
+}
+
+// `String.indexOf` counts UTF-16 units; marks count characters like the server.
+function codePointIndex(text: string, utf16Index: number): number {
+  let count = 0;
+  for (const _ of text.slice(0, utf16Index)) {
+    count += 1;
+  }
+  return count;
 }
 
 // T-0070: a fixed-format pairing code (4 chars, dash, 4 chars from an

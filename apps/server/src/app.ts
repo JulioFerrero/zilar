@@ -24,6 +24,7 @@ import { createContactsRoutes } from './contacts/routes';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
+import { createSearchRoutes, type SearchRoutesDependencies } from './search/routes';
 import { createTopicsRoutes } from './topics/routes';
 import { createMachinesRoutes } from './machines/routes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
@@ -91,6 +92,13 @@ export interface AppDependencies {
    * wires the real sandbox.
    */
   toolRunner?: ToolRunner;
+  /**
+   * T-0117: read-only pool on the ejabberd MAM archive. Absent = search is
+   * unconfigured (every search answers 501 `search_unavailable`).
+   */
+  archive?: SearchRoutesDependencies['archive'];
+  /** T-0117: injected in tests so the search rate window can advance. */
+  searchNow?: () => number;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -112,6 +120,8 @@ export function createApp({
   actionGateway,
   alwaysEligible,
   toolRunner,
+  archive,
+  searchNow,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
   const auditRecorder = audit ?? createAuditRecorder({ db, logger });
@@ -182,6 +192,20 @@ export function createApp({
     createTopicsRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
   );
   app.route('/api', createChatsRoutes({ auth, db, config }));
+  // Message search (T-0117) mounts always: without an archive pool every
+  // search answers 501 `search_unavailable` instead of 404ing, so the web
+  // can hide the feature. Never used by the AI gateway.
+  app.route(
+    '/api',
+    createSearchRoutes({
+      auth,
+      db,
+      config,
+      logger,
+      ...(archive === undefined ? {} : { archive }),
+      ...(searchNow === undefined ? {} : { now: searchNow }),
+    }),
+  );
   app.route('/api', createDraftsRoutes({ auth }));
   app.route('/api', createAuditRoutes({ auth, db }));
   app.route(

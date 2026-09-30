@@ -422,6 +422,65 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const loadingOlder = new Set<string>();
     // First-page history loads currently in flight, by chat id.
     const loadingHistory = new Set<string>();
+    // Message search jumps at most this many history pages back looking for
+    // the hit before giving up with "Message not found".
+    const MESSAGE_JUMP_MAX_PAGES = 20;
+    // Upper bound for one stalled history wait inside `openAtMessage`: after
+    // this the jump gives up with "Message not found" instead of hanging.
+    const MESSAGE_JUMP_WAIT_MS = 10_000;
+    // Resolves true once the in-flight first-page load for a chat settles,
+    // false after MESSAGE_JUMP_WAIT_MS so a stalled fetch cannot hang the
+    // jump: the caller then shows "Message not found".
+    function waitForHistory(chatId: string): Promise<boolean> {
+      return new Promise<boolean>((resolve) => {
+        const timer = window.setInterval(() => {
+          if (!loadingHistory.has(chatId)) {
+            window.clearInterval(timer);
+            window.clearTimeout(timeout);
+            resolve(true);
+          }
+        }, 25);
+        const timeout = window.setTimeout(() => {
+          window.clearInterval(timer);
+          resolve(false);
+        }, MESSAGE_JUMP_WAIT_MS);
+      });
+    }
+    // One backwards history page, shared with `loadOlder` below.
+    async function loadOlderPage(chatId: string, cursor: string): Promise<void> {
+      const chat = get().chats.find((entry) => entry.id === chatId);
+      const current = core;
+      if (chat === undefined || current === undefined || loadingOlder.has(chatId)) {
+        return;
+      }
+      loadingOlder.add(chatId);
+      try {
+        const page = await current.loadHistory(chatId, coreKind(chat), {
+          before: cursor,
+          max: PAGE_HISTORY_MAX,
+        });
+        ingestHistoryReactions(page.messages);
+        ingestHistoryEdits(page.messages);
+        const older = page.messages
+          .filter((message) => !isReactionOnly(message) && !isEditStanza(message))
+          .map((message) => toUiMessage(message, get().currentUserId));
+        resolvePendingEdits(chatId);
+        const withEditsApplied = older.map((message) => withEdits(message, chatId));
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: sortMessages([...withEditsApplied, ...listFor(state, chatId)]),
+          },
+          historyComplete: { ...state.historyComplete, [chatId]: page.complete },
+        }));
+        cursors[chatId] = page.first;
+        refreshEdits(chatId);
+      } catch {
+        // A failed page load leaves the cursor for a later retry.
+      } finally {
+        loadingOlder.delete(chatId);
+      }
+    }
     // A chat opened before the core was connected or before the chats had
     // arrived (e.g. a reload of /c/<jid>). Only the latest one counts; it
     // loads as soon as both are ready.
@@ -2007,43 +2066,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     }
 
     function loadOlder(chatId: string): void {
-      const chat = get().chats.find((entry) => entry.id === chatId);
       const cursor = cursors[chatId];
-      if (
-        core === undefined ||
-        chat === undefined ||
-        cursor === undefined ||
-        loadingOlder.has(chatId)
-      ) {
+      if (cursor === undefined) {
         return;
       }
-      loadingOlder.add(chatId);
-      void core
-        .loadHistory(chatId, coreKind(chat), { before: cursor, max: PAGE_HISTORY_MAX })
-        .then((page) => {
-          ingestHistoryReactions(page.messages);
-          ingestHistoryEdits(page.messages);
-          const older = page.messages
-            .filter((message) => !isReactionOnly(message) && !isEditStanza(message))
-            .map((message) => toUiMessage(message, get().currentUserId));
-          resolvePendingEdits(chatId);
-          const withEditsApplied = older.map((message) => withEdits(message, chatId));
-          set((state) => ({
-            messagesByChat: {
-              ...state.messagesByChat,
-              [chatId]: sortMessages([...withEditsApplied, ...listFor(state, chatId)]),
-            },
-            historyComplete: { ...state.historyComplete, [chatId]: page.complete },
-          }));
-          cursors[chatId] = page.first;
-          refreshEdits(chatId);
-        })
-        .catch(() => {
-          // A failed page load leaves the cursor for a later retry.
-        })
-        .finally(() => {
-          loadingOlder.delete(chatId);
-        });
+      void loadOlderPage(chatId, cursor);
     }
 
     async function boot(gen: number): Promise<void> {
@@ -2188,6 +2215,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       editTarget: undefined,
       actionError: undefined,
       search: '',
+      searchChat: undefined,
       activeFolder: 'all',
       typing: {},
       drafts: {},
@@ -2240,6 +2268,49 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         void openHistory(chatId);
       },
       loadOlder,
+      openAtMessage: async (chatId, messageId) => {
+        get().openChat(chatId);
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const current = core;
+        if (chat === undefined || current === undefined || !canLoadHistory(chat)) {
+          const found = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+          if (found === undefined) {
+            throw new Error('message_not_found');
+          }
+          return found;
+        }
+        // Wait for the opening page when it is still in flight, then page
+        // backwards until the message is loaded or history runs out. A
+        // stalled wait (false) breaks out to "Message not found".
+        for (let pages = 0; pages < MESSAGE_JUMP_MAX_PAGES; pages += 1) {
+          const loaded = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+          if (loaded !== undefined) {
+            return loaded;
+          }
+          if (get().historyComplete[chatId] === true) {
+            break;
+          }
+          if (loadingHistory.has(chatId)) {
+            if (!(await waitForHistory(chatId))) {
+              break;
+            }
+            continue;
+          }
+          const cursor = cursors[chatId];
+          if (cursor === undefined) {
+            if (!(await waitForHistory(chatId))) {
+              break;
+            }
+            continue;
+          }
+          await loadOlderPage(chatId, cursor);
+        }
+        const found = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        if (found === undefined) {
+          throw new Error('message_not_found');
+        }
+        return found;
+      },
       react: (chatId, messageId, emoji) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
         const mine = myJid();
@@ -2643,6 +2714,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           drafts: {},
           finishedDraftMessages: {},
           search: '',
+          searchChat: undefined,
           activeFolder: 'all',
         });
         groupMembers.clear();
@@ -2713,6 +2785,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
       },
       setSearch: (value) => set({ search: value }),
+      setSearchChat: (chatId) => set({ searchChat: chatId }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),
     };
   });

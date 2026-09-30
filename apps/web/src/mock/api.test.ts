@@ -150,6 +150,28 @@ describe('mockRequest', () => {
     expect(body.error.code).toBe('mock_not_implemented');
   });
 
+  it('searches the in-memory messages newest-first with marks', async () => {
+    const { searchMessages } = await import('@/lib/api');
+    const page = await searchMessages({ q: 'concert' });
+    expect(page.items.length).toBeGreaterThan(0);
+    const first = page.items[0]!;
+    expect(first.chatJid).toBe('c-ana');
+    expect(first.snippet.toLowerCase()).toContain('concert');
+    const [start, end] = first.marks[0]!;
+    expect([...first.snippet].slice(start, end).join('').toLowerCase()).toBe('concert');
+    const ats = page.items.map((item) => item.at);
+    expect([...ats].sort().reverse()).toEqual(ats);
+  });
+
+  it('mock search narrows to one chat and rejects short queries', async () => {
+    const { searchMessages } = await import('@/lib/api');
+    const page = await searchMessages({ q: 'concert', chat: 'c-ana' });
+    expect(page.items.every((item) => item.chatJid === 'c-ana')).toBe(true);
+    const other = await searchMessages({ q: 'concert', chat: 'c-marta' });
+    expect(other.items).toHaveLength(0);
+    await expect(searchMessages({ q: 'x' })).rejects.toMatchObject({ status: 400 });
+  });
+
   it('seeds three machines (1 pending, 1 approved, 1 revoked)', async () => {
     const machines = await listMachines();
     expect(machines).toHaveLength(3);

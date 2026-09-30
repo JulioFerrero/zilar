@@ -77,6 +77,10 @@ With `ACTION_DEMO_ENABLED=true`:
 - In a group: the card's third button is created by the AI's owner; any group admin sees the rule in the group panel's **Always allowed** list and can revoke it. Removing the AI from the group revokes its group rules.
 - Note for the visual check in mock mode: the card does not poll in a hidden browser tab (by design), so it stays on a grey placeholder until the tab is visible.
 
+## 12. Message search (T-0117)
+
+The live server now has search on (read-only role `galena_archive`, set up on 2026-09-30). In the web app press ⌘K or click the search box and type two or more letters of a word you know is in an old chat: a **Messages** section appears under the chat names, grouped by chat, with the match highlighted. Enter or a click opens that chat at the message. Also: "Search in chat" in a chat header limits it to that chat; a message you sent yourself in a DM shows **You** as the sender; a private topic you are not in never shows up. If the list says search is unavailable, the server log shows why (the 502 does not include the query).
+
 ## Known follow-ups (not blockers, also on `work/BOARD.md`)
 
 - Kill switch for room admins and workspace admins (J5), audit entries from the engine and proxy, retention (J4).

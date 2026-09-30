@@ -72,6 +72,7 @@ describe('loadServerConfig', () => {
         BETTER_AUTH_SECRET: VALID_SECRET,
         BETTER_AUTH_URL: 'https://auth.example.com',
         WEB_ORIGINS: 'https://app.example.com, https://admin.example.com',
+        XMPP_ARCHIVE_DATABASE_URL: 'postgres://galena_archive:hunter2@127.0.0.1:5432/ejabberd',
         ...VALID_XMPP_ENV,
       }),
     ).toEqual({
@@ -87,12 +88,33 @@ describe('loadServerConfig', () => {
       SMTP_PORT: 587,
       SMTP_SECURE: false,
       MAIL_ALLOW_CONSOLE_IN_PRODUCTION: false,
+      XMPP_ARCHIVE_DATABASE_URL: 'postgres://galena_archive:hunter2@127.0.0.1:5432/ejabberd',
       AGENT_GATEWAY_ENABLED: false,
       RUNNER_HUB_ENABLED: false,
       RUNNER_HUB_PORT: 3189,
       ACTION_DEMO_ENABLED: false,
       xmpp: VALID_XMPP,
     });
+  });
+
+  it('leaves message search unconfigured without the archive url', () => {
+    const config = loadServerConfig({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    });
+    expect(config.XMPP_ARCHIVE_DATABASE_URL).toBeUndefined();
+  });
+
+  it('rejects a non-postgres archive url without printing it', () => {
+    const message = configErrorMessage({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      XMPP_ARCHIVE_DATABASE_URL: 'mysql://galena_archive:hunter2@127.0.0.1:3306/ejabberd',
+      ...VALID_XMPP_ENV,
+    });
+    expect(message).toContain('XMPP_ARCHIVE_DATABASE_URL');
+    expect(message).not.toContain('hunter2');
   });
 
   it('surfaces a missing XMPP variable without printing a value', () => {
