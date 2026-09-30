@@ -23,6 +23,10 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Attachments | Images and files via XEP-0363 upload, paste, drag-and-drop, retry; images auto-load only from Galena's own upload host | web | 🟡 Merged | T-0065 |
 | Loading is never "empty" | Skeletons, inline errors with Retry, reloaded chats load their history | web, mobile | ✅ Live (web) · 🟡 (mobile) | T-0042, T-0057, T-0067 |
 | Safe rich text | Markdown in AI replies (safe subset, no HTML, no images, `http/https/mailto` links only) | web, mobile | 🟡 Merged | T-0049, T-0064 |
+| Topics in groups | Each group has topics (public or private) with General first; members-only rooms, a task strip with owner and status, new-topic dialog, topic panel; AIs are per topic. Web and mobile | server, web, mobile | 🟡 Merged | T-0108, T-0109, T-0110, T-0111, T-0112, T-0130 |
+| Chat preferences | Per-user mute, archive and pin for chats and topics | server, web | 🟡 Merged | T-0113 |
+| Message search | Across DMs, groups and topics through a read-only archive role; results jump to the message | server, web | 🟡 Merged | T-0117 |
+| Pinned messages | Banner and list in chats, groups and topics | server, web | 🧭 In review | T-0114 |
 | Voice, push notifications | Designed, not built | | 🧭 Planned | plan §6.5, §6.7 |
 
 ## 2. Accounts and identity
@@ -78,6 +82,9 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Versioned tools store | Each tool belongs to one AI in one chat; append-only history with a message per version, revert is a new version, manual run, read routes, audit without code or output | server | 🟡 Merged (not wired yet) | T-0103 |
 | Routines and scheduler | A stored tool plus a schedule that posts as the AI; hourly minimum, exactly-once slots, auto-pause after 3 failures, pinned to the sites a human approved | server | 🧭 Planned | T-0104 |
 | Tool and routine actions | `tool.save`, `tool.run`, `routine.schedule` through the gateway; scheduling needs an approval card that lists the sites and can never be "always allowed" | server | 🧭 Planned | T-0105 |
+| Tool and routine actions (wired) | Adapters and sandbox wiring behind `TOOLS_ENABLED`; results reach the model as untrusted text | server | 🟡 Merged (off by default) | T-0105 |
+| Routines scheduler (merged) | Scheduler, DST-correct schedules, host pinning, 3-failure pause, behind `ROUTINES_ENABLED` | server | 🟡 Merged (off by default) | T-0104 |
+| Keyless web tools | Guarded fetch, Wikipedia, prices, feeds, best-effort search for AIs, behind `WEB_TOOLS_ENABLED` | server | 🟡 Merged (off by default) | T-0125 |
 | Model side | Prompt guide, more model rounds per turn, a "working on it" line, a live example in the chat | server | 🧭 Planned | T-0106 |
 | Tools and Routines UI | See the code and its history, run, pause and delete | web | 🧭 Planned | T-0107 |
 
@@ -99,6 +106,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Server foundation | zod config, redacted logs, JSON errors, request ids, Drizzle migrations at startup, PGlite tests | server | ✅ Live | T-0014 |
 | Protocol | Versioned payload schemas for rich messages (cards, progress, attachments, approvals) | package | ✅ | T-0013 |
 | Server configuration reference | Every env var, flag, migration, background job and health check | docs | ✅ | T-0094 → [`SERVER_CONFIG.md`](SERVER_CONFIG.md) |
+| Self-hosted install | Production images and compose (Caddy, Coolify), SMTP sign-in codes, install guide ([`INSTALL_DOCKER.md`](INSTALL_DOCKER.md)); Coolify without bind mounts in review | deploy | 🟡 Merged | T-0126, T-0128, T-0129 |
 | Built by an AI team | A lead Claude writes specs and reviews every diff; workers implement in isolated worktrees; the `lead` CLI launches, supervises, reviews and merges; a fail-closed permission policy guards what workers may run | devtools | ✅ | T-0038, T-0051 → [`LEAD_PLAYBOOK.md`](LEAD_PLAYBOOK.md) |
 
 ## Timeline
@@ -108,3 +116,4 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | 2026-09-27 | Monorepo, protocol, infrastructure, server foundation, invite-only auth, XMPP with JWT login, chat core, web and mobile shells, first agent driver |
 | 2026-09-28 | Web and mobile on real data (**M1**), provider connections, AIs on the server (**M2**), streaming replies, persona by chat, AIs in groups, reactions, edit and delete, redesign, costs and limits |
 | 2026-09-29 | Attachments, audit log, kill switch, machines and runner hub (**M3**), approvals, action gateway, "always allow" rules (**M4**), tool sandbox and tools store |
+| 2026-09-30 | Topics (server, web, mobile), chat preferences, message search, routines scheduler and tool adapters, keyless web tools, production images, SMTP mailer; pinned messages and Coolify config in review |
