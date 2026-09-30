@@ -18,7 +18,14 @@ export const PHONE = { width: 390, height: 844 };
  * by {@link parseShots} fails a typo in the shot table before the browser
  * even starts.
  */
-export const SHOT_SETUPS = ['none', 'searchTickets', 'openChatMenu', 'openNewTopic'] as const;
+export const SHOT_SETUPS = [
+  'none',
+  'searchTickets',
+  'openChatMenu',
+  'openNewTopic',
+  'openToolDetail',
+  'openRoutines',
+] as const;
 
 /**
  * The zod subset the shot table needs, typed structurally (methods, so
@@ -78,6 +85,20 @@ export const DESKTOP_SHOTS: ShotDef[] = [
     setup: 'none',
   },
   { name: 'machines-desktop.png', path: '/settings/machines', viewport: DESKTOP, setup: 'none' },
+  // T-0107: the tools and routines of the Dev team bug topic (mock mode
+  // seeds two tools and two routines), open on the tool detail.
+  {
+    name: 'tools-desktop.png',
+    path: '/c/c-devteam-bug?panel=topic',
+    viewport: DESKTOP,
+    setup: 'openToolDetail',
+  },
+  {
+    name: 'routines-desktop.png',
+    path: '/c/c-devteam-bug?panel=topic',
+    viewport: DESKTOP,
+    setup: 'openRoutines',
+  },
 ];
 
 export const PHONE_SHOTS: ShotDef[] = [

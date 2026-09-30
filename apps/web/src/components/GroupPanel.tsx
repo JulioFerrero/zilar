@@ -24,6 +24,8 @@ import { describeAiError } from './ais/errors';
 import { Avatar } from './Avatar';
 import { Button } from './ui/button';
 import { InviteLinksSection } from './InviteLinksSection';
+import { RoutinesSection } from './tools/RoutinesSection';
+import { ToolsSection } from './tools/ToolsSection';
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -518,6 +520,19 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
               {/* T-0100: the standing rules for this group, same visibility
                   as Activity — owners and admins only. */}
               {isManager && <AlwaysAllowedList scope={{ groupId: info.id }} />}
+
+              {/* T-0107: tools and routines of the group (General). Plain
+                  members read; managers get the actions. */}
+              <ToolsSection
+                scope={{ groupId: info.id }}
+                scopeKey={`group:${info.id}`}
+                canManage={isManager}
+              />
+              <RoutinesSection
+                scope={{ groupId: info.id }}
+                scopeKey={`group-routines:${info.id}`}
+                canManage={isManager}
+              />
 
               <PinsSection
                 chatId={chat.id}

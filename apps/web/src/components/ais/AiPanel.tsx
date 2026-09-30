@@ -24,6 +24,8 @@ import { cn } from '@/lib/utils';
 import { Button, FieldError } from './AiPageShell';
 import { AiActivity } from './AiActivity';
 import { AlwaysAllowedList } from '@/components/approvals/AlwaysAllowedList';
+import { RoutinesSection } from '@/components/tools/RoutinesSection';
+import { ToolsSection } from '@/components/tools/ToolsSection';
 import { ConnectionPicker } from './ConnectionPicker';
 import { describeAiError } from './errors';
 import { LimitsFields } from './LimitsFields';
@@ -749,6 +751,15 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
               <AiActivity aiId={ai.id} />
 
               <AlwaysAllowedList scope={{ aiId: ai.id }} />
+
+              {/* T-0107: tools and routines of this AI. The panel mounts for
+                  the AI owner only, so every action is allowed. */}
+              <ToolsSection scope={{ aiId: ai.id }} scopeKey={`ai:${ai.id}`} canManage />
+              <RoutinesSection
+                scope={{ aiId: ai.id }}
+                scopeKey={`ai-routines:${ai.id}`}
+                canManage
+              />
             </>
           )}
         </div>

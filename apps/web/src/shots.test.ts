@@ -4,7 +4,7 @@ import { parseShots, SHOT_SETUPS, shotTable } from '../../../scripts/shots';
 
 describe('screenshot shot table (T-0133)', () => {
   it('parses the committed shot table', () => {
-    expect(shotTable(z).length).toBe(15);
+    expect(shotTable(z).length).toBe(17);
   });
 
   it('rejects a typo in a setup name before the browser starts', () => {

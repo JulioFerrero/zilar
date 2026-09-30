@@ -107,10 +107,11 @@ describe('mock topics API (T-0111)', () => {
     expect(status).toBe(404);
   });
 
-  it('serves an empty tools list per topic', async () => {
+  it('serves the topic tools in memory', async () => {
     resetMockApi();
     const { status, body } = await get('/topics/t-devteam-bug/tools');
     expect(status).toBe(200);
-    expect(body).toEqual([]);
+    const tools = body as { name: string }[];
+    expect(tools.map((tool) => tool.name)).toEqual(['prices']);
   });
 });

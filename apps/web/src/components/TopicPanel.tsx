@@ -5,6 +5,8 @@ import { useNavigate } from 'react-router';
 import { Avatar } from './Avatar';
 import { AiBadge } from './AiBadge';
 import { ConfirmDialog } from './ConfirmDialog';
+import { RoutinesSection } from './tools/RoutinesSection';
+import { ToolsSection } from './tools/ToolsSection';
 import { FieldError } from './ais/AiPageShell';
 import { PinsSection } from './PinsPanel';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
@@ -661,6 +663,23 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
             <p className="px-2 text-[13px] text-muted-foreground">
               {toolsCount} {toolsCount === 1 ? 'tool' : 'tools'} in this topic
             </p>
+          )}
+
+          {/* T-0107: tools and routines of this topic. Managers see the
+              actions (run, revert, pause, resume, delete); members read. */}
+          {topicId !== undefined && chat.groupId !== undefined && (
+            <>
+              <ToolsSection
+                scope={{ topicId }}
+                scopeKey={`topic:${topicId}`}
+                canManage={isManager}
+              />
+              <RoutinesSection
+                scope={{ groupId: chat.groupId }}
+                scopeKey={`topic-routines:${topicId}`}
+                canManage={isManager}
+              />
+            </>
           )}
 
           <PinsSection chatId={chat.id} onOpen={() => storeApi.getState().setPinsPanel(chat.id)} />
