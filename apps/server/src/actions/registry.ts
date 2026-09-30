@@ -105,6 +105,17 @@ export interface ActionAdapter<Args> {
    */
   allowAlways?: boolean;
   execute: (ctx: ActionContext, args: Args) => Promise<ActionResult>;
+  /**
+   * Optional server-side normalisation of the parsed args, run by the
+   * gateway on the approval path (T-0132) before the args hash is computed
+   * and the card is described. Lets a tier-2 adapter bind server-side state
+   * (e.g. hosts read from the DB at card time) into the stored args, so the
+   * fail-safe holds: any state change after the card means the execution
+   * cannot match and fails. Async-capable; a throw becomes the gateway's
+   * generic `failed` via the approval path's error handling. Never called
+   * on the allow or auto-approved paths.
+   */
+  prepareArgs?: (ctx: ActionContext, args: Args) => Promise<Args> | Args;
 }
 
 // The hard ceiling on an adapter's description: short enough to fit one

@@ -37,7 +37,7 @@ import {
   type ActionGatewayLogger,
 } from './gateway';
 import { buildToolAdapters } from '../tools/adapters';
-import { saveToolVersion } from '../tools/service';
+import { approveToolHosts, saveToolVersion } from '../tools/service';
 import type { ToolRunner } from '../tools/types';
 import { listRoutinesForAi } from '../routines/service';
 
@@ -1059,7 +1059,10 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
     ownerId: string,
     hosts: string[] = ['api.example.com'],
   ): Promise<void> {
-    await saveToolVersion(
+    // T-0132: newly saved tools start with an empty approved set, so
+    // approve the declared hosts — every existing scenario predates the
+    // tool-host check in `routine.schedule`.
+    const { tool } = await saveToolVersion(
       harness.context.db,
       {
         aiId,
@@ -1072,6 +1075,11 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
         message: 'First version',
         userId: ownerId,
       },
+      new Date(),
+    );
+    await approveToolHosts(
+      harness.context.db,
+      { toolId: tool.id, hosts, userId: ownerId },
       new Date(),
     );
   }
@@ -1097,6 +1105,8 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
   // 13) `routine.schedule` end to end: request → approval card lists the
   // hosts → approve once → the routine exists with `approvedHosts`; the
   // card payload reached the announcer with the hosts in the details.
+  // T-0132: the tool's hosts were approved first (`saveTool` does that),
+  // so the schedule's card hosts sit inside the tool's approved set.
   it('routine.schedule runs through the approval flow and creates the routine', async () => {
     const { owner, aiId, groupId, generalTopicId } = await buildToolsHarness();
     await saveTool(aiId, groupId, generalTopicId, owner.id);
@@ -1286,6 +1296,114 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
     expect(adminResponse.status).toBe(200);
     await waitForPendingStatus(harness, adminOutcome.approvalId, 'executed');
     expect(await listRoutinesForAi(harness.context.db, aiId)).toHaveLength(1);
+  });
+
+  // 18) T-0132 `tool.approve_hosts` end to end: request → the card lists
+  // the tool's CURRENT hosts read from the DB → approve once → the tool's
+  // approved set is exactly those hosts → a later run reaches them.
+  it('tool.approve_hosts runs through the approval flow and approves the DB hosts', async () => {
+    const { owner, aiId, groupId, generalTopicId } = await buildToolsHarness();
+    await saveTool(aiId, groupId, generalTopicId, owner.id);
+    const { getTool } = await import('../tools/service');
+
+    const outcome = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: generalTopicId,
+      action: 'tool.approve_hosts',
+      args: { name: 'prices' },
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    if (outcome.status !== 'pending_approval') {
+      throw new Error(`expected pending_approval, got ${outcome.status}`);
+    }
+    const [approval] = await harness.context.db
+      .select()
+      .from(approvals)
+      .where(eq(approvals.id, outcome.approvalId));
+    expect(approval?.summary).toBe('Allow the tool "prices" to contact: api.example.com');
+    expect(approval?.details).toContain('api.example.com');
+    expect(approval?.topicId).toBe(generalTopicId);
+
+    const response = await decide(harness, owner.cookie, outcome.approvalId, 'approve_once');
+    expect(response.status).toBe(200);
+    await waitForPendingStatus(harness, outcome.approvalId, 'executed');
+
+    const [approvedRow] = await harness.context.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, 'tool.hosts_approved'))
+      .limit(1);
+    expect(approvedRow?.detail).toEqual({ name: 'prices', version: 1, hosts: ['api.example.com'] });
+    const detail = await getTool(harness.context.db, approvedRow?.subjectId as string);
+    expect(detail?.approvedHosts).toEqual(['api.example.com']);
+  });
+
+  // 19) T-0132: a host change between the approve_hosts card and approval
+  // fails safe — the gateway reports `failed` and the approved set is
+  // untouched.
+  it('a hosts change between approve_hosts request and approval fails without approving', async () => {
+    const { owner, aiId, groupId, generalTopicId } = await buildToolsHarness();
+    await saveTool(aiId, groupId, generalTopicId, owner.id);
+
+    const outcome = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: generalTopicId,
+      action: 'tool.approve_hosts',
+      args: { name: 'prices' },
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    if (outcome.status !== 'pending_approval') {
+      throw new Error(`expected pending_approval, got ${outcome.status}`);
+    }
+    await saveToolVersion(
+      harness.context.db,
+      {
+        aiId,
+        groupId,
+        topicId: generalTopicId,
+        name: 'prices',
+        description: 'Posts the prices',
+        source: 'return { text: "BTC 100" };',
+        hosts: ['changed.example.com'],
+        message: 'New host',
+        userId: owner.id,
+      },
+      new Date(),
+    );
+
+    const response = await decide(harness, owner.cookie, outcome.approvalId, 'approve_once');
+    expect(response.status).toBe(200);
+    await waitForPendingStatus(harness, outcome.approvalId, 'failed');
+    const approvedRows = await harness.context.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, 'tool.hosts_approved'));
+    expect(approvedRows).toHaveLength(0);
+  });
+
+  // 20) T-0132: `approve_always` on `tool.approve_hosts` is refused with
+  // 400 `always_not_allowed`.
+  it('tool.approve_hosts can never be always-allowed', async () => {
+    const { owner, aiId, groupId, generalTopicId } = await buildToolsHarness();
+    await saveTool(aiId, groupId, generalTopicId, owner.id);
+
+    const outcome = await harness.gateway.request({
+      aiId,
+      groupId,
+      topicId: generalTopicId,
+      action: 'tool.approve_hosts',
+      args: { name: 'prices' },
+      requestedBy: 'ai-bot@galena.localhost',
+    });
+    if (outcome.status !== 'pending_approval') {
+      throw new Error(`expected pending_approval, got ${outcome.status}`);
+    }
+    const refused = await decide(harness, owner.cookie, outcome.approvalId, 'approve_always');
+    expect(refused.status).toBe(400);
+    const refusedBody = (await refused.json()) as { error: { code: string } };
+    expect(refusedBody.error.code).toBe('always_not_allowed');
   });
 
   // 17) Stopped AI: the gateway denies before `execute`, so the runner is

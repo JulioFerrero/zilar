@@ -23,6 +23,7 @@ import {
   type TestContext,
 } from '../test-support';
 import {
+  approveToolHosts,
   deleteTool,
   deleteToolsForAiInGroup,
   deleteToolsForAiInTopic,
@@ -33,6 +34,7 @@ import {
   listToolsForAi,
   listVersions,
   revertTool,
+  revokeToolHosts,
   runToolVersion,
   saveToolVersion,
   ToolServiceError,
@@ -866,7 +868,7 @@ describe('tools service (T-0103)', () => {
   });
 
   describe('runToolVersion', () => {
-    it('the runner receives the chosen version source, input and hosts', async () => {
+    it('the runner receives the chosen version source and the approved-hosts intersection', async () => {
       const { tool } = await saveToolVersion(
         context.db,
         {
@@ -893,6 +895,8 @@ describe('tools service (T-0103)', () => {
         },
         NOW,
       );
+      // T-0132: nothing approved yet, so the runner sees the empty
+      // intersection even though v1 declares api.example.com.
       const runner = okRunner();
       await runToolVersion(
         { db: context.db, runner },
@@ -903,8 +907,127 @@ describe('tools service (T-0103)', () => {
       expect(runner.calls[0]).toEqual({
         source: 'return { text: "gold 3000" };',
         input: { day: 'today' },
+        allowedHosts: [],
+      });
+      await approveToolHosts(
+        context.db,
+        { toolId: tool.id, hosts: ['api.example.com'], userId: ownerId },
+        NOW,
+      );
+      const afterApproval = okRunner();
+      await runToolVersion(
+        { db: context.db, runner: afterApproval },
+        { toolId: tool.id, version: 1, input: { day: 'today' }, trigger: 'manual' },
+        NOW,
+      );
+      expect(afterApproval.calls[0]).toEqual({
+        source: 'return { text: "gold 3000" };',
+        input: { day: 'today' },
         allowedHosts: ['api.example.com'],
       });
+    });
+
+    it('passes only declared ∩ approved hosts for every trigger', async () => {
+      const { tool } = await saveToolVersion(
+        context.db,
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput({ hosts: ['api.example.com', 'other.example.com'] }),
+        },
+        NOW,
+      );
+      await approveToolHosts(
+        context.db,
+        { toolId: tool.id, hosts: ['api.example.com'], userId: ownerId },
+        NOW,
+      );
+      for (const trigger of ['manual', 'routine', 'ai'] as const) {
+        const runner = okRunner();
+        await runToolVersion({ db: context.db, runner }, { toolId: tool.id, trigger }, NOW);
+        expect(runner.calls[0]).toEqual({
+          source: expect.any(String),
+          input: null,
+          allowedHosts: ['api.example.com'],
+        });
+      }
+      // A tool with no approval still runs, with no network.
+      await revokeToolHosts(context.db, { toolId: tool.id, userId: ownerId }, NOW);
+      const offline = okRunner();
+      await runToolVersion(
+        { db: context.db, runner: offline },
+        { toolId: tool.id, trigger: 'ai' },
+        NOW,
+      );
+      expect(offline.calls[0]).toMatchObject({ allowedHosts: [] });
+    });
+
+    it('approve and revoke write audited id-only entries, never code or output', async () => {
+      const audit = createAuditRecorder({ db: context.db, now: () => NOW });
+      const source = 'return { text: "SECRET-SOURCE-DO-NOT-LOG" };';
+      const { tool } = await saveToolVersion(
+        context.db,
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput({ source }),
+        },
+        NOW,
+        audit,
+      );
+      const approved = await approveToolHosts(
+        context.db,
+        { toolId: tool.id, hosts: ['api.example.com'], userId: ownerId },
+        NOW,
+        audit,
+      );
+      expect(approved.approvedHosts).toEqual(['api.example.com']);
+      const revoked = await revokeToolHosts(
+        context.db,
+        { toolId: tool.id, userId: ownerId },
+        NOW,
+        audit,
+      );
+      expect(revoked.approvedHosts).toEqual([]);
+      const listed = await listTools(context.db, { aiId, groupId: null, topicId: null });
+      expect(listed[0]?.approvedHosts).toEqual([]);
+      const rows = await context.db.select().from(auditLog);
+      expect(rows.find((row) => row.action === 'tool.hosts_approved')?.detail).toEqual({
+        name: 'morning-prices',
+        version: 1,
+        hosts: ['api.example.com'],
+      });
+      expect(rows.find((row) => row.action === 'tool.hosts_revoked')?.detail).toEqual({
+        name: 'morning-prices',
+      });
+      expect(JSON.stringify(rows)).not.toContain('SECRET-SOURCE-DO-NOT-LOG');
+    });
+
+    it('approveToolHosts normalises hosts and refuses invalid ones', async () => {
+      const { tool } = await saveToolVersion(
+        context.db,
+        { aiId, groupId: null, topicId: null, userId: ownerId, ...baseInput() },
+        NOW,
+      );
+      const approved = await approveToolHosts(
+        context.db,
+        { toolId: tool.id, hosts: ['API.Example.com', 'api.example.com'], userId: ownerId },
+        NOW,
+      );
+      expect(approved.approvedHosts).toEqual(['api.example.com']);
+      await expect(
+        approveToolHosts(
+          context.db,
+          { toolId: tool.id, hosts: ['*.example.com'], userId: ownerId },
+          NOW,
+        ),
+      ).rejects.toThrow();
+      const current = await getTool(context.db, tool.id);
+      expect(current?.approvedHosts).toEqual(['api.example.com']);
     });
 
     it('defaults to the current version and writes a run row', async () => {

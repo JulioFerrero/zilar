@@ -656,6 +656,98 @@ describe('action gateway', () => {
         .where(eq(pendingActions.approvalId, result.approvalId));
       expect(pending?.status).toBe('cancelled');
     });
+
+    // T-0132 `prepareArgs`: an adapter binds server-side state into the
+    // stored args before the hash is computed, so the card and the hash
+    // carry the bound value, not the raw model text.
+    it('prepareArgs binds server state into the stored args and hash before the card', async () => {
+      const boundAdapter: ActionAdapter<unknown> = {
+        name: 'tier2.bound',
+        description: 'Tier-2 adapter with prepareArgs.',
+        tier: 2,
+        argsSchema: z.object({ value: z.string() }),
+        prepareArgs: async (_ctx, args) => ({ ...(args as { value: string }), bound: true }),
+        describe: (args) => ({
+          summary: `Bound ${(args as { value: string }).value}`,
+          details: `bound=${String((args as { bound?: boolean }).bound)}`,
+        }),
+        execute: async () => ({ summary: 'bound ran' }),
+      };
+      const context = await createTestContext();
+      try {
+        const gateway = createActionGateway({
+          db: context.db,
+          adapters: buildRegistry([boundAdapter]),
+          audit: createAuditRecorder({ db: context.db }),
+          logger: { warn: () => undefined, error: () => undefined },
+          now: () => new Date(),
+        });
+        const ownerId = await seedUser(context);
+        const { aiId } = await seedAi(context, ownerId);
+        const result = await gateway.request({
+          aiId,
+          action: 'tier2.bound',
+          args: { value: 'raw' },
+          requestedBy: 'ai-bot@galena.localhost',
+        });
+        if (result.status !== 'pending_approval') {
+          throw new Error('expected pending_approval');
+        }
+        const [row] = await context.db
+          .select()
+          .from(approvals)
+          .where(eq(approvals.id, result.approvalId));
+        expect(row?.summary).toBe('Bound raw');
+        expect(row?.details).toBe('bound=true');
+        const [pending] = await context.db
+          .select()
+          .from(pendingActions)
+          .where(eq(pendingActions.approvalId, result.approvalId));
+        expect(pending?.args).toEqual({ value: 'raw', bound: true });
+        expect(pending?.argsHash).toBe(row?.argsHash);
+      } finally {
+        await context.close();
+      }
+    });
+
+    // A throwing `prepareArgs` (e.g. a missing tool) answers the generic
+    // `failed`, never a leak and never `denied`.
+    it('a throwing prepareArgs answers failed without storing anything', async () => {
+      const failingAdapter: ActionAdapter<unknown> = {
+        name: 'tier2.failingprepare',
+        description: 'Tier-2 adapter whose prepareArgs throws.',
+        tier: 2,
+        argsSchema: z.object({ value: z.string() }),
+        prepareArgs: () => {
+          throw new Error('no such tool');
+        },
+        describe: () => ({ summary: 'never described' }),
+        execute: async () => ({ summary: 'never executed' }),
+      };
+      const context = await createTestContext();
+      try {
+        const gateway = createActionGateway({
+          db: context.db,
+          adapters: buildRegistry([failingAdapter]),
+          audit: createAuditRecorder({ db: context.db }),
+          logger: { warn: () => undefined, error: () => undefined },
+          now: () => new Date(),
+        });
+        const ownerId = await seedUser(context);
+        const { aiId } = await seedAi(context, ownerId);
+        const result = await gateway.request({
+          aiId,
+          action: 'tier2.failingprepare',
+          args: { value: 'raw' },
+          requestedBy: 'ai-bot@galena.localhost',
+        });
+        expect(result).toEqual({ status: 'failed' });
+        expect(await context.db.select().from(approvals)).toHaveLength(0);
+        expect(await context.db.select().from(pendingActions)).toHaveLength(0);
+      } finally {
+        await context.close();
+      }
+    });
   });
 
   describe('modelText (T-0105)', () => {

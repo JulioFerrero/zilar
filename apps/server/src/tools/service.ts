@@ -4,7 +4,7 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { ais, aiToolRuns, aiTools, aiToolVersions } from '../db/schema';
 import { deleteRoutinesForTool } from '../routines/service';
-import { parseToolVersionInput } from './schemas';
+import { parseToolVersionInput, toolHostsSchema } from './schemas';
 import type { ToolRunner, ToolRunResult } from './types';
 
 export type { ToolRunner, ToolRunResult };
@@ -49,7 +49,9 @@ export interface SaveToolVersionInput {
 }
 
 // One tool as the list returns it: no source. `hosts` and `lastRunStatus`
-// come from the current version and the newest run row.
+// come from the current version and the newest run row. `approvedHosts`
+// is the human-approved set (T-0132): the sandbox may only contact the
+// intersection of declared `hosts` and this set.
 export interface PublicTool {
   id: string;
   aiId: string;
@@ -60,6 +62,8 @@ export interface PublicTool {
   description: string;
   currentVersion: number;
   hosts: string[];
+  /** Hosts a human approved via `tool.approve_hosts` (default empty). */
+  approvedHosts: string[];
   lastRunStatus: 'ok' | 'error' | null;
   updatedAt: Date;
 }
@@ -375,6 +379,7 @@ export async function listTools(
       description: tool.description,
       currentVersion: tool.currentVersion,
       hosts: current?.hosts ?? [],
+      approvedHosts: [...(tool.approvedHosts ?? [])],
       lastRunStatus: run?.status ?? null,
       updatedAt: tool.updatedAt,
     });
@@ -604,6 +609,12 @@ export interface RunToolVersionInput {
 // (the kill switch): a stopped or provisioning AI throws
 // `ai_not_active` before the runner is called. A runner failure is
 // recorded as `error` with its kind and returned, never thrown.
+//
+// T-0132: the sandbox may only contact `declared hosts ∩ approved hosts`.
+// `allowedHosts` passed to the runner is that intersection (already
+// lowercased by `toolHostsSchema`), so a tool with no approved hosts still
+// runs, with no network. This holds for every trigger (`manual`,
+// `routine`, `ai`) because every run path goes through here.
 export async function runToolVersion(
   deps: RunToolVersionDeps,
   input: RunToolVersionInput,
@@ -630,10 +641,11 @@ export async function runToolVersion(
   if (!ai || ai.status !== 'active') {
     throw new ToolServiceError('ai_not_active', 'The AI is not active');
   }
+  const approved = new Set(tool.approvedHosts ?? []);
   const result = await deps.runner({
     source: versionRow.source,
     input: input.input ?? null,
-    allowedHosts: versionRow.hosts,
+    allowedHosts: versionRow.hosts.filter((host) => approved.has(host)),
   });
   const run = await recordRun(deps.db, {
     toolId: tool.id,
@@ -643,6 +655,114 @@ export async function runToolVersion(
     now,
   });
   return { result, run };
+}
+
+// Sets the tool's `approved_hosts` to exactly `hosts` (T-0132). Used by
+// the `tool.approve_hosts` adapter after a human approved the card whose
+// hosts were read from the current version. Audits `tool.hosts_approved`
+// with `detail { name, version, hosts }`: ids and host names are fine,
+// never code or output. The recorder swallows its own failures, so this
+// never throws into the caller.
+export async function approveToolHosts(
+  db: ServerDatabase,
+  input: { toolId: string; hosts: string[]; userId: string },
+  now: Date,
+  audit?: AuditRecorder,
+): Promise<ToolDetail> {
+  const hosts = toolHostsSchema.parse(input.hosts);
+  const tool = await getToolRow(db, input.toolId);
+  if (!tool) {
+    throw new ToolServiceError('not_found', 'Tool not found');
+  }
+  const [current] = await db
+    .select()
+    .from(aiToolVersions)
+    .where(and(eq(aiToolVersions.toolId, tool.id), eq(aiToolVersions.version, tool.currentVersion)))
+    .limit(1);
+  if (!current) {
+    throw new ToolServiceError('not_found', 'Tool version not found');
+  }
+  const [updated] = await db
+    .update(aiTools)
+    .set({ approvedHosts: hosts, updatedAt: now })
+    .where(eq(aiTools.id, tool.id))
+    .returning();
+  if (!updated) {
+    throw new Error('Tool disappeared while approving hosts');
+  }
+  const [run] = await db
+    .select({ status: aiToolRuns.status })
+    .from(aiToolRuns)
+    .where(eq(aiToolRuns.toolId, tool.id))
+    .orderBy(desc(aiToolRuns.createdAt), desc(aiToolRuns.id))
+    .limit(1);
+  if (audit !== undefined) {
+    await audit.record({
+      actorUserId: input.userId,
+      aiId: tool.aiId,
+      groupId: tool.groupId,
+      action: 'tool.hosts_approved',
+      subjectId: tool.id,
+      argsHash: null,
+      costCurrency: null,
+      costAmount: null,
+      result: 'ok',
+      detail: { name: tool.name, version: current.version, hosts },
+    });
+  }
+  return toToolDetail(updated, current, run?.status ?? null);
+}
+
+// Empties the tool's `approved_hosts` (T-0132 `tool.revoke_hosts`): the
+// tool keeps running with no network until a new approval. Audits
+// `tool.hosts_revoked` with `detail { name }` only.
+export async function revokeToolHosts(
+  db: ServerDatabase,
+  input: { toolId: string; userId: string },
+  now: Date,
+  audit?: AuditRecorder,
+): Promise<ToolDetail> {
+  const tool = await getToolRow(db, input.toolId);
+  if (!tool) {
+    throw new ToolServiceError('not_found', 'Tool not found');
+  }
+  const [current] = await db
+    .select()
+    .from(aiToolVersions)
+    .where(and(eq(aiToolVersions.toolId, tool.id), eq(aiToolVersions.version, tool.currentVersion)))
+    .limit(1);
+  if (!current) {
+    throw new ToolServiceError('not_found', 'Tool version not found');
+  }
+  const [updated] = await db
+    .update(aiTools)
+    .set({ approvedHosts: [], updatedAt: now })
+    .where(eq(aiTools.id, tool.id))
+    .returning();
+  if (!updated) {
+    throw new Error('Tool disappeared while revoking hosts');
+  }
+  const [run] = await db
+    .select({ status: aiToolRuns.status })
+    .from(aiToolRuns)
+    .where(eq(aiToolRuns.toolId, tool.id))
+    .orderBy(desc(aiToolRuns.createdAt), desc(aiToolRuns.id))
+    .limit(1);
+  if (audit !== undefined) {
+    await audit.record({
+      actorUserId: input.userId,
+      aiId: tool.aiId,
+      groupId: tool.groupId,
+      action: 'tool.hosts_revoked',
+      subjectId: tool.id,
+      argsHash: null,
+      costCurrency: null,
+      costAmount: null,
+      result: 'ok',
+      detail: { name: tool.name },
+    });
+  }
+  return toToolDetail(updated, current, run?.status ?? null);
 }
 
 // Newest runs of a tool, newest first, capped at 20 for the public route.
@@ -860,6 +980,7 @@ function toToolDetail(
     description: tool.description,
     currentVersion: tool.currentVersion,
     hosts: current.hosts,
+    approvedHosts: [...(tool.approvedHosts ?? [])],
     source: current.source,
     lastRunStatus,
     updatedAt: tool.updatedAt,
@@ -939,6 +1060,7 @@ export async function listToolsForAi(
       description: tool.description,
       currentVersion: tool.currentVersion,
       hosts: current?.hosts ?? [],
+      approvedHosts: [...(tool.approvedHosts ?? [])],
       lastRunStatus: run?.status ?? null,
       updatedAt: tool.updatedAt,
       scope: tool.groupId === null ? 'personal' : 'group',

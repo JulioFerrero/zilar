@@ -55,6 +55,12 @@ Callers cannot raise a limit above its hard max. Error kinds: `invalid_source`,
   `user-agent: GalenaTool/1`.
 - The hostname must exactly equal an `allowedHosts` entry (case-insensitive,
   IDNA normalised; no wildcards, no suffix match, no IP literals).
+  `allowedHosts` is the tool version's declared hosts **intersected with the
+  hosts a human approved for the tool** (`tool.approve_hosts`, one card per
+  tool): a tool with no approved hosts still runs, with no network. Saving a
+  new version that declares a host outside the approved set keeps working
+  without that host until a new approval; `tool.revoke_hosts` empties the set
+  (the tool keeps running offline).
 - SSRF guard: the host is DNS-resolved, **every** address must be public
   (loopback, private, link-local incl. 169.254.169.254, CGNAT, multicast,
   unspecified, IPv6 ULA/link-local/site-local, 6to4, Teredo, mapped-private

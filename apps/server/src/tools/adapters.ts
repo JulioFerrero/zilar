@@ -30,10 +30,12 @@ import {
 import { nextRunAfter, routineScheduleSchema, type RoutineSchedule } from '../routines/schedule';
 import { toolHostsSchema, toolNameSchema, toolVersionInputSchema } from './schemas';
 import {
+  approveToolHosts,
   getTool,
   getVersion,
   listTools,
   revertTool,
+  revokeToolHosts,
   runToolVersion,
   saveToolVersion,
   ToolServiceError,
@@ -77,6 +79,12 @@ export const MAX_SAVE_MODEL_TEXT_CHARS = 2 * 1024;
 
 // Builds the eight tool/routine adapters. The caller registers them in the
 // action registry next to (not instead of) the demo adapter.
+//
+// T-0132 adds two more: `tool.approve_hosts` (tier 2, a card in the topic
+// showing the tool's CURRENT hosts read from the DB) and
+// `tool.revoke_hosts` (tier 1, empties the approved set). The sandbox may
+// only contact declared hosts ∩ approved hosts for every run trigger,
+// because every run goes through `runToolVersion`.
 export function buildToolAdapters(deps: BuildToolAdaptersDeps): ActionAdapter<unknown>[] {
   const state = createAdapterState(deps);
   const adapters: ActionAdapter<unknown>[] = [
@@ -85,6 +93,8 @@ export function buildToolAdapters(deps: BuildToolAdaptersDeps): ActionAdapter<un
     toolSaveAdapter(state),
     toolRunAdapter(state),
     toolRevertAdapter(state),
+    toolApproveHostsAdapter(state),
+    toolRevokeHostsAdapter(state),
     routinePauseAdapter(state),
     routineDeleteAdapter(state),
   ];
@@ -209,7 +219,13 @@ function serviceFailure(error: ToolServiceError | RoutineServiceError): string {
     return 'the AI is not active';
   }
   if (error.errorCode === 'hosts_not_approved') {
+    // Routine creation keeps its own message (the routine's approved hosts
+    // must be a superset of the tool's CURRENT version hosts); the tool
+    // approval path has its own hint (see `routineScheduleAdapter`).
     return 'the approved hosts must include every host the tool contacts';
+  }
+  if (error.errorCode === 'tool_hosts_not_approved') {
+    return 'the tool hosts are not approved yet; run tool.approve_hosts first';
   }
   return error.message;
 }
@@ -300,6 +316,23 @@ const toolRunArgsSchema = z
     input: inputField(MAX_TOOL_INPUT_BYTES).optional(),
   })
   .strict();
+
+const toolApproveHostsArgsSchema = z
+  .object({
+    name: toolNameSchema,
+  })
+  .strict();
+
+const toolRevokeHostsArgsSchema = toolApproveHostsArgsSchema;
+
+// The hosts bound into the stored args at card time (T-0132): the tool's
+// CURRENT version hosts read from the DB, never from model text. Stored
+// args, card text and the fail-safe execution check all use this one
+// value, so a tool update after the card can never approve new hosts.
+export interface ApproveHostsBoundArgs {
+  name: string;
+  hosts: string[];
+}
 
 const toolRevertArgsSchema = z
   .object({
@@ -455,6 +488,17 @@ function toolSaveAdapter(state: AdapterState): ActionAdapter<unknown> {
       if (saved.unchanged) {
         return { summary: `${head} (unchanged)` };
       }
+      // T-0132: a version that declares any host outside the approved set
+      // keeps working without that host (no network for it) until a new
+      // `tool.approve_hosts` is approved. The model text names the
+      // unapproved hosts so the model can ask for approval.
+      const unapproved = saved.version.hosts.filter(
+        (host) => !saved.tool.approvedHosts.includes(host),
+      );
+      const approvalHint =
+        unapproved.length === 0
+          ? ''
+          : ` Unapproved hosts (no network for them yet): ${hostsLine(unapproved)}. Ask for tool.approve_hosts to allow them.`;
       // The save itself is never rolled back when the test run fails: the
       // model fixes the code in the next call.
       let testSummary: string;
@@ -485,8 +529,8 @@ function toolSaveAdapter(state: AdapterState): ActionAdapter<unknown> {
         throw error;
       }
       return {
-        summary: `${head}: ${testSummary}`,
-        modelText: truncateChars(testText, MAX_SAVE_MODEL_TEXT_CHARS),
+        summary: `${head}: ${testSummary}${approvalHint}`,
+        modelText: truncateChars(testText + approvalHint, MAX_SAVE_MODEL_TEXT_CHARS),
       };
     },
   };
@@ -607,6 +651,121 @@ function toolRevertAdapter(state: AdapterState): ActionAdapter<unknown> {
   };
 }
 
+// T-0132: `tool.approve_hosts` (tier 2, a card in the topic): "Allow the
+// tool <name> to contact: <hosts>". Args carry the tool name only; the
+// gateway's `prepareArgs` hook binds the current version's hosts before
+// the args hash is computed, the card shows exactly that set
+// (`toolHostsSchema` validation/normalisation, exact hostnames, no
+// wildcards), and `execute` approves it fail-safe like `routine.schedule`:
+// when the current version's hosts differ from the card's set, it does
+// nothing and fails (the throw becomes the gateway's generic `failed`).
+function toolApproveHostsAdapter(state: AdapterState): ActionAdapter<unknown> {
+  return {
+    name: 'tool.approve_hosts',
+    description: 'Allow a tool in this topic to contact its declared hosts (needs approval).',
+    tier: 2,
+    argsSchema: toolApproveHostsArgsSchema as unknown as z.ZodType<unknown>,
+    prepareArgs: async (ctx, args) => {
+      const actionCtx = ctx as ActionContext;
+      const parsed = args as { name: string };
+      const found = await findToolByName(state, actionCtx, parsed.name);
+      if (!found) {
+        throw new Error('no such tool');
+      }
+      const detail = await getTool(state.db, found.id);
+      if (!detail) {
+        throw new Error('no such tool');
+      }
+      return { name: parsed.name, hosts: [...detail.hosts] };
+    },
+    describe: (args) => {
+      const parsed = args as ApproveHostsBoundArgs;
+      return {
+        summary: `Allow the tool "${parsed.name}" to contact: ${hostsLine(parsed.hosts)}`,
+        details: `The tool ${parsed.name} may contact: ${hostsLine(parsed.hosts)}. Approving replaces the tool's approved hosts with exactly this set.`,
+      };
+    },
+    execute: async (ctx, args) => {
+      const actionCtx = ctx as ActionContext;
+      const parsed = args as ApproveHostsBoundArgs;
+      const found = await findToolByName(state, actionCtx, parsed.name);
+      if (!found) {
+        throw new Error('tool hosts changed after the approval card was shown');
+      }
+      // Fail safe: the card showed `hosts`, so the tool's current version
+      // must still declare exactly that set. A save after the card means
+      // nothing is approved — the throw becomes the gateway's generic
+      // `failed`, which the model hears as "the action failed".
+      const detail = await getTool(state.db, found.id);
+      if (!detail || !hostsEqualAsSets(detail.hosts, parsed.hosts)) {
+        throw new Error('tool hosts changed after the approval card was shown');
+      }
+      const owner = await ownerOf(state.db, actionCtx.aiId);
+      try {
+        const approved = await approveToolHosts(
+          state.db,
+          { toolId: found.id, hosts: parsed.hosts, userId: owner },
+          state.now(),
+          ...(state.audit === undefined ? [] : ([state.audit] as const)),
+        );
+        return {
+          summary: `approved ${approved.name} to contact: ${hostsLine(approved.approvedHosts)}`,
+        };
+      } catch (error) {
+        if (error instanceof ToolServiceError) {
+          if (error.errorCode === 'not_found') {
+            throw new Error('tool hosts changed after the approval card was shown');
+          }
+          return { summary: serviceFailure(error) };
+        }
+        throw error;
+      }
+    },
+  };
+}
+
+// T-0132: `tool.revoke_hosts` (tier 1): empties the tool's approved set.
+// The tool keeps working without network until a new approval. Audited
+// (`tool.hosts_revoked`, ids and the name only), never code or output.
+function toolRevokeHostsAdapter(state: AdapterState): ActionAdapter<unknown> {
+  return {
+    name: 'tool.revoke_hosts',
+    description: "Revoke a tool's approved hosts in this topic (it keeps running offline).",
+    tier: 1,
+    argsSchema: toolRevokeHostsArgsSchema as unknown as z.ZodType<unknown>,
+    describe: (args) => {
+      const parsed = args as { name: string };
+      return { summary: `Revoke the approved hosts of the tool "${parsed.name}"` };
+    },
+    execute: async (ctx, args) => {
+      const actionCtx = ctx as ActionContext;
+      const parsed = args as { name: string };
+      const found = await findToolByName(state, actionCtx, parsed.name);
+      if (!found) {
+        return { summary: 'no such tool' };
+      }
+      const owner = await ownerOf(state.db, actionCtx.aiId);
+      try {
+        const revoked = await revokeToolHosts(
+          state.db,
+          { toolId: found.id, userId: owner },
+          state.now(),
+          ...(state.audit === undefined ? [] : ([state.audit] as const)),
+        );
+        return { summary: `revoked the approved hosts of "${revoked.name}"` };
+      } catch (error) {
+        if (error instanceof ToolServiceError) {
+          if (error.errorCode === 'not_found') {
+            return { summary: 'no such tool' };
+          }
+          return { summary: serviceFailure(error) };
+        }
+        throw error;
+      }
+    },
+  };
+}
+
 function routineScheduleAdapter(state: AdapterState): ActionAdapter<unknown> {
   return {
     name: 'routine.schedule',
@@ -646,6 +805,15 @@ function routineScheduleAdapter(state: AdapterState): ActionAdapter<unknown> {
       const detail = await getTool(state.db, found.id);
       if (!detail || !hostsEqualAsSets(detail.hosts, parsed.hosts)) {
         throw new Error('tool hosts changed after the approval card was shown');
+      }
+      // T-0132: every host on the card must be inside the tool's approved
+      // set, else `failed` and the model is told to run `tool.approve_hosts`
+      // first. The set check and `createRoutine` below are not atomic: a
+      // revocation racing approval could slip a host through the scheduler's
+      // own pinning, but `runToolVersion` intersects with the CURRENT
+      // approved set at run time, so the sandbox still refuses it.
+      if (!isSubsetOf(parsed.hosts, detail.approvedHosts)) {
+        return { summary: 'the tool hosts are not approved yet; run tool.approve_hosts first' };
       }
       const owner = await ownerOf(state.db, actionCtx.aiId);
       try {
@@ -766,6 +934,11 @@ function hostsEqualAsSets(current: readonly string[], approved: readonly string[
   if (current.length !== approved.length) {
     return false;
   }
+  const allowed = new Set(approved);
+  return current.every((host) => allowed.has(host));
+}
+
+function isSubsetOf(current: readonly string[], approved: readonly string[]): boolean {
   const allowed = new Set(approved);
   return current.every((host) => allowed.has(host));
 }

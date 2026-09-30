@@ -16,7 +16,7 @@ import {
   topics,
 } from '../db/schema';
 import { createAuditRecorder } from '../audit/service';
-import { saveToolVersion } from '../tools/service';
+import { approveToolHosts, saveToolVersion } from '../tools/service';
 import type { ToolRunResult, ToolRunner } from '../tools/types';
 import {
   bootstrapUser,
@@ -151,8 +151,13 @@ async function seedTool(
     userId: string;
     hosts?: string[];
     source?: string;
+    /** T-0132: hosts approved right after the save (default: all declared). */
+    approvedHosts?: string[];
   },
 ): Promise<string> {
+  // T-0132: newly saved tools start with an empty approved set; the
+  // scheduler's run path intersects with it, so approve the declared
+  // hosts unless the caller says otherwise.
   const { tool } = await saveToolVersion(
     context.db,
     {
@@ -168,6 +173,15 @@ async function seedTool(
     },
     NOW,
   );
+  const declared = args.hosts ?? ['api.example.com'];
+  const approved = args.approvedHosts ?? declared;
+  if (approved.length > 0) {
+    await approveToolHosts(
+      context.db,
+      { toolId: tool.id, hosts: approved, userId: args.userId },
+      NOW,
+    );
+  }
   return tool.id;
 }
 
@@ -610,6 +624,39 @@ describe('routine scheduler (T-0104)', () => {
         .where(eq(routines.id, created.id));
       await scheduler.tick();
       expect((await readRoutine(context, created.id))?.consecutiveFailures).toBe(0);
+    });
+
+    it('a routine run reaches the declared ∩ approved hosts (T-0132)', async () => {
+      const { owner, aiId } = await ownerWithAi(`sched-approved-${emailCounter}@example.com`);
+      const { groupId, topicId } = await seedGroupWithTopic(context, owner.id, aiId);
+      // Declared and tool-approved one host; the routine's own approved
+      // set matches it. The sandbox sees exactly that host.
+      const toolId = await seedTool(context, {
+        aiId,
+        groupId,
+        topicId,
+        userId: owner.id,
+        hosts: ['api.example.com'],
+      });
+      const created = await seedRoutine(context, {
+        aiId,
+        groupId,
+        topicId,
+        toolId,
+        userId: owner.id,
+        nextRunAt: new Date(NOW.getTime() - 1_000),
+      });
+      const seen: Array<readonly string[]> = [];
+      const recording: ToolRunner = (params) => {
+        seen.push(params.allowedHosts);
+        return okRunner()(params);
+      };
+      const posts: Array<{ text: string }> = [];
+      const { scheduler } = schedulerFor(recording, posts as never);
+      await scheduler.tick();
+      expect(seen).toEqual([['api.example.com']]);
+      expect(posts).toHaveLength(1);
+      expect((await readRoutine(context, created.id))?.status).toBe('active');
     });
 
     it('a version that adds a host pauses with needs_approval and one notice, running nothing', async () => {

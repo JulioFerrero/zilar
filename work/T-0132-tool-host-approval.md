@@ -1,7 +1,7 @@
 ---
 id: T-0132
 title: Approve a tool's hosts once, before it can reach the network
-status: planned
+status: merged
 milestone: M4
 branch: task/T-0132-tool-host-approval
 model: meta/muse-spark-1.3-contributor
@@ -58,28 +58,54 @@ UI (T-0107 shows approved hosts later), changing the tier of `tool.save`/`tool.r
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Data: `approved_hosts jsonb not null default '[]'` on `ai_tools` (`db/schema.ts`) + migration `drizzle/0028_lucky_loki.sql` via `pnpm --filter @galena/server db:generate` (emitted only the one ALTER TABLE; journal `idx 28`). No backfill SQL needed: the column default covers existing rows (none in production yet). `T-0116`'s migration `0027` is on this branch via the lead's rebase.
+- Core gate (`tools/service.ts`): `runToolVersion` passes `allowedHosts = declared ∩ approved` to the runner, so EVERY trigger (`ai`, `user`/`manual`, `routine`) gets the intersection. New `approveToolHosts` (sets the set exactly) and `revokeToolHosts` (empties it), both audited (`tool.hosts_approved` detail `{name, version, hosts}`, `tool.hosts_revoked` detail `{name}`). `PublicTool`/`ToolDetail` and the routes wire shape now carry `approvedHosts`.
+- New adapters (`tools/adapters.ts`): `tool.approve_hosts` (tier 2, args = name only; `prepareArgs` binds current-version hosts from the DB so the stored args, card, hash and execute check all use one value; card "Allow the tool <name> to contact: <hosts>"; fail-safe throw on host drift; never `allowAlways`) and `tool.revoke_hosts` (tier 1, empties the set, audited). `tool.save` model text now names unapproved hosts so the model can ask for approval. `routine.schedule` execute additionally refuses card hosts outside the tool's approved set (summary tells the model to run `tool.approve_hosts` first).
+- Defence in depth (`routines/service.ts` `createRoutine`): new `tool_hosts_not_approved` error when the routine's card hosts are not inside the tool's approved set.
+- Gateway (`actions/registry.ts`, `gateway.ts`): new optional `prepareArgs(ctx, args)` hook, run on the approval path only, before hash/card/describe; a throw answers generic `failed` with nothing stored. No other adapter uses it; `describe` stays sync.
+- Docs: `docs/TOOL_SANDBOX.md` fetch rules now state the intersection, revocation, and new-version behaviour. No `SERVER_CONFIG.md` change (no new env var).
 
 ### Files changed
--
+- `apps/server/src/db/schema.ts` + migration `drizzle/0028_lucky_loki.sql` + meta (`_journal.json`, `0028_snapshot.json`)
+- `apps/server/src/tools/service.ts` (+ `service.test.ts`), `adapters.ts` (+ `adapters.test.ts`), `routes.ts` (wire `approvedHosts`)
+- `apps/server/src/routines/service.ts` (+ `service.test.ts`, `scheduler.test.ts`)
+- `apps/server/src/actions/registry.ts`, `gateway.ts` (+ `gateway.test.ts`), `flow.e2e.test.ts`
+- `docs/TOOL_SANDBOX.md`
+- `work/T-0132-tool-host-approval.md` (this Report + status)
 
 ### Commands run and real results
--
+- `pnpm install`: done, 6.8s
+- `pnpm --filter @galena/server db:generate`: created `drizzle/0028_lucky_loki.sql` containing ONLY `ALTER TABLE "ai_tools" ADD COLUMN "approved_hosts" jsonb DEFAULT '[]'::jsonb NOT NULL`
+- `pnpm format:check`: FAILS on 2 generated files only (`drizzle/meta/_journal.json`, `drizzle/meta/0028_snapshot.json`) — both are drizzle-kit output; the 0027 snapshot committed by T-0116 passes, the 0028 pretty-print differs from drizzle-kit's raw emit (array-colon layout). All hand-written files pass. Re-ran after last edit: same 2 generated files only (see Problems).
+- `pnpm lint` (oxlint): clean, exit 0
+- `pnpm typecheck`: 10 tasks successful
+- Affected tests while working (`--maxWorkers=2`): `tools/service.test.ts` 45 passed, `tools/adapters.test.ts` 27 passed, `tools/routes.test.ts` + `routines/*` 40+19+21 passed, `actions/flow.e2e.test.ts` 20 passed, `actions/gateway.test.ts` 46 passed, `actions/registry.test.ts` passed
+- Full server suite once at the end (`pnpm --filter @galena/server test --maxWorkers=2`): 82 files passed, 5 skipped; 1434 tests passed, 7 skipped, 0 failed (351s)
+- `pnpm build`: 2 tasks successful
+- New/updated test counts: adapters.test.ts 27 (8 new T-0132), service.test.ts 45 (3 new), routines/service.test.ts 19 (1 new), scheduler.test.ts 21 (1 new), gateway.test.ts 46 (2 new prepareArgs), flow.e2e.test.ts 20 (3 new approve_hosts e2e). Pre-existing T-0104/T-0105 seed helpers updated to approve declared hosts (documented T-0132 comments).
 
 ### Problems, deviations from the spec, open questions
--
+- `pnpm format:check` fails on the two drizzle-generated meta files (see above). I did NOT hand-edit generator output to force it green: the 0028 snapshot is byte-identical to what `db:generate` emitted (verified: `git checkout` of the file changes nothing; the only delta prettier wants is its own array-wrapping style plus a trailing newline that 0027's committed snapshot also lacks — 0027 passes only because its arrays happen to fit). Lead: confirm leaving generator output untouched, or reformat the snapshot.
+- Spec §4 migration note ("set each tool's approved_hosts to the union of approved_hosts of its live routines"): there are no live routines in production yet and no pre-0028 rows carry approvals, so the `DEFAULT '[]'` covers it; the union logic lives in code paths (approve sets exactly, schedule requires subset), not in SQL. Flagging in case the lead wants an explicit backfill statement anyway.
+- `routine.schedule`'s approved-set check and `createRoutine` are not atomic (a revocation racing approval is possible); the runtime intersection in `runToolVersion` still refuses the host at run time. Noted in a code comment.
+- Deviation from my earlier plan: instead of an async `describe`, I added the `prepareArgs` hook (describe stays sync, zero changes to other adapters). The card text, stored args and hash all carry the bound DB hosts.
+- No dependencies added. No `any`, no `@ts-ignore`, no disable comments.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None (status: review). Only ask: confirm the 2-file `format:check` finding on generated drizzle meta stays as-is.
 
 ---
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved after two lead fixes. Read the gateway `prepareArgs` hook, both adapters, `runToolVersion`, `createRoutine` and the migration myself. The design holds: hosts on the card are read from the DB at card time (never from model text) and stored in the args, so the args hash covers them; `execute` fails safe if the tool's hosts changed after the card; every run trigger goes through `runToolVersion`, which passes declared ∩ approved hosts; routine creation re-checks against the tool's approved set. Audit detail is ids, name and host names only. Pre-review packet re-ran server suite (1434 passed).
 
 ### Findings
--
+- Fixed: `approveToolHosts` stored `input.hosts` unvalidated; it now parses with `toolHostsSchema` (lowercase, dedupe, reject wildcards/invalid) and audits the normalised set; test added.
+- Fixed: schema comment claimed a backfill that does not exist; corrected (no production rows, tools off by default).
+- Fixed: drizzle meta files for 0028 formatted with prettier so `format:check` passes.
+- Nit, waived: a stale pending `approve_hosts` card approved after a revoke re-approves the hosts. It needs a human to approve the card, and the hosts are re-checked against the current version.
+- Nit: `isSubsetOf` duplicates `hostsEqualAsSets`; leave.
 
 ### Follow-ups
--
+- Tool host approval UI belongs to T-0107 (tools and routines UI).
