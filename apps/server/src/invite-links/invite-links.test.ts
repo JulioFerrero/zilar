@@ -465,6 +465,12 @@ describe('group invite links', () => {
     expect((await join(link.token, friend.cookie)).status).toBe(200);
     expect((await preview(doomed.token, friend.cookie)).status).toBe(404);
     expect((await join(doomed.token, friend.cookie)).status).toBe(404);
+    // Variants that miss the route (trailing slash, extra segment) still log.
+    for (const suffix of ['/', '/extra', '//']) {
+      await app.request(`${TEST_BASE_URL}/api/join/${link.token}${suffix}`, {
+        headers: { cookie: friend.cookie },
+      });
+    }
 
     const output = context.logOutput();
     expect(output).not.toContain(link.token);

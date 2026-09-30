@@ -1,7 +1,7 @@
 ---
 id: T-0115
 title: Join by link: shareable group invite links (expiry, max uses, revoke)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0115-invite-links
 model: meta/muse-spark-1.3-contributor
@@ -119,10 +119,19 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** merged after three worker rounds and a lead fix.
 
 ### Findings
--
+- Server read line by line: token stored as SHA-256 only, identical 404s for unknown, expired, revoked and exhausted links, atomic claim, group-full checked before the claim with a refund on failure, audit with id and hint only.
+- Found by me in round 1: the raw token was written to the request log; a failed join burned a use. Both fixed.
+- Found by the pre-review: the redaction missed variants such as `/api/join/<token>/`. I made it prefix-wise and added the variants to the test.
+- Web: the join page opens the group after joining, and nameless users go through the name step first.
+- Not live-checked: the UI is verified by tests and mock mode only.
 
 ### Follow-ups
--
+- Two concurrent joins by the same user burn two uses for one membership (counter skew, no over-admission).
+- A failed revoke leaves the button on "Revoking..." (`revokingId` is never cleared).
+- Mock join never answers 409 or 429 and ignores the upper bounds.
+- `GET /api/join/:token` is not rate limited (needs a session; 256-bit token).
+- The per-IP join limit uses the socket address: behind Caddy it becomes one global budget. Add a trusted-proxy setting.
+- The cap can be exceeded by one when two strangers race for the last seat (same as add-member).
