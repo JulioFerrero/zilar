@@ -1,7 +1,7 @@
 ---
 id: T-0131
 title: Feature screenshots and user documentation
-status: review
+status: merged
 milestone: M5
 branch: task/T-0131-screenshots-user-docs
 model: meta/muse-spark-1.3-contributor
@@ -106,10 +106,14 @@ Product code changes, mobile screenshots (simulators belong to Julio), a docs we
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** merged.
 
 ### Findings
--
+- I looked at the desktop screenshots one by one: mock data only, no real names, emails, keys or hostnames; the machine fixture name was changed from a personal one to `dev-mac` (one-line exception in `apps/web/src/mock/api.ts`, approved by me).
+- The screenshot script captures to a temp folder and swaps the set in only when every shot and the size check pass; it only talks to the local mock build on port 4319.
+- User guide claims were spot-checked against code by the pre-review and hold.
 
 ### Follow-ups
--
+- Validate the shot table's `setup` names with an enum so a typo fails fast.
+- The search screenshot shows the empty-chat placeholder next to the results; a nicer setup would hide it.
+- Re-run `scripts/screenshots.ts` after the next visible UI change.
