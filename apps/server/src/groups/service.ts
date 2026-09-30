@@ -386,10 +386,11 @@ export async function removeGroupMember(
     throw new HttpError(403, 'forbidden', 'The owner cannot be removed');
   }
   // T-0124: a channel always keeps its admins' voice (the room is moderated,
-  // so only affiliation admin/owner may post). Demoting the last admin would
-  // silence the feed: the demotion itself is refused (see
-  // `changeMemberRole`), and removing the last admin is refused here.
-  if (group.kind === 'channel' && !isSelf) {
+  // so only affiliation admin/owner may post). Removing the last admin is
+  // refused here (demoting one is refused in `changeMemberRole`). The guard
+  // fires only when the target is an admin: kicking a subscriber never takes
+  // voice away, even in a channel that has no admins yet.
+  if (group.kind === 'channel' && !isSelf && target.role === 'admin') {
     await assertChannelKeepsAnAdmin(db, input.groupId, input.targetUserId);
   }
 
@@ -512,6 +513,12 @@ export async function changeMemberRole(
   // group route). A plain member sees it too: 403 here would tell them the
   // group exists and they are in it, an oracle strangers don't get.
   if (!group || !actor || actor.role !== 'owner') {
+    throw new HttpError(404, 'not_found', 'Group not found');
+  }
+  // T-0124: channels only. Plain groups answer the same 404 as an unknown
+  // group — the spec asks for channel rules only, and no group UI calls
+  // this route.
+  if (group.kind !== 'channel') {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
   const target = await getMembership(db, input.groupId, input.targetUserId);

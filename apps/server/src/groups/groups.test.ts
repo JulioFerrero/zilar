@@ -1368,6 +1368,50 @@ describe('groups', () => {
       );
     });
 
+    it('answers 404 on plain groups, like an unknown group', async () => {
+      const owner = await bootstrapUser(context, app, 'owner@example.com');
+      const member = await contactOf(context, app, owner.id, 'member@example.com');
+      const created = await createGroupRequest(owner.cookie, {
+        title: 'Weekend trip',
+        memberIds: [member.id],
+      });
+      expect(created.status).toBe(201);
+      const { id: groupId } = (await created.json()) as ChannelDetailBody;
+
+      // The role route is channels-only: a plain group answers the same 404
+      // as an unknown id, even for its owner.
+      const response = await changeRoleRequest(owner.cookie, groupId, member.id, 'admin');
+      expect(response.status).toBe(404);
+      const unknown = await changeRoleRequest(owner.cookie, 'does-not-exist', member.id, 'admin');
+      expect(unknown.status).toBe(404);
+      const unknownBody = (await unknown.json()) as { error: { code: string; message: string } };
+      const plainBody = (await response.json()) as { error: { code: string; message: string } };
+      // Same code and message (requestIds differ by design — one per
+      // request — so they are compared field by field).
+      expect(unknownBody.error.code).toBe('not_found');
+      expect(plainBody.error.code).toBe('not_found');
+      expect(unknownBody.error.message).toBe(plainBody.error.message);
+    });
+
+    it('lets the owner kick a subscriber in a channel with no admins', async () => {
+      // Regression: the last-admin guard must only fire when the target is
+      // an admin. A fresh channel has zero admins; kicking a subscriber
+      // takes no voice away and must succeed.
+      const { ownerCookie, subscriberId, groupId } = await channelWithSubscriber();
+      const roomLocalpart = await roomLocalpartOf(groupId);
+      const subJid = `${localpartFor(subscriberId)}@${TEST_XMPP_DOMAIN}`;
+
+      const kicked = await removeMemberRequest(ownerCookie, groupId, subscriberId);
+      expect(kicked.status).toBe(200);
+      expect(context.adminClient.affiliationState.get(roomLocalpart)?.get(subJid)).toBe(undefined);
+      expect(
+        await context.db
+          .select()
+          .from(groupMembers)
+          .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, subscriberId))),
+      ).toEqual([]);
+    });
+
     it('keeps an admin voice after a later member joins the channel', async () => {
       const { ownerCookie, ownerId, subscriberId, groupId } = await channelWithSubscriber();
       const roomLocalpart = await roomLocalpartOf(groupId);

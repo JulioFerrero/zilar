@@ -156,10 +156,12 @@ export function createGroupsRoutes({
     return c.json({ members });
   });
 
-  // T-0124: promote a member to admin (or demote one back). Only the owner.
-  // The room affiliation follows at once, so a channel's voice mapping is
-  // enforced by the room, not the UI. Every change is audited as
-  // `group.role_changed` (ids and roles only).
+  // T-0124: promote/demote through the role route (owner only). Channels
+  // only: plain groups answer the same 404 as an unknown group (the spec
+  // asks for channel rules only, and no group UI calls this route). Every
+  // change is audited as `group.role_changed` (ids and roles only). The
+  // room affiliation follows the committed row best-effort (see
+  // `changeMemberRole`).
   routes.put('/groups/:id/members/:userId/role', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
     if (!roleLimiter.allow(user.id)) {

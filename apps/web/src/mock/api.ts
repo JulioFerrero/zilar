@@ -1816,6 +1816,9 @@ export async function mockRequest(
         memberCount: detail.members.length,
         alreadyMember,
         ...(alreadyMember ? { groupId: link.groupId } : {}),
+        // T-0124: the channel kind, so mock-mode JoinPage reads "Join
+        // channel" like the real preview.
+        ...(detail.kind === 'channel' ? { kind: 'channel' as const } : {}),
       });
     }
     if (method === 'POST') {
@@ -1952,13 +1955,12 @@ export async function mockRequest(
       }));
       return jsonResponse({ members: visible });
     }
-    // `/groups/:id/members/:userId/role` — owner only.
+    // `/groups/:id/members/:userId/role` — channels only, owner only.
+    // Non-owners (and plain groups) 404 like an unknown group, mirroring
+    // the server's same-404 rule.
     if (segments.length === 5 && segments[4] === 'role' && method === 'PUT') {
-      if (viewer.role !== 'owner') {
-        return jsonResponse(
-          { error: { code: 'forbidden', message: 'Only the owner can change roles' } },
-          403,
-        );
+      if (viewer.role !== 'owner' || detail.kind !== 'channel') {
+        return notFound('Group not found');
       }
       const userId = decodeURIComponent(segments[3] ?? '');
       const member = detail.members.find((item) => item.userId === userId);
@@ -1992,6 +1994,9 @@ export async function mockRequest(
       return jsonResponse(detail);
     }
     // `/groups/:id/members/:userId` — leave (self) or remove (manager).
+    // Removing a channel admin refuses with `channel_needs_admin` while
+    // they are the last admin, mirroring the server guard (kicking a
+    // subscriber always succeeds).
     if (segments.length === 4 && method === 'DELETE') {
       const userId = decodeURIComponent(segments[3] ?? '');
       const target = detail.members.find((item) => item.userId === userId);
@@ -2005,6 +2010,17 @@ export async function mockRequest(
         return jsonResponse(
           { error: { code: 'invalid_request', message: 'The owner cannot be removed' } },
           400,
+        );
+      }
+      if (
+        detail.kind === 'channel' &&
+        target.role === 'admin' &&
+        userId !== currentUserId &&
+        !detail.members.some((item) => item.userId !== userId && item.role === 'admin')
+      ) {
+        return jsonResponse(
+          { error: { code: 'channel_needs_admin', message: 'A channel needs an admin' } },
+          409,
         );
       }
       detail.members = detail.members.filter((item) => item.userId !== userId);

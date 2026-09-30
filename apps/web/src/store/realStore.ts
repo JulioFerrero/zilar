@@ -3007,7 +3007,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         await refreshChatsOrThrow();
       },
       // T-0124: promote/demote through the role route (owner only). The
-      // detail refreshes, so the panel and the composer role update at once.
+      // detail refreshes, so the panel updates at once; the chat list
+      // refreshes too, so the acting device's rows (myRole, counts) match
+      // server truth and the composer bar flips. The target's own device
+      // converges on the next list refresh (60s poll / focus), like every
+      // other membership change in the app.
       changeChannelRole: async (chatId, userId, role) => {
         const groupId = groupIds.get(chatId);
         const mine = myJid();
@@ -3017,6 +3021,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         const domain = mine.slice(mine.indexOf('@') + 1);
         const detail = await api.changeGroupMemberRole(groupId, userId, role);
         applyGroupDetail(chatId, detail, domain);
+        await refreshChatsOrThrow();
       },
       setMembersCanCreateTopics: async (chatId, allowed) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
