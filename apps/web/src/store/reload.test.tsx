@@ -57,6 +57,17 @@ function fakeApi(): ApiClient {
       ais: [],
     })),
     createInvite: vi.fn(async () => ({ code: 'c', url: 'http://x/invite/c' })),
+    createGroupInviteLink: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    listGroupInviteLinks: vi.fn(async () => []),
+    revokeGroupInviteLink: vi.fn(async () => {}),
+    previewJoinLink: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    joinByLink: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
     listAis: vi.fn(async () => []),
     addGroupAi: vi.fn(async () => ({
       id: 'g1',

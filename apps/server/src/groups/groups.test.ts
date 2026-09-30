@@ -536,6 +536,29 @@ describe('groups', () => {
       method: 'DELETE',
     });
     expect(removeAi.status).toBe(401);
+
+    // T-0115: invite-link management needs a session too; joining needs one
+    // as well (a person without an account still needs a sign-up invite).
+    const createLink = await app.request(`${TEST_BASE_URL}/api/groups/x/invite-links`, {
+      method: 'POST',
+    });
+    expect(createLink.status).toBe(401);
+
+    const listLinks = await app.request(`${TEST_BASE_URL}/api/groups/x/invite-links`);
+    expect(listLinks.status).toBe(401);
+
+    const revokeLink = await app.request(`${TEST_BASE_URL}/api/groups/x/invite-links/y`, {
+      method: 'DELETE',
+    });
+    expect(revokeLink.status).toBe(401);
+
+    const preview = await app.request(`${TEST_BASE_URL}/api/join/${'a'.repeat(64)}`);
+    expect(preview.status).toBe(401);
+
+    const join = await app.request(`${TEST_BASE_URL}/api/join/${'a'.repeat(64)}`, {
+      method: 'POST',
+    });
+    expect(join.status).toBe(401);
   });
 
   describe('AIs in groups', () => {

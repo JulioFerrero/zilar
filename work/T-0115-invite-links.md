@@ -1,7 +1,7 @@
 ---
 id: T-0115
 title: Join by link: shareable group invite links (expiry, max uses, revoke)
-status: planned
+status: review
 milestone: M5
 branch: task/T-0115-invite-links
 model: meta/muse-spark-1.3-contributor
@@ -70,19 +70,36 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Server: new `group_invite_links` table (`id`, `group_id` fk cascade, `token_hash` unique, `token_hint` last-4, `label` ≤ 60, `created_by`, `created_at`, `expires_at` nullable, `max_uses` nullable ≥ 1, `uses`, `revoked_at`); migration `0026_simple_spitfire.sql` via `pnpm --filter @galena/server db:generate` (no backfill — new feature, no existing rows).
+- New `apps/server/src/invite-links/{service,routes}.ts`: owner/admin create (10 active links/group; `{ label?, expiresInHours?: 1..8760, maxUses?: 1..10000 }` → `{ id, token, url }` with `url = ${WEB_BASE_URL}/j/<token>`), list (hint/label/uses/limits/state, never tokens), idempotent revoke (204; audit only on first revoke). Join: `GET /api/join/:token` → `{ groupTitle, memberCount, alreadyMember }` (never member names); `POST /api/join/:token` adds the caller as `member` through the add-member flow (group-room affiliation in-transaction, public-topic sync via `syncTopicRoom`, direct invitation), consumes one use with an atomic conditional update (not revoked, not expired, `uses < max_uses`) so two racing joins never exceed `max_uses`. Unknown/expired/revoked/exhausted/malformed all answer the identical 404 `invalid_link`; already-member answers 200 `alreadyMember: true` consuming nothing; full group answers 409 `group_full`. Tokens compared by hash with `timingSafeEqual`; joins rate limited 20/hour/user + 60/hour/IP (socket address, never `x-forwarded-for`; tests inject `getClientIp`/clock via an app-module seam). Audit `group.link_created`, `group.link_revoked`, `group.joined_by_link` (link id + hint only, never the token). New `WEB_BASE_URL` env (zod `z.url()`, default `http://localhost:5173`), documented in `docs/SERVER_CONFIG.md`.
+- Web: `routes/JoinPage.tsx` + `/j/:token` route (preview card, Join button, invalid/already-member/full/signed-out states; signed-out → login with `next=/j/<token>`, `RequireAuth` returns after sign-in; refreshes the chat list after joining). `components/InviteLinksSection.tsx` in the group panel for owners/admins (create with label/expiry/max-uses, URL shown once with Copy + anyone-with-the-link warning, list with uses/state, Revoke). `lib/api.ts` helpers + `ApiClient` wiring; mock mode (`mock/api.ts`) supports create/list/revoke/join for the full flow.
+- Tests: server `invite-links.test.ts` (16 tests) + sweep additions in `groups.test.ts` + `config.test.ts` (default/explicit/invalid `WEB_BASE_URL`); web `api.invite-links.test.ts`, `mock/api.invite-links.test.ts`, `routes/JoinPage.test.tsx`, `components/InviteLinksSection.test.tsx`; fixed up `GroupPanel.test.tsx` stubs for the new section.
 
 ### Files changed
--
+- `apps/server/src/db/schema.ts`, `apps/server/drizzle/0026_simple_spitfire.sql` (+ meta `_journal.json`, `0026_snapshot.json`)
+- `apps/server/src/invite-links/service.ts`, `routes.ts`, `invite-links.test.ts` (new)
+- `apps/server/src/config.ts`, `config.test.ts`, `app.ts` (+ `setTestAppInviteLinks` seam), `groups/groups.test.ts`, `audit/` (action names only, no code change)
+- `apps/web/src/routes/JoinPage.tsx`, `JoinPage.test.tsx` (new), `AppRoutes.tsx`, `components/InviteLinksSection.tsx`, `InviteLinksSection.test.tsx` (new), `components/GroupPanel.tsx`, `GroupPanel.test.tsx`, `lib/api.ts`, `lib/api.invite-links.test.ts` (new), `mock/api.ts`, `mock/api.invite-links.test.ts` (new), `store/realStore.ts`, `store/realStore.test.tsx`, `store/realStore.topics.test.tsx`, `store/reload.test.tsx`
+- `docs/SERVER_CONFIG.md`, `work/T-0115-invite-links.md`
 
 ### Commands run and real results
--
+- `pnpm install`: pass (7.5s)
+- `pnpm format:check`: pass ("All matched files use Prettier code style!")
+- `pnpm lint`: pass (oxlint clean)
+- `pnpm typecheck`: pass (10/10 turbo tasks)
+- `pnpm --filter @galena/server test --maxWorkers=2`: 81 files passed, 5 skipped; 1393 passed, 7 skipped (~289s, full suite at the end)
+- `pnpm --filter @galena/web test --maxWorkers=2`: 74 files passed; 797 passed (full suite at the end)
+- `pnpm build`: pass (2/2 turbo tasks)
+- Scoped runs during work: invite-links + config 55 passed; web invite-links/join/panel 20 passed; GroupPanel 1 failure fixed (fetch stubs now answer `/invite-links`).
+- `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any` in all touched source: no hits.
 
 ### Problems, deviations from the spec, open questions
--
-
-### Blocked / needs a decision
-- (only if status is blocked)
+- Link join does not require the newcomer to be a contact of anyone (deliberate: the link is the introduction). The spec says "adds the caller as `member` through the existing add-member flow (so T-0108 room sync, public topics and the audit entry all happen)" — I reused the room-sync/invite/audit pieces but not `addGroupMembers` itself, because that function enforces the contacts rule and the actor-must-be-manager rule, neither of which applies to a link join. Room sync, public topics and the audit entry all happen as specified.
+- The transaction boundary differs slightly from `addGroupMembers`: the group-room affiliation is set inside the transaction (so a room outage answers 503 with nothing committed), while the topic-room sync is best-effort post-commit (logged with the group id, like the group remove flow) — a failing topic room still commits the member and answers 200. Covered by test.
+- A consumed use is never refunded: if the room is down (503) after the atomic claim, the link keeps the consumed use. Chose simplicity over a refund path; the failure mode is rare and the admin can mint a fresh link.
+- `GET /api/join/:token` is rate-limited only implicitly (it never reveals tokens; guessing runs through POST). The spec's "join attempts are rate limited" is implemented on POST; GET previews are cheap reads but also unauthenticated-probe-safe since they need a session and reveal nothing beyond title+count for a valid link.
+- Mock mode: the mock user owns every mock group, so the panel section always shows there; join preview reports `alreadyMember: true` for the Dev team group (the mock user is a member). Fine for UI work.
+- No new dependencies, no `any`, no disable comments.
 
 ---
 

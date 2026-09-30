@@ -169,6 +169,14 @@ Topics add no env vars. Every topic is its own members-only XMPP MUC room on `XM
 
 Chat preferences add no env vars. `chat_prefs` holds one row per (user, chat JID) for mute (`muted_until`, far-future means forever), archive (`archived`) and pin (`pinned_at`); a row back at all defaults is deleted. `GET /api/chat-prefs` returns the caller's rows; `PUT /api/chat-prefs/:chatJid` patches one row (60 writes/minute/user, 200 rows/user, 20 pins/user). A user can only set prefs for DMs with their contacts or own AIs, and for group General/topic rooms they can see — anything else 404s. Prefs never leak (own-rows only, no audit entries).
 
+### Group invite links (T-0115)
+
+| Variable | Required? | Default | What it does | Notes |
+|---|---|---|---|---|
+| `WEB_BASE_URL` | No | `http://localhost:5173` | Web base URL baked into shareable group join links (`POST /api/groups/:id/invite-links` answers `{ id, token, url }` with `url = ${WEB_BASE_URL}/j/<token>`; `config.ts`). | Not a secret. Must be the URL people open in a browser, or copied links 404. |
+
+Shareable links join a **group** as `member` (public topics come with joining; private topics are never joined by link). Only the SHA-256 hash of the 32-byte token is stored — the token is shown once at creation and never logged or audited; the admin list carries the last-4 hint, label, uses and state, never tokens. At most 10 active links per group. Joining consumes one use with a conditional update (not revoked, not expired, under the cap), so two racing joins can never exceed `max_uses`. Unknown/expired/revoked/exhausted links answer the same 404 `invalid_link` (no leak of which); a full group answers 409 `group_full`. Join attempts are rate limited (20/hour/user, 60/hour/IP, in-memory per process, like the other caps in `rate-limit.ts`). Audited as `group.link_created`, `group.link_revoked`, `group.joined_by_link` (link id + hint only, never the token). The web `/j/<token>` page sends a signed-out visitor to the login with `next=/j/<token>` and returns them after sign-in. Invite-only sign-up is unchanged: a person without an account still needs a sign-up invite first.
+
 ## 4. Database
 
 ### How migrations run

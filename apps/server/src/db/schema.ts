@@ -93,6 +93,36 @@ export const groups = pgTable('groups', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Shareable group invite links (T-0115, decision D28). One row per link: only
+// the SHA-256 hash of the token is stored — the token itself is shown once at
+// creation and never persisted, logged or audited. `token_hint` (the last 4
+// token characters) lets an admin tell links apart. `max_uses` null means
+// unlimited; `expires_at` null means never. A link is usable while it is not
+// revoked, not expired and under its use cap; joining consumes one use with
+// an atomic conditional update so two racing joins can never exceed
+// `max_uses`.
+export const groupInviteLinks = pgTable(
+  'group_invite_links',
+  {
+    id: text('id').primaryKey(),
+    groupId: text('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull().unique(),
+    tokenHint: text('token_hint').notNull(),
+    label: text('label'),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    maxUses: integer('max_uses'),
+    uses: integer('uses').notNull().default(0),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (table) => [index('group_invite_links_group_idx').on(table.groupId)],
+);
+
 // A provider API key a user pasted in Settings → Connections. The key is stored
 // only as an encrypted envelope (see connections/crypto.ts); the plaintext is
 // never written here. `owner` is the authenticated user for now — workspace

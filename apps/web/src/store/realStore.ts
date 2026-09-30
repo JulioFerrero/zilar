@@ -47,6 +47,7 @@ import {
   addTopicMember as addTopicMemberRequest,
   chatEntryTopics,
   createGroup as createGroupRequest,
+  createGroupInviteLink as createGroupInviteLinkRequest,
   createInvite as createInviteRequest,
   createTopic as createTopicRequest,
   getChats,
@@ -55,26 +56,35 @@ import {
   getMe,
   getTopic as getTopicRequest,
   getXmppToken,
+  joinByLink as joinByLinkRequest,
   listAis as listAisRequest,
   listChatPrefs as listChatPrefsRequest,
+  listGroupInviteLinks as listGroupInviteLinksRequest,
   listGroupTopics as listGroupTopicsRequest,
   listPins as listPinsRequest,
   listTopicAis as listTopicAisRequest,
   listTopicMembers as listTopicMembersRequest,
   patchTopic as patchTopicRequest,
   pinMessage as pinMessageRequest,
+  previewJoinLink as previewJoinLinkRequest,
   putChatPref as putChatPrefRequest,
   removeGroupAi as removeGroupAiRequest,
   removeTopicAi as removeTopicAiRequest,
   removeTopicMember as removeTopicMemberRequest,
+  revokeGroupInviteLink as revokeGroupInviteLinkRequest,
   setMembersCanCreateTopics as setMembersCanCreateTopicsRequest,
   unpinMessage as unpinMessageRequest,
   type ChatEntry,
   type ChatPref,
   type Contact,
+  type CreateGroupInviteLinkInput,
+  type CreatedInviteLink,
   type CreateTopicInput,
   type GroupDetail,
+  type GroupInviteLink,
   type Invite,
+  type JoinPreview,
+  type JoinResult,
   type Me,
   type PatchTopicInput,
   type Pin,
@@ -154,6 +164,14 @@ export interface ApiClient {
   getXmppToken(): Promise<XmppToken>;
   createGroup(input: { title: string; memberIds: string[] }): Promise<GroupDetail>;
   createInvite(): Promise<Invite>;
+  createGroupInviteLink(
+    groupId: string,
+    input: CreateGroupInviteLinkInput,
+  ): Promise<CreatedInviteLink>;
+  listGroupInviteLinks(groupId: string): Promise<GroupInviteLink[]>;
+  revokeGroupInviteLink(groupId: string, linkId: string): Promise<void>;
+  previewJoinLink(token: string): Promise<JoinPreview>;
+  joinByLink(token: string): Promise<JoinResult>;
   listAis(): Promise<PublicAi[]>;
   addGroupAi(groupId: string, aiId: string): Promise<GroupDetail>;
   removeGroupAi(groupId: string, aiId: string): Promise<GroupDetail>;
@@ -204,6 +222,11 @@ const realApi: ApiClient = {
   getXmppToken,
   createGroup: createGroupRequest,
   createInvite: createInviteRequest,
+  createGroupInviteLink: createGroupInviteLinkRequest,
+  listGroupInviteLinks: listGroupInviteLinksRequest,
+  revokeGroupInviteLink: revokeGroupInviteLinkRequest,
+  previewJoinLink: previewJoinLinkRequest,
+  joinByLink: joinByLinkRequest,
   listAis: listAisRequest,
   addGroupAi: addGroupAiRequest,
   removeGroupAi: removeGroupAiRequest,

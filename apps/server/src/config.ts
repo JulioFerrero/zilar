@@ -57,6 +57,10 @@ const serverConfigSchema = z
     GITHUB_APP_ID: z.string().min(1).optional(),
     GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(),
     GITHUB_APP_INSTALLATION_ID: z.string().min(1).optional(),
+    // Invite links (T-0115): the base URL baked into shareable group join
+    // links (`${WEB_BASE_URL}/j/<token>`). A plain URL, never echoed in a
+    // config error.
+    WEB_BASE_URL: z.url().default('http://localhost:5173'),
     // Envelope-encryption master key for provider keys stored in
     // `provider_connections`. Optional so the server still boots without it;
     // the connections module refuses to start when it is absent (mirrors how
