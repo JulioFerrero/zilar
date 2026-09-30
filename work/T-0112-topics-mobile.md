@@ -1,7 +1,7 @@
 ---
 id: T-0112
 title: Topics (mobile): a group opens to its topics list, a topic is a chat with the task strip
-status: review
+status: merged
 milestone: M5
 branch: task/T-0112-topics-mobile
 model: meta/muse-spark-1.3-contributor
@@ -112,10 +112,15 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** Approved and merged after one fix round. The phone app was not run in a simulator (none used tonight); it is covered by the store and screen logic tests.
 
 ### Findings
--
+- Round 1 caught by the pre-review and fixed: the topics screen never loaded its group detail (no "+", zero AIs), and a hook sat after an early return in the chat screen.
+- Round 2 pre-review: no must-fix.
 
-### Follow-ups
--
+### Follow-ups (should-fix, small)
+- Mock `addTopicAi` throws, so ticking an AI in the mock new-topic sheet reports a failure.
+- A store test passes a chat JID where a group id belongs (the fake `getGroup` ignores it).
+- The hooks-guard test checks inline strings, not the real screens.
+- `createTopic` reports "Could not create" when only the follow-up chat-list re-read fails, which can lead to a duplicate topic on retry.
+- Nits: notice never shown when the whole group disappears; filtered group shows "1 topics"; the new-topic sheet keeps the previous name.
