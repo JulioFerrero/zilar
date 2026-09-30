@@ -24,6 +24,7 @@ import {
 import { AttachmentPreview } from './AttachmentPreview';
 import { EditBar } from './EditBar';
 import { MentionPicker } from './MentionPicker';
+import { StickerPanel, type StickerChoice } from './StickerPanel';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { Well } from './ui/well';
@@ -71,6 +72,7 @@ export function Composer({
   const [voiceError, setVoiceError] = useState<string | undefined>(undefined);
   const [attachment, setAttachment] = useState<PendingAttachment | undefined>(undefined);
   const [attachmentError, setAttachmentError] = useState<string | undefined>(undefined);
+  const [stickerOpen, setStickerOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastTypingRef = useRef(0);
@@ -179,6 +181,8 @@ export function Composer({
   // A mention picked in one chat must never be sent into another: when the chat
   // changes, drop the tracked mentions and any open picker during render. The
   // draft text itself stays, as it did before.
+  // A sticker picked in one chat must never be sent into another: like the
+  // tracked mentions, the open panel closes on a chat switch.
   if (trackedChatId !== chatId) {
     setTrackedChatId(chatId);
     setMentions([]);
@@ -186,6 +190,7 @@ export function Composer({
     setActiveIndex(0);
     setAttachment(undefined);
     setAttachmentError(undefined);
+    setStickerOpen(false);
   }
   const canSend = value.trim().length > 0 || attachment !== undefined;
   const title = store.chats.find((chat) => chat.id === chatId)?.title;
@@ -286,6 +291,17 @@ export function Composer({
     setActiveIndex(0);
     pendingCaretRef.current = inserted.caret;
   };
+
+  // A sticker sends at once through the store (same path as other payload
+  // messages): optimistic bubble, failure shows the usual retry.
+  const sendSticker = useCallback(
+    (sticker: StickerChoice): void => {
+      store.sendSticker(chatId, sticker, replyTo === undefined ? undefined : { replyTo });
+      setStickerOpen(false);
+      onCancelReply();
+    },
+    [chatId, onCancelReply, replyTo, store],
+  );
 
   const send = (): void => {
     if (attachment !== undefined) {
@@ -609,9 +625,26 @@ export function Composer({
                 : {})}
               className="min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1 py-[7px] text-[14px] leading-[22px] outline-none placeholder:text-muted-foreground"
             />
-            <IconButton aria-label="Insert emoji">
+            <IconButton
+              aria-label="Open sticker panel"
+              aria-expanded={stickerOpen}
+              onClick={() => setStickerOpen((open) => !open)}
+            >
               <Smile className="size-5" aria-hidden="true" />
             </IconButton>
+            {stickerOpen && (
+              <StickerPanel
+                onPick={sendSticker}
+                onClose={() => setStickerOpen(false)}
+                onEmoji={(emoji) => {
+                  const caret = textareaRef.current?.selectionStart ?? value.length;
+                  const next = `${value.slice(0, caret)}${emoji}${value.slice(caret)}`;
+                  onChange(next, caret + emoji.length);
+                  pendingCaretRef.current = caret + emoji.length;
+                  textareaRef.current?.focus();
+                }}
+              />
+            )}
           </>
         )}
         {canSend ? (

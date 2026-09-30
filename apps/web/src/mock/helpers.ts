@@ -90,3 +90,61 @@ export function approvalCard(): Payload {
     },
   };
 }
+
+/** A generated SVG-as-data-URL sticker cell for the mock demo packs. */
+export function svgSticker(from: string, to: string, glyph: string): string {
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">',
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">',
+    `<stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/>`,
+    '</linearGradient></defs>',
+    '<rect width="200" height="200" rx="40" fill="url(#g)"/>',
+    `<text x="100" y="135" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="88">${glyph}</text>`,
+    '</svg>',
+  ].join('');
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+export interface MockDemoStickerPack {
+  id: string;
+  title: string;
+  stickers: Array<{ id: string; emoji: string; url: string }>;
+}
+
+/**
+ * Two built-in demo packs for mock mode (T-0120): simple generated
+ * SVG-as-data-URL stickers, so the panel has content with no server.
+ */
+export function mockDemoStickerPacks(): MockDemoStickerPack[] {
+  const pack = (
+    id: string,
+    title: string,
+    cells: Array<[string, string, string, string]>,
+  ): MockDemoStickerPack => ({
+    id,
+    title,
+    stickers: cells.map(([stickerId, from, to, glyph], index) => ({
+      id: stickerId,
+      emoji: ['🐱', '😂', '🔥', '❤️', '🎉', '😎'][index % 6]!,
+      url: svgSticker(from, to, glyph),
+    })),
+  });
+  return [
+    pack('mock-pack-cats', 'Cats', [
+      ['mock-cat-1', '#fbbf24', '#f97316', '🐱'],
+      ['mock-cat-2', '#a78bfa', '#7c3aed', '😹'],
+      ['mock-cat-3', '#6ee7b7', '#059669', '🙀'],
+      ['mock-cat-4', '#fda4af', '#e11d48', '😻'],
+      ['mock-cat-5', '#7dd3fc', '#0284c7', '🐈'],
+      ['mock-cat-6', '#fde68a', '#d97706', '😺'],
+    ]),
+    pack('mock-pack-moods', 'Moods', [
+      ['mock-mood-1', '#fde047', '#ca8a04', '😂'],
+      ['mock-mood-2', '#fca5a5', '#dc2626', '🔥'],
+      ['mock-mood-3', '#c4b5fd', '#6d28d9', '😎'],
+      ['mock-mood-4', '#86efac', '#16a34a', '🎉'],
+      ['mock-mood-5', '#93c5fd', '#1d4ed8', '❤️'],
+      ['mock-mood-6', '#fdba74', '#ea580c', '👍'],
+    ]),
+  ];
+}

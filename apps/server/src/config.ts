@@ -61,6 +61,10 @@ const serverConfigSchema = z
     // links (`${WEB_BASE_URL}/j/<token>`). A plain URL, never echoed in a
     // config error.
     WEB_BASE_URL: z.url().default('http://localhost:5173'),
+    // Stickers (T-0120): the directory sticker files are stored under.
+    // File names are `<uuid>.<ext>`; the dir must exist or be creatable and
+    // writable at startup (checked in `index.ts`).
+    STICKER_STORAGE_DIR: z.string().min(1).default('./data/stickers'),
     // Envelope-encryption master key for provider keys stored in
     // `provider_connections`. Optional so the server still boots without it;
     // the connections module refuses to start when it is absent (mirrors how

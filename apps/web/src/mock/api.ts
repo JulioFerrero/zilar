@@ -3,7 +3,7 @@ import { currentUserId, PEOPLE } from './ids';
 import { mockChats } from './chats';
 import { mockGroupDetails } from './groups';
 import { mockMessages } from './messages';
-import { approvalCard } from './helpers';
+import { approvalCard, mockDemoStickerPacks } from './helpers';
 import {
   mockTopicAisById,
   mockTopicChats,
@@ -1139,6 +1139,29 @@ function minutesAgo(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
 }
 
+// T-0120: the two demo packs as API rows (200 px SVG data-URL stickers).
+function mockStickerPacks(): unknown[] {
+  const now = new Date().toISOString();
+  return mockDemoStickerPacks().map((pack) => ({
+    id: pack.id,
+    ownerId: currentUserId,
+    title: pack.title,
+    visibility: 'server',
+    stickers: pack.stickers.map((sticker) => ({
+      id: sticker.id,
+      packId: pack.id,
+      emoji: sticker.emoji,
+      mime: 'image/png',
+      width: 200,
+      height: 200,
+      bytes: 1024,
+      url: sticker.url,
+    })),
+    createdAt: now,
+    updatedAt: now,
+  }));
+}
+
 function createAi(init: RequestInit): Response {
   const body = readJsonBody(init);
   const id = `ai-mock-${state.nextAiSequence}`;
@@ -1439,6 +1462,24 @@ export async function mockRequest(
 
   if (head === 'chats' && method === 'GET') {
     return jsonResponse({ chats: chatEntries() });
+  }
+
+  // T-0120: mock mode serves the two built-in demo packs (SVG data URLs) as
+  // the panel list and as discover results, so the panel has content.
+  if (head === 'sticker-packs' && first === undefined && method === 'GET') {
+    return jsonResponse({ packs: mockStickerPacks() });
+  }
+
+  if (head === 'sticker-packs' && first === 'discover' && method === 'GET') {
+    return jsonResponse({ packs: mockStickerPacks(), next: null });
+  }
+
+  if (head === 'sticker-panel' && second === undefined && method === 'PUT') {
+    return jsonResponse({ ok: true });
+  }
+
+  if (head === 'sticker-panel' && second === undefined && method === 'DELETE') {
+    return jsonResponse({ ok: true });
   }
 
   // T-0113: in-memory chat prefs. The mock has no access model, so any JID

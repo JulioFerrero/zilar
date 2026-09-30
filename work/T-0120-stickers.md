@@ -1,7 +1,7 @@
 ---
 id: T-0120
 title: Stickers: user-made packs, storage, sending and rendering (protocol, server, web)
-status: planned
+status: review
 milestone: M5
 branch: task/T-0120-stickers
 model: meta/muse-spark-1.3-contributor
@@ -80,19 +80,38 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Protocol: new `sticker` payload (`StickerSchema`, `v: 0`) in `packages/protocol/src/sticker.ts`, wired into `PayloadSchema` + index. Empty/emoji body convention documented; `MAX_PAYLOAD_BYTES` rules untouched.
+- Server: `apps/server/src/stickers/` — `image.ts` (magic-byte detection + PNG/VP8/VP8L/VP8X header parsing, no deps), `service.ts` (packs/stickers/panel/discover, atomic caps via advisory-lock transactions), `routes.ts` (all 10 routes, 60/hour upload limit, strict file headers). `STICKER_STORAGE_DIR` env (zod, default `./data/stickers`), writable-check at startup in `index.ts`, mounted in `app.ts`, documented in `docs/SERVER_CONFIG.md` incl. docker volume note. `schema.ts` has `sticker_packs`/`stickers`/`user_sticker_packs` — **no migration committed** per lead order (pending number after T-0116 merges).
+- Web: `StickerPanel.tsx` (Stickers/GIFs/Emoji tabs, Recent first, 6-col 72px grid, preview, click sends), `StickerMessage.tsx` (no bubble, ≤200px, time pill, same-origin gate), `lib/stickers.ts` (recents in localStorage w/ hostile-data guards, same-origin check), `lib/api.ts` sticker client, `sendSticker` in both stores (real store sends via XMPP payload path + incoming maps to `card`), mock mode serves 2 demo SVG packs.
+- Security checklist (AGENTS.md): no secrets/tokens in logs/audit/errors (audit carries pack ids only); deletes/updates scoped by (user,pack)/(pack,sticker) with owner checks first; caps enforced atomically (advisory-lock txns: 100 packs/user, 120/pack, pin-style panel insert); nothing mutates before permission check; private packs = same 404 as missing (incl. sticker-in-pack, panel add, unpin-style paths); 401 sweep passes unchanged (all new routes require session); upload has 60/hour rate limit; audit entries carry ids only.
 
 ### Files changed
--
+- `packages/protocol/src/sticker.ts`, `sticker.test.ts`, `payload.ts`, `index.ts`
+- `apps/server/src/stickers/image.ts`, `image.test.ts`, `service.ts`, `routes.ts`, `routes.test.ts`
+- `apps/server/src/db/schema.ts` (tables only, NO migration file), `config.ts` + `config.test.ts`, `app.ts`, `index.ts`
+- `apps/web/src/components/StickerPanel.tsx`, `StickerPanel.test.tsx`, `StickerMessage.tsx`, `Composer.tsx`, `MessageBubble.tsx`, `lib/stickers.ts`, `lib/stickers.test.ts`, `lib/sticker-url.test.ts`, `lib/api.ts`, `mock/api.ts`, `mock/helpers.ts`, `store/store.ts`, `store/realStore.ts`
+- `docs/SERVER_CONFIG.md`, `work/T-0120-stickers.md`
 
 ### Commands run and real results
--
+- `pnpm install`: ok (1021 packages, 7.6s)
+- `pnpm format:check`: pass (all matched files use Prettier style)
+- `pnpm lint` (oxlint): pass, no findings
+- `pnpm typecheck` per package (protocol/server/web): all pass
+- `pnpm --filter @galena/protocol test --maxWorkers=2`: 11 files, 156 passed
+- `pnpm --filter @galena/server test --maxWorkers=2`: 83 files passed, 5 skipped; 1426 passed, 7 skipped — **with a temporarily generated 0027 migration** (removed afterwards per lead order). Without it, the 14 sticker route tests fail (tables missing) while everything else passes.
+- `pnpm --filter @galena/web test --maxWorkers=2`: 77 files, 820 passed
+- `pnpm build` (turbo): 2 tasks successful, 50s
+- Targeted runs while working (all `--maxWorkers=2`): sticker protocol 12 passed; image probe 14 passed; sticker routes 14 passed; config 58 incl. new storage-dir cases; authz sweep 5 passed; web sticker panel/message/recents/url 19 passed; Composer 25 passed after bubble-menu dedupe fix.
 
 ### Problems, deviations from the spec, open questions
--
+- **Migration NOT committed** (lead order): `schema.ts` tables are written; `db:generate` output (0027_*.sql + snapshot + journal) was generated only to run tests, then deleted. The branch needs the lead's migration number after T-0116 merges + rebase. Until then the sticker routes 500/503 without the tables (expected).
+- Sticker rendering reuses `UiMessage.card` (generic `Payload`) — no `chat-core` change needed, so sticker preview text falls back to the emoji body / empty (no chat-core `previewBody` edit; that package is not in Allowed files).
+- Emoji tab appends a common emoji to the draft (spec allows: "a small grid of common emoji").
+- Upload route accepts multipart (`file` + optional `emoji`) and raw-bytes+`x-emoji` fallback; the panel sends via XMPP payload, not HTTP upload (pack creation UI is T-0121).
+- No `any`, no `@ts-ignore`, no lint/ts disables; prettier re-run after last edit.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- Need the lead to assign the migration number (post-T-0116-merge rebase), then I will run `db:generate` and commit the migration file.
 
 ---
 

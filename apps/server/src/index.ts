@@ -52,6 +52,11 @@ try {
 const { db, close } = createDb(config.DATABASE_URL);
 await runMigrations(db);
 
+// Stickers (T-0120): the storage dir must exist or be creatable and
+// writable at startup, so a bad mount fails fast with a clear message
+// instead of failing the first upload.
+await ensureWritableDir(config.STICKER_STORAGE_DIR, 'STICKER_STORAGE_DIR');
+
 const adminClient = createEjabberdAdminClient(config.xmpp);
 const auth = createAuth({ db, config, mailer, adminClient, logger });
 
@@ -321,6 +326,20 @@ const routineScheduler: RoutineSchedulerHandle | null = buildRoutineScheduler({
 // point at which a stuck shutdown gives up and exits.
 const CONNECTION_GRACE_MS = 3_000;
 const FORCE_EXIT_MS = 15_000;
+
+/** Creates `dir` when missing and fails fast when it is not writable. */
+export async function ensureWritableDir(dir: string, envName: string): Promise<void> {
+  const { mkdir, access, constants } = await import('node:fs/promises');
+  try {
+    await mkdir(dir, { recursive: true });
+    await access(dir, constants.W_OK);
+  } catch {
+    console.error(
+      `${envName} (${dir}) is not writable: create the directory or fix its permissions`,
+    );
+    process.exit(1);
+  }
+}
 
 let shuttingDown = false;
 

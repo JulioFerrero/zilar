@@ -101,6 +101,17 @@ export interface SendAttachmentOptions {
   replyTo?: ReplyRef;
 }
 
+/** What the sticker panel passes when it sends a sticker (T-0120). */
+export interface SendStickerInput {
+  stickerId: string;
+  packId: string;
+  url: string;
+  emoji?: string | undefined;
+  width: number;
+  height: number;
+  mime: 'image/webp' | 'image/png';
+}
+
 export interface ChatStore {
   currentUserId: string;
   me: Me | undefined;
@@ -249,6 +260,8 @@ export interface ChatStore {
   sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
   sendVoice: (chatId: string, recording: VoiceRecording, options?: SendTextOptions) => void;
   sendAttachment: (chatId: string, file: File, options?: SendAttachmentOptions) => void;
+  /** Sends a sticker payload in the chat (T-0120). */
+  sendSticker: (chatId: string, sticker: SendStickerInput, options?: SendTextOptions) => void;
   /** Re-runs a failed attachment upload, keeping the original file. */
   retryAttachment: (chatId: string, messageId: string) => void;
   /**
@@ -1133,6 +1146,41 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
             mime,
           },
           ...(caption.length === 0 ? {} : { text: caption }),
+          ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
+        };
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: [...(state.messagesByChat[chatId] ?? []), message],
+          },
+          chats: withLastMessage(state.chats, chatId, message),
+        }));
+        window.setTimeout(() => setStatus(chatId, message.id, 'sent'), 300);
+        window.setTimeout(() => setStatus(chatId, message.id, 'read'), 1500);
+      },
+      sendSticker: (chatId, sticker, options) => {
+        sequence += 1;
+        const message: UiMessage = {
+          id: `out-${sequence}`,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: 'You',
+          text: sticker.emoji ?? '',
+          createdAt: new Date(),
+          status: 'sending',
+          card: {
+            v: 0,
+            type: 'sticker',
+            data: {
+              pack_id: sticker.packId,
+              sticker_id: sticker.stickerId,
+              url: sticker.url,
+              ...(sticker.emoji === undefined ? {} : { emoji: sticker.emoji }),
+              width: sticker.width,
+              height: sticker.height,
+              mime: sticker.mime,
+            },
+          },
           ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
         };
         set((state) => ({

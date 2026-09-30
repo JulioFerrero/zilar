@@ -1216,6 +1216,81 @@ export function searchMessages(
   return searchRequest(params, searchPageSchema, input.signal);
 }
 
+// --- Stickers (T-0120) -----------------------------------------------------
+// User-made packs: the panel lists mine in order (with stickers), discover
+// lists `server`-visible packs, and files are served same-origin so the
+// renderer can auto-load them without leaking the viewer's IP.
+
+export const stickerSchema = z.object({
+  id: z.string(),
+  packId: z.string(),
+  emoji: z.string().nullable(),
+  mime: z.enum(['image/webp', 'image/png']),
+  width: z.number(),
+  height: z.number(),
+  bytes: z.number(),
+  url: z.string(),
+});
+
+export type Sticker = z.infer<typeof stickerSchema>;
+
+export const stickerPackSchema = z.object({
+  id: z.string(),
+  ownerId: z.string(),
+  title: z.string(),
+  visibility: z.enum(['private', 'server']),
+  stickers: z.array(stickerSchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type StickerPack = z.infer<typeof stickerPackSchema>;
+
+const stickerPacksSchema = z.object({ packs: z.array(stickerPackSchema) });
+
+const discoverPacksSchema = z.object({
+  packs: z.array(stickerPackSchema),
+  next: z.string().nullable(),
+});
+
+export function listStickerPacks(): Promise<StickerPack[]> {
+  return request('/sticker-packs', stickerPacksSchema).then((body) => body.packs);
+}
+
+export function createStickerPack(input: {
+  title: string;
+  visibility?: 'private' | 'server';
+}): Promise<StickerPack> {
+  return request('/sticker-packs', stickerPackSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export function discoverStickerPacks(
+  query?: string,
+): Promise<{ packs: StickerPack[]; next: string | null }> {
+  const params = new URLSearchParams();
+  if (query !== undefined && query.trim() !== '') {
+    params.set('q', query.trim());
+  }
+  const suffix = params.size === 0 ? '' : `?${params.toString()}`;
+  return request(`/sticker-packs/discover${suffix}`, discoverPacksSchema);
+}
+
+export async function addStickerPanelPack(packId: string): Promise<void> {
+  await request(`/sticker-panel/${encodeURIComponent(packId)}`, z.object({ ok: z.boolean() }), {
+    method: 'PUT',
+  });
+}
+
+export async function removeStickerPanelPack(packId: string): Promise<void> {
+  await request(`/sticker-panel/${encodeURIComponent(packId)}`, z.object({ ok: z.boolean() }), {
+    method: 'DELETE',
+  });
+}
+
 // --- Audit log (T-0079, T-0084) --------------------------------------------
 // The wire contract lives in apps/server/src/audit/routes.ts and service.ts.
 

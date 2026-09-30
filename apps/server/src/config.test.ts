@@ -50,6 +50,7 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_URL: 'http://localhost:3000',
       WEB_ORIGINS: ['http://localhost:5173'],
       WEB_BASE_URL: 'http://localhost:5173',
+      STICKER_STORAGE_DIR: './data/stickers',
       MAIL_TRANSPORT: 'console',
       SMTP_PORT: 587,
       SMTP_SECURE: false,
@@ -90,6 +91,7 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_URL: 'https://auth.example.com',
       WEB_ORIGINS: ['https://app.example.com', 'https://admin.example.com'],
       WEB_BASE_URL: 'http://localhost:5173',
+      STICKER_STORAGE_DIR: './data/stickers',
       MAIL_TRANSPORT: undefined,
       SMTP_PORT: 587,
       SMTP_SECURE: false,
@@ -398,6 +400,29 @@ describe('loadServerConfig', () => {
     const provider = configErrorMessage({ ...base, WEB_SEARCH_PROVIDER: 'google' });
     expect(provider).toContain('WEB_SEARCH_PROVIDER');
     expect(provider).not.toContain('google');
+  });
+
+  it('defaults the sticker storage dir and parses an explicit one', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig(base).STICKER_STORAGE_DIR).toBe('./data/stickers');
+    expect(
+      loadServerConfig({ ...base, STICKER_STORAGE_DIR: '/var/lib/galena/stickers' })
+        .STICKER_STORAGE_DIR,
+    ).toBe('/var/lib/galena/stickers');
+  });
+
+  it('rejects an empty sticker storage dir', () => {
+    const message = configErrorMessage({
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      STICKER_STORAGE_DIR: '',
+      ...VALID_XMPP_ENV,
+    });
+    expect(message).toContain('STICKER_STORAGE_DIR');
   });
 
   it('leaves the runner hub off by default on port 3189', () => {

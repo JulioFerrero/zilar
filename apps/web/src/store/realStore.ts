@@ -1775,6 +1775,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (message.payload !== undefined && message.payload.type === 'attachment') {
         ui.attachment = sanitizeIncomingAttachment(message.payload.data, mediaToken);
       }
+      if (message.payload !== undefined && message.payload.type === 'sticker') {
+        // The same-origin check happens at render time (`StickerMessage`);
+        // the payload is kept as-is so the bubble can show a placeholder.
+        ui.card = message.payload;
+      }
       const reactions = reactionChips(
         get().reactions[message.chatJid],
         message.chatJid,
@@ -3324,6 +3329,69 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           rememberBaseText(localId, caption);
         }
         runAttachmentUpload(chat, localId, file, caption, replyTo);
+      },
+      sendSticker: (chatId, sticker, options) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (chat === undefined) {
+          return;
+        }
+        sequence += 1;
+        const localId = `local-${sequence}`;
+        const replyTo = options?.replyTo;
+        const body = sticker.emoji ?? '';
+        const payload = {
+          v: 0,
+          type: 'sticker',
+          data: {
+            pack_id: sticker.packId,
+            sticker_id: sticker.stickerId,
+            url: sticker.url,
+            ...(sticker.emoji === undefined ? {} : { emoji: sticker.emoji }),
+            width: sticker.width,
+            height: sticker.height,
+            mime: sticker.mime,
+          },
+        } as const;
+        const message: UiMessage = {
+          id: localId,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: 'You',
+          text: body,
+          createdAt: now(),
+          status: 'sending',
+          card: payload,
+          ...(replyTo === undefined ? {} : { replyTo }),
+        };
+        const signature = signatureFor(chatId, body, replyTo);
+        const queue = pendingOutgoing.get(signature) ?? [];
+        queue.push(localId);
+        pendingOutgoing.set(signature, queue);
+        setChatMessage(chatId, message, true);
+        const mine = myJid();
+        if (mine !== undefined) {
+          rememberAuthor(localId, { jid: mine, resolved: true });
+        }
+        if (body.length > 0) {
+          rememberBaseText(localId, body);
+        }
+        if (core === undefined) {
+          return;
+        }
+        core
+          .sendMessage(chatId, coreKind(chat), body, {
+            payload,
+            ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+          })
+          .then((sent) => {
+            linkMessageIds(localId, sent.id);
+            linkLocalToServer(localId, sent.id);
+            rememberOriginId(localId, sent.id);
+            updateMessageStatus(chatId, localId, 'sent');
+          })
+          .catch(() => {
+            // The message stays marked as sending; a reconnect can resend later.
+          });
       },
       retryAttachment: (chatId, messageId) => {
         const root = aliasRoot(messageId);
