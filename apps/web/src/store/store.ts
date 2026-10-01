@@ -60,6 +60,7 @@ import {
   mockGroupMembers,
   mockMessages,
   mockOwnedAis,
+  MOCK_TOPIC_NOT_FOUND,
   mockTopicChats,
   mockTopicMessages,
 } from '@/mock';
@@ -629,6 +630,10 @@ function topicIdForChat(chats: ChatSummary[], chatId: string): string {
 
 export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreState> {
   let sequence = 0;
+  // T-0146: topic ids this store instance saw archived through a 200-path
+  // row (a 404-path archive records nothing — see `removeTopicMember`).
+  // The `leaveTopic` row re-check reads it alongside the painted list.
+  const archivedTopicIds = new Set<string>();
 
   return createStore<ChatStoreState>((set, get) => {
     const setStatus = (chatId: string, messageId: string, status: MessageStatus): void => {
@@ -701,9 +706,10 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         get().chats.find((chat) => chat.groupId === groupId && chat.topic?.isGeneral === true)?.id,
       // T-0130 (review): re-checks one topic row after a 404, so the panel
       // can tell "the topic is gone" from "the member was already gone".
-      // The mock list is already the truth: no fetch, just check the row.
+      // The mock list is already the truth, plus archived ids this store
+      // instance saw (200-path rows): no fetch, just check the row.
       refreshTopicRow: async (_chatId, topicId) =>
-        !get().chats.some((chat) => chat.topic?.id === topicId),
+        archivedTopicIds.has(topicId) || !get().chats.some((chat) => chat.topic?.id === topicId),
       // Mock-mode topic actions (T-0130): the mock HTTP layer already
       // implements every topic route in memory, so these go through the
       // same api client the dialog, the strip and the panel use, then fold
@@ -747,6 +753,16 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         const topicId = topicIdForChat(get().chats, chatId);
         const topic = await removeTopicMember(topicId, userId);
         set((state) => ({ chats: withMockTopicRow(state.chats, topic) }));
+        // T-0146: the mock API answers the last-seat archive with 404
+        // instead of a row, so the painted list never learns the topic is
+        // gone. Remember the archived id, so the `leaveTopic` row re-check
+        // below can tell "the topic is gone" from "not a member". (Only a
+        // 200-path row can set this — a 404-path archive records nothing —
+        // so in practice the id lands here only via patch/archive flows;
+        // the `leaveTopic` branch below handles the 404 archive directly.)
+        if (topic.archived) {
+          archivedTopicIds.add(topic.id);
+        }
       },
       setTopicRoles: async (chatId, input) => {
         const topicId = topicIdForChat(get().chats, chatId);
@@ -756,13 +772,33 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       leaveTopic: async (chatId) => {
         // Like the real store: a last-seat 404 means the topic archived
         // itself away, so there is nothing left to leave — swallow it and
-        // let the caller navigate away. Any other failure rethrows, so the
-        // panel stays open with the inline error.
+        // let the caller navigate away. A 404 for any other reason (e.g.
+        // "not a member") keeps the row: swallow only when the refreshed
+        // list no longer has the topic, and rethrow otherwise so the panel
+        // shows the normal error instead of navigating away. The mock API
+        // answers the last-seat archive with 404 instead of a row, so the
+        // painted list still has the row — but the archived answer itself
+        // is the "gone" signal here (the server only archives on the last
+        // seat leaving). A "not a member" 404 (row untouched AND the DELETE
+        // did not archive) rethrows.
         try {
           await get().removeTopicMember(chatId, get().currentUserId);
         } catch (error) {
           if (error instanceof ApiError && error.status === 404) {
-            return;
+            const topicId = topicIdForChat(get().chats, chatId);
+            const gone = await get().refreshTopicRow(chatId, topicId);
+            if (gone) {
+              return;
+            }
+            // The painted list still has the row, but the mock API told us
+            // the topic archived (`Topic not found`): the last seat just
+            // left, so there is nothing left to leave either.
+            if (error.message === MOCK_TOPIC_NOT_FOUND) {
+              set((state) => ({
+                chats: state.chats.filter((chat) => chat.topic?.id !== topicId),
+              }));
+              return;
+            }
           }
           throw error;
         }

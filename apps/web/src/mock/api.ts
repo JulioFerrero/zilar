@@ -3,7 +3,13 @@ import { currentUserId, PEOPLE } from './ids';
 import { mockChats } from './chats';
 import { mockGroupDetails } from './groups';
 import { mockMessages } from './messages';
-import { approvalCard, mockDemoStickerArt, mockDemoStickerPacks, mockGifItems } from './helpers';
+import {
+  approvalCard,
+  MOCK_TOPIC_NOT_FOUND,
+  mockDemoStickerArt,
+  mockDemoStickerPacks,
+  mockGifItems,
+} from './helpers';
 import {
   mockTopicAisById,
   mockTopicChats,
@@ -2681,7 +2687,7 @@ export async function mockRequest(
     const subId = segments[3];
     const topic = findTopic(topicId);
     if (topic === undefined || topic.archived) {
-      return notFound('Topic not found');
+      return notFound(MOCK_TOPIC_NOT_FOUND);
     }
     if (second === undefined) {
       if (method === 'GET') {
@@ -2730,14 +2736,23 @@ export async function mockRequest(
       const userId = decodeURIComponent(subId);
       // Like the server: removing a user who is not a member answers 404
       // (`service.ts` "not a member"), so clients cannot read a 404 as
-      // "the topic is gone" without re-checking the row.
+      // "the topic is gone" without re-checking the row. Removing the last
+      // member of a private topic archives it — and the archived answer is
+      // the same `Topic not found` 404 the server sends.
       if (!topic.memberIds.includes(userId)) {
         return notFound('That user is not a member of this topic');
       }
       topic.memberIds = topic.memberIds.filter((id) => id !== userId);
       if (topic.memberIds.length === 0 && topic.visibility === 'private') {
         topic.archived = true;
-        return notFound('Topic not found');
+      }
+      // T-0146: an archived topic answers like the server — the missing-id
+      // 404 — whether or not this DELETE caused the archive. The mock
+      // store drops archived rows at once (`withMockTopicRow`) and
+      // remembers archived ids, so the row re-check still tells "gone"
+      // from "not a member".
+      if (topic.archived) {
+        return notFound(MOCK_TOPIC_NOT_FOUND);
       }
       return jsonResponse(topicToView(topic));
     }
@@ -2808,7 +2823,7 @@ export async function mockRequest(
     if (second === 'tools' && method === 'GET') {
       const topic = findTopic(topicId);
       if (topic === undefined) {
-        return notFound('Topic not found');
+        return notFound(MOCK_TOPIC_NOT_FOUND);
       }
       // T-0107: the topic's tools in memory (was an empty list before).
       return jsonResponse(

@@ -207,16 +207,17 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
     return null;
   }
 
+  // The reload after a remove re-lists from the server. It throws (the
+  // panel catches) so a delete-followed-by-failed-reload can drop the row
+  // locally with its own "Could not refresh the list." line instead of
+  // either showing an error state that looks like the delete failed or
+  // swallowing the failure. The panel Retry buttons catch the same shape.
   const reloadMembers = async (): Promise<void> => {
     setMembersState({ status: 'loading', members: [], message: '' });
     try {
       setMembersState({ status: 'ready', members: await listTopicMembers(topic.id), message: '' });
     } catch (error) {
-      setMembersState({
-        status: 'error',
-        members: [],
-        message: error instanceof Error ? error.message : 'Could not load the members.',
-      });
+      throw new Error(error instanceof Error ? error.message : 'Could not load the members.');
     }
   };
 
@@ -225,11 +226,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
     try {
       setAisState({ status: 'ready', ais: await listTopicAis(topic.id), message: '' });
     } catch (error) {
-      setAisState({
-        status: 'error',
-        ais: [],
-        message: error instanceof Error ? error.message : 'Could not load the AIs.',
-      });
+      throw new Error(error instanceof Error ? error.message : 'Could not load the AIs.');
     }
   };
 
@@ -249,7 +246,13 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
     run(`add:${userId}`, async () => {
       // ONE call: the store issues the POST and folds the row back in.
       await storeApi.getState().addTopicMember(chat.id, userId);
-      await reloadMembers();
+      await reloadMembers().catch((error: unknown) => {
+        setMembersState({
+          status: 'error',
+          members: [],
+          message: error instanceof Error ? error.message : 'Could not load the members.',
+        });
+      });
       setMemberPickerOpen(false);
     });
 
@@ -260,7 +263,8 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
       // "the topic is gone" — the server also 404s for a user who is not a
       // member — so only navigate away when the refreshed list no longer
       // has the topic row. Any other failure keeps the user here with the
-      // inline error.
+      // inline error. A failed reload after a successful delete drops the
+      // row locally with its own refresh message (never a stale row).
       try {
         await storeApi.getState().removeTopicMember(chat.id, userId);
       } catch (error) {
@@ -271,12 +275,23 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
             onClose();
             return;
           }
-          await reloadMembers();
+          await reloadMembers().catch((reloadError: unknown) => {
+            setMembersState({
+              status: 'error',
+              members: [],
+              message:
+                reloadError instanceof Error ? reloadError.message : 'Could not load the members.',
+            });
+          });
           return;
         }
         throw error;
       }
-      await reloadMembers();
+      try {
+        await reloadMembers();
+      } catch {
+        removeMemberRowFallback(userId);
+      }
     });
 
   // The row re-check after a removal 404. A superseded refresh (the store
@@ -306,9 +321,9 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
     run('leave', async () => {
       // The store's `leaveTopic` swallows the last-seat 404 itself (the
       // topic archived, so there is nothing left to leave): success means
-      // the caller is out either way, so navigate away. Any failure it
-      // rethrows (network, 403) means the caller is still a member — stay
-      // with the inline error.
+      // the caller is out either way, so navigate away. A 404 that means
+      // "not a member" rethrows (the row re-check found the topic alive),
+      // like any other failure (network, 403) — stay with the inline error.
       await storeApi.getState().leaveTopic(chat.id);
       navigate('/');
       onClose();
@@ -318,18 +333,40 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
     run(`addAi:${aiId}`, async () => {
       // ONE call: the store issues the POST and folds the row back in.
       await storeApi.getState().addTopicAi(chat.id, aiId);
-      await reloadAis();
+      await reloadAis().catch((error: unknown) => {
+        setAisState({
+          status: 'error',
+          ais: [],
+          message: error instanceof Error ? error.message : 'Could not load the AIs.',
+        });
+      });
       setAiPickerOpen(false);
     });
 
   const removeAi = (aiId: string): Promise<void> =>
     run(`removeAi:${aiId}`, async () => {
-      // ONE call: the store issues the DELETE and folds the row back in,
-      // like `removeMember` (the old code also called the endpoint
-      // directly, double-issuing the request).
+      // ONE call: the store issues the DELETE and folds the row back in.
+      // The reload may fail after a successful delete (transient network):
+      // never show the removed row as if the delete failed — drop it
+      // locally and surface the refresh problem with its own Retry instead.
       await storeApi.getState().removeTopicAi(chat.id, aiId);
-      await reloadAis();
+      await reloadAis().catch(() => {
+        setAisState((previous) => ({
+          status: previous.status === 'ready' && previous.ais.length > 0 ? 'ready' : 'error',
+          ais: previous.ais.filter((ai) => ai.id !== aiId),
+          message: 'Could not refresh the list.',
+        }));
+      });
     });
+
+  /** Same as `removeAi`: a failed reload after a delete drops the row locally. */
+  const removeMemberRowFallback = (userId: string): void => {
+    setMembersState((previous) => ({
+      status: previous.status === 'ready' && previous.members.length > 1 ? 'ready' : 'error',
+      members: previous.members.filter((member) => member.userId !== userId),
+      message: 'Could not refresh the list.',
+    }));
+  };
 
   const archive = (): Promise<void> =>
     run('archive', async () => {
@@ -361,7 +398,13 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
         return;
       }
       setConfirmingVisibility(false);
-      await reloadMembers();
+      await reloadMembers().catch((error: unknown) => {
+        setMembersState({
+          status: 'error',
+          members: [],
+          message: error instanceof Error ? error.message : 'Could not load the members.',
+        });
+      });
     });
 
   const isPrivate = topic.visibility === 'private';
@@ -446,7 +489,44 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                       type="button"
                       size="lg"
                       className="self-start rounded-full px-4"
-                      onClick={() => void reloadMembers()}
+                      onClick={() =>
+                        void reloadMembers().catch((error: unknown) => {
+                          setMembersState({
+                            status: 'error',
+                            members: [],
+                            message:
+                              error instanceof Error
+                                ? error.message
+                                : 'Could not load the members.',
+                          });
+                        })
+                      }
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                )}
+                {membersState.status === 'ready' && membersState.message !== '' && (
+                  <div className="flex items-center gap-2 px-2">
+                    <p className="flex-1 text-[12px] text-muted-foreground">
+                      {membersState.message}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        void reloadMembers().catch((error: unknown) => {
+                          setMembersState({
+                            status: 'error',
+                            members: [],
+                            message:
+                              error instanceof Error
+                                ? error.message
+                                : 'Could not load the members.',
+                          });
+                        })
+                      }
                     >
                       Retry
                     </Button>
@@ -568,14 +648,45 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   type="button"
                   size="lg"
                   className="self-start rounded-full px-4"
-                  onClick={() => void reloadAis()}
+                  onClick={() =>
+                    void reloadAis().catch((error: unknown) => {
+                      setAisState({
+                        status: 'error',
+                        ais: [],
+                        message: error instanceof Error ? error.message : 'Could not load the AIs.',
+                      });
+                    })
+                  }
                 >
                   Retry
                 </Button>
               </div>
             )}
-            {aisState.status === 'ready' && aisState.ais.length === 0 && (
-              <p className="px-2 text-[13px] text-muted-foreground">No AIs in this topic yet.</p>
+            {aisState.status === 'ready' &&
+              aisState.ais.length === 0 &&
+              aisState.message === '' && (
+                <p className="px-2 text-[13px] text-muted-foreground">No AIs in this topic yet.</p>
+              )}
+            {aisState.status === 'ready' && aisState.message !== '' && (
+              <div className="flex items-center gap-2 px-2">
+                <p className="flex-1 text-[12px] text-muted-foreground">{aisState.message}</p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    void reloadAis().catch((error: unknown) => {
+                      setAisState({
+                        status: 'error',
+                        ais: [],
+                        message: error instanceof Error ? error.message : 'Could not load the AIs.',
+                      });
+                    })
+                  }
+                >
+                  Retry
+                </Button>
+              </div>
             )}
             {aisState.status === 'ready' &&
               aisState.ais.map((ai) => {

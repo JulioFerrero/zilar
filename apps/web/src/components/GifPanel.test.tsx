@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import * as api from '@/lib/api';
-import { GifPanel, gifPreviewUrl } from '@/components/GifPanel';
+import {
+  GifPanel,
+  gifPreviewUrl,
+  probeGifsAvailability,
+  resetGifsAvailability,
+} from '@/components/GifPanel';
 import { mockGifItems } from '@/mock/helpers';
 
 const gifItems = [
@@ -166,6 +171,34 @@ describe('GifPanel', () => {
     await waitFor(() =>
       expect(screen.getByText('GIFs are not available on this server.')).toBeTruthy(),
     );
+  });
+
+  it('probes once per session and remembers a 501 as unavailable', async () => {
+    resetGifsAvailability();
+    try {
+      vi.mocked(api.trendingGifs).mockRejectedValueOnce(
+        new api.ApiError(501, 'gifs_unavailable', 'off'),
+      );
+      await expect(probeGifsAvailability()).resolves.toBe(false);
+      // The cached answer needs no second request: even a working server
+      // would not be asked again this session.
+      vi.mocked(api.trendingGifs).mockResolvedValueOnce({ items: gifItems });
+      await expect(probeGifsAvailability()).resolves.toBe(false);
+      expect(api.trendingGifs).toHaveBeenCalledTimes(1);
+    } finally {
+      resetGifsAvailability();
+    }
+  });
+
+  it('a failed probe (network) keeps the tab: the panel shows Retry, not a hide', async () => {
+    resetGifsAvailability();
+    try {
+      vi.mocked(api.trendingGifs).mockRejectedValueOnce(new Error('down'));
+      await expect(probeGifsAvailability()).resolves.toBe(true);
+      expect(api.trendingGifs).toHaveBeenCalledTimes(1);
+    } finally {
+      resetGifsAvailability();
+    }
   });
 
   it('resolves proxy URLs for real items and data URLs for mock art', () => {

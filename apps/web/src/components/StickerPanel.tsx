@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { GifPanel, type GifChoice } from './GifPanel';
+import { GifPanel, gifsAvailability, probeGifsAvailability, type GifChoice } from './GifPanel';
 import type { Sticker, StickerPack } from '@/lib/api';
 import {
   addStickerFavorite,
@@ -35,6 +35,12 @@ export interface StickerPanelProps {
   onManage?: (() => void) | undefined;
   /** Opens the pack creator (the "+" tab in the panel). */
   onCreate?: (() => void) | undefined;
+  /**
+   * Forces the GIFs tab visible or hidden (T-0146, tests only): the panel
+   * otherwise probes the server once per session. Mock mode always shows
+   * the tab (placeholders need no server).
+   */
+  gifsTab?: 'show' | 'hide' | undefined;
 }
 
 /**
@@ -71,6 +77,8 @@ function StickerThumb({ sticker, size }: { sticker: StickerChoice; size: number 
 }
 
 type Tab = 'stickers' | 'gifs' | 'emoji';
+
+const PANEL_TABS: readonly Tab[] = ['stickers', 'gifs', 'emoji'] as const;
 
 const COMMON_EMOJI = [
   '😀',
@@ -119,6 +127,7 @@ export function StickerPanel({
   onGifPick,
   onManage,
   onCreate,
+  gifsTab,
 }: StickerPanelProps) {
   const [tab, setTab] = useState<Tab>('stickers');
   const [packs, setPacks] = useState<StickerPack[] | undefined>(undefined);
@@ -133,6 +142,45 @@ export function StickerPanel({
     }
   });
   const [preview, setPreview] = useState<StickerChoice | undefined>(undefined);
+  // T-0146: the GIFs tab hides when the provider is off. The probe runs
+  // once per session and remembers the answer; mock mode keeps the tab
+  // (placeholders need no server). Shown/hidden are derived during render
+  // from the tri-state; the async probe settles through the promise below
+  // (an external-system sync, like the sticker list load), and a tab that
+  // disappears under the active tab falls back to Stickers at render time
+  // so the panel never shows an empty body.
+  const [gifsProbe] = useState<Promise<boolean> | undefined>(() =>
+    // In the unit-test run (`MODE === 'test'`) and in mock mode the panel
+    // uses placeholders, so no probe is needed and the tab always shows.
+    // `isMockMode()` is true in tests (MODE=test), which also covers mock.
+    // `gifsTab` forces the answer in tests of the hidden state.
+    gifsTab !== undefined || isMockMode() ? undefined : probeGifsAvailability(),
+  );
+  const [gifsEnabled, setGifsEnabled] = useState<boolean | undefined>(() => {
+    if (gifsTab !== undefined) {
+      return gifsTab === 'show';
+    }
+    return isMockMode() ? true : gifsAvailability();
+  });
+
+  useEffect(() => {
+    if (gifsProbe === undefined) {
+      return;
+    }
+    let cancelled = false;
+    void gifsProbe.then((available) => {
+      if (!cancelled) {
+        setGifsEnabled(available);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [gifsProbe]);
+
+  // The visible tab: when the GIF tab disappears under the active tab, the
+  // panel shows Stickers instead of an empty body.
+  const visibleTab: Tab = tab === 'gifs' && gifsEnabled === false ? 'stickers' : tab;
 
   useEffect(() => {
     let cancelled = false;
@@ -293,16 +341,16 @@ export function StickerPanel({
       className="absolute bottom-full left-0 z-20 mb-2 w-[340px] rounded-[14px] border border-edge bg-surface shadow-lg"
     >
       <div role="tablist" aria-label="Panel tabs" className="flex gap-1 border-b border-edge p-2">
-        {(['stickers', 'gifs', 'emoji'] as const).map((name) => (
+        {PANEL_TABS.filter((name) => name !== 'gifs' || gifsEnabled !== false).map((name) => (
           <button
             key={name}
             type="button"
             role="tab"
-            aria-selected={tab === name}
+            aria-selected={visibleTab === name}
             onClick={() => setTab(name)}
             className={cn(
               'rounded-[8px] px-3 py-1.5 text-[13px] font-medium',
-              tab === name ? 'bg-surface-raised text-foreground' : 'text-muted-foreground',
+              visibleTab === name ? 'bg-surface-raised text-foreground' : 'text-muted-foreground',
             )}
           >
             {name === 'stickers' ? 'Stickers' : name === 'gifs' ? 'GIFs' : 'Emoji'}
@@ -310,11 +358,11 @@ export function StickerPanel({
         ))}
       </div>
 
-      {tab === 'gifs' && (
+      {visibleTab === 'gifs' && gifsEnabled !== false && (
         <GifPanel onPick={onGifPick} {...(isMockMode() ? { mockItems: mockGifItems() } : {})} />
       )}
 
-      {tab === 'emoji' && (
+      {visibleTab === 'emoji' && (
         <div
           className="grid max-h-[260px] grid-cols-6 gap-1 overflow-y-auto p-2"
           role="grid"
@@ -334,7 +382,7 @@ export function StickerPanel({
         </div>
       )}
 
-      {tab === 'stickers' && (
+      {visibleTab === 'stickers' && (
         <>
           <div
             className="flex gap-1 overflow-x-auto border-b border-edge p-2"

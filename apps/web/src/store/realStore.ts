@@ -347,7 +347,18 @@ function sanitizeIncomingAttachment(
     return attachment;
   }
   if (attachment.kind === 'image') {
-    const downgraded: Attachment = { ...attachment, kind: 'file' };
+    // A downgraded GIF-video (`gif-` name, video mime — the GIF send path
+    // sometimes emits kind `image` with the real blob mime) must not keep
+    // the prefix: `isGifVideoAttachment` is then the only remaining guard,
+    // so strip it here too and let either layer alone stop the auto-play.
+    // Other image names keep theirs (a bare `gif-` becomes `file`).
+    const downgraded: Attachment = {
+      ...attachment,
+      kind: 'file',
+      name: attachment.name.startsWith('gif-')
+        ? unprefixedGifName(attachment.name)
+        : attachment.name,
+    };
     delete downgraded.width;
     delete downgraded.height;
     return downgraded;
@@ -2982,13 +2993,20 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         try {
           await get().removeTopicMember(chatId, me.id);
         } catch (error) {
-          // Leaving the last seat archives the topic (server 404): the
-          // row refreshes itself away via `refreshTopicRow`'s caller. A 404
-          // for any other reason also means there is nothing left to
-          // leave: swallow it, the caller navigates away either way.
+          // Leaving the last seat archives the topic: the server answers
+          // 404 `Topic not found`, and the row refreshes itself away — the
+          // caller navigates away. Any other 404 (e.g. "not a member")
+          // means nothing left to leave either, but the live row must say
+          // so: refresh the list first and swallow only when the topic
+          // really disappeared from it. Otherwise rethrow, so the caller
+          // shows the normal error instead of navigating away.
           if (error instanceof ApiError && error.status === 404) {
-            await refreshChats().catch(() => {});
-            return;
+            const { topicId } = await topicIdFor(chatId);
+            const gone = await get().refreshTopicRow(chatId, topicId);
+            if (gone) {
+              await refreshChats().catch(() => {});
+              return;
+            }
           }
           throw error;
         }

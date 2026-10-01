@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import * as api from '@/lib/api';
+import { resetGifsAvailability, probeGifsAvailability } from '@/components/GifPanel';
+import { StickerPanel } from '@/components/StickerPanel';
 import { renderApp } from '@/test/renderApp';
 
 const demoPack = {
@@ -39,6 +41,11 @@ beforeEach(() => {
   vi.spyOn(api, 'listStickerPacks').mockResolvedValue([demoPack]);
   vi.spyOn(api, 'discoverStickerPacks').mockResolvedValue({ packs: [], next: null });
   vi.spyOn(api, 'listStickerFavorites').mockResolvedValue([]);
+  resetGifsAvailability();
+});
+
+afterEach(() => {
+  resetGifsAvailability();
 });
 
 describe('StickerPanel', () => {
@@ -62,6 +69,54 @@ describe('StickerPanel', () => {
     expect(screen.queryByText('Coming soon')).toBeNull();
     expect(screen.getByLabelText('Search GIFs')).toBeTruthy();
     expect(await screen.findByRole('grid', { name: 'GIFs' })).toBeTruthy();
+  });
+
+  it('hides the GIFs tab when the provider is off (T-0146)', () => {
+    // The forced `hide` stands in for the 501 probe answer (the real probe
+    // is unit-tested in `GifPanel.test.tsx`): the tab disappears instead of
+    // showing a dead-end message, while Stickers and Emoji stay.
+    const { unmount } = render(
+      <StickerPanel
+        onPick={() => {}}
+        onClose={() => {}}
+        onEmoji={() => {}}
+        onGifPick={() => {}}
+        gifsTab="hide"
+      />,
+    );
+    expect(screen.queryByRole('tab', { name: 'GIFs' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Stickers' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Emoji' })).toBeTruthy();
+    unmount();
+    // The forced `show` keeps the tab (the default in tests and mock mode).
+    render(
+      <StickerPanel
+        onPick={() => {}}
+        onClose={() => {}}
+        onEmoji={() => {}}
+        onGifPick={() => {}}
+        gifsTab="show"
+      />,
+    );
+    expect(screen.getByRole('tab', { name: 'GIFs' })).toBeTruthy();
+  });
+
+  it('remembers one probe per session (T-0146)', async () => {
+    // The panel probes once per session and remembers the answer: these
+    // calls go through the same cache the panel reads. A 501 answers
+    // `false` once; a second call reuses the cached answer with no second
+    // request.
+    resetGifsAvailability();
+    try {
+      const trending = vi.spyOn(api, 'trendingGifs');
+      trending.mockRejectedValueOnce(new api.ApiError(501, 'gifs_unavailable', 'off'));
+      await expect(probeGifsAvailability()).resolves.toBe(false);
+      trending.mockResolvedValueOnce({ items: [], nextPos: undefined });
+      await expect(probeGifsAvailability()).resolves.toBe(false);
+      expect(trending).toHaveBeenCalledTimes(1);
+    } finally {
+      resetGifsAvailability();
+    }
   });
 
   it('shows a grid of common emoji on the Emoji tab', async () => {

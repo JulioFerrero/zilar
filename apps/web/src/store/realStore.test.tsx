@@ -3069,6 +3069,49 @@ describe('attachments (T-0065)', () => {
     expect(incoming?.attachment?.width).toBeUndefined();
     expect(incoming?.attachment?.height).toBeUndefined();
     expect(incoming?.attachment?.url).toBe('https://tracker.example.com/pixel.png');
+    // An ordinary image name is not a GIF-video alias: the prefix rule
+    // leaves it alone.
+    expect(incoming?.attachment?.name).toBe('pixel.png');
+  });
+
+  it('strips the gif- prefix when the image downgrade branch fires on a GIF-video shape', async () => {
+    // The exact shape from the spec: kind `image`, a `gif-` name, a video
+    // mime, an untrusted URL. The sanitizer downgrades to `file` and must
+    // also strip the prefix, so the render-layer URL check is not the only
+    // guard — either layer alone stops the auto-play.
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'att-gif-image-kind',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'image',
+            url: 'https://attacker.test/x.mp4',
+            name: 'gif-x',
+            size: 1024,
+            mime: 'video/mp4',
+            width: 200,
+            height: 150,
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'att-gif-image-kind');
+    expect(incoming?.attachment?.kind).toBe('file');
+    expect(incoming?.attachment?.name).toBe('x');
+    expect(incoming?.attachment?.url).toBe('https://attacker.test/x.mp4');
+    expect(incoming?.attachment?.width).toBeUndefined();
+    expect(incoming?.attachment?.height).toBeUndefined();
   });
 
   it('keeps an incoming file attachment on an untrusted host as a file', async () => {
