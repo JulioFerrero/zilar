@@ -1,7 +1,7 @@
 ---
 id: T-0149
 title: Docs refresh: user guide and feature list for everything merged this week
-status: review
+status: merged
 milestone: M5
 branch: task/T-0149-docs-refresh
 model: meta/muse-spark-1.3-contributor
@@ -74,3 +74,11 @@ pnpm typecheck
 - None. Screenshots need Chromium + a lead-approved install; listed above as missing, not blocking.
 
 ## Review (written by Claude)
+
+**Verdict:** approved and merged.
+
+### Findings
+- Lead fixes: restored the T-0125 keyless-web-tools row, removed the duplicate Mobile GIFs row, dropped internal task ids from the user guide, marked the Telegram importer merged.
+
+### Follow-ups
+- The GIF env-var names in the guide stay (useful for the self-hoster).

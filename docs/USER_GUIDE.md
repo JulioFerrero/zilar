@@ -199,8 +199,8 @@ An AI can write small **tools** (code that runs on a schedule or on demand) and 
 
 These are designed but not in the app yet:
 
-- **(still needs devices)** Native push on iPhone through Apple's servers, and push in the production deploy — the web side is merged (T-0119; T-0118 was a spike only and was never merged), the deploy wiring is still planned (T-0145).
+- **(still needs devices)** Native push on iPhone through Apple's servers, and push in the production deploy — the web side is merged, the deploy wiring is still planned.
 - **(needs Julio)** GIFs until he adds the provider key; Telegram sticker import until he creates the bot token.
 - **(coming)** Voice messages.
 - **(merged)** The install wizard, backups and the bare-metal guide: the owner's install helper (`deploy/galena`) covers `init`, `up`, `doctor`, `backup`, `restore` and `create-admin` (details in `docs/INSTALL_DOCKER.md`).
-- **(coming)** GIFs on the phone: stickers already work there; the GIF tab is still planned (T-0148).
+- **(coming)** GIFs on the phone: stickers already work there; the GIF tab is still planned.

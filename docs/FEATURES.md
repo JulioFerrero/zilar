@@ -39,7 +39,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Model side of AI tools | Tool guide in the turn, several model rounds per turn, "working on it" progress line | server | 🟡 Merged (not tried against a real model yet) | T-0106 |
 | Tools and Routines UI | Tool list, read-only source, version history with revert, Run now, routines with plain-words schedules, pause/resume/delete | web | 🟡 Merged | T-0107 |
 | Voice messages | Designed, not built | | 🧭 Planned | plan §6.5 |
-| Telegram sticker import | Bring your Telegram packs (needs Julio's bot token) | | 🧭 Planned | T-0123 |
+| Telegram sticker import | Bring your Telegram packs (needs a bot token in the server config) | server | 🟡 Merged (not yet tried with a real bot) | T-0123 |
 | Mobile GIFs | Render and send GIFs on the phone | | 🧭 Planned | T-0148 |
 | Push in the production deploy | ejabberd component, compose, wizard keys, doctor | | 🧭 Planned | T-0145 |
 | Native iOS push | Push chain through Apple's servers (needs an Apple Developer account) | | 🧭 Planned | T-0005 |
@@ -97,6 +97,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Versioned tools store | Each tool belongs to one AI in one chat; append-only history with a message per version, revert is a new version, manual run, read routes, audit without code or output | server | 🟡 Merged | T-0103 |
 | Routines scheduler | A stored tool plus a schedule that posts as the AI; hourly minimum, exactly-once slots, auto-pause after 3 failures, pinned to the sites a human approved; behind `ROUTINES_ENABLED` | server | 🟡 Merged (off by default) | T-0104 |
 | Tool and routine actions | `tool.save`, `tool.run`, `routine.schedule` through the gateway, wired to the sandbox behind `TOOLS_ENABLED`; scheduling needs an approval card that lists the sites and can never be "always allowed"; results reach the model as untrusted text | server | 🟡 Merged (off by default) | T-0105 |
+| Keyless web tools | Guarded fetch, Wikipedia, prices, feeds, best-effort search for AIs, behind `WEB_TOOLS_ENABLED` | server | 🟡 Merged (off by default) | T-0125 |
 
 ## 7. Design and clients
 
@@ -119,7 +120,6 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Self-hosted install | Production images and compose (Caddy, Coolify; config baked into images, no bind mounts), SMTP sign-in codes, `./deploy/galena init/up/doctor/backup/restore/create-admin`, bare-metal guide ([`INSTALL_DOCKER.md`](INSTALL_DOCKER.md)) | deploy | 🟡 Merged (wizard proven live on scratch containers) | T-0126, T-0128, T-0129, T-0127 |
 | Built by an AI team | A lead Claude writes specs and reviews every diff; workers implement in isolated worktrees; the `lead` CLI launches, supervises, reviews and merges; a fail-closed permission policy guards what workers may run | devtools | ✅ | T-0038, T-0051 → [`LEAD_PLAYBOOK.md`](LEAD_PLAYBOOK.md) |
 | Mobile parity (chat prefs, pins, invites, roles, search, channels, stickers) | Per-user mute/archive/pin, pinned banner, invite links, roles, message search, channels, stickers — same features as web | mobile | 🟡 Merged (not run on a simulator or device yet) | T-0135, T-0136, T-0137, T-0138, T-0139, T-0140, T-0143, T-0144, T-0147 |
-| Mobile GIFs | Render proxied GIFs, GIF tab in the sticker sheet, send | | 🧭 Planned | T-0148 |
 
 ## Timeline
 
