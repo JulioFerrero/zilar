@@ -7,6 +7,7 @@ import {
   classify,
   cleanFilename,
   formatFileSize,
+  gifBlobType,
   isTrustedMediaUrl,
   readImageSize,
   safeHttpUrl,
@@ -38,6 +39,27 @@ describe('classify', () => {
   it('treats an empty or unknown MIME as a file', () => {
     expect(classify(file('mystery', ''))).toBe('file');
     expect(classify(file('archive.zip', 'application/zip'))).toBe('file');
+  });
+});
+
+describe('gifBlobType', () => {
+  it('maps each proxied content type to its mime and extension', () => {
+    expect(gifBlobType('image/gif', 'image')).toEqual({ mime: 'image/gif', extension: 'gif' });
+    expect(gifBlobType('image/webp', 'image')).toEqual({ mime: 'image/webp', extension: 'webp' });
+    expect(gifBlobType('video/mp4', 'video')).toEqual({ mime: 'video/mp4', extension: 'mp4' });
+    expect(gifBlobType('video/webm', 'video')).toEqual({ mime: 'video/webm', extension: 'webm' });
+  });
+
+  it('prefers the blob type over the search result kind', () => {
+    expect(gifBlobType('video/webm', 'image')).toEqual({ mime: 'video/webm', extension: 'webm' });
+  });
+
+  it('falls back to the kind for unexpected types', () => {
+    expect(gifBlobType('', 'video')).toEqual({ mime: 'video/mp4', extension: 'mp4' });
+    expect(gifBlobType('image/svg+xml', 'image')).toEqual({
+      mime: 'image/gif',
+      extension: 'gif',
+    });
   });
 });
 

@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0121](T-0121-sticker-creator.md) | Sticker pack creator, favorites, discover | planned | meta/muse-spark-1.3-contributor | T-0120 |  |
-| [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | in progress | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
 
 ## Follow-ups
@@ -175,3 +174,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0145](T-0145-deploy-push.md) | Push in the production deploy: ejabberd component, compose, wizard keys, doctor, docs | planned | meta/muse-spark-1.3-contributor | T-0119, T-0127 | Spec ready; effort high |
 | [T-0141](T-0141-web-server-followups.md) | web/server follow-ups: sticker dir, mock stickers, revoke, approval names | 2026-10-01 |
 | [T-0106](T-0106-tool-model-side.md) | model side of AI tools: guide, several rounds per turn, progress line | 2026-10-01 |
+| [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy (off until a provider key is set) | 2026-10-01 |

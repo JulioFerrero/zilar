@@ -235,6 +235,32 @@ export async function uploadAttachment(
   return slot.getUrl;
 }
 
+/**
+ * The mime and file extension for GIF-tab bytes (T-0122), taken from the
+ * proxied blob's real content type and validated against the four types the
+ * media proxy serves. An unexpected type (e.g. mock-mode art) falls back to
+ * the search result's kind so mock sends keep working.
+ */
+export function gifBlobType(
+  blobType: string,
+  kind: 'image' | 'video',
+): { mime: string; extension: string } {
+  switch (blobType) {
+    case 'image/gif':
+      return { mime: 'image/gif', extension: 'gif' };
+    case 'image/webp':
+      return { mime: 'image/webp', extension: 'webp' };
+    case 'video/mp4':
+      return { mime: 'video/mp4', extension: 'mp4' };
+    case 'video/webm':
+      return { mime: 'video/webm', extension: 'webm' };
+    default:
+      return kind === 'video'
+        ? { mime: 'video/mp4', extension: 'mp4' }
+        : { mime: 'image/gif', extension: 'gif' };
+  }
+}
+
 /** A file chosen in the composer, before it is sent. */
 export interface PendingAttachment {
   file: File;

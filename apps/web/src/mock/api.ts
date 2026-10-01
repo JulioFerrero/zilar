@@ -3,7 +3,7 @@ import { currentUserId, PEOPLE } from './ids';
 import { mockChats } from './chats';
 import { mockGroupDetails } from './groups';
 import { mockMessages } from './messages';
-import { approvalCard, mockDemoStickerArt, mockDemoStickerPacks } from './helpers';
+import { approvalCard, mockDemoStickerArt, mockDemoStickerPacks, mockGifItems } from './helpers';
 import {
   mockTopicAisById,
   mockTopicChats,
@@ -1523,6 +1523,26 @@ export async function mockRequest(
 
   if (head === 'sticker-panel' && second === undefined && method === 'DELETE') {
     return jsonResponse({ ok: true });
+  }
+
+  // T-0122: mock GIF search serves the generated placeholders (no server, no
+  // provider). `q` filters by title; `pos` paginates with the same shape as
+  // the real routes.
+  if ((head === 'gifs' && first === 'search') || (head === 'gifs' && first === 'trending')) {
+    if (method !== 'GET') {
+      return notImplemented();
+    }
+    const params = new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
+    const q = (params.get('q') ?? '').trim().toLowerCase();
+    const pos = Number(params.get('pos') ?? '0');
+    const start = Number.isInteger(pos) && pos > 0 ? pos : 0;
+    const all = mockGifItems().filter((item) => q === '' || item.title.toLowerCase().includes(q));
+    const slice = all.slice(start, start + 25);
+    const next = start + 25 < all.length ? String(start + 25) : undefined;
+    return jsonResponse({
+      items: slice,
+      ...(next === undefined ? {} : { nextPos: next }),
+    });
   }
 
   // T-0113: in-memory chat prefs. The mock has no access model, so any JID

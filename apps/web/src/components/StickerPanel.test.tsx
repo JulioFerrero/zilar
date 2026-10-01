@@ -53,12 +53,14 @@ describe('StickerPanel', () => {
     expect(await screen.findByRole('tab', { name: 'Recent' })).toBeTruthy();
   });
 
-  it('shows "Coming soon" on the GIFs tab until T-0122', async () => {
+  it('shows the GIFs tab content instead of "Coming soon" (T-0122)', async () => {
     renderApp('/c/c-ana');
     fireEvent.click(screen.getByLabelText('Open sticker panel'));
 
     fireEvent.click(screen.getByRole('tab', { name: 'GIFs' }));
-    expect(screen.getByText('Coming soon')).toBeTruthy();
+    expect(screen.queryByText('Coming soon')).toBeNull();
+    expect(screen.getByLabelText('Search GIFs')).toBeTruthy();
+    expect(await screen.findByRole('grid', { name: 'GIFs' })).toBeTruthy();
   });
 
   it('shows a grid of common emoji on the Emoji tab', async () => {

@@ -393,3 +393,93 @@ describe('Composer attachments (T-0065)', () => {
     expect(screen.getByText('That file is empty.')).toBeTruthy();
   });
 });
+
+describe('Composer GIFs (T-0122)', () => {
+  it('replaces "Coming soon" with the GIFs tab content', async () => {
+    const api = await import('@/lib/api');
+    vi.spyOn(api, 'listStickerPacks').mockResolvedValue([]);
+    vi.spyOn(api, 'discoverStickerPacks').mockResolvedValue({ packs: [], next: null });
+    renderApp('/c/c-ana');
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    fireEvent.click(screen.getByRole('tab', { name: 'GIFs' }));
+    expect(screen.queryByText('Coming soon')).toBeNull();
+    expect(screen.getByLabelText('Search GIFs')).toBeTruthy();
+  });
+
+  it('sends a picked GIF through the attachment path with the proxy bytes', async () => {
+    const api = await import('@/lib/api');
+    vi.spyOn(api, 'listStickerPacks').mockResolvedValue([]);
+    vi.spyOn(api, 'discoverStickerPacks').mockResolvedValue({ packs: [], next: null });
+    // `renderApp` runs in mock mode, so the panel shows the generated
+    // placeholders. Their `url` is app-generated data art; the send path
+    // fetches it like proxy bytes and uploads through the existing path.
+    const { store } = renderApp('/c/c-ana');
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    fireEvent.click(screen.getByRole('tab', { name: 'GIFs' }));
+    const grid = await screen.findByRole('grid', { name: 'GIFs' });
+    const before = store.getState().messages('c-ana').length;
+    fireEvent.click(within(grid).getByLabelText('Send 🐱 dancing'));
+    await vi.waitFor(() => {
+      expect(store.getState().messages('c-ana')).toHaveLength(before + 1);
+    });
+    const sent = store.getState().messages('c-ana').at(-1);
+    expect(sent?.attachment?.kind).toBe('image');
+    expect(sent?.attachment?.mime).toBe('image/gif');
+  });
+
+  it('names and types a webm GIF from the blob content type, not the result kind', async () => {
+    const api = await import('@/lib/api');
+    vi.spyOn(api, 'listStickerPacks').mockResolvedValue([]);
+    vi.spyOn(api, 'discoverStickerPacks').mockResolvedValue({ packs: [], next: null });
+    // The search result claims video/mp4 while the proxy serves webm: the
+    // stored attachment must carry the real bytes' type. (A bare object is
+    // stubbed instead of `new Response`, whose `blob()` drops the type.)
+    const webm = new Blob(['webm-bytes'], { type: 'video/webm' });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((input: string | URL | Request) =>
+        String(input).startsWith('data:')
+          ? Promise.resolve({ ok: true, blob: () => Promise.resolve(webm) } as Response)
+          : Promise.reject(new Error(`unexpected fetch ${String(input)}`)),
+      );
+    try {
+      const { store } = renderApp('/c/c-ana');
+      fireEvent.click(screen.getByLabelText('Open sticker panel'));
+      fireEvent.click(screen.getByRole('tab', { name: 'GIFs' }));
+      const grid = await screen.findByRole('grid', { name: 'GIFs' });
+      const before = store.getState().messages('c-ana').length;
+      fireEvent.click(within(grid).getByLabelText('Send 🐱 dancing'));
+      await vi.waitFor(() => {
+        expect(store.getState().messages('c-ana')).toHaveLength(before + 1);
+      });
+      const sent = store.getState().messages('c-ana').at(-1);
+      expect(sent?.attachment?.kind).toBe('file');
+      expect(sent?.attachment?.mime).toBe('video/webm');
+      expect(sent?.attachment?.name).toMatch(/^gif-.+\.webm$/);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('shows an inline error when the proxy fetch fails', async () => {
+    const api = await import('@/lib/api');
+    vi.spyOn(api, 'listStickerPacks').mockResolvedValue([]);
+    vi.spyOn(api, 'discoverStickerPacks').mockResolvedValue({ packs: [], next: null });
+    // Break the fetch so the placeholder bytes cannot load.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('down'));
+    try {
+      const { store } = renderApp('/c/c-ana');
+      fireEvent.click(screen.getByLabelText('Open sticker panel'));
+      fireEvent.click(screen.getByRole('tab', { name: 'GIFs' }));
+      const grid = await screen.findByRole('grid', { name: 'GIFs' });
+      const before = store.getState().messages('c-ana').length;
+      fireEvent.click(within(grid).getByLabelText('Send 🐱 dancing'));
+      await vi.waitFor(() => {
+        expect(screen.getByText('Could not load that GIF. Try another.')).toBeTruthy();
+      });
+      expect(store.getState().messages('c-ana')).toHaveLength(before);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+});

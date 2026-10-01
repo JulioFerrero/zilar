@@ -25,12 +25,14 @@ import { AttachmentPreview } from './AttachmentPreview';
 import { EditBar } from './EditBar';
 import { MentionPicker } from './MentionPicker';
 import { StickerPanel, type StickerChoice } from './StickerPanel';
+import type { GifChoice } from './GifPanel';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { Well } from './ui/well';
 import {
   MAX_ATTACHMENT_BYTES,
   classify,
+  gifBlobType,
   objectUrlFor,
   type PendingAttachment,
 } from '@/lib/attachments';
@@ -301,6 +303,47 @@ export function Composer({
       onCancelReply();
     },
     [chatId, onCancelReply, replyTo, store],
+  );
+
+  // A GIF pick fetches the media through the proxy, then uploads it with the
+  // existing attachment path and sends an attachment message (T-0122): the
+  // sent GIF is stored as our attachment and keeps working if the provider
+  // disappears. A caption is whatever the composer holds. The mime and the
+  // extension come from the proxied blob's real content type (validated
+  // against what the proxy serves), never from the search result's kind.
+  // Failures show the inline error; the attachment bubble's Retry covers
+  // upload failures.
+  const sendGif = useCallback(
+    (gif: GifChoice): void => {
+      const caption = value.trim();
+      setStickerOpen(false);
+      onCancelReply();
+      setAttachmentError(undefined);
+      void (async () => {
+        let blob: Blob | null;
+        try {
+          const response = await fetch(gif.url, { credentials: 'same-origin' });
+          if (!response.ok) {
+            throw new Error('proxy refused the media');
+          }
+          blob = await response.blob();
+        } catch {
+          setAttachmentError('Could not load that GIF. Try another.');
+          return;
+        }
+        if (blob.size === 0) {
+          setAttachmentError('Could not load that GIF. Try another.');
+          return;
+        }
+        const { mime, extension } = gifBlobType(blob.type, gif.kind);
+        const file = new File([blob], `gif-${gif.id.slice(0, 16)}.${extension}`, { type: mime });
+        store.sendAttachment(chatId, file, {
+          ...(caption.length === 0 ? {} : { caption }),
+          ...(replyTo === undefined ? {} : { replyTo }),
+        });
+      })();
+    },
+    [chatId, onCancelReply, replyTo, store, value],
   );
 
   const send = (): void => {
@@ -636,6 +679,7 @@ export function Composer({
               <StickerPanel
                 onPick={sendSticker}
                 onClose={() => setStickerOpen(false)}
+                onGifPick={sendGif}
                 onEmoji={(emoji) => {
                   const caret = textareaRef.current?.selectionStart ?? value.length;
                   const next = `${value.slice(0, caret)}${emoji}${value.slice(caret)}`;

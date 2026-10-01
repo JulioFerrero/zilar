@@ -65,6 +65,14 @@ const serverConfigSchema = z
     // File names are `<uuid>.<ext>`; the dir must exist or be creatable and
     // writable at startup (checked in `index.ts`).
     STICKER_STORAGE_DIR: z.string().min(1).default('./data/stickers'),
+    // GIFs (T-0122): `GIF_PROVIDER` picks the search adapter (`giphy` today;
+    // a second adapter can be added behind the same port later). Unset = the
+    // feature is off and every route answers 501 `gifs_unavailable`. The key
+    // is never logged or returned; the rating filter narrows provider results
+    // (`g` | `pg` | `pg-13` | `r`, default `pg-13`).
+    GIF_PROVIDER: z.enum(['giphy']).optional(),
+    GIF_API_KEY: z.string().min(1).optional(),
+    GIF_RATING: z.enum(['g', 'pg', 'pg-13', 'r']).default('pg-13'),
     // Join limiter behind a proxy (T-0134): how many right-most
     // `x-forwarded-for` hops to trust when resolving the client IP for the
     // per-IP join limiter. 0 (default) ignores proxy headers entirely and

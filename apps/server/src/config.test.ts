@@ -52,6 +52,7 @@ describe('loadServerConfig', () => {
       WEB_BASE_URL: 'http://localhost:5173',
       STICKER_STORAGE_DIR: './data/stickers',
       TRUSTED_PROXY_HOPS: 0,
+      GIF_RATING: 'pg-13',
       MAIL_TRANSPORT: 'console',
       SMTP_PORT: 587,
       SMTP_SECURE: false,
@@ -95,6 +96,7 @@ describe('loadServerConfig', () => {
       WEB_BASE_URL: 'http://localhost:5173',
       STICKER_STORAGE_DIR: './data/stickers',
       TRUSTED_PROXY_HOPS: 0,
+      GIF_RATING: 'pg-13',
       MAIL_TRANSPORT: undefined,
       SMTP_PORT: 587,
       SMTP_SECURE: false,
@@ -482,6 +484,40 @@ describe('loadServerConfig', () => {
       ...VALID_XMPP_ENV,
     });
     expect(message).toContain('STICKER_STORAGE_DIR');
+  });
+
+  it('leaves GIFs unconfigured by default and parses an explicit provider', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    const defaults = loadServerConfig(base);
+    expect(defaults.GIF_PROVIDER).toBeUndefined();
+    expect(defaults.GIF_API_KEY).toBeUndefined();
+    expect(defaults.GIF_RATING).toBe('pg-13');
+    const configured = loadServerConfig({
+      ...base,
+      GIF_PROVIDER: 'giphy',
+      GIF_API_KEY: 'test-key',
+      GIF_RATING: 'g',
+    });
+    expect(configured.GIF_PROVIDER).toBe('giphy');
+    expect(configured.GIF_RATING).toBe('g');
+  });
+
+  it('rejects an unknown GIF provider or rating without printing the key', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      GIF_API_KEY: 'test-key-value',
+      ...VALID_XMPP_ENV,
+    };
+    const provider = configErrorMessage({ ...base, GIF_PROVIDER: 'tenor' });
+    expect(provider).toContain('GIF_PROVIDER');
+    const rating = configErrorMessage({ ...base, GIF_PROVIDER: 'giphy', GIF_RATING: 'x' });
+    expect(rating).toContain('GIF_RATING');
+    expect(rating).not.toContain('test-key-value');
   });
 
   it('leaves the runner hub off by default on port 3189', () => {
