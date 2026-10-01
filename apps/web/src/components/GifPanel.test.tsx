@@ -81,21 +81,32 @@ describe('GifPanel', () => {
   });
 
   it('aborts the in-flight request when the query changes', async () => {
+    const staleItem = gifItems[0]!;
+    const freshItem = { ...gifItems[1]!, id: 'gif-fresh', title: 'Fresh dog' };
     let resolveFirst!: (page: { items: typeof gifItems }) => void;
+    // No abort listener on purpose: like a fetch that completed in the same
+    // tick as the abort, the promise settles normally after the abort fired,
+    // so only the `signal.aborted` guard in the continuation can drop it.
     vi.mocked(api.searchGifs).mockImplementationOnce(
-      (_query: string, _pos?: string, signal?: AbortSignal) =>
+      () =>
         new Promise((resolve) => {
           resolveFirst = resolve;
-          signal?.addEventListener('abort', () => resolve({ items: [] }));
         }),
     );
+    vi.mocked(api.searchGifs).mockImplementationOnce(() => Promise.resolve({ items: [freshItem] }));
     render(<GifPanel onPick={() => {}} />);
     const search = await screen.findByLabelText('Search GIFs');
     fireEvent.change(search, { target: { value: 'cat' } });
     await waitFor(() => expect(api.searchGifs).toHaveBeenCalledTimes(1));
     fireEvent.change(search, { target: { value: 'dog' } });
-    resolveFirst({ items: gifItems });
+    // Wait until the debounced second load has started: by then it already
+    // aborted the first controller, so resolving the stale request late must
+    // drop it instead of overwriting the grid.
     await waitFor(() => expect(api.searchGifs).toHaveBeenCalledTimes(2));
+    resolveFirst({ items: [staleItem, ...gifItems.slice(1)] });
+    const grid = await screen.findByRole('grid', { name: 'GIFs' });
+    await waitFor(() => expect(within(grid).getByLabelText('Send Fresh dog')).toBeTruthy());
+    expect(within(grid).queryByLabelText('Send Dancing cat')).toBeNull();
   });
 
   it('shows still frames under prefers-reduced-motion', async () => {

@@ -99,6 +99,13 @@ pnpm build
 ### Blocked / needs a decision
 - None. Open decision for Julio (per spec): create the Giphy API key and put it in `infra/.env` as `GIF_API_KEY` (I did not read that file); without it the feature 501s and the tab hides.
 
+### Review fixes (PREREVIEW.md, lead items 1–4)
+1. **Shared rate-limit budget**: `GET /api/gifs/media/:token` now has its own limiter (`GIF_MEDIA_RATE_LIMIT_MAX = 600/min/user`); search and trending keep 30/min. Test: 2 searches + 50 media fetches in one minute all 200, a further trending still 200s, and search 429s at its own cap of 30.
+2. **Media token in the request log**: `logPath` in `app.ts` (lead-approved as in-scope) now redacts `/api/gifs/media/<token>` to `/api/gifs/media/:token`. Test asserts the log contains the redacted path and never the token.
+3. **logger.ts scope note**: `GIF_API_KEY` in `redactPaths` kept per the lead's in-scope approval (finding 3).
+4. **Abort test now asserts stale discard**: the first search mock settles normally *after* the abort (no abort listener, like a same-tick completion), resolving with the old items; the test asserts the grid shows only the fresh item. Verified the test fails when the `signal.aborted` guard is removed (1 failed) and passes with it.
+- While writing the new budget test I found the fake's second seed item (`Fake dog`) carries only `previewUrl` (no mp4/gif), so `shape()` drops it and a token taken from a `q=dog` search is empty: the test takes its token from the `q=cat` search instead. No production change.
+
 ---
 
 ## Review (written by Claude)

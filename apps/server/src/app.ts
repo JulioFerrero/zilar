@@ -476,13 +476,17 @@ function durationSince(start: number): number {
   return Math.round(performance.now() - start);
 }
 
-// Join tokens (T-0115) and sign-up invite codes are bearer secrets, so the
-// request log redacts every segment after `/api/join/` and `/api/invites/`
+// Join tokens (T-0115), sign-up invite codes and GIF media tokens (T-0122)
+// are bearer secrets, so the request log redacts every segment after
+// `/api/join/`, `/api/invites/` and `/api/gifs/media/`
 // (`/api/join/<token>` and any variant such as a trailing slash, which 404s in
 // routing but still reaches this log line).
 function logPath(path: string): string {
   if (path.startsWith('/api/join/')) {
     return '/api/join/:token';
+  }
+  if (path.startsWith('/api/gifs/media/')) {
+    return '/api/gifs/media/:token';
   }
   return path.startsWith('/api/invites/') ? '/api/invites/:code' : path;
 }

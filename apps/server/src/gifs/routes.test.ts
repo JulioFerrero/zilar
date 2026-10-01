@@ -181,7 +181,7 @@ describe('gifs routes with a fake provider', () => {
     expect(long.status).toBe(400);
   });
 
-  it('rate limits at 30 requests per minute per user', async () => {
+  it('rate limits search and trending at 30 requests per minute per user', async () => {
     const app = buildApp();
     for (let index = 0; index < 30; index += 1) {
       const response = await getRequest(app, '/api/gifs/trending', user);
@@ -193,6 +193,47 @@ describe('gifs routes with a fake provider', () => {
     // Another user still has budget.
     const otherResponse = await getRequest(app, '/api/gifs/trending', other);
     expect(otherResponse.status).toBe(200);
+  });
+
+  it('gives media fetches their own higher budget outside the search cap', async () => {
+    const app = buildApp();
+    const first = await getRequest(app, '/api/gifs/search?q=cat', user);
+    expect(first.status).toBe(200);
+    const second = await getRequest(app, '/api/gifs/search?q=cats', user);
+    expect(second.status).toBe(200);
+    const body = (await first.json()) as GifPageBody;
+    const token = body.items[0]?.mediaToken ?? '';
+    expect(token.length).toBeGreaterThan(0);
+    const encoded = encodeURIComponent(token);
+    for (let index = 0; index < 50; index += 1) {
+      const media = await getRequest(app, `/api/gifs/media/${encoded}`, user);
+      expect(media.status).toBe(200);
+      await media.arrayBuffer();
+    }
+    // 52 requests in one minute, all through: media never ate the search budget.
+    const trending = await getRequest(app, '/api/gifs/trending', user);
+    expect(trending.status).toBe(200);
+    // The search cap still bites at its own 30.
+    for (let index = 0; index < 27; index += 1) {
+      await getRequest(app, '/api/gifs/trending', user);
+    }
+    const limited = await getRequest(app, '/api/gifs/trending', user);
+    expect(limited.status).toBe(429);
+    expect(await errorCode(limited)).toBe('rate_limited');
+  });
+
+  it('never logs a media token in the request log', async () => {
+    const app = buildApp();
+    const search = await getRequest(app, '/api/gifs/search?q=cat', user);
+    const body = (await search.json()) as GifPageBody;
+    const token = body.items[0]?.mediaToken ?? '';
+    expect(token.length).toBeGreaterThan(0);
+    const media = await getRequest(app, `/api/gifs/media/${encodeURIComponent(token)}`, user);
+    expect(media.status).toBe(200);
+    await media.arrayBuffer();
+    const logs = context.logOutput();
+    expect(logs).toContain('/api/gifs/media/:token');
+    expect(logs).not.toContain(token);
   });
 
   it('streams media through the proxy with rebuilt headers', async () => {

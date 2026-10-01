@@ -17,6 +17,10 @@ import { createGifTokenIssuer, type GifTokenIssuer } from './token';
 
 export const GIF_RATE_LIMIT_MAX = 30;
 export const GIF_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+// Media previews fan out per search: one page mints 25 tokens and every
+// rendered cell fetches, so the proxy gets its own much higher budget. The
+// token already binds user + URL + expiry; the limiter only caps volume.
+export const GIF_MEDIA_RATE_LIMIT_MAX = 600;
 export const GIF_PAGE_LIMIT = 25;
 export const GIF_PROXY_MAX_BYTES = 8 * 1024 * 1024;
 export const GIF_PROXY_TIMEOUT_MS = 10_000;
@@ -133,8 +137,13 @@ function tokenSecret(config: ServerConfig): string {
 export function createGifsRoutes(deps: GifsRoutesDependencies): Hono {
   const routes = new Hono();
   const now = deps.now ?? Date.now;
-  const limiter = createRateLimiter({
+  const searchLimiter = createRateLimiter({
     max: GIF_RATE_LIMIT_MAX,
+    windowMs: GIF_RATE_LIMIT_WINDOW_MS,
+    now,
+  });
+  const mediaLimiter = createRateLimiter({
+    max: GIF_MEDIA_RATE_LIMIT_MAX,
     windowMs: GIF_RATE_LIMIT_WINDOW_MS,
     now,
   });
@@ -197,7 +206,7 @@ export function createGifsRoutes(deps: GifsRoutesDependencies): Hono {
     if (!providerConfigured(deps.config) && deps.provider === undefined) {
       throw new HttpError(501, 'gifs_unavailable', 'GIF search is not configured');
     }
-    if (!limiter.allow(user.id)) {
+    if (!searchLimiter.allow(user.id)) {
       throw new HttpError(429, 'rate_limited', 'Too many GIF requests, try again later');
     }
     const parsed = searchQuerySchema.safeParse(c.req.query());
@@ -226,7 +235,7 @@ export function createGifsRoutes(deps: GifsRoutesDependencies): Hono {
     if (!providerConfigured(deps.config) && deps.provider === undefined) {
       throw new HttpError(501, 'gifs_unavailable', 'GIF search is not configured');
     }
-    if (!limiter.allow(user.id)) {
+    if (!searchLimiter.allow(user.id)) {
       throw new HttpError(429, 'rate_limited', 'Too many GIF requests, try again later');
     }
     const parsed = trendingQuerySchema.safeParse(c.req.query());
@@ -254,7 +263,7 @@ export function createGifsRoutes(deps: GifsRoutesDependencies): Hono {
     if (!providerConfigured(deps.config) && deps.provider === undefined) {
       throw new HttpError(501, 'gifs_unavailable', 'GIF search is not configured');
     }
-    if (!limiter.allow(user.id)) {
+    if (!mediaLimiter.allow(user.id)) {
       throw new HttpError(429, 'rate_limited', 'Too many GIF requests, try again later');
     }
     let rawToken: string;
