@@ -173,7 +173,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0144](T-0144-mobile-channels.md) | mobile channels: read-only bar, channel screen, create, promote/demote | 2026-10-01 |
 | [T-0121](T-0121-sticker-creator.md) | sticker pack creator, favorites, panel reorder (migration 0032) | 2026-10-01 |
 | [T-0147](T-0147-mobile-nits.md) | mobile nits: group fetch ordering, join link cleanups, jump-scroll retries | 2026-10-01 |
-| [T-0151](T-0151-deploy-storage-safety.md) | Production storage safety: sticker volume, backups of both file stores, disk check in doctor, ejabberd upload quota | planned | meta/muse-spark-1.3-contributor | T-0145 | Spec ready, not launched (Julio asked to close tasks first) |
 | [T-0146](T-0146-web-server-nits.md) | web/server nits: sticker dir warning, leave 404, AI reload, GIF host rule, GIF tab | 2026-10-01 |
 | [T-0143](T-0143-mobile-stickers.md) | mobile stickers: render, panel, send, recents, mock packs | 2026-10-01 |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Telegram sticker pack importer | 2026-10-01 |
@@ -183,3 +182,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0152](T-0152-web-sticker-ui.md) | Web sticker UI fixes | 2026-10-01 |
 | [T-0153](T-0153-web-settings-layout.md) | Web settings pages layout | 2026-10-01 |
 | [T-0148](T-0148-mobile-gifs.md) | Mobile GIFs | 2026-10-01 |
+| [T-0151](T-0151-deploy-storage-safety.md) | Production storage safety | 2026-10-01 |
