@@ -1,7 +1,7 @@
 ---
 id: T-0141
 title: Web and server: deferred review follow-ups (stickers, revoke, approvals)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0141-web-server-followups
 model: meta/muse-spark-1.3-contributor
@@ -80,3 +80,14 @@ pnpm --filter @galena/web test --maxWorkers=2 <touched test files and their neig
 - None.
 
 ## Review (written by Claude)
+
+**Verdict:** approved, merged. Two rounds, no schema.
+
+### Findings
+- Round 1 must-fix fixed: the channel panel's revoke now passes the promise through (button stays busy until the DELETE settles); mock last-seat leave navigates away again; the cwd test really changes `process.cwd`; dead sticker art removed.
+- Blessed scope touch: `apps/server/src/index.ts` (startup check uses `resolveStorageDir`).
+- Deferred should-fix: the mock `leaveTopic` swallows every 404 (mirrors the real store at `realStore.ts:2932`, so a non-membership 404 also navigates away); `SERVER_PACKAGE_ROOT` assumes sources live at `src/stickers/` (fine under tsx today; a build step emitting to `dist/` would silently move a relative `STICKER_STORAGE_DIR`; warn at startup or document it).
+- Deferred nit: `removeAi` shows a stale row if the AI list reload fails after a successful delete (same pre-existing pattern as `removeMember`).
+
+### Follow-ups
+- Warn at startup when the resolved sticker dir does not exist; make the 404 swallow distinguish "topic gone" from "not a member".
