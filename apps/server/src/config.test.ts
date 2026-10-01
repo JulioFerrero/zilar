@@ -64,6 +64,7 @@ describe('loadServerConfig', () => {
       TOOLS_ENABLED: false,
       WEB_TOOLS_ENABLED: false,
       WEB_SEARCH_PROVIDER: 'duckduckgo-html',
+      AGENT_TOOL_MAX_ROUNDS: 1,
       xmpp: VALID_XMPP,
     });
   });
@@ -107,6 +108,7 @@ describe('loadServerConfig', () => {
       TOOLS_ENABLED: false,
       WEB_TOOLS_ENABLED: false,
       WEB_SEARCH_PROVIDER: 'duckduckgo-html',
+      AGENT_TOOL_MAX_ROUNDS: 1,
       xmpp: VALID_XMPP,
     });
   });
@@ -397,6 +399,37 @@ describe('loadServerConfig', () => {
     const message = configErrorMessage({ ...base, TOOLS_ENABLED: 'maybe' });
     expect(message).toContain('TOOLS_ENABLED');
     expect(message).not.toContain('maybe');
+  });
+
+  it('defaults tool rounds to 1 with tools off and 6 with tools on', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig(base).AGENT_TOOL_MAX_ROUNDS).toBe(1);
+    expect(loadServerConfig({ ...base, TOOLS_ENABLED: 'true' }).AGENT_TOOL_MAX_ROUNDS).toBe(6);
+    expect(
+      loadServerConfig({ ...base, TOOLS_ENABLED: 'true', AGENT_TOOL_MAX_ROUNDS: '3' })
+        .AGENT_TOOL_MAX_ROUNDS,
+    ).toBe(3);
+    expect(loadServerConfig({ ...base, AGENT_TOOL_MAX_ROUNDS: '1' }).AGENT_TOOL_MAX_ROUNDS).toBe(1);
+  });
+
+  it('rejects junk values for AGENT_TOOL_MAX_ROUNDS without printing them', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    for (const value of ['maybe', '0', '11', '-1', '1.5']) {
+      const message = configErrorMessage({ ...base, AGENT_TOOL_MAX_ROUNDS: value });
+      expect(message).toContain('AGENT_TOOL_MAX_ROUNDS');
+      expect(message).not.toContain(value);
+    }
+    expect(loadServerConfig({ ...base, AGENT_TOOL_MAX_ROUNDS: '10' }).AGENT_TOOL_MAX_ROUNDS).toBe(
+      10,
+    );
   });
 
   it('leaves web tools off by default and enables them with one line', () => {

@@ -89,6 +89,8 @@ class FakeCore implements XmppCore {
   failJoin = false;
   failLeave = false;
   sent: Array<{ to: string; kind: ChatKind; text: string; opts?: unknown }> = [];
+  corrections: Array<{ chatJid: string; kind: ChatKind; originalId: string; text: string }> = [];
+  retractions: Array<{ chatJid: string; kind: ChatKind; targetId: string }> = [];
   typing: Array<{ to: string; kind: ChatKind; state: 'composing' | 'paused' }> = [];
   displayed: Array<{ chatJid: string; kind: ChatKind; messageId: string }> = [];
   joined: Array<{ roomJid: string; nick: string }> = [];
@@ -162,11 +164,18 @@ class FakeCore implements XmppCore {
     return Promise.resolve();
   }
 
-  sendCorrection(): Promise<{ id: string }> {
+  sendCorrection(
+    chatJid: string,
+    kind: ChatKind,
+    originalId: string,
+    text: string,
+  ): Promise<{ id: string }> {
+    this.corrections.push({ chatJid, kind, originalId, text });
     return Promise.resolve({ id: 'sent-edit' });
   }
 
-  sendRetraction(): Promise<void> {
+  sendRetraction(chatJid: string, kind: ChatKind, targetId: string): Promise<void> {
+    this.retractions.push({ chatJid, kind, targetId });
     return Promise.resolve();
   }
 
@@ -437,6 +446,8 @@ describe('agent gateway', () => {
       hub?: DraftHub;
       now?: () => Date;
       actions?: ActionGateway;
+      toolsEnabled?: boolean;
+      toolMaxRounds?: number;
     } = {},
   ): { gateway: AgentGateway; logger: ReturnType<typeof captureLogger> } {
     const logger = captureLogger();
@@ -464,6 +475,8 @@ describe('agent gateway', () => {
         : { now: config.now }),
       ...(config.hub === undefined ? {} : { drafts: { hub: config.hub } }),
       ...(config.actions === undefined ? {} : { actions: config.actions }),
+      ...(config.toolsEnabled === undefined ? {} : { toolsEnabled: config.toolsEnabled }),
+      ...(config.toolMaxRounds === undefined ? {} : { toolMaxRounds: config.toolMaxRounds }),
     };
     const created = createAgentGateway(deps, {
       enabled: config.enabled ?? true,
@@ -4085,6 +4098,219 @@ describe('agent gateway', () => {
       });
       expect(ok).toBe(false);
       expect(core.sent).toEqual([]);
+    });
+  });
+
+  // T-0106: the tool guide rides the turn only when tools are enabled and
+  // adapters are registered; multi-round turns post one live progress
+  // message and update it per round.
+  describe('tool guide and progress (T-0106)', () => {
+    function scriptedFetchLocal(responses: Response[]): {
+      fetchImpl: FetchLike;
+      calls: Call[];
+    } {
+      const calls: Call[] = [];
+      let index = 0;
+      const fetchImpl: FetchLike = (url, init) => {
+        calls.push({ url, init });
+        const response = responses[Math.min(index, responses.length - 1)]!;
+        index += 1;
+        return Promise.resolve(response.clone());
+      };
+      return { fetchImpl, calls };
+    }
+
+    function fakeActionGatewayLocal(outcome: RequestOutcome): {
+      gateway: ActionGateway;
+      requests: Array<Record<string, unknown>>;
+    } {
+      const requests: Array<Record<string, unknown>> = [];
+      return {
+        requests,
+        gateway: {
+          request: async (params) => {
+            requests.push({ ...params });
+            return outcome;
+          },
+          onApprovalDecided: () => Promise.resolve(),
+          recoverStuck: () => Promise.resolve(),
+          listActions: () => [{ name: 'demo.echo', description: 'Repeats text.' }],
+        },
+      };
+    }
+
+    function guideResponse(
+      calls: Array<{ id: string; name: string; args: unknown }>,
+      followUp = 'AI follow-up',
+    ): Response[] {
+      return [
+        jsonResponse({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: calls.map((call) => ({
+                  id: call.id,
+                  type: 'function',
+                  function: { name: call.name, arguments: JSON.stringify(call.args) },
+                })),
+              },
+            },
+          ],
+        }),
+        completionResponse(followUp),
+      ];
+    }
+
+    it('appends the guide to the DM prompt only when tools are enabled with adapters', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const args = { action: 'demo.echo', args: { text: 'hi' } };
+      const first = scriptedFetchLocal(
+        guideResponse([{ id: 'call-1', name: 'request_action', args }]),
+      );
+      const fake = fakeActionGatewayLocal({ status: 'executed', summary: 'Echoed: hi' });
+      const { gateway: started } = harness(cores, first.fetchImpl, new FakeLitellm(), {
+        actions: fake.gateway,
+        toolsEnabled: true,
+      });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'echo hi'));
+      await waitFor(() => first.calls.length === 2);
+      const body = JSON.parse(String(first.calls[0]!.init.body)) as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      const systemAndGuide = body.messages.filter((message) => message.role === 'user');
+      expect(systemAndGuide.at(-1)?.content).toContain('`tool.list`');
+
+      // Tools off: the same turn carries no guide.
+      const coresOff: FakeCore[] = [];
+      const second = scriptedFetchLocal(
+        guideResponse([{ id: 'call-1', name: 'request_action', args }]),
+      );
+      const { gateway: off } = harness(coresOff, second.fetchImpl, new FakeLitellm(), {
+        actions: fake.gateway,
+      });
+      await off.start();
+      const coreOff = await coreFor(coresOff, seeded.aiJid);
+      coreOff.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-2', 'echo hi'));
+      await waitFor(() => second.calls.length === 2);
+      const offBody = JSON.parse(String(second.calls[0]!.init.body)) as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      expect(offBody.messages.every((message) => !message.content.includes('`tool.list`'))).toBe(
+        true,
+      );
+      await off.stop();
+    });
+
+    it('omits the guide when tools are on but no adapters are registered', async () => {
+      // `toolsEnabled` with an empty action list offers no `request_action`
+      // (see `buildTools`), so the guide — which documents that tool —
+      // stays out too instead of inviting hallucinated calls.
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const args = { action: 'demo.echo', args: { text: 'hi' } };
+      const { fetchImpl, calls } = scriptedFetchLocal(
+        guideResponse([{ id: 'call-1', name: 'request_action', args }]),
+      );
+      const empty: ActionGateway = {
+        request: () => Promise.resolve({ status: 'failed' }),
+        onApprovalDecided: () => Promise.resolve(),
+        recoverStuck: () => Promise.resolve(),
+        listActions: () => [],
+      };
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm(), {
+        actions: empty,
+        toolsEnabled: true,
+      });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'echo hi'));
+      await waitFor(() => calls.length === 2);
+      const body = JSON.parse(String(calls[0]!.init.body)) as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      expect(body.messages.every((message) => !message.content.includes('`tool.list`'))).toBe(true);
+      await started.stop();
+    });
+
+    it('posts one progress message and corrects it on the next round', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = scriptedFetchLocal([
+        jsonResponse({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'request_action',
+                      arguments: JSON.stringify({ action: 'tool.list', args: {} }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        jsonResponse({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-2',
+                    type: 'function',
+                    function: {
+                      name: 'request_action',
+                      arguments: JSON.stringify({
+                        action: 'web.price',
+                        args: { symbols: ['BTC'] },
+                      }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        completionResponse('Done.'),
+      ]);
+      const fake = fakeActionGatewayLocal({ status: 'executed', summary: 'ok' });
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm(), {
+        actions: fake.gateway,
+        toolsEnabled: true,
+        toolMaxRounds: 6,
+      });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'prices please'));
+      await waitFor(() => calls.length === 3);
+      await waitFor(() => core.sent.length >= 2);
+      // One progress post, one correction to the next fixed stage, and a
+      // retraction once the final text lands. Stages never carry model text.
+      const progressPosts = core.sent.filter(
+        (message) =>
+          typeof message.opts === 'object' &&
+          message.opts !== null &&
+          (message.opts as { payload?: { type?: string } }).payload?.type === 'progress',
+      );
+      expect(progressPosts).toHaveLength(1);
+      expect(progressPosts[0]?.text).toBe('Looking up saved tools');
+      expect(core.corrections).toHaveLength(1);
+      expect(core.corrections[0]?.text).toBe('Looking up prices');
+      expect(core.retractions).toHaveLength(1);
+      const final = core.sent.at(-1);
+      expect(final?.text).toBe('Done.');
     });
   });
 

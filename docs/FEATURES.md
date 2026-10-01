@@ -85,7 +85,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Tool and routine actions (wired) | Adapters and sandbox wiring behind `TOOLS_ENABLED`; results reach the model as untrusted text | server | 🟡 Merged (off by default) | T-0105 |
 | Routines scheduler (merged) | Scheduler, DST-correct schedules, host pinning, 3-failure pause, behind `ROUTINES_ENABLED` | server | 🟡 Merged (off by default) | T-0104 |
 | Keyless web tools | Guarded fetch, Wikipedia, prices, feeds, best-effort search for AIs, behind `WEB_TOOLS_ENABLED` | server | 🟡 Merged (off by default) | T-0125 |
-| Model side | Prompt guide, more model rounds per turn, a "working on it" line, a live example in the chat | server | 🧭 Planned | T-0106 |
+| Model side | Prompt guide, more model rounds per turn, a "working on it" line, a live example in the chat → [`AI_TOOLS.md`](AI_TOOLS.md) | server | 🧭 Planned | T-0106 |
 | Tools and Routines UI | See the code and its history, run, pause and delete | web | 🧭 Planned | T-0107 |
 
 ## 7. Design and clients

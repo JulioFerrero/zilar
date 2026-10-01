@@ -13,6 +13,7 @@ import {
   type ChatToolDefinition,
   type ParsedToolArguments,
 } from './tools';
+import { stageForToolCall } from './tool-guide';
 
 // Cap on every completion request, enforced in code from day one (§8.4).
 export const REPLY_MAX_TOKENS = 1024;
@@ -346,15 +347,68 @@ export interface DmTurnDeps {
    * When `request_action` is in play the agent gateway passes a list that
    * also includes the `request_action` tool definition. */
   tools?: ChatToolDefinition[];
+  /** T-0106: how many tool rounds this turn may run. Defaults to 1:
+   * first model call with tools, execute, exactly one follow-up call —
+   * today's behaviour, byte for byte. The gateway passes
+   * `AGENT_TOOL_MAX_ROUNDS` (6 when `TOOLS_ENABLED` is on). */
+  maxRounds?: number;
+  /** T-0106: a gate the turn checks before every model call. Null = the AI
+   * may proceed (live, under budget, usage unavailable). Non-null with
+   * `limited: true` = stop the loop and send the fixed reply. In
+   * production the gateway wires the kill switch + budget check; tests
+   * wire scripted gates. */
+  checkRoundGate?: () => Promise<{ limited: boolean; reply: string } | null>;
+  /** T-0106: wall-clock start of the turn (ms). Rounds stop when
+   * `TOOL_TURN_WALL_CLOCK_MS` have passed. Defaults to `Date.now()`. */
+  turnStartMs?: number;
+  /** T-0106: `Date.now` seam for the wall-clock cap. Defaults to Date.now. */
+  nowMs?: () => number;
+  /** T-0106: posts one live progress message at the first tool round and
+   * updates it at each round. Resolves with the progress message id when
+   * one was posted (corrections target it); null when no progress message
+   * exists (not posted yet, or posting failed). Best effort: a throw or a
+   * null never fails the turn. */
+  reportProgress?: (stage: string) => Promise<string | null>;
+  /** T-0106: removes or replaces the live progress message once the final
+   * text is sent. Best effort: a throw never fails the turn. */
+  clearProgress?: () => Promise<void>;
+  /** T-0106: counts logger. The loop logs only counts (rounds, tool
+   * calls, ms), never content. Defaults to `deps.logger`. */
+  turnLogger?: {
+    info: (fields: Record<string, unknown>, message: string) => void;
+  };
 }
 
 export type DmTurnOutcome = { kind: 'replied'; text: string } | { kind: 'failed'; text: string };
 
+// T-0106: per-turn caps for the multi-round tool loop. The wall clock keeps
+// one long turn from holding the pump forever; the call cap keeps a looping
+// model from executing unbounded side effects. Both are fixed, not config:
+// `AGENT_TOOL_MAX_ROUNDS` is the only knob.
+export const TOOL_TURN_WALL_CLOCK_MS = 120_000;
+export const TOOL_TURN_MAX_CALLS = 12;
+
+// T-0106: each tool result fed back to the model is truncated to this many
+// characters. Adapter summaries are already short; `modelText` (tool source,
+// test output, fetched pages) can be 16 KiB, and several rounds of that
+// would bloat the context. Still wrapped in `<untrusted-tool-output>`.
+export const TOOL_RESULT_MAX_CHARS = 8 * 1024;
+
+// T-0106: a round that asks for the same call with the same arguments as the
+// previous round is answered with this, without executing again.
+export const TOOL_REPEAT_RESULT = 'already done: this call ran in the previous round';
+
+// T-0106: every call dropped by the per-turn call cap still gets a result,
+// so no assistant `tool_calls` entry is left without a matching `tool`
+// message. An unmatched tool call makes providers answer 400 on the next
+// (and the final tool-free) model call, so capping must never corrupt the
+// follow-up history.
+export const TOOL_CAPPED_RESULT = 'capped: turn call limit reached';
+
 // Runs one turn: typing on, model call, reply into the DM, typing off. When
-// the model asks for tools, each call is validated and executed, the results
-// go back for exactly one follow-up call, and the reply carries the fixed
-// persona lines. At most 2 model calls per turn: a second response that asks
-// for tools again is answered from its text alone. A model failure posts the
+// the model asks for tools, the shared multi-round `runToolLoop` runs
+// (`maxRounds`, default 1, from the gateway's `AGENT_TOOL_MAX_ROUNDS`), and
+// the reply carries the fixed persona lines. A model failure posts the
 // honest failure text instead — never the raw error. XMPP send failures are
 // logged, never thrown: there is nobody left to tell.
 export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
@@ -371,18 +425,10 @@ export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
   };
   deps.sendTyping(deps.ownerJid, 'chat', 'composing');
   try {
-    const first = await requestCompletion({
-      ...completionInput,
-      messages: deps.messages,
-      tools,
-    });
-    if (first.toolCalls.length === 0) {
-      if (first.content === null) {
-        throw new ChatCompletionError(200, 'empty reply from the model');
-      }
-      return await sendReply(deps, first.content);
-    }
-    return await runToolTurn(deps, completionInput, first, secrets, tools);
+    // The loop owns every model call, starting with round 1 (tools
+    // offered, exactly like the legacy first call). A text answer comes
+    // back as the final text; an empty first reply throws, like before.
+    return await runToolTurn(deps, completionInput, secrets, tools);
   } catch (error) {
     const reply = mapFailureToReply(error);
     deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
@@ -535,11 +581,312 @@ function followUpMessages(
   ];
 }
 
-// The second half of a tool turn: execute every call, feed the results back
-// for exactly one more model call, then send the text plus any notices. The
-// per-call execution is shared with groups through `executeToolCalls`. A
-// second response that asks for tools again is answered from its text alone:
-// those calls are ignored and there is never a third model call.
+// T-0106: truncates one executed tool result before it is fed back to the
+// model. Summaries are already short; `modelText` inside
+// `<untrusted-tool-output>` can be 16 KiB. The wrapper survives: only the
+// inside is cut and the closing tag is put back, so the model still sees
+// labelled data, never instructions.
+const TOOL_OUTPUT_CLOSE = '\n</untrusted-tool-output>';
+
+function truncateToolContent(content: string): string {
+  if (content.length <= TOOL_RESULT_MAX_CHARS) {
+    return content;
+  }
+  if (content.includes('<untrusted-tool-output>')) {
+    const keep = TOOL_RESULT_MAX_CHARS - TOOL_OUTPUT_CLOSE.length - 1;
+    return `${content.slice(0, keep)}…${TOOL_OUTPUT_CLOSE}`;
+  }
+  return `${content.slice(0, TOOL_RESULT_MAX_CHARS)}…`;
+}
+
+// T-0106: the per-round pipeline both loops share: dedupe repeated calls,
+// report progress, execute (capped), truncate results, collect notices.
+// Returns the follow-up messages for the next model call.
+async function runLoopRound(input: {
+  aiId: string;
+  messages: ModelRequestMessage[];
+  result: ChatCompletionResult;
+  previousSignature: string | null;
+  executedCalls: number;
+  executeTool?: ExecuteToolCall;
+  executeAdvertised?: ExecuteToolCall;
+  logger: { warn: (fields: Record<string, unknown>, message: string) => void };
+  secrets: string[];
+  reportProgress?: (stage: string) => Promise<string | null>;
+  progressPosted?: boolean;
+  actionOf?: (tool: string, argsJson: string) => string | undefined;
+}): Promise<{
+  messages: ModelRequestMessage[];
+  notices: string[];
+  previousSignature: string;
+  executedCalls: number;
+  progressPosted: boolean;
+}> {
+  const signature = input.result.toolCalls
+    .map((call) => `${call.name}\n${call.argsJson}`)
+    .join('\n');
+  if (input.previousSignature !== null && input.previousSignature === signature) {
+    const repeated = input.result.toolCalls.map((call) => ({
+      role: 'tool' as const,
+      content: TOOL_REPEAT_RESULT,
+      tool_call_id: call.id,
+    }));
+    return {
+      messages: followUpMessages(input.messages, input.result, repeated),
+      notices: [],
+      previousSignature: signature,
+      executedCalls: input.executedCalls,
+      progressPosted: input.progressPosted ?? false,
+    };
+  }
+  let progressPosted = input.progressPosted ?? false;
+  if (input.reportProgress !== undefined) {
+    const first = input.result.toolCalls[0];
+    if (first !== undefined) {
+      const stage = stageForToolCall(first.name, input.actionOf?.(first.name, first.argsJson));
+      try {
+        await input.reportProgress(stage);
+        progressPosted = true;
+      } catch (error) {
+        input.logger.warn(
+          { aiId: input.aiId, err: redactError(error, input.secrets) },
+          progressPosted
+            ? 'AI progress message could not be updated'
+            : 'AI progress message could not be posted',
+        );
+      }
+    }
+  }
+  const remaining = TOOL_TURN_MAX_CALLS - input.executedCalls;
+  const runnable = input.result.toolCalls.slice(0, Math.max(0, remaining));
+  const dropped = input.result.toolCalls.slice(runnable.length);
+  const { toolMessages, notices } = await executeToolCalls({
+    toolCalls: runnable,
+    aiId: input.aiId,
+    ...(input.executeAdvertised !== undefined
+      ? { executeTool: input.executeAdvertised }
+      : input.executeTool === undefined
+        ? {}
+        : { executeTool: input.executeTool }),
+    logger: input.logger,
+    secrets: input.secrets,
+  });
+  // Every dropped call still gets a result: without one the follow-up
+  // history carries an assistant `tool_calls` entry with no matching
+  // `tool` message. The capped notice is fixed text (no ids, no args), so
+  // truncation is a no-op but keeps the pipeline uniform.
+  const cappedMessages = dropped.map((call) => ({
+    role: 'tool' as const,
+    content: TOOL_CAPPED_RESULT,
+    tool_call_id: call.id,
+  }));
+  return {
+    messages: followUpMessages(
+      input.messages,
+      input.result,
+      [...toolMessages, ...cappedMessages].map((message) => ({
+        ...message,
+        content: truncateToolContent(message.content),
+      })),
+    ),
+    notices,
+    previousSignature: signature,
+    executedCalls: input.executedCalls + runnable.length,
+    progressPosted,
+  };
+}
+
+// T-0106: the one shared multi-round tool loop for DM and group turns. No
+// copy: both turns call this, differing only in their executor (groups wrap
+// it with the advertised-tools guard) and their final sender (DM sends
+// plain text, groups wire `@Name` + `replyTo`). Round 1 always offers
+// tools, exactly like the legacy first call did; every round that asks for
+// tool calls has them executed and fed back, until a round answers in text
+// or the caps stop the loop. Rules that hold on EVERY round:
+// - `checkRoundGate` runs before each model call: an over-budget or
+//   stopped AI runs no further round and sends nothing (the caller sends
+//   the gate's fixed reply, like a model failure);
+// - the wall clock (`TOOL_TURN_WALL_CLOCK_MS`) and the total call cap
+//   (`TOOL_TURN_MAX_CALLS`) stop the loop; when the rounds run out, the
+//   last model call is made WITHOUT tools so the AI must answer in text
+//   (`maxRounds: 1` keeps the legacy shape instead — see below);
+// - a round that repeats the previous round's calls exactly gets the
+//   "already done" result without executing;
+// - tool results are truncated to `TOOL_RESULT_MAX_CHARS` and still arrive
+//   inside `<untrusted-tool-output>`;
+// - only counts (rounds, tool calls, ms) reach the log, never content —
+//   the loop logs one counts line per turn, even when it throws.
+// Progress posts only happen on multi-round turns (`maxRounds > 1`): a
+// legacy single-round turn finishes in two calls and stays byte for byte.
+//
+// `maxRounds: 1` (the default) keeps today's behaviour byte for byte:
+// round 1 offers tools, executes, and the caller makes exactly one more
+// follow-up call WITH tools, answered from its text alone.
+export async function runToolLoop(input: {
+  aiId: string;
+  messages: ModelRequestMessage[];
+  tools: ChatToolDefinition[];
+  completionInput: {
+    baseUrl: string;
+    virtualKey: string;
+    model: string;
+    fetchImpl?: FetchLike;
+    timeoutMs?: number;
+    secrets?: readonly string[];
+    onDelta?: (textSoFar: string) => void;
+  };
+  maxRounds: number;
+  executeTool?: ExecuteToolCall;
+  executeAdvertised?: ExecuteToolCall;
+  logger: { warn: (fields: Record<string, unknown>, message: string) => void };
+  turnLogger: { info: (fields: Record<string, unknown>, message: string) => void };
+  secrets: string[];
+  checkRoundGate?: () => Promise<{ limited: boolean; reply: string } | null>;
+  turnStartMs: number;
+  nowMs: () => number;
+  reportProgress?: (stage: string) => Promise<string | null>;
+  actionOf?: (tool: string, argsJson: string) => string | undefined;
+}): Promise<{
+  text: string | null;
+  notices: string[];
+  failure: { reply: string } | null;
+  rounds: number;
+  toolCalls: number;
+  messages: ModelRequestMessage[];
+}> {
+  const startedAt = input.turnStartMs;
+  let messages = input.messages;
+  let rounds = 0;
+  let executedCalls = 0;
+  const notices: string[] = [];
+  let previousSignature: string | null = null;
+  let progressPosted = false;
+  // Progress and the counts line both key off multi-round turns; a legacy
+  // single-round turn reports nothing and stays byte for byte.
+  const multiRound = input.maxRounds > 1;
+
+  try {
+    for (let round = 1; round <= input.maxRounds; round += 1) {
+      if (input.nowMs() - startedAt >= TOOL_TURN_WALL_CLOCK_MS) {
+        break;
+      }
+      if (input.checkRoundGate !== undefined) {
+        const gate = await input.checkRoundGate();
+        if (gate !== null && gate.limited) {
+          return {
+            text: null,
+            notices,
+            failure: { reply: gate.reply },
+            rounds,
+            toolCalls: executedCalls,
+            messages,
+          };
+        }
+      }
+      rounds += 1;
+      const lastRound = round >= input.maxRounds;
+      // Round 1 always offers tools, exactly like the legacy first call.
+      // When the rounds run out, the last model call is made without tools
+      // so the AI must answer in text — except the legacy single-round
+      // shape (`maxRounds: 1`), whose follow-up call carries tools and is
+      // answered from its text alone.
+      const lastCall = lastRound && round > 1;
+      const result = await requestCompletion({
+        ...input.completionInput,
+        messages,
+        ...(lastCall ? {} : { tools: input.tools }),
+      });
+      if (result.toolCalls.length === 0) {
+        // An empty first reply is a model failure, exactly like the legacy
+        // turn: the caller maps it to the honest failure text. A later text
+        // answer with no text falls back instead, plus any earned notices.
+        if (result.content === null) {
+          if (rounds <= 1) {
+            throw new ChatCompletionError(200, 'empty reply from the model');
+          }
+          return {
+            text: TRANSIENT_FAILURE_REPLY,
+            notices,
+            failure: null,
+            rounds,
+            toolCalls: executedCalls,
+            messages,
+          };
+        }
+        return {
+          text: result.content,
+          notices,
+          failure: null,
+          rounds,
+          toolCalls: executedCalls,
+          messages,
+        };
+      }
+      if (lastCall) {
+        // No tools were offered on the last call, so anything the model
+        // improvises is answered from its text alone.
+        return {
+          text: result.content ?? TRANSIENT_FAILURE_REPLY,
+          notices,
+          failure: null,
+          rounds,
+          toolCalls: executedCalls,
+          messages,
+        };
+      }
+      const step = await runLoopRound({
+        aiId: input.aiId,
+        messages,
+        result,
+        previousSignature,
+        executedCalls,
+        ...(input.executeTool === undefined ? {} : { executeTool: input.executeTool }),
+        ...(input.executeAdvertised === undefined ? {} : { executeTool: input.executeAdvertised }),
+        logger: input.logger,
+        secrets: input.secrets,
+        ...(input.reportProgress === undefined || !multiRound
+          ? {}
+          : { reportProgress: input.reportProgress }),
+        progressPosted,
+        ...(input.actionOf === undefined ? {} : { actionOf: input.actionOf }),
+      });
+      messages = step.messages;
+      notices.push(...step.notices);
+      previousSignature = step.previousSignature;
+      executedCalls = step.executedCalls;
+      progressPosted = step.progressPosted;
+      if (executedCalls >= TOOL_TURN_MAX_CALLS) {
+        break;
+      }
+    }
+    return { text: null, notices, failure: null, rounds, toolCalls: executedCalls, messages };
+  } finally {
+    // One counts line per turn on every exit (text, failure, caps, throw):
+    // ids and counts only, never content.
+    input.turnLogger.info(
+      {
+        aiId: input.aiId,
+        rounds,
+        toolCalls: executedCalls,
+        elapsedMs: input.nowMs() - startedAt,
+      },
+      'AI tool turn finished',
+    );
+  }
+}
+
+// The second half of a tool turn: every path below runs the shared
+// `runToolLoop` — DM and group turns share one implementation, no copy.
+// The turn only adapts: its own executor (`executeTool`), its own sender
+// (DM sends plain text into the owner's DM), and the legacy single-round
+// tail (a follow-up call WITH tools, answered from its text alone). Gates,
+// clock, caps, dedupe, truncation, the tool-free last call and counts
+// logging all live in the loop.
+//
+// `maxRounds: 1` (the default) keeps today's behaviour byte for byte:
+// round 1 offers tools, executes, and the tail makes exactly one more
+// follow-up call with tools. The failure path is unchanged: the persona
+// lines ride along on the failure text.
 async function runToolTurn(
   deps: DmTurnDeps,
   completionInput: {
@@ -551,34 +898,63 @@ async function runToolTurn(
     secrets?: readonly string[];
     onDelta?: (textSoFar: string) => void;
   },
-  first: ChatCompletionResult,
   secrets: string[],
   tools: ChatToolDefinition[],
 ): Promise<DmTurnOutcome> {
-  const { toolMessages, notices } = await executeToolCalls({
-    toolCalls: first.toolCalls,
-    aiId: deps.aiId,
-    ...(deps.executeTool === undefined ? {} : { executeTool: deps.executeTool }),
-    logger: deps.logger,
-    secrets,
-  });
-
-  let text: string;
+  const startedAt = deps.turnStartMs ?? (deps.nowMs ?? Date.now)();
+  const nowMs = deps.nowMs ?? Date.now;
+  const turnLogger = deps.turnLogger ?? { info: () => undefined };
+  const maxRounds = deps.maxRounds ?? 1;
+  let loop: {
+    text: string | null;
+    notices: string[];
+    failure: { reply: string } | null;
+    rounds: number;
+    toolCalls: number;
+    messages: ModelRequestMessage[];
+  };
   try {
-    const second = await requestCompletion({
-      ...completionInput,
-      messages: followUpMessages(deps.messages, first, toolMessages),
+    loop = await runToolLoop({
+      aiId: deps.aiId,
+      messages: deps.messages,
       tools,
+      completionInput,
+      maxRounds,
+      ...(deps.executeTool === undefined ? {} : { executeTool: deps.executeTool }),
+      logger: deps.logger,
+      turnLogger,
+      secrets,
+      ...(deps.checkRoundGate === undefined ? {} : { checkRoundGate: deps.checkRoundGate }),
+      turnStartMs: startedAt,
+      nowMs,
+      ...(deps.reportProgress === undefined ? {} : { reportProgress: deps.reportProgress }),
+      actionOf: (tool, argsJson) => actionOfCall(tool, argsJson),
     });
-    // A second response that asks for tools again is answered from its text
-    // alone: those calls are ignored and there is never a third model call.
-    text = (second.content ?? TRANSIENT_FAILURE_REPLY) + notices.join('');
   } catch (error) {
-    // The persona change from the first call stays, so the failure text says
-    // so: the fixed persona lines ride along.
+    // The loop throws only for an empty first reply or a failed model
+    // call: the failure text goes out like any other model failure, with
+    // no notices (none were earned yet).
     const failure = mapFailureToReply(error);
     deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
-    const text = failure + notices.join('');
+    if (deps.clearProgress !== undefined) {
+      await clearProgressQuietly(deps, secrets);
+    }
+    try {
+      await deps.sendMessage(deps.ownerJid, 'chat', failure);
+    } catch (sendError) {
+      deps.logger.warn(
+        { err: redactError(sendError, secrets), aiId: deps.aiId },
+        'AI failure reply could not be sent',
+      );
+      return { kind: 'failed', text: '' };
+    }
+    return { kind: 'failed', text: failure };
+  }
+  if (loop.failure !== null) {
+    if (deps.clearProgress !== undefined) {
+      await clearProgressQuietly(deps, secrets);
+    }
+    const text = loop.failure.reply + loop.notices.join('');
     try {
       await deps.sendMessage(deps.ownerJid, 'chat', text);
     } catch (sendError) {
@@ -590,7 +966,104 @@ async function runToolTurn(
     }
     return { kind: 'failed', text };
   }
-  return sendReply(deps, text);
+  if (loop.text === null) {
+    // The caps stopped the loop with no text: one last call so the AI must
+    // answer in text. The legacy single-round shape offers tools on that
+    // call and answers from its text alone; longer turns go tool-free.
+    // The gate runs first: a stop or budget trip before the last call sends
+    // the gate's fixed reply instead of another model call.
+    if (deps.checkRoundGate !== undefined) {
+      const gate = await deps.checkRoundGate();
+      if (gate !== null && gate.limited) {
+        if (deps.clearProgress !== undefined) {
+          await clearProgressQuietly(deps, secrets);
+        }
+        const text = gate.reply + loop.notices.join('');
+        try {
+          await deps.sendMessage(deps.ownerJid, 'chat', text);
+        } catch (sendError) {
+          deps.logger.warn(
+            { err: redactError(sendError, secrets), aiId: deps.aiId },
+            'AI failure reply could not be sent',
+          );
+          return { kind: 'failed', text: '' };
+        }
+        return { kind: 'failed', text };
+      }
+    }
+    let text: string;
+    try {
+      const last = await requestCompletion({
+        ...completionInput,
+        messages: loop.messages,
+        ...(maxRounds <= 1 ? { tools } : {}),
+      });
+      text = (last.content ?? TRANSIENT_FAILURE_REPLY) + loop.notices.join('');
+    } catch (error) {
+      const failure = mapFailureToReply(error);
+      deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
+      if (deps.clearProgress !== undefined) {
+        await clearProgressQuietly(deps, secrets);
+      }
+      const text = failure + loop.notices.join('');
+      try {
+        await deps.sendMessage(deps.ownerJid, 'chat', text);
+      } catch (sendError) {
+        deps.logger.warn(
+          { err: redactError(sendError, secrets), aiId: deps.aiId },
+          'AI failure reply could not be sent',
+        );
+        return { kind: 'failed', text: '' };
+      }
+      return { kind: 'failed', text };
+    }
+    if (deps.clearProgress !== undefined) {
+      await clearProgressQuietly(deps, secrets);
+    }
+    return sendReply(deps, text);
+  }
+
+  if (deps.clearProgress !== undefined) {
+    await clearProgressQuietly(deps, secrets);
+  }
+  return sendReply(deps, loop.text + loop.notices.join(''));
+}
+
+// T-0106: clears the live progress message, best effort. A throw never
+// fails the turn: it warns with the AI id only, never content.
+async function clearProgressQuietly(
+  deps: DmTurnDeps | GroupTurnDeps,
+  secrets: string[],
+): Promise<void> {
+  try {
+    await deps.clearProgress?.();
+  } catch (error) {
+    deps.logger.warn(
+      { aiId: deps.aiId, err: redactError(error, secrets) },
+      'AI progress message could not be cleared',
+    );
+  }
+}
+
+// T-0106: reads the adapter name out of a `request_action` call's arguments
+// for the progress stage lookup. Anything unparsable (or any other tool)
+// yields undefined, and the stage falls back to the tool name's entry.
+function actionOfCall(tool: string, argsJson: string): string | undefined {
+  if (tool !== REQUEST_ACTION_TOOL) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(argsJson);
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const action = (parsed as { action?: unknown }).action;
+      if (typeof action === 'string' && action !== '') {
+        return action;
+      }
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
 
 // Lifts a parsed `request_action` / `update_persona` / `revert_persona`
@@ -677,6 +1150,29 @@ export interface GroupTurnDeps {
    */
   tools?: ChatToolDefinition[];
   executeTool?: ExecuteToolCall;
+  /** T-0106: how many tool rounds this turn may run. Defaults to 1:
+   * first model call with tools, execute, exactly one follow-up call —
+   * today's behaviour, byte for byte. The gateway passes
+   * `AGENT_TOOL_MAX_ROUNDS` (6 when `TOOLS_ENABLED` is on). */
+  maxRounds?: number;
+  /** T-0106: checked before every model call (budget + kill switch). See
+   * `DmTurnDeps.checkRoundGate`. */
+  checkRoundGate?: () => Promise<{ limited: boolean; reply: string } | null>;
+  /** T-0106: wall-clock start of the turn (ms). Defaults to `Date.now()`. */
+  turnStartMs?: number;
+  /** T-0106: `Date.now` seam for the wall-clock cap. Defaults to Date.now. */
+  nowMs?: () => number;
+  /** T-0106: posts/updates one live progress message. See
+   * `DmTurnDeps.reportProgress`. */
+  reportProgress?: (stage: string) => Promise<string | null>;
+  /** T-0106: removes or replaces the live progress message. See
+   * `DmTurnDeps.clearProgress`. */
+  clearProgress?: () => Promise<void>;
+  /** T-0106: counts logger. Defaults to a no-op (the group path has no
+   * info logger today). */
+  turnLogger?: {
+    info: (fields: Record<string, unknown>, message: string) => void;
+  };
 }
 
 // Runs one group turn: typing on, one model call (plain or tool loop),
@@ -760,9 +1256,16 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
   }
 }
 
-// The group variant of the DM tool loop. Same parse / execute / follow-up
-// rules as `runToolTurn`; the only difference is the final send goes to
-// the room with `@Name` and `replyTo` instead of to the owner's DM.
+// The group variant of the DM tool loop: every path below runs the shared
+// `runToolLoop` — DM and group turns share one implementation, no copy.
+// The only differences are the executor (only an advertised tool may run,
+// through `executeAdvertised`) and the final send (the room with `@Name`
+// and `replyTo` instead of the owner's DM).
+//
+// `maxRounds: 1` (the default) keeps today's behaviour byte for byte:
+// round 1 offers tools, executes, and the tail makes exactly one more
+// follow-up call with tools, answered from its text alone. The
+// plain-member guard is unchanged.
 async function runGroupToolTurn(
   deps: GroupTurnDeps,
   completionInput: {
@@ -777,17 +1280,10 @@ async function runGroupToolTurn(
   wire: (text: string) => { text: string; opts: SendMessageOptions },
 ): Promise<DmTurnOutcome> {
   const tools = deps.tools ?? [];
-  const first = await requestCompletion({
-    ...completionInput,
-    messages: deps.messages,
-    tools,
-  });
-  if (first.toolCalls.length === 0) {
-    if (first.content === null) {
-      throw new ChatCompletionError(200, 'empty reply from the model');
-    }
-    return await sendGroupReply(deps, secrets, wire(first.content));
-  }
+  const maxRounds = deps.maxRounds ?? 1;
+  const startedAt = deps.turnStartMs ?? (deps.nowMs ?? Date.now)();
+  const nowMs = deps.nowMs ?? Date.now;
+  const turnLogger = deps.turnLogger ?? { info: () => undefined };
   // Only a tool that was advertised may run: anything else the model
   // improvises (a persona tool, say) is answered `invalid: unknown tool`.
   const advertised = new Set(tools.map((tool) => tool.function.name));
@@ -799,32 +1295,91 @@ async function runGroupToolTurn(
           advertised.has(call.tool)
             ? execute(call)
             : Promise.resolve({ content: 'invalid: unknown tool' });
-  const { toolMessages, notices } = await executeToolCalls({
-    toolCalls: first.toolCalls,
-    aiId: deps.aiId,
-    ...(executeAdvertised === undefined ? {} : { executeTool: executeAdvertised }),
-    logger: deps.logger,
-    secrets,
-  });
-  let text: string;
+  let loop: {
+    text: string | null;
+    notices: string[];
+    failure: { reply: string } | null;
+    rounds: number;
+    toolCalls: number;
+    messages: ModelRequestMessage[];
+  };
   try {
-    const second = await requestCompletion({
-      ...completionInput,
-      messages: followUpMessages(deps.messages, first, toolMessages),
+    loop = await runToolLoop({
+      aiId: deps.aiId,
+      messages: deps.messages,
       tools,
+      completionInput,
+      maxRounds,
+      ...(executeAdvertised === undefined ? {} : { executeTool: executeAdvertised }),
+      logger: deps.logger,
+      turnLogger,
+      secrets,
+      ...(deps.checkRoundGate === undefined ? {} : { checkRoundGate: deps.checkRoundGate }),
+      turnStartMs: startedAt,
+      nowMs,
+      ...(deps.reportProgress === undefined ? {} : { reportProgress: deps.reportProgress }),
+      actionOf: (tool, argsJson) => actionOfCall(tool, argsJson),
     });
-    // A second response that asks for tools again is answered from its text
-    // alone: those calls are ignored and there is never a third model call.
-    text = (second.content ?? TRANSIENT_FAILURE_REPLY) + notices.join('');
   } catch (error) {
-    // The persona change (or any other notice) from the first call stays,
-    // so the failure text rides along with whatever was already earned.
     const failure = mapFailureToReply(error);
     deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
-    const text = failure + notices.join('');
-    return await sendGroupReply(deps, secrets, wire(text), { failure: true });
+    if (deps.clearProgress !== undefined) {
+      await clearProgressQuietly(deps, secrets);
+    }
+    return await sendGroupReply(deps, secrets, wire(failure), { failure: true });
   }
-  return await sendGroupReply(deps, secrets, wire(text));
+  if (loop.failure !== null) {
+    if (deps.clearProgress !== undefined) {
+      await clearProgressQuietly(deps, secrets);
+    }
+    return await sendGroupReply(deps, secrets, wire(loop.failure.reply + loop.notices.join('')), {
+      failure: true,
+    });
+  }
+  if (loop.text === null) {
+    // The caps stopped the loop with no text: one last call so the AI must
+    // answer in text. The legacy single-round shape offers tools on that
+    // call and answers from its text alone; longer turns go tool-free.
+    // The gate runs first: a stop or budget trip before the last call drops
+    // the turn with the gate's fixed reply instead of another model call.
+    if (deps.checkRoundGate !== undefined) {
+      const gate = await deps.checkRoundGate();
+      if (gate !== null && gate.limited) {
+        if (deps.clearProgress !== undefined) {
+          await clearProgressQuietly(deps, secrets);
+        }
+        return await sendGroupReply(deps, secrets, wire(gate.reply + loop.notices.join('')), {
+          failure: true,
+        });
+      }
+    }
+    let text: string;
+    try {
+      const last = await requestCompletion({
+        ...completionInput,
+        messages: loop.messages,
+        ...(maxRounds <= 1 ? { tools } : {}),
+      });
+      text = (last.content ?? TRANSIENT_FAILURE_REPLY) + loop.notices.join('');
+    } catch (error) {
+      const failure = mapFailureToReply(error);
+      deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
+      if (deps.clearProgress !== undefined) {
+        await clearProgressQuietly(deps, secrets);
+      }
+      return await sendGroupReply(deps, secrets, wire(failure + loop.notices.join('')), {
+        failure: true,
+      });
+    }
+    if (deps.clearProgress !== undefined) {
+      await clearProgressQuietly(deps, secrets);
+    }
+    return await sendGroupReply(deps, secrets, wire(text));
+  }
+  if (deps.clearProgress !== undefined) {
+    await clearProgressQuietly(deps, secrets);
+  }
+  return await sendGroupReply(deps, secrets, wire(loop.text + loop.notices.join('')));
 }
 
 // Sends the text into the room and shapes the outcome. A failure flag is
