@@ -60,7 +60,11 @@ export function TelegramImportDialog({
 
   if (status === 'done' && result !== undefined) {
     return (
-      <div role="dialog" aria-label="Telegram import result" className="flex flex-col gap-3">
+      <div
+        role="dialog"
+        aria-label="Telegram import result"
+        className="mx-auto flex w-full max-w-md flex-col gap-3"
+      >
         <h2 className="text-[16px] font-semibold">Imported from Telegram: {result.pack.title}</h2>
         <p className="text-[14px]">
           {result.imported} sticker{result.imported === 1 ? '' : 's'} added
@@ -96,7 +100,11 @@ export function TelegramImportDialog({
   }
 
   return (
-    <div role="dialog" aria-label="Import from Telegram" className="flex flex-col gap-3">
+    <div
+      role="dialog"
+      aria-label="Import from Telegram"
+      className="mx-auto flex w-full max-w-md flex-col gap-3"
+    >
       <h2 className="text-[16px] font-semibold">Import from Telegram</h2>
       <p className="text-[13px] text-muted-foreground">
         Paste a pack link (<code>t.me/addstickers/…</code>) or the bare pack name. Only static

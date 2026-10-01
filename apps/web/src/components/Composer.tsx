@@ -80,6 +80,10 @@ export function Composer({
   const [stickerOpen, setStickerOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // The sticker toggle button plus the panel: a pointer-down outside this
+  // wrapper closes the panel (the panel itself is viewport-fixed, so the
+  // Composer subtree cannot contain it).
+  const stickerWrapRef = useRef<HTMLSpanElement>(null);
   const lastTypingRef = useRef(0);
   const recorderRef = useRef<VoiceRecorder | null>(null);
   const pressRef = useRef<PressState | null>(null);
@@ -166,6 +170,26 @@ export function Composer({
     }
   };
 
+  // A pointer-down outside the sticker toggle + panel closes the panel.
+  // The toggle button lives inside the wrapper, so clicking it to open
+  // never counts as "outside" (it fires before the toggle's click).
+  useEffect(() => {
+    if (!stickerOpen) {
+      return;
+    }
+    const onPointerDown = (event: PointerEvent): void => {
+      if (
+        stickerWrapRef.current !== null &&
+        event.target instanceof Node &&
+        !stickerWrapRef.current.contains(event.target) &&
+        document.querySelector('[data-testid="sticker-panel"]')?.contains(event.target) !== true
+      ) {
+        setStickerOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [stickerOpen]);
   // Set when a pick or a mention deletion decides where the caret goes; applied
   // after the controlled value has been committed to the textarea.
   const pendingCaretRef = useRef<number | undefined>(undefined);
@@ -671,13 +695,15 @@ export function Composer({
                 : {})}
               className="min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1 py-[7px] text-[14px] leading-[22px] outline-none placeholder:text-muted-foreground"
             />
-            <IconButton
-              aria-label="Open sticker panel"
-              aria-expanded={stickerOpen}
-              onClick={() => setStickerOpen((open) => !open)}
-            >
-              <Smile className="size-5" aria-hidden="true" />
-            </IconButton>
+            <span ref={stickerWrapRef} className="inline-flex shrink-0">
+              <IconButton
+                aria-label="Open sticker panel"
+                aria-expanded={stickerOpen}
+                onClick={() => setStickerOpen((open) => !open)}
+              >
+                <Smile className="size-5" aria-hidden="true" />
+              </IconButton>
+            </span>
             {stickerOpen && (
               <StickerPanel
                 onPick={sendSticker}

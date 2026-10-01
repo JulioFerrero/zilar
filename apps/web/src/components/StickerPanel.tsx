@@ -115,10 +115,16 @@ const COMMON_EMOJI = [
 
 /**
  * The sticker panel in the composer (T-0120, GIFs in T-0122): tabs Stickers /
- * GIFs / Emoji, a strip of pack tabs (first: Recent), a 6-column grid of 72
- * px stickers, hover/keyboard focus preview, click sends. The GIFs tab
- * searches through the privacy-preserving proxy; the Emoji tab appends a
- * common emoji to the draft.
+ * GIFs / Emoji, a strip of pack tabs (first: Recent), a 5-column grid of 56
+ * px tiles that fit the 344 px panel with no overlap, hover/keyboard focus
+ * preview, click sends. The GIFs tab searches through the
+ * privacy-preserving proxy; the Emoji tab appends a common emoji to the
+ * draft.
+ *
+ * The dialog is `fixed` to the viewport's bottom-right (`right-4
+ * bottom-24`, next to the composer's emoji button) with
+ * `max-w-[calc(100vw-2rem)]`, so it opens above the button and always stays
+ * inside the viewport, even on narrow windows.
  */
 export function StickerPanel({
   onPick,
@@ -290,6 +296,13 @@ export function StickerPanel({
     [favorites],
   );
 
+  // The sticker grid: 5 columns of fixed 56 px square tiles inside a
+  // min-344px panel (5 x 56 + 4 x 8 gap + 2 x 8 padding = 328 px, leaving
+  // room for the scrollbar), so tiles never overlap. The image stays
+  // object-contain inside its tile and the star is a small corner button
+  // in the tile's padded corner.
+  const TILE_PX = 56;
+
   const toggleFavorite = (sticker: StickerChoice): void => {
     const starred = favoriteIds.has(sticker.stickerId);
     setFavoriteError('');
@@ -338,7 +351,8 @@ export function StickerPanel({
     <div
       role="dialog"
       aria-label="Stickers"
-      className="absolute bottom-full left-0 z-20 mb-2 w-[340px] rounded-[14px] border border-edge bg-surface shadow-lg"
+      data-testid="sticker-panel"
+      className="fixed right-4 bottom-24 z-20 max-w-[calc(100vw-2rem)] min-w-[min(344px,calc(100vw-2rem))] rounded-[14px] border border-edge bg-surface shadow-lg"
     >
       <div role="tablist" aria-label="Panel tabs" className="flex gap-1 border-b border-edge p-2">
         {PANEL_TABS.filter((name) => name !== 'gifs' || gifsEnabled !== false).map((name) => (
@@ -468,14 +482,18 @@ export function StickerPanel({
             </div>
           ) : (
             <div
-              className="grid max-h-[260px] grid-cols-6 gap-1 overflow-y-auto p-2"
+              data-testid="sticker-grid"
+              className="grid max-h-[260px] grid-cols-5 gap-2 overflow-y-auto p-2"
               role="grid"
               aria-label="Stickers"
             >
               {activeStickers.map((sticker) => {
                 const starred = favoriteIds.has(sticker.stickerId);
                 return (
-                  <span key={sticker.stickerId} className="relative inline-flex">
+                  <span
+                    key={sticker.stickerId}
+                    className="relative inline-flex size-[56px] shrink-0 justify-self-center"
+                  >
                     <button
                       type="button"
                       aria-label={sticker.emoji ?? 'Sticker'}
@@ -485,9 +503,10 @@ export function StickerPanel({
                       onFocus={() => setPreview(sticker)}
                       onMouseLeave={() => setPreview(undefined)}
                       onBlur={() => setPreview(undefined)}
-                      className="flex size-[72px] items-center justify-center rounded-[8px] hover:bg-surface-raised focus-visible:bg-surface-raised"
+                      style={{ width: TILE_PX, height: TILE_PX }}
+                      className="flex items-center justify-center overflow-hidden rounded-[8px] p-1 hover:bg-surface-raised focus-visible:bg-surface-raised"
                     >
-                      <StickerThumb sticker={sticker} size={64} />
+                      <StickerThumb sticker={sticker} size={TILE_PX - 8} />
                     </button>
                     <button
                       type="button"
@@ -500,8 +519,8 @@ export function StickerPanel({
                       title={starred ? 'Remove from favorites' : 'Add to favorites'}
                       onClick={() => toggleFavorite(sticker)}
                       className={cn(
-                        'absolute top-0 right-0 rounded-full px-1 text-[12px] leading-5',
-                        starred ? 'text-white' : 'text-muted-foreground opacity-60',
+                        'absolute top-0 right-0 flex size-5 items-center justify-center rounded-full bg-black/60 text-[10px] leading-none',
+                        starred ? 'text-white' : 'text-muted-foreground opacity-70',
                       )}
                     >
                       ★
@@ -515,7 +534,7 @@ export function StickerPanel({
           {preview !== undefined && isPanelStickerUrl(preview.url) && (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute -top-2 left-1/2 flex -translate-x-1/2 -translate-y-full items-center justify-center rounded-[12px] border border-edge bg-surface p-2 shadow-lg"
+              className="pointer-events-none absolute -top-2 right-0 flex -translate-y-full items-center justify-center rounded-[12px] border border-edge bg-surface p-2 shadow-lg"
             >
               <img
                 src={preview.url}
