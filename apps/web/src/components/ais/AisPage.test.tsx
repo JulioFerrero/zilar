@@ -67,7 +67,7 @@ function LocationProbe() {
 
 function renderAisPage() {
   const store = createChatStore({ chats: [] });
-  render(
+  const view = render(
     <AuthProvider value={auth}>
       <ChatStoreProvider store={store}>
         <MemoryRouter initialEntries={['/settings/ais']}>
@@ -80,7 +80,7 @@ function renderAisPage() {
       </ChatStoreProvider>
     </AuthProvider>,
   );
-  return store;
+  return { store, ...view };
 }
 
 afterEach(() => {
@@ -88,6 +88,20 @@ afterEach(() => {
 });
 
 describe('AisPage', () => {
+  it('renders inside the shared settings shell with the column class', async () => {
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([{ method: 'GET', path: '/api/ais', respond: () => jsonResponse(200, []) }]),
+    );
+
+    const { container } = renderAisPage();
+
+    expect(await screen.findByText(/You have no AIs yet/)).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'My AIs' })).toBeTruthy();
+    expect(screen.getByText('Your AIs, their model and their spending limits.')).toBeTruthy();
+    expect(container.querySelector('.mx-auto.max-w-2xl')).not.toBeNull();
+  });
+
   it('shows loading first, then the list', async () => {
     vi.stubGlobal(
       'fetch',
@@ -106,6 +120,11 @@ describe('AisPage', () => {
     expect(screen.getByText('Loading…')).toBeTruthy();
     expect(await screen.findByText('Dev-1')).toBeTruthy();
     expect(screen.getByText('$2/day · $20/month')).toBeTruthy();
+    // The row's icon-only actions carry a tooltip matching their label.
+    for (const name of ['Open chat with Dev-1', 'Edit Dev-1', 'Delete Dev-1']) {
+      const button = screen.getByRole('button', { name });
+      expect(button.getAttribute('title')).toBe(name);
+    }
   });
 
   it("shows today's spend in mono under the model name", async () => {

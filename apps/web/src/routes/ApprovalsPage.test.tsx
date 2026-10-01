@@ -138,6 +138,22 @@ afterEach(() => {
 });
 
 describe('ApprovalsPage', () => {
+  it('renders inside the shared settings shell with the column class', async () => {
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([
+        { method: 'GET', path: '/api/approvals', respond: () => jsonResponse(200, []) },
+      ]),
+    );
+
+    const { container } = renderApprovalsPage().view;
+
+    expect(await screen.findByText('Nothing is waiting for you.')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Approvals' })).toBeTruthy();
+    expect(screen.getByText('Requests from your AIs that are waiting for you.')).toBeTruthy();
+    expect(container.querySelector('.mx-auto.max-w-2xl')).not.toBeNull();
+  });
+
   it('shows a loading skeleton then the list', async () => {
     vi.stubGlobal(
       'fetch',

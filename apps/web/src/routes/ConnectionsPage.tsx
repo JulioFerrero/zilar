@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowLeft, Eye, EyeOff, Link, Trash2, Zap } from 'lucide-react';
+import { Eye, EyeOff, Link, Trash2, Zap } from 'lucide-react';
+import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import {
   type Connection,
   type ConnectionTestResult,
@@ -114,25 +115,12 @@ export function ConnectionsPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <header className="shrink-0 border-b border-divider px-4 py-3">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            aria-label="Back"
-            onClick={() => navigate('/')}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
-          >
-            <ArrowLeft className="size-5" aria-hidden="true" />
-          </button>
-          <h1 className="text-[20px] leading-7 font-semibold">Connections</h1>
-        </div>
-        <p className="mt-1 text-[14px] text-muted-foreground">
-          Connect a provider account to use its models. API keys only for now.
-        </p>
-      </header>
-
-      <div className="flex-1 overflow-auto p-4">
+    <SettingsShell
+      title="Connections"
+      subtitle="Connect a provider account to use its models. API keys only for now."
+      onBack={() => navigate('/')}
+    >
+      <div className={SETTINGS_COLUMN}>
         {status === 'loading' && <p className="text-[15px] text-muted-foreground">Loading…</p>}
 
         {status === 'error' && (
@@ -170,118 +158,121 @@ export function ConnectionsPage() {
         {status === 'ready' && (connections.length > 0 || showForm) && (
           <div className="flex flex-col gap-4">
             {connections.length > 0 && (
-              <ul className="flex flex-col gap-1">
-                {connections.map((connection) => (
-                  <li
-                    key={connection.id}
-                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-list-hover"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[16px] font-semibold">
-                          {providerLabel(connection.provider)}
-                        </span>
-                        {connection.label !== null && (
-                          <span className="text-[13px] text-muted-foreground">
-                            {connection.label}
+              <section aria-label="Connections" className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-[16px] font-semibold">Connections</h2>
+                  {!showForm && (
+                    <button
+                      type="button"
+                      onClick={() => setShowForm(true)}
+                      className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90"
+                    >
+                      Add a connection
+                    </button>
+                  )}
+                </div>
+                <ul className="flex flex-col gap-2">
+                  {connections.map((connection) => (
+                    <li
+                      key={connection.id}
+                      className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
+                    >
+                      <div className="min-w-0 flex-1 basis-40">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[15px] font-medium">
+                            {providerLabel(connection.provider)}
                           </span>
+                          <span className="rounded-full bg-badge-muted px-2 py-0.5 text-[11px] text-foreground">
+                            {connection.status}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-[13px] text-muted-foreground">
+                          {connection.label !== null ? `${connection.label} · Added ` : 'Added '}
+                          {new Intl.DateTimeFormat('en', {
+                            month: 'short',
+                            day: 'numeric',
+                          }).format(new Date(connection.createdAt))}
+                        </p>
+                        {testResults[connection.id] !== undefined && (
+                          <p
+                            className={
+                              testResults[connection.id]!.ok
+                                ? 'text-[13px] text-online'
+                                : 'text-[13px] text-danger'
+                            }
+                          >
+                            {testResults[connection.id]!.ok
+                              ? 'Key works'
+                              : testResults[connection.id]!.message}
+                          </p>
                         )}
-                        <span className="rounded-full bg-badge-muted px-2 py-0.5 text-[11px] text-foreground">
-                          {connection.status}
-                        </span>
+                        {confirmingId === connection.id && removeError !== '' && (
+                          <p role="alert" className="text-[13px] text-danger">
+                            {removeError}
+                          </p>
+                        )}
                       </div>
-                      <p className="text-[13px] text-muted-foreground">
-                        Added{' '}
-                        {new Intl.DateTimeFormat('en', {
-                          month: 'short',
-                          day: 'numeric',
-                        }).format(new Date(connection.createdAt))}
-                      </p>
-                      {testResults[connection.id] !== undefined && (
-                        <p
-                          className={
-                            testResults[connection.id]!.ok
-                              ? 'text-[13px] text-online'
-                              : 'text-[13px] text-danger'
-                          }
-                        >
-                          {testResults[connection.id]!.ok
-                            ? 'Key works'
-                            : testResults[connection.id]!.message}
-                        </p>
-                      )}
-                      {confirmingId === connection.id && removeError !== '' && (
-                        <p role="alert" className="text-[13px] text-danger">
-                          {removeError}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {confirmingId === connection.id ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => void confirmRemove(connection.id)}
-                            className="rounded-full bg-danger px-3 py-1.5 text-[14px] font-medium text-white hover:bg-danger/90"
-                          >
-                            Remove
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelRemove}
-                            className="rounded-full px-3 py-1.5 text-[14px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            disabled={testingId === connection.id}
-                            aria-label={`Test ${providerLabel(connection.provider)} key`}
-                            onClick={() => void testConnection(connection.id)}
-                            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-                          >
-                            <Zap className="size-4" />
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={`Remove ${providerLabel(connection.provider)} connection`}
-                            onClick={() => {
-                              setConfirmingId(connection.id);
-                              setRemoveError('');
-                            }}
-                            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
-                          >
-                            <Trash2 className="size-4" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                        {confirmingId === connection.id ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void confirmRemove(connection.id)}
+                              className="rounded-full bg-danger px-3 py-1.5 text-[14px] font-medium text-white hover:bg-danger/90"
+                            >
+                              Remove
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelRemove}
+                              className="rounded-full px-3 py-1.5 text-[14px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled={testingId === connection.id}
+                              aria-label={`Test ${providerLabel(connection.provider)} key`}
+                              title={`Test ${providerLabel(connection.provider)} key`}
+                              onClick={() => void testConnection(connection.id)}
+                              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                            >
+                              <Zap className="size-4" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Remove ${providerLabel(connection.provider)} connection`}
+                              title={`Remove ${providerLabel(connection.provider)} connection`}
+                              onClick={() => {
+                                setConfirmingId(connection.id);
+                                setRemoveError('');
+                              }}
+                              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
+                            >
+                              <Trash2 className="size-4" aria-hidden="true" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
 
-            {showForm ? (
+            {showForm && (
               <AddConnectionForm
                 onCancel={() => setShowForm(false)}
                 onSave={(input) => addConnection(input)}
               />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowForm(true)}
-                className="flex items-center gap-2 self-start rounded-lg px-3 py-2 text-[15px] text-muted-foreground transition-colors hover:bg-list-hover hover:text-foreground"
-              >
-                <span className="text-[20px] leading-none">+</span> Add a connection
-              </button>
             )}
           </div>
         )}
       </div>
-    </div>
+    </SettingsShell>
   );
 }
 
@@ -320,12 +311,13 @@ function AddConnectionForm({
   };
 
   return (
-    <div className="max-w-md rounded-xl border border-divider bg-background p-4">
+    <div className="rounded-xl border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-[16px] font-semibold">New connection</h2>
         <button
           type="button"
           aria-label="Close"
+          title="Close"
           onClick={onCancel}
           className="rounded-full p-1 text-muted-foreground hover:bg-muted"
         >
@@ -364,6 +356,7 @@ function AddConnectionForm({
             <button
               type="button"
               aria-label={showKey ? 'Hide key' : 'Show key'}
+              title={showKey ? 'Hide key' : 'Show key'}
               onClick={() => setShowKey((value) => !value)}
               className="absolute top-1/2 right-1 -translate-y-1/2 rounded-full p-1.5 text-muted-foreground hover:bg-muted"
             >

@@ -117,9 +117,25 @@ function stubFetch(initialDevices: unknown[] = [], showPreviews = true): ReturnT
 afterEach(() => {
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  // stubBrowserGlobals installs these with defineProperty (not stubGlobal),
+  // so they survive unstubAllGlobals and must be removed to keep the
+  // unsupported-browser test honest.
+  delete (window.navigator as { serviceWorker?: unknown }).serviceWorker;
+  delete (window as { PushManager?: unknown }).PushManager;
 });
 
 describe('NotificationsPage', () => {
+  it('renders inside the shared settings shell with the column class', async () => {
+    stubBrowserGlobals();
+    stubFetch();
+    const { container } = renderApp('/settings/notifications');
+
+    expect(await screen.findByText('This device')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Notifications' })).toBeTruthy();
+    expect(screen.getByText('Push this device when a message arrives.')).toBeTruthy();
+    expect(container.querySelector('.mx-auto.max-w-2xl')).not.toBeNull();
+  });
+
   it('shows the unsupported state without browser push APIs', async () => {
     stubFetch();
     renderApp('/settings/notifications');
@@ -133,11 +149,14 @@ describe('NotificationsPage', () => {
     renderApp('/settings/notifications');
 
     expect(await screen.findByText('This device')).toBeTruthy();
+    // The state is said in words, with the action next to it in the card.
+    expect(screen.getByText('Not enabled')).toBeTruthy();
     expect(screen.getByText('Devices')).toBeTruthy();
     expect(screen.getByText('Message previews')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Enable on this device/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /Enable on this device/ }));
+    expect(await screen.findByText('Enabled')).toBeTruthy();
     expect(await screen.findByText(/Push is on for this device/)).toBeTruthy();
   });
 

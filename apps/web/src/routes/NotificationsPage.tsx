@@ -24,7 +24,7 @@ import {
   unsubscribeBrowser,
   type NotificationPermissionState,
 } from '@/lib/push';
-import { AiPageShell } from '@/components/ais/AiPageShell';
+import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 
@@ -331,6 +331,23 @@ export function NotificationsPage() {
 
   const thisDevice =
     storedDevice === null ? undefined : devices.find((entry) => entry.id === storedDevice.id);
+  // The "This device" card names the state in words (T-0153): the support
+  // check already splits unsupported browsers and servers into their own
+  // page states above, so here only permission and registration remain.
+  const deviceState: 'Enabled' | 'Not enabled' | 'Blocked by the browser' =
+    thisDevice !== undefined
+      ? 'Enabled'
+      : permission === 'denied'
+        ? 'Blocked by the browser'
+        : 'Not enabled';
+  const deviceStateDetail =
+    thisDevice !== undefined
+      ? thisDevice.inactive
+        ? 'On, but inactive — nothing received in 90 days.'
+        : 'Push is on for this device.'
+      : permission === 'denied'
+        ? 'Allow notifications for this site in the browser settings, then come back and enable.'
+        : 'Turn on push for this browser.';
   const showIosHint =
     status === 'ready' &&
     isIosDevice() &&
@@ -340,142 +357,140 @@ export function NotificationsPage() {
     });
 
   return (
-    <AiPageShell
+    <SettingsShell
       title="Notifications"
       subtitle="Push this device when a message arrives."
       onBack={() => navigate('/')}
     >
-      {status === 'loading' && (
-        <p className="text-[14px] text-muted-foreground">Loading notification settings…</p>
-      )}
-      {status === 'unsupported' && (
-        <p className="text-[14px] text-muted-foreground">
-          Push notifications are not supported in this browser. Try a recent Chrome, Edge, Firefox
-          or Safari.
-        </p>
-      )}
-      {status === 'server-off' && (
-        <p className="text-[14px] text-muted-foreground">
-          Push notifications are not enabled on this server yet.
-        </p>
-      )}
-      {status === 'ready' && (
-        <div className="flex max-w-xl flex-col gap-6">
-          {showIosHint && (
-            <p className="rounded-xl border border-border bg-surface-raised p-3 text-[14px]">
-              On iPhone, push needs the installed app (iOS 16.4+): open the Share menu, choose “Add
-              to Home Screen”, then open Galena from the home screen and enable below.
-            </p>
-          )}
-          <section aria-label="This device" className="flex flex-col gap-2">
-            <h2 className="text-[15px] font-semibold">This device</h2>
-            {permission === 'denied' && (
-              <p className="text-[14px] text-muted-foreground">
-                Notifications are blocked in the browser settings. Allow them for this site, then
-                come back and enable.
+      <div className={SETTINGS_COLUMN}>
+        {status === 'loading' && (
+          <p className="text-[14px] text-muted-foreground">Loading notification settings…</p>
+        )}
+        {status === 'unsupported' && (
+          <p className="text-[14px] text-muted-foreground">
+            Push notifications are not supported in this browser. Try a recent Chrome, Edge, Firefox
+            or Safari.
+          </p>
+        )}
+        {status === 'server-off' && (
+          <p className="text-[14px] text-muted-foreground">
+            Push notifications are not enabled on this server yet.
+          </p>
+        )}
+        {status === 'ready' && (
+          <div className="flex flex-col gap-4">
+            {showIosHint && (
+              <p className="rounded-xl border border-border bg-surface-raised p-3 text-[14px]">
+                On iPhone, push needs the installed app (iOS 16.4+): open the Share menu, choose
+                “Add to Home Screen”, then open Galena from the home screen and enable below.
               </p>
             )}
-            {thisDevice === undefined ? (
-              <div className="flex items-center gap-2">
-                <Button type="button" onClick={() => void enableOnThisDevice()} disabled={busy}>
-                  <Bell className="size-4" aria-hidden="true" />
-                  {busy ? 'Enabling…' : 'Enable on this device'}
-                </Button>
+            <section aria-label="This device" className="flex flex-col gap-2">
+              <h2 className="text-[16px] font-semibold">This device</h2>
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
+                <span className="min-w-0 flex-1 basis-40">
+                  <span className="block text-[15px] font-medium">{deviceState}</span>
+                  <span className="mt-0.5 block text-[13px] text-muted-foreground">
+                    {deviceStateDetail}
+                  </span>
+                </span>
+                {thisDevice === undefined ? (
+                  <Button type="button" onClick={() => void enableOnThisDevice()} disabled={busy}>
+                    <Bell className="size-4" aria-hidden="true" />
+                    {busy ? 'Enabling…' : 'Enable on this device'}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void disableOnThisDevice()}
+                    disabled={busy}
+                  >
+                    <BellOff className="size-4" aria-hidden="true" />
+                    {busy ? 'Disabling…' : 'Disable'}
+                  </Button>
+                )}
               </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <p className="flex-1 text-[14px] text-muted-foreground">
-                  Push is on for this device
-                  {thisDevice.inactive ? ' (inactive — nothing received in 90 days)' : ''}.
-                </p>
+            </section>
+            <section aria-label="Devices" className="flex flex-col gap-2">
+              <h2 className="text-[16px] font-semibold">Devices</h2>
+              {devices.length === 0 ? (
+                <p className="text-[14px] text-muted-foreground">No devices yet.</p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {devices.map((device) => (
+                    <li
+                      key={device.id}
+                      className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
+                    >
+                      <div className="min-w-0 flex-1 basis-40 text-[14px]">
+                        <p className="truncate text-[15px] font-medium">
+                          {device.userAgent ?? 'Unknown device'}
+                          {storedDevice !== null && device.id === storedDevice.id
+                            ? ' (this device)'
+                            : ''}
+                        </p>
+                        <p className="mt-0.5 text-[13px] text-muted-foreground">
+                          Added {new Date(device.createdAt).toLocaleDateString()}
+                          {device.inactive ? ' · inactive' : ''}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void removeOtherDevice(device.id)}
+                      >
+                        Remove
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            <section aria-label="Message previews" className="flex flex-col gap-2">
+              <h2 className="text-[16px] font-semibold">Message previews</h2>
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
+                <label className="flex min-w-0 flex-1 basis-40 cursor-pointer items-center gap-2 text-[14px]">
+                  <input
+                    type="checkbox"
+                    checked={showPreviews}
+                    onChange={(event) => void togglePreviews(event.target.checked)}
+                    className="size-4"
+                  />
+                  Show the first lines of new messages in notifications
+                </label>
+              </div>
+              <p className="text-[13px] text-muted-foreground">
+                Off means who and where only — never message text.
+              </p>
+            </section>
+            <section aria-label="Test" className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-[16px] font-semibold">Test</h2>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => void disableOnThisDevice()}
-                  disabled={busy}
+                  onClick={() => void sendTest()}
+                  disabled={testing || storedDevice === null}
                 >
-                  <BellOff className="size-4" aria-hidden="true" />
-                  {busy ? 'Disabling…' : 'Disable'}
+                  {testing ? 'Sending…' : 'Send a test notification'}
                 </Button>
               </div>
-            )}
-          </section>
-          <section aria-label="Devices" className="flex flex-col gap-2">
-            <h2 className="text-[15px] font-semibold">Devices</h2>
-            {devices.length === 0 ? (
-              <p className="text-[14px] text-muted-foreground">No devices yet.</p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {devices.map((device) => (
-                  <li
-                    key={device.id}
-                    className="flex items-center gap-2 rounded-xl border border-border px-3 py-2"
-                  >
-                    <div className="flex-1 text-[14px]">
-                      <p>
-                        {device.userAgent ?? 'Unknown device'}
-                        {storedDevice !== null && device.id === storedDevice.id
-                          ? ' (this device)'
-                          : ''}
-                      </p>
-                      <p className="text-[12px] text-muted-foreground">
-                        Added {new Date(device.createdAt).toLocaleDateString()}
-                        {device.inactive ? ' · inactive' : ''}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void removeOtherDevice(device.id)}
-                    >
-                      Remove
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          <section aria-label="Message previews" className="flex flex-col gap-2">
-            <h2 className="text-[15px] font-semibold">Message previews</h2>
-            <label className="flex cursor-pointer items-center gap-2 text-[14px]">
-              <input
-                type="checkbox"
-                checked={showPreviews}
-                onChange={(event) => void togglePreviews(event.target.checked)}
-                className="size-4"
-              />
-              Show the first lines of new messages in notifications
-            </label>
-            <p className="text-[13px] text-muted-foreground">
-              Off means who and where only — never message text.
-            </p>
-          </section>
-          <section aria-label="Test" className="flex flex-col gap-2">
-            <h2 className="text-[15px] font-semibold">Test</h2>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void sendTest()}
-                disabled={testing || storedDevice === null}
-              >
-                {testing ? 'Sending…' : 'Send a test notification'}
-              </Button>
               {testSent && (
                 <p className="text-[14px] text-muted-foreground">
                   Sent — close this tab to see it.
                 </p>
               )}
-            </div>
-          </section>
-          {errorMessage !== '' && (
-            <p role="alert" className="text-[14px] text-danger">
-              {errorMessage}
-            </p>
-          )}
-        </div>
-      )}
-    </AiPageShell>
+            </section>
+            {errorMessage !== '' && (
+              <p role="alert" className="text-[14px] text-danger">
+                {errorMessage}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </SettingsShell>
   );
 }
