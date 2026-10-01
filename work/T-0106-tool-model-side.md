@@ -1,7 +1,7 @@
 ---
 id: T-0106
 title: Model side of AI tools: prompt guide, several model rounds per turn, a "working on it" line
-status: review
+status: merged
 milestone: M4
 branch: task/T-0106-tool-model-side
 model: meta/muse-spark-1.3-contributor
@@ -110,10 +110,14 @@ UI for tools and routines (T-0107), changing tiers or approvals (T-0132), new ad
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved, merged after three rounds. Server only, no schema.
 
 ### Findings
--
+- Round 1 must-fixes fixed and verified: dropped calls at the 12-call cap get a synthetic "capped" tool result (history stays well-formed), the cap test now really reaches the cap, DM turns run through the same `runToolLoop` as groups, notices kept, guide gated on a non-empty action list, legacy single-round path truncates.
+- Lead fixes in the final round (tests fail without them): a failing later round in a group turn now clears the progress card; truncated tool output keeps its closing `</untrusted-tool-output>` tag within the 8 KB budget; a duplicated comment removed.
+- Blessed deviations: `apps/server/src/index.ts` wiring (`toolsEnabled`, `toolMaxRounds`); the tool guide rides as a trailing user turn instead of in the system prompt (keeps the system prompt shape stable for provider caching; fixed text, no user data).
+- Deferred nit: the per-turn counts log line is not wired in production (silence is compliant with "only counts, never content").
+- Not exercised against a real model yet.
 
 ### Follow-ups
--
+- Wire `turnLogger` through the gateway if the counts line is wanted; try a multi-round turn with a real model once tools are enabled.

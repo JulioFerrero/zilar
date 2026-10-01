@@ -584,10 +584,17 @@ function followUpMessages(
 // T-0106: truncates one executed tool result before it is fed back to the
 // model. Summaries are already short; `modelText` inside
 // `<untrusted-tool-output>` can be 16 KiB. The wrapper survives: only the
-// inside is cut, so the model still sees labelled data, never instructions.
+// inside is cut and the closing tag is put back, so the model still sees
+// labelled data, never instructions.
+const TOOL_OUTPUT_CLOSE = '\n</untrusted-tool-output>';
+
 function truncateToolContent(content: string): string {
   if (content.length <= TOOL_RESULT_MAX_CHARS) {
     return content;
+  }
+  if (content.includes('<untrusted-tool-output>')) {
+    const keep = TOOL_RESULT_MAX_CHARS - TOOL_OUTPUT_CLOSE.length - 1;
+    return `${content.slice(0, keep)}…${TOOL_OUTPUT_CLOSE}`;
   }
   return `${content.slice(0, TOOL_RESULT_MAX_CHARS)}…`;
 }
@@ -1316,6 +1323,9 @@ async function runGroupToolTurn(
   } catch (error) {
     const failure = mapFailureToReply(error);
     deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
+    if (deps.clearProgress !== undefined) {
+      await clearProgressQuietly(deps, secrets);
+    }
     return await sendGroupReply(deps, secrets, wire(failure), { failure: true });
   }
   if (loop.failure !== null) {
@@ -1327,8 +1337,6 @@ async function runGroupToolTurn(
     });
   }
   if (loop.text === null) {
-    // The caps stopped the loop with no text: one last call so the AI must
-    // answer in text. The legacy single-round shape offers tools on that call and answers from its text alone;
     // The caps stopped the loop with no text: one last call so the AI must
     // answer in text. The legacy single-round shape offers tools on that
     // call and answers from its text alone; longer turns go tool-free.

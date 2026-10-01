@@ -365,6 +365,7 @@ describe('multi-round DM turns', () => {
     const toolMessage = second.messages.find((message) => message.role === 'tool');
     expect(toolMessage?.content.length).toBeLessThanOrEqual(TOOL_RESULT_MAX_CHARS + 1);
     expect(toolMessage?.content).toContain('<untrusted-tool-output>');
+    expect(toolMessage?.content.endsWith('</untrusted-tool-output>')).toBe(true);
   });
 
   it('truncates tool results to 8 KB inside the untrusted wrapper', async () => {
@@ -381,6 +382,7 @@ describe('multi-round DM turns', () => {
     const toolMessage = second.messages.find((message) => message.role === 'tool');
     expect(toolMessage?.content.length).toBeLessThanOrEqual(TOOL_RESULT_MAX_CHARS + 1);
     expect(toolMessage?.content).toContain('<untrusted-tool-output>');
+    expect(toolMessage?.content.endsWith('</untrusted-tool-output>')).toBe(true);
   });
 
   it('stops the loop when the budget gate trips and sends the budget reply', async () => {
@@ -546,10 +548,12 @@ describe('multi-round group turns', () => {
   ): {
     sent: Array<{ to: string; kind: ChatKind; text: string; opts: unknown }>;
     stages: string[];
+    cleared: () => number;
     run: () => Promise<{ kind: string; text: string }>;
   } {
     const sent: Array<{ to: string; kind: ChatKind; text: string; opts: unknown }> = [];
     const stages: string[] = [];
+    let cleared = 0;
     const run = () =>
       runGroupTurn({
         aiId: 'ai-1',
@@ -569,7 +573,10 @@ describe('multi-round group turns', () => {
           stages.push(stage);
           return `progress-${stages.length}`;
         },
-        clearProgress: () => Promise.resolve(),
+        clearProgress: () => {
+          cleared += 1;
+          return Promise.resolve();
+        },
         sendMessage: (to, kind, text, opts) => {
           sent.push({ to, kind, text, opts });
           return Promise.resolve({ id: `m-${sent.length}` });
@@ -578,8 +585,20 @@ describe('multi-round group turns', () => {
         logger: captureLogger(),
         secrets: [MASTER_KEY],
       });
-    return { sent, stages, run };
+    return { sent, stages, cleared: () => cleared, run };
   }
+
+  it('clears the progress message when a later round fails', async () => {
+    const { fetchImpl } = scriptedFetch([
+      toolCallResponse([{ id: 'c-1', name: 'request_action', args: actionArgs('web.price', {}) }]),
+      jsonResponse({ error: { message: 'upstream down' } }, 500),
+    ]);
+    const harness = groupHarness(fetchImpl, async () => ({ content: 'ok' }), { maxRounds: 6 });
+    await harness.run();
+    expect(harness.stages).toEqual(['Looking up prices']);
+    expect(harness.cleared()).toBe(1);
+    expect(harness.sent).toHaveLength(1);
+  });
 
   it('runs three tool rounds and finishes with text in the room', async () => {
     // Rounds 1 and 3 ask for different calls; round 2 repeats round 1, so
@@ -627,6 +646,7 @@ describe('multi-round group turns', () => {
     const toolMessage = second.messages.find((message) => message.role === 'tool');
     expect(toolMessage?.content.length).toBeLessThanOrEqual(TOOL_RESULT_MAX_CHARS + 1);
     expect(toolMessage?.content).toContain('<untrusted-tool-output>');
+    expect(toolMessage?.content.endsWith('</untrusted-tool-output>')).toBe(true);
   });
 });
 
