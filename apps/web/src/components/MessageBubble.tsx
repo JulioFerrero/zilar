@@ -16,6 +16,7 @@ import { ApprovalCard } from './ApprovalCard';
 import { Avatar } from './Avatar';
 import { ConfirmDialog } from './ConfirmDialog';
 import { FileMessage } from './FileMessage';
+import { GifMessage, isGifVideoAttachment } from './GifMessage';
 import { ImageMessage } from './ImageMessage';
 import { LinkText } from './LinkText';
 import { MarkdownText } from './MarkdownText';
@@ -193,10 +194,14 @@ export function MessageBubble({
   // the small AI badge next to its name (T-0055).
   const senderIsAi = showSender && isAiJid(message.senderId);
   const attachmentImage = message.attachment?.kind === 'image';
-  const attachmentFile = message.attachment?.kind === 'file';
+  const gifVideo =
+    message.attachment !== undefined &&
+    message.attachment.kind === 'file' &&
+    isGifVideoAttachment(message.attachment);
+  const attachmentFile = message.attachment?.kind === 'file' && !gifVideo;
   const failed = message.failed === true;
   const imageOnly =
-    (message.image !== undefined || attachmentImage) &&
+    (message.image !== undefined || attachmentImage || gifVideo) &&
     !hasText &&
     message.card === undefined &&
     message.voice === undefined &&
@@ -475,6 +480,33 @@ export function MessageBubble({
                       failed={failed}
                       onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
                     />
+                  </div>
+                )}
+
+                {gifVideo && message.attachment !== undefined && (
+                  <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
+                    <GifMessage attachment={message.attachment} />
+                    {failed ? (
+                      <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
+                        <span>Upload failed</span>
+                        <button
+                          type="button"
+                          aria-label="Retry upload"
+                          onClick={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+                          className="font-semibold underline"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    ) : (
+                      imageOnly && (
+                        <MessageMeta
+                          message={message}
+                          showTicks={own}
+                          className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
+                        />
+                      )
+                    )}
                   </div>
                 )}
 

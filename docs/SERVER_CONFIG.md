@@ -207,7 +207,6 @@ Behaviour: one push node per device (`POST /api/push/subscriptions` returns the 
 Shareable links join a **group** as `member` (public topics come with joining; private topics are never joined by link). Only the SHA-256 hash of the 32-byte token is stored — the token is shown once at creation and never logged or audited; the admin list carries the last-4 hint, label, uses and state, never tokens. At most 10 active links per group. Joining consumes one use with a conditional update (not revoked, not expired, under the cap), so two racing joins can never exceed `max_uses`. Unknown/expired/revoked/exhausted links answer the same 404 `invalid_link` (no leak of which); a full group answers 409 `group_full`. Join attempts are rate limited (20/hour/user, 60/hour/IP, in-memory per process, like the other caps in `rate-limit.ts`); behind a proxy set `TRUSTED_PROXY_HOPS` (above) so the per-IP budget is per client, not per proxy. Audited as `group.link_created`, `group.link_revoked`, `group.joined_by_link` (link id + hint only, never the token). The web `/j/<token>` page sends a signed-out visitor to the login with `next=/j/<token>` and returns them after sign-in. Invite-only sign-up is unchanged: a person without an account still needs a sign-up invite first.
 
 ### Stickers (T-0120)
-
 | Variable | Required? | Default | What it does | Notes |
 |---|---|---|---|---|
 | `STICKER_STORAGE_DIR` | No | `./data/stickers` | Directory sticker files are stored under. File names are `<uuid>.<ext>` (never user input). A relative value resolves against the server package root (`apps/server`), not the process cwd — the Dockerfile starts from `/app` while a developer may start from the repo root, and both land on the same directory. Absolute paths pass through unchanged. | Not a secret. Must be writable at startup — the server creates it when missing and exits with `STICKER_STORAGE_DIR (<dir>) is not writable` otherwise (`index.ts`). |
@@ -215,6 +214,16 @@ Shareable links join a **group** as `member` (public topics come with joining; p
 Uploaded stickers are validated by magic bytes (PNG or WebP only, ≤ 512 KiB, ≤ 512 × 512 px) and served with `Content-Type` from the stored mime, `X-Content-Type-Options: nosniff`, `Content-Disposition: inline`, `Cache-Control: public, max-age=31536000, immutable` and `Content-Security-Policy: default-src 'none'; sandbox`. Deleting a pack removes its files; messages already sent keep their sticker URL, which no longer loads a sticker. Uploads are rate limited to 60/hour/user (in-memory, per process, like the other caps in `rate-limit.ts`). Audited as `sticker_pack.created` / `sticker_pack.deleted` (pack id only).
 
 Docker/Coolify note: mount a persistent volume at `STICKER_STORAGE_DIR` (e.g. `./data/stickers`), or the files are lost when the container is replaced. The directory is git-ignored (`data/` is covered by the `*.log`-adjacent local-data rules; add an explicit `data/` entry if one is missing) and never backed up by the database dump — back it up with the volume.
+
+### GIFs (T-0122)
+
+| Variable | Required? | Default | What it does | Notes |
+|---|---|---|---|---|
+| `GIF_PROVIDER` | No | — (feature off) | Picks the GIF search adapter (`giphy` today; a second adapter can be added behind the same port later). Unset = every GIF route answers 501 `gifs_unavailable` and the web hides the tab. | Not a secret. |
+| `GIF_API_KEY` | With `GIF_PROVIDER` | — | API key for the GIF provider. The server sends it to the provider; it is never logged or returned. | **Secret.** Put it in `infra/.env` as `GIF_API_KEY`. |
+| `GIF_RATING` | No | `pg-13` | Rating filter sent with provider search/trending (`g` \| `pg` \| `pg-13` \| `r`). | Not a secret. |
+
+The browser never contacts the provider: `GET /api/gifs/search?q=&pos=` and `GET /api/gifs/trending?pos=` run server-side (30 requests/minute/user, in-memory per process), and results carry no provider URLs — each media URL is replaced by an opaque HMAC-signed `mediaToken` (15-minute expiry, bound to the exact URL and the user id). `GET /api/gifs/media/:token` verifies the token, then streams the media with the SSRF guard (https only, documented media hosts only, resolve-then-pin with private/loopback/link-local refused, no redirects, 8 MiB cap, 10 s timeout, only `image/gif`, `image/webp`, `video/mp4`, `video/webm`), rebuilding response headers from scratch plus `Cache-Control: private, max-age=86400` and `nosniff`. Search text is never logged or audited (counts and durations only). A sent GIF is stored as a normal attachment (XEP-0363 upload + `attachment` payload), so it keeps working if the provider disappears.
 
 ### Channels (T-0124)
 

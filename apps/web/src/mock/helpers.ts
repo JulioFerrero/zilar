@@ -172,3 +172,36 @@ export function mockDemoStickerArt(stickerId: string): string | undefined {
   ].join('');
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
+
+export interface MockGifItem {
+  id: string;
+  title: string;
+  mediaToken: string;
+  kind: 'image' | 'video';
+  width: number;
+  height: number;
+}
+
+/**
+ * Generated GIF-like placeholders for mock mode (T-0122): animated-feeling
+ * SVG art the panel can show with no server. The `mediaToken` is a display
+ * key only — mock mode never calls the proxy.
+ */
+export function mockGifItems(): MockGifItem[] {
+  const cells: Array<[string, string, string, string]> = [
+    ['mock-gif-1', '#fbbf24', '#f97316', '🐱 dancing'],
+    ['mock-gif-2', '#a78bfa', '#7c3aed', '😹 laughing'],
+    ['mock-gif-3', '#6ee7b7', '#059669', '🙀 surprised'],
+    ['mock-gif-4', '#fda4af', '#e11d48', '😻 in love'],
+    ['mock-gif-5', '#7dd3fc', '#0284c7', '🐈 strutting'],
+    ['mock-gif-6', '#fde68a', '#d97706', '😺 waving'],
+  ];
+  return cells.map(([id, from, to, title]) => ({
+    id,
+    title,
+    mediaToken: svgSticker(from, to, title.slice(0, 2)),
+    kind: 'image' as const,
+    width: 200,
+    height: 150,
+  }));
+}

@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { GifPanel, type GifChoice } from './GifPanel';
 import type { StickerPack } from '@/lib/api';
 import { discoverStickerPacks, listStickerPacks } from '@/lib/api';
+import { isMockMode } from '@/mock/gate';
+import { mockGifItems } from '@/mock/helpers';
 import { isPanelStickerUrl, readRecentStickers, rememberRecentSticker } from '@/lib/stickers';
 import type { RecentStickerEntry } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
@@ -20,6 +23,8 @@ export interface StickerPanelProps {
   onClose: () => void;
   /** Appends an emoji to the composer draft (the Emoji tab has no server). */
   onEmoji: (emoji: string) => void;
+  /** Sends a GIF through the attachment upload path (T-0122). */
+  onGifPick: (gif: GifChoice) => void;
 }
 
 /**
@@ -91,12 +96,13 @@ const COMMON_EMOJI = [
 ] as const;
 
 /**
- * The sticker panel in the composer (T-0120): tabs Stickers / GIFs / Emoji,
- * a strip of pack tabs (first: Recent), a 6-column grid of 72 px stickers,
- * hover/keyboard focus preview, click sends. GIFs show "Coming soon" until
- * T-0122; the Emoji tab appends a common emoji to the draft.
+ * The sticker panel in the composer (T-0120, GIFs in T-0122): tabs Stickers /
+ * GIFs / Emoji, a strip of pack tabs (first: Recent), a 6-column grid of 72
+ * px stickers, hover/keyboard focus preview, click sends. The GIFs tab
+ * searches through the privacy-preserving proxy; the Emoji tab appends a
+ * common emoji to the draft.
  */
-export function StickerPanel({ onPick, onClose, onEmoji }: StickerPanelProps) {
+export function StickerPanel({ onPick, onClose, onEmoji, onGifPick }: StickerPanelProps) {
   const [tab, setTab] = useState<Tab>('stickers');
   const [packs, setPacks] = useState<StickerPack[] | undefined>(undefined);
   const [activePackId, setActivePackId] = useState<string | undefined>(undefined);
@@ -218,9 +224,7 @@ export function StickerPanel({ onPick, onClose, onEmoji }: StickerPanelProps) {
       </div>
 
       {tab === 'gifs' && (
-        <div className="flex h-[220px] items-center justify-center text-[13px] text-muted-foreground">
-          Coming soon
-        </div>
+        <GifPanel onPick={onGifPick} {...(isMockMode() ? { mockItems: mockGifItems() } : {})} />
       )}
 
       {tab === 'emoji' && (

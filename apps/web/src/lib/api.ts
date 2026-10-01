@@ -1288,7 +1288,6 @@ export function searchMessages(
 // User-made packs: the panel lists mine in order (with stickers), discover
 // lists `server`-visible packs, and files are served same-origin so the
 // renderer can auto-load them without leaking the viewer's IP.
-
 export const stickerSchema = z.object({
   id: z.string(),
   packId: z.string(),
@@ -1447,6 +1446,105 @@ export function sendTestPushNotification(subscriptionId: string): Promise<void> 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ subscriptionId }),
   }).then(() => undefined);
+}
+
+// --- GIFs (T-0122) --------------------------------------------------------
+// Privacy-preserving search: the browser never contacts the provider. Every
+// media URL arrives as an opaque `mediaToken` minted for this user; previews
+// and the send path load through the same-origin proxy
+// (`/api/gifs/media/:token`). An unconfigured provider answers 501
+// `gifs_unavailable` and the panel hides the tab.
+
+export const gifResultSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  mediaToken: z.string(),
+  kind: z.enum(['image', 'video']),
+  width: z.number(),
+  height: z.number(),
+  sizeBytes: z.number().optional(),
+});
+
+export type GifResult = z.infer<typeof gifResultSchema>;
+
+const gifPageSchema = z.object({
+  items: z.array(gifResultSchema),
+  nextPos: z.string().optional(),
+});
+
+export interface GifPage {
+  items: GifResult[];
+  nextPos?: string | undefined;
+}
+
+async function gifRequest(
+  params: URLSearchParams,
+  endpoint: 'search' | 'trending',
+  signal?: AbortSignal,
+): Promise<GifPage> {
+  let response: Response;
+  if (isMockApiEnabled()) {
+    response = await mockRequest(`/gifs/${endpoint}?${params.toString()}`, { method: 'GET' });
+  } else {
+    if (signal?.aborted === true) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+    try {
+      response = await fetch(`${API_BASE}/gifs/${endpoint}?${params.toString()}`, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        ...(signal === undefined ? {} : { signal }),
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      throw new ApiError(0, 'network_error', 'Could not reach the server');
+    }
+  }
+  if (signal?.aborted === true) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+  const raw: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const parsed = errorBodySchema.safeParse(raw);
+    throw new ApiError(
+      response.status,
+      parsed.success ? parsed.data.error.code : 'request_failed',
+      parsed.success ? parsed.data.error.message : `Request failed (${response.status})`,
+    );
+  }
+  const parsed = gifPageSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ApiError(
+      response.status,
+      'invalid_response',
+      'The server sent an unexpected response',
+    );
+  }
+  return parsed.data;
+}
+
+export function searchGifs(query: string, pos?: string, signal?: AbortSignal): Promise<GifPage> {
+  const params = new URLSearchParams();
+  params.set('q', query);
+  if (pos !== undefined && pos !== '') {
+    params.set('pos', pos);
+  }
+  return gifRequest(params, 'search', signal);
+}
+
+export function trendingGifs(pos?: string, signal?: AbortSignal): Promise<GifPage> {
+  const params = new URLSearchParams();
+  if (pos !== undefined && pos !== '') {
+    params.set('pos', pos);
+  }
+  return gifRequest(params, 'trending', signal);
+}
+
+/** The same-origin proxy URL for one GIF result's media. */
+export function gifMediaUrl(mediaToken: string): string {
+  return `${API_BASE}/gifs/media/${encodeURIComponent(mediaToken)}`;
 }
 
 // --- Audit log (T-0079, T-0084) --------------------------------------------

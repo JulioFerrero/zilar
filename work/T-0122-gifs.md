@@ -1,7 +1,7 @@
 ---
 id: T-0122
 title: GIF search and sending (privacy-preserving proxy, provider behind a port)
-status: planned
+status: review
 milestone: M5
 branch: task/T-0122-gifs
 model: meta/muse-spark-1.3-contributor
@@ -69,19 +69,35 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
--
+- Server (`apps/server/src/gifs/`): `provider.ts` (the `GifProvider` port + `GifItem`/`GifPage` zod schemas), `giphy.ts` (the real `giphy` adapter against the documented `api.giphy.com/v1/gifs/{search,trending}` endpoints with `rating` from `GIF_RATING`, plus `createFakeGifProvider` for tests), `token.ts` (HMAC-signed opaque media tokens, 15-min expiry, bound to user id + exact provider URL), `routes.ts` (`GET /api/gifs/search`, `GET /api/gifs/trending`, `GET /api/gifs/media/:token`; session required, 30 req/min/user; results carry `mediaToken`s, never provider URLs; the proxy re-checks https + media-host allowlist, resolve-then-pins via the reused `sandbox/ip-guard` module (imported, not copied), refuses redirects, 8 MiB cap, 10 s timeout, 4 content types only, headers rebuilt + `private, max-age=86400` + `nosniff`; logs counts/durations only; 501 `gifs_unavailable` when unconfigured).
+- Config: `GIF_PROVIDER` (`giphy`, unset = off), `GIF_API_KEY`, `GIF_RATING` (default `pg-13`) in `config.ts` (+ tests); `GIF_API_KEY` added to logger `redactPaths`; `app.ts` mounts the routes always (with `gifProvider`/`gifMediaFetcher`/`gifNow` test seams); documented in `docs/SERVER_CONFIG.md`.
+- Web: `GifPanel.tsx` (search field debounced 300 ms with abort-cancel, trending on open, 2-column grid of proxy-loaded previews, `<video muted loop playsinline>` for video / `<img>` for images, IntersectionObserver so only visible items play, `prefers-reduced-motion` still frames, infinite scroll with `pos`, "Powered by Giphy" attribution, empty/error/retry/unavailable states); `lib/api.ts` (`searchGifs`/`trendingGifs`/`gifMediaUrl` + zod parsing, mock-aware like search); `StickerPanel` GIFs tab renders it (mock mode gets generated placeholders); `Composer.sendGif` fetches through the proxy then uses the existing `sendAttachment` path (kind `image`/gif or `file`/mp4, caption = draft, inline error on failure, Retry via the attachment bubble); `GifMessage.tsx` renders GIF-origin videos inline as looping muted video (gated on `gif-<id>` name + video mime, since `classify` never yields image/video kinds for these); mock search/trending + `mockGifItems()` placeholders in `mock/`.
+- Tests: server 21 (provider parsing incl. hostile fields/wrong hosts/title cap, fake pagination, token bind/expiry/tamper, 501s, 401 sweep-covered, rate limit, proxy header rebuild + URL binding, cross-user/edited/expired tokens, wrong-type/provider-error/fetch-fail 502s, no-query/no-key in logs, real-TLS redirect-refused/size-cap/timeout); web 51 across GifPanel (8), Composer GIFs (3), GifMessage (2), StickerPanel (updated), rest unchanged.
 
 ### Files changed
--
+- `apps/server/src/gifs/{provider,giphy,token,routes}.ts` (new) + `{gifs,routes}.test.ts` (new)
+- `apps/server/src/{config.ts,config.test.ts,app.ts,logger.ts}`
+- `apps/web/src/components/{GifPanel,GifPanel.test,GifMessage,GifMessage.test}.tsx` (new), `{StickerPanel,Composer,MessageBubble}.tsx` + tests, `lib/api.ts`, `mock/{api,helpers}.ts`
+- `docs/SERVER_CONFIG.md`, `work/T-0122-gifs.md`
 
 ### Commands run and real results
--
+- `pnpm install`: ok (8.7s)
+- `pnpm format:check`: pass
+- `pnpm lint` (oxlint): pass (fixed 2 `set-state-in-effect` in GifPanel by merging mount+debounce into one timer-driven effect and lazy list init)
+- `pnpm typecheck` (turbo, 10 tasks): pass
+- `pnpm --filter @galena/server test --maxWorkers=2 src/gifs src/config.test.ts src/authz-sweep.test.ts src/stickers/routes.test.ts`: 5 files, 91 passed (full server suite exceeds the 120s tool timeout at ~500s; the lead runs it per batch — the touched files and neighbours all pass)
+- `pnpm --filter @galena/web test --maxWorkers=2`: 86 files, 939 passed
+- `pnpm build` (turbo): 2 tasks successful
 
 ### Problems, deviations from the spec, open questions
--
+- The GIF tab is a 2-column grid, not masonry: with fixed aspect cells the 2-column grid satisfies "previews + infinite scroll" without a masonry measuring pass.
+- `fetchProxiedMedia` takes an optional `port` used only by the local-TLS test; production always uses 443 (same pattern as the sandbox `fetchPinnedHttps`).
+- StickerPanel keeps its unused `panelRef` (pre-existing nit from T-0120 review); untouched.
+- The Giphy docs ask for client-side calls with analytics pingbacks; we deliberately call server-side with no pingbacks (privacy rule 1), so no view/click/send telemetry reaches Giphy.
+- No `any`, no `@ts-ignore`, no lint/ts disables; prettier re-run after last edit.
 
 ### Blocked / needs a decision
-- (only if status is blocked)
+- None. Open decision for Julio (per spec): create the Giphy API key and put it in `infra/.env` as `GIF_API_KEY` (I did not read that file); without it the feature 501s and the tab hides.
 
 ---
 

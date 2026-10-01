@@ -31,6 +31,7 @@ import { createPinsRoutes } from './pins/routes';
 import { createPushRoutes } from './push/routes';
 import { createRolesRoutes } from './roles/routes';
 import { createSearchRoutes, type SearchRoutesDependencies } from './search/routes';
+import { createGifsRoutes } from './gifs/routes';
 import { createStickersRoutes } from './stickers/routes';
 import { createTopicsRoutes } from './topics/routes';
 import { createMachinesRoutes } from './machines/routes';
@@ -127,6 +128,12 @@ export interface AppDependencies {
    * optional). Absent = push off (every push route answers 404).
    */
   push?: PushConfig;
+  /** T-0122: overrides the GIF provider port; tests inject the fake. */
+  gifProvider?: import('./gifs/provider').GifProvider;
+  /** T-0122: overrides the GIF media fetch; tests inject a fake. */
+  gifMediaFetcher?: import('./gifs/routes').GifsRoutesDependencies['mediaFetcher'];
+  /** T-0122: injected in tests so token expiry and the rate window advance. */
+  gifNow?: () => number;
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
@@ -154,6 +161,9 @@ export function createApp({
   stickerNow,
   uploadLimiter,
   push,
+  gifProvider,
+  gifMediaFetcher,
+  gifNow,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
   const app = new Hono<{ Variables: RequestIdVariables }>();
   const auditRecorder = audit ?? createAuditRecorder({ db, logger });
@@ -296,6 +306,20 @@ export function createApp({
     }),
   );
   app.route('/api', createAuditRoutes({ auth, db }));
+  // GIFs (T-0122): search, trending and the media proxy. Mounted always: an
+  // unconfigured provider answers 501 `gifs_unavailable` instead of 404ing,
+  // so the web can hide the tab.
+  app.route(
+    '/api',
+    createGifsRoutes({
+      auth,
+      config,
+      logger,
+      ...(gifProvider === undefined ? {} : { provider: gifProvider }),
+      ...(gifMediaFetcher === undefined ? {} : { mediaFetcher: gifMediaFetcher }),
+      ...(gifNow === undefined ? {} : { now: gifNow }),
+    }),
+  );
   app.route(
     '/api',
     createApprovalsRoutes({

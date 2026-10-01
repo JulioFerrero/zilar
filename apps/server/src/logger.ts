@@ -11,6 +11,7 @@ export const redactPaths: string[] = [
   'DATABASE_URL',
   'BETTER_AUTH_SECRET',
   'GALENA_KEY_ENCRYPTION_KEY',
+  'GIF_API_KEY',
   'SMTP_PASSWORD',
   'SMTP_USER',
 ];
