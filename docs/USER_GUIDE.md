@@ -88,8 +88,7 @@ Every group has shareable **invite links**: a short web address that lets someon
 - **Share** the link anywhere. Whoever opens it sees a preview of the group, signs in (or creates their account first), and joins.
 - **Revoke** a link any time from the same list: the address stops working at once, while people who already joined stay.
 - Only the group's owner or admins create, list and revoke links. Each link shows how many times it has been used, and whether it is expired or used up.
-
-Opening a link on a fresh phone works too: the mobile app takes you through sign-in and lands you in the group.
+- On the phone the same three actions work: the group screen has an invite-links sheet (owner/admin only) with create (label up to 60 characters, expiry up to a year, up to 10,000 uses), the uses/state list, and revoke — plus a "Join with a link" form that opens a preview card with Join/Cancel. (The mock/demo join preview always reports you as already a member; the real join path is tested, not demoed.)
 
 ## Roles and private topics
 
@@ -115,7 +114,9 @@ A **channel** is a one-way feed inside a group: only the group's owner and admin
 
 **Use.** Open the sticker panel from the composer (the smiley button) and pick a pack, then a sticker: it sends as its own message. Stickers are small static pictures (PNG or WebP); an emoji in the chat usually stands in for the same picture.
 
-**Create.** From the sticker panel choose **Create pack**: give it a name, add photos from your device, and save. Photos that are too big are shrunk; anything that is not a real picture is rejected.
+**Create.** From the sticker panel choose **Create pack**, or open **Settings → Stickers** for the full manager: give it a name, add photos from your device, and save. Photos that are too big are shrunk; anything that is not a real picture is rejected.
+
+**Share.** Every pack is either **Private** (only you see it) or **Shared**: a shared pack can be found by everyone on your Galena server and added to their own panel. Flip a pack between the two any time from Settings → Stickers (**Share** / **Make private**); other people still see only the packs they added, plus the stickers sent in chats.
 
 **Favorites.** Long-press (or star) any sticker to add it to **Favorites**: your own cross-pack collection, always one tap away at the front of the panel. Unstar to remove.
 
@@ -198,8 +199,8 @@ An AI can write small **tools** (code that runs on a schedule or on demand) and 
 
 These are designed but not in the app yet:
 
-- **(still needs devices)** Native push on iPhone through Apple's servers, and push in the production deploy — the web side is merged, the deploy wiring is still planned.
+- **(still needs devices)** Native push on iPhone through Apple's servers, and push in the production deploy — the web side is merged (T-0119; T-0118 was a spike only and was never merged), the deploy wiring is still planned (T-0145).
 - **(needs Julio)** GIFs until he adds the provider key; Telegram sticker import until he creates the bot token.
 - **(coming)** Voice messages.
-- **(coming)** The `./galena init` install wizard, backups and the bare-metal guide are merged for the worker's own testing; the polished first-run experience is still ahead.
-- **(coming)** A sticker panel and GIF picker on the phone, currently in progress.
+- **(merged)** The install wizard, backups and the bare-metal guide: the owner's install helper (`deploy/galena`) covers `init`, `up`, `doctor`, `backup`, `restore` and `create-admin` (details in `docs/INSTALL_DOCKER.md`).
+- **(coming)** GIFs on the phone: stickers already work there; the GIF tab is still planned (T-0148).
