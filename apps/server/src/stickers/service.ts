@@ -546,7 +546,7 @@ export async function listFavorites(
     .select()
     .from(stickerFavorites)
     .where(eq(stickerFavorites.userId, userId))
-    .orderBy(asc(stickerFavorites.addedAt));
+    .orderBy(asc(stickerFavorites.addedAt), asc(stickerFavorites.stickerId));
   if (links.length === 0) {
     return [];
   }

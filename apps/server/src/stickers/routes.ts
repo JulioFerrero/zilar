@@ -228,7 +228,7 @@ export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
           try {
             decodedEmoji = decodeURIComponent(decodedEmoji.slice(0, 64));
           } catch {
-            throw new HttpError(400, 'invalid_request', 'emoji must be at most 8 characters');
+            throw new HttpError(400, 'invalid_request', 'The emoji header is not valid');
           }
         }
         emoji = decodedEmoji;

@@ -1,7 +1,7 @@
 ---
 id: T-0121
 title: Sticker pack creator (web): make packs from images, edit, share, favorites
-status: review
+status: merged
 milestone: M5
 branch: task/T-0121-sticker-creator
 model: meta/muse-spark-1.3-contributor
@@ -126,10 +126,13 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved, merged after five rounds (migration 0032, `sticker_favorites`). Pre-review packets read at every round.
 
 ### Findings
--
+- Fixed across rounds and verified: the real-browser bitmap close bug (every prep failed), emoji header encoding (real `Headers` tests), idempotent re-star at the 200 cap, atomic panel reorder endpoint and a 200-pack panel cap, favorites list in one query, editor frozen while saving, create-mode retry reuses the created pack (and patches a renamed title), failed uploads block Save, just-uploaded stickers removed in-session are deleted.
+- Lead work at merge: squashed the six WIP commits and rebased onto main by hand (T-0122 and T-0141 had touched the same files). T-0141 had already made demo stickers sendable in mock mode (relative URLs plus a mock file route), so T-0121's own send-time URL swap was dropped in favour of that; the Composer/StickerPanel props from both tasks (GIF pick, manage, create) are kept.
+- Lead nits fixed: a malformed `x-emoji` escape now answers "The emoji header is not valid"; the favorites list has a total order (`addedAt`, then `stickerId`).
+- Deferred: `patchPack` order check accepts duplicate ids (the editor cannot produce them); mock reorder has no 200 cap; `addFavorite` reads the sticker row outside its transaction (a concurrent delete answers a misleading 503).
 
 ### Follow-ups
--
+- Live check in a browser: create a pack from photos, star a sticker, reorder the panel.
