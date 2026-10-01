@@ -26,6 +26,8 @@ export interface ArchiveRow {
   timestamp: number | string | bigint;
   headline: string;
   xml: string;
+  /** Full message text (only selected by the queries that need it in code). */
+  body?: string | null;
 }
 
 export const ARCHIVE_POOL_MAX = 3;

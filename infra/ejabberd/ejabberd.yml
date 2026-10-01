@@ -12,12 +12,11 @@ define_macro:
   MUC_HOST: rooms.galena.localhost
   # Overridden by EJABBERD_MACRO_ADMIN (infra/docker-compose.dev.yml).
   ADMIN: admin@galena.localhost
-  # The push component domain and shared secret (T-0119). The host default
-  # matches PUSH_COMPONENT_JID's default; the secret default is a placeholder
+  # The push component shared secret (T-0119); the component host is written
+  # literally in the listener below. The secret default is a placeholder
   # that must be overridden by EJABBERD_MACRO_PUSH_COMPONENT_SECRET with the
   # same value as the server's PUSH_COMPONENT_SECRET, or the component can
   # never authenticate (and everyone knows the placeholder).
-  PUSH_COMPONENT_HOST: push.galena.localhost
   PUSH_COMPONENT_SECRET: CHANGE_ME_PUSH_COMPONENT_SECRET
   SQL_SERVER: postgres
   SQL_DATABASE: ejabberd
@@ -89,7 +88,9 @@ listen:
     ip: '0.0.0.0'
     module: ejabberd_service
     hosts:
-      PUSH_COMPONENT_HOST:
+      # ejabberd does not expand macros in map keys, so the host is literal: it
+      # must equal PUSH_COMPONENT_JID in the server env.
+      push.galena.localhost:
         password: PUSH_COMPONENT_SECRET
 
 acl:
