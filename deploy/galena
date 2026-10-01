@@ -130,9 +130,10 @@ usage() {
 Usage: $PROG [--env-file=PATH] [--dry-run] <command> [args]
 
   init [--domain D] [--admin-email E] [--acme-email E]
-       [--image-owner O] [--image-tag T] [--http-port P] [--https-port P] [--force]
+       [--image-owner O] [--image-tag T] [--http-port P] [--https-port P] [--push-subject S] [--no-push] [--force]
       Generate every secret and write the env file (0600). Refuses to
-      overwrite an existing file unless --force is given.
+      overwrite an existing file unless --force is given. Push is on by
+      default (VAPID pair generated, subject defaults to the admin email).
   up [compose args]       Start the stack and wait until it is healthy.
   down [compose args]     Stop the stack (data volumes are kept).
   logs [compose args]     Follow the service logs (default: -f).
@@ -150,18 +151,46 @@ EOF
 
 # --- init ---------------------------------------------------------------
 
+# Generate a VAPID (RFC 8292) key pair with openssl only. Prints the public
+# key (87-char base64url, uncompressed P-256 point) on line 1 and the
+# private key (43-char base64url, 32 raw bytes) on line 2. Verified against
+# the `web-push` library's generateVAPIDKeys (same curve, same encodings).
+_gen_vapid_keys() {
+  _key_tmp="$(mktemp -d)" || return 1
+  if ! openssl ecparam -name prime256v1 -genkey -noout -out "$_key_tmp/key.pem" 2>/dev/null; then
+    rm -rf "$_key_tmp"
+    return 1
+  fi
+  if ! openssl pkcs8 -topk8 -nocrypt -in "$_key_tmp/key.pem" -outform DER -out "$_key_tmp/key.p8" 2>/dev/null; then
+    rm -rf "$_key_tmp"
+    return 1
+  fi
+  # PKCS#8 DER, fixed 138-byte layout: the private scalar sits at byte
+  # offset 36 (32 bytes), the uncompressed public point is the last 65
+  # bytes (0x04 || X || Y). Offsets verified against openssl 3.x output.
+  _vapid_pub="$(tail -c 65 "$_key_tmp/key.p8" | openssl base64 -A 2>/dev/null | tr -d '\n' | tr '+/' '-_' | tr -d '=')" || _vapid_pub=""
+  _vapid_priv="$(tail -c 103 "$_key_tmp/key.p8" | head -c 32 | openssl base64 -A 2>/dev/null | tr -d '\n' | tr '+/' '-_' | tr -d '=')" || _vapid_priv=""
+  rm -rf "$_key_tmp"
+  [ "${#_vapid_pub}" -eq 87 ] && [ "${#_vapid_priv}" -eq 43 ] || return 1
+  printf '%s\n%s\n' "$_vapid_pub" "$_vapid_priv"
+}
+
 cmd_init() {
   _domain="" _admin_email="" _acme_email="" _owner="" _tag="latest"
   _http_port="80" _https_port="443"
+  _push_enabled=1 _push_subject=""
 
   _args_total=$#
   while [ $# -gt 0 ]; do
     case "$1" in
-      --domain=*|--admin-email=*|--acme-email=*|--image-owner=*|--image-tag=*|--http-port=*|--https-port=*)
+      --domain=*|--admin-email=*|--acme-email=*|--image-owner=*|--image-tag=*|--http-port=*|--https-port=*|--push-subject=*)
         _opt="${1%%=*}"; _val="${1#*=}"
         shift
         ;;
-      --domain|--admin-email|--acme-email|--image-owner|--image-tag|--http-port|--https-port)
+      --no-push)
+        _opt="$1"; _val=""; shift
+        ;;
+      --domain|--admin-email|--acme-email|--image-owner|--image-tag|--http-port|--https-port|--push-subject)
         _opt="$1"
         [ "$#" -ge 2 ] || die "init: $1 needs a value (hint: $1=value)"
         _val="$2"; shift 2
@@ -176,6 +205,8 @@ cmd_init() {
       --image-tag) _tag="$_val" ;;
       --http-port) _http_port="$_val" ;;
       --https-port) _https_port="$_val" ;;
+      --push-subject) _push_subject="$_val" ;;
+      --no-push) _push_enabled=0 ;;
     esac
   done
   [ "$_args_total" -ge 0 ]
@@ -221,6 +252,18 @@ cmd_init() {
   # writing an empty GALENA_DOMAIN.
   _domain="${_domain:-localhost}"
 
+  # Push is on by default: Web Push needs HTTPS, which the Caddy setup gives
+  # on every install (a real domain or the localhost trial CA). The contact
+  # address defaults to the admin email; --no-push opts out (offices that
+  # never want notifications), --push-subject sets the address directly.
+  if [ -z "$_push_subject" ] && [ "$_push_enabled" -eq 1 ]; then
+    _push_subject="$(ask "Contact address for push services (shown to the push provider, e.g. mailto:you@example.com)" "mailto:$_admin_email")"
+  fi
+  case "${_push_subject:-mailto:}" in
+    mailto:*.*|https:*.*) ;;
+    *) [ "$_push_enabled" -eq 0 ] || die "init: bad push subject '$_push_subject' (hint: --push-subject mailto:you@example.com)" ;;
+  esac
+
   # The server image ships no dev-only packages (no pino-pretty), so even a
   # localhost trial runs NODE_ENV=production. The trial keeps the console
   # mailer through MAIL_ALLOW_CONSOLE_IN_PRODUCTION (OTP codes go to the
@@ -246,6 +289,11 @@ cmd_init() {
   _jwt_secret="$(openssl rand -base64 48)"
   _auth_secret="$(openssl rand -base64 32)"
   _key_enc_key="$(openssl rand -base64 48)"
+  # Push component secret + storage key (secrets, never printed). The VAPID
+  # pair is generated below with openssl; the contact address defaults to
+  # the admin email and push stays on unless --no-push is given.
+  _push_component_secret="$(openssl rand -base64 32)"
+  _push_storage_key="$(openssl rand -base64 48)"
 
   if [ "$DRY_RUN" -eq 1 ]; then
     cat <<EOF
@@ -261,11 +309,42 @@ cmd_init() {
 +     EJABBERD_DB, GALENA_ARCHIVE_DB, EJABBERD_ADMIN)
 +   3 generated secrets (base64: XMPP_JWT <64 chars>, BETTER_AUTH <44 chars>,
 +     KEY_ENCRYPTION <64 chars>)
-+   feature flags all false (gateway, tools, routines, push, runner hub)
++   push: $([ "$_push_enabled" -eq 1 ] && echo "ENABLED (VAPID pair + PUSH_VAPID_SUBJECT=$_push_subject + component/secret storage keys generated)" || echo "disabled (PUSH_ENABLED=false, no keys written)")
++   feature flags otherwise all false (gateway, tools, routines, runner hub)
 + secrets would NOT be printed — they would live only in $ENV_FILE
 EOF
     [ "$_node_env" = "production" ] && echo "+ (production:) fill SMTP_HOST/SMTP_USER/SMTP_PASSWORD in $ENV_FILE before 'up'"
     return 0
+  fi
+
+  if [ "$_push_enabled" -eq 1 ]; then
+    _vapid_keys="$(_gen_vapid_keys)" || die "init: could not generate the VAPID key pair with openssl"
+    _vapid_public="$(printf '%s' "$_vapid_keys" | sed -n '1p')"
+    _vapid_private="$(printf '%s' "$_vapid_keys" | sed -n '2p')"
+    [ -n "$_vapid_public" ] && [ -n "$_vapid_private" ] || die "init: could not generate the VAPID key pair with openssl"
+    _push_enabled_value="true"
+  else
+    # Push off: leave the secrets out of the env file entirely (no line at
+    # all), so the server sees "unset" and stays off. Writing an empty value
+    # would NOT work: Compose renders it as an empty string, which the
+    # server's push schema rejects at startup.
+    _vapid_public=""
+    _vapid_private=""
+    _push_component_secret=""
+    _push_storage_key=""
+    _push_subject=""
+    _push_enabled_value="false"
+  fi
+  if [ "$_push_enabled" -eq 1 ]; then
+    _push_lines="PUSH_VAPID_PUBLIC_KEY=$_vapid_public
+PUSH_VAPID_PRIVATE_KEY=$_vapid_private
+PUSH_VAPID_SUBJECT=$_push_subject
+PUSH_COMPONENT_SECRET=$_push_component_secret
+PUSH_STORAGE_KEY=$_push_storage_key"
+  else
+    _push_lines="# Push is off (PUSH_ENABLED=false): no VAPID keys or component/storage"
+    _push_lines="$_push_lines secrets in this file. Re-run '$PROG init --force'"
+    _push_lines="$_push_lines (or add the PUSH_* lines by hand) to enable it."
   fi
 
   # Compose has no way to say "unset when empty": it substitutes an empty
@@ -332,7 +411,16 @@ SMTP_SECURE=false
 MAIL_FROM=Galena <no-reply@$_domain>
 MAIL_ALLOW_CONSOLE_IN_PRODUCTION=$_console_in_prod
 
-PUSH_ENABLED=false
+PUSH_ENABLED=$_push_enabled_value
+# Web Push (XEP-0357 via ejabberd mod_push): browsers subscribe against the
+# VAPID pair below; PUSH_VAPID_SUBJECT is the contact address shown to the
+# push provider. PUSH_COMPONENT_JID (push.<this domain>) must equal the host
+# the ejabberd entrypoint writes into the ejabberd_service listener — the
+# compose file derives it from GALENA_DOMAIN, so this line needs no edit.
+# Losing PUSH_STORAGE_KEY orphans every device (browsers must re-enable):
+# it is backed up with this file, never regenerated on an existing install.
+PUSH_COMPONENT_JID=push.$_domain
+$_push_lines
 TOOLS_ENABLED=false
 ROUTINES_ENABLED=false
 WEB_TOOLS_ENABLED=false
@@ -523,6 +611,65 @@ cmd_doctor() {
     fi
   else
     echo "skip: the stack is not running (run '$PROG up' first)"
+  fi
+
+  # 5. Push: every piece present and agreeing, or push stays off — never
+  # half-wired. When the stack runs, the component handshake in the
+  # ejabberd log proves the secret and the host both agree.
+  _push_enabled="$(env_get PUSH_ENABLED)"
+  if [ "$_push_enabled" = "true" ]; then
+    _push_ok=1
+    for _k in PUSH_VAPID_PUBLIC_KEY PUSH_VAPID_PRIVATE_KEY PUSH_VAPID_SUBJECT PUSH_COMPONENT_SECRET PUSH_STORAGE_KEY; do
+      _v="$(env_get "$_k")"
+      if [ -z "$_v" ]; then
+        doctor_bad "push is on but $_k is empty in $ENV_FILE" "re-run '$PROG init --force' (backs up nothing — copy $ENV_FILE first) or fill $_k by hand"
+        _push_ok=0
+      fi
+    done
+    if [ "$_push_ok" -eq 1 ]; then
+      _vapid_pub_len="$(env_get PUSH_VAPID_PUBLIC_KEY)"
+      _vapid_pub_len="${#_vapid_pub_len}"
+      if [ "$_vapid_pub_len" -ne 87 ]; then
+        doctor_bad "PUSH_VAPID_PUBLIC_KEY has the wrong shape (want 87 chars, found $_vapid_pub_len)" "re-run '$PROG init --force' to regenerate the VAPID pair"
+        _push_ok=0
+      fi
+      _vapid_priv_len="$(env_get PUSH_VAPID_PRIVATE_KEY)"
+      _vapid_priv_len="${#_vapid_priv_len}"
+      if [ "$_vapid_priv_len" -ne 43 ]; then
+        doctor_bad "PUSH_VAPID_PRIVATE_KEY has the wrong shape (want 43 chars, found $_vapid_priv_len)" "re-run '$PROG init --force' to regenerate the VAPID pair"
+        _push_ok=0
+      fi
+      _storage_key="$(env_get PUSH_STORAGE_KEY)"
+      if [ "${#_storage_key}" -lt 32 ]; then
+        doctor_bad "PUSH_STORAGE_KEY is too short (want at least 32 characters)" "re-run '$PROG init --force' to regenerate it (old devices are orphaned)"
+        _push_ok=0
+      fi
+      _component_jid="$(env_get PUSH_COMPONENT_JID)"
+      if [ -z "$_component_jid" ]; then
+        doctor_bad "PUSH_COMPONENT_JID is missing in $ENV_FILE" "set PUSH_COMPONENT_JID=push.$(env_get GALENA_DOMAIN) (it must equal the ejabberd listener host)"
+        _push_ok=0
+      fi
+      _domain="$(env_get GALENA_DOMAIN)"
+      if [ -n "$_domain" ] && [ "$_component_jid" != "push.$_domain" ]; then
+        doctor_bad "PUSH_COMPONENT_JID ($_component_jid) is not push.$_domain" "set PUSH_COMPONENT_JID=push.$_domain in $ENV_FILE so it matches the ejabberd listener"
+        _push_ok=0
+      fi
+      case "$_component_jid" in
+        *"$"*) doctor_bad "PUSH_COMPONENT_JID contains a dollar sign" "compose would expand it — set PUSH_COMPONENT_JID=push.$_domain literally" ; _push_ok=0 ;;
+      esac
+    fi
+    if compose ps --status running ejabberd 2>/dev/null | grep -q ejabberd; then
+      if compose logs ejabberd 2>/dev/null | grep -qiE "external component.*handshake|handshake.*external component|component.*authenticated|authenticated.*component"; then
+        doctor_ok "ejabberd accepted the push component handshake"
+      else
+        doctor_bad "ejabberd shows no accepted push component handshake" "run '$PROG logs ejabberd' and look for 'external component' auth failures — the secret or the host disagrees (compare PUSH_COMPONENT_SECRET with the ejabberd secret, PUSH_COMPONENT_JID with push.<domain>)"
+      fi
+    else
+      echo "skip: ejabberd is not running, so the component handshake cannot be checked (run '$PROG up' first)"
+    fi
+    [ "$_push_ok" -eq 1 ] && doctor_ok "push env is present and agrees (keys, subject, component JID, secrets)"
+  else
+    echo "skip: push is off (PUSH_ENABLED is not true — run '$PROG init' without --no-push to enable it)"
   fi
 
   if [ "$doctor_fail" -ne 0 ]; then

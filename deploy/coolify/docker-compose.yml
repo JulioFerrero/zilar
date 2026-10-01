@@ -78,6 +78,15 @@ services:
       EJABBERD_MACRO_ADMIN: admin@${XMPP_DOMAIN:?}
       REGISTER_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_ADMIN:?}
       EJABBERD_MACRO_SQL_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_DB}
+      # Push component (T-0145, XEP-0114): the secret the server's component
+      # authenticates with. Must equal the server's PUSH_COMPONENT_SECRET
+      # below; the placeholder default fails closed, never open.
+      EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSH_COMPONENT:-CHANGE_ME_PUSH_COMPONENT_SECRET}
+      # push.<XMPP domain> is derived at container start from GALENA_DOMAIN
+      # (see deploy/ejabberd/push-entrypoint.sh): set it to the same value
+      # as XMPP_DOMAIN so the entrypoint writes push.<XMPP_DOMAIN>, matching
+      # PUSH_COMPONENT_JID below.
+      GALENA_DOMAIN: ${XMPP_DOMAIN:?}
       GALENA_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
       EJABBERD_MACRO_UPLOAD_URL: ${EJABBERD_UPLOAD_URL:-https://uploads.example.com/upload}
       # Routed entry points on ejabberd's single HTTP listener (port 5280).
@@ -157,6 +166,20 @@ services:
       MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
       MAIL_ALLOW_CONSOLE_IN_PRODUCTION: ${MAIL_ALLOW_CONSOLE_IN_PRODUCTION:-false}
       PUSH_ENABLED: ${PUSH_ENABLED:-false}
+      # Same rule as deploy/docker-compose.yml: leave unfilled Coolify
+      # variables unset and the server boots with push off (an empty value
+      # fails startup, so delete the line instead of blanking it).
+      PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
+      PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
+      PUSH_VAPID_SUBJECT: ${PUSH_VAPID_SUBJECT:-}
+      # push.<XMPP domain>: must equal the host the entrypoint writes into
+      # the ejabberd_service listener from the XMPP_DOMAIN below (see
+      # deploy/ejabberd/push-entrypoint.sh). Set GALENA_DOMAIN to the same
+      # value as XMPP_DOMAIN so the entrypoint derives it.
+      PUSH_COMPONENT_JID: push.${XMPP_DOMAIN:?}
+      # Must equal ejabberd's EJABBERD_MACRO_PUSH_COMPONENT_SECRET above.
+      PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSH_COMPONENT:-CHANGE_ME_PUSH_COMPONENT_SECRET}
+      PUSH_STORAGE_KEY: ${PUSH_STORAGE_KEY:-}
       TOOLS_ENABLED: ${TOOLS_ENABLED:-false}
       ROUTINES_ENABLED: ${ROUTINES_ENABLED:-false}
       WEB_TOOLS_ENABLED: ${WEB_TOOLS_ENABLED:-false}

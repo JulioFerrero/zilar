@@ -70,9 +70,9 @@ jwt_key: /etc/ejabberd/jwt.jwk
 jwt_auth_only_rule: jwt_only
 
 listen:
-  # Both listeners bind loopback only: the reverse proxy and the Galena
-  # server on this same machine are the only clients (federation is off,
-  # and C2S goes through the proxy's /xmpp-ws route). Nothing about
+  # All three listeners bind loopback only: the reverse proxy and the
+  # Galena server on this same machine are the only clients (federation is
+  # off, and C2S goes through the proxy's /xmpp-ws route). Nothing about
   # ejabberd is reachable from the network.
   - port: PORT_C2S
     ip: '127.0.0.1'
@@ -89,6 +89,22 @@ listen:
       /ws: ejabberd_http_ws
       /upload: mod_http_upload
       /api: mod_http_api
+  # Push component listener for a local install (XEP-0114): the server on
+  # this same machine dials port 5347 and receives the XEP-0357 publish IQs.
+  # ejabberd does not expand macros in map keys, so the host below is
+  # written out literally — it must equal PUSH_COMPONENT_JID in
+  # /etc/galena/galena.env (push.<your domain>). The secret is the push
+  # component password, also literal here (there is no entrypoint filling
+  # macros on bare metal): edit both values by hand when you copy this
+  # file. Loopback only: nothing else needs this listener.
+  # (The Docker stack generates the same host at container start from
+  # GALENA_DOMAIN — see deploy/ejabberd/push-entrypoint.sh.)
+  - port: 5347
+    ip: '127.0.0.1'
+    module: ejabberd_service
+    hosts:
+      push.chat.example.com:
+        password: CHANGE_ME_PUSH_COMPONENT_SECRET
 
 acl:
   local:
@@ -194,6 +210,16 @@ modules:
     db_type: sql
     default: always
     assume_mam_usage: true
+  # Push notifications: mod_push routes offline and MAM events to our
+  # XEP-0114 component (see the listener above). `include_sender` and
+  # `include_body` stay off: the component resolves who and what itself from
+  # the chat archive, honouring mute, visibility and the previews setting —
+  # ejabberd never sees message text for push. `mod_push_keepalive` keeps
+  # the stream-management session up so hibernating sessions still notify.
+  mod_push:
+    include_sender: false
+    include_body: false
+  mod_push_keepalive: {}
   mod_http_upload:
     max_size: 52428800
     # Outside Docker there is no /opt/ejabberd volume: uploads live in a
@@ -209,8 +235,6 @@ modules:
     resend_on_timeout: if_offline
   mod_carboncopy: {}
   mod_ping: {}
-  # Push notifications: enabled with no app server configured yet (see plan 6.5).
-  mod_push: {}
   mod_http_api: {}
   mod_admin_extra: {}
   mod_adhoc: {}

@@ -76,6 +76,12 @@ services:
       EJABBERD_MACRO_ADMIN: admin@${GALENA_DOMAIN:?GALENA_DOMAIN is required}
       REGISTER_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required}
       EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required}
+      # Push component (T-0145, XEP-0114): the secret the server's component
+      # authenticates with. Must equal the server's PUSH_COMPONENT_SECRET;
+      # the placeholder default matches the placeholder in the yml, so a
+      # fresh install without push secrets fails closed, never open.
+      EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}
+      GALENA_DOMAIN: ${GALENA_DOMAIN:?GALENA_DOMAIN is required}
       GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required}
       EJABBERD_MACRO_UPLOAD_URL: https://${GALENA_DOMAIN:?GALENA_DOMAIN is required}/upload
     volumes:
@@ -148,6 +154,19 @@ services:
       MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
       MAIL_ALLOW_CONSOLE_IN_PRODUCTION: ${MAIL_ALLOW_CONSOLE_IN_PRODUCTION:-false}
       PUSH_ENABLED: ${PUSH_ENABLED:-false}
+      # Push stays optional: `init --no-push` omits the VAPID keys, the
+      # subject and the storage key from the env file entirely (missing =
+      # unset), so the server boots with push off instead of rejecting an
+      # empty string at startup.
+      PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
+      PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
+      PUSH_VAPID_SUBJECT: ${PUSH_VAPID_SUBJECT:-}
+      # push.<install domain>: must equal the host the entrypoint writes into
+      # the ejabberd_service listener (see deploy/ejabberd/push-entrypoint.sh).
+      PUSH_COMPONENT_JID: push.${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      # Must equal ejabberd's EJABBERD_MACRO_PUSH_COMPONENT_SECRET above.
+      PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}
+      PUSH_STORAGE_KEY: ${PUSH_STORAGE_KEY:-}
       TOOLS_ENABLED: ${TOOLS_ENABLED:-false}
       ROUTINES_ENABLED: ${ROUTINES_ENABLED:-false}
       WEB_TOOLS_ENABLED: ${WEB_TOOLS_ENABLED:-false}

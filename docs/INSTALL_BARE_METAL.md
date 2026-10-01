@@ -71,7 +71,13 @@ the official binary from processone. Then:
 1. Copy `deploy/baremetal/ejabberd.yml` to `/etc/ejabberd/ejabberd.yml`
    (back up the packaged one first). Replace every `chat.example.com`
    (and the `rooms.` subdomain), the `SQL_PASSWORD`, and the
-   `UPLOAD_URL` if your public upload path differs.
+   `UPLOAD_URL` if your public upload path differs. Then the push
+   section: replace the `push.chat.example.com` host under the
+   `ejabberd_service` listener with `push.<your domain>` (it must equal
+   `PUSH_COMPONENT_JID` in `/etc/galena/galena.env` — ejabberd does not
+   expand macros in map keys, so this host is always literal, never a
+   macro), and set its password to the same value as
+   `PUSH_COMPONENT_SECRET`.
 2. Write the JWT key file `/etc/ejabberd/jwt.jwk` (mode 0600, owned by
    the ejabberd user): derive it from the same `GALENA_XMPP_JWT_SECRET`
    the server uses, with the same recipe as the Docker entrypoint
@@ -132,7 +138,15 @@ Copy `deploy/baremetal/.env.example` to `/etc/galena/galena.env`
 password and JWT secret from §3, `BETTER_AUTH_SECRET` from
 `openssl rand -base64 32`, SMTP settings — sign-in codes are sent by
 email, the server refuses production without `MAIL_TRANSPORT=smtp`),
-then lock it down:
+then lock it down. For push notifications, fill the `PUSH_*` lines too
+(`PUSH_ENABLED=true`, the VAPID pair from `openssl rand` per
+`.env.example`, `PUSH_VAPID_SUBJECT=mailto:<you>`,
+`PUSH_COMPONENT_JID=push.<your domain>`, `PUSH_COMPONENT_SECRET` equal
+to the listener password from step 1 of §3, `PUSH_STORAGE_KEY` from
+`openssl rand -base64 48`) — and keep `XMPP_ARCHIVE_DATABASE_URL` set:
+push requires the archive reader, without it the component stays off.
+Back up `/etc/galena/galena.env` with the databases (§7): losing
+`PUSH_STORAGE_KEY` orphans every device (browsers must re-enable push).
 
 ```bash
 sudo chown galena:galena /etc/galena/galena.env && sudo chmod 600 /etc/galena/galena.env
@@ -232,7 +246,9 @@ Migrations run at startup. Back up first if the install matters (§8):
 **Backups.** There is no wizard for this path (the `./galena backup`
 helper only drives the Docker stack). At minimum, dump both databases
 nightly and copy the archives plus `/etc/galena/galena.env` (live
-secrets — mode 0600, store encrypted) off the machine:
+secrets — mode 0600, store encrypted) off the machine. The env file
+backup matters twice for push: it holds `PUSH_STORAGE_KEY`, and losing
+that key orphans every device (browsers must re-enable push):
 
 ```bash
 pg_dump -Fc -U galena -h localhost galena > "galena-$(date -u +%Y%m%dT%H%M%SZ).dump"

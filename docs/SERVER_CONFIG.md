@@ -176,12 +176,14 @@ Chat preferences add no env vars. `chat_prefs` holds one row per (user, chat JID
 
 ### Push notifications (T-0119)
 
-Web push through ejabberd's `mod_push` plus an installable web app (PWA). Off by default (`PUSH_ENABLED=false`); when on, the server runs as an XEP-0114 component that receives XEP-0357 publish IQs and fans them out to browsers with `web-push` (VAPID + RFC 8291: the payload is encrypted end to end, relays see ciphertext).
+Web push through ejabberd's `mod_push` plus an installable web app (PWA). Off by default (`PUSH_ENABLED=false`); when on, the server runs as an XEP-0114 component that receives XEP-0357 publish IQs and fans them out to browsers with `web-push` (VAPID + RFC 8291: the payload is encrypted end to end, relays see ciphertext). The component dials the `ejabberd_service` listener on port 5347 (`PUSH_COMPONENT_PORT`) from inside the Compose network (Docker) or over loopback (bare metal); no host port is published for it in production.
+
+The literal-host rule (learned live 2026-10-01): ejabberd does NOT expand macros in map keys, so the `ejabberd_service` host is always written literally as `push.<domain>` and the key must equal `PUSH_COMPONENT_JID` in the server env. Everything else (the secret) stays a macro. Each deploy path writes the literal host its own way: the dev stack (`infra/`) hardcodes `push.galena.localhost`, the Docker image generates `push.<GALENA_DOMAIN>` at container start (`deploy/ejabberd/push-entrypoint.sh`), and bare metal writes it out by hand (`deploy/baremetal/ejabberd.yml`).
 
 | Variable | Required? | Default | What it does | Notes |
 |---|---|---|---|---|
 | `PUSH_ENABLED` | No | `false` | `'true'` starts the push component and enables the `/api/push/*` routes. With anything else the routes answer 404 and no component starts. | Not a secret. |
-| `PUSH_VAPID_PUBLIC_KEY` / `PUSH_VAPID_PRIVATE_KEY` | With push | — | VAPID key pair the browsers subscribe against. Generate with `web-push generate-vapid-keys` (one-off; needs the `web-push` CLI, not a dependency). | **Secrets** (the private key; the public key is served to logged-in browsers at `GET /api/push/config`). |
+| `PUSH_VAPID_PUBLIC_KEY` / `PUSH_VAPID_PRIVATE_KEY` | With push | — | VAPID key pair the browsers subscribe against. Generate with `web-push generate-vapid-keys` (one-off; needs the `web-push` CLI, not a dependency) — or take the pair `./galena init` generates with openssl (same curve and encodings, verified against the library). | **Secrets** (the private key; the public key is served to logged-in browsers at `GET /api/push/config`). |
 | `PUSH_VAPID_SUBJECT` | With push | — | Contact URI for the push services, e.g. `mailto:admin@example.com`. | Not a secret. |
 | `PUSH_COMPONENT_JID` | With push | — | The component domain, e.g. `push.galena.localhost`. Must equal the host key written literally under the `ejabberd_service` listener in `infra/ejabberd/ejabberd.yml` (ejabberd does not expand macros in map keys). | Not a secret. |
 | `PUSH_COMPONENT_SECRET` | With push | — | Shared secret with ejabberd's `ejabberd_service` listener. Must equal the container's `EJABBERD_MACRO_PUSH_COMPONENT_SECRET`. | **Secret.** Generate with `openssl rand -base64 32`. |
@@ -191,9 +193,19 @@ Web push through ejabberd's `mod_push` plus an installable web app (PWA). Off by
 
 Wiring a new install (all three must agree, then restart ejabberd so the listener and `mod_push_keepalive` take effect):
 
+Dev stack:
+
 1. `infra/ejabberd/ejabberd.yml` ships the `ejabberd_service` listener on port 5347 (all container interfaces; the compose file publishes it on `127.0.0.1` only) with the host written literally (`push.galena.localhost`) and the `PUSH_COMPONENT_SECRET` macro (`CHANGE_ME` default, never committed).
 2. `infra/docker-compose.dev.yml` already passes `EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}` to ejabberd and publishes `127.0.0.1:5347`. Set `PUSH_COMPONENT_SECRET` in `infra/.env` (git-ignored) to the same value as the server's `PUSH_COMPONENT_SECRET`.
 3. `apps/server/.env` (git-ignored) needs the seven `PUSH_*` variables above plus `XMPP_ARCHIVE_DATABASE_URL`.
+
+Production install (Docker Compose, `./galena init` does all of this):
+
+1. `deploy/ejabberd/ejabberd.yml` ships the same `ejabberd_service` listener (all container interfaces, no host port published — the server is on the same network) plus `mod_push` (`include_sender`/`include_body` off) and `mod_push_keepalive`. The host key is generated at container start from `GALENA_DOMAIN` by `deploy/ejabberd/push-entrypoint.sh` (called from `jwt-entrypoint.sh`); the secret stays the `EJABBERD_MACRO_PUSH_COMPONENT_SECRET` macro. `deploy/docker-compose.yml` passes both `EJABBERD_MACRO_PUSH_COMPONENT_SECRET` and `GALENA_DOMAIN` to ejabberd, and derives the server's `PUSH_COMPONENT_JID` as `push.${GALENA_DOMAIN}` — so all three agree with no manual step.
+2. The server gets the seven `PUSH_*` variables from `deploy/.env` (written by `init`: VAPID pair, `PUSH_VAPID_SUBJECT`, component JID/secret, storage key) plus the already-required `XMPP_ARCHIVE_DATABASE_URL`. Missing push lines mean push off (`PUSH_ENABLED=false`); never write an empty value (`KEY=` renders as an empty string and the schema rejects it at startup — leave the line out instead).
+3. `./galena doctor` checks the pieces (keys present with the right shape, JID matches the domain, and — when the stack runs — that ejabberd accepted the component handshake, which proves the secret and the host both agree). `backup`/`restore` carry `deploy/.env`, so `PUSH_STORAGE_KEY` survives (losing it orphans every device).
+
+Coolify: same variables through the Coolify env UI (`SERVICE_PASSWORD_PUSH_COMPONENT` feeds both secret lines; `PUSH_COMPONENT_JID` and `GALENA_DOMAIN` derive from `XMPP_DOMAIN` — all three must name the same domain). Bare metal: write the listener host and password out literally in `deploy/baremetal/ejabberd.yml` and set the same values in `/etc/galena/galena.env` (see `docs/INSTALL_BARE_METAL.md` §3-§4); the component dials `127.0.0.1:5347`.
 
 Behaviour: one push node per device (`POST /api/push/subscriptions` returns the `{ jid, node }` the browser enables over its own XMPP session — ejabberd requires the enable IQ from the user's session, there is no admin shortcut). Every topic/group room is created with `allow_subscription: true` (older rooms are reconciled with `change_room_option` at component start); members holding a push device are subscribed to the rooms they may see and unsubscribed when they lose access. At send time the component reads the newest archived message, re-checks mute (topics inherit the group General mute) and private-topic visibility with `canSeeTopic`, and sends `{ title: "Ana in Group › Topic", body: first 120 chars when the user's previews setting is on }` capped at 3000 bytes. Expired endpoints (404/410) delete the row; every publish IQ is answered `result` even when dropped. Devices with no send for 90 days list as `inactive`. `POST /api/push/test` (5 per 10 min per user) sends a fixed "Push notifications work on this device." payload. Logs carry ids only — never message text or endpoint URLs.
 

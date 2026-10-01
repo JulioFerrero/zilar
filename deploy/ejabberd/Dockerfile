@@ -20,6 +20,7 @@ FROM ghcr.io/processone/ejabberd:26.07
 
 COPY ejabberd/ejabberd.yml /opt/ejabberd/conf/ejabberd.yml
 COPY --chmod=755 ejabberd/jwt-entrypoint.sh /galena/jwt-entrypoint.sh
+COPY --chmod=755 ejabberd/push-entrypoint.sh /galena/push-entrypoint.sh
 
 ENTRYPOINT ["/bin/sh", "/galena/jwt-entrypoint.sh"]
 CMD ["foreground"]
