@@ -19,8 +19,8 @@ define_macro:
   # in map keys, so it must equal PUSH_COMPONENT_JID in the server env
   # (push.<install domain>). Overridden by
   # EJABBERD_MACRO_PUSH_COMPONENT_SECRET (deploy/docker-compose.yml); the
-  # default is a placeholder that everyone knows, so the component can never
-  # authenticate until the real secret is set.
+  # default is a public placeholder: the install wizard always sets a real
+  # secret, and 'doctor' fails while the placeholder is still in use.
   PUSH_COMPONENT_SECRET: CHANGE_ME_PUSH_COMPONENT_SECRET
   SQL_SERVER: postgres
   SQL_DATABASE: ejabberd

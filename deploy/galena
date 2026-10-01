@@ -365,7 +365,7 @@ SMTP_USER=
 SMTP_PASSWORD=
 MAIL_REPLY_TO="
   fi
-  cat > "$ENV_FILE" <<EOF
+  (umask 077; cat > "$ENV_FILE") <<EOF
 # Galena install env, written by '$PROG init'. Contains live secrets:
 # keep it private (mode 0600). Admin contact: $_admin_email.
 # The first account signs up with that address (see '$PROG create-admin').

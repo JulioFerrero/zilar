@@ -1,7 +1,7 @@
 ---
 id: T-0145
 title: Push in the production deploy (ejabberd component, compose, wizard, docs)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0145-deploy-push
 model: meta/muse-spark-1.3-contributor
@@ -104,3 +104,12 @@ Do NOT run `docker compose up` against the lead's running dev stack, and never r
 - Checks re-run: `push-deploy.test.sh` **20 pass, 0 fail**; `format:check` pass (all files); `lint` pass (oxlint, no findings, re-run this round); `typecheck` not re-run (cached 10/10 last round, no app code touched); `shellcheck` still NOT installed. `git status apps/` clean.
 
 ## Review (written by Claude)
+
+**Verdict:** approved and merged.
+
+### Findings
+- Lead fixes: ejabberd.yml placeholder comment corrected (public placeholder, doctor fails on it); env file now written under `umask 077`. Deploy test: 20 pass, 0 fail.
+
+### Follow-ups
+- Nits 3–5 deferred: `--no-push` still writes `PUSH_COMPONENT_JID`; entrypoint sed pattern is loose; domain validation accepts a `:port` (pre-existing).
+- Live handshake on a real production deploy is untested (needs a real domain).
