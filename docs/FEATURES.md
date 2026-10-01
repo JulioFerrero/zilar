@@ -42,6 +42,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Telegram sticker import | Bring your Telegram packs (needs a bot token in the server config) | server | 🟡 Merged (not yet tried with a real bot) | T-0123 |
 | Mobile GIFs | Render and send GIFs on the phone | | 🧭 Planned | T-0148 |
 | Push in the production deploy | ejabberd component, compose, wizard keys, doctor | | 🧭 Planned | T-0145 |
+| Production storage safety | Sticker volume, backup/restore of both file stores, disk check, upload quotas | deploy, docs | 🧭 Planned | T-0151 |
 | Native iOS push | Push chain through Apple's servers (needs an Apple Developer account) | | 🧭 Planned | T-0005 |
 
 ## 2. Accounts and identity

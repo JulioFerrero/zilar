@@ -203,14 +203,16 @@ Migrations run at server startup, so the new server container migrates the
 database itself. Back up first if the install matters to you:
 
 ```bash
-./deploy/galena backup          # timestamped archive (databases, uploads, .env + manifest)
+./deploy/galena backup          # timestamped archive (databases, uploads, stickers, .env + manifest)
 ```
 
 `backup [dir]` writes `galena-backup-<UTC stamp>.tgz` (mode 0600: it
 contains live secrets) with a `pg_dump` custom-format dump of both
 databases, a `pg_dumpall -g` roles/globals dump (role definitions incl.
 SCRAM password hashes — secret material, hence 0600), the ejabberd
-uploads volume, a copy of `deploy/.env`, and a `manifest.json` with
+uploads volume (`uploads.tgz`: `/opt/ejabberd/upload`) AND the sticker
+volume (`stickers.tgz`: `STICKER_STORAGE_DIR=/data/stickers`), a copy of
+`deploy/.env`, and a `manifest.json` with
 versions (domain, image owner/tag, postgres version, ejabberd status
 line, date) — all taken through the running containers. `restore <archive>` needs an
 explicit `--yes`: it stops the app services, recreates roles/globals
@@ -219,7 +221,7 @@ the *archived* credentials (a restore to a new machine with different
 passwords works), recreates the `audit_log` immutability triggers and
 verifies all three exist before finishing (a missing trigger fails the
 restore loudly — the stack never runs without append-only audit
-protection), restores uploads and the `.env` (the current `.env` is
+protection), restores uploads AND stickers plus the `.env` (the current `.env` is
 kept as `.env.bak-<stamp>`), restarts and waits for health. If any step
 fails, restore recreates the triggers, restarts the stack first and tells
 you what is safe to re-run — never leaves the install down silently. Backups live in
@@ -246,6 +248,37 @@ web app publish no host ports. The runner hub (port 3189, off by default) is
 never published: runners reach it over Tailscale/WireGuard or an SSH tunnel
 to the host. Outbound 443 must work for ACME (Let's Encrypt) http-01/tls-alpn
 validation.
+
+## Storage, quotas, disk
+
+Where each kind of file lives on the Docker stack:
+
+| Kind | Where | Notes |
+|---|---|---|
+| Attachments (XEP-0363) | ejabberd upload volume (`ejabberd-uploads`, `/opt/ejabberd/upload`) | Per-file cap 50 MiB (`max_size`); per-user quotas below |
+| Stickers | sticker volume (`sticker-data`, `STICKER_STORAGE_DIR=/data/stickers` — fixed, always set) | Without the volume every server replace wipes them; `doctor` checks the mount |
+| GIFs | Not stored: proxied (`/api/gifs/media/:token`); a sent GIF becomes a normal attachment | Needs `GIF_PROVIDER` + `GIF_API_KEY` |
+| Voice | Not built | Planned |
+
+Upload quotas: each user may hold 2048 MiB soft / 4096 MiB hard under the
+upload docroot (`mod_http_upload_quota` in `deploy/ejabberd/ejabberd.yml`).
+Past the hard quota ejabberd deletes the user's oldest files down to the
+soft quota; files never age out (`max_days` unset). Retune with
+`UPLOAD_SOFT_QUOTA_MB` / `UPLOAD_HARD_QUOTA_MB` in `deploy/.env`
+(commented defaults in `deploy/.env.example`) — keep the shaper numbers
+in the yml matching (shaper keys are literal, never macros).
+
+`backup` covers both file volumes plus both databases; `doctor` warns at
+80% disk use and fails at 95% (plain words, with what to do), and fails
+when the sticker directory sits on the container layer instead of its
+volume. Full variable reference: `docs/SERVER_CONFIG.md` "File storage,
+backups, quotas, disk".
+
+When to consider S3: ejabberd's upload module and the sticker store
+write only to local disk. One instance with the volumes above is fine
+for hundreds of users; consider S3-compatible storage (ejabberd ships
+`mod_s3_upload`) past one server instance or when growth outruns one
+disk — no S3 code ships here.
 
 ## Runners
 

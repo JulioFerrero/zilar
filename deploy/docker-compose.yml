@@ -87,6 +87,11 @@ services:
       GALENA_DOMAIN: ${GALENA_DOMAIN:?GALENA_DOMAIN is required}
       GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required}
       EJABBERD_MACRO_UPLOAD_URL: https://${GALENA_DOMAIN:?GALENA_DOMAIN is required}/upload
+      # Upload quotas (T-0151): MiB each user may hold under the upload
+      # docroot; past the hard quota ejabberd deletes the user's oldest
+      # files down to the soft quota. Plain numbers (see .env.example).
+      EJABBERD_MACRO_UPLOAD_SOFT_QUOTA_MB: ${UPLOAD_SOFT_QUOTA_MB:-2048}
+      EJABBERD_MACRO_UPLOAD_HARD_QUOTA_MB: ${UPLOAD_HARD_QUOTA_MB:-4096}
     volumes:
       - ejabberd-database:/opt/ejabberd/database
       - ejabberd-uploads:/opt/ejabberd/upload
@@ -132,6 +137,11 @@ services:
       XMPP_WS_PUBLIC_URL: wss://${GALENA_DOMAIN:?GALENA_DOMAIN is required}/xmpp-ws/ws
       GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required}
       GALENA_KEY_ENCRYPTION_KEY: ${GALENA_KEY_ENCRYPTION_KEY:-@empty@}
+      # Where sticker files live: a persistent volume (see `volumes:` below),
+      # fixed absolute path, always set — never relative, never empty.
+      # `init` writes no sticker line (the default here is final); a manual
+      # edit of this value orphans previously uploaded stickers.
+      STICKER_STORAGE_DIR: /data/stickers
       # Compose has no way to say "unset if empty": an empty LITELLM_BASE_URL
       # fails the `z.url()` schema, so default to an unreachable placeholder
       # URL instead. The AI module treats "no master key" as "no gateway",
@@ -181,6 +191,12 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+    # Sticker files (STICKER_STORAGE_DIR above) live on this named volume,
+    # not the container layer: without it every server replace wipes them.
+    # The server starts as non-root (see apps/server/Dockerfile), so the
+    # mount must stay writable by that user (default named-volume ownership).
+    volumes:
+      - sticker-data:/data/stickers
     networks:
       - galena
 
@@ -246,5 +262,8 @@ volumes:
   postgres-data:
   ejabberd-database:
   ejabberd-uploads:
+  # Sticker files (STICKER_STORAGE_DIR=/data/stickers on `server` above).
+  # Backed up by `./galena backup` together with the uploads volume.
+  sticker-data:
   caddy-data:
   caddy-config:

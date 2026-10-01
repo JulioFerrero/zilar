@@ -175,6 +175,14 @@ shaper_rules:
   max_user_offline_messages:
     5000: admin
     100: all
+  # Upload quotas (T-0151): MiB each user may hold under the upload docroot.
+  # Past the hard quota ejabberd deletes the user's oldest files down to
+  # the soft quota; past the soft quota nothing is deleted yet. Same
+  # 2048/4096 defaults as the Docker config; edit the numbers to retune.
+  soft_upload_quota:
+    2048: all
+  hard_upload_quota:
+    4096: all
   c2s_shaper:
     none: admin
     normal: all
@@ -231,6 +239,12 @@ modules:
       'Access-Control-Allow-Origin': '*'
       'Access-Control-Allow-Methods': 'GET,HEAD,PUT,OPTIONS'
       'Access-Control-Allow-Headers': 'Content-Type'
+  # Upload quotas (T-0151): stock module, always on — same layout as the
+  # Docker config (deploy/ejabberd/ejabberd.yml): 2048 MiB soft / 4096 MiB
+  # hard per user, oldest files trimmed first past the hard quota, no
+  # age-out (`max_days` unset). To change the numbers, edit the two shaper
+  # rules below (shaper keys are literal, never macros — verified live).
+  mod_http_upload_quota: {}
   mod_stream_mgmt:
     resend_on_timeout: if_offline
   mod_carboncopy: {}
