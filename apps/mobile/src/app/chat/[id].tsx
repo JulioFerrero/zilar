@@ -539,9 +539,14 @@ function Chat() {
                 sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
                 cancelReply();
               }}
+              onSendSticker={(sticker) => {
+                sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
+                cancelReply();
+              }}
               replyTo={replyTo}
               onCancelReply={cancelReply}
               onTyping={() => sendTyping(chat.id)}
+              demoPacks={demoPacks}
             />
           ) : (
             <Composer
@@ -550,9 +555,14 @@ function Chat() {
                 sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
                 cancelReply();
               }}
+              onSendSticker={(sticker) => {
+                sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
+                cancelReply();
+              }}
               replyTo={replyTo}
               onCancelReply={cancelReply}
               onTyping={() => sendTyping(chat.id)}
+              demoPacks={demoPacks}
             />
           )}
         </KeyboardAvoidingView>

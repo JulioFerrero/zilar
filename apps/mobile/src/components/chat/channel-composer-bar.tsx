@@ -7,6 +7,8 @@ import { channelViewerRole, isChannelChat, mayPostInChannel } from '@/lib/channe
 import { mutedUntilFor } from '@/lib/chat-prefs';
 import type { ChatSummary, ReplyRef } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
+import type { StickerPack } from '@/lib/stickers';
+import type { SendStickerChoice } from '@/store/types';
 import { Composer } from './composer';
 
 type ChannelComposerProps = {
@@ -17,6 +19,9 @@ type ChannelComposerProps = {
   onCancelReply: () => void;
   onTyping?: () => void;
   onSend: (text: string) => void;
+  onSendSticker: (sticker: SendStickerChoice) => void;
+  /** Demo packs in mock mode (forwarded to the composer). */
+  demoPacks?: StickerPack[];
 };
 
 /**
@@ -39,6 +44,8 @@ export function ChannelComposerBar({
   onCancelReply,
   onTyping,
   onSend,
+  onSendSticker,
+  demoPacks,
 }: ChannelComposerProps) {
   const insets = useSafeAreaInsets();
   const currentUserId = useChatStore((state) => state.currentUserId);
@@ -57,6 +64,8 @@ export function ChannelComposerBar({
       <Composer
         title={chat.title}
         onSend={onSend}
+        onSendSticker={onSendSticker}
+        demoPacks={demoPacks}
         replyTo={replyTo}
         onCancelReply={onCancelReply}
         onTyping={onTyping}
