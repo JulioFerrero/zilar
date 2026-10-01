@@ -256,4 +256,29 @@ describe('NotificationsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Send a test notification/ }));
     expect(await screen.findByText(/Sent — close this tab/)).toBeTruthy();
   });
+
+  it('clears the local handle when this device is removed from the list', async () => {
+    stubBrowserGlobals();
+    stubFetch([
+      {
+        id: 'device-1',
+        userAgent: 'Test · Browser',
+        createdAt: '2026-09-30T00:00:00Z',
+        lastUsedAt: null,
+        inactive: false,
+      },
+    ]);
+    window.localStorage.setItem(
+      'galena:pushDevice',
+      JSON.stringify({ id: 'device-1', node: 'p-device-1' }),
+    );
+    renderApp('/settings/notifications');
+
+    expect(await screen.findByText(/Push is on for this device/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    // The row is gone and the page no longer treats this browser as the
+    // stored device — the enable button returns immediately.
+    expect(await screen.findByRole('button', { name: /Enable on this device/ })).toBeTruthy();
+    expect(window.localStorage.getItem('galena:pushDevice')).toBeNull();
+  });
 });

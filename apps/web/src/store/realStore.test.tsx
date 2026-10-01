@@ -436,6 +436,67 @@ describe('createRealChatStore', () => {
     );
   });
 
+  it('re-syncs the app badge when mute changes the total (round 5)', async () => {
+    const badges: number[] = [];
+    const navigatorDescriptor = Object.getOwnPropertyDescriptor(window.navigator, 'setAppBadge');
+    const clearDescriptor = Object.getOwnPropertyDescriptor(window.navigator, 'clearAppBadge');
+    Object.defineProperty(window.navigator, 'setAppBadge', {
+      value: async (count: number) => {
+        badges.push(count);
+      },
+      configurable: true,
+    });
+    Object.defineProperty(window.navigator, 'clearAppBadge', {
+      value: async () => {
+        badges.push(0);
+      },
+      configurable: true,
+    });
+    try {
+      const putChatPref = vi.fn(
+        async (): Promise<import('@/lib/api').ChatPref | null> => null,
+      );
+      const { store, xmpp } = await setup({ putChatPref });
+
+      // A live message bumps Ana to unread 1 and the badge follows.
+      xmpp.emit('message', message({ chatJid: 'ana@galena.test', body: 'live badge' }));
+      await flush();
+      expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.unread).toBe(1);
+      expect(badges.at(-1)).toBe(1);
+
+      // Muting drops Ana out of the badge total.
+      putChatPref.mockImplementationOnce(async () => ({
+        chatJid: 'ana@galena.test',
+        mutedUntil: '2026-09-28T13:00:00.000Z',
+        archived: false,
+        pinnedAt: null,
+        updatedAt: '2026-09-28T12:00:00.000Z',
+      }));
+      await store.getState().setMuted('ana@galena.test', 'hour');
+      expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.muted).toBe(
+        true,
+      );
+      expect(badges.at(-1)).toBe(0);
+
+      // Unmuting brings the unread back into the badge.
+      await store.getState().setMuted('ana@galena.test', null);
+      expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.muted).toBe(
+        false,
+      );
+      expect(badges.at(-1)).toBe(1);
+    } finally {
+      if (navigatorDescriptor === undefined) {
+        delete (window.navigator as { setAppBadge?: unknown }).setAppBadge;
+      } else {
+        Object.defineProperty(window.navigator, 'setAppBadge', navigatorDescriptor);
+      }
+      if (clearDescriptor === undefined) {
+        delete (window.navigator as { clearAppBadge?: unknown }).clearAppBadge;
+      } else {
+        Object.defineProperty(window.navigator, 'clearAppBadge', clearDescriptor);
+      }
+    }
+  });
   it('mutes and archives with rollback on failure', async () => {
     const putChatPref = vi.fn(async () => null);
     const { store } = await setup({ putChatPref });

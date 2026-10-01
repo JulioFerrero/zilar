@@ -152,6 +152,12 @@ pnpm build
 - **N2:** `registerPushDevice` failure now rolls back the live browser subscription via `unsubscribeBrowser` (the enable-IQ path already did both). New test: failed registration removes the `PushManager` subscription, stores nothing, shows the error.
 - Checks (scoped, `--maxWorkers=2`): `format:check` pass (only untracked PREREVIEW.md warns), `lint` pass, server + web `typecheck` pass; server service + routes + component + admin-client 53 pass, web NotificationsPage + push lib 17 pass.
 
+### Round 7 — lead review round 5 (2 should-fixes + 1 nit; no new migration)
+- **1. Own room messages no longer self-notify:** `resolveRoomCandidate` skips when `row.nick` equals the user's subscription nick (`localpartFor(userId)` — the same value `syncPushSubscriptionsForUser` subscribes with, never a display name), mirroring the DM `stanzaFrom` check. New test: newest row from self is skipped while an older member row notifies with the right title/body.
+- **2. Badge re-syncs on mute change:** `updatePref` calls `syncBadge()` on the optimistic paint, on rollback, and on server settle; `applyPrefs` too. New `realStore` test stubs `navigator.setAppBadge/clearAppBadge`: live message → badge 1, mute → 0, unmute → 1.
+- **3. Nit:** `removeOtherDevice` clears `storedDevice` + localStorage when the removed id is this device (previously only `load()` reconciled on mount). New test: removing this device from the list brings back the Enable button immediately with empty storage.
+- Checks (scoped, `--maxWorkers=2`): `format:check` pass (only untracked PREREVIEW.md warns), `lint` pass, server + web `typecheck` pass; server service 20 pass, web realStore + NotificationsPage 117 pass.
+
 ## Review (written by Claude)
 
 **Verdict:**

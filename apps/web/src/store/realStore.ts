@@ -2752,6 +2752,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         chatPrefs: byJid,
         chats: applyChatPrefs(state.chats, prefs, now().getTime()),
       }));
+      void syncBadge().catch(() => undefined);
     }
 
     async function updatePref(chatId: string, patch: PutChatPrefInput): Promise<void> {
@@ -2790,6 +2791,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         chatPrefs: next,
         chats: applyChatPrefs(state.chats, Object.values(next), nowDate.getTime()),
       }));
+      // Muting changes the badge total (and unmuting restores it): re-sync
+      // like recordRead does, on the optimistic paint and on every settle.
+      void syncBadge().catch(() => undefined);
       let saved: ChatPref | null;
       try {
         saved = await api.putChatPref(chatId, patch);
@@ -2799,6 +2803,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           chatPrefs: previous,
           chats: applyChatPrefs(state.chats, Object.values(previous), now().getTime()),
         }));
+        void syncBadge().catch(() => undefined);
         throw error;
       }
       set((state) => {
@@ -2813,6 +2818,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           chats: applyChatPrefs(state.chats, Object.values(merged), now().getTime()),
         };
       });
+      void syncBadge().catch(() => undefined);
     }
 
     return {

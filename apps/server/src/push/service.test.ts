@@ -148,6 +148,53 @@ describe('push send-time service', () => {
     expect(context.logOutput()).not.toContain('push.example.com');
   });
 
+  it('skips your own room message but notifies another member (round 5)', async () => {
+    const app = testApp(context);
+    const ana = await bootstrapUser(context, app, 'ana@example.com');
+    const bob = await contactOf(context, app, ana.id, 'bob@example.com');
+    const groupId = randomUUID();
+    const room = 'gownmessage0000001';
+    await context.db.insert(groups).values({
+      id: groupId,
+      roomLocalpart: room,
+      title: 'Own nick group',
+      createdBy: ana.id,
+    });
+    await context.db.insert(groupMembers).values([
+      { groupId, userId: ana.id, role: 'owner' },
+      { groupId, userId: bob.id, role: 'member' },
+    ]);
+    await context.db.insert(topics).values({
+      id: randomUUID(),
+      groupId,
+      name: 'General',
+      glyph: 'G',
+      roomLocalpart: room,
+      visibility: 'public',
+      kind: 'chat',
+      status: 'open',
+      isGeneral: true,
+      createdBy: ana.id,
+    });
+    await registerDevice(bob.id, 'p-bob-own');
+    const roomJid = `${room}@${MUC}`;
+    // Newest row is Bob's own message (sent from another session while this
+    // device was offline): skipped, never notified. The older row from Ana
+    // notifies normally.
+    archiveRows = [
+      roomRow(roomJid, localpartFor(bob.id), 'my own words', 'room-own'),
+      roomRow(roomJid, 'Ana', 'hello bob', 'room-other'),
+    ];
+
+    const outcome = await handleIncomingPush(deps(), { node: 'p-bob-own', from: TEST_XMPP_DOMAIN });
+    expect(outcome).toMatchObject({ kind: 'sent', userId: bob.id });
+    expect(sent).toHaveLength(1);
+    expect(JSON.parse(sent[0]!.payload)).toMatchObject({
+      title: 'Ana in Own nick group',
+      body: 'hello bob',
+    });
+  });
+
   it('notifies a group room as who-in-where', async () => {
     const app = testApp(context);
     const ana = await bootstrapUser(context, app, 'ana@example.com');

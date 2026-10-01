@@ -287,6 +287,13 @@ export function NotificationsPage() {
     setErrorMessage('');
     try {
       await removePushDevice(id);
+      // Removing this device from the list clears the local handle too —
+      // otherwise the page would keep offering Disable/Test for a row that
+      // no longer exists until the next load reconciles it.
+      if (storedDevice !== null && storedDevice.id === id) {
+        writeStoredDevice(null);
+        setStoredDevice(null);
+      }
       await refreshDevices();
     } catch (error) {
       setErrorMessage(friendlyError(error));

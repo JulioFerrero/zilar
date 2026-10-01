@@ -5,6 +5,7 @@ import { chatPrefs, groups, topics } from '../db/schema';
 import { allowedArchives, type ArchivePool, type SearchOwner } from '../search/service';
 import { stanzaFrom } from '../search/routes';
 import { canSeeTopic } from '../topics/access';
+import { localpartFor } from '../xmpp/provisioning';
 import type { PushCipher } from './crypto';
 import { buildPushPayload, type PushPayload, type ResolvedPushMessage } from './payload';
 import type { PushNotification } from './protocol';
@@ -364,6 +365,14 @@ async function resolveRoomCandidate(
   }
   const [group] = await deps.db.select().from(groups).where(eq(groups.id, topic.groupId));
   if (group === undefined) {
+    return { status: 'skip' };
+  }
+  // The user's own room messages share the same archive scope (sent from
+  // another session while this device is offline); only other members'
+  // messages notify. The nick is the stable account localpart — the same
+  // value `syncPushSubscriptionsForUser` subscribes with — never compared
+  // against a display name.
+  if (row.nick !== '' && row.nick === localpartFor(userId)) {
     return { status: 'skip' };
   }
   const now = (deps.now ?? (() => new Date()))();
