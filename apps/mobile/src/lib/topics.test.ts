@@ -144,6 +144,54 @@ describe('summariesForTopicsEntry', () => {
     expect(rows[0]?.topic).toBeUndefined();
   });
 
+  it('maps a channel feed row with the channel fields', () => {
+    const entry: ChatEntry = {
+      kind: 'group',
+      chatJid: 'acme@rooms.galena.test',
+      title: 'Acme Announcements',
+      groupId: 'g-acme',
+      memberCount: 4,
+      role: 'member',
+      chatKind: 'channel',
+      subscriberCount: 4,
+      description: 'Release notes.',
+      topics: [
+        {
+          ...topicWire(),
+          id: 't-feed',
+          name: 'General',
+          isGeneral: true,
+          chatJid: 'acme@rooms.galena.test',
+        },
+      ],
+    };
+    const rows = summariesForTopicsEntry(entry);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      chatKind: 'channel',
+      subscriberCount: 4,
+      description: 'Release notes.',
+      myRole: 'member',
+    });
+  });
+
+  it('keeps a legacy channel row for an older server without topics', () => {
+    const entry: ChatEntry = {
+      kind: 'group',
+      chatJid: 'acme@rooms.galena.test',
+      title: 'Acme Announcements',
+      groupId: 'g-acme',
+      memberCount: 4,
+      role: 'admin',
+      chatKind: 'channel',
+      subscriberCount: 4,
+      description: null,
+    };
+    const rows = summariesForTopicsEntry(entry);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ chatKind: 'channel', myRole: 'admin' });
+  });
+
   it('marks topic chats', () => {
     expect(isTopicChat(topicChat('a'))).toBe(true);
     expect(isTopicChat(chat('b'))).toBe(false);
@@ -255,6 +303,24 @@ describe('groupRowFor', () => {
 
   it('returns undefined for an empty group', () => {
     expect(groupRowFor('g1', [])).toBeUndefined();
+  });
+
+  it('marks a channel row with the subscriber count', () => {
+    const chats = [
+      topicChat('feed', {
+        title: 'General',
+        chatKind: 'channel',
+        subscriberCount: 4,
+        description: 'Release notes.',
+        groupTitle: 'Acme Announcements',
+        topic: { ...topicChat('feed').topic!, isGeneral: true, id: 't-feed' },
+      }),
+    ];
+    const row = groupRowFor('g-acme', chats);
+    expect(row?.title).toBe('Acme Announcements');
+    expect(row?.chatKind).toBe('channel');
+    expect(row?.subscriberCount).toBe(4);
+    expect(row?.description).toBe('Release notes.');
   });
 });
 

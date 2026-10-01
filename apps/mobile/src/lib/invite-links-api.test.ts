@@ -92,6 +92,24 @@ describe('createInviteLinksApi', () => {
     });
   });
 
+  it('parses the preview kind for channels', async () => {
+    const api = apiFor(async () =>
+      jsonResponse({
+        groupTitle: 'Acme Announcements',
+        memberCount: 4,
+        alreadyMember: false,
+        kind: 'channel',
+      }),
+    );
+
+    await expect(api.previewJoinLink('a'.repeat(64))).resolves.toEqual({
+      groupTitle: 'Acme Announcements',
+      memberCount: 4,
+      alreadyMember: false,
+      kind: 'channel',
+    });
+  });
+
   it('throws a typed error on a failed request', async () => {
     const api = apiFor(async () =>
       jsonResponse(

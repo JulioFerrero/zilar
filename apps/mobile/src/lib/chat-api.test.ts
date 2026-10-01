@@ -131,6 +131,105 @@ describe('createChatApi', () => {
     await expect(api.getGroup('g1')).rejects.toMatchObject({ code: 'invalid_response' });
   });
 
+  it('parses the channel fields on entries and the detail', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/chats')) {
+        return jsonResponse({
+          chats: [
+            {
+              kind: 'group',
+              chatJid: 'acme@rooms.galena.test',
+              title: 'Acme Announcements',
+              groupId: 'g-acme',
+              memberCount: 4,
+              role: 'member',
+              chatKind: 'channel',
+              subscriberCount: 4,
+              description: 'Release notes.',
+            },
+          ],
+        });
+      }
+      return jsonResponse({
+        id: 'g-acme',
+        title: 'Acme Announcements',
+        createdBy: 'u-rita',
+        kind: 'channel',
+        description: 'Release notes.',
+        members: [],
+      });
+    });
+    const api = createChatApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.getChats()).resolves.toEqual([
+      {
+        kind: 'group',
+        chatJid: 'acme@rooms.galena.test',
+        title: 'Acme Announcements',
+        groupId: 'g-acme',
+        memberCount: 4,
+        role: 'member',
+        chatKind: 'channel',
+        subscriberCount: 4,
+        description: 'Release notes.',
+      },
+    ]);
+    await expect(api.getGroup('g-acme')).resolves.toMatchObject({
+      kind: 'channel',
+      description: 'Release notes.',
+    });
+  });
+
+  it('still parses older servers without the channel fields', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        chats: [
+          {
+            kind: 'group',
+            chatJid: 'team@rooms.galena.test',
+            title: 'Team',
+            groupId: 'g1',
+            memberCount: 3,
+            role: 'member',
+          },
+        ],
+      }),
+    );
+    const api = createChatApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.getChats()).resolves.toEqual([
+      {
+        kind: 'group',
+        chatJid: 'team@rooms.galena.test',
+        title: 'Team',
+        groupId: 'g1',
+        memberCount: 3,
+        role: 'member',
+      },
+    ]);
+  });
+
+  it('rejects a group entry with a malformed channel kind', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        chats: [
+          {
+            kind: 'group',
+            chatJid: 'team@rooms.galena.test',
+            title: 'Team',
+            groupId: 'g1',
+            memberCount: 3,
+            role: 'member',
+            chatKind: 'broadcast',
+          },
+        ],
+      }),
+    );
+    const api = createChatApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.getChats()).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
   it('throws a typed error on a failed request', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({ error: { code: 'unauthorized', message: 'No session' } }, 401),

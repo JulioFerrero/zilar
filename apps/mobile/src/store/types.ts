@@ -301,6 +301,32 @@ export interface ChatStoreState {
   ) => Promise<CreatedInviteLink>;
   /** Revokes an invite link. Idempotent; rejects on failure. */
   revokeInviteLink: (groupId: string, linkId: string) => Promise<void>;
+  /**
+   * Creates a channel (T-0144, title + optional description ≤ 300) and
+   * refreshes the chat list. Resolves with the new group id. Rejects on
+   * failure.
+   */
+  createChannel: (input: { title: string; description?: string }) => Promise<string>;
+  /**
+   * Leaves a channel (T-0144): removes the caller through the member route
+   * and refreshes the chat list. Rejects on failure.
+   */
+  leaveChannel: (chatId: string) => Promise<void>;
+  /**
+   * Reads the members slice for one group (T-0144): the full audience for
+   * owners/admins, the owner/admins slice for channel subscribers (never the
+   * audience). Rejects on failure.
+   */
+  listChannelMembers: (
+    groupId: string,
+  ) => Promise<{ userId: string; name: string; role: 'owner' | 'admin' | 'member' }[]>;
+  /**
+   * Promotes a subscriber to admin or demotes one back (T-0144, owner only,
+   * channels only). Refreshes the detail and the chat list, so the acting
+   * device's rows (myRole, counts) match server truth and the composer bar
+   * flips. The last-admin demotion rejects. Rejects on failure.
+   */
+  changeChannelRole: (chatId: string, userId: string, role: 'admin' | 'member') => Promise<void>;
   /** Previews a join-by-link token: group title and member count only. */
   previewJoinLink: (token: string) => Promise<JoinPreview>;
   /**

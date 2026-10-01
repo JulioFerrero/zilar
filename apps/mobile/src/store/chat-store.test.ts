@@ -109,9 +109,9 @@ describe('chat store', () => {
     expect(firstUnread?.kind === 'message' ? firstUnread.message.id : undefined).toBe('ana-15');
   });
 
-  it('ships nine mock chats with the Dev team group replaced by its seven topics', () => {
+  it('ships nine mock chats with the Dev team group replaced by its seven topics, plus two channels', () => {
     const store = createChatStore();
-    expect(store.getState().chats).toHaveLength(16);
+    expect(store.getState().chats).toHaveLength(18);
     expect(store.getState().messages('ana').length).toBeGreaterThan(10);
     expect(store.getState().messages('dev-ai').at(-1)?.text).toBe('Tests pass. Merge?');
   });
@@ -153,14 +153,14 @@ describe('chat store', () => {
     vi.advanceTimersByTime(MOCK_LOAD_DELAY_MS);
 
     expect(store.getState().chatsLoad).toBe('loaded');
-    expect(store.getState().chats).toHaveLength(16);
+    expect(store.getState().chats).toHaveLength(18);
     expect(store.getState().historyLoad['ana']).toBe('loaded');
   });
 
   it('error keeps its chats but reports the failures', () => {
     const store = createChatStore(undefined, 'error');
     expect(store.getState().chatsLoad).toBe('error');
-    expect(store.getState().chats).toHaveLength(16);
+    expect(store.getState().chats).toHaveLength(18);
     expect(store.getState().historyLoad['ana']).toBe('error');
   });
 

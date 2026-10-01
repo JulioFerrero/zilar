@@ -1,4 +1,4 @@
-import { ChevronLeft, Lock, MoreVertical, Search } from 'lucide-react-native';
+import { ChevronLeft, Lock, Megaphone, MoreVertical, Search } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
@@ -65,6 +65,11 @@ export function ChatHeader({
         <Text numberOfLines={1} className="shrink text-[15px] font-semibold text-foreground">
           {chat.title}
         </Text>
+        {chat.chatKind === 'channel' ? (
+          <View accessibilityRole="image" accessibilityLabel="Channel">
+            <Megaphone size={14} color={MUTED_FOREGROUND[scheme]} />
+          </View>
+        ) : null}
         {isTopic && chat.topic?.visibility === 'private' ? (
           <View
             accessibilityRole="image"

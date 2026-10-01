@@ -20,6 +20,7 @@ import {
   mockTopicAisById,
   mockTopicRolesOf,
 } from '../mock/topics';
+import { mockChannelChats, mockChannelDetail, resetMockChannels } from '../mock/channel';
 import { mockListPins, resetMockPins } from '../mock/pins';
 import { resetMockChatPrefs } from '../mock/chat-prefs';
 import { mockParamAllowed } from '../mock/gate';
@@ -91,6 +92,10 @@ type ChatStoreData = Omit<
   | 'listInviteLinks'
   | 'createInviteLink'
   | 'revokeInviteLink'
+  | 'createChannel'
+  | 'leaveChannel'
+  | 'listChannelMembers'
+  | 'changeChannelRole'
   | 'previewJoinLink'
   | 'joinByLink'
   | 'groupRoles'
@@ -243,8 +248,19 @@ export function createChatStore(
     // selector returns the same reference until a write bumps it (a fresh
     // copy on every call would loop React forever).
     let rolesSnapshot: { revision: number; roles: CustomGroupRole[] } | undefined;
-    let detailSnapshot:
-      { revision: number; value: ReturnType<typeof mockDevteamGroupDetail> } | undefined;
+    // T-0144: channels share this cache (one entry per group id, so screens
+    // reading different groups never evict each other) — `mockChannelDetail`
+    // returns the devteam shape plus `kind`/`description`, so the union
+    // covers both.
+    const detailSnapshots = new Map<
+      string,
+      {
+        revision: number;
+        value:
+          | ReturnType<typeof mockDevteamGroupDetail>
+          | NonNullable<ReturnType<typeof mockChannelDetail>>;
+      }
+    >();
     const topicRolesSnapshots = new Map<
       string,
       {
@@ -287,11 +303,22 @@ export function createChatStore(
     };
     // Each mock store starts from the seeded mock data (T-0135): the pin
     // seeds and any pref writes from an earlier store never leak across.
+    // T-0144: channel role writes reset too.
     resetMockChatPrefs();
     resetMockPins();
+    resetMockChannels();
     for (const chatId of Object.keys(mockPinsRead)) {
       delete mockPinsRead[chatId];
     }
+    // T-0144: the feed rows re-read their `myRole` from the channel module
+    // after a role write below, so a promoted viewer flips the composer.
+    // In-memory only, like the rest of the mock store.
+    const refreshMockChannelChats = () => {
+      const byId = new Map(mockChannelChats().map((chat) => [chat.id, chat]));
+      set((state) => ({
+        chats: state.chats.map((chat) => byId.get(chat.id) ?? chat),
+      }));
+    };
     const setStatus = (chatId: string, messageId: string, status: MessageStatus) => {
       set((state) => {
         const messages = state.messagesByChat[chatId];
@@ -362,13 +389,16 @@ export function createChatStore(
       groupDetailsRevision: 0,
       groupDetail: (groupId) => {
         const revision = get().groupDetailsRevision;
-        if (groupId !== 'g-devteam') {
-          return undefined;
+        if (groupId === 'g-devteam' || groupId === 'g-acme' || groupId === 'g-studio') {
+          let snapshot = detailSnapshots.get(groupId);
+          if (snapshot?.revision !== revision) {
+            const channel = mockChannelDetail(groupId);
+            snapshot = { revision, value: channel ?? mockDevteamGroupDetail() };
+            detailSnapshots.set(groupId, snapshot);
+          }
+          return snapshot.value;
         }
-        if (detailSnapshot?.revision !== revision) {
-          detailSnapshot = { revision, value: mockDevteamGroupDetail() };
-        }
-        return detailSnapshot.value;
+        return undefined;
       },
       refreshGroupDetail: () => {},
       ensureGroupDetail: () => {},
@@ -625,6 +655,61 @@ export function createChatStore(
       ): Promise<CreatedInviteLink> => inviteLinks.create(groupId, input),
       revokeInviteLink: async (groupId: string, linkId: string): Promise<void> => {
         inviteLinks.revoke(groupId, linkId);
+      },
+      createChannel: async () => {
+        throw new Error('createChannel is not available in the mock store');
+      },
+      leaveChannel: async (chatId) => {
+        // T-0144: mock channels are topic groups (see `mock/channel.ts`);
+        // leaving removes the feed row like `archiveTopic` removes a topic.
+        set((state) => ({
+          chats: state.chats.filter((entry) => entry.id !== chatId),
+        }));
+      },
+      listChannelMembers: async (groupId) => {
+        // T-0144: the mock detail mirrors the server rule — managers read
+        // the full audience, subscribers the owner/admins slice.
+        const detail = get().groupDetail(groupId);
+        const meId = get().currentUserId;
+        const myRole = detail?.members.find((member) => member.userId === meId)?.role;
+        const members = detail?.members ?? [];
+        if (myRole === 'owner' || myRole === 'admin') {
+          return members.map((member) => ({
+            userId: member.userId,
+            name: member.name,
+            role: member.role,
+          }));
+        }
+        return members
+          .filter((member) => member.role !== 'member')
+          .map((member) => ({
+            userId: member.userId,
+            name: member.name,
+            role: member.role,
+          }));
+      },
+      changeChannelRole: async (chatId, userId, role) => {
+        // T-0144: in-memory promote/demote on the channel detail snapshot.
+        // The mock snapshot is rebuilt from the seed per revision, so the
+        // write must land in module state — delegate to `mock/channel.ts`.
+        const { mockChangeChannelRole } = await import('../mock/channel');
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const groupId = chat?.groupId;
+        if (groupId === undefined) {
+          throw new Error('This channel is not available yet.');
+        }
+        const myRole = get()
+          .groupDetail(groupId)
+          ?.members.find((member) => member.userId === get().currentUserId)?.role;
+        if (myRole !== 'owner') {
+          throw Object.assign(new Error('Only group owners and admins can change roles.'), {
+            status: 404,
+            code: 'not_found',
+          });
+        }
+        mockChangeChannelRole(groupId, userId, role);
+        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
+        refreshMockChannelChats();
       },
       previewJoinLink: async (token: string): Promise<JoinPreview> => inviteLinks.preview(token),
       joinByLink: async (token: string): Promise<JoinResult> => inviteLinks.join(token),

@@ -102,9 +102,20 @@ export function joinPressFailure(error: unknown, preview: JoinPreview): JoinLink
   return joinLinkViewFor({ failed: true, rateLimited: false });
 }
 
-/** The preview subtitle: "6 members" (never member names). */
+/** The preview subtitle: "6 members" (never member names) — "N subscribers" for a channel. */
 export function joinPreviewSubtitle(preview: JoinPreview): string {
+  if (preview.kind === 'channel') {
+    return `${preview.memberCount} ${preview.memberCount === 1 ? 'subscriber' : 'subscribers'}`;
+  }
   return `${preview.memberCount} ${preview.memberCount === 1 ? 'member' : 'members'}`;
+}
+
+/** The join button title: "Join channel" for a channel, "Join the group" else. */
+export function joinButtonTitle(preview: JoinPreview): string {
+  if (preview.alreadyMember) {
+    return preview.kind === 'channel' ? 'Open the channel' : 'Open the group';
+  }
+  return preview.kind === 'channel' ? 'Join the channel' : 'Join the group';
 }
 
 // Re-exported for the route: the implementation lives UI-free in
@@ -201,13 +212,13 @@ export function JoinLinkBody(props: {
       ) : null}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={preview.alreadyMember ? 'Open the group' : 'Join the group'}
+        accessibilityLabel={preview.alreadyMember ? 'Open the group' : joinButtonTitle(preview)}
         disabled={busy}
         onPress={onJoin}
         className="mt-5 items-center rounded-full bg-accent px-4 py-2.5 active:opacity-90 disabled:opacity-60"
       >
         <Text className="text-[15px] font-medium text-accent-foreground">
-          {busy ? 'Joining…' : preview.alreadyMember ? 'Open the group' : 'Join the group'}
+          {busy ? 'Joining…' : joinButtonTitle(preview)}
         </Text>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Cancel" onPress={onCancel}>

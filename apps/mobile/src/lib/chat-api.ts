@@ -26,6 +26,15 @@ export type ChatEntry =
       groupId: string;
       memberCount: number;
       role: GroupRole;
+      // T-0144: `group` behaves as before; `channel` is the broadcast feed
+      // (its General topic is the feed). Optional so older servers still
+      // parse; the store maps the feed row from the General topic with the
+      // channel fields (chatKind, subscriberCount, description, myRole).
+      chatKind?: 'group' | 'channel';
+      // T-0144: the same count under Telegram's name, for channels only.
+      subscriberCount?: number;
+      // T-0144: the channel's short blurb. Optional so older payloads parse.
+      description?: string | null;
       // T-0108: a group entry may carry its visible `topics` (archived
       // excluded). Optional so older servers still parse; the store maps such
       // a group to one row per topic (General keeps the old chat id).
@@ -50,6 +59,11 @@ export interface GroupDetail {
   title: string;
   createdBy: string;
   membersCanCreateTopics?: boolean;
+  // T-0144: `channel` is the broadcast feed (its General topic is the feed).
+  // Optional so older servers still parse (treated as a group).
+  kind?: 'group' | 'channel';
+  // T-0144: the channel's short blurb. Optional so older payloads parse.
+  description?: string | null;
   members: GroupMember[];
   ais: GroupAi[];
 }
@@ -151,6 +165,28 @@ function parseChatEntry(value: unknown): ChatEntry | null {
     const memberCount = value['memberCount'];
     const role = value['role'];
     if (!isString(groupId) || typeof memberCount !== 'number' || !isGroupRole(role)) return null;
+    // T-0144: the channel fields, so the store maps the feed row with
+    // `chatKind`/`subscriberCount`/`description`/`myRole` like web. Absent
+    // on older servers (still parses, as before); malformed channel fields
+    // reject the entry rather than rendering half of it.
+    const rawChatKind = value['chatKind'];
+    let chatKind: 'group' | 'channel' | undefined;
+    if (rawChatKind !== undefined) {
+      if (rawChatKind !== 'group' && rawChatKind !== 'channel') return null;
+      chatKind = rawChatKind;
+    }
+    const rawSubscriberCount = value['subscriberCount'];
+    let subscriberCount: number | undefined;
+    if (rawSubscriberCount !== undefined) {
+      if (typeof rawSubscriberCount !== 'number') return null;
+      subscriberCount = rawSubscriberCount;
+    }
+    const rawDescription = value['description'];
+    let description: string | null | undefined;
+    if (rawDescription !== undefined) {
+      if (rawDescription !== null && !isString(rawDescription)) return null;
+      description = rawDescription;
+    }
     // T-0139: keep the server's `topics` on the entry (validated with
     // `parseTopic`, the same shape the topics API uses — never trust the
     // wire; malformed rows are dropped, never rendered), so the store maps
@@ -176,6 +212,9 @@ function parseChatEntry(value: unknown): ChatEntry | null {
       memberCount,
       role,
       ...(topics === undefined ? {} : { topics }),
+      ...(chatKind === undefined ? {} : { chatKind }),
+      ...(subscriberCount === undefined ? {} : { subscriberCount }),
+      ...(description === undefined ? {} : { description }),
     };
   }
   return null;
@@ -221,6 +260,21 @@ function parseGroupDetail(value: unknown): GroupDetail | null {
       : value['membersCanCreateTopics'] === false
         ? false
         : undefined;
+  // T-0144: the channel flag + blurb. Optional so older servers still parse
+  // (treated as a group); malformed channel fields reject the detail rather
+  // than rendering half of it.
+  const rawKind = value['kind'];
+  let kind: 'group' | 'channel' | undefined;
+  if (rawKind !== undefined) {
+    if (rawKind !== 'group' && rawKind !== 'channel') return null;
+    kind = rawKind;
+  }
+  const rawDescription = value['description'];
+  let description: string | null | undefined;
+  if (rawDescription !== undefined) {
+    if (rawDescription !== null && !isString(rawDescription)) return null;
+    description = rawDescription;
+  }
   // The group AIs ride along when present, so the new-topic sheet can offer
   // the viewer's own unticked; ignored when absent.
   const ais: GroupAi[] = [];
@@ -243,6 +297,8 @@ function parseGroupDetail(value: unknown): GroupDetail | null {
     members: parsed,
     ais,
     ...(membersCanCreateTopics === undefined ? {} : { membersCanCreateTopics }),
+    ...(kind === undefined ? {} : { kind }),
+    ...(description === undefined ? {} : { description }),
   };
 }
 

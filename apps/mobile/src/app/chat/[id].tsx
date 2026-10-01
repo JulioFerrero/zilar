@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { ChatBackground } from '@/components/chat/chat-background';
+import { ChannelComposerBar } from '@/components/chat/channel-composer-bar';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { Composer } from '@/components/chat/composer';
 import { MessageList } from '@/components/chat/message-list';
@@ -398,8 +399,9 @@ function Chat() {
               </Pressable>
             </View>
           ) : null}
-          <Composer
-            title={chat.title}
+          <ChannelComposerBar
+            chat={chat}
+            groupId={chat.groupId}
             onSend={(text) => {
               sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
               cancelReply();
@@ -408,6 +410,133 @@ function Chat() {
             onCancelReply={cancelReply}
             onTyping={() => sendTyping(chat.id)}
           />
+        </KeyboardAvoidingView>
+        <PinsSheet
+          open={pinsOpen}
+          pins={pins}
+          canUnpin={canPinChat}
+          unpinningId={unpinningId}
+          error={pinsSheetError}
+          onUnpin={sheetUnpin}
+          onJump={jumpToPin}
+          onClose={() => setPinsOpen(false)}
+        />
+      </View>
+    );
+  }
+
+  // T-0144: a channel feed opens like any topic row (the feed IS the General
+  // topic); only the bottom bar differs (read-only for subscribers).
+  if (!isTopic || chat.chatKind === 'channel') {
+    const channelBar = chat.chatKind === 'channel';
+    return (
+      <View className="flex-1 bg-background">
+        <ChatBackground />
+        <SafeAreaView edges={['top']} className="bg-surface">
+          <ChatHeader
+            chat={chat}
+            onBack={() => router.back()}
+            onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
+            onOpenGroup={
+              chat.groupId === undefined
+                ? undefined
+                : (groupId: string) =>
+                    router.push({ pathname: '/group/[id]', params: { id: groupId } })
+            }
+          />
+        </SafeAreaView>
+        <PinnedBanner
+          pins={pins}
+          pinsError={pinsError}
+          index={Math.min(pinIndex, Math.max(pins.length - 1, 0))}
+          jumpError={jumpError}
+          onCycle={() => {
+            setJumpError('');
+            setPinIndex((value) => (pins.length === 0 ? 0 : (value + 1) % pins.length));
+          }}
+          onTapPin={jumpToPin}
+          onOpenList={() => setPinsOpen(true)}
+          onDismissError={() => dismissPinsError()}
+        />
+        <KeyboardAvoidingView
+          className="flex-1"
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <MessageList
+            chat={chat}
+            onReply={startReply}
+            onReact={(message, emoji) => react(chat.id, message.id, emoji)}
+            onEdit={(message) => startEdit(chat.id, message.id)}
+            onDelete={(message) => deleteForEveryone(chat.id, message.id)}
+            onPin={pin}
+            onUnpin={unpin}
+            pinnedIds={pinnedIds}
+            jumpToMessageId={jumpToMessageId}
+            onJumped={() => setJumpToMessageId(undefined)}
+          />
+          {pinError !== '' ? (
+            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
+              <Text className="flex-1 text-[13px] text-danger">{pinError}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss error"
+                onPress={() => setPinError('')}
+                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+              >
+                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {actionError !== undefined ? (
+            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
+              <Text className="flex-1 text-[13px] text-danger">{actionError.message}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss error"
+                onPress={() => dismissActionError()}
+                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+              >
+                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {jumpMissed ? (
+            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-surface-raised px-3 py-2">
+              <Text className="flex-1 text-[13px] text-muted-foreground">Message not found</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss notice"
+                onPress={() => setJumpMissed(false)}
+                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+              >
+                <Text className="text-[13px] font-semibold text-muted-foreground">Dismiss</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {channelBar ? (
+            <ChannelComposerBar
+              chat={chat}
+              groupId={chat.groupId}
+              onSend={(text) => {
+                sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
+                cancelReply();
+              }}
+              replyTo={replyTo}
+              onCancelReply={cancelReply}
+              onTyping={() => sendTyping(chat.id)}
+            />
+          ) : (
+            <Composer
+              title={chat.title}
+              onSend={(text) => {
+                sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
+                cancelReply();
+              }}
+              replyTo={replyTo}
+              onCancelReply={cancelReply}
+              onTyping={() => sendTyping(chat.id)}
+            />
+          )}
         </KeyboardAvoidingView>
         <PinsSheet
           open={pinsOpen}
