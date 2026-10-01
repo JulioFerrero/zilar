@@ -2,21 +2,23 @@
 #
 # Deploy push wiring tests (T-0145). Shell-only, no dependencies beyond
 # `sh`, `openssl`, `docker` (for `compose config`) and `node` (for the
-# web-push acceptance check, which resolves the library from the repo's
-# own node_modules — no new dependency).
+# ECDH pair check plus the web-push acceptance check, which resolves the
+# library from the repo's own node_modules — no new dependency).
 #
 # What it proves, without touching the lead's running dev stack and
 # without reading any real `.env` file:
 #
 #   1. `galena init` writes a 0600 env file whose push lines parse in the
-#      server's push schema and whose VAPID pair the `web-push` library
-#      accepts (wizard key shape, JID, secrets, subject).
+#      server's push schema and whose VAPID pair really matches
+#      (ECDH-derived public point compared byte for byte — shape checks
+#      alone accept mismatched pairs).
 #   2. `galena init --no-push` writes no push secrets and no empty values.
 #   3. Both compose files render (`config`) with the wizard env, the two
 #      component secrets agree, no host port is published for 5347, and
 #      the ejabberd host derivation matches PUSH_COMPONENT_JID.
 #   4. `push-entrypoint.sh` writes the literal host into a copy of the
-#      production ejabberd.yml and refuses a config without its marker.
+#      production ejabberd.yml, is a no-op on rerun (restart-safe), and
+#      refuses a config without its marker.
 #   5. `galena doctor` passes the push checks on the good env and fails
 #      them in plain words on a tampered one.
 #   6. Secrets never appear in `init --dry-run` output or doctor output.
@@ -63,15 +65,25 @@ else
   bad "wizard env is not mode 0600"
 fi
 
-# 2. Push lines parse in the server's push schema and web-push accepts them
-# (run from the server package so `web-push` and the tsx loader resolve).
-# The probe is a temp .mts file inside the server package: `tsx --eval`
-# compiles as CJS (no top-level await), and a probe in /tmp cannot import
-# the package's `./src/...` tree — so stage it in the package and remove
-# it afterwards. It never touches app code; it only reads the throwaway
-# env file the wizard just wrote.
-cp /dev/null "$ROOT/apps/server/push-probe-t0145-tmp.mts"
-cat > "$ROOT/apps/server/push-probe-t0145-tmp.mts" <<'EOF'
+# 2. Push lines parse in the server's push schema and the VAPID pair really
+# matches (run from the server package so `web-push` and the tsx loader
+# resolve). `setVapidDetails` validates shape only — it accepted the
+# mismatched pair from the first round — so the probe ECDH-derives the
+# public point from the private scalar with node:crypto and compares it to
+# the public key. The probe is a temp .mts file inside the server package:
+# `tsx --eval` compiles as CJS (no top-level await), and a probe in /tmp
+# cannot import the package's `./src/...` tree — so stage it in the package
+# and remove it afterwards (trapped, so an interrupt cannot leave it
+# behind). It never touches app code; it only reads the throwaway env file
+# the wizard just wrote.
+PROBE_FILE="$ROOT/apps/server/push-probe-t0145-tmp.mts"
+cleanup_probe() {
+  rm -f "$PROBE_FILE"
+}
+trap cleanup_probe EXIT INT TERM
+cp /dev/null "$PROBE_FILE"
+cat > "$PROBE_FILE" <<'EOF'
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 const envFile = process.env.PUSH_ENV_FILE as string;
 const env: Record<string, string> = {};
@@ -95,16 +107,24 @@ const webpush = (await import('web-push')).default;
 webpush.setVapidDetails(env.PUSH_VAPID_SUBJECT, env.PUSH_VAPID_PUBLIC_KEY, env.PUSH_VAPID_PRIVATE_KEY);
 if (env.PUSH_VAPID_PUBLIC_KEY.length !== 87) throw new Error('public key shape');
 if (env.PUSH_VAPID_PRIVATE_KEY.length !== 43) throw new Error('private key shape');
+// The pair must really match: derive the public point from the private
+// scalar (P-256 ECDH) and compare it byte for byte with the public key.
+const scalar = Buffer.from(env.PUSH_VAPID_PRIVATE_KEY, 'base64url');
+const claimed = Buffer.from(env.PUSH_VAPID_PUBLIC_KEY, 'base64url');
+const ecdh = crypto.createECDH('prime256v1');
+ecdh.setPrivateKey(scalar);
+if (!ecdh.getPublicKey().equals(claimed)) throw new Error('VAPID pair mismatch: private key does not derive the public key');
 if (env.PUSH_COMPONENT_JID !== 'push.push-test.example') throw new Error('component JID');
 if (env.PUSH_VAPID_SUBJECT !== 'mailto:ops@push-test.example') throw new Error('subject default');
 if ((env.PUSH_STORAGE_KEY || '').length < 32) throw new Error('storage key');
 EOF
 if (cd "$ROOT/apps/server" && PUSH_ENV_FILE="$ENV_FILE" ./node_modules/.bin/tsx push-probe-t0145-tmp.mts 2> "$T/push-parse.err"); then
-  ok "wizard push env parses and web-push accepts the VAPID pair"
+  ok "wizard push env parses and the VAPID pair matches (ECDH)"
 else
-  bad "wizard push env does not parse (or web-push rejected the VAPID pair)"
+  bad "wizard push env does not parse (or the VAPID pair mismatches)"
 fi
-rm -f "$ROOT/apps/server/push-probe-t0145-tmp.mts"
+rm -f "$PROBE_FILE"
+trap - EXIT INT TERM
 
 # 3. --no-push writes no secrets and no empty values.
 T_OFF="$(make_env "push-off.example" "--no-push")"
@@ -177,7 +197,9 @@ else
   bad "coolify push host derivation disagrees"
 fi
 
-# 5. The entrypoint writes the literal host; refuses without its marker.
+# 5. The entrypoint writes the literal host, is idempotent on rerun
+# (restart-safe: the config persists in the container layer), and refuses
+# a config without its marker.
 cp "$ROOT/deploy/ejabberd/ejabberd.yml" "$T/ejabberd.yml"
 chmod u+w "$T/ejabberd.yml"
 if GALENA_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd.yml" 2> "$T/entry.err" \
@@ -186,6 +208,13 @@ if GALENA_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd.yml" 2> "$T/e
   ok "entrypoint writes the literal push host"
 else
   bad "entrypoint did not write the literal push host ($(head -n 1 "$T/entry.err"))"
+fi
+if GALENA_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd.yml" 2> "$T/entry2.err" \
+  && grep -q "^[[:space:]]*push.push-test.example:[[:space:]]*$" "$T/ejabberd.yml" \
+  && [ "$(grep -c "password: PUSH_COMPONENT_SECRET" "$T/ejabberd.yml")" -eq 1 ]; then
+  ok "entrypoint rerun is a no-op (restart-safe)"
+else
+  bad "entrypoint rerun failed or duplicated lines ($(head -n 1 "$T/entry2.err"))"
 fi
 cp "$ROOT/deploy/ejabberd/ejabberd.yml" "$T/ejabberd-nomarker.yml"
 chmod u+w "$T/ejabberd-nomarker.yml"

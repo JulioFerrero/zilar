@@ -86,4 +86,15 @@ Do NOT run `docker compose up` against the lead's running dev stack, and never r
 ### Blocked / needs a decision
 - None blocking. Lead follow-ups: (1) confirm the exact ejabberd 26.07 handshake log line on a live stack and tighten doctor's grep if needed; (2) live proof per `docs/INSTALL_DOCKER.md` "Push notifications" (up → enable → handshake line → notification → mute → remove); (3) `caddy validate` on the unchanged Caddyfiles was not re-run (no Caddy change in this task).
 
+### Round 2 — lead prereview findings (PREREVIEW.md at e813328, untracked, not committed)
+- **Finding 1 (must, wizard VAPID mismatch):** `_gen_vapid_keys` took `tail -c 103 | head -c 32` (one `0x20` length byte + 31 scalar bytes). Fixed to `tail -c 102 | head -c 32` (scalar bytes 36–67). Verified by execution: ECDH-derived pubkey from the new extraction equals the public key (old extraction does not), and a fresh wizard `init` pair matches via ECDH.
+- **Finding 2 (must, entrypoint not restart-safe):** rerun after the marker was stripped exited 1 (config persists in the container layer → crash-loop on stop/start). Now exits 0 when the literal `push.$GALENA_DOMAIN:` line is already present; still fails loudly on a truly unexpected file (no marker, no literal line). Test runs it twice on the same file.
+- **Finding 3 (must, empty PUSH_* crashes server):** NOT touched — fixed by the lead on main (empty `PUSH_*` means unset in `apps/server/src/push/config.ts`), outside Allowed files. The rebase will bring it in.
+- **Finding 4 (should, VAPID check):** the probe now ECDH-derives the public point from the private scalar with node:crypto and compares it byte for byte (shape-only `setVapidDetails` accepted the broken pair). Proved it fails on the old extraction: a fixture pair from the pre-fix code exits 1 with `VAPID pair mismatch` (probe run ad-hoc in `apps/server/`, fixture + probe deleted afterwards — no `apps/` files committed).
+- **Finding 5 (should, dollar guard):** `*"$"*` (expands to PID) → `*'$'*`.
+- **Finding 6 (should, misleading comment):** push-entrypoint.sh no longer claims a temp-copy path; says the config is baked in, edited in place, persists across restarts (which is why idempotency matters).
+- **Finding 7 (nit, bare-metal wording):** "VAPID pair from `openssl rand`" → points at the `_gen_vapid_keys` recipe (a real P-256 pair, not random bytes).
+- **Finding 8 (nit, probe cleanup):** probe staging/removal wrapped in `trap ... EXIT INT TERM`.
+- Checks re-run: `push-deploy.test.sh` **16 pass, 0 fail** (new: rerun no-op check; VAPID check now ECDH); `format:check` pass except the lead's untracked PREREVIEW.md (not mine, untouched); `lint` pass; `typecheck` pass (10/10, cached, no app code touched); `shellcheck` still NOT installed. `git status apps/` clean — no probe leftovers.
+
 ## Review (written by Claude)

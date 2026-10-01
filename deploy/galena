@@ -165,11 +165,13 @@ _gen_vapid_keys() {
     rm -rf "$_key_tmp"
     return 1
   fi
-  # PKCS#8 DER, fixed 138-byte layout: the private scalar sits at byte
-  # offset 36 (32 bytes), the uncompressed public point is the last 65
-  # bytes (0x04 || X || Y). Offsets verified against openssl 3.x output.
+  # PKCS#8 DER, fixed 138-byte layout: 36 prefix bytes, then the 32-byte
+  # private scalar (bytes 36-67), then the public point. The scalar is the
+  # last 102 bytes cut to 32; the uncompressed public point is the last 65
+  # bytes (0x04 || X || Y). Offsets verified against openssl 3.x output and
+  # against node:crypto ECDH derivation (see deploy/tests/push-deploy.test.sh).
   _vapid_pub="$(tail -c 65 "$_key_tmp/key.p8" | openssl base64 -A 2>/dev/null | tr -d '\n' | tr '+/' '-_' | tr -d '=')" || _vapid_pub=""
-  _vapid_priv="$(tail -c 103 "$_key_tmp/key.p8" | head -c 32 | openssl base64 -A 2>/dev/null | tr -d '\n' | tr '+/' '-_' | tr -d '=')" || _vapid_priv=""
+  _vapid_priv="$(tail -c 102 "$_key_tmp/key.p8" | head -c 32 | openssl base64 -A 2>/dev/null | tr -d '\n' | tr '+/' '-_' | tr -d '=')" || _vapid_priv=""
   rm -rf "$_key_tmp"
   [ "${#_vapid_pub}" -eq 87 ] && [ "${#_vapid_priv}" -eq 43 ] || return 1
   printf '%s\n%s\n' "$_vapid_pub" "$_vapid_priv"
@@ -655,7 +657,7 @@ cmd_doctor() {
         _push_ok=0
       fi
       case "$_component_jid" in
-        *"$"*) doctor_bad "PUSH_COMPONENT_JID contains a dollar sign" "compose would expand it — set PUSH_COMPONENT_JID=push.$_domain literally" ; _push_ok=0 ;;
+        *'$'*) doctor_bad "PUSH_COMPONENT_JID contains a dollar sign" "compose would expand it — set PUSH_COMPONENT_JID=push.$_domain literally" ; _push_ok=0 ;;
       esac
     fi
     if compose ps --status running ejabberd 2>/dev/null | grep -q ejabberd; then

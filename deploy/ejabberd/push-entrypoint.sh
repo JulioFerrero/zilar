@@ -13,9 +13,9 @@
 # the host key needs this treatment.
 #
 # Called by deploy/ejabberd/jwt-entrypoint.sh. The config file is baked
-# into the image read-write (the bind-mounted copy in the plain compose
-# stack is read-only, so the plain stack runs the same sed against a temp
-# copy instead — see the entrypoint).
+# into the image and edited in place (it persists in the container layer
+# across stop/start, which is why the script exits 0 when the literal host
+# is already present).
 #
 # The replacement below deliberately matches a whole line (leading spaces,
 # then the old host value, then the marker comment): it must never match a
@@ -29,6 +29,13 @@ set -eu
 CONFIG_PATH="$1"
 PUSH_HOST="push.$GALENA_DOMAIN"
 
+# Restart-safe: the config persists in the container layer across stop/start,
+# so a second run must be a no-op, not a failure. When neither the marker nor
+# the literal host line is present, the file is truly unexpected — fail loudly
+# instead of guessing.
+if grep -q "^[[:space:]]*$PUSH_HOST:[[:space:]]*$" "$CONFIG_PATH"; then
+  exit 0
+fi
 if ! grep -q 'GALENA_PUSH_COMPONENT_HOST' "$CONFIG_PATH"; then
   echo "push-entrypoint: error: no GALENA_PUSH_COMPONENT_HOST marker in $CONFIG_PATH — refusing to guess the component host" >&2
   exit 1

@@ -139,8 +139,10 @@ password and JWT secret from §3, `BETTER_AUTH_SECRET` from
 `openssl rand -base64 32`, SMTP settings — sign-in codes are sent by
 email, the server refuses production without `MAIL_TRANSPORT=smtp`),
 then lock it down. For push notifications, fill the `PUSH_*` lines too
-(`PUSH_ENABLED=true`, the VAPID pair from `openssl rand` per
-`.env.example`, `PUSH_VAPID_SUBJECT=mailto:<you>`,
+(`PUSH_ENABLED=true`, a VAPID key pair generated with the
+`_gen_vapid_keys` recipe in `deploy/galena` — a real P-256 pair, not
+random bytes — pointed at from `deploy/baremetal/.env.example`,
+`PUSH_VAPID_SUBJECT=mailto:<you>`,
 `PUSH_COMPONENT_JID=push.<your domain>`, `PUSH_COMPONENT_SECRET` equal
 to the listener password from step 1 of §3, `PUSH_STORAGE_KEY` from
 `openssl rand -base64 48`) — and keep `XMPP_ARCHIVE_DATABASE_URL` set:
