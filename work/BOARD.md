@@ -171,6 +171,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0142](T-0142-smarter-search.md) | smarter search: prefixes, accent folding, typo tolerance | 2026-10-01 |
 | [T-0143](T-0143-mobile-stickers.md) | Mobile stickers: render, panel, send (mobile only) | planned | meta/muse-spark-1.3-contributor | T-0120 | Spec ready |
 | [T-0145](T-0145-deploy-push.md) | Push in the production deploy: ejabberd component, compose, wizard keys, doctor, docs | planned | meta/muse-spark-1.3-contributor | T-0119, T-0127 | Spec ready; effort high |
+| [T-0146](T-0146-web-server-nits.md) | Web and server deferred nits: sticker dir warning, leave-topic 404, AI list reload, GIF host rule, hide GIF tab when off | planned | meta/muse-spark-1.3-contributor | T-0141, T-0122 | Spec ready |
+| [T-0147](T-0147-mobile-nits.md) | Mobile deferred nits: group fetch ordering, roles screen test, join link cleanups, jump-scroll retries | planned | meta/muse-spark-1.3-contributor | T-0139, T-0140 | Spec ready |
 | [T-0141](T-0141-web-server-followups.md) | web/server follow-ups: sticker dir, mock stickers, revoke, approval names | 2026-10-01 |
 | [T-0106](T-0106-tool-model-side.md) | model side of AI tools: guide, several rounds per turn, progress line | 2026-10-01 |
 | [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy (off until a provider key is set) | 2026-10-01 |
