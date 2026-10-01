@@ -148,6 +148,8 @@ describe('createEjabberdAdminClient', () => {
         { name: 'members_only', value: 'true' },
         { name: 'persistent', value: 'true' },
         { name: 'mam', value: 'true' },
+        // T-0119: rooms allow MUC/Sub subscriptions for push by default.
+        { name: 'allow_subscription', value: 'true' },
         { name: 'title', value: 'Project A' },
       ],
     });
@@ -173,6 +175,8 @@ describe('createEjabberdAdminClient', () => {
       { name: 'members_only', value: 'true' },
       { name: 'persistent', value: 'true' },
       { name: 'mam', value: 'true' },
+      // T-0119: rooms allow MUC/Sub subscriptions for push by default.
+      { name: 'allow_subscription', value: 'true' },
       { name: 'moderated', value: 'true' },
       { name: 'members_by_default', value: 'false' },
       { name: 'title', value: 'Releases' },
@@ -323,6 +327,8 @@ describe('createEjabberdAdminClient', () => {
       { name: 'members_only', value: 'true' },
       { name: 'persistent', value: 'true' },
       { name: 'mam', value: 'true' },
+      // T-0119: rooms allow MUC/Sub subscriptions for push by default.
+      { name: 'allow_subscription', value: 'true' },
       { name: 'anonymous', value: 'false' },
       { name: 'title', value: 'Trip' },
     ]);

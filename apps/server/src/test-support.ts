@@ -52,6 +52,9 @@ export class FakeAdminClient implements EjabberdAdminClient {
   readonly affiliations: Array<{ roomId: string; jid: string; affiliation: RoomAffiliation }> = [];
   readonly affiliationState: Map<string, Map<string, RoomAffiliation>> = new Map();
   readonly destroyedRooms: string[] = [];
+  readonly roomOptionChanges: Array<{ roomId: string; name: string; value: string }> = [];
+  readonly roomSubscriptions: Array<{ roomId: string; userJid: string; nick: string }> = [];
+  readonly roomUnsubscriptions: Array<{ roomId: string; userJid: string }> = [];
   readonly directInvitations: Array<{
     roomId: string;
     users: string[];
@@ -149,6 +152,27 @@ export class FakeAdminClient implements EjabberdAdminClient {
 
   destroyRoom(roomId: string): Promise<void> {
     this.destroyedRooms.push(roomId);
+    return Promise.resolve();
+  }
+
+  changeRoomOption(roomId: string, name: string, value: string): Promise<void> {
+    this.roomOptionChanges.push({ roomId, name, value });
+    return Promise.resolve();
+  }
+
+  subscribeRoom(roomId: string, userJid: string, nick: string): Promise<void> {
+    if (this.failAffiliation) {
+      return Promise.reject(new Error('ejabberd is down'));
+    }
+    this.roomSubscriptions.push({ roomId, userJid, nick });
+    return Promise.resolve();
+  }
+
+  unsubscribeRoom(roomId: string, userJid: string): Promise<void> {
+    if (this.failAffiliation) {
+      return Promise.reject(new Error('ejabberd is down'));
+    }
+    this.roomUnsubscriptions.push({ roomId, userJid });
     return Promise.resolve();
   }
 

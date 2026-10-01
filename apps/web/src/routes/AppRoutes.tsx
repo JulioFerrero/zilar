@@ -12,6 +12,7 @@ import { LoginPage } from './LoginPage';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { MachinesPage } from './MachinesPage';
 import { NamePage } from './NamePage';
+import { NotificationsPage } from './NotificationsPage';
 import { ApprovalsPage } from './ApprovalsPage';
 
 // The session check usually answers within a frame or two; the text only
@@ -113,6 +114,14 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <ApprovalsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/settings/notifications"
+        element={
+          <RequireAuth>
+            <NotificationsPage />
           </RequireAuth>
         }
       />

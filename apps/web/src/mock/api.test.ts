@@ -26,7 +26,10 @@ import {
   listConnections,
   listGroupApprovalRules,
   listMachines,
+  listPushDevices,
   putChatPref,
+  registerPushDevice,
+  removePushDevice,
   renameMachine,
   resumeAi,
   revokeApprovalRule,
@@ -93,6 +96,30 @@ describe('mockRequest', () => {
     });
     expect(cleared).toBeNull();
     expect(await listChatPrefs()).toEqual([]);
+  });
+
+  it('registers, lists and removes push devices in memory', async () => {
+    const { getPushConfig, getPushSettings, setPushSettings, sendTestPushNotification } =
+      await import('@/lib/api');
+    expect(await listPushDevices()).toEqual([]);
+    expect((await getPushConfig()).pushJid).toBe('push.mock.test');
+    expect(await getPushSettings()).toEqual({ showPreviews: true });
+
+    const registered = await registerPushDevice({
+      endpoint: 'https://push.example.com/mock-1',
+      keys: { p256dh: 'p', auth: 'a' },
+      userAgent: 'Test · Browser',
+    });
+    expect(registered.jid).toBe('push.mock.test');
+    const devices = await listPushDevices();
+    expect(devices).toHaveLength(1);
+    expect(devices[0]).toMatchObject({ id: registered.id, userAgent: 'Test · Browser' });
+    expect(JSON.stringify(devices)).not.toContain('push.example.com');
+
+    expect(await setPushSettings(false)).toEqual({ showPreviews: false });
+    await sendTestPushNotification(registered.id);
+    await removePushDevice(registered.id);
+    expect(await listPushDevices()).toEqual([]);
   });
 
   it('seeds two AIs, one without usage and one at 85% of its daily limit', async () => {

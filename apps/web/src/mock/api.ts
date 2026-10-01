@@ -65,6 +65,11 @@ interface MockState {
   joinAttempts: Map<string, number>;
   // T-0113: per-chat prefs (mute/archive/pin) in memory for the page load.
   chatPrefs: MockChatPref[];
+  // T-0119: push devices and the previews setting in memory for the page
+  // load. The mock has no XMPP session, so the enable IQ step is skipped.
+  pushDevices: MockPushDevice[];
+  pushShowPreviews: boolean;
+  nextPushDeviceSequence: number;
   // T-0114: pinned messages in memory for the page load, keyed by the chat
   // id the client names the chat with (the mock has no JID access model).
   pins: MockPin[];
@@ -142,6 +147,16 @@ interface MockChatPref {
   archived: boolean;
   pinnedAt: string | null;
   updatedAt: string;
+}
+
+// T-0119: one push device row, mirroring the server's device view (labels
+// and dates only, never the endpoint or keys).
+interface MockPushDevice {
+  id: string;
+  userAgent: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+  inactive: boolean;
 }
 
 // T-0114: one pinned message row, mirroring the server's `pinned_messages`
@@ -958,6 +973,9 @@ function seedState(): MockState {
     nextRoleSequence: 3,
     joinAttempts: new Map(),
     chatPrefs: [],
+    pushDevices: [],
+    pushShowPreviews: true,
+    nextPushDeviceSequence: 1,
     pins: seedPins(),
     nextPinSequence: 3,
     tools: seedTools(),
@@ -1571,6 +1589,83 @@ export async function mockRequest(
       );
     }
     return jsonResponse(row);
+  }
+
+  // T-0119: in-memory push devices. The mock has one user and no XMPP
+  // session, so subscribing only stores the row and returns the enable pair.
+  if (head === 'push' && first === 'config' && method === 'GET') {
+    return jsonResponse({ vapidPublicKey: 'mock-vapid-public-key', pushJid: 'push.mock.test' });
+  }
+
+  if (head === 'push' && first === 'subscriptions' && second === undefined) {
+    if (method === 'GET') {
+      return jsonResponse({ devices: state.pushDevices });
+    }
+    if (method === 'POST') {
+      const body = readJsonBody(init);
+      if (
+        typeof body.endpoint !== 'string' ||
+        body.endpoint === '' ||
+        typeof body.keys !== 'object' ||
+        body.keys === null
+      ) {
+        return jsonResponse(
+          { error: { code: 'invalid_subscription', message: 'The push subscription is invalid' } },
+          400,
+        );
+      }
+      const id = `mock-push-device-${state.nextPushDeviceSequence}`;
+      state.nextPushDeviceSequence += 1;
+      const node = `mock-node-${id}`;
+      const userAgent = typeof body.userAgent === 'string' ? body.userAgent : null;
+      state.pushDevices = state.pushDevices.filter((device) => device.id !== id);
+      state.pushDevices.push({
+        id,
+        userAgent,
+        createdAt: new Date().toISOString(),
+        lastUsedAt: null,
+        inactive: false,
+      });
+      return jsonResponse({ id, node, jid: 'push.mock.test' });
+    }
+  }
+
+  if (head === 'push' && first === 'subscriptions' && second !== undefined && method === 'DELETE') {
+    const id = decodeURIComponent(second);
+    const existing = state.pushDevices.some((device) => device.id === id);
+    if (!existing) {
+      return notFound('Push device not found');
+    }
+    state.pushDevices = state.pushDevices.filter((device) => device.id !== id);
+    return jsonResponse({ removed: true });
+  }
+
+  if (head === 'push' && first === 'settings' && method === 'GET') {
+    return jsonResponse({ showPreviews: state.pushShowPreviews });
+  }
+
+  if (head === 'push' && first === 'settings' && method === 'PUT') {
+    const body = readJsonBody(init);
+    if (typeof body.showPreviews !== 'boolean') {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'showPreviews must be a boolean' } },
+        400,
+      );
+    }
+    state.pushShowPreviews = body.showPreviews;
+    return jsonResponse({ showPreviews: state.pushShowPreviews });
+  }
+
+  if (head === 'push' && first === 'test' && method === 'POST') {
+    const body = readJsonBody(init);
+    const target =
+      typeof body.subscriptionId === 'string'
+        ? state.pushDevices.find((device) => device.id === body.subscriptionId)
+        : undefined;
+    if (target === undefined) {
+      return notFound('Push device not found');
+    }
+    return jsonResponse({ sent: true });
   }
 
   // T-0114: in-memory pins. The mock has one user who may pin anywhere;

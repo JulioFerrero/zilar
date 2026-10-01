@@ -24,6 +24,11 @@ import { createKeyCipher } from './connections/crypto';
 import { createDb } from './db/client';
 import { runMigrations } from './db/migrate';
 import { createArchivePool } from './search/service';
+import { createPushCipher } from './push/crypto';
+import { loadPushConfig, pushConfigError, type PushConfig } from './push/config';
+import { startPushComponent, type PushComponentHandle } from './push/component';
+import { createWebPushSender } from './push/sender';
+import { reconcileRoomSubscriptionOptions } from './topics/rooms';
 import { sharedDraftHub } from './drafts/hub';
 import { createLogger } from './logger';
 import { assertRunnerHubConfig, startRunnerHub, type RunnerHub } from './machines/hub';
@@ -174,6 +179,15 @@ const actionGateway = createActionGateway({
   announce: announcer,
 });
 
+// The archive pool is shared with push below: one pool, two readers.
+const archivePool =
+  config.XMPP_ARCHIVE_DATABASE_URL === undefined
+    ? undefined
+    : createArchivePool(config.XMPP_ARCHIVE_DATABASE_URL);
+
+// Push env (T-0119): separate from the server config so push stays optional.
+const push: PushConfig = loadPushConfig(process.env);
+
 const app = createApp({
   db,
   logger,
@@ -183,9 +197,9 @@ const app = createApp({
   machineRegistry,
   // Message search (T-0117): a separate small pool on the ejabberd archive
   // with a 3 s statement timeout. Absent = GET /api/search answers 501.
-  ...(config.XMPP_ARCHIVE_DATABASE_URL === undefined
-    ? {}
-    : { archive: createArchivePool(config.XMPP_ARCHIVE_DATABASE_URL) }),
+  // Push (T-0119) shares the same pool to resolve who/where from the archive.
+  ...(archivePool === undefined ? {} : { archive: archivePool }),
+  push,
   ...(config.RUNNER_HUB_ENABLED ? { isMachineOnline } : {}),
   actionGateway,
   alwaysEligible,
@@ -194,6 +208,63 @@ const app = createApp({
   ...(toolRunner === undefined ? {} : { toolRunner }),
 });
 
+// Push component (T-0119): off unless PUSH_ENABLED=true. A misconfigured
+// flag (keys, component credentials or storage key missing) logs one error
+// and stays off; without the archive pool it also stays off, because the
+// component could not resolve who/where and would have to guess. A start
+// failure never takes the API down: the component reconnects on its own and
+// the shutdown below still stops it.
+let pushComponent: PushComponentHandle | null = null;
+{
+  const pushError = pushConfigError(push);
+  if (!push.PUSH_ENABLED) {
+    logger.info('push is disabled (PUSH_ENABLED=false)');
+  } else if (pushError !== null) {
+    logger.error({ err: pushError }, 'push stays off');
+  } else if (archivePool === undefined) {
+    logger.error(
+      'push stays off: XMPP_ARCHIVE_DATABASE_URL is not set, so notifications could not be resolved',
+    );
+  } else {
+    try {
+      const sender = createWebPushSender({
+        PUSH_VAPID_PUBLIC_KEY: push.PUSH_VAPID_PUBLIC_KEY as string,
+        PUSH_VAPID_PRIVATE_KEY: push.PUSH_VAPID_PRIVATE_KEY as string,
+        PUSH_VAPID_SUBJECT: push.PUSH_VAPID_SUBJECT as string,
+      });
+      const cipher = createPushCipher(push.PUSH_STORAGE_KEY as string);
+      pushComponent = startPushComponent({
+        domain: push.PUSH_COMPONENT_JID as string,
+        secret: push.PUSH_COMPONENT_SECRET as string,
+        port: push.PUSH_COMPONENT_PORT,
+        service: {
+          db,
+          config,
+          archive: archivePool,
+          cipher,
+          sender,
+          logger,
+          recentlyNotified: new Map(),
+        },
+        logger,
+      });
+      // One-time reconcile for rooms created before push: enable
+      // `allow_subscription` through `change_room_option`. Best effort —
+      // failures are logged per room inside.
+      void reconcileRoomSubscriptionOptions({ db, adminClient, logger }).catch((error: unknown) => {
+        logger.warn(
+          { error: error instanceof Error ? error.message : String(error) },
+          'push room reconcile failed',
+        );
+      });
+    } catch (error) {
+      logger.error(
+        { err: error instanceof Error ? error.message : String(error) },
+        'push component failed to start; API continues without it',
+      );
+    }
+  }
+}
 // Agent gateway (T-0034): off unless AGENT_GATEWAY_ENABLED=true, and inert
 // without LiteLLM plus the key cipher. It connects each active AI to XMPP so
 // owner DMs get replies.
@@ -356,6 +427,9 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   });
   if (runnerHub !== null) {
     await runnerHub.close();
+  }
+  if (pushComponent !== null) {
+    await pushComponent.stop();
   }
   await gateway.stop();
   approvalsSweeper.close();
