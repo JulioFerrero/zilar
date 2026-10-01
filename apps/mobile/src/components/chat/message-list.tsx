@@ -162,10 +162,12 @@ export function MessageList({
   }, [messages.length, jumpTarget]);
 
   // A search hit lands here: once the jump target's message is loaded, scroll
-  // to it (centered) and clear the target so a later message with the same
-  // id does not re-scroll. `startJumpScroll` re-resolves the index on every
-  // retry: a message arriving within 400 ms of the jump moves every row
-  // below it, so a captured index would scroll to a stale row.
+  // to it (centered) and confirm the target on the LAST retry so a later
+  // message with the same id does not re-scroll. `startJumpScroll`
+  // re-resolves the index on every retry: a message arriving within 400 ms
+  // of the jump moves every row below it, so a captured index would scroll
+  // to a stale row — and confirming early would clear the target before the
+  // retries could follow it (T-0147).
   const jumpMessageId = jumpTarget?.messageId;
   useEffect(() => {
     if (jumpMessageId === undefined) {

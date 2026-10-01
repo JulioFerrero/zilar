@@ -1431,10 +1431,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     // Loads the member names of a group once per chat, so a typing indicator
     // or a message from a member who is not a contact can still show a name.
-    // T-0139: resolves through the cached group detail when present, so one
-    // GET serves every topic row of the group (boot joins N rooms, but the
-    // member names come from the single shared detail). Falls back to a
-    // direct fetch only when no detail is cached or in flight.
+    // T-0147: resolves through the shared group detail only — never its own
+    // `api.getGroup`. When no detail is cached or in flight, this starts the
+    // shared detail load itself (which fills the detail cache), so concurrent
+    // rows collapse into one GET however they arrive.
+    function rememberMembers(chatId: string, detail: GroupDetail): void {
+      const members = new Map<string, string>();
+      for (const member of detail.members) {
+        members.set(member.userId.toLowerCase(), member.name);
+      }
+      groupMembers.set(chatId, members);
+    }
+
     async function ensureGroupMembers(chatId: string): Promise<void> {
       if (groupMembers.has(chatId) || loadingGroupMembers.has(chatId)) {
         return;
@@ -1445,40 +1453,29 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
       const cached = groupDetails.get(groupId);
       if (cached !== undefined) {
-        const members = new Map<string, string>();
-        for (const member of cached.members) {
-          members.set(member.userId.toLowerCase(), member.name);
-        }
-        groupMembers.set(chatId, members);
-        return;
-      }
-      if (loadingGroupDetails.has(groupId)) {
-        try {
-          await groupDetailSettled(groupId);
-        } catch {
-          return;
-        }
-        const settled = groupDetails.get(groupId);
-        if (settled === undefined) {
-          return;
-        }
-        const members = new Map<string, string>();
-        for (const member of settled.members) {
-          members.set(member.userId.toLowerCase(), member.name);
-        }
-        groupMembers.set(chatId, members);
+        rememberMembers(chatId, cached);
         return;
       }
       loadingGroupMembers.add(chatId);
       try {
-        const detail = await api.getGroup(groupId);
-        const members = new Map<string, string>();
-        for (const member of detail.members) {
-          members.set(member.userId.toLowerCase(), member.name);
+        // Starts the shared detail load when nothing is in flight (a no-op
+        // when someone else already started it), then waits for it: one GET
+        // serves every topic row of the group, and the fallback fills the
+        // detail cache instead of a side map.
+        await ensureGroupDetail(groupId);
+        let settled = groupDetails.get(groupId);
+        if (settled === undefined && loadingGroupDetails.has(groupId)) {
+          try {
+            await groupDetailSettled(groupId);
+          } catch {
+            return;
+          }
+          settled = groupDetails.get(groupId);
         }
-        groupMembers.set(chatId, members);
-      } catch {
-        // The name falls back to the occupant nick or "Someone".
+        if (settled === undefined) {
+          return;
+        }
+        rememberMembers(chatId, settled);
       } finally {
         loadingGroupMembers.delete(chatId);
       }
@@ -1904,13 +1901,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (chat.kind !== 'group') {
           continue;
         }
-        void ensureGroupMembers(chat.id);
-        {
-          const groupId = groupIdForChat(chat.id);
-          if (groupId !== undefined) {
-            void ensureGroupDetail(groupId);
-          }
+        // The detail first: it fills the cache, so the member-name fallback
+        // behind every topic row shares the same GET (T-0147 ordering).
+        const groupId = groupIdForChat(chat.id);
+        if (groupId !== undefined) {
+          void ensureGroupDetail(groupId);
         }
+        void ensureGroupMembers(chat.id);
         try {
           await current.joinRoom(chat.id, nick(me));
         } catch {
@@ -2004,11 +2001,20 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (current === undefined || me === undefined) {
         return;
       }
-      for (const row of entries.flatMap((entry) => summariesFor(entry))) {
-        if (known.has(row.id) || row.kind !== 'group') {
-          continue;
-        }
+      // Dedupe the roster path per group id (T-0147): every topic row of one
+      // group joins its own room, but the member names come from one shared
+      // detail GET per group, not one per row.
+      const detailStarted = new Set<string>();
+      const freshRows = entries
+        .flatMap((entry) => summariesFor(entry))
+        .filter((row) => !known.has(row.id) && row.kind === 'group');
+      for (const row of freshRows) {
         await current.joinRoom(row.id, nick(me)).catch(() => {});
+        const groupId = row.groupId ?? groupIds.get(row.id);
+        if (groupId !== undefined && !detailStarted.has(groupId)) {
+          detailStarted.add(groupId);
+          void ensureGroupDetail(groupId);
+        }
         void ensureGroupMembers(row.id);
       }
       for (const row of entries.flatMap((entry) => summariesFor(entry))) {
@@ -2432,13 +2438,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           };
         });
         recordRead(chatId, lastRead[chatId]);
-        void ensureGroupMembers(chatId);
+        // The detail first: it fills the cache, so the member-name fallback
+        // shares the same GET on a cold open (T-0147 ordering).
         {
           const groupId = groupIdForChat(chatId);
           if (groupId !== undefined) {
             void ensureGroupDetail(groupId);
           }
         }
+        void ensureGroupMembers(chatId);
         // Pins load when the chat opens and refresh on focus + 60 s while
         // it is open, like the web store (no realtime channel yet).
         void loadPins(chatId, true);
