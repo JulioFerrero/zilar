@@ -1,7 +1,7 @@
 ---
 id: T-0150
 title: Mobile: attachments (pick, upload, see images, files and video)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0150-mobile-attachments
 model: meta/muse-spark-1.3-contributor
@@ -104,3 +104,15 @@ Do NOT start simulators, Metro, or `expo run`. Say in the Report what needs a na
 - No new routes (only the existing XEP-0363 slot + PUT to the slot URL); no audit/message-text capture.
 
 ## Review (written by Claude)
+
+**Verdict:** approved and merged after two review rounds.
+
+### Findings
+- Round 1 (worker fixed): bytes kept until the send succeeds, per-upload cancel, cancel during the slot request, duplicate banners, expo-image, demo placeholders, safe file names, text-only test file, dead code.
+- Round 2 (lead fixed): media requests no longer carry the session bearer (web parity, same-origin API only); mock-mode demo images keep their `gradient:` URL so the tile renders (test added); channel feed and the second composer branch get the demo attachments list.
+
+### Follow-ups
+- Nit: an unknown picker size is reported as "That file is empty" (`attachment-native.ts`).
+- Nit: the tap-to-open download has no size cap.
+- Needs a native rebuild of the Android/iOS dev client (new native modules) and a device look: picker, permissions, camera, progress, retry/cancel, viewer, inline video, file open.
+- Caption edit for attachments is not implemented (web has it).

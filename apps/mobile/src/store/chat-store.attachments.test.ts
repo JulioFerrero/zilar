@@ -89,6 +89,12 @@ describe('mock store sends attachments (T-0150)', () => {
     ).toBe('sending');
   });
 
+  it('keeps a gradient demo image URL so the bubble renders the tile', () => {
+    const store = createChatStore();
+    store.getState().sendAttachment('ana', { ...PHOTO, uri: 'gradient:sunset' });
+    expect(store.getState().messages('ana').at(-1)?.attachment?.url).toBe('gradient:sunset');
+  });
+
   it('cancels a sending attachment by removing the bubble', () => {
     const store = createChatStore();
     store.getState().sendAttachment('ana', PHOTO);

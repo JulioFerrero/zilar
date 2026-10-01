@@ -660,6 +660,7 @@ function Chat() {
               onCancelReply={cancelReply}
               onTyping={() => sendTyping(chat.id)}
               demoPacks={demoPacks}
+              demoAttachments={demoAttachments}
             />
           ) : (
             <Composer
@@ -687,6 +688,7 @@ function Chat() {
               onCancelReply={cancelReply}
               onTyping={() => sendTyping(chat.id)}
               demoPacks={demoPacks}
+              demoAttachments={demoAttachments}
             />
           )}
         </KeyboardAvoidingView>

@@ -9,6 +9,7 @@ import type {
   JoinResult,
 } from '../lib/invite-links-api';
 import { attachmentDataFor } from '../lib/attachments';
+import { imageGradient } from '../lib/image-presets';
 import { CURRENT_USER_ID, CURRENT_USER_NAME } from '../lib/types';
 import type { CustomGroupRole } from '../lib/roles-api';
 import type { ApproverRole, TopicRole } from '../lib/topics-api';
@@ -1010,7 +1011,14 @@ export function createChatStore(
         }
         messageCounter += 1;
         const caption = options?.caption?.trim() ?? '';
-        const data = attachmentDataFor(file, `mock://attachments/${Date.now()}-${messageCounter}`);
+        // A `gradient:` demo image keeps its URL so the bubble renders the
+        // gradient tile; anything else gets a placeholder served URL.
+        const data = attachmentDataFor(
+          file,
+          imageGradient(file.uri) === undefined
+            ? `mock://attachments/${Date.now()}-${messageCounter}`
+            : file.uri,
+        );
         const message: UiMessage = {
           id: `local-${Date.now()}-${messageCounter}`,
           chatId,

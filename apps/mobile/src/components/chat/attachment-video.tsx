@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { getSessionToken } from '@/lib/session-token';
 
 import { isLoadableMediaUrl } from './attachment-message';
 
@@ -43,43 +42,17 @@ export function AttachmentVideo({
   failed = false,
   onRetry,
 }: AttachmentVideoProps) {
-  const [token, setToken] = useState<string | undefined>(undefined);
   const [view, setView] = useState(false);
   const trusted = isLoadableMediaUrl(attachment.url, trustedHosts);
   const uri = localUri ?? (trusted ? attachment.url : undefined);
   const gif = isGifOrigin(attachment);
   // `useVideoPlayer` owns the player: loop/mute are set in the setup
   // callback below, never by mutating the returned player in an effect.
-  const player = useVideoPlayer(
-    uri === undefined
-      ? null
-      : {
-          uri,
-          ...(token === undefined || localUri !== undefined
-            ? {}
-            : { headers: { authorization: `Bearer ${token}` } }),
-        },
-    (built) => {
-      built.loop = gif;
-      built.muted = gif;
-    },
-  );
+  const player = useVideoPlayer(uri === undefined ? null : { uri }, (built) => {
+    built.loop = gif;
+    built.muted = gif;
+  });
   const viewRef = useRef<{ enterFullscreen: () => Promise<void> } | null>(null);
-
-  useEffect(() => {
-    if (uri === undefined || localUri !== undefined) {
-      return;
-    }
-    let cancelled = false;
-    void getSessionToken().then((value) => {
-      if (!cancelled) {
-        setToken(value);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [uri, localUri]);
 
   if (failed) {
     return (

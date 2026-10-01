@@ -1,6 +1,6 @@
 import type { Attachment } from '@galena/protocol';
 import { Image } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
 import {
   PinchGestureHandler,
@@ -13,7 +13,6 @@ import { Text } from '@/components/ui/text';
 import { isTrustedMediaUrl, safeHttpUrl } from '@/lib/attachments';
 import { imageGradient } from '@/lib/image-presets';
 import { raisedPill } from '@/lib/depth';
-import { getSessionToken } from '@/lib/session-token';
 
 const IMAGE_WIDTH = 240;
 const MAX_IMAGE_HEIGHT = 320;
@@ -66,7 +65,6 @@ export function AttachmentImage({
   onOpen,
 }: AttachmentImageProps) {
   const [broken, setBroken] = useState(false);
-  const [token, setToken] = useState<string | undefined>(undefined);
   const trusted = isLoadableMediaUrl(attachment.url, trustedHosts);
   // A `gradient:` URL is a mock-mode demo placeholder (never fetched): it
   // renders the gradient tile below, like `ImageMessage` does for legacy
@@ -78,21 +76,6 @@ export function AttachmentImage({
     attachment.width !== undefined && attachment.height !== undefined
       ? attachment.width / attachment.height
       : undefined;
-
-  useEffect(() => {
-    if (remoteSource === undefined || localUri !== undefined) {
-      return;
-    }
-    let cancelled = false;
-    void getSessionToken().then((value) => {
-      if (!cancelled) {
-        setToken(value);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [remoteSource, localUri]);
 
   if (failed) {
     return <UploadFailed onRetry={onRetry} />;
@@ -154,7 +137,7 @@ export function AttachmentImage({
       >
         <View style={{ width: IMAGE_WIDTH }}>
           <Image
-            source={sourceWithAuth(remoteSource, token, localUri !== undefined)}
+            source={{ uri: remoteSource }}
             accessibilityLabel={alt}
             onError={() => setBroken(true)}
             style={
@@ -306,24 +289,6 @@ function formatSize(bytes: number): string {
   }
   const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
   return `${rounded} ${units[unit]}`;
-}
-
-/**
- * The `Image` source for an attachment URL. A local `file://` preview needs
- * no auth; a remote URL carries the bearer only when it is trusted (the
- * upload service requires a session). The gate lives in the caller, and the
- * source carries no headers for a local URI, so a token can never leak to a
- * `file://` handler or an untrusted host.
- */
-function sourceWithAuth(
-  uri: string,
-  token: string | undefined,
-  local: boolean,
-): { uri: string; headers?: { authorization: string } } {
-  if (local || token === undefined) {
-    return { uri };
-  }
-  return { uri, headers: { authorization: `Bearer ${token}` } };
 }
 
 type AttachmentViewerProps = {
