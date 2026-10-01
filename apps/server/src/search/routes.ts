@@ -14,6 +14,16 @@ import {
   type ArchiveRow,
   type SearchOwner,
 } from './service';
+import {
+  buildTsQuery,
+  FOLD_FROM,
+  FOLD_TO,
+  matchMessageTerms,
+  mergeMarks,
+  searchTerms,
+  windowSnippet,
+  type MarkedSnippet,
+} from './match';
 
 export const SEARCH_RATE_LIMIT_MAX = 30;
 export const SEARCH_RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -52,12 +62,11 @@ export interface SearchItem {
   at: string;
   snippet: string;
   marks: Array<[number, number]>;
+  /** Which pass produced the hit. Both clients ignore unknown fields. */
+  match?: 'exact' | 'fuzzy';
 }
 
-interface MarkedSnippet {
-  snippet: string;
-  marks: Array<[number, number]>;
-}
+export const SEARCH_MIN_FUZZY_QUERY_CHARS = 3;
 
 const START_SEL = '\u0001';
 const STOP_SEL = '\u0002';
@@ -139,7 +148,8 @@ function ownBareJid(allowed: SearchOwner, domain: string): string {
 }
 
 export interface ArchiveQueryInput {
-  q: string;
+  /** Sanitized tsquery built with buildTsQuery (always bound, never SQL). */
+  tsquery: string;
   owners: SearchOwner;
   filter: { kind: 'dm'; peer: string } | { kind: 'room'; room: string } | null;
   cutoffMicros: bigint;
@@ -157,6 +167,12 @@ export interface ArchiveEditRow {
 
 // One fully parameterized query — values travel as `$n` bindings, never
 // string-built SQL, so a query containing SQL metacharacters is just text.
+// Matching folds accents/case (`translate(lower(txt), …)`) and matches the
+// LAST query term as a prefix (`to_tsquery` with `:*`, built from sanitized
+// tokens by buildTsQuery — never string-concatenated SQL: the tsquery text
+// itself is a `$n` binding, and each token is [\p{L}\p{N}]+ quoted with `"`).
+// An empty tsquery (a query of only operators/punctuation) matches nothing:
+// `@@` on an empty query is false and the route answers an empty list.
 // The `WHERE username = … AND timestamp > …` prefix keeps the scan on the
 // existing `(username, timestamp)` index inside the 12-month / 5 000-row cap.
 export function buildArchiveQuery(input: ArchiveQueryInput): { text: string; values: unknown[] } {
@@ -168,13 +184,16 @@ export function buildArchiveQuery(input: ArchiveQueryInput): { text: string; val
   const headlineOptions = next(
     'StartSel=\u0001, StopSel=\u0002, MaxWords=40, MinWords=8, MaxFragments=1',
   );
-  const q = next(input.q);
+  const tsquery = next(input.tsquery);
+  const foldFrom = next(FOLD_FROM);
+  const foldTo = next(FOLD_TO);
   const cutoff = next(input.cutoffMicros);
+  const folded = `translate(lower(txt), ${foldFrom}, ${foldTo})`;
   const columns = `username AS owner, peer, bare_peer AS "barePeer", kind, nick,
     origin_id AS "originId", timestamp,
-    ts_headline('simple', txt, websearch_to_tsquery('simple', ${q}), ${headlineOptions}) AS headline,
-    xml`;
-  const match = `to_tsvector('simple', txt) @@ websearch_to_tsquery('simple', ${q})`;
+    ts_headline('simple', txt, to_tsquery('simple', ${tsquery}), ${headlineOptions}) AS headline,
+    xml, txt AS "body"`;
+  const match = `to_tsvector('simple', ${folded}) @@ to_tsquery('simple', ${tsquery})`;
   const before = input.beforeMicros === null ? '' : ` AND timestamp < ${next(input.beforeMicros)}`;
   const cap = next(SEARCH_MAX_CANDIDATES);
 
@@ -197,7 +216,7 @@ export function buildArchiveQuery(input: ArchiveQueryInput): { text: string; val
 // stanza but need not contain the query text, so a second bounded query
 // fetches them for the same archive scope. The route then shows the latest
 // text per target and drops anything retracted.
-export function buildArchiveEditsQuery(input: Omit<ArchiveQueryInput, 'q'>): {
+export function buildArchiveEditsQuery(input: Omit<ArchiveQueryInput, 'tsquery'>): {
   text: string;
   values: unknown[];
 } {
@@ -222,6 +241,61 @@ export function buildArchiveEditsQuery(input: Omit<ArchiveQueryInput, 'q'>): {
   return {
     text: `SELECT username AS owner, bare_peer AS "barePeer", kind, origin_id AS "originId", timestamp, xml FROM archive WHERE ${scope} AND timestamp > ${cutoff}${before} AND (xml LIKE ${next('%urn:xmpp:message-correct:0%')} OR xml LIKE ${next('%urn:xmpp:message-retract:1%')}) ORDER BY timestamp DESC LIMIT ${cap}`,
     values,
+  };
+}
+
+// The fuzzy second pass scores candidates in code, so it fetches the same
+// bounded scope (same permission scoping, cutoff, cap, newest first) with no
+// text filter. `body` carries the full `txt` for scoring and windowing.
+export function buildFuzzyCandidatesQuery(input: Omit<ArchiveQueryInput, 'tsquery'>): {
+  text: string;
+  values: unknown[];
+} {
+  const values: unknown[] = [];
+  const next = (value: unknown): string => {
+    values.push(value);
+    return `$${values.length}`;
+  };
+  const cutoff = next(input.cutoffMicros);
+  const before = input.beforeMicros === null ? '' : ` AND timestamp < ${next(input.beforeMicros)}`;
+  const cap = next(SEARCH_MAX_CANDIDATES);
+
+  let scope: string;
+  if (input.filter?.kind === 'room') {
+    scope = `username = ${next(input.filter.room)}`;
+  } else if (input.filter?.kind === 'dm') {
+    scope = `username = ${next(input.owners.ownLocalpart)} AND bare_peer = ${next(input.filter.peer)}`;
+  } else {
+    scope = `(username = ANY(${next(input.owners.rooms)}) OR (username = ${next(input.owners.ownLocalpart)} AND bare_peer = ANY(${next(input.owners.dmPeers)})))`;
+  }
+
+  return {
+    text: `SELECT username AS owner, peer, bare_peer AS "barePeer", kind, nick, origin_id AS "originId", timestamp, xml, txt AS "body" FROM archive WHERE ${scope} AND timestamp > ${cutoff}${before} ORDER BY timestamp DESC LIMIT ${cap}`,
+    values,
+  };
+}
+
+// When ts_headline marks nothing (accent-folded hits: its match ran on the
+// raw text), mark the same terms in code on the headline text. Returns the
+// headline marks unchanged when they exist.
+function exactInCodeMarks(
+  terms: string[],
+  snippet: string,
+  marks: Array<[number, number]>,
+): MarkedSnippet {
+  if (marks.length > 0) {
+    return { snippet, marks };
+  }
+  const spans = matchMessageTerms(terms, snippet, false);
+  if (spans === null) {
+    return { snippet, marks };
+  }
+  return {
+    snippet,
+    marks: mergeMarks(
+      spans.map((span) => [span.start, span.end] as [number, number]),
+      [...snippet].length,
+    ),
   };
 }
 
@@ -261,21 +335,28 @@ export function createSearchRoutes(deps: SearchRoutesDependencies): Hono {
     const cutoffMicros = BigInt(Date.now() - SEARCH_WINDOW_MS) * 1000n;
     const beforeMicros = parsed.data.before === undefined ? null : BigInt(parsed.data.before);
 
+    // Sanitized folded tokens (never raw SQL): earlier terms are whole
+    // words, the last term matches as a prefix. No tokens means a query of
+    // only operators/punctuation — answer an empty list, not a 500.
+    const terms = searchTerms(q);
+    const tsquery = terms.length === 0 ? null : buildTsQuery(terms);
+
     const start = performance.now();
+    const scopeInput = { owners: allowed, filter, cutoffMicros, beforeMicros };
     let rows: ArchiveRow[];
     let editRows: ArchiveEditRow[];
     try {
-      const built = buildArchiveQuery({ q, owners: allowed, filter, cutoffMicros, beforeMicros });
-      const edits = buildArchiveEditsQuery({
-        owners: allowed,
-        filter,
-        cutoffMicros,
-        beforeMicros,
-      });
-      [rows, editRows] = await Promise.all([
-        deps.archive.query(built.text, built.values),
-        deps.archive.query(edits.text, edits.values),
-      ]);
+      if (tsquery === null) {
+        rows = [];
+        editRows = [];
+      } else {
+        const built = buildArchiveQuery({ tsquery, ...scopeInput });
+        const edits = buildArchiveEditsQuery(scopeInput);
+        [rows, editRows] = await Promise.all([
+          deps.archive.query(built.text, built.values),
+          deps.archive.query(edits.text, edits.values),
+        ]);
+      }
     } catch {
       throw new HttpError(502, 'search_failed', 'Message search failed, try again later');
     }
@@ -310,43 +391,102 @@ export function createSearchRoutes(deps: SearchRoutesDependencies): Hono {
     const seen = new Set<string>();
     const items: SearchItem[] = [];
     let oldest: bigint | null = null;
-    for (const row of rows) {
+    const ownJid = ownBareJid(allowed, deps.config.xmpp.domain);
+    const pushItem = (
+      row: ArchiveRow,
+      chatJid: string,
+      key: string,
+      snippet: string,
+      marks: Array<[number, number]>,
+      match: 'exact' | 'fuzzy',
+    ): void => {
+      seen.add(key);
+      items.push({
+        chatJid,
+        messageId: row.originId,
+        senderName: senderNameFor(row, ownJid, allowed.peerNames),
+        at: timestampToIso(row.timestamp),
+        snippet,
+        marks,
+        match,
+      });
+      oldest = BigInt(row.timestamp);
+    };
+    // A candidate survives when it is not a retract row, not retracted, and
+    // not superseded by a newer correction. Same handling for both passes.
+    const visibleKey = (row: ArchiveRow): string | null => {
       // A retract row is never a hit itself: its `txt` is only the stock
       // fallback sentence, and the XML namespace matched the query.
       if (retractTarget(row.xml) !== null) {
-        continue;
+        return null;
       }
       const chatJid = chatJidFor(row);
       const key = `${chatJid}|${correctionTarget(row.xml) ?? row.originId}`;
       const at = BigInt(row.timestamp);
       const retractedAt = retractedByTarget.get(key);
       if (retractedAt !== undefined && retractedAt >= at) {
-        continue;
+        return null;
       }
       const latestAt = latestByTarget.get(key);
       if (latestAt !== undefined && latestAt > at) {
-        continue;
+        return null;
       }
       if (seen.has(key)) {
+        return null;
+      }
+      return key;
+    };
+    for (const row of rows) {
+      const key = visibleKey(row);
+      if (key === null) {
         continue;
       }
-      seen.add(key);
+      const chatJid = chatJidFor(row);
       const { snippet, marks } = headlineToSnippet(row.headline);
-      items.push({
-        chatJid,
-        messageId: row.originId,
-        senderName: senderNameFor(
-          row,
-          ownBareJid(allowed, deps.config.xmpp.domain),
-          allowed.peerNames,
-        ),
-        at: timestampToIso(row.timestamp),
-        snippet,
-        marks,
-      });
-      oldest = BigInt(row.timestamp);
+      // ts_headline cannot mark accent-folded hits (its match ran on the
+      // raw text), so re-mark in code when it marked nothing: the same
+      // token rule as the query, with folded matching on both sides.
+      const marked = exactInCodeMarks(terms, snippet, marks);
+      pushItem(row, chatJid, key, marked.snippet, marked.marks, 'exact');
       if (items.length >= limit) {
         break;
+      }
+    }
+
+    // Typo-tolerance second pass: only when the first pass is short, never
+    // for a query shorter than 3 characters. It reuses the same scope,
+    // cutoff, cap and newest-first order, de-duplicates against the first
+    // pass (same edit/retraction handling), and keeps the same cursor
+    // semantics (`nextBefore` is the oldest returned timestamp), so exact
+    // hits rank before fuzzy ones and paging stays correct.
+    if (
+      tsquery !== null &&
+      items.length < limit &&
+      q.trim().length >= SEARCH_MIN_FUZZY_QUERY_CHARS &&
+      terms.length > 0
+    ) {
+      try {
+        const fuzzy = buildFuzzyCandidatesQuery(scopeInput);
+        const candidates = await deps.archive.query(fuzzy.text, fuzzy.values);
+        for (const row of candidates) {
+          if (items.length >= limit) {
+            break;
+          }
+          const key = visibleKey(row);
+          if (key === null) {
+            continue;
+          }
+          const body = row.body ?? '';
+          const spans = matchMessageTerms(terms, body, true);
+          if (spans === null) {
+            continue;
+          }
+          const chatJid = chatJidFor(row);
+          const { snippet, marks } = windowSnippet(body, spans);
+          pushItem(row, chatJid, key, snippet, marks, 'fuzzy');
+        }
+      } catch {
+        throw new HttpError(502, 'search_failed', 'Message search failed, try again later');
       }
     }
 

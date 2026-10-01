@@ -1,7 +1,7 @@
 ---
 id: T-0142
 title: Smarter message search: prefixes and typo tolerance
-status: todo
+status: review
 milestone: M5
 branch: task/T-0142-smarter-search
 model: meta/muse-spark-1.3-contributor
@@ -53,5 +53,105 @@ pnpm --filter @galena/server test --maxWorkers=2 src/search
 (Touched files and their neighbours only; the lead runs the full suites per batch.)
 
 ## Report (written by the worker)
+
+### What I did
+
+- New module `apps/server/src/search/match.ts`: `foldText` (accent/case folding;
+  1:1 char map mirrored in SQL via the exported `FOLD_FROM`/`FOLD_TO`
+  `translate()` bindings), `searchTerms` (folded `[\p{L}\p{N}]+` tokens —
+  operator/punctuation-only queries yield zero tokens), `buildTsQuery`
+  (earlier terms whole words, last term `:*` prefix; tokens are quoted
+  lexemes passed as a `$n` binding, never concatenated SQL), `splitWords`
+  (code-point offsets), `damerauDistance` (optimal string alignment with
+  early exit), `matchMessageTerms` (exact/fuzzy term matching per the
+  spec's distance rules), `mergeMarks` (sorted/merged/clamped) and
+  `windowSnippet` (plain-text window + shifted marks for fuzzy hits).
+- `routes.ts`: first pass now matches
+  `to_tsvector('simple', translate(lower(txt), …)) @@ to_tsquery('simple', $tsquery)`
+  (folded + last-term prefix); operator-only queries answer `[]` (no SQL
+  call at all). Exact hits whose headline has no marks (folded hits) are
+  re-marked in code. Second pass (`buildFuzzyCandidatesQuery`: same scope
+  builder, cutoff, cap, newest first, no text filter) runs only when the
+  first pass is short, the trimmed query is ≥ 3 chars, and terms exist;
+  candidates are scored with `matchMessageTerms(…, fuzzy=true)`,
+  de-duplicated against the first pass with the same correction/retraction
+  handling (shared `visibleKey` helper), exact before fuzzy, `nextBefore`
+  from the oldest returned row. Each item carries optional
+  `match: 'exact' | 'fuzzy'` — safe: web zod strips unknown keys, mobile
+  guards read known keys only (both verified by reading the clients).
+  Rate limiter still called once per request; log still count+duration only.
+- `service.ts`: `ArchiveRow.body?` (full `txt`, selected only by the two
+  queries that need it in code).
+- Tests: `match.test.ts` (9 unit tests) + 10 new route tests in
+  `search.test.ts` covering every spec bullet (typos/prefix/accent/case,
+  yellow/zx/hxxlo non-matches, exact-before-fuzzy ranking, cross-pass
+  paging with a third empty page, typo-query scoping incl. `chat` 404,
+  fuzzy edit/retraction handling, emoji-safe marks, operator/SQL/100-char/
+  unicode edge cases).
+- `docs/SERVER_CONFIG.md`: short "Smarter matching (T-0142)" note.
+- Probed PGlite first (throwaway probe file, removed afterwards): quoted
+  lexemes match operator words, empty tsquery never matches, `translate()`
+  folding works, `ts_headline` marks prefix hits but not folded hits
+  (hence the in-code re-marking).
+
+### Files changed
+
+- `apps/server/src/search/match.ts` (new), `match.test.ts` (new)
+- `apps/server/src/search/routes.ts` (two-pass search, shared edit/retraction
+  helper, `match` field, `SEARCH_MIN_FUZZY_QUERY_CHARS`)
+- `apps/server/src/search/service.ts` (`ArchiveRow.body?`)
+- `apps/server/src/search/search.test.ts` (+10 tests)
+- `docs/SERVER_CONFIG.md` (short matching note)
+- `work/T-0142-smarter-search.md` (this report + status)
+
+### Commands run and real results
+
+- `pnpm install`: pass (6.2 s)
+- `pnpm format:check`: pass (after `prettier --write` on 3 touched files)
+- `pnpm lint`: pass (fixed 3 oxlint errors in `match.ts`: `no-useless-spread`,
+  2× `no-new-array`; lint re-run clean after the last edit)
+- `pnpm typecheck`: pass (10/10 turbo tasks)
+- `pnpm --filter @galena/server test --maxWorkers=2 src/search`: 2 files, 36 passed (27 route + 9 match)
+- Neighbours: `src/authz-sweep.test.ts` + `src/config.test.ts`: 51 passed
+- `grep` for `any|@ts-ignore|disable` in touched source: only benign comment words ("any length")
+- Full suites not run (lead runs them per batch, per AGENTS.md)
+
+### Problems, deviations from the spec, open questions
+
+- Deviation (minor, keeps wire shape): the spec says "keep the existing
+  `marks` wire shape" — done — and allows skipping `match` if it risks
+  clients. I added it after verifying both clients ignore unknown fields
+  (web `searchPageSchema` non-strict zod strips; mobile `parseSearchItem`
+  reads known keys). Say the word if the lead wants it removed.
+- Behaviour change worth noting: the first pass no longer uses
+  `websearch_to_tsquery` (it cannot express prefix). Multi-word queries
+  keep AND semantics with the last term as prefix — verified by the
+  existing "concert tickets" test, which still passes unchanged.
+- Fold map covers à–ÿ/À–Ÿ (incl. ø/Ø, which I fixed mid-work after a unit
+  test caught ø→u instead of ø→o). Characters outside it (æ, œ, ß, ł, …)
+  match exactly on both sides, never folded — same rule in SQL and code.
+- `SEARCH_WINDOW_MS` (365 days) doubles as the fuzzy cutoff by reusing the
+  same `cutoffMicros`; `nextBefore` semantics unchanged (oldest returned
+  timestamp, set only when the page is full).
+
+### Blocked / needs a decision
+
+- None.
+
+### Security checklist
+
+- Same scope builder/cutoff/cap for both passes and the edits query; `chat`
+  outside the allowed set → 404 (tested with typo queries); unknown vs
+  forbidden rooms indistinguishable.
+- Fully parameterized `$n` bindings everywhere; the tsquery text is a
+  binding built from `[\p{L}\p{N}]+` tokens — SQL metacharacters are data
+  (tested, table survives).
+- Query text never logged (log is `{ userId, results, durationMs }` only;
+  covered by the existing no-log test); no audit rows; no message text in
+  errors.
+- Rate limiter called once per request (first line after 501 check); the
+  second query cannot amplify a user past 30/min.
+- Snippets plain text + clamped code-point marks; marks merge/sort/clamp
+  makes out-of-range offsets impossible by construction (emoji test).
 
 ## Review (written by Claude)

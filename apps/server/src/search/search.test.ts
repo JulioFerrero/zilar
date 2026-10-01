@@ -108,6 +108,7 @@ interface SearchBody {
     at: string;
     snippet: string;
     marks: Array<[number, number]>;
+    match?: 'exact' | 'fuzzy';
   }>;
   nextBefore?: string;
   error?: { code: string };
@@ -793,6 +794,422 @@ describe('GET /api/search', () => {
     expect(body.items).toHaveLength(1);
     expect(body.items[0]?.senderName).toBe('Bobby');
     expect(body.items[0]?.chatJid).toBe(generalJid);
+  });
+
+  it('finds typos, prefixes, accents and case variants', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    await seedArchive(archiveClient, [
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-extra-e',
+        timestamp: 1_785_000_000_000_000,
+        txt: 'we said heello to everyone',
+        xml: messageXml('we said heello to everyone'),
+      },
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-missing-l',
+        timestamp: 1_784_000_000_000_000,
+        txt: 'a quick helo there',
+        xml: messageXml('a quick helo there'),
+      },
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-transposed',
+        timestamp: 1_783_000_000_000_000,
+        txt: 'say hlelo kindly',
+        xml: messageXml('say hlelo kindly'),
+      },
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-prefix',
+        timestamp: 1_786_000_000_000_000,
+        txt: 'say hello to the room',
+        xml: messageXml('say hello to the room'),
+      },
+    ]);
+
+    // "hel" finds "hello" (prefix); "hello" finds the typos via the second
+    // pass while the exact hit ranks first.
+    const prefix = await search(alice.cookie, '?q=hel');
+    expect(prefix.status).toBe(200);
+    expect(prefix.body.items.map((item) => item.messageId)).toContain('o-prefix');
+    expect(prefix.body.items[0]?.match).toBe('exact');
+
+    const fuzzy = await search(alice.cookie, '?q=hello');
+    expect(fuzzy.status).toBe(200);
+    expect(fuzzy.body.items[0]?.messageId).toBe('o-prefix');
+    expect(fuzzy.body.items[0]?.match).toBe('exact');
+    expect(fuzzy.body.items.slice(1).map((item) => item.messageId)).toEqual([
+      'o-extra-e',
+      'o-missing-l',
+      'o-transposed',
+    ]);
+    for (const item of fuzzy.body.items.slice(1)) {
+      expect(item.match).toBe('fuzzy');
+    }
+  });
+
+  it('finds folded accents and upper case with in-code marks', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    await seedArchive(archiveClient, [
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-accent',
+        timestamp: 1_785_000_000_000_000,
+        txt: 'visit the café today',
+        xml: messageXml('visit the café today'),
+      },
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-upper',
+        timestamp: 1_784_000_000_000_000,
+        txt: 'say HELLO loudly',
+        xml: messageXml('say HELLO loudly'),
+      },
+    ]);
+
+    const accent = await search(alice.cookie, '?q=cafe');
+    expect(accent.status).toBe(200);
+    expect(accent.body.items.map((item) => item.messageId)).toEqual(['o-accent']);
+    const accentItem = accent.body.items[0];
+    expect(accentItem?.snippet).toContain('café');
+    expect(accentItem?.marks).toHaveLength(1);
+    expect(
+      [...(accentItem?.snippet ?? '')].slice(...(accentItem?.marks[0] ?? [0, 0])).join(''),
+    ).toBe('café');
+
+    const upper = await search(alice.cookie, '?q=HELLO');
+    expect(upper.status).toBe(200);
+    expect(upper.body.items.map((item) => item.messageId)).toEqual(['o-upper']);
+  });
+
+  it('does not match yellow for hello, nor short or far terms', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    await seedArchive(archiveClient, [
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-yellow',
+        timestamp: 1_785_000_000_000_000,
+        txt: 'the yellow submarine sails',
+        xml: messageXml('the yellow submarine sails'),
+      },
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-cat',
+        timestamp: 1_784_000_000_000_000,
+        txt: 'the car cart broke',
+        xml: messageXml('the car cart broke'),
+      },
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-far',
+        timestamp: 1_783_000_000_000_000,
+        txt: 'entirely hxxlo-adjacent words here',
+        xml: messageXml('entirely hxxlo-adjacent words here'),
+      },
+    ]);
+
+    // "hello" is distance 2 from "yellow" (5-char term allows 1): no hit.
+    const yellow = await search(alice.cookie, '?q=hello');
+    expect(yellow.status).toBe(200);
+    expect(yellow.body.items).toHaveLength(0);
+
+    // A 2-character term never goes fuzzy: "zx" matches nothing even
+    // though "car" is nearby, while the prefix rule still applies to real
+    // prefixes ("ca" finds "car" through the first pass).
+    const short = await search(alice.cookie, '?q=zx');
+    expect(short.status).toBe(200);
+    expect(short.body.items).toHaveLength(0);
+    const prefixShort = await search(alice.cookie, '?q=ca');
+    expect(prefixShort.body.items.map((item) => item.messageId)).toEqual(['o-cat']);
+
+    // A 5-character term does not match at distance 2: "hello" vs "hxxlo".
+    const far = await search(alice.cookie, '?q=hello');
+    expect(far.body.items.map((item) => item.messageId)).not.toContain('o-far');
+  });
+
+  it('keeps fuzzy marks on the word with emoji-safe offsets', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    await seedArchive(archiveClient, [
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-emoji',
+        timestamp: 1_785_000_000_000_000,
+        txt: '🎉 party with heello 🎉 friends',
+        xml: messageXml('🎉 party with heello 🎉 friends'),
+      },
+    ]);
+    const { status, body } = await search(alice.cookie, '?q=hello');
+    expect(status).toBe(200);
+    expect(body.items).toHaveLength(1);
+    const item = body.items[0];
+    expect(item?.match).toBe('fuzzy');
+    expect(item?.marks).toHaveLength(1);
+    const [start, end] = item?.marks[0] ?? [0, 0];
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeLessThanOrEqual([...(item?.snippet ?? '')].length);
+    expect([...(item?.snippet ?? '')].slice(start, end).join('')).toBe('heello');
+  });
+
+  it('pages across both passes without duplicates', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    const rows: SeedRow[] = [
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-exact',
+        timestamp: 1_786_000_000_000_000,
+        txt: 'the concert starts soon',
+        xml: messageXml('the concert starts soon'),
+      },
+    ];
+    for (let i = 0; i < 3; i += 1) {
+      rows.push({
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: `o-fuzzy-${i}`,
+        timestamp: 1_785_000_000_000_000 - i * 1_000_000,
+        txt: `a concerrt note number ${i}`,
+        xml: messageXml(`a concerrt note number ${i}`),
+      });
+    }
+    await seedArchive(archiveClient, rows);
+
+    const first = await search(alice.cookie, '?q=concert&limit=2');
+    expect(first.status).toBe(200);
+    expect(first.body.items.map((item) => item.messageId)).toEqual(['o-exact', 'o-fuzzy-0']);
+    expect(first.body.items.map((item) => item.match)).toEqual(['exact', 'fuzzy']);
+    expect(typeof first.body.nextBefore).toBe('string');
+
+    const second = await search(alice.cookie, `?q=concert&limit=2&before=${first.body.nextBefore}`);
+    expect(second.body.items.map((item) => item.messageId)).toEqual(['o-fuzzy-1', 'o-fuzzy-2']);
+    expect(second.body.items.every((item) => item.match === 'fuzzy')).toBe(true);
+
+    // The second page is exactly full, so the cursor continues; the third
+    // page is empty and ends paging.
+    const third = await search(alice.cookie, `?q=concert&limit=2&before=${second.body.nextBefore}`);
+    expect(third.body.items).toHaveLength(0);
+    expect(third.body.nextBefore).toBeUndefined();
+
+    const all = [...first.body.items, ...second.body.items].map((item) => item.messageId);
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it('never leaks fuzzy candidates from rooms the caller may not see', async () => {
+    const { alice, bob, stranger } = await setupDm();
+    const group = await createGroup(alice.cookie, 'Team', [bob.id]);
+    const secret = await createTopic(alice.cookie, group.id, {
+      name: 'Hiring',
+      visibility: 'private',
+      memberIds: [],
+    });
+    const strangerLocal = localpartFor(stranger.id);
+    await seedArchive(archiveClient, [
+      {
+        owner: secret.chatJid,
+        peer: 'someone@x/r',
+        barePeer: 'someone@x',
+        kind: 'groupchat',
+        nick: 'Alice',
+        originId: 'o-secret-fuzzy',
+        timestamp: 1_785_000_000_000_000,
+        txt: 'quokka hiring shortlist',
+        xml: messageXml('quokka hiring shortlist'),
+      },
+      {
+        owner: strangerLocal,
+        peer: `${dmJid(alice.id)}/r`,
+        barePeer: dmJid(alice.id),
+        kind: 'chat',
+        nick: '',
+        originId: 'o-dm-fuzzy',
+        timestamp: 1_785_000_000_000_000,
+        txt: 'quokka stranger notes',
+        xml: messageXml('quokka stranger notes'),
+      },
+    ]);
+
+    // Typo queries must obey the same scoping as exact ones.
+    const bobFound = await search(bob.cookie, '?q=quokak');
+    expect(bobFound.status).toBe(200);
+    expect(bobFound.body.items).toHaveLength(0);
+
+    const strangerFound = await search(stranger.cookie, '?q=quokak');
+    expect(strangerFound.body.items).toHaveLength(0);
+
+    const aliceFound = await search(
+      alice.cookie,
+      `?q=quokak&chat=${encodeURIComponent(secret.chatJid)}`,
+    );
+    expect(aliceFound.status).toBe(200);
+    expect(aliceFound.body.items.map((item) => item.messageId)).toEqual(['o-secret-fuzzy']);
+    expect(aliceFound.body.items[0]?.match).toBe('fuzzy');
+
+    const bobFiltered = await search(
+      bob.cookie,
+      `?q=quokak&chat=${encodeURIComponent(secret.chatJid)}`,
+    );
+    expect(bobFiltered.status).toBe(404);
+  });
+
+  it('applies edit and retraction handling to fuzzy hits', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    await seedArchive(archiveClient, [
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-old',
+        timestamp: 1_780_000_000_000_000,
+        txt: 'avocado toast plan',
+        xml: messageXml('avocado toast plan'),
+      },
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-new',
+        timestamp: 1_781_000_000_000_000,
+        txt: 'avocado brunch corrected plan',
+        xml: correctionXml('avocado brunch corrected plan', 'o-old'),
+      },
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-gone',
+        timestamp: 1_782_000_000_000_000,
+        txt: 'strawberry picnic',
+        xml: messageXml('strawberry picnic'),
+      },
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-retract',
+        timestamp: 1_783_000_000_000_000,
+        txt: 'This person attempted to retract a previous message.',
+        xml: retractXml('o-gone'),
+      },
+    ]);
+
+    // The typo "avocdao" matches both the old and the corrected row; only
+    // the latest text shows, once.
+    const corrected = await search(alice.cookie, '?q=avocdao');
+    expect(corrected.status).toBe(200);
+    expect(corrected.body.items).toHaveLength(1);
+    expect(corrected.body.items[0]?.snippet).toContain('brunch');
+
+    const retracted = await search(alice.cookie, '?q=strawbery');
+    expect(retracted.status).toBe(200);
+    expect(retracted.body.items).toHaveLength(0);
+  });
+
+  it('treats operator-only and hostile queries as text', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    await seedArchive(archiveClient, [
+      {
+        owner: own,
+        peer: `${peer}/r1`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'o-1',
+        timestamp: 1_785_000_000_000_000,
+        txt: 'mango sticky rice',
+        xml: messageXml('mango sticky rice'),
+      },
+    ]);
+
+    for (const raw of ['!!!', '   ...   ', 'OR AND NOT', '& | ! ( )', 'and or']) {
+      const response = await search(alice.cookie, `?q=${encodeURIComponent(raw)}`);
+      expect(response.status).toBe(200);
+      expect(response.body.items).toHaveLength(0);
+    }
+
+    const long = await search(alice.cookie, `?q=${'x'.repeat(100)}`);
+    expect(long.status).toBe(200);
+    expect(long.body.items).toHaveLength(0);
+
+    const unicode = await search(
+      alice.cookie,
+      `?q=${encodeURIComponent('日本語テスト ✓ café 🎉')}`,
+    );
+    expect(unicode.status).toBe(200);
+
+    // The table survived all of it.
+    const again = await search(alice.cookie, '?q=mango');
+    expect(again.status).toBe(200);
+    expect(again.body.items).toHaveLength(1);
   });
 });
 

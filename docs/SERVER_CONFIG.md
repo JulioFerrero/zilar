@@ -83,6 +83,10 @@ Search reads the ejabberd `archive` table through a **read-only** role. Create i
 
 The shape of the table and the query design are in `docs/SEARCH_NOTES.md` (≤ 60 lines). The query text is never logged or stored: the route logs only the result count and duration.
 
+### Smarter matching (T-0142)
+
+No database extension is used. The first pass folds accents/case (`translate(lower(txt), …)`) and matches the last query term as a prefix (`to_tsquery` with `:*`, built from sanitized tokens). When it returns fewer rows than the page limit, a bounded second pass (same scope, cutoff, cap, newest first — never for queries shorter than 3 characters) scores candidates in code with Damerau-Levenshtein distance (terms of 1–3 chars: exact/prefix only; 4–7 chars: distance 1; 8+ chars: distance 2). Each result carries an optional `match: 'exact' | 'fuzzy'` field both clients ignore.
+
 ### AI (LiteLLM) and provider-key encryption
 
 | Variable | Required? | Default | What it does | Notes |
