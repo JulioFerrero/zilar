@@ -82,7 +82,6 @@ describe('matchMessageTerms', () => {
   it('returns code-point spans of the matched words', () => {
     const spans = matchMessageTerms(['hello'], '🎉 say heello 🎉', true);
     expect(spans).toHaveLength(1);
-    expect('🎉 say heello 🎉'.slice(0, 0)).toBe('');
     const [span] = spans ?? [];
     expect([...'🎉 say heello 🎉'].slice(span?.start, span?.end).join('')).toBe('heello');
   });

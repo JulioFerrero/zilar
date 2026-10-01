@@ -1,7 +1,7 @@
 ---
 id: T-0142
 title: Smarter message search: prefixes and typo tolerance
-status: review
+status: merged
 milestone: M5
 branch: task/T-0142-smarter-search
 model: meta/muse-spark-1.3-contributor
@@ -155,3 +155,12 @@ pnpm --filter @galena/server test --maxWorkers=2 src/search
   makes out-of-range offsets impossible by construction (emoji test).
 
 ## Review (written by Claude)
+
+**Verdict:** approved, merged. Server only, no schema, one round.
+
+### Findings
+- Read `match.ts` myself: tsquery text is built only from `[\p{L}\p{N}]+` tokens and passed as a binding (operator-only input short-circuits to an empty list); Damerau-Levenshtein with an early exit; code-point offsets for marks; fuzzy pass reuses the same scope builder, cutoff, cap and cursor as the exact pass (packet confirmed no cross-user path). No query text in logs or errors.
+- Lead fixes: removed a tautological assertion in `match.test.ts` and stopped selecting full message bodies in the first-pass query (only the fuzzy query needs them).
+
+### Follow-ups
+- Verify on the live server and the emulator: "hello" finds "heello", "hel" finds "hello".

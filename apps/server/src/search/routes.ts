@@ -192,7 +192,7 @@ export function buildArchiveQuery(input: ArchiveQueryInput): { text: string; val
   const columns = `username AS owner, peer, bare_peer AS "barePeer", kind, nick,
     origin_id AS "originId", timestamp,
     ts_headline('simple', txt, to_tsquery('simple', ${tsquery}), ${headlineOptions}) AS headline,
-    xml, txt AS "body"`;
+    xml`;
   const match = `to_tsvector('simple', ${folded}) @@ to_tsquery('simple', ${tsquery})`;
   const before = input.beforeMicros === null ? '' : ` AND timestamp < ${next(input.beforeMicros)}`;
   const cap = next(SEARCH_MAX_CANDIDATES);
