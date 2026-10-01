@@ -123,6 +123,10 @@ export interface AppDependencies {
   stickerNow?: () => number;
   /** T-0120: overrides the sticker upload limiter (cap tests inject a pass). */
   uploadLimiter?: { allow: (key: string) => boolean };
+  /** T-0123: overrides the Telegram import client (tests inject a fake). */
+  telegramClient?: import('./stickers/telegram-import').TelegramClient;
+  /** T-0123: overrides the Telegram import limiter (tests inject a window). */
+  telegramImportNow?: () => number;
   /**
    * T-0119: push env (kept separate from the server config so push stays
    * optional). Absent = push off (every push route answers 404).
@@ -160,6 +164,8 @@ export function createApp({
   stickerStorageDir,
   stickerNow,
   uploadLimiter,
+  telegramClient,
+  telegramImportNow,
   push,
   gifProvider,
   gifMediaFetcher,
@@ -303,6 +309,8 @@ export function createApp({
       audit: auditRecorder,
       ...(stickerNow === undefined ? {} : { now: stickerNow }),
       ...(uploadLimiter === undefined ? {} : { uploadLimiter }),
+      ...(telegramClient === undefined ? {} : { telegramClient }),
+      ...(telegramImportNow === undefined ? {} : { now: telegramImportNow }),
     }),
   );
   app.route('/api', createAuditRoutes({ auth, db }));

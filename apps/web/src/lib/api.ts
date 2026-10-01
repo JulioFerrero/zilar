@@ -1306,6 +1306,8 @@ export const stickerPackSchema = z.object({
   ownerId: z.string(),
   title: z.string(),
   visibility: z.enum(['private', 'server']),
+  // Set by the Telegram importer (`telegram:<name>`); absent otherwise.
+  importedFrom: z.string().optional(),
   stickers: z.array(stickerSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -1562,6 +1564,32 @@ export async function removeStickerFavorite(stickerId: string): Promise<void> {
   const params = new URLSearchParams({ sticker_id: stickerId });
   await request(`/sticker-favorites?${params.toString()}`, z.object({ ok: z.boolean() }), {
     method: 'DELETE',
+  });
+}
+
+// --- Telegram import (T-0123) -------------------------------------------------
+// A public Telegram pack's static stickers, imported into a private Galena
+// pack through the server (`TELEGRAM_BOT_TOKEN` lives there; the browser
+// never sees it). Animated/video stickers are skipped and counted;
+// `partial` means the request budget ran out — running the import again
+// fills the gaps. Imported packs are personal-use only (`importedFrom` is
+// set, visibility stays private, the UI says so).
+
+export const telegramImportResultSchema = z.object({
+  pack: stickerPackSchema,
+  imported: z.number(),
+  skippedAnimated: z.number(),
+  skippedInvalid: z.number(),
+  partial: z.boolean().optional(),
+});
+
+export type TelegramImportResult = z.infer<typeof telegramImportResultSchema>;
+
+export function importTelegramStickers(input: string): Promise<TelegramImportResult> {
+  return request('/sticker-packs/import/telegram', telegramImportResultSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input }),
   });
 }
 

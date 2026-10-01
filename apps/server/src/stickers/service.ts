@@ -10,6 +10,11 @@ import { stickerFavorites, stickerPacks, stickers, userStickerPacks } from '../d
 import { HttpError } from '../errors';
 import { probeErrorCode, probeStickerBytes, STICKER_MAX_BYTES } from './image';
 import type { StickerImageInfo } from './image';
+import {
+  parseTelegramPackInput,
+  TelegramImportError,
+  type TelegramClient,
+} from './telegram-import';
 
 export const STICKER_PACKS_MAX_PER_USER = 100;
 export const STICKERS_MAX_PER_PACK = 120;
@@ -40,6 +45,8 @@ export interface StickerPackView {
   ownerId: string;
   title: string;
   visibility: StickerVisibility;
+  /** Set by the Telegram importer (`telegram:<name>`); absent otherwise. */
+  importedFrom?: string;
   stickers: StickerView[];
   createdAt: string;
   updatedAt: string;
@@ -132,6 +139,9 @@ export function toPackView(
     ownerId: pack.ownerId,
     title: pack.title,
     visibility: pack.visibility as StickerVisibility,
+    ...(pack.importedFrom === null || pack.importedFrom === ''
+      ? {}
+      : { importedFrom: pack.importedFrom }),
     stickers: ordered.map((row) => toStickerView(deps, row)),
     createdAt: pack.createdAt.toISOString(),
     updatedAt: pack.updatedAt.toISOString(),
@@ -305,7 +315,12 @@ export async function patchPack(
   userId: string,
   body: PatchPackBody,
 ): Promise<StickerPackView> {
-  await requireOwnedPack(deps, packId, userId);
+  const owned = await requireOwnedPack(deps, packId, userId);
+  // Imported packs (T-0123) are personal-use only: they can never be
+  // switched to `server` visibility, so the art stays with its importer.
+  if (body.visibility === 'server' && owned.importedFrom !== null && owned.importedFrom !== '') {
+    throw new HttpError(400, 'imported_private', 'Imported packs stay private for personal use');
+  }
   // The read, the order validation and all writes run inside one transaction
   // holding the pack's advisory lock: two concurrent reorders serialize
   // instead of interleaving positions, and a concurrent deleteSticker fails
@@ -782,4 +797,322 @@ export async function readStickerFile(
   } catch {
     return null;
   }
+}
+
+// Telegram import (T-0123): fetch a public pack's static stickers into a
+// private Galena pack. At most 200 stickers are considered and 120 imported
+// (the pack limit); animated/video stickers and invalid files are skipped
+// and counted; custom emoji sets are refused. The import runs inside the
+// request budget (`deadlineMs`): when the time is up it stops and reports
+// `partial: true`, and a re-run adds only the missing stickers (matched by
+// `source_id`, Telegram's `file_unique_id`).
+
+export const TELEGRAM_IMPORT_CONSIDER_MAX = 200;
+export const TELEGRAM_IMPORT_STICKERS_MAX = 120;
+export const TELEGRAM_IMPORT_CONCURRENCY = 4;
+
+export interface TelegramImportResult {
+  pack: StickerPackView;
+  imported: number;
+  skippedAnimated: number;
+  skippedInvalid: number;
+  partial: boolean;
+}
+
+export interface TelegramImportDeps extends StickersServiceDeps {
+  /** Injected in tests so the budget can expire without waiting. */
+  now?: () => number;
+}
+
+export async function importTelegramPack(
+  deps: TelegramImportDeps,
+  userId: string,
+  input: string,
+  client: TelegramClient,
+  deadlineMs = 30_000,
+): Promise<TelegramImportResult> {
+  const now = deps.now ?? Date.now;
+  const startedAt = now();
+  let name: string;
+  try {
+    name = parseTelegramPackInput(input);
+  } catch (error) {
+    if (error instanceof TelegramImportError) {
+      throw new HttpError(400, 'invalid_request', 'That sticker pack link is not valid');
+    }
+    throw error;
+  }
+  let set: Awaited<ReturnType<TelegramClient['getStickerSet']>>;
+  try {
+    set = await client.getStickerSet(name);
+  } catch (error) {
+    throw toImportHttpError(error);
+  }
+  if (set.isCustomEmoji) {
+    throw new HttpError(
+      400,
+      'custom_emoji_unsupported',
+      'Custom emoji sets cannot be imported as sticker packs',
+    );
+  }
+  const title = set.title.trim().slice(0, STICKER_PACK_TITLE_MAX) || name;
+  const importedFrom = `telegram:${set.name}`;
+
+  // Find-or-create the pack under the user's lock: a re-run of the same
+  // Telegram pack reuses its row (matched by `imported_from`), so it fills
+  // gaps instead of duplicating. The 100-packs cap is enforced in the same
+  // transaction, so two racing imports cannot both win.
+  let packId: string | undefined;
+  try {
+    await deps.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'sticker-packs:' + userId}))`);
+      const [found] = await tx
+        .select({ id: stickerPacks.id })
+        .from(stickerPacks)
+        .where(and(eq(stickerPacks.ownerId, userId), eq(stickerPacks.importedFrom, importedFrom)))
+        .limit(1);
+      if (found) {
+        packId = found.id;
+        return;
+      }
+      const [counter] = await tx
+        .select({ total: count() })
+        .from(stickerPacks)
+        .where(eq(stickerPacks.ownerId, userId));
+      if (Number(counter?.total ?? 0) >= STICKER_PACKS_MAX_PER_USER) {
+        throw new HttpError(
+          400,
+          'pack_limit',
+          `A user has at most ${STICKER_PACKS_MAX_PER_USER} packs`,
+        );
+      }
+      const id = randomUUID();
+      const stamped = new Date();
+      await tx.insert(stickerPacks).values({
+        id,
+        ownerId: userId,
+        title,
+        visibility: 'private',
+        importedFrom,
+        createdAt: stamped,
+        updatedAt: stamped,
+      });
+      const [ownLinks] = await tx
+        .select({ total: count() })
+        .from(userStickerPacks)
+        .where(eq(userStickerPacks.userId, userId));
+      await tx
+        .insert(userStickerPacks)
+        .values({ userId, packId: id, position: Number(ownLinks?.total ?? 0), addedAt: stamped })
+        .onConflictDoNothing();
+      packId = id;
+    });
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  }
+  if (packId === undefined) {
+    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  }
+  const resolvedPackId = packId;
+
+  // Stickers already imported (by `source_id`), read before the downloads
+  // start. A concurrent import may add a row we also store: the insert
+  // below uses `onConflictDoNothing` on the per-pack unique index, so one
+  // of them wins and the loser counts nothing.
+  const known = await deps.db
+    .select({ sourceId: stickers.sourceId })
+    .from(stickers)
+    .where(eq(stickers.packId, resolvedPackId));
+  const knownIds = new Set(
+    known.map((row) => row.sourceId).filter((id): id is string => id !== null),
+  );
+
+  const candidates = set.stickers.slice(0, TELEGRAM_IMPORT_CONSIDER_MAX);
+  let skippedAnimated = 0;
+  const pending: Array<{ sourceId: string; fileId: string; emoji: string | null }> = [];
+  for (const entry of candidates) {
+    if (entry.animated) {
+      skippedAnimated += 1;
+      continue;
+    }
+    if (knownIds.has(entry.sourceId)) {
+      continue;
+    }
+    pending.push({ sourceId: entry.sourceId, fileId: entry.fileId, emoji: entry.emoji });
+  }
+
+  let imported = 0;
+  let skippedInvalid = 0;
+  let partial = false;
+  const budgetLeft = (): number => deadlineMs - (now() - startedAt);
+
+  // Sequential batches of limited concurrency (4): Telegram downloads one
+  // pack at a time without hammering either side, and the request budget is
+  // checked between batches so the import stops on time. At most 120 new
+  // stickers land (the pack limit); the rest wait for a later run.
+  const remaining = Math.max(0, TELEGRAM_IMPORT_STICKERS_MAX - knownIds.size);
+  const queue = pending.slice(0, remaining);
+  for (let index = 0; index < queue.length; index += TELEGRAM_IMPORT_CONCURRENCY) {
+    if (budgetLeft() <= 0) {
+      partial = true;
+      break;
+    }
+    const batch = queue.slice(index, index + TELEGRAM_IMPORT_CONCURRENCY);
+    const outcomes = await Promise.all(
+      batch.map(async (item) => {
+        let bytes: Uint8Array;
+        try {
+          bytes = await client.downloadFile(item.fileId);
+        } catch (error) {
+          throw toImportHttpError(error);
+        }
+        return storeImportedSticker(deps, resolvedPackId, item, bytes);
+      }),
+    );
+    for (const outcome of outcomes) {
+      if (outcome === 'stored') {
+        imported += 1;
+      } else {
+        skippedInvalid += 1;
+      }
+    }
+  }
+
+  const [pack] = await deps.db
+    .select()
+    .from(stickerPacks)
+    .where(eq(stickerPacks.id, resolvedPackId))
+    .limit(1);
+  if (!pack) {
+    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  }
+  const rows = await deps.db
+    .select()
+    .from(stickers)
+    .where(eq(stickers.packId, resolvedPackId))
+    .orderBy(asc(stickers.position));
+  if (deps.audit) {
+    await deps.audit.record({
+      actorUserId: userId,
+      aiId: null,
+      groupId: null,
+      action: 'sticker_pack.imported',
+      subjectId: resolvedPackId,
+      argsHash: null,
+      costCurrency: null,
+      costAmount: null,
+      result: 'ok',
+      detail: { packId: resolvedPackId, imported, skippedAnimated, skippedInvalid },
+    });
+  }
+  return { pack: toPackView(deps, pack, rows), imported, skippedAnimated, skippedInvalid, partial };
+}
+
+function toImportHttpError(error: unknown): HttpError {
+  if (error instanceof HttpError) {
+    return error;
+  }
+  if (error instanceof TelegramImportError) {
+    switch (error.code) {
+      case 'pack_not_found':
+        return new HttpError(404, 'pack_not_found', 'That Telegram sticker pack was not found');
+      case 'try_later':
+        return new HttpError(503, 'try_later', 'Telegram is busy, try again later');
+      case 'invalid_request':
+        return new HttpError(400, 'invalid_request', error.message);
+      default:
+        return new HttpError(503, 'try_later', 'Telegram is busy, try again later');
+    }
+  }
+  return new HttpError(503, 'try_later', 'Telegram is busy, try again later');
+}
+
+// Validates (the same magic-byte probe as uploads) and stores one imported
+// sticker. A file that fails validation is skipped, never stored; a
+// concurrent duplicate insert wins nothing (`onConflictDoNothing` on the
+// per-pack `source_id` index) and counts as skipped.
+async function storeImportedSticker(
+  deps: TelegramImportDeps,
+  packId: string,
+  item: { sourceId: string; fileId: string; emoji: string | null },
+  bytes: Uint8Array,
+): Promise<'stored' | 'skipped'> {
+  if (bytes.byteLength === 0 || bytes.byteLength > STICKER_MAX_BYTES) {
+    return 'skipped';
+  }
+  const probed = probeStickerBytes(bytes);
+  if (!probed.ok) {
+    return 'skipped';
+  }
+  const info: StickerImageInfo = probed.info;
+  const emojiParsed = z
+    .string()
+    .max(STICKER_EMOJI_MAX)
+    .optional()
+    .safeParse(item.emoji ?? undefined);
+  const id = randomUUID();
+  const extension = info.mime === 'image/webp' ? 'webp' : 'png';
+  const storageKey = `${id}.${extension}`;
+  try {
+    await deps.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`);
+      const [counter] = await tx
+        .select({ total: count() })
+        .from(stickers)
+        .where(eq(stickers.packId, packId));
+      if (Number(counter?.total ?? 0) >= STICKERS_MAX_PER_PACK) {
+        throw new HttpError(
+          400,
+          'pack_full',
+          `A pack holds at most ${STICKERS_MAX_PER_PACK} stickers`,
+        );
+      }
+      const [top] = await tx
+        .select({ position: stickers.position })
+        .from(stickers)
+        .where(eq(stickers.packId, packId))
+        .orderBy(desc(stickers.position))
+        .limit(1);
+      await tx
+        .insert(stickers)
+        .values({
+          id,
+          packId,
+          position: (top?.position ?? -1) + 1,
+          emoji: emojiParsed.success ? (emojiParsed.data ?? null) : null,
+          mime: info.mime,
+          width: info.width,
+          height: info.height,
+          bytes: bytes.byteLength,
+          storageKey,
+          sourceId: item.sourceId,
+        })
+        .onConflictDoNothing();
+      await tx
+        .update(stickerPacks)
+        .set({ updatedAt: new Date() })
+        .where(eq(stickerPacks.id, packId));
+    });
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  }
+  const storageDir = resolveStorageDir(deps.storageDir);
+  try {
+    await mkdir(storageDir, { recursive: true });
+    await writeFile(join(storageDir, storageKey), bytes);
+  } catch {
+    await deps.db
+      .delete(stickers)
+      .where(eq(stickers.id, id))
+      .catch(() => {});
+    return 'skipped';
+  }
+  const [row] = await deps.db.select().from(stickers).where(eq(stickers.id, id)).limit(1);
+  return row ? 'stored' : 'skipped';
 }
