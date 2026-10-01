@@ -1,7 +1,7 @@
 ---
 id: T-0122
 title: GIF search and sending (privacy-preserving proxy, provider behind a port)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0122-gifs
 model: meta/muse-spark-1.3-contributor
@@ -117,10 +117,14 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved, merged after two rounds. No schema. The feature is off until `GIF_PROVIDER` and `GIF_API_KEY` are set.
 
 ### Findings
--
+- Round 1 fixed: media previews got their own (much higher) rate budget so a search no longer 429s its own previews; media tokens redacted in the request log (`app.ts` `logPath`, and `GIF_API_KEY` in `logger.ts`, both accepted as in scope); abort test now asserts stale responses are dropped.
+- Privacy must-fix verified fixed at both layers: incoming attachments pointing at a foreign host are neutralized by the store sanitizer and `GifMessage` only auto-loads same-origin `/api/` paths, so a chat peer cannot make viewers fetch an attacker host. Also fixed: mime/extension of sent GIFs follow the real blob type; provider failures answer a retryable 502.
+- Checked in the packets: SSRF guards on the media proxy (https, allowed hosts, public-address resolution, pinned IP, no redirects, size/time caps), user-bound HMAC tokens, key never in logs or responses.
+- Deferred nits: the GIFs tab shows "not available" instead of hiding when the provider is off; the image downgrade branch keeps the `gif-` name (the render layer is then the only guard for that shape; strip the prefix so either layer alone stops it).
+- Not tried against the real GIF provider (needs Julio's key).
 
 ### Follow-ups
--
+- Julio puts `GIF_PROVIDER=giphy` and `GIF_API_KEY` in the server env, then a live check; mobile GIFs after T-0143.
