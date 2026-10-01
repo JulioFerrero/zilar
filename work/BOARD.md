@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
 
 ## Follow-ups
 
@@ -180,3 +179,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0150](T-0150-mobile-attachments.md) | Mobile attachments: pick, upload (XEP-0363), render images/files/video, trust rules (new deps: expo image/document pickers, expo-image, expo-video) | planned | meta/muse-spark-1.3-contributor | T-0143 | Spec ready |
 | [T-0146](T-0146-web-server-nits.md) | web/server nits: sticker dir warning, leave 404, AI reload, GIF host rule, GIF tab | 2026-10-01 |
 | [T-0143](T-0143-mobile-stickers.md) | mobile stickers: render, panel, send, recents, mock packs | 2026-10-01 |
+| [T-0123](T-0123-telegram-sticker-importer.md) | Telegram sticker pack importer | 2026-10-01 |

@@ -1,0 +1,2 @@
+ALTER TABLE "stickers" ADD COLUMN "source_id" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "stickers_pack_source_idx" ON "stickers" USING btree ("pack_id","source_id") WHERE "stickers"."source_id" IS NOT NULL;

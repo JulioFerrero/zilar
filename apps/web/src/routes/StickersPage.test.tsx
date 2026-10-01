@@ -231,4 +231,92 @@ describe('StickersPage', () => {
       .map((node) => node.textContent);
     expect(names[0]).toBe('Cats');
   });
+
+  it('opens the Telegram import from My packs and shows the result', async () => {
+    const importedPack = {
+      ...demoPack,
+      id: '423e4567-e89b-12d3-a456-426614174003',
+      title: 'Fun Cats',
+      visibility: 'private',
+      importedFrom: 'telegram:FunCats',
+    };
+    const fetchMock = vi.fn(async (url: string) => {
+      if (typeof url === 'string' && url.includes('/sticker-packs/discover')) {
+        return jsonResponse(200, { packs: [], next: null });
+      }
+      if (typeof url === 'string' && url.includes('/sticker-favorites')) {
+        return jsonResponse(200, { favorites: [] });
+      }
+      if (typeof url === 'string' && url.endsWith('/sticker-packs/import/telegram')) {
+        return jsonResponse(200, {
+          pack: importedPack,
+          imported: 5,
+          skippedAnimated: 3,
+          skippedInvalid: 0,
+        });
+      }
+      return jsonResponse(200, { packs: [demoPack] });
+    });
+    renderPage(fetchMock);
+
+    await screen.findByText('Cats');
+    fireEvent.click(screen.getByRole('button', { name: 'Import from Telegram' }));
+    fireEvent.change(screen.getByLabelText('Pack link or name'), {
+      target: { value: 'https://t.me/addstickers/FunCats' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect(await screen.findByText('Imported from Telegram: Fun Cats')).toBeTruthy();
+  });
+
+  it('hides the import entry when the server answers 501', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (typeof url === 'string' && url.includes('/sticker-packs/discover')) {
+        return jsonResponse(200, { packs: [], next: null });
+      }
+      if (typeof url === 'string' && url.includes('/sticker-favorites')) {
+        return jsonResponse(200, { favorites: [] });
+      }
+      if (typeof url === 'string' && url.endsWith('/sticker-packs/import/telegram')) {
+        return jsonResponse(501, {
+          error: { code: 'import_unavailable', message: 'Telegram import is not configured' },
+        });
+      }
+      return jsonResponse(200, { packs: [demoPack] });
+    });
+    renderPage(fetchMock);
+
+    await screen.findByText('Cats');
+    fireEvent.click(screen.getByRole('button', { name: 'Import from Telegram' }));
+    fireEvent.change(screen.getByLabelText('Pack link or name'), { target: { value: 'FunCats' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Import from Telegram' })).toBeNull();
+    });
+  });
+
+  it('marks imported packs and locks them to private', async () => {
+    const importedPack = {
+      ...demoPack,
+      title: 'Fun Cats',
+      visibility: 'private',
+      importedFrom: 'telegram:FunCats',
+    };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      void init;
+      if (typeof url === 'string' && url.includes('/sticker-packs/discover')) {
+        return jsonResponse(200, { packs: [], next: null });
+      }
+      if (typeof url === 'string' && url.includes('/sticker-favorites')) {
+        return jsonResponse(200, { favorites: [] });
+      }
+      return jsonResponse(200, { packs: [importedPack] });
+    });
+    renderPage(fetchMock);
+
+    await screen.findByText('Fun Cats');
+    expect(screen.getByText(/Imported from Telegram · Private/)).toBeTruthy();
+    const share = screen.getByRole('button', { name: 'Share' }) as HTMLButtonElement;
+    expect(share.disabled).toBe(true);
+    expect(share.title).toContain('personal use');
+  });
 });

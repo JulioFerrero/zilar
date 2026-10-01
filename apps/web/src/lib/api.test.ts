@@ -1148,4 +1148,27 @@ describe('sticker packs and favorites API (T-0121)', () => {
     expect(init.method).toBe('PUT');
     expect(JSON.parse(init.body as string)).toEqual({ order: ['p-2', 'p-1'] });
   });
+
+  it('importTelegramStickers POSTs the input and parses the summary', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        pack,
+        imported: 5,
+        skippedAnimated: 3,
+        skippedInvalid: 1,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { importTelegramStickers } = await import('@/lib/api');
+    const result = await importTelegramStickers('https://t.me/addstickers/FunCats');
+    expect(result.imported).toBe(5);
+    expect(result.skippedAnimated).toBe(3);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/sticker-packs/import/telegram');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({
+      input: 'https://t.me/addstickers/FunCats',
+    });
+  });
 });

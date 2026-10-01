@@ -232,6 +232,13 @@
       "when": 1790815116692,
       "tag": "0032_nappy_ender_wiggin",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790824152259,
+      "tag": "0033_hot_lizard",
+      "breakpoints": true
     }
   ]
 }

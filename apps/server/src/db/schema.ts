@@ -499,6 +499,9 @@ export const stickerPacks = pgTable('sticker_packs', {
 
 // One sticker in a pack (T-0120). The bytes live on the server disk under
 // `storage_key` (a relative `<uuid>.<ext>` path, never user input).
+// `source_id` (T-0123) carries the Telegram `file_unique_id` of an imported
+// sticker, so re-running an import fills gaps instead of duplicating rows.
+// Unique per pack; null for stickers made here.
 export const stickers = pgTable(
   'stickers',
   {
@@ -513,9 +516,15 @@ export const stickers = pgTable(
     height: integer('height').notNull(),
     bytes: integer('bytes').notNull(),
     storageKey: text('storage_key').notNull(),
+    sourceId: text('source_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('stickers_pack_idx').on(table.packId)],
+  (table) => [
+    index('stickers_pack_idx').on(table.packId),
+    uniqueIndex('stickers_pack_source_idx')
+      .on(table.packId, table.sourceId)
+      .where(sql`${table.sourceId} IS NOT NULL`),
+  ],
 );
 
 // The packs in a user's sticker panel, ordered. The owner's own packs are

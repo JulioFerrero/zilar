@@ -520,6 +520,17 @@ describe('loadServerConfig', () => {
     expect(rating).not.toContain('test-key-value');
   });
 
+  it('leaves Telegram import off by default and parses an explicit token', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig(base).TELEGRAM_BOT_TOKEN).toBeUndefined();
+    const configured = loadServerConfig({ ...base, TELEGRAM_BOT_TOKEN: 'bot-token-value' });
+    expect(configured.TELEGRAM_BOT_TOKEN).toBe('bot-token-value');
+  });
+
   it('leaves the runner hub off by default on port 3189', () => {
     const base = {
       DATABASE_URL: VALID_DATABASE_URL,

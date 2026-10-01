@@ -202,6 +202,8 @@ interface MockSticker {
   height: number;
   bytes: number;
   url: string;
+  /** T-0123: the Telegram `file_unique_id` of an imported sticker. */
+  sourceId?: string;
 }
 
 interface MockStickerPack {
@@ -209,6 +211,8 @@ interface MockStickerPack {
   ownerId: string;
   title: string;
   visibility: 'private' | 'server';
+  /** T-0123: `telegram:<name>` for imported packs; absent otherwise. */
+  importedFrom?: string;
   stickers: MockSticker[];
   createdAt: string;
   updatedAt: string;
@@ -1421,6 +1425,77 @@ function deleteMockSticker(packId: string, stickerId: string): Response {
   return jsonResponse({ ok: true });
 }
 
+// T-0123: the fake Telegram import. The input names the Telegram pack; the
+// pack content is generated stickers (copied from the first demo pack's
+// art), so mock mode shows a real imported pack without a server.
+function importMockTelegramPack(init: RequestInit): Response {
+  const body = readJsonBody(init);
+  const input = typeof body.input === 'string' ? body.input.trim() : '';
+  if (input === '') {
+    return invalidRequest('Give a sticker pack link or name');
+  }
+  if (input === '__mock_unavailable') {
+    return jsonResponse(
+      { error: { code: 'import_unavailable', message: 'Telegram import is not configured' } },
+      501,
+    );
+  }
+  if (input === '__mock_missing') {
+    return notFound('Sticker pack not found');
+  }
+  const nameMatch = /([A-Za-z0-9_]{1,64})$/.exec(input);
+  const name = nameMatch?.[1] ?? 'Imported';
+  const importedFrom = `telegram:${name}`;
+  const now = new Date().toISOString();
+  let pack = state.stickerPacks.find((row) => row.importedFrom === importedFrom);
+  if (pack === undefined) {
+    pack = {
+      id: randomUUID(),
+      ownerId: currentUserId,
+      title: `${name} (Telegram)`.slice(0, 60),
+      visibility: 'private',
+      importedFrom,
+      stickers: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    state.stickerPacks = [...state.stickerPacks, pack];
+    state.stickerPanel = [...state.stickerPanel, pack.id];
+  }
+  const demoArt = state.stickerPacks[0]?.stickers ?? [];
+  let imported = 0;
+  for (const art of demoArt.slice(0, 6)) {
+    if (pack.stickers.length >= 120) {
+      break;
+    }
+    if (pack.stickers.some((row) => row.sourceId === art.id)) {
+      continue;
+    }
+    const sticker: MockSticker = {
+      id: randomUUID(),
+      packId: pack.id,
+      emoji: art.emoji,
+      mime: 'image/png',
+      width: 200,
+      height: 200,
+      bytes: 1024,
+      url: '',
+      sourceId: art.id,
+    };
+    sticker.url = mockStickerFileUrl(sticker.id);
+    pack.stickers = [...pack.stickers, sticker];
+    imported += 1;
+  }
+  touchPack(pack);
+  return jsonResponse({
+    pack,
+    imported,
+    skippedAnimated: 1,
+    skippedInvalid: 0,
+    ...(input === '__mock_partial' ? { partial: true as const } : {}),
+  });
+}
+
 // T-0121: favorites in memory; the 200 cap and idempotent star match the server.
 function favoriteRows(): MockSticker[] {
   const rows: MockSticker[] = [];
@@ -1887,6 +1962,20 @@ export async function mockRequest(
     const stickerId = params.get('sticker_id') ?? '';
     state.stickerFavorites = state.stickerFavorites.filter((id) => id !== stickerId);
     return jsonResponse({ ok: true });
+  }
+
+  // T-0123: the fake Telegram import. A pack of generated stickers is
+  // created (or reused by `importedFrom`) from the input: the first demo
+  // pack's art is copied in as the pack content, capped like the server.
+  // `__mock_unavailable` simulates the server's 501 (feature off);
+  // `__mock_partial` reports `partial: true` like an exhausted budget.
+  if (
+    head === 'sticker-packs' &&
+    first === 'import' &&
+    second === 'telegram' &&
+    method === 'POST'
+  ) {
+    return importMockTelegramPack(init);
   }
 
   // T-0122: mock GIF search serves the generated placeholders (no server, no

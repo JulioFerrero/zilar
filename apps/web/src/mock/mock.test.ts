@@ -291,4 +291,53 @@ describe('mock sticker demo packs (T-0120)', () => {
       resetMockApi();
     }
   });
+
+  it('imports a fake Telegram pack of generated stickers (re-runs add nothing)', async () => {
+    setMockDelay(0);
+    resetMockApi();
+    try {
+      const first = await mockRequest('/sticker-packs/import/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: 'https://t.me/addstickers/FunCats' }),
+      });
+      expect(first.status).toBe(200);
+      const created = (await first.json()) as {
+        pack: { id: string; title: string; visibility: string; importedFrom: string };
+        imported: number;
+        skippedAnimated: number;
+        partial?: boolean;
+      };
+      expect(created.imported).toBeGreaterThan(0);
+      expect(created.pack.visibility).toBe('private');
+      expect(created.pack.importedFrom).toBe('telegram:FunCats');
+      expect(created.skippedAnimated).toBe(1);
+      expect(created.partial).toBeUndefined();
+
+      const second = await mockRequest('/sticker-packs/import/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: 'FunCats' }),
+      });
+      const rerun = (await second.json()) as { pack: { id: string }; imported: number };
+      expect(rerun.pack.id).toBe(created.pack.id);
+      expect(rerun.imported).toBe(0);
+
+      const partial = await mockRequest('/sticker-packs/import/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: '__mock_partial' }),
+      });
+      expect(((await partial.json()) as { partial?: boolean }).partial).toBe(true);
+
+      const off = await mockRequest('/sticker-packs/import/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: '__mock_unavailable' }),
+      });
+      expect(off.status).toBe(501);
+    } finally {
+      resetMockApi();
+    }
+  });
 });

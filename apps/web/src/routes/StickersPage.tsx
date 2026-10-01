@@ -4,8 +4,10 @@ import { useAuth } from '@/auth/AuthProvider';
 import { AiPageShell } from '@/components/ais/AiPageShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PackEditor } from '@/components/PackEditor';
+import { TelegramImportDialog } from '@/components/TelegramImportDialog';
 import {
   addStickerPanelPack,
+  ApiError,
   deleteStickerPack,
   discoverStickerPacks,
   listStickerFavorites,
@@ -46,6 +48,10 @@ export function StickersPage() {
   const [creating, setCreating] = useState(false);
   const [deletingPack, setDeletingPack] = useState<StickerPack | undefined>(undefined);
   const [movingPackId, setMovingPackId] = useState<string | undefined>(undefined);
+  // Telegram import (T-0123): the dialog opens from "My packs"; `importReady`
+  // is false while the server answers 501 (feature off), hiding the entry.
+  const [importing, setImporting] = useState(false);
+  const [importReady, setImportReady] = useState(true);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -120,6 +126,12 @@ export function StickersPage() {
   };
 
   const toggleVisibility = async (pack: StickerPack): Promise<void> => {
+    // Imported packs stay private (personal use): the server refuses the
+    // switch, but the button hides up front so the offer is never made.
+    if (pack.importedFrom !== undefined && pack.visibility !== 'server') {
+      setActionError('Imported packs stay private for personal use.');
+      return;
+    }
     setActionError('');
     try {
       const updated = await patchStickerPack(pack.id, {
@@ -127,6 +139,10 @@ export function StickersPage() {
       });
       setPacks((previous) => previous?.map((row) => (row.id === pack.id ? updated : row)));
     } catch (cause) {
+      if (cause instanceof ApiError && (cause as ApiError).code === 'imported_private') {
+        setActionError('Imported packs stay private for personal use.');
+        return;
+      }
       setActionError(errorMessageOf(cause, 'Could not change the visibility'));
     }
   };
@@ -269,14 +285,25 @@ export function StickersPage() {
 
           <section aria-label="My packs">
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-[16px] font-semibold">My packs</h2>
-              <button
-                type="button"
-                onClick={() => setCreating(true)}
-                className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90"
-              >
-                Create pack
-              </button>
+              <h2 className="mb-2 text-[16px] font-semibold">My packs</h2>
+              <div className="flex gap-2">
+                {importReady && (
+                  <button
+                    type="button"
+                    onClick={() => setImporting(true)}
+                    className="rounded-full px-4 py-1.5 text-[14px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    Import from Telegram
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setCreating(true)}
+                  className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90"
+                >
+                  Create pack
+                </button>
+              </div>
             </div>
             {myPacks.length === 0 ? (
               <p className="text-[14px] text-muted-foreground">
@@ -293,7 +320,11 @@ export function StickersPage() {
                       <span className="block truncate text-[15px] font-medium">{pack.title}</span>
                       <span className="block text-[13px] text-muted-foreground">
                         {pack.stickers.length} stickers ·{' '}
-                        {pack.visibility === 'server' ? 'Shared' : 'Private'}
+                        {pack.importedFrom !== undefined
+                          ? `Imported from Telegram · Private`
+                          : pack.visibility === 'server'
+                            ? 'Shared'
+                            : 'Private'}
                       </span>
                     </span>
                     <button
@@ -317,7 +348,13 @@ export function StickersPage() {
                     <button
                       type="button"
                       onClick={() => void toggleVisibility(pack)}
-                      className="rounded-full px-3 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                      disabled={pack.importedFrom !== undefined}
+                      title={
+                        pack.importedFrom !== undefined
+                          ? 'Imported packs stay private for personal use'
+                          : undefined
+                      }
+                      className="rounded-full px-3 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
                     >
                       {pack.visibility === 'server' ? 'Make private' : 'Share'}
                     </button>
@@ -487,6 +524,16 @@ export function StickersPage() {
           confirmLabel="Delete"
           onConfirm={() => void confirmDelete()}
           onCancel={() => setDeletingPack(undefined)}
+        />
+      )}
+
+      {importing && (
+        <TelegramImportDialog
+          onDone={() => {
+            void refresh();
+          }}
+          onClose={() => setImporting(false)}
+          onUnavailable={() => setImportReady(false)}
         />
       )}
     </AiPageShell>

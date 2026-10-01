@@ -65,6 +65,13 @@ const serverConfigSchema = z
     // File names are `<uuid>.<ext>`; the dir must exist or be creatable and
     // writable at startup (checked in `index.ts`).
     STICKER_STORAGE_DIR: z.string().min(1).default('./data/stickers'),
+    // Telegram sticker import (T-0123): the token of a bot that may call
+    // `getStickerSet`/`getFile` for public packs (Julio creates one with
+    // @BotFather and puts it in `infra/.env`). Unset = the import route
+    // answers 501 `import_unavailable` and the web hides the feature. The
+    // token is never logged or returned (see `logger.ts` redact paths and
+    // the scrubbing in `stickers/telegram-import.ts`).
+    TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
     // GIFs (T-0122): `GIF_PROVIDER` picks the search adapter (`giphy` today;
     // a second adapter can be added behind the same port later). Unset = the
     // feature is off and every route answers 501 `gifs_unavailable`. The key

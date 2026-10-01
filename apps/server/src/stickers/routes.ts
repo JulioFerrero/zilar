@@ -16,6 +16,7 @@ import {
   deleteSticker,
   discoverPacks,
   favoriteBodySchema,
+  importTelegramPack,
   listFavorites,
   listPanelPacks,
   patchPack,
@@ -27,11 +28,19 @@ import {
   reorderPanelPacks,
   uploadSticker,
   type StickersServiceDeps,
+  type TelegramImportDeps,
 } from './service';
 import { STICKER_MAX_BYTES } from './image';
+import {
+  createTelegramClient,
+  parseTelegramPackInput,
+  TelegramImportError,
+} from './telegram-import';
 
 export const STICKER_UPLOAD_RATE_LIMIT_MAX = 60;
 export const STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+export const TELEGRAM_IMPORT_RATE_LIMIT_MAX = 3;
+export const TELEGRAM_IMPORT_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 export interface StickersRoutesDependencies {
   auth: Auth;
@@ -43,6 +52,10 @@ export interface StickersRoutesDependencies {
   now?: () => number;
   /** Overrides the upload limiter (tests inject a big budget for cap tests). */
   uploadLimiter?: { allow: (key: string) => boolean };
+  /** Overrides the Telegram import limiter (tests inject a pass or a block). */
+  importLimiter?: { allow: (key: string) => boolean };
+  /** Injected in tests so the import never touches the network. */
+  telegramClient?: import('./telegram-import').TelegramClient;
 }
 
 // A malformed percent escape is an unknown id (404), not a server error.
@@ -59,6 +72,13 @@ function serviceDeps(deps: StickersRoutesDependencies): StickersServiceDeps {
     db: deps.db,
     storageDir: deps.storageDir,
     ...(deps.audit === undefined ? {} : { audit: deps.audit }),
+  };
+}
+
+function importDeps(deps: StickersRoutesDependencies): TelegramImportDeps {
+  return {
+    ...serviceDeps(deps),
+    ...(deps.now === undefined ? {} : { now: deps.now }),
   };
 }
 
@@ -105,6 +125,8 @@ const discoverQuerySchema = z.object({
 
 const uploadFormSchema = z.object({ emoji: z.string().max(8).optional() }).strict();
 
+const telegramImportBodySchema = z.object({ input: z.string().min(1).max(512) }).strict();
+
 export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
   const routes = new Hono();
   const now = deps.now ?? Date.now;
@@ -113,6 +135,13 @@ export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
     createRateLimiter({
       max: STICKER_UPLOAD_RATE_LIMIT_MAX,
       windowMs: STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS,
+      now,
+    });
+  const telegramImportLimiter =
+    deps.importLimiter ??
+    createRateLimiter({
+      max: TELEGRAM_IMPORT_RATE_LIMIT_MAX,
+      windowMs: TELEGRAM_IMPORT_RATE_LIMIT_WINDOW_MS,
       now,
     });
 
@@ -147,6 +176,50 @@ export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
     }
     const page = await discoverPacks(serviceDeps(deps), parsed.data.q, parsed.data.cursor);
     return c.json(page);
+  });
+
+  // Telegram import (T-0123): fetch a public pack's static stickers into a
+  // private Galena pack. Without `TELEGRAM_BOT_TOKEN` the feature is off
+  // (501 `import_unavailable`, so the web hides it). 3 imports per hour per
+  // user; the import runs to completion within the request budget (30 s) and
+  // reports `partial: true` when the budget ran out (re-run fills the gaps).
+  routes.post('/sticker-packs/import/telegram', async (c) => {
+    const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    const token = deps.config.TELEGRAM_BOT_TOKEN;
+    if (token === undefined || token === '') {
+      throw new HttpError(501, 'import_unavailable', 'Telegram import is not configured');
+    }
+    const body = await c.req.json().catch(() => null);
+    const parsed = telegramImportBodySchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpError(
+        400,
+        'invalid_request',
+        parsed.error.issues[0]?.message ?? 'Invalid request',
+      );
+    }
+    // The budget is consumed only by a well-formed request for a real pack
+    // name: garbage input fails here, before the 3/hour limiter runs.
+    try {
+      parseTelegramPackInput(parsed.data.input);
+    } catch (error) {
+      if (error instanceof TelegramImportError) {
+        throw new HttpError(400, 'invalid_request', 'That sticker pack link is not valid');
+      }
+      throw error;
+    }
+    if (!telegramImportLimiter.allow(user.id)) {
+      throw new HttpError(429, 'rate_limited', 'Too many Telegram imports, try again later');
+    }
+    const client = deps.telegramClient ?? createTelegramClient(token);
+    const result = await importTelegramPack(importDeps(deps), user.id, parsed.data.input, client);
+    return c.json({
+      pack: result.pack,
+      imported: result.imported,
+      skippedAnimated: result.skippedAnimated,
+      skippedInvalid: result.skippedInvalid,
+      ...(result.partial ? { partial: true as const } : {}),
+    });
   });
 
   routes.patch('/sticker-packs/:id', async (c) => {
