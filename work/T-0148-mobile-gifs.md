@@ -1,7 +1,7 @@
 ---
 id: T-0148
 title: Mobile: GIFs (see and send)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0148-mobile-gifs
 model: meta/muse-spark-1.3-contributor
@@ -78,3 +78,14 @@ Do NOT start simulators, Metro, or `expo run`. Say in the Report what still need
 - `gif-` untrusted downgrade + trusted-URL inline match = the two layers from T-0122, unchanged for the render path.
 
 ## Review (written by Claude)
+
+**Verdict:** approved and merged. Needs a native rebuild and a device look.
+
+### Findings
+- Lead fixes: the GIF video player now waits for the session token on API-origin URLs so its first request carries the bearer (the GIF media route requires a session); a failed GIF download shows an inline dismissible banner instead of opening the attach sheet; GIF previews use `expo-image` (headers work on both platforms); the provisional cache file name goes through `cleanFilename`.
+- Deviations accepted: separate GIF sheet instead of a tab in the sticker sheet; relative `/api/` render resolution.
+
+### Follow-ups
+- Nit: infinite scroll in the GIF panel can fire overlapping page loads (guard with a ref).
+- Nit: the `sends no session token cross-origin` test in `gifs-api.test.ts` is tautological; strengthen it.
+- Device check: GIF search/send, video GIF autoplay (and reduce motion), failure banner, preview loading with auth.

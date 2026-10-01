@@ -6,6 +6,10 @@ import { isPanelGifUrl, GifCell, GifPanel, GifSheet, probeGifsAvailability } fro
 import { GifsApiError } from '@/lib/gifs-api';
 import { resetGifsAvailability, setGifsAvailability, type GifItem } from '@/lib/gifs';
 
+vi.mock('expo-image', () => ({
+  Image: 'Image',
+}));
+
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Image: 'Image',

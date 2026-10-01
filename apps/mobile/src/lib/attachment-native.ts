@@ -301,7 +301,7 @@ export function createGifDownloader(options?: {
       if (cacheDir === null || cacheDir === undefined) {
         return { status: 'error', message: GIF_DOWNLOAD_FAILED_MESSAGE };
       }
-      const provisional = `${gifFileName(gif.id, 'bin')}-${Date.now()}`;
+      const provisional = cleanFilename(`${gifFileName(gif.id, 'bin')}-${Date.now()}`);
       let result: FileSystem.FileSystemDownloadResult;
       try {
         result = await download(

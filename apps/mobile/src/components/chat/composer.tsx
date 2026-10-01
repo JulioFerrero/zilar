@@ -267,7 +267,6 @@ export function Composer({
       .then((result) => {
         if (result.status !== 'downloaded') {
           setAttachError(result.message);
-          setAttachOpen(true);
           return;
         }
         send(result.file, {
@@ -280,7 +279,6 @@ export function Composer({
       })
       .catch(() => {
         setAttachError('Could not load that GIF. Try another.');
-        setAttachOpen(true);
       });
   };
 
@@ -419,6 +417,17 @@ export function Composer({
         <EditBar text={targetText ?? ''} onCancel={handleCancelEdit} />
       ) : replyTo !== undefined ? (
         <ReplyBar reply={replyTo} onCancel={onCancelReply} />
+      ) : null}
+      {attachError !== undefined && !attachOpen ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss error"
+          onPress={() => setAttachError(undefined)}
+          className="mb-2 rounded-[10px] px-3 py-2"
+          style={well}
+        >
+          <Text className="text-[13px] text-[#f87171]">{attachError}</Text>
+        </Pressable>
       ) : null}
       <View
         className="flex-row items-end gap-1 rounded-[14px] p-2"

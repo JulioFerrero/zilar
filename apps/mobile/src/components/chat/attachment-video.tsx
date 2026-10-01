@@ -54,9 +54,10 @@ export function AttachmentVideo({
   // Auth headers go only to the API origin (the same-origin `/api/` path
   // case): the upload host serves public URLs, and a header there would
   // leak the session token cross-origin.
+  const needsToken = localUri === undefined && trusted && isApiOriginUrl(attachment.url);
   const [token, setToken] = useState<string | undefined>(undefined);
   useEffect(() => {
-    if (!trusted || uri === undefined || !isApiOriginUrl(attachment.url)) {
+    if (!needsToken || uri === undefined) {
       return;
     }
     let cancelled = false;
@@ -68,16 +69,20 @@ export function AttachmentVideo({
     return () => {
       cancelled = true;
     };
-  }, [trusted, uri, attachment.url]);
+  }, [needsToken, uri]);
   const gif = isGifOrigin(attachment);
   // `useVideoPlayer` owns the player: loop/mute are set in the setup
   // callback below, never by mutating the returned player in an effect.
   const player = useVideoPlayer(
-    uri === undefined
+    // The native player is built once per source: an API-origin URL waits for
+    // the session token so the first request already carries the bearer.
+    uri === undefined || (needsToken && token === undefined)
       ? null
       : {
           uri,
-          ...(token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } }),
+          ...(token === undefined || !needsToken
+            ? {}
+            : { headers: { authorization: `Bearer ${token}` } }),
         },
     (built) => {
       built.loop = gif;

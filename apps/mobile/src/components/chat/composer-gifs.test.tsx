@@ -5,6 +5,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Composer } from './composer';
 import { resetGifsAvailability, setGifsAvailability } from '@/lib/gifs';
 
+vi.mock('expo-image', () => ({
+  Image: 'Image',
+}));
+
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Image: 'Image',

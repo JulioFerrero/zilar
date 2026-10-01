@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Image,
-  Modal,
-  Pressable,
-  ScrollView,
-  TextInput,
-  View,
-} from 'react-native';
+import { Image } from 'expo-image';
+import { ActivityIndicator, Modal, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
@@ -76,7 +69,7 @@ export function GifCell({
         }
         accessibilityLabel={label}
         style={{ width: '100%', height: '100%' }}
-        resizeMode="cover"
+        contentFit="cover"
       />
       {item.kind === 'video' ? (
         <View className="absolute right-1 bottom-1 items-center justify-center rounded-full bg-black/60 px-2 py-0.5">
