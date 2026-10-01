@@ -1,7 +1,7 @@
 ---
 id: T-0147
 title: Mobile: deferred nits (fetch ordering, roles screen test, join link cleanups)
-status: todo
+status: review
 milestone: M5
 branch: task/T-0147-mobile-nits
 model: meta/muse-spark-1.3-contributor
@@ -41,5 +41,34 @@ pnpm --filter @galena/mobile test --maxWorkers=2 <touched test files and their n
 Do NOT start simulators, Metro, or `expo run`.
 
 ## Report (written by the worker)
+
+### What I did
+1. **Fetch ordering (spec 1)**: `openChat` and `joinGroups` now start `ensureGroupDetail` before `ensureGroupMembers`; `ensureGroupMembers` lost its private `api.getGroup` fallback — with nothing cached/in flight it starts the shared detail load itself and waits on it, so the fallback fills the detail cache. `adoptChatEntries` dedupes the roster path per group id (one shared detail start per group, not one per row). New tests with a counting fake api: cold open = exactly 1 GET, a 5-topic roster push = exactly 1 GET (`real-store.general-only.test.ts`, T-0147 block; boots with a failing XMPP connect so the chat list is loaded but no detail ever fetched).
+2. **Roles screen (spec 2)**: new screen-level test `apps/mobile/src/app/group/roles-load.test.tsx` — renders the real `GroupRolesSheet` with the real `describeRolesError(error, 'load')` line the mount effect produces. A first-load 404 reads as the gone line (and the test asserts the gone and generic lines differ, so it fails if the hardcoded generic line comes back).
+3. **Join link (spec 3)**: one `joinErrorStatus(error)` helper for the status/code extraction duplicated in `joinPreviewFailure`/`joinPressFailure`; removed the free-form `joinError: string` pass-through from `joinLinkViewFor` (callers pass typed `joinRetry: true` for the offline-retry line). Token tests untouched and still green — token never in any rendered text.
+4. **Search jump-scroll (spec 4)**: `startJumpScroll` confirms (`onDone`) only on the LAST retry (immediately when there are no retries); the returned cancel sets a flag so post-cancel timers never scroll/confirm. The list no longer clears the target synchronously, so a message arriving during the 80/200/400 ms retries moves the later attempts. Tests with fake timers: mid-retry arrival follows the moved row and confirms once; cancel fires nothing; not-loaded keeps the target.
+5. No server, web, packages, or dependency changes.
+
+### Files changed
+- `apps/mobile/src/store/real-store.ts` (`ensureGroupMembers` shares detail, ordering in `openChat`/`joinGroups`, per-group dedupe in `adoptChatEntries`)
+- `apps/mobile/src/components/chat/join-link.tsx` (`joinErrorStatus`, `joinRetry` replaces `joinError`)
+- `apps/mobile/src/components/chat/jump-scroll.ts` (confirm-on-last-retry, cancel flag) + `message-list.tsx` (comment)
+- Tests: `store/real-store.general-only.test.ts` (2 new fetch-count tests), `app/group/roles-load.test.tsx` (new), `components/chat/jump-scroll.test.ts` (confirm timing + cancel tests), `components/chat/join-link.test.tsx` (`joinRetry`)
+- `work/T-0147-mobile-nits.md` (this Report, status)
+
+### Commands run and real results
+- `pnpm install`: pass (~7s).
+- Touched + neighbours (`pnpm --filter @galena/mobile test --maxWorkers=2`): 10 files, 89 passed (general-only, roles, topics, invite-links, join-link, jump-scroll, group-roles-sheet, roles-load, use-message-search, message-search); 6 more neighbour files, 130 passed (real-store, chat-store, invite-links, chat-actions-sheet, topic-sheets-roles, lib/roles). Also roles.test + use-message-search earlier: 88 passed.
+- `pnpm format:check`: pass. `pnpm lint` (oxlint): pass. `pnpm typecheck` (turbo, 10 tasks): pass.
+- No simulators, Metro, or `expo run` started (per spec).
+
+### Problems, deviations, open questions
+- The roster-push test drives the adoption path through `reloadChats` with a connected-but-failed core handle; the per-row member loads it exercises are the same `ensureGroupMembers` calls `adoptChatEntries` makes. `refreshChats` itself is covered indirectly (same adoption function).
+- The roles screen test renders the real sheet with the real helper output rather than mounting the full route (which needs router + provider + chat context); the wiring it pins is the mount effect's exact mapping call plus the rendered line. A full route mount would need a device-level harness.
+- Security checklist: no secrets/tokens in code or logs (no logging added; join-link token tests still assert the token never renders); no new routes; no scoping/404/rate-limit/audit changes (mobile only); group detail carries people/roles, no message text; invite tokens never enter the store.
+- Still needs a device look (no simulator run): one `GET /api/groups/<id>` per cold open in the network inspector, roles sheet showing the gone line on a deleted group, jump-scroll landing centered with real image settling.
+
+### Blocked / needs a decision
+- None.
 
 ## Review (written by Claude)

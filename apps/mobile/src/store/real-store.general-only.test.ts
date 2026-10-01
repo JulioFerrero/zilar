@@ -214,7 +214,128 @@ describe('real store General-only group (T-0139)', () => {
   });
 });
 
-describe('real store group detail fetch count (T-0139)', () => {
+describe('real store group detail fetch count (T-0147)', () => {
+  function detailApi(entries: ChatEntry[]) {
+    return {
+      ...(fakeApi(entries) as unknown as ChatApi),
+      getGroup: vi.fn(async (groupId: string) => ({
+        id: groupId,
+        title: 'Dev team',
+        createdBy: 'u-me',
+        members: [
+          { userId: 'u-me', name: 'Me', role: 'admin' as const, roles: [] },
+          { userId: 'u-ana', name: 'Ana', role: 'member' as const, roles: [] },
+        ],
+        ais: [],
+      })),
+    };
+  }
+
+  function parseWires(wires: Record<string, unknown>[]): Topic[] {
+    const parsed: Topic[] = [];
+    for (const wire of wires) {
+      const topic = parseTopic(wire);
+      if (topic === null) {
+        throw new Error('test topic must parse');
+      }
+      parsed.push(topic);
+    }
+    return parsed;
+  }
+
+  function groupCalls(getGroup: unknown): number {
+    return (getGroup as { mock: { calls: unknown[] } }).mock.calls.length;
+  }
+
+  function setupCold(entries: ChatEntry[], core?: unknown) {
+    const api = detailApi(entries);
+    const store = createRealChatStore({
+      api,
+      topicsApi: fakeTopics(),
+      chatPrefsApi: fakePrefs(),
+      pinsApi: fakePins(),
+      appState: fakeAppState(),
+      openDrafts: () => () => {},
+      createXmpp: () => (core ?? fakeCore()) as never,
+    });
+    return { store, api };
+  }
+
+  // Boots the store to the cold state: the chat list is loaded but no group
+  // detail has ever fetched (the XMPP connect fails, so `joinGroups` never
+  // runs). Mirrors a deep link opened before the socket is up. `entries`
+  // may be empty for the roster-push test, which lands its rows later.
+  async function bootCold(entries: ChatEntry[], core?: unknown) {
+    const { store, api } = setupCold(entries, core);
+    store.getState().start();
+    await flush();
+    await flush();
+    expect(store.getState().chats).toHaveLength(entries.length === 0 ? 0 : 1);
+    expect(groupCalls(api.getGroup)).toBe(0);
+    return { store, api };
+  }
+
+  function failingConnectCore(): unknown {
+    return {
+      ...(fakeCore() as Record<string, unknown>),
+      connect: async () => {
+        throw new Error('offline');
+      },
+    };
+  }
+
+  it('opens a cold chat with one group GET', async () => {
+    // T-0147: a cold open fired two GETs (the members fallback before the
+    // detail load). The detail starts first and the members fallback fills
+    // the detail cache, so the open costs exactly one.
+    const parsed = parseWires([
+      topicWire({
+        id: 't-g',
+        name: 'General',
+        isGeneral: true,
+        chatJid: 'general@rooms.galena.test',
+      }),
+    ]);
+    const { store, api } = await bootCold([groupEntry({ topics: parsed })], failingConnectCore());
+
+    // Cold open: the detail has never fetched — one GET total.
+    store.getState().openChat('general@rooms.galena.test');
+    await flush();
+    expect(groupCalls(api.getGroup)).toBe(1);
+    expect(store.getState().groupDetail('g1')).toBeDefined();
+    store.getState().stop();
+  });
+
+  it('serves a 5-topic roster push with one group GET', async () => {
+    // T-0147: an invite/roster push for an N-topic group fanned out N GETs
+    // (one fallback per row). The roster path dedupes per group id and the
+    // fallback fills the detail cache, so five rows cost exactly one.
+    const parsed = parseWires(
+      [0, 1, 2, 3, 4].map((n) =>
+        topicWire({
+          id: `t-${n}`,
+          name: `Topic ${n}`,
+          isGeneral: false,
+          chatJid: `t-${n}@rooms.galena.test`,
+        }),
+      ),
+    );
+    const { store, api } = await bootCold([], failingConnectCore());
+
+    // The push is the first thing the store hears of this group: five fresh
+    // rows land at once (the invite/roster path). The core object exists
+    // (connect failed, but adoption only needs the handle), so the adoption
+    // path joins each room and loads member names — five rows, one group,
+    // one shared GET.
+    vi.mocked(api.getChats).mockResolvedValue([groupEntry({ topics: parsed })]);
+    await store.getState().reloadChats();
+    await flush();
+    await flush();
+    expect(store.getState().chats).toHaveLength(5);
+    expect(groupCalls(api.getGroup)).toBe(1);
+    store.getState().stop();
+  });
+
   it('fetches the group detail once for boot, chat open and group screen mount', async () => {
     // The reported symptom: opening a chat and then the group screen fired
     // a forced GET per mount (openChat + chat screen effect + group screen

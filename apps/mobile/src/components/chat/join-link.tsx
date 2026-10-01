@@ -25,21 +25,21 @@ export interface JoinLinkView {
  * Reduces a preview/join outcome to its view state. `rateLimited` is true
  * for rate-limit answers (429), which show the retry text; `offline` is true
  * for an unreachable server, which shows a connection retry; every other
- * failure shows the same neutral message. Takes only the error code/status,
- * never the token.
+ * failure shows the same neutral message. `joinRetry` keeps the preview
+ * with the retry line after a join press hit an unreachable server.
  */
 export function joinLinkViewFor(input: {
   preview?: JoinPreview;
   failed: boolean;
   rateLimited: boolean;
   offline?: boolean;
-  joinError?: string;
+  joinRetry?: boolean;
 }): JoinLinkView {
   if (!input.failed && input.preview !== undefined) {
     return {
       state: 'ready',
       preview: input.preview,
-      ...(input.joinError === undefined ? {} : { error: input.joinError }),
+      ...(input.joinRetry === true ? { error: 'Could not join the group. Try again.' } : {}),
     };
   }
   if (input.offline === true) {
@@ -53,19 +53,22 @@ export function joinLinkViewFor(input: {
   };
 }
 
+/** One helper for the status/code extraction behind both join failures. */
+function joinErrorStatus(error: unknown): { status: number | undefined; code: string | undefined } {
+  if (typeof error !== 'object' || error === null) {
+    return { status: undefined, code: undefined };
+  }
+  const status = 'status' in error && typeof error.status === 'number' ? error.status : undefined;
+  const code = 'code' in error && typeof error.code === 'string' ? error.code : undefined;
+  return { status, code };
+}
+
 /** The preview-load failure from the route's store call: the mapped join
  *  error (raw server text never reaches the UI) and whether the server was
  *  simply unreachable. Takes the raw error's status/code only — the token
  *  never enters the view. */
 export function joinPreviewFailure(error: unknown): { rateLimited: boolean; offline: boolean } {
-  const status =
-    typeof error === 'object' && error !== null && 'status' in error
-      ? (error.status as number | undefined)
-      : undefined;
-  const code =
-    typeof error === 'object' && error !== null && 'code' in error
-      ? (error.code as string | undefined)
-      : undefined;
+  const { status, code } = joinErrorStatus(error);
   if (status === 429 || code === 'rate_limited') {
     return { rateLimited: true, offline: false };
   }
@@ -80,14 +83,7 @@ export function joinPreviewFailure(error: unknown): { rateLimited: boolean; offl
  *  every other failure shows the same neutral message. The raw error never
  *  reaches the rendered text, so a leaked token cannot leak into the UI. */
 export function joinPressFailure(error: unknown, preview: JoinPreview): JoinLinkView {
-  const status =
-    typeof error === 'object' && error !== null && 'status' in error
-      ? (error.status as number | undefined)
-      : undefined;
-  const code =
-    typeof error === 'object' && error !== null && 'code' in error
-      ? (error.code as string | undefined)
-      : undefined;
+  const { status, code } = joinErrorStatus(error);
   if (status === 429 || code === 'rate_limited') {
     return joinLinkViewFor({ failed: true, rateLimited: true });
   }
@@ -96,7 +92,7 @@ export function joinPressFailure(error: unknown, preview: JoinPreview): JoinLink
       preview,
       failed: false,
       rateLimited: false,
-      joinError: 'Could not join the group. Try again.',
+      joinRetry: true,
     });
   }
   return joinLinkViewFor({ failed: true, rateLimited: false });

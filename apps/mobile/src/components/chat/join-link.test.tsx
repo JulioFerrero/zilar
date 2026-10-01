@@ -114,7 +114,7 @@ describe('joinLinkViewFor', () => {
       preview: preview(),
       failed: false,
       rateLimited: false,
-      joinError: 'Could not join the group. Try again.',
+      joinRetry: true,
     });
     expect(view.state).toBe('ready');
     expect(view.error).toBe('Could not join the group. Try again.');
