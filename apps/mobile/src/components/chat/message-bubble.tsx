@@ -13,6 +13,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 
 import { Avatar } from '@/components/chat/avatar';
+import { AttachmentBody } from '@/components/chat/attachment-body';
 import { ImageMessage } from '@/components/chat/image-message';
 import { LinkText } from '@/components/chat/link-text';
 import { rendersMarkdown } from '@/components/chat/markdown-decision';
@@ -208,6 +209,14 @@ type MessageBubbleProps = {
   onDelete?: (message: UiMessage) => void;
   /** Called when the sticker Retry is tapped on a failed sticker send. */
   onRetrySticker?: (message: UiMessage) => void;
+  /** Called when the Retry is tapped on a failed attachment upload. */
+  onRetryAttachment?: (message: UiMessage) => void;
+  /** Called when Cancel is tapped while an attachment uploads. */
+  onCancelAttachment?: (message: UiMessage) => void;
+  /** Called when a file row is tapped (system open sheet). */
+  onOpenAttachment?: (message: UiMessage) => void;
+  /** The message id currently downloading for the open sheet. */
+  openingAttachmentId?: string | undefined;
   /** Pin/unpin gating for chat of this message (T-0135). */
   canPin?: boolean;
   isPinned?: boolean;
@@ -229,6 +238,10 @@ export function MessageBubble({
   onEdit,
   onDelete,
   onRetrySticker,
+  onRetryAttachment,
+  onCancelAttachment,
+  onOpenAttachment,
+  openingAttachmentId,
   canPin,
   isPinned,
   onPin,
@@ -246,9 +259,16 @@ export function MessageBubble({
     rendersMarkdown(state.chats, message, currentUserId),
   );
   // Edit/Delete are user-side limits: my own text message under 48 h, or my
-  // own message of any kind. Tombstones and live drafts offer neither.
+  // own message of any kind. Tombstones and live drafts offer neither. An
+  // attachment message keeps delete (and copy of the caption) but never
+  // edits the file itself: the caption is plain text, edited like web
+  // (web's composer edits the caption; the attachment payload is replaced
+  // only by sending a new message).
   const canEdit =
-    !draft && message.deleted !== true && canEditMessage(message, currentUserId, new Date());
+    !draft &&
+    message.deleted !== true &&
+    message.attachment === undefined &&
+    canEditMessage(message, currentUserId, new Date());
   const canDelete = !draft && message.deleted !== true && canDeleteMessage(message, currentUserId);
   const myReactions = (message.reactions ?? []).filter((entry) => entry.mine);
   const react = onReact ?? (() => {});
@@ -289,12 +309,17 @@ export function MessageBubble({
     hasText &&
     message.replyTo === undefined &&
     message.image === undefined &&
+    message.attachment === undefined &&
     message.voice === undefined &&
     message.card === undefined &&
     isBigEmoji(message.text ?? '');
   // A sticker renders without a bubble (validated against `StickerSchema`;
   // an invalid payload falls back to the body text like an unknown client).
   const sticker = stickerOf(message);
+  // An attachment message carries the caption as its text: copy text is the
+  // caption, pins and replies keep working (the reply quote shows the
+  // caption via `previewBody`), and delete removes the whole message.
+  const hasAttachment = message.attachment !== undefined;
   const showSenderName =
     isGroup && !outgoing && isFirstInGroup && !bigEmoji && sticker === undefined;
   const showAvatar = isGroup && !outgoing && isLastInGroup;
@@ -429,7 +454,16 @@ export function MessageBubble({
                     </Text>
                   ) : null}
                   {message.replyTo ? <ReplyQuote reply={message.replyTo} /> : null}
-                  {message.card ? (
+                  {hasAttachment ? (
+                    <AttachmentBody
+                      message={message}
+                      outgoing={outgoing}
+                      onRetryAttachment={onRetryAttachment}
+                      onCancelAttachment={onCancelAttachment}
+                      onOpenAttachment={onOpenAttachment}
+                      opening={openingAttachmentId === message.id}
+                    />
+                  ) : message.card ? (
                     <>
                       <PayloadCard card={message.card} />
                       <BubbleMeta
@@ -536,7 +570,7 @@ export function MessageBubble({
       <MessageActionsSheet
         visible={menuOpen}
         canCopy={hasText && sticker === undefined}
-        canEdit={sticker === undefined && canEdit}
+        canEdit={sticker === undefined && !hasAttachment && canEdit}
         canDelete={canDelete}
         canPin={canPin}
         isPinned={isPinned}

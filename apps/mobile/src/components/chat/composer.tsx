@@ -1,14 +1,17 @@
-import { StickerSchema } from '@galena/protocol';
+import { StickerSchema, type Attachment } from '@galena/protocol';
 import { ArrowUp, Mic, Paperclip, Smile, Sticker, X } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AttachSheet, type AttachmentChoice } from '@/components/chat/attach-sheet';
 import { EditBar } from '@/components/chat/edit-bar';
 import { loadStickerPacks, persistRecent, StickerPanel } from '@/components/chat/sticker-panel';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
+import { createAttachmentPicker } from '@/lib/attachment-native';
+import type { AttachmentPicker, PickedFile } from '@/lib/attachment-ports';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import {
@@ -22,7 +25,7 @@ import { RECENTS_STORAGE, readStoredRecents } from '@/lib/stickers-storage';
 import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stickers';
 import type { StickerPanelState } from '@/components/chat/sticker-panel';
 import type { ReplyRef } from '@/lib/types';
-import type { SendStickerChoice } from '@/store/types';
+import type { SendAttachmentOptions, SendStickerChoice } from '@/store/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import { useColorScheme } from 'nativewind';
 
@@ -31,6 +34,22 @@ const MAX_INPUT_HEIGHT = 132;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * A mock-mode demo attachment as a picked file. The `gradient:` URL is the
+ * preview URI (the bubble renders the gradient placeholder, never a fetch);
+ * the store replaces it with the mock served URL on send.
+ */
+function demoPickedFile(attachment: Attachment): PickedFile {
+  return {
+    uri: attachment.url,
+    name: attachment.name,
+    mimeType: attachment.mime,
+    size: attachment.size,
+    ...(attachment.width === undefined ? {} : { width: attachment.width }),
+    ...(attachment.height === undefined ? {} : { height: attachment.height }),
+  };
 }
 
 function ReplyBar({ reply, onCancel }: { reply: ReplyRef; onCancel: () => void }) {
@@ -63,24 +82,33 @@ function ReplyBar({ reply, onCancel }: { reply: ReplyRef; onCancel: () => void }
 type ComposerProps = {
   onSend: (text: string) => void;
   onSendSticker: (sticker: SendStickerChoice) => void;
+  /** Sends a picked file with the composer text as the caption (T-0150). */
+  onSendAttachment?: ((file: PickedFile, options?: SendAttachmentOptions) => void) | undefined;
+  /** Demo packs in mock mode, so the panel works without a server. */
+  demoPacks?: StickerPack[];
+  /** Demo attachments in mock mode, so the flow works without a server. */
+  demoAttachments?: Attachment[] | undefined;
   replyTo?: ReplyRef;
   onCancelReply: () => void;
   onTyping?: () => void;
   /** Used for the `Message <title>` placeholder, like the web composer. */
   title?: string;
-  /** Demo packs in mock mode, so the panel works without a server. */
-  demoPacks?: StickerPack[];
+  /** The native pickers; tests inject a fake. */
+  picker?: AttachmentPicker | undefined;
 };
 
 /** Bottom composer: a well with attach, auto-growing input, emoji and mic/send. */
 export function Composer({
   onSend,
   onSendSticker,
+  onSendAttachment,
   replyTo,
   onCancelReply,
   onTyping,
   title,
   demoPacks,
+  demoAttachments,
+  picker: pickerProp,
 }: ComposerProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const insets = useSafeAreaInsets();
@@ -113,9 +141,20 @@ export function Composer({
       setText(targetText ?? '');
     }
   }
-  const canSend = text.trim().length > 0;
   const iconColor = ICON[scheme];
   const placeholder = title === undefined ? 'Message' : `Message ${title}`;
+
+  // Attachments (T-0150): the paperclip opens the attach sheet. Picking is
+  // owned here (the native picker seam is injected for tests); sending goes
+  // through the store's `sendAttachment` with the composer text as the
+  // caption, exactly like web. The mic button stays a stub (voice messages
+  // are a later task).
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [attachBusy, setAttachBusy] = useState(false);
+  const [attachError, setAttachError] = useState<string | undefined>(undefined);
+  const [picked, setPicked] = useState<PickedFile | undefined>(undefined);
+  const picker = useMemo(() => pickerProp ?? createAttachmentPicker(), [pickerProp]);
+  const canSend = text.trim().length > 0 || picked !== undefined;
 
   // The sticker panel: the user's packs from the server (demo packs in mock
   // mode), a per-device Recent row, tap-to-send. Loading, error + retry, and
@@ -185,6 +224,25 @@ export function Composer({
   };
 
   const handleSend = () => {
+    // A picked file sends with the composer text as the caption (web sends
+    // the same way): the store uploads the bytes, then the attachment
+    // message. The sheet closes and the composer clears, like web.
+    if (picked !== undefined) {
+      if (onSendAttachment !== undefined) {
+        const caption = text.trim();
+        onSendAttachment(picked, {
+          ...(caption.length === 0 ? {} : { caption }),
+          ...(replyTo === undefined ? {} : { replyTo }),
+        });
+      }
+      setPicked(undefined);
+      setAttachOpen(false);
+      setAttachError(undefined);
+      onCancelReply();
+      setText('');
+      setInputHeight(MIN_INPUT_HEIGHT);
+      return;
+    }
     if (!canSend) {
       return;
     }
@@ -209,6 +267,61 @@ export function Composer({
     setPreviousDraft('');
   };
 
+  const openAttach = () => {
+    setAttachError(undefined);
+    // In mock mode the sheet lists the generated demo attachments, so the
+    // flow works without a server; tapping one fills the preview row, and
+    // Send uploads it through the mock store like a picked file.
+    setAttachOpen(true);
+  };
+
+  const closeAttach = () => {
+    if (attachBusy) {
+      return;
+    }
+    setAttachOpen(false);
+    setAttachError(undefined);
+  };
+
+  // One pick attempt from the sheet: permission denials and oversized files
+  // show a plain explanation and keep the sheet open; a cancel just closes
+  // the busy state. A picked file stays in the sheet as the preview row, and
+  // the composer's send button sends it with the caption.
+  const chooseAttachment = (choice: AttachmentChoice) => {
+    setAttachBusy(true);
+    setAttachError(undefined);
+    const attempt =
+      choice === 'library'
+        ? picker.pickImageOrVideo()
+        : choice === 'camera'
+          ? picker.takePhoto()
+          : picker.pickFile();
+    void attempt
+      .then((result) => {
+        if (result.status === 'cancelled') {
+          return;
+        }
+        if (result.status === 'error') {
+          setAttachError(result.message);
+          return;
+        }
+        setPicked(result.file);
+      })
+      .catch(() => {
+        setAttachError('Could not pick that file. Try again.');
+      })
+      .finally(() => {
+        setAttachBusy(false);
+      });
+  };
+
+  // A demo attachment becomes a picked file: the gradient URL is the
+  // preview URI (never fetched), and the store sends the same wire shape.
+  const demoPick = (attachment: Attachment) => {
+    setAttachError(undefined);
+    setPicked(demoPickedFile(attachment));
+  };
+
   const handleChange = (value: string) => {
     setText(value);
     if (editTarget === undefined && value.trim().length > 0) {
@@ -227,7 +340,7 @@ export function Composer({
         className="flex-row items-end gap-1 rounded-[14px] p-2"
         style={[well, { borderColor: '#262626' }]}
       >
-        <IconButton label="Attach file" className="h-9 w-9 rounded-[10px]">
+        <IconButton label="Attach file" className="h-9 w-9 rounded-[10px]" onPress={openAttach}>
           <Paperclip size={20} color={iconColor} />
         </IconButton>
         <TextInput
@@ -283,6 +396,27 @@ export function Composer({
         onPick={pickSticker}
         onRetry={loadPanel}
         onClose={() => setPanelOpen(false)}
+      />
+      <AttachSheet
+        open={attachOpen}
+        busy={attachBusy}
+        error={attachError}
+        preview={
+          picked === undefined
+            ? undefined
+            : { uri: picked.uri, name: picked.name, size: picked.size }
+        }
+        demoAttachments={demoAttachments}
+        onPick={chooseAttachment}
+        onPickDemo={demoAttachments === undefined ? undefined : demoPick}
+        onCancelPick={
+          picked === undefined
+            ? undefined
+            : () => {
+                setPicked(undefined);
+              }
+        }
+        onClose={closeAttach}
       />
     </View>
   );

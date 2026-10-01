@@ -14,6 +14,7 @@ import type {
   JoinPreview,
   JoinResult,
 } from '../lib/invite-links-api';
+import type { PickedFile } from '../lib/attachment-ports';
 import type { CustomGroupRole } from '../lib/roles-api';
 import type {
   ApproverRole,
@@ -34,6 +35,12 @@ export type TypingState = {
 };
 
 export type SendTextOptions = {
+  replyTo?: ReplyRef;
+};
+
+/** Options for `sendAttachment`: a caption and an optional reply, like web. */
+export type SendAttachmentOptions = {
+  caption?: string;
   replyTo?: ReplyRef;
 };
 
@@ -168,6 +175,13 @@ export interface ChatStoreState {
   editTarget?: { chatId: string; messageId: string };
   /** A user-facing failure from a recent edit/delete (T-0085). */
   actionError?: { chatId: string; message: string };
+  /**
+   * The hostnames attachment rendering auto-loads from (T-0150, the mobile
+   * twin of web's `mediaTrustedHosts`): the XMPP service host, the XMPP
+   * domain and `upload.<domain>`, from the latest XMPP token. Undefined
+   * until the token arrives; the bubble then trusts nothing.
+   */
+  mediaTrustedHosts?: ReadonlySet<string>;
   messages: (chatId: string) => UiMessage[];
   hasMore: (chatId: string) => boolean;
   openChat: (chatId: string) => void;
@@ -192,6 +206,12 @@ export interface ChatStoreState {
   retryHistory: (chatId: string) => void;
   sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
   sendTyping: (chatId: string) => void;
+  /** Sends a picked file as an attachment payload in the chat (T-0150). */
+  sendAttachment: (chatId: string, file: PickedFile, options?: SendAttachmentOptions) => void;
+  /** Retries a failed attachment send (the bytes are kept for the retry). */
+  retryAttachment: (chatId: string, messageId: string) => void;
+  /** Cancels the in-flight upload of an attachment send. */
+  cancelAttachment: (chatId: string, messageId: string) => void;
   /** Sends a sticker payload in the chat (same path as other payload messages). */
   sendSticker: (chatId: string, sticker: SendStickerChoice, options?: SendTextOptions) => void;
   /** Retries a failed sticker send (the payload is already on the message). */

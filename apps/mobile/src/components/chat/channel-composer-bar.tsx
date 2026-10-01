@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { Attachment } from '@galena/protocol';
 
 import { Text } from '@/components/ui/text';
 import { channelViewerRole, isChannelChat, mayPostInChannel } from '@/lib/channels';
@@ -8,7 +9,8 @@ import { mutedUntilFor } from '@/lib/chat-prefs';
 import type { ChatSummary, ReplyRef } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import type { StickerPack } from '@/lib/stickers';
-import type { SendStickerChoice } from '@/store/types';
+import type { SendAttachmentOptions, SendStickerChoice } from '@/store/types';
+import type { PickedFile } from '@/lib/attachment-ports';
 import { Composer } from './composer';
 
 type ChannelComposerProps = {
@@ -20,8 +22,12 @@ type ChannelComposerProps = {
   onTyping?: () => void;
   onSend: (text: string) => void;
   onSendSticker: (sticker: SendStickerChoice) => void;
+  /** Sends a picked file with the composer text as the caption (T-0150). */
+  onSendAttachment?: ((file: PickedFile, options?: SendAttachmentOptions) => void) | undefined;
   /** Demo packs in mock mode (forwarded to the composer). */
   demoPacks?: StickerPack[];
+  /** Demo attachments in mock mode, so the flow works without a server. */
+  demoAttachments?: Attachment[] | undefined;
 };
 
 /**
@@ -45,7 +51,9 @@ export function ChannelComposerBar({
   onTyping,
   onSend,
   onSendSticker,
+  onSendAttachment,
   demoPacks,
+  demoAttachments,
 }: ChannelComposerProps) {
   const insets = useSafeAreaInsets();
   const currentUserId = useChatStore((state) => state.currentUserId);
@@ -65,7 +73,9 @@ export function ChannelComposerBar({
         title={chat.title}
         onSend={onSend}
         onSendSticker={onSendSticker}
+        onSendAttachment={onSendAttachment}
         demoPacks={demoPacks}
+        demoAttachments={demoAttachments}
         replyTo={replyTo}
         onCancelReply={onCancelReply}
         onTyping={onTyping}

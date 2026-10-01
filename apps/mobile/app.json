@@ -34,6 +34,13 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Galena to access your photos to attach them to chats.",
+          "cameraPermission": "Allow Galena to access your camera to take photos to attach to chats."
+        }
       ]
     ],
     "experiments": {

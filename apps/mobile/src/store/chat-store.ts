@@ -8,6 +8,8 @@ import type {
   JoinPreview,
   JoinResult,
 } from '../lib/invite-links-api';
+import { attachmentDataFor } from '../lib/attachments';
+import { imageGradient } from '../lib/image-presets';
 import { CURRENT_USER_ID, CURRENT_USER_NAME } from '../lib/types';
 import type { CustomGroupRole } from '../lib/roles-api';
 import type { ApproverRole, TopicRole } from '../lib/topics-api';
@@ -42,6 +44,9 @@ import type { Pin } from '../lib/pins-api';
 export const SENT_DELAY_MS = 300;
 export const READ_DELAY_MS = 1500;
 
+/** The mock-mode size cap: the same 50 MiB as the server upload limit. */
+export const MAX_MOCK_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+
 /** Mock typing simulation, mirroring the web app (T-0022). */
 export const TYPING_START_MS = 2000;
 export const TYPING_DURATION_MS = 4000;
@@ -60,6 +65,9 @@ type ChatStoreData = Omit<
   | 'retryHistory'
   | 'hasMore'
   | 'sendText'
+  | 'sendAttachment'
+  | 'retryAttachment'
+  | 'cancelAttachment'
   | 'sendSticker'
   | 'retrySticker'
   | 'sendTyping'
@@ -168,6 +176,7 @@ export function createInitialState(phase?: MockDraftPhase, load?: MockLoadScenar
       phase === 'final' ? { [MOCK_DRAFT_FINAL_MESSAGE_ID]: MOCK_DRAFT_TURN_ID } : {},
     editTarget: undefined,
     actionError: undefined,
+    mediaTrustedHosts: undefined,
     topicNotice: undefined,
     groupDetailsRevision: 0,
     ownedAis: mockDevteamOwnedAis(),
@@ -983,6 +992,87 @@ export function createChatStore(
         }));
         setTimeout(() => setStatus(chatId, messageId, 'sent'), SENT_DELAY_MS);
         setTimeout(() => setStatus(chatId, messageId, 'read'), READ_DELAY_MS);
+      },
+      sendAttachment: (chatId, file, options) => {
+        // Mock mode: the demo flow works without a server. Two demo
+        // attachments (gradient images) validate through the same
+        // `attachmentDataFor` wire shape the real store sends; the fake
+        // served URL never leaves the device.
+        if (!get().chats.some((chat) => chat.id === chatId)) {
+          return;
+        }
+        if (file.size === 0) {
+          set({ actionError: { chatId, message: 'That file is empty.' } });
+          return;
+        }
+        if (file.size > MAX_MOCK_ATTACHMENT_BYTES) {
+          set({ actionError: { chatId, message: 'That file is larger than 50 MB.' } });
+          return;
+        }
+        messageCounter += 1;
+        const caption = options?.caption?.trim() ?? '';
+        // A `gradient:` demo image keeps its URL so the bubble renders the
+        // gradient tile; anything else gets a placeholder served URL.
+        const data = attachmentDataFor(
+          file,
+          imageGradient(file.uri) === undefined
+            ? `mock://attachments/${Date.now()}-${messageCounter}`
+            : file.uri,
+        );
+        const message: UiMessage = {
+          id: `local-${Date.now()}-${messageCounter}`,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: CURRENT_USER_NAME,
+          createdAt: new Date(),
+          status: 'sending',
+          attachment: data,
+          ...(caption.length === 0 ? {} : { text: caption }),
+          ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
+        };
+        set((state) => ({
+          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: [...(state.messagesByChat[chatId] ?? NO_MESSAGES), message],
+          },
+          chats: state.chats.map((chat) =>
+            chat.id === chatId ? { ...chat, lastMessage: message } : chat,
+          ),
+        }));
+        setTimeout(() => setStatus(chatId, message.id, 'sent'), SENT_DELAY_MS);
+        setTimeout(() => setStatus(chatId, message.id, 'read'), READ_DELAY_MS);
+      },
+      retryAttachment: (chatId, messageId) => {
+        const message = get().messagesByChat[chatId]?.find((item) => item.id === messageId);
+        if (message?.attachment === undefined) {
+          return;
+        }
+        set((state) => ({
+          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: (state.messagesByChat[chatId] ?? NO_MESSAGES).map((item) =>
+              item.id === messageId
+                ? { ...clearMockFailure(item), status: 'sending' as const }
+                : item,
+            ),
+          },
+        }));
+        setTimeout(() => setStatus(chatId, messageId, 'sent'), SENT_DELAY_MS);
+        setTimeout(() => setStatus(chatId, messageId, 'read'), READ_DELAY_MS);
+      },
+      cancelAttachment: (chatId, messageId) => {
+        // Mock mode uploads settle instantly: cancelling a sending
+        // attachment removes the optimistic bubble, like a delete.
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: (state.messagesByChat[chatId] ?? NO_MESSAGES).filter(
+              (item) => item.id !== messageId || item.status !== 'sending',
+            ),
+          },
+        }));
       },
       setSearch: (search) => set({ search }),
       setActiveFolder: (activeFolder) => set({ activeFolder }),

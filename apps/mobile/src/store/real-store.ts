@@ -33,7 +33,7 @@ import {
   type XmppCore,
   type XmppCoreOptions,
 } from '@galena/xmpp-core';
-import { StickerSchema, type Payload } from '@galena/protocol';
+import { StickerSchema, type Attachment, type Payload } from '@galena/protocol';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import {
@@ -76,7 +76,15 @@ import {
   type OpenDraftStream,
 } from '../lib/drafts';
 import { getSessionToken } from '../lib/session-token';
-import { CURRENT_USER_ID } from '../lib/types';
+import {
+  attachmentDataFor,
+  MAX_ATTACHMENT_BYTES,
+  sanitizeIncomingAttachment,
+  trustedMediaHosts,
+  type MediaTokenShape,
+} from '../lib/attachments';
+import type { AttachmentUploader, PickedFile } from '../lib/attachment-ports';
+import { CURRENT_USER_ID, mobileUploadOf, type MobileMessage } from '../lib/types';
 import type { ChatStoreState, ConnectionStatus, DraftState } from './types';
 
 const PREVIEW_HISTORY_MAX = 1;
@@ -138,6 +146,8 @@ export interface RealStoreDeps {
   pinsApi?: PinsApi;
   ownedAis?: { id: string; name: string }[];
   createXmpp?: (options: XmppCoreOptions) => XmppCore;
+  /** Uploads picked bytes to a XEP-0363 slot (T-0150); tests inject a fake. */
+  uploader?: AttachmentUploader;
   now?: () => Date;
   appState?: AppStateLike;
   /** The AI draft SSE stream; tests inject a fake. */
@@ -323,6 +333,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
   const rolesApi = rolesApi2(deps);
   const pinsApi = pinsApi2(deps);
   const groupsApi = deps.groupsApi ?? createGroupsApi(getSessionToken, fetch, API_URL);
+  // The trusted media hosts (T-0150): the service host, the XMPP domain and
+  // `upload.<domain>`, from the latest XMPP token. Incoming image (and
+  // GIF-video) attachments auto-load only from these hosts; anything else is
+  // downgraded to a file row that never fetches without a tap.
+  let mediaToken: MediaTokenShape | undefined;
+  let mediaTrustedHosts: ReadonlySet<string> = new Set();
+  // The local bytes of an outgoing attachment, kept for a Retry after a
+  // failed upload (like web's `pendingAttachments`).
+  const pendingUploads = new Map<string, PickedFile>();
 
   return createStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
@@ -711,6 +730,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         return plain;
       }
       if (state.deleted) {
+        const upload = mobileUploadOf(message);
         if (
           message.deleted === true &&
           message.text === undefined &&
@@ -721,7 +741,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           message.reactions === undefined &&
           message.mentions === undefined &&
           message.edited === undefined &&
-          message.failed === undefined
+          message.failed === undefined &&
+          upload.localUri === undefined &&
+          upload.uploadProgress === undefined
         ) {
           return message;
         }
@@ -730,6 +752,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         delete deleted.voice;
         delete deleted.image;
         delete deleted.attachment;
+        delete (deleted as Partial<MobileMessage>).localUri;
+        delete (deleted as Partial<MobileMessage>).uploadProgress;
         delete deleted.card;
         delete deleted.reactions;
         delete deleted.mentions;
@@ -1051,6 +1075,19 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }));
     }
 
+    // A failed attachment keeps its local bytes and shows a Retry instead of
+    // a silent "sending" state, like attachments do on web.
+    function markAttachmentFailed(chatId: string, messageId: string): void {
+      set((state) => ({
+        messagesByChat: {
+          ...state.messagesByChat,
+          [chatId]: listFor(state, chatId).map((item) =>
+            sameMessage(item.id, messageId) ? { ...item, failed: true } : item,
+          ),
+        },
+      }));
+    }
+
     /** Drops the `failed` flag without leaving an `undefined` value behind. */
     function clearFailure(message: UiMessage): UiMessage {
       if (message.failed === undefined) {
@@ -1061,6 +1098,161 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return next;
     }
 
+    function clearAttachmentFailure(chatId: string, messageId: string): void {
+      set((state) => ({
+        messagesByChat: {
+          ...state.messagesByChat,
+          [chatId]: listFor(state, chatId).map((item) =>
+            sameMessage(item.id, messageId) ? clearFailure(item) : item,
+          ),
+        },
+      }));
+    }
+
+    // Swaps an optimistic attachment for the uploaded one: the served URL
+    // plus the payload built exactly as web does.
+    function updateMessageAttachment(
+      chatId: string,
+      messageId: string,
+      attachment: Attachment,
+    ): void {
+      set((state) => {
+        const list = listFor(state, chatId).map((item) =>
+          sameMessage(item.id, messageId) ? { ...clearFailure(item), attachment } : item,
+        );
+        const last = state.chats.find((chat) => chat.id === chatId)?.lastMessage;
+        const lastMatches = last !== undefined && sameMessage(last.id, messageId);
+        return {
+          messagesByChat: { ...state.messagesByChat, [chatId]: list },
+          chats: lastMatches
+            ? state.chats.map((chat) =>
+                chat.id === chatId && chat.lastMessage !== undefined
+                  ? { ...chat, lastMessage: { ...clearFailure(chat.lastMessage), attachment } }
+                  : chat,
+              )
+            : state.chats,
+        };
+      });
+    }
+
+    function setUploadProgress(chatId: string, messageId: string, progress: number): void {
+      set((state) => ({
+        messagesByChat: {
+          ...state.messagesByChat,
+          [chatId]: listFor(state, chatId).map((item) =>
+            sameMessage(item.id, messageId)
+              ? {
+                  ...item,
+                  uploadProgress: Math.min(1, Math.max(0, progress)),
+                }
+              : item,
+          ),
+        },
+      }));
+    }
+
+    function clearUploadProgress(chatId: string, messageId: string): void {
+      set((state) => ({
+        messagesByChat: {
+          ...state.messagesByChat,
+          [chatId]: listFor(state, chatId).map((item) => {
+            if (
+              !sameMessage(item.id, messageId) ||
+              mobileUploadOf(item).uploadProgress === undefined
+            ) {
+              return item;
+            }
+            const next: UiMessage = { ...item };
+            delete (next as Partial<MobileMessage>).uploadProgress;
+            return next;
+          }),
+        },
+      }));
+    }
+
+    // The upload steps of an attachment, re-runnable from a Retry: ask the
+    // chat's XMPP session for a XEP-0363 slot, PUT the bytes with the slot's
+    // headers, then send the payload message exactly as web does. The kept
+    // bytes stay until the stanza send succeeds, so a Retry after a failed
+    // send still has them; they are dropped only then (and on cancel). A
+    // 'cancelled' error is swallowed only when this very message was
+    // cancelled by the user (the bubble is already gone); any other abort
+    // marks the message failed so Retry appears.
+    function runAttachmentUpload(
+      chat: ChatSummary,
+      localId: string,
+      file: PickedFile,
+      caption: string,
+      replyTo: ReplyRef | undefined,
+    ): void {
+      const current = core;
+      if (current === undefined) {
+        markAttachmentFailed(chat.id, localId);
+        return;
+      }
+      const uploader = deps.uploader;
+      if (uploader === undefined) {
+        // No uploader injected (tests inject a fake; the app injects the
+        // expo-file-system one): fail loudly instead of hanging a bubble in
+        // "sending" forever.
+        markAttachmentFailed(chat.id, localId);
+        return;
+      }
+      const messageAlive = (): boolean =>
+        listFor(get(), chat.id).some((item) => sameMessage(item.id, localId));
+      void (async () => {
+        try {
+          const contentType = file.mimeType === '' ? 'application/octet-stream' : file.mimeType;
+          const slot = await current.requestUploadSlot({
+            filename: attachmentDataFor(file, '').name,
+            size: file.size,
+            contentType,
+          });
+          // A cancel during the slot round-trip removes the bubble: stop
+          // here and send nothing.
+          if (!messageAlive()) {
+            return;
+          }
+          await uploader.upload(
+            file,
+            { putUrl: slot.putUrl, headers: slot.headers },
+            (fraction) => setUploadProgress(chat.id, localId, fraction),
+            localId,
+          );
+          if (!messageAlive()) {
+            return;
+          }
+          const data = attachmentDataFor(file, slot.getUrl);
+          updateMessageAttachment(chat.id, localId, data);
+          clearUploadProgress(chat.id, localId);
+          const sent = await current.sendMessage(chat.id, coreKind(chat), caption, {
+            payload: { v: 0, type: 'attachment', data },
+            ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+          });
+          if (!messageAlive()) {
+            return;
+          }
+          pendingUploads.delete(localId);
+          linkMessageIds(localId, sent.id);
+          linkLocalToServer(localId, sent.id);
+          rememberOriginId(localId, sent.id);
+          updateMessageStatus(chat.id, localId, 'sent');
+        } catch (error) {
+          clearUploadProgress(chat.id, localId);
+          // Keep the local bytes so the bubble can offer a Retry. A cancel
+          // removes the bubble first (see `cancelAttachment`); a 'cancelled'
+          // error for a message that is already gone is that cancel landing,
+          // so it stays silent. Any other abort means the upload itself
+          // failed and Retry must appear.
+          if (error instanceof Error && error.message === 'cancelled' && !messageAlive()) {
+            return;
+          }
+          if (messageAlive()) {
+            markAttachmentFailed(chat.id, localId);
+          }
+        }
+      })();
+    }
     // The send step of a sticker, re-runnable from a Retry: the payload is
     // already on the optimistic message, so only the stanza is (re)sent.
     function runStickerSend(
@@ -1569,6 +1761,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (message.body !== undefined) {
         ui.text = message.body;
       }
+      // An attachment payload rides `attachment`, sanitized like on web: an
+      // image (or GIF-video) on an untrusted host is downgraded to a file
+      // row that never auto-loads.
+      if (message.payload !== undefined && message.payload.type === 'attachment') {
+        ui.attachment = sanitizeIncomingAttachment(message.payload.data, mediaToken);
+      }
       // A sticker payload rides `card` (like the web store); the body stays
       // the emoji fallback for clients that do not know the payload.
       if (message.payload !== undefined && message.payload.type === 'sticker') {
@@ -1763,7 +1961,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (message.outgoing) {
         // Reconcile our optimistic message with the server echo. Sticker
         // echoes carry the sticker id in the payload, so they match the
-        // sticker-scoped signature (not the bare emoji body).
+        // sticker-scoped signature (not the bare emoji body). Attachment
+        // echoes match the bare caption signature, exactly like web.
         const reply =
           message.replyTo === undefined ? undefined : { id: message.replyTo.id, senderName: '' };
         const signature =
@@ -1783,6 +1982,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (localId !== undefined) {
           linkMessageIds(localId, ui.id);
           linkLocalToServer(localId, ui.id);
+          // The upload finished: drop the kept bytes and the local preview
+          // fields, so a later Retry is a no-op and the echo carries the
+          // served URL only.
+          pendingUploads.delete(localId);
+          pendingUploads.delete(aliasRoot(localId));
         }
         set((state) => {
           const existing = listFor(state, chatId);
@@ -2407,6 +2611,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         return;
       }
       firstToken = { jid: token.jid, token: token.token };
+      // The trusted media hosts follow the XMPP token (web does the same):
+      // the upload service answers on these hosts in dev and production.
+      mediaToken = { service: token.service, domain: token.domain };
+      mediaTrustedHosts = trustedMediaHosts(mediaToken);
+      set({ mediaTrustedHosts });
 
       const options: XmppCoreOptions = {
         service: token.service,
@@ -2418,6 +2627,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             return fresh;
           }
           const fresh = await api.getXmppToken();
+          mediaToken = { service: fresh.service, domain: fresh.domain };
+          mediaTrustedHosts = trustedMediaHosts(mediaToken);
+          set({ mediaTrustedHosts });
           return { jid: fresh.jid, token: fresh.token };
         },
       };
@@ -2500,6 +2712,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       finishedDraftMessages: {},
       editTarget: undefined,
       actionError: undefined,
+      mediaTrustedHosts: undefined,
       messages: (chatId) => get().messagesByChat[chatId] ?? EMPTY_MESSAGES,
       hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
       jumpTarget: undefined,
@@ -2744,6 +2957,99 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         queue.push(messageId);
         pendingOutgoing.set(signature, queue);
         runStickerSend(chat, messageId, payload, message.text ?? '', message.replyTo);
+      },
+      sendAttachment: (chatId, file, options) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (chat === undefined) {
+          return;
+        }
+        // An empty or oversized file is refused inline, before any request,
+        // exactly like web's composer. The cap follows the server upload
+        // limit (50 MiB); a refused slot still fails on Retry with the same
+        // message.
+        if (file.size === 0) {
+          set({ actionError: { chatId, message: 'That file is empty.' } });
+          return;
+        }
+        if (file.size > MAX_ATTACHMENT_BYTES) {
+          set({ actionError: { chatId, message: 'That file is larger than 50 MB.' } });
+          return;
+        }
+        sequence += 1;
+        const localId = `local-${sequence}`;
+        const replyTo = options?.replyTo;
+        const caption = options?.caption?.trim() ?? '';
+        const kind = attachmentDataFor(file, '').kind;
+        const localUrl = kind === 'image' ? file.uri : '';
+        const message: UiMessage = {
+          id: localId,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: 'You',
+          createdAt: now(),
+          status: 'sending',
+          attachment: attachmentDataFor(file, localUrl),
+          ...(caption.length === 0 ? {} : { text: caption }),
+          ...(replyTo === undefined ? {} : { replyTo }),
+        };
+        // The local preview URI rides alongside (never on the wire): the
+        // bubble shows the local bytes while the upload runs.
+        (message as Partial<MobileMessage>).localUri = file.uri;
+        const signature = signatureFor(chatId, caption, replyTo);
+        const queue = pendingOutgoing.get(signature) ?? [];
+        queue.push(localId);
+        pendingOutgoing.set(signature, queue);
+        set((state) => ({
+          // A later validated send clears this chat's stale error banner.
+          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
+        }));
+        setChatMessage(chatId, message, true);
+        pendingUploads.set(localId, file);
+        const mine = myJid();
+        if (mine !== undefined) {
+          rememberAuthor(localId, { jid: mine, resolved: true });
+        }
+        runAttachmentUpload(chat, localId, file, caption, replyTo);
+      },
+      retryAttachment: (chatId, messageId) => {
+        const root = aliasRoot(messageId);
+        const file = pendingUploads.get(root) ?? pendingUploads.get(messageId);
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (file === undefined || chat === undefined) {
+          return;
+        }
+        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        if (message === undefined) {
+          return;
+        }
+        clearAttachmentFailure(chatId, messageId);
+        // The retry re-keys the local preview (a retried message keeps the
+        // local URI) and re-runs the upload from the kept bytes.
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: listFor(state, chatId).map((item) =>
+              sameMessage(item.id, messageId) ? { ...item, localUri: file.uri } : item,
+            ),
+          },
+        }));
+        runAttachmentUpload(chat, messageId, file, message.text ?? '', message.replyTo);
+      },
+      cancelAttachment: (chatId, messageId) => {
+        // Cancelling aborts only this message's in-flight PUT and removes
+        // the optimistic bubble, like web's composer cancel. The bytes are
+        // dropped, so a later Retry is a no-op. Other messages' uploads keep
+        // running: the uploader keys controllers per message id.
+        deps.uploader?.cancel(aliasRoot(messageId));
+        deps.uploader?.cancel(messageId);
+        pendingUploads.delete(aliasRoot(messageId));
+        pendingUploads.delete(messageId);
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: listFor(state, chatId).filter((item) => !sameMessage(item.id, messageId)),
+          },
+        }));
       },
       react: (chatId, messageId, emoji) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
@@ -3291,12 +3597,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         messageAuthors.clear();
         messageOriginIds.clear();
         messageServerIds.clear();
+        mediaToken = undefined;
+        mediaTrustedHosts = new Set();
+        pendingUploads.clear();
         const current = core;
         core = undefined;
         if (current !== undefined) {
           void current.disconnect().catch(() => {});
         }
-        set({ status: 'offline' });
+        set({ status: 'offline', mediaTrustedHosts: undefined });
       },
     };
   });
