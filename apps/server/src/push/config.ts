@@ -32,8 +32,22 @@ const pushEnvSchema = z.object({
 
 export type PushConfig = z.infer<typeof pushEnvSchema>;
 
+// Docker Compose renders an unset optional as an empty string (`${VAR:-}`),
+// which the schema would reject: an empty `PUSH_*` value means "not set".
+function emptyPushSettingsAsUnset(
+  env: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const normalized = { ...env };
+  for (const key of Object.keys(normalized)) {
+    if (key.startsWith('PUSH_') && normalized[key] === '') {
+      delete normalized[key];
+    }
+  }
+  return normalized;
+}
+
 export function loadPushConfig(env: Record<string, string | undefined>): PushConfig {
-  return pushEnvSchema.parse(env);
+  return pushEnvSchema.parse(emptyPushSettingsAsUnset(env));
 }
 
 // The enabled config, or null with the reason named when `PUSH_ENABLED=true`
