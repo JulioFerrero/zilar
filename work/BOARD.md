@@ -182,3 +182,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0145](T-0145-deploy-push.md) | Push in the production deploy | 2026-10-01 |
 | [T-0150](T-0150-mobile-attachments.md) | Mobile attachments | 2026-10-01 |
 | [T-0152](T-0152-web-sticker-ui.md) | Web sticker UI fixes | 2026-10-01 |
+| [T-0153](T-0153-web-settings-layout.md) | Web settings pages layout: one centered shell for Connections, AIs, Notifications, Machines, Approvals | planned | meta/muse-spark-1.3-contributor | T-0152 | Spec ready |
