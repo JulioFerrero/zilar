@@ -60,12 +60,12 @@ UI for tools and routines (T-0107), changing tiers or approvals (T-0132), new ad
 - Config: `AGENT_TOOL_MAX_ROUNDS` (zod integer 1–10, explicit value wins; default 1 with tools off, 6 with tools on), documented in `docs/SERVER_CONFIG.md`, wired through `index.ts` → gateway (`toolsEnabled`, `toolMaxRounds`) → both turn functions.
 - Progress line (`agents/gateway.ts`): `liveProgressReporter` posts one `progress` payload message (body + payload both carry the fixed stage) at the first tool round, updates it per round via `sendCorrection`, retracts it via `sendRetraction` when the final text lands. Best-effort with id-only warn logs; a stopped AI posts/updates/clears nothing. Per-round gate (`checkDmRoundGate`): kill switch + daily-limit re-check before every model call; limited → fixed `dailyLimitReply`, stopped → "The AI was stopped.", usage-null → proceed. No web changes: web already renders `progress` cards (`MessageBubble.tsx` + `ProgressCard.tsx` on main and in this tree).
 - Live example (`docs/AI_TOOLS.md`, new, linked from `docs/FEATURES.md` §6): the gold/S&P/BTC routine step by step (progress line, `web.price` result, approval card), the guide rules, and the caps.
-- Tests: `agents/rounds.test.ts` (16 tests: guide size + key phrases + stage table; DM 3-round finish, maxRounds cutoff with tool-free last call, repeat-call dedupe, 8 KB truncation in wrapper, budget/kill/time/call caps, failed-progress-update survival, no-model-text-in-stages; group 3-round finish; `runToolLoop` last-call-no-tools + logs-only-counts), `config.test.ts` (+2: defaults 1/6 + explicit wins, junk rejected), `gateway.test.ts` (+2: guide present only with tools on + adapters, progress post → correction → retraction with fixed stages). FakeCore gains recorded `corrections`/`retractions`.
+- Tests: `agents/rounds.test.ts` (19 tests: guide size + key phrases + stage table; DM 3-round finish, maxRounds cutoff with tool-free last call, repeat-call dedupe, 8 KB truncation in wrapper, budget/kill/time/call caps, failed-progress-update survival, no-model-text-in-stages; DM multi-round notices, legacy DM + group truncation at `maxRounds: 1`; group 3-round finish; `runToolLoop` last-call-no-tools + counts-line fields), `config.test.ts` (+2: defaults 1/6 + explicit wins, junk rejected), `gateway.test.ts` (+3: guide present only with tools on + adapters, guide omitted with empty registry, progress post → correction → retraction with fixed stages). FakeCore gains recorded `corrections`/`retractions`.
 
 ### Files changed
 - `apps/server/src/agents/reply.ts` (multi-round loop, per-round pipeline, `maxRounds`/`checkRoundGate`/`turnStartMs`/`nowMs`/`reportProgress`/`clearProgress`/`turnLogger` deps on both turn types, `TOOL_TURN_WALL_CLOCK_MS`/`TOOL_TURN_MAX_CALLS`/`TOOL_RESULT_MAX_CHARS`/`TOOL_REPEAT_RESULT`, `runToolLoop` export)
 - `apps/server/src/agents/tool-guide.ts` (new: `TOOL_GUIDE`, `TOOL_GUIDE_MAX_CHARS`, stage table + `stageForToolCall`)
-- `apps/server/src/agents/rounds.test.ts` (new, 16 tests)
+- `apps/server/src/agents/rounds.test.ts` (new, 19 tests)
 - `apps/server/src/agents/gateway.ts` (`toolsEnabled`/`toolMaxRounds` deps, `withToolGuide`, `liveProgressReporter`, `checkDmRoundGate`, wiring into both session turns) + `gateway.test.ts` (harness opts, FakeCore corrections/retractions, 2 tests)
 - `apps/server/src/config.ts` (`AGENT_TOOL_MAX_ROUNDS`) + `config.test.ts` (+2 tests)
 - `apps/server/src/index.ts` (pass `toolsEnabled`, `toolMaxRounds`)
@@ -74,13 +74,25 @@ UI for tools and routines (T-0107), changing tiers or approvals (T-0132), new ad
 
 ### Commands run and real results
 - `pnpm install`: Already up to date, 1.8s
-- `pnpm format:check`: "All matched files use Prettier code style!"
+- `pnpm format:check`: "All matched files use Prettier code style!" (only `PREREVIEW.md` — the lead's file, not mine — still warns; left untouched)
 - `pnpm lint` (oxlint): clean, no output
 - `pnpm typecheck`: 10 tasks successful
-- `pnpm --filter @galena/server test --maxWorkers=2 src/agents/rounds.test.ts src/agents/reply.test.ts src/agents/context.test.ts src/agents/tools.test.ts src/config.test.ts`: 5 files passed, 151 passed
-- `pnpm --filter @galena/server test --maxWorkers=2 src/agents/gateway.test.ts`: 1 file passed, 117 passed (incl. 2 new T-0106 tests)
+- `pnpm --filter @galena/server test --maxWorkers=2 src/agents/rounds.test.ts src/agents/reply.test.ts src/agents/context.test.ts src/agents/tools.test.ts src/config.test.ts`: 5 files passed, 154 passed
+- `pnpm --filter @galena/server test --maxWorkers=2 src/agents/gateway.test.ts`: 1 file passed, 118 passed (incl. 3 T-0106 tests)
 - `pnpm build`: 2 tasks successful
 - Per AGENTS.md rule change (lead, pushed to main): no full package suites from me; only touched-file + neighbour suites above. The lead runs full suites on main.
+
+### Prereview fixes (lead review in `PREREVIEW.md`, all 8 addressed)
+- Finding 1 (must): the 12-call cap now synthesizes a `capped: turn call limit reached` (`TOOL_CAPPED_RESULT`) tool result for every dropped call in the shared `runLoopRound`, so no assistant `tool_calls` entry is left without a matching `tool` message. The old `remaining <= 0` early-return (which dropped the round's history linkage) is gone.
+- Finding 2 (must): the cap test now runs 15 calls across three 5-call rounds (round 3 executes 2, caps 3); it asserts `executed === 12`, every `tool_calls` id has a matching `tool` result (incl. 3 capped), and the last call carries no tools.
+- Finding 3: DM multi-round success sends `loop.text + loop.notices.join('')` (was: text only); new test proves a round-1 persona notice rides along on the final DM text.
+- Finding 4: the DM guide now requires `listActions().length > 0` (was: `actions !== undefined`), matching the group path's non-empty requirement; new gateway test proves tools-on with an empty registry sends no guide.
+- Finding 5: both legacy `maxRounds <= 1` paths (DM + group) now run results through `truncateToolContent`; new tests prove 8 KB truncation at default `maxRounds` for both turn types (moot after finding 6, which deleted those branches — the loop truncates every round — but the tests pin rule (d) at `maxRounds: 1`).
+- Finding 6: DM turns now run the same `runToolLoop` as groups — `runFirstRound`, `runContinuedRounds` and the exported-but-uncalled `runRoundCalls` are deleted, along with their void'ed dead params. The loop owns every model call (round 1 always offers tools, exactly like the legacy first call); the legacy single-round tail (one follow-up WITH tools, answered from text alone) lives in the callers, parameterized by `maxRounds <= 1`. `turnLogger` is no longer dead: the loop logs one counts line per turn from a `finally` (real `{aiId, rounds, toolCalls, elapsedMs}` on every exit incl. throw); the vacuous `info.calls[0] is undefined` test now asserts those exact fields plus no content. No `any`, no new deps.
+- Finding 7: `apps/server/src/index.ts` (5-line `toolsEnabled`/`toolMaxRounds` wiring, already committed) kept as-is with lead retro-approval per the task instruction; still minimal, no other out-of-Allowed-files changes.
+- Finding 8 (nit): left as-is and documented — `sendCorrection`/`buildCorrection` (`packages/xmpp-core`, outside Allowed files) carry no payload, and web's `realStore` correction handler only applies body text while `MessageBubble` renders the card from `message.card.data`, so the card keeps the first stage while the body text updates underneath. Carrying the stage in corrections needs xmpp-core + web store changes; flagging as a follow-up, no web changes made.
+- Behaviour note: progress posts are gated on multi-round turns (`maxRounds > 1`) inside the loop, so legacy single-round turns stay byte-for-byte (no extra XMPP message — the existing gateway persona/request-action/group tests assert exact `sent` arrays and stay green unchanged).
+- Behaviour note: the gate now runs before round 1 as well (spec rule (a): before EACH model call), so the budget/kill-switch rounds tests end after exactly 1 model call instead of 2; updated comments + expectations, same fixed replies.
 
 ### Problems, deviations from the spec, open questions
 - Progress removal uses `sendRetraction` (tombstone), not "replaced by final text": a correction carrying the full final text would duplicate the reply bubble (corrections render as edited text on the target), while a retraction drops the stale "working on it" line and leaves the real reply as the newest message. Update path (`sendCorrection` with the new stage) is the same mechanism streaming replies use, as the spec asks.

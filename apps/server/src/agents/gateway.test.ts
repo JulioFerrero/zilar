@@ -4206,6 +4206,37 @@ describe('agent gateway', () => {
       await off.stop();
     });
 
+    it('omits the guide when tools are on but no adapters are registered', async () => {
+      // `toolsEnabled` with an empty action list offers no `request_action`
+      // (see `buildTools`), so the guide — which documents that tool —
+      // stays out too instead of inviting hallucinated calls.
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const args = { action: 'demo.echo', args: { text: 'hi' } };
+      const { fetchImpl, calls } = scriptedFetchLocal(
+        guideResponse([{ id: 'call-1', name: 'request_action', args }]),
+      );
+      const empty: ActionGateway = {
+        request: () => Promise.resolve({ status: 'failed' }),
+        onApprovalDecided: () => Promise.resolve(),
+        recoverStuck: () => Promise.resolve(),
+        listActions: () => [],
+      };
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm(), {
+        actions: empty,
+        toolsEnabled: true,
+      });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'echo hi'));
+      await waitFor(() => calls.length === 2);
+      const body = JSON.parse(String(calls[0]!.init.body)) as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      expect(body.messages.every((message) => !message.content.includes('`tool.list`'))).toBe(true);
+      await started.stop();
+    });
+
     it('posts one progress message and corrects it on the next round', async () => {
       const seeded = await seedAi(context);
       const cores: FakeCore[] = [];

@@ -4,6 +4,7 @@ import type { FetchLike } from '../ai/litellm-client';
 import type { ChatCompletionMessage } from './context';
 import {
   BUDGET_EXCEEDED_REPLY,
+  TOOL_CAPPED_RESULT,
   TOOL_REPEAT_RESULT,
   TOOL_RESULT_MAX_CHARS,
   TOOL_TURN_MAX_CALLS,
@@ -20,6 +21,7 @@ import {
   TOOL_STAGE_FALLBACK,
   stageForToolCall,
 } from './tool-guide';
+import { formatPersonaUpdatedLine } from './tools';
 
 const VIRTUAL_KEY = 'sk-virtual-rounds-test-key-aaaa';
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
@@ -317,6 +319,54 @@ describe('multi-round DM turns', () => {
     );
   });
 
+  it('appends persona notices on multi-round DM success', async () => {
+    // A persona change in round 1 of a multi-round turn: the fixed notice
+    // rides along on the final text, like the legacy path and the group
+    // multi-round path already do.
+    const { fetchImpl } = scriptedFetch([
+      toolCallResponse([
+        {
+          id: 'c-1',
+          name: 'update_persona',
+          args: { persona: 'Answer in Spanish.', summary: 'Spanish answers' },
+        },
+      ]),
+      completionResponse('vale, lo haré'),
+    ]);
+    const notice = formatPersonaUpdatedLine('Spanish answers');
+    const harness = dmHarness(
+      fetchImpl,
+      async (call) => {
+        if (call.tool !== 'update_persona') {
+          return { content: 'ok' };
+        }
+        return { content: 'ok', notice };
+      },
+      { maxRounds: 6 },
+    );
+    const outcome = await harness.run();
+    expect(outcome).toEqual({ kind: 'replied', text: `vale, lo haré${notice}` });
+  });
+
+  it('truncates legacy single-round DM tool results to 8 KB', async () => {
+    // No `maxRounds` passed (legacy default 1): the shared loop still runs
+    // round 1 through the same truncate pipeline as every later round.
+    const big = `ok\n\n<untrusted-tool-output>\n${'z'.repeat(20_000)}\n</untrusted-tool-output>`;
+    const { fetchImpl, calls } = scriptedFetch([
+      toolCallResponse([{ id: 'c-1', name: 'request_action', args: actionArgs('tool.read', {}) }]),
+      completionResponse('Read it.'),
+    ]);
+    const harness = dmHarness(fetchImpl, async () => ({ content: big }), {});
+    await harness.run();
+    expect(calls).toHaveLength(2);
+    const second = bodyOf(calls[1]!) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const toolMessage = second.messages.find((message) => message.role === 'tool');
+    expect(toolMessage?.content.length).toBeLessThanOrEqual(TOOL_RESULT_MAX_CHARS + 1);
+    expect(toolMessage?.content).toContain('<untrusted-tool-output>');
+  });
+
   it('truncates tool results to 8 KB inside the untrusted wrapper', async () => {
     const big = `x\n\n<untrusted-tool-output>\n${'y'.repeat(20_000)}\n</untrusted-tool-output>`;
     const { fetchImpl, calls } = scriptedFetch([
@@ -334,8 +384,9 @@ describe('multi-round DM turns', () => {
   });
 
   it('stops the loop when the budget gate trips and sends the budget reply', async () => {
-    // Round 1 executes; the gate trips before round 2's model call, so the
-    // turn ends with the fixed budget reply and exactly 2 model calls.
+    // The gate runs before every model call, so round 1 executes and the
+    // gate trips before round 2's model call: the turn ends with the fixed
+    // budget reply and exactly 1 model call.
     const { fetchImpl, calls } = scriptedFetch([
       toolCallResponse([{ id: 'c-1', name: 'request_action', args: actionArgs('tool.list', {}) }]),
     ]);
@@ -349,13 +400,14 @@ describe('multi-round DM turns', () => {
     });
     const outcome = await harness.run();
     expect(outcome).toEqual({ kind: 'failed', text: BUDGET_EXCEEDED_REPLY });
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(1);
     expect(harness.sent).toEqual([{ to: OWNER_JID, kind: 'chat', text: BUDGET_EXCEEDED_REPLY }]);
   });
 
   it('stops the loop when the kill switch trips and sends nothing new', async () => {
-    // Same shape as the budget trip: one round runs, then the gate stops
-    // the loop and the turn sends the gate's fixed reply.
+    // Same shape as the budget trip: round 1 runs, then the gate stops
+    // the loop before round 2's model call, so exactly 1 model call runs
+    // and the turn sends the gate's fixed reply.
     const { fetchImpl, calls } = scriptedFetch([
       toolCallResponse([{ id: 'c-1', name: 'request_action', args: actionArgs('tool.list', {}) }]),
     ]);
@@ -369,7 +421,7 @@ describe('multi-round DM turns', () => {
     });
     const outcome = await harness.run();
     expect(outcome).toEqual({ kind: 'failed', text: 'The AI was stopped.' });
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(1);
   });
 
   it('stops the loop at the wall-clock cap with a final tool-free call', async () => {
@@ -390,13 +442,24 @@ describe('multi-round DM turns', () => {
   });
 
   it('stops the loop at 12 tool calls with a final tool-free call', async () => {
-    const responses = Array.from({ length: 7 }, (_, index) =>
-      toolCallResponse([
-        { id: `c-${index}`, name: 'request_action', args: actionArgs('tool.list', { n: index }) },
-      ]),
-    );
-    responses.push(completionResponse('Capped answer.'));
-    const { fetchImpl, calls } = scriptedFetch(responses);
+    // 15 calls across three rounds (5 + 5 + 5): rounds 1-2 run whole, round
+    // 3 executes 2 and caps 3 with the synthetic result. Every assistant
+    // `tool_calls` entry gets a matching `tool` message, and the loop ends
+    // with one last tool-free call answering in text.
+    const roundOf = (first: number, tag: number): Response =>
+      toolCallResponse(
+        Array.from({ length: 5 }, (_, index) => ({
+          id: `c-${first + index}`,
+          name: 'request_action',
+          args: actionArgs('tool.list', { n: `${tag}-${index}` }),
+        })),
+      );
+    const { fetchImpl, calls } = scriptedFetch([
+      roundOf(1, 1),
+      roundOf(6, 2),
+      roundOf(11, 3),
+      completionResponse('Capped answer.'),
+    ]);
     let executed = 0;
     const harness = dmHarness(
       fetchImpl,
@@ -408,9 +471,41 @@ describe('multi-round DM turns', () => {
     );
     const outcome = await harness.run();
     expect(outcome).toEqual({ kind: 'replied', text: 'Capped answer.' });
-    expect(executed).toBeLessThanOrEqual(TOOL_TURN_MAX_CALLS);
-    expect(harness.info.calls[0]?.fields['toolCalls']).toBeLessThanOrEqual(TOOL_TURN_MAX_CALLS);
-    expect(calls.length).toBeGreaterThan(2);
+    expect(executed).toBe(TOOL_TURN_MAX_CALLS);
+    // History is well-formed: every tool call the model made has a
+    // matching tool result, including the capped ones.
+    const history = bodyOf(calls.at(-1)!) as {
+      messages: Array<{
+        role: string;
+        content: string;
+        tool_calls?: Array<{ id: string }>;
+        tool_call_id?: string;
+      }>;
+    };
+    const callIds = history.messages
+      .flatMap((message) => message.tool_calls ?? [])
+      .map((call) => call.id);
+    const resultIds = history.messages
+      .filter((message) => message.role === 'tool')
+      .map((message) => message.tool_call_id);
+    expect(callIds).toHaveLength(TOOL_TURN_MAX_CALLS + 3);
+    expect(resultIds).toHaveLength(TOOL_TURN_MAX_CALLS + 3);
+    expect(new Set(resultIds).size).toBe(TOOL_TURN_MAX_CALLS + 3);
+    for (const id of callIds) {
+      expect(resultIds).toContain(id);
+    }
+    const contents = history.messages
+      .filter((message) => message.role === 'tool')
+      .map((message) => message.content);
+    expect(contents.filter((content) => content === TOOL_CAPPED_RESULT)).toHaveLength(3);
+    expect(contents.filter((content) => content === 'ok')).toHaveLength(TOOL_TURN_MAX_CALLS);
+    // The last call is tool-free so the model must answer in text.
+    expect((bodyOf(calls.at(-1)!) as { tools?: unknown }).tools).toBeUndefined();
+    expect(harness.info.calls[0]?.fields).toMatchObject({
+      aiId: 'ai-1',
+      toolCalls: TOOL_TURN_MAX_CALLS,
+    });
+    expect(calls.length).toBeGreaterThan(3);
   });
 
   it('a failed progress update does not fail the turn', async () => {
@@ -514,6 +609,25 @@ describe('multi-round group turns', () => {
     expect(harness.stages).toEqual(['Looking up prices', 'Saving the tool']);
     expect(harness.sent).toHaveLength(1);
   });
+
+  it('truncates legacy single-round group tool results to 8 KB', async () => {
+    // No `maxRounds` passed (legacy default 1): the shared loop still runs
+    // round 1 through the same truncate pipeline as every later round.
+    const big = `ok\n\n<untrusted-tool-output>\n${'z'.repeat(20_000)}\n</untrusted-tool-output>`;
+    const { fetchImpl, calls } = scriptedFetch([
+      toolCallResponse([{ id: 'c-1', name: 'request_action', args: actionArgs('tool.read', {}) }]),
+      completionResponse('Read it.'),
+    ]);
+    const harness = groupHarness(fetchImpl, async () => ({ content: big }));
+    await harness.run();
+    expect(calls).toHaveLength(2);
+    const second = bodyOf(calls[1]!) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const toolMessage = second.messages.find((message) => message.role === 'tool');
+    expect(toolMessage?.content.length).toBeLessThanOrEqual(TOOL_RESULT_MAX_CHARS + 1);
+    expect(toolMessage?.content).toContain('<untrusted-tool-output>');
+  });
 });
 
 describe('runToolLoop', () => {
@@ -544,15 +658,16 @@ describe('runToolLoop', () => {
     expect((bodyOf(calls[1]!) as { tools?: unknown }).tools).toBeUndefined();
   });
 
-  it('logs only counts, never content', async () => {
+  it('logs one counts line with real fields and never content', async () => {
     const secret = 'super secret tool output that must never be logged';
     const logger = captureLogger();
     const info = captureInfo();
     const { fetchImpl } = scriptedFetch([
       toolCallResponse([{ id: 'c-1', name: 'request_action', args: actionArgs('tool.list', {}) }]),
+      toolCallResponse([{ id: 'c-2', name: 'request_action', args: actionArgs('tool.save', {}) }]),
       completionResponse('done'),
     ]);
-    await runToolLoop({
+    const loop = await runToolLoop({
       aiId: 'ai-1',
       messages: MESSAGES,
       tools: [{ ...REQUEST_ACTION_TOOL }],
@@ -562,12 +677,22 @@ describe('runToolLoop', () => {
       logger,
       turnLogger: info,
       secrets: [VIRTUAL_KEY],
-      turnStartMs: 0,
-      nowMs: () => 0,
+      turnStartMs: 1000,
+      nowMs: () => 1250,
     });
+    expect(loop.text).toBe('done');
+    // One counts line with the real logged fields: the AI id, the round
+    // and call counts, the elapsed ms — and nothing else.
+    expect(info.calls).toHaveLength(1);
+    expect(info.calls[0]?.fields).toEqual({
+      aiId: 'ai-1',
+      rounds: 3,
+      toolCalls: 2,
+      elapsedMs: 250,
+    });
+    expect(info.calls[0]?.message).toBe('AI tool turn finished');
     const logged = loggedText([...logger.calls, ...info.calls]);
     expect(logged).not.toContain(secret);
     expect(logged).not.toContain('done');
-    expect(info.calls[0]).toBeUndefined();
   });
 });

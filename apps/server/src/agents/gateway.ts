@@ -1784,13 +1784,12 @@ export function createAgentGateway(
         trigger,
       });
       // T-0106: the guide rides as a trailing user turn only when tools are
-      // enabled and tool/routine adapters are registered (the
-      // `request_action` tool is offered). Otherwise today's messages, byte
-      // for byte.
+      // enabled and tool/routine adapters are registered (a non-empty
+      // action list, so `request_action` is actually offered). Otherwise
+      // today's messages, byte for byte.
+      const dmActionsList = deps.actions?.listActions() ?? [];
       const dmMessages =
-        deps.toolsEnabled === true && deps.actions !== undefined
-          ? withToolGuide(messages)
-          : messages;
+        deps.toolsEnabled === true && dmActionsList.length > 0 ? withToolGuide(messages) : messages;
 
       // `end` always comes after the final XMPP message: `runDmTurn` sends
       // it before resolving. Every send and draft push is gated by a
