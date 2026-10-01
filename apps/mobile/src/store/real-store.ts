@@ -33,6 +33,7 @@ import {
   type XmppCore,
   type XmppCoreOptions,
 } from '@galena/xmpp-core';
+import { StickerSchema, type Payload } from '@galena/protocol';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import {
@@ -421,6 +422,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     function signatureFor(chatId: string, body: string, replyTo: ReplyRef | undefined): string {
       return `${chatId}|${body}|${replyTo?.id ?? ''}`;
+    }
+
+    // Sticker sends share one emoji body per pack, so the echo queue is keyed
+    // by sticker id too — otherwise two quick stickers with the same emoji
+    // can link the wrong server id (web does the same).
+    function stickerSignatureFor(
+      chatId: string,
+      body: string,
+      stickerId: string,
+      replyTo: ReplyRef | undefined,
+    ): string {
+      return `${signatureFor(chatId, body, replyTo)}|sticker:${stickerId}`;
     }
 
     // A message may be known under its optimistic local id and later under its
@@ -1025,6 +1038,59 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       });
     }
 
+    // A failed sticker keeps the message and shows a Retry instead of a
+    // silent "sending" state, like attachments do on web.
+    function markStickerFailed(chatId: string, messageId: string): void {
+      set((state) => ({
+        messagesByChat: {
+          ...state.messagesByChat,
+          [chatId]: listFor(state, chatId).map((item) =>
+            sameMessage(item.id, messageId) ? { ...item, failed: true } : item,
+          ),
+        },
+      }));
+    }
+
+    /** Drops the `failed` flag without leaving an `undefined` value behind. */
+    function clearFailure(message: UiMessage): UiMessage {
+      if (message.failed === undefined) {
+        return message;
+      }
+      const next: UiMessage = { ...message };
+      delete next.failed;
+      return next;
+    }
+
+    // The send step of a sticker, re-runnable from a Retry: the payload is
+    // already on the optimistic message, so only the stanza is (re)sent.
+    function runStickerSend(
+      chat: ChatSummary,
+      localId: string,
+      payload: Extract<Payload, { type: 'sticker' }>,
+      body: string,
+      replyTo: ReplyRef | undefined,
+    ): void {
+      const current = core;
+      if (current === undefined) {
+        markStickerFailed(chat.id, localId);
+        return;
+      }
+      current
+        .sendMessage(chat.id, coreKind(chat), body, {
+          payload,
+          ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+        })
+        .then((sent) => {
+          linkMessageIds(localId, sent.id);
+          linkLocalToServer(localId, sent.id);
+          rememberOriginId(localId, sent.id);
+          updateMessageStatus(chat.id, localId, 'sent');
+        })
+        .catch(() => {
+          markStickerFailed(chat.id, localId);
+        });
+    }
+
     function myJid(): string | undefined {
       const jid = get().me?.jid;
       return jid === undefined || jid === null || jid === '' ? undefined : jid;
@@ -1503,6 +1569,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (message.body !== undefined) {
         ui.text = message.body;
       }
+      // A sticker payload rides `card` (like the web store); the body stays
+      // the emoji fallback for clients that do not know the payload.
+      if (message.payload !== undefined && message.payload.type === 'sticker') {
+        ui.card = message.payload;
+      }
       if (message.replyTo !== undefined) {
         const referenced = get().messagesByChat[message.chatJid]?.find(
           (item) => item.id === message.replyTo?.id,
@@ -1690,12 +1761,20 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       const ui = toUiMessage(message, meId);
 
       if (message.outgoing) {
-        // Reconcile our optimistic message with the server echo.
-        const signature = signatureFor(
-          chatId,
-          message.body ?? '',
-          message.replyTo === undefined ? undefined : { id: message.replyTo.id, senderName: '' },
-        );
+        // Reconcile our optimistic message with the server echo. Sticker
+        // echoes carry the sticker id in the payload, so they match the
+        // sticker-scoped signature (not the bare emoji body).
+        const reply =
+          message.replyTo === undefined ? undefined : { id: message.replyTo.id, senderName: '' };
+        const signature =
+          message.payload !== undefined && message.payload.type === 'sticker'
+            ? stickerSignatureFor(
+                chatId,
+                message.body ?? '',
+                message.payload.data.sticker_id,
+                reply,
+              )
+            : signatureFor(chatId, message.body ?? '', reply);
         const queue = pendingOutgoing.get(signature);
         const localId = queue?.shift();
         if (queue !== undefined && queue.length === 0) {
@@ -2573,6 +2652,98 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           .catch(() => {
             // The message stays marked as sending; a reconnect can resend later.
           });
+      },
+      sendSticker: (chatId, sticker, options) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (chat === undefined) {
+          return;
+        }
+        // The choice may come from tampered storage recents or drifted pack
+        // rows: validate before the optimistic insert, because `encodePayload`
+        // throws synchronously on an invalid payload and would otherwise leave
+        // a stuck `sending` bubble with no retry.
+        const data = {
+          pack_id: sticker.packId,
+          sticker_id: sticker.stickerId,
+          url: sticker.url,
+          ...(sticker.emoji === undefined ? {} : { emoji: sticker.emoji }),
+          width: sticker.width,
+          height: sticker.height,
+          mime: sticker.mime,
+        };
+        if (!StickerSchema.safeParse(data).success) {
+          set({ actionError: { chatId, message: 'That sticker could not be sent.' } });
+          return;
+        }
+        sequence += 1;
+        const localId = `local-${sequence}`;
+        const replyTo = options?.replyTo;
+        const body = sticker.emoji ?? '';
+        const payload = { v: 0, type: 'sticker', data } as const;
+        const message: UiMessage = {
+          id: localId,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: 'You',
+          text: body,
+          createdAt: now(),
+          status: 'sending',
+          card: payload,
+          ...(replyTo === undefined ? {} : { replyTo }),
+        };
+        const signature = stickerSignatureFor(chatId, body, sticker.stickerId, replyTo);
+        const queue = pendingOutgoing.get(signature) ?? [];
+        queue.push(localId);
+        pendingOutgoing.set(signature, queue);
+        set((state) => ({
+          // A later validated send clears this chat's stale error banner.
+          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
+        }));
+        setChatMessage(chatId, message, true);
+        const mine = myJid();
+        if (mine !== undefined) {
+          rememberAuthor(localId, { jid: mine, resolved: true });
+        }
+        runStickerSend(chat, localId, payload, body, replyTo);
+      },
+      retrySticker: (chatId, messageId) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (chat === undefined) {
+          return;
+        }
+        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        const payload =
+          message?.card !== undefined && message.card.type === 'sticker' ? message.card : undefined;
+        if (message === undefined || payload === undefined) {
+          return;
+        }
+        if (!StickerSchema.safeParse(payload.data).success) {
+          markStickerFailed(chatId, messageId);
+          return;
+        }
+        set((state) => ({
+          // A later validated send clears this chat's stale error banner.
+          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: listFor(state, chatId).map((item) =>
+              sameMessage(item.id, messageId) ? clearFailure(item) : item,
+            ),
+          },
+        }));
+        // Enqueue the id under the sticker signature so the server echo
+        // reconciles with this bubble instead of duplicating it (a retry
+        // without the enqueue keeps the local row AND appends the echo).
+        const signature = stickerSignatureFor(
+          chatId,
+          message.text ?? '',
+          payload.data.sticker_id,
+          message.replyTo,
+        );
+        const queue = pendingOutgoing.get(signature) ?? [];
+        queue.push(messageId);
+        pendingOutgoing.set(signature, queue);
+        runStickerSend(chat, messageId, payload, message.text ?? '', message.replyTo);
       },
       react: (chatId, messageId, emoji) => {
         const chat = get().chats.find((entry) => entry.id === chatId);

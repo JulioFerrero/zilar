@@ -65,6 +65,71 @@ describe('chat store', () => {
     expect(store.getState().messages('ana').at(-1)?.replyTo).toEqual(replyTo);
   });
 
+  it('sends a demo sticker optimistically with the payload on the card', () => {
+    const store = createChatStore();
+    const choice = {
+      stickerId: '21111111-1111-4111-8111-111111111111',
+      packId: '11111111-1111-4111-8111-111111111111',
+      url: '/api/stickers/21111111-1111-4111-8111-111111111111/file',
+      emoji: '🐱',
+      width: 200,
+      height: 200,
+      mime: 'image/png' as const,
+    };
+    store.getState().sendSticker('ana', choice);
+
+    const sent = store.getState().messages('ana').at(-1);
+    expect(sent?.text).toBe('🐱');
+    expect(sent?.card).toEqual({ v: 0, type: 'sticker', data: expect.objectContaining({}) });
+    expect(sent?.status).toBe('sending');
+
+    vi.advanceTimersByTime(SENT_DELAY_MS);
+    expect(store.getState().messages('ana').at(-1)?.status).toBe('sent');
+  });
+
+  it('refuses a hostile sticker choice with a visible error and no bubble', () => {
+    const store = createChatStore();
+    const before = store.getState().messages('ana').length;
+    store.getState().sendSticker('ana', {
+      stickerId: 's1',
+      packId: 'p1',
+      url: 'https://evil.test/x.webp',
+      width: 9999,
+      height: 200,
+      mime: 'image/png' as const,
+    });
+
+    expect(store.getState().messages('ana')).toHaveLength(before);
+    expect(store.getState().actionError).toEqual({
+      chatId: 'ana',
+      message: 'That sticker could not be sent.',
+    });
+  });
+
+  it('clears a stale error banner on a later validated send', () => {
+    const store = createChatStore();
+    store.getState().sendSticker('ana', {
+      stickerId: 's1',
+      packId: 'p1',
+      url: 'https://evil.test/x.webp',
+      width: 9999,
+      height: 200,
+      mime: 'image/png' as const,
+    });
+    expect(store.getState().actionError).toBeDefined();
+
+    store.getState().sendSticker('ana', {
+      stickerId: '21111111-1111-4111-8111-111111111111',
+      packId: '11111111-1111-4111-8111-111111111111',
+      url: '/api/stickers/21111111-1111-4111-8111-111111111111/file',
+      emoji: '🐱',
+      width: 200,
+      height: 200,
+      mime: 'image/png' as const,
+    });
+    expect(store.getState().actionError).toBeUndefined();
+  });
+
   it('clears unread when a chat is opened', () => {
     const store = createChatStore();
     expect(store.getState().chats.find((chat) => chat.id === 'ana')?.unread).toBe(2);

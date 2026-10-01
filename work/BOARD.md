@@ -168,7 +168,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0140](T-0140-mobile-followups.md) | mobile follow-ups: invite mock, roles load error, search jump and abort | 2026-09-30 |
 | [T-0119](T-0119-pwa-web-push.md) | PWA and web push notifications (migration 0031) | 2026-10-01 |
 | [T-0142](T-0142-smarter-search.md) | smarter search: prefixes, accent folding, typo tolerance | 2026-10-01 |
-| [T-0143](T-0143-mobile-stickers.md) | Mobile stickers: render, panel, send (mobile only) | planned | meta/muse-spark-1.3-contributor | T-0120 | Spec ready |
 | [T-0145](T-0145-deploy-push.md) | Push in the production deploy: ejabberd component, compose, wizard keys, doctor, docs | planned | meta/muse-spark-1.3-contributor | T-0119, T-0127 | Spec ready; effort high |
 | [T-0141](T-0141-web-server-followups.md) | web/server follow-ups: sticker dir, mock stickers, revoke, approval names | 2026-10-01 |
 | [T-0106](T-0106-tool-model-side.md) | model side of AI tools: guide, several rounds per turn, progress line | 2026-10-01 |
@@ -176,4 +175,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0144](T-0144-mobile-channels.md) | mobile channels: read-only bar, channel screen, create, promote/demote | 2026-10-01 |
 | [T-0121](T-0121-sticker-creator.md) | sticker pack creator, favorites, panel reorder (migration 0032) | 2026-10-01 |
 | [T-0147](T-0147-mobile-nits.md) | mobile nits: group fetch ordering, join link cleanups, jump-scroll retries | 2026-10-01 |
+| [T-0148](T-0148-mobile-gifs.md) | Mobile GIFs: render proxied GIFs, GIF tab in the sticker sheet, send (mobile only) | planned | meta/muse-spark-1.3-contributor | T-0122, T-0143, T-0150 | Blocked 2026-10-01: mobile had no attachment upload or video; waits for T-0150 |
+| [T-0149](T-0149-docs-refresh.md) | Docs refresh: user guide, feature list and README for everything merged | planned | meta/muse-spark-1.3-contributor | T-0131 | Spec ready |
+| [T-0150](T-0150-mobile-attachments.md) | Mobile attachments: pick, upload (XEP-0363), render images/files/video, trust rules (new deps: expo image/document pickers, expo-image, expo-video) | planned | meta/muse-spark-1.3-contributor | T-0143 | Spec ready |
 | [T-0146](T-0146-web-server-nits.md) | web/server nits: sticker dir warning, leave 404, AI reload, GIF host rule, GIF tab | 2026-10-01 |
+| [T-0143](T-0143-mobile-stickers.md) | mobile stickers: render, panel, send, recents, mock packs | 2026-10-01 |

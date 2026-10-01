@@ -1,4 +1,5 @@
 import type { MessageStatus, UiMessage } from '@galena/chat-core';
+import { StickerSchema } from '@galena/protocol';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import type {
@@ -59,6 +60,8 @@ type ChatStoreData = Omit<
   | 'retryHistory'
   | 'hasMore'
   | 'sendText'
+  | 'sendSticker'
+  | 'retrySticker'
   | 'sendTyping'
   | 'react'
   | 'startEdit'
@@ -319,6 +322,17 @@ export function createChatStore(
         chats: state.chats.map((chat) => byId.get(chat.id) ?? chat),
       }));
     };
+
+    // Drops the `failed` flag without leaving an `undefined` value behind.
+    function clearMockFailure(message: UiMessage): UiMessage {
+      if (message.failed === undefined) {
+        return message;
+      }
+      const next: UiMessage = { ...message };
+      delete next.failed;
+      return next;
+    }
+
     const setStatus = (chatId: string, messageId: string, status: MessageStatus) => {
       set((state) => {
         const messages = state.messagesByChat[chatId];
@@ -897,6 +911,78 @@ export function createChatStore(
         }));
         setTimeout(() => setStatus(chatId, message.id, 'sent'), SENT_DELAY_MS);
         setTimeout(() => setStatus(chatId, message.id, 'read'), READ_DELAY_MS);
+      },
+      sendSticker: (chatId, sticker, options) => {
+        if (!get().chats.some((chat) => chat.id === chatId)) {
+          return;
+        }
+        // Validate before the optimistic insert: a hostile value (tampered
+        // recents) sets a visible error with no bubble, never a stuck send.
+        const data = {
+          pack_id: sticker.packId,
+          sticker_id: sticker.stickerId,
+          url: sticker.url,
+          ...(sticker.emoji === undefined ? {} : { emoji: sticker.emoji }),
+          width: sticker.width,
+          height: sticker.height,
+          mime: sticker.mime,
+        };
+        if (!StickerSchema.safeParse(data).success) {
+          set({ actionError: { chatId, message: 'That sticker could not be sent.' } });
+          return;
+        }
+        messageCounter += 1;
+        const body = sticker.emoji ?? '';
+        const message: UiMessage = {
+          id: `local-${Date.now()}-${messageCounter}`,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: CURRENT_USER_NAME,
+          text: body,
+          createdAt: new Date(),
+          status: 'sending',
+          card: { v: 0, type: 'sticker', data },
+          ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
+        };
+        set((state) => ({
+          // A later validated send clears this chat's stale error banner.
+          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: [...(state.messagesByChat[chatId] ?? NO_MESSAGES), message],
+          },
+          chats: state.chats.map((chat) =>
+            chat.id === chatId ? { ...chat, lastMessage: message } : chat,
+          ),
+        }));
+        setTimeout(() => setStatus(chatId, message.id, 'sent'), SENT_DELAY_MS);
+        setTimeout(() => setStatus(chatId, message.id, 'read'), READ_DELAY_MS);
+      },
+      retrySticker: (chatId, messageId) => {
+        const message = get().messagesByChat[chatId]?.find((item) => item.id === messageId);
+        const payload =
+          message?.card !== undefined && message.card.type === 'sticker' ? message.card : undefined;
+        if (message === undefined || payload === undefined) {
+          return;
+        }
+        // A drifted payload that no longer validates stays failed.
+        if (!StickerSchema.safeParse(payload.data).success) {
+          return;
+        }
+        set((state) => ({
+          // A retry clears this chat's stale error banner with it.
+          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: (state.messagesByChat[chatId] ?? NO_MESSAGES).map((item) =>
+              item.id === messageId
+                ? { ...clearMockFailure(item), status: 'sending' as const }
+                : item,
+            ),
+          },
+        }));
+        setTimeout(() => setStatus(chatId, messageId, 'sent'), SENT_DELAY_MS);
+        setTimeout(() => setStatus(chatId, messageId, 'read'), READ_DELAY_MS);
       },
       setSearch: (search) => set({ search }),
       setActiveFolder: (activeFolder) => set({ activeFolder }),

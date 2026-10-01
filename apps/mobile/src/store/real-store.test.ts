@@ -1979,3 +1979,266 @@ describe('mobile sends reactions, deletions and edits (T-0085)', () => {
     expect(target?.deleted).toBeUndefined();
   });
 });
+
+describe('mobile sends stickers (T-0143)', () => {
+  const ANA = 'ana@galena.test';
+  const STICKER_ID = '223e4567-e89b-12d3-a456-426614174001';
+  const CHOICE = {
+    stickerId: STICKER_ID,
+    packId: '11111111-1111-4111-8111-111111111111',
+    url: `/api/stickers/${STICKER_ID}/file`,
+    emoji: '🐱',
+    width: 200,
+    height: 200,
+    mime: 'image/png' as const,
+  };
+
+  it('validates the choice, sends the sticker payload and reconciles the echo', async () => {
+    const { store, xmpp } = await setup();
+
+    store.getState().sendSticker(ANA, CHOICE);
+    const optimistic = store.getState().messages(ANA).at(-1);
+    expect(optimistic?.text).toBe('🐱');
+    expect(optimistic?.card).toEqual({
+      v: 0,
+      type: 'sticker',
+      data: expect.objectContaining({
+        sticker_id: STICKER_ID,
+      }),
+    });
+    expect(optimistic?.status).toBe('sending');
+
+    const sendMessage = vi.mocked(xmpp.core.sendMessage);
+    expect(sendMessage).toHaveBeenCalledWith(
+      ANA,
+      'chat',
+      '🐱',
+      expect.objectContaining({ payload: expect.objectContaining({ type: 'sticker' }) }),
+    );
+
+    await flush();
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.text === '🐱')?.status,
+    ).toBe('sent');
+
+    // The echo carries the sticker id and matches the sticker-scoped
+    // signature, not the bare emoji body.
+    xmpp.emit(
+      'message',
+      message({
+        id: 'srv-sticker-1',
+        chatJid: ANA,
+        body: '🐱',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        timestamp: new Date('2026-09-28T12:02:00Z'),
+        payload: {
+          v: 0,
+          type: 'sticker',
+          data: { ...CHOICE, pack_id: CHOICE.packId, sticker_id: CHOICE.stickerId },
+        } as unknown as ChatMessage['payload'],
+      }),
+    );
+    const matches = store
+      .getState()
+      .messages(ANA)
+      .filter((item) => item.text === '🐱');
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.card).toBeDefined();
+  });
+
+  it('keeps two quick same-emoji stickers on their own server ids', async () => {
+    const { store, xmpp } = await setup();
+    const second = {
+      ...CHOICE,
+      stickerId: '323e4567-e89b-12d3-a456-426614174002',
+      url: '/api/stickers/323e4567-e89b-12d3-a456-426614174002/file',
+    };
+
+    store.getState().sendSticker(ANA, CHOICE);
+    store.getState().sendSticker(ANA, second);
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .filter((item) => item.card !== undefined),
+    ).toHaveLength(2);
+
+    // The echoes arrive swapped: each still links its own sticker.
+    const echo = (id: string, choice: typeof CHOICE) =>
+      message({
+        id,
+        chatJid: ANA,
+        body: '🐱',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        timestamp: new Date('2026-09-28T12:02:00Z'),
+        payload: {
+          v: 0,
+          type: 'sticker',
+          data: {
+            pack_id: choice.packId,
+            sticker_id: choice.stickerId,
+            url: choice.url,
+            emoji: choice.emoji,
+            width: 200,
+            height: 200,
+            mime: choice.mime,
+          },
+        } as unknown as ChatMessage['payload'],
+      });
+    xmpp.emit('message', echo('srv-second', second));
+    xmpp.emit('message', echo('srv-first', CHOICE));
+
+    const stickers = store
+      .getState()
+      .messages(ANA)
+      .filter((item) => item.card !== undefined);
+    expect(stickers).toHaveLength(2);
+    const ids = new Set(stickers.map((item) => item.id));
+    expect(ids).toEqual(new Set(['srv-first', 'srv-second']));
+  });
+
+  it('maps an incoming sticker to the card with the emoji body', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.emit(
+      'message',
+      message({
+        id: 'srv-in-1',
+        chatJid: ANA,
+        body: '🐱',
+        timestamp: new Date('2026-09-28T12:03:00Z'),
+        payload: {
+          v: 0,
+          type: 'sticker',
+          data: {
+            pack_id: CHOICE.packId,
+            sticker_id: CHOICE.stickerId,
+            url: CHOICE.url,
+            emoji: '🐱',
+            width: 200,
+            height: 200,
+            mime: 'image/png',
+          },
+        } as unknown as ChatMessage['payload'],
+      }),
+    );
+    const incoming = store
+      .getState()
+      .messages(ANA)
+      .find((item) => item.id === 'srv-in-1');
+    expect(incoming?.text).toBe('🐱');
+    expect(incoming?.card).toEqual({ v: 0, type: 'sticker', data: expect.objectContaining({}) });
+  });
+
+  it('refuses a hostile choice with a visible error and no bubble', async () => {
+    const { store, xmpp } = await setup();
+    const before = store.getState().messages(ANA).length;
+
+    store.getState().sendSticker(ANA, { ...CHOICE, url: 'https://evil.test/x.webp', width: 9999 });
+    expect(store.getState().messages(ANA)).toHaveLength(before);
+    expect(store.getState().actionError).toEqual({
+      chatId: ANA,
+      message: 'That sticker could not be sent.',
+    });
+    expect(vi.mocked(xmpp.core.sendMessage)).not.toHaveBeenCalled();
+  });
+
+  it('marks a failed send and retries it', async () => {
+    const { store, xmpp } = await setup();
+    vi.mocked(xmpp.core.sendMessage).mockRejectedValueOnce(new Error('boom'));
+
+    store.getState().sendSticker(ANA, CHOICE);
+    const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
+    await flush();
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === localId)?.failed,
+    ).toBe(true);
+
+    store.getState().retrySticker(ANA, localId);
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === localId)?.failed,
+    ).toBeUndefined();
+    await flush();
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === localId)?.status,
+    ).toBe('sent');
+  });
+
+  it('merges the echo after a retry instead of duplicating the bubble', async () => {
+    const { store, xmpp } = await setup();
+    vi.mocked(xmpp.core.sendMessage).mockRejectedValueOnce(new Error('boom'));
+
+    store.getState().sendSticker(ANA, CHOICE);
+    const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
+    await flush();
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === localId)?.failed,
+    ).toBe(true);
+
+    store.getState().retrySticker(ANA, localId);
+    await flush();
+    // The retry went out again (the failed first attempt consumed the once).
+    expect(vi.mocked(xmpp.core.sendMessage)).toHaveBeenCalledTimes(2);
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'srv-retry-1',
+        chatJid: ANA,
+        body: '🐱',
+        fromJid: 'me@galena.test',
+        outgoing: true,
+        timestamp: new Date('2026-09-28T12:02:00Z'),
+        payload: {
+          v: 0,
+          type: 'sticker',
+          data: {
+            pack_id: CHOICE.packId,
+            sticker_id: CHOICE.stickerId,
+            url: CHOICE.url,
+            emoji: '🐱',
+            width: 200,
+            height: 200,
+            mime: 'image/png',
+          },
+        } as unknown as ChatMessage['payload'],
+      }),
+    );
+    const stickers = store
+      .getState()
+      .messages(ANA)
+      .filter((item) => item.card !== undefined && item.card.type === 'sticker');
+    expect(stickers).toHaveLength(1);
+    expect(stickers[0]?.id).toBe('srv-retry-1');
+  });
+
+  it('clears a stale error banner on a later validated send', async () => {
+    const { store } = await setup();
+    store.getState().sendSticker(ANA, { ...CHOICE, url: 'https://evil.test/x.webp', width: 9999 });
+    expect(store.getState().actionError).toEqual({
+      chatId: ANA,
+      message: 'That sticker could not be sent.',
+    });
+
+    store.getState().sendSticker(ANA, CHOICE);
+    expect(store.getState().actionError).toBeUndefined();
+    expect(store.getState().messages(ANA).at(-1)?.card).toBeDefined();
+    await flush();
+  });
+});
