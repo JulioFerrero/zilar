@@ -97,6 +97,7 @@ pnpm build
 - `pnpm lint` (oxlint): pass, no findings (re-run after last edit; fixed 2 unused-`init` params in my page tests)
 - `pnpm typecheck` (turbo, all 10 packages): pass
 - `pnpm --filter @galena/server test --maxWorkers=2` (full suite): 100 files passed, 6 skipped; 1669 passed, 8 skipped (includes telegram-import 12, telegram-import-routes 14, config 51, sweep 5 with the new route at 401)
+- Post-review targeted re-run: `telegram-import.test.ts` + `telegram-import-routes.test.ts` + `stickers/routes.test.ts` + `favorites.test.ts` + `config.test.ts` + `authz-sweep.test.ts` (`--maxWorkers=2`): 6 files, 121 passed (new: full-pack summary, mid-batch pack_full, limiter-after-validation, oversize skip, cross-user isolation, download round-trip)
 - `pnpm --filter @galena/web test --maxWorkers=2` (full suite): 95 files, 1049 passed (includes TelegramImportDialog 7, StickersPage 10, api +1, mock +1)
 - `pnpm build` (turbo): 2 tasks successful
 - Targeted runs while working (all `--maxWorkers=2`): server stickers+config+sweep 116 passed; web sticker/dialog/api/mock/panel/editor 130 passed.
@@ -109,8 +110,16 @@ pnpm build
 - The request budget is checked between 4-sticker batches (not per file), so a single import overshoots the 30 s deadline by at most one batch.
 - Open: none blocking. Julio still must create the bot and put the token in `infra/.env` (I never read that file).
 
+### Review fixes (PREREVIEW.md at 9c2ea47 — no must-fix, 3 should-fix + 3 nits)
+1. **Full-pack 400**: `remaining` now counts ALL pack rows (new `packSize` count query — local stickers included), and `storeImportedSticker` returns `'pack_full'` instead of throwing, so the batch loop stops queuing and the import answers with its summary (earlier batches' inserts stay and are reported). Double-submitted imports race safely: `onConflictDoNothing` + `pack_full`-as-outcome, no 400 either copy. Tests: full pack of 2 imported + 118 local re-imports to a 200 summary with no new downloads; concurrent-filler test (114 + 2 mid-batch) lands the first batch exactly on 120 and the second batch goes graceful (`imported: 4`, 200, 120 rows).
+2. **Limiter after validation**: the route now parses body schema then the pack name *before* `telegramImportLimiter.allow()`. Test: 3 garbage pastes (bad name, empty, hostile URL) + 1 valid (200) + 2 valid (200) + 1 valid (429) — the budget is spent only by well-formed requests.
+3. **Oversize skip**: `fetchCapped` signals `file_too_large` (new `TelegramImportErrorCode`); the batch loop maps it to skip-and-count, never a failed request. Updated the client test that locked in the `invalid_request` throw. Test: one `file_too_large` sticker among good ones → `{ imported: 1, skippedInvalid: 1 }`, 200.
+4. **logger.ts redact path**: the `TELEGRAM_BOT_TOKEN` redact line is acknowledged as in-scope-but-unlisted (one line, mirrors `GIF_API_KEY`; the token would otherwise reach pino logs through config logging). Mentioned here per AGENTS.md.
+5. **Cross-user isolation**: replaced `void stranger;` with a real test — stranger PATCH/DELETE on the owner's imported pack → same 404 as unknown id, stranger panel excludes it, stranger importing the same Telegram name gets their own pack row (`importedFrom` equal, id different).
+6. **TelegramClient test**: replaced the `typeof`-only assertion with a real download round-trip (`getFile` → file URL, bytes equal, both Telegram paths hit).
+
 ### Blocked / needs a decision
-- None.
+- None. The `logger.ts` one-line redact path (finding 4) needs the lead's scope acknowledgement at merge.
 
 ## Review (written by Claude)
 

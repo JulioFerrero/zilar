@@ -16,7 +16,7 @@ export const TELEGRAM_IMPORT_TIMEOUT_MS = 10_000;
 export const TELEGRAM_IMPORT_MAX_BYTES = 1024 * 1024;
 
 export type TelegramImportErrorCode =
-  'pack_not_found' | 'try_later' | 'import_unavailable' | 'invalid_request';
+  'pack_not_found' | 'try_later' | 'import_unavailable' | 'invalid_request' | 'file_too_large';
 
 export class TelegramImportError extends Error {
   readonly code: TelegramImportErrorCode;
@@ -171,8 +171,10 @@ async function fetchCapped(
       total += value.byteLength;
       if (total > maxBytes) {
         await reader.cancel().catch(() => {});
+        // A signal, not a fatal error: the importer skips and counts an
+        // oversized file like any file that fails validation.
         throw new TelegramImportError(
-          'invalid_request',
+          'file_too_large',
           'A Telegram file was larger than the 1 MiB limit',
         );
       }

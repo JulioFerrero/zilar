@@ -294,7 +294,210 @@ describe('telegram sticker import', () => {
     expect(entry).toBeDefined();
     expect(JSON.stringify(entry?.detail)).not.toContain('Fun Cats');
     expect(entry?.detail).toMatchObject({ imported: 1 });
-    void stranger;
+  });
+
+  it('isolates imported packs per user (same 404, separate packs)', async () => {
+    const client = fakeClient(
+      stickerSet([{ sourceId: 'u-1', fileId: 'f-1', emoji: '🐱', animated: false }]),
+      { 'f-1': pngBytes(100, 100) },
+    );
+    const app = appWithFake(client);
+    const owned = (await (await importRequest(app, owner, { input: 'FunCats' })).json()) as {
+      pack: { id: string };
+    };
+
+    // A stranger cannot read or change the owner's imported pack: PATCH and
+    // DELETE answer the same 404 as an unknown id, and the panel hides it.
+    const patch = await app.request(`${TEST_BASE_URL}/api/sticker-packs/${owned.pack.id}`, {
+      method: 'PATCH',
+      headers: { cookie: stranger.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Hijacked' }),
+    });
+    expect(patch.status).toBe(404);
+    const deleted = await app.request(`${TEST_BASE_URL}/api/sticker-packs/${owned.pack.id}`, {
+      method: 'DELETE',
+      headers: { cookie: stranger.cookie },
+    });
+    expect(deleted.status).toBe(404);
+    const panel = (await (
+      await app.request(`${TEST_BASE_URL}/api/sticker-packs`, {
+        headers: { cookie: stranger.cookie },
+      })
+    ).json()) as { packs: Array<{ id: string }> };
+    expect(panel.packs.map((pack) => pack.id)).not.toContain(owned.pack.id);
+
+    // The stranger importing the same Telegram name gets their own pack.
+    const theirs = (await (await importRequest(app, stranger, { input: 'FunCats' })).json()) as {
+      pack: { id: string; importedFrom: string };
+    };
+    expect(theirs.pack.id).not.toBe(owned.pack.id);
+    expect(theirs.pack.importedFrom).toBe('telegram:FunCats');
+  });
+
+  it('completes with a summary when local stickers already fill the pack', async () => {
+    // 2 imported + 118 local = a full pack of 120: the re-run queues
+    // nothing and answers a summary, never a 400.
+    const client = fakeClient(
+      stickerSet([
+        { sourceId: 'u-1', fileId: 'f-1', emoji: '🐱', animated: false },
+        { sourceId: 'u-2', fileId: 'f-2', emoji: '😂', animated: false },
+        { sourceId: 'u-3', fileId: 'f-3', emoji: null, animated: false },
+      ]),
+      { 'f-1': pngBytes(64, 64), 'f-2': pngBytes(64, 64), 'f-3': pngBytes(64, 64) },
+    );
+    const app = appWithFake(client);
+    const first = (await (await importRequest(app, owner, { input: 'FunCats' })).json()) as {
+      pack: { id: string };
+      imported: number;
+    };
+    expect(first.imported).toBe(3);
+
+    // Local stickers, like uploads from the pack editor: no `source_id`.
+    await context.db.insert(stickers).values(
+      Array.from({ length: 117 }, (_, index) => ({
+        id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+        packId: first.pack.id,
+        position: 100 + index,
+        emoji: null,
+        mime: 'image/png' as const,
+        width: 64,
+        height: 64,
+        bytes: 33,
+        storageKey: `local-${index}.png`,
+        sourceId: null,
+      })),
+    );
+    const rerun = await importRequest(app, owner, { input: 'FunCats' });
+    expect(rerun.status).toBe(200);
+    const summary = (await rerun.json()) as {
+      pack: { id: string };
+      imported: number;
+      skippedAnimated: number;
+      skippedInvalid: number;
+      partial?: boolean;
+    };
+    expect(summary.pack.id).toBe(first.pack.id);
+    expect(summary.imported).toBe(0);
+    expect(summary.partial).toBeUndefined();
+    expect(client.fileCalls).toHaveLength(3);
+  });
+
+  it('ends a mid-batch full pack with the summary instead of a 400', async () => {
+    // 6 queued stickers = batches of 4 + 2. A concurrent writer fills 2
+    // slots during the first batch's downloads, so the first batch lands
+    // exactly on 120 and the second batch meets a full pack: the import
+    // answers 200 with the first batch's inserts reported.
+    const entries = Array.from({ length: 8 }, (_, index) => ({
+      sourceId: `u-${index}`,
+      fileId: `f-${index}`,
+      emoji: null as string | null,
+      animated: false,
+    }));
+    const files: Record<string, Uint8Array> = {};
+    for (let index = 0; index < 8; index += 1) {
+      files[`f-${index}`] = pngBytes(64, 64);
+    }
+    // The pack is created by an empty import first, so the 8 Telegram
+    // stickers are all still pending when the measured import runs.
+    let current = stickerSet([]);
+    const client = fakeClient(current, files);
+    client.getStickerSet = async () => current;
+    const app = appWithFake(client);
+    const created = (await (await importRequest(app, owner, { input: 'Racy' })).json()) as {
+      pack: { id: string };
+    };
+    current = stickerSet(entries);
+    await context.db.insert(stickers).values(
+      Array.from({ length: 114 }, (_, index) => ({
+        id: `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+        packId: created.pack.id,
+        position: index,
+        emoji: null,
+        mime: 'image/png' as const,
+        width: 64,
+        height: 64,
+        bytes: 33,
+        storageKey: `prefill-${index}.png`,
+        sourceId: null,
+      })),
+    );
+    const originalDownload = client.downloadFile;
+    let filled = false;
+    client.downloadFile = async (fileId: string) => {
+      if (!filled) {
+        filled = true;
+        await context.db.insert(stickers).values(
+          Array.from({ length: 2 }, (_, index) => ({
+            id: `20000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+            packId: created.pack.id,
+            position: 1000 + index,
+            emoji: null,
+            mime: 'image/png' as const,
+            width: 64,
+            height: 64,
+            bytes: 33,
+            storageKey: `filler-${index}.png`,
+            sourceId: null,
+          })),
+        );
+      }
+      return originalDownload(fileId);
+    };
+    const response = await importRequest(app, owner, { input: 'Racy' });
+    expect(response.status).toBe(200);
+    const summary = (await response.json()) as {
+      pack: { id: string };
+      imported: number;
+      skippedAnimated: number;
+      skippedInvalid: number;
+    };
+    expect(summary.pack.id).toBe(created.pack.id);
+    expect(summary.imported).toBe(4);
+    const rows = await context.db
+      .select()
+      .from(stickers)
+      .where(eq(stickers.packId, created.pack.id));
+    expect(rows).toHaveLength(120);
+  });
+
+  it('does not burn the hourly budget on garbage input', async () => {
+    const client = fakeClient(stickerSet([]));
+    const app = appWithFake(client);
+    for (const input of ['../../etc/passwd', '', 'https://evil.test/x'] as const) {
+      const bad = await importRequest(app, owner, { input });
+      expect(bad.status).toBe(400);
+    }
+    const valid = await importRequest(app, owner, { input: 'FunCats' });
+    expect(valid.status).toBe(200);
+    for (let index = 0; index < 2; index += 1) {
+      expect((await importRequest(app, owner, { input: 'FunCats' })).status).toBe(200);
+    }
+    expect((await importRequest(app, owner, { input: 'FunCats' })).status).toBe(429);
+  });
+
+  it('skips an oversized Telegram file and imports the good ones', async () => {
+    const client = fakeClient(
+      stickerSet([
+        { sourceId: 'u-1', fileId: 'f-1', emoji: '🐱', animated: false },
+        { sourceId: 'u-2', fileId: 'f-2', emoji: null, animated: false },
+      ]),
+      { 'f-1': pngBytes(64, 64) },
+    );
+    const originalDownload = client.downloadFile;
+    client.downloadFile = async (fileId: string) => {
+      if (fileId === 'f-2') {
+        throw new TelegramImportError(
+          'file_too_large',
+          'A Telegram file was larger than the 1 MiB limit',
+        );
+      }
+      return originalDownload(fileId);
+    };
+    const response = await importRequest(appWithFake(client), owner, { input: 'FunCats' });
+    expect(response.status).toBe(200);
+    const summary = (await response.json()) as { imported: number; skippedInvalid: number };
+    expect(summary.imported).toBe(1);
+    expect(summary.skippedInvalid).toBe(1);
   });
 
   it('never lets the bot token reach the logs on a failed import', async () => {

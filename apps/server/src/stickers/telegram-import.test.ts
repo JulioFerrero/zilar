@@ -154,7 +154,7 @@ describe('createTelegramClient', () => {
     expect(serialised).not.toContain(secretToken);
   });
 
-  it('refuses redirects and oversized files', async () => {
+  it('refuses redirects and signals oversized files for skip-and-count', async () => {
     const redirect = {
       fetch: (async () =>
         new Response(null, {
@@ -174,8 +174,10 @@ describe('createTelegramClient', () => {
       return new Response(big, { status: 200 });
     });
     const bigClient = createTelegramClient(secretToken, bigFetch.fetch);
+    // The client signals `file_too_large`; the importer (service.ts) turns
+    // it into a skip-and-count, never a failed request.
     await expect(bigClient.downloadFile('file-id')).rejects.toMatchObject({
-      code: 'invalid_request',
+      code: 'file_too_large',
     });
   });
 
@@ -207,10 +209,18 @@ describe('createTelegramClient', () => {
     );
   });
 
-  it('is a TelegramClient', () => {
-    const client: TelegramClient = createTelegramClient(secretToken, (async () =>
-      okJson({ ok: true, result: {} })) as typeof fetch);
-    expect(typeof client.getStickerSet).toBe('function');
-    expect(typeof client.downloadFile).toBe('function');
+  it('downloads a file through getFile then the file URL', async () => {
+    const bytes = new TextEncoder().encode('sticker-file-bytes');
+    const { fetch: fetchImpl, calls } = captureFetch((url) => {
+      if (url.includes('/getFile')) {
+        return okJson({ ok: true, result: { file_path: 'stickers/a.webp' } });
+      }
+      return new Response(bytes, { status: 200 });
+    });
+    const client: TelegramClient = createTelegramClient(secretToken, fetchImpl);
+    const downloaded = await client.downloadFile('file-id');
+    expect(downloaded).toEqual(bytes);
+    expect(calls.some((call) => call.includes('/getFile'))).toBe(true);
+    expect(calls.some((call) => call.includes('/file/bot'))).toBe(true);
   });
 });

@@ -31,7 +31,11 @@ import {
   type TelegramImportDeps,
 } from './service';
 import { STICKER_MAX_BYTES } from './image';
-import { createTelegramClient } from './telegram-import';
+import {
+  createTelegramClient,
+  parseTelegramPackInput,
+  TelegramImportError,
+} from './telegram-import';
 
 export const STICKER_UPLOAD_RATE_LIMIT_MAX = 60;
 export const STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
@@ -185,9 +189,6 @@ export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
     if (token === undefined || token === '') {
       throw new HttpError(501, 'import_unavailable', 'Telegram import is not configured');
     }
-    if (!telegramImportLimiter.allow(user.id)) {
-      throw new HttpError(429, 'rate_limited', 'Too many Telegram imports, try again later');
-    }
     const body = await c.req.json().catch(() => null);
     const parsed = telegramImportBodySchema.safeParse(body);
     if (!parsed.success) {
@@ -196,6 +197,19 @@ export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
         'invalid_request',
         parsed.error.issues[0]?.message ?? 'Invalid request',
       );
+    }
+    // The budget is consumed only by a well-formed request for a real pack
+    // name: garbage input fails here, before the 3/hour limiter runs.
+    try {
+      parseTelegramPackInput(parsed.data.input);
+    } catch (error) {
+      if (error instanceof TelegramImportError) {
+        throw new HttpError(400, 'invalid_request', 'That sticker pack link is not valid');
+      }
+      throw error;
+    }
+    if (!telegramImportLimiter.allow(user.id)) {
+      throw new HttpError(429, 'rate_limited', 'Too many Telegram imports, try again later');
     }
     const client = deps.telegramClient ?? createTelegramClient(token);
     const result = await importTelegramPack(importDeps(deps), user.id, parsed.data.input, client);

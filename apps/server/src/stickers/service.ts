@@ -921,7 +921,7 @@ export async function importTelegramPack(
   // Stickers already imported (by `source_id`), read before the downloads
   // start. A concurrent import may add a row we also store: the insert
   // below uses `onConflictDoNothing` on the per-pack unique index, so one
-  // of them wins and the loser counts nothing.
+  // of them wins and the loser counts as skipped.
   const known = await deps.db
     .select({ sourceId: stickers.sourceId })
     .from(stickers)
@@ -929,6 +929,13 @@ export async function importTelegramPack(
   const knownIds = new Set(
     known.map((row) => row.sourceId).filter((id): id is string => id !== null),
   );
+  // The whole pack size — local uploads included, not just Telegram rows —
+  // so a full pack queues nothing instead of 400ing on the first store.
+  const [packCounter] = await deps.db
+    .select({ total: count() })
+    .from(stickers)
+    .where(eq(stickers.packId, resolvedPackId));
+  const packSize = Number(packCounter?.total ?? 0);
 
   const candidates = set.stickers.slice(0, TELEGRAM_IMPORT_CONSIDER_MAX);
   let skippedAnimated = 0;
@@ -952,10 +959,17 @@ export async function importTelegramPack(
   // Sequential batches of limited concurrency (4): Telegram downloads one
   // pack at a time without hammering either side, and the request budget is
   // checked between batches so the import stops on time. At most 120 new
-  // stickers land (the pack limit); the rest wait for a later run.
-  const remaining = Math.max(0, TELEGRAM_IMPORT_STICKERS_MAX - knownIds.size);
+  // stickers land (the pack limit); the rest wait for a later run. A pack
+  // that fills mid-batch (a concurrent writer, or local stickers landed
+  // after the count above) ends the import with the summary — earlier
+  // batches' inserts stay and are reported, never a 400.
+  const remaining = Math.max(0, TELEGRAM_IMPORT_STICKERS_MAX - packSize);
   const queue = pending.slice(0, remaining);
+  let packFull = false;
   for (let index = 0; index < queue.length; index += TELEGRAM_IMPORT_CONCURRENCY) {
+    if (packFull) {
+      break;
+    }
     if (budgetLeft() <= 0) {
       partial = true;
       break;
@@ -967,6 +981,11 @@ export async function importTelegramPack(
         try {
           bytes = await client.downloadFile(item.fileId);
         } catch (error) {
+          // An oversized Telegram file is skipped and counted like any
+          // file that fails validation — it never fails the whole import.
+          if (error instanceof TelegramImportError && error.code === 'file_too_large') {
+            return 'skipped' as const;
+          }
           throw toImportHttpError(error);
         }
         return storeImportedSticker(deps, resolvedPackId, item, bytes);
@@ -975,6 +994,8 @@ export async function importTelegramPack(
     for (const outcome of outcomes) {
       if (outcome === 'stored') {
         imported += 1;
+      } else if (outcome === 'pack_full') {
+        packFull = true;
       } else {
         skippedInvalid += 1;
       }
@@ -1033,13 +1054,15 @@ function toImportHttpError(error: unknown): HttpError {
 // Validates (the same magic-byte probe as uploads) and stores one imported
 // sticker. A file that fails validation is skipped, never stored; a
 // concurrent duplicate insert wins nothing (`onConflictDoNothing` on the
-// per-pack `source_id` index) and counts as skipped.
+// per-pack `source_id` index) and counts as skipped; a full pack reports
+// `pack_full` so the caller ends the import with a summary instead of a 400
+// (a double-submitted import races safely through the same path).
 async function storeImportedSticker(
   deps: TelegramImportDeps,
   packId: string,
   item: { sourceId: string; fileId: string; emoji: string | null },
   bytes: Uint8Array,
-): Promise<'stored' | 'skipped'> {
+): Promise<'stored' | 'skipped' | 'pack_full'> {
   if (bytes.byteLength === 0 || bytes.byteLength > STICKER_MAX_BYTES) {
     return 'skipped';
   }
@@ -1097,6 +1120,11 @@ async function storeImportedSticker(
         .where(eq(stickerPacks.id, packId));
     });
   } catch (error) {
+    // `pack_full` is a graceful outcome, not a request failure: the batch
+    // loop stops queuing and the import answers with its summary.
+    if (error instanceof HttpError && error.code === 'pack_full') {
+      return 'pack_full';
+    }
     if (error instanceof HttpError) {
       throw error;
     }
