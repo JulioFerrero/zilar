@@ -22,6 +22,7 @@ import type { BannerPin } from '@/components/chat/pinned-banner';
 import type { SheetPin } from '@/components/chat/pins-sheet';
 import type { TopicStatus } from '@/lib/topics-api';
 import type { ReplyRef, UiMessage } from '@/lib/types';
+import { mockDemoStickerPacks } from '@/mock/stickers';
 import { useChatStore } from '@/store/chat-store-provider';
 
 export default function ChatScreen() {
@@ -40,6 +41,8 @@ function Chat() {
   const chatsLoad = useChatStore((state) => state.chatsLoad);
   const openChat = useChatStore((state) => state.openChat);
   const sendText = useChatStore((state) => state.sendText);
+  const sendSticker = useChatStore((state) => state.sendSticker);
+  const retrySticker = useChatStore((state) => state.retrySticker);
   const sendTyping = useChatStore((state) => state.sendTyping);
   const react = useChatStore((state) => state.react);
   const startEdit = useChatStore((state) => state.startEdit);
@@ -113,6 +116,15 @@ function Chat() {
   const [infoError, setInfoError] = useState('');
   const [infoRolesError, setInfoRolesError] = useState('');
   const [infoGroupRolesError, setInfoGroupRolesError] = useState('');
+  // Demo packs in mock mode, so the sticker panel works without a server
+  // (real mode loads the user's packs from the API instead).
+  const demoPacks = useMemo(
+    () =>
+      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_GALENA_MOCK === '1'
+        ? mockDemoStickerPacks()
+        : undefined,
+    [],
+  );
 
   useEffect(() => {
     if (chatId) {
@@ -359,6 +371,7 @@ function Chat() {
             pinnedIds={pinnedIds}
             jumpToMessageId={jumpToMessageId}
             onJumped={() => setJumpToMessageId(undefined)}
+            onRetrySticker={(message) => retrySticker(chat.id, message.id)}
           />
           {pinError !== '' ? (
             <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
@@ -406,9 +419,14 @@ function Chat() {
               sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
               cancelReply();
             }}
+            onSendSticker={(sticker) => {
+              sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
+              cancelReply();
+            }}
             replyTo={replyTo}
             onCancelReply={cancelReply}
             onTyping={() => sendTyping(chat.id)}
+            demoPacks={demoPacks}
           />
         </KeyboardAvoidingView>
         <PinsSheet
@@ -654,6 +672,7 @@ function Chat() {
           pinnedIds={pinnedIds}
           jumpToMessageId={jumpToMessageId}
           onJumped={() => setJumpToMessageId(undefined)}
+          onRetrySticker={(message) => retrySticker(chat.id, message.id)}
         />
         {pinError !== '' ? (
           <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
@@ -700,9 +719,14 @@ function Chat() {
             sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
             cancelReply();
           }}
+          onSendSticker={(sticker) => {
+            sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
+            cancelReply();
+          }}
           replyTo={replyTo}
           onCancelReply={cancelReply}
           onTyping={() => sendTyping(chat.id)}
+          demoPacks={demoPacks}
         />
       </KeyboardAvoidingView>
       <TopicInfoSheet

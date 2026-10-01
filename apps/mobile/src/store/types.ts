@@ -37,6 +37,17 @@ export type SendTextOptions = {
   replyTo?: ReplyRef;
 };
 
+/** The tap-to-send choice the sticker panel hands to the store. */
+export type SendStickerChoice = {
+  stickerId: string;
+  packId: string;
+  url: string;
+  emoji?: string | undefined;
+  width: number;
+  height: number;
+  mime: 'image/webp' | 'image/png';
+};
+
 /**
  * A quiet load state (T-0067): `loading` until the data has actually arrived,
  * `error` when it failed, `loaded` once it is known. "empty" is not a load
@@ -181,6 +192,10 @@ export interface ChatStoreState {
   retryHistory: (chatId: string) => void;
   sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
   sendTyping: (chatId: string) => void;
+  /** Sends a sticker payload in the chat (same path as other payload messages). */
+  sendSticker: (chatId: string, sticker: SendStickerChoice, options?: SendTextOptions) => void;
+  /** Retries a failed sticker send (the payload is already on the message). */
+  retrySticker: (chatId: string, messageId: string) => void;
   /** Toggle my reaction of `emoji` on a message (XEP-0444). */
   react: (chatId: string, messageId: string, emoji: string) => void;
   /** Begin editing `messageId`: composer switches to edit mode with its text. */

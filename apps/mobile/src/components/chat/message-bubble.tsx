@@ -18,9 +18,10 @@ import { LinkText } from '@/components/chat/link-text';
 import { rendersMarkdown } from '@/components/chat/markdown-decision';
 import { MarkdownText } from '@/components/chat/markdown-text';
 import { MessageActionsSheet } from '@/components/chat/message-actions-sheet';
-import { PayloadCard } from '@/components/chat/payload-card';
+import { PayloadCard, stickerOf } from '@/components/chat/payload-card';
 import { ReactionChips } from '@/components/chat/reaction-chips';
 import { ReplyQuote } from '@/components/chat/reply-quote';
+import { StickerMessage } from '@/components/chat/sticker-message';
 import { SwipeToReply } from '@/components/chat/swipe-to-reply';
 import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
@@ -205,6 +206,8 @@ type MessageBubbleProps = {
   onEdit?: (message: UiMessage) => void;
   /** Called when the user confirms a delete-for-everyone. */
   onDelete?: (message: UiMessage) => void;
+  /** Called when the sticker Retry is tapped on a failed sticker send. */
+  onRetrySticker?: (message: UiMessage) => void;
   /** Pin/unpin gating for chat of this message (T-0135). */
   canPin?: boolean;
   isPinned?: boolean;
@@ -225,6 +228,7 @@ export function MessageBubble({
   onReact,
   onEdit,
   onDelete,
+  onRetrySticker,
   canPin,
   isPinned,
   onPin,
@@ -288,13 +292,21 @@ export function MessageBubble({
     message.voice === undefined &&
     message.card === undefined &&
     isBigEmoji(message.text ?? '');
-  const showSenderName = isGroup && !outgoing && isFirstInGroup && !bigEmoji;
+  // A sticker renders without a bubble (validated against `StickerSchema`;
+  // an invalid payload falls back to the body text like an unknown client).
+  const sticker = stickerOf(message);
+  const showSenderName =
+    isGroup && !outgoing && isFirstInGroup && !bigEmoji && sticker === undefined;
   const showAvatar = isGroup && !outgoing && isLastInGroup;
 
   const openMenu = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setMenuOpen(true);
   };
+
+  // A failed sticker keeps its message and shows a Retry instead of a silent
+  // "sending" state, like attachments do on web.
+  const failedSticker = sticker !== undefined && message.failed === true;
 
   // A retracted message keeps its place as a slim tombstone, with no actions
   // and no reactions: web does the same.
@@ -349,7 +361,37 @@ export function MessageBubble({
           ) : null}
           <View className={cn('max-w-[80%] shrink', outgoing ? 'items-end' : 'items-start')}>
             <View className="relative">
-              {bigEmoji ? (
+              {sticker !== undefined ? (
+                <>
+                  {showSenderName ? (
+                    <Text
+                      className="mb-0.5 text-[14px] font-semibold"
+                      color={senderColor(message.senderId)}
+                    >
+                      {message.senderName}
+                    </Text>
+                  ) : null}
+                  {message.replyTo ? <ReplyQuote reply={message.replyTo} /> : null}
+                  <StickerMessage
+                    sticker={sticker}
+                    message={message}
+                    outgoing={outgoing}
+                    onLongPress={openMenu}
+                  />
+                  {failedSticker ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Retry sending sticker"
+                      onPress={() => onRetrySticker?.(message)}
+                      className="mt-1 rounded-[10px] bg-danger/20 px-3 py-1.5 active:opacity-80"
+                    >
+                      <Text className="text-[13px] font-semibold text-danger">
+                        Couldn't send. Retry
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </>
+              ) : bigEmoji ? (
                 <BigEmoji
                   message={message}
                   text={text}
@@ -493,8 +535,8 @@ export function MessageBubble({
       </SwipeToReply>
       <MessageActionsSheet
         visible={menuOpen}
-        canCopy={hasText}
-        canEdit={canEdit}
+        canCopy={hasText && sticker === undefined}
+        canEdit={sticker === undefined && canEdit}
         canDelete={canDelete}
         canPin={canPin}
         isPinned={isPinned}

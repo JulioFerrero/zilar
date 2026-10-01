@@ -42,6 +42,8 @@ type MessageListProps = {
   /** The message id to scroll to once it renders (a pin jump). */
   jumpToMessageId?: string | undefined;
   onJumped?: () => void;
+  /** Called when the sticker Retry is tapped on a failed sticker send. */
+  onRetrySticker?: ((message: UiMessage) => void) | undefined;
 };
 
 /**
@@ -59,6 +61,7 @@ export function MessageList({
   pinnedIds,
   jumpToMessageId,
   onJumped,
+  onRetrySticker,
 }: MessageListProps) {
   const currentUserId = useChatStore((state) => state.currentUserId);
   const messages = useChatStore((state) => state.messages(chat.id));
@@ -287,6 +290,7 @@ export function MessageList({
             {...(onUnpin === undefined ? {} : { onUnpin })}
             draft={item.isDraft}
             revealTurnId={item.revealTurnId}
+            {...(onRetrySticker === undefined ? {} : { onRetrySticker })}
           />
         );
       }}

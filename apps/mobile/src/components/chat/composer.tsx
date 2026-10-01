@@ -1,9 +1,11 @@
-import { ArrowUp, Mic, Paperclip, Smile, X } from 'lucide-react-native';
-import { useState } from 'react';
+import { StickerSchema } from '@galena/protocol';
+import { ArrowUp, Mic, Paperclip, Smile, Sticker, X } from 'lucide-react-native';
+import { useCallback, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EditBar } from '@/components/chat/edit-bar';
+import { loadStickerPacks, persistRecent, StickerPanel } from '@/components/chat/sticker-panel';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
@@ -16,7 +18,11 @@ import {
   primaryKey,
   well,
 } from '@/lib/depth';
+import { RECENTS_STORAGE, readStoredRecents } from '@/lib/stickers-storage';
+import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stickers';
+import type { StickerPanelState } from '@/components/chat/sticker-panel';
 import type { ReplyRef } from '@/lib/types';
+import type { SendStickerChoice } from '@/store/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import { useColorScheme } from 'nativewind';
 
@@ -56,15 +62,26 @@ function ReplyBar({ reply, onCancel }: { reply: ReplyRef; onCancel: () => void }
 
 type ComposerProps = {
   onSend: (text: string) => void;
+  onSendSticker: (sticker: SendStickerChoice) => void;
   replyTo?: ReplyRef;
   onCancelReply: () => void;
   onTyping?: () => void;
   /** Used for the `Message <title>` placeholder, like the web composer. */
   title?: string;
+  /** Demo packs in mock mode, so the panel works without a server. */
+  demoPacks?: StickerPack[];
 };
 
 /** Bottom composer: a well with attach, auto-growing input, emoji and mic/send. */
-export function Composer({ onSend, replyTo, onCancelReply, onTyping, title }: ComposerProps) {
+export function Composer({
+  onSend,
+  onSendSticker,
+  replyTo,
+  onCancelReply,
+  onTyping,
+  title,
+  demoPacks,
+}: ComposerProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const insets = useSafeAreaInsets();
   const { pressed, reduceMotion, setPressed } = useKeyPress();
@@ -99,6 +116,73 @@ export function Composer({ onSend, replyTo, onCancelReply, onTyping, title }: Co
   const canSend = text.trim().length > 0;
   const iconColor = ICON[scheme];
   const placeholder = title === undefined ? 'Message' : `Message ${title}`;
+
+  // The sticker panel: the user's packs from the server (demo packs in mock
+  // mode), a per-device Recent row, tap-to-send. Loading, error + retry, and
+  // the "create on web" empty state live in `StickerPanel`.
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [packs, setPacks] = useState<StickerPack[] | undefined>(undefined);
+  const [panelState, setPanelState] = useState<StickerPanelState>('loading');
+  const [recents, setRecents] = useState<RecentStickerEntry[]>([]);
+  const [activePackId, setActivePackId] = useState<string | undefined>(undefined);
+
+  const loadPanel = useCallback(() => {
+    setActivePackId((current) =>
+      current !== undefined && (demoPacks ?? []).some((pack) => pack.id === current)
+        ? current
+        : undefined,
+    );
+    if (demoPacks !== undefined) {
+      setPacks(demoPacks);
+      setPanelState(demoPacks.length === 0 ? 'empty' : 'ready');
+      return;
+    }
+    setPanelState('loading');
+    void loadStickerPacks()
+      .then((loaded) => {
+        setPacks(loaded);
+        // A pack deleted on the web leaves a stale tab: reset it so the
+        // panel resolves back to Recent or the first pack.
+        setActivePackId((current) =>
+          current !== undefined && loaded.some((pack) => pack.id === current) ? current : undefined,
+        );
+        setPanelState(loaded.length === 0 ? 'empty' : 'ready');
+      })
+      .catch(() => {
+        setPanelState('error');
+      });
+  }, [demoPacks]);
+
+  const openPanel = () => {
+    setPanelOpen(true);
+    loadPanel();
+    void readStoredRecents()
+      .then(setRecents)
+      .catch(() => {});
+  };
+
+  const pickSticker = (sticker: StickerChoice) => {
+    setPanelOpen(false);
+    // Validate before persisting: a hostile or drifted choice shows the
+    // store's error and is never written to Recents.
+    const data = {
+      pack_id: sticker.packId,
+      sticker_id: sticker.stickerId,
+      url: sticker.url,
+      ...(sticker.emoji === undefined ? {} : { emoji: sticker.emoji }),
+      width: sticker.width,
+      height: sticker.height,
+      mime: sticker.mime,
+    };
+    if (!StickerSchema.safeParse(data).success) {
+      onSendSticker(sticker);
+      return;
+    }
+    void persistRecent(RECENTS_STORAGE, recents, sticker)
+      .then(setRecents)
+      .catch(() => {});
+    onSendSticker(sticker);
+  };
 
   const handleSend = () => {
     if (!canSend) {
@@ -168,6 +252,9 @@ export function Composer({ onSend, replyTo, onCancelReply, onTyping, title }: Co
         <IconButton label="Emoji" className="h-9 w-9 rounded-[10px]">
           <Smile size={20} color={iconColor} />
         </IconButton>
+        <IconButton label="Stickers" className="h-9 w-9 rounded-[10px]" onPress={openPanel}>
+          <Sticker size={20} color={iconColor} />
+        </IconButton>
         {canSend ? (
           <Pressable
             accessibilityRole="button"
@@ -186,6 +273,17 @@ export function Composer({ onSend, replyTo, onCancelReply, onTyping, title }: Co
           </IconButton>
         )}
       </View>
+      <StickerPanel
+        open={panelOpen}
+        packs={packs}
+        state={panelState}
+        recents={recents}
+        activePackId={activePackId}
+        onSelectPack={setActivePackId}
+        onPick={pickSticker}
+        onRetry={loadPanel}
+        onClose={() => setPanelOpen(false)}
+      />
     </View>
   );
 }
