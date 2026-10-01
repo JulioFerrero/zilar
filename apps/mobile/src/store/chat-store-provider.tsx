@@ -10,6 +10,7 @@ import { createChatStore, isMockMode } from './chat-store';
 import { createRealChatStore, type AppStateLike } from './real-store';
 import { createChatPrefsApi } from '../lib/chat-prefs-api';
 import { createPinsApi } from '../lib/pins-api';
+import { createAttachmentUploader } from '../lib/attachment-native';
 import { getSessionToken } from '../lib/session-token';
 import { API_URL } from '../lib/auth';
 import type { ChatStoreState } from './types';
@@ -44,6 +45,7 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
           appState: rnAppState,
           chatPrefsApi: createChatPrefsApi(getSessionToken, fetch, API_URL),
           pinsApi: createPinsApi(getSessionToken, fetch, API_URL),
+          uploader: createAttachmentUploader(),
         }),
   );
 

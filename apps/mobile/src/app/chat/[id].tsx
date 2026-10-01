@@ -15,6 +15,11 @@ import { PinsSheet } from '@/components/chat/pins-sheet';
 import { TaskStrip } from '@/components/chat/task-strip';
 import { TopicInfoSheet } from '@/components/chat/topic-sheets';
 import { Text } from '@/components/ui/text';
+import { API_URL } from '@/lib/auth';
+import { createAttachmentOpener } from '@/lib/attachment-native';
+import { safeHttpUrl } from '@/lib/attachments';
+import type { AttachmentOpener } from '@/lib/attachment-ports';
+import { getSessionToken } from '@/lib/session-token';
 import { replyRef } from '@/lib/format';
 import { attachedRoleIds, describeRolesError, mayManageRoles } from '@/lib/roles';
 import { httpsTopicUrl, mayArchiveTopic } from '@/lib/topics';
@@ -22,7 +27,10 @@ import type { BannerPin } from '@/components/chat/pinned-banner';
 import type { SheetPin } from '@/components/chat/pins-sheet';
 import type { TopicStatus } from '@/lib/topics-api';
 import type { ReplyRef, UiMessage } from '@/lib/types';
+import type { PickedFile } from '@/lib/attachment-ports';
+import type { SendAttachmentOptions } from '@/store/types';
 import { mockDemoStickerPacks } from '@/mock/stickers';
+import { mockDemoAttachments } from '@/mock/attachments';
 import { useChatStore } from '@/store/chat-store-provider';
 
 export default function ChatScreen() {
@@ -41,6 +49,9 @@ function Chat() {
   const chatsLoad = useChatStore((state) => state.chatsLoad);
   const openChat = useChatStore((state) => state.openChat);
   const sendText = useChatStore((state) => state.sendText);
+  const sendAttachment = useChatStore((state) => state.sendAttachment);
+  const retryAttachment = useChatStore((state) => state.retryAttachment);
+  const cancelAttachment = useChatStore((state) => state.cancelAttachment);
   const sendSticker = useChatStore((state) => state.sendSticker);
   const retrySticker = useChatStore((state) => state.retrySticker);
   const sendTyping = useChatStore((state) => state.sendTyping);
@@ -125,6 +136,59 @@ function Chat() {
         : undefined,
     [],
   );
+  // This `useMemo` sits above the `!chat` early return, like `demoPacks`:
+  // every hook runs on every render (see `lib/hooks-guard`).
+  const demoAttachments = useMemo(
+    () =>
+      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_GALENA_MOCK === '1'
+        ? mockDemoAttachments()
+        : undefined,
+    [],
+  );
+  // The native attachment seams (T-0150): the opener for the system
+  // share/open sheet lives here. The uploader is wired by the store
+  // provider: the mock store settles instantly, the real store uploads
+  // through the injected expo-file-system seam. The screen owns the opener
+  // so taps stay local to the chat.
+  const opener: AttachmentOpener = useMemo(
+    () => createAttachmentOpener({ apiUrl: API_URL, getToken: getSessionToken }),
+    [],
+  );
+  const [openingId, setOpeningId] = useState<string | undefined>(undefined);
+  const [openError, setOpenError] = useState('');
+
+  const openAttachment = (message: UiMessage) => {
+    const attachment = message.attachment;
+    if (attachment === undefined) {
+      return;
+    }
+    // Untrusted or non-http(s) addresses never open: only the server-served
+    // upload URL (under the 50 MiB cap, like any attachment) goes to the
+    // system sheet.
+    if (safeHttpUrl(attachment.url) === undefined) {
+      setOpenError('That file cannot be opened here.');
+      return;
+    }
+    setOpeningId(message.id);
+    setOpenError('');
+    void opener
+      .open(attachment.url, attachment.name)
+      .then((result) => {
+        if (result.status === 'error') {
+          setOpenError(result.message);
+        }
+      })
+      .catch(() => {
+        setOpenError('Could not open that file. Try again.');
+      })
+      .finally(() => {
+        setOpeningId((current) => (current === message.id ? undefined : current));
+      });
+  };
+
+  const sendAttachmentNow = (file: PickedFile, options?: SendAttachmentOptions) => {
+    sendAttachment(chatId, file, options);
+  };
 
   useEffect(() => {
     if (chatId) {
@@ -372,6 +436,10 @@ function Chat() {
             jumpToMessageId={jumpToMessageId}
             onJumped={() => setJumpToMessageId(undefined)}
             onRetrySticker={(message) => retrySticker(chat.id, message.id)}
+            onRetryAttachment={(message) => retryAttachment(chat.id, message.id)}
+            onCancelAttachment={(message) => cancelAttachment(chat.id, message.id)}
+            onOpenAttachment={openAttachment}
+            openingAttachmentId={openingId}
           />
           {pinError !== '' ? (
             <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
@@ -393,6 +461,32 @@ function Chat() {
                 accessibilityRole="button"
                 accessibilityLabel="Dismiss error"
                 onPress={() => dismissActionError()}
+                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+              >
+                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {openError !== '' ? (
+            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
+              <Text className="flex-1 text-[13px] text-danger">{openError}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss error"
+                onPress={() => setOpenError('')}
+                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+              >
+                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {openError !== '' ? (
+            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
+              <Text className="flex-1 text-[13px] text-danger">{openError}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss error"
+                onPress={() => setOpenError('')}
                 className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
               >
                 <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
@@ -423,6 +517,14 @@ function Chat() {
               sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
               cancelReply();
             }}
+            onSendAttachment={(file: PickedFile, options?: SendAttachmentOptions) => {
+              sendAttachmentNow(
+                file,
+                options === undefined ? (replyTo === undefined ? undefined : { replyTo }) : options,
+              );
+              cancelReply();
+            }}
+            demoAttachments={demoAttachments}
             replyTo={replyTo}
             onCancelReply={cancelReply}
             onTyping={() => sendTyping(chat.id)}
@@ -518,6 +620,32 @@ function Chat() {
               </Pressable>
             </View>
           ) : null}
+          {openError !== '' ? (
+            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
+              <Text className="flex-1 text-[13px] text-danger">{openError}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss error"
+                onPress={() => setOpenError('')}
+                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+              >
+                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {openError !== '' ? (
+            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
+              <Text className="flex-1 text-[13px] text-danger">{openError}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss error"
+                onPress={() => setOpenError('')}
+                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+              >
+                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
+              </Pressable>
+            </View>
+          ) : null}
           {jumpMissed ? (
             <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-surface-raised px-3 py-2">
               <Text className="flex-1 text-[13px] text-muted-foreground">Message not found</Text>
@@ -543,6 +671,17 @@ function Chat() {
                 sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
                 cancelReply();
               }}
+              onSendAttachment={(file: PickedFile, options?: SendAttachmentOptions) => {
+                sendAttachmentNow(
+                  file,
+                  options === undefined
+                    ? replyTo === undefined
+                      ? undefined
+                      : { replyTo }
+                    : options,
+                );
+                cancelReply();
+              }}
               replyTo={replyTo}
               onCancelReply={cancelReply}
               onTyping={() => sendTyping(chat.id)}
@@ -557,6 +696,17 @@ function Chat() {
               }}
               onSendSticker={(sticker) => {
                 sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
+                cancelReply();
+              }}
+              onSendAttachment={(file: PickedFile, options?: SendAttachmentOptions) => {
+                sendAttachmentNow(
+                  file,
+                  options === undefined
+                    ? replyTo === undefined
+                      ? undefined
+                      : { replyTo }
+                    : options,
+                );
                 cancelReply();
               }}
               replyTo={replyTo}
@@ -683,6 +833,10 @@ function Chat() {
           jumpToMessageId={jumpToMessageId}
           onJumped={() => setJumpToMessageId(undefined)}
           onRetrySticker={(message) => retrySticker(chat.id, message.id)}
+          onRetryAttachment={(message) => retryAttachment(chat.id, message.id)}
+          onCancelAttachment={(message) => cancelAttachment(chat.id, message.id)}
+          onOpenAttachment={openAttachment}
+          openingAttachmentId={openingId}
         />
         {pinError !== '' ? (
           <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
@@ -704,6 +858,19 @@ function Chat() {
               accessibilityRole="button"
               accessibilityLabel="Dismiss error"
               onPress={() => dismissActionError()}
+              className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
+            >
+              <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {openError !== '' ? (
+          <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
+            <Text className="flex-1 text-[13px] text-danger">{openError}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss error"
+              onPress={() => setOpenError('')}
               className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
             >
               <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
@@ -733,6 +900,14 @@ function Chat() {
             sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
             cancelReply();
           }}
+          onSendAttachment={(file: PickedFile, options?: SendAttachmentOptions) => {
+            sendAttachmentNow(
+              file,
+              options === undefined ? (replyTo === undefined ? undefined : { replyTo }) : options,
+            );
+            cancelReply();
+          }}
+          demoAttachments={demoAttachments}
           replyTo={replyTo}
           onCancelReply={cancelReply}
           onTyping={() => sendTyping(chat.id)}

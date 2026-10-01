@@ -124,6 +124,7 @@ vi.mock('@/components/chat/message-actions-sheet', () => ({
   ),
 }));
 vi.mock('@/components/chat/avatar', () => ({ Avatar: 'Avatar' }));
+vi.mock('@/components/chat/attachment-body', () => ({ AttachmentBody: 'AttachmentBody' }));
 vi.mock('@/components/chat/image-message', () => ({ ImageMessage: 'ImageMessage' }));
 vi.mock('@/components/chat/link-text', () => ({ LinkText: 'LinkText' }));
 vi.mock('@/components/chat/markdown-text', () => ({ MarkdownText: 'MarkdownText' }));

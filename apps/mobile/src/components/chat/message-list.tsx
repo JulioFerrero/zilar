@@ -44,6 +44,14 @@ type MessageListProps = {
   onJumped?: () => void;
   /** Called when the sticker Retry is tapped on a failed sticker send. */
   onRetrySticker?: ((message: UiMessage) => void) | undefined;
+  /** Called when the Retry is tapped on a failed attachment upload. */
+  onRetryAttachment?: ((message: UiMessage) => void) | undefined;
+  /** Called when Cancel is tapped while an attachment uploads. */
+  onCancelAttachment?: ((message: UiMessage) => void) | undefined;
+  /** Called when a file row is tapped (system open sheet). */
+  onOpenAttachment?: ((message: UiMessage) => void) | undefined;
+  /** The message id currently downloading for the open sheet. */
+  openingAttachmentId?: string | undefined;
 };
 
 /**
@@ -62,6 +70,10 @@ export function MessageList({
   jumpToMessageId,
   onJumped,
   onRetrySticker,
+  onRetryAttachment,
+  onCancelAttachment,
+  onOpenAttachment,
+  openingAttachmentId,
 }: MessageListProps) {
   const currentUserId = useChatStore((state) => state.currentUserId);
   const messages = useChatStore((state) => state.messages(chat.id));
@@ -291,6 +303,10 @@ export function MessageList({
             draft={item.isDraft}
             revealTurnId={item.revealTurnId}
             {...(onRetrySticker === undefined ? {} : { onRetrySticker })}
+            {...(onRetryAttachment === undefined ? {} : { onRetryAttachment })}
+            {...(onCancelAttachment === undefined ? {} : { onCancelAttachment })}
+            {...(onOpenAttachment === undefined ? {} : { onOpenAttachment })}
+            {...(openingAttachmentId === undefined ? {} : { openingAttachmentId })}
           />
         );
       }}
