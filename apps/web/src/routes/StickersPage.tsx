@@ -52,9 +52,9 @@ function PackThumbs({ thumbs }: { thumbs: PackRowThumb[] }) {
   }
   return (
     <span className="flex shrink-0 -space-x-3">
-      {thumbs.map((thumb) => (
+      {thumbs.map((thumb, index) => (
         <img
-          key={thumb.url}
+          key={`${index}-${thumb.url}`}
           src={thumb.url}
           alt={thumb.alt}
           loading="lazy"

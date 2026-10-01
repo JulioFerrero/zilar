@@ -1,7 +1,7 @@
 ---
 id: T-0152
 title: Web sticker UI fixes (picker overlap and position, stickers page layout)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0152-web-sticker-ui
 model: meta/muse-spark-1.3-contributor
@@ -94,3 +94,13 @@ pnpm --filter @galena/web test --maxWorkers=2 StickerPanel StickersPage Composer
 - None. Ready for the lead's browser check (step 6) on the real account.
 
 ## Review (written by Claude)
+
+**Verdict:** approved and merged; real-browser check by the lead on the live app after the merge.
+
+### Findings
+- Lead: `TelegramImportDialog.tsx` and a comment in `PackEditor.tsx` were touched outside the listed files; retro-allowed (spec item 4 asked for centered dialogs, styling only).
+- Lead fix: thumbnail keys include the index (duplicate URLs no longer warn).
+- The picker panel is viewport-`fixed` (right-4, bottom-24) instead of button-anchored; disclosed and reasoned (390 px overflow). Adjacency at 1280 px is checked by the lead.
+
+### Follow-ups
+- Class-string tests lock the implementation; the geometry guarantee rests on a real-browser check.
