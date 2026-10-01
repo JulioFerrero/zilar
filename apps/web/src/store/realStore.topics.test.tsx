@@ -472,6 +472,41 @@ describe('topics store mapping (T-0111)', () => {
     await expect(store.getState().refreshTopicRow(bugId, 't-bug')).resolves.toBe(true);
   });
 
+  it('a last-seat leave 404 swallows only when the topic really disappears', async () => {
+    // T-0146: the 404 swallow must only treat "the topic is gone" as
+    // success. The DELETE 404s (last seat → archived) and the refreshed
+    // list no longer has the row: `leaveTopic` resolves, so the panel
+    // navigates away.
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    store.getState().openChat(bugId);
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    (apiMock.removeTopicMember as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ApiError(404, 'not_found', 'Topic not found'),
+    );
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
+      groupEntry({ topics: [topic()] }),
+    ]);
+    await expect(store.getState().leaveTopic(bugId)).resolves.toBeUndefined();
+  });
+
+  it('a non-membership leave 404 rethrows when the topic is still listed', async () => {
+    // T-0146: the same 404 code for "you are not a member" must show the
+    // normal error instead of navigating away. The DELETE 404s but the
+    // refreshed list still has the row: `leaveTopic` rejects with the
+    // original error.
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    store.getState().openChat(bugId);
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    (apiMock.removeTopicMember as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ApiError(404, 'not_found', 'That user is not a member of this topic'),
+    );
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([groupEntry()]);
+    await expect(store.getState().leaveTopic(bugId)).rejects.toThrow(/not a member/);
+    expect(store.getState().chats.some((chat) => chat.id === bugId)).toBe(true);
+  });
+
   it('the refresh interval is 60 s', () => {
     expect(TOPIC_REFRESH_INTERVAL_MS).toBe(60_000);
   });

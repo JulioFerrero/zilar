@@ -25,6 +25,39 @@ const SEARCH_DEBOUNCE_MS = 300;
 const ATTRIBUTION = 'Powered by Giphy';
 
 /**
+ * Probes GIF availability once per session and remembers the answer: `true`
+ * while the provider answers, `false` after a 501 `gifs_unavailable`, and
+ * `undefined` before the first probe. Network errors keep the answer unknown
+ * (the tab stays, the panel shows Retry) so a transient outage does not
+ * permanently hide the tab.
+ */
+const gifsAvailabilityCache: { value: boolean | undefined } = { value: undefined };
+
+export function gifsAvailability(): boolean | undefined {
+  return gifsAvailabilityCache.value;
+}
+
+export function resetGifsAvailability(): void {
+  gifsAvailabilityCache.value = undefined;
+}
+
+export async function probeGifsAvailability(): Promise<boolean> {
+  if (gifsAvailabilityCache.value !== undefined) {
+    return gifsAvailabilityCache.value;
+  }
+  try {
+    await trendingGifs(undefined, undefined);
+    gifsAvailabilityCache.value = true;
+    return true;
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 'gifs_unavailable') {
+      gifsAvailabilityCache.value = false;
+      return false;
+    }
+    return true;
+  }
+}
+/**
  * The bytes to show for one result. Real results load through the
  * same-origin proxy; mock placeholders are app-generated `data:image/` art
  * (the same trust argument as the sticker demo packs) and render directly.
@@ -105,6 +138,11 @@ function GifCell({
  * The GIFs tab (T-0122): debounced search (300 ms, cancelling), trending on
  * open, a 2-column grid of proxy-loaded previews, infinite scroll with `pos`,
  * and the provider attribution. Empty, error and unavailable states included.
+ *
+ * T-0146: when the server answers 501 `gifs_unavailable` (provider off), the
+ * sticker panel hides this tab instead of showing a dead-end message. The
+ * probe runs once per session (`gifsAvailability`) and caches the answer;
+ * `GifPanel` still renders its own unavailable state when mounted directly.
  */
 export function GifPanel({ onPick, mockItems }: GifPanelProps) {
   const [query, setQuery] = useState('');

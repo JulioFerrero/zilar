@@ -35,7 +35,7 @@ import { createLogger } from './logger';
 import { assertRunnerHubConfig, startRunnerHub, type RunnerHub } from './machines/hub';
 import { createDbMachineRegistry } from './machines/registry';
 import { buildRoutineScheduler, type RoutineSchedulerHandle } from './routines/wiring';
-import { ensureWritableDir } from './startup';
+import { ensureWritableDir, warnOnEmptyStorageDir } from './startup';
 import { createEjabberdAdminClient } from './xmpp/admin-client';
 import { runTool } from './sandbox/run-tool';
 import { buildToolAdapters } from './tools/adapters';
@@ -63,8 +63,20 @@ await runMigrations(db);
 // writable at startup, so a bad mount fails fast with a clear message
 // instead of failing the first upload. Resolved against the server package
 // root like the routes, so a relative value means the same dir here and
-// there whatever the cwd is.
-await ensureWritableDir(resolveStorageDir(config.STICKER_STORAGE_DIR), 'STICKER_STORAGE_DIR');
+// there whatever the cwd is. T-0146: when the dir did not exist yet and is
+// created now, the startup helper logs ONE warning line with the resolved
+// path — a relative value resolving to an empty, unexpected directory (e.g.
+// a build step moved the package root) is the "moved base" case, and the
+// resolved path in the line says where the files actually land. Only when
+// the directory holds no stickers while the database has sticker rows is
+// the mismatch certain; that second line is logged below.
+const stickerDir = resolveStorageDir(config.STICKER_STORAGE_DIR);
+await ensureWritableDir(stickerDir, 'STICKER_STORAGE_DIR');
+await warnOnEmptyStorageDir({
+  db,
+  storageDir: stickerDir,
+  warn: (message) => logger.warn(message),
+});
 
 const adminClient = createEjabberdAdminClient(config.xmpp);
 const auth = createAuth({ db, config, mailer, adminClient, logger });

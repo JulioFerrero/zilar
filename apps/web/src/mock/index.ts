@@ -9,4 +9,4 @@ export {
   mockTopicMembersById,
   mockTopicMessages,
 } from './topics';
-export { mockDemoStickerPacks } from './helpers';
+export { MOCK_TOPIC_NOT_FOUND, mockDemoStickerPacks } from './helpers';

@@ -218,3 +218,6 @@ export function mockGifItems(): MockGifItem[] {
     height: 150,
   }));
 }
+
+/** The mock API's 404 text for a gone topic; the mock store matches on it. */
+export const MOCK_TOPIC_NOT_FOUND = 'Topic not found';

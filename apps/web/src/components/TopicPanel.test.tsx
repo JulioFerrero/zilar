@@ -270,6 +270,88 @@ describe('topic member removal errors (T-0130)', () => {
     });
     expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
   });
+
+  it('removes the AI row locally when the reload fails after a delete', async () => {
+    // T-0146: the DELETE succeeds but the AI list reload throws after it
+    // (transient network). The panel must not show the removed AI row as
+    // if the delete failed — the row drops locally and a small "Could not
+    // refresh the list." line with Retry appears instead. The stubbed
+    // reload rejects (it never resolves), so the success-path assertion
+    // below would time out on the old code instead of showing the row.
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) =>
+      mockRequest(String(url), init ?? {}, { delayMs: 0 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const baseImpl = fetchMock.getMockImplementation();
+    if (baseImpl === undefined) {
+      throw new Error('expected the mock fetch implementation');
+    }
+    fetchMock.mockImplementation((url: unknown, init?: RequestInit) => {
+      const raw = String(url);
+      if (
+        /\/topics\/[^/]+\/ais$/.test(raw) &&
+        (init?.method ?? 'GET') === 'GET' &&
+        fetchMock.mock.calls.filter((call) => /\/topics\/[^/]+\/ais$/.test(String(call[0])))
+          .length > 1
+      ) {
+        return Promise.reject(new ApiError(0, 'network_error', 'Could not reach the server'));
+      }
+      return baseImpl(url, init);
+    });
+    // Dev-1 lives on the bug topic (hiring has no AIs).
+    renderApp('/c/c-devteam-bug');
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    expect(await within(dialog).findByText('Dev-1')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Dev-1 from the topic' }));
+    // The row is gone even though the reload failed — and the panel says
+    // the list (not the delete) could not refresh, with a Retry. (The
+    // refresh line is its own note, not the action `alert`, so the dialog
+    // still shows no action error.)
+    await waitFor(() => {
+      expect(within(dialog).queryByText('Dev-1')).toBeNull();
+    });
+    expect(await within(dialog).findByText('Could not refresh the list.')).toBeTruthy();
+    // The removed row was the only AI: the empty list still offers Retry.
+    expect(within(dialog).getAllByRole('button', { name: 'Retry' }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
+  });
+
+  it('removes the member row locally when the reload fails after a delete', async () => {
+    // Same pattern as `removeAi`: the member DELETE succeeds, but the
+    // member list reload throws (transient network), so the removed row
+    // drops locally with the refresh line instead of showing as if the
+    // delete failed.
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) =>
+      mockRequest(String(url), init ?? {}, { delayMs: 0 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const baseImpl = fetchMock.getMockImplementation();
+    if (baseImpl === undefined) {
+      throw new Error('expected the mock fetch implementation');
+    }
+    fetchMock.mockImplementation((url: unknown, init?: RequestInit) => {
+      const raw = String(url);
+      if (
+        /\/topics\/[^/]+\/members$/.test(raw) &&
+        (init?.method ?? 'GET') === 'GET' &&
+        fetchMock.mock.calls.filter((call) => /\/topics\/[^/]+\/members$/.test(String(call[0])))
+          .length > 1
+      ) {
+        return Promise.reject(new ApiError(0, 'network_error', 'Could not reach the server'));
+      }
+      return baseImpl(url, init);
+    });
+    const { dialog } = openHiringPanelWithStore();
+    expect(await within(dialog).findByText('Ana')).toBeTruthy();
+    removeAna(dialog);
+    await waitFor(() => {
+      expect(within(dialog).queryByText('Ana')).toBeNull();
+    });
+    expect(await within(dialog).findByText('Could not refresh the list.')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
+  });
 });
 
 describe('topic leave errors (T-0133)', () => {
@@ -339,6 +421,19 @@ describe('topic leave errors (T-0133)', () => {
     expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
   });
 
+  it('shows the normal error when leaving 404s but the topic is still listed', async () => {
+    // T-0146: a 404 that means "you are not a member" (not "the topic is
+    // gone") must show the normal error instead of navigating away. The
+    // DELETE 404s but the refreshed list still has the hiring row, so the
+    // store rethrows and the panel stays open with the inline error.
+    stubLeave(404);
+    const { dialog } = openHiringPanelAsMember();
+    const leaveButton = await within(dialog).findByRole('button', { name: 'Leave topic' });
+    fireEvent.click(leaveButton);
+    expect(await within(dialog).findByText('gone')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
+  });
+
   it('navigates away when leaving succeeds (the store folds the row away)', async () => {
     // `leave()` navigates away after a successful `leaveTopic`: the store
     // owns the last-seat 404 (it swallows it and drops the row), so the
@@ -353,37 +448,42 @@ describe('topic leave errors (T-0133)', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('navigates away on a last-seat mock leave (the store swallows the 404)', async () => {
-    // T-0141: the mock API 404s a last-seat private-topic leave (the topic
-    // archives), and the mock store swallows it like the real store — the
-    // panel navigates away with no inline error. Without the swallow the
-    // panel would stay open over the archived topic.
-    const { store } = renderApp('/c/c-devteam-hiring', {
-      groupInfos: {
-        'c-devteam-hiring': {
-          id: 'g-devteam',
-          title: 'Dev team',
-          createdBy: 'u-you',
-          members: [
-            { userId: 'u-you', name: 'You', role: 'member' },
-            { userId: 'u-ana', name: 'Ana', role: 'owner' },
-          ],
-          ais: [],
-        },
-      },
-    });
-    // You hold the last seat: removing Ana first leaves only you, so your
-    // own leave archives the topic (mock DELETE 404s).
+  // T-0146: last-seat mock leave through the store directly (no panel).
+  // The default fetch stub in this file routes to the mock API, so store
+  // calls work; `renderApp` alone never stubs fetch. The file's `beforeEach`
+  // installs that stub for every test, including these. Removing Ana leaves
+  // only you; your own leave then archives the topic (the mock DELETE 404s
+  // `Topic not found`), and the store swallows that archived 404 — dropping
+  // the row — so `leaveTopic` resolves and a panel caller would navigate
+  // away. Without the targeted swallow it would reject and the panel would
+  // stay open over the archived topic. Fail-without check: reverting the
+  // `Topic not found` branch in `store.ts` makes this test reject.
+  it('resolves a last-seat mock leave (the store swallows the 404)', async () => {
+    // Hiring starts with Ana + you. Removing Ana keeps the row (200, one
+    // member left); your own leave then archives the topic — the mock
+    // DELETE 404s `Topic not found`. The store swallows that archived 404
+    // (and drops the row), so `leaveTopic` resolves. Without the targeted
+    // swallow it would reject and the panel would stay open over the
+    // archived topic.
+    const { store } = renderApp('/c/c-devteam-hiring');
     await store.getState().removeTopicMember('c-devteam-hiring', 'u-ana');
-    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
-    const dialog = screen.getByRole('dialog', { name: /topic info/ });
-    const leaveButton = await within(dialog).findByRole('button', { name: 'Leave topic' });
-    fireEvent.click(leaveButton);
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: /topic info/ })).toBeNull();
-    });
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(store.getState().chats.some((chat) => chat.id === 'c-devteam-hiring')).toBe(true);
+    await store.getState().leaveTopic('c-devteam-hiring');
+    expect(store.getState().chats.some((chat) => chat.id === 'c-devteam-hiring')).toBe(false);
+  });
+
+  it('rejects a non-membership mock leave (the row stays, so no swallow)', async () => {
+    // T-0146: a 404 that means "you are not a member" must surface the
+    // normal error instead of navigating away. Removing yourself first
+    // (200, Ana left), then leaving again: the DELETE 404s "not a member"
+    // with the topic row still listed — so `leaveTopic` rejects with the
+    // normal error and the row stays. Fail-without check: the pre-T-0146
+    // blanket swallow resolved this too (navigating away over a live
+    // topic); the targeted swallow rejects.
+    const { store } = renderApp('/c/c-devteam-hiring');
+    await store.getState().removeTopicMember('c-devteam-hiring', 'u-you');
+    await expect(store.getState().leaveTopic('c-devteam-hiring')).rejects.toThrow(/not a member/);
+    expect(store.getState().chats.some((chat) => chat.id === 'c-devteam-hiring')).toBe(true);
   });
 });
 
