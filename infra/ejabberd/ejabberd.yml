@@ -81,7 +81,10 @@ listen:
   # network and receives the XEP-0357 publish IQs. Plain TCP, the secret is
   # the only credential. It listens on all container interfaces so the
   # published port works; docker-compose.dev.yml publishes it on 127.0.0.1
-  # only.
+  # only. Production (deploy/) wires the same listener the same way, except
+  # the host key is generated at container start from GALENA_DOMAIN (see
+  # deploy/ejabberd/push-entrypoint.sh) — ejabberd does not expand macros in
+  # map keys, so the key must equal PUSH_COMPONENT_JID in the server env.
   # Overridden by EJABBERD_MACRO_PUSH_COMPONENT_SECRET (see
   # infra/docker-compose.dev.yml and docs/SERVER_CONFIG.md "Push").
   - port: 5347
