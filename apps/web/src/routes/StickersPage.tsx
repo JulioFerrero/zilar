@@ -278,17 +278,19 @@ export function StickersPage() {
         subtitle="Change the title and stickers."
         onBack={() => setEditingPackId(undefined)}
       >
-        <PackEditor
-          packId={editingPackId}
-          initialTitle={pack?.title ?? ''}
-          initialVisibility={pack?.visibility ?? 'private'}
-          initialStickers={pack?.stickers ?? []}
-          onDone={() => {
-            setEditingPackId(undefined);
-            void refresh();
-          }}
-          onCancel={() => setEditingPackId(undefined)}
-        />
+        <div className={SETTINGS_COLUMN}>
+          <PackEditor
+            packId={editingPackId}
+            initialTitle={pack?.title ?? ''}
+            initialVisibility={pack?.visibility ?? 'private'}
+            initialStickers={pack?.stickers ?? []}
+            onDone={() => {
+              setEditingPackId(undefined);
+              void refresh();
+            }}
+            onCancel={() => setEditingPackId(undefined)}
+          />
+        </div>
       </SettingsShell>
     );
   }
@@ -300,13 +302,15 @@ export function StickersPage() {
         subtitle="Give it a title, then add stickers."
         onBack={() => setCreating(false)}
       >
-        <PackEditor
-          onDone={() => {
-            setCreating(false);
-            void refresh();
-          }}
-          onCancel={() => setCreating(false)}
-        />
+        <div className={SETTINGS_COLUMN}>
+          <PackEditor
+            onDone={() => {
+              setCreating(false);
+              void refresh();
+            }}
+            onCancel={() => setCreating(false)}
+          />
+        </div>
       </SettingsShell>
     );
   }

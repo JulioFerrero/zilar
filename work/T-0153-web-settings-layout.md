@@ -1,7 +1,7 @@
 ---
 id: T-0153
 title: Web settings pages layout (one centered shell, readable sizes, consistent cards)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0153-web-settings-layout
 model: meta/muse-spark-1.3-contributor
@@ -87,3 +87,12 @@ pnpm --filter @galena/web test --maxWorkers=2 ConnectionsPage AisPage MachinesPa
 - None. Ready for review; the lead may want the real-account look (spec step 6) plus the two machine-card `title` follow-ups above.
 
 ## Review (written by Claude)
+
+**Verdict:** approved and merged; real-browser check by the lead on the live app after the merge.
+
+### Findings
+- Lead fixes: the sticker Edit/Create views are wrapped in the centered column again; the unused `SettingsSection`/`SettingsCard`/`SettingsEmpty` recipes and their test case were deleted (no dead code).
+- The Notifications "Not supported" state keeps its old separate page (disclosed, accepted).
+
+### Follow-ups
+- Worker noted two small items left out of scope: the `ApprovedMachineCard` title rename and the `AddMachineDialog` copy.
