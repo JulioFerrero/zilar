@@ -1,7 +1,7 @@
 ---
 id: T-0119
 title: Installable web app (PWA) with web push notifications
-status: review
+status: merged
 milestone: M5
 branch: task/T-0119-pwa-web-push
 model: meta/muse-spark-1.3-contributor
@@ -160,10 +160,13 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved, merged after five rounds (migration 0031). Pre-review packets read at every round.
 
 ### Findings
--
+- Round fixes verified: dismiss-on-read contract (tag vs chatId), atomic device cap (advisory lock + 21-parallel test), mark-after-send, expired test-push row deleted, own room messages never self-notify, dedup keyed per device, sync failures never fail registration, badge re-synced on mute change, migration 0031 generated and checked.
+- Lead changes on the branch: ejabberd component listener on all container interfaces, port 5347 published on 127.0.0.1 only, `PUSH_COMPONENT_SECRET` macro in compose; stale SERVER_CONFIG wiring text and one prettier fix in a test.
+- Not proven by tests: live-gate stage B (the XEP-0357 publish IQ reaching the component) is an honest skip; it is covered by the lead's live check against the real ejabberd and a browser.
+- Deferred nit: re-registering a device leaves the old ejabberd enable-pair behind (publishes to it are dropped as `unknown-device`).
 
 ### Follow-ups
--
+- Live check in Helium (needs VAPID keys, `PUSH_*` env, ejabberd restart, Julio's OK given 2026-10-01).

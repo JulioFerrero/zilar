@@ -453,9 +453,7 @@ describe('createRealChatStore', () => {
       configurable: true,
     });
     try {
-      const putChatPref = vi.fn(
-        async (): Promise<import('@/lib/api').ChatPref | null> => null,
-      );
+      const putChatPref = vi.fn(async (): Promise<import('@/lib/api').ChatPref | null> => null);
       const { store, xmpp } = await setup({ putChatPref });
 
       // A live message bumps Ana to unread 1 and the badge follows.
