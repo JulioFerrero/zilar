@@ -91,20 +91,6 @@ export function approvalCard(): Payload {
   };
 }
 
-/** A generated SVG-as-data-URL sticker cell (used only for non-sticker art). */
-export function svgSticker(from: string, to: string, glyph: string): string {
-  const svg = [
-    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">',
-    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">',
-    `<stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/>`,
-    '</linearGradient></defs>',
-    '<rect width="200" height="200" rx="40" fill="url(#g)"/>',
-    `<text x="100" y="135" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="88">${glyph}</text>`,
-    '</svg>',
-  ].join('');
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-}
-
 export interface MockDemoStickerPack {
   id: string;
   title: string;

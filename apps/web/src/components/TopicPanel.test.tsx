@@ -352,6 +352,39 @@ describe('topic leave errors (T-0133)', () => {
     });
     expect(screen.queryByRole('alert')).toBeNull();
   });
+
+  it('navigates away on a last-seat mock leave (the store swallows the 404)', async () => {
+    // T-0141: the mock API 404s a last-seat private-topic leave (the topic
+    // archives), and the mock store swallows it like the real store — the
+    // panel navigates away with no inline error. Without the swallow the
+    // panel would stay open over the archived topic.
+    const { store } = renderApp('/c/c-devteam-hiring', {
+      groupInfos: {
+        'c-devteam-hiring': {
+          id: 'g-devteam',
+          title: 'Dev team',
+          createdBy: 'u-you',
+          members: [
+            { userId: 'u-you', name: 'You', role: 'member' },
+            { userId: 'u-ana', name: 'Ana', role: 'owner' },
+          ],
+          ais: [],
+        },
+      },
+    });
+    // You hold the last seat: removing Ana first leaves only you, so your
+    // own leave archives the topic (mock DELETE 404s).
+    await store.getState().removeTopicMember('c-devteam-hiring', 'u-ana');
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    const leaveButton = await within(dialog).findByRole('button', { name: 'Leave topic' });
+    fireEvent.click(leaveButton);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /topic info/ })).toBeNull();
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });
 
 describe('topic add-member/add-AI single call (T-0133)', () => {

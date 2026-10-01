@@ -418,26 +418,30 @@ describe('stickers routes', () => {
   });
 
   it('resolves a relative storage dir against the package root, not the cwd', async () => {
-    const { isAbsolute, relative } = await import('node:path');
-    const { mkdir } = await import('node:fs/promises');
+    const { isAbsolute, resolve } = await import('node:path');
+    const { chdir, cwd } = await import('node:process');
     const { SERVER_PACKAGE_ROOT, resolveStorageDir } = await import('./service');
-    // A relative dir with a per-test subdirectory, created under the temp
-    // area so no test files escape it.
-    const leaf = `galena-stickers-base-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-    const absolute = join(storageDir, leaf);
-    await mkdir(absolute, { recursive: true });
-    const relativeToRoot = relative(SERVER_PACKAGE_ROOT, absolute);
-    expect(isAbsolute(relativeToRoot)).toBe(false);
-    // The default export resolves against the package root, so the same
-    // relative value means the same directory whatever the cwd is.
-    expect(resolveStorageDir(relativeToRoot)).toBe(absolute);
-    expect(resolveStorageDir(`./${relativeToRoot}`)).toBe(absolute);
+    // A relative value like the `./data/stickers` default: the same string
+    // must resolve to the same directory from two different cwds (the repo
+    // root a developer starts from, and the package root itself).
+    const previous = cwd();
+    try {
+      chdir(resolve(SERVER_PACKAGE_ROOT, '..', '..'));
+      const fromRepoRoot = resolveStorageDir('./data/stickers');
+      chdir(SERVER_PACKAGE_ROOT);
+      const fromPackageRoot = resolveStorageDir('./data/stickers');
+      expect(fromRepoRoot).toBe(fromPackageRoot);
+      expect(fromRepoRoot).toBe(resolve(SERVER_PACKAGE_ROOT, 'data/stickers'));
+      expect(isAbsolute(fromRepoRoot)).toBe(true);
+    } finally {
+      chdir(previous);
+    }
     // An explicit base wins (the startup path uses the default base).
     expect(resolveStorageDir('data/stickers', '/var/lib/galena')).toBe(
-      (await import('node:path')).resolve('/var/lib/galena', 'data/stickers'),
+      resolve('/var/lib/galena', 'data/stickers'),
     );
     // Absolute values pass through unchanged.
-    expect(resolveStorageDir(absolute)).toBe(absolute);
+    expect(resolveStorageDir('/var/lib/galena/stickers')).toBe('/var/lib/galena/stickers');
   });
 
   it('serves files through a relatively-configured storage dir', async () => {
