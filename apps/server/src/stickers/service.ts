@@ -996,7 +996,7 @@ export async function importTelegramPack(
         imported += 1;
       } else if (outcome === 'pack_full') {
         packFull = true;
-      } else {
+      } else if (outcome === 'skipped') {
         skippedInvalid += 1;
       }
     }
@@ -1054,7 +1054,8 @@ function toImportHttpError(error: unknown): HttpError {
 // Validates (the same magic-byte probe as uploads) and stores one imported
 // sticker. A file that fails validation is skipped, never stored; a
 // concurrent duplicate insert wins nothing (`onConflictDoNothing` on the
-// per-pack `source_id` index) and counts as skipped; a full pack reports
+// per-pack `source_id` index) writes no file and is not counted, like a
+// sticker already in the pack; a full pack reports
 // `pack_full` so the caller ends the import with a summary instead of a 400
 // (a double-submitted import races safely through the same path).
 async function storeImportedSticker(
@@ -1062,7 +1063,7 @@ async function storeImportedSticker(
   packId: string,
   item: { sourceId: string; fileId: string; emoji: string | null },
   bytes: Uint8Array,
-): Promise<'stored' | 'skipped' | 'pack_full'> {
+): Promise<'stored' | 'skipped' | 'duplicate' | 'pack_full'> {
   if (bytes.byteLength === 0 || bytes.byteLength > STICKER_MAX_BYTES) {
     return 'skipped';
   }
@@ -1079,6 +1080,7 @@ async function storeImportedSticker(
   const id = randomUUID();
   const extension = info.mime === 'image/webp' ? 'webp' : 'png';
   const storageKey = `${id}.${extension}`;
+  let inserted = false;
   try {
     await deps.db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`);
@@ -1099,7 +1101,7 @@ async function storeImportedSticker(
         .where(eq(stickers.packId, packId))
         .orderBy(desc(stickers.position))
         .limit(1);
-      await tx
+      const rows = await tx
         .insert(stickers)
         .values({
           id,
@@ -1113,7 +1115,9 @@ async function storeImportedSticker(
           storageKey,
           sourceId: item.sourceId,
         })
-        .onConflictDoNothing();
+        .onConflictDoNothing()
+        .returning();
+      inserted = rows.length > 0;
       await tx
         .update(stickerPacks)
         .set({ updatedAt: new Date() })
@@ -1129,6 +1133,9 @@ async function storeImportedSticker(
       throw error;
     }
     throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  }
+  if (!inserted) {
+    return 'duplicate';
   }
   const storageDir = resolveStorageDir(deps.storageDir);
   try {

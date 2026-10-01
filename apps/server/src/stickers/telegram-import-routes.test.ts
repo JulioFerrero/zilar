@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -380,6 +380,44 @@ describe('telegram sticker import', () => {
     expect(summary.imported).toBe(0);
     expect(summary.partial).toBeUndefined();
     expect(client.fileCalls).toHaveLength(3);
+  });
+
+  it('writes no file and counts nothing when a concurrent import won the same sticker', async () => {
+    let current = stickerSet([]);
+    const client = fakeClient(current, { 'f-1': pngBytes(64, 64) });
+    client.getStickerSet = async () => current;
+    const app = appWithFake(client);
+    const created = (await (await importRequest(app, owner, { input: 'Racy' })).json()) as {
+      pack: { id: string };
+    };
+    current = stickerSet([{ sourceId: 'u-1', fileId: 'f-1', emoji: null, animated: false }]);
+    const download = client.downloadFile;
+    client.downloadFile = async (fileId: string) => {
+      await context.db.insert(stickers).values({
+        id: '20000000-0000-4000-8000-000000000001',
+        packId: created.pack.id,
+        position: 0,
+        emoji: null,
+        mime: 'image/png',
+        width: 64,
+        height: 64,
+        bytes: 33,
+        storageKey: 'winner.png',
+        sourceId: 'u-1',
+      });
+      return download(fileId);
+    };
+    const response = await importRequest(app, owner, { input: 'Racy' });
+    expect(response.status).toBe(200);
+    const summary = (await response.json()) as { imported: number; skippedInvalid: number };
+    expect(summary.imported).toBe(0);
+    expect(summary.skippedInvalid).toBe(0);
+    expect(await readdir(storageDir)).toEqual([]);
+    const rows = await context.db
+      .select()
+      .from(stickers)
+      .where(eq(stickers.packId, created.pack.id));
+    expect(rows).toHaveLength(1);
   });
 
   it('ends a mid-batch full pack with the summary instead of a 400', async () => {

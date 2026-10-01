@@ -1,7 +1,7 @@
 ---
 id: T-0123
 title: Import Telegram sticker packs (static stickers) into a Galena pack
-status: review
+status: merged
 milestone: M5
 branch: task/T-0123-telegram-sticker-importer
 model: meta/muse-spark-1.3-contributor
@@ -123,10 +123,11 @@ pnpm build
 
 ## Review (written by Claude)
 
-**Verdict:**
+**Verdict:** approved and merged.
 
 ### Findings
--
+- Lead fix: a conflict-skipped insert (a double-submitted import racing on the per-pack `source_id` index) now learns the outcome from `.returning()`, writes no file and is not counted as `skippedInvalid`; regression test added.
+- The one-line `logger.ts` redact path is in scope and blessed.
 
 ### Follow-ups
--
+- Cap the JSON reads from Telegram (nit 3) and the remaining nit 4 stay deferred.
