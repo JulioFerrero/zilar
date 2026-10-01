@@ -87,11 +87,6 @@ services:
       GALENA_DOMAIN: ${GALENA_DOMAIN:?GALENA_DOMAIN is required}
       GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required}
       EJABBERD_MACRO_UPLOAD_URL: https://${GALENA_DOMAIN:?GALENA_DOMAIN is required}/upload
-      # Upload quotas (T-0151): MiB each user may hold under the upload
-      # docroot; past the hard quota ejabberd deletes the user's oldest
-      # files down to the soft quota. Plain numbers (see .env.example).
-      EJABBERD_MACRO_UPLOAD_SOFT_QUOTA_MB: ${UPLOAD_SOFT_QUOTA_MB:-2048}
-      EJABBERD_MACRO_UPLOAD_HARD_QUOTA_MB: ${UPLOAD_HARD_QUOTA_MB:-4096}
     volumes:
       - ejabberd-database:/opt/ejabberd/database
       - ejabberd-uploads:/opt/ejabberd/upload

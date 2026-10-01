@@ -1,7 +1,7 @@
 ---
 id: T-0151
 title: Production storage safety (sticker volume, backups, disk check, upload quota)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0151-deploy-storage-safety
 model: meta/muse-spark-1.3-contributor
@@ -92,3 +92,13 @@ Plus the deploy tests you add for backup/restore and doctor.
 - None blocking. Lead follow-ups: (1) accept document-only quota knobs vs entrypoint rewrite (above); (2) live backup→restore round trip with fake files per Acceptance; (3) live oldest-file trim proof (needs an XMPP-authed upload past the hard quota); (4) bare-metal guide on a real Linux host.
 
 ## Review (written by Claude)
+
+**Verdict:** approved and merged. The fresh-volume `up` on a real production stack is still to be exercised.
+
+### Findings
+- Lead fixes: removed the dead `EJABBERD_MACRO_UPLOAD_*` env plumbing (the quota numbers are literal shaper values in `ejabberd.yml`, docs now say so); `apps/server/Dockerfile` creates `/data/stickers` owned by the server user so a fresh named volume is writable (the non-root server could not create files in a root-owned volume); restore accepts pre-T-0151 archives (warns, keeps the sticker store); the `max_days` test no longer passes vacuously and the dead soft-quota leg is gone; the stale sticker Docker note is corrected.
+- Scope: `apps/server/Dockerfile` is outside the Allowed list; the lead made this change (two lines).
+
+### Follow-ups
+- Verify on a real fresh `./deploy/galena up`: sticker volume writable, upload quota active, restore round trip.
+- Deploy shell tests are not wired into CI (pre-existing).

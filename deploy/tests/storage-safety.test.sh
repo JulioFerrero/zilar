@@ -110,14 +110,10 @@ if grep -q 'mod_http_upload_quota' "$YML"; then
 else
   bad "ejabberd.yml does not enable mod_http_upload_quota"
 fi
-if grep -q -A2 'soft_upload_quota:' "$YML" | grep -q '2048: all'; then
+if grep -A2 'soft_upload_quota:' "$YML" | grep -q '2048: all'; then
   ok "soft quota defaults to 2048 MiB"
 else
-  if grep -A2 'soft_upload_quota:' "$YML" | grep -q '2048: all'; then
-    ok "soft quota defaults to 2048 MiB"
-  else
-    bad "soft quota is not 2048 MiB"
-  fi
+  bad "soft quota is not 2048 MiB"
 fi
 if grep -A2 'hard_upload_quota:' "$YML" | grep -q '4096: all'; then
   ok "hard quota defaults to 4096 MiB"
@@ -129,7 +125,7 @@ if grep -q 'max_size: 52428800' "$YML"; then
 else
   bad "max_size is not 50 MiB"
 fi
-if grep -q -A3 'mod_http_upload_quota' "$YML" | grep -q 'max_days'; then
+if grep -A5 '^  mod_http_upload_quota' "$YML" | grep -q 'max_days'; then
   bad "mod_http_upload_quota sets max_days (files would age out)"
 else
   ok "no max_days: files never age out without the owner"

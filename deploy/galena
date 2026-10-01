@@ -923,9 +923,16 @@ EOF
   tar -xzf "$_archive" -C "$_tmp"
   [ -f "$_tmp/manifest.json" ] && grep -q galena-backup-v1 "$_tmp/manifest.json" \
     || die "$_archive is not a galena backup (no manifest.json)"
-  for _f in galena.dump ejabberd.dump uploads.tgz stickers.tgz .env; do
+  for _f in galena.dump ejabberd.dump uploads.tgz .env; do
     [ -f "$_tmp/$_f" ] || die "$_archive is missing $_f"
   done
+  # Archives taken before the sticker volume was backed up carry no
+  # stickers.tgz: restore them with an empty sticker store, said out loud.
+  _has_stickers=1
+  if [ ! -f "$_tmp/stickers.tgz" ]; then
+    _has_stickers=0
+    warn "$_archive has no stickers.tgz (made before sticker files were backed up): the sticker store will stay as it is."
+  fi
   info "archive ok (backed up by $(sed -n 's/.*"created_at": "\(.*\)".*/\1/p' "$_tmp/manifest.json" | head -n 1))."
 
   # From here on every failure restarts the stack before reporting: never
@@ -1046,9 +1053,11 @@ EOF
   info "restoring uploads..."
   compose exec -T ejabberd tar -C /opt/ejabberd -xzf - upload < "$_tmp/uploads.tgz" \
     || { _step="restore file stores"; _recover; }
-  info "restoring stickers..."
-  compose exec -T server tar -C /data -xzf - stickers < "$_tmp/stickers.tgz" \
-    || { _step="restore file stores"; _recover; }
+  if [ "$_has_stickers" = 1 ]; then
+    info "restoring stickers..."
+    compose exec -T server tar -C /data -xzf - stickers < "$_tmp/stickers.tgz" \
+      || { _step="restore file stores"; _recover; }
+  fi
 
   _step="install the archived .env"
   _stamp="$(date -u +%Y%m%dT%H%M%SZ)"

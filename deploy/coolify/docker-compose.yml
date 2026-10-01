@@ -93,11 +93,6 @@ services:
       GALENA_DOMAIN: ${XMPP_DOMAIN:?}
       GALENA_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
       EJABBERD_MACRO_UPLOAD_URL: ${EJABBERD_UPLOAD_URL:-https://uploads.example.com/upload}
-      # Upload quotas (T-0151): MiB per user (soft: trim-to target, hard:
-      # trim trigger, oldest first). Same macros as the plain stack; set
-      # UPLOAD_SOFT_QUOTA_MB / UPLOAD_HARD_QUOTA_MB in the Coolify env UI.
-      EJABBERD_MACRO_UPLOAD_SOFT_QUOTA_MB: ${UPLOAD_SOFT_QUOTA_MB:-2048}
-      EJABBERD_MACRO_UPLOAD_HARD_QUOTA_MB: ${UPLOAD_HARD_QUOTA_MB:-4096}
       # Routed entry points on ejabberd's single HTTP listener (port 5280).
       # Coolify generates one domain per SERVICE_URL_* variable below; set
       # the hostnames in the Domains configuration after pasting this file.

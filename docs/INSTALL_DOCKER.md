@@ -263,10 +263,11 @@ Where each kind of file lives on the Docker stack:
 Upload quotas: each user may hold 2048 MiB soft / 4096 MiB hard under the
 upload docroot (`mod_http_upload_quota` in `deploy/ejabberd/ejabberd.yml`).
 Past the hard quota ejabberd deletes the user's oldest files down to the
-soft quota; files never age out (`max_days` unset). Retune with
-`UPLOAD_SOFT_QUOTA_MB` / `UPLOAD_HARD_QUOTA_MB` in `deploy/.env`
-(commented defaults in `deploy/.env.example`) — keep the shaper numbers
-in the yml matching (shaper keys are literal, never macros).
+soft quota; files never age out (`max_days` unset). Retune by editing
+the two numbers (`soft_upload_quota`, `hard_upload_quota`) in
+`deploy/ejabberd/ejabberd.yml`; they are literal values, not environment
+settings (shaper keys never expand macros), so a rebuild of the ejabberd
+image is needed for the change to take effect.
 
 `backup` covers both file volumes plus both databases; `doctor` warns at
 80% disk use and fails at 95% (plain words, with what to do), and fails

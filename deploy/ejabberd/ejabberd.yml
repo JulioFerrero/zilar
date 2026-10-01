@@ -26,11 +26,8 @@ define_macro:
   # (soft: trim-to target, hard: trim trigger, oldest files first). Plain
   # numbers, no quotes — shaper keys must be literal (a macro-named key is
   # left unevaluated and the rule resolves to nothing: verified live, the
-  # boot log warns "refers to unknown shaper"). Tunables live one level up:
-  # UPLOAD_SOFT_QUOTA_MB / UPLOAD_HARD_QUOTA_MB in the compose file document
-  # the knobs; changing them means editing these two numbers to match.
-  UPLOAD_SOFT_QUOTA_MB: 2048
-  UPLOAD_HARD_QUOTA_MB: 4096
+  # boot log warns "refers to unknown shaper"). To change the quotas, edit
+  # the two numbers under shaper_rules below; nothing else reads them.
   SQL_SERVER: postgres
   SQL_DATABASE: ejabberd
   SQL_USERNAME: ejabberd
@@ -193,9 +190,7 @@ shaper_rules:
   # the soft quota nothing is deleted yet. Plain numbers (no quotes):
   # ejabberd reads them as megabytes. Values are literal (shaper keys do
   # not expand macros — verified live): to change the quotas, edit
-  # UPLOAD_SOFT_QUOTA_MB / UPLOAD_HARD_QUOTA_MB under define_macro above
-  # (kept as named knobs next to the other deploy settings) AND these two
-  # numbers to match.
+  # these two numbers (soft_upload_quota and hard_upload_quota).
   soft_upload_quota:
     2048: all
   hard_upload_quota:
