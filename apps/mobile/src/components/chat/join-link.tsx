@@ -113,7 +113,7 @@ export function joinPreviewSubtitle(preview: JoinPreview): string {
 /** The join button title: "Join channel" for a channel, "Join the group" else. */
 export function joinButtonTitle(preview: JoinPreview): string {
   if (preview.alreadyMember) {
-    return 'Open the group';
+    return preview.kind === 'channel' ? 'Open the channel' : 'Open the group';
   }
   return preview.kind === 'channel' ? 'Join the channel' : 'Join the group';
 }

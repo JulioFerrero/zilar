@@ -38,6 +38,16 @@ describe('store selectors keep a stable reference while nothing changed', () => 
     );
   });
 
+  it('mock store: group detail follows the group id, not only the revision', () => {
+    const store = createChatStore();
+    const acme = store.getState().groupDetail('g-acme');
+    const studio = store.getState().groupDetail('g-studio');
+    expect(studio).not.toBe(acme);
+    expect(studio?.id).toBe('g-studio');
+    expect(store.getState().groupDetail('g-acme')?.id).toBe('g-acme');
+    expect(store.getState().groupDetail('g-studio')).toBe(studio);
+  });
+
   it('mock store: group roles and topic roles until a write bumps them', async () => {
     const store = createChatStore();
     store.getState().start();

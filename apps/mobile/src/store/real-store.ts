@@ -2938,7 +2938,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       // T-0144: channels share the chat-list flow with groups (the detail
       // carries `kind`, the feed row paints the channel). Create refreshes
-      // the list and resolves the new group id from the refreshed entries.
+      // the list and returns the new group id from the POST answer.
       createChannel: async (input) => {
         const trimmed = input.title.trim();
         if (trimmed === '') {

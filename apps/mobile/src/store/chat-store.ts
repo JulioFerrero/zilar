@@ -248,17 +248,19 @@ export function createChatStore(
     // selector returns the same reference until a write bumps it (a fresh
     // copy on every call would loop React forever).
     let rolesSnapshot: { revision: number; roles: CustomGroupRole[] } | undefined;
-    // T-0144: channels reuse the same cache slot — `mockChannelDetail`
+    // T-0144: channels share this cache (one entry per group id, so screens
+    // reading different groups never evict each other) — `mockChannelDetail`
     // returns the devteam shape plus `kind`/`description`, so the union
     // covers both.
-    let detailSnapshot:
-      | {
-          revision: number;
-          value:
-            | ReturnType<typeof mockDevteamGroupDetail>
-            | NonNullable<ReturnType<typeof mockChannelDetail>>;
-        }
-      | undefined;
+    const detailSnapshots = new Map<
+      string,
+      {
+        revision: number;
+        value:
+          | ReturnType<typeof mockDevteamGroupDetail>
+          | NonNullable<ReturnType<typeof mockChannelDetail>>;
+      }
+    >();
     const topicRolesSnapshots = new Map<
       string,
       {
@@ -388,14 +390,13 @@ export function createChatStore(
       groupDetail: (groupId) => {
         const revision = get().groupDetailsRevision;
         if (groupId === 'g-devteam' || groupId === 'g-acme' || groupId === 'g-studio') {
-          if (detailSnapshot?.revision !== revision) {
+          let snapshot = detailSnapshots.get(groupId);
+          if (snapshot?.revision !== revision) {
             const channel = mockChannelDetail(groupId);
-            detailSnapshot = {
-              revision,
-              value: channel ?? mockDevteamGroupDetail(),
-            };
+            snapshot = { revision, value: channel ?? mockDevteamGroupDetail() };
+            detailSnapshots.set(groupId, snapshot);
           }
-          return detailSnapshot.value;
+          return snapshot.value;
         }
         return undefined;
       },

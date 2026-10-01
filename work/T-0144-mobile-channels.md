@@ -1,7 +1,7 @@
 ---
 id: T-0144
 title: Mobile: channels (read-only feed for subscribers, admin posting)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0144-mobile-channels
 model: meta/muse-spark-1.3-contributor
@@ -78,3 +78,13 @@ Do NOT start simulators, Metro, or `expo run`. Say in the Report what still need
 - Still needs a device look (never run): channel row marker + "N subscribers" on the list, the read-only bar vs composer on the feed, the channel screen (admins slice, promote/demote, invite sheet, leave), the New channel sheet, and "Join channel" wording on the join screen.
 
 ## Review (written by Claude)
+
+**Verdict:** approved, merged. Mobile only, one round.
+
+### Findings
+- Pre-review packet: no blockers. Verified: subscribers get the read-only bar, owner/admins keep the composer, the channel screen shows only the admins slice, promote/demote with the last-admin guard error as a plain line, "New channel", join by link, demo channels in mock mode; no secrets or raw server text in the UI.
+- Lead fixes (test added): the mock group-detail cache was one slot keyed by revision only, so switching between two demo channels showed the wrong channel's people; it is now one entry per group id (also stops two screens reading different groups from evicting each other, the render-loop pattern). Removed dead `mockChannelGroupOf`, fixed a stale `createChannel` comment, an already-member channel link now reads "Open the channel".
+- Needs a device look: composer swap after a role change, channel create flow, join-by-link for a channel.
+
+### Follow-ups
+- Check on the Android emulator against a real channel (needs a second account to subscribe).

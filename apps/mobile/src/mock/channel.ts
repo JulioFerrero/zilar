@@ -135,11 +135,6 @@ export function mockChannelChats(): ChatSummary[] {
   });
 }
 
-/** The group id of a channel feed row, or undefined for other chats. */
-export function mockChannelGroupOf(chatId: string): string | undefined {
-  return CHANNEL_SEEDS.find((seed) => seed.feedId === chatId)?.groupId;
-}
-
 /** The channel detail for the group screen (people + kind + blurb). */
 export function mockChannelDetail(groupId: string):
   | {
