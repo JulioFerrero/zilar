@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0121](T-0121-sticker-creator.md) | Sticker pack creator, favorites, discover | planned | meta/muse-spark-1.3-contributor | T-0120 |  |
 | [T-0122](T-0122-gifs.md) | GIF search and sending via a privacy proxy | in progress | meta/muse-spark-1.3-contributor | T-0120 | Needs Julio: GIF provider key |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Import Telegram sticker packs | planned | meta/muse-spark-1.3-contributor | T-0120, T-0121 | Needs Julio: Telegram bot token |
-| [T-0106](T-0106-tool-model-side.md) | Model side of AI tools: prompt guide, several rounds per turn, working-on-it line | planned | meta/muse-spark-1.3-contributor | T-0105, T-0125, T-0132 | Ready; starts after T-0132 merges |
 
 ## Follow-ups
 
@@ -172,3 +171,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0119](T-0119-pwa-web-push.md) | PWA and web push notifications (migration 0031) | 2026-10-01 |
 | [T-0142](T-0142-smarter-search.md) | smarter search: prefixes, accent folding, typo tolerance | 2026-10-01 |
 | [T-0141](T-0141-web-server-followups.md) | web/server follow-ups: sticker dir, mock stickers, revoke, approval names | 2026-10-01 |
+| [T-0106](T-0106-tool-model-side.md) | model side of AI tools: guide, several rounds per turn, progress line | 2026-10-01 |
