@@ -11,8 +11,12 @@ vi.mock('react-native', () => ({
 }));
 
 vi.mock('expo-video', () => ({
-  useVideoPlayer: () => ({ loop: false, muted: false }),
+  useVideoPlayer: () => ({ loop: false, muted: false, play: () => {}, pause: () => {} }),
   VideoView: 'VideoView',
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
 }));
 
 vi.mock('@/components/ui/text', () => ({
@@ -80,5 +84,43 @@ describe('attachment video (T-0150)', () => {
       }),
     );
     expect(html).toContain('Retry upload');
+  });
+
+  // `renderToStaticMarkup` never runs effects, so the initial render is the
+  // pre-play frame: a GIF-origin video shows the tap-to-play badge before
+  // the autoplay effect fires (and always with reduced motion). A regular
+  // video never shows the badge — it plays with sound on tap.
+  it('shows the tap-to-play badge on a GIF-origin video before autoplay', () => {
+    const html = renderToStaticMarkup(
+      createElement(AttachmentVideo, {
+        attachment: {
+          kind: 'file',
+          url: 'https://upload.galena.test/get/gif-abc123.mp4',
+          name: 'gif-abc123.mp4',
+          size: 1_000_000,
+          mime: 'video/mp4',
+        },
+        trustedHosts: TRUSTED,
+      }),
+    );
+    expect(html).toContain('VideoView');
+    expect(html).toContain('GIF');
+  });
+
+  it('shows no badge on a regular video', () => {
+    const html = renderToStaticMarkup(
+      createElement(AttachmentVideo, {
+        attachment: {
+          kind: 'file',
+          url: 'https://upload.galena.test/get/clip.mp4',
+          name: 'clip.mp4',
+          size: 1_000_000,
+          mime: 'video/mp4',
+        },
+        trustedHosts: TRUSTED,
+      }),
+    );
+    expect(html).toContain('VideoView');
+    expect(html).not.toContain('GIF');
   });
 });

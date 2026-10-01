@@ -2,8 +2,11 @@ import type { Attachment } from '@galena/protocol';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { Text } from '@/components/ui/text';
+import { API_URL } from '@/lib/auth';
+import { getSessionToken } from '@/lib/session-token';
 
 import { isLoadableMediaUrl } from './attachment-message';
 
@@ -32,6 +35,8 @@ type AttachmentVideoProps = {
  * a file row with the "Not loaded" line and the open control stays hidden
  * until fullscreen is requested from a trusted source. GIF-origin videos
  * (`gif-<id>.mp4`) loop muted; regular videos play with sound on tap.
+ * Respect "reduce motion" (T-0148): a GIF-origin video starts paused with a
+ * tap-to-play badge instead of auto-playing.
  */
 export function AttachmentVideo({
   attachment,
@@ -42,17 +47,70 @@ export function AttachmentVideo({
   failed = false,
   onRetry,
 }: AttachmentVideoProps) {
+  const reduceMotion = useReducedMotion();
   const [view, setView] = useState(false);
   const trusted = isLoadableMediaUrl(attachment.url, trustedHosts);
   const uri = localUri ?? (trusted ? attachment.url : undefined);
+  // Auth headers go only to the API origin (the same-origin `/api/` path
+  // case): the upload host serves public URLs, and a header there would
+  // leak the session token cross-origin.
+  const needsToken = localUri === undefined && trusted && isApiOriginUrl(attachment.url);
+  const [token, setToken] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!needsToken || uri === undefined) {
+      return;
+    }
+    let cancelled = false;
+    void getSessionToken().then((value) => {
+      if (!cancelled) {
+        setToken(value);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsToken, uri]);
   const gif = isGifOrigin(attachment);
   // `useVideoPlayer` owns the player: loop/mute are set in the setup
   // callback below, never by mutating the returned player in an effect.
-  const player = useVideoPlayer(uri === undefined ? null : { uri }, (built) => {
-    built.loop = gif;
-    built.muted = gif;
-  });
+  const player = useVideoPlayer(
+    // The native player is built once per source: an API-origin URL waits for
+    // the session token so the first request already carries the bearer.
+    uri === undefined || (needsToken && token === undefined)
+      ? null
+      : {
+          uri,
+          ...(token === undefined || !needsToken
+            ? {}
+            : { headers: { authorization: `Bearer ${token}` } }),
+        },
+    (built) => {
+      built.loop = gif;
+      built.muted = gif;
+    },
+  );
   const viewRef = useRef<{ enterFullscreen: () => Promise<void> } | null>(null);
+  // GIF-origin videos auto-play once the source is ready — unless the
+  // viewer asked for reduced motion, in which case the still frame waits
+  // for an explicit tap. Regular videos never auto-play. The state update
+  // rides a microtask (like the token fetch below): the effect only
+  // synchronizes with the external player, never cascading a render.
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => {
+    if (!gif || reduceMotion || uri === undefined) {
+      return;
+    }
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) {
+        player.play();
+        setPlaying(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [gif, reduceMotion, uri, player]);
 
   if (failed) {
     return (
@@ -98,7 +156,14 @@ export function AttachmentVideo({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={gif ? `Play ${attachment.name}` : `Open ${attachment.name} fullscreen`}
-        onPress={() => setView(true)}
+        onPress={() => {
+          if (gif && !playing) {
+            setPlaying(true);
+            player.play();
+            return;
+          }
+          setView(true);
+        }}
         className="overflow-hidden rounded-xl border border-edge"
         style={{ width: VIDEO_WIDTH, height: VIDEO_HEIGHT }}
       >
@@ -108,6 +173,13 @@ export function AttachmentVideo({
           contentFit="contain"
           style={{ width: VIDEO_WIDTH, height: VIDEO_HEIGHT }}
         />
+        {gif && !playing ? (
+          <View className="absolute inset-0 items-center justify-center">
+            <View className="items-center justify-center rounded-full bg-black/60 px-3 py-1.5">
+              <Text className="text-[13px] font-semibold text-white">▶ GIF</Text>
+            </View>
+          </View>
+        ) : null}
         {uploading ? (
           <View className="absolute inset-0 items-center justify-center bg-black/40">
             <ActivityIndicator accessibilityLabel="Uploading" />
@@ -143,6 +215,25 @@ function isGifOrigin(attachment: Attachment): boolean {
     return false;
   }
   return attachment.name.startsWith('gif-');
+}
+
+/**
+ * Whether a trusted URL points at our own API origin (a same-origin `/api/`
+ * path the upload URL may take): only there does the player attach the
+ * session bearer. Absolute upload-host URLs stay headerless.
+ */
+function isApiOriginUrl(url: string): boolean {
+  let apiOrigin: string;
+  try {
+    apiOrigin = new URL(API_URL).origin;
+  } catch {
+    return false;
+  }
+  try {
+    return new URL(url).origin === apiOrigin;
+  } catch {
+    return false;
+  }
 }
 
 function VideoFullscreen({

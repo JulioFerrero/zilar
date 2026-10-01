@@ -6,12 +6,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AttachSheet, type AttachmentChoice } from '@/components/chat/attach-sheet';
 import { EditBar } from '@/components/chat/edit-bar';
+import { GifSheet } from '@/components/chat/gif-panel';
 import { loadStickerPacks, persistRecent, StickerPanel } from '@/components/chat/sticker-panel';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
-import { createAttachmentPicker } from '@/lib/attachment-native';
-import type { AttachmentPicker, PickedFile } from '@/lib/attachment-ports';
+import { createAttachmentPicker, createGifDownloader } from '@/lib/attachment-native';
+import type { AttachmentPicker, GifDownloader, PickedFile } from '@/lib/attachment-ports';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import {
@@ -22,6 +23,9 @@ import {
   well,
 } from '@/lib/depth';
 import { RECENTS_STORAGE, readStoredRecents } from '@/lib/stickers-storage';
+import { gifsAvailability, type GifItem } from '@/lib/gifs';
+import { probeGifsAvailability } from '@/components/chat/gif-panel';
+import { mockDemoGifs } from '@/mock/gifs';
 import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stickers';
 import type { StickerPanelState } from '@/components/chat/sticker-panel';
 import type { ReplyRef } from '@/lib/types';
@@ -88,6 +92,8 @@ type ComposerProps = {
   demoPacks?: StickerPack[];
   /** Demo attachments in mock mode, so the flow works without a server. */
   demoAttachments?: Attachment[] | undefined;
+  /** Demo GIFs in mock mode, so the GIF flow works without a server. */
+  demoGifs?: GifItem[] | undefined;
   replyTo?: ReplyRef;
   onCancelReply: () => void;
   onTyping?: () => void;
@@ -95,6 +101,8 @@ type ComposerProps = {
   title?: string;
   /** The native pickers; tests inject a fake. */
   picker?: AttachmentPicker | undefined;
+  /** The GIF media downloader; tests inject a fake. */
+  gifDownloader?: GifDownloader | undefined;
 };
 
 /** Bottom composer: a well with attach, auto-growing input, emoji and mic/send. */
@@ -108,7 +116,9 @@ export function Composer({
   title,
   demoPacks,
   demoAttachments,
+  demoGifs,
   picker: pickerProp,
+  gifDownloader: gifDownloaderProp,
 }: ComposerProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const insets = useSafeAreaInsets();
@@ -154,6 +164,10 @@ export function Composer({
   const [attachError, setAttachError] = useState<string | undefined>(undefined);
   const [picked, setPicked] = useState<PickedFile | undefined>(undefined);
   const picker = useMemo(() => pickerProp ?? createAttachmentPicker(), [pickerProp]);
+  const gifDownloader = useMemo(
+    () => gifDownloaderProp ?? createGifDownloader(),
+    [gifDownloaderProp],
+  );
   const canSend = text.trim().length > 0 || picked !== undefined;
 
   // The sticker panel: the user's packs from the server (demo packs in mock
@@ -198,6 +212,74 @@ export function Composer({
     void readStoredRecents()
       .then(setRecents)
       .catch(() => {});
+  };
+
+  // The GIF tab: hidden once the server answers 501 (provider off),
+  // probed once per session. Mock mode serves demo GIFs without a server.
+  // The tab reuses the sticker sheet's shape: one sheet, two tabs.
+  const [gifOpen, setGifOpen] = useState(false);
+  const [gifAvailable, setGifAvailable] = useState<boolean | undefined>(() =>
+    demoGifs === undefined ? gifsAvailability() : true,
+  );
+  const demoGifItems = useMemo(
+    () => demoGifs ?? (process.env.EXPO_PUBLIC_GALENA_MOCK === '1' ? mockDemoGifs() : undefined),
+    [demoGifs],
+  );
+
+  const openGifs = () => {
+    if (demoGifItems !== undefined) {
+      setGifAvailable(true);
+      setGifOpen(true);
+      return;
+    }
+    const cached = gifsAvailability();
+    if (cached === false) {
+      return;
+    }
+    if (cached === true) {
+      setGifAvailable(true);
+      setGifOpen(true);
+      return;
+    }
+    void probeGifsAvailability().then((available) => {
+      setGifAvailable(available);
+      if (available) {
+        setGifOpen(true);
+      }
+    });
+  };
+
+  // A GIF pick fetches the media through the proxy, then sends it with the
+  // existing attachment path (the composer text is the caption), exactly
+  // like web's `sendGif`. The mime and the extension come from the real
+  // content type; failures show the inline error, and the attachment
+  // bubble's Retry covers upload failures.
+  const pickGif = (gif: GifItem) => {
+    setGifOpen(false);
+    if (onSendAttachment === undefined) {
+      return;
+    }
+    const caption = text.trim();
+    const send = onSendAttachment;
+    const reply = replyTo;
+    void gifDownloader
+      .download(gif)
+      .then((result) => {
+        if (result.status !== 'downloaded') {
+          setAttachError(result.message);
+          return;
+        }
+        send(result.file, {
+          ...(caption.length === 0 ? {} : { caption }),
+          ...(reply === undefined ? {} : { replyTo: reply }),
+        });
+        setText('');
+        setInputHeight(MIN_INPUT_HEIGHT);
+        onCancelReply();
+      })
+      .catch(() => {
+        setAttachError('Could not load that GIF. Try another.');
+      });
   };
 
   const pickSticker = (sticker: StickerChoice) => {
@@ -336,6 +418,17 @@ export function Composer({
       ) : replyTo !== undefined ? (
         <ReplyBar reply={replyTo} onCancel={onCancelReply} />
       ) : null}
+      {attachError !== undefined && !attachOpen ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss error"
+          onPress={() => setAttachError(undefined)}
+          className="mb-2 rounded-[10px] px-3 py-2"
+          style={well}
+        >
+          <Text className="text-[13px] text-[#f87171]">{attachError}</Text>
+        </Pressable>
+      ) : null}
       <View
         className="flex-row items-end gap-1 rounded-[14px] p-2"
         style={[well, { borderColor: '#262626' }]}
@@ -368,6 +461,11 @@ export function Composer({
         <IconButton label="Stickers" className="h-9 w-9 rounded-[10px]" onPress={openPanel}>
           <Sticker size={20} color={iconColor} />
         </IconButton>
+        {gifAvailable !== false ? (
+          <IconButton label="GIFs" className="h-9 w-9 rounded-[10px]" onPress={openGifs}>
+            <Text className="text-[15px] font-bold">GIF</Text>
+          </IconButton>
+        ) : null}
         {canSend ? (
           <Pressable
             accessibilityRole="button"
@@ -396,6 +494,12 @@ export function Composer({
         onPick={pickSticker}
         onRetry={loadPanel}
         onClose={() => setPanelOpen(false)}
+      />
+      <GifSheet
+        open={gifOpen}
+        mockItems={demoGifItems}
+        onPick={pickGif}
+        onClose={() => setGifOpen(false)}
       />
       <AttachSheet
         open={attachOpen}

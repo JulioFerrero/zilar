@@ -34,6 +34,10 @@ vi.mock('expo-video', () => ({
   VideoView: 'VideoView',
 }));
 
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));

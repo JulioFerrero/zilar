@@ -9,6 +9,7 @@
 
 import * as DocumentPicker from 'expo-document-picker';
 import { File, Paths, UploadType } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { Share } from 'react-native';
 
@@ -17,9 +18,13 @@ import type {
   AttachmentOpener,
   AttachmentPicker,
   AttachmentUploader,
+  GifDownloader,
   PickedFile,
   PickResult,
 } from './attachment-ports';
+import { gifBlobType, gifFileName, isGifMediaType, isLoadableGifPreviewUrl } from './gifs';
+import { API_URL } from './auth';
+import { getSessionToken } from './session-token';
 
 export type { PickedFile, PickResult } from './attachment-ports';
 
@@ -247,6 +252,100 @@ export function createAttachmentOpener(options?: {
 /** The sanitized cache destination for an attachment name (test seam). */
 export function cacheDestinationFor(name: string): string {
   return cleanFilename(name);
+}
+
+export const GIF_DOWNLOAD_FAILED_MESSAGE = 'Could not load that GIF. Try another.';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function headerMimeType(headers: Record<string, string>): string {
+  for (const [name, value] of Object.entries(headers)) {
+    if (name.toLowerCase() === 'content-type') {
+      return value.split(';')[0]?.trim().toLowerCase() ?? '';
+    }
+  }
+  return '';
+}
+
+/**
+ * The real GIF downloader (T-0148): fetches the picked result through the
+ * same-origin proxy into the cache dir, then reports it as a picked file so
+ * the composer sends it through the normal attachment upload path (like
+ * web's `sendGif`). The URL is re-checked against the proxy gate before any
+ * fetch; the session bearer rides only to the API origin. The mime and the
+ * extension come from the real content type (validated against what the
+ * proxy serves), never from the search result's kind.
+ */
+export function createGifDownloader(options?: {
+  apiUrl?: string | undefined;
+  getToken?: (() => Promise<string | undefined>) | undefined;
+  /** Tests inject a fake download; production uses the legacy file system. */
+  download?: typeof FileSystem.downloadAsync | undefined;
+  /** Tests inject a fake stat; production reads the downloaded file. */
+  getInfo?: typeof FileSystem.getInfoAsync | undefined;
+  cacheDir?: string | null | undefined;
+}): GifDownloader {
+  const apiUrl = options?.apiUrl ?? API_URL;
+  const getToken = options?.getToken ?? getSessionToken;
+  const download = options?.download ?? FileSystem.downloadAsync;
+  const getInfo = options?.getInfo ?? FileSystem.getInfoAsync;
+  return {
+    async download(gif) {
+      if (!isLoadableGifPreviewUrl(gif.url, apiUrl)) {
+        return { status: 'error', message: GIF_DOWNLOAD_FAILED_MESSAGE };
+      }
+      const headers = await authHeadersFor(gif.url, apiUrl, getToken);
+      const cacheDir = options?.cacheDir ?? FileSystem.cacheDirectory;
+      if (cacheDir === null || cacheDir === undefined) {
+        return { status: 'error', message: GIF_DOWNLOAD_FAILED_MESSAGE };
+      }
+      const provisional = cleanFilename(`${gifFileName(gif.id, 'bin')}-${Date.now()}`);
+      let result: FileSystem.FileSystemDownloadResult;
+      try {
+        result = await download(
+          gif.url,
+          `${cacheDir}${provisional}`,
+          headers === undefined ? undefined : { headers },
+        );
+      } catch {
+        return { status: 'error', message: GIF_DOWNLOAD_FAILED_MESSAGE };
+      }
+      const contentType = isRecord(result) ? headerMimeType(result.headers ?? {}) : '';
+      if (!isGifMediaType(contentType)) {
+        return { status: 'error', message: GIF_DOWNLOAD_FAILED_MESSAGE };
+      }
+      const { mime, extension } = gifBlobType(contentType, gif.kind);
+      const size = typeof result.uri === 'string' ? await fileSize(result.uri, getInfo) : 0;
+      if (size === 0) {
+        return { status: 'error', message: GIF_DOWNLOAD_FAILED_MESSAGE };
+      }
+      if (size > MAX_ATTACHMENT_BYTES) {
+        return { status: 'error', message: 'That GIF is larger than 50 MB.' };
+      }
+      const file: PickedFile = {
+        uri: result.uri,
+        name: gifFileName(gif.id, extension),
+        mimeType: mime,
+        size,
+      };
+      if (gif.kind === 'image') {
+        file.width = gif.width;
+        file.height = gif.height;
+      }
+      return { status: 'downloaded', file };
+    },
+  };
+}
+
+async function fileSize(uri: string, getInfo: typeof FileSystem.getInfoAsync): Promise<number> {
+  try {
+    const info = await getInfo(uri);
+    return info.exists === true && info.isDirectory === false ? info.size : 0;
+  } catch {
+    return 0;
+  }
 }
 
 /**

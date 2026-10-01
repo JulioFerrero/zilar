@@ -31,6 +31,7 @@ import type { PickedFile } from '@/lib/attachment-ports';
 import type { SendAttachmentOptions } from '@/store/types';
 import { mockDemoStickerPacks } from '@/mock/stickers';
 import { mockDemoAttachments } from '@/mock/attachments';
+import { mockDemoGifs } from '@/mock/gifs';
 import { useChatStore } from '@/store/chat-store-provider';
 
 export default function ChatScreen() {
@@ -142,6 +143,15 @@ function Chat() {
     () =>
       process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_GALENA_MOCK === '1'
         ? mockDemoAttachments()
+        : undefined,
+    [],
+  );
+  // Demo GIFs in mock mode, so the GIF tab works without a server (real
+  // mode searches the provider through the proxy instead).
+  const demoGifs = useMemo(
+    () =>
+      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_GALENA_MOCK === '1'
+        ? mockDemoGifs()
         : undefined,
     [],
   );
@@ -512,6 +522,7 @@ function Chat() {
               cancelReply();
             }}
             demoAttachments={demoAttachments}
+            demoGifs={demoGifs}
             replyTo={replyTo}
             onCancelReply={cancelReply}
             onTyping={() => sendTyping(chat.id)}
@@ -661,6 +672,7 @@ function Chat() {
               onTyping={() => sendTyping(chat.id)}
               demoPacks={demoPacks}
               demoAttachments={demoAttachments}
+              demoGifs={demoGifs}
             />
           ) : (
             <Composer
@@ -689,6 +701,7 @@ function Chat() {
               onTyping={() => sendTyping(chat.id)}
               demoPacks={demoPacks}
               demoAttachments={demoAttachments}
+              demoGifs={demoGifs}
             />
           )}
         </KeyboardAvoidingView>
@@ -884,6 +897,7 @@ function Chat() {
             cancelReply();
           }}
           demoAttachments={demoAttachments}
+          demoGifs={demoGifs}
           replyTo={replyTo}
           onCancelReply={cancelReply}
           onTyping={() => sendTyping(chat.id)}
