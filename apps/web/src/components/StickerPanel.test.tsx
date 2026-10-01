@@ -102,6 +102,53 @@ describe('StickerPanel', () => {
     );
   });
 
+  it('sends a demo sticker in mock mode (relative URL passes validation)', async () => {
+    // T-0141: mock/demo panel stickers must be sendable — the old `data:`
+    // URLs failed `StickerSchema` at send time ("That sticker could not be
+    // sent"). The mock store validates like the real one, so a bubble plus
+    // no action error proves the demo URL shape sends.
+    const { mockDemoStickerPacks } = await import('@/mock/helpers');
+    const packs = mockDemoStickerPacks();
+    const pack = packs[0]!;
+    const sticker = pack.stickers[0]!;
+    vi.spyOn(api, 'listStickerPacks').mockResolvedValue([
+      {
+        id: pack.id,
+        ownerId: 'u-you',
+        title: pack.title,
+        visibility: 'server',
+        stickers: pack.stickers.map((item) => ({
+          id: item.id,
+          packId: pack.id,
+          emoji: item.emoji,
+          mime: 'image/png' as const,
+          width: 200,
+          height: 200,
+          bytes: 1024,
+          url: item.url,
+        })),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+    const { store } = renderApp('/c/c-ana');
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    const dialog = await screen.findByRole('dialog', { name: 'Stickers' });
+    fireEvent.click(within(dialog).getByRole('tab', { name: pack.title }));
+    const grid = within(dialog).getByRole('grid', { name: 'Stickers' });
+    const before = store.getState().messages('c-ana').length;
+    fireEvent.click(within(grid).getByLabelText(sticker.emoji));
+
+    const after = store.getState().messages('c-ana');
+    expect(after).toHaveLength(before + 1);
+    expect(after.at(-1)?.card).toMatchObject({
+      v: 0,
+      type: 'sticker',
+      data: { sticker_id: sticker.id, url: sticker.url },
+    });
+    expect(store.getState().actionError).toBeUndefined();
+  });
+
   it('refuses a tampered recents entry with a visible error and no bubble', async () => {
     window.localStorage.setItem(
       'galena:recentStickers',

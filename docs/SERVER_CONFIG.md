@@ -209,7 +209,7 @@ Shareable links join a **group** as `member` (public topics come with joining; p
 
 | Variable | Required? | Default | What it does | Notes |
 |---|---|---|---|---|
-| `STICKER_STORAGE_DIR` | No | `./data/stickers` | Directory sticker files are stored under. File names are `<uuid>.<ext>` (never user input). | Not a secret. Must be writable at startup — the server creates it when missing and exits with `STICKER_STORAGE_DIR (<dir>) is not writable` otherwise (`index.ts`). |
+| `STICKER_STORAGE_DIR` | No | `./data/stickers` | Directory sticker files are stored under. File names are `<uuid>.<ext>` (never user input). A relative value resolves against the server package root (`apps/server`), not the process cwd — the Dockerfile starts from `/app` while a developer may start from the repo root, and both land on the same directory. Absolute paths pass through unchanged. | Not a secret. Must be writable at startup — the server creates it when missing and exits with `STICKER_STORAGE_DIR (<dir>) is not writable` otherwise (`index.ts`). |
 
 Uploaded stickers are validated by magic bytes (PNG or WebP only, ≤ 512 KiB, ≤ 512 × 512 px) and served with `Content-Type` from the stored mime, `X-Content-Type-Options: nosniff`, `Content-Disposition: inline`, `Cache-Control: public, max-age=31536000, immutable` and `Content-Security-Policy: default-src 'none'; sandbox`. Deleting a pack removes its files; messages already sent keep their sticker URL, which no longer loads a sticker. Uploads are rate limited to 60/hour/user (in-memory, per process, like the other caps in `rate-limit.ts`). Audited as `sticker_pack.created` / `sticker_pack.deleted` (pack id only).
 

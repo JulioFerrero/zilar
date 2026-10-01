@@ -61,15 +61,29 @@ describe('mock data', () => {
 });
 
 describe('mock sticker demo packs (T-0120)', () => {
-  it('ships two packs of generated SVG data-URL stickers', () => {
+  it('ships two packs of relative-URL stickers that pass StickerSchema', async () => {
+    const { StickerSchema: Schema } = await import('@galena/protocol');
     const packs = mockDemoStickerPacks();
     expect(packs).toHaveLength(2);
     for (const pack of packs) {
       expect(pack.title.length).toBeGreaterThan(0);
       expect(pack.stickers.length).toBeGreaterThan(0);
       for (const sticker of pack.stickers) {
-        expect(sticker.url.startsWith('data:image/svg+xml,')).toBe(true);
+        expect(sticker.url.startsWith('data:')).toBe(false);
         expect(sticker.emoji.length).toBeGreaterThan(0);
+        // The exact shape a send builds: it must validate, or the panel
+        // shows "That sticker could not be sent."
+        expect(
+          Schema.safeParse({
+            pack_id: pack.id,
+            sticker_id: sticker.id,
+            url: sticker.url,
+            emoji: sticker.emoji,
+            width: 200,
+            height: 200,
+            mime: 'image/png',
+          }).success,
+        ).toBe(true);
       }
     }
   });
@@ -90,6 +104,23 @@ describe('mock sticker demo packs (T-0120)', () => {
       };
       expect(discover.packs).toHaveLength(2);
       expect(discover.next).toBeNull();
+    } finally {
+      resetMockApi();
+    }
+  });
+
+  it('serves the demo sticker bytes from the file route (unknown ids 404)', async () => {
+    setMockDelay(0);
+    resetMockApi();
+    try {
+      const packs = mockDemoStickerPacks();
+      const first = packs[0]!.stickers[0]!;
+      const file = await mockRequest(`/stickers/${first.id}/file`);
+      expect(file.status).toBe(200);
+      const body = await file.text();
+      expect(body).toContain('<svg');
+      const missing = await mockRequest('/stickers/00000000-0000-4000-8000-000000000000/file');
+      expect(missing.status).toBe(404);
     } finally {
       resetMockApi();
     }

@@ -30,6 +30,7 @@ import type {
 import {
   addTopicAi,
   addTopicMember,
+  ApiError,
   createTopic,
   listChatPrefs,
   patchTopic,
@@ -745,7 +746,18 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         set((state) => ({ chats: withMockTopicRow(state.chats, topic) }));
       },
       leaveTopic: async (chatId) => {
-        await get().removeTopicMember(chatId, get().currentUserId);
+        // Like the real store: a last-seat 404 means the topic archived
+        // itself away, so there is nothing left to leave — swallow it and
+        // let the caller navigate away. Any other failure rethrows, so the
+        // panel stays open with the inline error.
+        try {
+          await get().removeTopicMember(chatId, get().currentUserId);
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 404) {
+            return;
+          }
+          throw error;
+        }
       },
       createChannel: async () => {
         throw new Error('createChannel is not available in the mock store');

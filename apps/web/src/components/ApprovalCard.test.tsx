@@ -25,6 +25,7 @@ interface ApprovalFixture {
   groupId?: string | null;
   topicId?: string | null;
   topicName?: string | null;
+  approverNames?: string[];
 }
 
 function approvalFixture({
@@ -36,6 +37,7 @@ function approvalFixture({
   groupId = 'dev-team',
   topicId = null,
   topicName = null,
+  approverNames = [],
 }: Partial<ApprovalFixture> = {}): unknown {
   return {
     id,
@@ -55,6 +57,7 @@ function approvalFixture({
     expiresAt,
     createdAt: new Date().toISOString(),
     alwaysEligible,
+    approverNames,
   };
 }
 
@@ -553,35 +556,26 @@ describe('ApprovalCard always allow (T-0100)', () => {
   });
 });
 
-describe('ApprovalCard approvers line (T-0116)', () => {
-  it('shows "Approvers: Designers" when the topic names an approver role', async () => {
+describe('ApprovalCard approvers line (T-0141)', () => {
+  it('shows "Approvers: Designers, Luis" from the list payload with no topic fetch', async () => {
+    // The approver names ride the approvals payload (T-0134), so N cards
+    // cause no per-card `getTopic` (N+1). Any fetch outside the approval
+    // read itself rejects, so a per-card topic fetch would fail the card.
+    // Fails on the old code (the card fetched `/api/topics/t-hiring` per
+    // card and read the approver role off the topic).
+    const fetched: string[] = [];
     const fetchMock = makeFetch((url) => {
+      fetched.push(url);
       if (url === '/api/approvals/apr-42') {
         return Promise.resolve(
-          jsonResponse(200, approvalFixture({ topicId: 't-hiring', topicName: 'Hiring' })),
-        );
-      }
-      if (url === '/api/topics/t-hiring') {
-        return Promise.resolve(
-          jsonResponse(200, {
-            id: 't-hiring',
-            groupId: 'g-team',
-            name: 'Hiring',
-            glyph: 'H',
-            chatJid: 'hiring@rooms.galena.test',
-            visibility: 'private',
-            kind: 'chat',
-            status: 'open',
-            owner: null,
-            linkUrl: null,
-            linkLabel: null,
-            isGeneral: false,
-            archived: false,
-            memberCount: 2,
-            ais: [],
-            roles: [{ id: 'role-designers', name: 'Designers', memberCount: 2 }],
-            approverRole: { id: 'role-designers', name: 'Designers' },
-          }),
+          jsonResponse(
+            200,
+            approvalFixture({
+              topicId: 't-hiring',
+              topicName: 'Hiring',
+              approverNames: ['Designers', 'Luis'],
+            }),
+          ),
         );
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`));
@@ -590,18 +584,19 @@ describe('ApprovalCard approvers line (T-0116)', () => {
 
     render(<ApprovalCard request={request} />);
     await screen.findByRole('button', { name: 'Approve' });
-    expect(await screen.findByText('Approvers: Designers')).toBeTruthy();
+    expect(await screen.findByText('Approvers: Designers, Luis')).toBeTruthy();
+    expect(fetched.filter((url) => url.startsWith('/api/topics/'))).toEqual([]);
   });
 
-  it('hides the line when the topic has no approver role', async () => {
+  it('hides the line when the payload carries no approver names', async () => {
     const fetchMock = makeFetch((url) => {
       if (url === '/api/approvals/apr-42') {
         return Promise.resolve(
-          jsonResponse(200, approvalFixture({ topicId: 't-hiring', topicName: 'Hiring' })),
+          jsonResponse(
+            200,
+            approvalFixture({ topicId: 't-hiring', topicName: 'Hiring', approverNames: [] }),
+          ),
         );
-      }
-      if (url === '/api/topics/t-hiring') {
-        return Promise.resolve(errorResponse(404, 'not_found', 'Topic not found'));
       }
       return Promise.reject(new Error(`unexpected fetch ${url}`));
     });
@@ -610,5 +605,43 @@ describe('ApprovalCard approvers line (T-0116)', () => {
     render(<ApprovalCard request={request} />);
     await screen.findByRole('button', { name: 'Approve' });
     expect(screen.queryByText(/Approvers:/)).toBeNull();
+  });
+
+  it('renders N cards with no per-card topic fetch', async () => {
+    // Three cards in three topics: the old code issued one `getTopic` per
+    // card. Any fetch outside the three approval reads rejects, so an N+1
+    // would fail the render.
+    const fetched: string[] = [];
+    const ids = ['apr-1', 'apr-2', 'apr-3'];
+    const fetchMock = makeFetch((url) => {
+      fetched.push(url);
+      const match = url.match(/^\/api\/approvals\/(apr-\d)$/);
+      if (match?.[1] !== undefined) {
+        const approvalId = match[1];
+        return Promise.resolve(
+          jsonResponse(
+            200,
+            approvalFixture({
+              id: approvalId,
+              topicId: `t-${approvalId}`,
+              topicName: `Topic ${approvalId}`,
+              approverNames: ['Designers'],
+            }),
+          ),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    for (const id of ids) {
+      const parsed = ApprovalRequestSchema.parse({ ...request, id });
+      render(<ApprovalCard request={parsed} />);
+    }
+    await waitFor(() => {
+      expect(screen.getAllByText('Approvers: Designers')).toHaveLength(3);
+    });
+    expect(fetched.filter((url) => url.startsWith('/api/topics/'))).toEqual([]);
+    expect(fetched.filter((url) => url.startsWith('/api/approvals/'))).toHaveLength(3);
   });
 });

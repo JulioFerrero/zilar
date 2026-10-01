@@ -3,7 +3,7 @@ import { currentUserId, PEOPLE } from './ids';
 import { mockChats } from './chats';
 import { mockGroupDetails } from './groups';
 import { mockMessages } from './messages';
-import { approvalCard, mockDemoStickerPacks } from './helpers';
+import { approvalCard, mockDemoStickerArt, mockDemoStickerPacks } from './helpers';
 import {
   mockTopicAisById,
   mockTopicChats,
@@ -1157,7 +1157,8 @@ function minutesAgo(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
 }
 
-// T-0120: the two demo packs as API rows (200 px SVG data-URL stickers).
+// T-0120: the two demo packs as API rows (200 px generated stickers at
+// relative file URLs, so sending a demo sticker passes `StickerSchema`).
 function mockStickerPacks(): unknown[] {
   const now = new Date().toISOString();
   return mockDemoStickerPacks().map((pack) => ({
@@ -1491,14 +1492,29 @@ export async function mockRequest(
     return jsonResponse({ chats: chatEntries() });
   }
 
-  // T-0120: mock mode serves the two built-in demo packs (SVG data URLs) as
-  // the panel list and as discover results, so the panel has content.
+  // T-0120: mock mode serves the two built-in demo packs (relative file
+  // URLs) as the panel list and as discover results, so the panel has
+  // content. Demo stickers send through the same validation as real ones.
   if (head === 'sticker-packs' && first === undefined && method === 'GET') {
     return jsonResponse({ packs: mockStickerPacks() });
   }
 
   if (head === 'sticker-packs' && first === 'discover' && method === 'GET') {
     return jsonResponse({ packs: mockStickerPacks(), next: null });
+  }
+
+  // T-0120: the demo sticker bytes. The packs carry relative file URLs, so
+  // the browser loads the generated SVG art from here — never a `data:`
+  // URL, and never a peer-supplied address. Unknown ids 404 like the
+  // server's unguessable-id route.
+  if (head === 'stickers' && second === 'file' && method === 'GET') {
+    const art = first === undefined ? undefined : mockDemoStickerArt(first);
+    if (art === undefined) {
+      return notFound('Sticker not found');
+    }
+    const prefix = 'data:image/svg+xml,';
+    const svg = art.startsWith(prefix) ? decodeURIComponent(art.slice(prefix.length)) : art;
+    return new Response(svg, { status: 200, headers: { 'Content-Type': 'image/svg+xml' } });
   }
 
   if (head === 'sticker-panel' && second === undefined && method === 'PUT') {
@@ -1930,9 +1946,10 @@ export async function mockRequest(
       }
       // Like the server's add-member cap check (`MAX_GROUP_MEMBERS`, 50):
       // a group that already reached the cap answers 409 `group_full`
-      // without consuming a use.
+      // without consuming a use — unless the caller is already a member
+      // (the server's fast `alreadyMember` path returns before the cap).
       const memberTotal = detail.members.length;
-      if (memberTotal >= 50) {
+      if (memberTotal >= 50 && !alreadyMember) {
         return jsonResponse({ error: { code: 'group_full', message: 'This group is full' } }, 409);
       }
       if (!alreadyMember) {

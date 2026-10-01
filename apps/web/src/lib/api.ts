@@ -1119,6 +1119,12 @@ export const publicApprovalSchema = z.object({
   // Optional with a `false` default so a payload from a server that has not
   // been upgraded yet still parses — the card just hides the third button.
   alwaysEligible: z.boolean().default(false),
+  // T-0134/T-0141: display names of the holders of the topic's approver
+  // role, resolved server-side in one batched query per list so the card
+  // never fetches the topic per approval (N+1). Optional with an empty
+  // default so payloads from an older server still parse — the card hides
+  // the approver line.
+  approverNames: z.array(z.string()).default([]),
 });
 
 export type PublicApproval = z.infer<typeof publicApprovalSchema>;

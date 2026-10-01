@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { StickerPack } from '@/lib/api';
 import { discoverStickerPacks, listStickerPacks } from '@/lib/api';
 import { isPanelStickerUrl, readRecentStickers, rememberRecentSticker } from '@/lib/stickers';
@@ -23,10 +23,9 @@ export interface StickerPanelProps {
 }
 
 /**
- * A panel thumbnail: same-origin sticker URLs (and the mock demo packs'
- * generated `data:` art) load lazily; anything else (e.g. a hostile URL
- * planted in localStorage recents) shows the emoji tile so the browser
- * never fetches it.
+ * A panel thumbnail: a same-origin sticker file URL loads lazily; anything
+ * else (e.g. a hostile URL planted in localStorage recents) shows the
+ * emoji tile so the browser never fetches it.
  */
 function StickerThumb({ sticker, size }: { sticker: StickerChoice; size: number }) {
   const trusted = isPanelStickerUrl(sticker.url);
@@ -109,7 +108,6 @@ export function StickerPanel({ onPick, onClose, onEmoji }: StickerPanelProps) {
     }
   });
   const [preview, setPreview] = useState<StickerChoice | undefined>(undefined);
-  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -197,7 +195,6 @@ export function StickerPanel({ onPick, onClose, onEmoji }: StickerPanelProps) {
 
   return (
     <div
-      ref={panelRef}
       role="dialog"
       aria-label="Stickers"
       className="absolute bottom-full left-0 z-20 mb-2 w-[340px] rounded-[14px] border border-edge bg-surface shadow-lg"

@@ -237,4 +237,73 @@ describe('channels', () => {
     const admins = within(screen.getByRole('region', { name: 'Admins' }));
     expect(await admins.findByText('Could not reach the server')).toBeTruthy();
   });
+
+  it('keeps the Revoke button busy until a slow channel revoke settles (T-0141)', async () => {
+    // The channel panel passes the revoke promise through (like GroupPanel),
+    // so the button stays busy until the awaited DELETE settles instead of
+    // flipping back on the next microtask.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const link = {
+      id: 'link-1',
+      label: 'Friends',
+      tokenHint: 'ab12',
+      uses: 1,
+      maxUses: 10,
+      expiresAt: null,
+      revoked: false,
+      createdAt: '2026-09-30T10:00:00.000Z',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown, init?: RequestInit) => {
+        const target = String(url);
+        if (target.includes('/invite-links')) {
+          if (init?.method === 'DELETE') {
+            await gate;
+            return new Response(null, { status: 204 });
+          }
+          return new Response(JSON.stringify({ links: [link] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: { code: 'not_found', message: 'nope' } }), {
+          status: 404,
+        });
+      }),
+    );
+    const { store } = renderApp('/c/c-acme', { chats: [channelChat('owner')] });
+    store.setState({
+      groupInfos: {
+        'c-acme': {
+          id: 'g-acme',
+          title: 'Acme Announcements',
+          createdBy: 'u-you',
+          members: [{ userId: 'u-you', name: 'You', role: 'owner', roles: [] }],
+          ais: [],
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByLabelText('Open Acme Announcements channel info'));
+    const dialog = screen.getByRole('dialog', { name: 'Acme Announcements channel info' });
+    const section = within(dialog).getByRole('region', { name: 'Invite links' });
+    fireEvent.click(
+      await within(section).findByRole('button', { name: 'Revoke invite link Friends' }),
+    );
+
+    // Busy while the DELETE is still in flight…
+    expect(await within(section).findByText('Revoking…')).toBeTruthy();
+    expect(
+      within(section).getByRole('button', { name: 'Revoke invite link Friends' }),
+    ).toHaveProperty('disabled', true);
+    // …and clickable again only after it settles.
+    release();
+    await waitFor(() => {
+      expect(
+        within(section).getByRole('button', { name: 'Revoke invite link Friends' }),
+      ).toBeTruthy();
+    });
+    expect(within(section).queryByText('Revoking…')).toBeNull();
+  });
 });

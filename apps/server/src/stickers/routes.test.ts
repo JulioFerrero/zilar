@@ -417,39 +417,70 @@ describe('stickers routes', () => {
     expect(response.status).toBe(404);
   });
 
+  it('resolves a relative storage dir against the package root, not the cwd', async () => {
+    const { isAbsolute, resolve } = await import('node:path');
+    const { chdir, cwd } = await import('node:process');
+    const { SERVER_PACKAGE_ROOT, resolveStorageDir } = await import('./service');
+    // A relative value like the `./data/stickers` default: the same string
+    // must resolve to the same directory from two different cwds (the repo
+    // root a developer starts from, and the package root itself).
+    const previous = cwd();
+    try {
+      chdir(resolve(SERVER_PACKAGE_ROOT, '..', '..'));
+      const fromRepoRoot = resolveStorageDir('./data/stickers');
+      chdir(SERVER_PACKAGE_ROOT);
+      const fromPackageRoot = resolveStorageDir('./data/stickers');
+      expect(fromRepoRoot).toBe(fromPackageRoot);
+      expect(fromRepoRoot).toBe(resolve(SERVER_PACKAGE_ROOT, 'data/stickers'));
+      expect(isAbsolute(fromRepoRoot)).toBe(true);
+    } finally {
+      chdir(previous);
+    }
+    // An explicit base wins (the startup path uses the default base).
+    expect(resolveStorageDir('data/stickers', '/var/lib/galena')).toBe(
+      resolve('/var/lib/galena', 'data/stickers'),
+    );
+    // Absolute values pass through unchanged.
+    expect(resolveStorageDir('/var/lib/galena/stickers')).toBe('/var/lib/galena/stickers');
+  });
+
   it('serves files through a relatively-configured storage dir', async () => {
     // Uses a relative storage dir (like the `./data/stickers` default) with
-    // a per-test subdirectory, so no test files escape the temp area.
-    const { mkdir } = await import('node:fs/promises');
-    const { cwd } = await import('node:process');
+    // a per-test subdirectory. The value is relative to the server package
+    // root, so the test stages the directory under it.
+    const { mkdir, rm } = await import('node:fs/promises');
+    const path = await import('node:path');
+    const { SERVER_PACKAGE_ROOT } = await import('./service');
     const leaf = `galena-stickers-rel-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-    const absolute = join(storageDir, leaf);
+    const absolute = path.join(SERVER_PACKAGE_ROOT, leaf);
     await mkdir(absolute, { recursive: true });
-    const relative = join((await import('node:path')).relative(cwd(), absolute));
-    expect((await import('node:path')).isAbsolute(relative)).toBe(false);
     const relativeApp = createApp({
       db: context.db,
       logger: context.logger,
       config: context.config,
       auth: context.auth,
       adminClient: context.adminClient,
-      stickerStorageDir: `./${relative}`,
+      stickerStorageDir: `./${leaf}`,
     });
-    const created = await relativeApp.request(`${TEST_BASE_URL}/api/sticker-packs`, {
-      method: 'POST',
-      headers: { cookie: owner.cookie, 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'Relative' }),
-    });
-    expect(created.status).toBe(201);
-    const pack = (await created.json()) as { id: string };
-    const uploaded = await uploadBytes(relativeApp, pack.id, owner, pngBytes(40, 40));
-    expect(uploaded.status).toBe(201);
-    const sticker = (await uploaded.json()) as { id: string };
-    const file = await relativeApp.request(`${TEST_BASE_URL}/api/stickers/${sticker.id}/file`, {
-      headers: { cookie: owner.cookie },
-    });
-    expect(file.status).toBe(200);
-    expect(new Uint8Array(await file.arrayBuffer())).toEqual(pngBytes(40, 40));
+    try {
+      const created = await relativeApp.request(`${TEST_BASE_URL}/api/sticker-packs`, {
+        method: 'POST',
+        headers: { cookie: owner.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ title: 'Relative' }),
+      });
+      expect(created.status).toBe(201);
+      const pack = (await created.json()) as { id: string };
+      const uploaded = await uploadBytes(relativeApp, pack.id, owner, pngBytes(40, 40));
+      expect(uploaded.status).toBe(201);
+      const sticker = (await uploaded.json()) as { id: string };
+      const file = await relativeApp.request(`${TEST_BASE_URL}/api/stickers/${sticker.id}/file`, {
+        headers: { cookie: owner.cookie },
+      });
+      expect(file.status).toBe(200);
+      expect(new Uint8Array(await file.arrayBuffer())).toEqual(pngBytes(40, 40));
+    } finally {
+      await rm(absolute, { recursive: true, force: true }).catch(() => {});
+    }
   });
 
   it('escapes LIKE wildcards in discover queries', async () => {

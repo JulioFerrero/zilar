@@ -91,20 +91,6 @@ export function approvalCard(): Payload {
   };
 }
 
-/** A generated SVG-as-data-URL sticker cell for the mock demo packs. */
-export function svgSticker(from: string, to: string, glyph: string): string {
-  const svg = [
-    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">',
-    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">',
-    `<stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/>`,
-    '</linearGradient></defs>',
-    '<rect width="200" height="200" rx="40" fill="url(#g)"/>',
-    `<text x="100" y="135" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="88">${glyph}</text>`,
-    '</svg>',
-  ].join('');
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-}
-
 export interface MockDemoStickerPack {
   id: string;
   title: string;
@@ -112,39 +98,77 @@ export interface MockDemoStickerPack {
 }
 
 /**
- * Two built-in demo packs for mock mode (T-0120): simple generated
- * SVG-as-data-URL stickers, so the panel has content with no server.
+ * Two built-in demo packs for mock mode (T-0120): simple generated stickers
+ * served by the mock layer with relative `/api/stickers/:id/file` URLs, so
+ * the panel has content with no server and demo stickers send through the
+ * same `StickerSchema` validation as real ones.
+ *
+ * The art is generated SVG, served from the mock layer's file route (not a
+ * `data:` URL): the browser only ever loads sticker bytes from the
+ * same-origin file path, real or mock.
  */
 export function mockDemoStickerPacks(): MockDemoStickerPack[] {
   const pack = (
     id: string,
     title: string,
-    cells: Array<[string, string, string, string]>,
+    cells: Array<[stickerId: string]>,
   ): MockDemoStickerPack => ({
     id,
     title,
-    stickers: cells.map(([stickerId, from, to, glyph], index) => ({
+    stickers: cells.map(([stickerId], index) => ({
       id: stickerId,
       emoji: ['🐱', '😂', '🔥', '❤️', '🎉', '😎'][index % 6]!,
-      url: svgSticker(from, to, glyph),
+      url: `/api/stickers/${stickerId}/file`,
     })),
   });
   return [
-    pack('mock-pack-cats', 'Cats', [
-      ['mock-cat-1', '#fbbf24', '#f97316', '🐱'],
-      ['mock-cat-2', '#a78bfa', '#7c3aed', '😹'],
-      ['mock-cat-3', '#6ee7b7', '#059669', '🙀'],
-      ['mock-cat-4', '#fda4af', '#e11d48', '😻'],
-      ['mock-cat-5', '#7dd3fc', '#0284c7', '🐈'],
-      ['mock-cat-6', '#fde68a', '#d97706', '😺'],
+    pack('11111111-1111-4111-8111-111111111111', 'Cats', [
+      ['21111111-1111-4111-8111-111111111111'],
+      ['21111111-1111-4111-8111-111111111112'],
+      ['21111111-1111-4111-8111-111111111113'],
+      ['21111111-1111-4111-8111-111111111114'],
+      ['21111111-1111-4111-8111-111111111115'],
+      ['21111111-1111-4111-8111-111111111116'],
     ]),
-    pack('mock-pack-moods', 'Moods', [
-      ['mock-mood-1', '#fde047', '#ca8a04', '😂'],
-      ['mock-mood-2', '#fca5a5', '#dc2626', '🔥'],
-      ['mock-mood-3', '#c4b5fd', '#6d28d9', '😎'],
-      ['mock-mood-4', '#86efac', '#16a34a', '🎉'],
-      ['mock-mood-5', '#93c5fd', '#1d4ed8', '❤️'],
-      ['mock-mood-6', '#fdba74', '#ea580c', '👍'],
+    pack('11111111-1111-4111-8111-111111111222', 'Moods', [
+      ['21111111-1111-4111-8111-111111111221'],
+      ['21111111-1111-4111-8111-111111111222'],
+      ['21111111-1111-4111-8111-111111111223'],
+      ['21111111-1111-4111-8111-111111111224'],
+      ['21111111-1111-4111-8111-111111111225'],
+      ['21111111-1111-4111-8111-111111111226'],
     ]),
   ];
+}
+
+/** The generated SVG art behind one demo sticker, keyed by its id. */
+export function mockDemoStickerArt(stickerId: string): string | undefined {
+  const art: Record<string, [from: string, to: string, glyph: string]> = {
+    '21111111-1111-4111-8111-111111111111': ['#fbbf24', '#f97316', '🐱'],
+    '21111111-1111-4111-8111-111111111112': ['#a78bfa', '#7c3aed', '😹'],
+    '21111111-1111-4111-8111-111111111113': ['#6ee7b7', '#059669', '🙀'],
+    '21111111-1111-4111-8111-111111111114': ['#fda4af', '#e11d48', '😻'],
+    '21111111-1111-4111-8111-111111111115': ['#7dd3fc', '#0284c7', '🐈'],
+    '21111111-1111-4111-8111-111111111116': ['#fde68a', '#d97706', '😺'],
+    '21111111-1111-4111-8111-111111111221': ['#fde047', '#ca8a04', '😂'],
+    '21111111-1111-4111-8111-111111111222': ['#fca5a5', '#dc2626', '🔥'],
+    '21111111-1111-4111-8111-111111111223': ['#c4b5fd', '#6d28d9', '😎'],
+    '21111111-1111-4111-8111-111111111224': ['#86efac', '#16a34a', '🎉'],
+    '21111111-1111-4111-8111-111111111225': ['#93c5fd', '#1d4ed8', '❤️'],
+    '21111111-1111-4111-8111-111111111226': ['#fdba74', '#ea580c', '👍'],
+  };
+  const cell = art[stickerId];
+  if (cell === undefined) {
+    return undefined;
+  }
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">',
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">',
+    `<stop offset="0" stop-color="${cell[0]}"/><stop offset="1" stop-color="${cell[1]}"/>`,
+    '</linearGradient></defs>',
+    '<rect width="200" height="200" rx="40" fill="url(#g)"/>',
+    `<text x="100" y="135" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="88">${cell[2]}</text>`,
+    '</svg>',
+  ].join('');
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }

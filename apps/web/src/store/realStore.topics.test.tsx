@@ -501,6 +501,41 @@ describe('topics store mapping (T-0111)', () => {
     });
   });
 
+  it('navigating away first clears a pending quiet-archive mark', async () => {
+    // T-0141: archiving the open topic marks it quiet so the disappearance
+    // refresh moves silently — but if the user opens another chat before
+    // the refresh resolves, the mark must go. Discriminator: after the
+    // hop, stranding a topic genuinely must still raise its notice. With
+    // the leaked mark the final notice would stay silent.
+    const { store, api } = await setup();
+    const bugId = 'bug-topic@rooms.galena.test';
+    const generalId = 'team@rooms.galena.test';
+    const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const { topicSchema } = await import('@/lib/api');
+    (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
+      topicSchema.parse({ ...bugTopic(), archived: true }),
+    );
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([groupEntry()]);
+    store.getState().openChat(bugId);
+    await store.getState().patchTopic(bugId, { archived: true });
+    // Away before the refresh resolves: the quiet mark for the bug topic
+    // must be dropped by the hop to General.
+    store.getState().openChat(generalId);
+    store.getState().refreshChats();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await flush();
+    // The bug topic is back on the server; open it and lose it genuinely.
+    store.getState().openChat(bugId);
+    (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
+      groupEntry({ topics: [topic()] }),
+    ]);
+    store.getState().refreshChats();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await flush();
+    expect(store.getState().activeChatId).toBe(generalId);
+    expect(store.getState().topicNotice?.message).toBe('This topic is no longer available.');
+  });
+
   it('a self-archive with no General consumes the quiet mark', async () => {
     // Fix 2: archiving the open topic when General is absent navigates to
     // `/`. `applyTopicRow` already dropped the row, so the stranded-open
