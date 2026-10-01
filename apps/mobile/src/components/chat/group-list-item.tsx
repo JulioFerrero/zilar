@@ -1,5 +1,5 @@
 import { formatListTime } from '@galena/chat-core';
-import { Pin } from 'lucide-react-native';
+import { Megaphone, Pin } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
@@ -9,6 +9,7 @@ import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, raisedPill } from '@/lib/depth';
+import { channelSubscriberLabel } from '@/lib/channels';
 import { previewParts } from '@/lib/format';
 import { groupRowFor, topicCountLabel, topicsOfGroup } from '@/lib/topics';
 import { CURRENT_USER_ID } from '@/lib/types';
@@ -70,7 +71,10 @@ export function GroupListItem({
   });
   const body =
     last === undefined ? '' : plainPreviewBody(newest!, last, preview.body, CURRENT_USER_ID);
-  const subtitle = topicCountLabel(row.topicCount);
+  const subtitle =
+    row.chatKind === 'channel'
+      ? channelSubscriberLabel(row.subscriberCount ?? row.memberCount ?? 0)
+      : topicCountLabel(row.topicCount);
   const anyPinned = row.topics.some((topic) => topic.pinnedAt !== undefined);
   return (
     <Pressable
@@ -88,6 +92,11 @@ export function GroupListItem({
               <Text numberOfLines={1} className="shrink text-[16px] font-semibold text-foreground">
                 {row.title}
               </Text>
+              {row.chatKind === 'channel' ? (
+                <View accessibilityRole="image" accessibilityLabel="Channel">
+                  <Megaphone size={14} color={MUTED_FOREGROUND[scheme]} />
+                </View>
+              ) : null}
               {anyPinned ? (
                 <View accessibilityRole="image" accessibilityLabel="Pinned chat">
                   <Pin size={14} color={MUTED_FOREGROUND[scheme]} />

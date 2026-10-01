@@ -65,6 +65,7 @@ import {
   type TopicsApi,
 } from '../lib/topics-api';
 import { createRolesApi, type CustomGroupRole, type RolesApi } from '../lib/roles-api';
+import { createGroupsApi, type ChannelMemberRole, type GroupsApi } from '../lib/groups-api';
 import { summariesForTopicsEntry, TOPIC_GONE_NOTICE } from '../lib/topics';
 import {
   DRAFT_STREAM_PATH,
@@ -130,6 +131,8 @@ export interface RealStoreDeps {
   /** The group invite-links API (T-0136); tests inject a fake. */
   inviteLinksApi?: InviteLinksApi;
   rolesApi?: RolesApi;
+  /** The channel management API (T-0144); tests inject a fake. */
+  groupsApi?: GroupsApi;
   chatPrefsApi?: ChatPrefsApi;
   pinsApi?: PinsApi;
   ownedAis?: { id: string; name: string }[];
@@ -318,6 +321,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
   const rolesApi = rolesApi2(deps);
   const pinsApi = pinsApi2(deps);
+  const groupsApi = deps.groupsApi ?? createGroupsApi(getSessionToken, fetch, API_URL);
 
   return createStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
@@ -2931,6 +2935,58 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         const result = await inviteLinks.joinByLink(token);
         await refreshChats().catch(() => {});
         return result;
+      },
+      // T-0144: channels share the chat-list flow with groups (the detail
+      // carries `kind`, the feed row paints the channel). Create refreshes
+      // the list and resolves the new group id from the refreshed entries.
+      createChannel: async (input) => {
+        const trimmed = input.title.trim();
+        if (trimmed === '') {
+          throw new Error('Enter a channel name.');
+        }
+        if (input.description !== undefined && input.description.length > 300) {
+          throw new Error('The description must be at most 300 characters.');
+        }
+        const created = await groupsApi.createChannel({
+          title: trimmed,
+          ...(input.description === undefined || input.description.trim() === ''
+            ? {}
+            : { description: input.description.trim() }),
+        });
+        await refreshChats().catch(() => {});
+        return created.id;
+      },
+      // T-0144: leaving a channel removes the caller through the member
+      // route, then refreshes the list (the row disappears); the caller
+      // navigates away.
+      leaveChannel: async (chatId) => {
+        const groupId = groupIdForChat(chatId);
+        const me = get().me;
+        if (groupId === undefined || me?.id === undefined) {
+          throw new Error('This channel is not available yet.');
+        }
+        await groupsApi.removeGroupMember(groupId, me.id);
+        await refreshChats().catch(() => {});
+      },
+      // T-0144: the members slice for the channel screen — the full audience
+      // for managers, the owner/admins slice for subscribers (never the
+      // audience), 404 for strangers. The server enforces the rule; the
+      // client renders whatever it answers.
+      listChannelMembers: async (groupId) => groupsApi.listGroupMembers(groupId),
+      // T-0144: promote/demote through the role route (owner only, channels
+      // only). The detail refreshes first so the channel screen updates at
+      // once, then the chat list — the acting device's rows (myRole, counts)
+      // match server truth and the composer bar flips. Demoting the last
+      // admin rejects with 409 `channel_needs_admin`.
+      changeChannelRole: async (chatId, userId, role: ChannelMemberRole) => {
+        const groupId = groupIdForChat(chatId);
+        if (groupId === undefined) {
+          throw new Error('This channel is not available yet.');
+        }
+        await groupsApi.changeGroupMemberRole(groupId, userId, role);
+        await ensureGroupDetail(groupId, true).catch(() => {});
+        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
+        await refreshChats().catch(() => {});
       },
       groupRoles: (groupId) => {
         // Reading the revision subscribes the selector to roles loads, like

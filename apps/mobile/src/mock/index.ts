@@ -1,5 +1,6 @@
 import type { ChatSummary } from '../lib/types';
 import { chatSeeds } from './chats';
+import { mockChannelChats } from './channel';
 import { mockMessagesByChat } from './messages';
 import { mockTopicChats } from './topics';
 
@@ -14,6 +15,9 @@ const GENERAL_ID = mockTopicChats().find((topic) => topic.topic?.isGeneral === t
 export const mockChats: ChatSummary[] = [
   ...chatSeeds.filter((seed) => seed.id !== GENERAL_ID),
   ...mockTopicChats(),
+  // T-0144: the two demo channels — Acme Announcements (subscriber) and
+  // Studio Updates (owned).
+  ...mockChannelChats(),
 ].map((seed: MockSeed) => {
   const messages = mockMessagesByChat[seed.id] ?? [];
   const lastMessage = messages.at(-1) ?? ('lastMessage' in seed ? seed.lastMessage : undefined);

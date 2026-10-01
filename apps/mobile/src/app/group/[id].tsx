@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Avatar } from '@/components/chat/avatar';
+import { ChannelScreen } from '@/components/chat/channel-screen';
 import { InviteLinksSheet, type CreateInviteLinkForm } from '@/components/chat/invite-links-sheet';
 import { GroupRolesSheet } from '@/components/chat/group-roles-sheet';
 import { NewTopicSheet, type NewTopicInput } from '@/components/chat/new-topic-sheet';
@@ -337,6 +338,17 @@ function GroupTopics() {
   if (topics.length === 0 && chatsLoad === 'loaded') {
     router.back();
     return null;
+  }
+
+  // T-0144: a channel renders its own screen (info, feed, admins, invite
+  // links, leave, promote/demote) instead of the topics list — a channel has
+  // exactly one topic, its feed, and no topic creation. The feed row carries
+  // `chatKind: 'channel'`; the detail backs it up once loaded.
+  const channelFeed = topics.find((topic) => topic.chatKind === 'channel');
+  const channelByDetail = groupDetail?.kind === 'channel';
+  if (channelFeed !== undefined || (channelByDetail && topics.length > 0)) {
+    const feed = channelFeed ?? topics[0]!;
+    return <ChannelScreen groupId={groupId} feedId={feed.id} title={groupTitle} />;
   }
 
   return (

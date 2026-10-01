@@ -43,6 +43,9 @@ export interface JoinPreview {
   memberCount: number;
   alreadyMember: boolean;
   groupId?: string;
+  // T-0144: the group's kind, so the join screen reads "Join channel" for a
+  // channel. Optional so older servers still parse (treated as a group).
+  kind?: 'group' | 'channel';
 }
 
 export interface JoinResult {
@@ -139,11 +142,20 @@ function parseJoinPreview(value: unknown): JoinPreview | null {
   }
   const groupId = value['groupId'];
   if (groupId !== undefined && !isString(groupId)) return null;
+  // T-0144: the preview kind ("Join channel" vs "Join the group"). Optional
+  // so older servers still parse; malformed rejects the preview.
+  const rawKind = value['kind'];
+  let kind: 'group' | 'channel' | undefined;
+  if (rawKind !== undefined) {
+    if (rawKind !== 'group' && rawKind !== 'channel') return null;
+    kind = rawKind;
+  }
   return {
     groupTitle,
     memberCount,
     alreadyMember,
     ...(groupId === undefined ? {} : { groupId }),
+    ...(kind === undefined ? {} : { kind }),
   };
 }
 

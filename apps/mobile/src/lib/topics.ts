@@ -13,7 +13,12 @@ import type { ChatFolder } from './types';
  */
 
 /** One topic row from the wire, keyed by its room JID (General keeps the id). */
-export function summaryForTopic(groupTitle: string, groupId: string, topic: Topic): ChatSummary {
+export function summaryForTopic(
+  groupTitle: string,
+  groupId: string,
+  topic: Topic,
+  channel?: { subscriberCount: number; description: string | null; role: GroupRole },
+): ChatSummary {
   return {
     id: topic.chatJid,
     title: topic.name,
@@ -24,6 +29,17 @@ export function summaryForTopic(groupTitle: string, groupId: string, topic: Topi
     muted: false,
     memberCount: topic.memberCount,
     onlineCount: 0,
+    // T-0144: a channel's General topic is its feed, so the row carries the
+    // channel fields (chatKind, subscriberCount, description, myRole) like
+    // web's `summaryForTopic`.
+    ...(channel === undefined
+      ? {}
+      : {
+          chatKind: 'channel' as const,
+          subscriberCount: channel.subscriberCount,
+          description: channel.description,
+          myRole: channel.role,
+        }),
     groupId,
     groupTitle,
     topic: {
@@ -42,6 +58,7 @@ export function summaryForTopic(groupTitle: string, groupId: string, topic: Topi
 }
 
 function baseSummaryForGroup(entry: Extract<ChatEntry, { kind: 'group' }>): ChatSummary {
+  const chatKind = entry.chatKind ?? 'group';
   return {
     id: entry.chatJid,
     title: entry.title,
@@ -52,6 +69,17 @@ function baseSummaryForGroup(entry: Extract<ChatEntry, { kind: 'group' }>): Chat
     muted: false,
     memberCount: entry.memberCount,
     onlineCount: 0,
+    // T-0144: a legacy channel row (older server, no `topics`) still reads as
+    // a channel — the subscriber count, the blurb and the viewer's role ride
+    // the row, like web's `summaryFor`.
+    ...(chatKind === 'channel'
+      ? {
+          chatKind: 'channel' as const,
+          subscriberCount: entry.subscriberCount ?? entry.memberCount,
+          description: entry.description ?? null,
+          myRole: entry.role,
+        }
+      : {}),
   };
 }
 
@@ -73,7 +101,19 @@ export function summariesForTopicsEntry(entry: ChatEntry): ChatSummary[] {
   if (topics.length === 0) {
     return [baseSummaryForGroup(entry)];
   }
-  return topics.map((topic) => summaryForTopic(entry.title, entry.groupId, topic));
+  // T-0144: a channel's General topic is its feed, so every row carries the
+  // channel fields (the feed paints the channel bar; the role gates the
+  // composer), like web's `summariesFor`.
+  const chatKind = entry.chatKind ?? 'group';
+  const channel =
+    chatKind === 'channel'
+      ? {
+          subscriberCount: entry.subscriberCount ?? entry.memberCount,
+          description: entry.description ?? null,
+          role: entry.role,
+        }
+      : undefined;
+  return topics.map((topic) => summaryForTopic(entry.title, entry.groupId, topic, channel));
 }
 
 /** True when the chat is a group topic (a group chat with a task strip). */
@@ -137,6 +177,11 @@ export interface GroupRow {
   muted: boolean;
   memberCount: number | undefined;
   onlineCount: number | undefined;
+  // T-0144: set when the group's rows are a channel feed — the list paints
+  // the megaphone marker and "N subscribers" instead of "N topics/members".
+  chatKind?: 'group' | 'channel';
+  subscriberCount?: number;
+  description?: string | null;
   topics: ChatSummary[];
 }
 
@@ -173,6 +218,10 @@ export function groupRowFor(groupId: string, topics: readonly ChatSummary[]): Gr
     return time > bestTime ? chat : best;
   }, undefined);
   const last = newest?.lastMessage;
+  // T-0144: a channel's topics are its feed (the General row carries
+  // `chatKind: 'channel'`): the row reads "N subscribers" with the blurb,
+  // never the topic count.
+  const channelRow = sorted.find((chat) => chat.chatKind === 'channel');
   return {
     groupId,
     title,
@@ -190,6 +239,13 @@ export function groupRowFor(groupId: string, topics: readonly ChatSummary[]): Gr
     muted: sorted.every((chat) => chat.muted),
     memberCount: general?.memberCount ?? first.memberCount,
     onlineCount: general?.onlineCount ?? first.onlineCount,
+    ...(channelRow === undefined
+      ? {}
+      : {
+          chatKind: 'channel' as const,
+          subscriberCount: channelRow.subscriberCount ?? channelRow.memberCount,
+          description: channelRow.description ?? null,
+        }),
     topics: sorted,
   };
 }
