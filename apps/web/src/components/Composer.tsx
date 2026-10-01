@@ -32,6 +32,7 @@ import { Well } from './ui/well';
 import {
   MAX_ATTACHMENT_BYTES,
   classify,
+  gifBlobType,
   objectUrlFor,
   type PendingAttachment,
 } from '@/lib/attachments';
@@ -307,8 +308,11 @@ export function Composer({
   // A GIF pick fetches the media through the proxy, then uploads it with the
   // existing attachment path and sends an attachment message (T-0122): the
   // sent GIF is stored as our attachment and keeps working if the provider
-  // disappears. A caption is whatever the composer holds. Failures show the
-  // inline error; the attachment bubble's Retry covers upload failures.
+  // disappears. A caption is whatever the composer holds. The mime and the
+  // extension come from the proxied blob's real content type (validated
+  // against what the proxy serves), never from the search result's kind.
+  // Failures show the inline error; the attachment bubble's Retry covers
+  // upload failures.
   const sendGif = useCallback(
     (gif: GifChoice): void => {
       const caption = value.trim();
@@ -331,8 +335,8 @@ export function Composer({
           setAttachmentError('Could not load that GIF. Try another.');
           return;
         }
-        const mime = gif.kind === 'video' ? 'video/mp4' : 'image/gif';
-        const file = new File([blob], `gif-${gif.id.slice(0, 16)}.gif`, { type: mime });
+        const { mime, extension } = gifBlobType(blob.type, gif.kind);
+        const file = new File([blob], `gif-${gif.id.slice(0, 16)}.${extension}`, { type: mime });
         store.sendAttachment(chatId, file, {
           ...(caption.length === 0 ? {} : { caption }),
           ...(replyTo === undefined ? {} : { replyTo }),

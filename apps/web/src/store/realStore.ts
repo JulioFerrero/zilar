@@ -329,23 +329,54 @@ function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
  * An incoming image attachment on an untrusted host would auto-fetch from
  * whatever URL a chat peer put in the payload, leaking the viewer's IP to that
  * host. Downgrade it to a file card so the bytes are only loaded on click.
- * File attachments stay files: the host check is image-only.
+ * The same holds for a GIF-video file attachment (`gif-` name, video mime):
+ * `GifMessage` auto-plays it, so on an untrusted host the `gif-` prefix is
+ * stripped (breaking the inline-video match) and the dimensions dropped —
+ * the card keeps the working download link but loads nothing by itself.
+ * Other file attachments stay files: they never auto-load.
  */
 function sanitizeIncomingAttachment(
   attachment: Attachment,
   token: MediaTokenShape | undefined,
 ): Attachment {
-  if (attachment.kind !== 'image') {
+  if (attachment.kind !== 'image' && !isGifVideoName(attachment)) {
     return attachment;
   }
   const trusted = token === undefined ? undefined : trustedMediaHosts(token);
   if (trusted !== undefined && isTrustedMediaUrl(attachment.url, trusted)) {
     return attachment;
   }
-  const downgraded: Attachment = { ...attachment, kind: 'file' };
-  delete downgraded.width;
-  delete downgraded.height;
-  return downgraded;
+  if (attachment.kind === 'image') {
+    const downgraded: Attachment = { ...attachment, kind: 'file' };
+    delete downgraded.width;
+    delete downgraded.height;
+    return downgraded;
+  }
+  const renamed: Attachment = { ...attachment, name: unprefixedGifName(attachment.name) };
+  delete renamed.width;
+  delete renamed.height;
+  return renamed;
+}
+
+/** A file attachment the GIF send path would render as an inline video. */
+function isGifVideoName(attachment: Attachment): boolean {
+  if (attachment.kind !== 'file') {
+    return false;
+  }
+  if (attachment.mime !== 'video/mp4' && attachment.mime !== 'video/webm') {
+    return false;
+  }
+  return attachment.name.startsWith('gif-');
+}
+
+/**
+ * Strips the `gif-` prefix the inline-video match looks for, so an untrusted
+ * GIF-video attachment renders as a click-to-load file card. Never empty:
+ * a bare `gif-` name becomes `file`.
+ */
+function unprefixedGifName(name: string): string {
+  const stripped = name.slice('gif-'.length);
+  return stripped === '' ? 'file' : stripped;
 }
 
 /**
@@ -2687,6 +2718,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
       firstToken = token;
       mediaToken = { service: token.service, domain: token.domain };
+      set({ mediaTrustedHosts: trustedMediaHosts(mediaToken) });
 
       const options: XmppCoreOptions = {
         service: token.service,
@@ -2699,6 +2731,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           }
           const fresh = await api.getXmppToken();
           mediaToken = { service: fresh.service, domain: fresh.domain };
+          set({ mediaTrustedHosts: trustedMediaHosts(mediaToken) });
           return { jid: fresh.jid, token: fresh.token };
         },
       };
@@ -2845,6 +2878,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       edits: {},
       editTarget: undefined,
       actionError: undefined,
+      mediaTrustedHosts: undefined,
       search: '',
       searchChat: undefined,
       activeFolder: 'all',
@@ -3765,6 +3799,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           pinsError: undefined,
           editTarget: undefined,
           actionError: undefined,
+          mediaTrustedHosts: undefined,
           activeChatId: undefined,
           historyComplete: {},
           groupInfos: {},
@@ -3835,6 +3870,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         connectRetryAttempt = 0;
         groupsJoined = false;
         mediaToken = undefined;
+        set({ mediaTrustedHosts: undefined });
         if (typeof window !== 'undefined') {
           window.removeEventListener('pagehide', saveChatList);
         }

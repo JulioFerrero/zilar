@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Attachment } from '@galena/chat-core';
-import { safeHttpUrl } from '@/lib/attachments';
+import { isTrustedMediaUrl, safeHttpUrl } from '@/lib/attachments';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
 export interface GifMessageProps {
@@ -61,18 +61,40 @@ export function GifMessage({ attachment }: GifMessageProps) {
 }
 
 /**
- * Whether a file attachment is a GIF-origin video: the GIF send path names
- * files `gif-<id>.gif` with a video mime (mp4/webm are never images per
- * `classify`), so only those render inline. A peer naming their own upload
- * `gif-x` with a video mime renders the same way — the bytes still come from
- * the trusted upload host via the sanitizer, like any attachment.
+ * Whether a file attachment renders as an inline auto-playing video: the GIF
+ * send path names files `gif-<id>.<ext>` with a video mime (mp4/webm are
+ * never images per `classify`). The URL must additionally be trusted — a
+ * relative same-origin `/api/` path, or an absolute URL on one of the
+ * store's media hosts — so a hostile sender's arbitrary URL never auto-loads
+ * even if it reaches this component past the store sanitizer (which renames
+ * untrusted `gif-` attachments first; this is the second layer).
  */
-export function isGifVideoAttachment(attachment: Attachment): boolean {
+export function isGifVideoAttachment(
+  attachment: Attachment,
+  trustedHosts: ReadonlySet<string>,
+): boolean {
   if (attachment.kind !== 'file') {
     return false;
   }
   if (attachment.mime !== 'video/mp4' && attachment.mime !== 'video/webm') {
     return false;
   }
-  return attachment.name.startsWith('gif-');
+  if (!attachment.name.startsWith('gif-')) {
+    return false;
+  }
+  return isTrustedGifUrl(attachment.url, trustedHosts);
+}
+
+/**
+ * Same-origin `/api/` paths auto-load (relative URLs resolve against the
+ * page origin); absolute URLs only on a trusted media host. Anything else —
+ * `javascript:`, `data:`, external hosts, garbage — renders as a file card.
+ */
+function isTrustedGifUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
+  // A root-relative `/api/` path resolves against the page origin, so it is
+  // same-origin by construction. Absolute URLs need a trusted media host.
+  if (url.startsWith('/api/')) {
+    return true;
+  }
+  return isTrustedMediaUrl(url, trustedHosts);
 }

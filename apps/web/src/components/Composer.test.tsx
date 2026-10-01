@@ -427,6 +427,40 @@ describe('Composer GIFs (T-0122)', () => {
     expect(sent?.attachment?.mime).toBe('image/gif');
   });
 
+  it('names and types a webm GIF from the blob content type, not the result kind', async () => {
+    const api = await import('@/lib/api');
+    vi.spyOn(api, 'listStickerPacks').mockResolvedValue([]);
+    vi.spyOn(api, 'discoverStickerPacks').mockResolvedValue({ packs: [], next: null });
+    // The search result claims video/mp4 while the proxy serves webm: the
+    // stored attachment must carry the real bytes' type. (A bare object is
+    // stubbed instead of `new Response`, whose `blob()` drops the type.)
+    const webm = new Blob(['webm-bytes'], { type: 'video/webm' });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((input: string | URL | Request) =>
+        String(input).startsWith('data:')
+          ? Promise.resolve({ ok: true, blob: () => Promise.resolve(webm) } as Response)
+          : Promise.reject(new Error(`unexpected fetch ${String(input)}`)),
+      );
+    try {
+      const { store } = renderApp('/c/c-ana');
+      fireEvent.click(screen.getByLabelText('Open sticker panel'));
+      fireEvent.click(screen.getByRole('tab', { name: 'GIFs' }));
+      const grid = await screen.findByRole('grid', { name: 'GIFs' });
+      const before = store.getState().messages('c-ana').length;
+      fireEvent.click(within(grid).getByLabelText('Send 🐱 dancing'));
+      await vi.waitFor(() => {
+        expect(store.getState().messages('c-ana')).toHaveLength(before + 1);
+      });
+      const sent = store.getState().messages('c-ana').at(-1);
+      expect(sent?.attachment?.kind).toBe('file');
+      expect(sent?.attachment?.mime).toBe('video/webm');
+      expect(sent?.attachment?.name).toMatch(/^gif-.+\.webm$/);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('shows an inline error when the proxy fetch fails', async () => {
     const api = await import('@/lib/api');
     vi.spyOn(api, 'listStickerPacks').mockResolvedValue([]);

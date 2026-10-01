@@ -111,6 +111,28 @@ describe('attachment bubbles (T-0065)', () => {
     expect(within(list).getByText('evil.pdf')).toBeTruthy();
   });
 
+  it('renders a gif- video attachment on an attacker host as a file card, never auto-loading it', () => {
+    // The mock store carries no media hosts, so every absolute URL is
+    // untrusted here — exactly the attacker's case after the real store's
+    // sanitizer strips the prefix. Either layer alone must stop the fetch.
+    render(
+      message({
+        attachment: {
+          kind: 'file',
+          url: 'https://attacker.test/x.mp4',
+          name: 'gif-x',
+          size: 1024,
+          mime: 'video/mp4',
+        },
+      }),
+    );
+
+    const list = screen.getByTestId('message-list');
+    expect(document.querySelector('video')).toBeNull();
+    expect(document.querySelector('[src="https://attacker.test/x.mp4"]')).toBeNull();
+    expect(within(list).getByText('gif-x')).toBeTruthy();
+  });
+
   it('becomes a tombstone when a deleted attachment message is retracted', async () => {
     const { store } = renderApp('/c/c-at', {
       currentUserId: 'u-you',

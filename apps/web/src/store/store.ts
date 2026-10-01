@@ -314,6 +314,12 @@ export interface ChatStore {
    * Rejects when the chat connection is offline or cannot send raw IQs.
    */
   setPushPair: (input: { pushJid: string; node: string; enable: boolean }) => Promise<void>;
+   * Hostnames attachment media may auto-load from (T-0065 round 1, T-0122):
+   * the XMPP service host, the XMPP domain and `upload.<domain>`. The real
+   * store sets it on connect; the mock store leaves it undefined and the
+   * renderer treats unknown hosts as untrusted.
+   */
+  mediaTrustedHosts: ReadonlySet<string> | undefined;
   sendTyping: (chatId: string) => void;
   createGroup: (title: string, memberIds: string[]) => Promise<string>;
   createInvite: () => Promise<string>;
@@ -683,6 +689,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       edits: {},
       editTarget: undefined,
       actionError: undefined,
+      mediaTrustedHosts: undefined,
       activeChatId: undefined,
       historyComplete: {},
       groupInfos: seed.groupInfos ?? withMockTopicGroupInfos(mockGroupDetails),

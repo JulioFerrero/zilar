@@ -147,6 +147,17 @@ describe('GifPanel', () => {
     await waitFor(() => expect(screen.getByRole('grid', { name: 'GIFs' })).toBeTruthy());
     second.unmount();
 
+    // A provider outage (retryable 502) shows the same Retry state, never
+    // the empty "No GIFs found" text.
+    vi.mocked(api.trendingGifs).mockRejectedValueOnce(
+      new api.ApiError(502, 'gif_search_failed', 'GIF search failed, try again later'),
+    );
+    const third = render(<GifPanel onPick={() => {}} />);
+    await waitFor(() => expect(screen.getByText(/Could not load GIFs/)).toBeTruthy());
+    expect(screen.queryByText(/No GIFs found/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    third.unmount();
+
     // Unavailable hides the tab content.
     vi.mocked(api.trendingGifs).mockRejectedValueOnce(
       new api.ApiError(501, 'gifs_unavailable', 'off'),

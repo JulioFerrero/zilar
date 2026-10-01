@@ -97,14 +97,14 @@ describe('gifs routes with a fake provider', () => {
     | { kind: 'throw'; message: string }
     | { kind: 'status'; status: number };
 
-  function buildApp(): ReturnType<typeof createApp> {
+  function buildApp(provider = createFakeGifProvider()): ReturnType<typeof createApp> {
     return createApp({
       db: context.db,
       logger: context.logger,
       config: context.config,
       auth: context.auth,
       adminClient: context.adminClient,
-      gifProvider: createFakeGifProvider(),
+      gifProvider: provider,
       gifMediaFetcher: (url, address) => {
         fetcherCalls.push({ url: url.toString(), address });
         if (fetchBehavior.kind === 'throw') {
@@ -173,6 +173,22 @@ describe('gifs routes with a fake provider', () => {
     expect(body.items.length).toBeGreaterThan(0);
   });
 
+  it('502s a retryable error when the provider fails, with no provider detail', async () => {
+    const failing = {
+      name: 'failing',
+      search: () => Promise.reject(new Error('provider exploded: api.giphy.com 500')),
+      trending: () => Promise.reject(new Error('provider exploded: api.giphy.com 500')),
+    };
+    const app = buildApp(failing);
+    for (const path of ['/api/gifs/search?q=cat', '/api/gifs/trending']) {
+      const response = await getRequest(app, path, user);
+      expect(response.status).toBe(502);
+      const body = (await response.json()) as { error?: { code?: string; message?: string } };
+      expect(body.error?.code).toBe('gif_search_failed');
+      expect(body.error?.message).not.toContain('giphy.com');
+      expect(body.error?.message).not.toContain('exploded');
+    }
+  });
   it('400s a missing or overlong query', async () => {
     const app = buildApp();
     const missing = await getRequest(app, '/api/gifs/search', user);

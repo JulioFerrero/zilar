@@ -193,6 +193,18 @@ export interface GiphyProviderOptions {
   resolver?: (host: string) => Promise<string[]>;
 }
 
+/**
+ * The provider call failed (DNS, blocked resolution, network, non-2xx, bad
+ * JSON). The message stays neutral — no provider detail ever reaches the
+ * client — and the routes turn it into a retryable 502.
+ */
+export class GiphyError extends Error {
+  constructor() {
+    super('GIF provider request failed');
+    this.name = 'GiphyError';
+  }
+}
+
 export type GiphyFetcher = (url: URL, address: string) => Promise<{ status: number; body: string }>;
 
 async function defaultResolver(host: string): Promise<string[]> {
@@ -257,33 +269,33 @@ export function createGiphyProvider(options: GiphyProviderOptions): GifProvider 
     }
     const addresses = await resolver(GIPHY_API_HOST).catch(() => [] as string[]);
     if (addresses.length === 0) {
-      return { items: [] };
+      throw new GiphyError();
     }
     for (const address of addresses) {
       if (isIP(address) === 0 || classifyIp(address) === 'blocked') {
-        return { items: [] };
+        throw new GiphyError();
       }
     }
     const fetcher: GiphyFetcher =
       options.fetcher ?? ((requestUrl, address) => fetchGiphyApi(requestUrl, address, 10_000));
     const first = addresses[0];
     if (first === undefined) {
-      return { items: [] };
+      throw new GiphyError();
     }
     let response: { status: number; body: string };
     try {
       response = await fetcher(url, first);
     } catch {
-      return { items: [] };
+      throw new GiphyError();
     }
     if (response.status < 200 || response.status >= 300) {
-      return { items: [] };
+      throw new GiphyError();
     }
     let body: unknown;
     try {
       body = JSON.parse(response.body) as unknown;
     } catch {
-      return { items: [] };
+      throw new GiphyError();
     }
     return gifPageSchema.parse(parseGiphyResponse(body));
   }

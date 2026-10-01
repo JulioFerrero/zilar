@@ -35,6 +35,9 @@ import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 /** Monochrome-friendly sender name colors (ui-style.md §5). */
 const SENDER_COLORS = ['#d4d4d4', '#a1a1a1', '#8a8a8a', '#ededed'] as const;
 
+/** No known media host (mock store, signed out): every absolute URL is untrusted. */
+const EMPTY_HOSTS: ReadonlySet<string> = new Set();
+
 function senderColor(id: string): string {
   let hash = 0x811c9dc5;
   for (let index = 0; index < id.length; index += 1) {
@@ -194,10 +197,14 @@ export function MessageBubble({
   // the small AI badge next to its name (T-0055).
   const senderIsAi = showSender && isAiJid(message.senderId);
   const attachmentImage = message.attachment?.kind === 'image';
+  // GIF-origin videos render inline only on a trusted media URL (the store
+  // sanitizer renames untrusted `gif-` attachments first; the URL check here
+  // is the second layer, so a hostile absolute URL never auto-loads).
+  const mediaHosts = store.mediaTrustedHosts ?? EMPTY_HOSTS;
   const gifVideo =
     message.attachment !== undefined &&
     message.attachment.kind === 'file' &&
-    isGifVideoAttachment(message.attachment);
+    isGifVideoAttachment(message.attachment, mediaHosts);
   const attachmentFile = message.attachment?.kind === 'file' && !gifVideo;
   const failed = message.failed === true;
   const imageOnly =

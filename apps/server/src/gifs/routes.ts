@@ -214,10 +214,20 @@ export function createGifsRoutes(deps: GifsRoutesDependencies): Hono {
       throw new HttpError(400, 'invalid_request', 'Invalid GIF search');
     }
     const start = performance.now();
-    const page = await providerFor().search(parsed.data.q, {
-      limit: GIF_PAGE_LIMIT,
-      ...(parsed.data.pos === undefined ? {} : { pos: parsed.data.pos }),
-    });
+    let page: { items: GifItem[]; nextPos?: string | undefined };
+    try {
+      page = await providerFor().search(parsed.data.q, {
+        limit: GIF_PAGE_LIMIT,
+        ...(parsed.data.pos === undefined ? {} : { pos: parsed.data.pos }),
+      });
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw error;
+      }
+      // A provider failure is retryable (502), never an empty 200: the panel
+      // shows its Retry state instead of "No GIFs found".
+      throw new HttpError(502, 'gif_search_failed', 'GIF search failed, try again later');
+    }
     // The log carries counts and durations only — never the search text.
     deps.logger.info(
       {
@@ -243,10 +253,18 @@ export function createGifsRoutes(deps: GifsRoutesDependencies): Hono {
       throw new HttpError(400, 'invalid_request', 'Invalid GIF request');
     }
     const start = performance.now();
-    const page = await providerFor().trending({
-      limit: GIF_PAGE_LIMIT,
-      ...(parsed.data.pos === undefined ? {} : { pos: parsed.data.pos }),
-    });
+    let page: { items: GifItem[]; nextPos?: string | undefined };
+    try {
+      page = await providerFor().trending({
+        limit: GIF_PAGE_LIMIT,
+        ...(parsed.data.pos === undefined ? {} : { pos: parsed.data.pos }),
+      });
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw error;
+      }
+      throw new HttpError(502, 'gif_search_failed', 'GIF search failed, try again later');
+    }
     deps.logger.info(
       {
         userId: user.id,

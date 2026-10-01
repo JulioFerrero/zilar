@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { parseGiphyResponse } from './giphy';
-import { createFakeGifProvider } from './giphy';
+import {
+  createFakeGifProvider,
+  createGiphyProvider,
+  GiphyError,
+  parseGiphyResponse,
+} from './giphy';
 import { createGifTokenIssuer } from './token';
 
 function gifObject(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -105,6 +109,47 @@ describe('createFakeGifProvider', () => {
     expect(first.nextPos).toBeDefined();
     const trending = await provider.trending({ limit: 10 });
     expect(trending.items.length).toBeGreaterThan(0);
+  });
+});
+
+describe('createGiphyProvider failures', () => {
+  function providerWith(
+    fetcher: (url: URL, address: string) => Promise<{ status: number; body: string }>,
+  ) {
+    return createGiphyProvider({
+      apiKey: 'test-key',
+      rating: 'pg-13',
+      resolver: () => Promise.resolve(['93.184.216.34']),
+      fetcher,
+    });
+  }
+
+  it('throws a neutral GiphyError on non-2xx, network failure and bad JSON', async () => {
+    const non2xx = providerWith(() => Promise.resolve({ status: 500, body: 'oops' }));
+    await expect(non2xx.search('cat', { limit: 25 })).rejects.toBeInstanceOf(GiphyError);
+    const down = providerWith(() => Promise.reject(new Error('connect refused')));
+    await expect(down.trending({ limit: 25 })).rejects.toBeInstanceOf(GiphyError);
+    const badJson = providerWith(() => Promise.resolve({ status: 200, body: 'not json' }));
+    await expect(badJson.search('cat', { limit: 25 })).rejects.toBeInstanceOf(GiphyError);
+    // Neutral: no status, no body, no host in the message.
+    await expect(non2xx.search('cat', { limit: 25 })).rejects.toThrow(
+      'GIF provider request failed',
+    );
+  });
+
+  it('throws when resolution fails or yields a blocked address', async () => {
+    const noDns = createGiphyProvider({
+      apiKey: 'test-key',
+      rating: 'pg-13',
+      resolver: () => Promise.reject(new Error('dns down')),
+    });
+    await expect(noDns.search('cat', { limit: 25 })).rejects.toBeInstanceOf(GiphyError);
+    const blocked = createGiphyProvider({
+      apiKey: 'test-key',
+      rating: 'pg-13',
+      resolver: () => Promise.resolve(['127.0.0.1']),
+    });
+    await expect(blocked.search('cat', { limit: 25 })).rejects.toBeInstanceOf(GiphyError);
   });
 });
 

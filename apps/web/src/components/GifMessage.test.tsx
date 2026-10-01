@@ -3,10 +3,12 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { Attachment } from '@galena/chat-core';
 import { GifMessage, isGifVideoAttachment } from '@/components/GifMessage';
 
-function gifVideo(name = 'gif-abc123.gif'): Attachment {
+const TRUSTED = new Set(['files.galena.test', 'upload.galena.test']);
+
+function gifVideo(name = 'gif-abc123.mp4'): Attachment {
   return {
     kind: 'file',
-    url: 'https://files.galena.test/get/1/gif-abc123.gif',
+    url: 'https://files.galena.test/get/1/gif-abc123.mp4',
     name,
     size: 1024,
     mime: 'video/mp4',
@@ -14,14 +16,32 @@ function gifVideo(name = 'gif-abc123.gif'): Attachment {
 }
 
 describe('isGifVideoAttachment', () => {
-  it('matches GIF-origin videos only', () => {
-    expect(isGifVideoAttachment(gifVideo())).toBe(true);
-    expect(isGifVideoAttachment({ ...gifVideo(), mime: 'video/webm' })).toBe(true);
+  it('matches GIF-origin videos on trusted hosts only', () => {
+    expect(isGifVideoAttachment(gifVideo(), TRUSTED)).toBe(true);
+    expect(isGifVideoAttachment({ ...gifVideo(), mime: 'video/webm' }, TRUSTED)).toBe(true);
     expect(
-      isGifVideoAttachment({ ...gifVideo('photo.png'), mime: 'image/png', kind: 'image' }),
+      isGifVideoAttachment({ ...gifVideo('photo.png'), mime: 'image/png', kind: 'image' }, TRUSTED),
     ).toBe(false);
-    expect(isGifVideoAttachment({ ...gifVideo('notes.pdf'), mime: 'application/pdf' })).toBe(false);
-    expect(isGifVideoAttachment({ ...gifVideo('clip.mp4') })).toBe(false);
+    expect(
+      isGifVideoAttachment({ ...gifVideo('notes.pdf'), mime: 'application/pdf' }, TRUSTED),
+    ).toBe(false);
+    expect(isGifVideoAttachment({ ...gifVideo('clip.mp4') }, TRUSTED)).toBe(false);
+  });
+
+  it('accepts same-origin /api/ paths without a host entry', () => {
+    expect(isGifVideoAttachment({ ...gifVideo(), url: '/api/gifs/media/token-1' }, new Set())).toBe(
+      true,
+    );
+  });
+
+  it('rejects absolute external URLs even with a gif- name and video mime', () => {
+    const attacker = {
+      ...gifVideo('gif-x'),
+      url: 'https://attacker.test/x.mp4',
+    };
+    expect(isGifVideoAttachment(attacker, TRUSTED)).toBe(false);
+    expect(isGifVideoAttachment(attacker, new Set())).toBe(false);
+    expect(isGifVideoAttachment({ ...attacker, url: 'javascript:alert(1)' }, TRUSTED)).toBe(false);
   });
 });
 

@@ -3102,6 +3102,72 @@ describe('attachments (T-0065)', () => {
     expect(incoming?.attachment?.url).toBe('https://files.example.com/random.bin');
   });
 
+  it('strips the gif- prefix of an incoming GIF-video on an untrusted host', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'att-gif-untrusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'file',
+            url: 'https://attacker.test/x.mp4',
+            name: 'gif-x',
+            size: 1024,
+            mime: 'video/mp4',
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'att-gif-untrusted');
+    // The rename breaks the inline-video match, so the bubble renders a
+    // click-to-load file card; the download link keeps working.
+    expect(incoming?.attachment?.kind).toBe('file');
+    expect(incoming?.attachment?.name).toBe('x');
+    expect(incoming?.attachment?.url).toBe('https://attacker.test/x.mp4');
+  });
+
+  it('keeps the gif- prefix of an incoming GIF-video on the trusted upload host', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'att-gif-trusted',
+        chatJid: 'ana@galena.test',
+        body: '',
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'file',
+            url: 'https://upload.galena.test/get/1/gif-abc.mp4',
+            name: 'gif-abc',
+            size: 1024,
+            mime: 'video/mp4',
+          },
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@galena.test')
+      .find((m) => m.id === 'att-gif-trusted');
+    expect(incoming?.attachment?.kind).toBe('file');
+    expect(incoming?.attachment?.name).toBe('gif-abc');
+    expect(incoming?.attachment?.url).toBe('https://upload.galena.test/get/1/gif-abc.mp4');
+  });
+
   it('maps history attachments through the same trusted-host check', async () => {
     const xmpp = fakeXmpp();
     xmpp.history['ana@galena.test'] = [

@@ -106,6 +106,13 @@ pnpm build
 4. **Abort test now asserts stale discard**: the first search mock settles normally *after* the abort (no abort listener, like a same-tick completion), resolving with the old items; the test asserts the grid shows only the fresh item. Verified the test fails when the `signal.aborted` guard is removed (1 failed) and passes with it.
 - While writing the new budget test I found the fake's second seed item (`Fake dog`) carries only `previewUrl` (no mp4/gif), so `shape()` drops it and a token taken from a `q=dog` search is empty: the test takes its token from the `q=cat` search instead. No production change.
 
+### Review fixes round 2 (PREREVIEW.md at d1e3fdb, lead items 1–4)
+1. **Must, privacy — untrusted-host GIF-video bypass closed at both layers.** `sanitizeIncomingAttachment` now also matches incoming `file` attachments with a `gif-` name + video mime: on an untrusted host the prefix is stripped (breaking the inline-video match, never empty — bare `gif-` becomes `file`) and dimensions dropped, keeping a working click-to-load download link; trusted-host echoes keep the name and render inline. `isGifVideoAttachment` additionally requires a trusted URL (same-origin `/api/` path or absolute URL on the store's media hosts); `MessageBubble` threads `mediaTrustedHosts` (new `ChatStoreState` field, set on connect/refresh, cleared on stop; mock leaves it undefined = fail closed). Tests: real-store rename + trusted-echo cases; seeded attacker `file/gif-x/video/mp4 → https://attacker.test/x.mp4` renders a file card with no element carrying that `src`; `GifMessage` unit cases for trusted/untrusted/relative/`javascript:` URLs.
+2. **Should — send path uses the blob's real content type.** New `gifBlobType` in `lib/attachments.ts` maps the four proxied types to mime+extension, falling back to the result kind for unexpected types (mock art). Composer names files `gif-<id>.<ext>`. Tests: `gifBlobType` unit cases + a Composer webm send asserting `video/webm`, `file` kind and `gif-*.webm` name.
+3. **Nit — docs**: media proxy 600/min budget documented in `docs/SERVER_CONFIG.md`.
+4. **Nit — provider failures are retryable 502s.** `giphy.ts` throws neutral `GiphyError` on DNS/blocked/fetch/non-2xx/bad-JSON; routes map it to 502 `gif_search_failed` with no provider detail. Panel already shows Retry (never "No GIFs found") for non-501 errors; added an explicit 502 → Retry test. Server tests for every throw path + neutral message.
+- Regression check: the round-1 abort test verified to fail with the `signal.aborted` guard removed.
+
 ---
 
 ## Review (written by Claude)
