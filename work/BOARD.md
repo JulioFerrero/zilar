@@ -174,10 +174,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0121](T-0121-sticker-creator.md) | sticker pack creator, favorites, panel reorder (migration 0032) | 2026-10-01 |
 | [T-0147](T-0147-mobile-nits.md) | mobile nits: group fetch ordering, join link cleanups, jump-scroll retries | 2026-10-01 |
 | [T-0148](T-0148-mobile-gifs.md) | Mobile GIFs: render proxied GIFs, GIF tab in the sticker sheet, send (mobile only) | planned | meta/muse-spark-1.3-contributor | T-0122, T-0143, T-0150 | Blocked 2026-10-01: mobile had no attachment upload or video; waits for T-0150 |
-| [T-0150](T-0150-mobile-attachments.md) | Mobile attachments: pick, upload (XEP-0363), render images/files/video, trust rules (new deps: expo image/document pickers, expo-image, expo-video) | planned | meta/muse-spark-1.3-contributor | T-0143 | Spec ready |
 | [T-0151](T-0151-deploy-storage-safety.md) | Production storage safety: sticker volume, backups of both file stores, disk check in doctor, ejabberd upload quota | planned | meta/muse-spark-1.3-contributor | T-0145 | Spec ready, not launched (Julio asked to close tasks first) |
 | [T-0146](T-0146-web-server-nits.md) | web/server nits: sticker dir warning, leave 404, AI reload, GIF host rule, GIF tab | 2026-10-01 |
 | [T-0143](T-0143-mobile-stickers.md) | mobile stickers: render, panel, send, recents, mock packs | 2026-10-01 |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Telegram sticker pack importer | 2026-10-01 |
 | [T-0149](T-0149-docs-refresh.md) | Docs refresh | 2026-10-01 |
 | [T-0145](T-0145-deploy-push.md) | Push in the production deploy | 2026-10-01 |
+| [T-0150](T-0150-mobile-attachments.md) | Mobile attachments | 2026-10-01 |
