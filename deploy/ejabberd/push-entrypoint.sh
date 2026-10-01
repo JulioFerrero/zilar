@@ -44,17 +44,14 @@ fi
 # The host key is YAML-indented under `hosts:` (six spaces). The domain was
 # validated by `./galena init` (letters, digits, dots, hyphens, one optional
 # :port — no spaces, slashes or `$`), so it cannot break the line shape.
-# GNU and BSD sed both take the script after -i (BSD wants an empty backup
-# suffix as a separate argument), so pick the flag by probing. The
-# replacement touches only the host key text: the marker comment is
-# stripped, and the existing `password:` line underneath is left alone
-# (an earlier version re-added it and duplicated the line).
-if sed --version >/dev/null 2>&1; then
-  _sed_inplace="sed -i"
-else
-  _sed_inplace="sed -i ''"
-fi
-$_sed_inplace "s|^\\( *\\)[^ \t#][^:]*:[ \t]*# GALENA_PUSH_COMPONENT_HOST$|\\1$PUSH_HOST:|" "$CONFIG_PATH"
+# Portable in-place edit: `sed -i` needs an argument on BSD (a backup
+# suffix) but takes the script directly on GNU, so always pass a backup
+# suffix and remove it afterwards — works on both. The replacement touches
+# only the host key text: the marker comment is stripped, and the existing
+# `password:` line underneath is left alone (an earlier version re-added it
+# and duplicated the line).
+sed -i.bak "s|^\\( *\\)[^ \t#][^:]*:[ \t]*# GALENA_PUSH_COMPONENT_HOST$|\\1$PUSH_HOST:|" "$CONFIG_PATH"
+rm -f "$CONFIG_PATH.bak"
 
 if ! grep -q "^[[:space:]]*$PUSH_HOST:[[:space:]]*$" "$CONFIG_PATH"; then
   echo "push-entrypoint: error: failed to write the push component host into $CONFIG_PATH" >&2

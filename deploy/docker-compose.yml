@@ -77,9 +77,12 @@ services:
       REGISTER_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required}
       EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required}
       # Push component (T-0145, XEP-0114): the secret the server's component
-      # authenticates with. Must equal the server's PUSH_COMPONENT_SECRET;
-      # the placeholder default matches the placeholder in the yml, so a
-      # fresh install without push secrets fails closed, never open.
+      # authenticates with. Must equal the server's PUSH_COMPONENT_SECRET.
+      # The placeholder default matches the placeholder in the yml: with it
+      # the component handshake fails (wrong secret) and the server answers
+      # its push routes from an unconfigured component — push stays
+      # non-functional until a real secret is set on both sides. `doctor`
+      # flags the placeholder in plain words.
       EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}
       GALENA_DOMAIN: ${GALENA_DOMAIN:?GALENA_DOMAIN is required}
       GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required}

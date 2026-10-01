@@ -126,7 +126,9 @@ fi
 rm -f "$PROBE_FILE"
 trap - EXIT INT TERM
 
-# 3. --no-push writes no secrets and no empty values.
+# 3. --no-push writes no secrets and no empty values; both compose files
+# still render with that env, and the rendered server env carries
+# PUSH_ENABLED=false.
 T_OFF="$(make_env "push-off.example" "--no-push")"
 if grep -qE "^(PUSH_VAPID_PUBLIC_KEY|PUSH_VAPID_PRIVATE_KEY|PUSH_COMPONENT_SECRET|PUSH_STORAGE_KEY)=" "$T_OFF/.env"; then
   bad "--no-push still wrote push secret lines"
@@ -138,6 +140,44 @@ if grep -qE "^(PUSH_VAPID_PUBLIC_KEY|PUSH_VAPID_PRIVATE_KEY|PUSH_VAPID_SUBJECT|P
 else
   ok "--no-push leaves no empty push values"
 fi
+# The Coolify render with --no-push values needs its own Coolify-style
+# env (the wizard writes plain-stack vars, not SERVICE_PASSWORD_* ones).
+cat > "$T/cool-off.env" <<EOF
+IMAGE_OWNER=testowner
+IMAGE_TAG=t0145
+SERVICE_PASSWORD_POSTGRES=x1
+SERVICE_PASSWORD_GALENA_DB=x2
+SERVICE_PASSWORD_EJABBERD_DB=x3
+SERVICE_PASSWORD_ARCHIVE_DB=x4
+SERVICE_PASSWORD_EJABBERD_ADMIN=x5
+SERVICE_PASSWORD_XMPP_JWT=x6
+SERVICE_PASSWORD_BETTER_AUTH=x7
+SERVICE_PASSWORD_PUSH_COMPONENT=x8
+XMPP_DOMAIN=push-off.example
+XMPP_MUC_DOMAIN=rooms.push-off.example
+WEB_ORIGIN=http://localhost:18080
+SERVICE_URL_SERVER_3000=http://localhost:18081
+SERVICE_URL_EJABBERD_WS_5280=http://localhost:18082
+SERVICE_URL_WEB_80=http://localhost:18080
+PUSH_ENABLED=false
+EOF
+for _file in "deploy/docker-compose.yml" "deploy/coolify/docker-compose.yml"; do
+  if [ "$_file" = "deploy/coolify/docker-compose.yml" ]; then
+    _off_env="$T/cool-off.env"
+  else
+    _off_env="$T_OFF/.env"
+  fi
+  if docker compose -f "$ROOT/$_file" --env-file "$_off_env" config > "$T/off-rendered.yml" 2> "$T/off-render.err"; then
+    ok "$_file renders with the --no-push env"
+  else
+    bad "$_file does not render with the --no-push env: $(head -n 2 "$T/off-render.err")"
+  fi
+  if grep -q 'PUSH_ENABLED: "false"' "$T/off-rendered.yml"; then
+    ok "$_file rendered server env carries PUSH_ENABLED=false with --no-push"
+  else
+    bad "$_file rendered server env does not carry PUSH_ENABLED=false with --no-push"
+  fi
+done
 
 # 4. Both compose files render; the two component secrets agree; no 5347
 #    host port; the derived host matches PUSH_COMPONENT_JID.
@@ -244,11 +284,13 @@ fi
 cp "$ENV_FILE" "$T/tampered.env"
 sed -i.bak 's/^PUSH_VAPID_PUBLIC_KEY=.*/PUSH_VAPID_PUBLIC_KEY=short/' "$T/tampered.env"
 sed -i.bak 's/^PUSH_COMPONENT_JID=.*/PUSH_COMPONENT_JID=wrong.example/' "$T/tampered.env"
+sed -i.bak 's/^PUSH_COMPONENT_SECRET=.*/PUSH_COMPONENT_SECRET=CHANGE_ME_PUSH_COMPONENT_SECRET/' "$T/tampered.env"
 if "$GALENA" --env-file="$T/tampered.env" doctor > "$T/doctor-bad.log" 2>&1; then
   bad "doctor passed a tampered push env"
 else
   if grep -q "PUSH_VAPID_PUBLIC_KEY has the wrong shape" "$T/doctor-bad.log" \
-    && grep -q "PUSH_COMPONENT_JID (wrong.example) is not push.push-test.example" "$T/doctor-bad.log"; then
+    && grep -q "PUSH_COMPONENT_JID (wrong.example) is not push.push-test.example" "$T/doctor-bad.log" \
+    && grep -q "PUSH_COMPONENT_SECRET is still the placeholder" "$T/doctor-bad.log"; then
     ok "doctor names the tampered push values in plain words"
   else
     bad "doctor failed but did not name the push problems"

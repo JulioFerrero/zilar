@@ -646,6 +646,11 @@ cmd_doctor() {
         doctor_bad "PUSH_STORAGE_KEY is too short (want at least 32 characters)" "re-run '$PROG init --force' to regenerate it (old devices are orphaned)"
         _push_ok=0
       fi
+      _component_secret="$(env_get PUSH_COMPONENT_SECRET)"
+      if [ -z "$_component_secret" ] || [ "$_component_secret" = "CHANGE_ME_PUSH_COMPONENT_SECRET" ]; then
+        doctor_bad "PUSH_COMPONENT_SECRET is still the placeholder" "set a real secret in $ENV_FILE (generate one with: openssl rand -base64 32) and set the same value as the ejabberd secret — anyone holding the placeholder can impersonate the push component"
+        _push_ok=0
+      fi
       _component_jid="$(env_get PUSH_COMPONENT_JID)"
       if [ -z "$_component_jid" ]; then
         doctor_bad "PUSH_COMPONENT_JID is missing in $ENV_FILE" "set PUSH_COMPONENT_JID=push.$(env_get GALENA_DOMAIN) (it must equal the ejabberd listener host)"
