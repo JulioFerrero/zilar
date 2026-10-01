@@ -25,9 +25,24 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Safe rich text | Markdown in AI replies (safe subset, no HTML, no images, `http/https/mailto` links only) | web, mobile | 🟡 Merged | T-0049, T-0064 |
 | Topics in groups | Each group has topics (public or private) with General first; members-only rooms, a task strip with owner and status, new-topic dialog, topic panel; AIs are per topic. Web and mobile | server, web, mobile | 🟡 Merged | T-0108, T-0109, T-0110, T-0111, T-0112, T-0130 |
 | Chat preferences | Per-user mute, archive and pin for chats and topics | server, web | 🟡 Merged | T-0113 |
-| Message search | Across DMs, groups and topics through a read-only archive role; results jump to the message | server, web | 🟡 Merged | T-0117 |
-| Pinned messages | Banner and list in chats, groups and topics | server, web | 🧭 In review | T-0114 |
-| Voice, push notifications | Designed, not built | | 🧭 Planned | plan §6.5, §6.7 |
+| Message search | Across DMs, groups and topics through a read-only archive role; prefix and typo tolerant; results jump to the message | server, web, mobile | 🟡 Merged | T-0117, T-0138, T-0142 |
+| Pinned messages | Banner and list in chats, groups and topics (20-pin cap); same banner and list on mobile | server, web, mobile | 🟡 Merged | T-0114, T-0135 |
+| Invite links | Shareable join links with expiry, max uses and revoke; join page; same on mobile | server, web, mobile | 🟡 Merged | T-0115, T-0136, T-0140 |
+| Group roles | Named roles with private-topic access and approver rights; member chips; same on mobile | server, web, mobile | 🟡 Merged | T-0116, T-0137 |
+| Smarter search | Prefix match, accent folding, typo tolerance | server | 🟡 Merged | T-0142 |
+| Web push and installable app | PWA (installable, offline fallback) plus push notifications behind `PUSH_*`; mute-aware, dismiss-on-read | server, web | 🟡 Merged (needs HTTPS + VAPID keys on a real deploy) | T-0119 |
+| Stickers | User-made packs (PNG/WebP, size-checked), sticker panel, sending and rendering; same on mobile | server, web, mobile | 🟡 Merged | T-0120, T-0143 |
+| Sticker creator and favorites | Make packs from photos, star favorites, reorder the panel | server, web | 🟡 Merged | T-0121 |
+| GIFs | GIF search and sending through a privacy proxy; sent GIFs stored by us; off until `GIF_PROVIDER` + `GIF_API_KEY` are set | server, web | 🟡 Merged (needs Julio's provider key) | T-0122 |
+| Channels | One-way feeds: only admins post, subscribers read-only | server, web, mobile | 🟡 Merged | T-0124, T-0144 |
+| Tool host approval | New sites a tool wants to contact need one approval per tool; runs use declared ∩ approved hosts; approvals happen through the AI's card | server, web | 🟡 Merged (off by default) | T-0132 |
+| Model side of AI tools | Tool guide in the turn, several model rounds per turn, "working on it" progress line | server | 🟡 Merged (not tried against a real model yet) | T-0106 |
+| Tools and Routines UI | Tool list, read-only source, version history with revert, Run now, routines with plain-words schedules, pause/resume/delete | web | 🟡 Merged | T-0107 |
+| Voice messages | Designed, not built | | 🧭 Planned | plan §6.5 |
+| Telegram sticker import | Bring your Telegram packs (needs a bot token in the server config) | server | 🟡 Merged (not yet tried with a real bot) | T-0123 |
+| Mobile GIFs | Render and send GIFs on the phone | | 🧭 Planned | T-0148 |
+| Push in the production deploy | ejabberd component, compose, wizard keys, doctor | | 🧭 Planned | T-0145 |
+| Native iOS push | Push chain through Apple's servers (needs an Apple Developer account) | | 🧭 Planned | T-0005 |
 
 ## 2. Accounts and identity
 
@@ -78,15 +93,11 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 
 | Feature | What it does | Where | Status | Tasks |
 |---|---|---|---|---|
-| Tool sandbox | Model-written JavaScript runs in QuickJS/WebAssembly inside a worker thread with time, memory, output and fetch limits; the only door out is a GET-only, HTTPS-only `fetch` to an exact host allowlist with DNS pinning and a private-address guard | server | 🟡 Merged (not wired yet) | T-0102 |
-| Versioned tools store | Each tool belongs to one AI in one chat; append-only history with a message per version, revert is a new version, manual run, read routes, audit without code or output | server | 🟡 Merged (not wired yet) | T-0103 |
-| Routines and scheduler | A stored tool plus a schedule that posts as the AI; hourly minimum, exactly-once slots, auto-pause after 3 failures, pinned to the sites a human approved | server | 🧭 Planned | T-0104 |
-| Tool and routine actions | `tool.save`, `tool.run`, `routine.schedule` through the gateway; scheduling needs an approval card that lists the sites and can never be "always allowed" | server | 🧭 Planned | T-0105 |
-| Tool and routine actions (wired) | Adapters and sandbox wiring behind `TOOLS_ENABLED`; results reach the model as untrusted text | server | 🟡 Merged (off by default) | T-0105 |
-| Routines scheduler (merged) | Scheduler, DST-correct schedules, host pinning, 3-failure pause, behind `ROUTINES_ENABLED` | server | 🟡 Merged (off by default) | T-0104 |
+| Tool sandbox | Model-written JavaScript runs in QuickJS/WebAssembly inside a worker thread with time, memory, output and fetch limits; the only door out is a GET-only, HTTPS-only `fetch` to an exact host allowlist with DNS pinning and a private-address guard | server | 🟡 Merged | T-0102 |
+| Versioned tools store | Each tool belongs to one AI in one chat; append-only history with a message per version, revert is a new version, manual run, read routes, audit without code or output | server | 🟡 Merged | T-0103 |
+| Routines scheduler | A stored tool plus a schedule that posts as the AI; hourly minimum, exactly-once slots, auto-pause after 3 failures, pinned to the sites a human approved; behind `ROUTINES_ENABLED` | server | 🟡 Merged (off by default) | T-0104 |
+| Tool and routine actions | `tool.save`, `tool.run`, `routine.schedule` through the gateway, wired to the sandbox behind `TOOLS_ENABLED`; scheduling needs an approval card that lists the sites and can never be "always allowed"; results reach the model as untrusted text | server | 🟡 Merged (off by default) | T-0105 |
 | Keyless web tools | Guarded fetch, Wikipedia, prices, feeds, best-effort search for AIs, behind `WEB_TOOLS_ENABLED` | server | 🟡 Merged (off by default) | T-0125 |
-| Model side | Prompt guide, more model rounds per turn, a "working on it" line, a live example in the chat → [`AI_TOOLS.md`](AI_TOOLS.md) | server | 🧭 Planned | T-0106 |
-| Tools and Routines UI | See the code and its history, run, pause and delete | web | 🧭 Planned | T-0107 |
 
 ## 7. Design and clients
 
@@ -106,8 +117,9 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Server foundation | zod config, redacted logs, JSON errors, request ids, Drizzle migrations at startup, PGlite tests | server | ✅ Live | T-0014 |
 | Protocol | Versioned payload schemas for rich messages (cards, progress, attachments, approvals) | package | ✅ | T-0013 |
 | Server configuration reference | Every env var, flag, migration, background job and health check | docs | ✅ | T-0094 → [`SERVER_CONFIG.md`](SERVER_CONFIG.md) |
-| Self-hosted install | Production images and compose (Caddy, Coolify), SMTP sign-in codes, install guide ([`INSTALL_DOCKER.md`](INSTALL_DOCKER.md)); Coolify without bind mounts in review | deploy | 🟡 Merged | T-0126, T-0128, T-0129 |
+| Self-hosted install | Production images and compose (Caddy, Coolify; config baked into images, no bind mounts), SMTP sign-in codes, `./deploy/galena init/up/doctor/backup/restore/create-admin`, bare-metal guide ([`INSTALL_DOCKER.md`](INSTALL_DOCKER.md)) | deploy | 🟡 Merged (wizard proven live on scratch containers) | T-0126, T-0128, T-0129, T-0127 |
 | Built by an AI team | A lead Claude writes specs and reviews every diff; workers implement in isolated worktrees; the `lead` CLI launches, supervises, reviews and merges; a fail-closed permission policy guards what workers may run | devtools | ✅ | T-0038, T-0051 → [`LEAD_PLAYBOOK.md`](LEAD_PLAYBOOK.md) |
+| Mobile parity (chat prefs, pins, invites, roles, search, channels, stickers) | Per-user mute/archive/pin, pinned banner, invite links, roles, message search, channels, stickers — same features as web | mobile | 🟡 Merged (not run on a simulator or device yet) | T-0135, T-0136, T-0137, T-0138, T-0139, T-0140, T-0143, T-0144, T-0147 |
 
 ## Timeline
 
@@ -116,4 +128,5 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | 2026-09-27 | Monorepo, protocol, infrastructure, server foundation, invite-only auth, XMPP with JWT login, chat core, web and mobile shells, first agent driver |
 | 2026-09-28 | Web and mobile on real data (**M1**), provider connections, AIs on the server (**M2**), streaming replies, persona by chat, AIs in groups, reactions, edit and delete, redesign, costs and limits |
 | 2026-09-29 | Attachments, audit log, kill switch, machines and runner hub (**M3**), approvals, action gateway, "always allow" rules (**M4**), tool sandbox and tools store |
-| 2026-09-30 | Topics (server, web, mobile), chat preferences, message search, routines scheduler and tool adapters, keyless web tools, production images, SMTP mailer; pinned messages and Coolify config in review |
+| 2026-09-30 | Topics (server, web, mobile), chat preferences, message search, routines scheduler and tool adapters, keyless web tools, production images, SMTP mailer, install wizard, invite links, group roles, pinned messages, stickers, channels, tools UI, tool host approval, mobile parity |
+| 2026-10-01 | Web push + PWA, smarter search, GIFs, sticker creator, model side of AI tools, mobile stickers and channels |

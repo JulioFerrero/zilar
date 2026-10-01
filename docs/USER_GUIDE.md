@@ -80,9 +80,80 @@ On a phone the same Messages section appears under the list while you type.
 
 ![Message search on a phone](screenshots/search-phone.png)
 
+## Invite links
+
+Every group has shareable **invite links**: a short web address that lets someone join that group directly, without you adding them one by one.
+
+- **Create** one from the group's panel (click the group name, then Invite links): give it a label like "Design friends", and optionally an expiry (hours, up to a year) and a maximum number of uses.
+- **Share** the link anywhere. Whoever opens it sees a preview of the group, signs in (or creates their account first), and joins.
+- **Revoke** a link any time from the same list: the address stops working at once, while people who already joined stay.
+- Only the group's owner or admins create, list and revoke links. Each link shows how many times it has been used, and whether it is expired or used up.
+- On the phone the same three actions work: the group screen has an invite-links sheet (owner/admin only) with create (label up to 60 characters, expiry up to a year, up to 10,000 uses), the uses/state list, and revoke — plus a "Join with a link" form that opens a preview card with Join/Cancel. (The mock/demo join preview always reports you as already a member; the real join path is tested, not demoed.)
+
+## Roles and private topics
+
+Bigger groups can hand out **roles**: named badges like "Designers" or "Approvers", managed by the group's owner and admins from the group panel.
+
+- A role has two powers: it can open **private topics** (below), and its holders can **approve AI requests** in the group's topics.
+- Members see their own roles as chips next to their names. Adding or removing someone takes effect immediately.
+
+**Private topics with roles.** A private topic can be opened to whole roles instead of named people: anyone holding the "Designers" role sees the topic, and someone who loses the role loses access at once. The rule from before still holds: a group owner or admin who is not in the private topic cannot see it.
+
+- Making a private topic public shows its whole history to the group, so the app asks for an explicit confirmation first. Going public also removes the topic's roles.
+- If a private topic ends up with nobody in it, it is archived automatically.
+
+## Channels
+
+A **channel** is a one-way feed inside a group: only the group's owner and admins can post, everyone else reads. Good for announcements, release notes, or a feed your AI posts into.
+
+- Create one from **New chat → New channel**. It looks like an ordinary chat, except subscribers see a read-only bar instead of the composer, and the member list shows just the people who can post.
+- Promoting or demoting an admin changes who can post immediately. The last admin cannot be demoted.
+- Someone joins a channel the same way as a group: added by an admin, or through an invite link.
+
+## Stickers (use, create, favorites)
+
+**Use.** Open the sticker panel from the composer (the smiley button) and pick a pack, then a sticker: it sends as its own message. Stickers are small static pictures (PNG or WebP); an emoji in the chat usually stands in for the same picture.
+
+**Create.** From the sticker panel choose **Create pack**, or open **Settings → Stickers** for the full manager: give it a name, add photos from your device, and save. Photos that are too big are shrunk; anything that is not a real picture is rejected.
+
+**Share.** Every pack is either **Private** (only you see it) or **Shared**: a shared pack can be found by everyone on your Galena server and added to their own panel. Flip a pack between the two any time from Settings → Stickers (**Share** / **Make private**); other people still see only the packs they added, plus the stickers sent in chats.
+
+**Favorites.** Long-press (or star) any sticker to add it to **Favorites**: your own cross-pack collection, always one tap away at the front of the panel. Unstar to remove.
+
+- You can reorder the panel so your favorite packs come first.
+- Your packs are yours: other people see only the stickers you send, not your whole collection.
+- Everything above works on the phone app too, with the same panel in the chat.
+
+## GIFs (and how the owner turns them on)
+
+Next to stickers in the same panel there is a **GIFs** tab: search for a word ("applause", "facepalm") and send the clip. A sent GIF is stored by Galena itself, so watching it never contacts the GIF provider.
+
+GIFs are **off until the server owner turns them on**: they need a provider key from Julio (`GIF_PROVIDER` plus `GIF_API_KEY` in the server's settings). Until then the GIFs tab says it is not available. Sending GIFs from the phone app is still being built.
+
+## Notifications and installing the app
+
+Galena can notify you of new messages even when the chat is closed, and it installs on your phone or desktop like a native app.
+
+- **Notifications** live under **Settings → Notifications**: turn them on, and your browser asks once for permission. You can list your devices, remove ones you no longer use, choose whether message text shows in the notification, and send yourself a test.
+- Notifications follow your mutes: a muted chat never buzzes, and opening a chat clears its notification.
+- **Install the app**: on a phone use the browser's *Add to Home Screen* (on iPhone, Share → Add to Home Screen); on a desktop use the install button in the address bar. It opens full-screen with its own icon and works offline for the screens you already visited.
+- Heads-up: notifications need a real `https` address to reach real devices, so they only work once Julio has deployed Galena publicly. On a local install the settings page explains what is missing.
+
+## Search tips (prefix and typo tolerance)
+
+The search box (top of the list, or ⌘K / Ctrl+K) finds messages across all your DMs, groups and topics — but only chats you are allowed to see. A few tricks:
+
+- **Prefixes**: typing `hel` already finds "hello".
+- **Typos**: `heello` still finds "hello", and accents don't matter (`cafe` finds "café").
+- Type two or more letters; matching chat names come first, then a **Messages** section with the match highlighted. Enter opens the top hit.
+- The magnifier in a chat header searches only that chat (a chip names it; click the chip to search everywhere again).
+- On the phone, search has its own full screen with the same tricks, and opening a hit jumps straight to that message.
+
+The search box never shows you anything from a private topic you are not in — those hits simply don't appear.
+
 ## Pins
 
-Any message can be pinned. The banner under the chat title shows the newest pin (sender plus a line or two); with several pins it cycles ("1 of N"), and **List** opens every pin. Clicking a pin jumps to the message. Pin from the message's menu, unpin from the pins list. Up to 20 pins per chat.
+Any message can be pinned. The banner under the chat title shows the newest pin (sender plus a line or two); with several pins it cycles ("1 of N"), and **List** opens every pin. Clicking a pin jumps to the message. Pin from the message's menu, unpin from the pins list. Up to 20 pins per chat. Pins work in DMs, groups, topics and channels, and the phone app shows the same banner and list.
 
 ![Pinned message banner](screenshots/pins-desktop.png)
 
@@ -128,6 +199,8 @@ An AI can write small **tools** (code that runs on a schedule or on demand) and 
 
 These are designed but not in the app yet:
 
-- **(coming)** Voice messages and push notifications.
-- **(coming)** Routines ("every morning post gold, the S&P 500 and BTC"): an AI writes the tool, you approve it once, and it posts on a schedule. The scheduler is merged but off by default; the model side is still planned.
-- **(coming)** Stickers and GIFs, channels (one-way feeds), an install wizard, and group roles beyond owner/admin/member.
+- **(still needs devices)** Native push on iPhone through Apple's servers, and push in the production deploy — the web side is merged, the deploy wiring is still planned.
+- **(needs Julio)** GIFs until he adds the provider key; Telegram sticker import until he creates the bot token.
+- **(coming)** Voice messages.
+- **(merged)** The install wizard, backups and the bare-metal guide: the owner's install helper (`deploy/galena`) covers `init`, `up`, `doctor`, `backup`, `restore` and `create-admin` (details in `docs/INSTALL_DOCKER.md`).
+- **(coming)** GIFs on the phone: stickers already work there; the GIF tab is still planned.
