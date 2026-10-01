@@ -1,7 +1,7 @@
 ---
 id: T-0149
 title: Docs refresh: user guide and feature list for everything merged this week
-status: todo
+status: review
 milestone: M5
 branch: task/T-0149-docs-refresh
 model: meta/muse-spark-1.3-contributor
@@ -39,5 +39,31 @@ pnpm typecheck
 ```
 
 ## Report (written by the worker)
+
+### What I did
+- `docs/USER_GUIDE.md`: added seven non-technical sections (Invite links, Roles and private topics, Channels, Stickers, GIFs + owner enable step, Notifications and installing the app, Search tips) in the existing style; extended Pins with channels/mobile; replaced the stale "Coming next" list (stickers/GIFs/channels/push/roles/install wizard are merged) with what BOARD + ROADMAP_M5 still show as planned (voice, Telegram import T-0123, mobile GIFs T-0148, deploy push T-0145, native iOS push T-0005). No screenshot references added (see below).
+- `docs/FEATURES.md`: new rows for invites (T-0115), roles (T-0116), smarter search (T-0142), push+PWA (T-0118/T-0119), stickers (T-0120), creator/favorites (T-0121), GIFs (T-0122), channels (T-0124), host approval (T-0132), model side (T-0106), tools UI (T-0107), mobile parity bundle (T-0135–T-0140, T-0143, T-0144, T-0147), deploy rows (T-0126–T-0129), install wizard (T-0127); fixed the stale rows (pins was "In review" → Merged; sandbox/store/routines/actions were "not wired yet"/"Planned" → Merged); extended the timeline to 2026-09-30/10-01.
+- `README.md`: three new "What it does" rows (invites/roles/channels, stickers/GIFs, notifications) and an updated M5 status line.
+- Status marks: everything new is 🟡 Merged — no "✅ Live" anywhere new. No task I read claims a real-stack/device/browser live check for this week's features: invite/roles/search/push/stickers/GIFs/channels/tools-UI reviews all say "not live-checked / mock + tests only" (push stage A live against local ejabberd only, push Helium check open, GIFs need Julio's key, T-0127 wizard proven live on scratch containers but marked 🟡 since it is deploy tooling). Claim checks: private topics invisible to non-member admins (T-0116 decision 1 + review), 20-pin cap (T-0114), GIF off until key set (T-0122), HTTPS needed for push (ROADMAP_M5 "things only Julio can provide"), channels read-only via server moderation (ROADMAP_M5 decision 8), sticker limits PNG/WebP 512 KiB (ROADMAP_M5 decision 6), roles = two powers only (decision 10), search never leaks private topics (T-0117 authz design).
+- Screenshots: NOT regenerated and no new image links added. `pnpm exec playwright --version` works (1.63.0) but no Chromium binary is installed in this environment (`~/.cache/ms-playwright` absent; no headless_shell found), and downloading one needs `npx playwright install` approval I don't have. So the seven new guide sections ship without screenshot references, per the spec's fallback. Missing shots for a later run: invite-links, roles, channels, stickers, GIFs, notifications, search-tips (desktop + phone).
+- No code, specs, board, or other files touched. No `scripts/screenshots.ts` change needed (shot table untouched).
+
+### Files changed
+- `docs/USER_GUIDE.md`, `docs/FEATURES.md`, `README.md`, `work/T-0149-docs-refresh.md` (this Report + status).
+
+### Checks (real results)
+- `pnpm install`: pass (Done in 7.9s).
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint`: pass (oxlint, no output = clean).
+- `pnpm typecheck`: pass (10/10 tasks successful, 9.4s).
+- Tests: none added (docs-only task; per AGENTS.md I ran format/lint/typecheck, not package suites).
+
+### Could not verify
+- Exact web UI labels/paths (e.g. where "Create pack" or "Install app" buttons live) — verified only against task Reports/Reviews, not a running browser.
+- Push details (VAPID setup surface, test button, iOS A2HS hint) — from the T-0119 Report only; stage B live gate still the lead's check.
+- Mobile invite/roles/search/channels/sticker flows — mobile tasks say "to be run on the emulator after the batch merge"; guide claims kept generic.
+
+### Blocked / needs a decision
+- None. Screenshots need Chromium + a lead-approved install; listed above as missing, not blocking.
 
 ## Review (written by Claude)
