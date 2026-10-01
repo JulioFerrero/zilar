@@ -4,7 +4,8 @@ import { MessageSquare, Pencil, Plus, Trash2, Zap } from 'lucide-react';
 import { deleteAi, listAis, listConnections, type PublicAi } from '@/lib/api';
 import { AiBadge } from '@/components/AiBadge';
 import { Avatar } from '@/components/Avatar';
-import { AiPageShell, Button, FieldError } from '@/components/ais/AiPageShell';
+import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { providerLabel } from '@/components/ais/ConnectionPicker';
 import { describeAiError } from '@/components/ais/errors';
 import { formatLimit } from '@/components/ais/limits';
@@ -87,12 +88,12 @@ export function AisPage() {
   };
 
   return (
-    <AiPageShell
+    <SettingsShell
       title="My AIs"
       subtitle="Your AIs, their model and their spending limits."
       onBack={() => navigate('/')}
     >
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+      <div className={SETTINGS_COLUMN}>
         {status === 'loading' && <p className="text-[15px] text-muted-foreground">Loading…</p>}
 
         {status === 'error' && (
@@ -124,18 +125,21 @@ export function AisPage() {
         )}
 
         {status === 'ready' && ais.length > 0 && (
-          <>
-            <Button
-              type="button"
-              size="lg"
-              className="self-start rounded-full px-5"
-              onClick={() => setCreating(true)}
-            >
-              <Plus aria-hidden="true" />
-              Create AI
-            </Button>
+          <section aria-label="Your AIs" className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-[16px] font-semibold">Your AIs</h2>
+              <Button
+                type="button"
+                size="lg"
+                className="rounded-full px-5"
+                onClick={() => setCreating(true)}
+              >
+                <Plus aria-hidden="true" />
+                Create AI
+              </Button>
+            </div>
 
-            <ul className="flex flex-col gap-1">
+            <ul className="flex flex-col gap-2">
               {ais.map((ai) => (
                 <li key={ai.id}>
                   <AiRow
@@ -159,12 +163,12 @@ export function AisPage() {
                 </li>
               ))}
             </ul>
-          </>
+          </section>
         )}
       </div>
 
       {creating && <NewAiDialog onClose={() => setCreating(false)} />}
-    </AiPageShell>
+    </SettingsShell>
   );
 }
 
@@ -192,11 +196,11 @@ function AiRow({
   onConfirmDelete: () => void;
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-transparent px-3 py-2.5 transition-colors hover:bg-list-hover">
+    <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
       <Avatar id={ai.id} name={ai.name} size={44} />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-40">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[16px] font-semibold">{ai.name}</span>
+          <span className="text-[15px] font-medium">{ai.name}</span>
           <AiBadge />
           {ai.status !== 'active' && (
             <span className="rounded-full bg-badge-muted px-2 py-0.5 text-[11px] text-foreground">
@@ -204,7 +208,7 @@ function AiRow({
             </span>
           )}
         </div>
-        <p className="text-[13px] text-muted-foreground">
+        <p className="mt-0.5 text-[13px] text-muted-foreground">
           {templateLabel(ai.template)} · {ai.model}
           {providerName === undefined ? '' : ` · ${providerName}`}
         </p>
@@ -225,7 +229,7 @@ function AiRow({
           </>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
         {confirming ? (
           <>
             <button
@@ -250,6 +254,7 @@ function AiRow({
             <button
               type="button"
               aria-label={`Open chat with ${ai.name}`}
+              title={`Open chat with ${ai.name}`}
               onClick={onOpenChat}
               className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
@@ -258,6 +263,7 @@ function AiRow({
             <button
               type="button"
               aria-label={`Edit ${ai.name}`}
+              title={`Edit ${ai.name}`}
               onClick={onEdit}
               className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
@@ -266,6 +272,7 @@ function AiRow({
             <button
               type="button"
               aria-label={`Delete ${ai.name}`}
+              title={`Delete ${ai.name}`}
               onClick={onAskDelete}
               className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
             >

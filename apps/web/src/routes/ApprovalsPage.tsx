@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { ShieldCheck } from 'lucide-react';
 import { ApiError, decideApproval, listApprovals, type PublicApproval } from '@/lib/api';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
-import { AiPageShell } from '@/components/ais/AiPageShell';
+import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { ApprovalRow } from '@/components/approvals/ApprovalRow';
 import { ApprovalsListSkeleton } from '@/components/approvals/ApprovalsListSkeleton';
 import { expiresInText } from '@/components/approvals/formatRelative';
@@ -211,28 +211,67 @@ export function ApprovalsPage() {
   });
 
   return (
-    <AiPageShell
+    <SettingsShell
       title="Approvals"
       subtitle="Requests from your AIs that are waiting for you."
       onBack={() => navigate('/')}
     >
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-        {status === 'ready' && (
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="rounded-full px-3"
-              onClick={refresh}
-            >
-              Refresh
-            </Button>
-          </div>
+      <div className={SETTINGS_COLUMN}>
+        {status === 'ready' && ordered.length > 0 && (
+          <section aria-label="Pending approvals" className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-[16px] font-semibold">Waiting for you</h2>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="rounded-full px-3"
+                onClick={refresh}
+              >
+                Refresh
+              </Button>
+            </div>
+
+            <ul className="flex flex-col gap-2">
+              {ordered.map((row) => (
+                <li key={row.approval.id}>
+                  <ApprovalRow
+                    approval={row.approval}
+                    expiresIn={expiresInText(row.approval.expiresAt, now)}
+                    busy={row.busy}
+                    actionError={row.error}
+                    onApprove={() => void decide(row.approval.id, 'approve')}
+                    onDeny={() => void decide(row.approval.id, 'deny')}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {status === 'ready' && ordered.length === 0 && (
+          <section aria-label="Pending approvals" className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-[16px] font-semibold">Waiting for you</h2>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="rounded-full px-3"
+                onClick={refresh}
+              >
+                Refresh
+              </Button>
+            </div>
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <ShieldCheck className="size-8 text-muted-foreground" aria-hidden="true" />
+              <p className="text-[15px] text-muted-foreground">Nothing is waiting for you.</p>
+            </div>
+          </section>
         )}
 
         {notice !== '' && (
-          <p role="status" className="text-[13px] text-muted-foreground">
+          <p role="status" className="text-[14px] text-muted-foreground">
             {notice}
           </p>
         )}
@@ -247,31 +286,7 @@ export function ApprovalsPage() {
             </Button>
           </div>
         )}
-
-        {status === 'ready' && ordered.length === 0 && (
-          <div className="flex flex-col items-center gap-3 py-10 text-center">
-            <ShieldCheck className="size-8 text-muted-foreground" aria-hidden="true" />
-            <p className="text-[15px] text-muted-foreground">Nothing is waiting for you.</p>
-          </div>
-        )}
-
-        {status === 'ready' && ordered.length > 0 && (
-          <ul className="flex flex-col gap-2">
-            {ordered.map((row) => (
-              <li key={row.approval.id}>
-                <ApprovalRow
-                  approval={row.approval}
-                  expiresIn={expiresInText(row.approval.expiresAt, now)}
-                  busy={row.busy}
-                  actionError={row.error}
-                  onApprove={() => void decide(row.approval.id, 'approve')}
-                  onDeny={() => void decide(row.approval.id, 'deny')}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
-    </AiPageShell>
+    </SettingsShell>
   );
 }

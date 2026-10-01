@@ -107,7 +107,7 @@ function LocationProbe() {
 
 function renderMachinesPage() {
   const store = createChatStore({ chats: [] });
-  render(
+  const view = render(
     <AuthProvider value={auth}>
       <ChatStoreProvider store={store}>
         <MemoryRouter initialEntries={['/settings/machines']}>
@@ -119,7 +119,7 @@ function renderMachinesPage() {
       </ChatStoreProvider>
     </AuthProvider>,
   );
-  return store;
+  return { store, ...view };
 }
 
 afterEach(() => {
@@ -127,6 +127,20 @@ afterEach(() => {
 });
 
 describe('MachinesPage', () => {
+  it('renders inside the shared settings shell with the column class', async () => {
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([{ method: 'GET', path: '/api/machines', respond: () => jsonResponse(200, []) }]),
+    );
+
+    const { container } = renderMachinesPage();
+
+    expect(await screen.findByText(/No machines yet/)).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Machines' })).toBeTruthy();
+    expect(screen.getByText('Computers where your AIs can work.')).toBeTruthy();
+    expect(container.querySelector('.mx-auto.max-w-2xl')).not.toBeNull();
+  });
+
   it('shows a loading skeleton then the three sections', async () => {
     vi.stubGlobal(
       'fetch',

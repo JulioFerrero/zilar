@@ -38,6 +38,19 @@ afterEach(() => {
 });
 
 describe('ConnectionsPage', () => {
+  it('renders inside the shared settings shell with the column class', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, [])));
+
+    const { container } = renderPage();
+
+    expect(await screen.findByText('No provider connections yet')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Connections' })).toBeTruthy();
+    expect(
+      screen.getByText('Connect a provider account to use its models. API keys only for now.'),
+    ).toBeTruthy();
+    expect(container.querySelector('.mx-auto.max-w-2xl')).not.toBeNull();
+  });
+
   it('renders the empty state', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, [])));
 
@@ -53,9 +66,11 @@ describe('ConnectionsPage', () => {
     renderPage();
 
     expect(await screen.findByText('OpenAI')).toBeTruthy();
-    expect(screen.getByText('Work')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Test OpenAI key' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Remove OpenAI connection' })).toBeTruthy();
+    expect(screen.getByText(/Work · Added/)).toBeTruthy();
+    const testButton = screen.getByRole('button', { name: 'Test OpenAI key' });
+    expect(testButton.getAttribute('title')).toBe('Test OpenAI key');
+    const removeButton = screen.getByRole('button', { name: 'Remove OpenAI connection' });
+    expect(removeButton.getAttribute('title')).toBe('Remove OpenAI connection');
   });
 
   it('renders the error state with the server message', async () => {

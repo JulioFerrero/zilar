@@ -1,7 +1,7 @@
 ---
 id: T-0153
 title: Web settings pages layout (one centered shell, readable sizes, consistent cards)
-status: planned
+status: review
 milestone: M5
 branch: task/T-0153-web-settings-layout
 model: meta/muse-spark-1.3-contributor
@@ -46,5 +46,44 @@ pnpm --filter @galena/web test --maxWorkers=2 ConnectionsPage AisPage MachinesPa
 - Existing behavior and tests intact (layout assertions updated), new shell tests added.
 
 ## Report (written by the worker when done)
+
+### What I did
+- New shared shell (`apps/web/src/components/SettingsShell.tsx`): `SettingsShell` (back arrow + title + one-line description header, `data-testid="settings-shell"`), the shared `SETTINGS_COLUMN = 'mx-auto flex w-full max-w-2xl flex-col gap-4'` constant, plus `SettingsSection` / `SettingsCard` / `SettingsEmpty` recipes (section heading + card with readable title, muted second line and labeled actions). Body text is 14–15 px, cards are `rounded-xl border border-border bg-surface`.
+- `AiPageShell` intentionally left untouched: dialogs (`NewAiDialog`), panels and tools still import `Button`/`FieldError`/`SelectOption` from it; only the six settings routes moved to the new shell.
+- Connections: full-width header/body replaced by the shell; connections are now cards in a "Connections" section whose header holds the primary "Add a connection" button (the stray `+` text button is gone); label folded into the muted second line ("Work key · Added Sep 20"); the new-connection form is a surface card. Icon buttons (Test, Remove, Close, Show/Hide key) gained matching `title` tooltips.
+- My AIs: shell + a "Your AIs" section whose header holds the normal-size "Create AI" button; rows are bordered cards (title 15 px, muted second line) with `title` tooltips on the chat/edit/delete icon buttons. Empty state and all labels unchanged.
+- Machines: shell; "Add machine" now sits in the first visible section's header (pending → approved → revoked-only fallback); tiny uppercase section labels are 16 px semibold headings; revoked-collapse toggle got a `title`.
+- Approvals: shell; "Waiting for you" section header holds Refresh in both the list and empty states; empty text unchanged ("Nothing is waiting for you.").
+- Notifications: shell with the `max-w-2xl` column (was `max-w-xl`); "This device" is now a card naming the state in words — Enabled / Not enabled / Blocked by the browser ("Not supported" and server-off stay separate page states as before) — with Enable/Disable next to it; registration errors render as readable 14 px alerts; Devices rows, Message previews toggle and the Test button (now in the Test section header) are cards in the same column.
+- Stickers: moved onto the shell (small change, as the spec allowed); `SETTINGS_COLUMN` is now imported from the shell and re-exported so existing imports keep working; editor/create states are shell pages with subtitles; Up/Down/Unfavorite icon buttons gained `title` tooltips.
+- Tests: new `SettingsShell.test.tsx` (header, column class, section/card/empty recipes); one new shell test per page (heading + description + `.mx-auto.max-w-2xl` column); Connections list test now asserts the tooltip `title`s; AisPage list test asserts all three row icon-button `title`s; Notifications enable-flow test asserts the "Not enabled" → "Enabled" words. Two pre-existing tests needed updates for the new layout: Connections label (`Work · Added …` is one muted line) and the Notifications `afterEach` now also deletes the `defineProperty`-installed `serviceWorker`/`PushManager` globals (they survive `unstubAllGlobals` and were leaking push support into the unsupported-browser test once my new shell test ran first).
+
+### Files changed
+- `apps/web/src/components/SettingsShell.tsx` (new), `SettingsShell.test.tsx` (new)
+- `apps/web/src/routes/{Connections,Ais,Machines,Approvals,Notifications,Stickers}Page.tsx`
+- `apps/web/src/components/ais/AisPage.test.tsx`, `apps/web/src/routes/{Connections,Machines,Approvals,Notifications,Stickers}Page.test.tsx`
+- `work/T-0153-web-settings-layout.md` (status + this report)
+
+### Commands run and real results
+- `pnpm install`: ok (6.6s)
+- `pnpm format:check`: pass ("All matched files use Prettier code style!")
+- `pnpm lint` (oxlint): pass, no findings
+- `pnpm typecheck`: pass (10 tasks, turbo)
+- `pnpm --filter @galena/web test --maxWorkers=2 SettingsShell ConnectionsPage AisPage MachinesPage ApprovalsPage NotificationsPage StickersPage AiPageShell`: 7 files, 75 passed
+- Neighbours: `NewAiDialog AiPanel AiActivity ModelPicker ConnectionPicker PackEditor TelegramImport GifPanel StickerPanel Composer renderApp AppRoutes` — 9 files, 160 passed; `machines approvals ApprovedMachine PendingMachine RevokedMachine AddMachine ApprovalRow ApprovalsList` — 5 files, 56 passed
+
+### Browser verification — done in mock mode (read honestly)
+- No real-account check: the spec's sign-in path needs an email OTP from the server log and I did not attempt real auth at all. Instead: dev server with `VITE_MOCK=1` on port 5174 (mock auth signs straight in, no OTP, no rate-limit risk) + Playwright Chromium at 1280 px and 390 px, all six pages.
+- Measured per page/width: column x=304 w=672 centered in viewport at 1280; x=16 w=358 (16 px gutter) at 390; `centered=true`, `inViewport=true`, nothing stuck to the left edge on any page. Screenshots in `/tmp` (`t153-<page>-<width>.png`, not committed) confirm readable centered cards; viewed connections, ais, machines, notifications (headless shows "Blocked by the browser" with the Enable action — the correct words for a permission-denied browser), approvals and stickers at 1280, plus connections and notifications at 390.
+- Smallest rendered font on AI rows is 10 px (`AiBadge`, pre-existing, out of scope) and 11 px status pills/badges; body/title/secondary lines are 13–16 px everywhere. No page body text is below 14 px except the pre-existing badge/pill microcopy.
+- Icon-only buttons in my scope all carry matching `aria-label` + `title` (Back, Test/Remove connection, Show/Hide key, AI chat/edit/delete, sticker Move up/down, Unfavorite). Two do not, and are outside Allowed files: the Rename pencil in `components/machines/ApprovedMachineCard.tsx` and "Copy pairing code" in `components/machines/AddMachineDialog.tsx` (both have `aria-label`, no `title`). Suggested one-line follow-up for the lead.
+
+### Problems, deviations, open questions
+- Deviation: kept every existing route, label, test id and behavior; only concatenations changed (Connections "Work key · Added Sep 20"; Notifications "Push is on for this device." moved into the card's second line when enabled). The Connections/Test and Notifications/Push assertions were updated accordingly.
+- `SettingsCard`'s `children` slot is currently unused (pages compose the card markup inline where thumbnails/avatars are needed); left exported for future rows rather than deleting the shared recipe.
+- No new dependencies. No secrets touched.
+
+### Blocked / needs a decision
+- None. Ready for review; the lead may want the real-account look (spec step 6) plus the two machine-card `title` follow-ups above.
 
 ## Review (written by Claude)

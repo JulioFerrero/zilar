@@ -12,7 +12,7 @@ import {
 } from '@/lib/api';
 import type { Machine, PublicAi } from '@/lib/api';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
-import { AiPageShell } from '@/components/ais/AiPageShell';
+import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { AddMachineDialog } from '@/components/machines/AddMachineDialog';
 import { ApprovedMachineCard } from '@/components/machines/ApprovedMachineCard';
 import { MachineListSkeleton } from '@/components/machines/MachineListSkeleton';
@@ -272,12 +272,12 @@ export function MachinesPage() {
   }, [ais]);
 
   return (
-    <AiPageShell
+    <SettingsShell
       title="Machines"
       subtitle="Computers where your AIs can work."
       onBack={() => navigate('/')}
     >
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+      <div className={SETTINGS_COLUMN}>
         {status === 'loading' && <MachineListSkeleton />}
 
         {status === 'error' && (
@@ -291,18 +291,6 @@ export function MachinesPage() {
 
         {status === 'ready' && (
           <>
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                size="lg"
-                className="rounded-full px-5"
-                onClick={() => setAdding(true)}
-              >
-                <Plus aria-hidden="true" />
-                Add machine
-              </Button>
-            </div>
-
             {machines.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-10 text-center">
                 <Server className="size-8 text-muted-foreground" aria-hidden="true" />
@@ -322,9 +310,18 @@ export function MachinesPage() {
               <>
                 {pendingMachines.length > 0 && (
                   <section aria-label="Waiting for approval" className="flex flex-col gap-2">
-                    <h2 className="text-[13px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Waiting for approval
-                    </h2>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="text-[16px] font-semibold">Waiting for approval</h2>
+                      <Button
+                        type="button"
+                        size="lg"
+                        className="rounded-full px-5"
+                        onClick={() => setAdding(true)}
+                      >
+                        <Plus aria-hidden="true" />
+                        Add machine
+                      </Button>
+                    </div>
                     <ul className="flex flex-col gap-2">
                       {pendingMachines.map((machine) => (
                         <li key={machine.id}>
@@ -351,9 +348,20 @@ export function MachinesPage() {
 
                 {approvedMachines.length > 0 && (
                   <section aria-label="Your machines" className="flex flex-col gap-2">
-                    <h2 className="text-[13px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Your machines
-                    </h2>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="text-[16px] font-semibold">Your machines</h2>
+                      {pendingMachines.length === 0 && (
+                        <Button
+                          type="button"
+                          size="lg"
+                          className="rounded-full px-5"
+                          onClick={() => setAdding(true)}
+                        >
+                          <Plus aria-hidden="true" />
+                          Add machine
+                        </Button>
+                      )}
+                    </div>
                     <ul className="flex flex-col gap-2">
                       {approvedMachines.map((machine) => (
                         <li key={machine.id}>
@@ -381,18 +389,32 @@ export function MachinesPage() {
 
                 {revokedMachines.length > 0 && (
                   <section aria-label="Revoked machines" className="flex flex-col gap-2">
-                    <button
-                      type="button"
-                      aria-expanded={showRevoked}
-                      onClick={() => setShowRevoked((value) => !value)}
-                      className="flex items-center gap-1 self-start text-[13px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
-                    >
-                      <ChevronDown
-                        className={`size-4 transition-transform ${showRevoked ? 'rotate-180' : ''}`}
-                        aria-hidden="true"
-                      />
-                      Revoked ({revokedMachines.length})
-                    </button>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        aria-expanded={showRevoked}
+                        title={showRevoked ? 'Hide revoked machines' : 'Show revoked machines'}
+                        onClick={() => setShowRevoked((value) => !value)}
+                        className="flex items-center gap-1 self-start text-[15px] font-semibold hover:text-foreground"
+                      >
+                        <ChevronDown
+                          className={`size-4 transition-transform ${showRevoked ? 'rotate-180' : ''}`}
+                          aria-hidden="true"
+                        />
+                        Revoked ({revokedMachines.length})
+                      </button>
+                      {pendingMachines.length === 0 && approvedMachines.length === 0 && (
+                        <Button
+                          type="button"
+                          size="lg"
+                          className="rounded-full px-5"
+                          onClick={() => setAdding(true)}
+                        >
+                          <Plus aria-hidden="true" />
+                          Add machine
+                        </Button>
+                      )}
+                    </div>
                     {showRevoked && (
                       <ul className="flex flex-col gap-2">
                         {revokedMachines.map((machine) => (
@@ -419,6 +441,6 @@ export function MachinesPage() {
       </div>
 
       {adding && <AddMachineDialog onClose={() => setAdding(false)} />}
-    </AiPageShell>
+    </SettingsShell>
   );
 }

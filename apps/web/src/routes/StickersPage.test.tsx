@@ -104,7 +104,12 @@ describe('StickersPage', () => {
 
     await screen.findByText('Cats');
     // A centered column with a sensible max width, like the other settings
-    // pages: everything sits inside one `mx-auto max-w-2xl` column.
+    // pages: everything sits inside one shared `mx-auto max-w-2xl` column,
+    // under the shell's title and description.
+    expect(screen.getByRole('heading', { name: 'Stickers' })).toBeTruthy();
+    expect(
+      screen.getByText('Make packs from your images, share them, and star favorites.'),
+    ).toBeTruthy();
     const column = container.querySelector('.mx-auto.max-w-2xl');
     expect(column).not.toBeNull();
     // Every pack row (mine, added, discover) shows a thumbnail strip. The

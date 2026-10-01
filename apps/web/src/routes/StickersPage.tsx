@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
-import { AiPageShell } from '@/components/ais/AiPageShell';
+import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PackEditor } from '@/components/PackEditor';
 import { TelegramImportDialog } from '@/components/TelegramImportDialog';
@@ -31,10 +31,9 @@ function errorMessageOf(error: unknown, fallback: string): string {
  * search, favorites, and the pack creator/editor.
  */
 
-// A centered settings column, like the other settings pages (Notifications
-// uses max-w-xl; the AI lists use `mx-auto w-full max-w-2xl`). Stickers
-// needs the wider one for its thumbnail strips.
-const SETTINGS_COLUMN = 'mx-auto flex w-full max-w-2xl flex-col gap-6';
+// The column comes from the shared shell (T-0153); the local constant stays
+// re-exported so existing imports keep working.
+export { SETTINGS_COLUMN };
 
 export interface PackRowThumb {
   url: string;
@@ -274,54 +273,54 @@ export function StickersPage() {
   if (editingPackId !== undefined) {
     const pack = packs?.find((row) => row.id === editingPackId);
     return (
-      <AiPageShell title="Edit sticker pack" onBack={() => setEditingPackId(undefined)}>
-        <div className={SETTINGS_COLUMN}>
-          <PackEditor
-            packId={editingPackId}
-            initialTitle={pack?.title ?? ''}
-            initialVisibility={pack?.visibility ?? 'private'}
-            initialStickers={pack?.stickers ?? []}
-            onDone={() => {
-              setEditingPackId(undefined);
-              void refresh();
-            }}
-            onCancel={() => setEditingPackId(undefined)}
-          />
-        </div>
-      </AiPageShell>
+      <SettingsShell
+        title="Edit sticker pack"
+        subtitle="Change the title and stickers."
+        onBack={() => setEditingPackId(undefined)}
+      >
+        <PackEditor
+          packId={editingPackId}
+          initialTitle={pack?.title ?? ''}
+          initialVisibility={pack?.visibility ?? 'private'}
+          initialStickers={pack?.stickers ?? []}
+          onDone={() => {
+            setEditingPackId(undefined);
+            void refresh();
+          }}
+          onCancel={() => setEditingPackId(undefined)}
+        />
+      </SettingsShell>
     );
   }
 
   if (creating) {
     return (
-      <AiPageShell title="New sticker pack" onBack={() => setCreating(false)}>
-        <div className={SETTINGS_COLUMN}>
-          <PackEditor
-            onDone={() => {
-              setCreating(false);
-              void refresh();
-            }}
-            onCancel={() => setCreating(false)}
-          />
-        </div>
-      </AiPageShell>
+      <SettingsShell
+        title="New sticker pack"
+        subtitle="Give it a title, then add stickers."
+        onBack={() => setCreating(false)}
+      >
+        <PackEditor
+          onDone={() => {
+            setCreating(false);
+            void refresh();
+          }}
+          onCancel={() => setCreating(false)}
+        />
+      </SettingsShell>
     );
   }
 
   return (
-    <AiPageShell
+    <SettingsShell
       title="Stickers"
       subtitle="Make packs from your images, share them, and star favorites."
       onBack={() => navigate('/')}
     >
-      {status === 'loading' && (
-        <div className={SETTINGS_COLUMN}>
-          <p className="text-[15px] text-muted-foreground">Loading…</p>
-        </div>
-      )}
+      {status === 'loading' && <p className="text-[15px] text-muted-foreground">Loading…</p>}
 
       {status === 'error' && (
-        <div className={`${SETTINGS_COLUMN} items-center text-center`}>
+        <div className="flex flex-col items-center gap-3 text-center">
           <p role="alert" className="text-[15px] text-danger">
             {error}
           </p>
@@ -407,6 +406,7 @@ export function StickersPage() {
                         <button
                           type="button"
                           aria-label={`Move ${pack.title} up`}
+                          title={`Move ${pack.title} up`}
                           disabled={movingPackId !== undefined}
                           onClick={() => void movePack(pack.id, -1)}
                           className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
@@ -416,6 +416,7 @@ export function StickersPage() {
                         <button
                           type="button"
                           aria-label={`Move ${pack.title} down`}
+                          title={`Move ${pack.title} down`}
                           disabled={movingPackId !== undefined}
                           onClick={() => void movePack(pack.id, 1)}
                           className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
@@ -608,6 +609,7 @@ export function StickersPage() {
                     <button
                       type="button"
                       aria-label={`Unfavorite ${sticker.emoji ?? 'sticker'}`}
+                      title={`Unfavorite ${sticker.emoji ?? 'sticker'}`}
                       onClick={() => void unstar(sticker.id)}
                       className="absolute top-0.5 right-0.5 flex size-5 items-center justify-center rounded-full bg-black/60 text-[10px] leading-none text-white"
                     >
@@ -640,6 +642,6 @@ export function StickersPage() {
           onUnavailable={() => setImportReady(false)}
         />
       )}
-    </AiPageShell>
+    </SettingsShell>
   );
 }
