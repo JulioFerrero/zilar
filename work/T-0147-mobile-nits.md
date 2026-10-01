@@ -1,7 +1,7 @@
 ---
 id: T-0147
 title: Mobile: deferred nits (fetch ordering, roles screen test, join link cleanups)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0147-mobile-nits
 model: meta/muse-spark-1.3-contributor
@@ -72,3 +72,13 @@ Do NOT start simulators, Metro, or `expo run`.
 - None.
 
 ## Review (written by Claude)
+
+**Verdict:** approved, merged. Mobile only, one round.
+
+### Findings
+- Verified in the packet: cold open and `joinGroups` start the detail load first (one `GET /api/groups/<id>`), roster pushes dedupe per group; one `errorStatus` helper in the join link, no free-form `joinError` string left; jump-scroll keeps its target until the last retry is confirmed (fake-timer tests, including a message arriving mid-retry); no token in any rendered text.
+- Deferred should-fix: the roles-load test pins the helper and the sheet, not the screen's call site (`group/[id].tsx` could regress to a hardcoded line unnoticed); needs a mounted-route test or a shared exported mapper used by both.
+- Deferred nits: the cold-open test does not assert member names landed; the roster-push test drives `reloadChats` rather than a live push event.
+
+### Follow-ups
+- Device check on the emulator: search jump-scroll, one group fetch per open.
