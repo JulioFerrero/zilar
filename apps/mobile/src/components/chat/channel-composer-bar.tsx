@@ -9,6 +9,7 @@ import { mutedUntilFor } from '@/lib/chat-prefs';
 import type { ChatSummary, ReplyRef } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import type { StickerPack } from '@/lib/stickers';
+import type { GifItem } from '@/lib/gifs';
 import type { SendAttachmentOptions, SendStickerChoice } from '@/store/types';
 import type { PickedFile } from '@/lib/attachment-ports';
 import { Composer } from './composer';
@@ -28,6 +29,8 @@ type ChannelComposerProps = {
   demoPacks?: StickerPack[];
   /** Demo attachments in mock mode, so the flow works without a server. */
   demoAttachments?: Attachment[] | undefined;
+  /** Demo GIFs in mock mode (forwarded to the composer). */
+  demoGifs?: GifItem[] | undefined;
 };
 
 /**
@@ -54,6 +57,7 @@ export function ChannelComposerBar({
   onSendAttachment,
   demoPacks,
   demoAttachments,
+  demoGifs,
 }: ChannelComposerProps) {
   const insets = useSafeAreaInsets();
   const currentUserId = useChatStore((state) => state.currentUserId);
@@ -76,6 +80,7 @@ export function ChannelComposerBar({
         onSendAttachment={onSendAttachment}
         demoPacks={demoPacks}
         demoAttachments={demoAttachments}
+        demoGifs={demoGifs}
         replyTo={replyTo}
         onCancelReply={onCancelReply}
         onTyping={onTyping}

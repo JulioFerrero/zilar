@@ -15,6 +15,24 @@ export interface PickedFile extends PendingMobileFile {
   size: number;
 }
 
+/**
+ * Downloads one GIF-tab result through the same-origin proxy into the cache
+ * dir and reports it as a picked file, so the send travels the normal
+ * attachment upload path. The URL must be a proxy URL the panel showed (the
+ * composer passes the picked item); anything else is refused without a
+ * fetch. The real content type decides the mime and extension (validated
+ * against the four types the proxy serves), exactly like web's `sendGif`.
+ */
+export interface GifDownloader {
+  download(gif: {
+    id: string;
+    url: string;
+    kind: 'image' | 'video';
+    width: number;
+    height: number;
+  }): Promise<{ status: 'downloaded'; file: PickedFile } | { status: 'error'; message: string }>;
+}
+
 /** Result of one pick attempt: a file, a cancel, or a user-facing error. */
 export type PickResult =
   | { status: 'picked'; file: PickedFile }

@@ -151,6 +151,24 @@ describe('mobile attachments lib (T-0150)', () => {
     expect(sanitizeIncomingAttachment(file, undefined)).toEqual(file);
   });
 
+  // T-0148: a GIF-origin attachment whose URL is a same-origin /api/ path
+  // (web sends absolute upload URLs, but a relative API path resolves
+  // against the API origin) renders inline through the API origin; the
+  // request carries the session bearer. Any other host stays a file row.
+  it('matches gif- videos on a same-origin /api/ path too', () => {
+    const trusted = new Set(['upload.galena.test', 'galena.test']);
+    const video = attachment({
+      kind: 'file',
+      name: 'gif-abc123.mp4',
+      mime: 'video/mp4',
+      url: 'https://galena.test/api/files/get/abc',
+    });
+    expect(isGifVideoAttachment(video, trusted)).toBe(true);
+    expect(
+      isGifVideoAttachment({ ...video, url: 'https://evil.test/api/files/get/abc' }, trusted),
+    ).toBe(false);
+  });
+
   it('matches gif- videos only on trusted URLs', () => {
     const trusted = new Set(['upload.galena.test']);
     const video = attachment({
