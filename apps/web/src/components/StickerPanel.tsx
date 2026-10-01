@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { GifPanel, type GifChoice } from './GifPanel';
 import type { StickerPack } from '@/lib/api';
 import { discoverStickerPacks, listStickerPacks } from '@/lib/api';
