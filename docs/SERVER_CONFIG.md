@@ -182,7 +182,7 @@ Web push through ejabberd's `mod_push` plus an installable web app (PWA). Off by
 | `PUSH_ENABLED` | No | `false` | `'true'` starts the push component and enables the `/api/push/*` routes. With anything else the routes answer 404 and no component starts. | Not a secret. |
 | `PUSH_VAPID_PUBLIC_KEY` / `PUSH_VAPID_PRIVATE_KEY` | With push | — | VAPID key pair the browsers subscribe against. Generate with `web-push generate-vapid-keys` (one-off; needs the `web-push` CLI, not a dependency). | **Secrets** (the private key; the public key is served to logged-in browsers at `GET /api/push/config`). |
 | `PUSH_VAPID_SUBJECT` | With push | — | Contact URI for the push services, e.g. `mailto:admin@example.com`. | Not a secret. |
-| `PUSH_COMPONENT_JID` | With push | — | The component domain, e.g. `push.galena.localhost`. Must match `PUSH_COMPONENT_HOST` in `infra/ejabberd/ejabberd.yml`. | Not a secret. |
+| `PUSH_COMPONENT_JID` | With push | — | The component domain, e.g. `push.galena.localhost`. Must equal the host key written literally under the `ejabberd_service` listener in `infra/ejabberd/ejabberd.yml` (ejabberd does not expand macros in map keys). | Not a secret. |
 | `PUSH_COMPONENT_SECRET` | With push | — | Shared secret with ejabberd's `ejabberd_service` listener. Must equal the container's `EJABBERD_MACRO_PUSH_COMPONENT_SECRET`. | **Secret.** Generate with `openssl rand -base64 32`. |
 | `PUSH_COMPONENT_PORT` | No | `5347` | Component listener port. Integer in `[1, 65535]`. | Not a secret. Must match the `port` in `infra/ejabberd/ejabberd.yml`. |
 | `PUSH_STORAGE_KEY` | With push | — | Seals browser subscription keys at rest (AES-256-GCM envelope). At least 32 characters. Rotating it orphans existing rows (the component drops undecryptable devices instead of sending). | **Secret.** Generate with `openssl rand -base64 48`. |
@@ -190,7 +190,7 @@ Web push through ejabberd's `mod_push` plus an installable web app (PWA). Off by
 
 Wiring a new install (all three must agree, then restart ejabberd so the listener and `mod_push_keepalive` take effect):
 
-1. `infra/ejabberd/ejabberd.yml` ships the `ejabberd_service` listener on port 5347 (all container interfaces; the compose file publishes it on `127.0.0.1` only) with the `PUSH_COMPONENT_HOST`/`PUSH_COMPONENT_SECRET` macros (`CHANGE_ME` default, never committed).
+1. `infra/ejabberd/ejabberd.yml` ships the `ejabberd_service` listener on port 5347 (all container interfaces; the compose file publishes it on `127.0.0.1` only) with the host written literally (`push.galena.localhost`) and the `PUSH_COMPONENT_SECRET` macro (`CHANGE_ME` default, never committed).
 2. `infra/docker-compose.dev.yml` already passes `EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}` to ejabberd and publishes `127.0.0.1:5347`. Set `PUSH_COMPONENT_SECRET` in `infra/.env` (git-ignored) to the same value as the server's `PUSH_COMPONENT_SECRET`.
 3. `apps/server/.env` (git-ignored) needs the seven `PUSH_*` variables above plus `XMPP_ARCHIVE_DATABASE_URL`.
 
