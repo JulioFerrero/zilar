@@ -38,6 +38,7 @@ beforeEach(() => {
   window.localStorage.clear();
   vi.spyOn(api, 'listStickerPacks').mockResolvedValue([demoPack]);
   vi.spyOn(api, 'discoverStickerPacks').mockResolvedValue({ packs: [], next: null });
+  vi.spyOn(api, 'listStickerFavorites').mockResolvedValue([]);
 });
 
 describe('StickerPanel', () => {
@@ -398,5 +399,63 @@ describe('StickerMessage', () => {
 
     fireEvent.click(screen.getByLabelText('Retry sticker'));
     expect(store.getState().messages('c-ana')[0]?.failed).toBeUndefined();
+  });
+});
+
+describe('StickerPanel favorites (T-0121)', () => {
+  it('stars a sticker and shows it on the Favorites tab', async () => {
+    const addFavorite = vi
+      .spyOn(api, 'addStickerFavorite')
+      .mockResolvedValue(demoPack.stickers[0]!);
+    renderApp('/c/c-ana');
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    const dialog = await screen.findByRole('dialog', { name: 'Stickers' });
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Cats' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Favorite 🐱' }));
+    expect(addFavorite).toHaveBeenCalledWith('223e4567-e89b-12d3-a456-426614174001');
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Favorites' }));
+    const grid = within(dialog).getByRole('grid', { name: 'Stickers' });
+    expect(within(grid).getByLabelText('🐱')).toBeTruthy();
+  });
+
+  it('unfavorites from the Favorites tab', async () => {
+    vi.mocked(api.listStickerFavorites).mockResolvedValue([demoPack.stickers[0]!]);
+    const removeFavorite = vi.spyOn(api, 'removeStickerFavorite').mockResolvedValue(undefined);
+    renderApp('/c/c-ana');
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    const dialog = await screen.findByRole('dialog', { name: 'Stickers' });
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Favorites' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Unfavorite 🐱' }));
+    expect(removeFavorite).toHaveBeenCalledWith('223e4567-e89b-12d3-a456-426614174001');
+  });
+
+  it('shows the empty favorites text when nothing is starred', async () => {
+    renderApp('/c/c-ana');
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    const dialog = await screen.findByRole('dialog', { name: 'Stickers' });
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Favorites' }));
+    expect(
+      within(dialog).getByText('No favorites yet. Star a sticker to keep it here.'),
+    ).toBeTruthy();
+  });
+
+  it('shows the "+" tab and the Manage stickers link', async () => {
+    renderApp('/c/c-ana');
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    const dialog = await screen.findByRole('dialog', { name: 'Stickers' });
+    expect(within(dialog).getByRole('tab', { name: 'Create sticker pack' })).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Manage stickers' })).toBeTruthy();
+  });
+
+  it('navigates to Settings → Stickers from the Manage link', async () => {
+    renderApp('/c/c-ana');
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    const dialog = await screen.findByRole('dialog', { name: 'Stickers' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Manage stickers' }));
+    expect(await screen.findByRole('heading', { name: 'Stickers' })).toBeTruthy();
   });
 });

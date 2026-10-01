@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { GifPanel, type GifChoice } from './GifPanel';
-import type { StickerPack } from '@/lib/api';
-import { discoverStickerPacks, listStickerPacks } from '@/lib/api';
+import type { Sticker, StickerPack } from '@/lib/api';
+import {
+  addStickerFavorite,
+  discoverStickerPacks,
+  listStickerFavorites,
+  listStickerPacks,
+  removeStickerFavorite,
+} from '@/lib/api';
 import { isMockMode } from '@/mock/gate';
 import { mockGifItems } from '@/mock/helpers';
 import { isPanelStickerUrl, readRecentStickers, rememberRecentSticker } from '@/lib/stickers';
@@ -25,6 +31,10 @@ export interface StickerPanelProps {
   onEmoji: (emoji: string) => void;
   /** Sends a GIF through the attachment upload path (T-0122). */
   onGifPick: (gif: GifChoice) => void;
+  /** Opens Settings → Stickers ("Manage stickers" link in the panel). */
+  onManage?: (() => void) | undefined;
+  /** Opens the pack creator (the "+" tab in the panel). */
+  onCreate?: (() => void) | undefined;
 }
 
 /**
@@ -102,10 +112,19 @@ const COMMON_EMOJI = [
  * searches through the privacy-preserving proxy; the Emoji tab appends a
  * common emoji to the draft.
  */
-export function StickerPanel({ onPick, onClose, onEmoji, onGifPick }: StickerPanelProps) {
+export function StickerPanel({
+  onPick,
+  onClose,
+  onEmoji,
+  onGifPick,
+  onManage,
+  onCreate,
+}: StickerPanelProps) {
   const [tab, setTab] = useState<Tab>('stickers');
   const [packs, setPacks] = useState<StickerPack[] | undefined>(undefined);
   const [activePackId, setActivePackId] = useState<string | undefined>(undefined);
+  const [favorites, setFavorites] = useState<Sticker[] | undefined>(undefined);
+  const [favoriteError, setFavoriteError] = useState('');
   const [recents, setRecents] = useState<RecentStickerEntry[]>(() => {
     try {
       return readRecentStickers(window.localStorage);
@@ -139,6 +158,14 @@ export function StickerPanel({ onPick, onClose, onEmoji, onGifPick }: StickerPan
         }
       })
       .catch(() => {});
+    // Favorites are best-effort too: the panel works without them.
+    listStickerFavorites()
+      .then((starred) => {
+        if (!cancelled) {
+          setFavorites(starred);
+        }
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -156,6 +183,17 @@ export function StickerPanel({ onPick, onClose, onEmoji, onGifPick }: StickerPan
   }, [onClose]);
 
   const activeStickers: StickerChoice[] = useMemo(() => {
+    if (activePackId === 'favorites') {
+      return (favorites ?? []).map((sticker) => ({
+        stickerId: sticker.id,
+        packId: sticker.packId,
+        url: sticker.url,
+        ...(sticker.emoji === null ? {} : { emoji: sticker.emoji }),
+        width: sticker.width,
+        height: sticker.height,
+        mime: sticker.mime,
+      }));
+    }
     if (activePackId === undefined || activePackId === 'recent') {
       return recents.map((recent) => ({
         stickerId: recent.stickerId,
@@ -179,7 +217,7 @@ export function StickerPanel({ onPick, onClose, onEmoji, onGifPick }: StickerPan
         mime: sticker.mime,
       })) ?? []
     );
-  }, [activePackId, packs, recents]);
+  }, [activePackId, favorites, packs, recents]);
 
   const pick = (sticker: StickerChoice): void => {
     let storage: Storage | null = null;
@@ -197,6 +235,55 @@ export function StickerPanel({ onPick, onClose, onEmoji, onGifPick }: StickerPan
       }),
     );
     onPick(sticker);
+  };
+
+  const favoriteIds = useMemo(
+    () => new Set((favorites ?? []).map((sticker) => sticker.id)),
+    [favorites],
+  );
+
+  const toggleFavorite = (sticker: StickerChoice): void => {
+    const starred = favoriteIds.has(sticker.stickerId);
+    setFavoriteError('');
+    // Optimistic: flip the star at once, roll back on failure.
+    setFavorites((previous) => {
+      if (starred) {
+        return (previous ?? []).filter((row) => row.id !== sticker.stickerId);
+      }
+      const added: Sticker = {
+        id: sticker.stickerId,
+        packId: sticker.packId,
+        emoji: sticker.emoji ?? null,
+        mime: sticker.mime,
+        width: sticker.width,
+        height: sticker.height,
+        bytes: 0,
+        url: sticker.url,
+      };
+      return [...(previous ?? []), added];
+    });
+    const request = starred
+      ? removeStickerFavorite(sticker.stickerId)
+      : addStickerFavorite(sticker.stickerId).then(() => {});
+    request.catch(() => {
+      setFavorites((previous) => {
+        if (starred) {
+          const restored: Sticker = {
+            id: sticker.stickerId,
+            packId: sticker.packId,
+            emoji: sticker.emoji ?? null,
+            mime: sticker.mime,
+            width: sticker.width,
+            height: sticker.height,
+            bytes: 0,
+            url: sticker.url,
+          };
+          return [...(previous ?? []), restored];
+        }
+        return (previous ?? []).filter((row) => row.id !== sticker.stickerId);
+      });
+      setFavoriteError('Could not save the favorite. Try again.');
+    });
   };
 
   return (
@@ -286,13 +373,50 @@ export function StickerPanel({ onPick, onClose, onEmoji, onGifPick }: StickerPan
                 {pack.title}
               </button>
             ))}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activePackId === 'favorites'}
+              aria-label="Favorites"
+              title="Favorites"
+              onClick={() => setActivePackId('favorites')}
+              className={cn(
+                'shrink-0 rounded-[8px] px-2.5 py-1 text-[12px]',
+                activePackId === 'favorites'
+                  ? 'bg-surface-raised text-foreground'
+                  : 'text-muted-foreground',
+              )}
+            >
+              ★
+            </button>
+            {onCreate !== undefined && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={false}
+                aria-label="Create sticker pack"
+                title="Create sticker pack"
+                onClick={onCreate}
+                className="shrink-0 rounded-[8px] px-2.5 py-1 text-[12px] text-muted-foreground"
+              >
+                +
+              </button>
+            )}
           </div>
+
+          {favoriteError !== '' && (
+            <p role="alert" className="px-2 pt-1 text-[12px] text-danger">
+              {favoriteError}
+            </p>
+          )}
 
           {activeStickers.length === 0 ? (
             <div className="flex h-[180px] items-center justify-center px-4 text-center text-[13px] text-muted-foreground">
               {packs === undefined
                 ? 'Loading stickers…'
-                : 'No stickers yet. Packs you add will show here.'}
+                : activePackId === 'favorites'
+                  ? 'No favorites yet. Star a sticker to keep it here.'
+                  : 'No stickers yet. Packs you add will show here.'}
             </div>
           ) : (
             <div
@@ -300,22 +424,43 @@ export function StickerPanel({ onPick, onClose, onEmoji, onGifPick }: StickerPan
               role="grid"
               aria-label="Stickers"
             >
-              {activeStickers.map((sticker) => (
-                <button
-                  key={sticker.stickerId}
-                  type="button"
-                  aria-label={sticker.emoji ?? 'Sticker'}
-                  title={sticker.emoji ?? 'Sticker'}
-                  onClick={() => pick(sticker)}
-                  onMouseEnter={() => setPreview(sticker)}
-                  onFocus={() => setPreview(sticker)}
-                  onMouseLeave={() => setPreview(undefined)}
-                  onBlur={() => setPreview(undefined)}
-                  className="flex size-[72px] items-center justify-center rounded-[8px] hover:bg-surface-raised focus-visible:bg-surface-raised"
-                >
-                  <StickerThumb sticker={sticker} size={64} />
-                </button>
-              ))}
+              {activeStickers.map((sticker) => {
+                const starred = favoriteIds.has(sticker.stickerId);
+                return (
+                  <span key={sticker.stickerId} className="relative inline-flex">
+                    <button
+                      type="button"
+                      aria-label={sticker.emoji ?? 'Sticker'}
+                      title={sticker.emoji ?? 'Sticker'}
+                      onClick={() => pick(sticker)}
+                      onMouseEnter={() => setPreview(sticker)}
+                      onFocus={() => setPreview(sticker)}
+                      onMouseLeave={() => setPreview(undefined)}
+                      onBlur={() => setPreview(undefined)}
+                      className="flex size-[72px] items-center justify-center rounded-[8px] hover:bg-surface-raised focus-visible:bg-surface-raised"
+                    >
+                      <StickerThumb sticker={sticker} size={64} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={
+                        starred
+                          ? `Unfavorite ${sticker.emoji ?? 'sticker'}`
+                          : `Favorite ${sticker.emoji ?? 'sticker'}`
+                      }
+                      aria-pressed={starred}
+                      title={starred ? 'Remove from favorites' : 'Add to favorites'}
+                      onClick={() => toggleFavorite(sticker)}
+                      className={cn(
+                        'absolute top-0 right-0 rounded-full px-1 text-[12px] leading-5',
+                        starred ? 'text-white' : 'text-muted-foreground opacity-60',
+                      )}
+                    >
+                      ★
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           )}
 
@@ -331,6 +476,18 @@ export function StickerPanel({ onPick, onClose, onEmoji, onGifPick }: StickerPan
                 height={160}
                 className="max-h-[160px] max-w-[160px] object-contain"
               />
+            </div>
+          )}
+
+          {onManage !== undefined && (
+            <div className="border-t border-edge p-2">
+              <button
+                type="button"
+                onClick={onManage}
+                className="w-full rounded-[8px] px-3 py-1.5 text-center text-[13px] text-muted-foreground hover:bg-surface-raised hover:text-foreground"
+              >
+                Manage stickers
+              </button>
             </div>
           )}
         </>

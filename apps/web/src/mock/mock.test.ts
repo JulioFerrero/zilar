@@ -127,18 +127,168 @@ describe('mock sticker demo packs (T-0120)', () => {
   });
 
   it('keeps demo sticker payloads valid against the protocol schema', () => {
+    // The actual demo packs (not hand-built ids): their file URLs are
+    // relative `/api/stickers/` paths, so they parse as sent.
     const packs = mockDemoStickerPacks();
     const first = packs[0]!.stickers[0]!;
+    const url = first.url;
     expect(
       StickerSchema.safeParse({
-        pack_id: '123e4567-e89b-12d3-a456-426614174000',
-        sticker_id: '223e4567-e89b-12d3-a456-426614174001',
-        url: '/api/stickers/223e4567-e89b-12d3-a456-426614174001/file',
+        pack_id: packs[0]!.id,
+        sticker_id: first.id,
+        url,
         emoji: first.emoji,
         width: 200,
         height: 200,
         mime: 'image/png',
       }).success,
     ).toBe(true);
+  });
+
+  it('creates packs, uploads stickers and stars favorites in memory', async () => {
+    setMockDelay(0);
+    resetMockApi();
+    try {
+      const created = await mockRequest('/sticker-packs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Mine', visibility: 'server' }),
+      });
+      expect(created.status).toBe(201);
+      const pack = (await created.json()) as { id: string; title: string };
+      expect(pack.title).toBe('Mine');
+
+      const uploaded = await mockRequest(`/sticker-packs/${pack.id}/stickers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/webp', 'x-emoji': '🐱' },
+        body: 'bytes' as unknown as string,
+      });
+      expect(uploaded.status).toBe(201);
+      const sticker = (await uploaded.json()) as {
+        id: string;
+        packId: string;
+        url: string;
+        emoji: string | null;
+        width: number;
+        height: number;
+        mime: 'image/webp' | 'image/png';
+      };
+      expect(sticker.emoji).toBe('🐱');
+      expect(sticker.url).toBe(`/api/stickers/${sticker.id}/file`);
+
+      // The uploaded sticker sends through the real protocol schema: mock
+      // packs/stickers mint UUIDs, so a user-created mock sticker validates
+      // exactly like a server one (the mock send swaps nothing here).
+      expect(
+        StickerSchema.safeParse({
+          pack_id: pack.id,
+          sticker_id: sticker.id,
+          url: sticker.url,
+          emoji: sticker.emoji ?? undefined,
+          width: sticker.width,
+          height: sticker.height,
+          mime: sticker.mime,
+        }).success,
+      ).toBe(true);
+
+      const starred = await mockRequest('/sticker-favorites', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sticker_id: sticker.id }),
+      });
+      expect(starred.status).toBe(200);
+      const listed = (await (await mockRequest('/sticker-favorites')).json()) as {
+        favorites: Array<{ id: string }>;
+      };
+      expect(listed.favorites.map((row) => row.id)).toContain(sticker.id);
+
+      const unstarred = await mockRequest(`/sticker-favorites?sticker_id=${sticker.id}`, {
+        method: 'DELETE',
+      });
+      expect(unstarred.status).toBe(200);
+      const empty = (await (await mockRequest('/sticker-favorites')).json()) as {
+        favorites: unknown[];
+      };
+      expect(empty.favorites).toEqual([]);
+
+      const deleted = await mockRequest(`/sticker-packs/${pack.id}`, { method: 'DELETE' });
+      expect(deleted.status).toBe(200);
+      const warning = (await deleted.json()) as { warning: string };
+      expect(warning.warning).toContain('no longer loads');
+    } finally {
+      resetMockApi();
+    }
+  });
+
+  it('searches discover and adds/removes panel packs', async () => {
+    setMockDelay(0);
+    resetMockApi();
+    try {
+      const found = (await (await mockRequest('/sticker-packs/discover?q=cats')).json()) as {
+        packs: Array<{ title: string }>;
+      };
+      expect(found.packs.map((pack) => pack.title)).toEqual(['Cats']);
+
+      const missing = (await (
+        await mockRequest('/sticker-packs/discover?q=zzz-no-such-pack')
+      ).json()) as { packs: unknown[] };
+      expect(missing.packs).toEqual([]);
+
+      const panel = (await (await mockRequest('/sticker-packs')).json()) as {
+        packs: Array<{ id: string }>;
+      };
+      const firstId = panel.packs[0]!.id;
+      await mockRequest(`/sticker-panel/${firstId}`, { method: 'DELETE' });
+      const removed = (await (await mockRequest('/sticker-packs')).json()) as {
+        packs: Array<{ id: string }>;
+      };
+      expect(removed.packs.map((pack) => pack.id)).not.toContain(firstId);
+      await mockRequest(`/sticker-panel/${firstId}`, { method: 'PUT' });
+      const added = (await (await mockRequest('/sticker-packs')).json()) as {
+        packs: Array<{ id: string }>;
+      };
+      expect(added.packs.map((pack) => pack.id)).toContain(firstId);
+    } finally {
+      resetMockApi();
+    }
+  });
+
+  it('reorders the mock panel atomically and rejects a bad order', async () => {
+    setMockDelay(0);
+    resetMockApi();
+    try {
+      const panel = (await (await mockRequest('/sticker-packs')).json()) as {
+        packs: Array<{ id: string }>;
+      };
+      const reversed = panel.packs.map((pack) => pack.id).reverse();
+      const reordered = await mockRequest('/sticker-panel', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: reversed }),
+      });
+      expect(reordered.status).toBe(200);
+      const listed = (await (await mockRequest('/sticker-packs')).json()) as {
+        packs: Array<{ id: string }>;
+      };
+      expect(listed.packs.map((pack) => pack.id)).toEqual(reversed);
+
+      const bad = await mockRequest('/sticker-panel', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: [reversed[0]] }),
+      });
+      expect(bad.status).toBe(400);
+
+      // A trailing slash is no route (404 like the server), never a
+      // silent `{ ok: true }`.
+      const slashed = await mockRequest('/sticker-panel/', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(slashed.status).toBe(404);
+    } finally {
+      resetMockApi();
+    }
   });
 });

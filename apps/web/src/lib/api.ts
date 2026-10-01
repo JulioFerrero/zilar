@@ -1448,6 +1448,123 @@ export function sendTestPushNotification(subscriptionId: string): Promise<void> 
   }).then(() => undefined);
 }
 
+/** Reorders the caller's whole panel atomically (exact id permutation). */
+export async function reorderStickerPanelPacks(order: string[]): Promise<void> {
+  await request('/sticker-panel', z.object({ ok: z.boolean() }), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order }),
+  });
+}
+
+export function patchStickerPack(
+  packId: string,
+  input: { title?: string; visibility?: 'private' | 'server'; order?: string[] },
+): Promise<StickerPack> {
+  return request(`/sticker-packs/${encodeURIComponent(packId)}`, stickerPackSchema, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteStickerPack(packId: string): Promise<{ warning: string }> {
+  return request(
+    `/sticker-packs/${encodeURIComponent(packId)}`,
+    z.object({ warning: z.string() }),
+    {
+      method: 'DELETE',
+    },
+  );
+}
+
+export function deletePackSticker(packId: string, stickerId: string): Promise<{ ok: boolean }> {
+  return request(
+    `/sticker-packs/${encodeURIComponent(packId)}/stickers/${encodeURIComponent(stickerId)}`,
+    z.object({ ok: z.boolean() }),
+    { method: 'DELETE' },
+  );
+}
+
+/**
+ * Uploads one prepared sticker file. Raw bytes (not multipart): the server
+ * reads an optional `x-emoji` header, so the client never builds a form.
+ * The emoji travels percent-encoded: header values are latin1 ByteStrings,
+ * and a raw emoji throws in real `fetch` (`new Headers({'x-emoji':'🐱'})`
+ * is a TypeError). The server decodes and validates it.
+ */
+export async function uploadStickerFile(
+  packId: string,
+  blob: Blob,
+  emoji?: string,
+): Promise<Sticker> {
+  const headers: Record<string, string> = { 'Content-Type': blob.type };
+  if (emoji !== undefined && emoji !== '') {
+    headers['x-emoji'] = encodeURIComponent(emoji);
+  }
+  let response: Response;
+  if (isMockApiEnabled()) {
+    response = await mockRequest(`/sticker-packs/${encodeURIComponent(packId)}/stickers`, {
+      method: 'POST',
+      headers,
+      body: blob as unknown as string,
+    });
+  } else {
+    try {
+      response = await fetch(`${API_BASE}/sticker-packs/${encodeURIComponent(packId)}/stickers`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers,
+        body: blob,
+      });
+    } catch {
+      throw new ApiError(0, 'network_error', 'Could not reach the server');
+    }
+  }
+  const raw: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const parsed = errorBodySchema.safeParse(raw);
+    throw new ApiError(
+      response.status,
+      parsed.success ? parsed.data.error.code : 'request_failed',
+      parsed.success ? parsed.data.error.message : `Request failed (${response.status})`,
+    );
+  }
+  const parsed = stickerSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ApiError(
+      response.status,
+      'invalid_response',
+      'The server sent an unexpected response',
+    );
+  }
+  return parsed.data;
+}
+
+// --- Sticker favorites (T-0121) --------------------------------------------
+// One user's starred stickers, at most 200, oldest first.
+
+const stickerFavoritesSchema = z.object({ favorites: z.array(stickerSchema) });
+
+export function listStickerFavorites(): Promise<Sticker[]> {
+  return request('/sticker-favorites', stickerFavoritesSchema).then((body) => body.favorites);
+}
+
+export function addStickerFavorite(stickerId: string): Promise<Sticker> {
+  return request('/sticker-favorites', stickerSchema, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sticker_id: stickerId }),
+  });
+}
+
+export async function removeStickerFavorite(stickerId: string): Promise<void> {
+  const params = new URLSearchParams({ sticker_id: stickerId });
+  await request(`/sticker-favorites?${params.toString()}`, z.object({ ok: z.boolean() }), {
+    method: 'DELETE',
+  });
+}
+
 // --- GIFs (T-0122) --------------------------------------------------------
 // Privacy-preserving search: the browser never contacts the provider. Every
 // media URL arrives as an opaque `mediaToken` minted for this user; previews

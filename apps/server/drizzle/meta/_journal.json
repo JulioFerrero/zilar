@@ -225,6 +225,13 @@
       "when": 1790803707307,
       "tag": "0031_glossy_wasp",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790815116692,
+      "tag": "0032_nappy_ender_wiggin",
+      "breakpoints": true
     }
   ]
 }

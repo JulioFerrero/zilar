@@ -2,11 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { stickerPacks, stickers, userStickerPacks } from '../db/schema';
+import { stickerFavorites, stickerPacks, stickers, userStickerPacks } from '../db/schema';
 import { HttpError } from '../errors';
 import { probeErrorCode, probeStickerBytes, STICKER_MAX_BYTES } from './image';
 import type { StickerImageInfo } from './image';
@@ -417,6 +417,10 @@ export async function discoverPacks(
   return { packs: views, next };
 }
 
+// At most 200 packs per panel: the reorder endpoint validates an exact
+// permutation capped at the same number, so adds must never push past it.
+export const STICKER_PANEL_MAX = 200;
+
 export async function addPanelPack(
   deps: StickersServiceDeps,
   packId: string,
@@ -438,6 +442,9 @@ export async function addPanelPack(
         .select({ total: count() })
         .from(userStickerPacks)
         .where(eq(userStickerPacks.userId, userId));
+      if (Number(counter?.total ?? 0) >= STICKER_PANEL_MAX) {
+        throw new HttpError(400, 'panel_full', `A panel holds at most ${STICKER_PANEL_MAX} packs`);
+      }
       await tx.insert(userStickerPacks).values({
         userId,
         packId,
@@ -461,6 +468,162 @@ export async function removePanelPack(
   await deps.db
     .delete(userStickerPacks)
     .where(and(eq(userStickerPacks.userId, userId), eq(userStickerPacks.packId, packId)));
+}
+
+const reorderPanelBodySchema = z
+  .object({ order: z.array(z.string().min(1).max(128)).max(STICKER_PANEL_MAX) })
+  .strict();
+
+export type ReorderPanelBody = z.infer<typeof reorderPanelBodySchema>;
+export { reorderPanelBodySchema };
+
+/**
+ * Reorders the caller's panel in one transaction: the id list must be
+ * exactly the caller's current panel (a permutation), so a concurrent
+ * add/remove fails loudly instead of being silently overwritten.
+ */
+export async function reorderPanelPacks(
+  deps: StickersServiceDeps,
+  userId: string,
+  body: ReorderPanelBody,
+): Promise<void> {
+  try {
+    await deps.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`sticker-panel:${userId}`}))`);
+      const links = await tx
+        .select({ packId: userStickerPacks.packId })
+        .from(userStickerPacks)
+        .where(eq(userStickerPacks.userId, userId));
+      const current = new Set(links.map((link) => link.packId));
+      if (
+        body.order.length !== links.length ||
+        !body.order.every((id) => current.has(id)) ||
+        new Set(body.order).size !== body.order.length
+      ) {
+        throw new HttpError(
+          400,
+          'invalid_request',
+          'order must list every panel pack exactly once',
+        );
+      }
+      for (let index = 0; index < body.order.length; index += 1) {
+        await tx
+          .update(userStickerPacks)
+          .set({ position: index })
+          .where(
+            and(
+              eq(userStickerPacks.userId, userId),
+              eq(userStickerPacks.packId, body.order[index]!),
+            ),
+          );
+      }
+    });
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  }
+}
+
+// Favorites (T-0121): one user's starred stickers, at most 200, ordered by
+// when they were starred. Any sticker the caller knows the id of — an
+// unguessable UUID already shared inside messages — may be favorited; there
+// is no visibility check, so starring can never become a private-pack oracle.
+
+export const STICKER_FAVORITES_MAX = 200;
+
+const favoriteBodySchema = z.object({ sticker_id: z.uuid() }).strict();
+
+export type FavoriteBody = z.infer<typeof favoriteBodySchema>;
+export { favoriteBodySchema };
+
+export async function listFavorites(
+  deps: StickersServiceDeps,
+  userId: string,
+): Promise<StickerView[]> {
+  const links = await deps.db
+    .select()
+    .from(stickerFavorites)
+    .where(eq(stickerFavorites.userId, userId))
+    .orderBy(asc(stickerFavorites.addedAt), asc(stickerFavorites.stickerId));
+  if (links.length === 0) {
+    return [];
+  }
+  // One query for all sticker rows (never one per favorite); the link order
+  // is restored in memory. The links are the caller's own rows, so the
+  // result stays per-user scoped.
+  const ids = links.map((link) => link.stickerId);
+  const rows = await deps.db.select().from(stickers).where(inArray(stickers.id, ids));
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const views: StickerView[] = [];
+  for (const link of links) {
+    const row = byId.get(link.stickerId);
+    if (row) {
+      views.push(toStickerView(deps, row));
+    }
+  }
+  return views;
+}
+
+export async function addFavorite(
+  deps: StickersServiceDeps,
+  userId: string,
+  stickerId: string,
+): Promise<StickerView> {
+  const [row] = await deps.db.select().from(stickers).where(eq(stickers.id, stickerId)).limit(1);
+  // An unknown id and an invisible one answer the same 404, so ids cannot
+  // be probed; starring is idempotent, so no existence signal leaks either.
+  if (!row) {
+    throw new HttpError(404, 'not_found', 'Sticker not found');
+  }
+  try {
+    await deps.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`sticker-favorites:${userId}`}))`,
+      );
+      // A re-star is idempotent even at the cap: check for the row before
+      // counting, so a lost response retried at 200 favorites still 200s.
+      const [existing] = await tx
+        .select({ stickerId: stickerFavorites.stickerId })
+        .from(stickerFavorites)
+        .where(and(eq(stickerFavorites.userId, userId), eq(stickerFavorites.stickerId, stickerId)))
+        .limit(1);
+      if (existing) {
+        return;
+      }
+      const [counter] = await tx
+        .select({ total: count() })
+        .from(stickerFavorites)
+        .where(eq(stickerFavorites.userId, userId));
+      if (Number(counter?.total ?? 0) >= STICKER_FAVORITES_MAX) {
+        throw new HttpError(
+          400,
+          'favorites_full',
+          `A user has at most ${STICKER_FAVORITES_MAX} favorites`,
+        );
+      }
+      await tx.insert(stickerFavorites).values({ userId, stickerId }).onConflictDoNothing();
+    });
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  }
+  return toStickerView(deps, row);
+}
+
+export async function removeFavorite(
+  deps: StickersServiceDeps,
+  userId: string,
+  stickerId: string,
+): Promise<void> {
+  // Idempotent: unstarring an absent favorite is still `{ ok: true }`, so
+  // the answer reveals nothing about what the caller has starred.
+  await deps.db
+    .delete(stickerFavorites)
+    .where(and(eq(stickerFavorites.userId, userId), eq(stickerFavorites.stickerId, stickerId)));
 }
 
 function extensionFor(mime: 'image/webp' | 'image/png'): string {

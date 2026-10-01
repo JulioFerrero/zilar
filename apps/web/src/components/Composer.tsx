@@ -55,10 +55,13 @@ export function Composer({
   chatId,
   replyTo,
   onCancelReply,
+  onOpenStickersSettings,
 }: {
   chatId: string;
   replyTo: ReplyRef | undefined;
   onCancelReply: () => void;
+  /** Opens Settings → Stickers (the panel's "+" tab and Manage link). */
+  onOpenStickersSettings?: (() => void) | undefined;
 }) {
   const store = useChatStore();
   const [value, setValue] = useState('');
@@ -680,6 +683,14 @@ export function Composer({
                 onPick={sendSticker}
                 onClose={() => setStickerOpen(false)}
                 onGifPick={sendGif}
+                onManage={() => {
+                  setStickerOpen(false);
+                  onOpenStickersSettings?.();
+                }}
+                onCreate={() => {
+                  setStickerOpen(false);
+                  onOpenStickersSettings?.();
+                }}
                 onEmoji={(emoji) => {
                   const caret = textareaRef.current?.selectionStart ?? value.length;
                   const next = `${value.slice(0, caret)}${emoji}${value.slice(caret)}`;

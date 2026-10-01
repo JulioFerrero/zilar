@@ -1,6 +1,6 @@
 import type { ChatSummary, ReplyRef, UiMessage } from '@galena/chat-core';
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { AiPanel } from '@/components/ais/AiPanel';
 import { ChannelComposerBar } from '@/components/ChannelComposerBar';
 import { ChannelPanel } from '@/components/ChannelPanel';
@@ -37,6 +37,7 @@ function initialPanel(value: string | null, chat: ChatSummary): OpenPanel | unde
 export function ChatView({ chat }: { chat: ChatSummary }) {
   const storeApi = useChatStoreApi();
   const store = useChatStore();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [panel, setPanel] = useState<OpenPanel | undefined>(() =>
     initialPanel(searchParams.get('panel'), chat),
@@ -115,7 +116,12 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
       {chat.chatKind === 'channel' ? (
         <ChannelComposerBar chat={chat} />
       ) : (
-        <Composer chatId={chat.id} replyTo={replyTo} onCancelReply={cancelReply} />
+        <Composer
+          chatId={chat.id}
+          replyTo={replyTo}
+          onCancelReply={cancelReply}
+          onOpenStickersSettings={() => navigate('/settings/stickers')}
+        />
       )}
       {panel === 'ai' && chat.isAI && <AiPanel chat={chat} onClose={() => setPanel(undefined)} />}
       {panel === 'group' && chat.kind === 'group' && chat.topic === undefined && (
