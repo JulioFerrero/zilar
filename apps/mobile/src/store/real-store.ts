@@ -1172,7 +1172,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     // The upload steps of an attachment, re-runnable from a Retry: ask the
     // chat's XMPP session for a XEP-0363 slot, PUT the bytes with the slot's
-    // headers, then send the payload message exactly as web does.
+    // headers, then send the payload message exactly as web does. The kept
+    // bytes stay until the stanza send succeeds, so a Retry after a failed
+    // send still has them; they are dropped only then (and on cancel). A
+    // 'cancelled' error is swallowed only when this very message was
+    // cancelled by the user (the bubble is already gone); any other abort
+    // marks the message failed so Retry appears.
     function runAttachmentUpload(
       chat: ChatSummary,
       localId: string,
@@ -1193,6 +1198,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         markAttachmentFailed(chat.id, localId);
         return;
       }
+      const messageAlive = (): boolean =>
+        listFor(get(), chat.id).some((item) => sameMessage(item.id, localId));
       void (async () => {
         try {
           const contentType = file.mimeType === '' ? 'application/octet-stream' : file.mimeType;
@@ -1201,17 +1208,31 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             size: file.size,
             contentType,
           });
-          await uploader.upload(file, { putUrl: slot.putUrl, headers: slot.headers }, (fraction) =>
-            setUploadProgress(chat.id, localId, fraction),
+          // A cancel during the slot round-trip removes the bubble: stop
+          // here and send nothing.
+          if (!messageAlive()) {
+            return;
+          }
+          await uploader.upload(
+            file,
+            { putUrl: slot.putUrl, headers: slot.headers },
+            (fraction) => setUploadProgress(chat.id, localId, fraction),
+            localId,
           );
+          if (!messageAlive()) {
+            return;
+          }
           const data = attachmentDataFor(file, slot.getUrl);
           updateMessageAttachment(chat.id, localId, data);
           clearUploadProgress(chat.id, localId);
-          pendingUploads.delete(localId);
           const sent = await current.sendMessage(chat.id, coreKind(chat), caption, {
             payload: { v: 0, type: 'attachment', data },
             ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
           });
+          if (!messageAlive()) {
+            return;
+          }
+          pendingUploads.delete(localId);
           linkMessageIds(localId, sent.id);
           linkLocalToServer(localId, sent.id);
           rememberOriginId(localId, sent.id);
@@ -1219,12 +1240,16 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         } catch (error) {
           clearUploadProgress(chat.id, localId);
           // Keep the local bytes so the bubble can offer a Retry. A cancel
-          // removes the bubble instead (see `cancelAttachment`); an abort
-          // that arrives after a cancel is a no-op on a missing message.
-          if (error instanceof Error && error.message === 'cancelled') {
+          // removes the bubble first (see `cancelAttachment`); a 'cancelled'
+          // error for a message that is already gone is that cancel landing,
+          // so it stays silent. Any other abort means the upload itself
+          // failed and Retry must appear.
+          if (error instanceof Error && error.message === 'cancelled' && !messageAlive()) {
             return;
           }
-          markAttachmentFailed(chat.id, localId);
+          if (messageAlive()) {
+            markAttachmentFailed(chat.id, localId);
+          }
         }
       })();
     }
@@ -3011,10 +3036,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         runAttachmentUpload(chat, messageId, file, message.text ?? '', message.replyTo);
       },
       cancelAttachment: (chatId, messageId) => {
-        // Cancelling aborts the in-flight PUT and removes the optimistic
-        // bubble, like web's composer cancel. The bytes are dropped, so a
-        // later Retry is a no-op.
-        deps.uploader?.cancel();
+        // Cancelling aborts only this message's in-flight PUT and removes
+        // the optimistic bubble, like web's composer cancel. The bytes are
+        // dropped, so a later Retry is a no-op. Other messages' uploads keep
+        // running: the uploader keys controllers per message id.
+        deps.uploader?.cancel(aliasRoot(messageId));
+        deps.uploader?.cancel(messageId);
         pendingUploads.delete(aliasRoot(messageId));
         pendingUploads.delete(messageId);
         set((state) => ({

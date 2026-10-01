@@ -68,12 +68,27 @@ Do NOT start simulators, Metro, or `expo run`. Say in the Report what needs a na
 - `pnpm --filter @galena/mobile typecheck`: pass
 - Touched + neighbours (`--maxWorkers=2`): 10 files, 69 passed (attachments lib, types, both store suites, all 5 render suites, mock attachments)
 - Neighbour suites: all store suites (real-store, topics, channels, roles, prefs-pins, general-only, invite-links, mock-prefs-pins, roles-mock, invite-links, topics-screen, selector-stability) — 11 files, 89 passed; chat component suites — 10 files, 73 passed; sticker/message suites incl. hooks-guard — 5 files, 34 passed; chat-store/integration — 98 passed, 1 skipped
+- Post-review re-run (`--maxWorkers=2`): 12 files, 79 passed (attachments lib + opener seam, types, hooks-guard, all 5 render suites incl. new gradient-placeholder test, mock attachments, both store suites incl. 3 new upload-lifecycle tests); store suites — 14 files, 187 passed, 1 skipped; chat component + lib suites — 12 files, 89 passed
+
+### Post-review fixes (all ten findings fixed)
+1. **Kept bytes until send succeeds**: `pendingUploads.delete` moved to after the stanza `sendMessage` resolves, so Retry after a failed send still has the bytes. Test: PUT ok, send fails, Retry resends (slot + PUT + send run twice).
+2. **Independent uploads**: the uploader keeps one `AbortController` per message id (map; `cancel(messageId)` aborts only that one) instead of a singleton. A `cancelled` error is swallowed only when that very message is already gone (user-cancelled); any other abort marks the message failed so Retry appears. Tests: two concurrent uploads in two chats both finish; cancelling one spares the other.
+3. **Cancel during slot request**: after every `await` the flow re-checks the pending message still exists; a cancel during the slot round-trip stops before PUT/send. Test: no stanza is sent.
+4. **Duplicate banners**: removed the pasted-twice `openError` block in each of the three chat render branches (one banner per branch now).
+5. **expo-image**: inline images and the viewer use `expo-image` (`contentFit` cover/contain, animated GIF/WebP) instead of RN `Image`. Tests mock `expo-image` + `expo-linear-gradient`; all render tests green.
+6. **Mock demo placeholders**: a `gradient:` attachment URL renders a visible `LinearGradient` tile with the file name (same `imageGradient` mapping `ImageMessage` uses for legacy `image` messages) instead of the "Not loaded" file row. No fetch, no trust bypass: the branch matches only the `gradient:` scheme before the trusted-host gate. Test pins the gradient tile + name and the absence of the untrusted line.
+7. **Sanitized open destination**: the opener writes to `new File(Paths.cache, cleanFilename(name))` and shares the sanitized title; `cacheDestinationFor` exposes the mapping. Test: `../../x` → `x`.
+8. **Text test file**: the NUL byte is now written as `'\u0000'`; `file` reports ASCII text again.
+9. **Always-true test deleted**: "exposes the uploader port shape" removed from `chat-store.attachments.test.ts`.
+10. **Dead code deleted**: `AttachmentError` (never thrown) and `AttachmentMeta` (never imported) removed, incl. the now-unused `raisedPill` import and the `AttachmentError` test block.
+- Also fixed while here: the stale `expo-sharing` mention in the `attachment-native.ts` header comment (the opener uses RN `Share`).
 
 ### Problems, deviations from the spec
 - Deviation: attachment CAPTION EDIT is not implemented — the menu hides Edit for attachment messages (spec: "no edit of the attachment itself", which holds), but web edits the caption text via XEP-0308 correction. The mobile edit path only sends text corrections and never carried attachments; wiring caption-edit needs a follow-up. Copy (caption), reply, pin, delete all work.
 - Deviation: the size cap is the static 50 MiB constant, not read from the slot response — xmpp-core's `UploadSlot` has no size field (the server doesn't advertise it), so there is nothing to read. Matches web (`MAX_ATTACHMENT_BYTES`).
-- Deviation: file open uses RN `Share.share` (download to cache dir first, bearer only to the API origin) instead of `expo-sharing` — one fewer native dependency; the sheet is the system share/open UI either way.
+- Deviation: file open uses RN `Share.share` (download to cache dir first, bearer only to the API origin, sanitized destination name) instead of `expo-sharing` — one fewer native dependency; the sheet is the system share/open UI either way.
 - Deviation: local-only `localUri`/`uploadProgress` fields ride `UiMessage` as `MobileMessage` (mobile-side alias in `lib/types.ts`, stripped on delete) instead of widening shared chat-core — packages/ are not allowed for this task.
+- Deviation: `cancelAttachment` removes the optimistic bubble immediately (web's composer cancel behaves the same); the in-flight PUT is aborted and its late `cancelled` error lands silently on the now-missing message.
 - No `any`, no `@ts-ignore`, no lint disables; prettier clean.
 - Needs a native rebuild (new native modules + app.json plugin) and a device look: picker sheet on iOS/Android, permission-denied copy, camera photo send, 50 MiB refusal, progress bar smoothness, Retry/Cancel, image viewer pinch zoom, inline video + fullscreen, GIF/WebP animation, file open sheet, untrusted-host row, mock demo flow.
 

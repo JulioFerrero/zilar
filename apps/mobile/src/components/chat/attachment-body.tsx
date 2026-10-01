@@ -11,7 +11,6 @@ import {
 import { AttachmentVideo } from '@/components/chat/attachment-video';
 import { isGifVideoAttachment } from '@/lib/attachments';
 import { Text } from '@/components/ui/text';
-import { raisedPill } from '@/lib/depth';
 import { Ticks } from '@/components/chat/ticks';
 import { mobileUploadOf } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -190,20 +189,5 @@ function CancelOrRetry({
     >
       <Text className="text-[13px] text-muted-foreground">Cancel</Text>
     </Pressable>
-  );
-}
-
-/** The time-and-ticks pill over an image-only bubble, like web's overlay. */
-export function AttachmentMeta({ message, outgoing }: { message: UiMessage; outgoing: boolean }) {
-  return (
-    <View
-      className="absolute right-2 bottom-2 flex-row items-center gap-1 rounded-full px-2 py-0.5"
-      style={raisedPill}
-    >
-      <Text className="font-mono text-[10px] text-muted-foreground">
-        {formatTime(message.createdAt)}
-      </Text>
-      {outgoing ? <Ticks status={message.status} color="#8a8a8a" size={13} /> : null}
-    </View>
   );
 }

@@ -25,16 +25,6 @@ const IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
 const FALLBACK_NAME = 'file';
 const MAX_NAME_LENGTH = 255;
 
-export class AttachmentError extends Error {
-  readonly code: string;
-
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = 'AttachmentError';
-    this.code = code;
-  }
-}
-
 /**
  * A file the user picked on the device, before it is sent. The native picker
  * hands back a local URI plus optional metadata; the store uploads the bytes

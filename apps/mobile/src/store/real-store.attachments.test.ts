@@ -184,6 +184,7 @@ describe('real store sends attachments (T-0150)', () => {
         headers: { authorization: 'slot-token' },
       },
       expect.any(Function),
+      expect.any(String),
     );
     const sent = vi.mocked(xmpp.core.sendMessage);
     expect(sent).toHaveBeenCalledWith(
@@ -206,6 +207,45 @@ describe('real store sends attachments (T-0150)', () => {
         height: 800,
       },
     });
+  });
+
+  it('retries after a failed stanza send: the kept bytes are still there', async () => {
+    const { store, xmpp } = await setup();
+    // The PUT succeeds but the stanza send fails: the bytes must be kept,
+    // so Retry re-runs the whole flow (slot + PUT + send) from them.
+    vi.mocked(xmpp.core.sendMessage).mockRejectedValueOnce(new Error('stanza down'));
+
+    store.getState().sendAttachment(ANA, PHOTO, { caption: 'Stage!' });
+    const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
+    await flushUntil(
+      () =>
+        store
+          .getState()
+          .messages(ANA)
+          .find((item) => item.id === localId)?.failed === true,
+    );
+    expect(vi.mocked(xmpp.core.sendMessage)).toHaveBeenCalledTimes(1);
+
+    store.getState().retryAttachment(ANA, localId);
+    await flushUntil(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 1);
+    expect(vi.mocked(xmpp.core.requestUploadSlot)).toHaveBeenCalledTimes(2);
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === localId)?.failed,
+    ).toBeUndefined();
+    // The pending bytes are dropped only after the send finally succeeds.
+    await flushUntil(
+      () =>
+        store
+          .getState()
+          .messages(ANA)
+          .find((item) => item.id === localId)?.status === 'sent',
+    );
+    store.getState().retryAttachment(ANA, localId);
+    await flush();
+    expect(vi.mocked(xmpp.core.requestUploadSlot)).toHaveBeenCalledTimes(2);
   });
 
   it('merges the echo instead of duplicating the bubble', async () => {
@@ -289,6 +329,106 @@ describe('real store sends attachments (T-0150)', () => {
     await flush();
   });
 
+  it('keeps two concurrent uploads independent; cancelling one spares the other', async () => {
+    const TEAM = 'team@rooms.galena.test';
+    const api = fakeApi();
+    (api.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { kind: 'dm' as const, chatJid: ANA, title: 'Ana', userId: 'u-ana' },
+      {
+        kind: 'group' as const,
+        chatJid: TEAM,
+        title: 'Team',
+        groupId: 'g1',
+        memberCount: 3,
+        role: 'member' as const,
+      },
+    ]);
+    // Two gated PUTs: each upload resolves only when its own gate opens, so
+    // both run concurrently without either aborting the other.
+    const gates = new Map<string, () => void>();
+    const gateFor = (uri: string): Promise<void> =>
+      new Promise<void>((resolve) => {
+        gates.set(uri, resolve);
+      });
+    const xmpp = fakeXmpp();
+    const uploader = fakeUploader();
+    vi.mocked(uploader.upload).mockImplementation(
+      (file: PickedFile, _slot: { putUrl: string; headers: Record<string, string> }) =>
+        gateFor(file.uri).then(() => undefined),
+    );
+    const store = createRealChatStore({
+      api,
+      appState: { current: () => 'active', subscribe: () => () => {} },
+      now: () => new Date('2026-09-28T12:00:00Z'),
+      createXmpp: () => xmpp.core,
+      uploader,
+    });
+    store.getState().start();
+    await flush();
+
+    const PDF: PickedFile = {
+      uri: 'file:///cache/tickets.pdf',
+      name: 'tickets.pdf',
+      mimeType: 'application/pdf',
+      size: 2_411_724,
+    };
+    store.getState().sendAttachment(ANA, PHOTO);
+    store.getState().sendAttachment(TEAM, PDF);
+    const anaId = store.getState().messages(ANA).at(-1)?.id ?? '';
+    const teamId = store.getState().messages(TEAM).at(-1)?.id ?? '';
+    await flushUntil(() => vi.mocked(uploader.upload).mock.calls.length === 2);
+
+    // Cancelling Ana's upload aborts only Ana's gate: the Team upload is
+    // untouched and finishes on its own.
+    store.getState().cancelAttachment(ANA, anaId);
+    expect(vi.mocked(uploader.cancel)).toHaveBeenCalledWith(anaId);
+    gates.get(PDF.uri)?.();
+    await flushUntil(
+      () =>
+        store
+          .getState()
+          .messages(TEAM)
+          .find((item) => item.id === teamId)?.status === 'sent',
+    );
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === anaId),
+    ).toBeUndefined();
+    expect(
+      store
+        .getState()
+        .messages(TEAM)
+        .find((item) => item.id === teamId)?.attachment?.url,
+    ).toBe('https://upload.galena.test/get/abc');
+  });
+
+  it('sends nothing when cancelled during the slot round-trip', async () => {
+    const { store, xmpp, uploader } = await setup();
+    let releaseSlot!: () => void;
+    const slotGate = new Promise<void>((resolve) => {
+      releaseSlot = resolve;
+    });
+    vi.mocked(xmpp.core.requestUploadSlot).mockImplementationOnce(() =>
+      slotGate.then(() => ({
+        putUrl: 'https://upload.galena.test/put/abc',
+        getUrl: 'https://upload.galena.test/get/abc',
+        headers: {},
+      })),
+    );
+    store.getState().sendAttachment(ANA, PHOTO);
+    const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
+    await flushUntil(() => vi.mocked(xmpp.core.requestUploadSlot).mock.calls.length > 0);
+
+    store.getState().cancelAttachment(ANA, localId);
+    releaseSlot();
+    await flush();
+    await flush();
+    expect(vi.mocked(uploader.upload)).not.toHaveBeenCalled();
+    expect(vi.mocked(xmpp.core.sendMessage)).not.toHaveBeenCalled();
+  });
+
   it('cancels an in-flight upload by removing the bubble', async () => {
     const { store, uploader } = await setup();
     let release!: () => void;
@@ -303,7 +443,7 @@ describe('real store sends attachments (T-0150)', () => {
     store.getState().cancelAttachment(ANA, localId);
     release();
     await flush();
-    expect(vi.mocked(uploader.cancel)).toHaveBeenCalled();
+    expect(vi.mocked(uploader.cancel)).toHaveBeenCalledWith(localId);
     expect(
       store
         .getState()

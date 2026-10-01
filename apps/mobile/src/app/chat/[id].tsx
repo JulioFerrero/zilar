@@ -480,19 +480,6 @@ function Chat() {
               </Pressable>
             </View>
           ) : null}
-          {openError !== '' ? (
-            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
-              <Text className="flex-1 text-[13px] text-danger">{openError}</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss error"
-                onPress={() => setOpenError('')}
-                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-              >
-                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
-              </Pressable>
-            </View>
-          ) : null}
           {jumpMissed ? (
             <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-surface-raised px-3 py-2">
               <Text className="flex-1 text-[13px] text-muted-foreground">Message not found</Text>
@@ -614,19 +601,6 @@ function Chat() {
                 accessibilityRole="button"
                 accessibilityLabel="Dismiss error"
                 onPress={() => dismissActionError()}
-                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-              >
-                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
-              </Pressable>
-            </View>
-          ) : null}
-          {openError !== '' ? (
-            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
-              <Text className="flex-1 text-[13px] text-danger">{openError}</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss error"
-                onPress={() => setOpenError('')}
                 className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
               >
                 <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>

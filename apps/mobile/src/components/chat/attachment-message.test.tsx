@@ -12,10 +12,17 @@ import {
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
-  Image: 'Image',
   Modal: 'Modal',
   Pressable: 'Pressable',
   View: 'View',
+}));
+
+vi.mock('expo-image', () => ({
+  Image: 'Image',
+}));
+
+vi.mock('expo-linear-gradient', () => ({
+  LinearGradient: 'LinearGradient',
 }));
 
 vi.mock('react-native-gesture-handler', () => ({
@@ -176,6 +183,18 @@ describe('attachment rendering (T-0150)', () => {
     );
     expect(html).toContain('Close viewer');
     expect(html).toContain('<Image');
+  });
+
+  it('renders a demo gradient placeholder with the file name, never the untrusted row', () => {
+    const html = renderToStaticMarkup(
+      createElement(AttachmentImage, {
+        attachment: image({ url: 'gradient:sunset' }),
+        trustedHosts: TRUSTED,
+      }),
+    );
+    expect(html).toContain('LinearGradient');
+    expect(html).toContain('stage.png');
+    expect(html).not.toContain('Not loaded: untrusted address');
   });
 
   it('renders nothing when the viewer is closed', () => {

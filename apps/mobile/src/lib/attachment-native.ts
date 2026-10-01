@@ -1,9 +1,10 @@
 /**
  * The real native attachment seams (T-0150): `expo-image-picker` for photos,
  * videos and the camera, `expo-document-picker` for generic files,
- * `expo-file-system` for the XEP-0363 PUT, and `expo-sharing` for opening
- * downloaded files. Only imported by the chat screen (and tests through the
- * port interfaces), so Vitest never loads the native modules uninvoked.
+ * `expo-file-system` for the XEP-0363 PUT, and React Native's built-in
+ * `Share` for opening downloaded files. Only imported by the chat screen
+ * (and tests through the port interfaces), so Vitest never loads the
+ * native modules uninvoked.
  */
 
 import * as DocumentPicker from 'expo-document-picker';
@@ -11,7 +12,7 @@ import { File, Paths, UploadType } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { Share } from 'react-native';
 
-import { extensionForMime, MAX_ATTACHMENT_BYTES, mimeForAsset } from './attachments';
+import { cleanFilename, extensionForMime, MAX_ATTACHMENT_BYTES, mimeForAsset } from './attachments';
 import type {
   AttachmentOpener,
   AttachmentPicker,
@@ -157,20 +158,22 @@ export function createAttachmentPicker(): AttachmentPicker {
 
 /**
  * The real uploader: a binary-content PUT of the local file to the slot URL
- * with the slot's headers. Cancellation aborts the in-flight task, so a
- * later `upload` starts fresh.
+ * with the slot's headers. Each upload gets its own AbortController, keyed
+ * by message id, so two chats uploading at once stay independent and
+ * cancelling one never touches the other.
  */
 export function createAttachmentUploader(): AttachmentUploader {
-  let controller: AbortController | undefined;
+  const controllers = new Map<string, AbortController>();
   return {
     async upload(
       file: PickedFile,
       slot: { putUrl: string; headers: Record<string, string> },
       onProgress?: (fraction: number) => void,
+      messageId?: string,
     ): Promise<void> {
-      controller?.abort();
       const current = new AbortController();
-      controller = current;
+      const key = messageId ?? file.uri;
+      controllers.set(key, current);
       try {
         const source = new File(file.uri);
         const result = await source.upload(slot.putUrl, {
@@ -197,14 +200,14 @@ export function createAttachmentUploader(): AttachmentUploader {
         }
         throw error;
       } finally {
-        if (controller === current) {
-          controller = undefined;
+        if (controllers.get(key) === current) {
+          controllers.delete(key);
         }
       }
     },
-    cancel(): void {
-      controller?.abort();
-      controller = undefined;
+    cancel(messageId: string): void {
+      controllers.get(messageId)?.abort();
+      controllers.delete(messageId);
     },
   };
 }
@@ -213,7 +216,8 @@ export function createAttachmentUploader(): AttachmentUploader {
  * The real opener: downloads the attachment to the cache directory (with the
  * session bearer when it is our own API origin) and opens the system
  * share/open sheet. Nothing is fetched without a tap: the screen only calls
- * this from a press handler.
+ * this from a press handler. The destination name is sanitized, so a
+ * peer-controlled `../../x` name cannot escape the cache directory.
  */
 export function createAttachmentOpener(options?: {
   apiUrl?: string | undefined;
@@ -226,18 +230,23 @@ export function createAttachmentOpener(options?: {
     ): Promise<{ status: 'opened' } | { status: 'error'; message: string }> {
       try {
         const headers = await authHeadersFor(url, options?.apiUrl, options?.getToken);
-        const destination = new File(Paths.cache, name);
+        const destination = new File(Paths.cache, cleanFilename(name));
         const file = await File.downloadFileAsync(url, destination, {
           idempotent: true,
           ...(headers === undefined ? {} : { headers }),
         });
-        await Share.share({ url: file.uri, title: name });
+        await Share.share({ url: file.uri, title: cleanFilename(name) });
         return { status: 'opened' };
       } catch {
         return { status: 'error', message: OPEN_FAILED_MESSAGE };
       }
     },
   };
+}
+
+/** The sanitized cache destination for an attachment name (test seam). */
+export function cacheDestinationFor(name: string): string {
+  return cleanFilename(name);
 }
 
 /**

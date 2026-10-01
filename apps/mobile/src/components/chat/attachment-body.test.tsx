@@ -8,10 +8,17 @@ import { AttachmentBody } from './attachment-body';
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
-  Image: 'Image',
   Modal: 'Modal',
   Pressable: 'Pressable',
   View: 'View',
+}));
+
+vi.mock('expo-image', () => ({
+  Image: 'Image',
+}));
+
+vi.mock('expo-linear-gradient', () => ({
+  LinearGradient: 'LinearGradient',
 }));
 
 vi.mock('react-native-gesture-handler', () => ({

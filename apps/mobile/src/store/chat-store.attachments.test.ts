@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import type { AttachmentUploader, PickedFile } from '../lib/attachment-ports';
+import type { PickedFile } from '../lib/attachment-ports';
 import { createChatStore } from './chat-store';
 
 const PHOTO: PickedFile = {
@@ -107,14 +107,5 @@ describe('mock store sends attachments (T-0150)', () => {
     const before = store.getState().messages('ana').length;
     store.getState().sendAttachment('nope', PHOTO);
     expect(store.getState().messages('ana')).toHaveLength(before);
-  });
-
-  it('exposes the uploader port shape for the real store tests', () => {
-    const uploader: AttachmentUploader = {
-      upload: vi.fn(async () => {}),
-      cancel: vi.fn(),
-    };
-    expect(typeof uploader.upload).toBe('function');
-    expect(typeof uploader.cancel).toBe('function');
   });
 });

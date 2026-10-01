@@ -28,16 +28,25 @@ export interface AttachmentPicker {
   pickFile(): Promise<PickResult>;
 }
 
-/** Uploads one picked file with progress; cancellable and re-runnable. */
+/** Uploads one picked file with progress; cancellable per message. */
 export interface AttachmentUploader {
-  /** PUTs the bytes to the slot URL with the slot's headers. */
+  /**
+   * PUTs the bytes to the slot URL with the slot's headers. Each call is
+   * independent: starting one upload never aborts another. Rejects with a
+   * `cancelled` error only when `cancel` aborts this very upload.
+   */
   upload(
     file: PickedFile,
     slot: { putUrl: string; headers: Record<string, string> },
     onProgress?: (fraction: number) => void,
+    messageId?: string,
   ): Promise<void>;
-  /** Cancels the in-flight upload, if any. Afterwards `upload` rejects. */
-  cancel(): void;
+  /**
+   * Cancels one message's in-flight upload, if any. Other messages'
+   * uploads keep running. Afterwards that message's `upload` rejects with
+   * a `cancelled` error.
+   */
+  cancel(messageId: string): void;
 }
 
 /**

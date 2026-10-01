@@ -1,14 +1,17 @@
 import type { Attachment } from '@galena/protocol';
+import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
 import {
   PinchGestureHandler,
   type PinchGestureHandlerEventPayload,
 } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { Text } from '@/components/ui/text';
 import { isTrustedMediaUrl, safeHttpUrl } from '@/lib/attachments';
+import { imageGradient } from '@/lib/image-presets';
 import { raisedPill } from '@/lib/depth';
 import { getSessionToken } from '@/lib/session-token';
 
@@ -65,7 +68,11 @@ export function AttachmentImage({
   const [broken, setBroken] = useState(false);
   const [token, setToken] = useState<string | undefined>(undefined);
   const trusted = isLoadableMediaUrl(attachment.url, trustedHosts);
-  const source = localUri ?? (trusted && !broken ? attachment.url : undefined);
+  // A `gradient:` URL is a mock-mode demo placeholder (never fetched): it
+  // renders the gradient tile below, like `ImageMessage` does for legacy
+  // `image` messages.
+  const demoGradient = imageGradient(attachment.url);
+  const remoteSource = localUri ?? (trusted && !broken ? attachment.url : undefined);
   const alt = attachment.name;
   const ratio =
     attachment.width !== undefined && attachment.height !== undefined
@@ -73,7 +80,7 @@ export function AttachmentImage({
       : undefined;
 
   useEffect(() => {
-    if (source === undefined || localUri !== undefined) {
+    if (remoteSource === undefined || localUri !== undefined) {
       return;
     }
     let cancelled = false;
@@ -85,13 +92,47 @@ export function AttachmentImage({
     return () => {
       cancelled = true;
     };
-  }, [source, localUri]);
+  }, [remoteSource, localUri]);
 
   if (failed) {
     return <UploadFailed onRetry={onRetry} />;
   }
 
-  if (source === undefined) {
+  // Mock-mode demo placeholder: a visible gradient tile with the file name,
+  // exactly like `ImageMessage` renders legacy `gradient:` images. Never a
+  // fetch, never the "Not loaded" row.
+  if (demoGradient !== undefined && localUri === undefined) {
+    return (
+      <View>
+        <Pressable
+          accessibilityRole="image"
+          accessibilityLabel={alt}
+          onPress={onOpen}
+          disabled={onOpen === undefined}
+          className="overflow-hidden rounded-xl border border-edge"
+        >
+          <LinearGradient
+            colors={demoGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={
+              ratio === undefined
+                ? { width: IMAGE_WIDTH, height: MAX_IMAGE_HEIGHT }
+                : { width: IMAGE_WIDTH, aspectRatio: ratio, maxHeight: MAX_IMAGE_HEIGHT }
+            }
+          />
+        </Pressable>
+        <Text numberOfLines={1} className="mt-1 px-0.5 text-[13px] font-semibold text-foreground">
+          {alt}
+        </Text>
+        {uploading ? (
+          <Text className="mt-1 px-0.5 text-[12px] text-muted-foreground">Uploading…</Text>
+        ) : null}
+      </View>
+    );
+  }
+
+  if (remoteSource === undefined) {
     return (
       <View>
         <AttachmentFileRow attachment={attachment} trusted={false} onOpen={undefined} />
@@ -113,7 +154,7 @@ export function AttachmentImage({
       >
         <View style={{ width: IMAGE_WIDTH }}>
           <Image
-            source={sourceWithAuth(source, token, localUri !== undefined)}
+            source={sourceWithAuth(remoteSource, token, localUri !== undefined)}
             accessibilityLabel={alt}
             onError={() => setBroken(true)}
             style={
@@ -121,7 +162,7 @@ export function AttachmentImage({
                 ? { width: IMAGE_WIDTH, height: MAX_IMAGE_HEIGHT }
                 : { width: IMAGE_WIDTH, aspectRatio: ratio, maxHeight: MAX_IMAGE_HEIGHT }
             }
-            resizeMode="cover"
+            contentFit="cover"
           />
           {uploading ? (
             <View className="absolute inset-0 items-center justify-center bg-black/40">
@@ -364,7 +405,7 @@ function ZoomableImage({
         <Image
           source={{ uri }}
           accessibilityLabel={name}
-          resizeMode="contain"
+          contentFit="contain"
           style={{ width: '100%', height: '100%', transform: [{ scale }] }}
         />
       </Pressable>
