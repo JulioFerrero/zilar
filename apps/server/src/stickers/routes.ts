@@ -8,17 +8,23 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import {
+  addFavorite,
   addPanelPack,
   createPack,
   createPackBodySchema,
   deletePack,
   deleteSticker,
   discoverPacks,
+  favoriteBodySchema,
+  listFavorites,
   listPanelPacks,
   patchPack,
   patchPackBodySchema,
   readStickerFile,
+  removeFavorite,
   removePanelPack,
+  reorderPanelBodySchema,
+  reorderPanelPacks,
   uploadSticker,
   type StickersServiceDeps,
 } from './service';
@@ -215,7 +221,17 @@ export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
       bytes = capped;
       const rawEmoji = c.req.header('x-emoji');
       if (rawEmoji !== undefined && rawEmoji !== '') {
-        emoji = rawEmoji;
+        // The client percent-encodes the emoji (header values are latin1
+        // ByteStrings); decode it here with a length cap, then validate.
+        let decodedEmoji = rawEmoji;
+        if (decodedEmoji.includes('%')) {
+          try {
+            decodedEmoji = decodeURIComponent(decodedEmoji.slice(0, 64));
+          } catch {
+            throw new HttpError(400, 'invalid_request', 'emoji must be at most 8 characters');
+          }
+        }
+        emoji = decodedEmoji;
       }
     }
     const sticker = await uploadSticker(
@@ -239,6 +255,25 @@ export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
     return c.json({ ok: true });
   });
 
+  // Atomic panel reorder (T-0121): one transaction holding the caller's
+  // panel lock, so a mid-sequence failure or a concurrent add/remove can
+  // never leave a half-rewritten order behind. Registered before `:packId`
+  // so the literal path cannot be swallowed by the param route.
+  routes.put('/sticker-panel', async (c) => {
+    const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    const body = await c.req.json().catch(() => null);
+    const parsed = reorderPanelBodySchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpError(
+        400,
+        'invalid_request',
+        parsed.error.issues[0]?.message ?? 'Invalid request',
+      );
+    }
+    await reorderPanelPacks(serviceDeps(deps), user.id, parsed.data);
+    return c.json({ ok: true });
+  });
+
   routes.put('/sticker-panel/:packId', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
     await addPanelPack(serviceDeps(deps), decodePathId(c.req.param('packId')), user.id);
@@ -248,6 +283,43 @@ export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
   routes.delete('/sticker-panel/:packId', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
     await removePanelPack(serviceDeps(deps), decodePathId(c.req.param('packId')), user.id);
+    return c.json({ ok: true });
+  });
+
+  // Favorites (T-0121): the caller's starred stickers, at most 200. The
+  // delete takes the id as a query param so the path stays exactly
+  // `/api/sticker-favorites` (no suffix to probe). No audit: like the panel
+  // links, these carry ids only.
+  routes.get('/sticker-favorites', async (c) => {
+    const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    return c.json({ favorites: await listFavorites(serviceDeps(deps), user.id) });
+  });
+
+  routes.put('/sticker-favorites', async (c) => {
+    const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    const body = await c.req.json().catch(() => null);
+    const parsed = favoriteBodySchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpError(
+        400,
+        'invalid_request',
+        parsed.error.issues[0]?.message ?? 'Invalid request',
+      );
+    }
+    return c.json(await addFavorite(serviceDeps(deps), user.id, parsed.data.sticker_id));
+  });
+
+  routes.delete('/sticker-favorites', async (c) => {
+    const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    const parsed = favoriteBodySchema.safeParse(c.req.query());
+    if (!parsed.success) {
+      throw new HttpError(
+        400,
+        'invalid_request',
+        parsed.error.issues[0]?.message ?? 'Invalid request',
+      );
+    }
+    await removeFavorite(serviceDeps(deps), user.id, parsed.data.sticker_id);
     return c.json({ ok: true });
   });
 

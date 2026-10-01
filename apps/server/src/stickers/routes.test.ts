@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
+import { stickerPacks, userStickerPacks } from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
@@ -161,6 +162,31 @@ describe('stickers routes', () => {
     expect(sticker.url).toContain('/api/stickers/');
   });
 
+  it('decodes the percent-encoded x-emoji header and stores the emoji', async () => {
+    const { json } = await createPack(owner);
+    // The client percent-encodes the emoji: header values are latin1, and a
+    // raw emoji throws in real `fetch`. A real Headers/Request pair must
+    // accept the encoded value end to end.
+    const encoded = encodeURIComponent('🐱');
+    const headers = new Headers({ 'x-emoji': encoded, 'content-type': 'application/octet-stream' });
+    headers.set('cookie', owner.cookie);
+    const request = new Request(`${TEST_BASE_URL}/api/sticker-packs/${json.id}/stickers`, {
+      method: 'POST',
+      headers,
+      body: pngBytes(64, 64) as unknown as string,
+    });
+    expect(request.headers.get('x-emoji')).toBe(encoded);
+    const response = await app.request(request);
+    expect(response.status).toBe(201);
+    expect(((await response.json()) as { emoji: string | null }).emoji).toBe('🐱');
+  });
+
+  it('rejects an invalid percent-encoded x-emoji header', async () => {
+    const { json } = await createPack(owner);
+    const response = await uploadBytes(app, json.id, owner, pngBytes(64, 64), '%E0%A4%A');
+    expect(response.status).toBe(400);
+  });
+
   it('rejects an SVG, a GIF and a truncated file', async () => {
     const { json } = await createPack(owner);
     for (const bytes of [
@@ -260,6 +286,51 @@ describe('stickers routes', () => {
 
     const remove = await jsonRequest(app, 'DELETE', `/api/sticker-panel/${json.id}`, stranger, {});
     expect(remove.status).toBe(200);
+  });
+
+  it('caps the panel at 200 packs so the reorder permutation stays satisfiable', async () => {
+    // Arrange 199 panel rows directly (the API path is asserted below).
+    // Pack ids are plain strings here: only the panel behavior is under
+    // test, and direct inserts dodge the 100-packs-per-user cap — so the
+    // arranged packs belong to a third user, keeping owner/stranger clear.
+    const filler = await contactOf(context, app, owner.id, 'filler@example.com');
+    for (let index = 0; index < 199; index += 1) {
+      const packId = `panel-cap-pack-${index}`;
+      await context.db.insert(stickerPacks).values({
+        id: packId,
+        ownerId: filler.id,
+        title: `Panel ${index}`,
+        visibility: 'server',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await context.db.insert(userStickerPacks).values({
+        userId: stranger.id,
+        packId,
+        position: index,
+        addedAt: new Date(),
+      });
+    }
+    // The 200th add lands; the 201st is a clear 400; re-adding an
+    // existing pack at the cap stays idempotent 200.
+    const { json: last } = await createPack(owner, {
+      title: 'Two hundredth',
+      visibility: 'server',
+    });
+    const twoHundredth = await jsonRequest(
+      app,
+      'PUT',
+      `/api/sticker-panel/${last.id}`,
+      stranger,
+      {},
+    );
+    expect(twoHundredth.status).toBe(200);
+    const { json: extra } = await createPack(owner, { title: 'Too many', visibility: 'server' });
+    const over = await jsonRequest(app, 'PUT', `/api/sticker-panel/${extra.id}`, stranger, {});
+    expect(over.status).toBe(400);
+    expect(((await over.json()) as { error: { code: string } }).error.code).toBe('panel_full');
+    const reAdd = await jsonRequest(app, 'PUT', `/api/sticker-panel/${last.id}`, stranger, {});
+    expect(reAdd.status).toBe(200);
   });
 
   it('reorders stickers by id list and deletes a sticker file', async () => {

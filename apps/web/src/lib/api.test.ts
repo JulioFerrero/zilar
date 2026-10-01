@@ -1050,3 +1050,102 @@ describe('group roles API (T-0116)', () => {
     expect(topic.approverRole).toBeUndefined();
   });
 });
+
+describe('sticker packs and favorites API (T-0121)', () => {
+  const sticker = {
+    id: '223e4567-e89b-12d3-a456-426614174001',
+    packId: '123e4567-e89b-12d3-a456-426614174000',
+    emoji: '🐱',
+    mime: 'image/webp',
+    width: 200,
+    height: 200,
+    bytes: 1024,
+    url: '/api/stickers/223e4567-e89b-12d3-a456-426614174001/file',
+  };
+  const pack = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    ownerId: 'u-you',
+    title: 'Cats',
+    visibility: 'server',
+    stickers: [sticker],
+    createdAt: '2026-09-30T00:00:00.000Z',
+    updatedAt: '2026-09-30T00:00:00.000Z',
+  };
+
+  it('patchStickerPack PATCHes title, visibility and order', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, pack));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { patchStickerPack } = await import('@/lib/api');
+    const updated = await patchStickerPack(pack.id, { title: 'Big cats' });
+    expect(updated.title).toBe('Cats');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`/api/sticker-packs/${pack.id}`);
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toEqual({ title: 'Big cats' });
+  });
+
+  it('deleteStickerPack DELETEs and returns the warning', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { warning: 'gone' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { deleteStickerPack } = await import('@/lib/api');
+    const body = await deleteStickerPack(pack.id);
+    expect(body.warning).toBe('gone');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`/api/sticker-packs/${pack.id}`);
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('lists, adds and removes favorites', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { favorites: [sticker] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { listStickerFavorites, addStickerFavorite, removeStickerFavorite } =
+      await import('@/lib/api');
+    expect(await listStickerFavorites()).toEqual([sticker]);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/api/sticker-favorites');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, sticker));
+    await addStickerFavorite(sticker.id);
+    const [, putInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body as string)).toEqual({ sticker_id: sticker.id });
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true }));
+    await removeStickerFavorite(sticker.id);
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(deleteUrl).toBe(`/api/sticker-favorites?sticker_id=${sticker.id}`);
+    expect(deleteInit.method).toBe('DELETE');
+  });
+
+  it('uploadStickerFile POSTs raw bytes with the percent-encoded emoji header', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, sticker));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { uploadStickerFile } = await import('@/lib/api');
+    const blob = new File(['bytes'], 'a.webp', { type: 'image/webp' });
+    const uploaded = await uploadStickerFile(pack.id, blob, '🐱');
+    expect(uploaded.id).toBe(sticker.id);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`/api/sticker-packs/${pack.id}/stickers`);
+    expect(init.method).toBe('POST');
+    const headers = init.headers as Record<string, string>;
+    expect(headers['x-emoji']).toBe(encodeURIComponent('🐱'));
+    // The encoded value is a valid latin1 header: real Headers accept it.
+    expect(() => new Headers(headers)).not.toThrow();
+    expect(init.body).toBe(blob);
+  });
+
+  it('reorderStickerPanelPacks PUTs the full order to /api/sticker-panel', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { reorderStickerPanelPacks } = await import('@/lib/api');
+    await reorderStickerPanelPacks(['p-2', 'p-1']);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/sticker-panel');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(init.body as string)).toEqual({ order: ['p-2', 'p-1'] });
+  });
+});

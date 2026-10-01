@@ -577,6 +577,26 @@ export const pushSettings = pgTable('push_settings', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Favorite stickers per user (T-0121). Ordered by `addedAt`; at most 200 per
+// user (enforced in code under a per-user advisory lock, like the panel
+// links). Both FKs cascade: deleting a user or a sticker drops the row.
+export const stickerFavorites = pgTable(
+  'sticker_favorites',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    stickerId: text('sticker_id')
+      .notNull()
+      .references(() => stickers.id, { onDelete: 'cascade' }),
+    addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.stickerId] }),
+    index('sticker_favorites_user_idx').on(table.userId),
+  ],
+);
+
 // A machine (runner host) an owner paired with the server. `publicKey` is the
 // runner's ed25519 public key (SPKI DER, base64) and is globally unique: a key
 // that was ever registered — including on a revoked machine — can never pair
