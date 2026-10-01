@@ -84,6 +84,43 @@ describe('StickersPage', () => {
     expect(within(favorites).getByAltText('🐱')).toBeTruthy();
   });
 
+  it('renders the page as a centered column with thumbnails in every pack row', async () => {
+    const discoverPack = {
+      ...addedPack,
+      id: '523e4567-e89b-12d3-a456-426614174004',
+      stickers: [demoPack.stickers[0]],
+    };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      void init;
+      if (typeof url === 'string' && url.includes('/sticker-packs/discover')) {
+        return jsonResponse(200, { packs: [discoverPack], next: null });
+      }
+      if (typeof url === 'string' && url.includes('/sticker-favorites')) {
+        return jsonResponse(200, { favorites: [] });
+      }
+      return jsonResponse(200, { packs: [demoPack, addedPack] });
+    });
+    const { container } = renderPage(fetchMock);
+
+    await screen.findByText('Cats');
+    // A centered column with a sensible max width, like the other settings
+    // pages: everything sits inside one `mx-auto max-w-2xl` column.
+    const column = container.querySelector('.mx-auto.max-w-2xl');
+    expect(column).not.toBeNull();
+    // Every pack row (mine, added, discover) shows a thumbnail strip. The
+    // initial discover load already ran on mount, so the section shows the
+    // pack without needing a search submit.
+    for (const section of ['My packs', 'Packs I added', 'Discover']) {
+      const region = screen.getByRole('region', { name: section });
+      const images = within(region).getAllByRole('img');
+      expect(images.length).toBeGreaterThan(0);
+    }
+    // The visibility badge and the sticker count are readable at a glance.
+    const myPacks = screen.getByRole('region', { name: 'My packs' });
+    expect(within(myPacks).getByText('Shared')).toBeTruthy();
+    expect(within(myPacks).getByText(/1 sticker/)).toBeTruthy();
+  });
+
   it('shows the error state with a retry', async () => {
     const fetchMock = vi
       .fn()

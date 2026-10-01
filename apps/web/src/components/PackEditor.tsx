@@ -116,6 +116,9 @@ function BlobPreview({ blob, alt }: { blob: Blob; alt: string }) {
  * picker that prepares several images at once, per-sticker emoji / remove /
  * reorder (drag plus Up/Down buttons), then a sequential upload with
  * per-file retry.
+ *
+ * T-0152: rendered inside the centered settings column (the caller wraps it
+ * in the page's column class), so the form uses the full column width.
  */
 export function PackEditor({
   packId,

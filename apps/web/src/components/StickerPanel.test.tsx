@@ -128,6 +128,59 @@ describe('StickerPanel', () => {
     expect(within(grid).getByLabelText('Insert 😀')).toBeTruthy();
   });
 
+  it('closes the sticker panel on an outside pointer-down', async () => {
+    renderApp('/c/c-ana');
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    expect(await screen.findByRole('dialog', { name: 'Stickers' })).toBeTruthy();
+
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('dialog', { name: 'Stickers' })).toBeNull();
+  });
+
+  it('toggles the panel closed with the button (not the outside path)', async () => {
+    // The toggle itself is inside the outside-click wrapper: pressing it
+    // toggles (open -> close via the button), never via the outside path.
+    renderApp('/c/c-ana');
+    const toggle = screen.getByLabelText('Open sticker panel');
+    fireEvent.click(toggle);
+    expect(await screen.findByRole('dialog', { name: 'Stickers' })).toBeTruthy();
+
+    fireEvent.pointerDown(toggle);
+    fireEvent.click(toggle);
+    expect(screen.queryByRole('dialog', { name: 'Stickers' })).toBeNull();
+  });
+
+  it('renders a 5-column grid of 56 px tiles that fit the 344 px panel', async () => {
+    renderApp('/c/c-ana');
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    const dialog = await screen.findByRole('dialog', { name: 'Stickers' });
+
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Cats' }));
+    const grid = within(dialog).getByRole('grid', { name: 'Stickers' });
+    // 5 columns x 56 px + 4 gaps x 8 px + 2 padding x 8 px = 328 px, inside
+    // the min-344 px panel: tiles can never overlap.
+    expect(grid.className).toContain('grid-cols-5');
+    const tiles = dialog.querySelectorAll('[data-testid="sticker-grid"] > span');
+    expect(tiles.length).toBe(2);
+    for (const tile of tiles) {
+      expect(tile.className).toContain('size-[56px]');
+    }
+  });
+
+  it('anchors the panel to the viewport bottom-right (above the emoji button)', async () => {
+    renderApp('/c/c-ana');
+    fireEvent.click(screen.getByLabelText('Open sticker panel'));
+    const dialog = await screen.findByRole('dialog', { name: 'Stickers' });
+
+    // Fixed to the viewport's bottom-right above the emoji button and
+    // clamped to the viewport on narrow windows — never the old far-left
+    // `left-0` of the message column.
+    expect(dialog.className).toContain('fixed');
+    expect(dialog.className).toContain('right-4');
+    expect(dialog.className).not.toContain('left-0');
+    expect(dialog.className).toContain('max-w-[calc(100vw-2rem)]');
+  });
+
   it('lists pack tabs and sends a sticker on click', async () => {
     const { store } = renderApp('/c/c-ana');
     fireEvent.click(screen.getByLabelText('Open sticker panel'));
