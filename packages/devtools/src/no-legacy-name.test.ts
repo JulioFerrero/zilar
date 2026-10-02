@@ -13,9 +13,11 @@ const EXCLUDED_PREFIXES = ['work/', 'docs/PROJECT_PLAN.md', 'AGENTS.md', 'apps/s
 // literal occurrence of it (the guard scans its own source too).
 const LEGACY_NAME = ['gal', 'ena'].join('');
 const SELF_FILE = 'packages/devtools/src/no-legacy-name.test.ts';
+// Key-derivation labels bound to stored ciphertext keep the old name on purpose.
+const KEPT_FILES = ['apps/server/src/kdf-labels.ts'];
 
 function isExcluded(path: string): boolean {
-  if (path === SELF_FILE) return true;
+  if (path === SELF_FILE || KEPT_FILES.includes(path)) return true;
   return EXCLUDED_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix));
 }
 

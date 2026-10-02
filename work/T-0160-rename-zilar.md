@@ -1,7 +1,7 @@
 ---
 id: T-0160
 title: Rename EVERYTHING from Galena to Zilar (no keep-list)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0160-rename-zilar
 model: meta/muse-spark-1.3-contributor
@@ -214,3 +214,16 @@ or edits `.env`, per spec). After merge, on every machine/install:
   PGlite/fakes only.
 
 ## Review (written by Claude)
+
+**Verdict:** approved and merged (round 1, lead fixes). Live-environment migration done by the lead after the merge.
+
+### Findings
+- Lead fix (data safety): the two key-derivation labels (`provider-key/v1`, `push-storage/v1`) are mixed into the keys that encrypt stored provider API keys and push subscriptions; renaming them would make that stored data undecryptable. They live in `apps/server/src/kdf-labels.ts` with their old text, explained in a comment, allow-listed in the legacy-name guard, with a test pinning the exact bytes. This is the ONLY intentional occurrence of the old name in code; nothing else was kept.
+- Lead fix: the mobile bundle id / Android package is `app.zilar.chat` (reverse of `zilar.app`), not `com.julioferrero.zilar`.
+- The LiteLLM key alias prefix was renamed (it is only a label at key creation; no lookup by alias).
+- Pre-review nits accepted: stale `.orig` files from T-0121 renamed with the rest (cleanup later); the `infra/.env.example` vs compose key mismatch predates this task.
+
+### Follow-ups
+- Live environment: rename `.env` keys, move the dev stack to `zilar-dev`, restore the databases under the new names, rewrite JIDs, rebuild the Android dev client (lead steps).
+- Lead-owned renames: `AGENTS.md`, `docs/PROJECT_PLAN.md`, `work/**`, the lead's memory notes.
+- Delete the `.orig`/`.rej` files in `apps/web/src/mock`.

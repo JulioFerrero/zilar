@@ -8,10 +8,10 @@
     "scheme": "zilar",
     "userInterfaceStyle": "dark",
     "ios": {
-      "bundleIdentifier": "com.julioferrero.zilar"
+      "bundleIdentifier": "app.zilar.chat"
     },
     "android": {
-      "package": "com.julioferrero.zilar",
+      "package": "app.zilar.chat",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
