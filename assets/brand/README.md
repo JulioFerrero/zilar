@@ -1,6 +1,6 @@
 # Zilar brand marks
 
-Zilar is Basque for "silver". The mark is a silver planet with a thin orbit ring and a small gold moon (the moon is the only colour, so it stays visible at small sizes), set on a black brushed-metal key. It follows the project's skeuomorphic depth (`docs/design/ui-style.md`): real scanned metal, real studio reflections, a soft drop shadow.
+Zilar is Basque for "silver". The mark is a silver planet crossed by one straight polished rod, with a small gold moon at the end of the rod (the moon is the only colour, so it stays visible at small sizes), set on a black brushed-metal key. It follows the project's skeuomorphic depth (`docs/design/ui-style.md`): real scanned metal, real studio reflections, a soft drop shadow.
 
 Everything here is generated from the 3D scene in `tools/brand-3d` (Three.js, CC0 textures, see its README). Do not edit the files by hand: run `sh tools/brand-3d/build-assets.sh`.
 

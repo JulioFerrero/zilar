@@ -3,9 +3,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
-// Zilar icon, variant "native silver": a big silver sphere with a small one on a tilted orbit (the earth and its moon),
-// modern PBR: scanned ambientCG metals and a Poly Haven studio HDRI on the black key.
-// `?render=1` draws one transparent front-facing frame, like main.js.
+// Zilar icon in 3D: a silver planet crossed by a polished rod, with a small gold moon at the rod's end,
+// on a black brushed-metal key. Physically based: scanned ambientCG metals and a Poly Haven studio HDRI.
+// `?render=1` draws one transparent front-facing frame for render.sh; without it the scene is interactive.
 
 const params = new URLSearchParams(location.search);
 const RENDER = params.get('render') === '1';
@@ -144,8 +144,8 @@ const moonMaterial = new THREE.MeshStandardMaterial({
   roughness: 0.3,
   envMapIntensity: 2.6,
 });
-const ringMaterial = new THREE.MeshStandardMaterial({
-  ...(await silverMaps([14, 2])),
+const rodMaterial = new THREE.MeshStandardMaterial({
+  ...(await silverMaps([2, 8])),
   color: 0xffffff,
   metalness: 1,
   roughness: 0.5,
@@ -174,57 +174,46 @@ function ball(material, radius, position, parent, part = 'body') {
     parent.add(halo);
   }
 }
-const PLANET_RADIUS = 175;
-const ORBIT = 335;
-const MOON_AT = 0; // angle of the moon on its orbit: upper right, where the ring runs across the screen so the gap around the moon stays visible
-const tilt = new THREE.Group();
-tilt.rotation.set(1.2, 0, 0.5);
-const MOON_RADIUS = 68;
-const RING_TUBE = 15;
-// the ring stops short of the moon on both sides. The orbit is tilted, so a gap in the ring plane
-// shrinks to about half on screen: this angle leaves a clear gap there, not just in 3D
-const GAP_AHEAD = 0.5; // angle left free on the upper-left side of the moon
-const GAP_BEHIND = 0.9; // and on the lower-right side, where the ring bends away from the camera
-const orbitRing = new THREE.Mesh(
-  new THREE.TorusGeometry(ORBIT, RING_TUBE, 32, 360, Math.PI * 2 - GAP_AHEAD - GAP_BEHIND),
-  ringMaterial,
+const PLANET_RADIUS = 215;
+const MOON_RADIUS = 52;
+const ROD_RADIUS = 15;
+// the rod and the moon float in front of the planet, so nothing ever intersects the planet
+const ROD_Z = PLANET_RADIUS + 45;
+const ROD_START = new THREE.Vector3(-262, -218, ROD_Z);
+const MOON_AT = new THREE.Vector3(262, 244, ROD_Z);
+// the rod stops short of the moon, so the two never touch
+const ROD_END = MOON_AT.clone().sub(
+  new THREE.Vector3().subVectors(MOON_AT, ROD_START).setLength(MOON_RADIUS + 26),
 );
-orbitRing.rotation.z = MOON_AT + GAP_AHEAD;
-orbitRing.castShadow = true;
-if (MONO) {
-  orbitRing.material = INK;
-  const halo = new THREE.Mesh(
-    new THREE.TorusGeometry(ORBIT, RING_TUBE + HALO, 32, 360, Math.PI * 2 - GAP_AHEAD - GAP_BEHIND),
-    PAPER,
+
+function cylinderBetween(from, to, radius, material) {
+  const direction = new THREE.Vector3().subVectors(to, from);
+  const mesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, direction.length(), 64),
+    material,
   );
-  halo.rotation.z = orbitRing.rotation.z;
-  if (!ONLY_MOON) tilt.add(halo);
+  mesh.position.copy(from).addScaledVector(direction, 0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+  return mesh;
 }
-if (!ONLY_MOON) tilt.add(orbitRing);
-for (const end of [MOON_AT + GAP_AHEAD, MOON_AT - GAP_BEHIND]) {
-  ball(
-    ringMaterial,
-    RING_TUBE,
-    new THREE.Vector3(Math.cos(end) * ORBIT, Math.sin(end) * ORBIT, 0),
-    tilt,
-  );
+const rod = cylinderBetween(ROD_START, ROD_END, ROD_RADIUS, MONO ? INK : rodMaterial);
+rod.castShadow = true;
+if (!ONLY_MOON) system.add(rod);
+if (MONO && !ONLY_MOON) {
+  const halo = cylinderBetween(ROD_START, ROD_END, ROD_RADIUS + HALO, PAPER);
+  system.add(halo);
 }
-ball(
-  moonMaterial,
-  MOON_RADIUS,
-  new THREE.Vector3(Math.cos(MOON_AT) * ORBIT, Math.sin(MOON_AT) * ORBIT, 0),
-  tilt,
-  'moon',
-);
-system.add(tilt);
+ball(rodMaterial, ROD_RADIUS, ROD_START, system);
+ball(rodMaterial, ROD_RADIUS, ROD_END, system);
+ball(moonMaterial, MOON_RADIUS, MOON_AT, system, 'moon');
 ball(planetMaterial, PLANET_RADIUS, new THREE.Vector3(0, 0, 0), system);
-system.position.set(-8, -10, 400);
-system.scale.setScalar(LAYER === 'foreground' || MONO ? 0.8 : 0.88);
+system.position.set(-4, -6, 250);
+system.scale.setScalar(LAYER === 'foreground' || MONO ? 0.84 : 0.92);
 if (LAYER !== 'background') scene.add(system);
 
 // ---------- light and ground ----------
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-sun.position.set(-300, 450, 1700);
+sun.position.set(-220, 330, 1700);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
 sun.shadow.camera.left = -700;
@@ -232,7 +221,8 @@ sun.shadow.camera.right = 700;
 sun.shadow.camera.top = 700;
 sun.shadow.camera.bottom = -700;
 sun.shadow.camera.far = 4000;
-sun.shadow.radius = 9;
+sun.shadow.radius = 14;
+sun.shadow.intensity = 0.55;
 sun.shadow.bias = -0.0004;
 scene.add(sun);
 scene.add(new THREE.AmbientLight(0xffffff, 0.5));
