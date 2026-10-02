@@ -14,7 +14,7 @@ estimate: 2 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-D27: Julio wants a GIF section like Telegram's. Two rules make it fit Galena: (1) **the user's browser never talks to the GIF provider** (that would leak IP addresses and searches), the server does; (2) **a sent GIF is stored by us**, not hot-linked, so old messages keep working when a provider link dies. GIFs are sent as normal **attachments** (T-0065: XEP-0363 upload + `attachment` payload), so chat history, the media handling and the upload limits are reused.
+D27: Julio wants a GIF section like Telegram's. Two rules make it fit Zilar: (1) **the user's browser never talks to the GIF provider** (that would leak IP addresses and searches), the server does; (2) **a sent GIF is stored by us**, not hot-linked, so old messages keep working when a provider link dies. GIFs are sent as normal **attachments** (T-0065: XEP-0363 upload + `attachment` payload), so chat history, the media handling and the upload limits are reused.
 
 > **Open decision for Julio (GIF provider).** The code is written against a `GifProvider` port with one real adapter chosen by `GIF_PROVIDER` (start with `giphy`; `klipy` or another can be added as a second adapter later). Julio must create an API key with the provider and put it in `infra/.env` as `GIF_API_KEY`. Do not read that file; without the key the feature reports itself as unavailable.
 
@@ -56,8 +56,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 
@@ -85,8 +85,8 @@ pnpm build
 - `pnpm format:check`: pass
 - `pnpm lint` (oxlint): pass (fixed 2 `set-state-in-effect` in GifPanel by merging mount+debounce into one timer-driven effect and lazy list init)
 - `pnpm typecheck` (turbo, 10 tasks): pass
-- `pnpm --filter @galena/server test --maxWorkers=2 src/gifs src/config.test.ts src/authz-sweep.test.ts src/stickers/routes.test.ts`: 5 files, 91 passed (full server suite exceeds the 120s tool timeout at ~500s; the lead runs it per batch — the touched files and neighbours all pass)
-- `pnpm --filter @galena/web test --maxWorkers=2`: 86 files, 939 passed
+- `pnpm --filter @zilar/server test --maxWorkers=2 src/gifs src/config.test.ts src/authz-sweep.test.ts src/stickers/routes.test.ts`: 5 files, 91 passed (full server suite exceeds the 120s tool timeout at ~500s; the lead runs it per batch — the touched files and neighbours all pass)
+- `pnpm --filter @zilar/web test --maxWorkers=2`: 86 files, 939 passed
 - `pnpm build` (turbo): 2 tasks successful
 
 ### Problems, deviations from the spec, open questions

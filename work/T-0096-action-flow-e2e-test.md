@@ -49,7 +49,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 ```
 
 ### Acceptance criteria
@@ -81,8 +81,8 @@ The polling helpers (`waitForPendingStatus`, `waitForCallCount`) hit the databas
 - `pnpm exec prettier --write apps/server/src/actions/flow.e2e.test.ts` — wrote the file (one reformatting pass).
 - `pnpm format:check` — `All matched files use Prettier code style!`.
 - `pnpm lint` — `oxlint .` exits 0; re-run after the final edit, still exits 0.
-- `pnpm typecheck` — `Tasks: 10 successful, 10 total | Time: 2.985s`. The `@galena/server` task ran `tsc --noEmit` cleanly.
-- `pnpm exec turbo test --force --filter=@galena/server` — `Test Files 55 passed | 5 skipped (60) | Tests 833 passed | 7 skipped (840) | Duration 156.39s`. The new file adds 10 passing tests on top of the 823 from `T-0093-request-action-tool`; nothing else regressed.
+- `pnpm typecheck` — `Tasks: 10 successful, 10 total | Time: 2.985s`. The `@zilar/server` task ran `tsc --noEmit` cleanly.
+- `pnpm exec turbo test --force --filter=@zilar/server` — `Test Files 55 passed | 5 skipped (60) | Tests 833 passed | 7 skipped (840) | Duration 156.39s`. The new file adds 10 passing tests on top of the 823 from `T-0093-request-action-tool`; nothing else regressed.
 
 ### Problems, deviations from the spec, open questions
 

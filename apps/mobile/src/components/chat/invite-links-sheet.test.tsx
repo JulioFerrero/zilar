@@ -215,7 +215,7 @@ describe('InviteLinkRow', () => {
 });
 
 describe('CreatedInviteLinkView', () => {
-  const url = 'galena://join/' + 'a'.repeat(64);
+  const url = 'zilar://join/' + 'a'.repeat(64);
 
   it('shows the URL once with Copy, Share and the warning', () => {
     const elements = collect(

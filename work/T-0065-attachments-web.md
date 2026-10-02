@@ -15,13 +15,13 @@ estimate: 1.5 days
 
 ### Goal
 
-`docs/PROJECT_PLAN.md` §21 lists "Image and file upload" for the MVP, and the web has a dead paperclip button in the composer. Make it work in DMs and groups, using exactly the path voice messages already proved (T-0010): a slot from the XMPP upload service (XEP-0363), a PUT of the bytes, then a Galena payload message that carries the URL.
+`docs/PROJECT_PLAN.md` §21 lists "Image and file upload" for the MVP, and the web has a dead paperclip button in the composer. Make it work in DMs and groups, using exactly the path voice messages already proved (T-0010): a slot from the XMPP upload service (XEP-0363), a PUT of the bytes, then a Zilar payload message that carries the URL.
 
 It runs after T-0061 because both tasks edit the composer, `realStore.ts` and `MessageBubble.tsx`.
 
 ### Protocol (decided; follow it)
 
-A new payload type `attachment` in `@galena/protocol`, next to `voice`:
+A new payload type `attachment` in `@zilar/protocol`, next to `voice`:
 ```ts
 AttachmentSchema = z.strictObject({
   kind: z.enum(['image', 'file']),
@@ -92,7 +92,7 @@ and the payload envelope `{ v: 0, type: 'attachment', data }`. The message body 
 - Make fakes slow where it matters (a deferred upload), so the "sending" state is really exercised (playbook gotcha 19).
 
 ### Integration / visual check
-- You may run against the live stack read-only: **never** start a second server on 3188 and never touch ports 3000, 3188, 5173, 8081. Use your own Vite port with `GALENA_API_URL=http://localhost:3188` only if the spec of your live check needs it, and **send no real messages**: use mock mode (`?mock`) for screenshots. Live upload against ejabberd is verified by the lead.
+- You may run against the live stack read-only: **never** start a second server on 3188 and never touch ports 3000, 3188, 5173, 8081. Use your own Vite port with `ZILAR_API_URL=http://localhost:3188` only if the spec of your live check needs it, and **send no real messages**: use mock mode (`?mock`) for screenshots. Live upload against ejabberd is verified by the lead.
 - Screenshots (max ~10, downscaled with `sips -Z 900` before viewing; a session holds at most 30 images): the preview bar with an image, with a file, the error, an image bubble, a file bubble, the failed state with Retry. Save under `work/screenshots/T-0065/`. **Stop any dev server you start.**
 
 ### Acceptance criteria
@@ -186,7 +186,7 @@ pnpm lint
 # typecheck across the monorepo
 pnpm exec turbo typecheck --force
 # Tasks:    4 successful, 9 total
-# Failed:   @galena/xmpp-core#typecheck   (see "Problems" below)
+# Failed:   @zilar/xmpp-core#typecheck   (see "Problems" below)
 
 # Targeted unit tests
 cd packages/chat-core && pnpm exec vitest run
@@ -215,7 +215,7 @@ cd apps/web && pnpm exec vitest run \
 
 pnpm exec turbo test --force
 # Tasks:    6 successful, 9 total
-# Failed:   @galena/devtools#test (one flaky `mergeTask rebase conflicts` timeout in `src/lead/merge.test.ts:179` — unrelated, passes when run in isolation)
+# Failed:   @zilar/devtools#test (one flaky `mergeTask rebase conflicts` timeout in `src/lead/merge.test.ts:179` — unrelated, passes when run in isolation)
 
 pnpm build
 # Tasks:    2 successful, 2 total
@@ -231,7 +231,7 @@ The web suite contains the five new "Composer attachments (T-0065)" tests, the f
 ### Problems, deviations from the spec, open questions
 
 - **`pnpm format:check` and `pnpm typecheck` both fail on `packages/xmpp-core/src/integration-edits.test.ts`, a file in `packages/xmpp-core/**` that is explicitly Not allowed.** Both issues are pre-existing on the branch tip (`task/T-0065-attachments-web` is forked from before the lead's `38f41a1` "xmpp-core: exclude the edits integration test from the no-node typecheck" commit, which adds the test to the no-node `exclude` and reformats it). `pnpm prettier --check` was last run on the file on `9b28182` with the current pre-commit-style layout, so the file is out of policy on this branch. Re-running prettier is not in the allowed files and would be out of scope; the failures are unchanged by my edits. Every file I touched passes prettier and tsc.
-- **`pnpm exec turbo test --force` reports one failure in `@galena/devtools` (`src/lead/merge.test.ts:179` "aborts and lists the conflicted files" — 5000 ms timeout) but the test passes when run alone in `6.03 s`.** It's the standard race with another worker's checkout rather than a real regression and has nothing to do with T-0065.
+- **`pnpm exec turbo test --force` reports one failure in `@zilar/devtools` (`src/lead/merge.test.ts:179` "aborts and lists the conflicted files" — 5000 ms timeout) but the test passes when run alone in `6.03 s`.** It's the standard race with another worker's checkout rather than a real regression and has nothing to do with T-0065.
 - **No screenshots.** The spec lists screenshots under "Integration / visual check" with "You may run against the live stack read-only", but the path requires a running `?mock=1` page past the auth redirect. With the dev server proxies `/api` to `localhost:3000` (forbidden port), `apps/web/vite.config.ts` outside the allowed files, and no mock auth helper in scope, I would have had to touch a forbidden file or start a server on a forbidden port to get past `/login`. The acceptance criteria don't include screenshots and the Vitest suite (381 tests including the new `AttachmentBubbles`, `AttachmentPreview`, `FileMessage`, `ImageMessage`, `attachments (T-0065)`, "Composer attachments (T-0065)" and protocol/chat-core tests) covers every behavior the spec calls out for the visuals. The lead's live check still owns real screenshots per "Live upload against ejabberd is verified by the lead."
 - **No `any` / `@ts-ignore` introduced.** Verified with `rg "@ts-ignore"` and `rg ": any|<any>|as any"` (only hit is an unrelated CSS property in `index.css`).
 - **No new dependencies.** `pnpm diff HEAD -- '**/package.json'` is empty.
@@ -262,7 +262,7 @@ export function isTrustedMediaUrl(url: string, trustedHosts: ReadonlySet<string>
 - `token.domain.trim().toLowerCase()`
 - `upload.${token.domain}`
 
-`isTrustedMediaUrl` parses the URL, requires `http:` or `https:`, and looks the (lowercased) hostname up in the set. Anything that doesn't parse as an http(s) URL (`javascript:`, `data:`, relative paths, garbage) is untrusted. Comparison is hostname-only, so scheme and port don't matter; the dev case (`http://galena.localhost:5280/upload/...` while the WebSocket is `ws://127.0.0.1:5280/ws`) is covered because the upload service answers on the XMPP virtual host.
+`isTrustedMediaUrl` parses the URL, requires `http:` or `https:`, and looks the (lowercased) hostname up in the set. Anything that doesn't parse as an http(s) URL (`javascript:`, `data:`, relative paths, garbage) is untrusted. Comparison is hostname-only, so scheme and port don't matter; the dev case (`http://zilar.localhost:5280/upload/...` while the WebSocket is `ws://127.0.0.1:5280/ws`) is covered because the upload service answers on the XMPP virtual host.
 
 **Store wiring (`apps/web/src/store/realStore.ts`).** A new closure-scoped `mediaToken: MediaTokenShape | undefined` is set right after `firstToken` in `connectXmpp` and refreshed in the same place as the cached auth token. `stop()` clears it. A pure module-scope helper `sanitizeIncomingAttachment(attachment, token)` is called from `toUiMessage`:
 
@@ -285,7 +285,7 @@ When `kind === 'image'` and the URL is **not** trusted, the helper returns `{ ..
 `apps/web/src/lib/attachments.test.ts` (+13 tests):
 
 - `trustedMediaHosts`: service + domain + upload subdomain; malformed service URL still trusts the domain; case-insensitive hostnames.
-- `isTrustedMediaUrl`: trusted host on any port, http or https; non-http scheme rejected; trusted domain and `upload.<domain>`; unrelated host rejected; look-alike suffix/prefix/substring (`galena.test.evil.example`, `evil-galena.test`, `evilgalena.test`); userinfo trick (`http://galena.test@evil.example/x`); `javascript:`, `data:`, `wss://` rejected; relative URL and garbage rejected; case-insensitive hostname match.
+- `isTrustedMediaUrl`: trusted host on any port, http or https; non-http scheme rejected; trusted domain and `upload.<domain>`; unrelated host rejected; look-alike suffix/prefix/substring (`zilar.test.evil.example`, `evil-zilar.test`, `evilzilar.test`); userinfo trick (`http://zilar.test@evil.example/x`); `javascript:`, `data:`, `wss://` rejected; relative URL and garbage rejected; case-insensitive hostname match.
 
 `apps/web/src/store/realStore.test.tsx` (+4 tests in the existing `attachments (T-0065)` block):
 

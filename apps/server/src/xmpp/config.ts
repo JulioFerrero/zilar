@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { JidSchema } from '@galena/protocol';
+import { JidSchema } from '@zilar/protocol';
 
 // Lowercase host name (letters, digits, dots, hyphens). No port, no scheme.
 const DomainSchema = z
@@ -14,10 +14,10 @@ export const xmppEnvSchema = z.object({
   EJABBERD_API_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:5280/api'),
   EJABBERD_ADMIN_JID: JidSchema,
   EJABBERD_ADMIN_PASSWORD: z.string().min(1, 'must not be empty'),
-  XMPP_DOMAIN: DomainSchema.default('galena.localhost'),
-  XMPP_MUC_DOMAIN: DomainSchema.default('rooms.galena.localhost'),
+  XMPP_DOMAIN: DomainSchema.default('zilar.localhost'),
+  XMPP_MUC_DOMAIN: DomainSchema.default('rooms.zilar.localhost'),
   XMPP_WS_PUBLIC_URL: z.url({ protocol: /^wss?$/ }).default('ws://127.0.0.1:5280/ws'),
-  GALENA_XMPP_JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),
+  ZILAR_XMPP_JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),
 });
 
 export type XmppEnv = z.infer<typeof xmppEnvSchema>;
@@ -59,6 +59,6 @@ export function loadXmppConfig(env: Record<string, string | undefined>): XmppCon
     domain: result.data.XMPP_DOMAIN,
     mucDomain: result.data.XMPP_MUC_DOMAIN,
     wsPublicUrl: result.data.XMPP_WS_PUBLIC_URL,
-    jwtSecret: result.data.GALENA_XMPP_JWT_SECRET,
+    jwtSecret: result.data.ZILAR_XMPP_JWT_SECRET,
   };
 }

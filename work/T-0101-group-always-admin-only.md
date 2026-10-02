@@ -55,8 +55,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test
-pnpm --filter @galena/web test
+pnpm --filter @zilar/server test
+pnpm --filter @zilar/web test
 pnpm build
 ```
 
@@ -84,8 +84,8 @@ pnpm build
 - `pnpm lint` (oxlint, re-run after last edit): clean.
 - `pnpm typecheck`: 10 tasks successful (fixed one missing `approvals` import in `rules.routes.test.ts` mid-way).
 - Targeted `pnpm exec vitest run src/actions/flow.e2e.test.ts src/approvals/service.test.ts src/approvals/rules.routes.test.ts` (in `apps/server`): 3 files, 77 tests, all passed.
-- Full `pnpm --filter @galena/server test`: 57 files passed, 5 skipped; 909 tests passed, 7 skipped, 0 failed (ran twice; the package arg filter is swallowed by the test script so the whole suite ran — pre-existing arg plumbing, not my change).
-- `pnpm --filter @galena/web test`: 57 files, 640 tests, all passed (includes 1 new test).
+- Full `pnpm --filter @zilar/server test`: 57 files passed, 5 skipped; 909 tests passed, 7 skipped, 0 failed (ran twice; the package arg filter is swallowed by the test script so the whole suite ran — pre-existing arg plumbing, not my change).
+- `pnpm --filter @zilar/web test`: 57 files, 640 tests, all passed (includes 1 new test).
 - `pnpm build`: 2 tasks successful.
 
 ### Problems, deviations from the spec, open questions

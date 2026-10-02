@@ -14,7 +14,7 @@ estimate: 1 day
 ## Spec (written by Claude, do not edit)
 
 ### Why
-Web can search messages across everything the user may see (T-0117). Mobile has no search. Mobile is the smaller share of the work (about 20%), so keep it small and match how the mobile app already does lists, sheets, stores and its mock (`EXPO_PUBLIC_GALENA_MOCK`). Read `AGENTS.md` first, including the security checklist. Nothing here can be run in a simulator by the worker, so tests and typecheck carry the proof; say in the Report what still needs a human look.
+Web can search messages across everything the user may see (T-0117). Mobile has no search. Mobile is the smaller share of the work (about 20%), so keep it small and match how the mobile app already does lists, sheets, stores and its mock (`EXPO_PUBLIC_ZILAR_MOCK`). Read `AGENTS.md` first, including the security checklist. Nothing here can be run in a simulator by the worker, so tests and typecheck carry the proof; say in the Report what still needs a human look.
 
 ### What to build
 1. A search entry at the top of the chat list (search field that opens a full-screen search). Debounce input (about 300 ms), minimum query length as the server requires, cancel the in-flight request when the query changes.
@@ -35,7 +35,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test --maxWorkers=2
+pnpm --filter @zilar/mobile test --maxWorkers=2
 ```
 (Affected tests while working; the full mobile suite once at the end. Do NOT start simulators, Metro, or `expo run`; Julio's simulators are off limits.)
 
@@ -60,7 +60,7 @@ Web changes, server changes, search filters beyond chat scope, semantic search.
 - Search entry: the chat-list header search field now opens a full-screen search — 2+ chars searches messages (name filter still applies below that). Clear (X) button added. Tapping a result calls `openAtMessage` then navigates to the chat; a miss still opens the chat at the bottom with `?notFound=1` and an inline "Message not found" notice (dismissible) on the chat screen.
 - Jump-to-message: `openAtMessage(chatId, messageId)` on both stores (mock: direct lookup, same `message_not_found` contract; real: waits for the opening page, pages back with shared `loadOlderPage`, gives up after 20 pages or a 10 s stalled-history wait). Sets `jumpTarget`; `MessageList` scrolls to it centered (mount scroll and live-scroll stay out of the way while a jump is pending) and clears it. `loadOlder` refactored to share `loadOlderPage` (same shape as web's T-0117 refactor).
 - Chat scope: the header "Search in chat" button (previously dead, no `onPress`) navigates to `/` with `?searchChat=<id>`; the list opens scoped with a "In <title> only" chip (X clears). Same-as-web behavior.
-- Mock mode: `mock/search.ts` — case-insensitive substring search over mock messages + seeded topic last-messages, newest-first, server-shaped `nextBefore` cursor, `chat` narrowing, 400 on short queries. Active in tests and under `EXPO_PUBLIC_GALENA_MOCK=1`, mirroring the store's own gate.
+- Mock mode: `mock/search.ts` — case-insensitive substring search over mock messages + seeded topic last-messages, newest-first, server-shaped `nextBefore` cursor, `chat` narrowing, 400 on short queries. Active in tests and under `EXPO_PUBLIC_ZILAR_MOCK=1`, mirroring the store's own gate.
 
 ### Files changed
 - New: `apps/mobile/src/lib/search-api.ts` (+ `search-api.test.ts`, 9 tests), `apps/mobile/src/mock/search.ts` (+ `search.test.ts`, 4 tests), `apps/mobile/src/components/chat/message-search.ts` (+ `message-search.test.ts`, 13 tests), `apps/mobile/src/components/chat/use-message-search.ts` (+ `use-message-search.test.ts`, 11 controller tests), `apps/mobile/src/components/chat/search-snippet.tsx` (+ `search-snippet.test.tsx`, 4 tests), `apps/mobile/src/components/chat/message-search-list.tsx`.
@@ -69,11 +69,11 @@ Web changes, server changes, search filters beyond chat scope, semantic search.
 
 ### Commands run and real results
 - `pnpm install`: pass (8.4 s).
-- `pnpm --filter @galena/mobile typecheck`: pass.
+- `pnpm --filter @zilar/mobile typecheck`: pass.
 - `pnpm lint` (oxlint, repo-wide): pass (fixed 4 errors: set-state-in-effect → render-adjust idiom, ref-during-render → effect mirror, 2× no-useless-spread → char-offset arithmetic).
 - `pnpm format:check` (repo-wide prettier): pass.
 - Touched-file suites: 7 files, 125 tests passed (`search-api` 9, `message-search` 13, `mock/search` 4, `use-message-search` controller 11, `search-snippet` 4, `chat-store` +2, `real-store` +4 — all new tests pass).
-- Full mobile suite once at the end (`pnpm --filter @galena/mobile test --maxWorkers=2`): 43 files passed, 2 skipped; 446 passed, 2 skipped (24.3 s).
+- Full mobile suite once at the end (`pnpm --filter @zilar/mobile test --maxWorkers=2`): 43 files passed, 2 skipped; 446 passed, 2 skipped (24.3 s).
 - No `console.log`/`any`/`@ts-ignore`/disable comments in new source (grep: only benign "many" matches).
 - Not run: simulators/Metro/`expo run` (forbidden by the task); no simulator, so UI proof is tests + typecheck only.
 

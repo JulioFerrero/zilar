@@ -75,7 +75,7 @@ async function seedAi(
   });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  const jid = `${localpart}@galena.localhost`;
+  const jid = `${localpart}@zilar.localhost`;
   await context.db.insert(ais).values({
     id: aiId,
     owner: ownerId,
@@ -146,7 +146,7 @@ function approvalInput(args: {
     action: args.action ?? 'send_email',
     summary: 'Send a campaign email',
     argsHash: args.hash,
-    requestedBy: 'ai-bot@galena.localhost',
+    requestedBy: 'ai-bot@zilar.localhost',
     expiresAt: args.expiresAt,
   };
 }
@@ -195,7 +195,7 @@ describe('approvals service', () => {
           action: 'send_email',
           summary: 'Send',
           argsHash: argsHash(2),
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
           expiresAt: futureExpiresAt(now, 60_000),
           worstCase: { currency: 'EUR', amount: 9.5 },
         },

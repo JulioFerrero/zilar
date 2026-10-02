@@ -32,9 +32,9 @@ Each task gets its own git worktree, so several workers can run in parallel with
 
 ```bash
 # from the repo root: create the task's branch in a separate folder
-git worktree add ../galena-T-0001 -b task/T-0001-monorepo
+git worktree add ../zilar-T-0001 -b task/T-0001-monorepo
 
-cd ../galena-T-0001
+cd ../zilar-T-0001
 
 # Option 1 (safer): the interactive OpenCode app. It asks you before risky commands.
 opencode -m deepseek/deepseek-v4-pro

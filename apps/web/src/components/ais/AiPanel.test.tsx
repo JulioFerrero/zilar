@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { AuthProvider, type AuthState } from '@/auth/AuthProvider';
 import { createChatStore } from '@/store/store';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
@@ -18,12 +18,12 @@ function jsonResponse(status: number, body: unknown): Response {
 
 const auth: AuthState = {
   status: 'authenticated',
-  user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+  user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
 
 const chat: ChatSummary = {
-  id: 'ai-a-1@galena.test',
+  id: 'ai-a-1@zilar.test',
   title: 'Dev-1',
   kind: 'dm',
   isAI: true,
@@ -38,7 +38,7 @@ const ai = {
   template: 'dev',
   persona: 'You are a concise senior engineer.',
   model: 'gpt-4o',
-  jid: 'ai-a-1@galena.test',
+  jid: 'ai-a-1@zilar.test',
   status: 'active',
   providerConnectionId: 'c-1',
   limits: { perDayUsd: 2, perMonthUsd: 20 },
@@ -203,7 +203,7 @@ function renderPanel() {
   render(
     <AuthProvider value={auth}>
       <ChatStoreProvider store={store}>
-        <MemoryRouter initialEntries={['/c/ai-a-1@galena.test']}>
+        <MemoryRouter initialEntries={['/c/ai-a-1@zilar.test']}>
           <Routes>
             <Route path="/c/:chatJid" element={<AiPanel chat={chat} onClose={onClose} />} />
             <Route path="/" element={<div>Chat list</div>} />
@@ -331,7 +331,7 @@ describe('AiPanel', () => {
     render(
       <AuthProvider value={auth}>
         <ChatStoreProvider store={store}>
-          <MemoryRouter initialEntries={['/c/ai-a-1@galena.test']}>
+          <MemoryRouter initialEntries={['/c/ai-a-1@zilar.test']}>
             <Routes>
               <Route path="/c/:chatJid" element={<ChatView chat={chat} />} />
               <Route path="/" element={<div>Chat list</div>} />

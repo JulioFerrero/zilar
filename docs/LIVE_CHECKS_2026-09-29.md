@@ -10,18 +10,18 @@ The live API on `127.0.0.1:3188` already runs the latest `main` (restarted after
    `RUNNER_HUB_ENABLED=true PORT=3188 pnpm exec tsx --env-file=.env src/index.ts` (the hub listens on `127.0.0.1:3189`).
 2. Web → menu → **Machines** → **Add machine**: a pairing code appears (valid 10 minutes).
 3. Pair (any spare directory as the runner's home):
-   `GALENA_RUNNER_HOME=/tmp/galena-runner-try pnpm --filter @galena/runner start pair <CODE> --server http://127.0.0.1:3188 --name try-mac`
+   `ZILAR_RUNNER_HOME=/tmp/zilar-runner-try pnpm --filter @zilar/runner start pair <CODE> --server http://127.0.0.1:3188 --name try-mac`
    Good: it prints a machine id and a fingerprint; the Machines page shows the machine as **pending** with the same fingerprint.
 4. **Approve** it in the page.
-5. Run it: `GALENA_RUNNER_HOME=/tmp/galena-runner-try pnpm --filter @galena/runner start run --hub ws://127.0.0.1:3189/tunnel`
+5. Run it: `ZILAR_RUNNER_HOME=/tmp/zilar-runner-try pnpm --filter @zilar/runner start run --hub ws://127.0.0.1:3189/tunnel`
    Good: `connecting`, then `online`; within a minute the machine shows **Online** in the page.
 6. **Revoke** it in the page. Good: `run` prints that the machine was revoked and exits non-zero; it does not reconnect.
-7. Clean up: `rm -rf /tmp/galena-runner-try`, restart the API without `RUNNER_HUB_ENABLED` if you do not want the hub.
+7. Clean up: `rm -rf /tmp/zilar-runner-try`, restart the API without `RUNNER_HUB_ENABLED` if you do not want the hub.
 
 ## 2. Kill switch (T-0080, T-0083, T-0084)
 
 With an AI that answers in a DM and in a group:
-- Web → the AI's panel → **Stop AI** (confirm). Good: the panel shows "Stopped"; the AI disappears from `docker exec galena-dev-ejabberd-1 ejabberdctl connected_users` (its `…/gateway` session); a message to it gets no answer; ask it something long and stop it while it is answering: **no reply arrives afterwards**.
+- Web → the AI's panel → **Stop AI** (confirm). Good: the panel shows "Stopped"; the AI disappears from `docker exec zilar-dev-ejabberd-1 ejabberdctl connected_users` (its `…/gateway` session); a message to it gets no answer; ask it something long and stop it while it is answering: **no reply arrives afterwards**.
 - **Resume**. Good: it is back online and answers again.
 - The panel's **Activity** section shows "Stopped" and "Resumed" entries.
 - While it is stopped, adding it to a group answers an error (409 `ai_not_active`); an AI that already was a member stays.
@@ -29,7 +29,7 @@ With an AI that answers in a DM and in a group:
 ## 3. Approvals (T-0073, T-0076, T-0081, T-0082, T-0087)
 
 No real approval requests exist yet (the engine that creates them is a later task), so use mock mode:
-- Web deep link `http://localhost:<free port>/c/c-devteam?mock=1` (run `pnpm --filter @galena/web dev --port <free port>`; not 3000/5173/8081): the card shows **Approve / Deny**; Approve turns it into "Approved".
+- Web deep link `http://localhost:<free port>/c/c-devteam?mock=1` (run `pnpm --filter @zilar/web dev --port <free port>`; not 3000/5173/8081): the card shows **Approve / Deny**; Approve turns it into "Approved".
 - `…/settings/approvals?mock=1`: the inbox lists the pending request with a countdown.
 - Mobile (dev build, mock scenario): the same card decides in memory.
 Nothing further can be verified until the engine creates approvals.
@@ -47,7 +47,7 @@ Real chats in Helium (do not send messages you do not want sent): upload, paste 
 
 ## 6. Audit log (T-0079, T-0083, T-0084, T-0086)
 
-- Postgres refuses changes: `docker exec galena-dev-postgres-1 psql -U postgres -d galena -c "truncate audit_log"` must answer `audit_log is append-only` (verified once by the lead on the empty table).
+- Postgres refuses changes: `docker exec zilar-dev-postgres-1 psql -U postgres -d zilar -c "truncate audit_log"` must answer `audit_log is append-only` (verified once by the lead on the empty table).
 - The AI panel **Activity** section (owner) and the group panel **Activity** section (group owner/admin) list entries after you stop/resume an AI or approve/revoke a machine.
 
 ## 7. AI home machine (T-0091)
@@ -79,7 +79,7 @@ With `ACTION_DEMO_ENABLED=true`:
 
 ## 12. Message search (T-0117)
 
-The live server now has search on (read-only role `galena_archive`, set up on 2026-09-30). In the web app press ⌘K or click the search box and type two or more letters of a word you know is in an old chat: a **Messages** section appears under the chat names, grouped by chat, with the match highlighted. Enter or a click opens that chat at the message. Also: "Search in chat" in a chat header limits it to that chat; a message you sent yourself in a DM shows **You** as the sender; a private topic you are not in never shows up. If the list says search is unavailable, the server log shows why (the 502 does not include the query).
+The live server now has search on (read-only role `zilar_archive`, set up on 2026-09-30). In the web app press ⌘K or click the search box and type two or more letters of a word you know is in an old chat: a **Messages** section appears under the chat names, grouped by chat, with the match highlighted. Enter or a click opens that chat at the message. Also: "Search in chat" in a chat header limits it to that chat; a message you sent yourself in a DM shows **You** as the sender; a private topic you are not in never shows up. If the list says search is unavailable, the server log shows why (the 502 does not include the query).
 
 ## Known follow-ups (not blockers, also on `work/BOARD.md`)
 

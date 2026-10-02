@@ -46,7 +46,7 @@ This is a **visual task**. Store logic, API calls, navigation and behavior don't
 **Not allowed:** `src/store/**`, `src/lib/*-api.ts`, `src/auth/*.ts` (logic), `src/mock/**`, `apps/web/**`, `apps/server/**`, `packages/**`, `docs/**`.
 
 ### Allowed dependencies
-- `@expo-google-fonts/geist` and `@expo-google-fonts/geist-mono`, plus `expo-font` if it isn't already a direct dependency. Install them with `pnpm --filter @galena/mobile exec expo install <names>`, so the versions match the Expo SDK.
+- `@expo-google-fonts/geist` and `@expo-google-fonts/geist-mono`, plus `expo-font` if it isn't already a direct dependency. Install them with `pnpm --filter @zilar/mobile exec expo install <names>`, so the versions match the Expo SDK.
 - Nothing else. `expo-linear-gradient` and `react-native-svg` are already there.
 
 Adding `expo-font` is a native change: rebuild your simulator app with `boot:ios` (see Visual check).
@@ -111,10 +111,10 @@ Adding `expo-font` is a native change: rebuild your simulator app with `boot:ios
 
 ### Visual check (you have vision: use it)
 - **Simulator:** follow T-0037's rules exactly.
-  - Create your **own** simulator (`xcrun simctl create "Galena T-0048" "iPhone 17"`) and boot it.
+  - Create your **own** simulator (`xcrun simctl create "Zilar T-0048" "iPhone 17"`) and boot it.
   - **Never** touch Julio's iPhone `DB167CD4-…` or iPad `A3E0C081-…`.
   - Never run `simctl shutdown all` or `erase`.
-  - Run `pnpm --filter @galena/mobile boot:ios --device <your-udid>` in mock mode (`EXPO_PUBLIC_GALENA_MOCK=1`). Its Metro runs on 8082. **Never use 8081**; that's Julio's.
+  - Run `pnpm --filter @zilar/mobile boot:ios --device <your-udid>` in mock mode (`EXPO_PUBLIC_ZILAR_MOCK=1`). Its Metro runs on 8082. **Never use 8081**; that's Julio's.
   - At the end, stop your Metro, then shut down and delete **only your** simulator, by its UDID.
 - **Screenshots** (`xcrun simctl io <udid> screenshot`), saved to `apps/mobile/screenshots/T-0048/`:
   - the chat list;
@@ -144,8 +144,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/mobile
-pnpm --filter @galena/mobile build
+pnpm exec turbo test --force --filter=@zilar/mobile
+pnpm --filter @zilar/mobile build
 ```
 
 ### Out of scope
@@ -229,16 +229,16 @@ pnpm install                                   # up to date, done
 pnpm format:check                              # All matched files use Prettier code style!
 pnpm lint                                      # oxlint: no findings
 pnpm typecheck                                 # turbo: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/mobile
+pnpm exec turbo test --force --filter=@zilar/mobile
                                                # 172 passed, 2 skipped (174); depth.test.ts 10 passed
-pnpm --filter @galena/mobile build             # Exported: dist (ios + android bundles)
+pnpm --filter @zilar/mobile build             # Exported: dist (ios + android bundles)
 ```
-`pnpm --filter @galena/mobile boot:ios --device <mine>` in mock mode: **PASS** — bundle loaded and
+`pnpm --filter @zilar/mobile boot:ios --device <mine>` in mock mode: **PASS** — bundle loaded and
 the JS app ran with no errors.
 
 ### Visual check
-- My own simulator `Galena T-0048` (iPhone 17, `ED130044-78DA-4429-B278-446028CF0EB4`), Metro on
-  **8082** in `EXPO_PUBLIC_GALENA_MOCK=1`. At the end I stopped my Metro, shut down and **deleted**
+- My own simulator `Zilar T-0048` (iPhone 17, `ED130044-78DA-4429-B278-446028CF0EB4`), Metro on
+  **8082** in `EXPO_PUBLIC_ZILAR_MOCK=1`. At the end I stopped my Metro, shut down and **deleted**
   my simulator. Julio's `DB167CD4…` was never booted or touched, and 8081 was never used.
 - Screenshots in `apps/mobile/screenshots/T-0048/` (all 402×874), each checked once, downscaled:
   - `01-chat-list.png` — title, search, segmented control, 52 px monochrome avatars, mono times,
@@ -300,9 +300,9 @@ clock, sent one `✓`, read `✓✓`.
 **3. nit — folder tabs.** Track `rounded-[10px]`, tab `rounded-[7px]` (`ui-style.md` §5).
 
 ### Visual check (Round 2)
-Recreated my own simulator `Galena T-0048` (iPhone 17,
+Recreated my own simulator `Zilar T-0048` (iPhone 17,
 `9A385DEA-8C73-4FA9-BEC0-72424D5172DF`), booted it and ran
-`pnpm --filter @galena/mobile boot:ios --device <mine>` in mock mode: **PASS** (bundle loaded, JS
+`pnpm --filter @zilar/mobile boot:ios --device <mine>` in mock mode: **PASS** (bundle loaded, JS
 ran, no errors). I retook **only** `apps/mobile/screenshots/T-0048/02-dm.png`; it shows the
 outgoing text bubbles with the mono time and `#525252` ticks (read `✓✓`, sent `✓`) on the meta line,
 plus the new 10 px/7 px segmented control on the list. Then I stopped my Metro, and shut down and
@@ -313,9 +313,9 @@ deleted my simulator. Julio's `DB167CD4…` (shutdown) and Metro 8081 were untou
 pnpm format:check                              # All matched files use Prettier code style!
 pnpm lint                                      # oxlint: no findings
 pnpm typecheck                                 # turbo: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/mobile
+pnpm exec turbo test --force --filter=@zilar/mobile
                                                # 172 passed, 2 skipped (174); 20 files passed
-pnpm --filter @galena/mobile build             # Exported: dist (ios + android bundles)
+pnpm --filter @zilar/mobile build             # Exported: dist (ios + android bundles)
 ```
 `PREREVIEW.md` (the lead's untracked notes) broke `format:check`; I ran `prettier --write` on it in
 place and left it **untracked** (it is not in the commit). The capture-only mock auth bypass was
@@ -335,8 +335,8 @@ same `<Text>`, at the end of the text, as round 1 and `main` did: `' ✓'` sent,
 what `main` and the web do). No separate `View`, so short bubbles stay short.
 
 ### Visual check (Round 3)
-New own simulator `Galena T-0048` (iPhone 17, `B53FE3DD-DCD6-4380-8AE4-A7BC0013120E`);
-`pnpm --filter @galena/mobile boot:ios --device <mine>` in mock mode: **PASS**. Retook only
+New own simulator `Zilar T-0048` (iPhone 17, `B53FE3DD-DCD6-4380-8AE4-A7BC0013120E`);
+`pnpm --filter @zilar/mobile boot:ios --device <mine>` in mock mode: **PASS**. Retook only
 `apps/mobile/screenshots/T-0048/02-dm.png` — the DM shows the inline `time ✓` / `time ✓✓` meta at
 the end of each outgoing bubble and short bubbles again. Then I stopped my Metro, and shut down and
 deleted my simulator. Julio's `DB167CD4…` (shutdown) and Metro 8081 were untouched.
@@ -346,9 +346,9 @@ deleted my simulator. Julio's `DB167CD4…` (shutdown) and Metro 8081 were untou
 pnpm format:check                              # All matched files use Prettier code style!
 pnpm lint                                      # oxlint: no findings
 pnpm typecheck                                 # turbo: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/mobile
+pnpm exec turbo test --force --filter=@zilar/mobile
                                                # 172 passed, 2 skipped (174); 20 files passed
-pnpm --filter @galena/mobile build             # Exported: dist (ios + android bundles)
+pnpm --filter @zilar/mobile build             # Exported: dist (ios + android bundles)
 ```
 `PREREVIEW.md` (untracked) again needed `prettier --write` in place to keep `format:check` green; it
 is not committed. The capture-only mock auth bypass was reverted; `RequireAuth.tsx` has no diff.

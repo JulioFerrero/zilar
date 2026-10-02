@@ -46,7 +46,7 @@ describe('createApp', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
       ok: true,
-      name: 'galena-server',
+      name: 'zilar-server',
       db: 'ok',
     });
   });

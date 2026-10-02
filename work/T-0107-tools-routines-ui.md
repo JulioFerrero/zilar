@@ -42,7 +42,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 (Affected tests while working; the full web suite once at the end.)
@@ -83,7 +83,7 @@ Editing tool source in the UI (AIs write tools; humans read, run, revert, delete
 - `pnpm format:check`: pass ("All matched files use Prettier code style!"). Note: the repo already had 10 unformatted files before my change; I formatted mine and left the rest to `prettier --write` on my touched files only.
 - `pnpm lint` (oxlint): pass, exit 0.
 - `pnpm typecheck`: 10 tasks successful.
-- `pnpm --filter @galena/web test --maxWorkers=2` (full suite, once at the end): 80 files passed, 882 tests passed, 0 failed, no unhandled errors.
+- `pnpm --filter @zilar/web test --maxWorkers=2` (full suite, once at the end): 80 files passed, 882 tests passed, 0 failed, no unhandled errors.
 - `pnpm build`: 2 tasks successful.
 - `pnpm screenshots`: all 17 shots captured, each under 400 KB; the two new shots visually verified (tool source with line numbers, version history with author/hosts, run section; routines with plain-words schedules, Pause/Resume/Delete, paused explanation).
 - Affected-tests note: 3 pre-existing panel tests broke mid-work because my sections surfaced `role="alert"` errors on their strict fetch mocks (GroupPanel add-fail, GroupPanel audit-fail, AiPanel audit-404); fixed by reading 404/invalid_response list failures as empty (older-server semantics), then all green.

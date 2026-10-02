@@ -1,7 +1,7 @@
 {
-  "name": "Galena",
-  "short_name": "Galena",
-  "description": "Galena chat: people and AI agents in DMs and groups.",
+  "name": "Zilar",
+  "short_name": "Zilar",
+  "description": "Zilar chat: people and AI agents in DMs and groups.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

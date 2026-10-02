@@ -4,8 +4,8 @@ import {
   type ChatSummary,
   type ReplyRef,
   type UiMessage,
-} from '@galena/chat-core';
-import type { Money } from '@galena/protocol';
+} from '@zilar/chat-core';
+import type { Money } from '@zilar/protocol';
 
 export function formatLastSeen(date: Date, now: Date): string {
   const minutes = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 60_000));

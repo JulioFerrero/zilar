@@ -1,6 +1,6 @@
 // Telegram sticker-pack import (T-0123): fetch a public pack through the
 // Telegram Bot API (`getStickerSet`, `getFile`) and store its static
-// stickers as a private Galena pack.
+// stickers as a private Zilar pack.
 //
 // Security shape (mirrors the GIF proxy, T-0122):
 // - Only two hosts are ever contacted: `api.telegram.org` (Bot API calls)

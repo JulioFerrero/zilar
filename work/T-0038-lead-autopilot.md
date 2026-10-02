@@ -33,9 +33,9 @@ Read `docs/LEAD_PLAYBOOK.md` §4–§10, §13, §15 and Appendices A–D **compl
 - `AGENTS.md` (mandatory)
 - `docs/LEAD_PLAYBOOK.md`: all of the sections above, especially §5.1 (models and the Muse pre-review), §7 (permission policy), §15 (gotchas 1–16) and Appendix C (the permission rules JSON)
 - The current scratch tools this replaces. Read them; don't copy them blindly:
-  - `/tmp/galena-scratch/launch.py`
-  - `/tmp/galena-scratch/relaunch.py`
-  - `/tmp/galena-scratch/watch.py`
+  - `/tmp/zilar-scratch/launch.py`
+  - `/tmp/zilar-scratch/relaunch.py`
+  - `/tmp/zilar-scratch/watch.py`
 - OpenCode v2 API: `opencode2 api GET /openapi.json` for the operations (session.create, session.prompt, session.interrupt, session.message.list, session.permission.list, session.permission.reply, shell.create). Quirk: `opencode2` truncates output on pipes, so write it to a temp file and read that (see `watch.py`).
 - `packages/devtools/` (where this lives) and a finished task file such as `work/T-0036-web-tests-under-load.md` (the front matter and sections the tools parse)
 - `work/BOARD.md` (the Active and Done table formats the merge script edits)
@@ -54,13 +54,13 @@ Read `docs/LEAD_PLAYBOOK.md` §4–§10, §13, §15 and Appendices A–D **compl
 
 ### What to build
 
-`pnpm --filter @galena/devtools lead <command>` provides:
+`pnpm --filter @zilar/devtools lead <command>` provides:
 
 **1. `lead launch <T-XXXX> [--extra-rules <file>]`**
 - Reads `work/T-XXXX-*.md` and parses the front matter (`branch`, `model`) with zod.
-- Creates the worktree `../galena-T-XXXX` on that branch from `main`, and creates the OpenCode session with the model from `model:` (for example `opencode-go/muse-spark-1.3-contributor` gives providerID `opencode-go` and id `muse-spark-1.3-contributor`). The rules come from a checked-in `prompts/rules.json`, a copy of Appendix C, plus any extras.
+- Creates the worktree `../zilar-T-XXXX` on that branch from `main`, and creates the OpenCode session with the model from `model:` (for example `opencode-go/muse-spark-1.3-contributor` gives providerID `opencode-go` and id `muse-spark-1.3-contributor`). The rules come from a checked-in `prompts/rules.json`, a copy of Appendix C, plus any extras.
 - Sends `prompts/worker.md`, with the task id, file and worktree filled in. It must say what `launch.py`'s prompt says today.
-- Records `{task, sessionId, worktree, model, role:"worker", startedAt}` in the state file. That file lives **outside the repo**: `~/.galena-lead/state.json`, or the path in `GALENA_LEAD_STATE`.
+- Records `{task, sessionId, worktree, model, role:"worker", startedAt}` in the state file. That file lives **outside the repo**: `~/.zilar-lead/state.json`, or the path in `ZILAR_LEAD_STATE`.
 - **Refuses** the V4 Pro model (`deepseek-v4-pro` in any form). That's Julio's rule.
 
 **2. `lead autopilot [--once] [--dry-run]`**, a loop over the sessions in the state file, polling every 15 s:
@@ -109,7 +109,7 @@ Read `docs/LEAD_PLAYBOOK.md` §4–§10, §13, §15 and Appendices A–D **compl
 
 ### Live check (you do it, carefully)
 - Run `lead autopilot --once --dry-run` against the real OpenCode service while other workers exist. It must **only read**. Paste its classification output in the Report.
-- Don't launch real sessions, don't merge, and don't edit the real state file. Point `GALENA_LEAD_STATE` at a temp file.
+- Don't launch real sessions, don't merge, and don't edit the real state file. Point `ZILAR_LEAD_STATE` at a temp file.
 
 ### Acceptance criteria
 - [ ] `pnpm format:check`, `lint`, `typecheck`, `test` and `build` all pass.
@@ -124,7 +124,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/devtools
+pnpm exec turbo test --force --filter=@zilar/devtools
 pnpm build
 ```
 
@@ -138,7 +138,7 @@ pnpm build
 
 ### What I did
 
-Built `pnpm --filter @galena/devtools lead <command>` as deterministic TypeScript (no LLM), per the playbook §§4–10, 13, 15 and Appendices A–D:
+Built `pnpm --filter @zilar/devtools lead <command>` as deterministic TypeScript (no LLM), per the playbook §§4–10, 13, 15 and Appendices A–D:
 
 - **Library** (`packages/devtools/src/lead/`): `policy.ts` (permission classifier: data + pure functions), `decide.ts` (autopilot brain as a pure function of session state/messages/permissions/task status/recorded state → actions), `session.ts` (message summarizer: idle/running, quota errors, running `question` calls), `client.ts` (one `OpenCodeClient` interface; `OpencodeCliClient` shells out to `opencode2 api …` with stdout to a temp file per gotcha 2; `FakeOpenCodeClient` for tests), `task-file.ts` (front-matter parse with zod, `providerID/id` split, V4 Pro refusal), `state.ts` (state file outside the repo + log file), `board.ts` (pure Active→Done row move), `merge.ts` (mechanical merge with pre-flights), `launch.ts`, `start-prereview.ts`, `reply.ts`, `status.ts`, `autopilot.ts` (15 s poll tick + `--once`/`--dry-run`), `cli.ts`, plus `types.ts`, `prompts.ts`, `git.ts`.
 - **Commands**: `launch` (parses front matter, refuses V4 Pro, worktree from `main`, session with `rules.json` + extras, worker prompt, state record), `autopilot` (permissions → allow/reject/escalate; question escalation; quota retry every 10 min + hourly escalation cap; 2 nudges then escalate; one pre-review per HEAD then `PACKET READY`; blocked escalation; `LEAD:` lines on stdout only, rest to `lead.log`; `--dry-run` prints `DRY:` lines and touches nothing; never merges/pushes/edits task files or board — there is no code path for it), `prereview` (manual Muse pre-review), `reply` (interrupt + re-prompt), `merge` (clean-tree + `status: merged` pre-flights, rebase with abort + conflicted-file list, ff-only merge, board move, commit, push, worktree/branch removal, state drop), `status` (compact table).
@@ -157,13 +157,13 @@ Built `pnpm --filter @galena/devtools lead <command>` as deterministic TypeScrip
 - `pnpm format:check`: PASS ("All matched files use Prettier code style!").
 - `pnpm lint`: PASS (oxlint, no findings).
 - `pnpm typecheck`: PASS (9/9 tasks).
-- `pnpm exec turbo test --force --filter=@galena/devtools`: PASS — 12 files, 169 tests, 0 failed (was 157 before the client regression test below).
+- `pnpm exec turbo test --force --filter=@zilar/devtools`: PASS — 12 files, 169 tests, 0 failed (was 157 before the client regression test below).
 - `pnpm build` (forced, uncached): PASS (2/2 tasks, 1m49s).
 - CLI smoke: `lead --help`, `lead status`, `lead autopilot --once --dry-run` on an empty state → rc=0; `lead prereview T-0099` (unknown task) and `lead merge T-0099` (no summary) → exit 1 with usage errors.
 
 ### Tests
 
-- `policy.test.ts`: 83 tests from a 60-row table (15 allow, 29 reject, 16 escalate) covering every command in gotchas 1–16 and Appendix C plus traps (`rm -rf ../galena-T-0024`, `cat apps/server/.env`, `git push --force`, `kill 1234`, `xcrun simctl shutdown all`, `DB167CD4…`, `bash`-action requests). Escalate is the default (proven by unknown-command, empty-command, and `echo` cases); every rejection carries a message (asserted).
+- `policy.test.ts`: 83 tests from a 60-row table (15 allow, 29 reject, 16 escalate) covering every command in gotchas 1–16 and Appendix C plus traps (`rm -rf ../zilar-T-0024`, `cat apps/server/.env`, `git push --force`, `kill 1234`, `xcrun simctl shutdown all`, `DB167CD4…`, `bash`-action requests). Escalate is the default (proven by unknown-command, empty-command, and `echo` cases); every rejection carries a message (asserted).
 - Front matter: rejects missing branch/model (with field names in the error), bad id; V4 Pro refused in 4 forms, 3 good models allowed.
 - `decide.test.ts`: quota backoff (retry at +10 min, re-escalation only at +1 h, silence between), nudge limit (2 nudges → one `STALLED` → silence), pre-review once per HEAD + one `PACKET READY` + silence after, blocked once per text, question escalation.
 - `board.test.ts`: row moves Active→end of Done on a real-format fixture; errors when either section lacks the row.
@@ -172,7 +172,7 @@ Built `pnpm --filter @galena/devtools lead <command>` as deterministic TypeScrip
 
 ### Live check (read-only, carefully)
 
-`GALENA_LEAD_STATE=/tmp/lead-dryrun-t38.json pnpm --filter @galena/devtools lead autopilot --once --dry-run` against the real OpenCode service with the real paused sessions T-0034 (`ses_f180…`) and T-0037 (`ses_f181…`): rc=0, **no output**. That is the correct classification — both sessions had recovered from the quota pause and were `running` with zero pending permissions and no waiting questions (verified with a direct probe: `count=30 state=running quota=false q=false`, `perms: []` for both). Nothing to allow, reject, or escalate, so nothing printed.
+`ZILAR_LEAD_STATE=/tmp/lead-dryrun-t38.json pnpm --filter @zilar/devtools lead autopilot --once --dry-run` against the real OpenCode service with the real paused sessions T-0034 (`ses_f180…`) and T-0037 (`ses_f181…`): rc=0, **no output**. That is the correct classification — both sessions had recovered from the quota pause and were `running` with zero pending permissions and no waiting questions (verified with a direct probe: `count=30 state=running quota=false q=false`, `perms: []` for both). Nothing to allow, reject, or escalate, so nothing printed.
 `lead status` on the same file printed live data:
 `T-0034 worker opencode-go/muse-spark-1.3-contributor running in-progress —`
 `T-0037 worker opencode-go/deepseek-v4.1-flash running in-progress —`
@@ -206,7 +206,7 @@ Read-only proof: md5 of the temp state file identical before/after (`34e933e…`
 
 **4. Git global flags stripped.** `gitRest()` drops `-C <path>`, `-c k=v`, `--no-pager`, `--git-dir/--work-tree/--namespace`, `--bare` before subcommand matching, for both reject and allow paths. `git -C /x push`, `git --no-pager push`, `git -c a=b push`, `-C … merge`, `--no-pager rebase`, `-C … checkout main` → reject; `git --no-pager status` → allow.
 
-**5. Absolute/escaping rm outside own worktree → reject.** The old escalate fallthrough is gone: anything absolute or `..`-escaping that isn't the own worktree or own temp is rejected (`rm -rf /Users/julio/personal-projects/galena`, `$HOME`, `../../etc`, `/tmp/foo`). Own-temp (`opencode*`/task-named, never `galena-scratch`) and in-worktree cleanup still allowed.
+**5. Absolute/escaping rm outside own worktree → reject.** The old escalate fallthrough is gone: anything absolute or `..`-escaping that isn't the own worktree or own temp is rejected (`rm -rf /Users/julio/personal-projects/zilar`, `$HOME`, `../../etc`, `/tmp/foo`). Own-temp (`opencode*`/task-named, never `zilar-scratch`) and in-worktree cleanup still allowed.
 
 **6. Any `.env` operand → reject.** `mentionsSecretEnv` replaces the cat-only reader check: `cp`/`mv`/`tar`/`base64`/`source` (also shell-rejected) and friends with a `.env` path are rejected; `.env.example` stays readable (`cat infra/.env.example` → allow); the sanctioned `--env-file=` form is exempt (`tsx --env-file=infra/.env …` → escalate, as before).
 
@@ -221,10 +221,10 @@ Read-only proof: md5 of the temp state file identical before/after (`34e933e…`
 - `pnpm exec prettier --check` on all Allowed files: PASS. (Full-repo `format:check` fails only on the lead's untracked `PREREVIEW.md` at the worktree root, which is outside my Allowed files — I did not touch it. All my files pass.)
 - `pnpm lint`: PASS (oxlint, no findings).
 - `pnpm typecheck`: PASS (9/9 tasks).
-- `pnpm exec turbo test --force --filter=@galena/devtools`: PASS — 12 files, **213 tests** (was 169; policy table grew from 60 to ~90 rows).
+- `pnpm exec turbo test --force --filter=@zilar/devtools`: PASS — 12 files, **213 tests** (was 169; policy table grew from 60 to ~90 rows).
 - `pnpm exec turbo build --force`: PASS.
 - Live check, read-only, with the instructed temp state (real T-0037 + T-0034 sessions):
-  `GALENA_LEAD_STATE=/tmp/lead-dryrun-r2.json pnpm --filter @galena/devtools lead autopilot --once --dry-run` → rc=0, output:
+  `ZILAR_LEAD_STATE=/tmp/lead-dryrun-r2.json pnpm --filter @zilar/devtools lead autopilot --once --dry-run` → rc=0, output:
   `DRY: T-0034: task file is gone (worktree removed?); skipping`
   `DRY: would send nudge prompt to T-0037`
   Both lines went to stdout/stderr only: state-file md5 identical before/after (`03f83599…`), no `lead.log` created. Notes: the T-0034 worktree no longer exists (`ls` → no such directory; removed since round 1), so "gone" is correct; T-0037's live session is idle with status `in-progress`, so a nudge is the correct classification (sent by no one — dry-run).
@@ -236,13 +236,13 @@ The lead probed two `allow`s that must not be: `curl -s -X POST http://127.0.0.1
 
 Fix (`policy.ts`): the exception now means a read-only GET that prints to stdout. New quote-aware argv tokenizer (`splitArgs`) plus two validators. `isReadOnlyCurl` escalates on: `-X/--request` other than GET/HEAD, `-d/--data*/--json`, `-F/--form*`, `-T/--upload-file`, `-o/--output` to anything but `-`, `-O/--remote-name*`/`--output-dir`, `-K/--config`, `-u/--user`, `-H/--header` with Authorization/Cookie (case-insensitive), `-b/--cookie`, `-c/--cookie-jar`, plus `-n/--netrc*` and `--cert/--key/--pass` (same credential class), unknown flags, a lone `-`, and any non-localhost positional URL. Combined shorts (`-sXPOST`, `-sd@x`) and `--opt=value` are parsed. A small enumerated set of harmless flags/valued options (e.g. `-sSILf`, `--max-time`, `--user-agent`) stays allowed. `isReadOnlyWget` closes the symmetric hole (`--post-*`, non-GET `--method`, `-O`/output to a file). Julio's `:3000` still escalates first.
 
-New table rows (both probes → escalate; `curl -s …/health`, `curl -sI …/`, `curl -s -X GET …`, `curl -s --request HEAD …`, `curl -s -o - …`, plain `Accept` header → allow; one body/config/cred/output/cookie/method case per flag → escalate), plus the five lock-in escalate rows (`node -e process.kill`, `python3 -c os.kill`, `echo hi > ~/.zshrc`, `/usr/bin/git push`, `docker rm -f galena-dev-postgres-1`).
+New table rows (both probes → escalate; `curl -s …/health`, `curl -sI …/`, `curl -s -X GET …`, `curl -s --request HEAD …`, `curl -s -o - …`, plain `Accept` header → allow; one body/config/cred/output/cookie/method case per flag → escalate), plus the five lock-in escalate rows (`node -e process.kill`, `python3 -c os.kill`, `echo hi > ~/.zshrc`, `/usr/bin/git push`, `docker rm -f zilar-dev-postgres-1`).
 
 ### Round 3 commands and real results
 
 - Scoped `prettier --check` on all Allowed files: PASS (full-repo `format:check` still fails only on the untracked `PREREVIEW.md`, not mine).
 - `pnpm lint`: PASS. `pnpm typecheck`: PASS (9/9).
-- `pnpm exec turbo test --force --filter=@galena/devtools`: PASS — 12 files, **243 tests** (was 213; policy table now ~120 rows).
+- `pnpm exec turbo test --force --filter=@zilar/devtools`: PASS — 12 files, **243 tests** (was 213; policy table now ~120 rows).
 - `pnpm exec turbo build --force`: PASS.
 - Live check (read-only, instructed temp state with real T-0037 + T-0034 sessions): rc=0, output `DRY: T-0034: task file is gone (worktree removed?); skipping` and `DRY: would send nudge prompt to T-0037`. State-file md5 identical before/after, no `lead.log` created.
 
@@ -281,7 +281,7 @@ Fail-closed choices, accepted:
 
 Lead re-ran every check after rebasing onto main:
 - format:check, lint, typecheck (9/9) and build pass;
-- `turbo test --force --filter=@galena/devtools`: 243/243;
+- `turbo test --force --filter=@zilar/devtools`: 243/243;
 - scope is clean (devtools `src/lead/**`, `prompts/**`, `package.json`, lockfile, task file).
 
 The dry-run against the real service was read-only: state file md5 unchanged, no log written.

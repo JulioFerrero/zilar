@@ -35,7 +35,7 @@ export function findTaskFile(dir: string, task: string): string {
 }
 
 export function worktreeFor(repoRoot: string, task: string): string {
-  return path.join(path.dirname(path.resolve(repoRoot)), `galena-${task}`);
+  return path.join(path.dirname(path.resolve(repoRoot)), `zilar-${task}`);
 }
 
 // Loads the task's front matter from the repo root. Reused by launch and the

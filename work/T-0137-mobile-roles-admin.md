@@ -14,7 +14,7 @@ estimate: 2 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-Web has custom group roles (T-0116): labels that give access to private topics and approver rights. Mobile shows topics (T-0112) but cannot manage roles, attach them to topics or show them on members. Mobile is the smaller share of the work (about 20%), so keep it small and match how the mobile app already does lists, sheets, stores and its mock (`EXPO_PUBLIC_GALENA_MOCK`). Read `AGENTS.md` first, including the security checklist. Nothing here can be run in a simulator by the worker, so tests and typecheck carry the proof; say in the Report what still needs a human look.
+Web has custom group roles (T-0116): labels that give access to private topics and approver rights. Mobile shows topics (T-0112) but cannot manage roles, attach them to topics or show them on members. Mobile is the smaller share of the work (about 20%), so keep it small and match how the mobile app already does lists, sheets, stores and its mock (`EXPO_PUBLIC_ZILAR_MOCK`). Read `AGENTS.md` first, including the security checklist. Nothing here can be run in a simulator by the worker, so tests and typecheck carry the proof; say in the Report what still needs a human look.
 
 ### What to build
 1. **Roles screen** (group owner/admin): list roles with member counts, create, rename, delete (with a confirm that says what it removes), and assign/unassign members (`PUT /api/groups/:id/roles/:roleId/members`; the server diffs inside a transaction, send the full desired member list as web does).
@@ -35,7 +35,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test --maxWorkers=2
+pnpm --filter @zilar/mobile test --maxWorkers=2
 ```
 (Affected tests while working; the full mobile suite once at the end. Do NOT start simulators, Metro, or `expo run`; Julio's simulators are off limits.)
 
@@ -71,7 +71,7 @@ Web changes, server changes, role-based message permissions beyond what T-0116 b
 - `pnpm format:check`: pass (after `prettier --write` on touched files).
 - `pnpm lint` (oxlint): pass (fixed 2: TDZ capture of `chatGroupId`, set-state-in-effect).
 - `pnpm typecheck` (turbo 10/10): pass.
-- `pnpm --filter @galena/mobile test --maxWorkers=2`: 45 files passed, 2 skipped; 456 passed, 2 skipped, 0 failed.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2`: 45 files passed, 2 skipped; 456 passed, 2 skipped, 0 failed.
 - `grep` for `any`/`@ts-ignore`/disable comments in touched non-test source: no hits.
 
 ### Review round 2 (pre-review findings 1–4 fixed)
@@ -98,7 +98,7 @@ Web changes, server changes, role-based message permissions beyond what T-0116 b
 - `pnpm format:check`: pass for all owned files (the only warn is the lead's
   untracked `PREREVIEW.md`, which I must not edit).
 - `pnpm lint` (oxlint): pass. `pnpm typecheck` (turbo 10/10): pass.
-- `pnpm --filter @galena/mobile test --maxWorkers=2`: 45 files passed,
+- `pnpm --filter @zilar/mobile test --maxWorkers=2`: 45 files passed,
   2 skipped; 461 passed, 2 skipped, 0 failed.
 - `grep` for `any`/`@ts-ignore`/disable comments in touched non-test source:
   no hits.
@@ -127,7 +127,7 @@ Web changes, server changes, role-based message permissions beyond what T-0116 b
 - `pnpm format:check`: pass for all owned files (only warn is the lead's
   untracked `PREREVIEW.md`, which I must not edit).
 - `pnpm lint` (oxlint): pass. `pnpm typecheck` (turbo 10/10): pass.
-- `pnpm --filter @galena/mobile test --maxWorkers=2`: 45 files passed,
+- `pnpm --filter @zilar/mobile test --maxWorkers=2`: 45 files passed,
   2 skipped; 464 passed, 2 skipped, 0 failed.
 - `grep` for `any`/`@ts-ignore`/disable comments in touched non-test source:
   no hits.

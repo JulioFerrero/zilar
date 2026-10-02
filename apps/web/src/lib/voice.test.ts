@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { UploadSlot } from '@galena/xmpp-core';
+import type { UploadSlot } from '@zilar/xmpp-core';
 import {
   VOICE_MAX_BYTES,
   VoiceError,
@@ -21,7 +21,7 @@ describe('convertVoice', () => {
       async () =>
         new Response(new Uint8Array([1, 2, 3, 4]), {
           status: 200,
-          headers: { 'content-type': 'audio/mp4', 'x-galena-duration-ms': '4200' },
+          headers: { 'content-type': 'audio/mp4', 'x-zilar-duration-ms': '4200' },
         }),
     );
     const blob = new Blob([new Uint8Array([9, 9])], { type: 'audio/webm' });
@@ -72,8 +72,8 @@ describe('convertVoice', () => {
 describe('uploadVoice', () => {
   it('requests a slot and PUTs the bytes to it, returning the download url', async () => {
     const slot: UploadSlot = {
-      putUrl: 'http://upload.galena.localhost/upload/abc',
-      getUrl: 'http://upload.galena.localhost/upload/abc/file.m4a',
+      putUrl: 'http://upload.zilar.localhost/upload/abc',
+      getUrl: 'http://upload.zilar.localhost/upload/abc/file.m4a',
       headers: { 'x-slot-token': 't0ken' },
     };
     const requester: UploadSlotRequester = {

@@ -66,7 +66,7 @@ function dockerMissing(): Promise<{ stdout: string }> {
 describe('detectCapabilities', () => {
   let tmpDir: string;
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'galena-runner-cap-'));
+    tmpDir = mkdtempSync(join(tmpdir(), 'zilar-runner-cap-'));
   });
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });

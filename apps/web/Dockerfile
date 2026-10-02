@@ -1,4 +1,4 @@
-# Galena production web app image.
+# Zilar production web app image.
 #
 # Build from the repo root so the workspace layout is visible:
 #
@@ -25,19 +25,19 @@ COPY packages/chat-core/package.json packages/chat-core/
 RUN pnpm install --frozen-lockfile
 
 # Now the sources the web app imports (keep this list in sync with what
-# apps/web imports from the workspace: @galena/chat-core,
-# @galena/protocol, @galena/xmpp-core).
+# apps/web imports from the workspace: @zilar/chat-core,
+# @zilar/protocol, @zilar/xmpp-core).
 COPY apps/web apps/web
 COPY packages/protocol packages/protocol
 COPY packages/xmpp-core packages/xmpp-core
 COPY packages/chat-core packages/chat-core
 
-RUN pnpm --filter @galena/web build
+RUN pnpm --filter @zilar/web build
 
 FROM caddy:2.10.2-alpine AS runtime
 
 COPY apps/web/Caddyfile /etc/caddy/Caddyfile
-COPY --from=builder /repo/apps/web/dist /srv/galena-web
+COPY --from=builder /repo/apps/web/dist /srv/zilar-web
 
 # Caddy serves on 80/443; the production compose wires the actual site
 # through Caddy's reverse proxy with automatic HTTPS.

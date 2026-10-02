@@ -72,10 +72,10 @@ function ChatsList() {
   const searchChatTitle =
     searchChat === undefined ? undefined : chats.find((chat) => chat.id === searchChat)?.title;
   // The message-search API, real or mock like the store itself: tests run on
-  // the mock store (`NODE_ENV=test`), UI work on `EXPO_PUBLIC_GALENA_MOCK`.
+  // the mock store (`NODE_ENV=test`), UI work on `EXPO_PUBLIC_ZILAR_MOCK`.
   const searchApi = useMemo(
     () =>
-      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_GALENA_MOCK === '1'
+      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_ZILAR_MOCK === '1'
         ? createMockSearchApi()
         : createSearchApi(getSessionToken),
     [],

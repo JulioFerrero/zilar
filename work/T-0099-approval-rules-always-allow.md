@@ -24,7 +24,7 @@ Today `approve_always` behaves exactly like `approve_once` (single use). Make it
 
 **Adapter opt-in.** `ActionAdapter` gets optional `allowAlways?: boolean` (default `false`). Only adapters that set it can be always-approved. `demo.echo` sets it to `true`. A rule is **never** honoured, and `approve_always` is **refused**, for an adapter with `estimateCost` returning an amount above 0 (money never gets a standing approval).
 
-**Table `approval_rules`:** `id` (text pk), `ai_id` (fk `ais` cascade), `group_id` (nullable fk `groups` cascade; **`null` = the personal chat between the AI and its owner**), `action` (text), `created_by` (text, fk `user` cascade), `created_at`, `revoked_at` (nullable), `revoked_by` (nullable text). At most **one active rule** per (`ai_id`, `group_id` or null, `action`): enforce with partial unique indexes (one for `group_id IS NOT NULL`, one for `IS NULL`, both `WHERE revoked_at IS NULL`). Generate the migration with `pnpm --filter @galena/server db:generate` (**never `npx`**); if the number collides after a rebase, delete yours and regenerate.
+**Table `approval_rules`:** `id` (text pk), `ai_id` (fk `ais` cascade), `group_id` (nullable fk `groups` cascade; **`null` = the personal chat between the AI and its owner**), `action` (text), `created_by` (text, fk `user` cascade), `created_at`, `revoked_at` (nullable), `revoked_by` (nullable text). At most **one active rule** per (`ai_id`, `group_id` or null, `action`): enforce with partial unique indexes (one for `group_id IS NOT NULL`, one for `IS NULL`, both `WHERE revoked_at IS NULL`). Generate the migration with `pnpm --filter @zilar/server db:generate` (**never `npx`**); if the number collides after a rebase, delete yours and regenerate.
 
 **Creating a rule.** In `POST /api/approvals/:id/decision`, a decision `approve_always` by someone who may decide (existing `canDecide`) on a **pending** approval whose action is always-eligible creates the rule for (`approval.ai_id`, `approval.group_id`, `approval.action`) with `created_by` = the decider, **in the same transaction as the decision**; an existing active rule is kept (idempotent). If the action is not eligible (unknown to the registry, `allowAlways` false, or it has a cost), the decision is **refused** with 400 `always_not_allowed` and nothing changes. The routes get an optional dependency `alwaysEligible?: (action: string) => boolean`; absent means "nothing is eligible". The current request itself proceeds through the normal `onDecided` path (executes once).
 - The public approval JSON (GET one, list, decision response) gains `alwaysEligible: boolean` so a client can decide whether to show the button. Keep every other field unchanged.
@@ -80,7 +80,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -92,7 +92,7 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
-- New `approval_rules` table (`apps/server/src/db/schema.ts` + migration `0016_glorious_lifeguard.sql` generated via `pnpm --filter @galena/server db:generate`, never `npx`): `id` pk, `ai_id` fk cascade, `group_id` nullable fk cascade (`null` = personal chat), `action`, `created_by` fk cascade, `created_at`, `revoked_at`/`revoked_by` (soft revoke); two partial unique indexes (`WHERE revoked_at IS NULL`, one for group rules, one for personal) enforcing at most one active rule per (AI, chat, action).
+- New `approval_rules` table (`apps/server/src/db/schema.ts` + migration `0016_glorious_lifeguard.sql` generated via `pnpm --filter @zilar/server db:generate`, never `npx`): `id` pk, `ai_id` fk cascade, `group_id` nullable fk cascade (`null` = personal chat), `action`, `created_by` fk cascade, `created_at`, `revoked_at`/`revoked_by` (soft revoke); two partial unique indexes (`WHERE revoked_at IS NULL`, one for group rules, one for personal) enforcing at most one active rule per (AI, chat, action).
 - New `apps/server/src/approvals/rules.ts`: `createRule` (idempotent, unique-violation re-read for races), `findActiveRule`, `listActiveRulesForAi`, `listActiveRulesForGroup`, `revokeRule` (idempotent), `revokeActiveRulesForAiInGroup`, `isGroupAdmin`, public shape `{ id, action, scope, groupId, createdAt, createdBy }`.
 - Rule creation: `decideApproval` (`approvals/service.ts`) takes optional `alwaysEligible?: (action) => boolean` (absent = nothing eligible); `approve_always` on a non-eligible action throws `always_not_allowed` before any write (route maps to 400, approval stays pending); on an eligible pending approval by someone who passes `canDecide`, the decision + rule insert share one transaction; concurrent second rule insert falls back to the existing row (idempotent). Returns `{ row, rule }`; `toPublicApproval` gains `alwaysEligible: boolean` (default `false`; routes fill it via `decoratePublic`).
 - Rule use: `actions/gateway.ts` `request` checks, for tier-2 + `allowAlways === true` + no `estimateCost` adapters and an `active` AI, an exact active rule for (`aiId`, `groupId ?? null`, `action`); on hit it executes immediately with no approval row and no card, audits `action.auto_approved` (subject = rule id, `argsHash`, no args) plus `action.executed`/`action.failed` (error text never stored/returned), and announces the outcome with summary prefixed `Ran automatically (always allowed in this chat): `. Stopped/disabled/missing AI is denied `ai_not_active` before the rule lookup (kill switch wins); cost (`estimateCost` present) is re-checked at use time, so an adapter that gains a cost after rule creation stops auto-running.
@@ -112,11 +112,11 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install`: already up to date (834ms).
-- `pnpm --filter @galena/server db:generate` (probe run): "No schema changes, nothing to migrate" — migration is complete.
+- `pnpm --filter @zilar/server db:generate` (probe run): "No schema changes, nothing to migrate" — migration is complete.
 - `pnpm format:check`: pass ("All matched files use Prettier code style!").
 - `pnpm lint` (oxlint): pass, no warnings.
-- `pnpm typecheck` (root): pass. (`pnpm --filter @galena/server typecheck` equivalent `tsc --noEmit`: pass.)
-- `pnpm exec turbo test --force --filter=@galena/server`: 57 files passed, 5 skipped; 878 tests passed, 7 skipped, 0 failed (incl. untouched `authz-sweep.test.ts`: 5/5 pass, new routes answer 401 without a session).
+- `pnpm typecheck` (root): pass. (`pnpm --filter @zilar/server typecheck` equivalent `tsc --noEmit`: pass.)
+- `pnpm exec turbo test --force --filter=@zilar/server`: 57 files passed, 5 skipped; 878 tests passed, 7 skipped, 0 failed (incl. untouched `authz-sweep.test.ts`: 5/5 pass, new routes answer 401 without a session).
 - `pnpm build`: pass (2 tasks successful).
 - Note: vitest default timeouts (5s test / 10s hook) flake under parallel PGlite load — I reproduced hook timeouts on the BASE commit too, so it is pre-existing, not caused by this task. The package `test` script uses `--testTimeout=30000 --hookTimeout=30000`; with those flags every touched file passes individually and the full turbo suite above is green.
 

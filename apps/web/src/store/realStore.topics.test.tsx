@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
+import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import {
   TOPIC_REFRESH_INTERVAL_MS,
   createRealChatStore,
@@ -33,7 +33,7 @@ function topic(overrides: Record<string, unknown> = {}): Record<string, unknown>
     groupId: 'g1',
     name: 'General',
     glyph: 'G',
-    chatJid: 'team@rooms.galena.test',
+    chatJid: 'team@rooms.zilar.test',
     visibility: 'public',
     kind: 'chat',
     status: 'open',
@@ -53,7 +53,7 @@ function bugTopic(): Record<string, unknown> {
     id: 't-bug',
     name: 'Checkout bug',
     glyph: 'B',
-    chatJid: 'bug-topic@rooms.galena.test',
+    chatJid: 'bug-topic@rooms.zilar.test',
     kind: 'bug',
     status: 'in_progress',
     isGeneral: false,
@@ -63,7 +63,7 @@ function bugTopic(): Record<string, unknown> {
 function groupEntry(overrides: Record<string, unknown> = {}): ChatEntry {
   return {
     kind: 'group',
-    chatJid: 'team@rooms.galena.test',
+    chatJid: 'team@rooms.zilar.test',
     title: 'Team',
     groupId: 'g1',
     memberCount: 3,
@@ -84,7 +84,7 @@ function fakeXmpp(): {
   const history: Record<string, ChatMessage[]> = {};
   const core = {
     status: () => 'online' as const,
-    me: () => 'me@galena.test',
+    me: () => 'me@zilar.test',
     connect: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
     joinRoom: vi.fn(async (roomJid: string) => {
@@ -97,8 +97,8 @@ function fakeXmpp(): {
     sendCorrection: vi.fn(async () => ({ id: 'edit-1' })),
     sendRetraction: vi.fn(async () => {}),
     requestUploadSlot: vi.fn(async () => ({
-      putUrl: 'http://upload.galena.test/put/1',
-      getUrl: 'http://upload.galena.test/get/1/voice.m4a',
+      putUrl: 'http://upload.zilar.test/put/1',
+      getUrl: 'http://upload.zilar.test/get/1/voice.m4a',
       headers: {},
     })),
     loadHistory: vi.fn(async (chatJid: string) => ({
@@ -139,10 +139,10 @@ function topicApi(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     getMe: vi.fn(async () => ({
       id: 'u-me',
-      email: 'me@galena.test',
+      email: 'me@zilar.test',
       name: 'Me',
       image: null,
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
     })),
     getChats: vi.fn(async () => [groupEntry()]),
     getContacts: vi.fn(async () => []),
@@ -154,12 +154,12 @@ function topicApi(overrides: Partial<ApiClient> = {}): ApiClient {
       ais: [],
     })),
     getXmppToken: vi.fn(async () => ({
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
       token: 'tok',
       expiresAt: '2026-09-28T12:05:00Z',
       service: 'ws://x',
-      domain: 'galena.test',
-      mucDomain: 'rooms.galena.test',
+      domain: 'zilar.test',
+      mucDomain: 'rooms.zilar.test',
     })),
     createGroup: vi.fn(nope),
     createInvite: vi.fn(nope),
@@ -219,8 +219,8 @@ describe('topics store mapping (T-0111)', () => {
   it('summariesFor maps each topic to its own chat; General keeps the old id', () => {
     const rows = summariesFor(groupEntry());
     expect(rows.map((row) => row.id)).toEqual([
-      'team@rooms.galena.test',
-      'bug-topic@rooms.galena.test',
+      'team@rooms.zilar.test',
+      'bug-topic@rooms.zilar.test',
     ]);
     const general = rows[0];
     expect(general?.topic?.isGeneral).toBe(true);
@@ -235,7 +235,7 @@ describe('topics store mapping (T-0111)', () => {
   it('summariesFor keeps one row for a group without topics (older server)', () => {
     const rows = summariesFor({
       kind: 'group',
-      chatJid: 'team@rooms.galena.test',
+      chatJid: 'team@rooms.zilar.test',
       title: 'Team',
       groupId: 'g1',
       memberCount: 3,
@@ -247,7 +247,7 @@ describe('topics store mapping (T-0111)', () => {
 
   it('summariesFor drops archived topics', () => {
     const rows = summariesFor(groupEntry({ topics: [topic(), { ...bugTopic(), archived: true }] }));
-    expect(rows.map((row) => row.id)).toEqual(['team@rooms.galena.test']);
+    expect(rows.map((row) => row.id)).toEqual(['team@rooms.zilar.test']);
   });
 
   it('summariesFor carries the channel fields onto the feed row', () => {
@@ -271,13 +271,13 @@ describe('topics store mapping (T-0111)', () => {
 
   it('boot joins every visible topic room', async () => {
     const { xmpp } = await setup();
-    expect(xmpp.joined).toContain('team@rooms.galena.test');
-    expect(xmpp.joined).toContain('bug-topic@rooms.galena.test');
+    expect(xmpp.joined).toContain('team@rooms.zilar.test');
+    expect(xmpp.joined).toContain('bug-topic@rooms.zilar.test');
   });
 
   it('refresh on invite adds a topic and keeps previews and unread', async () => {
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     store
       .getState()
       .chats.filter((chat) => chat.id === bugId)
@@ -296,7 +296,7 @@ describe('topics store mapping (T-0111)', () => {
             id: 't-new',
             name: 'New topic',
             glyph: 'N',
-            chatJid: 'new-topic@rooms.galena.test',
+            chatJid: 'new-topic@rooms.zilar.test',
             isGeneral: false,
           }),
         ],
@@ -306,13 +306,13 @@ describe('topics store mapping (T-0111)', () => {
     await new Promise((resolve) => setTimeout(resolve, 600));
     await flush();
     const ids = store.getState().chats.map((chat) => chat.id);
-    expect(ids).toContain('new-topic@rooms.galena.test');
+    expect(ids).toContain('new-topic@rooms.zilar.test');
     expect(store.getState().chats.find((chat) => chat.id === bugId)?.unread).toBe(3);
   });
 
   it('a topic that disappears while open navigates to General with a notice', async () => {
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     store.getState().openChat(bugId);
     expect(store.getState().activeChatId).toBe(bugId);
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
@@ -322,8 +322,8 @@ describe('topics store mapping (T-0111)', () => {
     store.getState().refreshChats();
     await new Promise((resolve) => setTimeout(resolve, 600));
     await flush();
-    expect(store.getState().activeChatId).toBe('team@rooms.galena.test');
-    expect(store.getState().topicNotice?.chatId).toBe('team@rooms.galena.test');
+    expect(store.getState().activeChatId).toBe('team@rooms.zilar.test');
+    expect(store.getState().topicNotice?.chatId).toBe('team@rooms.zilar.test');
     expect(store.getState().topicNotice?.message).not.toContain('Checkout');
   });
 
@@ -332,7 +332,7 @@ describe('topics store mapping (T-0111)', () => {
     // visible list immediately (the server excludes archived topics), so the
     // header can navigate without waiting for the 60 s poll.
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const { topicSchema } = await import('@/lib/api');
     (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -352,7 +352,7 @@ describe('topics store mapping (T-0111)', () => {
     // to General with no notice. (The full removed-while-open trip with a
     // notice is covered by the pre-existing test above.)
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const { topicSchema } = await import('@/lib/api');
     (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -384,14 +384,12 @@ describe('topics store mapping (T-0111)', () => {
       chats: state.chats.filter((chat) => chat.topic?.isGeneral !== true),
     }));
     expect(store.getState().chats.some((chat) => chat.topic?.isGeneral === true)).toBe(false);
-    await expect(store.getState().refreshGeneralTopic('g1')).resolves.toBe(
-      'team@rooms.galena.test',
-    );
+    await expect(store.getState().refreshGeneralTopic('g1')).resolves.toBe('team@rooms.zilar.test');
   });
 
   it('a failed member removal (403) keeps the user in the topic with an inline error', async () => {
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     store.getState().openChat(bugId);
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const getChats = apiMock.getChats as ReturnType<typeof vi.fn>;
@@ -410,7 +408,7 @@ describe('topics store mapping (T-0111)', () => {
 
   it('a failed member removal (network) keeps the user in the topic', async () => {
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     store.getState().openChat(bugId);
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const getChats = apiMock.getChats as ReturnType<typeof vi.fn>;
@@ -431,7 +429,7 @@ describe('topics store mapping (T-0111)', () => {
     // re-check must throw (so the panel shows the inline removal error),
     // never resolve "alive" from the untouched stale list.
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     (apiMock.removeTopicMember as ReturnType<typeof vi.fn>).mockRejectedValue(
       new ApiError(404, 'not_found', 'That user is not a member of this topic'),
@@ -454,7 +452,7 @@ describe('topics store mapping (T-0111)', () => {
     // `refreshTopicRow` — not the 404 alone — decides. First with the row
     // still listed (stale member list): not gone.
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     (apiMock.removeTopicMember as ReturnType<typeof vi.fn>).mockRejectedValue(
       new ApiError(404, 'not_found', 'That user is not a member of this topic'),
@@ -478,7 +476,7 @@ describe('topics store mapping (T-0111)', () => {
     // list no longer has the row: `leaveTopic` resolves, so the panel
     // navigates away.
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     store.getState().openChat(bugId);
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     (apiMock.removeTopicMember as ReturnType<typeof vi.fn>).mockRejectedValue(
@@ -496,7 +494,7 @@ describe('topics store mapping (T-0111)', () => {
     // refreshed list still has the row: `leaveTopic` rejects with the
     // original error.
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     store.getState().openChat(bugId);
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     (apiMock.removeTopicMember as ReturnType<typeof vi.fn>).mockRejectedValue(
@@ -513,7 +511,7 @@ describe('topics store mapping (T-0111)', () => {
 
   it('setTopicRoles calls the API with the topic id and refreshes the row (T-0116)', async () => {
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const { topicSchema } = await import('@/lib/api');
     const updated = topicSchema.parse({
@@ -543,8 +541,8 @@ describe('topics store mapping (T-0111)', () => {
     // hop, stranding a topic genuinely must still raise its notice. With
     // the leaked mark the final notice would stay silent.
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
-    const generalId = 'team@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
+    const generalId = 'team@rooms.zilar.test';
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const { topicSchema } = await import('@/lib/api');
     (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -577,7 +575,7 @@ describe('topics store mapping (T-0111)', () => {
     // flow must still consume the quiet mark — otherwise it leaks and
     // would silence the notice for a later, unrelated removal.
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const { topicSchema } = await import('@/lib/api');
     (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -597,7 +595,7 @@ describe('topics store mapping (T-0111)', () => {
     // Companion to the test above: after a self-archive with no General,
     // stranding a *topic* row must still raise the notice.
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const { topicSchema } = await import('@/lib/api');
     (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -621,7 +619,7 @@ describe('topics store mapping (T-0111)', () => {
     store.getState().refreshChats();
     await new Promise((resolve) => setTimeout(resolve, 600));
     await flush();
-    expect(store.getState().activeChatId).toBe('team@rooms.galena.test');
+    expect(store.getState().activeChatId).toBe('team@rooms.zilar.test');
     expect(store.getState().topicNotice?.message).toBe('This topic is no longer available.');
   });
 
@@ -630,7 +628,7 @@ describe('topics store mapping (T-0111)', () => {
     // the re-check's fetch is in flight, the refresh is stale — rejecting
     // keeps the panel from reading the untouched list as "topic alive".
     const { store, api } = await setup();
-    const bugId = 'bug-topic@rooms.galena.test';
+    const bugId = 'bug-topic@rooms.zilar.test';
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {

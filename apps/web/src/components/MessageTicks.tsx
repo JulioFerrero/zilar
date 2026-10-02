@@ -1,4 +1,4 @@
-import type { MessageStatus } from '@galena/chat-core';
+import type { MessageStatus } from '@zilar/chat-core';
 import { Check, CheckCheck, Clock } from 'lucide-react';
 
 export function MessageTicks({ status }: { status: MessageStatus }) {

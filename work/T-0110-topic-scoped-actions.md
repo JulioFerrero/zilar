@@ -19,7 +19,7 @@ Julio's rule (2026-09-29): "approve always needs to be associated with the chat 
 Scope after this task: **personal chat** = `group_id null, topic_id null`; **group chat** = `group_id` and `topic_id` both set (General is a topic, so the old group scope maps to the group's General topic).
 
 ### What changes
-1. **Schema** (only via `pnpm --filter @galena/server db:generate`, plus one custom data migration `--custom --name=topic-scope-backfill`): add nullable `topic_id` (fk `topics`, on delete cascade) to `approvals`, `pending_actions`, `approval_rules` and `ai_tools`. Backfill every existing row with a `group_id` to that group's General topic. Add a CHECK per table: `(group_id is null) = (topic_id is null)`. Rebuild the partial unique indexes: rules unique on `(ai_id, topic_id, action)` where active and `topic_id is not null` (personal rule index unchanged); tools unique on `(ai_id, topic_id, name)` where not deleted and `topic_id is not null` (personal unchanged).
+1. **Schema** (only via `pnpm --filter @zilar/server db:generate`, plus one custom data migration `--custom --name=topic-scope-backfill`): add nullable `topic_id` (fk `topics`, on delete cascade) to `approvals`, `pending_actions`, `approval_rules` and `ai_tools`. Backfill every existing row with a `group_id` to that group's General topic. Add a CHECK per table: `(group_id is null) = (topic_id is null)`. Rebuild the partial unique indexes: rules unique on `(ai_id, topic_id, action)` where active and `topic_id is not null` (personal rule index unchanged); tools unique on `(ai_id, topic_id, name)` where not deleted and `topic_id is not null` (personal unchanged).
 2. **Gateway** (`actions/gateway.ts`, `RequestParams`): `groupId` stays and a `topicId?` joins it; a request with a `groupId` must carry a `topicId` that belongs to that group and to a room the AI is a member of (`topic_ais` or General via `group_ais`), else `denied: ai_not_in_group` (the existing enum value; extend its wording in `agents/gateway.ts` to "the AI is not in that topic"). Store `topic_id` on the approval and the pending action. The rule lookup is exact on `(aiId, topicId, action)`. The announcer posts the card and the outcome notice into **that topic's room** (T-0109 `postToChat` with `topicId`).
 3. **`request_action` plumbing** (`agents/gateway.ts`, `agents/tools.ts`, `agents/reply.ts`): the room the turn came from gives `groupId` and `topicId` (never the model). The T-0098 gate stays: sender must be a group owner/admin **and** a member of the topic.
 4. **Approvals visibility** (`approvals/service.ts`, `routes.ts`): `canDecide`, the list, the single read and the decision all additionally require `canSeeTopic` when the approval has a `topic_id`. A group admin who cannot see a private topic gets 404 for its approvals, does not count them in the pending badge (`GET /api/approvals` list), and cannot decide them. The AI owner keeps deciding only while they can see the topic. Public approval JSON gains `topicId` and `topicName` (name omitted, `null`, if the viewer cannot see the topic, which cannot happen for a returned row; keep the field for the client).
@@ -62,7 +62,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
 pnpm build
 ```
 
@@ -98,7 +98,7 @@ pnpm build
 - `pnpm format:check`: pass ("All matched files use Prettier code style!")
 - `pnpm lint`: pass (oxlint clean)
 - `pnpm typecheck`: pass (turbo 10/10)
-- `pnpm --filter @galena/server test --maxWorkers=2`: 66 files passed, 5 skipped; 1139 passed, 7 skipped (~242s, final code)
+- `pnpm --filter @zilar/server test --maxWorkers=2`: 66 files passed, 5 skipped; 1139 passed, 7 skipped (~242s, final code)
 - `pnpm build`: pass (2/2 turbo tasks)
 - Scoped runs while iterating: approvals (service+rules+rules.routes+routes+sweeper) 86 passed; actions gateway+announce 51 passed; flow.e2e 12 passed; tools service+routes 61 passed; agents gateway 114 passed; topics+groups+backfill 62 passed; topics.test 32 passed; production-announcer+announce 14 passed; migration backfill 1 passed.
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any|any<` in all touched non-test source: no hits (4 prose "any" matches only).

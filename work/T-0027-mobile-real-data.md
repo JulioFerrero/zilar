@@ -19,7 +19,7 @@ This is the last piece of M1. The phone can sign in (T-0026) and we have proven
 and shows **real** DMs and groups, with history, typing, read ticks, online
 status and live updates — the same behaviour the web has had since T-0024.
 
-Julio should be able to open Galena on his phone, see a real conversation, send a
+Julio should be able to open Zilar on his phone, see a real conversation, send a
 message and see it arrive on the other side.
 
 ### Read first
@@ -89,7 +89,7 @@ stop.
 
 ### Integration check (you run it against the running stack)
 The dev stack is **already running and serving Julio** (server `127.0.0.1:3188`,
-ejabberd `ws://127.0.0.1:5280/ws`). A gated test (`GALENA_MOBILE_XMPP=1`) that
+ejabberd `ws://127.0.0.1:5280/ws`). A gated test (`ZILAR_MOBILE_XMPP=1`) that
 signs in through the real server, connects `xmpp-core`, joins a room, sends and
 receives a message, and reconnects with a fresh token. Paste the output.
 
@@ -167,7 +167,7 @@ secure storage through `lib/session-token.ts` (a dynamic `expo-secure-store`
 import so Vitest/Node can load the module).
 
 **3. App wiring.** `store/chat-store-provider.tsx` creates the real store by
-default and the mock store in `?mock=1` / `EXPO_PUBLIC_GALENA_MOCK=1` mode,
+default and the mock store in `?mock=1` / `EXPO_PUBLIC_ZILAR_MOCK=1` mode,
 starts it when the T-0026 session is `authenticated`, injects React Native's
 `AppState`, and exposes the `useChatStore` selector hook. The chat screens
 (`app/index.tsx`, `app/chat/[id].tsx`, the list item, header and message list)
@@ -199,10 +199,10 @@ sends a composing chat-state while typing.
 - `pnpm format:check`: PASS — "All matched files use Prettier code style!" (after `pnpm format`; only the files above changed).
 - `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (291 files, 127 rules).
 - `pnpm typecheck`: PASS — turbo "8 successful, 8 total".
-- `pnpm test`: PASS — turbo "8 successful, 8 total". `@galena/mobile` **102 passed, 2 skipped** (15 files + the 2 gated integration files); `@galena/web` **85 passed**; `@galena/server` **186 passed, 3 skipped**. New mobile tests: `real-store` 18, `chat-api` 5, `connection` 2.
+- `pnpm test`: PASS — turbo "8 successful, 8 total". `@zilar/mobile` **102 passed, 2 skipped** (15 files + the 2 gated integration files); `@zilar/web` **85 passed**; `@zilar/server` **186 passed, 3 skipped**. New mobile tests: `real-store` 18, `chat-api` 5, `connection` 2.
 - `pnpm build`: PASS — 2/2 tasks; Expo exported the iOS and Android bundles (`entry-*.hbc`, 7.4 MB / 7.6 MB).
-- `GALENA_MOBILE_XMPP=1 pnpm --filter @galena/mobile test integration`: **not run** (see below). It is collected and skipped by default (shown as `1 skipped`).
-- Note on `pnpm test --force`: an uncached run in parallel with the other worktrees flaked two heavy web component tests (`MessageActions.test.tsx`, `ChatShell.test.tsx`) with 5 s timeouts. Re-run alone, `pnpm --filter @galena/web test` is **85 passed** and `pnpm --filter @galena/server test` is **186 passed, 3 skipped**. I did not touch web, so this is CPU contention, not a regression.
+- `ZILAR_MOBILE_XMPP=1 pnpm --filter @zilar/mobile test integration`: **not run** (see below). It is collected and skipped by default (shown as `1 skipped`).
+- Note on `pnpm test --force`: an uncached run in parallel with the other worktrees flaked two heavy web component tests (`MessageActions.test.tsx`, `ChatShell.test.tsx`) with 5 s timeouts. Re-run alone, `pnpm --filter @zilar/web test` is **85 passed** and `pnpm --filter @zilar/server test` is **186 passed, 3 skipped**. I did not touch web, so this is CPU contention, not a regression.
 
 ### Problems, deviations from the spec, open questions
 
@@ -210,23 +210,23 @@ sends a composing chat-state while typing.
   (`apps/mobile/src/store/integration.test.ts`): it signs in through the real
   server (reading the OTP from the server's own log, never a response), calls
   the production `createChatApi` for `/api/me` and a fresh `POST
-  /api/xmpp/token`, connects `@galena/xmpp-core`, creates and joins a room,
+  /api/xmpp/token`, connects `@zilar/xmpp-core`, creates and joins a room,
   sends a group message and waits for the room echo, then reconnects and
   asserts `getToken` fired a second time. It needs
-  `GALENA_AUTH_INTEGRATION_LOG`, `GALENA_AUTH_INVITE_CODE` and
-  `GALENA_MOBILE_TEST_EMAIL`; this worktree has no `apps/server/.env` and no
+  `ZILAR_AUTH_INTEGRATION_LOG`, `ZILAR_AUTH_INVITE_CODE` and
+  `ZILAR_MOBILE_TEST_EMAIL`; this worktree has no `apps/server/.env` and no
   such values, and I must not read secrets or change the running stack, so I
   could not produce the requested output. Run:
   ```bash
-  GALENA_MOBILE_XMPP=1 \
-  GALENA_AUTH_INTEGRATION_LOG=<server log> \
-  GALENA_AUTH_INVITE_CODE=<fresh invite> \
-  GALENA_MOBILE_TEST_EMAIL=<new email> \
-  pnpm --filter @galena/mobile test integration
+  ZILAR_MOBILE_XMPP=1 \
+  ZILAR_AUTH_INTEGRATION_LOG=<server log> \
+  ZILAR_AUTH_INVITE_CODE=<fresh invite> \
+  ZILAR_MOBILE_TEST_EMAIL=<new email> \
+  pnpm --filter @zilar/mobile test integration
   ```
 - **No real-conversation screenshot.** The only booted simulator is the lead's
-  "iPhone 17 Pro" and it currently shows a pending "Open in Galena?" dialog
-  (the same one T-0026 noted). Its installed Galena build is older and lacks
+  "iPhone 17 Pro" and it currently shows a pending "Open in Zilar?" dialog
+  (the same one T-0026 noted). Its installed Zilar build is older and lacks
   the `ExpoSecureStore` native module, so it cannot run this JS at all
   (`Cannot find native module 'ExpoSecureStore'`). Per the spec I did not take
   it over. I started Metro only to probe, then stopped it (port 8081 is free)
@@ -238,7 +238,7 @@ sends a composing chat-state while typing.
   only asks for unread counts and `markDisplayed`; persistence would need a new
   dependency, which the spec does not list.
 - **`?mock=1` on native** is read from expo-router's global search params (and
-  `EXPO_PUBLIC_GALENA_MOCK=1`); the real store remains the default.
+  `EXPO_PUBLIC_ZILAR_MOCK=1`); the real store remains the default.
 - **The spike was not deleted** (`apps/mobile/src/spike/**` is outside the
   Allowed files), so `lib/polyfills.ts` re-implements its two shims instead of
   importing them.
@@ -270,9 +270,9 @@ The old test called `api.getXmppToken()` itself *and* fetched again inside the
 **Integration run (redacted), against the running stack:**
 ```
 [mobile xmpp integration] sign-in through the real server → 200 →
-  GET /api/me → USER***@galena.localhost →
-  POST /api/groups → 201, room ROOM***@rooms.galena.localhost →
-  xmpp-core online as USER***@galena.localhost →
+  GET /api/me → USER***@zilar.localhost →
+  POST /api/groups → 201, room ROOM***@rooms.zilar.localhost →
+  xmpp-core online as USER***@zilar.localhost →
   joined the room → sent and received a group message →
   reconnect fetched a fresh token (getToken network calls: 2)
 
@@ -305,10 +305,10 @@ test reads the OTP from the server's own log and never prints a token.
 - `pnpm format:check`: PASS — "All matched files use Prettier code style!".
 - `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (285 files, 127 rules).
 - `pnpm typecheck`: PASS — turbo "8 successful, 8 total".
-- `pnpm test`: PASS — turbo "8 successful, 8 total"; `@galena/mobile`
+- `pnpm test`: PASS — turbo "8 successful, 8 total"; `@zilar/mobile`
   **94 passed, 2 skipped** (the two gated integration files skipped by default).
 - `pnpm build`: PASS — 2/2 tasks; Expo exported the iOS and Android bundles.
-- `GALENA_MOBILE_XMPP=1 … pnpm --filter @galena/mobile test src/store/integration.test.ts`:
+- `ZILAR_MOBILE_XMPP=1 … pnpm --filter @zilar/mobile test src/store/integration.test.ts`:
   PASS — 1/1 (911 ms), output above.
 
 
@@ -382,7 +382,7 @@ that by running the thing you could not.
    deleted. Nothing may reference them afterwards; check that the bundle still
    resolves, because `metro.config.js` must not be touched to achieve it.
 3. *(No change needed.)* `?mock=1` read from expo-router's global params, with
-   `EXPO_PUBLIC_GALENA_MOCK=1` as the native equivalent and the real store as
+   `EXPO_PUBLIC_ZILAR_MOCK=1` as the native equivalent and the real store as
    the default. Correct, and the mock does not ship as the default.
 4. *(No change needed.)* The `MessageList`/`Composer` changes for pagination and
    typing chat-state, with components otherwise only swapping their

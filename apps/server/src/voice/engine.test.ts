@@ -8,8 +8,8 @@ import { NotAudioError, createFfmpegEngine, type VoiceEngine } from './engine';
 // Real-ffmpeg test. It needs the ffmpeg/ffprobe binaries the dev machine has,
 // so it only runs when asked for:
 //
-//   GALENA_VOICE_INTEGRATION=1 pnpm --filter @galena/server test
-const enabled = process.env.GALENA_VOICE_INTEGRATION === '1';
+//   ZILAR_VOICE_INTEGRATION=1 pnpm --filter @zilar/server test
+const enabled = process.env.ZILAR_VOICE_INTEGRATION === '1';
 
 const SAMPLE_RATE = 8000;
 const SECONDS = 1;
@@ -45,7 +45,7 @@ describe.skipIf(!enabled)('ffmpeg voice engine (real binaries)', () => {
   let engine: VoiceEngine;
 
   beforeAll(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'galena-voice-test-'));
+    dir = await mkdtemp(join(tmpdir(), 'zilar-voice-test-'));
     engine = createFfmpegEngine(
       existsSync(FFMPEG) && existsSync(FFPROBE) ? { ffmpeg: FFMPEG, ffprobe: FFPROBE } : {},
     );

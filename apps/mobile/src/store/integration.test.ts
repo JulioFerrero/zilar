@@ -3,7 +3,7 @@ import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-import { createXmppCore, type ChatMessage } from '@galena/xmpp-core';
+import { createXmppCore, type ChatMessage } from '@zilar/xmpp-core';
 
 import { createChatApi } from '../lib/chat-api';
 
@@ -11,20 +11,20 @@ import { createChatApi } from '../lib/chat-api';
  * The gated live check for the mobile stack. It drives the real dev server (no
  * mocks):
  *
- *   GALENA_MOBILE_XMPP=1 \
- *   GALENA_AUTH_INTEGRATION_LOG=<server log file> \
- *   GALENA_AUTH_INVITE_CODE=<fresh invite> \
- *   GALENA_MOBILE_TEST_EMAIL=<new test email> \
- *   pnpm --filter @galena/mobile test integration
+ *   ZILAR_MOBILE_XMPP=1 \
+ *   ZILAR_AUTH_INTEGRATION_LOG=<server log file> \
+ *   ZILAR_AUTH_INVITE_CODE=<fresh invite> \
+ *   ZILAR_MOBILE_TEST_EMAIL=<new test email> \
+ *   pnpm --filter @zilar/mobile test integration
  *
  * It signs in through the real server (reading the OTP from the server's own
  * log, never from a response), then uses the production `createChatApi` to load
- * the profile and a fresh `POST /api/xmpp/token`, connects `@galena/xmpp-core`,
+ * the profile and a fresh `POST /api/xmpp/token`, connects `@zilar/xmpp-core`,
  * creates and joins a room, sends a group message and receives the room echo,
  * then reconnects and confirms `getToken` is called again with a fresh token.
  */
 
-const ENABLED = process.env['GALENA_MOBILE_XMPP'] === '1';
+const ENABLED = process.env['ZILAR_MOBILE_XMPP'] === '1';
 const OTP_TIMEOUT_MS = 20_000;
 const POLL_INTERVAL_MS = 300;
 const WAIT_TIMEOUT_MS = 15_000;
@@ -162,17 +162,17 @@ async function waitFor(predicate: () => boolean, description: string): Promise<v
 
 describe.skipIf(!ENABLED)('mobile XMPP integration (real server)', () => {
   it('signs in, connects xmpp-core, joins a room, sends and receives, then reconnects', async () => {
-    const baseUrl = process.env['GALENA_AUTH_INTEGRATION_URL'] ?? 'http://127.0.0.1:3188';
-    const logPath = requireEnv('GALENA_AUTH_INTEGRATION_LOG');
-    const invite = requireEnv('GALENA_AUTH_INVITE_CODE');
-    const email = requireEnv('GALENA_MOBILE_TEST_EMAIL');
+    const baseUrl = process.env['ZILAR_AUTH_INTEGRATION_URL'] ?? 'http://127.0.0.1:3188';
+    const logPath = requireEnv('ZILAR_AUTH_INTEGRATION_LOG');
+    const invite = requireEnv('ZILAR_AUTH_INVITE_CODE');
+    const email = requireEnv('ZILAR_MOBILE_TEST_EMAIL');
     const steps: string[] = [];
 
     // 1. Sign in through the real server.
     const before = await fileSize(logPath);
     const sendResponse = await request(baseUrl, '/api/auth/email-otp/send-verification-otp', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+      headers: { 'content-type': 'application/json', 'x-zilar-invite': invite },
       body: { email, type: 'sign-in' },
     });
     expect(sendResponse.status).toBe(200);
@@ -180,7 +180,7 @@ describe.skipIf(!ENABLED)('mobile XMPP integration (real server)', () => {
     expect(otp).toBeDefined();
     const signInResponse = await request(baseUrl, '/api/auth/sign-in/email-otp', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+      headers: { 'content-type': 'application/json', 'x-zilar-invite': invite },
       body: { email, otp: otp ?? '' },
     });
     expect(signInResponse.status).toBe(200);

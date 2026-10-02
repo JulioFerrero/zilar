@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { renderApp } from '@/test/renderApp';
 
 afterEach(() => {
@@ -87,7 +87,7 @@ describe('channels', () => {
 
   it('creates a channel from the New channel dialog', async () => {
     const room: ChatSummary = {
-      id: 'new-channel@rooms.galena.test',
+      id: 'new-channel@rooms.zilar.test',
       title: 'Releases',
       kind: 'group',
       isAI: false,
@@ -102,7 +102,7 @@ describe('channels', () => {
     };
     const { store } = renderApp('/', {
       chats: [],
-      contacts: [{ userId: 'u-ana', name: 'Ana', jid: 'ana@galena.test' }],
+      contacts: [{ userId: 'u-ana', name: 'Ana', jid: 'ana@zilar.test' }],
     });
     const createChannel = vi.fn(async () => {
       store.setState((state) => ({ chats: [...state.chats, room] }));

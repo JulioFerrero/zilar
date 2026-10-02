@@ -480,7 +480,7 @@ export const chatPrefs = pgTable(
 );
 
 // User-made sticker packs (T-0120, decision D27). `server` packs can be
-// found and added by every user of this Galena server; `private` packs only
+// found and added by every user of this Zilar server; `private` packs only
 // by the owner (usable by others only through stickers already sent).
 export const stickerPacks = pgTable('sticker_packs', {
   id: text('id').primaryKey(),

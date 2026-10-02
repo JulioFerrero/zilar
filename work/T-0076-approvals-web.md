@@ -68,7 +68,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -99,11 +99,11 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install`: `Scope: all 11 workspace projects / Lockfile is up to date / Packages: +1010 / Done in 6.4s using pnpm v10.32.1` — exit 0
-- `pnpm exec turbo typecheck --force --filter=@galena/web`: `Tasks: 1 successful, 1 total / Time: 3.0s` — exit 0
-- `pnpm exec turbo test --force --filter=@galena/web`: `Test Files 51 passed (51) / Tests 483 passed (483) / Tasks: 1 successful, 1 total / Time: 9.0s` — exit 0 (24 tests in `mock/api.test.ts`; 27 in `lib/api.test.ts`; the new `ApprovalCard.test.tsx` has 9 tests.)
+- `pnpm exec turbo typecheck --force --filter=@zilar/web`: `Tasks: 1 successful, 1 total / Time: 3.0s` — exit 0
+- `pnpm exec turbo test --force --filter=@zilar/web`: `Test Files 51 passed (51) / Tests 483 passed (483) / Tasks: 1 successful, 1 total / Time: 9.0s` — exit 0 (24 tests in `mock/api.test.ts`; 27 in `lib/api.test.ts`; the new `ApprovalCard.test.tsx` has 9 tests.)
 - `pnpm format:check`: `All matched files use Prettier code style!` — exit 0
 - `pnpm lint`: `oxlint .` — exit 0
-- `pnpm exec turbo build --force --filter=@galena/web`: built in 502 ms, no errors — exit 0
+- `pnpm exec turbo build --force --filter=@zilar/web`: built in 502 ms, no errors — exit 0
 - `pnpm exec vite --port 5174 --strictPort` (live check, mock mode via `?mock=1`): `VITE v8.3.1 ready in 163 ms / Local: http://localhost:5174/`; `curl http://localhost:5174/?mock=1` → HTTP 200, served the SPA shell. I don't have a headless browser in this environment, so I couldn't capture a screenshot; I verified the server starts, serves, and the rest of the build pipeline succeeds. The dev-team chat in `apps/web/src/mock/messages.ts` carries the `approvalCard()` (id `apr-42`), which matches the seeded mock approval and therefore renders the live card with Approve / Deny.
 
 ### Problems, deviations from the spec, open questions

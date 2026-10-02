@@ -68,7 +68,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -102,7 +102,7 @@ pnpm build
 - `pnpm format:check`: all files use Prettier style (pass).
 - `pnpm lint`: pass (fixed one `unicorn/no-useless-spread` in `gateway.test.ts` from prior work; re-ran after last edit — pass).
 - `pnpm typecheck`: 10 tasks successful (pass).
-- `pnpm exec turbo test --force --filter=@galena/server`: 55 files passed, 5 skipped; 850 tests passed, 7 skipped (pass, ~7 min).
+- `pnpm exec turbo test --force --filter=@zilar/server`: 55 files passed, 5 skipped; 850 tests passed, 7 skipped (pass, ~7 min).
 - `pnpm build`: 2 tasks successful (pass).
 - Targeted: `reply.test.ts` + `tools.test.ts`: 70 passed. `gateway.test.ts`: 104 passed. `gateway.test.ts -t "request_action in groups"`: 10 passed.
 - Note: during this session `pnpm exec vitest run src/agents/gateway.test.ts` initially showed 2 failures (timeouts in the plain-member and no-actions group tests); root cause was the plain path ignoring improvised `tool_calls` so the scripted second model call never happened. Fixed in `reply.ts` as described above; full suite green afterwards.

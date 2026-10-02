@@ -48,16 +48,16 @@ describe('subscribeToDrafts', () => {
 
     fake.emit(
       'draft',
-      JSON.stringify({ type: 'draft', chatJid: 'ai@galena.test', turnId: TURN, text: 'Hel' }),
+      JSON.stringify({ type: 'draft', chatJid: 'ai@zilar.test', turnId: TURN, text: 'Hel' }),
     );
     fake.emit(
       'end',
-      JSON.stringify({ type: 'end', chatJid: 'ai@galena.test', turnId: TURN, outcome: 'failed' }),
+      JSON.stringify({ type: 'end', chatJid: 'ai@zilar.test', turnId: TURN, outcome: 'failed' }),
     );
 
     expect(events).toEqual([
-      { type: 'draft', chatJid: 'ai@galena.test', turnId: TURN, text: 'Hel' },
-      { type: 'end', chatJid: 'ai@galena.test', turnId: TURN, outcome: 'failed' },
+      { type: 'draft', chatJid: 'ai@zilar.test', turnId: TURN, text: 'Hel' },
+      { type: 'end', chatJid: 'ai@zilar.test', turnId: TURN, outcome: 'failed' },
     ]);
 
     close();
@@ -72,11 +72,11 @@ describe('subscribeToDrafts', () => {
     fake.emit('draft', JSON.stringify({ type: 'draft', chatJid: '', turnId: TURN, text: 'x' }));
     fake.emit(
       'draft',
-      JSON.stringify({ type: 'draft', chatJid: 'ai@galena.test', turnId: 'nope', text: 'x' }),
+      JSON.stringify({ type: 'draft', chatJid: 'ai@zilar.test', turnId: 'nope', text: 'x' }),
     );
     fake.emit(
       'end',
-      JSON.stringify({ type: 'end', chatJid: 'ai@galena.test', turnId: TURN, outcome: 'weird' }),
+      JSON.stringify({ type: 'end', chatJid: 'ai@zilar.test', turnId: TURN, outcome: 'weird' }),
     );
     fake.emit('draft', JSON.stringify({ type: 'something-else' }));
 

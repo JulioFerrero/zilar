@@ -182,8 +182,8 @@ describe('parseInline', () => {
     expect(parseInline('[the docs](https://x.com/a)')).toEqual([
       { type: 'link', value: 'the docs', href: 'https://x.com/a' },
     ]);
-    expect(parseInline('[mail](mailto:hi@galena.test)')).toEqual([
-      { type: 'link', value: 'mail', href: 'mailto:hi@galena.test' },
+    expect(parseInline('[mail](mailto:hi@zilar.test)')).toEqual([
+      { type: 'link', value: 'mail', href: 'mailto:hi@zilar.test' },
     ]);
   });
 

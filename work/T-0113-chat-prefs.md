@@ -17,7 +17,7 @@ estimate: 1.5 days
 D28: a good daily chat needs the Telegram basics. Today `muted` exists only in client state and is never saved. This task stores per-user preferences on the server so they follow the user across web and phone: **mute** (with a duration), **archive** (hidden from the main list), **pin** (kept at the top). They apply to a DM, a group, and to individual **topics** (T-0108).
 
 ### Data and API
-- Table `chat_prefs`: `user_id` (fk cascade), `chat_jid` (the room JID or DM JID, text ≤ 255), `muted_until` (timestamp, nullable; a far-future value means "forever"), `archived` (bool), `pinned_at` (timestamp, nullable; newer pins sort first), `updated_at`; pk `(user_id, chat_jid)`. Migration via `pnpm --filter @galena/server db:generate`. A row with all defaults is deleted rather than kept.
+- Table `chat_prefs`: `user_id` (fk cascade), `chat_jid` (the room JID or DM JID, text ≤ 255), `muted_until` (timestamp, nullable; a far-future value means "forever"), `archived` (bool), `pinned_at` (timestamp, nullable; newer pins sort first), `updated_at`; pk `(user_id, chat_jid)`. Migration via `pnpm --filter @zilar/server db:generate`. A row with all defaults is deleted rather than kept.
 - `GET /api/chat-prefs` → the caller's rows. `PUT /api/chat-prefs/:chatJid` `{ mutedUntil?: string | null, archived?: boolean, pinned?: boolean }` (partial update; JID URL-encoded) validated with zod. **A user can only set prefs for chats they belong to:** DMs with their contacts or their own AIs, group General rooms and topic rooms they can see (use the T-0108 access helpers; a JID they cannot see answers 404, same as unknown). Limits: 200 rows per user, 20 pinned. Rate limit 60 writes per minute per user.
 - Prefs never leak: reads are own-rows only; no audit entries (they are personal settings).
 - Mute semantics for the clients: while `mutedUntil` is in the future the chat produces **no unread badge in the list totals, no notification and no sound**; the per-chat unread number is still shown in a muted style. (Web push and native push honour it later; keep the field authoritative.)
@@ -59,8 +59,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 
@@ -95,8 +95,8 @@ pnpm build
 - `pnpm format:check`: pass ("All matched files use Prettier code style!") after prettier --write on touched files + the drizzle journal/snapshot (drizzle emits the snapshot unformatted under prettier 3.9.9; older snapshots pass untouched)
 - `pnpm lint`: pass (oxlint clean)
 - `pnpm typecheck`: pass (turbo 10/10)
-- `pnpm --filter @galena/server test --maxWorkers=2`: 72 files passed, 5 skipped; 1259 passed, 7 skipped (268s). Includes the 10 new chat-prefs tests and the authz sweep (new routes answer 401 unauthenticated).
-- `pnpm --filter @galena/web test --maxWorkers=2`: 61 files passed, 682 passed — but the process exits 1 on a pre-existing unhandled `message_not_found` rejection from the `openAtMessage` stall test in `realStore.test.tsx`. Verified pre-existing: the same failure occurs on the base commit with my changes stashed. My new tests: 6 (chatPrefs) + 6 (ChatPrefs UI) + 4 (realStore prefs) + 1 (mock api) = 17, all pass.
+- `pnpm --filter @zilar/server test --maxWorkers=2`: 72 files passed, 5 skipped; 1259 passed, 7 skipped (268s). Includes the 10 new chat-prefs tests and the authz sweep (new routes answer 401 unauthenticated).
+- `pnpm --filter @zilar/web test --maxWorkers=2`: 61 files passed, 682 passed — but the process exits 1 on a pre-existing unhandled `message_not_found` rejection from the `openAtMessage` stall test in `realStore.test.tsx`. Verified pre-existing: the same failure occurs on the base commit with my changes stashed. My new tests: 6 (chatPrefs) + 6 (ChatPrefs UI) + 4 (realStore prefs) + 1 (mock api) = 17, all pass.
 - `pnpm build`: pass (2/2 turbo tasks)
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any|as any` in new/changed source: no hits.
 
@@ -121,8 +121,8 @@ pnpm build
 - `pnpm format:check`: pass ("All matched files use Prettier code style!")
 - `pnpm lint`: pass (oxlint clean)
 - `pnpm typecheck`: pass (turbo 10/10)
-- `pnpm --filter @galena/web test --maxWorkers=2`: 69 files passed, 742 passed, exit 0 (the pre-existing `openAtMessage` unhandled rejection from round 1 no longer appears)
-- `pnpm --filter @galena/server test --maxWorkers=2`: 73 files passed, 5 skipped; 1294 passed, 7 skipped (lead's server half, untouched by me)
+- `pnpm --filter @zilar/web test --maxWorkers=2`: 69 files passed, 742 passed, exit 0 (the pre-existing `openAtMessage` unhandled rejection from round 1 no longer appears)
+- `pnpm --filter @zilar/server test --maxWorkers=2`: 73 files passed, 5 skipped; 1294 passed, 7 skipped (lead's server half, untouched by me)
 - `pnpm build`: pass (2/2 turbo tasks)
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any|as any` in touched source: no hits.
 

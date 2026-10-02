@@ -1,5 +1,5 @@
 {
-  "name": "@galena/web",
+  "name": "@zilar/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,9 +12,9 @@
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
-    "@galena/chat-core": "workspace:*",
-    "@galena/protocol": "workspace:*",
-    "@galena/xmpp-core": "workspace:*",
+    "@zilar/chat-core": "workspace:*",
+    "@zilar/protocol": "workspace:*",
+    "@zilar/xmpp-core": "workspace:*",
     "better-auth": "^1.7.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

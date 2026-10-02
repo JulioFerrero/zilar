@@ -42,11 +42,11 @@ This is the "S1" spike from plan §23. The code should be production-shaped (typ
   - Our server signs **HS256** JWTs with a shared secret, with claim `jid` (the user's bare JID) and `exp` (≤ 10 minutes).
   - Clients log in with SASL PLAIN, using the JWT as the password.
   - If ejabberd 26.07 can't do JWT with an HS256 (`oct`) JWK, **stop, set `status: blocked`**, and describe what you found, including which alternatives exist (OAuth tokens via `oauth_issue_token`, or external auth). Don't switch approach on your own.
-- **The shared secret** comes from env `GALENA_XMPP_JWT_SECRET` (at least 32 random bytes).
+- **The shared secret** comes from env `ZILAR_XMPP_JWT_SECRET` (at least 32 random bytes).
   - ejabberd needs it as a JWK file. Generate it at container start from the env var, e.g. a small entrypoint wrapper or init step writing `/opt/ejabberd/conf/jwt.jwk` inside the container.
   - **Never commit a real key file.** If a generated key file ever lands in the repo tree, git-ignore it.
 - **Room creation is restricted to the admin (server) account:** `muc_create: allow: admin` (the T-0002 follow-up). Users only join rooms our server created for them.
-- **Room JIDs** are `<id>@rooms.galena.localhost`, where `<id>` matches our `IdSchema` from `@galena/protocol`.
+- **Room JIDs** are `<id>@rooms.zilar.localhost`, where `<id>` matches our `IdSchema` from `@zilar/protocol`.
 
 ### Allowed files
 - `infra/ejabberd/**`, `infra/docker-compose.dev.yml`, `infra/.env.example`
@@ -68,9 +68,9 @@ This is the "S1" spike from plan §23. The code should be production-shaped (typ
    - `EJABBERD_API_URL` (default `http://127.0.0.1:5280/api`)
    - `EJABBERD_ADMIN_JID`
    - `EJABBERD_ADMIN_PASSWORD`
-   - `XMPP_DOMAIN` (default `galena.localhost`)
-   - `XMPP_MUC_DOMAIN` (default `rooms.galena.localhost`)
-   - `GALENA_XMPP_JWT_SECRET` (≥ 32 chars)
+   - `XMPP_DOMAIN` (default `zilar.localhost`)
+   - `XMPP_MUC_DOMAIN` (default `rooms.zilar.localhost`)
+   - `ZILAR_XMPP_JWT_SECRET` (≥ 32 chars)
 
    Export `loadXmppConfig(env)`, which throws one clear error listing every missing or invalid variable. **Never include secret values in error messages.**
 2. **`apps/server/src/xmpp/admin-client.ts`.** `createEjabberdAdminClient(config, fetchImpl = fetch)`, a small typed wrapper over `/api` with admin basic auth. Methods:
@@ -122,7 +122,7 @@ This is the "S1" spike from plan §23. The code should be production-shaped (typ
 ### Acceptance criteria
 - [ ] `pnpm format:check`, `lint`, `typecheck`, `test` and `build` pass.
 - [ ] `pnpm infra:reset` (answer yes), then `pnpm infra:up`, `pnpm infra:smoke` and `pnpm xmpp:e2e` all pass. Paste the full `xmpp:e2e` output in the Report.
-- [ ] No real key or secret is committed. `infra/.env.example` documents `GALENA_XMPP_JWT_SECRET` with `CHANGE_ME`.
+- [ ] No real key or secret is committed. `infra/.env.example` documents `ZILAR_XMPP_JWT_SECRET` with `CHANGE_ME`.
 - [ ] Every negative check fails the way it should, with the actual ejabberd behavior described in the Report.
 - [ ] The Report explains how ejabberd reads the JWT key and why that approach was chosen.
 
@@ -151,15 +151,15 @@ pnpm infra:down
 
 ### What I did
 
-- **`apps/server/src/xmpp/config.ts`** — `xmppEnvSchema` (zod) and `loadXmppConfig(env)`. Defaults for `EJABBERD_API_URL`, `XMPP_DOMAIN`, `XMPP_MUC_DOMAIN`; requires `EJABBERD_ADMIN_JID`, `EJABBERD_ADMIN_PASSWORD` and a ≥32-character `GALENA_XMPP_JWT_SECRET`. One error lists every bad variable, and only variable names + zod messages are used, never a value.
+- **`apps/server/src/xmpp/config.ts`** — `xmppEnvSchema` (zod) and `loadXmppConfig(env)`. Defaults for `EJABBERD_API_URL`, `XMPP_DOMAIN`, `XMPP_MUC_DOMAIN`; requires `EJABBERD_ADMIN_JID`, `EJABBERD_ADMIN_PASSWORD` and a ≥32-character `ZILAR_XMPP_JWT_SECRET`. One error lists every bad variable, and only variable names + zod messages are used, never a value.
 - **`apps/server/src/xmpp/admin-client.ts`** — `createEjabberdAdminClient(config, fetchImpl = fetch)` over `/api` with admin Basic auth. Methods `registerUser`, `userExists`, `createRoom`, `setAffiliation`, `getAffiliations`, `destroyRoom`. Every response is parsed as JSON and validated with zod; non-2xx responses and `{status:"error"}` bodies become a typed `EjabberdApiError` (command + status, no secrets). `localpart`/`roomId` are validated as lowercase `[a-z0-9._-]{1,64}` before any request. `registerUser` and `createRoom` are idempotent (`{created:false}` when the account/room exists); `registerUser` generates a 32-byte random password that is never stored by us or returned.
 - **`apps/server/src/xmpp/token.ts`** — `issueXmppToken(config, bareJid, ttlSeconds = 300)` signs an HS256 JWT with `jose` (claims `jid`, `iat`, `exp`), returns `{token, expiresAt}`, rejects JIDs not on `XMPP_DOMAIN`, and rejects TTLs above `MAX_TOKEN_TTL_SECONDS` (600).
 - **Unit tests** (`config.test.ts` 6, `admin-client.test.ts` 10, `token.test.ts` 6) with fake `fetch` and no network: URL, auth header and body per command; idempotency; error mapping; `../x`/uppercase/empty input rejection; token verification with the same and a different secret; `exp ≤ ttl`; wrong-domain rejection. The config test asserts the short secret itself never appears in the error.
 - **ejabberd config** — added `auth_method: [sql, jwt]` and `jwt_key: /opt/ejabberd/conf/jwt.jwk`; changed the `muc_create` access rule from `allow: local` to `allow: admin` (T-0002 follow-up 4); added `mod_muc_admin: {}`, which the room-management API commands need and which T-0002's config was missing.
-- **`infra/ejabberd/jwt-entrypoint.sh`** (new) — at container start it derives an HS256 `oct` JWK from `GALENA_XMPP_JWT_SECRET` (busybox `base64` → base64url) and writes `/opt/ejabberd/conf/jwt.jwk`, then `exec`s the image's normal `tini -- ejabberdctl "$@"`. Compose wires it as the entrypoint (and repeats `command: ['foreground']`, because overriding the entrypoint drops the image CMD).
+- **`infra/ejabberd/jwt-entrypoint.sh`** (new) — at container start it derives an HS256 `oct` JWK from `ZILAR_XMPP_JWT_SECRET` (busybox `base64` → base64url) and writes `/opt/ejabberd/conf/jwt.jwk`, then `exec`s the image's normal `tini -- ejabberdctl "$@"`. Compose wires it as the entrypoint (and repeats `command: ['foreground']`, because overriding the entrypoint drops the image CMD).
 - **`packages/devtools/src/xmpp-e2e.ts`** (new) and root `pnpm xmpp:e2e` — the end-to-end script, importing the server module **by relative path** (`../../../apps/server/src/xmpp/*`), not a workspace dependency (the server package has no library `exports`). It runs the ten checks from the spec and prints PASS/FAIL per step.
 - **`packages/devtools/src/xmpp-client.d.ts`** (new) — `@xmpp/client@0.14` ships no TypeScript declarations, so a minimal ambient module declaration covers the surface the script uses (no `any`, no `@ts-ignore`).
-- **`infra/.env.example`** got `GALENA_XMPP_JWT_SECRET=CHANGE_ME` and `EJABBERD_ADMIN_JID=admin@galena.localhost`; **`.gitignore`** got a defensive `infra/ejabberd/*.jwk`; **`README.md`** got a short note in `### Infrastructure`; root/devtools/`apps/server` `package.json` and `pnpm-lock.yaml` got the allowed dependencies.
+- **`infra/.env.example`** got `ZILAR_XMPP_JWT_SECRET=CHANGE_ME` and `EJABBERD_ADMIN_JID=admin@zilar.localhost`; **`.gitignore`** got a defensive `infra/ejabberd/*.jwk`; **`README.md`** got a short note in `### Infrastructure`; root/devtools/`apps/server` `package.json` and `pnpm-lock.yaml` got the allowed dependencies.
 
 ### Files changed
 
@@ -186,7 +186,7 @@ pnpm infra:down
 - `pnpm xmpp:e2e`: PASS, all 11 steps. Full output (after `infra:reset` + `infra:up`):
 
 ```
-XMPP end-to-end spike: room e2e-mujxr614odmk@rooms.galena.localhost
+XMPP end-to-end spike: room e2e-mujxr614odmk@rooms.zilar.localhost
 
 PASS  our server registers the e2e users through the admin API
 PASS  our server creates the members-only room and sets Alice owner, Bob member
@@ -211,7 +211,7 @@ All steps passed.
 
 ### How ejabberd reads the JWT key, and why this approach
 
-`auth_method: [sql, jwt]` makes ejabberd verify client passwords as JWTs. ejabberd never reads the secret from the environment: `jwt_key` must point at a file holding a PEM key, a JWK, or a JWK Set. HS256 needs a symmetric key, so the file is a single `oct` JWK. Our server signs HS256 with the raw UTF-8 bytes of `GALENA_XMPP_JWT_SECRET`; the JWK's `k` is base64url of exactly those bytes, so both sides agree. Verified with a real login: a valid HS256 token is accepted, a token signed with a different secret and a token for another domain are both rejected.
+`auth_method: [sql, jwt]` makes ejabberd verify client passwords as JWTs. ejabberd never reads the secret from the environment: `jwt_key` must point at a file holding a PEM key, a JWK, or a JWK Set. HS256 needs a symmetric key, so the file is a single `oct` JWK. Our server signs HS256 with the raw UTF-8 bytes of `ZILAR_XMPP_JWT_SECRET`; the JWK's `k` is base64url of exactly those bytes, so both sides agree. Verified with a real login: a valid HS256 token is accepted, a token signed with a different secret and a token for another domain are both rejected.
 
 `infra/ejabberd/jwt-entrypoint.sh` is a compose entrypoint wrapper. It reads the secret from the environment (passed by compose), writes `{"kty":"oct","k":"<base64url>","alg":"HS256","use":"sig"}` to `/opt/ejabberd/conf/jwt.jwk` (`umask 077`), then hands over to the image's normal `tini -- ejabberdctl`. That conf directory is inside the container (not a bind mount and not a volume), so the key is regenerated on every start and never lands on the host. The alternative — writing the key from the host — would put a real key in the repo tree; the wrapper avoids that. `.gitignore` also ignores `infra/ejabberd/*.jwk` as a safety net, and `git status` confirms no key file is present.
 
@@ -225,15 +225,15 @@ All steps passed.
 ### Problems, deviations from the spec, open questions
 
 1. **`mod_muc_admin` was missing** from T-0002's `infra/ejabberd/ejabberd.yml`. Without it, `create_room_with_opts`, `set_room_affiliation`, `get_room_affiliations` and `destroy_room` answer `404 Endpoint not found` / `400 unknown_command`. The image's default config loads it; I added `mod_muc_admin: {}`. Required for this task.
-2. **`EJABBERD_ADMIN_JID` was not in `infra/.env.example`.** The config schema (per the spec) requires it and the e2e reads it from `infra/.env`, so I added it there as `admin@galena.localhost` (matching the dev container's `EJABBERD_MACRO_ADMIN`). An existing T-0002 `infra/.env` needs this one line for `pnpm xmpp:e2e`; `infra:smoke` is unaffected.
+2. **`EJABBERD_ADMIN_JID` was not in `infra/.env.example`.** The config schema (per the spec) requires it and the e2e reads it from `infra/.env`, so I added it there as `admin@zilar.localhost` (matching the dev container's `EJABBERD_MACRO_ADMIN`). An existing T-0002 `infra/.env` needs this one line for `pnpm xmpp:e2e`; `infra:smoke` is unaffected.
 3. **Security nuance in `auth_method: [sql, jwt]` (the spec's literal value).** I verified that with this order a non-admin account can still authenticate with its stored SQL password (a probe registered a user with a known password and logged in over SASL with it). That password is 32 random bytes generated inside `registerUser` and never exposed, so it is not practically exploitable, but SQL is not literally "only for the admin account". The ejabberd docs warn about the order and describe a stricter setup: `auth_method: [jwt, sql]` plus `jwt_auth_only_rule: jwt_only` (`deny: admin, allow: all`), which would make every non-admin account JWT-only. **Question:** should I switch to that stricter setup in a follow-up? I kept the spec's literal `[sql, jwt]` rather than change a security decision on my own.
 4. **`issueXmppToken` is `async`.** `jose` signs asynchronously, so it returns `Promise<{token, expiresAt}>`. The spec gave the signature without saying whether it is sync; the shape is otherwise as specified.
-5. **`roomId`/`localpart` validation is stricter than `IdSchema`.** The spec's admin-client rule is lowercase `[a-z0-9._-]`, 1–64 chars, while `@galena/protocol`'s `IdSchema` also allows uppercase, `~` and up to 128. I followed the explicit rule. If room ids must match `IdSchema` exactly, tell me and I'll widen it.
+5. **`roomId`/`localpart` validation is stricter than `IdSchema`.** The spec's admin-client rule is lowercase `[a-z0-9._-]`, 1–64 chars, while `@zilar/protocol`'s `IdSchema` also allows uppercase, `~` and up to 128. I followed the explicit rule. If room ids must match `IdSchema` exactly, tell me and I'll widen it.
 6. **`@xmpp/client` has no TypeScript types.** I added a small ambient declaration (`xmpp-client.d.ts`) instead of a new `@types` dependency.
 7. **`@xmpp/debug` (allowed, optional) is not used.** I left it out to avoid an unused dependency.
 8. **`createRoom` returns `{created: boolean}`** (the spec only required idempotency and did not give a return type), mirroring `registerUser`.
 9. **The e2e script re-joins the room after Bob reconnects, before the MAM query.** XEP-0313 for MUC answers an occupant; without the re-join the query can be refused. This is part of "reconnect", not a different check.
-10. **`jwt-entrypoint.sh` needs no execute bit** because compose runs it as `/bin/sh /galena/jwt-entrypoint.sh`; it is a bind-mount, read-only, and Docker Desktop's exec-bit problem (seen with the Postgres init script in T-0002) does not apply.
+10. **`jwt-entrypoint.sh` needs no execute bit** because compose runs it as `/bin/sh /zilar/jwt-entrypoint.sh`; it is a bind-mount, read-only, and Docker Desktop's exec-bit problem (seen with the Postgres init script in T-0002) does not apply.
 11. **`infra/.env` is local and git-ignored.** The dev values used in this run were generated with `openssl rand` and are not shown or committed.
 
 ### Blocked / needs a decision
@@ -260,7 +260,7 @@ Answer to review finding 1: **yes, non-admin accounts are now JWT-only.**
 Full `pnpm xmpp:e2e` output (clean stack):
 
 ```
-XMPP end-to-end spike: room e2e-mujyawzeukfi@rooms.galena.localhost
+XMPP end-to-end spike: room e2e-mujyawzeukfi@rooms.zilar.localhost
 
 PASS  our server registers the e2e users through the admin API
 PASS  our server creates the members-only room and sets Alice owner, Bob member
@@ -301,17 +301,17 @@ All steps passed.
    - **New negative e2e step:** give a test user a **known** password through the admin API (`change_password`, or `register` with a known password for a dedicated test account), then try SASL PLAIN with that password. It **must be rejected**. The same user with a valid JWT must still log in.
    - `pnpm infra:smoke` (which uses the admin's password on `/api`) must still pass.
 2. **(accepted)** Adding `mod_muc_admin` was required and correct.
-3. **(accepted)** `EJABBERD_ADMIN_JID` in `.env.example`: correct. Claude will add it and `GALENA_XMPP_JWT_SECRET` to Julio's local `infra/.env` after merge.
+3. **(accepted)** `EJABBERD_ADMIN_JID` in `.env.example`: correct. Claude will add it and `ZILAR_XMPP_JWT_SECRET` to Julio's local `infra/.env` after merge.
 4. **(accepted)** An async `issueXmppToken` is fine, and so is `createRoom` returning `{created}`.
 5. **(accepted)** Validating `roomId` and `localpart` more strictly (lowercase) than `IdSchema` is correct for XMPP localparts: it avoids case-folding ambiguity. Room ids the server generates will follow it.
 6. **(accepted)**
    - the ambient types for `@xmpp/client`
    - importing the server module by relative path in the devtools script (fine for a dev tool)
    - re-joining the room before the MAM query
-7. **(note for later)** `jwt-entrypoint.sh` derives the key from the raw secret bytes, so `GALENA_XMPP_JWT_SECRET` must be at least 32 random chars. The config already enforces that. Good.
+7. **(note for later)** `jwt-entrypoint.sh` derives the key from the raw secret bytes, so `ZILAR_XMPP_JWT_SECRET` must be at least 32 random chars. The config already enforces that. Good.
 
 **Verdict (round 2): approved.** Merged by Claude.
 
 - From a clean `infra:reset` + `infra:up`, I ran `pnpm infra:smoke` → **5/5 PASS**, then `pnpm xmpp:e2e` → **12/12 PASS**. That includes the new check "a non-admin account cannot log in with a known SQL password", which is rejected with `not-authorized`, while the same account logs in with a valid JWT.
 - The admin keeps SQL auth for `/api` (smoke passes). Round 1's finding 1 is resolved, with the doc sections cited.
-- Rebased onto `main` (T-0011 and T-0014 had merged): I resolved `apps/server/package.json` and regenerated `pnpm-lock.yaml`, then all code checks pass. Julio's local `infra/.env` got `GALENA_XMPP_JWT_SECRET` and `EJABBERD_ADMIN_JID`.
+- Rebased onto `main` (T-0011 and T-0014 had merged): I resolved `apps/server/package.json` and regenerated `pnpm-lock.yaml`, then all code checks pass. Julio's local `infra/.env` got `ZILAR_XMPP_JWT_SECRET` and `EJABBERD_ADMIN_JID`.

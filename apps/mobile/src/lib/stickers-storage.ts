@@ -11,7 +11,7 @@
 
 import { readRecentStickers, type RecentStickerEntry } from './stickers';
 
-export const RECENT_STICKERS_KEY = 'galena:recentStickers';
+export const RECENT_STICKERS_KEY = 'zilar:recentStickers';
 
 export interface RecentsStorageBackend {
   read(): Promise<string | null>;

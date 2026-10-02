@@ -7,13 +7,13 @@ import type {
   ReplyRef,
   UiMention,
   UiMessage,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 import {
   mentionsForTrimmedText,
   rebaseMentions,
   canEditMessage,
   canDeleteMessage,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 import type {
   ChatPref,
   Contact,
@@ -49,7 +49,7 @@ import {
 } from '@/lib/chatPrefs';
 import type { MuteDurationId } from '@/lib/chatPrefs';
 import { classify, cleanFilename, objectUrlFor } from '@/lib/attachments';
-import { StickerSchema } from '@galena/protocol';
+import { StickerSchema } from '@zilar/protocol';
 import { sampleVoiceDataUrl } from '@/lib/voice';
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
@@ -502,7 +502,7 @@ function withToggledReaction(message: UiMessage, emoji: string, name: string): U
 function mentionMembersFor(detail: GroupDetail): MentionMember[] {
   return [
     ...detail.members.map((member) => ({
-      jid: `${member.userId.toLowerCase()}@galena.test`,
+      jid: `${member.userId.toLowerCase()}@zilar.test`,
       name: member.name,
     })),
     ...detail.ais.map((ai) => ({ jid: ai.jid, name: ai.name })),
@@ -676,10 +676,10 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         seed.me ??
         ({
           id: meUserId,
-          email: 'you@galena.test',
+          email: 'you@zilar.test',
           name: 'You',
           image: null,
-          jid: `${meUserId}@galena.test`,
+          jid: `${meUserId}@zilar.test`,
         } satisfies Me),
       status: seed.status ?? 'online',
       // The mock store has no async loads, so its data is ready immediately.
@@ -1256,7 +1256,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
           status: 'sending',
           attachment: {
             kind,
-            url: localUrl ?? `https://files.galena.test/${encodeURIComponent(name)}`,
+            url: localUrl ?? `https://files.zilar.test/${encodeURIComponent(name)}`,
             name,
             size: file.size,
             mime,

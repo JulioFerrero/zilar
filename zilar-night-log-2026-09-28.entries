@@ -2,7 +2,7 @@
 | 2026-09-28 01:03 | recon | Read the lead playbook, BOARD.md, AGENTS.md. Found T-0025 in-progress, T-0023 merged, T-0024 serving the live stack. |
 | 2026-09-28 01:04 | recon | Queried OpenCode: service up, opencode-go provider enabled, 50 sessions, worker model deepseek-v4.1-flash available. |
 | 2026-09-28 01:05 | recon | Found T-0025 worker session ses_f1b06bd54ffemabPPWRBWyTm62 ended with outcome=failed, leaving 8 files uncommitted. |
-| 2026-09-28 01:05 | tooling | Rebuilt the lead watcher (oc-watch.py) in /tmp/galena-scratch. |
+| 2026-09-28 01:05 | tooling | Rebuilt the lead watcher (oc-watch.py) in /tmp/zilar-scratch. |
 | 2026-09-28 01:06 | supervision | Checked for a stuck permission request (none), sent the round-2 nudge to the same session so it kept its context. |
 | 2026-09-28 01:08 | supervision | Confirmed the worker was alive on deepseek-v4.1-flash. Reviewed the committed round-1 diff (stanza.ts, client.ts) for spoof handling. |
 | 2026-09-28 01:10 | supervision | Worker progressing: realStore.ts +124 lines, tests +99. |
@@ -48,9 +48,9 @@
 | 2026-09-28 03:24 | permission | Checked all three queues BY HAND while the watcher was blind: 0 pending everywhere. Nothing was lost. Watcher re-armed and polling concurrently. |
 | 2026-09-28 03:25 | review | T-0004 reported. Verdict: xmpp.js DOES work on iOS. Opened both screenshots: two real accounts online, DM delivered, echo returned, reconnect re-invoked getToken. Hermes probe: nextTick=false btoa=true randomUUID=false TextEncoder=true. |
 | 2026-09-28 03:27 | verification | Ran every check uncached on the T-0004 branch: format, lint, typecheck, test, build all PASS. mobile 35, web 78, xmpp-core 115+3 skipped, server 155. |
-| 2026-09-28 03:28 | security | Compared the committed tree against GALENA_XMPP_JWT_SECRET from infra/.env: the secret is NOT in any committed file. Tokens masked on screen. The worker minted a JWT from its own worktree env to prove the live path and disclosed it. |
-| 2026-09-28 03:30 | false alarm | Mobile tests appeared to drop 48 -> 35. Investigated before reporting: commit b446305 (T-0023) deleted 4 mobile test files on purpose after moving those helpers into @galena/chat-core. T-0004 lost nothing. NOT a finding. |
-| 2026-09-28 03:31 | housekeeping | The main checkout's mobile tests were failing on a stale node_modules (cannot find @galena/chat-core). Ran pnpm install; 27 tests pass again. |
+| 2026-09-28 03:28 | security | Compared the committed tree against ZILAR_XMPP_JWT_SECRET from infra/.env: the secret is NOT in any committed file. Tokens masked on screen. The worker minted a JWT from its own worktree env to prove the live path and disclosed it. |
+| 2026-09-28 03:30 | false alarm | Mobile tests appeared to drop 48 -> 35. Investigated before reporting: commit b446305 (T-0023) deleted 4 mobile test files on purpose after moving those helpers into @zilar/chat-core. T-0004 lost nothing. NOT a finding. |
+| 2026-09-28 03:31 | housekeeping | The main checkout's mobile tests were failing on a stale node_modules (cannot find @zilar/chat-core). Ran pnpm install; 27 tests pass again. |
 | 2026-09-28 03:33 | review | T-0004 round 1 written: one finding. metro.config.js resolves the empty module from ./src/spike/empty.js, so deleting the spike (as the next task must) would break the mobile bundle. The stub is permanent, so it must move out of src/spike/. |
 | 2026-09-28 03:35 | supervision | Sent round 2 to the T-0004 session and re-armed the concurrent watcher. |
 | 2026-09-28 03:36 | review | T-0004 round 2 verified: the empty module moved to src/lib/xmpp-node-stubs/empty.js with an existsSync guard in metro.config.js, and the only remaining reference to the spike from outside it is its own route. Uncached run: format, typecheck, test (54s), build (22s), lint exit 0. All PASS. mobile 35 unchanged. |

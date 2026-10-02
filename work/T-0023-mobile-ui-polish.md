@@ -1,6 +1,6 @@
 ---
 id: T-0023
-title: Mobile UI polish — Telegram additions, swipe-to-reply, haptics, switch to @galena/chat-core
+title: Mobile UI polish — Telegram additions, swipe-to-reply, haptics, switch to @zilar/chat-core
 status: merged
 milestone: M1
 branch: task/T-0023-mobile-ui-polish
@@ -14,7 +14,7 @@ estimate: 1–2 days
 ## Spec (written by Claude, do not edit)
 
 ### Goal
-Bring the mobile app to the same Telegram level as the web app after T-0022. Implement **every item** in `docs/design/ui-style.md` §4, under "Added after the first screenshots (2026-09-27)", **including the mobile-only ones**: swipe right to reply, and a light haptic on long-press. Also fix T-0019's review findings, and **switch to the shared `@galena/chat-core`** instead of the duplicated helpers. Still mock data.
+Bring the mobile app to the same Telegram level as the web app after T-0022. Implement **every item** in `docs/design/ui-style.md` §4, under "Added after the first screenshots (2026-09-27)", **including the mobile-only ones**: swipe right to reply, and a light haptic on long-press. Also fix T-0019's review findings, and **switch to the shared `@zilar/chat-core`** instead of the duplicated helpers. Still mock data.
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -35,7 +35,7 @@ Bring the mobile app to the same Telegram level as the web app after T-0022. Imp
 - `react-native-gesture-handler` and `react-native-reanimated`, already present with Expo, for the swipe gesture
 
 ### What to build
-1. **Use `@galena/chat-core`:**
+1. **Use `@zilar/chat-core`:**
    - Add it as a workspace dependency.
    - Delete the duplicated helpers in `src/lib/` that it replaces, and their tests (chat-core has its own). Keep only mobile-specific code.
    - Move the mobile store to chat-core's `ChatSummary` / `UiMessage` types.
@@ -93,9 +93,9 @@ pnpm build
 
 ### What I did
 
-Implemented every item in `docs/design/ui-style.md` §4 "Added after the first screenshots (2026-09-27)" on mobile, fixed the T-0019 findings, and moved the app onto `@galena/chat-core`.
+Implemented every item in `docs/design/ui-style.md` §4 "Added after the first screenshots (2026-09-27)" on mobile, fixed the T-0019 findings, and moved the app onto `@zilar/chat-core`.
 
-1. **`@galena/chat-core`.** Added it as a workspace dependency and switched the store, mock data and components to its `ChatSummary` / `UiMessage` types (`createdAt` and `lastSeenAt` are `Date`, `replyTo` is `ReplyRef`). Deleted the duplicated helpers and their tests: `lib/time.ts`, `lib/avatar.ts`, `lib/grouping.ts`, `lib/preview.ts` (and the four test files). `chat-core` had everything needed, so nothing was missing and I did not touch `packages/**`. `lib/types.ts` now holds only the mobile constants (`CURRENT_USER_ID`, `CURRENT_USER_NAME`, `ChatFolder`) and re-exports the shared types.
+1. **`@zilar/chat-core`.** Added it as a workspace dependency and switched the store, mock data and components to its `ChatSummary` / `UiMessage` types (`createdAt` and `lastSeenAt` are `Date`, `replyTo` is `ReplyRef`). Deleted the duplicated helpers and their tests: `lib/time.ts`, `lib/avatar.ts`, `lib/grouping.ts`, `lib/preview.ts` (and the four test files). `chat-core` had everything needed, so nothing was missing and I did not touch `packages/**`. `lib/types.ts` now holds only the mobile constants (`CURRENT_USER_ID`, `CURRENT_USER_NAME`, `ChatFolder`) and re-exports the shared types.
 2. **T-0019 findings.** Added the `--online` token (light + dark) and mapped it to `online` in `tailwind.config.js`; the avatar dot is now `bg-online` (green). The mute icon sits in a `View className="ml-4"` (16 px) so the gap actually applies (a `className` on the lucide icon did not).
 3. **New-chat button menu.** `NewChatButton` (mobile) keeps the floating pencil and opens a menu with **New group** / **New message**; each opens a "Coming soon" sheet with a Close button. No `alert`/`confirm`.
 4. **Unread divider.** `MessageList` computes the position with `chat-core`'s `unreadDividerIndex` at mount (before `openChat` clears unread), renders `UnreadDivider` ("Unread messages") above the first unread message and scrolls to it instead of the bottom. Ana (unread 2) shows it.
@@ -114,7 +114,7 @@ All under `apps/mobile/**` plus `pnpm-lock.yaml`.
 
 - New: `src/lib/format.ts` (+test), `src/lib/links.ts` (+test); `src/components/chat/typing-dots.tsx`, `new-chat-button.tsx`, `message-actions-sheet.tsx`, `swipe-to-reply.tsx`, `link-text.tsx`, `unread-divider.tsx`.
 - Deleted: `src/lib/{time,avatar,grouping,preview}.ts` and their `.test.ts`.
-- Modified: `package.json` (`@galena/chat-core`, `expo-haptics`, `expo-clipboard`), `tailwind.config.js`, `src/global.css`, `src/app/_layout.tsx`, `src/app/index.tsx`, `src/app/chat/[id].tsx`, `src/lib/{types,chat,image-presets}.ts`, `src/mock/{time,messages}.ts`, `src/store/chat-store.ts` (+test), `src/components/chat/{avatar,chat-header,chat-list-item,composer,date-separator,message-bubble,message-list,reply-quote,voice-message}.tsx`, `README.md`.
+- Modified: `package.json` (`@zilar/chat-core`, `expo-haptics`, `expo-clipboard`), `tailwind.config.js`, `src/global.css`, `src/app/_layout.tsx`, `src/app/index.tsx`, `src/app/chat/[id].tsx`, `src/lib/{types,chat,image-presets}.ts`, `src/mock/{time,messages}.ts`, `src/store/chat-store.ts` (+test), `src/components/chat/{avatar,chat-header,chat-list-item,composer,date-separator,message-bubble,message-list,reply-quote,voice-message}.tsx`, `README.md`.
 - Screenshots: added `chats-light.png`, `chat-ana-light.png`, `chat-viernes-dark.png`, `chat-reply-light.png`; deleted the four stale T-0019 shots (`chats-dark.png`, `chat-light.png`, `chat-dark.png`, `chat-ai-cards-light.png`).
 
 ### Commands run and real results
@@ -124,7 +124,7 @@ All under `apps/mobile/**` plus `pnpm-lock.yaml`.
 - `pnpm format:check` → PASS ("All matched files use Prettier code style!").
 - `pnpm lint` → PASS ("Found 0 warnings and 0 errors", 218 files, 127 rules).
 - `pnpm typecheck` → PASS (8 successful, 8 total).
-- `pnpm test` → PASS (8 tasks successful). `@galena/mobile` **23 passed** (5 files); `@galena/protocol` 132 passed; the rest unchanged.
+- `pnpm test` → PASS (8 tasks successful). `@zilar/mobile` **23 passed** (5 files); `@zilar/protocol` 132 passed; the rest unchanged.
 - `pnpm build` → PASS (2 successful; mobile `expo export` wrote the iOS and Android Hermes bundles, `Exported: dist`).
 - `npx expo run:ios --no-bundler --device "iPhone 17 Pro"` → **BUILD EXIT: 0** (Build Succeeded; new native modules autolinked).
 - Metro started separately (watch mode), the app bundled and launched on the iPhone 17 Pro simulator, screenshots taken, then Metro stopped: `lsof -ti tcp:8081` → port 8081 free, no `expo start` process left.
@@ -163,7 +163,7 @@ In `apps/mobile/screenshots/` (iPhone 17 Pro, 1206×2622):
 - `pnpm format:check` → PASS ("All matched files use Prettier code style!").
 - `pnpm lint` → PASS ("Found 0 warnings and 0 errors", 218 files).
 - `pnpm typecheck` → PASS (8 successful, 8 total).
-- `pnpm test` → PASS (8 tasks successful; `@galena/mobile` **27 passed**, 5 files).
+- `pnpm test` → PASS (8 tasks successful; `@zilar/mobile` **27 passed**, 5 files).
 - `pnpm build` → PASS (2 successful; mobile `Exported: dist`).
 
 Status kept at `review`. Only `apps/mobile/**` and the task file changed in this round; the temporary typing window is reverted (grep confirms 2000/4000).

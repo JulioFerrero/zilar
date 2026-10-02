@@ -1,4 +1,4 @@
-import type { ChatMessage, XmppCore } from '@galena/xmpp-core';
+import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatApi } from '../lib/chat-api';
@@ -9,7 +9,7 @@ function message(overrides: Partial<ChatMessage> & { chatJid: string; body: stri
   return {
     id: `m-${overrides.body}`,
     kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
-    fromJid: 'ana@galena.test',
+    fromJid: 'ana@zilar.test',
     fromResolved: true,
     timestamp: new Date('2026-09-28T10:00:00Z'),
     outgoing: false,
@@ -21,7 +21,7 @@ function fakeXmpp() {
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
   const core = {
     status: () => 'online' as const,
-    me: () => 'me@galena.test',
+    me: () => 'me@zilar.test',
     connect: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
     joinRoom: vi.fn(async () => {}),
@@ -32,8 +32,8 @@ function fakeXmpp() {
     sendCorrection: vi.fn(async () => ({ id: 'srv-c' })),
     sendRetraction: vi.fn(async () => {}),
     requestUploadSlot: vi.fn(async () => ({
-      putUrl: 'https://upload.galena.test/put/abc',
-      getUrl: 'https://upload.galena.test/get/abc',
+      putUrl: 'https://upload.zilar.test/put/abc',
+      getUrl: 'https://upload.zilar.test/get/abc',
       headers: { authorization: 'slot-token' },
     })),
     loadHistory: vi.fn(async (chatJid: string) => ({
@@ -76,12 +76,12 @@ function fakeApi(): ChatApi {
   return {
     getMe: vi.fn(async () => ({
       id: 'u-me',
-      email: 'me@galena.test',
+      email: 'me@zilar.test',
       name: 'Me',
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
     })),
     getChats: vi.fn(async () => [
-      { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+      { kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
     ]),
     getContacts: vi.fn(async () => []),
     getGroup: vi.fn(async () => ({
@@ -92,12 +92,12 @@ function fakeApi(): ChatApi {
       ais: [],
     })),
     getXmppToken: vi.fn(async () => ({
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
       token: 'tok',
       expiresAt: '2026-09-28T12:05:00Z',
-      service: 'ws://chat.galena.test/ws',
-      domain: 'galena.test',
-      mucDomain: 'rooms.galena.test',
+      service: 'ws://chat.zilar.test/ws',
+      domain: 'zilar.test',
+      mucDomain: 'rooms.zilar.test',
     })),
   };
 }
@@ -128,7 +128,7 @@ async function flushUntil(predicate: () => boolean): Promise<void> {
   }
 }
 
-const ANA = 'ana@galena.test';
+const ANA = 'ana@zilar.test';
 
 const PHOTO: PickedFile = {
   uri: 'file:///cache/photo.jpg',
@@ -170,7 +170,7 @@ describe('real store sends attachments (T-0150)', () => {
     await flushUntil(
       () =>
         store.getState().messages(ANA).at(-1)?.attachment?.url ===
-        'https://upload.galena.test/get/abc',
+        'https://upload.zilar.test/get/abc',
     );
     expect(vi.mocked(xmpp.core.requestUploadSlot)).toHaveBeenCalledWith({
       filename: 'photo.jpg',
@@ -180,7 +180,7 @@ describe('real store sends attachments (T-0150)', () => {
     expect(uploader.upload).toHaveBeenCalledWith(
       PHOTO,
       {
-        putUrl: 'https://upload.galena.test/put/abc',
+        putUrl: 'https://upload.zilar.test/put/abc',
         headers: { authorization: 'slot-token' },
       },
       expect.any(Function),
@@ -199,7 +199,7 @@ describe('real store sends attachments (T-0150)', () => {
       type: 'attachment',
       data: {
         kind: 'image',
-        url: 'https://upload.galena.test/get/abc',
+        url: 'https://upload.zilar.test/get/abc',
         name: 'photo.jpg',
         size: 240_000,
         mime: 'image/jpeg',
@@ -259,7 +259,7 @@ describe('real store sends attachments (T-0150)', () => {
         id: 'srv-attachment-1',
         chatJid: ANA,
         body: 'Stage!',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:02:00Z'),
         payload: {
@@ -267,7 +267,7 @@ describe('real store sends attachments (T-0150)', () => {
           type: 'attachment',
           data: {
             kind: 'image',
-            url: 'https://upload.galena.test/get/abc',
+            url: 'https://upload.zilar.test/get/abc',
             name: 'photo.jpg',
             size: 240_000,
             mime: 'image/jpeg',
@@ -330,7 +330,7 @@ describe('real store sends attachments (T-0150)', () => {
   });
 
   it('keeps two concurrent uploads independent; cancelling one spares the other', async () => {
-    const TEAM = 'team@rooms.galena.test';
+    const TEAM = 'team@rooms.zilar.test';
     const api = fakeApi();
     (api.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
       { kind: 'dm' as const, chatJid: ANA, title: 'Ana', userId: 'u-ana' },
@@ -401,7 +401,7 @@ describe('real store sends attachments (T-0150)', () => {
         .getState()
         .messages(TEAM)
         .find((item) => item.id === teamId)?.attachment?.url,
-    ).toBe('https://upload.galena.test/get/abc');
+    ).toBe('https://upload.zilar.test/get/abc');
   });
 
   it('sends nothing when cancelled during the slot round-trip', async () => {
@@ -412,8 +412,8 @@ describe('real store sends attachments (T-0150)', () => {
     });
     vi.mocked(xmpp.core.requestUploadSlot).mockImplementationOnce(() =>
       slotGate.then(() => ({
-        putUrl: 'https://upload.galena.test/put/abc',
-        getUrl: 'https://upload.galena.test/get/abc',
+        putUrl: 'https://upload.zilar.test/put/abc',
+        getUrl: 'https://upload.zilar.test/get/abc',
         headers: {},
       })),
     );
@@ -498,7 +498,7 @@ describe('real store sends attachments (T-0150)', () => {
           type: 'attachment',
           data: {
             kind: 'image',
-            url: 'https://upload.galena.test/get/abc',
+            url: 'https://upload.zilar.test/get/abc',
             name: 'stage.png',
             size: 100,
             mime: 'image/png',
@@ -518,8 +518,8 @@ describe('real store sends attachments (T-0150)', () => {
   it('publishes the trusted media hosts from the XMPP token', async () => {
     const { store } = await setup();
     const hosts = store.getState().mediaTrustedHosts;
-    expect(hosts?.has('chat.galena.test')).toBe(true);
-    expect(hosts?.has('galena.test')).toBe(true);
-    expect(hosts?.has('upload.galena.test')).toBe(true);
+    expect(hosts?.has('chat.zilar.test')).toBe(true);
+    expect(hosts?.has('zilar.test')).toBe(true);
+    expect(hosts?.has('upload.zilar.test')).toBe(true);
   });
 });

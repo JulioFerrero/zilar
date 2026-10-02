@@ -1,5 +1,5 @@
-import type { UiMessage } from '@galena/chat-core';
-import { formatTime } from '@galena/chat-core';
+import type { UiMessage } from '@zilar/chat-core';
+import { formatTime } from '@zilar/chat-core';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 

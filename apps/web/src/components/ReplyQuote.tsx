@@ -1,4 +1,4 @@
-import type { ReplyRef } from '@galena/chat-core';
+import type { ReplyRef } from '@zilar/chat-core';
 
 export function ReplyQuote({ quote }: { quote: ReplyRef }) {
   return (

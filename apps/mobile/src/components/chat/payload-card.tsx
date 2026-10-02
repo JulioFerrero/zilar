@@ -1,5 +1,5 @@
-import type { Payload, Sticker } from '@galena/protocol';
-import { StickerSchema } from '@galena/protocol';
+import type { Payload, Sticker } from '@zilar/protocol';
+import { StickerSchema } from '@zilar/protocol';
 
 import { ApprovalCard } from '@/components/chat/approval-card';
 import { ProgressCard } from '@/components/chat/progress-card';
@@ -20,7 +20,7 @@ export function stickerOf(message: {
   return parsed.success ? parsed.data : undefined;
 }
 
-/** Renders the AI card payloads from `@galena/protocol`. */
+/** Renders the AI card payloads from `@zilar/protocol`. */
 export function PayloadCard({ card }: { card: Payload }) {
   switch (card.type) {
     case 'progress':

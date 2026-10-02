@@ -40,7 +40,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test --maxWorkers=2 <touched test files and their neighbours, plus src/lib/hooks-guard.test.ts when you touch a screen>
+pnpm --filter @zilar/mobile test --maxWorkers=2 <touched test files and their neighbours, plus src/lib/hooks-guard.test.ts when you touch a screen>
 ```
 Do NOT start simulators, Metro, or `expo run`. Say in the Report what needs a native rebuild and a device look.
 
@@ -65,7 +65,7 @@ Do NOT start simulators, Metro, or `expo run`. Say in the Report what needs a na
 - Deps add: `expo-image-picker@~57.0.20 expo-document-picker@~57.0.3 expo-image@~57.0.5 expo-video@~57.0.5 expo-file-system@~57.0.7`: ok (pre-existing `@types/react-dom` peer warning only)
 - `pnpm format:check`: pass
 - `pnpm lint` (oxlint): pass (fixed 2 unused imports + 1 player-mutation-in-effect)
-- `pnpm --filter @galena/mobile typecheck`: pass
+- `pnpm --filter @zilar/mobile typecheck`: pass
 - Touched + neighbours (`--maxWorkers=2`): 10 files, 69 passed (attachments lib, types, both store suites, all 5 render suites, mock attachments)
 - Neighbour suites: all store suites (real-store, topics, channels, roles, prefs-pins, general-only, invite-links, mock-prefs-pins, roles-mock, invite-links, topics-screen, selector-stability) — 11 files, 89 passed; chat component suites — 10 files, 73 passed; sticker/message suites incl. hooks-guard — 5 files, 34 passed; chat-store/integration — 98 passed, 1 skipped
 - Post-review re-run (`--maxWorkers=2`): 12 files, 79 passed (attachments lib + opener seam, types, hooks-guard, all 5 render suites incl. new gradient-placeholder test, mock attachments, both store suites incl. 3 new upload-lifecycle tests); store suites — 14 files, 187 passed, 1 skipped; chat component + lib suites — 12 files, 89 passed

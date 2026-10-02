@@ -32,14 +32,14 @@ function setupRepo(model = 'opencode-go/muse-spark-1.3-contributor'): {
   statePath: string;
 } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-switch-'));
-  const repoRoot = path.join(dir, 'galena');
+  const repoRoot = path.join(dir, 'zilar');
   fs.mkdirSync(path.join(repoRoot, 'work'), { recursive: true });
   fs.writeFileSync(path.join(repoRoot, 'work', 'T-0099-demo.md'), TASK_MD(model));
   // The worktree path is declared up front but not created: `launchTask`
   // refuses when the directory exists, and switchModel only needs to verify
   // it exists. Tests that want it present must create it (or call launchTask
   // which leaves the directory behind through its stubbed worktree-add).
-  const worktree = path.join(path.dirname(repoRoot), 'galena-T-0099');
+  const worktree = path.join(path.dirname(repoRoot), 'zilar-T-0099');
   return { repoRoot, worktree, statePath: path.join(dir, 'state.json') };
 }
 
@@ -191,7 +191,7 @@ describe('switchModel', () => {
 
   it('refuses when the worktree is missing', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-switch-'));
-    const repoRoot = path.join(dir, 'galena');
+    const repoRoot = path.join(dir, 'zilar');
     fs.mkdirSync(path.join(repoRoot, 'work'), { recursive: true });
     fs.writeFileSync(path.join(repoRoot, 'work', 'T-0099-demo.md'), TASK_MD('opencode-go/x'));
     const statePath = path.join(dir, 'state.json');
@@ -199,7 +199,7 @@ describe('switchModel', () => {
     state.tasks['T-0099'] = newTaskRecord({
       task: 'T-0099',
       sessionId: 'ses_old',
-      worktree: path.join(path.dirname(repoRoot), 'galena-T-0099'),
+      worktree: path.join(path.dirname(repoRoot), 'zilar-T-0099'),
       model: 'opencode-go/muse-spark-1.3-contributor',
       role: 'worker',
       startedAt: '2026-09-28T00:00:00.000Z',

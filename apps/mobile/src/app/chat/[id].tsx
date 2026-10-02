@@ -132,7 +132,7 @@ function Chat() {
   // (real mode loads the user's packs from the API instead).
   const demoPacks = useMemo(
     () =>
-      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_GALENA_MOCK === '1'
+      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_ZILAR_MOCK === '1'
         ? mockDemoStickerPacks()
         : undefined,
     [],
@@ -141,7 +141,7 @@ function Chat() {
   // every hook runs on every render (see `lib/hooks-guard`).
   const demoAttachments = useMemo(
     () =>
-      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_GALENA_MOCK === '1'
+      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_ZILAR_MOCK === '1'
         ? mockDemoAttachments()
         : undefined,
     [],
@@ -150,7 +150,7 @@ function Chat() {
   // mode searches the provider through the proxy instead).
   const demoGifs = useMemo(
     () =>
-      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_GALENA_MOCK === '1'
+      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_ZILAR_MOCK === '1'
         ? mockDemoGifs()
         : undefined,
     [],

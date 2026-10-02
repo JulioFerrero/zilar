@@ -60,7 +60,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test -- --maxWorkers=2
+pnpm --filter @zilar/server test -- --maxWorkers=2
 pnpm build
 ```
 
@@ -95,7 +95,7 @@ pnpm build
   xmpp-core has no raw-IQ sender, noted as a T-0119 item) + `sw.js`
   (show notification, click opens `/chat/<id>`). Not in the app bundle.
 - `infra/ejabberd/ejabberd.yml`: marked spike lines only — loopback
-  `ejabberd_service` listener on 5347 for `push.galena.localhost`, and
+  `ejabberd_service` listener on 5347 for `push.zilar.localhost`, and
   `mod_push` with `include_sender/include_body: true` for the proof.
 - `docs/PUSH_SPIKE.md` (149 lines): answers to all six questions with
   evidence, GO/NO-GO, T-0119 outline, Helium 5-step procedure, deps/licences
@@ -117,13 +117,13 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install`: ok (7.3 s).
-- `pnpm --filter @galena/server add web-push @xmpp/component @types/web-push`: ok.
-- `pnpm --filter @galena/server exec tsc --noEmit`: clean (after fixing a
+- `pnpm --filter @zilar/server add web-push @xmpp/component @types/web-push`: ok.
+- `pnpm --filter @zilar/server exec tsc --noEmit`: clean (after fixing a
   `.d.ts`-basename shadowing trap, an `as`-precedence bug, and moving from
   `@xmpp/client` imports — not a server dep — to `@xmpp/component` re-exports).
 - Spike tests: `notification` 5 passed, `payload` 6 passed, `component` 2 passed,
   `routes` 5 passed (18 total, fakes only, no network).
-- Full `pnpm --filter @galena/server test --maxWorkers=2` (correct form, after
+- Full `pnpm --filter @zilar/server test --maxWorkers=2` (correct form, after
   the lead's warning): 66 files passed, 1090 tests passed, 7 skipped, 0 failed
   (259 s). First full run had 3 failures, all mine and fixed: 2×
   `config.test.ts` exact-match (reverted the `ServerConfig` change, used dep

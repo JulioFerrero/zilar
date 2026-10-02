@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { classifyPermission, extractCommands, type PolicyContext, type Verdict } from './policy';
 
 const CTX: PolicyContext = {
-  worktree: '/Users/julio/personal-projects/galena-T-0038',
+  worktree: '/Users/julio/personal-projects/zilar-T-0038',
   task: 'T-0038',
 };
 
@@ -82,7 +82,7 @@ const CASES: { name: string; action: string; command: string | string[]; verdict
   {
     name: 'rm own worktree build output',
     action: 'shell',
-    command: 'rm -rf /Users/julio/personal-projects/galena-T-0038/dist',
+    command: 'rm -rf /Users/julio/personal-projects/zilar-T-0038/dist',
     verdict: 'allow',
   },
   {
@@ -141,13 +141,13 @@ const CASES: { name: string; action: string; command: string | string[]; verdict
   {
     name: 'rm another worktree (relative)',
     action: 'shell',
-    command: 'rm -rf ../galena-T-0024',
+    command: 'rm -rf ../zilar-T-0024',
     verdict: 'reject',
   },
   {
     name: 'rm another worktree (absolute)',
     action: 'shell',
-    command: 'rm -rf /Users/julio/personal-projects/galena-T-0024/dist',
+    command: 'rm -rf /Users/julio/personal-projects/zilar-T-0024/dist',
     verdict: 'reject',
   },
   { name: 'rm ~/.ssh', action: 'shell', command: 'rm -rf ~/.ssh', verdict: 'reject' },
@@ -207,7 +207,7 @@ const CASES: { name: string; action: string; command: string | string[]; verdict
   {
     name: 'git worktree add',
     action: 'shell',
-    command: 'git worktree add ../galena-T-0099 -b task/x main',
+    command: 'git worktree add ../zilar-T-0099 -b task/x main',
     verdict: 'reject',
   },
   { name: 'git clean', action: 'shell', command: 'git clean -fdx', verdict: 'reject' },
@@ -294,14 +294,14 @@ const CASES: { name: string; action: string; command: string | string[]; verdict
   {
     name: 'macOS security cli',
     action: 'shell',
-    command: 'security find-generic-password -s galena',
+    command: 'security find-generic-password -s zilar',
     verdict: 'reject',
   },
   { name: 'npm publish', action: 'shell', command: 'npm publish', verdict: 'reject' },
   {
     name: 'rm lead scratch',
     action: 'shell',
-    command: 'rm -rf /tmp/galena-scratch/workers.txt',
+    command: 'rm -rf /tmp/zilar-scratch/workers.txt',
     verdict: 'reject',
   },
 
@@ -499,7 +499,7 @@ const CASES: { name: string; action: string; command: string | string[]; verdict
   {
     name: 'rm the main checkout',
     action: 'shell',
-    command: 'rm -rf /Users/julio/personal-projects/galena',
+    command: 'rm -rf /Users/julio/personal-projects/zilar',
     verdict: 'reject',
   },
   { name: 'rm $HOME', action: 'shell', command: 'rm -rf $HOME', verdict: 'reject' },
@@ -728,7 +728,7 @@ const CASES: { name: string; action: string; command: string | string[]; verdict
   {
     name: 'docker rm a dev container',
     action: 'shell',
-    command: 'docker rm -f galena-dev-postgres-1',
+    command: 'docker rm -f zilar-dev-postgres-1',
     verdict: 'escalate',
   },
 ];
@@ -793,23 +793,23 @@ describe('extractCommands', () => {
   });
 });
 
-describe('GALENA_LEAD_ALLOW_ALL', () => {
+describe('ZILAR_LEAD_ALLOW_ALL', () => {
   const ctx = { worktree: '/tmp/wt', task: 'T-0001' };
   const dangerous = { id: 'per_x', action: 'shell', commands: ['rm -rf /'] };
 
   it('is off by default and the rules still apply', () => {
-    delete process.env.GALENA_LEAD_ALLOW_ALL;
+    delete process.env.ZILAR_LEAD_ALLOW_ALL;
     expect(classifyPermission(dangerous, ctx).verdict).not.toBe('allow');
   });
 
   it('allows everything only when set to 1', () => {
-    process.env.GALENA_LEAD_ALLOW_ALL = '1';
+    process.env.ZILAR_LEAD_ALLOW_ALL = '1';
     try {
       expect(classifyPermission(dangerous, ctx).verdict).toBe('allow');
-      process.env.GALENA_LEAD_ALLOW_ALL = 'true';
+      process.env.ZILAR_LEAD_ALLOW_ALL = 'true';
       expect(classifyPermission(dangerous, ctx).verdict).not.toBe('allow');
     } finally {
-      delete process.env.GALENA_LEAD_ALLOW_ALL;
+      delete process.env.ZILAR_LEAD_ALLOW_ALL;
     }
   });
 });

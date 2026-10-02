@@ -1,6 +1,6 @@
-# @galena/agent-drivers
+# @zilar/agent-drivers
 
-The interface the Galena gateway uses to control the AI engine inside a desk, plus the first
+The interface the Zilar gateway uses to control the AI engine inside a desk, plus the first
 implementation: a driver for **OpenCode v2's HTTP API**.
 
 A driver turns one engine into a small, uniform surface: create a session in a directory, send it a
@@ -11,7 +11,7 @@ added later and swapped per AI without touching the gateway.
 ## Usage
 
 ```ts
-import { createOpenCodeV2Driver, defaultWorkerRules } from '@galena/agent-drivers';
+import { createOpenCodeV2Driver, defaultWorkerRules } from '@zilar/agent-drivers';
 
 const driver = createOpenCodeV2Driver({
   baseUrl: 'http://127.0.0.1:4500',

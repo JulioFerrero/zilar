@@ -53,12 +53,12 @@ describe('topic scope backfill', () => {
       `INSERT INTO "provider_connections" ("id", "owner", "provider", "encrypted_key") VALUES ('c1','u1','openai','sealed')`,
     );
     await client.query(
-      `INSERT INTO "ais" ("id", "owner", "name", "template", "persona", "provider_connection_id", "model", "localpart", "jid", "status") VALUES ('a1','u1','Helper','dev','A persona','c1','gpt-4o-mini','ai-a1','ai-a1@galena.localhost','active')`,
+      `INSERT INTO "ais" ("id", "owner", "name", "template", "persona", "provider_connection_id", "model", "localpart", "jid", "status") VALUES ('a1','u1','Helper','dev','A persona','c1','gpt-4o-mini','ai-a1','ai-a1@zilar.localhost','active')`,
     );
     // Old-shape rows: a group approval, a personal approval, a group rule,
     // a personal rule and a group tool — all without topic_id.
     await client.query(
-      `INSERT INTO "approvals" ("id", "ai_id", "group_id", "action", "summary", "args_hash", "requested_by", "expires_at") VALUES ('ap-group','a1','g1','demo.echo','Group approval','${'a'.repeat(64)}','ai-a1@galena.localhost', now() + interval '1 hour'),('ap-personal','a1',NULL,'demo.echo','Personal approval','${'b'.repeat(64)}','ai-a1@galena.localhost', now() + interval '1 hour')`,
+      `INSERT INTO "approvals" ("id", "ai_id", "group_id", "action", "summary", "args_hash", "requested_by", "expires_at") VALUES ('ap-group','a1','g1','demo.echo','Group approval','${'a'.repeat(64)}','ai-a1@zilar.localhost', now() + interval '1 hour'),('ap-personal','a1',NULL,'demo.echo','Personal approval','${'b'.repeat(64)}','ai-a1@zilar.localhost', now() + interval '1 hour')`,
     );
     await client.query(
       `INSERT INTO "approval_rules" ("id", "ai_id", "group_id", "action", "created_by") VALUES ('r-group','a1','g1','demo.echo','u1'),('r-personal','a1',NULL,'demo.echo','u1')`,
@@ -92,7 +92,7 @@ describe('topic scope backfill', () => {
     // The CHECK constraints reject a row with only one of the two ids.
     await expect(
       client.query(
-        `INSERT INTO "approvals" ("id", "ai_id", "group_id", "topic_id", "action", "summary", "args_hash", "requested_by", "expires_at") VALUES ('ap-half','a1','g1',NULL,'demo.echo','Half','${'c'.repeat(64)}','ai-a1@galena.localhost', now() + interval '1 hour')`,
+        `INSERT INTO "approvals" ("id", "ai_id", "group_id", "topic_id", "action", "summary", "args_hash", "requested_by", "expires_at") VALUES ('ap-half','a1','g1',NULL,'demo.echo','Half','${'c'.repeat(64)}','ai-a1@zilar.localhost', now() + interval '1 hour')`,
       ),
     ).rejects.toThrow();
     await expect(

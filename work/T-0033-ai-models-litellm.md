@@ -45,7 +45,7 @@ LiteLLM keeps its own encrypted copy (`store_model_in_db`, encrypted with `LITEL
 - `infra/.env.example`: add `LITELLM_SALT_KEY=CHANGE_ME` with a comment. Set it once, before the first AI. **Changing it later makes every stored provider key unreadable.**
 - `apps/server/src/ai/litellm-client.ts` and its test: model admin methods.
 - `apps/server/src/ais/**`: service, routes, tests, and the integration test.
-- `apps/server/src/db/schema.ts`, plus a new migration generated with the repo's real mechanism (`pnpm --filter @galena/server db:generate`). Don't write SQL by hand.
+- `apps/server/src/db/schema.ts`, plus a new migration generated with the repo's real mechanism (`pnpm --filter @zilar/server db:generate`). Don't write SQL by hand.
 - `apps/server/src/chats/**`: list AIs.
 - `apps/web/src/lib/api.ts` and `apps/web/src/store/realStore.ts`: only to carry an `isAi` flag from `/api/chats` onto the chat, so the existing `AiBadge` can show. If the store has no natural place for it, skip the web part and say so.
 - `work/T-0033-ai-models-litellm.md`
@@ -138,7 +138,7 @@ None.
 - **No plaintext provider key in any response body or log line.** Use the existing logger test patterns.
 
 ### Integration check (gated, the lead runs it)
-- Extend `apps/server/src/ais/integration.test.ts`, behind the existing gate or a new `GALENA_AI_MODELS_INTEGRATION=1`. Against the real LiteLLM it should:
+- Extend `apps/server/src/ais/integration.test.ts`, behind the existing gate or a new `ZILAR_AI_MODELS_INTEGRATION=1`. Against the real LiteLLM it should:
   1. create an AI with a **made-up key** connection;
   2. assert that LiteLLM has model `ai-<id>`, and that `/key/info` for the virtual key lists only that model;
   3. call `POST /chat/completions` with the virtual key and model `ai-<id>`, and expect the **provider's** authentication error. That proves the call was routed to the provider with the owner's (fake) key, the same reasoning as in T-0007;
@@ -229,7 +229,7 @@ entry. Web: `apps/web/src/lib/api.ts` accepts the optional `isAi`/`userId`, and
 `ChatSummary.isAI`, so `AiBadge` shows.
 
 **9. Integration test** (`apps/server/src/ais/integration.test.ts`): a new
-`GALENA_AI_MODELS_INTEGRATION=1`-gated test that signs up, creates an AI on a
+`ZILAR_AI_MODELS_INTEGRATION=1`-gated test that signs up, creates an AI on a
 connection with a made-up key, asserts LiteLLM has `ai-<id>`, asserts `/key/info`
 for the AI's key lists only that model, calls `/chat/completions` with a virtual
 key limited to `ai-<id>` and expects the provider's 401, then deletes the AI and
@@ -249,7 +249,7 @@ probe key and removes the AI, any orphan model and the connection.
 
 ### Commands run and real results
 - `pnpm install` — done, 910 packages.
-- `pnpm --filter @galena/server db:generate` — generated
+- `pnpm --filter @zilar/server db:generate` — generated
   `drizzle/0006_military_sleepwalker.sql` (`litellm_key_id` DROP NOT NULL, ADD
   `litellm_model_id text`).
 - `pnpm format:check` — pass ("All matched files use Prettier code style!").
@@ -261,9 +261,9 @@ probe key and removes the AI, any orphan model and the connection.
 - **Live integration test** (I ran it): started a server from this worktree on
   port 3199 against the live Postgres/LiteLLM (`LITELLM_BASE_URL` =
   `http://127.0.0.1:4000`), created a fresh invite, then:
-  `GALENA_AI_MODELS_INTEGRATION=1 GALENA_AIS_INTEGRATION_URL=http://127.0.0.1:3199
-  GALENA_AIS_INTEGRATION_LOG=<server log> GALENA_AIS_INVITE_CODE=<fresh>
-  GALENA_AIS_TEST_EMAIL=<fresh> pnpm exec vitest run src/ais/integration.test.ts`
+  `ZILAR_AI_MODELS_INTEGRATION=1 ZILAR_AIS_INTEGRATION_URL=http://127.0.0.1:3199
+  ZILAR_AIS_INTEGRATION_LOG=<server log> ZILAR_AIS_INVITE_CODE=<fresh>
+  ZILAR_AIS_TEST_EMAIL=<fresh> pnpm exec vitest run src/ais/integration.test.ts`
   → **1 passed, 1 skipped**. Afterwards `/model/info` had no `ai-*` model left,
   and the server log contained neither the made-up provider key nor any
   `sk-` token. I then stopped the extra server. No Docker container was
@@ -349,7 +349,7 @@ probe key and removes the AI, any orphan model and the connection.
   Postgres, resets the allowlist to `['gpt-4o-mini']` via `updateKey`, calls
   `ensureAiModel` in-process, then asserts `/key/info` lists exactly
   `['ai-<id>']` and `listModels()` contains the model. Needs `DATABASE_URL` and
-  `GALENA_KEY_ENCRYPTION_KEY` (documented in the test header).
+  `ZILAR_KEY_ENCRYPTION_KEY` (documented in the test header).
 - The first live run caught a real bug: `/model/info` entries carry **no
   top-level `model_id`** — the id is under `model_info.id` — so `listModels()`
   returned `[]` (step 5b allowlist assertions had already passed). Fixed the
@@ -360,7 +360,7 @@ probe key and removes the AI, any orphan model and the connection.
   name via `/model/delete`.
 - Clean re-run (fresh invite, fresh email, branch server on 3199, no container
   restarts): **1 passed, 1 skipped**. Post-run: `/model/info` holds only the
-  pre-existing `placeholder` model; no `t0033-*`/`galena-ai-*` keys remain; the
+  pre-existing `placeholder` model; no `t0033-*`/`zilar-ai-*` keys remain; the
   server log contains no `sk-` token and no made-up key. The extra server was
   stopped afterwards; all three dev containers still healthy.
 - Live secrets were sourced from the main checkout's env files into process

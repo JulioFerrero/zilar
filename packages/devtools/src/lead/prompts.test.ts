@@ -23,7 +23,7 @@ describe('prompt templates', () => {
     const rendered = renderPrompt(loadPrompt(promptsDir(), 'worker'), {
       TASK: 'T-0038',
       TASK_FILE: 'T-0038-lead-autopilot.md',
-      WORKTREE: '/tmp/galena-T-0038',
+      WORKTREE: '/tmp/zilar-T-0038',
       BRANCH: 'task/T-0038-lead-autopilot',
     });
     expect(unfilledPlaceholders(rendered)).toEqual([]);
@@ -39,7 +39,7 @@ describe('prompt templates', () => {
     const vars = {
       TASK: 'T-0038',
       TASK_FILE: 'T-0038-lead-autopilot.md',
-      WORKTREE: '/tmp/galena-T-0038',
+      WORKTREE: '/tmp/zilar-T-0038',
       BRANCH: 'task/x',
     };
     expect(unfilledPlaceholders(renderPrompt(loadPrompt(promptsDir(), 'resume'), vars))).toEqual(
@@ -53,7 +53,7 @@ describe('prompt templates', () => {
     const rendered = renderPrompt(loadPrompt(promptsDir(), 'switch'), {
       TASK: 'T-0051',
       TASK_FILE: 'T-0051-lead-switch-model-and-merge-cleanup.md',
-      WORKTREE: '/tmp/galena-T-0051',
+      WORKTREE: '/tmp/zilar-T-0051',
       BRANCH: 'task/T-0051-lead-switch-model',
     });
     expect(unfilledPlaceholders(rendered)).toEqual([]);
@@ -67,7 +67,7 @@ describe('prompt templates', () => {
     const rendered = renderPrompt(loadPrompt(promptsDir(), 'prereview'), {
       TASK: 'T-0038',
       TASK_FILE: 'T-0038-lead-autopilot.md',
-      WORKTREE: '/tmp/galena-T-0038',
+      WORKTREE: '/tmp/zilar-T-0038',
       BRANCH: 'task/x',
       HEAD: 'abc123',
       SHORT_HEAD: 'abc123',

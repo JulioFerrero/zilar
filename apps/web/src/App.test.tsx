@@ -8,7 +8,7 @@ describe('App routes', () => {
       auth: { status: 'guest', user: undefined, refetch: async () => {} },
     });
 
-    expect(screen.getByText('Sign in to Galena')).toBeTruthy();
+    expect(screen.getByText('Sign in to Zilar')).toBeTruthy();
   });
 
   it('renders the chat shell with the search field for a signed-in user', () => {
@@ -23,7 +23,7 @@ describe('App routes', () => {
     renderApp('/', undefined, {
       auth: {
         status: 'authenticated',
-        user: { id: 'u-you', name: '', email: 'you@galena.test' },
+        user: { id: 'u-you', name: '', email: 'you@zilar.test' },
         refetch: async () => {},
       },
     });

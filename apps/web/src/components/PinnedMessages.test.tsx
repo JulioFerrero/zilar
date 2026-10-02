@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import type { ChatSummary, UiMessage } from '@galena/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { GroupDetail } from '@/lib/api';
 import { renderApp } from '@/test/renderApp';
 import { mockRequest, resetMockApi, setMockDelay } from '@/mock/api';

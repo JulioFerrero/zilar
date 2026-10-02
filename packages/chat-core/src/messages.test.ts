@@ -120,7 +120,7 @@ describe('previewText', () => {
       createdAt: at(0, 0),
       attachment: {
         kind: 'image',
-        url: 'https://upload.galena.test/1/stage.png',
+        url: 'https://upload.zilar.test/1/stage.png',
         name: 'stage.png',
         size: 200,
         mime: 'image/png',
@@ -140,7 +140,7 @@ describe('previewText', () => {
       createdAt: at(0, 0),
       attachment: {
         kind: 'file',
-        url: 'https://upload.galena.test/1/tickets.pdf',
+        url: 'https://upload.zilar.test/1/tickets.pdf',
         name: 'tickets.pdf',
         size: 200,
         mime: 'application/pdf',

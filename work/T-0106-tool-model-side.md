@@ -34,7 +34,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
 pnpm build
 ```
 (Affected tests while working; the full server suite once at the end. Tests use the existing fake model client; never a real provider or key.)
@@ -77,8 +77,8 @@ UI for tools and routines (T-0107), changing tiers or approvals (T-0132), new ad
 - `pnpm format:check`: "All matched files use Prettier code style!" (only `PREREVIEW.md` — the lead's file, not mine — still warns; left untouched)
 - `pnpm lint` (oxlint): clean, no output
 - `pnpm typecheck`: 10 tasks successful
-- `pnpm --filter @galena/server test --maxWorkers=2 src/agents/rounds.test.ts src/agents/reply.test.ts src/agents/context.test.ts src/agents/tools.test.ts src/config.test.ts`: 5 files passed, 154 passed
-- `pnpm --filter @galena/server test --maxWorkers=2 src/agents/gateway.test.ts`: 1 file passed, 118 passed (incl. 3 T-0106 tests)
+- `pnpm --filter @zilar/server test --maxWorkers=2 src/agents/rounds.test.ts src/agents/reply.test.ts src/agents/context.test.ts src/agents/tools.test.ts src/config.test.ts`: 5 files passed, 154 passed
+- `pnpm --filter @zilar/server test --maxWorkers=2 src/agents/gateway.test.ts`: 1 file passed, 118 passed (incl. 3 T-0106 tests)
 - `pnpm build`: 2 tasks successful
 - Per AGENTS.md rule change (lead, pushed to main): no full package suites from me; only touched-file + neighbour suites above. The lead runs full suites on main.
 

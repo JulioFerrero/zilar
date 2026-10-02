@@ -2,7 +2,7 @@ import { createAuthClient } from 'better-auth/react';
 import { emailOTPClient } from 'better-auth/client/plugins';
 
 /** Header the server reads to attribute a sign-up to an invite (T-0015/T-0020). */
-export const INVITE_HEADER = 'x-galena-invite';
+export const INVITE_HEADER = 'x-zilar-invite';
 
 /**
  * Better Auth's browser client. Requests are same-origin, because the Vite dev

@@ -179,7 +179,7 @@ export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
   });
 
   // Telegram import (T-0123): fetch a public pack's static stickers into a
-  // private Galena pack. Without `TELEGRAM_BOT_TOKEN` the feature is off
+  // private Zilar pack. Without `TELEGRAM_BOT_TOKEN` the feature is off
   // (501 `import_unavailable`, so the web hides it). 3 imports per hour per
   // user; the import runs to completion within the request budget (30 s) and
   // reports `partial: true` when the budget ran out (re-run fills the gaps).

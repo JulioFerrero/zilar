@@ -1,5 +1,5 @@
 import { xml, type XmppElement } from '@xmpp/client';
-import { decodePayload, encodePayload, type Payload } from '@galena/protocol';
+import { decodePayload, encodePayload, type Payload } from '@zilar/protocol';
 import { bareJid, jidDomain, jidResource } from './jid';
 import { capBody } from './text';
 import {

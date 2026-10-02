@@ -21,7 +21,7 @@ import { extractJoinToken } from '@/lib/invite-links-api';
 import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
 
 /**
- * Join-by-link screen (T-0136): `galena://join/<token>` (custom scheme,
+ * Join-by-link screen (T-0136): `zilar://join/<token>` (custom scheme,
  * registered in `app.json`) and the web URL shape `/join/<token>` open this
  * route with the token as the `token` param. Shows the preview (group name,
  * member count) with Join and Cancel; Join calls `POST /api/join/:token`

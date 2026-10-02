@@ -41,7 +41,7 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
 function MockAuthProvider({ children }: { children: ReactNode }) {
   const [state] = useState<AuthState>(() => ({
     status: 'authenticated',
-    user: { id: currentUserId, name: 'You', email: 'you@galena.test' },
+    user: { id: currentUserId, name: 'You', email: 'you@zilar.test' },
     refetch: async () => {},
   }));
 

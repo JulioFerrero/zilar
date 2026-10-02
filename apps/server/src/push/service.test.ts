@@ -18,7 +18,7 @@ import type { WebPushSubscription } from './subscriptions';
 import { createPushTestTables } from './test-tables';
 
 const STORAGE_KEY = 'test-push-storage-key-0000000000000000';
-const MUC = 'rooms.galena.localhost';
+const MUC = 'rooms.zilar.localhost';
 
 function subscription(endpoint: string): WebPushSubscription {
   return { endpoint, keys: { p256dh: 'p256dh-key', auth: 'auth-secret' } };

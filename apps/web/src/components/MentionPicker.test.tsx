@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import type { MentionMember } from '@galena/chat-core';
+import type { MentionMember } from '@zilar/chat-core';
 import { MentionPicker } from './MentionPicker';
 
 const members: MentionMember[] = [
-  { jid: 'ai-dev-1@galena.test', name: 'Dev-1' },
-  { jid: 'u-ana@galena.test', name: 'Ana' },
+  { jid: 'ai-dev-1@zilar.test', name: 'Dev-1' },
+  { jid: 'u-ana@zilar.test', name: 'Ana' },
 ];
 
 function renderPicker(): void {

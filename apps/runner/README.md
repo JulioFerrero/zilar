@@ -1,7 +1,7 @@
-# @galena/runner
+# @zilar/runner
 
-The Galena runner is a small Node CLI that you install on a machine you own.
-It pairs with your Galena server and stays online so the server can reach
+The Zilar runner is a small Node CLI that you install on a machine you own.
+It pairs with your Zilar server and stays online so the server can reach
 the machine's desks. The server's hub is the one outbound WebSocket — the
 runner works behind home routers and company firewalls.
 
@@ -20,7 +20,7 @@ app.
 ### `run [--hub WS_URL]`
 
 Reads the identity and connects to the server's runner hub with
-`@galena/runner-tunnel`'s `RunnerClient`. It reconnects with backoff
+`@zilar/runner-tunnel`'s `RunnerClient`. It reconnects with backoff
 when the link drops. The first run after pairing needs `--hub
 ws://your-server:3189/tunnel`; the URL is saved to the identity for next
 time.
@@ -36,8 +36,8 @@ file path. The private key is never printed.
 
 ## Where the identity lives
 
-- Default: `~/.galena-runner/identity.json` (file `0600`, directory `0700`)
-- Override with `--home DIR` or the `GALENA_RUNNER_HOME` environment variable
+- Default: `~/.zilar-runner/identity.json` (file `0600`, directory `0700`)
+- Override with `--home DIR` or the `ZILAR_RUNNER_HOME` environment variable
 
 ## Trust
 

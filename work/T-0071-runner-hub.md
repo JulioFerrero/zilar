@@ -15,7 +15,7 @@ estimate: 1 day
 
 ### Goal
 
-T-0068 stores machines, their public keys and their approval state. T-0008 proved the tunnel (`TunnelServer` in `@galena/runner-tunnel`: hello, a signed challenge, heartbeat, streams). This task connects the two: the Galena server starts a tunnel listener whose trust comes from the machines table, so an **approved** machine can connect and prove its key, a **revoked** one is dropped at once, and the owner's machine list shows who is online. It still carries no desks or AI work; that comes later.
+T-0068 stores machines, their public keys and their approval state. T-0008 proved the tunnel (`TunnelServer` in `@zilar/runner-tunnel`: hello, a signed challenge, heartbeat, streams). This task connects the two: the Zilar server starts a tunnel listener whose trust comes from the machines table, so an **approved** machine can connect and prove its key, a **revoked** one is dropped at once, and the owner's machine list shows who is online. It still carries no desks or AI work; that comes later.
 
 ### Design (decided; follow it)
 
@@ -34,7 +34,7 @@ The tunnel package's `KeyRegistry` is **synchronous** (`getPublicKey(runnerId): 
 ### Allowed files
 - `apps/server/src/machines/hub.ts` (new), `hub.test.ts` (new), `registry.ts`, `registry.test.ts`, `routes.ts`, `routes.test.ts`, `service.ts` (only for a helper like `listApprovedMachineKeys`)
 - `apps/server/src/config.ts`, `config.test.ts`, `apps/server/src/index.ts`, `apps/server/src/app.ts` (only to pass the hub's `isOnline` into the machines routes)
-- `apps/server/package.json` **only** to add the workspace dependency `@galena/runner-tunnel` (`workspace:*`) plus the matching `pnpm-lock.yaml` change
+- `apps/server/package.json` **only** to add the workspace dependency `@zilar/runner-tunnel` (`workspace:*`) plus the matching `pnpm-lock.yaml` change
 - `work/T-0071-runner-hub.md`
 
 **Not allowed:** `packages/**`, web, mobile, `docs/**`, the schema and migrations (no new columns: `last_seen_at` already exists). No other dependencies.
@@ -58,7 +58,7 @@ The tunnel package's `KeyRegistry` is **synchronous** (`getPublicKey(runnerId): 
 5. **Startup and shutdown (`index.ts`).** Start the hub only when enabled (after the server listens); the shutdown sequence closes it. If the hub fails to start (port in use), log the error and continue: the API must not die because of the runner hub.
 6. **Online flag.** `GET /api/machines` adds `online: boolean` per machine (true only when the hub says so; false when the hub is off). The public shape stays otherwise identical.
 
-### Tests (Vitest; PGlite for the DB; a real `RunnerClient` from `@galena/runner-tunnel` on a loopback port; no external network)
+### Tests (Vitest; PGlite for the DB; a real `RunnerClient` from `@zilar/runner-tunnel` on a loopback port; no external network)
 - Key cache: approved machines resolve; pending, revoked and unknown ids do not; `approve`/`revoke` events take effect immediately; a refresh picks up an approval made elsewhere; a refresh that drops a key calls the revoke listeners; a failing refresh keeps the old map.
 - Hub with a real client, all against the real `TunnelServer`:
   - an **approved** machine with the right key connects and shows `isOnline`; `last_seen_at` is written;
@@ -87,7 +87,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -107,12 +107,12 @@ pnpm build
 - Extended `apps/server/src/machines/registry.ts` with `notifyApproved(machineId, publicKey)` and `onApprove(listener)` (mirror of the existing `notifyRevoked` / `onRevoke`), plus a `listApprovedMachineKeys(db)` helper in `service.ts` for the cache's bulk load.
 - Wired the events in `apps/server/src/machines/routes.ts`: the approve route now calls `machineRegistry.notifyApproved(id, publicKey)` after the write commits; the GET `/machines` route adds `online: boolean` per row via the new optional `isMachineOnline(machineId)` dependency.
 - Extended `apps/server/src/app.ts` to accept the shared `machineRegistry` (default: a fresh registry, fine when no hub runs) and the optional `isMachineOnline` callback. `apps/server/src/index.ts` creates the registry once, passes it to both `createApp` and `startRunnerHub`, and reads `hub.isOnline(id)` lazily through a thin closure so the routes pick up the hub once it resolves. The shutdown sequence closes the hub before `gateway.stop()`.
-- Added `apps/server/package.json` dependency on `@galena/runner-tunnel` (`workspace:*`) and the matching `pnpm-lock.yaml` link entry. **No other dependencies.**
+- Added `apps/server/package.json` dependency on `@zilar/runner-tunnel` (`workspace:*`) and the matching `pnpm-lock.yaml` link entry. **No other dependencies.**
 - Added tests in `apps/server/src/machines/hub.test.ts` (cache, hub with a real `RunnerClient`, routes) and in `apps/server/src/machines/registry.test.ts` (notifyApproved fan-out). `config.test.ts` gained cases for the new env vars.
 
 ### Files changed
 
-- `apps/server/package.json` — added `"@galena/runner-tunnel": "workspace:*"`.
+- `apps/server/package.json` — added `"@zilar/runner-tunnel": "workspace:*"`.
 - `apps/server/tsconfig.json` — added `"allowImportingTsExtensions": true` (see "Deviations" below).
 - `apps/server/src/config.ts` — added `RUNNER_HUB_ENABLED` and `RUNNER_HUB_PORT`.
 - `apps/server/src/config.test.ts` — defaults, enabling, port boundaries, out-of-range rejection.
@@ -125,16 +125,16 @@ pnpm build
 - `apps/server/src/machines/hub.test.ts` — **new**: 18 tests (cache, hub with real client, config validation, routes, timers).
 - `apps/server/src/app.ts` — accepts `machineRegistry` and `isMachineOnline`, threads them to `createMachinesRoutes`.
 - `apps/server/src/index.ts` — validates the hub config, owns one registry shared with the routes, starts the hub after `serve()`, closes it on shutdown, returns `online: false` until the hub resolves.
-- `pnpm-lock.yaml` — link entry for `@galena/runner-tunnel` in the server workspace.
+- `pnpm-lock.yaml` — link entry for `@zilar/runner-tunnel` in the server workspace.
 - `work/T-0071-runner-hub.md` — this report.
 
 ### Commands run and real results
 
-- `pnpm install` — `Done in 6.8s` (lockfile updated to link `@galena/runner-tunnel`).
+- `pnpm install` — `Done in 6.8s` (lockfile updated to link `@zilar/runner-tunnel`).
 - `pnpm format:check` — `All matched files use Prettier code style!` (after one `prettier --write` pass on the new files).
 - `pnpm lint` — `oxlint .` exits 0, no warnings.
 - `pnpm typecheck` — 9 / 9 packages successful, including the server.
-- `pnpm exec turbo test --force --filter=@galena/server` — `Test Files 42 passed | 5 skipped (47)` and `Tests 566 passed | 7 skipped (573)`. Total ~102 s.
+- `pnpm exec turbo test --force --filter=@zilar/server` — `Test Files 42 passed | 5 skipped (47)` and `Tests 566 passed | 7 skipped (573)`. Total ~102 s.
 - `pnpm build` — 2 / 2 packages successful (mobile + server have no build step; the cached `turbo build` pipeline completes).
 
 The 18 new hub tests cover: cache resolution for approved / pending / revoked / unknown ids; approve / revoke take effect synchronously and fire the cache's onRevoke only when the key actually existed; a refresh picks up a fresh approval made elsewhere and drops a key whose status changed (with the listener firing); a refresh that hits a broken DB keeps the old map and logs an error with no key material; `close()` stops the auto-refresh timer; the `assertRunnerHubConfig` http-only rule rejects `https://` with a redacted message. The hub-with-real-client tests use a real `RunnerClient` against `TunnelServer.start` on a random port: approved connects, `isOnline` flips true and `last_seen_at` lands; pending is rejected with the close code `CLOSE_AUTH`; wrong key is rejected with the same close code; revoking through the real HTTP route closes the live connection with `CLOSE_REVOKED` and the next connection attempt is rejected; approving through the route lets a previously-pending client connect without waiting for the 30 s refresh; revoking one of two approved machines leaves the other online. The routes tests cover the new `online` field (true when the hub says so, false when absent) and the config tests cover defaults, the port boundaries, and out-of-range rejection.

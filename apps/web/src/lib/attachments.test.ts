@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { UploadSlot } from '@galena/xmpp-core';
+import type { UploadSlot } from '@zilar/xmpp-core';
 import type { UploadSlotRequester } from './voice';
 import {
   MAX_ATTACHMENT_BYTES,
@@ -104,8 +104,8 @@ describe('safeHttpUrl', () => {
 
 function slot(): UploadSlot {
   return {
-    putUrl: 'http://upload.galena.test/put/1',
-    getUrl: 'http://upload.galena.test/get/1/photo.png',
+    putUrl: 'http://upload.zilar.test/put/1',
+    getUrl: 'http://upload.zilar.test/get/1/photo.png',
     headers: { 'x-slot-token': 't0ken' },
   };
 }
@@ -248,44 +248,46 @@ describe('readImageSize', () => {
 
 describe('trustedMediaHosts', () => {
   it('includes the service hostname, the domain, and the upload subdomain', () => {
-    const hosts = trustedMediaHosts({ service: 'ws://xmpp.galena.test/ws', domain: 'galena.test' });
-    expect([...hosts].sort()).toEqual(['galena.test', 'upload.galena.test', 'xmpp.galena.test']);
+    const hosts = trustedMediaHosts({ service: 'ws://xmpp.zilar.test/ws', domain: 'zilar.test' });
+    expect([...hosts].sort()).toEqual(
+      ['zilar.test', 'upload.zilar.test', 'xmpp.zilar.test'].sort(),
+    );
   });
 
   it('drops a malformed service URL but still trusts the domain', () => {
-    const hosts = trustedMediaHosts({ service: 'not a url', domain: 'galena.test' });
-    expect([...hosts].sort()).toEqual(['galena.test', 'upload.galena.test']);
+    const hosts = trustedMediaHosts({ service: 'not a url', domain: 'zilar.test' });
+    expect([...hosts].sort()).toEqual(['zilar.test', 'upload.zilar.test'].sort());
   });
 
   it('lowercases the hostnames', () => {
     const hosts = trustedMediaHosts({
-      service: 'wss://XMPP.Galena.Test/ws',
-      domain: 'Galena.Test',
+      service: 'wss://XMPP.Zilar.Test/ws',
+      domain: 'Zilar.Test',
     });
-    expect(hosts.has('xmpp.galena.test')).toBe(true);
-    expect(hosts.has('galena.test')).toBe(true);
-    expect(hosts.has('upload.galena.test')).toBe(true);
+    expect(hosts.has('xmpp.zilar.test')).toBe(true);
+    expect(hosts.has('zilar.test')).toBe(true);
+    expect(hosts.has('upload.zilar.test')).toBe(true);
   });
 });
 
 describe('isTrustedMediaUrl', () => {
   const trusted = trustedMediaHosts({
-    service: 'wss://xmpp.galena.test/ws',
-    domain: 'galena.test',
+    service: 'wss://xmpp.zilar.test/ws',
+    domain: 'zilar.test',
   });
 
   it('accepts the service hostname on any port, with either http scheme', () => {
-    expect(isTrustedMediaUrl('https://xmpp.galena.test/upload/abc.png', trusted)).toBe(true);
-    expect(isTrustedMediaUrl('http://xmpp.galena.test:5280/upload/abc.png', trusted)).toBe(true);
+    expect(isTrustedMediaUrl('https://xmpp.zilar.test/upload/abc.png', trusted)).toBe(true);
+    expect(isTrustedMediaUrl('http://xmpp.zilar.test:5280/upload/abc.png', trusted)).toBe(true);
   });
 
   it('does not accept the service hostname on a non-http scheme', () => {
-    expect(isTrustedMediaUrl('wss://xmpp.galena.test:443/path', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('wss://xmpp.zilar.test:443/path', trusted)).toBe(false);
   });
 
   it('accepts the domain and the upload subdomain', () => {
-    expect(isTrustedMediaUrl('https://galena.test/upload/abc.png', trusted)).toBe(true);
-    expect(isTrustedMediaUrl('https://upload.galena.test/upload/abc.png', trusted)).toBe(true);
+    expect(isTrustedMediaUrl('https://zilar.test/upload/abc.png', trusted)).toBe(true);
+    expect(isTrustedMediaUrl('https://upload.zilar.test/upload/abc.png', trusted)).toBe(true);
   });
 
   it('rejects unrelated hosts', () => {
@@ -293,20 +295,20 @@ describe('isTrustedMediaUrl', () => {
   });
 
   it('rejects look-alike hosts that share a suffix or prefix', () => {
-    expect(isTrustedMediaUrl('https://galena.test.evil.example/pixel.png', trusted)).toBe(false);
-    expect(isTrustedMediaUrl('https://evil-galena.test/pixel.png', trusted)).toBe(false);
-    expect(isTrustedMediaUrl('https://evilgalena.test/pixel.png', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('https://zilar.test.evil.example/pixel.png', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('https://evil-zilar.test/pixel.png', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('https://evilzilar.test/pixel.png', trusted)).toBe(false);
   });
 
   it('rejects URLs that put the trusted host into userinfo', () => {
-    expect(isTrustedMediaUrl('http://galena.test@evil.example/x.png', trusted)).toBe(false);
-    expect(isTrustedMediaUrl('http://xmpp.galena.test:80@evil.example/x.png', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('http://zilar.test@evil.example/x.png', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('http://xmpp.zilar.test:80@evil.example/x.png', trusted)).toBe(false);
   });
 
   it('rejects javascript:, data:, and other non-http schemes', () => {
     expect(isTrustedMediaUrl('javascript:alert(1)', trusted)).toBe(false);
     expect(isTrustedMediaUrl('data:image/png;base64,AAAA', trusted)).toBe(false);
-    expect(isTrustedMediaUrl('ws://xmpp.galena.test/path', trusted)).toBe(false);
+    expect(isTrustedMediaUrl('ws://xmpp.zilar.test/path', trusted)).toBe(false);
   });
 
   it('rejects relative URLs and garbage', () => {
@@ -316,7 +318,7 @@ describe('isTrustedMediaUrl', () => {
   });
 
   it('is case-insensitive on the hostname', () => {
-    expect(isTrustedMediaUrl('https://Galena.Test/upload/abc.png', trusted)).toBe(true);
-    expect(isTrustedMediaUrl('HTTPS://UPLOAD.GALENA.TEST/abc.png', trusted)).toBe(true);
+    expect(isTrustedMediaUrl('https://Zilar.Test/upload/abc.png', trusted)).toBe(true);
+    expect(isTrustedMediaUrl('HTTPS://UPLOAD.ZILAR.TEST/abc.png', trusted)).toBe(true);
   });
 });

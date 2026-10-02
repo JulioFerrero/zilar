@@ -9,22 +9,22 @@ import { createRealChatStore } from './real-store';
 describe('store selectors keep a stable reference while nothing changed', () => {
   it('real store: pins of a chat without pins', () => {
     const store = createRealChatStore();
-    expect(store.getState().pins('nobody@rooms.galena.test')).toBe(
-      store.getState().pins('nobody@rooms.galena.test'),
+    expect(store.getState().pins('nobody@rooms.zilar.test')).toBe(
+      store.getState().pins('nobody@rooms.zilar.test'),
     );
   });
 
   it('real store: messages of a chat without messages', () => {
     const store = createRealChatStore();
-    expect(store.getState().messages('nobody@rooms.galena.test')).toBe(
-      store.getState().messages('nobody@rooms.galena.test'),
+    expect(store.getState().messages('nobody@rooms.zilar.test')).toBe(
+      store.getState().messages('nobody@rooms.zilar.test'),
     );
   });
 
   it('mock store: messages of an unknown chat and the group detail', () => {
     const store = createChatStore();
-    expect(store.getState().messages('nobody@rooms.galena.test')).toBe(
-      store.getState().messages('nobody@rooms.galena.test'),
+    expect(store.getState().messages('nobody@rooms.zilar.test')).toBe(
+      store.getState().messages('nobody@rooms.zilar.test'),
     );
     expect(store.getState().groupDetail('g-devteam')).toBe(
       store.getState().groupDetail('g-devteam'),
@@ -33,8 +33,8 @@ describe('store selectors keep a stable reference while nothing changed', () => 
 
   it('mock store: pins of a chat without pins', () => {
     const store = createChatStore();
-    expect(store.getState().pins('nobody@rooms.galena.test')).toBe(
-      store.getState().pins('nobody@rooms.galena.test'),
+    expect(store.getState().pins('nobody@rooms.zilar.test')).toBe(
+      store.getState().pins('nobody@rooms.zilar.test'),
     );
   });
 

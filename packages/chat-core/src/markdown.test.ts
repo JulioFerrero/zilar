@@ -44,14 +44,14 @@ describe('shouldRenderMarkdown', () => {
 
   it('renders an incoming AI reply in a group', () => {
     const group = chat({ isAI: false, kind: 'group' });
-    expect(shouldRenderMarkdown(group, message({ senderId: 'ai-a-1@galena.test' }), 'u-you')).toBe(
+    expect(shouldRenderMarkdown(group, message({ senderId: 'ai-a-1@zilar.test' }), 'u-you')).toBe(
       true,
     );
   });
 
   it('stays plain for a human message and your own message in a group', () => {
     const group = chat({ isAI: false, kind: 'group' });
-    expect(shouldRenderMarkdown(group, message({ senderId: 'u-ana@galena.test' }), 'u-you')).toBe(
+    expect(shouldRenderMarkdown(group, message({ senderId: 'u-ana@zilar.test' }), 'u-you')).toBe(
       false,
     );
     expect(shouldRenderMarkdown(group, message({ senderId: 'u-you' }), 'u-you')).toBe(false);

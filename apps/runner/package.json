@@ -1,5 +1,5 @@
 {
-  "name": "@galena/runner",
+  "name": "@zilar/runner",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,11 +9,11 @@
     "start": "tsx src/cli.ts"
   },
   "dependencies": {
-    "@galena/runner-tunnel": "workspace:*",
+    "@zilar/runner-tunnel": "workspace:*",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@galena/server": "workspace:*",
+    "@zilar/server": "workspace:*",
     "tsx": "^4.23.15",
     "vitest": "^5.0.2"
   }

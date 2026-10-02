@@ -1,4 +1,4 @@
-import { initials } from '@galena/chat-core';
+import { initials } from '@zilar/chat-core';
 import { User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

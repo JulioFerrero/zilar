@@ -1,4 +1,4 @@
-import { ApprovalRequestSchema, type ApprovalRequest, type Payload } from '@galena/protocol';
+import { ApprovalRequestSchema, type ApprovalRequest, type Payload } from '@zilar/protocol';
 import { approvals } from '../db/schema';
 
 // The approval row shape: just the column inference from the schema, since

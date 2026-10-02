@@ -3,23 +3,23 @@ import { emailOTPClient } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
 
 /** Header the server reads to attribute a sign-up to an invite (T-0015/T-0020). */
-export const INVITE_HEADER = 'x-galena-invite';
+export const INVITE_HEADER = 'x-zilar-invite';
 
 /** Better Auth's bearer plugin exposes the session token in this response header. */
 export const SET_AUTH_TOKEN_HEADER = 'set-auth-token';
 
 export const DEFAULT_API_URL = 'http://127.0.0.1:3188';
 
-/** Build-time server URL, read from `EXPO_PUBLIC_GALENA_API_URL`. */
+/** Build-time server URL, read from `EXPO_PUBLIC_ZILAR_API_URL`. */
 export function resolveApiUrl(env: Record<string, string | undefined>): string {
-  const value = env['EXPO_PUBLIC_GALENA_API_URL'];
+  const value = env['EXPO_PUBLIC_ZILAR_API_URL'];
   return typeof value === 'string' && value !== '' ? value : DEFAULT_API_URL;
 }
 
 // Referenced as its own `process.env.EXPO_PUBLIC_*` expression so babel-preset-expo
 // inlines it into the bundle at Metro time.
 export const API_URL = resolveApiUrl({
-  EXPO_PUBLIC_GALENA_API_URL: process.env.EXPO_PUBLIC_GALENA_API_URL,
+  EXPO_PUBLIC_ZILAR_API_URL: process.env.EXPO_PUBLIC_ZILAR_API_URL,
 });
 
 export interface AuthClientOptions {
@@ -36,7 +36,7 @@ export interface AuthClientOptions {
  * of cookies, since native fetch has no persistent cookie jar. The token comes
  * from secure storage and every `set-auth-token` response updates it.
  */
-export function createGalenaAuthClient(options: AuthClientOptions) {
+export function createZilarAuthClient(options: AuthClientOptions) {
   return createAuthClient({
     baseURL: options.baseURL,
     plugins: [emailOTPClient()],
@@ -56,10 +56,10 @@ export function createGalenaAuthClient(options: AuthClientOptions) {
 }
 
 /** The exact client type this app uses, with the email OTP plugin inferred. */
-export type AuthClient = ReturnType<typeof createGalenaAuthClient>;
+export type AuthClient = ReturnType<typeof createZilarAuthClient>;
 
 /**
- * The `x-galena-invite` header for the send-code and sign-in calls. Returns an
+ * The `x-zilar-invite` header for the send-code and sign-in calls. Returns an
  * empty object when there is no invite (existing-user sign-in).
  */
 export function inviteFetchOptions(inviteCode: string | undefined): {

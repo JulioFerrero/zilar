@@ -61,7 +61,7 @@ describe('sticker favorites', () => {
 
   beforeEach(async () => {
     context = await createTestContext();
-    storageDir = await mkdtemp(join(tmpdir(), 'galena-favorites-'));
+    storageDir = await mkdtemp(join(tmpdir(), 'zilar-favorites-'));
     app = createApp({
       db: context.db,
       logger: context.logger,

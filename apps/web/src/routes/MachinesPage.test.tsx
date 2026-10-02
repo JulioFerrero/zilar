@@ -23,7 +23,7 @@ function jsonResponse(status: number, body: unknown): Response {
 
 const auth: AuthState = {
   status: 'authenticated',
-  user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+  user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
 
@@ -426,7 +426,7 @@ describe('MachinesPage', () => {
 
     expect(await screen.findByRole('dialog', { name: 'Add machine' })).toBeTruthy();
     expect(screen.getByText('K7QX-M2PA')).toBeTruthy();
-    expect(screen.getByText(/galena-runner pair K7QX-M2PA/)).toBeTruthy();
+    expect(screen.getByText(/zilar-runner pair K7QX-M2PA/)).toBeTruthy();
     expect(screen.getByText('The runner app is coming soon.')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy pairing code' }));
@@ -502,7 +502,7 @@ describe('MachinesPage', () => {
       template: 'dev',
       persona: 'p',
       model: 'gpt-4o',
-      jid: 'ai-dev@galena.test',
+      jid: 'ai-dev@zilar.test',
       status: 'active',
       providerConnectionId: 'c-1',
       limits: { perDayUsd: 2, perMonthUsd: 20 },
@@ -552,7 +552,7 @@ describe('MachinesPage', () => {
       template: 'dev',
       persona: 'p',
       model: 'gpt-4o',
-      jid: 'ai-dev@galena.test',
+      jid: 'ai-dev@zilar.test',
       status: 'active',
       providerConnectionId: 'c-1',
       limits: { perDayUsd: 2, perMonthUsd: 20 },
@@ -620,7 +620,7 @@ describe('MachinesPage', () => {
       template: 'dev',
       persona: 'p',
       model: 'gpt-4o',
-      jid: 'ai-dev@galena.test',
+      jid: 'ai-dev@zilar.test',
       status: 'active',
       providerConnectionId: 'c-1',
       limits: { perDayUsd: 2, perMonthUsd: 20 },

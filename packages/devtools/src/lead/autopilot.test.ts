@@ -42,7 +42,7 @@ function setup(
   runner: GitRunner = noGit,
 ): { deps: AutopilotDeps; client: FakeOpenCodeClient; worktree: string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-tick-'));
-  const worktree = path.join(dir, 'galena-T-0099');
+  const worktree = path.join(dir, 'zilar-T-0099');
   fs.mkdirSync(path.join(worktree, 'work'), { recursive: true });
   fs.writeFileSync(
     path.join(worktree, 'work', 'T-0099-demo.md'),

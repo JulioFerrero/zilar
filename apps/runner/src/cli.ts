@@ -31,11 +31,11 @@ class UsageError extends Error {
   }
 }
 
-const USAGE = `Usage: galena-runner <command> [options]
+const USAGE = `Usage: zilar-runner <command> [options]
 
 Commands:
   pair <CODE> --server <URL> [--name NAME] [--home DIR]
-                            Register a new machine with the Galena server.
+                            Register a new machine with the Zilar server.
                             Saves the identity to <home>/identity.json (0600).
 
   run     [--hub <WS_URL>] [--home DIR]
@@ -48,8 +48,8 @@ Commands:
   help                       Print this message.
 
 Options:
-  --home DIR                Override the identity directory (default ~/.galena-runner
-                            or $GALENA_RUNNER_HOME).
+  --home DIR                Override the identity directory (default ~/.zilar-runner
+                            or $ZILAR_RUNNER_HOME).
   --server URL              Server base URL, e.g. http://127.0.0.1:3000 (pair only).
   --hub WS_URL              Hub WebSocket URL, e.g. ws://127.0.0.1:3189/tunnel (run only).
   --name NAME               Friendly machine name (pair only).
@@ -123,7 +123,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<Cli
 }
 
 function buildStorage(home: string | undefined, env: NodeJS.ProcessEnv): IdentityStorage {
-  const dir = resolveHomeDir(home, env['GALENA_RUNNER_HOME']);
+  const dir = resolveHomeDir(home, env['ZILAR_RUNNER_HOME']);
   return identityPaths(dir);
 }
 
@@ -144,7 +144,7 @@ async function runPair(argv: string[], io: CliIo): Promise<void> {
   }
   const code = positionals[0];
   if (code === undefined) {
-    throw new UsageError('Usage: galena-runner pair <CODE> --server <URL>');
+    throw new UsageError('Usage: zilar-runner pair <CODE> --server <URL>');
   }
   const storage = buildStorage(values.home, io.env);
   const options: PairOptions = {
@@ -251,7 +251,7 @@ async function runStatus(argv: string[], io: CliIo): Promise<void> {
   });
   const storage = buildStorage(values.home, io.env);
   const summary = await summarizeIdentity(storage);
-  io.stdout('Galena runner identity');
+  io.stdout('Zilar runner identity');
   io.stdout(`  machine id   ${summary.machineId}`);
   io.stdout(`  name         ${summary.name}`);
   io.stdout(`  server       ${summary.serverUrl}`);

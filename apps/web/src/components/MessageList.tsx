@@ -3,7 +3,7 @@ import {
   unreadDividerIndex,
   type ChatSummary,
   type UiMessage,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 import { ArrowDown } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { DateSeparator } from './DateSeparator';

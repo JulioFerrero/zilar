@@ -35,7 +35,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test --maxWorkers=2 <touched test files and their neighbours>
+pnpm --filter @zilar/mobile test --maxWorkers=2 <touched test files and their neighbours>
 ```
 Do NOT start simulators, Metro, or `expo run`.
 

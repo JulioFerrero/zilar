@@ -1,5 +1,5 @@
 // Ambient types for @xmpp/client 0.14, which ships no TypeScript declarations.
-// `@galena/xmpp-core` ships the same declaration inside its own project, but
+// `@zilar/xmpp-core` ships the same declaration inside its own project, but
 // the mobile app's tsc program does not include that file, so this copy makes
 // the imported xmpp-core source type-check here too. Mirrors
 // packages/xmpp-core/src/types/xmpp.d.ts.

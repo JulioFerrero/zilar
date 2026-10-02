@@ -24,7 +24,7 @@ function topicRow(overrides: Record<string, unknown> = {}): Record<string, unkno
     groupId: 'g1',
     name: 'Checkout bug',
     glyph: 'B',
-    chatJid: 't-1@rooms.galena.test',
+    chatJid: 't-1@rooms.zilar.test',
     visibility: 'public',
     kind: 'bug',
     status: 'in_progress',

@@ -23,7 +23,7 @@ const PENDING_APPROVAL: PublicApproval = {
   details: 'Rotate and update the CI secret.',
   argsHash: '8f14e45fceea167a5a36dedd4bea2543c9f4d5a7b0c1e2d3f4a5b6c7d8e9f0a1',
   worstCase: { currency: 'EUR', amount: 0.02 },
-  requestedBy: 'me@galena.chat',
+  requestedBy: 'me@zilar.chat',
   status: 'pending',
   decidedAt: null,
   note: null,

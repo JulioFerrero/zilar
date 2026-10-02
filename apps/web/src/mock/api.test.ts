@@ -76,7 +76,7 @@ describe('mockRequest', () => {
 
     const contacts = await getContacts();
     expect(contacts.length).toBeGreaterThan(0);
-    expect(contacts[0]?.jid).toMatch(/@galena\.test$/);
+    expect(contacts[0]?.jid).toMatch(/@zilar\.test$/);
   });
 
   it('stores chat prefs in memory with defaults-delete semantics', async () => {
@@ -144,7 +144,7 @@ describe('mockRequest', () => {
       limits: { perDayUsd: 1, perMonthUsd: 10 },
     });
     expect(created.id).toBeTruthy();
-    expect(created.jid).toBe(`ai-${created.id}@galena.test`);
+    expect(created.jid).toBe(`ai-${created.id}@zilar.test`);
     expect((await listAis()).some((ai) => ai.id === created.id)).toBe(true);
 
     const patched = await updateAi(created.id, { name: 'Renamed' });

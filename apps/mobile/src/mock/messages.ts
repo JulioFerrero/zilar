@@ -1,4 +1,4 @@
-import { PayloadSchema, type Payload } from '@galena/protocol';
+import { PayloadSchema, type Payload } from '@zilar/protocol';
 
 import { gradientImage } from '../lib/image-presets';
 import { CURRENT_USER_ID, CURRENT_USER_NAME, type UiMessage } from '../lib/types';
@@ -40,7 +40,7 @@ function message(
   };
 }
 
-/** Payloads are parsed, so mock data stays valid against `@galena/protocol`. */
+/** Payloads are parsed, so mock data stays valid against `@zilar/protocol`. */
 function payload(input: Payload): Payload {
   return PayloadSchema.parse(input);
 }
@@ -50,7 +50,7 @@ function progressCard(stage: string, percent: number, detail?: string): Payload 
     v: 0,
     type: 'progress',
     data: {
-      ai: 'dev-ai@galena.chat',
+      ai: 'dev-ai@zilar.chat',
       stage,
       ...(detail === undefined ? {} : { detail }),
       percent,
@@ -79,13 +79,13 @@ const APPROVAL: Payload = payload({
   type: 'approval.request',
   data: {
     id: 'approval-2001',
-    room: 'dev-ai@galena.chat',
-    ai: 'dev-ai@galena.chat',
+    room: 'dev-ai@zilar.chat',
+    ai: 'dev-ai@zilar.chat',
     action: 'Rotate the staging API token',
     summary: 'The staging token leaked in a CI log. Rotate it and update the CI secret.',
     args_hash: '8f14e45fceea167a5a36dedd4bea2543c9f4d5a7b0c1e2d3f4a5b6c7d8e9f0a1',
     worst_case_cost: { currency: 'EUR', amount: 0.02 },
-    requested_by: 'me@galena.chat',
+    requested_by: 'me@zilar.chat',
     expires_at: hoursFromNow(2),
   },
 });
@@ -223,7 +223,7 @@ export const mockMessagesByChat: Record<string, UiMessage[]> = {
         '',
         '> Reply with a ✅ once you are happy.',
         '',
-        'Full brief: https://galena.test/launch',
+        'Full brief: https://zilar.test/launch',
       ].join('\n'),
     }),
   ],
@@ -255,7 +255,7 @@ export const mockMessagesByChat: Record<string, UiMessage[]> = {
     message('design', 'design-05', ME, at(12, 10, 33), { text: 'Merging now', status: 'sent' }),
   ],
   luis: [
-    message('luis', 'luis-01', LUIS, at(40, 14, 0), { text: "Long time! How's Galena going?" }),
+    message('luis', 'luis-01', LUIS, at(40, 14, 0), { text: "Long time! How's Zilar going?" }),
     message('luis', 'luis-02', ME, at(40, 14, 5), { text: 'Busy but good. Beer next week?' }),
     message('luis', 'luis-03', LUIS, at(40, 14, 6), { text: 'Anytime' }),
   ],

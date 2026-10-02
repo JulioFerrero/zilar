@@ -1,4 +1,4 @@
-# Galena production web app: static file server with SPA fallback.
+# Zilar production web app: static file server with SPA fallback.
 #
 # The API (`/api/*`), the XMPP WebSocket (`/xmpp-ws/*`) and uploads
 # (`/upload/*`) are NOT served here: the production reverse proxy (Caddy in
@@ -11,7 +11,7 @@
 }
 
 :80 {
-  root * /srv/galena-web
+  root * /srv/zilar-web
 
   # Security headers on every response.
   header {
@@ -31,7 +31,7 @@
   header @hashed Cache-Control "public, max-age=31536000, immutable"
 
   # Never cache the entry point: index.html references the hashed assets.
-  @entry file /srv/galena-web/index.html
+  @entry file /srv/zilar-web/index.html
   handle @entry {
     header Cache-Control "no-store"
   }

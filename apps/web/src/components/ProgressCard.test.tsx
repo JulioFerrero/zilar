@@ -1,10 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ProgressSchema } from '@galena/protocol';
+import { ProgressSchema } from '@zilar/protocol';
 import { ProgressCard } from './ProgressCard';
 
 const progress = ProgressSchema.parse({
-  ai: 'dev-1@ai.galena.test',
+  ai: 'dev-1@ai.zilar.test',
   stage: 'Running e2e tests',
   detail: '12 of 15 specs',
   percent: 80,

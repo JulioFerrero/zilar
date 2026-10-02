@@ -6,6 +6,7 @@ import {
   type CipherGCM,
   type DecipherGCM,
 } from 'node:crypto';
+import { PROVIDER_KEY_KDF_LABEL } from '../kdf-labels';
 
 // Envelope encryption for provider keys, using only Node's built-in `crypto`.
 //
@@ -43,7 +44,7 @@ export interface KeyCipher {
 }
 
 function deriveKey(masterKey: string, salt: Buffer): Buffer {
-  return Buffer.from(hkdfSync('sha256', masterKey, salt, 'galena/provider-key/v1', 32));
+  return Buffer.from(hkdfSync('sha256', masterKey, salt, PROVIDER_KEY_KDF_LABEL, 32));
 }
 
 function encryptOnce(masterKey: string, plaintext: string): string {
@@ -93,7 +94,7 @@ function decryptOnce(masterKey: string, envelope: string): string {
 }
 
 // Builds the cipher from the environment's master key. The key is validated by
-// the config schema (GALENA_KEY_ENCRYPTION_KEY, at least 32 characters) before
+// the config schema (ZILAR_KEY_ENCRYPTION_KEY, at least 32 characters) before
 // it reaches here.
 export function createKeyCipher(masterKey: string): KeyCipher {
   return {

@@ -159,7 +159,7 @@ describe('validateFetchRequest', () => {
     const { join } = await import('node:path');
     const { createServer } = await import('node:https');
     const { fetchPinnedHttps } = await import('./host-fetch');
-    const dir = mkdtempSync(join(tmpdir(), 'galena-tls-'));
+    const dir = mkdtempSync(join(tmpdir(), 'zilar-tls-'));
     try {
       execFileSync('openssl', [
         'req',
@@ -216,7 +216,7 @@ describe('validateFetchRequest', () => {
     const { join } = await import('node:path');
     const { createServer } = await import('node:https');
     const { fetchPinnedHttps } = await import('./host-fetch');
-    const dir = mkdtempSync(join(tmpdir(), 'galena-hdr-'));
+    const dir = mkdtempSync(join(tmpdir(), 'zilar-hdr-'));
     try {
       execFileSync('openssl', [
         'req',
@@ -260,7 +260,7 @@ describe('validateFetchRequest', () => {
         });
         expect(response.status).toBe(200);
         expect(seen).toEqual([
-          { accept: '*/*', userAgent: 'GalenaTool/1', authorization: undefined },
+          { accept: '*/*', userAgent: 'ZilarTool/1', authorization: undefined },
         ]);
       } finally {
         process.env.NODE_TLS_REJECT_UNAUTHORIZED = undefined;

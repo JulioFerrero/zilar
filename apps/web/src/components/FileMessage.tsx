@@ -1,4 +1,4 @@
-import type { Attachment } from '@galena/chat-core';
+import type { Attachment } from '@zilar/chat-core';
 import { Download, FileText, RotateCcw } from 'lucide-react';
 import { formatFileSize, safeHttpUrl } from '@/lib/attachments';
 import { cn } from '@/lib/utils';

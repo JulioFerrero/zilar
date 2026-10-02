@@ -78,7 +78,7 @@ describe('telegram sticker import', () => {
 
   beforeEach(async () => {
     context = await createTestContext();
-    storageDir = await mkdtemp(join(tmpdir(), 'galena-tg-import-'));
+    storageDir = await mkdtemp(join(tmpdir(), 'zilar-tg-import-'));
     owner = await bootstrapUser(context, appWith(fakeClient(stickerSet([]))), 'owner@example.com');
     stranger = await contactOf(
       context,

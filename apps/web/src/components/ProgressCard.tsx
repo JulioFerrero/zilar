@@ -1,4 +1,4 @@
-import type { Progress } from '@galena/protocol';
+import type { Progress } from '@zilar/protocol';
 import { Loader2 } from 'lucide-react';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';

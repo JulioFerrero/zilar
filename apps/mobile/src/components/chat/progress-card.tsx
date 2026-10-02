@@ -1,4 +1,4 @@
-import type { Progress } from '@galena/protocol';
+import type { Progress } from '@zilar/protocol';
 import { ActivityIndicator, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';

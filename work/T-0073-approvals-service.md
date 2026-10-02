@@ -75,7 +75,7 @@ Not needed from you; say in the Report that no live proof was done.
 - [ ] A decision can't be replaced, and `approve_once` can be verified exactly once.
 - [ ] The args hash must match; a mismatch never consumes.
 - [ ] No route creates approvals; no AI-facing decision path.
-- [ ] Migration generated, not hand-written; `pnpm exec turbo test --force --filter=@galena/server` passes.
+- [ ] Migration generated, not hand-written; `pnpm exec turbo test --force --filter=@zilar/server` passes.
 - [ ] No `any`, no `@ts-ignore`, no new dependencies.
 
 ### Checks (all must pass)
@@ -84,7 +84,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -97,7 +97,7 @@ pnpm build
 
 ### What I did
 - Added the `approvals` table to `apps/server/src/db/schema.ts` with the columns the spec requires (`id`, `ai_id`, `group_id` nullable, `action` ≤100, `summary` ≤500, `details` ≤20000 nullable, `args_hash` 64 hex, `worst_case_currency` + `worst_case_amount` nullable pair, `requested_by`, `status` enum, `decided_by` set null on user delete, `decided_at`, `note` ≤500 nullable, `expires_at` not null, `created_at` default now). Foreign keys to `ais` (cascade), `groups` (cascade, nullable) and `user` (set null). Two indexes on `(ai_id, status)` and `(group_id, status)`.
-- Generated the migration with `pnpm --filter @galena/server db:generate`. The new file is `apps/server/drizzle/0011_silky_groot.sql`; the journal in `apps/server/drizzle/meta/_journal.json` and the snapshot in `apps/server/drizzle/meta/0011_snapshot.json` are updated by drizzle-kit, not hand-edited.
+- Generated the migration with `pnpm --filter @zilar/server db:generate`. The new file is `apps/server/drizzle/0011_silky_groot.sql`; the journal in `apps/server/drizzle/meta/_journal.json` and the snapshot in `apps/server/drizzle/meta/0011_snapshot.json` are updated by drizzle-kit, not hand-edited.
 - Built `apps/server/src/approvals/service.ts` with `createApproval`, `decideApproval`, `verifyApproval`, `listDecidableApprovals`, `getDecidableApproval`, `expireStale`, and `canDecide`. `canDecide` is the single source of truth for the AI owner / group owner+admin visibility rule, used by both `decideApproval` and the read endpoints. The wire enum (`approve_once`/`approve_always`/`deny`) is mapped to the storage enum (`approved_once`/`approved_always`/`denied`) by a tiny `decisionToStatus` helper. `approved_always` is treated identically to a single-use approval today; the standing-rules spec is flagged in a code comment. Hash equality uses `timingSafeEqual` on the decoded bytes, with a length pre-check so `timingSafeEqual` never throws.
 - Built `apps/server/src/approvals/routes.ts` exposing `GET /approvals`, `GET /approvals/:id`, and `POST /approvals/:id/decision` (all `requireSession`, decision body a `z.strictObject` so unknown fields 400). There is no creation route — the spec rules that out. The decision body is validated at the boundary; service errors are mapped to HTTP (`expired` and `not_pending` → 409, `invalid_request` / `ai_not_in_group` → 400, missing/unauthorised → 404). `decided_by` is never returned.
 - Mounted the routes in `apps/server/src/app.ts` next to the machines and groups routes, with the default `Date.now` clock.
@@ -119,14 +119,14 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install` → Done in 14.1s (Lockfile up to date; 1010 packages installed).
-- `pnpm --filter @galena/server db:generate` → `Your SQL migration file ➜ drizzle/0011_silky_groot.sql 🚀` (20 tables; new `approvals` table with 16 columns, 2 indexes, 3 fks).
-- `pnpm --filter @galena/server typecheck` → `tsc --noEmit` exited 0 (no output).
-- `pnpm --filter @galena/server test src/approvals/service.test.ts` → 34 passed, 0 failed (`Test Files 1 passed`, `Tests 34 passed`, 17.6s).
-- `pnpm --filter @galena/server test src/approvals/routes.test.ts` → 10 passed, 0 failed (`Test Files 1 passed`, `Tests 10 passed`, 12.4s).
+- `pnpm --filter @zilar/server db:generate` → `Your SQL migration file ➜ drizzle/0011_silky_groot.sql 🚀` (20 tables; new `approvals` table with 16 columns, 2 indexes, 3 fks).
+- `pnpm --filter @zilar/server typecheck` → `tsc --noEmit` exited 0 (no output).
+- `pnpm --filter @zilar/server test src/approvals/service.test.ts` → 34 passed, 0 failed (`Test Files 1 passed`, `Tests 34 passed`, 17.6s).
+- `pnpm --filter @zilar/server test src/approvals/routes.test.ts` → 10 passed, 0 failed (`Test Files 1 passed`, `Tests 10 passed`, 12.4s).
 - `pnpm format` → reformatted the new files; `pnpm format:check` → `All matched files use Prettier code style!`.
 - `pnpm lint` → `oxlint .` exited 0 (no output).
 - `pnpm typecheck` (top-level turbo) → `Tasks: 9 successful, 9 total`.
-- `pnpm exec turbo test --force --filter=@galena/server` → `Test Files 43 passed | 5 skipped (48)` / `Tests 587 passed | 7 skipped (594)` (~99s).
+- `pnpm exec turbo test --force --filter=@zilar/server` → `Test Files 43 passed | 5 skipped (48)` / `Tests 587 passed | 7 skipped (594)` (~99s).
 - `pnpm build` → `Tasks: 2 successful, 2 total` (cached, FULL TURBO).
 
 ### Problems, deviations from the spec, open questions

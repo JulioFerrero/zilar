@@ -72,7 +72,7 @@ None: Node built-ins and zod only, as the rest of `lead`.
 - Before `git worktree remove`, find the processes whose **current working directory** or **command line** is inside the worktree path. On macOS, `lsof -a -d cwd -Fpn` for cwd plus `ps -Ao pid=,command=` is fine. Put it behind an injectable seam so tests don't run real commands.
 - Send them `SIGTERM`, wait up to 5 s for them to exit, then `SIGKILL` the rest. Print one line per stopped process: pid and the first 80 characters of the command. Never print environment variables.
 - **Safety (must):**
-  - Match on the exact worktree path plus a trailing `/`, or an exact cwd match, so `galena-T-0047` never matches `galena-T-00470`.
+  - Match on the exact worktree path plus a trailing `/`, or an exact cwd match, so `zilar-T-0047` never matches `zilar-T-00470`.
   - Never kill the current process or its parent.
   - Never kill processes outside the worktree. Test with look-alike paths and the main repo path.
 - Tests: matching (cwd and command), the look-alike paths, skipping self and parent, TERM then KILL through fake timers or an injected clock, and the order (stop before the worktree removal).
@@ -83,10 +83,10 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/devtools
+pnpm exec turbo test --force --filter=@zilar/devtools
 ```
 
-Don't run `lead launch`, `lead merge`, `lead switch-model` or the autopilot against the real state (`~/.galena-lead`) or real sessions. Tests only.
+Don't run `lead launch`, `lead merge`, `lead switch-model` or the autopilot against the real state (`~/.zilar-lead`) or real sessions. Tests only.
 
 ### Acceptance criteria
 - [ ] Every check above passes.
@@ -106,7 +106,7 @@ The shared part of `launch.ts` (read rules, create the session, render the promp
 
 The new `prompts/switch.md` is the worker prompt with one extra paragraph: "the lead switched this task from another model … read `git status` / `git log` / `git diff` and continue."
 
-**`lead merge` stops worktree processes.** Right before `git worktree remove` (a failed merge must not kill the worker's dev servers), the new `processes.ts` runs `lsof -a -d cwd -Fpn` and `ps -Ao pid=,command=` through injectable seams, picks the pids whose cwd or command line lives inside the worktree path (exact-prefixed, so `galena-T-0047` never matches `galena-T-00470`), drops the lead process and its parent, SIGTERMs each one, polls up to 5 s in 50 ms ticks, then SIGKILLs the survivors. Each pid is re-probed after SIGKILL: clean stops print `stop <pid> <exe>`; survivors print `could not stop <pid> <exe>`. `<exe>` is just the basename of the executable (e.g. `stop 1234 node`) — never argv, so `--token=…` and other secrets never reach `lead.log`. A pid already gone before TERM is not reported at all.
+**`lead merge` stops worktree processes.** Right before `git worktree remove` (a failed merge must not kill the worker's dev servers), the new `processes.ts` runs `lsof -a -d cwd -Fpn` and `ps -Ao pid=,command=` through injectable seams, picks the pids whose cwd or command line lives inside the worktree path (exact-prefixed, so `zilar-T-0047` never matches `zilar-T-00470`), drops the lead process and its parent, SIGTERMs each one, polls up to 5 s in 50 ms ticks, then SIGKILLs the survivors. Each pid is re-probed after SIGKILL: clean stops print `stop <pid> <exe>`; survivors print `could not stop <pid> <exe>`. `<exe>` is just the basename of the executable (e.g. `stop 1234 node`) — never argv, so `--token=…` and other secrets never reach `lead.log`. A pid already gone before TERM is not reported at all.
 
 Production wires the seams in `cli.ts` (real `lsof`/`ps`, current pid/parent from `process.pid`/`process.ppid`); tests inject no-op stubs.
 
@@ -133,8 +133,8 @@ Production wires the seams in `cli.ts` (real `lsof`/`ps`, current pid/parent fro
 - `pnpm install`: `Lockfile is up to date … Done in 8.3s`.
 - `pnpm format:check`: `All matched files use Prettier code style!`
 - `pnpm lint`: `oxlint .` → `Command exited with code 0`, no findings.
-- `pnpm typecheck`: `Tasks: 9 successful, 9 total`, `@galena/devtools` passes (`tsc --noEmit` clean).
-- `pnpm exec turbo test --force --filter=@galena/devtools`:
+- `pnpm typecheck`: `Tasks: 9 successful, 9 total`, `@zilar/devtools` passes (`tsc --noEmit` clean).
+- `pnpm exec turbo test --force --filter=@zilar/devtools`:
   ```
   Test Files  14 passed (14)
        Tests  268 passed (268)
@@ -168,7 +168,7 @@ Seven items from the lead's review. All Checks pass; see numbers below.
 
 5. **`MergeOptions` seams are optional with real defaults.** No more "required but defaulted" trap. `findProcs` defaults to the real `findProcessesInWorktree`; `stopProcs` to `stopWorktreeProcesses`; `findProcsDeps` to a fresh `defaultFindProcsDeps()` that wires `defaultLsof`/`defaultPs` plus the lead's `process.pid`/`process.ppid`; `stopProcsDeps` to `{}`; `print` to `console.log`. Tests pass stubs to avoid the real OS; production callers pass nothing. The CLI's `runMerge` is now back to its round-1 shape.
 
-6. **`parsePs` matches `<worktree>/` anywhere in the command line.** Interpreter-first invocations like `node /…/galena-T-0047/apps/server/src/index.ts` and even `/usr/local/bin/node --inspect /…/galena-T-0047/packages/x/server.js --port 8082` now match. Look-alike paths (`galena-T-00470`, `galena-T-0047subpath`) still do not, because the match is exact-prefixed on the worktree path plus a separator. Tests cover both: interpreter-first match, the look-alike negative case, and the original cwd match via `lsof`.
+6. **`parsePs` matches `<worktree>/` anywhere in the command line.** Interpreter-first invocations like `node /…/zilar-T-0047/apps/server/src/index.ts` and even `/usr/local/bin/node --inspect /…/zilar-T-0047/packages/x/server.js --port 8082` now match. Look-alike paths (`zilar-T-00470`, `zilar-T-0047subpath`) still do not, because the match is exact-prefixed on the worktree path plus a separator. Tests cover both: interpreter-first match, the look-alike negative case, and the original cwd match via `lsof`.
 
 7. **Re-probe after SIGKILL; survivors are explicit.** `stopWorktreeProcesses` now probes the pid before TERM (corpses are skipped, no `stop <pid>` for a dead pid) and re-probes after KILL. The return type is `{ pid, command, survived }`: `survived: true` means the lead saw a SIGKILL-resistant pid and gets a `could not stop` line. A pid already gone before TERM is not in the result at all.
 
@@ -191,7 +191,7 @@ Seven items from the lead's review. All Checks pass; see numbers below.
 - `pnpm format:check`: `All matched files use Prettier code style!`
 - `pnpm lint`: `oxlint .` clean, exit 0.
 - `pnpm typecheck`: `Tasks: 9 successful, 9 total`, devtools clean.
-- `pnpm exec turbo test --force --filter=@galena/devtools`:
+- `pnpm exec turbo test --force --filter=@zilar/devtools`:
   ```
   Test Files  14 passed (14)
        Tests  291 passed (291)
@@ -215,7 +215,7 @@ Round 3 fix-up: round-2 made `interrupt` too lenient (it returned void on alread
 - `pnpm exec prettier --check 'packages/**/*.ts' 'work/T-0051*.md'`: `All matched files use Prettier code style!` (the only `format:check` warning is on the untracked `PREREVIEW.md`, which is the lead's file).
 - `pnpm lint`: `oxlint .` clean, exit 0.
 - `pnpm typecheck`: `Tasks: 9 successful, 9 total`, devtools clean.
-- `pnpm exec turbo test --force --filter=@galena/devtools`:
+- `pnpm exec turbo test --force --filter=@zilar/devtools`:
   ```
   Test Files  14 passed (14)
        Tests  297 passed (297)

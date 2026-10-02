@@ -1,11 +1,11 @@
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { z } from 'zod';
 import type { StorageLike } from './realStore';
 
 // The last chat list the user saw, so a reload paints it at once in the same
 // order, with previews, instead of a bare list that re-sorts a second later.
 // It is only a first paint: the server and XMPP data replace it right after.
-export const CHAT_LIST_CACHE_KEY = 'galena:chatList';
+export const CHAT_LIST_CACHE_KEY = 'zilar:chatList';
 const CACHE_VERSION = 1;
 const MAX_CACHED_CHATS = 200;
 

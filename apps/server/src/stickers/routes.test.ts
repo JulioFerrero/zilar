@@ -80,7 +80,7 @@ describe('stickers routes', () => {
 
   beforeEach(async () => {
     context = await createTestContext();
-    storageDir = await mkdtemp(join(tmpdir(), 'galena-stickers-'));
+    storageDir = await mkdtemp(join(tmpdir(), 'zilar-stickers-'));
     app = createApp({
       db: context.db,
       logger: context.logger,
@@ -133,7 +133,7 @@ describe('stickers routes', () => {
   it('uploads a PNG by magic bytes with a wrong content type', async () => {
     const { json } = await createPack(owner);
     // Multipart with a lying filename and content type: the magic bytes win.
-    const boundary = '----galena-test-boundary';
+    const boundary = '----zilar-test-boundary';
     const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="sticker.gif"\r\nContent-Type: image/gif\r\n\r\n`;
     const footer = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="emoji"\r\n\r\ncat\r\n--${boundary}--\r\n`;
     const headerBytes = new TextEncoder().encode(header);
@@ -508,11 +508,11 @@ describe('stickers routes', () => {
       chdir(previous);
     }
     // An explicit base wins (the startup path uses the default base).
-    expect(resolveStorageDir('data/stickers', '/var/lib/galena')).toBe(
-      resolve('/var/lib/galena', 'data/stickers'),
+    expect(resolveStorageDir('data/stickers', '/var/lib/zilar')).toBe(
+      resolve('/var/lib/zilar', 'data/stickers'),
     );
     // Absolute values pass through unchanged.
-    expect(resolveStorageDir('/var/lib/galena/stickers')).toBe('/var/lib/galena/stickers');
+    expect(resolveStorageDir('/var/lib/zilar/stickers')).toBe('/var/lib/zilar/stickers');
   });
 
   it('serves files through a relatively-configured storage dir', async () => {
@@ -522,7 +522,7 @@ describe('stickers routes', () => {
     const { mkdir, rm } = await import('node:fs/promises');
     const path = await import('node:path');
     const { SERVER_PACKAGE_ROOT } = await import('./service');
-    const leaf = `galena-stickers-rel-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const leaf = `zilar-stickers-rel-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const absolute = path.join(SERVER_PACKAGE_ROOT, leaf);
     await mkdir(absolute, { recursive: true });
     const relativeApp = createApp({

@@ -1,5 +1,5 @@
-import { TunnelServer } from '@galena/runner-tunnel';
-import type { KeyRegistry } from '@galena/runner-tunnel';
+import { TunnelServer } from '@zilar/runner-tunnel';
+import type { KeyRegistry } from '@zilar/runner-tunnel';
 import { DEFAULT_LITELLM_BASE_URL } from '../ai/litellm-client';
 import type { ServerDatabase } from '../db/client';
 import { listApprovedMachineKeys } from './service';

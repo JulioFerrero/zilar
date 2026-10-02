@@ -273,12 +273,8 @@ async function run(): Promise<void> {
               const out = context.newPromise();
               enterVm();
               try {
-                context.setProp(
-                  context.global,
-                  '__galena_body',
-                  track(context.newString(bodyText)),
-                );
-                const parsed = context.evalCode('JSON.parse(__galena_body)', 'tool.js');
+                context.setProp(context.global, '__zilar_body', track(context.newString(bodyText)));
+                const parsed = context.evalCode('JSON.parse(__zilar_body)', 'tool.js');
                 if (parsed.error) {
                   parsed.error.dispose();
                   out.reject(track(context.newString('invalid json')));
@@ -325,7 +321,7 @@ async function run(): Promise<void> {
     }
     context.setProp(context.global, 'console', consoleHandle);
 
-    context.setProp(context.global, '__galena_input', track(context.newString(params.inputJson)));
+    context.setProp(context.global, '__zilar_input', track(context.newString(params.inputJson)));
 
     const interruptedResult = (
       text: string,
@@ -381,7 +377,7 @@ async function run(): Promise<void> {
       return;
     }
 
-    const parseInput = evalInVm('JSON.parse(__galena_input)');
+    const parseInput = evalInVm('JSON.parse(__zilar_input)');
     if (parseInput.error) {
       const dumped = dumpVmError(context, parseInput.error);
       parseInput.error.dispose();
@@ -493,9 +489,9 @@ async function run(): Promise<void> {
       const text = context.getString(valueHandle);
       outputJson = JSON.stringify({ text });
     } else if (valueType === 'object') {
-      context.setProp(context.global, '__galena_result_value', valueHandle);
+      context.setProp(context.global, '__zilar_result_value', valueHandle);
       const stringifyResult = evalInVm(
-        '(() => { try { return JSON.stringify(__galena_result_value); } catch (e) { return null; } })()',
+        '(() => { try { return JSON.stringify(__zilar_result_value); } catch (e) { return null; } })()',
       );
       if (!stringifyResult.error) {
         const stringified = stringifyResult.value;

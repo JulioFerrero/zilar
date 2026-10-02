@@ -4,7 +4,7 @@ Claude maintains this file. Statuses are explained in [README.md](README.md).
 
 ## Active (M1 complete; next: M2 AIs that talk)
 
-Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; **no V4 Pro**, Julio 2026-09-28) through OpenCode 2 (Julio's authorization, 2026-09-27). Each task gets its own git worktree `../galena-T-XXXX`. Watch a worker live with `cd ../galena-T-XXXX && opencode2 -s <session>`.
+Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; **no V4 Pro**, Julio 2026-09-28) through OpenCode 2 (Julio's authorization, 2026-09-27). Each task gets its own git worktree `../zilar-T-XXXX`. Watch a worker live with `cd ../zilar-T-XXXX && opencode2 -s <session>`.
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
@@ -19,7 +19,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 - Deployment: set Better Auth `advanced.ipAddress` for the real proxy (from the T-0015 review).
 - OAuth (Google/Apple/GitHub): first-time users must carry the invite through the redirect (from the T-0015 review).
 - **Real GitHub App wiring for the git proxy (needs Julio's GitHub account).** T-0009 proved the token lifecycle and the `agent/<ai>/*` branch rule with fakes. Still unproven: that GitHub accepts the App JWT and mints an installation token, and the pkt-line ref parsing against a real `git` client. A worker cannot create the App, so this needs a human.
-- `apps/mobile/ios/` is generated and gitignored: run `pnpm --filter @galena/mobile boot:ios --device <udid>` after any native dependency change (T-0031). Running it in CI needs a macOS runner (Julio's decision).
+- `apps/mobile/ios/` is generated and gitignored: run `pnpm --filter @zilar/mobile boot:ios --device <udid>` after any native dependency change (T-0031). Running it in CI needs a macOS runner (Julio's decision).
 
 - **M3 tunnel hardening (from the T-0008 spike):**
   - TLS/wss;
@@ -37,20 +37,20 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0012](T-0012-tooling-cleanups.md) | Tooling cleanups from the T-0001 review | 2026-09-27 |
 | [T-0013](T-0013-protocol-payloads.md) | Protocol v0 payload schemas (2 review rounds: fixed javascript:/data: link injection) | 2026-09-27 |
 | [T-0002](T-0002-dev-infra.md) | Local dev infrastructure: Postgres 18 + pgvector, ejabberd 26.07, LiteLLM 1.102.1; `pnpm infra:up` / `infra:smoke` | 2026-09-27 |
-| [T-0006](T-0006-opencode-driver.md) | `@galena/agent-drivers` + OpenCode v2 driver (2 rounds; live-tested with DeepSeek: permission flow, no replay) | 2026-09-27 |
+| [T-0006](T-0006-opencode-driver.md) | `@zilar/agent-drivers` + OpenCode v2 driver (2 rounds; live-tested with DeepSeek: permission flow, no replay) | 2026-09-27 |
 | [T-0011](T-0011-mobile-scaffold.md) | Expo app (SDK 57, React Native 0.86, Expo Router, NativeWind + React Native Reusables); runs in the iOS simulator, light and dark | 2026-09-27 |
 | [T-0014](T-0014-server-foundation.md) | Server foundation: zod config, redacted pino logs, JSON errors, request ids, Drizzle + migrations, PGlite tests | 2026-09-27 |
 | [T-0003](T-0003-xmpp-accounts-rooms.md) | XMPP: server-created accounts, JWT-only login (non-admin), members-only rooms, MAM history; `pnpm xmpp:e2e` 12/12 (2 rounds) | 2026-09-27 |
 | [T-0015](T-0015-auth-invites.md) | Auth: invite-only sign-up, 6-digit email codes (hashed, gated, rate-limited), cookie + bearer sessions, trusted origins (2 rounds) | 2026-09-27 |
 | [T-0019](T-0019-mobile-chat-shell.md) | Mobile: Telegram-like chat list and chat screen with mock data; screenshots in `apps/mobile/screenshots/` | 2026-09-27 |
-| [T-0018](T-0018-web-chat-shell.md) | Web: Telegram-like chat shell + `@galena/chat-core` (2 rounds) | 2026-09-27 |
-| [T-0016](T-0016-xmpp-core.md) | `@galena/xmpp-core`: JWT reconnect, rooms, DMs, MAM, typing, receipts, payloads, real-JID resolution via occupant roster (2 rounds) | 2026-09-27 |
+| [T-0018](T-0018-web-chat-shell.md) | Web: Telegram-like chat shell + `@zilar/chat-core` (2 rounds) | 2026-09-27 |
+| [T-0016](T-0016-xmpp-core.md) | `@zilar/xmpp-core`: JWT reconnect, rooms, DMs, MAM, typing, receipts, payloads, real-JID resolution via occupant roster (2 rounds) | 2026-09-27 |
 | [T-0017](T-0017-xmpp-provisioning.md) | Server: XMPP account on sign-up, chat token endpoint, profile name; live end-to-end invite → code → sign-in → token → XMPP online | 2026-09-27 |
 | [T-0022](T-0022-web-ui-polish.md) | Web polish: new-chat button, unread divider, typing, message menu and reply, big emoji, safe links, green online dot | 2026-09-27 |
 | [T-0021](T-0021-sm-ack-bug.md) | Fixed random disconnects: our own XEP-0198 inbound counter (2 xmpp.js 0.14 bugs), stress-tested 3× with 0 server closes | 2026-09-27 |
 | [T-0020](T-0020-contacts-groups-chats.md) | Server: contacts from invites (roster, nick refresh), groups (MUC), `GET /api/chats` (2 rounds) | 2026-09-27 |
 | [T-0024](T-0024-web-real-data.md) | **Web on real data**: invite, email code, name; real DMs and groups via xmpp-core. **Julio used it live.** | 2026-09-28 |
-| [T-0023](T-0023-mobile-ui-polish.md) | Mobile polish: switch to `@galena/chat-core`, typing, unread divider, long-press menu + swipe to reply with haptics, big emoji, safe links (2 rounds) | 2026-09-28 |
+| [T-0023](T-0023-mobile-ui-polish.md) | Mobile polish: switch to `@zilar/chat-core`, typing, unread divider, long-press menu + swipe to reply with haptics, big emoji, safe links (2 rounds) | 2026-09-28 |
 | [T-0025](T-0025-real-use-fixes-1.md) | Real-use fixes 1: list status stuck on sending, live list updates (XEP-0249 invites + roster pushes), big-emoji sender name; no JID localparts in names; own typing/markers ignored in groups (3 rounds) | 2026-09-28 |
 | [T-0004](T-0004-expo-xmpp-spike.md) | **Spike S2: xmpp.js works in Expo on iOS** — proven on device with 2 inline shims + a Metro stub, no new packages. Unblocks mobile on real data (2 rounds) | 2026-09-28 |
 | [T-0007](T-0007-litellm-virtual-keys.md) | **Spike S5: LiteLLM hard-capped virtual keys work** — cap enforced pre-flight (429), revocation and user-key forwarding proven live; cap is server-owned (2 rounds) | 2026-09-28 |
@@ -92,14 +92,14 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0059](T-0059-reactions-web.md) | Reactions (web): XEP-0444 quick bar, chips, MAM persistence, DMs and groups | 2026-09-28 |
 | [T-0060](T-0060-web-qa-sweep.md) | Web QA sweep: prioritized bug list + screenshots, no code changes | 2026-09-28 |
 | [T-0062](T-0062-web-qa-fixes.md) | Esc closes every menu/dialog, reduced motion covers skeleton/spinner/retry-spinner, focus ring + id/name + disabled Approve/Deny polish | 2026-09-28 |
-| [T-0063](T-0063-mobile-mock-gating.md) | Mobile: ?mock= honored only in dev builds or with EXPO_PUBLIC_GALENA_MOCK (chat store + My AIs), one shared gate | 2026-09-28 |
+| [T-0063](T-0063-mobile-mock-gating.md) | Mobile: ?mock= honored only in dev builds or with EXPO_PUBLIC_ZILAR_MOCK (chat store + My AIs), one shared gate | 2026-09-28 |
 | [T-0061](T-0061-edit-delete-web.md) | Edit + delete for everyone (web): XEP-0308 corrections, XEP-0424 retractions, edit bar, tombstones, sender-only authorization; live-verified against ejabberd incl. MAM | 2026-09-28 |
 | [T-0066](T-0066-budget-warning.md) | AI budget warning at 80% (daily and 30-day window): one fixed notice per kind per chat per UTC day, sent after the reply; live proof open | 2026-09-29 |
 | [T-0064](T-0064-mobile-markdown.md) | Mobile renders Markdown in AI replies (own dependency-free parser, safe subset, plain list previews); visual check open | 2026-09-29 |
 | [T-0067](T-0067-mobile-loading-states.md) | Mobile loading is not empty: skeletons, inline errors with Retry, pending open flushed on ready (port of T-0042); phone check open | 2026-09-29 |
 | [T-0068](T-0068-machines-registry.md) | M3 machines registry (server): hashed single-use pairing codes, proof-of-key-possession registration, owner approve/deny/revoke, durable key registry; live proof open | 2026-09-29 |
 | [T-0069](T-0069-web-mock-standalone.md) | Web mock mode: ?mock=1 only in dev builds; standalone (fake session, mock /api for AIs and connections); production ignores the param (proved with vite preview) | 2026-09-29 |
-| [T-0065](T-0065-attachments-web.md) | Web attachments: images and files via XEP-0363 + attachment payload, preview bar, paste and drag-and-drop, image/file bubbles, retry; images auto-load only from Galena's upload host; live check open | 2026-09-29 |
+| [T-0065](T-0065-attachments-web.md) | Web attachments: images and files via XEP-0363 + attachment payload, preview bar, paste and drag-and-drop, image/file bubbles, retry; images auto-load only from Zilar's upload host; live check open | 2026-09-29 |
 | [T-0070](T-0070-machines-web.md) | Machines page (web): add with a pairing code, approve/deny, rename, revoke, delete; mock data; runner described as coming soon; visual check open | 2026-09-29 |
 | [T-0072](T-0072-runner-app.md) | Runner app skeleton: pair, run, identity file 0600, no exec path | 2026-09-29 |
 | [T-0071](T-0071-runner-hub.md) | Runner hub: approved machines connect over the tunnel, revoke drops them, online + last-seen; off by default | 2026-09-29 |
@@ -152,7 +152,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0115](T-0115-invite-links.md) | shareable group invite links: expiry, max uses, revoke, join page (migration 0026) | 2026-09-30 |
 | [T-0131](T-0131-screenshots-user-docs.md) | feature screenshots (script + PNGs), user guide, README and FEATURES links | 2026-09-30 |
 | [T-0116](T-0116-group-roles.md) | group roles: private-topic access and approver rights (migration 0027) | 2026-09-30 |
-| [T-0127](T-0127-install-wizard-backup-baremetal.md) | install wizard (./galena init/up/doctor/backup/restore), bare-metal guide, deploy/backups ignored | 2026-09-30 |
+| [T-0127](T-0127-install-wizard-backup-baremetal.md) | install wizard (./zilar init/up/doctor/backup/restore), bare-metal guide, deploy/backups ignored | 2026-09-30 |
 | [T-0133](T-0133-web-followups.md) | web follow-ups: single-call topic adds, revoke unstick, stale refresh guard, quiet-archive leak, screenshot script tests | 2026-09-30 |
 | [T-0132](T-0132-tool-host-approval.md) | tool host approval: hosts approved once per tool, sandbox gets declared ∩ approved (migration 0028) | 2026-09-30 |
 | [T-0136](T-0136-mobile-invite-links.md) | mobile group invite links: create, list, revoke, join by link (mobile only, to be run on Android) | 2026-09-30 |
@@ -187,6 +187,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0157](T-0157-mobile-nits-2.md) | Mobile nits bundle 2: attachments, GIFs, roles load error | planned | meta/muse-spark-1.3-contributor | T-0148, T-0150 | Spec ready |
 | [T-0158](T-0158-scheduled-backups.md) | Scheduled backups with retention and a freshness check | planned | meta/muse-spark-1.3-contributor | T-0151 | Spec ready |
 | [T-0159](T-0159-install-rehearsal.md) | Fresh production install rehearsal (run only on a free machine) | planned | meta/muse-spark-1.3-contributor | T-0145, T-0151, T-0158 | Spec ready |
-| [T-0160](T-0160-rename-zilar.md) | Rename EVERYTHING from Galena to Zilar (scope, env, hosts, DB names, compose, storage keys, deploy script; no keep-list) | in-progress | meta/muse-spark-1.3-contributor | none (runs ALONE) | Launched 2026-10-02; dev DB backup in ~/zilar-rename-backup |
 | [T-0148](T-0148-mobile-gifs.md) | Mobile GIFs | 2026-10-01 |
 | [T-0151](T-0151-deploy-storage-safety.md) | Production storage safety | 2026-10-01 |
+| [T-0160](T-0160-rename-zilar.md) | Rename everything from Zilar to Zilar | 2026-10-02 |

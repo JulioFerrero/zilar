@@ -12,7 +12,7 @@ import type {
   UiMessage,
   UiReaction,
   VoiceMeta,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 import {
   applyEdit,
   applyReaction,
@@ -27,9 +27,9 @@ import {
   rebaseMentions,
   resolveEdits,
   summarize,
-} from '@galena/chat-core';
-import type { Payload } from '@galena/protocol';
-import { StickerSchema } from '@galena/protocol';
+} from '@zilar/chat-core';
+import type { Payload } from '@zilar/protocol';
+import { StickerSchema } from '@zilar/protocol';
 import { clearChatListCache, readChatListCache, writeChatListCache } from './chatListCache';
 import {
   createXmppCore,
@@ -38,7 +38,7 @@ import {
   type PresenceEvent,
   type XmppCore,
   type XmppCoreOptions,
-} from '@galena/xmpp-core';
+} from '@zilar/xmpp-core';
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
 import {
@@ -124,7 +124,7 @@ import type { ChatStoreState, ConnectionStatus, DraftState } from './store';
 import { applyChatPrefs, mutedUntilFor } from '@/lib/chatPrefs';
 import { dismissChatNotifications, totalBadgeUnread, updateAppBadge } from '@/lib/push';
 
-const LAST_READ_PREFIX = 'galena:lastRead:';
+const LAST_READ_PREFIX = 'zilar:lastRead:';
 const PREVIEW_HISTORY_MAX = 1;
 const PAGE_HISTORY_MAX = 50;
 const TYPING_CLEAR_MS = 5000;

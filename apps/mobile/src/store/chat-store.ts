@@ -1,5 +1,5 @@
-import type { MessageStatus, UiMessage } from '@galena/chat-core';
-import { StickerSchema } from '@galena/protocol';
+import type { MessageStatus, UiMessage } from '@zilar/chat-core';
+import { StickerSchema } from '@zilar/protocol';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import type {
@@ -1091,13 +1091,13 @@ export interface MockEnv {
 function currentMockEnv(): MockEnv {
   return {
     dev: typeof __DEV__ !== 'undefined' && __DEV__,
-    envMock: process.env.EXPO_PUBLIC_GALENA_MOCK,
+    envMock: process.env.EXPO_PUBLIC_ZILAR_MOCK,
     nodeEnv: process.env.NODE_ENV,
   };
 }
 
 /**
- * `?mock=1` (or `EXPO_PUBLIC_GALENA_MOCK=1`) selects the mock store for local
+ * `?mock=1` (or `EXPO_PUBLIC_ZILAR_MOCK=1`) selects the mock store for local
  * UI work. Vitest also runs on the mock store. The real store is the default.
  * The route param is honored only when `mockParamAllowed` opens the gate, so a
  * production deep link cannot switch a real user to fake data.

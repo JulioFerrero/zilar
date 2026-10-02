@@ -63,7 +63,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -98,9 +98,9 @@ pnpm build
 - `pnpm install`: `Done in 9.2s using pnpm v10.32.1` — 1010 packages installed, lockfile up to date.
 - `pnpm format`: rewrote 4 files; `pnpm format:check` — `All matched files use Prettier code style!`.
 - `pnpm lint`: clean (oxlint `.` exits 0).
-- `pnpm typecheck`: `Tasks: 10 successful, 10 total` (9 cached, only `@galena/web` re-ran; `tsc --noEmit -p tsconfig.json` and `tsc --noEmit -p tsconfig.node.json` both pass).
-- `pnpm exec turbo test --force --filter=@galena/web`: `Test Files 54 passed (54) / Tests 562 passed (562) / Duration ~10s` (the new component file adds 21 tests, the new mock audit block adds three, the new `audit list API` block adds five, the new panel describe adds three; existing tests still pass).
-- `pnpm build`: `Tasks: 2 successful, 2 total` (the chunk-size warning is unrelated to this task; both `@galena/web` and `@galena/mobile` build cleanly).
+- `pnpm typecheck`: `Tasks: 10 successful, 10 total` (9 cached, only `@zilar/web` re-ran; `tsc --noEmit -p tsconfig.json` and `tsc --noEmit -p tsconfig.node.json` both pass).
+- `pnpm exec turbo test --force --filter=@zilar/web`: `Test Files 54 passed (54) / Tests 562 passed (562) / Duration ~10s` (the new component file adds 21 tests, the new mock audit block adds three, the new `audit list API` block adds five, the new panel describe adds three; existing tests still pass).
+- `pnpm build`: `Tasks: 2 successful, 2 total` (the chunk-size warning is unrelated to this task; both `@zilar/web` and `@zilar/mobile` build cleanly).
 - Live check: started `pnpm exec vite --port 5180 --strictPort --host 127.0.0.1` from `apps/web` (port 5180, free on this machine, and away from 3000 / 5173 / 8081), navigated to `http://127.0.0.1:5180/c/c-devai?mock=1&panel=ai`, scrolled the Activity section into view, and saved `apps/web/screenshots/t-0084-activity-devai.png`. Repeated for `c/c-marketingai` and saved `apps/web/screenshots/t-0084-activity-marketingai.png`. The dev server was started in this session, then stopped with `pkill -f "vite.*5180"` before commit; `lsof -tiTCP:5180 -sTCP:LISTEN` returns empty.
 
 ### Problems, deviations from the spec, open questions

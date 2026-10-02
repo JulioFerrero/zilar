@@ -47,7 +47,7 @@ async function seedAi(context: TestContext, ownerId: string): Promise<{ aiId: st
   });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  const jid = `${localpart}@galena.localhost`;
+  const jid = `${localpart}@zilar.localhost`;
   await context.db.insert(ais).values({
     id: aiId,
     owner: ownerId,
@@ -452,7 +452,7 @@ describe('approval rules routes (T-0099)', () => {
           action: 'demo.echo',
           summary: 'Echo',
           argsHash: argsHash(20),
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
           expiresAt: new Date(now.getTime() + 60_000),
         },
         now,
@@ -484,7 +484,7 @@ describe('approval rules routes (T-0099)', () => {
           action: 'demo.echo',
           summary: 'Echo',
           argsHash: argsHash(21),
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
           expiresAt: new Date(now.getTime() + 60_000),
         },
         now,
@@ -518,7 +518,7 @@ describe('approval rules routes (T-0099)', () => {
           action: 'demo.echo',
           summary: 'Echo',
           argsHash: argsHash(22),
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
           expiresAt: new Date(now.getTime() + 60_000),
         },
         now,
@@ -584,7 +584,7 @@ describe('approval rules routes (T-0099)', () => {
           action: 'demo.echo',
           summary: 'Echo',
           argsHash: argsHash(args.seed),
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
           expiresAt: new Date(now.getTime() + 60_000),
         },
         now,
@@ -741,7 +741,7 @@ describe('approval rules routes (T-0099)', () => {
           action: 'demo.echo',
           summary: 'Echo',
           argsHash: argsHash(164),
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
           expiresAt: new Date(now.getTime() + 60_000),
         },
         now,

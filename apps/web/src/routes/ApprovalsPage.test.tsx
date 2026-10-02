@@ -9,7 +9,7 @@ import { ApprovalsPage } from '@/routes/ApprovalsPage';
 
 const auth: AuthState = {
   status: 'authenticated',
-  user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+  user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
 
@@ -73,7 +73,7 @@ function makeApproval(
     argsHash: 'a'.repeat(64),
     worstCase:
       overrides.worstCase === undefined ? { currency: 'EUR', amount: 0.4 } : overrides.worstCase,
-    requestedBy: 'dev-1@ai.galena.test',
+    requestedBy: 'dev-1@ai.zilar.test',
     status: 'pending',
     decidedAt: null,
     note: null,

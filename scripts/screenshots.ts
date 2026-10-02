@@ -59,7 +59,7 @@ async function waitForServer(url: string, tries = 60): Promise<void> {
 function startDevServer(onError: (error: Error) => void): ReturnType<typeof spawn> {
   const child = spawn(
     'pnpm',
-    ['--filter', '@galena/web', 'exec', 'vite', '--port', String(PORT), '--strictPort'],
+    ['--filter', '@zilar/web', 'exec', 'vite', '--port', String(PORT), '--strictPort'],
     {
       cwd: root,
       stdio: 'ignore',
@@ -161,7 +161,7 @@ async function main(): Promise<void> {
   const shots = shotTable(zod);
   // Capture into a temp dir first: a mid-run failure must never leave a
   // half-fresh set in `docs/screenshots/`. Only a complete run swaps in.
-  const staging = mkdtempSync(join(tmpdir(), 'galena-screenshots-'));
+  const staging = mkdtempSync(join(tmpdir(), 'zilar-screenshots-'));
   let server: ReturnType<typeof spawn> | undefined;
   let serverError: Error | undefined;
   try {

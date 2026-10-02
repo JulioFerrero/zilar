@@ -49,7 +49,7 @@ This is the first time Julio will talk to an AI he created. It must be dependabl
 - `apps/server/src/config.ts`: one new flag, `AGENT_GATEWAY_ENABLED`, a boolean defaulting to **false**.
 - `apps/server/.env.example`: document the flag.
 - `apps/server/src/ais/service.ts`: **only** additions. You may add a function that lists active AIs for the gateway, and a small in-process notifier so the gateway learns about created and deleted AIs. Don't change existing behaviour.
-- `apps/server/package.json` (add `"@galena/xmpp-core": "workspace:*"`) and `pnpm-lock.yaml`
+- `apps/server/package.json` (add `"@zilar/xmpp-core": "workspace:*"`) and `pnpm-lock.yaml`
 - `work/T-0034-ai-replies-dm.md`
 
 **Not allowed:**
@@ -61,7 +61,7 @@ This is the first time Julio will talk to an AI he created. It must be dependabl
 - other server modules
 
 ### Allowed dependencies
-`@galena/xmpp-core` (workspace). Nothing else.
+`@zilar/xmpp-core` (workspace). Nothing else.
 
 ### What to build
 
@@ -91,7 +91,7 @@ This is the first time Julio will talk to an AI he created. It must be dependabl
 **3. Context** (`agents/context.ts`: pure functions, heavily unit-tested)
 - System message:
   - the AI's persona;
-  - one short platform line, e.g. "You are <name>, an AI in the Galena chat app, talking in a private chat with <owner name>. Reply in plain text; keep it concise unless asked.";
+  - one short platform line, e.g. "You are <name>, an AI in the Zilar chat app, talking in a private chat with <owner name>. Reply in plain text; keep it concise unless asked.";
   - today's date.
 - History: the last **30** DM messages from MAM via `loadHistory`, oldest first.
   - The owner's messages become `user` turns; the AI's own become `assistant` turns.
@@ -148,7 +148,7 @@ Every log line and error goes through `redactSecrets` with the virtual key, the 
 
 Use a fake `XmppCore` and a fake LiteLLM HTTP server or fetch.
 
-### Integration check (gated `GALENA_AGENT_INTEGRATION=1`; run it yourself)
+### Integration check (gated `ZILAR_AGENT_INTEGRATION=1`; run it yourself)
 Against the real ejabberd, LiteLLM and Postgres, the way T-0033's integration test does it: your own branch server on another port, a made-up provider key, no container restarts, and everything cleaned up.
 1. Create a user and a connection with a **made-up** OpenAI key, then create an AI.
 2. Start the gateway in-process.
@@ -241,12 +241,12 @@ client construction as the routes; it stays inert when either is missing.
 
 **7. Config.** `AGENT_GATEWAY_ENABLED` (`true`/`false`, default `false`) in
 `config.ts`, documented in `.env.example`. Server depends on
-`@galena/xmpp-core` (workspace).
+`@zilar/xmpp-core` (workspace).
 
 ### Files changed
 - `apps/server/src/agents/gateway.ts` (new), `context.ts` (new), `reply.ts` (new)
 - `apps/server/src/agents/context.test.ts`, `reply.test.ts`, `gateway.test.ts`
-  (new, 44 tests), `integration.test.ts` (new, gated `GALENA_AGENT_INTEGRATION=1`)
+  (new, 44 tests), `integration.test.ts` (new, gated `ZILAR_AGENT_INTEGRATION=1`)
 - `apps/server/src/ais/service.ts`: additions only — `listActiveAisForGateway`,
   `onAiLifecycle`/`AiLifecycleEvent`, emit on create/delete success.
 - `apps/server/src/index.ts`, `src/config.ts`, `.env.example`, `package.json`,
@@ -258,16 +258,16 @@ client construction as the routes; it stays inert when either is missing.
   fail. No other file touched (`git status` shows only the above).
 
 ### Commands run and real results
-- `pnpm install` — done (workspace link + lockfile for `@galena/xmpp-core`).
+- `pnpm install` — done (workspace link + lockfile for `@zilar/xmpp-core`).
 - `pnpm format:check` — pass ("All matched files use Prettier code style!").
 - `pnpm lint` — pass (oxlint, no findings).
 - `pnpm typecheck` — 9 tasks successful.
 - `pnpm exec turbo test --force` — 9/9 packages. Server: **343 passed,
-  7 skipped** (6 pre-existing gated + my `GALENA_AGENT_INTEGRATION` test).
+  7 skipped** (6 pre-existing gated + my `ZILAR_AGENT_INTEGRATION` test).
   Note: one run showed a `runner-tunnel` failure under full parallel load;
   it passes on retry (9/9 files) and that package is untouched by this task.
 - `pnpm build` — pass.
-- **Gated integration, live** (`GALENA_AGENT_INTEGRATION=1`, branch server on
+- **Gated integration, live** (`ZILAR_AGENT_INTEGRATION=1`, branch server on
   3199, made-up OpenAI key, no container restarts): **1 passed in ~5 s**.
   Owner DM "hello" → AI reply was exactly
   "My provider rejected the API key. Check it under Connections → Test."
@@ -352,7 +352,7 @@ Note: the worker stopped its own branch server with `node … process.kill` afte
 
 Lead re-ran every check after rebasing onto main:
 - format:check, lint, typecheck (9/9) and build pass;
-- `turbo test --force --filter=@galena/server`: 344 passed, 7 skipped (gated).
+- `turbo test --force --filter=@zilar/server`: 344 passed, 7 skipped (gated).
 
 The gated live integration test passed in round 1 (reply = the exact "provider rejected the API key" text, everything cleaned up). Round 2 doesn't touch that path.
 

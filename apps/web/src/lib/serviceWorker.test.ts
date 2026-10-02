@@ -40,7 +40,7 @@ const shown: ShownNotification[] = [];
 const openedWindows: string[] = [];
 const focused: string[] = [];
 let closedCount = 0;
-const windowUrls = ['https://galena.test/'];
+const windowUrls = ['https://zilar.test/'];
 
 function fakeSelf() {
   return {
@@ -134,7 +134,7 @@ describe('service worker', () => {
 
   it('tags by chat id when the payload has no message id', async () => {
     await firePush({
-      json: () => ({ title: 'Galena', body: 'hi', chatId: 'room@rooms.x' }),
+      json: () => ({ title: 'Zilar', body: 'hi', chatId: 'room@rooms.x' }),
       text: () => '',
     });
     expect(shown[0]!.options).toMatchObject({
@@ -156,10 +156,10 @@ describe('service worker', () => {
   });
 
   it('focuses the open chat window or opens the chat', async () => {
-    windowUrls.push('https://galena.test/c/room%40rooms.x');
+    windowUrls.push('https://zilar.test/c/room%40rooms.x');
     await fireClick('room@rooms.x');
     expect(closedCount).toBe(1);
-    expect(focused).toEqual(['https://galena.test/c/room%40rooms.x']);
+    expect(focused).toEqual(['https://zilar.test/c/room%40rooms.x']);
     expect(openedWindows).toEqual([]);
 
     windowUrls.length = 0;

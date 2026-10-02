@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 
 import type { ChatPref, PutChatPrefInput } from './chat-prefs-api';
 

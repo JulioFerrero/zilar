@@ -90,7 +90,7 @@ export function aiLocalpart(aiId: string): string {
 // The LiteLLM key alias and metadata both name the AI id, so a human reading
 // LiteLLM's dashboard can tell which AI a key belongs to without our database.
 export function virtualKeyAlias(aiId: string): string {
-  return `galena-ai-${aiId}`;
+  return `zilar-ai-${aiId}`;
 }
 
 export async function listAis(db: ServerDatabase, ownerId: string): Promise<PublicAi[]> {

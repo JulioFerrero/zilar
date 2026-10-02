@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { requestId, type RequestIdVariables } from 'hono/request-id';
 import type { Logger } from 'pino';
-import { protocolVersion } from '@galena/protocol';
+import { protocolVersion } from '@zilar/protocol';
 import { createLitellmAdminClientFromConfig, type LitellmAdminClient } from './ai/litellm-client';
 import { createAisRoutes } from './ais/routes';
 import type { AiLogger } from './ais/service';
@@ -364,9 +364,9 @@ export function createApp({
   // request ever reaches a real provider.
   const connectionsCipher =
     connections?.cipher ??
-    (config.GALENA_KEY_ENCRYPTION_KEY === undefined
+    (config.ZILAR_KEY_ENCRYPTION_KEY === undefined
       ? undefined
-      : createKeyCipher(config.GALENA_KEY_ENCRYPTION_KEY));
+      : createKeyCipher(config.ZILAR_KEY_ENCRYPTION_KEY));
   app.route(
     '/api',
     createConnectionsRoutes({
@@ -407,7 +407,7 @@ export function createApp({
     return c.json(
       {
         ok: up,
-        name: 'galena-server',
+        name: 'zilar-server',
         version: serverVersion,
         protocolVersion,
         db: up ? 'ok' : 'down',

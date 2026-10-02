@@ -16,7 +16,7 @@ function jsonResponse(status: number, body: unknown): Response {
 
 const auth: AuthState = {
   status: 'authenticated',
-  user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+  user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
 
@@ -34,7 +34,7 @@ const createdAi = {
   template: 'dev',
   persona: 'You are a concise senior engineer.',
   model: 'gpt-4o',
-  jid: 'ai-a-1@galena.test',
+  jid: 'ai-a-1@zilar.test',
   status: 'active',
   providerConnectionId: 'c-1',
   limits: { perDayUsd: 2, perMonthUsd: 20 },

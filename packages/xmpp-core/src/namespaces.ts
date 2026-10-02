@@ -1,4 +1,4 @@
-export const AGENT_NAMESPACE = 'urn:galena:agent:0';
+export const AGENT_NAMESPACE = 'urn:zilar:agent:0';
 export const CARBONS_NAMESPACE = 'urn:xmpp:carbons:2';
 export const CHAT_MARKERS_NAMESPACE = 'urn:xmpp:chat-markers:0';
 export const CONFERENCE_NAMESPACE = 'jabber:x:conference';

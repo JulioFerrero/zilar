@@ -4,7 +4,7 @@ import {
   CLOSE_VERSION,
   RunnerClient,
   type RunnerKeypair,
-} from '@galena/runner-tunnel';
+} from '@zilar/runner-tunnel';
 import type { RunnerIdentity } from './identity.ts';
 
 export interface RunOptions {

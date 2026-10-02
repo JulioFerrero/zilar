@@ -1,17 +1,12 @@
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { ChevronDown, ChevronRight, Lock, MoreHorizontal, Pin, VolumeX } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { Avatar } from './Avatar';
 import { ChatActionsMenu } from './ChatActionsMenu';
 import { cn } from '@/lib/utils';
-import {
-  formatListTime,
-  previewBody,
-  previewPrefix,
-  shouldRenderMarkdown,
-} from '@galena/chat-core';
-import { markdownToPlain } from '@galena/chat-core';
+import { formatListTime, previewBody, previewPrefix, shouldRenderMarkdown } from '@zilar/chat-core';
+import { markdownToPlain } from '@zilar/chat-core';
 import { typingLabel } from '@/lib/format';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { MessageTicks } from './MessageTicks';

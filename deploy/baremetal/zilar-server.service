@@ -1,25 +1,25 @@
 [Unit]
-Description=Galena chat server (TypeScript API)
-Documentation=https://github.com/<owner>/galena/blob/main/docs/INSTALL_BARE_METAL.md
+Description=Zilar chat server (TypeScript API)
+Documentation=https://github.com/<owner>/zilar/blob/main/docs/INSTALL_BARE_METAL.md
 After=network-online.target postgresql.service ejabberd.service
 Wants=network-online.target
 Requires=postgresql.service
 
 [Service]
 Type=simple
-User=galena
-Group=galena
-# The checkout lives at /opt/galena (see the guide); the server runs the
+User=zilar
+Group=zilar
+# The checkout lives at /opt/zilar (see the guide); the server runs the
 # same entry point as the production image (no build step: tsx runs the
 # TypeScript sources directly).
-WorkingDirectory=/opt/galena/apps/server
-EnvironmentFile=/etc/galena/galena.env
-ExecStart=/opt/galena/apps/server/node_modules/.bin/tsx src/index.ts
+WorkingDirectory=/opt/zilar/apps/server
+EnvironmentFile=/etc/zilar/zilar.env
+ExecStart=/opt/zilar/apps/server/node_modules/.bin/tsx src/index.ts
 Restart=on-failure
 RestartSec=5
 
 # Only the checkout's server tree and the data dir are writable; any other
-# write (/, /usr, /home) fails the process. /etc/galena (the env file) is
+# write (/, /usr, /home) fails the process. /etc/zilar (the env file) is
 # readable but not writable.
 NoNewPrivileges=true
 ProtectSystem=strict
@@ -29,11 +29,11 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
-# /var/lib/galena holds the sticker store (STICKER_STORAGE_DIR in
-# /etc/galena/galena.env, default /var/lib/galena/stickers): keep it
+# /var/lib/zilar holds the sticker store (STICKER_STORAGE_DIR in
+# /etc/zilar/zilar.env, default /var/lib/zilar/stickers): keep it
 # writable or sticker uploads fail at startup ("not writable").
-ReadWritePaths=/opt/galena/apps/server /var/lib/galena
-# The env file may be world-unreadable already (mode 0600 galena:galena),
+ReadWritePaths=/opt/zilar/apps/server /var/lib/zilar
+# The env file may be world-unreadable already (mode 0600 zilar:zilar),
 # but pass the service name check anyway.
 UMask=0077
 

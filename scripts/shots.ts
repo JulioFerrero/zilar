@@ -7,7 +7,7 @@
  *
  * It also has no imports at all (zod is injected by the caller): the file
  * is typechecked both by `scripts/tsconfig.json` (node types, zod path
- * mapping) and as part of `@galena/web` (via the `shots.test.ts` import,
+ * mapping) and as part of `@zilar/web` (via the `shots.test.ts` import,
  * whose tsconfig has neither), so it must not rely on either.
  */
 export const DESKTOP = { width: 1440, height: 900 };

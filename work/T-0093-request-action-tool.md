@@ -66,7 +66,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -124,8 +124,8 @@ Closed the loop T-0090 / T-0092 opened: a model in an owner's DM gets a third to
 ### Commands run and real results
 
 - `pnpm install` — `Lockfile is up to date, resolution step is skipped ... Done in 13.8s using pnpm v10.32.1` (1010 packages, 0 added by hand).
-- `pnpm typecheck` — 10/10 tasks successful; `@galena/server` cache-miss then green.
-- `pnpm exec turbo test --force --filter=@galena/server` — `Test Files: 53 passed | 5 skipped (58)` and `Tests: 799 passed | 7 skipped (806)`; ran in 140s. The 6 new `request_action tool` tests in `agents/gateway.test.ts` and all 6 `demo.echo adapter` tests in `actions/demo.test.ts` are included.
+- `pnpm typecheck` — 10/10 tasks successful; `@zilar/server` cache-miss then green.
+- `pnpm exec turbo test --force --filter=@zilar/server` — `Test Files: 53 passed | 5 skipped (58)` and `Tests: 799 passed | 7 skipped (806)`; ran in 140s. The 6 new `request_action tool` tests in `agents/gateway.test.ts` and all 6 `demo.echo adapter` tests in `actions/demo.test.ts` are included.
 - `pnpm exec prettier --write .` then `pnpm format:check` — `All matched files use Prettier code style!`
 - `pnpm lint` — `oxlint .` exits 0; re-run after every edit and once after the last edit per the spec.
 - `pnpm build` — `Tasks: 2 successful, 2 total`; turbo cache FULL after the run.

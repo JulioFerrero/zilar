@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { UiMessage } from '@galena/chat-core';
-import { ApprovalRequestSchema, PayloadSchema, StickerSchema } from '@galena/protocol';
+import type { UiMessage } from '@zilar/chat-core';
+import { ApprovalRequestSchema, PayloadSchema, StickerSchema } from '@zilar/protocol';
 import { mockChats, mockMessages } from '@/mock';
 import { mockDemoStickerPacks } from './helpers';
 import { mockRequest, resetMockApi, setMockDelay } from './api';
@@ -62,7 +62,7 @@ describe('mock data', () => {
 
 describe('mock sticker demo packs (T-0120)', () => {
   it('ships two packs of relative-URL stickers that pass StickerSchema', async () => {
-    const { StickerSchema: Schema } = await import('@galena/protocol');
+    const { StickerSchema: Schema } = await import('@zilar/protocol');
     const packs = mockDemoStickerPacks();
     expect(packs).toHaveLength(2);
     for (const pack of packs) {

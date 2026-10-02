@@ -57,7 +57,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test
+pnpm --filter @zilar/mobile test
 ```
 
 ### Out of scope
@@ -104,11 +104,11 @@ $ pnpm lint
 (no output — clean)
 
 $ pnpm typecheck
-… @galena/mobile:typecheck: > tsc --noEmit
+… @zilar/mobile:typecheck: > tsc --noEmit
  Tasks:    10 successful, 10 total
 
-$ pnpm --filter @galena/mobile test
- RUN  v5.0.2 /Users/julio/personal-projects/galena-T-0095/apps/mobile
+$ pnpm --filter @zilar/mobile test
+ RUN  v5.0.2 /Users/julio/personal-projects/zilar-T-0095/apps/mobile
  Test Files  33 passed | 2 skipped (35)
       Tests  358 passed | 2 skipped (360)
 ```

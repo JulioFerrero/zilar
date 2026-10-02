@@ -1,4 +1,4 @@
-import type { Money } from '@galena/protocol';
+import type { Money } from '@zilar/protocol';
 
 export interface ExpiryParts {
   totalMs: number;

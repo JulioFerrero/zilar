@@ -1,6 +1,8 @@
 <div align="center">
 
-# ◈ Galena
+<img src="assets/brand/icon.png" alt="Zilar" width="132" />
+
+# Zilar
 
 **A self-hosted chat where people and AI agents talk together.**<br>
 Friends, family, work groups, and groups with your own AIs, on your own server.
@@ -11,6 +13,7 @@ Friends, family, work groups, and groups with your own AIs, on your own server.
 ![XMPP](https://img.shields.io/badge/chat-XMPP%20%C2%B7%20ejabberd-2B6CB0)
 ![Self-hosted](https://img.shields.io/badge/self--hosted-yes-2EA043)
 ![Status](https://img.shields.io/badge/status-early%20%C2%B7%20in%20active%20development-orange)
+![License MIT](https://img.shields.io/badge/license-MIT-blue)
 
 [Features](#-what-it-does) · [How it works](#-how-it-works) · [Safety](#-safety-is-code-not-prompts) · [Quick start](#-quick-start) · [Docs](#-docs)
 
@@ -20,7 +23,7 @@ Friends, family, work groups, and groups with your own AIs, on your own server.
 
 Think Telegram, but some of the people in the room are AIs you own. They join your DMs and groups, answer @mentions, stream their replies, and can be given real work under rules the **platform** enforces: spending caps, approvals for risky actions, an audit trail, and a kill switch. No rule lives only in a prompt.
 
-> Named after galena, the crystal inside the first radios, the mineral that received messages over the air.
+> *Zilar* is the Basque word for silver.
 
 ## ✨ What it does
 
@@ -63,7 +66,7 @@ flowchart LR
     M[Mobile app<br/>Expo]
   end
   subgraph Server["Your server"]
-    API[Galena API<br/>Hono + Drizzle]
+    API[Zilar API<br/>Hono + Drizzle]
     X[(ejabberd<br/>XMPP + history)]
     DB[(Postgres<br/>+ pgvector)]
     L[LiteLLM<br/>capped keys]
@@ -111,7 +114,7 @@ Early and moving fast, built by one person with an AI team. Chat, AIs, streaming
 
 ## 🚀 Quick start
 
-To install your own Galena, pick a path in [`docs/INSTALL.md`](docs/INSTALL.md) (Docker in five minutes, Coolify, or bare metal).
+To install your own Zilar, pick a path in [`docs/INSTALL.md`](docs/INSTALL.md) (Docker in five minutes, Coolify, or bare metal).
 To hack on it locally:
 
 ```bash
@@ -165,7 +168,7 @@ Prerequisites: **Node 24** (see `.nvmrc`) and **pnpm 10** (see `packageManager` 
 pnpm install
 ```
 
-Start the dev servers — `@galena/server` on <http://localhost:3000> (`PORT` overrides it), `@galena/web` on <http://localhost:5173>:
+Start the dev servers — `@zilar/server` on <http://localhost:3000> (`PORT` overrides it), `@zilar/web` on <http://localhost:5173>:
 
 ```bash
 pnpm dev
@@ -187,8 +190,8 @@ pnpm build          # Turborepo, builds the web app
 
 The backing services run in Docker Compose (Docker Desktop, or any Docker with Compose v2):
 
-- **Postgres** with pgvector, one database and user each for our server (`galena`), ejabberd (`ejabberd`) and LiteLLM (`litellm`)
-- **ejabberd** on the XMPP domain `galena.localhost`, group chats on `rooms.galena.localhost`, admin account `admin@galena.localhost`
+- **Postgres** with pgvector, one database and user each for our server (`zilar`), ejabberd (`ejabberd`) and LiteLLM (`litellm`)
+- **ejabberd** on the XMPP domain `zilar.localhost`, group chats on `rooms.zilar.localhost`, admin account `admin@zilar.localhost`
 - **LiteLLM** as the LLM gateway, with a placeholder model and no real provider keys
 
 `infra/.env` is git-ignored; create it once and replace every `CHANGE_ME`:
@@ -197,7 +200,7 @@ The backing services run in Docker Compose (Docker Desktop, or any Docker with C
 cp infra/.env.example infra/.env
 ```
 
-`infra/.env` also holds the XMPP login secret (`GALENA_XMPP_JWT_SECRET`, at least 32 random bytes) and the admin JID (`EJABBERD_ADMIN_JID`). The ejabberd container derives its HS256 JWT signing key from the secret on start, and `@galena/server` signs the short-lived tokens clients log in with.
+`infra/.env` also holds the XMPP login secret (`ZILAR_XMPP_JWT_SECRET`, at least 32 random bytes) and the admin JID (`EJABBERD_ADMIN_JID`). The ejabberd container derives its HS256 JWT signing key from the secret on start, and `@zilar/server` signs the short-lived tokens clients log in with.
 
 | Script | Does |
 |---|---|
@@ -212,8 +215,12 @@ Everything binds to `127.0.0.1` only:
 
 | Service | Endpoints | Notes |
 |---|---|---|
-| Postgres | `127.0.0.1:5432` | pgvector enabled in the `galena` database |
+| Postgres | `127.0.0.1:5432` | pgvector enabled in the `zilar` database |
 | ejabberd | `127.0.0.1:5222` (c2s), `127.0.0.1:5280` (`/ws`, `/upload`, `/api`) | In-band registration and s2s federation are off |
 | LiteLLM | `127.0.0.1:4000` | `master_key` and `database_url` come from `infra/.env` |
 
 Configs live in `infra/`: `docker-compose.dev.yml`, `ejabberd/ejabberd.yml`, `litellm/config.yaml` and `postgres/init/`. Images are pinned to exact tags (LiteLLM by digest); never use LiteLLM 1.82.7 or 1.82.8, those releases were compromised.
+
+## 📄 License
+
+MIT, see [`LICENSE`](LICENSE).

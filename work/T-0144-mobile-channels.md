@@ -37,7 +37,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test --maxWorkers=2 <touched test files and their neighbours>
+pnpm --filter @zilar/mobile test --maxWorkers=2 <touched test files and their neighbours>
 ```
 Do NOT start simulators, Metro, or `expo run`. Say in the Report what still needs a device look.
 
@@ -66,7 +66,7 @@ Do NOT start simulators, Metro, or `expo run`. Say in the Report what still need
 - `pnpm format:check`: pass ("All matched files use Prettier code style!")
 - `pnpm lint`: pass (oxlint clean; fixed one unused param + one set-state-in-effect, re-run clean)
 - `pnpm typecheck`: pass (10/10 turbo tasks; fixed 4 mobile type errors, re-run green)
-- `pnpm --filter @galena/mobile test --maxWorkers=2` on touched + neighbours (13 files: channels, groups-api, chat-api, chat-channels, topics, invite-links-api, real-store.channels, mock/channel, chat-store, real-store, real-store.invite-links, real-store.topics, topics-screen): 183 passed
+- `pnpm --filter @zilar/mobile test --maxWorkers=2` on touched + neighbours (13 files: channels, groups-api, chat-api, chat-channels, topics, invite-links-api, real-store.channels, mock/channel, chat-store, real-store, real-store.invite-links, real-store.topics, topics-screen): 183 passed
 - Neighbours round 2 (chat-header, chat-list, filter, roles, chat-prefs, general-only, prefs-pins, roles, selector-stability, integration, mock-prefs-pins, types, roles-mock): 97 passed, 1 skipped (pre-existing skip)
 - `grep` for disables/`any`/`ts-ignore` in touched source: clean (one comment-word false positive)
 - No simulators/Metro/`expo run` started, per instructions.

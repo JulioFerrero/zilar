@@ -1,4 +1,4 @@
-import { QUICK_REACTIONS } from '@galena/chat-core';
+import { QUICK_REACTIONS } from '@zilar/chat-core';
 import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 

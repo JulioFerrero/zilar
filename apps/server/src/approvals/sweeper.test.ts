@@ -57,7 +57,7 @@ async function seedAi(context: TestContext, ownerId: string): Promise<{ aiId: st
     providerConnectionId: connectionId,
     model: 'gpt-4o-mini',
     localpart: `ai-${aiId}`,
-    jid: `ai-${aiId}@galena.localhost`,
+    jid: `ai-${aiId}@zilar.localhost`,
     status: 'active',
   });
   await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
@@ -80,7 +80,7 @@ async function seedPastDueApproval(
       action: 'send_email',
       summary: 'Send',
       argsHash: argsHash(hashSeed),
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
       expiresAt,
     },
     now,
@@ -227,7 +227,7 @@ describe('approvals sweeper', () => {
         action: 'send_email',
         summary: 'Send',
         argsHash: argsHash(4),
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
         expiresAt: new Date(now.getTime() + 60_000),
       },
       now,

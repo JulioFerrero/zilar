@@ -9,7 +9,7 @@ import {
 } from '../lib/ais-api';
 
 /**
- * Mock AIs and connections for `EXPO_PUBLIC_GALENA_MOCK=1` or `?mock=<scenario>`.
+ * Mock AIs and connections for `EXPO_PUBLIC_ZILAR_MOCK=1` or `?mock=<scenario>`.
  * The list screen mutates this state, so creating an AI in mock mode makes it
  * appear when you return to My AIs, without a server.
  */
@@ -49,7 +49,7 @@ export const mockAis: readonly PublicAi[] = [
     template: 'dev',
     persona: 'You are a concise senior engineer. Prefer small, reviewable changes.',
     model: 'gpt-4o',
-    jid: 'ai-ai-dev-1@galena.test',
+    jid: 'ai-ai-dev-1@zilar.test',
     status: 'active',
     providerConnectionId: 'conn-openai',
     limits: { perDayUsd: 2, perMonthUsd: 20 },
@@ -61,7 +61,7 @@ export const mockAis: readonly PublicAi[] = [
     template: 'marketing',
     persona: 'You are a clear, friendly copywriter.',
     model: 'claude-sonnet-5',
-    jid: 'ai-ai-marketing-1@galena.test',
+    jid: 'ai-ai-marketing-1@zilar.test',
     status: 'active',
     providerConnectionId: 'conn-anthropic',
     limits: { perDayUsd: 5, perMonthUsd: 50 },
@@ -73,7 +73,7 @@ export const mockAis: readonly PublicAi[] = [
     template: 'fun',
     persona: 'You are a playful group-chat host.',
     model: 'gpt-4o-mini',
-    jid: 'ai-ai-fun-1@galena.test',
+    jid: 'ai-ai-fun-1@zilar.test',
     status: 'disabled',
     providerConnectionId: 'conn-openai',
     limits: { perDayUsd: 1, perMonthUsd: 10 },
@@ -83,13 +83,13 @@ export const mockAis: readonly PublicAi[] = [
 
 /**
  * Which mock scenario a session asked for, or null for the real API.
- * A `?mock=<scenario>` param wins over `EXPO_PUBLIC_GALENA_MOCK`; `1` means the
- * default scenario and can be narrowed by `EXPO_PUBLIC_GALENA_MOCK_SCENARIO`.
+ * A `?mock=<scenario>` param wins over `EXPO_PUBLIC_ZILAR_MOCK`; `1` means the
+ * default scenario and can be narrowed by `EXPO_PUBLIC_ZILAR_MOCK_SCENARIO`.
  * Any other unrecognized value means the real API: a stray `?mock=` (or
- * `EXPO_PUBLIC_GALENA_MOCK=false`) must never silently serve fake data.
+ * `EXPO_PUBLIC_ZILAR_MOCK=false`) must never silently serve fake data.
  *
  * `paramAllowed` is the `mockParamAllowed` gate: in a production build with no
- * mock env the route param is ignored, while the `EXPO_PUBLIC_GALENA_MOCK` path
+ * mock env the route param is ignored, while the `EXPO_PUBLIC_ZILAR_MOCK` path
  * (the bundle-time opt-in) always works.
  */
 export function aisMockScenario(
@@ -99,14 +99,14 @@ export function aisMockScenario(
 ): AisMockScenario | null {
   const rawParam = params?.['mock'];
   const param = paramAllowed ? (Array.isArray(rawParam) ? rawParam[0] : rawParam) : undefined;
-  const requested = param !== undefined ? param : env['EXPO_PUBLIC_GALENA_MOCK'];
+  const requested = param !== undefined ? param : env['EXPO_PUBLIC_ZILAR_MOCK'];
   if (requested === undefined || requested === '' || requested === '0') {
     return null;
   }
   if (requested === '1') {
     // `1` explicitly asks for mock mode, so an unrecognized narrowing still
     // runs the default scenario instead of the real API.
-    return normalizeScenario(env['EXPO_PUBLIC_GALENA_MOCK_SCENARIO']) ?? 'default';
+    return normalizeScenario(env['EXPO_PUBLIC_ZILAR_MOCK_SCENARIO']) ?? 'default';
   }
   return normalizeScenario(requested);
 }
@@ -185,7 +185,7 @@ export function createMockAisApi(scenario: AisMockScenario = 'default'): AisApi 
         template: input.template,
         persona: input.persona ?? '',
         model: input.model,
-        jid: `ai-${id}@galena.test`,
+        jid: `ai-${id}@zilar.test`,
         status: 'active',
         providerConnectionId: input.providerConnectionId,
         limits: cloneLimits(input.limits),

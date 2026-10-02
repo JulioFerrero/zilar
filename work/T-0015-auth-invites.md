@@ -51,7 +51,7 @@ Google, Apple and GitHub sign-in come later, once Julio registers those apps. De
   - Enable only the Email OTP plugin (6 digits, **10-minute** expiry, at most **5 attempts**).
   - Do **not** enable email+password sign-in.
 - **Invite-only sign-up.** A new account can only be created when a **valid invite code** is presented. Existing users sign in with a code, without an invite.
-- **First-user bootstrap.** There's no open sign-up, ever. A CLI script, `pnpm --filter @galena/server invite:create [--uses N] [--days D]`, creates an invite **without an inviter** and prints the invite link. The instance owner runs it on the server to invite themselves.
+- **First-user bootstrap.** There's no open sign-up, ever. A CLI script, `pnpm --filter @zilar/server invite:create [--uses N] [--days D]`, creates an invite **without an inviter** and prints the invite link. The instance owner runs it on the server to invite themselves.
 - **Invites table**, which is ours, not Better Auth's:
   - `invites(id, code unique, created_by nullable → user.id, created_at, expires_at, max_uses default 1, uses default 0, revoked_at nullable)`
   - `code` is 128 bits of randomness, base64url, generated with a crypto RNG
@@ -78,7 +78,7 @@ Google, Apple and GitHub sign-in come later, once Julio registers those apps. De
      - `GET /api/invites/:code` (public): returns `{ valid: boolean }` only. **Don't leak** who created it or how many uses are left.
      - `DELETE /api/invites/:code` (only the creator): revokes it
      - `GET /api/me` (auth required): returns `{ id, email, name, image, createdAt }`
-   - **The invite check during sign-up.** The client sends the invite code with the OTP sign-in request (a header `x-galena-invite` or a body field; choose one, following Better Auth's hook API, and document it). A database hook, or Better Auth's `before` hook, rejects creating a **new** user without a usable invite and consumes the invite atomically.
+   - **The invite check during sign-up.** The client sends the invite code with the OTP sign-in request (a header `x-zilar-invite` or a body field; choose one, following Better Auth's hook API, and document it). A database hook, or Better Auth's `before` hook, rejects creating a **new** user without a usable invite and consumes the invite atomically.
 3. **Schema:**
    - Better Auth's tables (user, session, account, verification) as Drizzle schema, generated the way the Better Auth docs describe for Drizzle, plus our `invites` table.
    - **Generate the migration with drizzle-kit** (`db:generate`). **Don't hand-write SQL.**
@@ -130,7 +130,7 @@ pnpm build
 - **Config** (`src/config.ts`, `config.test.ts`): added `BETTER_AUTH_SECRET` (≥ 32 chars, required) and `BETTER_AUTH_URL` (valid URL, defaults to `PUBLIC_URL` via a `transform`). The existing error formatter only prints variable names, never values; tests assert the secret and URL values are absent from errors.
 - **`src/auth/mailer.ts`**: `Mailer { sendOtp(email, code, purpose) }`, `ConsoleMailer`, `createMailer`, `MailerConfigurationError`. `ConsoleMailer` throws in `production` (no real provider exists yet) and otherwise logs exactly `[dev-mailer] OTP for <email>: <code>` at info. `index.ts` catches that startup error, prints it and exits 1.
 - **`src/auth/invites.ts`**: `createInvite`, `findInviteByCode`, `findUsableInvite`, `consumeInvite`, `revokeInvite`, `generateInviteCode` (128 bits, base64url). `consumeInvite` is a single conditional `UPDATE … SET uses = uses + 1 WHERE code = ? AND revoked_at IS NULL AND expires_at > now AND uses < max_uses RETURNING *`, so it is atomic on its own.
-- **`src/auth/auth.ts`**: `createAuth({ db, config, mailer })` returns the Better Auth instance. Only the Email OTP plugin (6 digits, 600 s expiry, 5 attempts) and the Bearer plugin are enabled; `emailAndPassword: { enabled: false }`; telemetry off; Better Auth's own logger disabled; cookie attributes `httpOnly`, `sameSite: 'lax'`, `secure` in production. `databaseHooks.user.create.before` reads the invite code from the **`x-galena-invite` header**, rejects creation without it, and consumes a usable invite atomically. The header name is exported as `INVITE_HEADER`.
+- **`src/auth/auth.ts`**: `createAuth({ db, config, mailer })` returns the Better Auth instance. Only the Email OTP plugin (6 digits, 600 s expiry, 5 attempts) and the Bearer plugin are enabled; `emailAndPassword: { enabled: false }`; telemetry off; Better Auth's own logger disabled; cookie attributes `httpOnly`, `sameSite: 'lax'`, `secure` in production. `databaseHooks.user.create.before` reads the invite code from the **`x-zilar-invite` header**, rejects creation without it, and consumes a usable invite atomically. The header name is exported as `INVITE_HEADER`.
 - **`src/auth/routes.ts`**: `POST /api/invites` (auth, returns `{ code, url, expiresAt }` with `${PUBLIC_URL}/invite/<code>`), `GET /api/invites/:code` (public, returns only `{ valid }`), `DELETE /api/invites/:code` (creator only, 403 otherwise, 404 unknown), `GET /api/me` (auth, returns `{ id, email, name, image, createdAt }`).
 - **Schema**: `src/auth/auth-schema.ts` generated by the Better Auth CLI (`auth generate --adapter drizzle --dialect postgresql`) with `user`, `session`, `account`, `verification` (and relations). `src/db/schema.ts` re-exports it and adds `invites(id, code unique, created_by → user.id, created_at, expires_at, max_uses, uses, revoked_at)`. Migration `drizzle/0001_nifty_nomad.sql` generated by drizzle-kit.
 - **Wiring** (`src/app.ts`, `src/index.ts`): `createApp` now takes `auth`, mounts `app.all('/api/auth/*', (c) => auth.handler(c.req.raw))` and the `/api` routes; `index.ts` builds the mailer and the auth instance.
@@ -159,17 +159,17 @@ pnpm build
 ### Commands run and real results
 - `pnpm install`: up to date (lockfile updated when `better-auth` was added).
 - `pnpm dlx auth@1.7.6 generate --config src/auth/cli-config.ts --adapter drizzle --dialect postgresql --output src/auth/auth-schema.ts --yes`: "Schema was generated successfully!" Re-run after pointing `cli-config.ts` at the real `createAuth`: "Schema was overwritten successfully!" with identical content (only quote/format differences).
-- `pnpm --filter @galena/server db:generate`: `6 tables … [✓] drizzle/0001_nifty_nomad.sql`. Re-run after the final schema: "No schema changes, nothing to migrate".
+- `pnpm --filter @zilar/server db:generate`: `6 tables … [✓] drizzle/0001_nifty_nomad.sql`. Re-run after the final schema: "No schema changes, nothing to migrate".
 - `pnpm format:check`: "All matched files use Prettier code style!"
 - `pnpm lint`: "Found 0 warnings and 0 errors."
 - `pnpm typecheck`: 6/6 tasks successful.
-- `pnpm --filter @galena/server test`: 8 files, **52 tests passed** (config 9, logger 1, invite-cli 6, mailer 3, migrate 4, app 6, invites 7, auth 16).
+- `pnpm --filter @zilar/server test`: 8 files, **52 tests passed** (config 9, logger 1, invite-cli 6, mailer 3, migrate 4, app 6, invites 7, auth 16).
 - `pnpm test`: 6/6 tasks successful.
 - `pnpm build`: 2/2 tasks successful.
 
 ### Problems, deviations from the spec, open questions
 - **Invite atomicity (deviation).** The spec asks for the conditional update "in the same transaction that creates the user". Better Auth does not expose its user-creation flow as a database transaction to database hooks, so the hook cannot join it. I used a single conditional `UPDATE … RETURNING`, which is atomic by itself: two racers for the last use cannot both succeed (test (d) proves exactly one does, and `invites.test.ts` runs 10 concurrent consumes with exactly one winner). The residual gap is that if user creation fails *after* the invite is consumed, that use is spent; there is no rollback of the invite. I judged this safer than validating in the sign-in `before` hook (which runs before the OTP is verified and would let anyone burn invites).
-- **Invite transport.** Chosen: header `x-galena-invite` on `POST /api/auth/sign-in/email-otp`, read in `databaseHooks.user.create.before` via the endpoint context headers. Exported as `INVITE_HEADER` in `auth.ts`.
+- **Invite transport.** Chosen: header `x-zilar-invite` on `POST /api/auth/sign-in/email-otp`, read in `databaseHooks.user.create.before` via the endpoint context headers. Exported as `INVITE_HEADER` in `auth.ts`.
 - **Better Auth logger disabled (deviation).** `logger: { disabled: true }` so Better Auth never writes OTPs/tokens/secrets to stdout on its own; our pino request logger remains and test (j) asserts the captured output has no OTP, session token or secret. The trade-off is losing Better Auth's internal diagnostics.
 - **Schema-generation config committed.** `src/auth/cli-config.ts` exists because the Better Auth CLI needs a module that exports an `auth` instance; it uses placeholder values and a lazy postgres client (no connection), and now imports the real `createAuth` so future regeneration stays in sync. It contains no secret.
 - **`POST /api/invites` has no body.** It follows the spec literally: 1 use, 7 days. The configurable variant is the CLI (`--uses`, `--days`).
@@ -187,7 +187,7 @@ Round 1 stays above. This round addresses findings 1, 2 and 3 from the review. F
 
 #### What I changed
 - **Finding 1 — no codes to strangers, and rate limits.**
-  - Added a Better Auth `hooks.before` middleware (`createAuthMiddleware`) that matches `/email-otp/send-verification-otp`. If the email does **not** belong to an existing user and the request has no **usable** invite in `x-galena-invite` (`findUsableInvite`, no consumption), it short-circuits with `ctx.json({ success: true })` — the same 200 and body the real endpoint returns, so existence cannot be probed. Existing users and invited new emails proceed normally. Consumption still happens only in `databaseHooks.user.create.before`.
+  - Added a Better Auth `hooks.before` middleware (`createAuthMiddleware`) that matches `/email-otp/send-verification-otp`. If the email does **not** belong to an existing user and the request has no **usable** invite in `x-zilar-invite` (`findUsableInvite`, no consumption), it short-circuits with `ctx.json({ success: true })` — the same 200 and body the real endpoint returns, so existence cannot be probed. Existing users and invited new emails proceed normally. Consumption still happens only in `databaseHooks.user.create.before`.
   - Enabled Better Auth's rate limiter in every environment (`rateLimit.enabled: true`, `storage: 'memory'`) and added `rateLimit.customRules`: send OTP `{ window: 600, max: 3 }`; `/sign-in/email-otp`, `/email-otp/check-verification-otp` and `/email-otp/verify-email` `{ window: 600, max: 10 }`. Custom rules override the plugin's and the built-in defaults (verified: the six sign-in attempts in test (f) now exceed the old max of 3 and still pass).
 - **Finding 2 — OTPs are stored hashed.** `emailOTP({ storeOTP: 'hashed' })`. The mailer still receives the plain code; only the `verification.value` column is hashed, and verification with the plain code still works.
 - **Finding 3 — trusted origins.**
@@ -215,10 +215,10 @@ Round 1 stays above. This round addresses findings 1, 2 and 3 from the review. F
 - `pnpm format:check`: "All matched files use Prettier code style!"
 - `pnpm lint`: "Found 0 warnings and 0 errors."
 - `pnpm typecheck`: 6/6 tasks successful.
-- `pnpm --filter @galena/server test`: 8 files, **64 tests passed** (config 12, logger 1, invite-cli 6, mailer 3, migrate 4, app 6, invites 7, auth 25).
+- `pnpm --filter @zilar/server test`: 8 files, **64 tests passed** (config 12, logger 1, invite-cli 6, mailer 3, migrate 4, app 6, invites 7, auth 25).
 - `pnpm test`: 6/6 tasks successful.
 - `pnpm build`: 2/2 tasks successful.
-- `pnpm --filter @galena/server db:generate` (re-check): "No schema changes, nothing to migrate" — the new options add no tables/columns.
+- `pnpm --filter @zilar/server db:generate` (re-check): "No schema changes, nothing to migrate" — the new options add no tables/columns.
 
 #### Notes / deviations
 - **Per-IP limits depend on a trusted client IP.** Better Auth reads `x-forwarded-for` by default, so a directly exposed server lets a client spoof it. Once the deployment topology is known, set `advanced.ipAddress.ipAddressHeaders` (a single header the proxy overwrites) or `advanced.ipAddress.trustedProxies`. Flagging rather than guessing; the finding asked for memory storage "for now".
@@ -235,7 +235,7 @@ Round 1 stays above. This round addresses findings 1, 2 and 3 from the review. F
 ### Findings
 1. **(must fix, security) Don't send codes to strangers, and rate-limit.**
    - Right now anyone can make the server email a code to **any** address, with no invite and no limit. That's a spam and cost vector, and it'll matter once a real mailer exists.
-   - Fix it with a Better Auth `hooks.before` on the send-OTP endpoint (`/email-otp/send-verification-otp`): if the email doesn't belong to an existing user **and** the request has no **usable** invite in `x-galena-invite`, **don't send**. Check the invite without consuming it; consumption stays in `user.create.before`.
+   - Fix it with a Better Auth `hooks.before` on the send-OTP endpoint (`/email-otp/send-verification-otp`): if the email doesn't belong to an existing user **and** the request has no **usable** invite in `x-zilar-invite`, **don't send**. Check the invite without consuming it; consumption stays in `user.create.before`.
    - **Respond exactly as if a code were sent** (same status and body), so nobody can probe which emails exist.
    - **Rate limits.** Enable Better Auth's rate limiter explicitly in every environment, including tests, with memory storage for now, and set custom rules:
      - send OTP: at most **3 per 10 minutes** per IP
@@ -256,7 +256,7 @@ Round 1 stays above. This round addresses findings 1, 2 and 3 from the review. F
      - a CORS preflight from a trusted origin is allowed, and from an untrusted one it isn't
 4. **(accepted)**
    - Invite atomicity via a single conditional `UPDATE … RETURNING`. It's well argued, and burning a use on a rare failure is acceptable.
-   - Invite transport via the `x-galena-invite` header.
+   - Invite transport via the `x-zilar-invite` header.
    - Disabling Better Auth's logger.
    - The committed `cli-config.ts`.
    - The `--env-file-if-exists` flags.

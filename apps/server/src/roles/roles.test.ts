@@ -442,7 +442,7 @@ describe('group roles (T-0116)', () => {
       providerConnectionId: connectionId,
       model: 'gpt-4o-mini',
       localpart: aiLocalpart(aiId),
-      jid: `${aiLocalpart(aiId)}@galena.localhost`,
+      jid: `${aiLocalpart(aiId)}@zilar.localhost`,
       status: 'active',
     });
     await context.db.insert((await import('../db/schema')).aiLimits).values({
@@ -465,7 +465,7 @@ describe('group roles (T-0116)', () => {
         action: 'demo.echo',
         summary: 'Echo once',
         argsHash: 'a'.repeat(64),
-        requestedBy: 'someone@galena.localhost',
+        requestedBy: 'someone@zilar.localhost',
         expiresAt: new Date(Date.now() + 60_000),
       },
       new Date(),
@@ -489,7 +489,7 @@ describe('group roles (T-0116)', () => {
         action: 'demo.echo',
         summary: 'Echo twice',
         argsHash: 'b'.repeat(64),
-        requestedBy: 'someone@galena.localhost',
+        requestedBy: 'someone@zilar.localhost',
         expiresAt: new Date(Date.now() + 60_000),
       },
       new Date(),
@@ -529,7 +529,7 @@ describe('group roles (T-0116)', () => {
         action: 'demo.echo',
         summary: 'Echo thrice',
         argsHash: 'c'.repeat(64),
-        requestedBy: 'someone@galena.localhost',
+        requestedBy: 'someone@zilar.localhost',
         expiresAt: new Date(Date.now() + 60_000),
       },
       new Date(),
@@ -583,7 +583,7 @@ describe('group roles (T-0116)', () => {
       providerConnectionId: connectionId,
       model: 'gpt-4o-mini',
       localpart: aiLocalpart(aiId),
-      jid: `${aiLocalpart(aiId)}@galena.localhost`,
+      jid: `${aiLocalpart(aiId)}@zilar.localhost`,
       status: 'active',
     });
     await context.db.insert(schema.aiLimits).values({
@@ -602,7 +602,7 @@ describe('group roles (T-0116)', () => {
         action: 'demo.echo',
         summary: 'Echo always',
         argsHash: 'd'.repeat(64),
-        requestedBy: 'someone@galena.localhost',
+        requestedBy: 'someone@zilar.localhost',
         expiresAt: new Date(Date.now() + 60_000),
       },
       new Date(),
@@ -976,7 +976,7 @@ describe('group roles (T-0116)', () => {
       providerConnectionId: connectionId,
       model: 'gpt-4o-mini',
       localpart: aiLocalpart(aiId),
-      jid: `${aiLocalpart(aiId)}@galena.localhost`,
+      jid: `${aiLocalpart(aiId)}@zilar.localhost`,
       status: 'active',
     });
     await context.db.insert(schema.aiLimits).values({
@@ -995,7 +995,7 @@ describe('group roles (T-0116)', () => {
         action: 'demo.echo',
         summary: 'Echo once',
         argsHash: 'a'.repeat(64),
-        requestedBy: 'someone@galena.localhost',
+        requestedBy: 'someone@zilar.localhost',
         expiresAt: new Date(Date.now() + 60_000),
       },
       new Date(),

@@ -46,7 +46,7 @@ A lot of web UI landed in two days: the D24 redesign, Markdown, mentions, the mo
 **Nothing else.** Don't edit the source, and don't "just fix" a typo. Report it.
 
 ### How
-- Start **your own** Vite from your worktree: `pnpm --filter @galena/web exec vite --port 5251 --strictPort`. Open `http://localhost:5251/?mock=1`. Use `localhost`, not `127.0.0.1`: Vite binds `::1`.
+- Start **your own** Vite from your worktree: `pnpm --filter @zilar/web exec vite --port 5251 --strictPort`. Open `http://localhost:5251/?mock=1`. Use `localhost`, not `127.0.0.1`: Vite binds `::1`.
 - **Never** use or probe ports 3000, 3188, 5173 or 8081; they are Julio's.
 - **Stop your Vite at the end.**
 - Check at **1440×900** and **390×844**. With the image budget in mind (gotcha 17), look at each screenshot once, downscaled.
@@ -111,8 +111,8 @@ items by driving the app and reading the DOM, and wrote this Report.
 
 ### How I ran the app (important deviation)
 
-The Galena API on `http://localhost:3000` was **not** running: the Vite proxy
-`/api/auth/get-session` returned `404` from an **Express** server (Galena's API
+The Zilar API on `http://localhost:3000` was **not** running: the Vite proxy
+`/api/auth/get-session` returned `404` from an **Express** server (Zilar's API
 is Hono, so this was a different process on 3000). With no session, `/` and
 `/c/...` redirect to `/login`, so `?mock=1` alone does not render the app. To
 run the mock UI I reused the Vite already bound to 5251 from **this** worktree

@@ -5,10 +5,10 @@
 // close the session with "Client acknowledged more stanzas than sent by
 // server", the client never disconnects, and the status stays online.
 //
-// Skipped unless GALENA_XMPP_INTEGRATION=1, like integration.test.ts.
+// Skipped unless ZILAR_XMPP_INTEGRATION=1, like integration.test.ts.
 //
 //   pnpm infra:up
-//   GALENA_XMPP_INTEGRATION=1 pnpm --filter @galena/xmpp-core test
+//   ZILAR_XMPP_INTEGRATION=1 pnpm --filter @zilar/xmpp-core test
 //   pnpm infra:down
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -20,9 +20,9 @@ import { issueXmppToken } from '../../../apps/server/src/xmpp/token';
 import { createXmppCore, type XmppCore } from './index';
 import type { ConnectionStatus } from './types';
 
-const integrationEnabled = process.env.GALENA_XMPP_INTEGRATION === '1';
-const DURATION_MS = Number(process.env.GALENA_XMPP_SM_DURATION_MS ?? 60_000);
-const TARGET_STANZAS = Number(process.env.GALENA_XMPP_SM_STANZAS ?? 220);
+const integrationEnabled = process.env.ZILAR_XMPP_INTEGRATION === '1';
+const DURATION_MS = Number(process.env.ZILAR_XMPP_SM_DURATION_MS ?? 60_000);
+const TARGET_STANZAS = Number(process.env.ZILAR_XMPP_SM_STANZAS ?? 220);
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 
 function loadConfig(): XmppConfig {
@@ -87,7 +87,7 @@ function trackStatus(core: XmppCore): Tracked {
   return { core, statuses, unexpected };
 }
 
-describe.skipIf(!integrationEnabled)('@galena/xmpp-core stream management (XEP-0198)', () => {
+describe.skipIf(!integrationEnabled)('@zilar/xmpp-core stream management (XEP-0198)', () => {
   it('keeps two clients online while exchanging 200+ stanzas over 60s', async () => {
     const config = loadConfig();
     const service = websocketUrl(config.apiUrl);

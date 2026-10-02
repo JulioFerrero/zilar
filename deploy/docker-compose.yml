@@ -1,4 +1,4 @@
-# Galena production stack: Postgres (pgvector), ejabberd, the Galena
+# Zilar production stack: Postgres (pgvector), ejabberd, the Zilar
 # server, the web app and Caddy as the only entry point.
 #
 # From a fresh clone with a filled deploy/.env:
@@ -9,29 +9,29 @@
 # committed or baked into an image. Only `caddy` publishes ports (80/443 by
 # default, HTTP_PORT/HTTPS_PORT to override for a local trial). TLS
 # terminates at Caddy; every backend speaks plain HTTP on the internal
-# `galena` network. `IMAGE_OWNER`/`IMAGE_TAG` pick the published server and
+# `zilar` network. `IMAGE_OWNER`/`IMAGE_TAG` pick the published server and
 # web images; postgres and ejabberd always build locally from deploy/ (no
 # registry login needed).
 #
 # Images for `postgres` and `ejabberd` are published by
-# .github/workflows/images.yml as ghcr.io/<owner>/galena-postgres and
-# galena-ejabberd; the plain stack builds them from deploy/postgres/Dockerfile
+# .github/workflows/images.yml as ghcr.io/<owner>/zilar-postgres and
+# zilar-ejabberd; the plain stack builds them from deploy/postgres/Dockerfile
 # and deploy/ejabberd/Dockerfile, so a fresh clone needs no registry login.
 # Images for `server` and `web` are published by .github/workflows/images.yml
-# as ghcr.io/<owner>/galena-server and galena-web. Building them locally
+# as ghcr.io/<owner>/zilar-server and zilar-web. Building them locally
 # from the repo root also works:
 #
-#   docker build -f apps/server/Dockerfile -t galena-server:local .
-#   docker build -f apps/web/Dockerfile -t galena-web:local .
+#   docker build -f apps/server/Dockerfile -t zilar-server:local .
+#   docker build -f apps/web/Dockerfile -t zilar-web:local .
 
-name: galena
+name: zilar
 
 services:
   postgres:
-    # Config is baked into the galena-postgres image (built from
+    # Config is baked into the zilar-postgres image (built from
     # deploy/postgres/Dockerfile, same pgvector 0.8.6-pg18-trixie pin as the
     # dev stack), so a fresh clone builds locally with no registry login.
-    image: galena-postgres:local
+    image: zilar-postgres:local
     build:
       context: .
       dockerfile: postgres/Dockerfile
@@ -40,10 +40,10 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: postgres
-      GALENA_DB_PASSWORD: ${GALENA_DB_PASSWORD:?GALENA_DB_PASSWORD is required}
+      ZILAR_DB_PASSWORD: ${ZILAR_DB_PASSWORD:?ZILAR_DB_PASSWORD is required}
       EJABBERD_DB_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required}
       # Read-only role for message search (see 20-search-reader.sql).
-      GALENA_ARCHIVE_DB_PASSWORD: ${GALENA_ARCHIVE_DB_PASSWORD:?GALENA_ARCHIVE_DB_PASSWORD is required}
+      ZILAR_ARCHIVE_DB_PASSWORD: ${ZILAR_ARCHIVE_DB_PASSWORD:?ZILAR_ARCHIVE_DB_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -53,13 +53,13 @@ services:
       retries: 12
       start_period: 10s
     networks:
-      - galena
+      - zilar
 
   ejabberd:
-    # Config is baked into the galena-ejabberd image (built from
+    # Config is baked into the zilar-ejabberd image (built from
     # deploy/ejabberd/Dockerfile, same ejabberd 26.07 release as the dev
     # stack), so a fresh clone builds locally with no registry login.
-    image: galena-ejabberd:local
+    image: zilar-ejabberd:local
     build:
       context: .
       dockerfile: ejabberd/Dockerfile
@@ -71,9 +71,9 @@ services:
     # (deploy/ejabberd/Dockerfile sets ENTRYPOINT + CMD identically).
     command: ['foreground']
     environment:
-      EJABBERD_MACRO_HOST: ${GALENA_DOMAIN:?GALENA_DOMAIN is required}
-      EJABBERD_MACRO_MUC_HOST: rooms.${GALENA_DOMAIN:?GALENA_DOMAIN is required}
-      EJABBERD_MACRO_ADMIN: admin@${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      EJABBERD_MACRO_HOST: ${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
+      EJABBERD_MACRO_MUC_HOST: rooms.${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
+      EJABBERD_MACRO_ADMIN: admin@${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
       REGISTER_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required}
       EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required}
       # Push component (T-0145, XEP-0114): the secret the server's component
@@ -84,9 +84,9 @@ services:
       # non-functional until a real secret is set on both sides. `doctor`
       # flags the placeholder in plain words.
       EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}
-      GALENA_DOMAIN: ${GALENA_DOMAIN:?GALENA_DOMAIN is required}
-      GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required}
-      EJABBERD_MACRO_UPLOAD_URL: https://${GALENA_DOMAIN:?GALENA_DOMAIN is required}/upload
+      ZILAR_DOMAIN: ${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
+      ZILAR_XMPP_JWT_SECRET: ${ZILAR_XMPP_JWT_SECRET:?ZILAR_XMPP_JWT_SECRET is required}
+      EJABBERD_MACRO_UPLOAD_URL: https://${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}/upload
     volumes:
       - ejabberd-database:/opt/ejabberd/database
       - ejabberd-uploads:/opt/ejabberd/upload
@@ -97,10 +97,10 @@ services:
       retries: 30
       start_period: 20s
     networks:
-      - galena
+      - zilar
 
   server:
-    image: ghcr.io/${IMAGE_OWNER:?IMAGE_OWNER is required}/galena-server:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-server:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -108,7 +108,7 @@ services:
       ejabberd:
         condition: service_healthy
     environment:
-      # Galena signs people in with an emailed one-time code. The SMTP mailer
+      # Zilar signs people in with an emailed one-time code. The SMTP mailer
       # lands in T-0128; until then the server refuses NODE_ENV=production
       # without a mail transport, so the stack pins NODE_ENV from the env
       # file (development = console mailer, OTP codes go to the server log).
@@ -118,20 +118,20 @@ services:
       # T-0128's SMTP mailer for a real install.
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
-      DATABASE_URL: postgres://galena:${GALENA_DB_PASSWORD:?GALENA_DB_PASSWORD is required}@postgres:5432/galena
-      XMPP_ARCHIVE_DATABASE_URL: postgres://galena_archive:${GALENA_ARCHIVE_DB_PASSWORD:?GALENA_ARCHIVE_DB_PASSWORD is required}@postgres:5432/ejabberd
+      DATABASE_URL: postgres://zilar:${ZILAR_DB_PASSWORD:?ZILAR_DB_PASSWORD is required}@postgres:5432/zilar
+      XMPP_ARCHIVE_DATABASE_URL: postgres://zilar_archive:${ZILAR_ARCHIVE_DB_PASSWORD:?ZILAR_ARCHIVE_DB_PASSWORD is required}@postgres:5432/ejabberd
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      PUBLIC_URL: https://${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      PUBLIC_URL: https://${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
-      WEB_ORIGINS: https://${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      WEB_ORIGINS: https://${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
       EJABBERD_API_URL: http://ejabberd:5280/api
-      EJABBERD_ADMIN_JID: admin@${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      EJABBERD_ADMIN_JID: admin@${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
       EJABBERD_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required}
-      XMPP_DOMAIN: ${GALENA_DOMAIN:?GALENA_DOMAIN is required}
-      XMPP_MUC_DOMAIN: rooms.${GALENA_DOMAIN:?GALENA_DOMAIN is required}
-      XMPP_WS_PUBLIC_URL: wss://${GALENA_DOMAIN:?GALENA_DOMAIN is required}/xmpp-ws/ws
-      GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required}
-      GALENA_KEY_ENCRYPTION_KEY: ${GALENA_KEY_ENCRYPTION_KEY:-@empty@}
+      XMPP_DOMAIN: ${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
+      XMPP_MUC_DOMAIN: rooms.${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
+      XMPP_WS_PUBLIC_URL: wss://${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}/xmpp-ws/ws
+      ZILAR_XMPP_JWT_SECRET: ${ZILAR_XMPP_JWT_SECRET:?ZILAR_XMPP_JWT_SECRET is required}
+      ZILAR_KEY_ENCRYPTION_KEY: ${ZILAR_KEY_ENCRYPTION_KEY:-@empty@}
       # Where sticker files live: a persistent volume (see `volumes:` below),
       # fixed absolute path, always set — never relative, never empty.
       # `init` writes no sticker line (the default here is final); a manual
@@ -171,7 +171,7 @@ services:
       PUSH_VAPID_SUBJECT: ${PUSH_VAPID_SUBJECT:-}
       # push.<install domain>: must equal the host the entrypoint writes into
       # the ejabberd_service listener (see deploy/ejabberd/push-entrypoint.sh).
-      PUSH_COMPONENT_JID: push.${GALENA_DOMAIN:?GALENA_DOMAIN is required}
+      PUSH_COMPONENT_JID: push.${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
       # Must equal ejabberd's EJABBERD_MACRO_PUSH_COMPONENT_SECRET above.
       PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}
       PUSH_STORAGE_KEY: ${PUSH_STORAGE_KEY:-}
@@ -193,10 +193,10 @@ services:
     volumes:
       - sticker-data:/data/stickers
     networks:
-      - galena
+      - zilar
 
   web:
-    image: ghcr.io/${IMAGE_OWNER:?IMAGE_OWNER is required}/galena-web:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-web:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       server:
@@ -208,7 +208,7 @@ services:
       retries: 12
       start_period: 10s
     networks:
-      - galena
+      - zilar
 
   caddy:
     # Reverse proxy with automatic HTTPS. The only service publishing ports.
@@ -225,8 +225,8 @@ services:
       - '${HTTP_PORT:-80}:80'
       - '${HTTPS_PORT:-443}:443'
     environment:
-      GALENA_DOMAIN: ${GALENA_DOMAIN:?GALENA_DOMAIN is required}
-      ACME_EMAIL: ${ACME_EMAIL:-admin@${GALENA_DOMAIN:?GALENA_DOMAIN is required}}
+      ZILAR_DOMAIN: ${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -247,18 +247,18 @@ services:
       retries: 12
       start_period: 20s
     networks:
-      - galena
+      - zilar
 
 networks:
-  galena:
-    name: galena
+  zilar:
+    name: zilar
 
 volumes:
   postgres-data:
   ejabberd-database:
   ejabberd-uploads:
   # Sticker files (STICKER_STORAGE_DIR=/data/stickers on `server` above).
-  # Backed up by `./galena backup` together with the uploads volume.
+  # Backed up by `./zilar backup` together with the uploads volume.
   sticker-data:
   caddy-data:
   caddy-config:

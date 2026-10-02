@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /*
- * Galena design tokens, from docs/design/ui-style.md §2 (D24). The app is dark
+ * Zilar design tokens, from docs/design/ui-style.md §2 (D24). The app is dark
  * only, so the D24 palette lives in `:root` and the `dark:` variant is inert.
  * The legacy shadcn names are kept and mapped onto the D24 values so the My
  * AIs, wizard and auth screens restyle themselves.

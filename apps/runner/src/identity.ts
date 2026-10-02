@@ -56,7 +56,7 @@ export function resolveHomeDir(
 ): string {
   if (typeof homeOverride === 'string' && homeOverride.length > 0) return homeOverride;
   if (typeof envHome === 'string' && envHome.length > 0) return envHome;
-  return join(os.homedir(), '.galena-runner');
+  return join(os.homedir(), '.zilar-runner');
 }
 
 export function identityPaths(homeDir: string): IdentityStorage {
@@ -173,7 +173,7 @@ export async function loadIdentity(
   const result = IdentitySchema.safeParse(parsed);
   if (!result.success) {
     throw new IdentityError(
-      `Identity file ${storage.filePath} is not a valid Galena runner identity (wrong version or shape).`,
+      `Identity file ${storage.filePath} is not a valid Zilar runner identity (wrong version or shape).`,
       'corrupt',
     );
   }

@@ -15,7 +15,7 @@ estimate: 1.5 days
 
 ### Goal
 
-T-0078 made the phone **show** edits, deletions and reactions. This task lets the person **do** them from the phone, the way the web app already does (`apps/web/src/store/realStore.ts`: `react`, `startEdit`, `cancelEdit`, `editMessage`, `deleteForEveryone`; UI in `MessageBubble.tsx`, `MessageActionsMenu.tsx`, `ReactionChips.tsx`, `EditBar.tsx`). The reducers are shared (`@galena/chat-core`) and `@galena/xmpp-core` already has `sendReactions`, `sendCorrection` and `sendRetraction`. Work in three steps **in this order** and commit after each so partial progress is safe: (1) reactions, (2) delete for everyone, (3) edit.
+T-0078 made the phone **show** edits, deletions and reactions. This task lets the person **do** them from the phone, the way the web app already does (`apps/web/src/store/realStore.ts`: `react`, `startEdit`, `cancelEdit`, `editMessage`, `deleteForEveryone`; UI in `MessageBubble.tsx`, `MessageActionsMenu.tsx`, `ReactionChips.tsx`, `EditBar.tsx`). The reducers are shared (`@zilar/chat-core`) and `@zilar/xmpp-core` already has `sendReactions`, `sendCorrection` and `sendRetraction`. Work in three steps **in this order** and commit after each so partial progress is safe: (1) reactions, (2) delete for everyone, (3) edit.
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -71,7 +71,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/mobile
+pnpm exec turbo test --force --filter=@zilar/mobile
 pnpm build
 ```
 
@@ -83,7 +83,7 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
-- Mirrored web's send-side edit/reaction/delete/edit/edit machinery in the mobile real store. The chat-core reducers (`applyEdit`, `applyReaction`, `canEditMessage`, `canDeleteMessage`, `mentionsForTrimmedText`, `rebaseMentions`) and `@galena/xmpp-core` senders (`sendReactions`, `sendCorrection`, `sendRetraction`) are reused, not re-implemented.
+- Mirrored web's send-side edit/reaction/delete/edit/edit machinery in the mobile real store. The chat-core reducers (`applyEdit`, `applyReaction`, `canEditMessage`, `canDeleteMessage`, `mentionsForTrimmedText`, `rebaseMentions`) and `@zilar/xmpp-core` senders (`sendReactions`, `sendCorrection`, `sendRetraction`) are reused, not re-implemented.
 - Added `linkLocalToServer`, `wireTargetFor`, `restoreMessage`, `restoreEdits`, `mentionLocalpart`, `correctionTargetFor`, `retractionTargetFor`, plus a `messageServerIds` map and `linkLocalToServer` calls on the outgoing `sendText` and on the outgoing-echo reconciliation, so the wire target is the server id and a still-unacked `local-*` message never sends a stanza. `stop()` clears the new side table.
 - Implemented `react(chatId, messageId, emoji)` (alias-resolved local key, wire target = server id, toggles my emoji, optimistic apply through the existing `applyReactionUpdate`, sends `core.sendReactions`, undoes on failure, capped at 6 by the chat-core reducer), `startEdit(chatId, messageId)`, `cancelEdit()`, `editMessage(chatId, messageId, text)` (my own text message within 48 h, no-op guard, correction target = origin id, mentions rebased via `rebaseMentions`/`mentionsForTrimmedText`, optimistic apply, restore + `actionError` on failure), `deleteForEveryone(chatId, messageId)` (my own messages, retraction target = origin id in a DM, stanza-id in a group, optimistic tombstone via the edits reducer, restore + `actionError` on failure), and `dismissActionError()`.
 - UI: the message-actions sheet has a row of `QUICK_REACTIONS` (mine highlighted), Reply, Edit (when `canEditMessage`), Copy text (unchanged), and Delete for everyone (when `canDeleteMessage`). The Delete becomes a confirm step ("Delete for everyone?" / Cancel / Delete) inside the same sheet; `confirmOpen` is local state in `MessageBubble`. `MessageBubble` accepts `onReact`, `onEdit`, `onDelete` callbacks. `ReactionChips` gained an optional `onToggle` prop so tapping a chip I already reacted with removes that emoji.
@@ -107,11 +107,11 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install` — 1010 packages added, no errors.
-- `pnpm exec turbo typecheck --filter=@galena/mobile` — `1 successful, 1 total`, `tsc --noEmit` exits 0.
-- `pnpm exec turbo test --force --filter=@galena/mobile` — 348 passed, 2 skipped (the same integration-test gate as before), 0 failed. `Test Files 32 passed | 2 skipped (34)`.
+- `pnpm exec turbo typecheck --filter=@zilar/mobile` — `1 successful, 1 total`, `tsc --noEmit` exits 0.
+- `pnpm exec turbo test --force --filter=@zilar/mobile` — 348 passed, 2 skipped (the same integration-test gate as before), 0 failed. `Test Files 32 passed | 2 skipped (34)`.
 - `pnpm format:check` — `All matched files use Prettier code style!`.
 - `pnpm lint` — no findings.
-- `pnpm exec turbo build --filter=@galena/mobile` — succeeds; iOS and Android bundles exported to `dist/`.
+- `pnpm exec turbo build --filter=@zilar/mobile` — succeeds; iOS and Android bundles exported to `dist/`.
 
 ### Problems, deviations from the spec, open questions
 - The cap at six reactions is enforced inside the chat-core reducer (`cleanedSet` in `applyReaction`), not in the wire call. The `react` action sends the full set to `xmpp-core.sendReactions`, which then caps before the wire, and the chip strip shows the post-cap set. The cap test asserts the chip data, not the wire call's argument.

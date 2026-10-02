@@ -48,7 +48,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2 src/search
+pnpm --filter @zilar/server test --maxWorkers=2 src/search
 ```
 (Touched files and their neighbours only; the lead runs the full suites per batch.)
 
@@ -111,7 +111,7 @@ pnpm --filter @galena/server test --maxWorkers=2 src/search
 - `pnpm lint`: pass (fixed 3 oxlint errors in `match.ts`: `no-useless-spread`,
   2× `no-new-array`; lint re-run clean after the last edit)
 - `pnpm typecheck`: pass (10/10 turbo tasks)
-- `pnpm --filter @galena/server test --maxWorkers=2 src/search`: 2 files, 36 passed (27 route + 9 match)
+- `pnpm --filter @zilar/server test --maxWorkers=2 src/search`: 2 files, 36 passed (27 route + 9 match)
 - Neighbours: `src/authz-sweep.test.ts` + `src/config.test.ts`: 51 passed
 - `grep` for `any|@ts-ignore|disable` in touched source: only benign comment words ("any length")
 - Full suites not run (lead runs them per batch, per AGENTS.md)

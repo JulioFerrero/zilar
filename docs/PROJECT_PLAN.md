@@ -1,10 +1,10 @@
-# Galena: Project Plan
+# Zilar: Project Plan
 
 > **Status:** design phase, no code yet
 > **Last updated:** 2026-09-27
 > **Owner:** Julio
-> **Name:** Galena, after the crystal inside the first radios, the mineral that received messages over the air.
-> **Repo:** `JulioFerrero/galena` (private)
+> **Name:** Zilar, the Basque word for silver.
+> **Repo:** `JulioFerrero/zilar` (private)
 >
 > This document collects everything decided and researched so far, the proposed architecture, the MVP scope, the roadmap, the risks, and every open question. Anything marked **(proposal)** still needs Julio's OK.
 
@@ -128,7 +128,7 @@ These are Julio's requirements, quoted where possible.
 | D15 | Hosting | Julio's personal Coolify server for the control plane, if it has enough free RAM | Julio: the server is personal |
 | D16 | Budget | Not a constraint during development | Julio: "don't worry about that" |
 | D17 | Pilot | Julio and his friends | Julio's answer |
-| D18 | Name | **Galena** | Julio's choice. The crystal inside the first radios. |
+| D18 | Name | **Zilar** | Julio's choice. Basque for silver. |
 | D19 | Privacy model | **Like Telegram:** normal chats are stored on the server and readable by it (that's what lets AIs, sync and search work). **No end-to-end encrypted chats for now.** | Julio's decision |
 | D20 | Stack | Confirmed: Vite + React web app, Hono + Drizzle + Postgres, Better Auth, pnpm + Turborepo, Expo for mobile ([§17.2](#172-mobile-react-native--expo)) | Julio: "I love the stack" |
 | D21 | Object storage | **No MinIO:** its Docker images were deleted from Docker Hub in September 2026. File uploads use ejabberd's built-in upload for the MVP, Supabase Storage in production, and Garage or RustFS if we need S3 locally. | Research on 2026-09-27 |
@@ -140,7 +140,7 @@ These are Julio's requirements, quoted where possible.
 | D27 | Stickers, GIFs, importer | Stickers are **created by users** (packs). A **Telegram sticker importer** is a must-have for migration (later task). A **GIF section** is wanted. Open: GIF provider (with a proxy so users' IPs are not sent), and the copyright stance for imported packs (personal use). | Julio, 2026-09-29 |
 | D28 | Product focus | Be a good **daily chat for humans first**, Telegram's flow (chats, groups, channels, topics, stickers, folders): PWA with web push, search, pinned messages, forwarding, media gallery, mute and archive, voice notes, invite links. Then workspaces and roles, then the AI coding flow. **No inbox and no "catch up" feature** (Julio: "I don't like that"). | Julio, 2026-09-29 |
 | D29 | Public and private topics | **Discord-style access:** a topic is **public** (every group member) or **private** (only chosen people, roles or AIs). A private topic is hidden completely from everyone else: no name, no unread count, no history. **Each topic is its own XMPP room**, so the chat server itself enforces who receives a private topic's messages (one room per group could not). Our database owns group membership and topic membership and syncs it into the rooms. An AI reads only the topics it was added to. Roles (owner, admin, member, custom roles such as Designers) can grant topic access and can be the approvers for a topic. | Julio, 2026-09-29: "not all users in a group have access to all the tasks and channels" |
-| D30 | Easy install (A), hosted service (B), open core | **A first:** anyone can install their own Galena with **Docker Compose, a Coolify template, or on bare metal** (systemd, own Postgres/ejabberd), using published images, a setup wizard that generates every secret, and automatic HTTPS. **B later:** a hosted Galena run as a service for family, friends and people who want to try it; **one shared instance for everyone** (new people, friends, work), like any messenger, not one instance per team. Same code for both. **Open core:** the whole product stays open source and free; a paid enterprise layer (SSO/SAML, audit export, retention rules, an admin console, support) can come later, never by removing free features. | Julio, 2026-09-30: "easy to install with coolify or docker, maybe bare metal; B for family and friends and people to try; run it as a service but also open source and free; the instance is for everyone" |
+| D30 | Easy install (A), hosted service (B), open core | **A first:** anyone can install their own Zilar with **Docker Compose, a Coolify template, or on bare metal** (systemd, own Postgres/ejabberd), using published images, a setup wizard that generates every secret, and automatic HTTPS. **B later:** a hosted Zilar run as a service for family, friends and people who want to try it; **one shared instance for everyone** (new people, friends, work), like any messenger, not one instance per team. Same code for both. **Open core:** the whole product stays open source and free; a paid enterprise layer (SSO/SAML, audit export, retention rules, an admin console, support) can come later, never by removing free features. | Julio, 2026-09-30: "easy to install with coolify or docker, maybe bare metal; B for family and friends and people to try; run it as a service but also open source and free; the instance is for everyone" |
 | D31 | AI cost on a hosted instance | AIs are **bring-your-own model key or endpoint** by default (the user's own provider, a local model, or a free provider such as OpenRouter's free models, which are weaker). A hosted service does not pay for users' AI usage. Chat itself is cheap: ejabberd on one small server handles hundreds of concurrent users. | Julio, 2026-09-30 |
 
 ---
@@ -287,7 +287,7 @@ This is an estimate, not a promise. One developer working full time with an AI c
 
 ### 6.3 Our XMPP extension
 
-Every AI message has a normal readable body. That way any XMPP client still works, and people can read it anywhere. The structured data sits in our own namespace, `urn:galena:agent:0`, our own namespace.
+Every AI message has a normal readable body. That way any XMPP client still works, and people can read it anywhere. The structured data sits in our own namespace, `urn:zilar:agent:0`, our own namespace.
 
 **Payload types:**
 - `task`
@@ -299,7 +299,7 @@ Every AI message has a normal readable body. That way any XMPP client still work
 - `cost`
 - `wake-reason`
 
-**Encoding (decided 2026-09-27).** The payload is a JSON **envelope** `{ "v": 0, "type": "<payload type>", "data": { … } }`, carried as text inside the `urn:galena:agent:0` element. Every client validates it with the zod schemas in `@galena/protocol` (T-0013). Decoding never throws, and payloads are capped at 64 KiB. Why JSON rather than XML children: one set of schemas works on the server, web and mobile, and JSON is easier to validate.
+**Encoding (decided 2026-09-27).** The payload is a JSON **envelope** `{ "v": 0, "type": "<payload type>", "data": { … } }`, carried as text inside the `urn:zilar:agent:0` element. Every client validates it with the zod schemas in `@zilar/protocol` (T-0013). Decoding never throws, and payloads are capped at 64 KiB. Why JSON rather than XML children: one set of schemas works on the server, web and mobile, and JSON is easier to validate.
 
 **Example: Dev-1 hands a task to QA in a room** (older XML sketch; the real encoding is the JSON envelope above)
 
@@ -308,7 +308,7 @@ Every AI message has a normal readable body. That way any XMPP client still work
   <body>Opened PR #42: fix checkout button on mobile. QA, can you test the preview?</body>
   <reply xmlns="urn:xmpp:reply:0" id="m-31"/>
   <reference xmlns="urn:xmpp:reference:0" type="mention" uri="xmpp:qa@ai.example.com"/>
-  <agent xmlns="urn:galena:agent:0">
+  <agent xmlns="urn:zilar:agent:0">
     <handoff task="t-17" from="dev-1@ai.example.com" to="qa@ai.example.com">
       <objective>Test checkout at iPhone viewport sizes</objective>
       <artifact kind="pr" href="https://github.com/acme/shop/pull/42"/>
@@ -834,7 +834,7 @@ What we do instead:
   - `GET /api/event` streams events (SSE)
   - `POST /api/session/{id}/interrupt` stops a run
 - **Permission rules** are `{action, resource, effect: allow|ask|deny}`, and **the shell tool's action is `shell`**, not `bash`. Session rules override the agent's rules: tested with a `deny` on `echo *` and an `ask` on `date*`.
-- **Sessions created through the API show up live** in Julio's `opencode2` app (`opencode2 -s <id>`). That's the same model the Galena gateway will use.
+- **Sessions created through the API show up live** in Julio's `opencode2` app (`opencode2 -s <id>`). That's the same model the Zilar gateway will use.
 
 ### 10.2 Our own driver interface
 
@@ -1410,7 +1410,7 @@ Spikes S2 and S3 verify this early. xmpp.js has an open discussion about stream-
 ## 18. Repository layout (proposal)
 
 ```
-galena/
+zilar/
 ├─ apps/
 │  ├─ web/            # React + Vite web app
 │  ├─ mobile/         # Expo app
@@ -1674,9 +1674,9 @@ In short: Claude plans and reviews, DeepSeek builds, Julio decides.
   - Claude does the hard integration work (XMPP on React Native, push, the runner tunnel, security).
 - **State lives in the repo:** this plan, `tasks/`, and PR descriptions. Any new Claude session can pick up where the last one stopped.
 
-**Dogfooding: using Galena to improve Galena.** Once M3 (runners and desks) and M4 (teamwork and approvals) work, this workflow moves **into Galena itself.**
+**Dogfooding: using Zilar to improve Zilar.** Once M3 (runners and desks) and M4 (teamwork and approvals) work, this workflow moves **into Zilar itself.**
 
-- **The "Galena dev" group:**
+- **The "Zilar dev" group:**
   - Julio, who decides and approves.
   - A strong-model boss/reviewer AI, which plans and reviews the way Claude does now.
   - DeepSeek dev AIs on Julio's Mac runner.
@@ -1696,9 +1696,9 @@ In short: Claude plans and reviews, DeepSeek builds, Julio decides.
    - CI config
 
    AI approvals never count.
-2. **Two Galenas.** The AIs live in **production** Galena, but their changes are tested in a separate **staging** Galena (a preview deployment). Production updates only through a release Julio approves, so a bad change can't break the chat the AIs work in.
+2. **Two Zilars.** The AIs live in **production** Zilar, but their changes are tested in a separate **staging** Zilar (a preview deployment). Production updates only through a release Julio approves, so a bad change can't break the chat the AIs work in.
 3. **One-click rollback** of any release (Coolify redeploys the previous version).
-4. **Keep the markdown + OpenCode workflow as a backup path** for when Galena itself is down.
+4. **Keep the markdown + OpenCode workflow as a backup path** for when Zilar itself is down.
 
 **Limits to be honest about:**
 - Claude works in sessions that Julio starts. It isn't always on, so work pauses between sessions unless workers are left running in the background.
@@ -1755,7 +1755,7 @@ Do these in M0 before committing. Each is a small throwaway prototype.
 
 | ID | Pri | Question | My default |
 |---|---|---|---|
-| A1 | ✅ | Project name | **Answered:** Galena |
+| A1 | ✅ | Project name | **Answered:** Zilar |
 | A2 | ✅ | Is this a personal project or for your employer? | **Answered (inferred):** personal project, and the app covers personal *and* work life. Correct me if wrong. |
 | A3 | P1 | Open source, closed source, or open-core? Which license? | Private repo for now. Decide before any public release. |
 | A4 | P1 | Will you **sell** it (hosted service, self-host licenses, setup services) or use it internally? | Internal pilot first, decide later |
@@ -1911,7 +1911,7 @@ Do these in M0 before committing. Each is a small throwaway prototype.
 | N2 | ✅ | Server stack | **Answered:** Node + Hono + Drizzle + Postgres |
 | N3 | ✅ | Auth | **Answered:** Better Auth |
 | N4 | ✅ | Monorepo | **Answered:** pnpm + Turborepo |
-| N5 | ✅ | Where the code lives | **Answered:** private repo `JulioFerrero/galena` |
+| N5 | ✅ | Where the code lives | **Answered:** private repo `JulioFerrero/zilar` |
 | N6 | P1 | Testing: Vitest + Playwright OK? | Yes |
 | N7 | P1 | Reuse your server's **Supabase** (Postgres, Storage, maybe Auth) or keep this project separate? ([§17.1](#171-reusing-what-already-runs-on-julios-server)) | Reuse Postgres and Storage in a separate database and bucket. Better Auth inside our server. |
 

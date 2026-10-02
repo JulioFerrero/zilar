@@ -14,7 +14,7 @@ function generalRow(overrides: Record<string, unknown> = {}): Record<string, unk
     groupId: 'g-acme',
     name: 'General',
     glyph: 'G',
-    chatJid: 'acme@rooms.galena.test',
+    chatJid: 'acme@rooms.zilar.test',
     visibility: 'public',
     kind: 'chat',
     status: 'open',
@@ -34,7 +34,7 @@ function generalRow(overrides: Record<string, unknown> = {}): Record<string, unk
 function channelEntry(): ChatEntry {
   return {
     kind: 'group',
-    chatJid: 'acme@rooms.galena.test',
+    chatJid: 'acme@rooms.zilar.test',
     title: 'Acme Announcements',
     groupId: 'g-acme',
     memberCount: 4,
@@ -50,9 +50,9 @@ function fakeApi() {
   return {
     getMe: vi.fn(async () => ({
       id: 'u-me',
-      email: 'me@galena.test',
+      email: 'me@zilar.test',
       name: 'Me',
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
     })),
     getChats: vi.fn(async (): Promise<ChatEntry[]> => [channelEntry()]),
     getContacts: vi.fn(async () => []),
@@ -66,12 +66,12 @@ function fakeApi() {
       ais: [],
     })),
     getXmppToken: vi.fn(async () => ({
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
       token: 'tok',
       expiresAt: '2026-09-28T12:05:00Z',
       service: 'ws://x',
-      domain: 'galena.test',
-      mucDomain: 'rooms.galena.test',
+      domain: 'zilar.test',
+      mucDomain: 'rooms.zilar.test',
     })),
   };
 }
@@ -137,7 +137,7 @@ describe('real store channels (T-0144)', () => {
     store.getState().start();
     await flush();
 
-    const feed = store.getState().chats.find((chat) => chat.id === 'acme@rooms.galena.test');
+    const feed = store.getState().chats.find((chat) => chat.id === 'acme@rooms.zilar.test');
     expect(feed).toMatchObject({
       chatKind: 'channel',
       subscriberCount: 4,
@@ -198,7 +198,7 @@ describe('real store channels (T-0144)', () => {
     await flush();
     const callsBefore = vi.mocked(api.getChats).mock.calls.length;
 
-    await store.getState().changeChannelRole('acme@rooms.galena.test', 'u-luis', 'admin');
+    await store.getState().changeChannelRole('acme@rooms.zilar.test', 'u-luis', 'admin');
     expect(groups.calls.role).toEqual([{ userId: 'u-luis', role: 'admin' }]);
     // The acting device re-reads the list, so the rows (myRole, counts)
     // match server truth and the composer bar flips.
@@ -211,7 +211,7 @@ describe('real store channels (T-0144)', () => {
     await flush();
     const callsBefore = vi.mocked(api.getChats).mock.calls.length;
 
-    await store.getState().leaveChannel('acme@rooms.galena.test');
+    await store.getState().leaveChannel('acme@rooms.zilar.test');
     expect(groups.removeGroupMember).toHaveBeenCalledWith('g-acme', 'u-me');
     expect(vi.mocked(api.getChats).mock.calls.length).toBeGreaterThan(callsBefore);
   });

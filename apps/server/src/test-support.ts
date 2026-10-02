@@ -22,8 +22,8 @@ import type { XmppConfig } from './xmpp/config';
 import { localpartFor } from './xmpp/provisioning';
 
 export const TEST_SECRET = 'test-better-auth-secret-0000000000000000';
-export const TEST_XMPP_DOMAIN = 'galena.localhost';
-export const TEST_XMPP_MUC_DOMAIN = 'rooms.galena.localhost';
+export const TEST_XMPP_DOMAIN = 'zilar.localhost';
+export const TEST_XMPP_MUC_DOMAIN = 'rooms.zilar.localhost';
 export const TEST_XMPP_WS_URL = 'ws://127.0.0.1:5280/ws';
 export const TEST_XMPP_JWT_SECRET = 'test-xmpp-jwt-secret-0000000000000000';
 
@@ -260,7 +260,7 @@ export interface TestContextOptions {
 export function testXmppConfig(overrides: Partial<XmppConfig> = {}): XmppConfig {
   return {
     apiUrl: 'http://127.0.0.1:5280/api',
-    adminJid: 'admin@galena.localhost',
+    adminJid: 'admin@zilar.localhost',
     adminPassword: 'admin-password',
     domain: TEST_XMPP_DOMAIN,
     mucDomain: TEST_XMPP_MUC_DOMAIN,
@@ -276,10 +276,10 @@ export function expectedJid(userId: string): string {
 
 const TEST_XMPP_ENV = {
   EJABBERD_API_URL: 'http://127.0.0.1:5280/api',
-  EJABBERD_ADMIN_JID: 'admin@galena.localhost',
+  EJABBERD_ADMIN_JID: 'admin@zilar.localhost',
   EJABBERD_ADMIN_PASSWORD: 'admin-password',
   XMPP_WS_PUBLIC_URL: TEST_XMPP_WS_URL,
-  GALENA_XMPP_JWT_SECRET: TEST_XMPP_JWT_SECRET,
+  ZILAR_XMPP_JWT_SECRET: TEST_XMPP_JWT_SECRET,
 };
 
 export async function createTestContext(options: TestContextOptions = {}): Promise<TestContext> {
@@ -289,7 +289,7 @@ export async function createTestContext(options: TestContextOptions = {}): Promi
 
   const config = loadServerConfig({
     NODE_ENV: options.nodeEnv ?? 'test',
-    DATABASE_URL: 'postgres://user:hunter2@127.0.0.1:5432/galena',
+    DATABASE_URL: 'postgres://user:hunter2@127.0.0.1:5432/zilar',
     BETTER_AUTH_SECRET: TEST_SECRET,
     PUBLIC_URL: 'http://localhost:3000',
     ...TEST_XMPP_ENV,

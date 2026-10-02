@@ -30,11 +30,11 @@ describe('VoiceMetaSchema', () => {
   it('accepts a download url', () => {
     const result = VoiceMetaSchema.safeParse({
       ...voice,
-      url: 'https://upload.galena.localhost/upload/abc.m4a',
+      url: 'https://upload.zilar.localhost/upload/abc.m4a',
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.url).toBe('https://upload.galena.localhost/upload/abc.m4a');
+      expect(result.data.url).toBe('https://upload.zilar.localhost/upload/abc.m4a');
     }
   });
 

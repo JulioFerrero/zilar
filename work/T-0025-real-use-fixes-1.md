@@ -14,7 +14,7 @@ estimate: 1 day
 ## Spec (written by Claude, do not edit)
 
 ### Goal
-Fix what Julio hit on his **first real use** of Galena (see the Review of `work/T-0024-web-real-data.md`):
+Fix what Julio hit on his **first real use** of Zilar (see the Review of `work/T-0024-web-real-data.md`):
 1. **The list status is stuck:** after sending, the message bubble shows ✓, but the chat-list row keeps the 🕐 "sending" icon.
 2. **The chat list doesn't update live:**
    - when someone adds you to a group, it doesn't appear until you reload
@@ -61,7 +61,7 @@ Fix what Julio hit on his **first real use** of Galena (see the Review of `work/
 5. **Big emoji (web):** don't render the sender name above big-emoji messages in groups. Only the avatar.
 
 ### Integration check (you run it against the running stack)
-A script or integration test (gated by `GALENA_XMPP_INTEGRATION=1`) that:
+A script or integration test (gated by `ZILAR_XMPP_INTEGRATION=1`) that:
 - creates a user and a group through the server's service functions or the admin client
 - confirms a connected client receives `invited` when added to a group
 - confirms a connected client receives `roster` when a contact is added
@@ -105,7 +105,7 @@ pnpm build
 
 **5. Big emoji (web).** `MessageBubble` computes `bigEmoji` before `showSender` and hides the sender name above a big-emoji group message; the avatar still renders.
 
-**Integration check:** `packages/xmpp-core/src/integration-invites.test.ts` (gated by `GALENA_XMPP_INTEGRATION=1`) creates two users and a room with the admin client, connects one client, pushes a roster item and sends a direct invitation, and asserts both events arrive. Output is pasted below; it was run against the already-running dev stack, which was not stopped or reset.
+**Integration check:** `packages/xmpp-core/src/integration-invites.test.ts` (gated by `ZILAR_XMPP_INTEGRATION=1`) creates two users and a room with the admin client, connects one client, pushes a roster item and sends a direct invitation, and asserts both events arrive. Output is pasted below; it was run against the already-running dev stack, which was not stopped or reset.
 
 ### Files changed
 
@@ -120,14 +120,14 @@ pnpm build
 - `pnpm format:check`: PASS — "All matched files use Prettier code style!" (after `pnpm format`).
 - `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (233 files, 127 rules).
 - `pnpm typecheck`: PASS — 8/8 tasks successful.
-- `pnpm test`: PASS — 8/8 tasks successful. `@galena/web` **71 passed** (17 files); `@galena/xmpp-core` **114 passed, 3 skipped** (the three live-integration files); `@galena/server` **155 passed** (16 files). New tests: xmpp-core `events.test.ts` 12 + `core.test.ts` 4 + 1 gated integration; server admin-client +3, groups +3; web realStore +7, MessageContent +2.
+- `pnpm test`: PASS — 8/8 tasks successful. `@zilar/web` **71 passed** (17 files); `@zilar/xmpp-core` **114 passed, 3 skipped** (the three live-integration files); `@zilar/server` **155 passed** (16 files). New tests: xmpp-core `events.test.ts` 12 + `core.test.ts` 4 + 1 gated integration; server admin-client +3, groups +3; web realStore +7, MessageContent +2.
 - `pnpm build`: PASS — 2/2 tasks successful (web `dist/assets/index-*.js` 565.92 kB).
-- `GALENA_XMPP_INTEGRATION=1 pnpm --filter @galena/xmpp-core test integration-invites`: PASS — 1/1 (1.1 s) against the running stack:
+- `ZILAR_XMPP_INTEGRATION=1 pnpm --filter @zilar/xmpp-core test integration-invites`: PASS — 1/1 (1.1 s) against the running stack:
   ```
   PASS  the invited client connects
-  PASS  roster push received (jid=inv-alice-…@galena.localhost, subscription=both, name=Alice)
-  PASS  direct invitation received (roomJid=inv-…@rooms.galena.localhost,
-        fromJid=inv-…@rooms.galena.localhost, reason=Join the room)
+  PASS  roster push received (jid=inv-alice-…@zilar.localhost, subscription=both, name=Alice)
+  PASS  direct invitation received (roomJid=inv-…@rooms.zilar.localhost,
+        fromJid=inv-…@rooms.zilar.localhost, reason=Join the room)
   Test Files  1 passed (1)   Tests  1 passed (1)
   ```
 
@@ -167,14 +167,14 @@ pnpm build
 - `pnpm format:check`: PASS — "All matched files use Prettier code style!".
 - `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (233 files, 127 rules).
 - `pnpm typecheck`: PASS — 8/8 tasks successful.
-- `pnpm test`: PASS — 8/8 tasks successful. `@galena/web` **76 passed** (17 files; `realStore` 22), `@galena/xmpp-core` **114 passed, 3 skipped**, `@galena/server` **155 passed**.
+- `pnpm test`: PASS — 8/8 tasks successful. `@zilar/web` **76 passed** (17 files; `realStore` 22), `@zilar/xmpp-core` **114 passed, 3 skipped**, `@zilar/server` **155 passed**.
 - `pnpm build`: PASS — 2/2 tasks successful.
-- `GALENA_XMPP_INTEGRATION=1 pnpm --filter @galena/xmpp-core test integration-invites`: PASS — 1/1 against the still-running stack:
+- `ZILAR_XMPP_INTEGRATION=1 pnpm --filter @zilar/xmpp-core test integration-invites`: PASS — 1/1 against the still-running stack:
   ```
   PASS  the invited client connects
-  PASS  roster push received (jid=inv-alice-…@galena.localhost, subscription=both, name=Alice)
-  PASS  direct invitation received (roomJid=inv-…@rooms.galena.localhost,
-        fromJid=inv-…@rooms.galena.localhost, reason=Join the room)
+  PASS  roster push received (jid=inv-alice-…@zilar.localhost, subscription=both, name=Alice)
+  PASS  direct invitation received (roomJid=inv-…@rooms.zilar.localhost,
+        fromJid=inv-…@rooms.zilar.localhost, reason=Join the room)
   Test Files  1 passed (1)   Tests  1 passed (1)
   ```
 
@@ -191,7 +191,7 @@ pnpm build
 - The store drops `typing` and `displayed` when `event.outgoing === true` **or** `isOwnSender(event.fromJid)`, with a comment explaining why an own chat state or marker can arrive at all (the MUC reflects it). The JID check stays as the DM belt-and-braces path.
 - Tests:
   - xmpp-core `core.test.ts`: an unresolved reflection from our own nick (`room@rooms.domain/bob` after joining as `bob`) comes out of both parsers with `outgoing: true`.
-  - web `realStore.test.ts`: a fake core emitting `{ fromJid: 'team@rooms.galena.test/mynick', outgoing: true }` is ignored for typing (no typing state) and for displayed (the message stays `sent`).
+  - web `realStore.test.ts`: a fake core emitting `{ fromJid: 'team@rooms.zilar.test/mynick', outgoing: true }` is ignored for typing (no typing state) and for displayed (the message stays `sent`).
 - Existing `stanza.test.ts` DM assertions gained the new `outgoing: false` field.
 
 **Files changed (round 3).**
@@ -203,9 +203,9 @@ pnpm build
 - `pnpm format:check`: PASS — "All matched files use Prettier code style!".
 - `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (233 files, 127 rules).
 - `pnpm typecheck`: PASS — 8/8 tasks successful.
-- `pnpm test --force`: PASS — 8/8 tasks. `@galena/xmpp-core` **115 passed, 3 skipped**; `@galena/web` **78 passed**; `@galena/server` **155**; protocol 132, chat-core 50, mobile 48, agent-drivers 19, devtools 9.
+- `pnpm test --force`: PASS — 8/8 tasks. `@zilar/xmpp-core` **115 passed, 3 skipped**; `@zilar/web` **78 passed**; `@zilar/server` **155**; protocol 132, chat-core 50, mobile 48, agent-drivers 19, devtools 9.
 - `pnpm build`: PASS — 2/2 tasks successful.
-- `GALENA_XMPP_INTEGRATION=1 … vitest run src/integration.test.ts src/integration-invites.test.ts`: PASS — 2/2 against the running stack, including "typing and displayed markers arrive" and the invite/roster events.
+- `ZILAR_XMPP_INTEGRATION=1 … vitest run src/integration.test.ts src/integration-invites.test.ts`: PASS — 2/2 against the running stack, including "typing and displayed markers arrive" and the invite/roster events.
 
 **Problems, deviations, open questions (round 3).**
 - None. `outgoing` is additive on both events; the event types are only produced by `xmpp-core` and consumed by the store.
@@ -228,7 +228,7 @@ pnpm build
   132, mobile 48, chat-core 50, agent-drivers 19, devtools 9.
 - **Live against the running stack:** `integration.test.ts` and
   `integration-invites.test.ts` re-run by the lead with
-  `GALENA_XMPP_INTEGRATION=1`: **2/2 passed** (messages, payloads, typing,
+  `ZILAR_XMPP_INTEGRATION=1`: **2/2 passed** (messages, payloads, typing,
   displayed, reconnect with a fresh token, MAM, XEP-0249 invitations and roster
   pushes), without stopping or resetting anything.
 - **Protocol-truth probe.** I wrote a throwaway probe (never committed, deleted
@@ -237,8 +237,8 @@ pnpm build
   it partly corrects the reasoning in the round-3 review:
 
   ```
-  typing:    fromJid = <me>@galena.localhost   outgoing = true   (resolved)
-  displayed: fromJid = <me>@galena.localhost   outgoing = true   (resolved)
+  typing:    fromJid = <me>@zilar.localhost   outgoing = true   (resolved)
+  displayed: fromJid = <me>@zilar.localhost   outgoing = true   (resolved)
   ```
 
   So against ejabberd 26.07 the reflection of my own state **is** resolved to my
@@ -264,8 +264,8 @@ pnpm build
 ### What the lead verified in round 2
 - Re-ran every check in the worktree myself, without trusting the Report:
   `format:check`, `lint`, `typecheck`, `test` and `build` **all PASS**. The test
-  counts match your Report exactly: `@galena/web` 76, `@galena/xmpp-core` 114
-  passed / 3 skipped, `@galena/server` 155, plus protocol 132, mobile 48,
+  counts match your Report exactly: `@zilar/web` 76, `@zilar/xmpp-core` 114
+  passed / 3 skipped, `@zilar/server` 155, plus protocol 132, mobile 48,
   chat-core 50, agent-drivers 19 and devtools 9.
 - Scope: every path in `git diff main...HEAD` is inside the Allowed files,
   including the two added to the allow-list in round 1.
@@ -283,18 +283,18 @@ pnpm build
    `isOwnSender()` compares `fromJid` to `me.jid` exactly. But the last branch
    of `resolveSender()` for a `groupchat` returns `jid: input.from` when the
    sender cannot be resolved to a real JID, that is, the **full room JID**
-   `team@rooms.galena.test/mynick`, with `resolved: false` and
+   `team@rooms.zilar.test/mynick`, with `resolved: false` and
    `outgoing: true` (the nick matches `myNick`).
 
    That `outgoing` is computed correctly and then thrown away: `parseTyping`
    and `parseDisplayed` copy only `sender.jid` into the event, and neither
    `TypingEvent` nor `DisplayedEvent` has an `outgoing` field. The store then
-   compares `team@rooms.galena.test/mynick` with `me@galena.test`, gets
+   compares `team@rooms.zilar.test/mynick` with `me@zilar.test`, gets
    `false`, and shows me typing to me: finding 1 still reproducing whenever
    occupant resolution misses, such as a reflection arriving before our own
    occupant is in the roster.
 
-   Your test only covers the resolved case (`fromJid: 'me@galena.test'`), which
+   Your test only covers the resolved case (`fromJid: 'me@zilar.test'`), which
    is why it passes. Fix it at the source instead of guessing in the store:
    - Add `outgoing: boolean` to `TypingEvent` and `DisplayedEvent`, set from
      `sender.outgoing` in `parseTyping` and `parseDisplayed`. This is additive,
@@ -303,7 +303,7 @@ pnpm build
      **or** `isOwnSender(fromJid)`. Keep the JID check as a belt-and-braces
      path for DMs.
    - Tests: a fake core emitting
-     `{ fromJid: 'team@rooms.galena.test/mynick', outgoing: true }` must still
+     `{ fromJid: 'team@rooms.zilar.test/mynick', outgoing: true }` must still
      be ignored for both events, and an xmpp-core unit test that an unresolved
      reflection from our own nick comes out with `outgoing: true`.
 

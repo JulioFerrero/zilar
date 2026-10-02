@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { describe, expect, it } from 'vitest';
 import {
   CHAT_LIST_CACHE_KEY,

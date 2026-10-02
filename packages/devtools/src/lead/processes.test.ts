@@ -8,9 +8,9 @@ import {
   stopWorktreeProcesses,
 } from './processes';
 
-const WORKTREE = '/Users/julio/personal-projects/galena-T-0099';
-const LOOKALIKE = '/Users/julio/personal-projects/galena-T-00990';
-const MAIN_REPO = '/Users/julio/personal-projects/galena';
+const WORKTREE = '/Users/julio/personal-projects/zilar-T-0099';
+const LOOKALIKE = '/Users/julio/personal-projects/zilar-T-00990';
+const MAIN_REPO = '/Users/julio/personal-projects/zilar';
 
 function findDeps(overrides: Partial<FindProcsDeps> = {}): FindProcsDeps {
   return {
@@ -94,7 +94,7 @@ describe('findProcessesInWorktree', () => {
     expect(result.map((entry) => entry.pid)).toEqual([302]);
   });
 
-  it('does not match look-alike paths (galena-T-0099 vs galena-T-00990)', () => {
+  it('does not match look-alike paths (zilar-T-0099 vs zilar-T-00990)', () => {
     const lsof = `p400\nn${LOOKALIKE}\np401\nn${WORKTREE}\n`;
     const ps = `400 bash\n401 bash\n`;
     const result = findProcessesInWorktree(WORKTREE, findDeps({ lsof: () => lsof, ps: () => ps }));
@@ -102,8 +102,8 @@ describe('findProcessesInWorktree', () => {
   });
 
   it('does not match commands that mention the look-alike path', () => {
-    // galena-T-00990 ends in `0`, so the exact-prefixed needle
-    // `galena-T-0099/` never appears inside it.
+    // zilar-T-00990 ends in `0`, so the exact-prefixed needle
+    // `zilar-T-0099/` never appears inside it.
     const ps = `410 node ${LOOKALIKE}/apps/server/src/index.ts\n411 node ${LOOKALIKE}subpath\n`;
     const result = findProcessesInWorktree(WORKTREE, findDeps({ ps: () => ps }));
     expect(result.map((entry) => entry.pid)).toEqual([]);

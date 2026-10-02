@@ -8,7 +8,7 @@ export type StickerMime = (typeof STICKER_MIME_VALUES)[number];
  * One sticker inside a chat message. The bytes live at `url`: either the
  * absolute server file URL at send time, or the relative
  * `/api/stickers/:id/file` path the server API returns (clients resolve it
- * against the Galena API origin). Clients that do not know this payload show
+ * against the Zilar API origin). Clients that do not know this payload show
  * `emoji` (or nothing) as the body instead. Rendering still fetches only
  * same-origin sticker URLs (see `isSameOriginStickerUrl` on web).
  */

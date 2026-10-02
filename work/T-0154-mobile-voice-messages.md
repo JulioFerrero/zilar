@@ -20,7 +20,7 @@ Web records and plays voice messages (`apps/web/src/components/Composer.tsx` mic
 1. Recording: press-and-hold or tap-to-record on the mic button (match web's gesture and states: recording indicator with a timer, cancel, send). Use `expo-audio` (add it; SDK 57 version `~57.x`, plus the microphone permission string in `app.json`; ask for the permission on first use, with a plain explanation on denial, never a crash). Cap at 5 minutes and refuse under one second (same limits as `VOICE_MAX_*` in `apps/server/src/voice/routes.ts`).
 2. Send: the recorded file goes through the same path web uses (check `apps/web/src/lib` for the voice send helper): `POST /api/voice` for the conversion when the recording is not already AAC/M4A (on iOS `expo-audio` can record m4a directly: skip the conversion call when the file already is m4a/aac and its duration is known), then the T-0150 upload path (`sendAttachment` with a `kind: 'file'`, audio mime and the duration in the payload exactly as web builds it), progress, Retry and Cancel like any attachment.
 3. Playback: a voice bubble (play/pause, a progress bar, elapsed/total time, playback speed toggle 1x/1.5x/2x is optional). Only one voice plays at a time; leaving the chat stops playback. Same trust rules as attachments (untrusted host: a file row, no auto-load; bearer only to the API origin, never to the upload host).
-4. Mock mode: a demo voice message in the mock store so the UI can be seen without a server (`EXPO_PUBLIC_GALENA_MOCK`).
+4. Mock mode: a demo voice message in the mock store so the UI can be seen without a server (`EXPO_PUBLIC_ZILAR_MOCK`).
 5. Tests: the voice send helper (conversion skipped for m4a, duration limits, error mapping), the bubble (renders duration and play state), the permission-denied copy, the one-player-at-a-time rule. Native modules are mocked; no real microphone in tests.
 6. Out of scope: server changes, web, transcription, waveform rendering (a plain progress bar is fine), push.
 
@@ -36,7 +36,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test --maxWorkers=2 voice attachment composer hooks-guard
+pnpm --filter @zilar/mobile test --maxWorkers=2 voice attachment composer hooks-guard
 ```
 
 ### Acceptance

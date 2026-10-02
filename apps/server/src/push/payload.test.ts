@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildPushPayload, PushPayloadSchema, type ResolvedPushMessage } from './payload';
 
 const message: ResolvedPushMessage = {
-  chatJid: 'bug@rooms.galena.localhost',
+  chatJid: 'bug@rooms.zilar.localhost',
   senderName: 'Ana',
   place: 'Acme Web › Bug: checkout…',
   text: 'Fixed the total, please re-check the cart.',
@@ -14,13 +14,13 @@ describe('buildPushPayload', () => {
     const payload = buildPushPayload(message, { muted: false, visible: true, showPreviews: true });
     expect(payload?.title).toBe('Ana in Acme Web › Bug: checkout…');
     expect(payload?.body).toBe('Fixed the total, please re-check the cart.');
-    expect(payload?.chatId).toBe('bug@rooms.galena.localhost');
+    expect(payload?.chatId).toBe('bug@rooms.zilar.localhost');
     expect(payload?.messageId).toBe('origin-1');
   });
 
   it('uses just the name for a DM', () => {
     const payload = buildPushPayload(
-      { ...message, chatJid: 'ana@galena.localhost', place: 'Ana' },
+      { ...message, chatJid: 'ana@zilar.localhost', place: 'Ana' },
       { muted: false, visible: true, showPreviews: true },
     );
     expect(payload?.title).toBe('Ana');

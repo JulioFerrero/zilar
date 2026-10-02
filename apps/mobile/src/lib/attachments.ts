@@ -9,7 +9,7 @@
  * shape below, and the trusted-media set is the same three hosts.
  */
 
-import type { Attachment } from '@galena/protocol';
+import type { Attachment } from '@zilar/protocol';
 
 /** Hard cap on an attachment: the ejabberd `mod_http_upload` `max_size`. */
 export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;

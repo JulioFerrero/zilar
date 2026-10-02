@@ -18,7 +18,7 @@ D29: an AI reads **only the topics it was added to**. After T-0108 every topic i
 
 ### Rules
 - `group_ais` stays: it means "this AI belongs to the group" and, as today, puts the AI in the **General** topic. It is also the precondition to be added to any other topic (an AI must be in the group first).
-- New `topic_ais` (`topic_id` fk cascade, `ai_id` fk cascade, `added_by` fk user, `added_at`, pk `(topic_id, ai_id)`); rows only for **non-General** topics. Migration only via `pnpm --filter @galena/server db:generate`.
+- New `topic_ais` (`topic_id` fk cascade, `ai_id` fk cascade, `added_by` fk user, `added_at`, pk `(topic_id, ai_id)`); rows only for **non-General** topics. Migration only via `pnpm --filter @zilar/server db:generate`.
 - **Who may add or remove an AI in a topic:** the AI's **owner**, provided they can **see the topic** (`canSeeTopic` from T-0108); a topic manager may **remove** any AI from their topic. Removing an AI from the group removes it from every topic of that group (extend `removeGroupAi`, same transaction as the rules/tools cleanup it already does). Archiving a topic keeps its rows but the gateway leaves the room.
 - The AI's XMPP account is a room member (affiliation `member`) of each topic room it is in, and only those: sync through the same room-sync function T-0108 added (`desiredMembers` learns about AIs: public topic = group members + its `topic_ais`; General = group members + all `group_ais`).
 - An AI that is **not** a member of a private topic must be unable to read it even if it is in the group: proved at the room level (affiliations), not by the AI's own good behaviour.
@@ -67,7 +67,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
 pnpm build
 ```
 
@@ -79,7 +79,7 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
-- Schema + migration: new `topic_ais` table (`topic_id`/`ai_id` pk, `added_by`, `added_at`, cascade FKs), rows only for non-General topics. Generated via `pnpm --filter @galena/server db:generate` → `0020_dry_lord_hawal.sql`.
+- Schema + migration: new `topic_ais` table (`topic_id`/`ai_id` pk, `added_by`, `added_at`, cascade FKs), rows only for non-General topics. Generated via `pnpm --filter @zilar/server db:generate` → `0020_dry_lord_hawal.sql`.
 - Topics: `GET /api/topics/:id/ais` (visible), `POST /api/topics/:id/ais` `{ aiId }` (AI owner who can see the topic; AI must be an active group member; General → 400 `already_in_general`), `DELETE /api/topics/:id/ais/:aiId` (AI owner or topic manager). Strangers/blind owners/plain members get the same 404 as a missing id. `GET /api/topics/:id` and topic lists (incl. `GET /api/chats`) gain `ais: [{ id, name }]`. Audit `topic.ai_added`/`topic.ai_removed` (ids only). Room sync after every add/remove (502 on failure); events `ai-added`/`ai-removed` via new `onTopicAi`/`emitTopicAi` in `groups/events.ts`.
 - Rooms: `desiredMembers` adds AI JIDs — General = every active `group_ais` AI; other topics = their active `topic_ais` rows; a private topic never includes an AI without a row. Archived topics sync empty.
 - Groups: `removeGroupAi` deletes every `topic_ais` row for the AI in the same transaction as the rules/tools cleanup, re-syncs every topic room post-commit, then emits `ai-removed`. Input gains `domain`/`logger` (route passes them).
@@ -100,7 +100,7 @@ pnpm build
 - `pnpm format:check`: pass ("All matched files use Prettier code style!")
 - `pnpm lint`: pass (oxlint clean)
 - `pnpm typecheck`: pass (turbo 10/10)
-- `pnpm --filter @galena/server test --maxWorkers=2`: 64 files passed, 5 skipped; 1113 passed, 7 skipped (229s)
+- `pnpm --filter @zilar/server test --maxWorkers=2`: 64 files passed, 5 skipped; 1113 passed, 7 skipped (229s)
 - `pnpm build`: pass (2/2 turbo tasks)
 - Scoped: topics 29 passed; agents+groups+chats+audit+authz-sweep 286 passed, 1 skipped; actions 105 passed; gateway full 113 passed.
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|console.log|: any` in touched non-test source: no hits (2 pre-existing English comments containing "any" matched, no `any` types).
@@ -111,7 +111,7 @@ pnpm build
 - `agents/gateway.ts` `listAiRooms` filters each topic through `allowedTopicAiIds` (select now includes `visibility`), so the gateway leaves or never joins such a room. No change needed in `loadRoomGateState` callers: the gate already restricts wake-ups to topic members, and the subscription being gone means the message never reaches a turn.
 - Re-sync + live leave on every flow where owner visibility changes: `removeTopicMember` and public→private `patchTopic` call `syncTopicRoom` (already there) plus new `emitDroppedTopicAis` (`ai-removed` per dropped AI); `removeGroupMember` reuses the existing `syncGroupTopicRooms` plus new `emitDroppedGroupTopicAis` in `groups/service.ts`. `removeGroupAi` needed nothing new (rows deleted, rooms re-synced, event already emitted).
 - Tests: (a) owner self-removes from a private topic → AI affiliation gone, row stays, re-adding owner revives the AI; (b) public→private without the AI owner in `memberIds` → AI dropped, row stays; (c) covered by (a) re-add; (d) public topic keeps its AI. Gateway: owner removed from a private topic → session leaves on the event, later mentions unanswered, reconcile agrees. Fixed the pre-existing admin-gate fixture (AI owner must also be a topic member now for the turn to run). `backfill.test.ts` exclusion for `0020_*` unchanged.
-- Checks (one Vitest run at a time): topics+groups 62 passed; gateway full 114 passed; full server suite `pnpm --filter @galena/server test --maxWorkers=2`: 64 files passed, 5 skipped; 1117 passed, 7 skipped (232s). format/lint/typecheck/build pass. No `any`, no disables, no new dependencies.
+- Checks (one Vitest run at a time): topics+groups 62 passed; gateway full 114 passed; full server suite `pnpm --filter @zilar/server test --maxWorkers=2`: 64 files passed, 5 skipped; 1117 passed, 7 skipped (232s). format/lint/typecheck/build pass. No `any`, no disables, no new dependencies.
 
 ### Problems, deviations from the spec, open questions
 - Per the review: the production announcer `topicId` wiring is left to T-0110. No action here.

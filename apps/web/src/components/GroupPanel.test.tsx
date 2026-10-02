@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { AuthProvider, type AuthState } from '@/auth/AuthProvider';
 import type { GroupDetail, PublicAi } from '@/lib/api';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
@@ -9,7 +9,7 @@ import { GroupPanel } from './GroupPanel';
 
 const auth: AuthState = {
   status: 'authenticated',
-  user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+  user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
 
@@ -26,7 +26,7 @@ const chat: ChatSummary = {
 
 const devAi: GroupDetail['ais'][number] = {
   aiId: 'dev-1',
-  jid: 'ai-dev-1@galena.test',
+  jid: 'ai-dev-1@zilar.test',
   name: 'Dev-1',
   ownerId: 'u-you',
 };
@@ -52,7 +52,7 @@ function myAi(id: string, name: string): PublicAi {
     template: 'custom',
     persona: 'A helpful assistant.',
     model: 'gpt-4o',
-    jid: `ai-${id}@galena.test`,
+    jid: `ai-${id}@zilar.test`,
     status: 'active',
     providerConnectionId: 'conn-1',
     limits: { perDayUsd: 2, perMonthUsd: 20 },

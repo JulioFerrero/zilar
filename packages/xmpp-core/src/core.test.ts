@@ -130,7 +130,7 @@ function createFakeClient(): FakeClient {
 }
 
 function options(getToken: () => Promise<{ jid: string; token: string }>): XmppCoreOptions {
-  return { service: 'ws://127.0.0.1:5280/ws', domain: 'galena.localhost', getToken };
+  return { service: 'ws://127.0.0.1:5280/ws', domain: 'zilar.localhost', getToken };
 }
 
 async function flush(): Promise<void> {
@@ -154,13 +154,13 @@ async function authenticateThrough(
 
 async function connectedCore(fake: FakeClient): Promise<XmppCore> {
   const core = createCore(
-    options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+    options(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
     {
       createClient: () => fake,
     },
   );
   const connecting = core.connect();
-  fake.emitOnline('bob@galena.localhost');
+  fake.emitOnline('bob@zilar.localhost');
   await connecting;
   await flush();
   return core;
@@ -206,7 +206,7 @@ describe('createXmppCore: connection lifecycle', () => {
     const fake = createFakeClient();
     const statuses: ConnectionStatus[] = [];
     const core = createCore(
-      options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+      options(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
       {
         createClient: () => fake,
       },
@@ -216,11 +216,11 @@ describe('createXmppCore: connection lifecycle', () => {
     const connecting = core.connect();
     expect(core.status()).toBe('connecting');
 
-    fake.emitOnline('bob@galena.localhost');
+    fake.emitOnline('bob@zilar.localhost');
     await connecting;
 
     expect(core.status()).toBe('online');
-    expect(core.me()).toBe('bob@galena.localhost');
+    expect(core.me()).toBe('bob@zilar.localhost');
     expect(statuses).toEqual(['connecting', 'online']);
 
     await flush();
@@ -233,7 +233,7 @@ describe('createXmppCore: connection lifecycle', () => {
   it('knows its own JID by the time listeners see online', async () => {
     const fake = createFakeClient();
     const core = createCore(
-      options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+      options(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
       {
         createClient: () => fake,
       },
@@ -244,10 +244,10 @@ describe('createXmppCore: connection lifecycle', () => {
     });
 
     const connecting = core.connect();
-    fake.emitOnline('bob@galena.localhost');
+    fake.emitOnline('bob@zilar.localhost');
     await connecting;
 
-    expect(seen).toEqual(['bob@galena.localhost']);
+    expect(seen).toEqual(['bob@zilar.localhost']);
   });
 
   it('goes back to online and reports reconnecting after a dropped connection', async () => {
@@ -257,7 +257,7 @@ describe('createXmppCore: connection lifecycle', () => {
     fake.emitStatus('disconnect');
     expect(core.status()).toBe('reconnecting');
 
-    fake.emitOnline('bob@galena.localhost');
+    fake.emitOnline('bob@zilar.localhost');
     expect(core.status()).toBe('online');
   });
 
@@ -277,7 +277,7 @@ describe('createXmppCore: connection lifecycle', () => {
   it('unsubscribes with the function returned by on', async () => {
     const fake = createFakeClient();
     const core = createCore(
-      options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+      options(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
       {
         createClient: () => fake,
       },
@@ -287,7 +287,7 @@ describe('createXmppCore: connection lifecycle', () => {
     off();
 
     const connecting = core.connect();
-    fake.emitOnline('bob@galena.localhost');
+    fake.emitOnline('bob@zilar.localhost');
     await connecting;
 
     expect(statuses).toEqual([]);
@@ -299,7 +299,7 @@ describe('createXmppCore: token login', () => {
     let count = 0;
     const getToken = vi.fn(async () => {
       count += 1;
-      return { jid: 'bob@galena.localhost', token: `tok-${count}` };
+      return { jid: 'bob@zilar.localhost', token: `tok-${count}` };
     });
     const fake = createFakeClient();
     let captured: ClientOptions | undefined;
@@ -313,13 +313,13 @@ describe('createXmppCore: token login', () => {
     const connecting = core.connect();
     const authenticate = vi.fn(async () => {});
     await authenticateThrough(captured!, fake, authenticate);
-    fake.emitOnline('bob@galena.localhost');
+    fake.emitOnline('bob@zilar.localhost');
     await connecting;
 
     // A reconnect runs the credentials provider again.
     fake.emitStatus('disconnect');
     await authenticateThrough(captured!, fake, authenticate);
-    fake.emitOnline('bob@galena.localhost');
+    fake.emitOnline('bob@zilar.localhost');
 
     expect(getToken).toHaveBeenCalledTimes(2);
     expect(authenticate).toHaveBeenNthCalledWith(
@@ -370,7 +370,7 @@ describe('createXmppCore: token login', () => {
     const fake = createFakeClient();
     let captured: ClientOptions | undefined;
     const core = createCore(
-      options(async () => ({ jid: 'bob@galena.localhost', token })),
+      options(async () => ({ jid: 'bob@zilar.localhost', token })),
       {
         createClient: (clientOptions) => {
           captured = clientOptions;
@@ -387,7 +387,7 @@ describe('createXmppCore: token login', () => {
       fake,
       vi.fn(async () => {}),
     );
-    fake.emitOnline('bob@galena.localhost');
+    fake.emitOnline('bob@zilar.localhost');
     await connecting;
 
     fake.emitClientError(new Error(`authentication failed for ${token}`));
@@ -401,7 +401,7 @@ describe('createXmppCore: rooms', () => {
   it('resolves joinRoom on our own presence and rejects on an error', async () => {
     const fake = createFakeClient();
     const core = await connectedCore(fake);
-    const roomJid = 'project@rooms.galena.localhost';
+    const roomJid = 'project@rooms.zilar.localhost';
 
     const joining = core.joinRoom(roomJid, 'bob');
     await flush();
@@ -409,12 +409,12 @@ describe('createXmppCore: rooms', () => {
     fake.emitStanza(xml('presence', { from: `${roomJid}/bob` }));
     await joining;
 
-    const failing = core.joinRoom('locked@rooms.galena.localhost', 'bob');
+    const failing = core.joinRoom('locked@rooms.zilar.localhost', 'bob');
     await flush();
     fake.emitStanza(
       xml(
         'presence',
-        { from: 'locked@rooms.galena.localhost/bob', type: 'error' },
+        { from: 'locked@rooms.zilar.localhost/bob', type: 'error' },
         xml(
           'error',
           { type: 'auth' },
@@ -428,7 +428,7 @@ describe('createXmppCore: rooms', () => {
   it('rejoins joined rooms after a reconnect', async () => {
     const fake = createFakeClient();
     const core = await connectedCore(fake);
-    const roomJid = 'project@rooms.galena.localhost';
+    const roomJid = 'project@rooms.zilar.localhost';
 
     const joining = core.joinRoom(roomJid, 'bob');
     await flush();
@@ -437,7 +437,7 @@ describe('createXmppCore: rooms', () => {
     const before = joinPresences(fake, roomJid, 'bob').length;
 
     fake.emitStatus('disconnect');
-    fake.emitOnline('bob@galena.localhost');
+    fake.emitOnline('bob@zilar.localhost');
     await flush();
 
     expect(joinPresences(fake, roomJid, 'bob').length).toBe(before + 1);
@@ -446,7 +446,7 @@ describe('createXmppCore: rooms', () => {
   it('leaves a room with an unavailable presence', async () => {
     const fake = createFakeClient();
     const core = await connectedCore(fake);
-    const roomJid = 'project@rooms.galena.localhost';
+    const roomJid = 'project@rooms.zilar.localhost';
 
     const joining = core.joinRoom(roomJid, 'bob');
     await flush();
@@ -463,9 +463,9 @@ describe('createXmppCore: rooms', () => {
 });
 
 describe('createXmppCore: occupant roster', () => {
-  const roomJid = 'project@rooms.galena.localhost';
-  const bobJid = 'bob@galena.localhost';
-  const aliceJid = 'alice@galena.localhost';
+  const roomJid = 'project@rooms.zilar.localhost';
+  const bobJid = 'bob@zilar.localhost';
+  const aliceJid = 'alice@zilar.localhost';
 
   it('tracks occupants from MUC presence and fires the occupants event', async () => {
     const fake = createFakeClient();
@@ -558,20 +558,20 @@ describe('createXmppCore: occupant roster', () => {
     fake.emitStanza(
       xml(
         'presence',
-        { from: 'alice@galena.localhost/phone' },
-        xml('x', { xmlns: MUC_USER_NAMESPACE }, xml('item', { jid: 'alice@galena.localhost' })),
+        { from: 'alice@zilar.localhost/phone' },
+        xml('x', { xmlns: MUC_USER_NAMESPACE }, xml('item', { jid: 'alice@zilar.localhost' })),
       ),
     );
     fake.emitStanza(
       xml(
         'presence',
-        { from: 'other@rooms.galena.localhost/mallory' },
-        xml('x', { xmlns: MUC_USER_NAMESPACE }, xml('item', { jid: 'mallory@galena.localhost' })),
+        { from: 'other@rooms.zilar.localhost/mallory' },
+        xml('x', { xmlns: MUC_USER_NAMESPACE }, xml('item', { jid: 'mallory@zilar.localhost' })),
       ),
     );
 
     expect(core.occupants(roomJid)).toEqual([]);
-    expect(core.occupants('other@rooms.galena.localhost')).toEqual([]);
+    expect(core.occupants('other@rooms.zilar.localhost')).toEqual([]);
   });
 
   it('drops the roster on disconnect and rebuilds it after a reconnect', async () => {
@@ -601,12 +601,12 @@ describe('createXmppCore: messages and markers', () => {
     const fake = createFakeClient();
     const core = await connectedCore(fake);
 
-    const { id } = await core.sendMessage('alice@galena.localhost', 'chat', 'hello', {
+    const { id } = await core.sendMessage('alice@zilar.localhost', 'chat', 'hello', {
       replyTo: { id: 'm-0' },
     });
 
     const sent = fake.sent.at(-1);
-    expect(sent?.attrs).toMatchObject({ type: 'chat', to: 'alice@galena.localhost', id });
+    expect(sent?.attrs).toMatchObject({ type: 'chat', to: 'alice@zilar.localhost', id });
     expect(sent?.getChildText('body')).toBe('hello');
     expect(sent?.getChild('reply', REPLY_NAMESPACE)?.attrs['id']).toBe('m-0');
   });
@@ -615,8 +615,8 @@ describe('createXmppCore: messages and markers', () => {
     const fake = createFakeClient();
     const core = await connectedCore(fake);
 
-    await core.sendMessage('project@rooms.galena.localhost', 'groupchat', 'hi 😀 @Ana', {
-      mentions: [{ jid: 'ana@galena.localhost', begin: 6, end: 10 }],
+    await core.sendMessage('project@rooms.zilar.localhost', 'groupchat', 'hi 😀 @Ana', {
+      mentions: [{ jid: 'ana@zilar.localhost', begin: 6, end: 10 }],
     });
 
     const references = fake.sent.at(-1)?.getChildren('reference', REFERENCE_NAMESPACE) ?? [];
@@ -624,7 +624,7 @@ describe('createXmppCore: messages and markers', () => {
     // The emoji is one code point, not two UTF-16 units.
     expect(references[0]?.attrs).toMatchObject({
       type: 'mention',
-      uri: 'xmpp:ana@galena.localhost',
+      uri: 'xmpp:ana@zilar.localhost',
       begin: '5',
       end: '9',
     });
@@ -633,12 +633,12 @@ describe('createXmppCore: messages and markers', () => {
   it('rejects sending when offline', async () => {
     const fake = createFakeClient();
     const core = createCore(
-      options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+      options(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
       {
         createClient: () => fake,
       },
     );
-    await expect(core.sendMessage('alice@galena.localhost', 'chat', 'hi')).rejects.toThrow(
+    await expect(core.sendMessage('alice@zilar.localhost', 'chat', 'hi')).rejects.toThrow(
       'not online',
     );
   });
@@ -647,10 +647,10 @@ describe('createXmppCore: messages and markers', () => {
     const fake = createFakeClient();
     const core = await connectedCore(fake);
 
-    await core.sendReactions('project@rooms.galena.localhost', 'groupchat', 'sid-1', ['👍']);
+    await core.sendReactions('project@rooms.zilar.localhost', 'groupchat', 'sid-1', ['👍']);
 
     const sent = fake.sent.at(-1);
-    expect(sent?.attrs).toMatchObject({ type: 'groupchat', to: 'project@rooms.galena.localhost' });
+    expect(sent?.attrs).toMatchObject({ type: 'groupchat', to: 'project@rooms.zilar.localhost' });
     expect(sent?.getChild('body')).toBeUndefined();
     expect(sent?.getChild('reactions', REACTIONS_NAMESPACE)?.attrs['id']).toBe('sid-1');
     expect(sent?.getChild('store', HINTS_NAMESPACE)).toBeDefined();
@@ -659,13 +659,13 @@ describe('createXmppCore: messages and markers', () => {
   it('rejects sending reactions when offline', async () => {
     const fake = createFakeClient();
     const core = createCore(
-      options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+      options(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
       {
         createClient: () => fake,
       },
     );
     await expect(
-      core.sendReactions('alice@galena.localhost', 'chat', 'm-1', ['👍']),
+      core.sendReactions('alice@zilar.localhost', 'chat', 'm-1', ['👍']),
     ).rejects.toThrow('not online');
   });
 
@@ -678,7 +678,7 @@ describe('createXmppCore: messages and markers', () => {
     fake.emitStanza(
       xml(
         'message',
-        { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-40' },
+        { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-40' },
         xml('reactions', { xmlns: REACTIONS_NAMESPACE, id: 'm-1' }, xml('reaction', {}, '👍')),
       ),
     );
@@ -693,23 +693,23 @@ describe('createXmppCore: messages and markers', () => {
     const core = await connectedCore(fake);
 
     const { id } = await core.sendCorrection(
-      'project@rooms.galena.localhost',
+      'project@rooms.zilar.localhost',
       'groupchat',
       'origin-1',
       'hi 😀 @Ana',
-      { mentions: [{ jid: 'ana@galena.localhost', begin: 6, end: 10 }] },
+      { mentions: [{ jid: 'ana@zilar.localhost', begin: 6, end: 10 }] },
     );
 
     const sent = fake.sent.at(-1);
     expect(sent?.attrs).toMatchObject({
       type: 'groupchat',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       id,
     });
     expect(sent?.getChildText('body')).toBe('hi 😀 @Ana');
     expect(sent?.getChild('replace', CORRECTION_NAMESPACE)?.attrs['id']).toBe('origin-1');
     expect(sent?.getChild('reference', REFERENCE_NAMESPACE)?.attrs['uri']).toBe(
-      'xmpp:ana@galena.localhost',
+      'xmpp:ana@zilar.localhost',
     );
   });
 
@@ -717,10 +717,10 @@ describe('createXmppCore: messages and markers', () => {
     const fake = createFakeClient();
     const core = await connectedCore(fake);
 
-    await core.sendRetraction('project@rooms.galena.localhost', 'groupchat', 'sid-1');
+    await core.sendRetraction('project@rooms.zilar.localhost', 'groupchat', 'sid-1');
 
     const sent = fake.sent.at(-1);
-    expect(sent?.attrs).toMatchObject({ type: 'groupchat', to: 'project@rooms.galena.localhost' });
+    expect(sent?.attrs).toMatchObject({ type: 'groupchat', to: 'project@rooms.zilar.localhost' });
     expect(sent?.getChild('retract', RETRACTION_NAMESPACE)?.attrs['id']).toBe('sid-1');
     expect(sent?.getChild('fallback', FALLBACK_NAMESPACE)).toBeDefined();
     expect(sent?.getChild('body')).toBeDefined();
@@ -730,15 +730,15 @@ describe('createXmppCore: messages and markers', () => {
   it('rejects sending a correction or a retraction when offline', async () => {
     const fake = createFakeClient();
     const core = createCore(
-      options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+      options(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
       {
         createClient: () => fake,
       },
     );
-    await expect(
-      core.sendCorrection('alice@galena.localhost', 'chat', 'm-1', 'hi'),
-    ).rejects.toThrow('not online');
-    await expect(core.sendRetraction('alice@galena.localhost', 'chat', 'm-1')).rejects.toThrow(
+    await expect(core.sendCorrection('alice@zilar.localhost', 'chat', 'm-1', 'hi')).rejects.toThrow(
+      'not online',
+    );
+    await expect(core.sendRetraction('alice@zilar.localhost', 'chat', 'm-1')).rejects.toThrow(
       'not online',
     );
   });
@@ -752,7 +752,7 @@ describe('createXmppCore: messages and markers', () => {
     fake.emitStanza(
       xml(
         'message',
-        { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-41' },
+        { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-41' },
         xml('body', {}, 'fixed'),
         xml('replace', { xmlns: CORRECTION_NAMESPACE, id: 'm-1' }),
       ),
@@ -760,7 +760,7 @@ describe('createXmppCore: messages and markers', () => {
     fake.emitStanza(
       xml(
         'message',
-        { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-42' },
+        { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-42' },
         xml('retract', { xmlns: RETRACTION_NAMESPACE, id: 'm-2' }),
         xml('body', {}, 'fallback'),
       ),
@@ -777,8 +777,8 @@ describe('createXmppCore: messages and markers', () => {
     const fake = createFakeClient();
     const core = await connectedCore(fake);
 
-    core.sendTyping('project@rooms.galena.localhost', 'groupchat', 'composing');
-    core.markDisplayed('project@rooms.galena.localhost', 'groupchat', 'm-1');
+    core.sendTyping('project@rooms.zilar.localhost', 'groupchat', 'composing');
+    core.markDisplayed('project@rooms.zilar.localhost', 'groupchat', 'm-1');
     await flush();
 
     expect(
@@ -804,21 +804,21 @@ describe('createXmppCore: messages and markers', () => {
     fake.emitStanza(
       xml(
         'message',
-        { from: 'alice@galena.localhost', type: 'chat', id: 'm-1' },
+        { from: 'alice@zilar.localhost', type: 'chat', id: 'm-1' },
         xml('body', {}, 'hi'),
       ),
     );
     fake.emitStanza(
       xml(
         'message',
-        { from: 'alice@galena.localhost', type: 'chat' },
+        { from: 'alice@zilar.localhost', type: 'chat' },
         xml('composing', { xmlns: CHAT_STATES_NAMESPACE }),
       ),
     );
     fake.emitStanza(
       xml(
         'message',
-        { from: 'alice@galena.localhost', type: 'chat' },
+        { from: 'alice@zilar.localhost', type: 'chat' },
         xml('displayed', { xmlns: CHAT_MARKERS_NAMESPACE, id: 'm-0' }),
       ),
     );
@@ -854,7 +854,7 @@ describe('createXmppCore: messages and markers', () => {
     core.on('typing', (event) => typing.push(event));
     core.on('displayed', (event) => displayed.push(event));
 
-    const reflectedRoom = 'project@rooms.galena.localhost';
+    const reflectedRoom = 'project@rooms.zilar.localhost';
     const joining = core.joinRoom(reflectedRoom, 'bob');
     await flush();
     fake.emitStanza(xml('presence', { from: `${reflectedRoom}/bob` }));
@@ -898,13 +898,13 @@ describe('createXmppCore: contact presence', () => {
     const events: PresenceEvent[] = [];
     core.on('presence', (event) => events.push(event));
 
-    fake.emitStanza(xml('presence', { from: 'alice@galena.localhost/phone' }));
-    fake.emitStanza(xml('presence', { from: 'alice@galena.localhost/phone', type: 'unavailable' }));
+    fake.emitStanza(xml('presence', { from: 'alice@zilar.localhost/phone' }));
+    fake.emitStanza(xml('presence', { from: 'alice@zilar.localhost/phone', type: 'unavailable' }));
     fake.emitStanza(xml('presence', { from: 'mallory@evil.example/phone' }));
 
     expect(events).toEqual([
-      { jid: 'alice@galena.localhost', available: true },
-      { jid: 'alice@galena.localhost', available: false },
+      { jid: 'alice@zilar.localhost', available: true },
+      { jid: 'alice@zilar.localhost', available: false },
     ]);
   });
 });
@@ -913,7 +913,7 @@ describe('createXmppCore: history', () => {
   function mamResult(queryId: string, archiveId: string, stamp: string, body: string): XmppElement {
     return xml(
       'message',
-      { from: 'project@rooms.galena.localhost', to: 'bob@galena.localhost/laptop' },
+      { from: 'project@rooms.zilar.localhost', to: 'bob@zilar.localhost/laptop' },
       xml(
         'result',
         { xmlns: MAM_NAMESPACE, queryid: queryId, id: archiveId },
@@ -924,12 +924,12 @@ describe('createXmppCore: history', () => {
           xml(
             'message',
             {
-              from: 'project@rooms.galena.localhost/alice',
+              from: 'project@rooms.zilar.localhost/alice',
               type: 'groupchat',
               id: `m-${archiveId}`,
             },
             xml('body', {}, body),
-            xml('x', { xmlns: MUC_USER_NAMESPACE }, xml('item', { jid: 'alice@galena.localhost' })),
+            xml('x', { xmlns: MUC_USER_NAMESPACE }, xml('item', { jid: 'alice@zilar.localhost' })),
           ),
         ),
       ),
@@ -940,11 +940,11 @@ describe('createXmppCore: history', () => {
     const fake = createFakeClient();
     const core = await connectedCore(fake);
 
-    const history = core.loadHistory('project@rooms.galena.localhost', 'groupchat');
+    const history = core.loadHistory('project@rooms.zilar.localhost', 'groupchat');
     await flush();
 
     const iq = fake.sent.at(-1);
-    expect(iq?.attrs['to']).toBe('project@rooms.galena.localhost');
+    expect(iq?.attrs['to']).toBe('project@rooms.zilar.localhost');
     const queryId = iq?.getChild('query', MAM_NAMESPACE)?.attrs['queryid'] ?? '';
     const iqId = iq?.attrs['id'] ?? '';
 
@@ -973,7 +973,7 @@ describe('createXmppCore: history', () => {
     const fake = createFakeClient();
     const core = await connectedCore(fake);
 
-    const history = core.loadHistory('alice@galena.localhost', 'chat');
+    const history = core.loadHistory('alice@zilar.localhost', 'chat');
     await flush();
     const iqId = fake.sent.at(-1)?.attrs['id'] ?? '';
 
@@ -1015,7 +1015,7 @@ describe('createXmppCore: invitations and roster pushes', () => {
         'query',
         { xmlns: ROSTER_NAMESPACE },
         xml('item', {
-          jid: 'alice@galena.localhost',
+          jid: 'alice@zilar.localhost',
           subscription: 'both',
           name: 'Alice',
         }),
@@ -1031,16 +1031,16 @@ describe('createXmppCore: invitations and roster pushes', () => {
 
     fake.emitStanza(
       invitation({
-        from: 'alice@galena.localhost',
-        room: 'project@rooms.galena.localhost',
+        from: 'alice@zilar.localhost',
+        room: 'project@rooms.zilar.localhost',
         reason: 'Join us',
       }),
     );
 
     expect(events).toEqual([
       {
-        roomJid: 'project@rooms.galena.localhost',
-        fromJid: 'alice@galena.localhost',
+        roomJid: 'project@rooms.zilar.localhost',
+        fromJid: 'alice@zilar.localhost',
         reason: 'Join us',
       },
     ]);
@@ -1053,10 +1053,10 @@ describe('createXmppCore: invitations and roster pushes', () => {
     core.on('invited', (event) => events.push(event));
 
     fake.emitStanza(
-      invitation({ from: 'alice@galena.localhost', room: 'project@rooms.evil.example' }),
+      invitation({ from: 'alice@zilar.localhost', room: 'project@rooms.evil.example' }),
     );
     fake.emitStanza(
-      invitation({ from: 'mallory@evil.example', room: 'project@rooms.galena.localhost' }),
+      invitation({ from: 'mallory@evil.example', room: 'project@rooms.zilar.localhost' }),
     );
 
     expect(events).toEqual([]);
@@ -1068,14 +1068,12 @@ describe('createXmppCore: invitations and roster pushes', () => {
     const events: RosterEvent[] = [];
     core.on('roster', (event) => events.push(event));
 
-    fake.emitStanza(rosterPush({ from: 'bob@galena.localhost', id: 'p1' }));
+    fake.emitStanza(rosterPush({ from: 'bob@zilar.localhost', id: 'p1' }));
     await flush();
 
-    expect(events).toEqual([
-      { jid: 'alice@galena.localhost', subscription: 'both', name: 'Alice' },
-    ]);
+    expect(events).toEqual([{ jid: 'alice@zilar.localhost', subscription: 'both', name: 'Alice' }]);
     const reply = fake.sent.find((stanza) => stanza.attrs['id'] === 'p1');
-    expect(reply?.attrs).toMatchObject({ type: 'result', to: 'bob@galena.localhost' });
+    expect(reply?.attrs).toMatchObject({ type: 'result', to: 'bob@zilar.localhost' });
     expect(reply?.getChild('query')).toBeUndefined();
   });
 
@@ -1085,12 +1083,12 @@ describe('createXmppCore: invitations and roster pushes', () => {
     const events: RosterEvent[] = [];
     core.on('roster', (event) => events.push(event));
 
-    fake.emitStanza(rosterPush({ from: 'mallory@galena.localhost', id: 'p2' }));
+    fake.emitStanza(rosterPush({ from: 'mallory@zilar.localhost', id: 'p2' }));
     await flush();
 
     expect(events).toEqual([]);
     const reply = fake.sent.find((stanza) => stanza.attrs['id'] === 'p2');
-    expect(reply?.attrs).toMatchObject({ type: 'error', to: 'mallory@galena.localhost' });
+    expect(reply?.attrs).toMatchObject({ type: 'error', to: 'mallory@zilar.localhost' });
     expect(reply?.getChild('error')?.getChild('forbidden', STANZA_NAMESPACE)).toBeDefined();
   });
 });
@@ -1110,7 +1108,7 @@ describe('createXmppCore: fixed resource and replaced', () => {
     let captured: ClientOptions | undefined;
     const core = createCore(
       {
-        ...options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+        ...options(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
         resource: 'gateway',
       },
       {
@@ -1122,19 +1120,19 @@ describe('createXmppCore: fixed resource and replaced', () => {
     );
 
     const connecting = core.connect();
-    fake.emitOnline('bob@galena.localhost');
+    fake.emitOnline('bob@zilar.localhost');
     await connecting;
 
     expect(captured?.resource).toBe('gateway');
   });
 
-  it('defaults to a random galena- resource', async () => {
+  it('defaults to a random zilar- resource', async () => {
     const seen = new Set<string>();
     for (let index = 0; index < 2; index += 1) {
       const fake = createFakeClient();
       let captured: ClientOptions | undefined;
       const core = createCore(
-        options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+        options(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
         {
           createClient: (clientOptions) => {
             captured = clientOptions;
@@ -1143,9 +1141,9 @@ describe('createXmppCore: fixed resource and replaced', () => {
         },
       );
       const connecting = core.connect();
-      fake.emitOnline('bob@galena.localhost');
+      fake.emitOnline('bob@zilar.localhost');
       await connecting;
-      expect(captured?.resource).toMatch(/^galena-[a-z0-9]{8}$/);
+      expect(captured?.resource).toMatch(/^zilar-[a-z0-9]{8}$/);
       seen.add(captured?.resource ?? '');
       await core.disconnect();
     }
@@ -1182,7 +1180,7 @@ describe('createXmppCore: fixed resource and replaced', () => {
 
     // A later explicit `connect()` still works.
     const connecting = core.connect();
-    fake.emitOnline('bob@galena.localhost');
+    fake.emitOnline('bob@zilar.localhost');
     await connecting;
     expect(core.status()).toBe('online');
   });
@@ -1212,7 +1210,7 @@ describe('createXmppCore: push enable/disable', () => {
     const setPushEnabled = core.setPushEnabled;
     expect(setPushEnabled).toBeDefined();
     const toggled = setPushEnabled!({
-      pushJid: 'push.galena.localhost',
+      pushJid: 'push.zilar.localhost',
       node: 'device-1',
       enable: true,
     });
@@ -1221,7 +1219,7 @@ describe('createXmppCore: push enable/disable', () => {
     const iq = fake.sent.at(-1);
     expect(iq?.attrs['type']).toBe('set');
     const enable = iq?.getChild('enable', PUSH_NAMESPACE);
-    expect(enable?.attrs['jid']).toBe('push.galena.localhost');
+    expect(enable?.attrs['jid']).toBe('push.zilar.localhost');
     expect(enable?.attrs['node']).toBe('device-1');
 
     fake.emitStanza(xml('iq', { type: 'result', id: iq?.attrs['id'] ?? '' }));
@@ -1235,7 +1233,7 @@ describe('createXmppCore: push enable/disable', () => {
     const setPushEnabled = core.setPushEnabled;
     expect(setPushEnabled).toBeDefined();
     const toggled = setPushEnabled!({
-      pushJid: 'push.galena.localhost',
+      pushJid: 'push.zilar.localhost',
       node: 'device-1',
       enable: false,
     });
@@ -1243,7 +1241,7 @@ describe('createXmppCore: push enable/disable', () => {
 
     const iq = fake.sent.at(-1);
     const disable = iq?.getChild('disable', PUSH_NAMESPACE);
-    expect(disable?.attrs['jid']).toBe('push.galena.localhost');
+    expect(disable?.attrs['jid']).toBe('push.zilar.localhost');
     expect(disable?.attrs['node']).toBe('device-1');
 
     fake.emitStanza(
@@ -1263,13 +1261,13 @@ describe('createXmppCore: push enable/disable', () => {
   it('refuses to toggle push while offline', async () => {
     const fake = createFakeClient();
     const core = createCore(
-      options(async () => ({ jid: 'bob@galena.localhost', token: 'tok' })),
+      options(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
       { createClient: () => fake },
     );
     const setPushEnabled = core.setPushEnabled;
     expect(setPushEnabled).toBeDefined();
     await expect(
-      setPushEnabled!({ pushJid: 'push.galena.localhost', node: 'device-1', enable: true }),
+      setPushEnabled!({ pushJid: 'push.zilar.localhost', node: 'device-1', enable: true }),
     ).rejects.toThrow('not online');
   });
 });

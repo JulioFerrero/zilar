@@ -17,7 +17,7 @@ estimate: 1.5 days
 D28: to feel like Telegram, "send this link to your friends" must work. Today people are added only by contacts and invites-to-sign-up. This task adds shareable links for **groups** (public topics come with joining the group; private topics are never joined by link).
 
 ### Server
-- Table `group_invite_links`: `id`, `group_id` (fk cascade), `token_hash` (SHA-256 of a 32-byte random token; the token itself is shown once at creation and never stored), `token_hint` (last 4 chars, for the admin list), `label` (≤ 60), `created_by`, `created_at`, `expires_at` (nullable), `max_uses` (nullable, ≥ 1), `uses` (int), `revoked_at`. Migration via `pnpm --filter @galena/server db:generate`.
+- Table `group_invite_links`: `id`, `group_id` (fk cascade), `token_hash` (SHA-256 of a 32-byte random token; the token itself is shown once at creation and never stored), `token_hint` (last 4 chars, for the admin list), `label` (≤ 60), `created_by`, `created_at`, `expires_at` (nullable), `max_uses` (nullable, ≥ 1), `uses` (int), `revoked_at`. Migration via `pnpm --filter @zilar/server db:generate`.
 - **Who creates/lists/revokes:** group owner/admin. Limits: 10 active links per group.
 - `POST /api/groups/:id/invite-links` `{ label?, expiresInHours?: 1..8760, maxUses?: 1..10000 }` → `{ id, token, url }` where `url = ${WEB_BASE_URL}/j/<token>`; `GET /api/groups/:id/invite-links` (no tokens; hint, label, uses, limits, state); `DELETE /api/groups/:id/invite-links/:linkId` (revoke, idempotent).
 - **Join:** `GET /api/join/:token` (signed-in user) → `{ groupTitle, memberCount, alreadyMember }` **only**, never member names; `POST /api/join/:token` → adds the caller as `member` through the existing add-member flow (so T-0108 room sync, public topics and the audit entry all happen), increments `uses` atomically (conditional update: not revoked, not expired, `uses < max_uses`; two racing joins never exceed `max_uses`). Unknown/expired/revoked/exhausted → the same `404 invalid_link` (no leak of which). Already a member → 200 with `alreadyMember: true`, no use consumed. Group at the member cap (`MAX_GROUP_MEMBERS`) → 409 `group_full`.
@@ -57,8 +57,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 
@@ -70,7 +70,7 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
-- Server: new `group_invite_links` table (`id`, `group_id` fk cascade, `token_hash` unique, `token_hint` last-4, `label` ≤ 60, `created_by`, `created_at`, `expires_at` nullable, `max_uses` nullable ≥ 1, `uses`, `revoked_at`); migration `0026_simple_spitfire.sql` via `pnpm --filter @galena/server db:generate` (no backfill — new feature, no existing rows).
+- Server: new `group_invite_links` table (`id`, `group_id` fk cascade, `token_hash` unique, `token_hint` last-4, `label` ≤ 60, `created_by`, `created_at`, `expires_at` nullable, `max_uses` nullable ≥ 1, `uses`, `revoked_at`); migration `0026_simple_spitfire.sql` via `pnpm --filter @zilar/server db:generate` (no backfill — new feature, no existing rows).
 - New `apps/server/src/invite-links/{service,routes}.ts`: owner/admin create (10 active links/group; `{ label?, expiresInHours?: 1..8760, maxUses?: 1..10000 }` → `{ id, token, url }` with `url = ${WEB_BASE_URL}/j/<token>`), list (hint/label/uses/limits/state, never tokens), idempotent revoke (204; audit only on first revoke). Join: `GET /api/join/:token` → `{ groupTitle, memberCount, alreadyMember }` (never member names); `POST /api/join/:token` adds the caller as `member` through the add-member flow (group-room affiliation in-transaction, public-topic sync via `syncTopicRoom`, direct invitation), consumes one use with an atomic conditional update (not revoked, not expired, `uses < max_uses`) so two racing joins never exceed `max_uses`. Unknown/expired/revoked/exhausted/malformed all answer the identical 404 `invalid_link`; already-member answers 200 `alreadyMember: true` consuming nothing; full group answers 409 `group_full`. Tokens compared by hash with `timingSafeEqual`; joins rate limited 20/hour/user + 60/hour/IP (socket address, never `x-forwarded-for`; tests inject `getClientIp`/clock via an app-module seam). Audit `group.link_created`, `group.link_revoked`, `group.joined_by_link` (link id + hint only, never the token). New `WEB_BASE_URL` env (zod `z.url()`, default `http://localhost:5173`), documented in `docs/SERVER_CONFIG.md`.
 - Web: `routes/JoinPage.tsx` + `/j/:token` route (preview card, Join button, invalid/already-member/full/signed-out states; signed-out → login with `next=/j/<token>`, `RequireAuth` returns after sign-in; refreshes the chat list after joining). `components/InviteLinksSection.tsx` in the group panel for owners/admins (create with label/expiry/max-uses, URL shown once with Copy + anyone-with-the-link warning, list with uses/state, Revoke). `lib/api.ts` helpers + `ApiClient` wiring; mock mode (`mock/api.ts`) supports create/list/revoke/join for the full flow.
 - Tests: server `invite-links.test.ts` (18 tests) + sweep additions in `groups.test.ts` + `config.test.ts` (default/explicit/invalid `WEB_BASE_URL`); web `api.invite-links.test.ts`, `mock/api.invite-links.test.ts`, `routes/JoinPage.test.tsx`, `components/InviteLinksSection.test.tsx`; fixed up `GroupPanel.test.tsx` stubs for the new section.
@@ -87,8 +87,8 @@ pnpm build
 - `pnpm format:check`: pass ("All matched files use Prettier code style!")
 - `pnpm lint`: pass (oxlint clean)
 - `pnpm typecheck`: pass (10/10 turbo tasks)
-- `pnpm --filter @galena/server test --maxWorkers=2`: 81 files passed, 5 skipped; 1393 passed, 7 skipped (~289s, full suite at the end)
-- `pnpm --filter @galena/web test --maxWorkers=2`: 74 files passed; 797 passed (full suite at the end)
+- `pnpm --filter @zilar/server test --maxWorkers=2`: 81 files passed, 5 skipped; 1393 passed, 7 skipped (~289s, full suite at the end)
+- `pnpm --filter @zilar/web test --maxWorkers=2`: 74 files passed; 797 passed (full suite at the end)
 - `pnpm build`: pass (2/2 turbo tasks)
 - Scoped runs during work: invite-links + config 55 passed; web invite-links/join/panel 20 passed; GroupPanel 1 failure fixed (fetch stubs now answer `/invite-links`).
 - Round 2 scoped runs: `src/invite-links/invite-links.test.ts` 16 passed (14 existing incl. the extended group_full assertions + 2 new: 503-no-burn, token-never-logged); `src/authz-sweep.test.ts` + `src/groups/groups.test.ts` + `src/config.test.ts` 77 passed; format/lint/typecheck pass.

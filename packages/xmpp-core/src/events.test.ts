@@ -3,8 +3,8 @@ import { xml } from '@xmpp/client';
 import { parseDirectInvitation, parseRosterPush } from './stanza';
 import { CONFERENCE_NAMESPACE, ROSTER_NAMESPACE } from './namespaces';
 
-const domain = 'galena.localhost';
-const mucDomain = 'rooms.galena.localhost';
+const domain = 'zilar.localhost';
+const mucDomain = 'rooms.zilar.localhost';
 const roomJid = `project@${mucDomain}`;
 const me = `bob@${domain}`;
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { xml, type XmppElement } from '@xmpp/client';
-import { encodePayload, type Payload } from '@galena/protocol';
+import { encodePayload, type Payload } from '@zilar/protocol';
 import {
   buildCarbonsEnable,
   buildCorrection,
@@ -47,16 +47,16 @@ import {
 } from './namespaces';
 
 const ctx: ParseContext = {
-  me: 'bob@galena.localhost',
-  domain: 'galena.localhost',
-  mucDomain: 'rooms.galena.localhost',
+  me: 'bob@zilar.localhost',
+  domain: 'zilar.localhost',
+  mucDomain: 'rooms.zilar.localhost',
   now: () => new Date('2026-09-27T12:00:00.000Z'),
 };
 
 const progress: Payload = {
   v: 0,
   type: 'progress',
-  data: { ai: 'dev-1@galena.localhost', stage: 'running the tests', percent: 40 },
+  data: { ai: 'dev-1@zilar.localhost', stage: 'running the tests', percent: 40 },
 };
 
 function mucUser(jid: string, extras: Record<string, string> = {}): XmppElement {
@@ -67,17 +67,17 @@ describe('buildMessage', () => {
   it('sets the type, id, recipient, body, payload and reply', () => {
     const stanza = buildMessage({
       id: 'm-1',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       kind: 'groupchat',
       text: 'hello room',
       payload: progress,
-      replyTo: { id: 'm-0', to: 'alice@galena.localhost' },
+      replyTo: { id: 'm-0', to: 'alice@zilar.localhost' },
     });
 
     expect(stanza.is('message')).toBe(true);
     expect(stanza.attrs).toMatchObject({
       type: 'groupchat',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       id: 'm-1',
     });
     expect(stanza.getChildText('body')).toBe('hello room');
@@ -87,13 +87,13 @@ describe('buildMessage', () => {
 
     const reply = stanza.getChild('reply', REPLY_NAMESPACE);
     expect(reply?.attrs['id']).toBe('m-0');
-    expect(reply?.attrs['to']).toBe('alice@galena.localhost');
+    expect(reply?.attrs['to']).toBe('alice@zilar.localhost');
   });
 
   it('omits the payload and reply elements when they are not given', () => {
     const stanza = buildMessage({
       id: 'm-2',
-      to: 'alice@galena.localhost',
+      to: 'alice@zilar.localhost',
       kind: 'chat',
       text: 'hi',
     });
@@ -105,17 +105,17 @@ describe('buildMessage', () => {
 describe('buildTyping, buildDisplayed, presence and carbons', () => {
   it('builds a composing chat state addressed to the conversation', () => {
     const stanza = buildTyping({
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       kind: 'groupchat',
       state: 'composing',
     });
-    expect(stanza.attrs).toMatchObject({ type: 'groupchat', to: 'project@rooms.galena.localhost' });
+    expect(stanza.attrs).toMatchObject({ type: 'groupchat', to: 'project@rooms.zilar.localhost' });
     expect(stanza.getChild('composing', CHAT_STATES_NAMESPACE)).toBeDefined();
   });
 
   it('builds a displayed marker for a message id', () => {
     const stanza = buildDisplayed({
-      chatJid: 'alice@galena.localhost',
+      chatJid: 'alice@zilar.localhost',
       kind: 'chat',
       messageId: 'm-9',
     });
@@ -124,16 +124,16 @@ describe('buildTyping, buildDisplayed, presence and carbons', () => {
   });
 
   it('asks for no MUC history when joining', () => {
-    const stanza = buildJoinPresence('project@rooms.galena.localhost', 'bob');
+    const stanza = buildJoinPresence('project@rooms.zilar.localhost', 'bob');
     expect(stanza.attrs).toMatchObject({
-      to: 'project@rooms.galena.localhost/bob',
+      to: 'project@rooms.zilar.localhost/bob',
     });
     const history = stanza.getChild('x', MUC_NAMESPACE)?.getChild('history');
     expect(history?.attrs['maxstanzas']).toBe('0');
   });
 
   it('leaves with an unavailable presence', () => {
-    const stanza = buildLeavePresence('project@rooms.galena.localhost', 'bob');
+    const stanza = buildLeavePresence('project@rooms.zilar.localhost', 'bob');
     expect(stanza.attrs['type']).toBe('unavailable');
   });
 
@@ -148,7 +148,7 @@ describe('buildUploadSlotRequest and parseUploadSlot', () => {
   it('asks the upload service for a slot with the file details', () => {
     const stanza = buildUploadSlotRequest({
       id: 'iq-up-1',
-      service: 'upload.galena.localhost',
+      service: 'upload.zilar.localhost',
       filename: 'voice.m4a',
       size: 4096,
       contentType: 'audio/mp4',
@@ -156,7 +156,7 @@ describe('buildUploadSlotRequest and parseUploadSlot', () => {
     expect(stanza.attrs).toMatchObject({
       type: 'get',
       id: 'iq-up-1',
-      to: 'upload.galena.localhost',
+      to: 'upload.zilar.localhost',
     });
     const request = stanza.getChild('request', HTTP_UPLOAD_NAMESPACE);
     expect(request?.attrs).toMatchObject({
@@ -198,21 +198,21 @@ describe('decodeMessageStanza: live messages', () => {
     const stanza = xml(
       'message',
       {
-        from: 'project@rooms.galena.localhost/alice',
-        to: 'bob@galena.localhost',
+        from: 'project@rooms.zilar.localhost/alice',
+        to: 'bob@zilar.localhost',
         type: 'groupchat',
         id: 'm-1',
       },
       xml('body', {}, 'hello room'),
-      mucUser('alice@galena.localhost'),
+      mucUser('alice@zilar.localhost'),
     );
 
     const { message } = decodeMessageStanza(stanza, ctx);
     expect(message).toMatchObject({
       id: 'm-1',
-      chatJid: 'project@rooms.galena.localhost',
+      chatJid: 'project@rooms.zilar.localhost',
       kind: 'groupchat',
-      fromJid: 'alice@galena.localhost',
+      fromJid: 'alice@zilar.localhost',
       fromNick: 'alice',
       body: 'hello room',
       outgoing: false,
@@ -223,21 +223,21 @@ describe('decodeMessageStanza: live messages', () => {
   it('marks my own room reflection as outgoing via the item JID', () => {
     const stanza = xml(
       'message',
-      { from: 'project@rooms.galena.localhost/bob', type: 'groupchat', id: 'm-2' },
+      { from: 'project@rooms.zilar.localhost/bob', type: 'groupchat', id: 'm-2' },
       xml('body', {}, 'mine'),
-      mucUser('bob@galena.localhost', { affiliation: 'owner', role: 'moderator' }),
+      mucUser('bob@zilar.localhost', { affiliation: 'owner', role: 'moderator' }),
     );
     const { message } = decodeMessageStanza(stanza, ctx);
     expect(message?.outgoing).toBe(true);
-    expect(message?.fromJid).toBe('bob@galena.localhost');
+    expect(message?.fromJid).toBe('bob@zilar.localhost');
   });
 
   it('parses a DM with the peer as the conversation', () => {
     const stanza = xml(
       'message',
       {
-        from: 'alice@galena.localhost/phone',
-        to: 'bob@galena.localhost/laptop',
+        from: 'alice@zilar.localhost/phone',
+        to: 'bob@zilar.localhost/laptop',
         type: 'chat',
         id: 'm-3',
       },
@@ -246,9 +246,9 @@ describe('decodeMessageStanza: live messages', () => {
     const { message } = decodeMessageStanza(stanza, ctx);
     expect(message).toMatchObject({
       id: 'm-3',
-      chatJid: 'alice@galena.localhost',
+      chatJid: 'alice@zilar.localhost',
       kind: 'chat',
-      fromJid: 'alice@galena.localhost',
+      fromJid: 'alice@zilar.localhost',
       body: 'hi bob',
       outgoing: false,
     });
@@ -257,7 +257,7 @@ describe('decodeMessageStanza: live messages', () => {
   it('parses a sent carbon and marks it outgoing', () => {
     const stanza = xml(
       'message',
-      { from: 'bob@galena.localhost/laptop', to: 'bob@galena.localhost/laptop', type: 'chat' },
+      { from: 'bob@zilar.localhost/laptop', to: 'bob@zilar.localhost/laptop', type: 'chat' },
       xml(
         'sent',
         { xmlns: CARBONS_NAMESPACE },
@@ -267,8 +267,8 @@ describe('decodeMessageStanza: live messages', () => {
           xml(
             'message',
             {
-              from: 'bob@galena.localhost/phone',
-              to: 'alice@galena.localhost',
+              from: 'bob@zilar.localhost/phone',
+              to: 'alice@zilar.localhost',
               type: 'chat',
               id: 'm-4',
             },
@@ -280,8 +280,8 @@ describe('decodeMessageStanza: live messages', () => {
     const { message } = decodeMessageStanza(stanza, ctx);
     expect(message).toMatchObject({
       id: 'm-4',
-      chatJid: 'alice@galena.localhost',
-      fromJid: 'bob@galena.localhost',
+      chatJid: 'alice@zilar.localhost',
+      fromJid: 'bob@zilar.localhost',
       body: 'from my phone',
       outgoing: true,
     });
@@ -290,7 +290,7 @@ describe('decodeMessageStanza: live messages', () => {
   it('parses a received carbon', () => {
     const stanza = xml(
       'message',
-      { from: 'bob@galena.localhost/laptop', to: 'bob@galena.localhost/laptop', type: 'chat' },
+      { from: 'bob@zilar.localhost/laptop', to: 'bob@zilar.localhost/laptop', type: 'chat' },
       xml(
         'received',
         { xmlns: CARBONS_NAMESPACE },
@@ -300,8 +300,8 @@ describe('decodeMessageStanza: live messages', () => {
           xml(
             'message',
             {
-              from: 'alice@galena.localhost/phone',
-              to: 'bob@galena.localhost',
+              from: 'alice@zilar.localhost/phone',
+              to: 'bob@zilar.localhost',
               type: 'chat',
               id: 'm-5',
             },
@@ -312,8 +312,8 @@ describe('decodeMessageStanza: live messages', () => {
     );
     const { message } = decodeMessageStanza(stanza, ctx);
     expect(message).toMatchObject({
-      chatJid: 'alice@galena.localhost',
-      fromJid: 'alice@galena.localhost',
+      chatJid: 'alice@zilar.localhost',
+      fromJid: 'alice@zilar.localhost',
       body: 'to all my devices',
       outgoing: false,
     });
@@ -322,7 +322,7 @@ describe('decodeMessageStanza: live messages', () => {
   it('reads the timestamp from a delay element', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-6' },
+      { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-6' },
       xml('body', {}, 'delayed'),
       xml('delay', { xmlns: DELAY_NAMESPACE, stamp: '2026-09-26T08:30:00.000Z' }),
     );
@@ -335,7 +335,7 @@ describe('decodeMessageStanza: payloads', () => {
   it('decodes a valid payload', () => {
     const stanza = xml(
       'message',
-      { from: 'dev-1@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-7' },
+      { from: 'dev-1@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-7' },
       xml('body', {}, 'starting'),
       xml('agent', { xmlns: AGENT_NAMESPACE }, encodePayload(progress)),
     );
@@ -347,7 +347,7 @@ describe('decodeMessageStanza: payloads', () => {
   it('drops an invalid payload but keeps the body', () => {
     const stanza = xml(
       'message',
-      { from: 'dev-1@galena.localhost', type: 'chat', id: 'm-8' },
+      { from: 'dev-1@zilar.localhost', type: 'chat', id: 'm-8' },
       xml('body', {}, 'still readable'),
       xml('agent', { xmlns: AGENT_NAMESPACE }, 'not json at all'),
     );
@@ -360,11 +360,11 @@ describe('decodeMessageStanza: payloads', () => {
     const oversized = JSON.stringify({
       v: 0,
       type: 'progress',
-      data: { ai: 'dev-1@galena.localhost', stage: 'x'.repeat(70 * 1024) },
+      data: { ai: 'dev-1@zilar.localhost', stage: 'x'.repeat(70 * 1024) },
     });
     const stanza = xml(
       'message',
-      { from: 'dev-1@galena.localhost', type: 'chat', id: 'm-9' },
+      { from: 'dev-1@zilar.localhost', type: 'chat', id: 'm-9' },
       xml('body', {}, 'big one'),
       xml('agent', { xmlns: AGENT_NAMESPACE }, oversized),
     );
@@ -376,14 +376,14 @@ describe('decodeMessageStanza: payloads', () => {
   it('accepts a payload-only message and a body-only message', () => {
     const withPayload = xml(
       'message',
-      { from: 'dev-1@galena.localhost', type: 'chat', id: 'm-10' },
+      { from: 'dev-1@zilar.localhost', type: 'chat', id: 'm-10' },
       xml('agent', { xmlns: AGENT_NAMESPACE }, encodePayload(progress)),
     );
     expect(decodeMessageStanza(withPayload, ctx).message?.payload).toEqual(progress);
 
     const withoutAgent = xml(
       'message',
-      { from: 'dev-1@galena.localhost', type: 'chat', id: 'm-11' },
+      { from: 'dev-1@zilar.localhost', type: 'chat', id: 'm-11' },
       xml('body', {}, 'no payload'),
     );
     expect(decodeMessageStanza(withoutAgent, ctx).message?.payload).toBeUndefined();
@@ -394,26 +394,26 @@ describe('decodeMessageStanza: replies, typing and displayed', () => {
   it('parses a reply', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', type: 'chat', id: 'm-12' },
+      { from: 'alice@zilar.localhost', type: 'chat', id: 'm-12' },
       xml('body', {}, 'replying'),
-      xml('reply', { xmlns: REPLY_NAMESPACE, id: 'm-1', to: 'bob@galena.localhost' }),
+      xml('reply', { xmlns: REPLY_NAMESPACE, id: 'm-1', to: 'bob@zilar.localhost' }),
     );
     const { message } = decodeMessageStanza(stanza, ctx);
-    expect(message?.replyTo).toEqual({ id: 'm-1', to: 'bob@galena.localhost' });
+    expect(message?.replyTo).toEqual({ id: 'm-1', to: 'bob@zilar.localhost' });
   });
 
   it('parses every typing state without producing a message', () => {
     for (const state of ['composing', 'paused', 'active'] as const) {
       const stanza = xml(
         'message',
-        { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat' },
+        { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat' },
         xml(state, { xmlns: CHAT_STATES_NAMESPACE }),
       );
       const decoded = decodeMessageStanza(stanza, ctx);
       expect(decoded.message).toBeUndefined();
       expect(decoded.typing).toEqual({
-        chatJid: 'alice@galena.localhost',
-        fromJid: 'alice@galena.localhost',
+        chatJid: 'alice@zilar.localhost',
+        fromJid: 'alice@zilar.localhost',
         state,
         outgoing: false,
       });
@@ -423,14 +423,14 @@ describe('decodeMessageStanza: replies, typing and displayed', () => {
   it('parses a displayed marker', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat' },
+      { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat' },
       xml('displayed', { xmlns: CHAT_MARKERS_NAMESPACE, id: 'm-1' }),
     );
     const decoded = decodeMessageStanza(stanza, ctx);
     expect(decoded.message).toBeUndefined();
     expect(decoded.displayed).toEqual({
-      chatJid: 'alice@galena.localhost',
-      fromJid: 'alice@galena.localhost',
+      chatJid: 'alice@zilar.localhost',
+      fromJid: 'alice@zilar.localhost',
       messageId: 'm-1',
       outgoing: false,
     });
@@ -441,7 +441,7 @@ describe('decodeMessageStanza: domain filter', () => {
   it('ignores messages from another domain', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@evil.example.com', to: 'bob@galena.localhost', type: 'chat', id: 'm-13' },
+      { from: 'alice@evil.example.com', to: 'bob@zilar.localhost', type: 'chat', id: 'm-13' },
       xml('body', {}, 'phishing'),
     );
     expect(decodeMessageStanza(stanza, ctx).message).toBeUndefined();
@@ -460,7 +460,7 @@ describe('decodeMessageStanza: domain filter', () => {
   it('ignores a chat message that claims to come from the room domain', () => {
     const stanza = xml(
       'message',
-      { from: 'room@rooms.galena.localhost', type: 'chat', id: 'm-15' },
+      { from: 'room@rooms.zilar.localhost', type: 'chat', id: 'm-15' },
       xml('body', {}, 'wrong kind'),
     );
     expect(decodeMessageStanza(stanza, ctx).message).toBeUndefined();
@@ -475,22 +475,22 @@ describe('decodeMessageStanza: archived results', () => {
   }): XmppElement {
     const inner = xml(
       'message',
-      { from: 'project@rooms.galena.localhost/alice', type: 'groupchat', id: 'm-16' },
+      { from: 'project@rooms.zilar.localhost/alice', type: 'groupchat', id: 'm-16' },
       xml('body', {}, 'archived'),
-      mucUser('alice@galena.localhost'),
+      mucUser('alice@zilar.localhost'),
     );
     if (options.withStanzaId === true) {
       inner.children.push(
         xml('stanza-id', {
           xmlns: STANZA_ID_NAMESPACE,
-          by: 'project@rooms.galena.localhost',
+          by: 'project@rooms.zilar.localhost',
           id: 'sid-1',
         }),
       );
     }
     return xml(
       'message',
-      { from: 'project@rooms.galena.localhost', to: 'bob@galena.localhost/laptop' },
+      { from: 'project@rooms.zilar.localhost', to: 'bob@zilar.localhost/laptop' },
       xml(
         'result',
         { xmlns: MAM_NAMESPACE, queryid: options.queryId, id: options.archiveId },
@@ -517,8 +517,8 @@ describe('decodeMessageStanza: archived results', () => {
     );
     expect(message).toMatchObject({
       id: 'archive-1',
-      chatJid: 'project@rooms.galena.localhost',
-      fromJid: 'alice@galena.localhost',
+      chatJid: 'project@rooms.zilar.localhost',
+      fromJid: 'alice@zilar.localhost',
       body: 'archived',
     });
     expect(message?.timestamp.toISOString()).toBe('2026-09-26T07:00:00.000Z');
@@ -538,12 +538,12 @@ describe('decodeMessageStanza: XEP-0372 mentions', () => {
   it('builds one reference per mention with code-point offsets', () => {
     const stanza = buildMessage({
       id: 'm-20',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       kind: 'groupchat',
       text: 'hi 😀 @Ana and @Luis',
       mentions: [
-        { jid: 'ana@galena.localhost', begin: 6, end: 10 },
-        { jid: 'luis@galena.localhost', begin: 15, end: 20 },
+        { jid: 'ana@zilar.localhost', begin: 6, end: 10 },
+        { jid: 'luis@zilar.localhost', begin: 15, end: 20 },
       ],
     });
 
@@ -553,13 +553,13 @@ describe('decodeMessageStanza: XEP-0372 mentions', () => {
     // index the caller passed.
     expect(references[0]?.attrs).toMatchObject({
       type: 'mention',
-      uri: 'xmpp:ana@galena.localhost',
+      uri: 'xmpp:ana@zilar.localhost',
       begin: '5',
       end: '9',
     });
     expect(references[1]?.attrs).toMatchObject({
       type: 'mention',
-      uri: 'xmpp:luis@galena.localhost',
+      uri: 'xmpp:luis@zilar.localhost',
       begin: '14',
       end: '19',
     });
@@ -568,7 +568,7 @@ describe('decodeMessageStanza: XEP-0372 mentions', () => {
   it('builds no references without mentions', () => {
     const stanza = buildMessage({
       id: 'm-21',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       kind: 'groupchat',
       text: 'plain',
     });
@@ -578,20 +578,20 @@ describe('decodeMessageStanza: XEP-0372 mentions', () => {
   it('skips invalid ranges and caps at twenty mentions', () => {
     const text = 'hi there';
     const invalid = [
-      { jid: 'a@galena.localhost', begin: -1, end: 2 },
-      { jid: 'b@galena.localhost', begin: 2, end: 2 },
-      { jid: 'c@galena.localhost', begin: 5, end: 3 },
-      { jid: 'd@galena.localhost', begin: 0, end: text.length + 1 },
-      { jid: 'e@galena.localhost', begin: 1.5, end: 3 },
+      { jid: 'a@zilar.localhost', begin: -1, end: 2 },
+      { jid: 'b@zilar.localhost', begin: 2, end: 2 },
+      { jid: 'c@zilar.localhost', begin: 5, end: 3 },
+      { jid: 'd@zilar.localhost', begin: 0, end: text.length + 1 },
+      { jid: 'e@zilar.localhost', begin: 1.5, end: 3 },
     ];
     const valid = Array.from({ length: 25 }, (_, index) => ({
-      jid: `u${index}@galena.localhost`,
+      jid: `u${index}@zilar.localhost`,
       begin: 0,
       end: 2,
     }));
     const stanza = buildMessage({
       id: 'm-29',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       kind: 'groupchat',
       text,
       mentions: [...invalid, ...valid],
@@ -599,48 +599,48 @@ describe('decodeMessageStanza: XEP-0372 mentions', () => {
 
     const references = stanza.getChildren('reference', REFERENCE_NAMESPACE);
     expect(references).toHaveLength(20);
-    expect(references[0]?.attrs['uri']).toBe('xmpp:u0@galena.localhost');
-    expect(references[19]?.attrs['uri']).toBe('xmpp:u19@galena.localhost');
+    expect(references[0]?.attrs['uri']).toBe('xmpp:u0@zilar.localhost');
+    expect(references[19]?.attrs['uri']).toBe('xmpp:u19@zilar.localhost');
   });
 
   it('round trips mentions through build and parse', () => {
     const built = buildMessage({
       id: 'm-22',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       kind: 'groupchat',
       text: 'hi 😀 @Ana',
-      mentions: [{ jid: 'ana@galena.localhost', begin: 6, end: 10 }],
+      mentions: [{ jid: 'ana@zilar.localhost', begin: 6, end: 10 }],
     });
     const stanza = xml(
       'message',
       {
-        from: 'project@rooms.galena.localhost/alice',
-        to: 'bob@galena.localhost',
+        from: 'project@rooms.zilar.localhost/alice',
+        to: 'bob@zilar.localhost',
         type: 'groupchat',
         id: 'm-22',
       },
       ...built.children,
-      mucUser('alice@galena.localhost'),
+      mucUser('alice@zilar.localhost'),
     );
 
     const { message } = decodeMessageStanza(stanza, ctx);
-    expect(message?.mentions).toEqual([{ jid: 'ana@galena.localhost', begin: 6, end: 10 }]);
+    expect(message?.mentions).toEqual([{ jid: 'ana@zilar.localhost', begin: 6, end: 10 }]);
   });
 
   it('parses a mention and lowers the bare JID, dropping resource and query', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', type: 'chat', id: 'm-23' },
+      { from: 'alice@zilar.localhost', type: 'chat', id: 'm-23' },
       xml('body', {}, 'hey @Ana'),
       reference({
         type: 'mention',
-        uri: 'xmpp:ANA@Galena.Localhost/resource?query=1',
+        uri: 'xmpp:ANA@Zilar.Localhost/resource?query=1',
         begin: '4',
         end: '8',
       }),
     );
     const { message } = decodeMessageStanza(stanza, ctx);
-    expect(message?.mentions).toEqual([{ jid: 'ana@galena.localhost', begin: 4, end: 8 }]);
+    expect(message?.mentions).toEqual([{ jid: 'ana@zilar.localhost', begin: 4, end: 8 }]);
   });
 
   it('keeps the JID and drops out-of-range or reversed offsets', () => {
@@ -653,47 +653,47 @@ describe('decodeMessageStanza: XEP-0372 mentions', () => {
     for (const offsets of cases) {
       const stanza = xml(
         'message',
-        { from: 'alice@galena.localhost', type: 'chat', id: 'm-24' },
+        { from: 'alice@zilar.localhost', type: 'chat', id: 'm-24' },
         xml('body', {}, 'hey @Ana'),
-        reference({ type: 'mention', uri: 'xmpp:ana@galena.localhost', ...offsets }),
+        reference({ type: 'mention', uri: 'xmpp:ana@zilar.localhost', ...offsets }),
       );
       const { message } = decodeMessageStanza(stanza, ctx);
-      expect(message?.mentions).toEqual([{ jid: 'ana@galena.localhost' }]);
+      expect(message?.mentions).toEqual([{ jid: 'ana@zilar.localhost' }]);
     }
   });
 
   it('drops a bad URI, a non-xmpp URI and a wrong reference type', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', type: 'chat', id: 'm-25' },
+      { from: 'alice@zilar.localhost', type: 'chat', id: 'm-25' },
       xml('body', {}, 'hey'),
       reference({ type: 'mention', uri: 'xmpp:not-a-jid', begin: '0', end: '3' }),
       reference({ type: 'mention', uri: 'https://example.com', begin: '0', end: '3' }),
-      reference({ type: 'reply', uri: 'xmpp:ana@galena.localhost', begin: '0', end: '3' }),
+      reference({ type: 'reply', uri: 'xmpp:ana@zilar.localhost', begin: '0', end: '3' }),
     );
     expect(decodeMessageStanza(stanza, ctx).message?.mentions).toBeUndefined();
   });
 
   it('caps a message at twenty mentions', () => {
     const references = Array.from({ length: 25 }, (_, index) =>
-      reference({ type: 'mention', uri: `xmpp:u${index}@galena.localhost` }),
+      reference({ type: 'mention', uri: `xmpp:u${index}@zilar.localhost` }),
     );
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', type: 'chat', id: 'm-26' },
+      { from: 'alice@zilar.localhost', type: 'chat', id: 'm-26' },
       xml('body', {}, 'many'),
       ...references,
     );
     const mentions = decodeMessageStanza(stanza, ctx).message?.mentions ?? [];
     expect(mentions).toHaveLength(20);
-    expect(mentions[0]?.jid).toBe('u0@galena.localhost');
-    expect(mentions[19]?.jid).toBe('u19@galena.localhost');
+    expect(mentions[0]?.jid).toBe('u0@zilar.localhost');
+    expect(mentions[19]?.jid).toBe('u19@zilar.localhost');
   });
 
   it('parses mentions inside a forwarded carbon', () => {
     const stanza = xml(
       'message',
-      { from: 'bob@galena.localhost/laptop', type: 'chat' },
+      { from: 'bob@zilar.localhost/laptop', type: 'chat' },
       xml(
         'received',
         { xmlns: CARBONS_NAMESPACE },
@@ -703,32 +703,32 @@ describe('decodeMessageStanza: XEP-0372 mentions', () => {
           xml(
             'message',
             {
-              from: 'alice@galena.localhost',
-              to: 'bob@galena.localhost',
+              from: 'alice@zilar.localhost',
+              to: 'bob@zilar.localhost',
               type: 'chat',
               id: 'm-27',
             },
             xml('body', {}, 'hey @Ana'),
-            reference({ type: 'mention', uri: 'xmpp:ana@galena.localhost', begin: '4', end: '8' }),
+            reference({ type: 'mention', uri: 'xmpp:ana@zilar.localhost', begin: '4', end: '8' }),
           ),
         ),
       ),
     );
     const { message } = decodeMessageStanza(stanza, ctx);
-    expect(message?.mentions).toEqual([{ jid: 'ana@galena.localhost', begin: 4, end: 8 }]);
+    expect(message?.mentions).toEqual([{ jid: 'ana@zilar.localhost', begin: 4, end: 8 }]);
   });
 
   it('parses mentions inside a MAM result', () => {
     const inner = xml(
       'message',
-      { from: 'project@rooms.galena.localhost/alice', type: 'groupchat', id: 'm-28' },
+      { from: 'project@rooms.zilar.localhost/alice', type: 'groupchat', id: 'm-28' },
       xml('body', {}, 'hey @Ana'),
-      reference({ type: 'mention', uri: 'xmpp:ana@galena.localhost', begin: '4', end: '8' }),
-      mucUser('alice@galena.localhost'),
+      reference({ type: 'mention', uri: 'xmpp:ana@zilar.localhost', begin: '4', end: '8' }),
+      mucUser('alice@zilar.localhost'),
     );
     const stanza = xml(
       'message',
-      { from: 'project@rooms.galena.localhost', to: 'bob@galena.localhost/laptop' },
+      { from: 'project@rooms.zilar.localhost', to: 'bob@zilar.localhost/laptop' },
       xml(
         'result',
         { xmlns: MAM_NAMESPACE, queryid: 'q1', id: 'archive-1' },
@@ -741,7 +741,7 @@ describe('decodeMessageStanza: XEP-0372 mentions', () => {
       ),
     );
     const { message } = decodeMessageStanza(stanza, ctx);
-    expect(message?.mentions).toEqual([{ jid: 'ana@galena.localhost', begin: 4, end: 8 }]);
+    expect(message?.mentions).toEqual([{ jid: 'ana@zilar.localhost', begin: 4, end: 8 }]);
   });
 });
 
@@ -754,13 +754,13 @@ describe('decodeMessageStanza: hostile input', () => {
     ],
     [
       'an empty body element',
-      xml('message', { from: 'alice@galena.localhost', type: 'chat' }, xml('body')),
+      xml('message', { from: 'alice@zilar.localhost', type: 'chat' }, xml('body')),
     ],
     [
       'an unparseable payload',
       xml(
         'message',
-        { from: 'alice@galena.localhost', type: 'chat' },
+        { from: 'alice@zilar.localhost', type: 'chat' },
         xml('body', {}, 'x'),
         xml('agent', { xmlns: AGENT_NAMESPACE }, '{"v":0,"type":"task","data":{}}'),
       ),
@@ -769,7 +769,7 @@ describe('decodeMessageStanza: hostile input', () => {
       'a MUC user element without an item',
       xml(
         'message',
-        { from: 'project@rooms.galena.localhost', type: 'groupchat' },
+        { from: 'project@rooms.zilar.localhost', type: 'groupchat' },
         xml('x', { xmlns: MUC_USER_NAMESPACE }),
       ),
     ],
@@ -777,7 +777,7 @@ describe('decodeMessageStanza: hostile input', () => {
       'a MAM result without a forwarded element',
       xml(
         'message',
-        { from: 'project@rooms.galena.localhost' },
+        { from: 'project@rooms.zilar.localhost' },
         xml('result', { xmlns: MAM_NAMESPACE, queryid: 'q' }),
       ),
     ],
@@ -785,7 +785,7 @@ describe('decodeMessageStanza: hostile input', () => {
       'a reply without an id',
       xml(
         'message',
-        { from: 'alice@galena.localhost', type: 'chat' },
+        { from: 'alice@zilar.localhost', type: 'chat' },
         xml('body', {}, 'x'),
         xml('reply', { xmlns: REPLY_NAMESPACE }),
       ),
@@ -799,7 +799,7 @@ describe('decodeMessageStanza: hostile input', () => {
   it('caps a 70 KiB body at 64 KiB', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', type: 'chat' },
+      { from: 'alice@zilar.localhost', type: 'chat' },
       xml('body', {}, 'a'.repeat(70 * 1024)),
     );
     const body = decodeMessageStanza(stanza, ctx).message?.body ?? '';
@@ -826,7 +826,7 @@ describe('XEP-0444 reactions', () => {
   it('builds a body-less reactions message with the store hint', () => {
     const stanza = buildReactions({
       id: 'm-r1',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       kind: 'groupchat',
       targetId: 'sid-1',
       emojis: ['👍', '❤️'],
@@ -834,7 +834,7 @@ describe('XEP-0444 reactions', () => {
 
     expect(stanza.attrs).toMatchObject({
       type: 'groupchat',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       id: 'm-r1',
     });
     expect(stanza.getChild('body')).toBeUndefined();
@@ -850,7 +850,7 @@ describe('XEP-0444 reactions', () => {
   it('builds an empty element that clears my set', () => {
     const stanza = buildReactions({
       id: 'm-r2',
-      to: 'alice@galena.localhost',
+      to: 'alice@zilar.localhost',
       kind: 'chat',
       targetId: 'm-1',
       emojis: [],
@@ -868,7 +868,7 @@ describe('XEP-0444 reactions', () => {
 
     const stanza = buildReactions({
       id: 'm-r3',
-      to: 'alice@galena.localhost',
+      to: 'alice@zilar.localhost',
       kind: 'chat',
       targetId: 'm-1',
       emojis: ['nope', '👍'],
@@ -880,7 +880,7 @@ describe('XEP-0444 reactions', () => {
   it('parses a body-less reaction update with its target', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-30' },
+      { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-30' },
       reactionUpdate('m-1', ['👍']),
       xml('store', { xmlns: HINTS_NAMESPACE }),
     );
@@ -901,7 +901,7 @@ describe('XEP-0444 reactions', () => {
   it('drops invalid reactions and caps the parsed set at six', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', type: 'chat', id: 'm-31' },
+      { from: 'alice@zilar.localhost', type: 'chat', id: 'm-31' },
       reactionUpdate('m-2', ['hi', '👍', '👍', '😀', '😂', '😮', '😢', '🙏', '❤️']),
     );
     expect(decodeMessageStanza(stanza, ctx).message?.reactions).toEqual({
@@ -913,7 +913,7 @@ describe('XEP-0444 reactions', () => {
   it('ignores a reactions element without a target id', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', type: 'chat', id: 'm-32' },
+      { from: 'alice@zilar.localhost', type: 'chat', id: 'm-32' },
       xml('reactions', { xmlns: REACTIONS_NAMESPACE }, xml('reaction', {}, '👍')),
     );
     expect(parseReactions(stanza)).toBeUndefined();
@@ -923,7 +923,7 @@ describe('XEP-0444 reactions', () => {
   it('parses reactions inside a received carbon', () => {
     const stanza = xml(
       'message',
-      { from: 'bob@galena.localhost/laptop', to: 'bob@galena.localhost/laptop', type: 'chat' },
+      { from: 'bob@zilar.localhost/laptop', to: 'bob@zilar.localhost/laptop', type: 'chat' },
       xml(
         'received',
         { xmlns: CARBONS_NAMESPACE },
@@ -933,8 +933,8 @@ describe('XEP-0444 reactions', () => {
           xml(
             'message',
             {
-              from: 'alice@galena.localhost',
-              to: 'bob@galena.localhost',
+              from: 'alice@zilar.localhost',
+              to: 'bob@zilar.localhost',
               type: 'chat',
               id: 'm-33',
             },
@@ -951,13 +951,13 @@ describe('XEP-0444 reactions', () => {
   it('parses a group reaction inside a MAM result by its target id', () => {
     const inner = xml(
       'message',
-      { from: 'project@rooms.galena.localhost/alice', type: 'groupchat', id: 'm-34' },
+      { from: 'project@rooms.zilar.localhost/alice', type: 'groupchat', id: 'm-34' },
       reactionUpdate('sid-1', ['❤️']),
-      mucUser('alice@galena.localhost'),
+      mucUser('alice@zilar.localhost'),
     );
     const stanza = xml(
       'message',
-      { from: 'project@rooms.galena.localhost', to: 'bob@galena.localhost/laptop' },
+      { from: 'project@rooms.zilar.localhost', to: 'bob@zilar.localhost/laptop' },
       xml(
         'result',
         { xmlns: MAM_NAMESPACE, queryid: 'q1', id: 'archive-2' },
@@ -972,8 +972,8 @@ describe('XEP-0444 reactions', () => {
 
     const { message } = decodeMessageStanza(stanza, ctx);
     expect(message?.reactions).toEqual({ targetId: 'sid-1', emojis: ['❤️'] });
-    expect(message?.fromJid).toBe('alice@galena.localhost');
-    expect(message?.chatJid).toBe('project@rooms.galena.localhost');
+    expect(message?.fromJid).toBe('alice@zilar.localhost');
+    expect(message?.chatJid).toBe('project@rooms.zilar.localhost');
   });
 });
 
@@ -981,16 +981,16 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
   it('builds a correction: new body, replace id and rebuilt mentions', () => {
     const stanza = buildCorrection({
       id: 'm-c1',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       kind: 'groupchat',
       originalId: 'origin-1',
       text: 'hi 😀 @Ana',
-      mentions: [{ jid: 'ana@galena.localhost', begin: 6, end: 10 }],
+      mentions: [{ jid: 'ana@zilar.localhost', begin: 6, end: 10 }],
     });
 
     expect(stanza.attrs).toMatchObject({
       type: 'groupchat',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       id: 'm-c1',
     });
     expect(stanza.getChildText('body')).toBe('hi 😀 @Ana');
@@ -1001,7 +1001,7 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
     // The emoji is one code point, not two UTF-16 units.
     expect(references[0]?.attrs).toMatchObject({
       type: 'mention',
-      uri: 'xmpp:ana@galena.localhost',
+      uri: 'xmpp:ana@zilar.localhost',
       begin: '5',
       end: '9',
     });
@@ -1010,14 +1010,14 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
   it('builds a retraction with the target, the fallback and the store hint', () => {
     const stanza = buildRetraction({
       id: 'm-r1',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       kind: 'groupchat',
       targetId: 'sid-1',
     });
 
     expect(stanza.attrs).toMatchObject({
       type: 'groupchat',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
       id: 'm-r1',
     });
     expect(stanza.getChild('retract', RETRACTION_NAMESPACE)?.attrs['id']).toBe('sid-1');
@@ -1031,7 +1031,7 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
   it('parses a correction and keeps the new body', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-50' },
+      { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-50' },
       xml('body', {}, 'the new text'),
       xml('replace', { xmlns: CORRECTION_NAMESPACE, id: 'm-1' }),
     );
@@ -1046,7 +1046,7 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
   it('parses a retraction and drops the fallback body', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', to: 'bob@galena.localhost', type: 'chat', id: 'm-51' },
+      { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-51' },
       xml('retract', { xmlns: RETRACTION_NAMESPACE, id: 'm-1' }),
       xml('fallback', { xmlns: FALLBACK_NAMESPACE, for: RETRACTION_NAMESPACE }),
       xml('body', {}, RETRACTION_FALLBACK_BODY),
@@ -1061,7 +1061,7 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
   it('ignores a correction or a retraction without a target id', () => {
     const correction = xml(
       'message',
-      { from: 'alice@galena.localhost', type: 'chat', id: 'm-52' },
+      { from: 'alice@zilar.localhost', type: 'chat', id: 'm-52' },
       xml('body', {}, 'no target'),
       xml('replace', { xmlns: CORRECTION_NAMESPACE }),
     );
@@ -1069,7 +1069,7 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
 
     const retraction = xml(
       'message',
-      { from: 'alice@galena.localhost', type: 'chat', id: 'm-53' },
+      { from: 'alice@zilar.localhost', type: 'chat', id: 'm-53' },
       xml('retract', { xmlns: RETRACTION_NAMESPACE }),
     );
     expect(parseRetraction(retraction)).toBeUndefined();
@@ -1079,7 +1079,7 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
   it('prefers an origin-id over the stanza id', () => {
     const stanza = xml(
       'message',
-      { from: 'alice@galena.localhost', type: 'chat', id: 'm-54' },
+      { from: 'alice@zilar.localhost', type: 'chat', id: 'm-54' },
       xml('origin-id', { xmlns: STANZA_ID_NAMESPACE, id: 'origin-9' }),
       xml('body', {}, 'hi'),
     );
@@ -1090,7 +1090,7 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
   it('parses a correction inside a received carbon', () => {
     const stanza = xml(
       'message',
-      { from: 'bob@galena.localhost/laptop', to: 'bob@galena.localhost/laptop', type: 'chat' },
+      { from: 'bob@zilar.localhost/laptop', to: 'bob@zilar.localhost/laptop', type: 'chat' },
       xml(
         'received',
         { xmlns: CARBONS_NAMESPACE },
@@ -1100,8 +1100,8 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
           xml(
             'message',
             {
-              from: 'alice@galena.localhost',
-              to: 'bob@galena.localhost',
+              from: 'alice@zilar.localhost',
+              to: 'bob@zilar.localhost',
               type: 'chat',
               id: 'm-55',
             },
@@ -1120,14 +1120,14 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
   it('parses a group retraction inside a MAM result by its stanza-id target', () => {
     const inner = xml(
       'message',
-      { from: 'project@rooms.galena.localhost/alice', type: 'groupchat', id: 'm-56' },
+      { from: 'project@rooms.zilar.localhost/alice', type: 'groupchat', id: 'm-56' },
       xml('retract', { xmlns: RETRACTION_NAMESPACE, id: 'sid-1' }),
       xml('body', {}, RETRACTION_FALLBACK_BODY),
-      mucUser('alice@galena.localhost'),
+      mucUser('alice@zilar.localhost'),
     );
     const stanza = xml(
       'message',
-      { from: 'project@rooms.galena.localhost', to: 'bob@galena.localhost/laptop' },
+      { from: 'project@rooms.zilar.localhost', to: 'bob@zilar.localhost/laptop' },
       xml(
         'result',
         { xmlns: MAM_NAMESPACE, queryid: 'q1', id: 'archive-3' },
@@ -1144,6 +1144,6 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
     expect(message?.id).toBe('archive-3');
     expect(message?.body).toBeUndefined();
     expect(message?.retraction).toEqual({ targetId: 'sid-1' });
-    expect(message?.fromJid).toBe('alice@galena.localhost');
+    expect(message?.fromJid).toBe('alice@zilar.localhost');
   });
 });

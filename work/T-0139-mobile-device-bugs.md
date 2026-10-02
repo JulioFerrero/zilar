@@ -35,7 +35,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test --maxWorkers=2 <touched test files>
+pnpm --filter @zilar/mobile test --maxWorkers=2 <touched test files>
 ```
 Do NOT start simulators, Metro, or `expo run`. Say in the Report what still needs a device look.
 
@@ -64,7 +64,7 @@ Do NOT start simulators, Metro, or `expo run`. Say in the Report what still need
 - `pnpm format:check`: pass (only the lead-owned untracked `PREREVIEW.md` warns; must not edit).
 - `pnpm lint`: pass (oxlint clean).
 - `pnpm typecheck`: pass (10/10 tasks).
-- Touched + neighbour tests (`pnpm --filter @galena/mobile test --maxWorkers=2`): 16 files, 207 passed — the round-1 12 plus `real-store.test`, `real-store.roles`, `types`, `chat-store`.
+- Touched + neighbour tests (`pnpm --filter @zilar/mobile test --maxWorkers=2`): 16 files, 207 passed — the round-1 12 plus `real-store.test`, `real-store.roles`, `types`, `chat-store`.
 - No simulator, Metro, or `expo run` started (per spec).
 
 ### Problems, deviations from the spec, open questions

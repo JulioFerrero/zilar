@@ -15,10 +15,10 @@ estimate: 1.5 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-Web users can already send stickers (T-0120). The mobile app does not know the `sticker` payload, so a sticker from a web user shows as a bare emoji or nothing. Mobile is the smaller share of the work (about 20%): keep it small and follow how the mobile app already does payload messages, lists, sheets, its store and its mock (`EXPO_PUBLIC_GALENA_MOCK`). Read `AGENTS.md` first, including the security checklist. Read the Spec, Report and Review of `work/T-0120-stickers.md` (and `work/T-0121-sticker-creator.md` once merged) for the wire contract.
+Web users can already send stickers (T-0120). The mobile app does not know the `sticker` payload, so a sticker from a web user shows as a bare emoji or nothing. Mobile is the smaller share of the work (about 20%): keep it small and follow how the mobile app already does payload messages, lists, sheets, its store and its mock (`EXPO_PUBLIC_ZILAR_MOCK`). Read `AGENTS.md` first, including the security checklist. Read the Spec, Report and Review of `work/T-0120-stickers.md` (and `work/T-0121-sticker-creator.md` once merged) for the wire contract.
 
 ### What to build
-1. Rendering: a message whose payload is a `sticker` (validate with `StickerSchema` from `@galena/protocol`; anything invalid falls back to the body text) is shown without a bubble, at most 200 pt, with the time and ticks in a small pill, and the usual long-press menu (react, reply, pin, delete; no edit, no copy text). Only sticker URLs of the Galena API origin are ever fetched (a relative `/api/stickers/...` path is resolved against the API origin; an absolute URL of another host is never loaded: show the emoji or a placeholder). Auth headers are sent only to the API origin.
+1. Rendering: a message whose payload is a `sticker` (validate with `StickerSchema` from `@zilar/protocol`; anything invalid falls back to the body text) is shown without a bubble, at most 200 pt, with the time and ticks in a small pill, and the usual long-press menu (react, reply, pin, delete; no edit, no copy text). Only sticker URLs of the Zilar API origin are ever fetched (a relative `/api/stickers/...` path is resolved against the API origin; an absolute URL of another host is never loaded: show the emoji or a placeholder). Auth headers are sent only to the API origin.
 2. Panel: a sticker button in the composer opens a bottom sheet with the user's panel (`GET /api/sticker-packs`, ordered, with stickers), a pack tab row, a Recent row (kept per device in storage), and tap-to-send. Empty state when the user has no packs ("Create packs on the web for now"). Loading, error and retry states.
 3. Sending: build the `sticker` payload, validate it with `StickerSchema` BEFORE the optimistic insert (a hostile or bad value never throws in the store), send in the current chat/topic through the same store path as other payload messages, optimistic bubble, failed state with Retry.
 4. Mock mode: two demo packs so the flow works without a server.
@@ -36,7 +36,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test --maxWorkers=2 <touched test files and their neighbours>
+pnpm --filter @zilar/mobile test --maxWorkers=2 <touched test files and their neighbours>
 ```
 Do NOT start simulators, Metro, or `expo run`. Say in the Report what still needs a device look.
 
@@ -46,7 +46,7 @@ Do NOT start simulators, Metro, or `expo run`. Say in the Report what still need
 - Rendering: `stickerOf()` in `payload-card.tsx` validates `card` with `StickerSchema` (invalid falls back to body text). New `StickerMessage.tsx`: no bubble, max 200 pt, time+ticks pill, emoji/🙂 placeholder. Same-origin gate in `lib/stickers.ts` (`isSameOriginStickerUrl`: relative `/api/stickers/…/file` or same-origin absolute; other hosts/`data:`/blank never loaded). Bearer token rides the `Image` source only to the API origin. Bubble long-press menu kept (react/reply/pin/delete; no edit, no copy since stickers carry no editable text); failed stickers show Retry via `onRetrySticker` plumbed through `MessageList`.
 - Panel: `StickerPanel.tsx` bottom sheet with pack tab row (Recent first), sticker grid, tap-to-send, loading/error+Retry/empty ("Create packs on the web for now") states. Pure view; composer owns loads. Hostile recents render the emoji tile, never an `<Image>`.
 - Sending: `sendSticker`/`retrySticker` on both stores (`store/types.ts`), validated with `StickerSchema` BEFORE the optimistic insert (hostile value → visible `actionError`, no bubble). Same XMPP payload path; sticker-scoped echo signature (`chat|body|reply|sticker:id`) so two quick same-emoji stickers link their own server ids. Real store maps incoming sticker payloads onto `card`; failed sends get `failed: true` + Retry. Mock store sends demo stickers optimistically (sent→read timers).
-- Mock mode: `mock/stickers.ts` — two demo packs (Cats, Moods) with relative file URLs passing `StickerSchema`; chat screen passes them as `demoPacks` when `NODE_ENV=test` or `EXPO_PUBLIC_GALENA_MOCK=1`.
+- Mock mode: `mock/stickers.ts` — two demo packs (Cats, Moods) with relative file URLs passing `StickerSchema`; chat screen passes them as `demoPacks` when `NODE_ENV=test` or `EXPO_PUBLIC_ZILAR_MOCK=1`.
 - Recents: `lib/stickers-storage.ts` — in-memory backend behind `RECENTS_STORAGE` (hostile data reads empty, failing writes never break sending). Documented that a persisted per-device store is a later task.
 - Deletions of `card` on retraction unchanged (shared `withEdits` path drops `card` already).
 
@@ -58,7 +58,7 @@ Do NOT start simulators, Metro, or `expo run`. Say in the Report what still need
 - `pnpm install`: ok
 - `pnpm format:check`: pass
 - `pnpm lint` (oxlint): pass (fixed `set-state-in-effect` by moving the panel load to the button press; fixed unused import)
-- `pnpm --filter @galena/mobile typecheck`: pass
+- `pnpm --filter @zilar/mobile typecheck`: pass
 - Touched + neighbours (`--maxWorkers=2`): 9 files, 126 passed (stickers lib/api/storage, mock stickers, both store suites incl. 5 new real-store + 2 new mock-store sticker tests, panel/message/payload render tests)
 - Neighbour suites: `pins-api`/`chat-api`/bubble/composer/types — 3 files, 22 passed; all other real-store suites + integration — 44 passed, 1 skipped
 - Post-review re-run (`--maxWorkers=2`): 9 files, 134 passed (new: `resolveActivePackId` ×3, recents dims + old-format fallback ×2, panel default/stale-tab ×2, broken-tile label test)

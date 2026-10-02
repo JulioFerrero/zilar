@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { generateRunnerKeypair } from '@galena/runner-tunnel';
+import { generateRunnerKeypair } from '@zilar/runner-tunnel';
 import { buildIdentity, saveIdentity, identityPaths } from './identity.ts';
 import type { RunResult } from './connect.ts';
 
@@ -20,7 +20,7 @@ const { runCli } = await import('./cli.ts');
 type CliIo = import('./cli.ts').CliIo;
 
 function tempHome(): { homeDir: string; cleanup: () => void } {
-  const dir = mkdtempSync(join(tmpdir(), 'galena-runner-cli-'));
+  const dir = mkdtempSync(join(tmpdir(), 'zilar-runner-cli-'));
   return {
     homeDir: dir,
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
@@ -57,14 +57,14 @@ describe('runCli', () => {
     const { io, stdout } = captureIo();
     const result = await runCli(['help'], io);
     expect(result.exitCode).toBe(0);
-    expect(stdout.join('\n')).toContain('Usage: galena-runner');
+    expect(stdout.join('\n')).toContain('Usage: zilar-runner');
   });
 
   it('prints help with no args', async () => {
     const { io, stdout } = captureIo();
     const result = await runCli([], io);
     expect(result.exitCode).toBe(0);
-    expect(stdout.join('\n')).toContain('Usage: galena-runner');
+    expect(stdout.join('\n')).toContain('Usage: zilar-runner');
   });
 
   it('returns exit code 2 for an unknown command', async () => {

@@ -1,4 +1,4 @@
-// Galena service worker (T-0119). Hand-written, no build plugin: this file
+// Zilar service worker (T-0119). Hand-written, no build plugin: this file
 // ships verbatim from `public/` and must stay dependency-free (no imports)
 // so it runs as-is in every browser.
 //
@@ -15,7 +15,7 @@
 // `src/lib/serviceWorker.test.ts`, which stubs `self` and imports this
 // file).
 
-const OFFLINE_CACHE = 'galena-offline-v1';
+const OFFLINE_CACHE = 'zilar-offline-v1';
 
 function notificationFor(data) {
   const title = typeof data?.title === 'string' && data.title !== '' ? data.title : 'New message';

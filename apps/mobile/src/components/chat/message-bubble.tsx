@@ -4,7 +4,7 @@ import {
   formatTime,
   isBigEmoji,
   type UiMessage,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';

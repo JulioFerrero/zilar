@@ -1,4 +1,4 @@
-import { formatDateSeparator } from '@galena/chat-core';
+import { formatDateSeparator } from '@zilar/chat-core';
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';

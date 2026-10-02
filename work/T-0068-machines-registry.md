@@ -56,7 +56,7 @@ Follow the existing schema style (naming, timestamps, checks).
 **4. Runner API (no session; the code is the credential).**
 - `POST /api/runner/pair` with `{ code, publicKey, signature, name, capabilities }` (zod, strict, sizes capped; the capability report as in §11.3: `os`, `os_version`, `arch`, `cpu`, `cores`, `ram_gb`, `disk_free_gb`, `power`, `drivers: string[]`, `tools: record`, `labels: string[]`, `runner_version`). The server:
   - checks the code (exists, not expired, not used) **and marks it used in the same statement** (atomic `UPDATE … WHERE used_at IS NULL AND expires_at > now() RETURNING …`, so two concurrent requests can't both win);
-  - parses `publicKey` as a real ed25519 key (`createPublicKey`) and verifies `signature` = the signature over the ASCII bytes `galena-pair:v1:<NORMALIZED_CODE>` (proof of possession; a request with someone else's public key fails);
+  - parses `publicKey` as a real ed25519 key (`createPublicKey`) and verifies `signature` = the signature over the ASCII bytes `zilar-pair:v1:<NORMALIZED_CODE>` (proof of possession; a request with someone else's public key fails);
   - inserts the machine `pending` for the code's owner; a duplicate public key → 409 `key_in_use`;
   - answers `{ machineId, status: 'pending' }`. The response never contains the owner's identity.
 - **All failures return the same 400 `invalid_code`** for unknown, expired, used or bad-signature codes (no oracle). The unused-code check and the signature check must not leak which one failed through timing that you can avoid cheaply.
@@ -74,7 +74,7 @@ The hub is the next task; keep this file small and typed so it can adapt to `Key
 ### Tests (Vitest, PGlite as the other route tests; no network)
 - Codes: as above.
 - Owner API: create code (limits, rate limit), list (shape, no key leak), approve/deny/revoke/patch/delete state machine, cross-user access → 404 for every route, machine and pending caps.
-- Runner API: the happy path with a real generated ed25519 key (`generateRunnerKeypair` from `@galena/runner-tunnel` is a workspace package the server may import in **tests only if it already depends on it**; otherwise generate with Node `crypto` in the test); expired code; used code; a valid code with a signature over another code; a valid signature from a different key than the one sent; a duplicate key; **two concurrent pairings with one code → exactly one succeeds**; malformed bodies; all failures identical in body and status; rate limits.
+- Runner API: the happy path with a real generated ed25519 key (`generateRunnerKeypair` from `@zilar/runner-tunnel` is a workspace package the server may import in **tests only if it already depends on it**; otherwise generate with Node `crypto` in the test); expired code; used code; a valid code with a signature over another code; a valid signature from a different key than the one sent; a duplicate key; **two concurrent pairings with one code → exactly one succeeds**; malformed bodies; all failures identical in body and status; rate limits.
 - Registry: approved key returned, pending/revoked null, revoke emits, `touchLastSeen`.
 - Revoke then re-pair with the same key → 409 `key_in_use` (a revoked key is never reused).
 
@@ -95,7 +95,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -118,7 +118,7 @@ pnpm build
 - `machines/codes.ts`: 8-char codes from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`
   (`crypto.randomInt`), displayed `XXXX-XXXX`, normalize (uppercase, strip
   spaces/dashes, strict alphabet check), SHA-256 hash at rest, 10-min TTL,
-  `galena-pair:v1:<CODE>` ASCII signature message.
+  `zilar-pair:v1:<CODE>` ASCII signature message.
 - `machines/service.ts`: code create (5-unused cap)/atomic consume
   (`UPDATE … WHERE used_at IS NULL AND expires_at > now() RETURNING`), ed25519
   proof-of-possession verify (never throws), pending insert with 20-machine and
@@ -162,12 +162,12 @@ pnpm build
   files); all my files pass after `prettier --write` on my paths.
 - `pnpm lint` (oxlint .): clean, exit 0.
 - `pnpm typecheck` in `apps/server`: clean. Repo-wide `pnpm typecheck` fails on
-  `@galena/xmpp-core` (`integration-edits.test.ts` missing node types + an
+  `@zilar/xmpp-core` (`integration-edits.test.ts` missing node types + an
   `admin-client.ts` reference) — pre-existing, files untouched by me, out of scope.
-- `pnpm exec turbo test --force --filter=@galena/server`: 41 files passed
+- `pnpm exec turbo test --force --filter=@zilar/server`: 41 files passed
   (5 skipped files pre-existing), 529 tests passed, 7 skipped — includes my 35 new
   machines tests, all green.
-- `pnpm build`: pass (2 tasks successful; `@galena/server` has no build script,
+- `pnpm build`: pass (2 tasks successful; `@zilar/server` has no build script,
   typecheck+tests are its verification).
 
 ### Problems, deviations from the spec, open questions
@@ -201,7 +201,7 @@ pnpm build
 
 **Approved and merged by Claude.** No Muse pre-review this time (the OpenCode Go account ran out of funds), so I read the code myself with an attacker's eye. Verified after rebasing onto `main`: every changed path is inside Allowed files (the `machines/` folder, `schema.ts`, one generated migration, four lines in `app.ts`); `format:check`, `lint`, `typecheck`, `test` (server 543 passed, 7 skipped) and `build` pass; no new dependencies.
 
-What I checked against the spec: codes come from `crypto.randomInt` over a 31-character alphabet, stored only as SHA-256, and normalized before hashing; the code is consumed by one atomic `UPDATE … WHERE used_at IS NULL AND expires_at > now() RETURNING`, and a concurrent-pairing test proves exactly one 201; the signature is over `galena-pair:v1:<CODE>` with the public key sent, so someone else's key fails; every failure on the public route is the same 400 `invalid_code`, after both the global (30/min) and per-IP (10/min) limiters; the owner routes query with `owner_user_id` in every `WHERE` and answer 404 for other users' ids; responses carry a fingerprint, never the key; revoke is permanent, keeps the key reserved and notifies the registry listeners synchronously; caps of 20 machines, 5 pending and 5 unused codes hold under concurrency-safe checks at insert.
+What I checked against the spec: codes come from `crypto.randomInt` over a 31-character alphabet, stored only as SHA-256, and normalized before hashing; the code is consumed by one atomic `UPDATE … WHERE used_at IS NULL AND expires_at > now() RETURNING`, and a concurrent-pairing test proves exactly one 201; the signature is over `zilar-pair:v1:<CODE>` with the public key sent, so someone else's key fails; every failure on the public route is the same 400 `invalid_code`, after both the global (30/min) and per-IP (10/min) limiters; the owner routes query with `owner_user_id` in every `WHERE` and answer 404 for other users' ids; responses carry a fingerprint, never the key; revoke is permanent, keeps the key reserved and notifies the registry listeners synchronously; caps of 20 machines, 5 pending and 5 unused codes hold under concurrency-safe checks at insert.
 
 **Live proof was not done** (the spec said so). The migration `0010` runs when the server restarts; the routes are covered by PGlite-backed tests only.
 

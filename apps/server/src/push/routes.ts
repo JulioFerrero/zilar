@@ -299,7 +299,7 @@ export function createPushRoutes(deps: PushRoutesDependencies): Hono {
       await sender.send(
         subscription,
         JSON.stringify({
-          title: 'Galena',
+          title: 'Zilar',
           body: 'Push notifications work on this device.',
         }),
       );

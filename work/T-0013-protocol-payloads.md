@@ -1,6 +1,6 @@
 ---
 id: T-0013
-title: Protocol v0 — zod schemas for Galena's chat payloads
+title: Protocol v0 — zod schemas for Zilar's chat payloads
 status: merged
 milestone: M0
 branch: task/T-0013-protocol-payloads
@@ -16,7 +16,7 @@ estimate: 1 day
 ### Goal
 Define every structured payload that AIs and clients exchange inside chat messages as **zod schemas with TypeScript types**, plus a safe encode/decode for them. The server, the web app and the mobile app will all validate messages with these schemas, so they must be strict, well tested, and **never throw on bad input from the network**.
 
-**Transport decision (made by Claude).** A payload is a JSON **envelope** `{ v: 0, type, data }`, carried as text inside our namespaced XMPP element (`urn:galena:agent:0`). This task only deals with the JSON. Wrapping it in XML comes later, in `xmpp-core`.
+**Transport decision (made by Claude).** A payload is a JSON **envelope** `{ v: 0, type, data }`, carried as text inside our namespaced XMPP element (`urn:zilar:agent:0`). This task only deals with the JSON. Wrapping it in XML comes later, in `xmpp-core`.
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -102,7 +102,7 @@ Put them in logical files under `packages/protocol/src/`, e.g. `common.ts`, `tas
 - The existing handoff tests must still pass after `from`/`to` switch to `JidSchema`.
 
 ### Acceptance criteria
-- [ ] All schemas and functions above exist, are exported from `@galena/protocol`, and have their types (`z.infer`).
+- [ ] All schemas and functions above exist, are exported from `@zilar/protocol`, and have their types (`z.infer`).
 - [ ] Objects are strict (unknown keys rejected).
 - [ ] `decodePayload` never throws. There's a test that feeds it a list of hostile inputs inside a `try` that fails the test if anything is thrown.
 - [ ] `protocolVersion` is `'0.2.0'`, and the existing server and web tests still pass, since they import it.
@@ -148,9 +148,9 @@ pnpm test
 - `pnpm format:check`: "All matched files use Prettier code style!" (exit 0).
 - `pnpm lint`: "Found 0 warnings and 0 errors. Finished in 8ms on 28 files with 127 rules" (exit 0).
 - `pnpm typecheck`: "Tasks: 3 successful, 3 total" (protocol cache miss, web/server cache hit).
-- `pnpm exec turbo typecheck --force` (cache bypass): "Tasks: 3 successful, 3 total, 0 cached" — `@galena/protocol`, `@galena/web`, `@galena/server` all pass.
-- `pnpm test`: "Tasks: 3 successful, 3 total"; `@galena/protocol` 122 passed (9 files), `@galena/server` 2 passed, `@galena/web` 3 passed.
-- `pnpm exec turbo test --force` (cache bypass): `@galena/protocol` 122 passed, `@galena/server` 2 passed, `@galena/web` 3 passed. Includes the 6 existing handoff tests.
+- `pnpm exec turbo typecheck --force` (cache bypass): "Tasks: 3 successful, 3 total, 0 cached" — `@zilar/protocol`, `@zilar/web`, `@zilar/server` all pass.
+- `pnpm test`: "Tasks: 3 successful, 3 total"; `@zilar/protocol` 122 passed (9 files), `@zilar/server` 2 passed, `@zilar/web` 3 passed.
+- `pnpm exec turbo test --force` (cache bypass): `@zilar/protocol` 122 passed, `@zilar/server` 2 passed, `@zilar/web` 3 passed. Includes the 6 existing handoff tests.
 - During development one test failed: `PreviewSchema` rejected `http://localhost:3000` because `z.httpUrl()` requires a dotted host. Fixed by using `z.url({ protocol: /^https?$/ })`, which accepts `http://localhost:3000`/`http://127.0.0.1:3000` and still rejects `ftp://`/`mailto:`.
 
 ### Problems, deviations from the spec, open questions
@@ -185,7 +185,7 @@ Fixed findings 1, 2, 3 and 5 from the review (finding 4 was accepted as-is, no c
 - `pnpm format:check`: "All matched files use Prettier code style!" (exit 0).
 - `pnpm lint`: "Found 0 warnings and 0 errors. Finished in 22ms on 28 files with 127 rules" (exit 0).
 - `pnpm exec turbo typecheck --force` (cache bypass): "Tasks: 3 successful, 3 total, 0 cached" — protocol, web and server all pass.
-- `pnpm exec turbo test --force` (cache bypass): "Tasks: 3 successful, 3 total, 0 cached"; `@galena/protocol` 132 passed (9 files, +10 vs round 1), `@galena/server` 2 passed, `@galena/web` 3 passed.
+- `pnpm exec turbo test --force` (cache bypass): "Tasks: 3 successful, 3 total, 0 cached"; `@zilar/protocol` 132 passed (9 files, +10 vs round 1), `@zilar/server` 2 passed, `@zilar/web` 3 passed.
 
 ---
 

@@ -47,7 +47,7 @@ function signCode(privateKeyBase64: string, code: string): string {
     format: 'der',
     type: 'pkcs8',
   });
-  return sign(null, Buffer.from(`galena-pair:v1:${normalized}`, 'ascii'), key).toString('base64');
+  return sign(null, Buffer.from(`zilar-pair:v1:${normalized}`, 'ascii'), key).toString('base64');
 }
 
 function capabilities(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -1078,7 +1078,7 @@ describe('machines routes', () => {
         providerConnectionId: connectionId,
         model: 'gpt-4o-mini',
         localpart: `ai-${aiAId}`,
-        jid: `ai-${aiAId}@galena.localhost`,
+        jid: `ai-${aiAId}@zilar.localhost`,
         status: 'active',
         machineId: targeted,
       },
@@ -1091,7 +1091,7 @@ describe('machines routes', () => {
         providerConnectionId: connectionId,
         model: 'gpt-4o-mini',
         localpart: `ai-${aiBId}`,
-        jid: `ai-${aiBId}@galena.localhost`,
+        jid: `ai-${aiBId}@zilar.localhost`,
         status: 'active',
         machineId: other,
       },
@@ -1135,7 +1135,7 @@ describe('machines routes', () => {
       providerConnectionId: connectionId,
       model: 'gpt-4o-mini',
       localpart: `ai-${aiId}`,
-      jid: `ai-${aiId}@galena.localhost`,
+      jid: `ai-${aiId}@zilar.localhost`,
       status: 'active',
       machineId,
     });

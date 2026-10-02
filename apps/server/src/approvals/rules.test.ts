@@ -64,7 +64,7 @@ async function seedAi(
   });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  const jid = `${localpart}@galena.localhost`;
+  const jid = `${localpart}@zilar.localhost`;
   await context.db.insert(ais).values({
     id: aiId,
     owner: ownerId,
@@ -163,7 +163,7 @@ async function seedApproval(
       action: args.action ?? 'demo.echo',
       summary: 'Echo a message: "hi"',
       argsHash: argsHash(args.hashSeed ?? 1),
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
       expiresAt: new Date(now.getTime() + 60_000),
     },
     now,
@@ -884,7 +884,7 @@ describe('approval rules service (T-0099)', () => {
         aiId,
         action: 'demo.echo',
         args: { text: 'first' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(first.status).toBe('pending_approval');
 
@@ -901,7 +901,7 @@ describe('approval rules service (T-0099)', () => {
         aiId,
         action: 'demo.echo',
         args: { text: 'second' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(second).toEqual({ status: 'executed', summary: 'Echoed: second' });
       const approvalCountAfter = (await context.db.select().from(approvals)).length;
@@ -956,7 +956,7 @@ describe('approval rules service (T-0099)', () => {
         aiId,
         action: 'demo.echo',
         args: { text: 'should not run' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(outcome).toEqual({ status: 'denied', reason: 'ai_not_active' });
       const audits = await context.db.select().from(auditLog);
@@ -998,7 +998,7 @@ describe('approval rules service (T-0099)', () => {
         aiId,
         action: 'demo.echo',
         args: { text: 'revoked' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(outcome.status).toBe('pending_approval');
     });
@@ -1055,7 +1055,7 @@ describe('approval rules service (T-0099)', () => {
         topicId: group.generalTopicId,
         action: 'demo.echo',
         args: { text: '' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(invalid).toEqual({ status: 'denied', reason: 'invalid_args' });
 
@@ -1068,7 +1068,7 @@ describe('approval rules service (T-0099)', () => {
         topicId: group.generalTopicId,
         action: 'demo.echo',
         args: { text: 'hello' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(outside).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
       expect(calls).toHaveLength(0);
@@ -1136,7 +1136,7 @@ describe('approval rules service (T-0099)', () => {
         topicId: topicB,
         action: 'demo.echo',
         args: { text: 'wrong topic' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(otherTopic.status).toBe('pending_approval');
       // Different group: still requires approval.
@@ -1146,7 +1146,7 @@ describe('approval rules service (T-0099)', () => {
         topicId: group2.generalTopicId,
         action: 'demo.echo',
         args: { text: 'wrong group' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(g2.status).toBe('pending_approval');
       // Personal chat: still requires approval.
@@ -1154,7 +1154,7 @@ describe('approval rules service (T-0099)', () => {
         aiId,
         action: 'demo.echo',
         args: { text: 'wrong chat' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(personal.status).toBe('pending_approval');
       // The original topic: auto-runs.
@@ -1164,7 +1164,7 @@ describe('approval rules service (T-0099)', () => {
         topicId: group1.generalTopicId,
         action: 'demo.echo',
         args: { text: 'right topic' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(original).toEqual({ status: 'executed', summary: 'Echoed: right topic' });
     });

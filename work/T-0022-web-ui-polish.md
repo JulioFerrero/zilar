@@ -120,12 +120,12 @@ Also `work/T-0022-web-ui-polish.md` (status + this Report). No other files touch
 - `pnpm format:check`: "All matched files use Prettier code style!".
 - `pnpm lint`: "Found 0 warnings and 0 errors" (204 files, 127 rules).
 - `pnpm typecheck`: 8 successful, 8 total.
-- `pnpm test`: 8 tasks successful. `@galena/web` **40 passed** (13 files); `@galena/chat-core` **50 passed** (5 files); `@galena/mobile` 48 passed (7 files, unchanged); `@galena/devtools` 9 passed (1 file).
+- `pnpm test`: 8 tasks successful. `@zilar/web` **40 passed** (13 files); `@zilar/chat-core` **50 passed** (5 files); `@zilar/mobile` 48 passed (7 files, unchanged); `@zilar/devtools` 9 passed (1 file).
 - `pnpm build`: 2 successful (web `dist/assets/index-*.js` 352.30 kB, `index-*.css` 32.07 kB; mobile Expo export).
 - Verified in the built CSS: `--online:#4dcd5e` (light + dark), `.bg-online`, `.typing-dot`.
 
 ### Problems, deviations from the spec, open questions
-- **Visual check not done by me:** `pnpm --filter @galena/web dev --port 5211` starts cleanly ("VITE v8.3.1 ready"), but the desktop browser tool was disconnected in this session, so I could not screenshot the result. Behaviour is covered by the Testing Library tests and the built CSS above; Claude will screenshot.
+- **Visual check not done by me:** `pnpm --filter @zilar/web dev --port 5211` starts cleanly ("VITE v8.3.1 ready"), but the desktop browser tool was disconnected in this session, so I could not screenshot the result. Behaviour is covered by the Testing Library tests and the built CSS above; Claude will screenshot.
 - **Message actions menu is custom, not radix.** The spec allows "a small custom menu" when the shadcn dropdown/context menu isn't already installed. The repo has the `radix-ui` primitives but no shadcn `dropdown-menu`/`context-menu` component (only `ui/button.tsx`), and the custom menu covers the required behaviours for both the right-click and the ⋯ trigger (focus on open, `Esc`, outside-click) and is directly testable with the installed tooling (`@testing-library/user-event` isn't installed). Happy to migrate to radix if you prefer.
 - **DM typing label** is the bare `typing…` for the list and header (per the spec text), while groups name the first person (`Luis is typing…`).
 - **Reply quote source** uses `previewBody` for the excerpt, so replying to a voice/photo message quotes `🎤 Voice message (0:12)` / `🖼 Photo`.

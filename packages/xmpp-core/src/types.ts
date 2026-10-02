@@ -1,4 +1,4 @@
-import type { Payload } from '@galena/protocol';
+import type { Payload } from '@zilar/protocol';
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
 
@@ -7,13 +7,13 @@ export type ChatKind = 'groupchat' | 'chat';
 export interface XmppCoreOptions {
   /** WebSocket service, e.g. `ws://127.0.0.1:5280/ws`. */
   service: string;
-  /** XMPP domain, e.g. `galena.localhost`. Rooms live on `rooms.<domain>`. */
+  /** XMPP domain, e.g. `zilar.localhost`. Rooms live on `rooms.<domain>`. */
   domain: string;
   /** Called for every (re)connect; must return a fresh short-lived JWT. */
   getToken: () => Promise<{ jid: string; token: string }>;
   /**
    * Fixed XMPP resource, e.g. `gateway`. When absent, a random
-   * `galena-xxxxxxxx` resource is used, as before.
+   * `zilar-xxxxxxxx` resource is used, as before.
    */
   resource?: string;
 }

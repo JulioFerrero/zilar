@@ -148,7 +148,7 @@ The lead will click through the wizard live at review. Make that easy:
 - In the Report, give the exact clicks to create, edit and delete an AI.
 - Mention anything the lead should look for.
 
-You may start your worktree's own Vite dev server on another port (e.g. `pnpm --filter @galena/web exec vite --port 5199`) to look at the pages with `?mock=1` or with fetch mocked. Stop it before you finish.
+You may start your worktree's own Vite dev server on another port (e.g. `pnpm --filter @zilar/web exec vite --port 5199`) to look at the pages with `?mock=1` or with fetch mocked. Stop it before you finish.
 
 ### Acceptance criteria
 - [ ] `pnpm format:check`, `lint`, `typecheck`, `test` and `build` all pass.
@@ -165,7 +165,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -212,7 +212,7 @@ No `apps/server/**`, `apps/mobile/**`, `packages/**` or `docs/**` file was chang
 - `pnpm format:check` — "All matched files use Prettier code style!"
 - `pnpm lint` — clean, no output.
 - `pnpm typecheck` — 8 tasks successful.
-- `pnpm exec turbo test --force --filter=@galena/web` — **20 files, 116 tests, all passed** (21 of them in `CreateAiPage.test.tsx`).
+- `pnpm exec turbo test --force --filter=@zilar/web` — **20 files, 116 tests, all passed** (21 of them in `CreateAiPage.test.tsx`).
 - `pnpm build` — 2 tasks successful; web built (`dist/index-RjRNAshP.js`, 614.90 kB, existing chunk-size warning unchanged).
 
 ### Tests
@@ -279,7 +279,7 @@ I confirmed the test fails against the old wiring: temporarily reverting the pro
 - `pnpm format:check` — "All matched files use Prettier code style!"
 - `pnpm lint` — clean, no output.
 - `pnpm typecheck` — 9 tasks successful (8 cached).
-- `pnpm exec turbo test --force --filter=@galena/web` — **20 files, 117 tests, all passed** (`CreateAiPage.test.tsx` now 22).
+- `pnpm exec turbo test --force --filter=@zilar/web` — **20 files, 117 tests, all passed** (`CreateAiPage.test.tsx` now 22).
 - `pnpm build` — 2 tasks successful.
 
 **Files changed in Round 2.** `apps/web/src/routes/CreateAiPage.tsx`, `apps/web/src/routes/CreateAiPage.test.tsx`, `apps/web/src/components/ais/models.ts`. No other file changed.
@@ -293,7 +293,7 @@ I confirmed the test fails against the old wiring: temporarily reverting the pro
 
 Good work. The checks pass on the lead's re-run:
 - format:check, lint, typecheck and build;
-- `turbo test --force --filter=@galena/web`: 116/116.
+- `turbo test --force --filter=@zilar/web`: 116/116.
 
 The lead clicked through the wizard live in Chrome, as the throwaway test account, against the real server:
 
@@ -340,7 +340,7 @@ Allowed files are unchanged. Run the same Checks, add a "Round 2" subsection to 
 
 Lead's re-run after rebasing onto main:
 - format:check, lint, typecheck and build pass;
-- `turbo test --force --filter=@galena/web`: 117/117.
+- `turbo test --force --filter=@zilar/web`: 117/117.
 
 Round 1's full live click-through still covers create, edit, delete, double-submit and layout. Round 2 was **not** re-clicked live because the Chrome extension disconnected. The change is a one-line prop fix, and the test reproduces the live symptom.
 

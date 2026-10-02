@@ -1,7 +1,7 @@
 /**
  * The mock loading scenarios used for screenshots (T-0067). Real mock mode has
- * no slow or failing backend, so `EXPO_PUBLIC_GALENA_MOCK_LOAD` selects a fixed
- * state, following the `EXPO_PUBLIC_GALENA_MOCK_DRAFT` convention (T-0056):
+ * no slow or failing backend, so `EXPO_PUBLIC_ZILAR_MOCK_LOAD` selects a fixed
+ * state, following the `EXPO_PUBLIC_ZILAR_MOCK_DRAFT` convention (T-0056):
  *
  * - `slow`: nothing has arrived yet (chat-list skeleton, and a chat opened now
  *   shows the message skeleton); a real list arrives after `MOCK_LOAD_DELAY_MS`;
@@ -19,7 +19,7 @@ export const MOCK_LOAD_DELAY_MS = 1500;
 export function readMockLoadScenario(
   env: Record<string, string | undefined> = process.env,
 ): MockLoadScenario | undefined {
-  const value = env['EXPO_PUBLIC_GALENA_MOCK_LOAD'];
+  const value = env['EXPO_PUBLIC_ZILAR_MOCK_LOAD'];
   return value === 'slow' || value === 'error' || value === 'empty' || value === 'no-messages'
     ? value
     : undefined;

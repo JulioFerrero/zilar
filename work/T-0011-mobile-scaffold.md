@@ -14,9 +14,9 @@ estimate: 1 day
 ## Spec (written by Claude, do not edit)
 
 ### Goal
-Add the mobile app `@galena/mobile` to the monorepo: an Expo app that shows the same placeholder screen as the web app. It proves three things:
+Add the mobile app `@zilar/mobile` to the monorepo: an Expo app that shows the same placeholder screen as the web app. It proves three things:
 - Expo works inside our pnpm workspace.
-- Metro can import `@galena/protocol` from source.
+- Metro can import `@zilar/protocol` from source.
 - The styling stack (NativeWind + React Native Reusables) is in place for real screens later.
 
 ### Read first
@@ -52,23 +52,23 @@ Other workers are editing those in parallel.
 | Expo SDK | **57** (latest stable, React Native 0.86). **Not** the SDK 58 beta. |
 | Navigation | Expo Router, with a single route: `app/_layout.tsx` + `app/index.tsx` |
 | Styling | NativeWind + React Native Reusables, using the versions React Native Reusables currently documents for Expo SDK 57. If its docs offer NativeWind or Uniwind, use **NativeWind**. |
-| Package | `@galena/mobile`, `private: true`. Depends on `@galena/protocol` as `workspace:*` |
+| Package | `@zilar/mobile`, `private: true`. Depends on `@zilar/protocol` as `workspace:*` |
 | Native folders | `ios/` and `android/` stay generated and git-ignored (Expo prebuild / CNG). **Never commit them.** |
 | Linker | Keep pnpm's default isolated `node_modules`. If Expo truly cannot work without `nodeLinker: hoisted` (or another repo-wide linker change), **stop, set `status: blocked`**, and explain in the Report. Don't change it yourself. |
 
 ### Steps and hints
-1. Create the app in `apps/mobile`. `npx create-expo-app@latest` with the default or a TypeScript template is fine, then trim it to one screen and remove the example tabs, assets and components you don't use. Rename the package to `@galena/mobile`.
+1. Create the app in `apps/mobile`. `npx create-expo-app@latest` with the default or a TypeScript template is fine, then trim it to one screen and remove the example tabs, assets and components you don't use. Rename the package to `@zilar/mobile`.
 2. **App config:**
-   - name `Galena`, slug `galena`, scheme `galena`
-   - iOS bundle identifier and Android package `com.julioferrero.galena`
+   - name `Zilar`, slug `zilar`, scheme `zilar`
+   - iOS bundle identifier and Android package `com.julioferrero.zilar`
    - `userInterfaceStyle: automatic`
 3. **Screen `app/index.tsx`** mirrors the web page:
-   - **Galena** as a heading
+   - **Zilar** as a heading
    - "People and AIs, together." as a subtitle
-   - `protocol v{protocolVersion}`, imported from `@galena/protocol`
+   - `protocol v{protocolVersion}`, imported from `@zilar/protocol`
    - centered, following the system light/dark scheme, styled with NativeWind classes
    - use at least one React Native Reusables component (e.g. `Text`)
-4. **Monorepo:** follow Expo's pnpm monorepo guide so Metro resolves `@galena/protocol` (a TypeScript source package; see its `exports`).
+4. **Monorepo:** follow Expo's pnpm monorepo guide so Metro resolves `@zilar/protocol` (a TypeScript source package; see its `exports`).
 5. **Add `overrides: { '@types/node': '^24' }`** to `pnpm-workspace.yaml`. Confirm with `pnpm why -r @types/node` that only 24.x remains, and paste the output in the Report.
 6. **Scripts in `apps/mobile/package.json`:**
    - `start` (`expo start`)
@@ -78,15 +78,15 @@ Other workers are editing those in parallel.
    - `test` (`vitest run`)
    - `build` (`expo export --platform ios --platform android --output-dir dist`). This bundles the JavaScript only, with no native build, and runs in CI through `turbo build`.
 7. **One Vitest test** for a small pure helper you add in `src/lib/` (e.g. `protocolLabel(version)` returning `protocol v0.1.0`). The screen uses it. No React Native component tests in this task.
-8. **`apps/mobile/README.md`:** how to run it (`pnpm --filter @galena/mobile start`, the iOS simulator, a dev build on a phone), and the notes about generated native folders.
-9. **Try an iOS simulator build** with `pnpm --filter @galena/mobile ios`. Report what happened: success, a screenshot path if you can take one with `xcrun simctl io booted screenshot`, or the exact error, e.g. missing CocoaPods or no simulator. **A failure here does not block the task,** but installing system software (brew, CocoaPods, Xcode components) is **not allowed**. Report what's missing instead.
+8. **`apps/mobile/README.md`:** how to run it (`pnpm --filter @zilar/mobile start`, the iOS simulator, a dev build on a phone), and the notes about generated native folders.
+9. **Try an iOS simulator build** with `pnpm --filter @zilar/mobile ios`. Report what happened: success, a screenshot path if you can take one with `xcrun simctl io booted screenshot`, or the exact error, e.g. missing CocoaPods or no simulator. **A failure here does not block the task,** but installing system software (brew, CocoaPods, Xcode components) is **not allowed**. Report what's missing instead.
 
 ### Acceptance criteria
 - [ ] `pnpm install` works from the repo root, with no `nodeLinker` change.
-- [ ] `pnpm --filter @galena/mobile typecheck`, `test` and `build` (expo export) pass.
+- [ ] `pnpm --filter @zilar/mobile typecheck`, `test` and `build` (expo export) pass.
 - [ ] The root `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and `pnpm build` still pass for the whole repo.
 - [ ] `npx expo-doctor` inside `apps/mobile` passes, or its warnings are listed and explained in the Report.
-- [ ] The exported bundle includes the `@galena/protocol` code, proving Metro resolves the workspace package. Explain how you checked.
+- [ ] The exported bundle includes the `@zilar/protocol` code, proving Metro resolves the workspace package. Explain how you checked.
 - [ ] `pnpm why -r @types/node` shows only 24.x.
 - [ ] No `ios/` or `android/` folders are committed.
 - [ ] The iOS simulator attempt result is reported.
@@ -116,11 +116,11 @@ cd apps/mobile && npx expo-doctor
 1. **Scaffolded the app.** `npx create-expo-app@latest apps/mobile --template default --no-install --no-agents-md`
    (Expo SDK 57, Expo Router). Removed the example tab screen, components, hooks, constants,
    `scripts/reset-project.js`, `.vscode`, its `LICENSE`, and the unused example assets. Renamed the
-   package to `@galena/mobile` (`private: true`), added `dev/build/typecheck/test` scripts, and kept
+   package to `@zilar/mobile` (`private: true`), added `dev/build/typecheck/test` scripts, and kept
    the template's `src/` layout (`src/app`, `src/components`, `src/lib`).
-2. **App config** (`app.json`): name `Galena`, slug `galena`, scheme `galena`,
+2. **App config** (`app.json`): name `Zilar`, slug `zilar`, scheme `zilar`,
    `userInterfaceStyle: automatic`, iOS `bundleIdentifier` and Android `package`
-   `com.julioferrero.galena`, plus `web.bundler: metro`.
+   `com.julioferrero.zilar`, plus `web.bundler: metro`.
 3. **Styling stack.** NativeWind **4.2.7** (the version whose docs add Expo SDK 57 support, Tailwind 3
    line) with the React Native Reusables **NativeWind** setup:
    - `babel.config.js` (`babel-preset-expo` with `jsxImportSource: 'nativewind'` + `nativewind/babel`).
@@ -131,20 +131,20 @@ cd apps/mobile && npx expo-doctor
      with `src/lib/utils.ts` (`cn`) and `src/lib/theme.ts` (`NAV_THEME`); `components.json` added so
      `react-native-reusables add` works later; `PortalHost` mounted in the root layout.
    - `nativewind-env.d.ts` for the NativeWind types.
-4. **Screen** `src/app/index.tsx` mirrors `apps/web/src/App.tsx`: **Galena** heading, "People and AIs,
-   together." subtitle, and `protocol v{protocolVersion}` imported from `@galena/protocol`, centered,
+4. **Screen** `src/app/index.tsx` mirrors `apps/web/src/App.tsx`: **Zilar** heading, "People and AIs,
+   together." subtitle, and `protocol v{protocolVersion}` imported from `@zilar/protocol`, centered,
    using RNR `Text` with NativeWind classes (`bg-background`, `text-foreground`,
    `text-muted-foreground`). Root layout wraps a single-route `Stack` (header hidden) in RNR's
    `ThemeProvider` + `StatusBar`.
 5. **Monorepo wiring.** Expo's automatic Metro monorepo support (SDK 54+ supports pnpm isolated
-   `node_modules`) resolves `@galena/protocol` from source; no `watchFolders`/`nodeModulesPaths`
+   `node_modules`) resolves `@zilar/protocol` from source; no `watchFolders`/`nodeModulesPaths`
    overrides, and **`nodeLinker` was not changed**.
 6. **`pnpm-workspace.yaml`:** added `overrides: { '@types/node': '^24' }`.
 7. **Helper + test:** `src/lib/protocol.ts` (`protocolLabel(version)`) with `src/lib/protocol.test.ts`
    (Vitest); the screen uses the helper.
 8. **`.gitignore`:** added `expo-env.d.ts` to the root Expo section. `ios/` and `android/` stay ignored
    (generated by prebuild) and were not committed.
-9. **`apps/mobile/README.md`:** how to run (`pnpm --filter @galena/mobile start`, iOS simulator, dev
+9. **`apps/mobile/README.md`:** how to run (`pnpm --filter @zilar/mobile start`, iOS simulator, dev
    build on a phone), the scripts, and the generated-native-folders note.
 
 ### Files changed
@@ -189,7 +189,7 @@ cd apps/mobile && npx expo-doctor
   string literals that only exist in `packages/protocol/src/handoff.ts`:
   `LC_ALL=C grep -a -o -e 'return_format' -e 'context_summary' dist/_expo/static/js/{ios,android}/*.hbc`
   → each bundle contains `context_summary` and `return_format`. That code is not imported anywhere in
-  the app directly, so it can only come from bundling `@galena/protocol` (imported via `protocolVersion`).
+  the app directly, so it can only come from bundling `@zilar/protocol` (imported via `protocolVersion`).
 - `git status`: only `.gitignore`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`,
   `work/T-0011-mobile-scaffold.md` and the new `apps/mobile/`. `git add -n apps/mobile` stages no
   `ios/`, `android/`, `expo-env.d.ts`, `dist/` or `.expo/` (all ignored).
@@ -199,16 +199,16 @@ cd apps/mobile && npx expo-doctor
 **Succeeded.** The machine has Xcode 26.6, CocoaPods 1.17.0 and iOS 26.5 simulators (iPhone 17 Pro),
 so no system software had to be installed.
 
-- `pnpm --filter @galena/mobile ios` (`expo run:ios`) ran prebuild + `pod install` + Xcode build and
-  installed the app (`xcrun simctl get_app_container booted com.julioferrero.galena` returned a
-  container; `Galena.app` exists under DerivedData). The command **timed out at 40 min only because
+- `pnpm --filter @zilar/mobile ios` (`expo run:ios`) ran prebuild + `pod install` + Xcode build and
+  installed the app (`xcrun simctl get_app_container booted com.julioferrero.zilar` returned a
+  container; `Zilar.app` exists under DerivedData). The command **timed out at 40 min only because
   `expo run:ios` leaves the Metro dev server running after launching** — the build and install had
-  already finished. I then started Metro separately (`pnpm --filter @galena/mobile start`), relaunched
-  the app with `xcrun simctl launch booted com.julioferrero.galena`, and it loaded the JS bundle from
+  already finished. I then started Metro separately (`pnpm --filter @zilar/mobile start`), relaunched
+  the app with `xcrun simctl launch booted com.julioferrero.zilar`, and it loaded the JS bundle from
   Metro (`iOS Bundled 670ms … (1724 modules)`).
 - Screenshots (`xcrun simctl io booted screenshot`):
-  - Light (system default): `/private/var/folders/gm/h0mkvrd15q3fvrf_vtbkvh340000gn/T/opencode/galena-ios-2.png`
-  - Dark (`xcrun simctl ui booted appearance dark`): `/private/var/folders/gm/h0mkvrd15q3fvrf_vtbkvh340000gn/T/opencode/galena-ios-dark3.png`
+  - Light (system default): `/private/var/folders/gm/h0mkvrd15q3fvrf_vtbkvh340000gn/T/opencode/zilar-ios-2.png`
+  - Dark (`xcrun simctl ui booted appearance dark`): `/private/var/folders/gm/h0mkvrd15q3fvrf_vtbkvh340000gn/T/opencode/zilar-ios-dark3.png`
   Both render the same screen as the web app; dark mode switches background/foreground automatically.
   (An early screenshot showed a yellow LogBox badge; that came from an interrupted session where
   Metro was not running, and it disappears on a clean launch.)
@@ -254,9 +254,9 @@ This is excellent work. The app builds, installs and runs in the iOS simulator, 
 
 ### What I verified myself (on commit 80007d9, then again after the rebase)
 - **Screenshots:**
-  - Light: `/private/var/folders/gm/h0mkvrd15q3fvrf_vtbkvh340000gn/T/opencode/galena-ios-2.png`
-  - Dark: `/private/var/folders/gm/h0mkvrd15q3fvrf_vtbkvh340000gn/T/opencode/galena-ios-dark3.png`
-  - Both show the correct screen (Galena, subtitle, protocol line), centered. The dark scheme switches correctly.
+  - Light: `/private/var/folders/gm/h0mkvrd15q3fvrf_vtbkvh340000gn/T/opencode/zilar-ios-2.png`
+  - Dark: `/private/var/folders/gm/h0mkvrd15q3fvrf_vtbkvh340000gn/T/opencode/zilar-ios-dark3.png`
+  - Both show the correct screen (Zilar, subtitle, protocol line), centered. The dark scheme switches correctly.
 - No Metro server left running (port 8081 is free).
 - After rebasing onto `main` (T-0013, T-0002 and T-0006 had merged), I regenerated the lockfile with `pnpm install`. Then `format:check`, `lint`, `typecheck`, `test` and `build` (including `expo export`) all PASS. Details in the merge commit.
 

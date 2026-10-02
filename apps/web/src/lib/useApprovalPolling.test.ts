@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApprovalRequestSchema } from '@galena/protocol';
+import { ApprovalRequestSchema } from '@zilar/protocol';
 import {
   APPROVAL_POLL_INTERVAL_MS,
   useApprovalPolling,
@@ -10,13 +10,13 @@ import {
 
 const baseRequest = ApprovalRequestSchema.parse({
   id: 'apr-42',
-  room: 'dev-team@rooms.galena.test',
-  ai: 'dev-1@ai.galena.test',
+  room: 'dev-team@rooms.zilar.test',
+  ai: 'dev-1@ai.zilar.test',
   action: 'merge_pull_request',
   summary: 'Merge PR #42',
   args_hash: 'a'.repeat(64),
   worst_case_cost: { currency: 'EUR', amount: 0.4 },
-  requested_by: 'dev-1@ai.galena.test',
+  requested_by: 'dev-1@ai.zilar.test',
   expires_at: new Date(Date.now() + 3_600_000).toISOString(),
 });
 
@@ -33,7 +33,7 @@ function makeApproval(
     details: null,
     argsHash: 'a'.repeat(64),
     worstCase: null,
-    requestedBy: 'dev-1@ai.galena.test',
+    requestedBy: 'dev-1@ai.zilar.test',
     status,
     decidedAt: status === 'pending' ? null : new Date().toISOString(),
     note: null,

@@ -70,7 +70,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/web test
+pnpm --filter @zilar/web test
 pnpm build
 ```
 
@@ -113,7 +113,7 @@ Built two small custom hooks and wired them into the card and the menu.
 - `pnpm format:check` — `All matched files use Prettier code style!` (after `pnpm format`).
 - `pnpm lint` — `Command exited with code 0` (oxlint, no findings).
 - `pnpm typecheck` — `10 successful, 10 total` (turbo).
-- `pnpm --filter @galena/web exec vitest run` — `Test Files 56 passed (56)`, `Tests 607 passed (607)`, ~10 s.
+- `pnpm --filter @zilar/web exec vitest run` — `Test Files 56 passed (56)`, `Tests 607 passed (607)`, ~10 s.
 - `pnpm build` — `2 successful, 2 total` (turbo).
 
 New / updated test counts:

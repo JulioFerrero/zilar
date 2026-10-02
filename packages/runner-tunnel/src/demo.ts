@@ -149,7 +149,7 @@ async function main(): Promise<void> {
       `peak heap +${peakDeltaMb.toFixed(1)} MB`,
     );
 
-    if (process.env.GALENA_TUNNEL_INTEGRATION === '1') {
+    if (process.env.ZILAR_TUNNEL_INTEGRATION === '1') {
       const liveRegistry = new InMemoryKeyRegistry();
       const liveKey = generateRunnerKeypair();
       liveRegistry.approve('live-runner', liveKey.publicKey);

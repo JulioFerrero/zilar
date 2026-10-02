@@ -29,10 +29,10 @@ vi.mock('@/lib/session-token', () => ({
 
 vi.mock('./attachment-message', () => ({
   isLoadableMediaUrl: (url: string, hosts: ReadonlySet<string>) =>
-    hosts.has('upload.galena.test') && url.includes('upload.galena.test'),
+    hosts.has('upload.zilar.test') && url.includes('upload.zilar.test'),
 }));
 
-const TRUSTED = new Set(['upload.galena.test']);
+const TRUSTED = new Set(['upload.zilar.test']);
 
 describe('attachment video (T-0150)', () => {
   it('renders the inline player for a trusted video', () => {
@@ -40,7 +40,7 @@ describe('attachment video (T-0150)', () => {
       createElement(AttachmentVideo, {
         attachment: {
           kind: 'file',
-          url: 'https://upload.galena.test/get/clip.mp4',
+          url: 'https://upload.zilar.test/get/clip.mp4',
           name: 'clip.mp4',
           size: 1_000_000,
           mime: 'video/mp4',
@@ -73,7 +73,7 @@ describe('attachment video (T-0150)', () => {
       createElement(AttachmentVideo, {
         attachment: {
           kind: 'file',
-          url: 'https://upload.galena.test/get/clip.mp4',
+          url: 'https://upload.zilar.test/get/clip.mp4',
           name: 'clip.mp4',
           size: 1_000_000,
           mime: 'video/mp4',
@@ -95,7 +95,7 @@ describe('attachment video (T-0150)', () => {
       createElement(AttachmentVideo, {
         attachment: {
           kind: 'file',
-          url: 'https://upload.galena.test/get/gif-abc123.mp4',
+          url: 'https://upload.zilar.test/get/gif-abc123.mp4',
           name: 'gif-abc123.mp4',
           size: 1_000_000,
           mime: 'video/mp4',
@@ -112,7 +112,7 @@ describe('attachment video (T-0150)', () => {
       createElement(AttachmentVideo, {
         attachment: {
           kind: 'file',
-          url: 'https://upload.galena.test/get/clip.mp4',
+          url: 'https://upload.zilar.test/get/clip.mp4',
           name: 'clip.mp4',
           size: 1_000_000,
           mime: 'video/mp4',

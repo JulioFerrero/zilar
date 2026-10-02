@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import type { UiMessage } from '@galena/chat-core';
+import type { UiMessage } from '@zilar/chat-core';
 
 import { MessageBubble } from './message-bubble';
 

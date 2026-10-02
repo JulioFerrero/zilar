@@ -1,4 +1,4 @@
-import type { UiReaction } from '@galena/chat-core';
+import type { UiReaction } from '@zilar/chat-core';
 import { cn } from '@/lib/utils';
 
 export interface ReactionChipsProps {

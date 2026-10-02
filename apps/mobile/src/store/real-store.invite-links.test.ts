@@ -14,9 +14,9 @@ function fakeApi() {
   return {
     getMe: vi.fn(async () => ({
       id: 'u-me',
-      email: 'me@galena.test',
+      email: 'me@zilar.test',
       name: 'Me',
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
     })),
     getChats: vi.fn(async (): Promise<ChatEntry[]> => []),
     getContacts: vi.fn(async () => []),
@@ -28,12 +28,12 @@ function fakeApi() {
       ais: [],
     })),
     getXmppToken: vi.fn(async () => ({
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
       token: 'tok',
       expiresAt: '2026-09-28T12:05:00Z',
       service: 'ws://x',
-      domain: 'galena.test',
-      mucDomain: 'rooms.galena.test',
+      domain: 'zilar.test',
+      mucDomain: 'rooms.zilar.test',
     })),
   };
 }
@@ -133,7 +133,7 @@ describe('real store invite links (T-0136)', () => {
     const { store, api } = setup();
     const groupRow: ChatEntry = {
       kind: 'group',
-      chatJid: 'general@rooms.galena.test',
+      chatJid: 'general@rooms.zilar.test',
       title: 'Dev team',
       groupId: 'g1',
       memberCount: 7,
@@ -144,7 +144,7 @@ describe('real store invite links (T-0136)', () => {
           groupId: 'g1',
           name: 'General',
           glyph: 'G',
-          chatJid: 'general@rooms.galena.test',
+          chatJid: 'general@rooms.zilar.test',
           visibility: 'public',
           kind: 'chat',
           status: 'open',
@@ -164,7 +164,7 @@ describe('real store invite links (T-0136)', () => {
     const result = await store.getState().joinByLink('a'.repeat(64));
     expect(result.groupId).toBe('g1');
     const target = resolveGroupChat(store.getState().chats, result.groupId);
-    expect(target).toEqual({ kind: 'chat', chatId: 'general@rooms.galena.test' });
+    expect(target).toEqual({ kind: 'chat', chatId: 'general@rooms.zilar.test' });
   });
 
   it('propagates API failures without adding the token', async () => {

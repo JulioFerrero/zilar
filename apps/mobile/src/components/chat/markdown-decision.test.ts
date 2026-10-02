@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ChatSummary, UiMessage } from '@galena/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 
 import { plainPreviewBody, rendersMarkdown } from './markdown-decision';
 
@@ -48,12 +48,12 @@ describe('rendersMarkdown (which bubble renderer)', () => {
     expect(
       rendersMarkdown(
         [group],
-        message({ chatId: 'dev-team', senderId: 'ai-dev@galena.test' }),
+        message({ chatId: 'dev-team', senderId: 'ai-dev@zilar.test' }),
         'me',
       ),
     ).toBe(true);
     expect(
-      rendersMarkdown([group], message({ chatId: 'dev-team', senderId: 'dani@galena.test' }), 'me'),
+      rendersMarkdown([group], message({ chatId: 'dev-team', senderId: 'dani@zilar.test' }), 'me'),
     ).toBe(false);
   });
 
@@ -77,7 +77,7 @@ describe('plainPreviewBody (which list preview)', () => {
     const raw = 'a **bold** reply';
     const group = chat({ id: 'dev-team', kind: 'group' });
     expect(
-      plainPreviewBody(group, message({ senderId: 'ai-dev@galena.test', text: raw }), raw, 'me'),
+      plainPreviewBody(group, message({ senderId: 'ai-dev@zilar.test', text: raw }), raw, 'me'),
     ).toBe('a bold reply');
   });
 

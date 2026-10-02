@@ -1,29 +1,29 @@
-// Integration test for @galena/xmpp-core against the dev stack.
+// Integration test for @zilar/xmpp-core against the dev stack.
 //
 //   pnpm infra:up
-//   GALENA_XMPP_INTEGRATION=1 pnpm --filter @galena/xmpp-core test
+//   ZILAR_XMPP_INTEGRATION=1 pnpm --filter @zilar/xmpp-core test
 //   pnpm infra:down
 //
-// Skipped unless GALENA_XMPP_INTEGRATION=1. It uses the server's admin client
+// Skipped unless ZILAR_XMPP_INTEGRATION=1. It uses the server's admin client
 // and JWT issuer (imported by relative path, as packages/devtools does) to
 // create two users and a room, then exercises the shared client end to end.
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import type { Payload } from '@galena/protocol';
+import type { Payload } from '@zilar/protocol';
 import { createEjabberdAdminClient } from '../../../apps/server/src/xmpp/admin-client';
 import { loadXmppConfig, type XmppConfig } from '../../../apps/server/src/xmpp/config';
 import { issueXmppToken } from '../../../apps/server/src/xmpp/token';
 import { createXmppCore } from './index';
 import type { ChatMessage, DisplayedEvent, TypingEvent } from './types';
 
-const integrationEnabled = process.env.GALENA_XMPP_INTEGRATION === '1';
+const integrationEnabled = process.env.ZILAR_XMPP_INTEGRATION === '1';
 const WAIT_TIMEOUT_MS = 15_000;
 
 const progress: Payload = {
   v: 0,
   type: 'progress',
-  data: { ai: 'dev-1@galena.localhost', stage: 'running the tests', percent: 40 },
+  data: { ai: 'dev-1@zilar.localhost', stage: 'running the tests', percent: 40 },
 };
 
 function loadConfig(): XmppConfig {
@@ -53,7 +53,7 @@ async function waitFor(predicate: () => boolean, description: string): Promise<v
   }
 }
 
-describe.skipIf(!integrationEnabled)('@galena/xmpp-core integration', () => {
+describe.skipIf(!integrationEnabled)('@zilar/xmpp-core integration', () => {
   it('joins a room, sends messages and payloads, reconnects with a fresh token and loads history', async () => {
     const config = loadConfig();
     const service = websocketUrl(config.apiUrl);

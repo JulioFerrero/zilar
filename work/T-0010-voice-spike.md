@@ -95,7 +95,7 @@ need a change there, describe it in the Report and stop.
 
 ### Integration check (you run it against the running stack)
 The dev stack is **running and serving Julio**. A gated test
-(`GALENA_VOICE_INTEGRATION=1`) that records or uses a fixture, converts it
+(`ZILAR_VOICE_INTEGRATION=1`) that records or uses a fixture, converts it
 through the real `ffmpeg`, uploads it through the real ejabberd upload service
 and plays it back.
 
@@ -142,7 +142,7 @@ pnpm build
   that reads the body with a streaming 10 MiB cap, validates it with `ffprobe`
   (audio-only, allow-listed container), converts to AAC/M4A with `ffmpeg`
   (hard timeouts, temp dir removed in `finally`), and returns the M4A bytes with
-  `x-galena-duration-ms` measured by `ffprobe` on the **converted** file. A
+  `x-zilar-duration-ms` measured by `ffprobe` on the **converted** file. A
   non-audio file is rejected with 415. Wired into `app.ts`.
 - **Web recording** (`apps/web/src/lib/voice.ts`, `Composer.tsx`): a
   hold-to-record mic button (Pointer Events, live duration, slide-to-cancel),
@@ -159,7 +159,7 @@ pnpm build
   refusal, size cap, duration from the server) and a `sendVoice` store test that
   proves the payload uses the server duration, not the client's.
 - **Integration test** (`apps/server/src/voice/integration.test.ts`, gated by
-  `GALENA_VOICE_INTEGRATION=1`): converts a fixture with the real `ffmpeg`,
+  `ZILAR_VOICE_INTEGRATION=1`): converts a fixture with the real `ffmpeg`,
   requests a slot from the real ejabberd upload service, PUTs the bytes, GETs
   them back and compares.
 - **Screenshots** in `apps/web/screenshots/` (see the caveat below).
@@ -247,7 +247,7 @@ pnpm build
   agent-drivers 19, devtools 9.
 - `pnpm build`: "Tasks: 2 successful, 2 total" (web + mobile).
 - Integration run (real stack, gated):
-  `GALENA_VOICE_INTEGRATION=1 pnpm --filter @galena/server exec vitest run src/voice`
+  `ZILAR_VOICE_INTEGRATION=1 pnpm --filter @zilar/server exec vitest run src/voice`
   → 3 files, 9 tests passed. Logs:
   `PASS converted 1000ms -> 1000ms, 4905 bytes`,
   `PASS upload slot issued by the upload service`,
@@ -307,7 +307,7 @@ pnpm build
 - Not blocked (status is `review`), but two things need the owner's attention:
   1. Fix Homebrew ffmpeg (`brew reinstall ffmpeg`); the integration test is the
      only thing that needs it, and it is skipped unless
-     `GALENA_VOICE_INTEGRATION=1`.
+     `ZILAR_VOICE_INTEGRATION=1`.
   2. Decide whether the mock-mode synthesized tone is acceptable for future
      screenshots, or whether to commit a small real M4A fixture instead.
 

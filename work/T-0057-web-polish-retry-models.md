@@ -61,7 +61,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -115,17 +115,17 @@ I left `AiPanel.tsx` and `NewAiDialog.tsx` untouched; both already pass `provide
 - `pnpm format:check`: pass. Two files needed `prettier --write` first (`ModelPicker.test.tsx`, `ChatList.tsx`); final run `All matched files use Prettier code style!`.
 - `pnpm lint` (oxlint): pass (no output).
 - `pnpm typecheck`: `9 successful, 9 total`.
-- `pnpm exec turbo test --force --filter=@galena/web`: **35 files, 261 tests, all passed** (up from 255 before this task; +6 new tests).
+- `pnpm exec turbo test --force --filter=@zilar/web`: **35 files, 261 tests, all passed** (up from 255 before this task; +6 new tests).
 - `pnpm build`: `2 successful, 2 total`.
 
 ### Visual check (mock mode)
-Dev server: `pnpm --filter @galena/web dev --port 5199 --strictPort`, driven with the Chrome DevTools tools at 1440×900; **the dev server was stopped afterwards** (`no listener on 5199`, `no vite process`). Screenshots in `work/screenshots/T-0057/`:
+Dev server: `pnpm --filter @zilar/web dev --port 5199 --strictPort`, driven with the Chrome DevTools tools at 1440×900; **the dev server was stopped afterwards** (`no listener on 5199`, `no vite process`). Screenshots in `work/screenshots/T-0057/`:
 
 - `model-picker-ai-panel-1440.png` — the AI panel on `/c/c-devai?mock=1&panel=ai`. The Model input is a clear recessed well; below it a mono `SUGGESTED` caption labels four raised pill rows; `gpt-4o-mini` is the pressed/active segment with a check. It reads as suggestions, not as three more inputs.
 - `chatlist-error-bar-1440.png` — the chat list with the error bar (`Couldn't load chats` + Retry) over the loaded rows.
 - `chatlist-retrying-1440.png` — the same list while retrying: rows still on screen, no skeleton, bar reads `Retrying…` with a spinner and the button is `Retrying…` (disabled).
 
-**How I forced the error:** `?mock=1` uses the mock store, whose `chatsState` is read-only and whose `retryChats` is a no-op, so there is no URL knob to reach the error. I used the real store instead and stubbed `window.fetch` with a page init script: `/api/auth/get-session`, `/api/me` and `/api/contacts` return success, and `/api/chats` fails (500). A cached chat list is seeded in `localStorage` (`galena:chatList`) so `start()` paints the rows immediately and the failing boot turns `chatsState` to `error`, which is exactly the "loaded list + error bar" case. Pressing Retry makes the second `/api/chats` call hang, so the pending `Retrying…` state stays on screen long enough to shoot. This is a browser-only stub, not a code change.
+**How I forced the error:** `?mock=1` uses the mock store, whose `chatsState` is read-only and whose `retryChats` is a no-op, so there is no URL knob to reach the error. I used the real store instead and stubbed `window.fetch` with a page init script: `/api/auth/get-session`, `/api/me` and `/api/contacts` return success, and `/api/chats` fails (500). A cached chat list is seeded in `localStorage` (`zilar:chatList`) so `start()` paints the rows immediately and the failing boot turns `chatsState` to `error`, which is exactly the "loaded list + error bar" case. Pressing Retry makes the second `/api/chats` call hang, so the pending `Retrying…` state stays on screen long enough to shoot. This is a browser-only stub, not a code change.
 
 ### Deviations / decisions
 - The store already did the right thing, so I could not justify touching `realStore.ts` (Allowed "only if the flash comes from the store"). The fix is entirely in `ChatList`.
@@ -147,7 +147,7 @@ All four review items fixed.
 
 4. **ModelPicker keyboard tests.** Added ArrowUp wrap (first → last), ArrowDown wrap (last → first), and Home/End (jump to first/last), each asserting `aria-checked`, focus and the filled input. `Home`/`End` were already implemented; the tests now pin them. `ArrowDown` already had a test.
 
-Round 2 commands (real results): `pnpm lint` pass (fixed a `react(set-state-in-effect)` error by moving the reset to render); `pnpm typecheck` `9 successful`; `pnpm exec turbo test --force --filter=@galena/web` **35 files / 265 tests passed** (261 → 265, +4 new keyboard tests); `pnpm build` `2 successful`.
+Round 2 commands (real results): `pnpm lint` pass (fixed a `react(set-state-in-effect)` error by moving the reset to render); `pnpm typecheck` `9 successful`; `pnpm exec turbo test --force --filter=@zilar/web` **35 files / 265 tests passed** (261 → 265, +4 new keyboard tests); `pnpm build` `2 successful`.
 
 Note on `pnpm format:check`: it fails on `PREREVIEW.md`, an **untracked** file the lead added; it is neither mine nor in Allowed files, and the instruction is to leave it untracked, so I did not touch it. Every file I changed passes: `prettier --check` on the four source/test files reports `All matched files use Prettier code style!`.
 

@@ -117,7 +117,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -167,7 +167,7 @@ pnpm install                                        # Already up to date (910 pa
 pnpm format:check                                   # All matched files use Prettier code style!
 pnpm lint                                           # no output, exit 0
 pnpm typecheck                                      # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/web   # Test Files 31 passed (31); Tests 178 passed (178)
+pnpm exec turbo test --force --filter=@zilar/web   # Test Files 31 passed (31); Tests 178 passed (178)
 pnpm build                                          # Tasks: 2 successful, 2 total; web built in 419ms
 ```
 
@@ -181,7 +181,7 @@ pnpm build                                          # Tasks: 2 successful, 2 tot
 ### Review fixes (on top of 17e1960)
 1. **Only the AI's message finishes a draft** (`realStore.ts`, `handleMessage`): compute `const fromAi = message.fromJid === chatId && !isOwnSender(message.fromJid)` and only mark the turn finished / clear the draft when true. A message from my own JID (second device) and any other sender now leave the draft running and later drafts of the turn still apply. New test `keeps the draft when my own JID sends a message during the turn` asserts the draft survives an own-JID message and a later same-turn draft still applies.
 2. **Fixtures aligned with production** so the "nothing moves" path is real:
-   - `realStore.test.ts`: the AI messages in the draft tests now use `fromJid: CHAT` (the DM's own/AI JID) instead of a separate `ai@galena.test`, matching the draft's sender.
+   - `realStore.test.ts`: the AI messages in the draft tests now use `fromJid: CHAT` (the DM's own/AI JID) instead of a separate `ai@zilar.test`, matching the draft's sender.
    - `MessageList.test.tsx`: `hello()` now has `senderId: 'c-ana'` (the chat id the draft uses for the AI), and the swap test records the bubble's `className` before and after and asserts they are equal, in addition to "one bubble with the same text before and after".
 3. **Idle drafts expire** (`realStore.ts`): new exported `DRAFT_IDLE_MS = 60_000`, next to `DRAFT_END_FALLBACK_MS`. Every `draft` (re)arms one removal timer per chat through a new `armDraftRemoval(chatJid, turnId, delay)` helper, which reuses the existing `draftTimeouts` map and only removes the draft when that same turn is still shown (then marks the turn finished). `end` replaces the idle timer with the 5 s fallback via the same helper; a final message and `stop()` clear it as before. This covers a dead turn after a server restart mid-turn (SSE reconnects without replay) so the bubble cannot stick forever. New tests (fake timers): a draft with no further event disappears after 60 s and a late same-turn draft does not revive it; a draft refreshed at 50 s is still there at 100 s and gone 60 s after the refresh; the existing test still verifies the 5 s `end` fallback.
 
@@ -189,7 +189,7 @@ Re-run results after the fixes:
 ```bash
 pnpm lint                                           # no output, exit 0
 pnpm typecheck                                      # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/web   # Test Files 31 passed (31); Tests 181 passed (181)
+pnpm exec turbo test --force --filter=@zilar/web   # Test Files 31 passed (31); Tests 181 passed (181)
 pnpm build                                          # Tasks: 2 successful, 2 total
 pnpm format:check                                   # All matched files use Prettier code style!
 ```

@@ -246,7 +246,7 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
             return;
           }
           // The fetcher ignores tool-supplied headers: the real request always
-          // sends only `accept: */*` plus the fixed `GalenaTool/1` user-agent.
+          // sends only `accept: */*` plus the fixed `ZilarTool/1` user-agent.
           // Anything the tool passes (authorization, cookies, …) never leaves
           // the sandbox, so there is nothing to forward or merge here.
           let response;

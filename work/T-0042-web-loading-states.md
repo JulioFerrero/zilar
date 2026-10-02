@@ -112,7 +112,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -189,7 +189,7 @@ Fixed both of Julio's bugs by separating "loading" from "empty" in the web store
 - `pnpm format:check`: pass (after `prettier --write` on `realStore.test.ts`).
 - `pnpm lint` (oxlint): pass.
 - `pnpm typecheck`: 9 successful.
-- `pnpm exec turbo test --force --filter=@galena/web`: 22 files, 132 tests,
+- `pnpm exec turbo test --force --filter=@zilar/web`: 22 files, 132 tests,
   all passed.
 - `pnpm build`: 2 tasks successful.
 
@@ -242,7 +242,7 @@ Nothing. No new dependencies.
 Round 2 commands (real results): `pnpm format:check` pass (after
 `prettier --write` on `reload.test.tsx`); `pnpm lint` pass;
 `pnpm typecheck` 9 successful; `pnpm exec turbo test --force
---filter=@galena/web` 22 files / 136 tests passed (+4 new);
+--filter=@zilar/web` 22 files / 136 tests passed (+4 new);
 `pnpm build` 2 successful. Scope rechecked: only Allowed files + task file;
 `PREREVIEW.md` left untracked and uncommitted.
 
@@ -265,7 +265,7 @@ The round 2 pre-review found two nits, accepted:
 
 Lead re-ran every check after rebasing onto main:
 - format:check, lint, typecheck (9/9) and build pass;
-- `turbo test --force --filter=@galena/web`: 147/147;
+- `turbo test --force --filter=@zilar/web`: 147/147;
 - scope is clean.
 
 Live check: Julio's reload scenarios, next time he uses the web app.

@@ -78,7 +78,7 @@ describe('pairing codes', () => {
     expect(PAIRING_CODE_TTL_MS).toBe(10 * 60 * 1000);
   });
 
-  it('builds the signature message over ASCII galena-pair:v1:<CODE>', () => {
-    expect(pairingSignatureMessage('K7QXM2PA').toString('ascii')).toBe('galena-pair:v1:K7QXM2PA');
+  it('builds the signature message over ASCII zilar-pair:v1:<CODE>', () => {
+    expect(pairingSignatureMessage('K7QXM2PA').toString('ascii')).toBe('zilar-pair:v1:K7QXM2PA');
   });
 });

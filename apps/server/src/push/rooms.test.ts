@@ -186,10 +186,10 @@ describe('topic room push subscription sync', () => {
     const client = createEjabberdAdminClient(
       {
         apiUrl: 'http://ejabberd.test/api',
-        adminJid: 'admin@galena.localhost',
+        adminJid: 'admin@zilar.localhost',
         adminPassword: 'admin-secret-value',
         domain: TEST_XMPP_DOMAIN,
-        mucDomain: 'rooms.galena.localhost',
+        mucDomain: 'rooms.zilar.localhost',
         wsPublicUrl: 'ws://ejabberd.test:5280/ws',
         jwtSecret: 's'.repeat(40),
       },
@@ -219,10 +219,10 @@ describe('topic room push subscription sync', () => {
     const client = createEjabberdAdminClient(
       {
         apiUrl: 'http://ejabberd.test/api',
-        adminJid: 'admin@galena.localhost',
+        adminJid: 'admin@zilar.localhost',
         adminPassword: 'admin-secret-value',
         domain: TEST_XMPP_DOMAIN,
-        mucDomain: 'rooms.galena.localhost',
+        mucDomain: 'rooms.zilar.localhost',
         wsPublicUrl: 'ws://ejabberd.test:5280/ws',
         jwtSecret: 's'.repeat(40),
       },
@@ -251,7 +251,7 @@ describe('topic room push subscription sync', () => {
     ]);
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
       name: 'groom000000000001',
-      service: 'rooms.galena.localhost',
+      service: 'rooms.zilar.localhost',
       option: 'allow_subscription',
       value: 'true',
     });
@@ -260,14 +260,14 @@ describe('topic room push subscription sync', () => {
       host: TEST_XMPP_DOMAIN,
       nick: localpartFor(bobId),
       room: 'groom000000000001',
-      service: 'rooms.galena.localhost',
+      service: 'rooms.zilar.localhost',
       nodes: 'urn:xmpp:mucsub:nodes:messages',
     });
     expect(JSON.parse(String(calls[2]!.init.body))).toEqual({
       user: localpartFor(bobId),
       host: TEST_XMPP_DOMAIN,
       room: 'groom000000000001',
-      service: 'rooms.galena.localhost',
+      service: 'rooms.zilar.localhost',
     });
   });
 });

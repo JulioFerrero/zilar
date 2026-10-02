@@ -32,7 +32,7 @@ uses mock chats.
   **mirror these flows and the same headers exactly.** The server does not care
   which client calls it.
 - `apps/server/src/auth/**` — what the server actually accepts, including the
-  `x-galena-invite` header and `PATCH /api/me`
+  `x-zilar-invite` header and `PATCH /api/me`
 - The Review of `work/T-0015-auth-invites.md` — the OTP gating, hashing and
   rate-limit rules you must not break
 - `apps/mobile/src/app/**` (Expo Router routes), `apps/mobile/src/components/ui/**`
@@ -73,7 +73,7 @@ uses mock chats.
    pasting the whole code, a "Resend code" link after 30 s, and the errors
    "Wrong code" and "Too many attempts, try again later". Match `ui-style.md`
    (centred card, large title) — the web version is the reference, not a redesign.
-3. **Send `x-galena-invite` on BOTH calls** (send-code and sign-in) when an invite
+3. **Send `x-zilar-invite` on BOTH calls** (send-code and sign-in) when an invite
    code is present. This is how the server attributes the sign-up; miss it and
    the user lands with no contacts.
 4. **Persist the session** so the app opens straight into the chats after a
@@ -94,7 +94,7 @@ uses mock chats.
 
 ### Integration check (you run it against the running stack)
 The dev stack is **already running and serving Julio**: the server is on
-`127.0.0.1:3188`. A gated test (`GALENA_AUTH_INTEGRATION=1`) that goes through
+`127.0.0.1:3188`. A gated test (`ZILAR_AUTH_INTEGRATION=1`) that goes through
 the **real** server: request a code for a test email, read the code from the
 server's own log output, verify it, `PATCH /api/me`, then sign out and sign in
 again. Paste the output.
@@ -139,7 +139,7 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
-- **Auth client (`src/lib/auth.ts`):** `createGalenaAuthClient` wraps Better Auth's React client with the `emailOTP` plugin and a **bearer** auth option (native fetch has no cookie jar). `sendSignInCode` / `verifySignInCode` attach the `x-galena-invite` header on **both** calls when an invite is present; `verifySignInCode` captures the session token from the `set-auth-token` response header. `API_URL` comes from `EXPO_PUBLIC_GALENA_API_URL` (default `http://127.0.0.1:3188`).
+- **Auth client (`src/lib/auth.ts`):** `createZilarAuthClient` wraps Better Auth's React client with the `emailOTP` plugin and a **bearer** auth option (native fetch has no cookie jar). `sendSignInCode` / `verifySignInCode` attach the `x-zilar-invite` header on **both** calls when an invite is present; `verifySignInCode` captures the session token from the `set-auth-token` response header. `API_URL` comes from `EXPO_PUBLIC_ZILAR_API_URL` (default `http://127.0.0.1:3188`).
 - **API helpers (`src/lib/auth-api.ts`):** hand-validated `fetchMe`, `updateMe` (`PATCH /api/me`) and `checkInvite`, with an `AuthApiError` carrying status/code. No new dependency (mobile has no zod, so this follows the spike's type-guard style).
 - **Session storage (`src/auth/session-storage.ts`, `src/auth/secure-session-storage.ts`):** the bearer token is persisted with **`expo-secure-store`** (OS keychain/keystore), never AsyncStorage; an in-memory implementation is used by tests.
 - **Session store + hook (`src/auth/session-store.ts`, `src/auth/session.ts`):** a zustand store with `bootstrap` (restores a session and loads `/api/me`), `signIn`, `setName`, `signOut`, plus the `useSession()` hook returning `{ me, loading, status, signOut }`. The app bootstraps once in `_layout.tsx`.
@@ -161,9 +161,9 @@ pnpm build
 - `pnpm format:check`: PASS — "All matched files use Prettier code style!".
 - `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (280 files, 127 rules).
 - `pnpm typecheck`: PASS — turbo "8 successful, 8 total".
-- `pnpm test --force`: PASS — turbo "8 successful, 8 total". `@galena/server` **186 passed, 3 skipped** (20 files); `@galena/mobile` **77 passed, 1 skipped** (12 files + the gated integration file skipped by default); other packages unchanged.
+- `pnpm test --force`: PASS — turbo "8 successful, 8 total". `@zilar/server` **186 passed, 3 skipped** (20 files); `@zilar/mobile` **77 passed, 1 skipped** (12 files + the gated integration file skipped by default); other packages unchanged.
 - `pnpm build`: PASS — 2/2 tasks; Expo exported iOS + Android bundles.
-- **Integration run** (`GALENA_AUTH_INTEGRATION=1` against the running server on `127.0.0.1:3188`, codes/tokens redacted):
+- **Integration run** (`ZILAR_AUTH_INTEGRATION=1` against the running server on `127.0.0.1:3188`, codes/tokens redacted):
 
 ```
 [auth integration] send-code with invite → 200 → code read from the server log → CODE=*** →
@@ -180,7 +180,7 @@ sign-out → 200 → second sign-in without invite → 200 → GET /api/me after
 - **Native-only origin behavior (worth knowing).** Better Auth's Fetch-Metadata CSRF check rejects POSTs that carry `Sec-Fetch-*`/cookie but no trusted `Origin`. React Native sends neither, so the bearer flow works on device (proved by the simulator sign-in). Node's `fetch` adds `sec-fetch-mode: cors`, which would 403; the integration test therefore uses `node:http`. If the app is ever exercised through a browser-like transport, it must send a trusted `Origin`.
 - **Small UX additions:** `autoFocus` on the email field and the first OTP box, plus `returnKeyType="go"` / `onSubmitEditing` on the email field. These are usability improvements that also made on-device typing possible; they don't change the flow or the look.
 - **Two unused test rows.** Each integration run creates one extra invite (the CLI always inserts a row) and one test account, all in the dev database; harmless, but the lead may want to prune `t0026-*@example.test`.
-- **Screenshots came from a second simulator.** The lead's booted "iPhone 17 Pro" had a pending "Open in Galena?" dialog from another session, so I left it alone and booted a fresh "iPhone 17" instead (then shut it down). All codes, tokens and invite codes are redacted from the screenshots; the code-screen shot is empty.
+- **Screenshots came from a second simulator.** The lead's booted "iPhone 17 Pro" had a pending "Open in Zilar?" dialog from another session, so I left it alone and booted a fresh "iPhone 17" instead (then shut it down). All codes, tokens and invite codes are redacted from the screenshots; the code-screen shot is empty.
 - **Typed routes:** running Metro generated `.expo/types`, which makes `router.replace` stricter. `safeTarget` validates the target and a documented `as Href` cast keeps `pnpm typecheck` green both with and without the generated types.
 
 ### What the next task (mobile on real data) gets for free

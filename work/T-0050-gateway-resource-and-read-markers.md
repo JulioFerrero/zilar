@@ -44,7 +44,7 @@ None.
 ### What to build
 
 **1. xmpp-core: optional fixed resource, and a typed "replaced" outcome.**
-- Add an optional `resource?: string` to `XmppCoreOptions`. If it's absent, keep today's random `galena-xxxxxxxx`, so the web and mobile behave exactly as before.
+- Add an optional `resource?: string` to `XmppCoreOptions`. If it's absent, keep today's random `zilar-xxxxxxxx`, so the web and mobile behave exactly as before.
 - Detect the **`conflict` stream error**: another session logged in with the same full JID and replaced this one. When it happens:
   - stop the client for good, with no auto-reconnect (reuse the `stopAfterFailure` path or an equivalent);
   - set the status to `offline`;
@@ -82,7 +82,7 @@ None.
 - The superseded set is in memory only and keyed by the gateway's own AI ids, never by anything from a stanza.
 
 ### Tests
-`pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/server` must pass. Include the new tests above. Don't call real services.
+`pnpm exec turbo test --force --filter=@zilar/xmpp-core --filter=@zilar/server` must pass. Include the new tests above. Don't call real services.
 
 ### Live proof (you, on your own ports, no messages to real users)
 Skip this if the Docker ejabberd isn't reachable from your worktree, and say so. The lead will then prove it live.
@@ -106,7 +106,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/xmpp-core --filter=@zilar/server
 pnpm build
 ```
 
@@ -120,7 +120,7 @@ pnpm build
 ### What I did
 1. **xmpp-core: optional fixed `resource` + typed `replaced` event.**
    - `XmppCoreOptions.resource?: string` (`packages/xmpp-core/src/types.ts`); `ensureClient` uses
-     `options.resource ?? defaultResource()`, so web/mobile (no option) keep the random `galena-xxxxxxxx`.
+     `options.resource ?? defaultResource()`, so web/mobile (no option) keep the random `zilar-xxxxxxxx`.
    - `conflict` stream-error detection in `client.ts`: @xmpp/client reports it via the `error` event as a
      `StreamError` with `condition === 'conflict'` (verified against the bundled
      `packages/xmpp-core/node_modules/@xmpp/client/dist/xmpp.js`: `_onStreamError` emits
@@ -174,7 +174,7 @@ The marker uses the incoming `ChatMessage.id` (`session.pending` stores `message
 
 ### Commands and real results
 - `pnpm install` — ok (7.8s).
-- `pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/server` — pass:
+- `pnpm exec turbo test --force --filter=@zilar/xmpp-core --filter=@zilar/server` — pass:
   xmpp-core 123 passed / 3 skipped (6 files), server 420 passed / 7 skipped (37 files). Targeted runs:
   core.test.ts `-t "fixed resource"` 4 passed; gateway.test.ts `-t "replaced"` 3 passed, `-t "marker"`
   4 passed, `-t "resource"` 3 passed.

@@ -30,11 +30,11 @@ const noopAdminClient: EjabberdAdminClient = {
 
 const config = loadServerConfig({
   NODE_ENV: 'development',
-  DATABASE_URL: 'postgres://galena:CHANGE_ME@127.0.0.1:5432/galena',
+  DATABASE_URL: 'postgres://zilar:CHANGE_ME@127.0.0.1:5432/zilar',
   BETTER_AUTH_SECRET: 'schema-generation-placeholder-secret-0000000000',
-  EJABBERD_ADMIN_JID: 'admin@galena.localhost',
+  EJABBERD_ADMIN_JID: 'admin@zilar.localhost',
   EJABBERD_ADMIN_PASSWORD: 'CHANGE_ME',
-  GALENA_XMPP_JWT_SECRET: 'schema-generation-placeholder-xmpp-secret-000',
+  ZILAR_XMPP_JWT_SECRET: 'schema-generation-placeholder-xmpp-secret-000',
 });
 
 const db = drizzle(postgres(config.DATABASE_URL, { max: 1 }), { schema });

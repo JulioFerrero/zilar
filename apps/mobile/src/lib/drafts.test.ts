@@ -133,22 +133,22 @@ describe('subscribeToDrafts', () => {
 
     // One frame split across two chunks.
     xhr.push(
-      `event: draft\ndata: {"type":"draft","chatJid":"ai@galena.test","turnId":"${TURN}","text":"Hel`,
+      `event: draft\ndata: {"type":"draft","chatJid":"ai@zilar.test","turnId":"${TURN}","text":"Hel`,
     );
     expect(events).toHaveLength(0);
     xhr.push('lo"}\n\n');
     expect(events).toEqual([
-      { type: 'draft', chatJid: 'ai@galena.test', turnId: TURN, text: 'Hello' },
+      { type: 'draft', chatJid: 'ai@zilar.test', turnId: TURN, text: 'Hello' },
     ]);
 
     // Several frames (and a heartbeat) in a single chunk.
     xhr.push(
-      `: heartbeat\n\nevent: draft\ndata: {"type":"draft","chatJid":"ai@galena.test","turnId":"${TURN}","text":"Hello there"}\n\nevent: end\ndata: {"type":"end","chatJid":"ai@galena.test","turnId":"${TURN}","outcome":"sent"}\n\n`,
+      `: heartbeat\n\nevent: draft\ndata: {"type":"draft","chatJid":"ai@zilar.test","turnId":"${TURN}","text":"Hello there"}\n\nevent: end\ndata: {"type":"end","chatJid":"ai@zilar.test","turnId":"${TURN}","outcome":"sent"}\n\n`,
     );
     expect(events).toEqual([
-      { type: 'draft', chatJid: 'ai@galena.test', turnId: TURN, text: 'Hello' },
-      { type: 'draft', chatJid: 'ai@galena.test', turnId: TURN, text: 'Hello there' },
-      { type: 'end', chatJid: 'ai@galena.test', turnId: TURN, outcome: 'sent' },
+      { type: 'draft', chatJid: 'ai@zilar.test', turnId: TURN, text: 'Hello' },
+      { type: 'draft', chatJid: 'ai@zilar.test', turnId: TURN, text: 'Hello there' },
+      { type: 'end', chatJid: 'ai@zilar.test', turnId: TURN, outcome: 'sent' },
     ]);
   });
 
@@ -161,10 +161,10 @@ describe('subscribeToDrafts', () => {
     xhr.push('data: not json\n\n');
     xhr.push(`event: draft\ndata: {"type":"draft","chatJid":"","turnId":"${TURN}","text":"x"}\n\n`);
     xhr.push(
-      'event: draft\ndata: {"type":"draft","chatJid":"ai@galena.test","turnId":"nope","text":"x"}\n\n',
+      'event: draft\ndata: {"type":"draft","chatJid":"ai@zilar.test","turnId":"nope","text":"x"}\n\n',
     );
     xhr.push(
-      `event: end\ndata: {"type":"end","chatJid":"ai@galena.test","turnId":"${TURN}","outcome":"weird"}\n\n`,
+      `event: end\ndata: {"type":"end","chatJid":"ai@zilar.test","turnId":"${TURN}","outcome":"weird"}\n\n`,
     );
     xhr.push('event: draft\ndata: {"type":"something-else"}\n\n');
 
@@ -177,17 +177,17 @@ describe('subscribeToDrafts', () => {
     const xhr = created[0]!;
 
     xhr.push(
-      `event: draft\ndata: {"type":"draft","chatJid":"ai@galena.test","turnId":"${TURN}","text":"Hel`,
+      `event: draft\ndata: {"type":"draft","chatJid":"ai@zilar.test","turnId":"${TURN}","text":"Hel`,
     );
     expect(events).toHaveLength(0);
 
     // The remaining frame (here the closing `end`) arrives only on completion.
     xhr.complete(
-      `lo"}\n\nevent: end\ndata: {"type":"end","chatJid":"ai@galena.test","turnId":"${TURN}","outcome":"sent"}\n\n`,
+      `lo"}\n\nevent: end\ndata: {"type":"end","chatJid":"ai@zilar.test","turnId":"${TURN}","outcome":"sent"}\n\n`,
     );
     expect(events).toEqual([
-      { type: 'draft', chatJid: 'ai@galena.test', turnId: TURN, text: 'Hello' },
-      { type: 'end', chatJid: 'ai@galena.test', turnId: TURN, outcome: 'sent' },
+      { type: 'draft', chatJid: 'ai@zilar.test', turnId: TURN, text: 'Hello' },
+      { type: 'end', chatJid: 'ai@zilar.test', turnId: TURN, outcome: 'sent' },
     ]);
   });
 

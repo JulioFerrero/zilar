@@ -1,4 +1,4 @@
-# @galena/runner-tunnel
+# @zilar/runner-tunnel
 
 One outbound WebSocket per runner carries the desk's engine API (HTTP + SSE),
 the AI's model traffic back to the LLM gateway, and private preview URLs. The
@@ -15,7 +15,7 @@ for `docs/PROJECT_PLAN.md` §11.8; M3 builds on it.
 - `src/runner.ts` — the runner side: dial-out, auth, port allowlist, model
   listener, reconnect with capped backoff.
 - `src/http-agent.ts` — an `http.Agent` whose connections travel the tunnel.
-- `src/demo.ts` — the demo (`pnpm --filter @galena/runner-tunnel demo`).
+- `src/demo.ts` — the demo (`pnpm --filter @zilar/runner-tunnel demo`).
 
 ## Protocol
 
@@ -43,7 +43,7 @@ memory stays bounded.
 ## Usage
 
 ```ts
-import { InMemoryKeyRegistry, TunnelServer, RunnerClient, generateRunnerKeypair } from '@galena/runner-tunnel';
+import { InMemoryKeyRegistry, TunnelServer, RunnerClient, generateRunnerKeypair } from '@zilar/runner-tunnel';
 
 const registry = new InMemoryKeyRegistry();
 const keypair = generateRunnerKeypair();
@@ -76,11 +76,11 @@ const token = server.createPreviewToken('office-linux', 3000);
 
 ## Demo and the gated LiteLLM check
 
-`pnpm --filter @galena/runner-tunnel demo` starts a server, a runner, a fake
+`pnpm --filter @zilar/runner-tunnel demo` starts a server, a runner, a fake
 desk and a fake gateway on localhost, proves items 3–5 of the task, and prints
 latencies (median of 50, direct vs tunnel) plus the 50 MB slow-reader peak.
 
-With `GALENA_TUNNEL_INTEGRATION=1`, the demo additionally points the
+With `ZILAR_TUNNEL_INTEGRATION=1`, the demo additionally points the
 model-traffic path at the real LiteLLM on `http://127.0.0.1:4000` and fetches
 `GET /health/liveliness` through the tunnel. No key is used or printed.
 

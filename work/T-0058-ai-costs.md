@@ -111,7 +111,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/server --filter=@zilar/web
 pnpm build
 ```
 
@@ -146,7 +146,7 @@ Commands and real results:
 - `pnpm format:check`: pass (after prettier-ing the two drizzle-generated JSON files, which only lacked a trailing newline).
 - `pnpm lint` (oxlint): pass, no warnings.
 - `pnpm typecheck` (turbo, 9 tasks): pass.
-- `pnpm exec turbo test --force --filter=@galena/server --filter=@galena/web`: server 38 files passed / 5 skipped files, 492 tests passed / 7 skipped; web 35 files, 270 tests passed.
+- `pnpm exec turbo test --force --filter=@zilar/server --filter=@zilar/web`: server 38 files passed / 5 skipped files, 492 tests passed / 7 skipped; web 35 files, 270 tests passed.
 - `pnpm build`: pass (2 tasks).
 - Screenshot: `vite --port 5199` + headless Chrome `--screenshot --window-size=1440,900`; server stopped afterwards.
 

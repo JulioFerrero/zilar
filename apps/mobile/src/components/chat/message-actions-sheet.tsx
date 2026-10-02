@@ -1,5 +1,5 @@
-import type { UiReaction } from '@galena/chat-core';
-import { QUICK_REACTIONS } from '@galena/chat-core';
+import type { UiReaction } from '@zilar/chat-core';
+import { QUICK_REACTIONS } from '@zilar/chat-core';
 import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

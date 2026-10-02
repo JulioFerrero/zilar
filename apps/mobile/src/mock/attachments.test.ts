@@ -1,8 +1,8 @@
-import type { Attachment } from '@galena/protocol';
+import type { Attachment } from '@zilar/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { mockDemoAttachments } from './attachments';
-import { AttachmentSchema } from '@galena/protocol';
+import { AttachmentSchema } from '@zilar/protocol';
 
 describe('mock demo attachments (T-0150)', () => {
   it('ships two generated images and a file that pass AttachmentSchema', () => {

@@ -1,4 +1,4 @@
-import type { ChatSummary, ReplyRef, UiMessage } from '@galena/chat-core';
+import type { ChatSummary, ReplyRef, UiMessage } from '@zilar/chat-core';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { AiPanel } from '@/components/ais/AiPanel';

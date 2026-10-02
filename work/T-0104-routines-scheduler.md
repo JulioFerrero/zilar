@@ -25,7 +25,7 @@ Groups now have **topics** (T-0108) and the scope of everything the action pipel
 - Groups: routines are created by group admins only (enforced in T-0105 by the same rule as `request_action`); everyone in the room sees the posts.
 - No usage or cost tracking.
 
-### Data model (`apps/server/src/db/schema.ts`; migration only via `pnpm --filter @galena/server db:generate`, never `npx`)
+### Data model (`apps/server/src/db/schema.ts`; migration only via `pnpm --filter @zilar/server db:generate`, never `npx`)
 `routines`: `id`, `ai_id` (fk cascade), `group_id` (nullable fk cascade), `tool_id` (fk `ai_tools`, cascade), `title` (1–80 chars), `schedule` (jsonb, see below), `input` (jsonb, ≤ 2 KiB serialised, default null), `approved_hosts` (jsonb string array: the exact host set a human approved), `status` (`active` | `paused` | `needs_approval`), `paused_reason` (nullable: `user` | `failures` | `hosts_changed`), `next_run_at` (timestamp), `last_run_at` (nullable), `last_status` (nullable `ok` | `error` | `skipped`), `consecutive_failures` (int), `created_by`, `created_at`, `updated_at`, `deleted_at` (nullable soft delete). Index on `(status, next_run_at)` for the scheduler query. Limit: 10 non-deleted routines per (AI, chat).
 
 ### Schedules (`apps/server/src/routines/schedule.ts`, pure, no dependency: use `Intl.DateTimeFormat` for time zones)
@@ -94,7 +94,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test
+pnpm --filter @zilar/server test
 pnpm build
 ```
 
@@ -107,7 +107,7 @@ pnpm build
 
 ### What I did
 - Implemented T-0104 end to end on the (AI, topic) scope from the scope-update block (T-0108/T-0110 already merged): `routines` table, pure DST-correct schedule module, exactly-once scheduler, run-and-post path with host pinning and failure counting, service + routes, lifecycle hooks, `ROUTINES_ENABLED` wiring.
-- Data model (`db/schema.ts`, migration `drizzle/0023_classy_lester.sql` via `pnpm --filter @galena/server db:generate`): `routines` with `topic_id` FK cascade + `routines_topic_scope_check` (`(group_id is null) = (topic_id is null)`), FKs cascade on AI/group/topic/tool, index on `(status, next_run_at)`. 10-routine limit per (AI, topic) enforced in service (no partial unique index needed since deleted rows share the scope).
+- Data model (`db/schema.ts`, migration `drizzle/0023_classy_lester.sql` via `pnpm --filter @zilar/server db:generate`): `routines` with `topic_id` FK cascade + `routines_topic_scope_check` (`(group_id is null) = (topic_id is null)`), FKs cascade on AI/group/topic/tool, index on `(status, next_run_at)`. 10-routine limit per (AI, topic) enforced in service (no partial unique index needed since deleted rows share the scope).
 - Schedules (`routines/schedule.ts`, pure, `Intl.DateTimeFormat` only): zod-validated daily (HH:MM, IANA zone, weekdays 1–7 default all, no duplicates) and interval (60–10 080 min hard bounds). `nextRunAfter` is strictly-after; spring-forward gap resolves to first valid moment (02:30 → 03:00), fall-back ambiguity to first occurrence. Verified against real 2026 transitions.
 - Scheduler (`routines/scheduler.ts`): 30 s unref'd timer, `start`/`stop`/`tick`, `maxPerTick` 5, no-overlap guard. Claim = conditional update advancing `next_run_at` from now before the run (loser sees 0 rows); overdue-by-days runs once; crash mid-run skips, never duplicates (trade-off in code comment). Max 2 concurrent runs per tick (batched `Promise.all`).
 - Run path (`routines/execute.ts`): ordered checks AI-active → tool-exists → host-subset → `runToolVersion(trigger 'routine')` → post `"<title>\n<text>"` (4 000 chars + `…`). `post false`/throw = `skipped`; 3rd consecutive failure pauses with the exact fixed notice; new host = `needs_approval`/`hosts_changed` with the exact fixed notice + `routine.paused` audit. Audit `routine.run` detail is `{status, durationMs}` only.
@@ -126,11 +126,11 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install`: done, 6.9s.
-- `pnpm --filter @galena/server db:generate`: created `0023_classy_lester.sql`; re-run: "No schema changes, nothing to migrate".
+- `pnpm --filter @zilar/server db:generate`: created `0023_classy_lester.sql`; re-run: "No schema changes, nothing to migrate".
 - `pnpm format:check`: pass ("All matched files use Prettier code style!").
 - `pnpm lint` (oxlint): pass, exit 0, re-run after last edit — pass.
 - `pnpm typecheck`: pass (10 tasks; direct `tsc --noEmit` clean).
-- `pnpm --filter @galena/server test -- --maxWorkers=2 --reporter=basic` (full suite): 70 files passed, 5 skipped; 1204 tests passed, 7 skipped, 0 failed (293s). Scoped re-run after last edit (`src/routines` + `src/config.test.ts`): 84 passed.
+- `pnpm --filter @zilar/server test -- --maxWorkers=2 --reporter=basic` (full suite): 70 files passed, 5 skipped; 1204 tests passed, 7 skipped, 0 failed (293s). Scoped re-run after last edit (`src/routines` + `src/config.test.ts`): 84 passed.
 - `pnpm exec vitest run src/authz-sweep.test.ts`: 5/5 pass (new routes auto-discovered, all 401).
 - `pnpm build --force` (fresh, 0 cached): 2 successful.
 - Grep for `: any`/`as any`/`@ts-ignore`/disable comments in touched files: no hits (one pre-existing English "any" in a topics comment).

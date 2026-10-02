@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatMessage } from '@galena/xmpp-core';
+import type { ChatMessage } from '@zilar/xmpp-core';
 import {
   bareJid,
   buildDmMessages,
@@ -12,10 +12,10 @@ import {
   DM_HISTORY_MESSAGE_LIMIT,
 } from './context';
 
-const AI_JID = 'ai-abc@galena.localhost';
-const OWNER_JID = 'julio@galena.localhost';
-const STRANGER_JID = 'stranger@galena.localhost';
-const OTHER_AI_JID = 'ai-xyz@galena.localhost';
+const AI_JID = 'ai-abc@zilar.localhost';
+const OWNER_JID = 'julio@zilar.localhost';
+const STRANGER_JID = 'stranger@zilar.localhost';
+const OTHER_AI_JID = 'ai-xyz@zilar.localhost';
 
 function dm(id: string, fromJid: string, body: string | undefined, outgoing = false): ChatMessage {
   return {
@@ -45,8 +45,8 @@ function baseInput(history: ChatMessage[] = []) {
 
 describe('bareJid', () => {
   it('strips the resource and lowercases', () => {
-    expect(bareJid('Julio@galena.localhost/phone')).toBe('julio@galena.localhost');
-    expect(bareJid('julio@galena.localhost')).toBe('julio@galena.localhost');
+    expect(bareJid('Julio@zilar.localhost/phone')).toBe('julio@zilar.localhost');
+    expect(bareJid('julio@zilar.localhost')).toBe('julio@zilar.localhost');
   });
 });
 
@@ -60,7 +60,7 @@ describe('buildSystemMessage', () => {
     });
     expect(system).toContain('Senior TypeScript developer.');
     expect(system).toContain(
-      'You are Dev-1, an AI in the Galena chat app, talking in a private chat with Julio. Reply in plain text; keep it concise unless asked.',
+      'You are Dev-1, an AI in the Zilar chat app, talking in a private chat with Julio. Reply in plain text; keep it concise unless asked.',
     );
     expect(system).toContain('Today is 2026-09-28.');
     expect(system).toContain(
@@ -162,8 +162,8 @@ describe('capHistoryByChars', () => {
   });
 });
 
-const ROOM_JID = 'gtestroom@rooms.galena.localhost';
-const MEMBER_JID = 'ana@galena.localhost';
+const ROOM_JID = 'gtestroom@rooms.zilar.localhost';
+const MEMBER_JID = 'ana@zilar.localhost';
 
 function room(
   id: string,

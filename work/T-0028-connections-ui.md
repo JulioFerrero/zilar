@@ -79,7 +79,7 @@ timestamps. Follow the existing migration mechanism exactly.
 
 **2. Envelope encryption** (`apps/server/src/connections/crypto.ts`).
 - AES-256-GCM, key derived from a master key that comes **only** from the
-  environment (`GALENA_KEY_ENCRYPTION_KEY`), validated at startup.
+  environment (`ZILAR_KEY_ENCRYPTION_KEY`), validated at startup.
 - Store what is needed to decrypt: ciphertext, IV, auth tag. Use a versioned
   string envelope so you can rotate the scheme later.
 - Tests: round-trip; **tampering with the ciphertext, IV or tag fails loudly**;
@@ -132,7 +132,7 @@ The LiteLLM side is proven. For **this** task, prove the human path end to end
 against the running server on `127.0.0.1:3188`: create a connection, list it,
 test it, and delete it, with a **fake/throwaway key value you made up**. A real
 provider key is not needed and must not be used. Report the real HTTP statuses.
-Gate it behind an env flag (`GALENA_CONNECTIONS_INTEGRATION=1`) so it does not run
+Gate it behind an env flag (`ZILAR_CONNECTIONS_INTEGRATION=1`) so it does not run
 in the normal suite. If you cannot run the server, say so plainly — do not
 describe it as verified.
 
@@ -192,10 +192,10 @@ screen that lets Julio paste a provider key.
   `.strict()` zod. Missing or foreign id returns the same 404.
 
 **Storage** — added `provider_connections` to `schema.ts` and generated the
-migration with `pnpm --filter @galena/server db:generate` (the repo's real
+migration with `pnpm --filter @zilar/server db:generate` (the repo's real
 mechanism): `drizzle/0004_charming_forgotten_one.sql` + snapshot + journal.
 
-**Config/logger** — `GALENA_KEY_ENCRYPTION_KEY` in `config.ts` (min 32 chars) and
+**Config/logger** — `ZILAR_KEY_ENCRYPTION_KEY` in `config.ts` (min 32 chars) and
 added to `redactPaths` in `logger.ts`. `app.ts` mounts the route only when the
 key is configured (mirrors LITELLM_MASTER_KEY).
 
@@ -206,14 +206,14 @@ list-driven Telegram-style screen: empty/loading/error/list states, one primary
 row. API keys only (copy says so). Real path is the default; it does not use the
 `?mock=1` store.
 
-**`infra/.env.example`** — added `GALENA_KEY_ENCRYPTION_KEY=CHANGE_ME`.
+**`infra/.env.example`** — added `ZILAR_KEY_ENCRYPTION_KEY=CHANGE_ME`.
 
 ### Decisions worth flagging
 - **Key hint:** `GET /connections` returns only `id, provider, label, status,
   createdAt` — I did **not** return the last 4 characters of the key, because
   that would require decrypting every row on every list. `label` is the
   disambiguator instead.
-- **`GALENA_KEY_ENCRYPTION_KEY` is optional in the config schema**, not required.
+- **`ZILAR_KEY_ENCRYPTION_KEY` is optional in the config schema**, not required.
   The spec says "validated at startup", but `test-support.ts` (out of scope)
   calls `loadServerConfig` without it, so a required key would break every other
   test. It is still validated (min 32 chars) when present, the module refuses to
@@ -240,12 +240,12 @@ row. API keys only (copy says so). Real path is the default; it does not use the
 - `pnpm test` — `Tasks: 8 successful, 8 total`; server 232 passed / 4 skipped;
   web and the other packages green (exit 0).
 - `pnpm build` — `Tasks: 2 successful, 2 total` (exit 0).
-- `pnpm --filter @galena/server exec vitest run src/connections` — 24 passed,
+- `pnpm --filter @zilar/server exec vitest run src/connections` — 24 passed,
   1 skipped (the gated integration test), exit 0.
 
 ### What I did NOT run live
 The **integration check against `127.0.0.1:3188` did not run**. I wrote
-`connections/integration.test.ts`, gated behind `GALENA_CONNECTIONS_INTEGRATION=1`
+`connections/integration.test.ts`, gated behind `ZILAR_CONNECTIONS_INTEGRATION=1`
 and skipped in the normal suite, but I could not start the dev stack (Postgres +
 ejabberd + server + invite) in this worktree. The full human path
 (create → list → test → delete with a fake key) is therefore **not verified
@@ -253,7 +253,7 @@ against a live server** — only the unit/route tests above are. The integration
 test is ready to run once the stack is up.
 
 ### Open questions
-- Whether `GALENA_KEY_ENCRYPTION_KEY` should become required in `config.ts` (and
+- Whether `ZILAR_KEY_ENCRYPTION_KEY` should become required in `config.ts` (and
   `test-support.ts` updated to supply a test key) to satisfy "validated at
   startup" more strictly.
 - The `/settings/connections` route is reachable by URL but has no in-app nav
@@ -285,7 +285,7 @@ test asserts the 503 and code on list/create/test/delete through the real
 `createApp`; web test asserts the page shows that message in its error state.
 
 **Finding 3 — HKDF instead of scrypt.** `deriveKey` uses
-`hkdfSync('sha256', masterKey, salt, 'galena/provider-key/v1', 32)` wrapped in
+`hkdfSync('sha256', masterKey, salt, 'zilar/provider-key/v1', 32)` wrapped in
 `Buffer.from`; the `v1` envelope is unchanged and all 8 crypto tests still pass.
 Fixed the stale "scrypt" line in the file comment.
 
@@ -328,15 +328,15 @@ changes to `routes.ts`, `probe.ts`, `probe.test.ts`, `ChatList.tsx`,
   uncached; exit 0).
 - `pnpm exec turbo test --force` — `Tasks: 8 successful, 8 total`, `Cached: 0`;
   server `26 passed | 3 skipped` files and `235 passed | 4 skipped` tests.
-- `pnpm --filter @galena/web test` — `19 passed` files, `95 passed` tests.
+- `pnpm --filter @zilar/web test` — `19 passed` files, `95 passed` tests.
 - `pnpm build` — `Tasks: 2 successful, 2 total` (web: 2325 modules, built).
-- `pnpm --filter @galena/server exec vitest run src/connections` — 3 passed
+- `pnpm --filter @zilar/server exec vitest run src/connections` — 3 passed
   files, 1 skipped; `27 passed | 1 skipped` tests.
-- `pnpm --filter @galena/web exec vitest run src/routes/ConnectionsPage.test.tsx`
+- `pnpm --filter @zilar/web exec vitest run src/routes/ConnectionsPage.test.tsx`
   — `10 passed`.
 
 **Still not run live.** As instructed, I did not start a server or run
-`GALENA_CONNECTIONS_INTEGRATION=1`; the lead runs that after this round. The
+`ZILAR_CONNECTIONS_INTEGRATION=1`; the lead runs that after this round. The
 integration test's header now lists the exact env vars it needs.
 
 ## Review (written by Claude)
@@ -359,7 +359,7 @@ error strings), the owner check on every query, and 404-not-403 are correct.
    goes to `/`, like a Telegram settings screen.
    Tests: the menu item navigates to the page; Back returns to the chat list.
 2. **An unconfigured server gives a misleading error.** Without
-   `GALENA_KEY_ENCRYPTION_KEY` the routes are not mounted, so the page shows a
+   `ZILAR_KEY_ENCRYPTION_KEY` the routes are not mounted, so the page shows a
    bare "Not found". Always mount the routes. When the key is absent, every
    `/api/connections` route (after `requireSession`) returns **503**, code
    `connections_unavailable`, message "Provider connections are not configured
@@ -370,7 +370,7 @@ error strings), the owner check on every query, and 404-not-403 are correct.
 3. **`scryptSync` blocks the event loop on every encrypt/decrypt.** scrypt is a
    password KDF. The master key is a random, high-entropy secret, so it adds
    nothing except tens of milliseconds of blocked CPU per request. Use HKDF:
-   `hkdfSync('sha256', masterKey, salt, 'galena/provider-key/v1', 32)`, which
+   `hkdfSync('sha256', masterKey, salt, 'zilar/provider-key/v1', 32)`, which
    returns an `ArrayBuffer` (wrap it in `Buffer.from`). Keep the `v1` envelope
    format (nothing is stored yet) and keep every crypto test passing.
 4. **The server must trim the key.** Pasted keys often carry a trailing newline.
@@ -391,9 +391,9 @@ error strings), the owner check on every query, and 404-not-403 are correct.
 
 *(No change needed.)*
 - No last-4 hint in the list: accepted, for the reason you gave.
-- `GALENA_KEY_ENCRYPTION_KEY` stays optional in `config.ts` (see finding 2).
+- `ZILAR_KEY_ENCRYPTION_KEY` stays optional in `config.ts` (see finding 2).
 - The live integration test: **do not try to start a server.** After this round
-  the lead runs `GALENA_CONNECTIONS_INTEGRATION=1` against a server started from
+  the lead runs `ZILAR_CONNECTIONS_INTEGRATION=1` against a server started from
   this worktree. Make sure the test's README-style comment at the top says
   exactly which env vars it needs.
 
@@ -408,7 +408,7 @@ Verified by the lead:
   like `voice` is the right fix.
 - **Live, by the lead**, against a server started from this branch on port 3189 with a
   freshly generated master key (migration 0004 applied to the dev database):
-  - the gated `GALENA_CONNECTIONS_INTEGRATION=1` test: 1 passed (sign-up with a fresh
+  - the gated `ZILAR_CONNECTIONS_INTEGRATION=1` test: 1 passed (sign-up with a fresh
     invite, then create → list → test → delete);
   - a marker key sent with surrounding whitespace was stored trimmed; the Postgres row
     holds a `v1` 5-part envelope, and the marker appears in **no** DB row, API response

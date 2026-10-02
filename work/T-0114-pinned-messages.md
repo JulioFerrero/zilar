@@ -17,7 +17,7 @@ estimate: 1.5 days
 D28 (Telegram basics). A topic like "Release 2.4" or "General" needs the important message kept at the top, as in Telegram: a slim banner under the header, click to jump to it, a list of all pins.
 
 ### Data and API (server)
-- Table `pinned_messages`: `id`, `chat_jid` (the room JID or the DM's JID pair key; for DMs store the **canonical pair** `min(jidA,jidB)|max(jidA,jidB)` so both people share one list), `message_id` (the identifier the clients already use to target corrections, retractions and reactions: T-0059/T-0061; use the same one), `sender_name` (snapshot, ≤ 80), `text` (snapshot, ≤ 300 chars; empty for attachments, then `kind` says `image` | `file` | `voice` | `card`), `kind`, `pinned_by` (fk user), `pinned_at`. Unique `(chat_jid, message_id)`. Max 20 per chat (400 `pin_limit`). Migration only via `pnpm --filter @galena/server db:generate`.
+- Table `pinned_messages`: `id`, `chat_jid` (the room JID or the DM's JID pair key; for DMs store the **canonical pair** `min(jidA,jidB)|max(jidA,jidB)` so both people share one list), `message_id` (the identifier the clients already use to target corrections, retractions and reactions: T-0059/T-0061; use the same one), `sender_name` (snapshot, ≤ 80), `text` (snapshot, ≤ 300 chars; empty for attachments, then `kind` says `image` | `file` | `voice` | `card`), `kind`, `pinned_by` (fk user), `pinned_at`. Unique `(chat_jid, message_id)`. Max 20 per chat (400 `pin_limit`). Migration only via `pnpm --filter @zilar/server db:generate`.
 - **Who may pin/unpin:** DM: either person. Group topic (incl. General): a group owner/admin **who can see the topic** (`canSeeTopic`), or the topic creator; plain members may not (they can still read pins). Anyone else gets the same 404 as for an unknown chat.
 - Routes: `GET /api/pins?chat=<jid>` (visible chats only; newest first), `POST /api/pins` `{ chat, messageId, senderName, text, kind }` (validated with zod; the server trusts only the snapshot for display, never for authorization), `DELETE /api/pins/:id`. Rate limit 60 writes/min/user. Audit `message.pinned` / `message.unpinned` with ids only (**no snapshot text**; for private topics no topic name).
 - Snapshots exist because the clients may not have the message loaded; a retracted original is shown as "Message deleted" by the client when it learns of the retraction, and a manager can unpin it.
@@ -56,8 +56,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 
@@ -91,10 +91,10 @@ pnpm build
 - `pnpm format:check`: pass ("All matched files use Prettier code style!")
 - `pnpm lint`: pass (oxlint clean)
 - `pnpm typecheck`: pass (10/10 turbo tasks)
-- `pnpm --filter @galena/server test --maxWorkers=2`: 80 files passed, 5 skipped; 1375 passed, 7 skipped (~279 s)
-- `pnpm --filter @galena/server test --maxWorkers=2 src/pins/pins.test.ts` (round 2): 10 passed
-- `pnpm --filter @galena/web test --maxWorkers=2`: 70 files passed; 759 passed
-- `pnpm --filter @galena/web test --maxWorkers=2` (round 2): 70 files passed; 760 passed
+- `pnpm --filter @zilar/server test --maxWorkers=2`: 80 files passed, 5 skipped; 1375 passed, 7 skipped (~279 s)
+- `pnpm --filter @zilar/server test --maxWorkers=2 src/pins/pins.test.ts` (round 2): 10 passed
+- `pnpm --filter @zilar/web test --maxWorkers=2`: 70 files passed; 759 passed
+- `pnpm --filter @zilar/web test --maxWorkers=2` (round 2): 70 files passed; 760 passed
 - `pnpm build`: pass (2/2)
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any` in touched files: no hits (one false positive: the word "anyone" in a test name)
 

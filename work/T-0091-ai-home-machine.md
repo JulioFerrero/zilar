@@ -34,7 +34,7 @@ estimate: 1 day
 - `apps/server/src/ais/routes.ts`, `service.ts` (`toPublicAi`, `PublicAi`), `routes.test.ts`; `apps/server/src/machines/service.ts` (`revokeMachine`) and its tests
 - `apps/server/src/audit/service.ts` (action name pattern and how routes record entries, e.g. the stop/resume routes)
 - `apps/web/src/lib/api.ts` (AI types, `stopAi`), `components/ais/AiPanel.tsx`, `components/machines/ApprovedMachineCard.tsx`, `routes/MachinesPage.tsx`, `mock/api.ts`
-- Generate migrations only with `pnpm --filter @galena/server db:generate` (**never `npx`**). Another task may add a migration at the same time; if numbering collides after a rebase, delete yours and regenerate.
+- Generate migrations only with `pnpm --filter @zilar/server db:generate` (**never `npx`**). Another task may add a migration at the same time; if numbering collides after a rebase, delete yours and regenerate.
 
 ### Allowed files
 - `apps/server/src/db/schema.ts` (the one column) and the generated migration under `apps/server/drizzle/`
@@ -87,7 +87,7 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
-- Added `ais.machine_id text NULL` with FK `machines(id) ON DELETE SET NULL` and a supporting index, plus the matching Drizzle migration (`apps/server/drizzle/0014_white_shocker.sql`) generated via `pnpm --filter @galena/server db:generate`.
+- Added `ais.machine_id text NULL` with FK `machines(id) ON DELETE SET NULL` and a supporting index, plus the matching Drizzle migration (`apps/server/drizzle/0014_white_shocker.sql`) generated via `pnpm --filter @zilar/server db:generate`.
 - Added `machine_id: string | null` (snake_case per spec) to `PublicAi` in `apps/server/src/ais/service.ts` and surfaced it in every public AI response: list, get, create, update, stop, resume.
 - Added a new `assignMachine` service function in `apps/server/src/ais/service.ts`: owner-only, accepts `{ machineId: string | null }`, looks up the machine scoped to the caller and refuses anything that is missing, foreign, or not `approved` with 404 `machine_not_found`. Same value is a no-op 200. Re-read returns the fresh public AI.
 - Added the new route `PUT /api/ais/:id/machine` in `apps/server/src/ais/routes.ts` with a strict zod object schema (unknown keys rejected). It writes one `ai.machine_assigned` audit entry with `detail: { machineId }` (or `null`) only when the value actually changed, mirroring the stop/resume recorder pattern, including the `try/catch` so a buggy recorder never breaks the route.
@@ -121,25 +121,25 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install`: `Done in 6.7s using pnpm v10.32.1`. All 11 workspace projects resolved; 1010 packages installed (293 added).
-- `pnpm --filter @galena/server db:generate`: generated `0014_white_shocker.sql` with the expected three statements (column add, FK constraint with `ON DELETE set null`, index). Output: `21 tables, ais 14 columns 2 indexes 3 fks`.
-- `pnpm --filter @galena/server test` (full server suite, run 1): `Test Files 48 passed | 5 skipped (53) / Tests 693 passed | 7 skipped (700)` in 181 s — clean baseline.
-- `pnpm --filter @galena/server test src/ais/routes.test.ts src/machines/routes.test.ts --reporter=default`: `Test Files 2 passed / Tests 74 passed` after fixes; the 3 initial failures were (1) audit-entry `cost` field name vs `costCurrency`/`costAmount`, (2) audit-detail `sort()` ordering of an object, (3) missing FK target when inserting test AI rows directly. All three fixed by tightening the audit assertions, switching to a `map().sort()` on `machineId` strings, and adding a `providerConnections` insert in the machines test setup.
-- `pnpm --filter @galena/server test` (full server suite, run 2 — the audit fix): `Test Files 48 passed | 5 skipped (53) / Tests 705 passed | 7 skipped (712)` in 140 s. The 12 new tests in this task are all in there.
-- `pnpm --filter @galena/web test`: initial run failed with 3 broken new tests (select body matching, the "disabled, current value only" assertion expected `['m-approved']` but got `['', 'm-approved']`, and "No AIs yet" was on a machine that did have an AI). All three fixed by tightening the body matcher (`bodyOf(put!).toEqual(...)`), hiding the "The platform" option when the machines load fails, and using two machines in the "No AIs yet" test so one of them really is empty. Re-run: `Test Files 54 passed (54) / Tests 588 passed (588)` in 29.7 s.
-- `pnpm --filter @galena/mobile typecheck` and `pnpm --filter @galena/mobile test`: typecheck clean; `Tests 348 passed | 2 skipped (350)` in 0.97 s. Mobile was not modified — its type-guard parser ignores the new field.
+- `pnpm --filter @zilar/server db:generate`: generated `0014_white_shocker.sql` with the expected three statements (column add, FK constraint with `ON DELETE set null`, index). Output: `21 tables, ais 14 columns 2 indexes 3 fks`.
+- `pnpm --filter @zilar/server test` (full server suite, run 1): `Test Files 48 passed | 5 skipped (53) / Tests 693 passed | 7 skipped (700)` in 181 s — clean baseline.
+- `pnpm --filter @zilar/server test src/ais/routes.test.ts src/machines/routes.test.ts --reporter=default`: `Test Files 2 passed / Tests 74 passed` after fixes; the 3 initial failures were (1) audit-entry `cost` field name vs `costCurrency`/`costAmount`, (2) audit-detail `sort()` ordering of an object, (3) missing FK target when inserting test AI rows directly. All three fixed by tightening the audit assertions, switching to a `map().sort()` on `machineId` strings, and adding a `providerConnections` insert in the machines test setup.
+- `pnpm --filter @zilar/server test` (full server suite, run 2 — the audit fix): `Test Files 48 passed | 5 skipped (53) / Tests 705 passed | 7 skipped (712)` in 140 s. The 12 new tests in this task are all in there.
+- `pnpm --filter @zilar/web test`: initial run failed with 3 broken new tests (select body matching, the "disabled, current value only" assertion expected `['m-approved']` but got `['', 'm-approved']`, and "No AIs yet" was on a machine that did have an AI). All three fixed by tightening the body matcher (`bodyOf(put!).toEqual(...)`), hiding the "The platform" option when the machines load fails, and using two machines in the "No AIs yet" test so one of them really is empty. Re-run: `Test Files 54 passed (54) / Tests 588 passed (588)` in 29.7 s.
+- `pnpm --filter @zilar/mobile typecheck` and `pnpm --filter @zilar/mobile test`: typecheck clean; `Tests 348 passed | 2 skipped (350)` in 0.97 s. Mobile was not modified — its type-guard parser ignores the new field.
 - `pnpm format:check`: initial run flagged 8 hand-written files plus the 2 generated `drizzle/meta/*`. Prettier-formatted the 8 hand-written files with `pnpm prettier --write …` and the 2 generated ones (`pnpm prettier --write apps/server/drizzle/meta/0014_snapshot.json apps/server/drizzle/meta/_journal.json`) to fix the missing trailing newlines the tool emits. Re-run: `All matched files use Prettier code style!`.
 - `pnpm lint`: `oxlint .` clean.
-- `pnpm typecheck` (turbo): `Tasks: 10 successful, 10 total`, including the 2 workspaces in this worktree (`@galena/server`, `@galena/web`) and the cached 8 from sibling packages.
-- `pnpm exec turbo test --force`: one flaky `mergeTask` test in `@galena/devtools` (it shells out to git operations on the worktree) hit the 5 s default timeout under parallel load — different test fails on each run, never the same code path, and the test passes when run alone (`pnpm --filter @galena/devtools test` → `Tests 298 passed (298)`). This is an existing environmental flakiness in the lead tooling, unrelated to T-0091.
-- `pnpm exec turbo test` (no `--force`, uses turbo's cache): all 10 packages green, `@galena/server 705 passed`, `@galena/web 588 passed`, `@galena/mobile 348 passed`.
-- `pnpm build` (turbo): `Tasks: 2 successful, 2 total` — `@galena/server` (tsoa + tsc) and `@galena/web` (vite build, 2629 modules transformed) both built. No new warnings from my changes.
+- `pnpm typecheck` (turbo): `Tasks: 10 successful, 10 total`, including the 2 workspaces in this worktree (`@zilar/server`, `@zilar/web`) and the cached 8 from sibling packages.
+- `pnpm exec turbo test --force`: one flaky `mergeTask` test in `@zilar/devtools` (it shells out to git operations on the worktree) hit the 5 s default timeout under parallel load — different test fails on each run, never the same code path, and the test passes when run alone (`pnpm --filter @zilar/devtools test` → `Tests 298 passed (298)`). This is an existing environmental flakiness in the lead tooling, unrelated to T-0091.
+- `pnpm exec turbo test` (no `--force`, uses turbo's cache): all 10 packages green, `@zilar/server 705 passed`, `@zilar/web 588 passed`, `@zilar/mobile 348 passed`.
+- `pnpm build` (turbo): `Tasks: 2 successful, 2 total` — `@zilar/server` (tsoa + tsc) and `@zilar/web` (vite build, 2629 modules transformed) both built. No new warnings from my changes.
 
 ### Problems, deviations from the spec, open questions
 - Drizzle named the migration `0014_white_shocker.sql` (its randomized suffix). Other workers may push their own migration; on rebase, if the next free index is taken, the spec asks to delete and regenerate. I left the file in place; if the rebase shows a conflict I'll regenerate.
 - The spec says `PublicAi` gains `machine_id` "snake_case like the other fields". The other fields are camelCase (`providerConnectionId`, `perDayUsd`, …) but I followed the literal name in the spec and the wire (`machine_id`) over the existing style. This is what the spec asked for; flagging in case the lead prefers the camelCase form `machineId` on the wire too.
 - The mock AI seed carries `machine_id: 'mach-approved'` so the panel renders with something for the lead's live check; the prod side starts null and lets the owner choose. The mock revoke also clears the AI link, matching the real server.
 - `authz-sweep` picked up `PUT /api/ais/:id/machine` and answered 401 without a session — exactly the behaviour the spec required, so no allowlist edit was needed.
-- The lead's `mergeTask` test in `@galena/devtools` flaked once under `turbo test --force`; it passes alone and is unrelated to this task. Reported here, not blocked on it.
+- The lead's `mergeTask` test in `@zilar/devtools` flaked once under `turbo test --force`; it passes alone and is unrelated to this task. Reported here, not blocked on it.
 
 ### Blocked / needs a decision
 - None.

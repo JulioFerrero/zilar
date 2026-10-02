@@ -1,4 +1,4 @@
-import type { Attachment } from '@galena/protocol';
+import type { Attachment } from '@zilar/protocol';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';

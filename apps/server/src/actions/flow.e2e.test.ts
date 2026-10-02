@@ -152,7 +152,7 @@ async function seedAi(
   });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  const jid = `${localpart}@galena.localhost`;
+  const jid = `${localpart}@zilar.localhost`;
   await context.db.insert(ais).values({
     id: aiId,
     owner: ownerId,
@@ -205,7 +205,7 @@ async function requestTier2(harness: Harness, aiId: string): Promise<string> {
     aiId,
     action: 'flow.tier2',
     args: { value: 'spicy' },
-    requestedBy: 'ai-bot@galena.localhost',
+    requestedBy: 'ai-bot@zilar.localhost',
   });
   if (outcome.status !== 'pending_approval') {
     throw new Error(`expected pending_approval, got ${outcome.status}`);
@@ -480,7 +480,7 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       aiId,
       action: 'flow.tier0',
       args: { value: 'fast' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     expect(outcome).toEqual({ status: 'executed', summary: 'tier0-ran:fast' });
 
@@ -505,7 +505,7 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       aiId,
       action: 'flow.does_not_exist',
       args: { value: 'x' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     expect(unknown).toEqual({ status: 'denied', reason: 'unknown_action' });
 
@@ -513,7 +513,7 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       aiId,
       action: 'flow.tier2',
       args: { value: 42 },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     expect(invalid).toEqual({ status: 'denied', reason: 'invalid_args' });
 
@@ -684,7 +684,7 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
         topicId: generalTopicId,
         action: 'flow.always',
         args: { value },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (outcome.status !== 'pending_approval') {
         throw new Error(`expected pending_approval, got ${outcome.status}`);
@@ -743,7 +743,7 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       topicId: generalTopicId,
       action: 'flow.always',
       args: { value: 'third' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     expect(auto).toEqual({ status: 'executed', summary: 'always-ran:third' });
     const approvalCountAfter = (await harness.context.db.select().from(approvals)).length;
@@ -867,7 +867,7 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       topicId: topicA,
       action: 'flow.always',
       args: { value: 'spicy' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     if (outcome.status !== 'pending_approval') {
       throw new Error(`expected pending_approval, got ${outcome.status}`);
@@ -907,7 +907,7 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       topicId: topicA,
       action: 'flow.always',
       args: { value: 'second' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     if (adminOutcome.status !== 'pending_approval') {
       throw new Error(`expected pending_approval, got ${adminOutcome.status}`);
@@ -927,7 +927,7 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       topicId: topicA,
       action: 'flow.always',
       args: { value: 'third' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     expect(auto).toEqual({ status: 'executed', summary: 'always-ran:third' });
 
@@ -937,7 +937,7 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       topicId: topicB,
       action: 'flow.always',
       args: { value: 'other-topic' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     expect(inB.status).toBe('pending_approval');
   });
@@ -1117,7 +1117,7 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
       topicId: generalTopicId,
       action: 'routine.schedule',
       args: scheduleArgs(),
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     if (outcome.status !== 'pending_approval') {
       throw new Error(`expected pending_approval, got ${outcome.status}`);
@@ -1168,7 +1168,7 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
       topicId: generalTopicId,
       action: 'routine.schedule',
       args: scheduleArgs(),
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     if (outcome.status !== 'pending_approval') {
       throw new Error(`expected pending_approval, got ${outcome.status}`);
@@ -1208,7 +1208,7 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
       topicId: generalTopicId,
       action: 'routine.schedule',
       args: scheduleArgs(),
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     if (outcome.status !== 'pending_approval') {
       throw new Error(`expected pending_approval, got ${outcome.status}`);
@@ -1224,7 +1224,7 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
       topicId: generalTopicId,
       action: 'routine.schedule',
       args: scheduleArgs(),
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     expect(second.status).toBe('pending_approval');
   });
@@ -1263,7 +1263,7 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
       topicId: generalTopicId,
       action: 'routine.schedule',
       args: scheduleArgs(),
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     if (outcome.status !== 'pending_approval') {
       throw new Error(`expected pending_approval, got ${outcome.status}`);
@@ -1282,7 +1282,7 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
       topicId: generalTopicId,
       action: 'routine.schedule',
       args: scheduleArgs(),
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     if (adminOutcome.status !== 'pending_approval') {
       throw new Error(`expected pending_approval, got ${adminOutcome.status}`);
@@ -1312,7 +1312,7 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
       topicId: generalTopicId,
       action: 'tool.approve_hosts',
       args: { name: 'prices' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     if (outcome.status !== 'pending_approval') {
       throw new Error(`expected pending_approval, got ${outcome.status}`);
@@ -1352,7 +1352,7 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
       topicId: generalTopicId,
       action: 'tool.approve_hosts',
       args: { name: 'prices' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     if (outcome.status !== 'pending_approval') {
       throw new Error(`expected pending_approval, got ${outcome.status}`);
@@ -1395,7 +1395,7 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
       topicId: generalTopicId,
       action: 'tool.approve_hosts',
       args: { name: 'prices' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     if (outcome.status !== 'pending_approval') {
       throw new Error(`expected pending_approval, got ${outcome.status}`);
@@ -1443,7 +1443,7 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
       topicId: built.generalTopicId,
       action: 'tool.run',
       args: { name: 'prices' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     expect(outcome).toEqual({ status: 'denied', reason: 'ai_not_active' });
     expect(runnerCalls).toBe(0);

@@ -17,7 +17,7 @@ function topicRow(overrides: Record<string, unknown> = {}): Record<string, unkno
     groupId: 'g1',
     name: 'Checkout bug',
     glyph: 'B',
-    chatJid: 't-1@rooms.galena.test',
+    chatJid: 't-1@rooms.zilar.test',
     visibility: 'public',
     kind: 'bug',
     status: 'in_progress',
@@ -35,7 +35,7 @@ function topicRow(overrides: Record<string, unknown> = {}): Record<string, unkno
 function groupEntry(overrides: Record<string, unknown> = {}): ChatEntry {
   return {
     kind: 'group',
-    chatJid: 'general@rooms.galena.test',
+    chatJid: 'general@rooms.zilar.test',
     title: 'Dev team',
     groupId: 'g1',
     memberCount: 6,
@@ -48,9 +48,9 @@ function fakeApi(entries: ChatEntry[]): ChatApi {
   return {
     getMe: vi.fn(async () => ({
       id: 'u-me',
-      email: 'me@galena.test',
+      email: 'me@zilar.test',
       name: 'Me',
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
     })),
     getChats: vi.fn(async () => entries),
     getContacts: vi.fn(async () => []),
@@ -70,12 +70,12 @@ function fakeApi(entries: ChatEntry[]): ChatApi {
       };
     }),
     getXmppToken: vi.fn(async () => ({
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
       token: 'tok',
       expiresAt: '2026-09-28T12:05:00Z',
       service: 'ws://x',
-      domain: 'galena.test',
-      mucDomain: 'rooms.galena.test',
+      domain: 'zilar.test',
+      mucDomain: 'rooms.zilar.test',
     })),
   };
 }
@@ -104,7 +104,7 @@ function fakeTopics(): TopicsApi & { calls: string[] } {
     calls,
     createTopic: vi.fn(async (_groupId: string, input: { name: string }) => {
       calls.push(`create:${input.name}`);
-      return topicRow({ id: 't-new', name: input.name, chatJid: 't-new@rooms.galena.test' });
+      return topicRow({ id: 't-new', name: input.name, chatJid: 't-new@rooms.zilar.test' });
     }),
     getTopic: vi.fn(async (id: string) => topicRow({ id })),
     patchTopic: vi.fn(async (id: string) => {
@@ -143,24 +143,21 @@ describe('summariesFor', () => {
             id: 't-g',
             name: 'General',
             isGeneral: true,
-            chatJid: 'general@rooms.galena.test',
+            chatJid: 'general@rooms.zilar.test',
           }),
-          topicRow({ id: 't-1', chatJid: 't-1@rooms.galena.test' }),
+          topicRow({ id: 't-1', chatJid: 't-1@rooms.zilar.test' }),
         ],
       }),
     );
-    expect(rows.map((row) => row.id)).toEqual([
-      'general@rooms.galena.test',
-      't-1@rooms.galena.test',
-    ]);
+    expect(rows.map((row) => row.id)).toEqual(['general@rooms.zilar.test', 't-1@rooms.zilar.test']);
     expect(rows[0]?.topic?.isGeneral).toBe(true);
     expect(rows[1]?.groupId).toBe('g1');
   });
 
   it('keeps one legacy row for an older server without topics', () => {
-    const rows = summariesFor(groupEntry({ chatJid: 'team@rooms.galena.test' }));
+    const rows = summariesFor(groupEntry({ chatJid: 'team@rooms.zilar.test' }));
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.id).toBe('team@rooms.galena.test');
+    expect(rows[0]?.id).toBe('team@rooms.zilar.test');
     expect(rows[0]?.topic).toBeUndefined();
   });
 
@@ -198,7 +195,7 @@ describe('real store topics (T-0112)', () => {
       id: 't-g',
       name: 'General',
       isGeneral: true,
-      chatJid: 'general@rooms.galena.test',
+      chatJid: 'general@rooms.zilar.test',
     });
     const { store, api } = setup([groupEntry({ topics: [general, topicRow()] })]);
     store.getState().start();
@@ -209,22 +206,22 @@ describe('real store topics (T-0112)', () => {
         .getState()
         .chats.map((chat) => chat.id)
         .sort(),
-    ).toEqual(['general@rooms.galena.test', 't-1@rooms.galena.test']);
+    ).toEqual(['general@rooms.zilar.test', 't-1@rooms.zilar.test']);
 
     // Refresh adds a topic and removes one: unread and last message survive.
     const before = store.getState().chats;
     expect(before).toHaveLength(2);
     vi.mocked(api.getChats).mockResolvedValue([
       groupEntry({
-        topics: [general, topicRow({ id: 't-2', name: 'Ideas', chatJid: 't-2@rooms.galena.test' })],
+        topics: [general, topicRow({ id: 't-2', name: 'Ideas', chatJid: 't-2@rooms.zilar.test' })],
       }),
     ]);
     store.getState().reloadChats();
     await flush();
 
     expect(store.getState().chats.map((chat) => chat.id)).toEqual([
-      't-2@rooms.galena.test',
-      'general@rooms.galena.test',
+      't-2@rooms.zilar.test',
+      'general@rooms.zilar.test',
     ]);
   });
 
@@ -233,13 +230,13 @@ describe('real store topics (T-0112)', () => {
       id: 't-g',
       name: 'General',
       isGeneral: true,
-      chatJid: 'general@rooms.galena.test',
+      chatJid: 'general@rooms.zilar.test',
     });
     const { store, api } = setup([groupEntry({ topics: [general, topicRow()] })]);
     store.getState().start();
     await flush();
 
-    store.getState().openChat('t-1@rooms.galena.test');
+    store.getState().openChat('t-1@rooms.zilar.test');
     vi.mocked(api.getChats).mockResolvedValue([groupEntry({ topics: [general] })]);
     store.getState().reloadChats();
     await flush();
@@ -258,7 +255,7 @@ describe('real store topics (T-0112)', () => {
       id: 't-g',
       name: 'General',
       isGeneral: true,
-      chatJid: 'general@rooms.galena.test',
+      chatJid: 'general@rooms.zilar.test',
     });
     const { store, topics, api } = setup([groupEntry({ topics: [general] })]);
     store.getState().start();
@@ -268,16 +265,16 @@ describe('real store topics (T-0112)', () => {
       groupEntry({
         topics: [
           general,
-          topicRow({ id: 't-new', name: 'Checkout bug', chatJid: 't-new@rooms.galena.test' }),
+          topicRow({ id: 't-new', name: 'Checkout bug', chatJid: 't-new@rooms.zilar.test' }),
         ],
       }),
     ]);
-    const chatId = await store.getState().createTopic('general@rooms.galena.test', {
+    const chatId = await store.getState().createTopic('general@rooms.zilar.test', {
       name: 'Checkout bug',
       kind: 'bug',
       visibility: 'public',
     });
-    expect(chatId).toBe('t-new@rooms.galena.test');
+    expect(chatId).toBe('t-new@rooms.zilar.test');
     expect(topics.calls).toContain('create:Checkout bug');
 
     await store.getState().addTopicAi(chatId, 'dev-ai');
@@ -293,19 +290,19 @@ describe('real store topics (T-0112)', () => {
       id: 't-g',
       name: 'General',
       isGeneral: true,
-      chatJid: 'general@rooms.galena.test',
+      chatJid: 'general@rooms.zilar.test',
     });
     const { store, api } = setup([groupEntry({ topics: [general] })]);
     store.getState().start();
     await flush();
 
     vi.mocked(api.getChats).mockRejectedValue(new Error('down'));
-    const chatId = await store.getState().createTopic('general@rooms.galena.test', {
+    const chatId = await store.getState().createTopic('general@rooms.zilar.test', {
       name: 'Checkout bug',
       kind: 'bug',
       visibility: 'public',
     });
-    expect(chatId).toBe('t-new@rooms.galena.test');
+    expect(chatId).toBe('t-new@rooms.zilar.test');
   });
 
   it('applies a strip patch on success and leaves the row unchanged on failure', async () => {
@@ -313,7 +310,7 @@ describe('real store topics (T-0112)', () => {
       id: 't-g',
       name: 'General',
       isGeneral: true,
-      chatJid: 'general@rooms.galena.test',
+      chatJid: 'general@rooms.zilar.test',
     });
     const { store, topics, api } = setup([groupEntry({ topics: [general, topicRow()] })]);
     store.getState().start();
@@ -321,18 +318,18 @@ describe('real store topics (T-0112)', () => {
 
     // No optimistic update: the store applies the patch only after the server
     // answers, so a failure needs no rollback, just a rejection.
-    await store.getState().patchTopic('t-1@rooms.galena.test', { status: 'done' });
+    await store.getState().patchTopic('t-1@rooms.zilar.test', { status: 'done' });
     expect(topics.calls).toContain('patch:t-1');
 
-    const before = store.getState().chats.find((chat) => chat.id === 't-1@rooms.galena.test')
+    const before = store.getState().chats.find((chat) => chat.id === 't-1@rooms.zilar.test')
       ?.topic?.status;
     vi.mocked(api.getChats).mockRejectedValueOnce(new Error('down'));
     vi.mocked(topics.patchTopic).mockRejectedValueOnce(new Error('offline'));
     await expect(
-      store.getState().patchTopic('t-1@rooms.galena.test', { status: 'blocked' }),
+      store.getState().patchTopic('t-1@rooms.zilar.test', { status: 'blocked' }),
     ).rejects.toThrow();
     expect(
-      store.getState().chats.find((chat) => chat.id === 't-1@rooms.galena.test')?.topic?.status,
+      store.getState().chats.find((chat) => chat.id === 't-1@rooms.zilar.test')?.topic?.status,
     ).toBe(before);
   });
 
@@ -341,7 +338,7 @@ describe('real store topics (T-0112)', () => {
       id: 't-g',
       name: 'General',
       isGeneral: true,
-      chatJid: 'general@rooms.galena.test',
+      chatJid: 'general@rooms.zilar.test',
     });
     const { store, api } = setup([groupEntry({ topics: [general, topicRow()] })]);
     store.getState().start();
@@ -355,7 +352,7 @@ describe('real store topics (T-0112)', () => {
     // A chat id is NOT the group key: looking one up resolves nothing, so the
     // topics screen must pass its group-id route param (covered by the mount
     // test below asserting `refreshGroupDetail` fires with the group id).
-    expect(store.getState().groupDetail('t-1@rooms.galena.test')).toBeUndefined();
+    expect(store.getState().groupDetail('t-1@rooms.zilar.test')).toBeUndefined();
     expect(vi.mocked(api.getGroup)).toHaveBeenCalledWith('g1');
   });
 
@@ -364,7 +361,7 @@ describe('real store topics (T-0112)', () => {
       id: 't-g',
       name: 'General',
       isGeneral: true,
-      chatJid: 'general@rooms.galena.test',
+      chatJid: 'general@rooms.zilar.test',
     });
     const { store, api } = setup([groupEntry({ topics: [general, topicRow()] })]);
     store.getState().start();
@@ -375,10 +372,10 @@ describe('real store topics (T-0112)', () => {
     // argument. The fake now throws for a non-group id (like the server's
     // 404), so a chat JID resolves nothing — silently, like any detail
     // failure — while the real group id still does.
-    expect(store.getState().groupDetail('t-1@rooms.galena.test')).toBeUndefined();
-    store.getState().refreshGroupDetail('t-1@rooms.galena.test');
+    expect(store.getState().groupDetail('t-1@rooms.zilar.test')).toBeUndefined();
+    store.getState().refreshGroupDetail('t-1@rooms.zilar.test');
     await flush();
-    expect(store.getState().groupDetail('t-1@rooms.galena.test')).toBeUndefined();
+    expect(store.getState().groupDetail('t-1@rooms.zilar.test')).toBeUndefined();
     store.getState().refreshGroupDetail('g1');
     await flush();
     expect(store.getState().groupDetail('g1')).toMatchObject({ id: 'g1' });
@@ -397,7 +394,7 @@ describe('real store topics (T-0112)', () => {
         id: 't-g',
         name: 'General',
         isGeneral: true,
-        chatJid: 'general@rooms.galena.test',
+        chatJid: 'general@rooms.zilar.test',
       });
       const { store, api } = setup([groupEntry({ topics: [general] })]);
       store.getState().start();

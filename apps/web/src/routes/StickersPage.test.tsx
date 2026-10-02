@@ -46,7 +46,7 @@ function renderPage(fetchMock: ReturnType<typeof vi.fn>) {
     <AuthProvider
       value={{
         status: 'authenticated',
-        user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+        user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
         refetch: async () => {},
       }}
     >

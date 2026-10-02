@@ -182,7 +182,7 @@ pnpm format:check   # PASS (after `prettier --write` on 4 new/changed files)
 pnpm lint           # PASS (oxlint, no findings) — two set-state-in-effect errors found during
                     #   the run and fixed by deriving/adjusting state instead
 pnpm typecheck      # PASS — 9 successful, 9 total
-pnpm test           # PASS — 9 successful, 9 total; @galena/mobile: 25 files passed | 2 skipped,
+pnpm test           # PASS — 9 successful, 9 total; @zilar/mobile: 25 files passed | 2 skipped,
                     #   240 tests passed | 2 skipped (242)
 pnpm build          # PASS — 2 successful; expo export: ios 7.6 MB, android 7.8 MB
 ```
@@ -199,9 +199,9 @@ background refresh.
 
 ### Problems, deviations from the spec, open questions
 - **Mock scenarios use env, not the `?load=` route param.**
-  `src/mock/load.ts` reads `EXPO_PUBLIC_GALENA_MOCK_LOAD` (`slow`, `error`,
+  `src/mock/load.ts` reads `EXPO_PUBLIC_ZILAR_MOCK_LOAD` (`slow`, `error`,
   `empty`, `no-messages`), the same shape as the T-0056
-  `EXPO_PUBLIC_GALENA_MOCK_DRAFT` precedent, and `createChatStore` consumes it.
+  `EXPO_PUBLIC_ZILAR_MOCK_DRAFT` precedent, and `createChatStore` consumes it.
   The `?mock=1&load=slow` route param needs the value to reach `createChatStore`,
   which is created in `store/chat-store-provider.tsx` — **not in this task's
   Allowed files** (T-0063 had it; T-0067 does not). The env path is production-safe:
@@ -251,11 +251,11 @@ I did **not** take the six screenshots, and I did not fake any. Reasons, honestl
 
 To capture them later (own simulator, Metro on 8082, mock mode):
 ```bash
-EXPO_PUBLIC_GALENA_MOCK=1 EXPO_PUBLIC_GALENA_MOCK_LOAD=slow \
-  pnpm --filter @galena/mobile boot:ios --device <your-own-udid>   # list + chat skeleton
-EXPO_PUBLIC_GALENA_MOCK=1 EXPO_PUBLIC_GALENA_MOCK_LOAD=error ...   # list error + chat error
-EXPO_PUBLIC_GALENA_MOCK=1 EXPO_PUBLIC_GALENA_MOCK_LOAD=empty ...   # list "No chats yet"
-EXPO_PUBLIC_GALENA_MOCK=1 EXPO_PUBLIC_GALENA_MOCK_LOAD=no-messages ... # chat "No messages yet"
+EXPO_PUBLIC_ZILAR_MOCK=1 EXPO_PUBLIC_ZILAR_MOCK_LOAD=slow \
+  pnpm --filter @zilar/mobile boot:ios --device <your-own-udid>   # list + chat skeleton
+EXPO_PUBLIC_ZILAR_MOCK=1 EXPO_PUBLIC_ZILAR_MOCK_LOAD=error ...   # list error + chat error
+EXPO_PUBLIC_ZILAR_MOCK=1 EXPO_PUBLIC_ZILAR_MOCK_LOAD=empty ...   # list "No chats yet"
+EXPO_PUBLIC_ZILAR_MOCK=1 EXPO_PUBLIC_ZILAR_MOCK_LOAD=no-messages ... # chat "No messages yet"
 ```
 `xcrun simctl io <udid> screenshot`, then `sips -Z 900`; save under
 `apps/mobile/screenshots/T-0067/`. Stop the Metro it started and delete only your

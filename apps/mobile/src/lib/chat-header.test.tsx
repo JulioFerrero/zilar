@@ -92,7 +92,7 @@ function collect(node: unknown, out: TestElement[] = []): TestElement[] {
 
 function chat(overrides: Partial<ChatSummary> = {}): ChatSummary {
   return {
-    id: 'ana@galena.test',
+    id: 'ana@zilar.test',
     title: 'Ana',
     kind: 'dm',
     isAI: false,
@@ -105,7 +105,7 @@ function chat(overrides: Partial<ChatSummary> = {}): ChatSummary {
 
 function topicChat(overrides: Partial<ChatSummary> = {}): ChatSummary {
   return chat({
-    id: 't-1@rooms.galena.test',
+    id: 't-1@rooms.zilar.test',
     title: 'Checkout bug',
     kind: 'group',
     groupId: 'g1',
@@ -177,7 +177,7 @@ describe('ChatHeader buttons (T-0139)', () => {
   it('a legacy group row title opens the group screen', () => {
     const elements = buttonsFor(
       ChatHeader({
-        chat: chat({ id: 'team@rooms.galena.test', title: 'Team', kind: 'group', groupId: 'g1' }),
+        chat: chat({ id: 'team@rooms.zilar.test', title: 'Team', kind: 'group', groupId: 'g1' }),
         onBack: () => {},
         onSearchInChat: () => {},
         onOpenGroup: () => {},

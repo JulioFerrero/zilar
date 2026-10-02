@@ -1,4 +1,4 @@
-You are SCOUTING on the Galena project, not implementing. Read AGENTS.md first. You are in the worktree of task {{TASK}} at {{WORKTREE}}, on branch {{BRANCH}}.
+You are SCOUTING on the Zilar project, not implementing. Read AGENTS.md first. You are in the worktree of task {{TASK}} at {{WORKTREE}}, on branch {{BRANCH}}.
 
 Answer these questions about the codebase:
 

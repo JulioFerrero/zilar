@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { Attachment } from '@galena/protocol';
+import type { Attachment } from '@zilar/protocol';
 
 import { Text } from '@/components/ui/text';
 import { well } from '@/lib/depth';

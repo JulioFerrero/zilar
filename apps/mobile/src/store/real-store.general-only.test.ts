@@ -20,7 +20,7 @@ function topicWire(overrides: Record<string, unknown> = {}): Record<string, unkn
     groupId: 'g1',
     name: 'General',
     glyph: 'G',
-    chatJid: 'general@rooms.galena.test',
+    chatJid: 'general@rooms.zilar.test',
     visibility: 'public',
     kind: 'chat',
     status: 'open',
@@ -38,7 +38,7 @@ function topicWire(overrides: Record<string, unknown> = {}): Record<string, unkn
 function groupEntry(overrides: Record<string, unknown> = {}): ChatEntry {
   return {
     kind: 'group',
-    chatJid: 'general@rooms.galena.test',
+    chatJid: 'general@rooms.zilar.test',
     title: 'Dev team',
     groupId: 'g1',
     memberCount: 6,
@@ -51,9 +51,9 @@ function fakeApi(entries: ChatEntry[], myRole: 'owner' | 'admin' | 'member' = 'a
   return {
     getMe: vi.fn(async () => ({
       id: 'u-me',
-      email: 'me@galena.test',
+      email: 'me@zilar.test',
       name: 'Me',
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
     })),
     getChats: vi.fn(async () => entries),
     getContacts: vi.fn(async () => []),
@@ -68,12 +68,12 @@ function fakeApi(entries: ChatEntry[], myRole: 'owner' | 'admin' | 'member' = 'a
       ais: [],
     })),
     getXmppToken: vi.fn(async () => ({
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
       token: 'tok',
       expiresAt: '2026-09-28T12:05:00Z',
       service: 'ws://x',
-      domain: 'galena.test',
-      mucDomain: 'rooms.galena.test',
+      domain: 'zilar.test',
+      mucDomain: 'rooms.zilar.test',
     })),
   };
 }
@@ -175,7 +175,7 @@ describe('real store General-only group (T-0139)', () => {
     const rows = store.getState().chats;
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      id: 'general@rooms.galena.test',
+      id: 'general@rooms.zilar.test',
       groupId: 'g1',
       groupTitle: 'Dev team',
     });
@@ -193,7 +193,7 @@ describe('real store General-only group (T-0139)', () => {
     store.getState().start();
     await flush();
 
-    expect(store.getState().canPin('general@rooms.galena.test')).toBe(true);
+    expect(store.getState().canPin('general@rooms.zilar.test')).toBe(true);
     store.getState().stop();
   });
 
@@ -293,13 +293,13 @@ describe('real store group detail fetch count (T-0147)', () => {
         id: 't-g',
         name: 'General',
         isGeneral: true,
-        chatJid: 'general@rooms.galena.test',
+        chatJid: 'general@rooms.zilar.test',
       }),
     ]);
     const { store, api } = await bootCold([groupEntry({ topics: parsed })], failingConnectCore());
 
     // Cold open: the detail has never fetched — one GET total.
-    store.getState().openChat('general@rooms.galena.test');
+    store.getState().openChat('general@rooms.zilar.test');
     await flush();
     expect(groupCalls(api.getGroup)).toBe(1);
     expect(store.getState().groupDetail('g1')).toBeDefined();
@@ -316,7 +316,7 @@ describe('real store group detail fetch count (T-0147)', () => {
           id: `t-${n}`,
           name: `Topic ${n}`,
           isGeneral: false,
-          chatJid: `t-${n}@rooms.galena.test`,
+          chatJid: `t-${n}@rooms.zilar.test`,
         }),
       ),
     );
@@ -347,19 +347,19 @@ describe('real store group detail fetch count (T-0147)', () => {
         id: 't-g',
         name: 'General',
         isGeneral: true,
-        chatJid: 'general@rooms.galena.test',
+        chatJid: 'general@rooms.zilar.test',
       }),
       topicWire({
         id: 't-1',
         name: 'One',
         isGeneral: false,
-        chatJid: 't-1@rooms.galena.test',
+        chatJid: 't-1@rooms.zilar.test',
       }),
       topicWire({
         id: 't-2',
         name: 'Two',
         isGeneral: false,
-        chatJid: 't-2@rooms.galena.test',
+        chatJid: 't-2@rooms.zilar.test',
       }),
     ];
     const parsed: Topic[] = [];
@@ -404,9 +404,9 @@ describe('real store group detail fetch count (T-0147)', () => {
     expect(afterBoot).toBeGreaterThan(0);
 
     // Opening two topics of the same group: the deduped path, no new fetch.
-    store.getState().openChat('t-1@rooms.galena.test');
+    store.getState().openChat('t-1@rooms.zilar.test');
     await flush();
-    store.getState().openChat('t-2@rooms.galena.test');
+    store.getState().openChat('t-2@rooms.zilar.test');
     await flush();
     expect(getGroup.mock.calls.length).toBe(afterBoot);
 

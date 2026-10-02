@@ -99,7 +99,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/chat-core --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/chat-core --filter=@zilar/web
 pnpm build
 ```
 
@@ -207,7 +207,7 @@ pnpm lint
 pnpm typecheck
 # Tasks: 9 successful, 9 total
 
-pnpm exec turbo test --force --filter=@galena/chat-core --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/chat-core --filter=@zilar/web
 # chat-core: 7 files passed, 97 passed (97)   [markdown.test.ts +2 cases]
 # web:       37 files passed, 268 passed (268) [GroupPanel 8, MentionPicker 1,
 #            realStore +4; +6 files over T-0053's 246/248]
@@ -219,7 +219,7 @@ pnpm build
 
 ### Visual check (mock mode, `?mock=1`)
 
-`GALENA_API_URL` pointed at a throwaway Python server (in the approved temp
+`ZILAR_API_URL` pointed at a throwaway Python server (in the approved temp
 dir, not committed) that answers `/api/auth/get-session`, so the app
 authenticates and the mock store is used; this worktree's Vite ran on
 `localhost:5242`. Both were stopped afterwards. Eight PNGs at 1440×900 and
@@ -247,8 +247,8 @@ authenticates and the mock store is used; this worktree's Vite ran on
 - Two new test files: `GroupPanel.test.tsx` and `MentionPicker.test.tsx` (the
   spec asks for a MentionPicker badge test and there was no MentionPicker test).
 - `MentionPicker.tsx` badges rows from the JID; since Round 2 its check is the
-  shared `isAiJid` from `@galena/chat-core` (no local duplicate).
-- Mock groups use the fixed `galena.test` domain (as the previous mock members
+  shared `isAiJid` from `@zilar/chat-core` (no local duplicate).
+- Mock groups use the fixed `zilar.test` domain (as the previous mock members
   did); the real store builds JIDs from the signed-in user's domain.
 - The mock group member lists do not match every `mockChats.memberCount` (that
   mismatch predates this task); the panel counts from the loaded detail.
@@ -271,7 +271,7 @@ Three fixes from the pre-review, no scope expansion.
 `packages/chat-core/src/index.ts`. `markdown.ts` imports it for
 `shouldRenderMarkdown` and drops its private copy; `MentionPicker.tsx` imports
 it and its exported duplicate `isAiMentionJid` is gone; `MessageBubble.tsx`
-imports `isAiJid` from `@galena/chat-core` (it no longer imports the picker).
+imports `isAiJid` from `@zilar/chat-core` (it no longer imports the picker).
 Added `packages/chat-core/src/ai.test.ts` for the resource/query cases.
 
 **2. The tautological assertion is gone.** The realStore test now renders the
@@ -293,7 +293,7 @@ Round 2 checks:
 pnpm format:check   # All matched files use Prettier code style!
 pnpm lint           # (no output) exit 0
 pnpm typecheck      # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/chat-core --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/chat-core --filter=@zilar/web
 # chat-core: 8 files passed, 99 passed (99)  [ai.test.ts +2]
 # web:       38 files passed, 270 passed (270) [ChatView.test +2; realStore test rewritten]
 # Tasks: 2 successful, 2 total
@@ -311,7 +311,7 @@ unmodified in git, never committed.
 
 - Round 1 delivered the group panel (members with roles, an AIs section, Add my AI and Remove), AIs in the @ picker, and group AI replies with the badge and Markdown. The store-driven panel deviation is accepted, since it's what makes `?mock=1` work.
 - Round 2 fixed all three review items:
-  - one shared `isAiJid` in `@galena/chat-core`, used by the Markdown rule, MentionPicker and MessageBubble;
+  - one shared `isAiJid` in `@zilar/chat-core`, used by the Markdown rule, MentionPicker and MessageBubble;
   - a real MessageBubble render test (the badge plus `<strong>`);
   - the ChatView panel resets on a chat change, with a test shown to fail without the fix.
 - Scope: `chat-core/src/ai.ts`, its test and the `index.ts` export, plus `ChatView.test.tsx`, were added at the lead's request in round 2. They're approved.

@@ -96,9 +96,9 @@ describe('Topic header and task strip (T-0111)', () => {
           createdBy: 'u-you',
           members: [{ userId: 'u-you', name: 'You', role: 'owner' }],
           ais: [
-            { aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-you' },
-            { aiId: 'helper-1', jid: 'ai-helper-1@galena.test', name: 'Helper', ownerId: 'u-you' },
-            { aiId: 'helper-2', jid: 'ai-helper-2@galena.test', name: 'Helper', ownerId: 'u-you' },
+            { aiId: 'dev-1', jid: 'ai-dev-1@zilar.test', name: 'Dev-1', ownerId: 'u-you' },
+            { aiId: 'helper-1', jid: 'ai-helper-1@zilar.test', name: 'Helper', ownerId: 'u-you' },
+            { aiId: 'helper-2', jid: 'ai-helper-2@zilar.test', name: 'Helper', ownerId: 'u-you' },
           ],
         },
       },

@@ -36,7 +36,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test --maxWorkers=2 <touched test files and their neighbours>
+pnpm --filter @zilar/mobile test --maxWorkers=2 <touched test files and their neighbours>
 ```
 Do NOT start simulators, Metro, or `expo run`.
 
@@ -58,7 +58,7 @@ Do NOT start simulators, Metro, or `expo run`.
 
 ### Commands run and real results
 - `pnpm install`: pass (~7s).
-- Touched + neighbours (`pnpm --filter @galena/mobile test --maxWorkers=2`): 10 files, 89 passed (general-only, roles, topics, invite-links, join-link, jump-scroll, group-roles-sheet, roles-load, use-message-search, message-search); 6 more neighbour files, 130 passed (real-store, chat-store, invite-links, chat-actions-sheet, topic-sheets-roles, lib/roles). Also roles.test + use-message-search earlier: 88 passed.
+- Touched + neighbours (`pnpm --filter @zilar/mobile test --maxWorkers=2`): 10 files, 89 passed (general-only, roles, topics, invite-links, join-link, jump-scroll, group-roles-sheet, roles-load, use-message-search, message-search); 6 more neighbour files, 130 passed (real-store, chat-store, invite-links, chat-actions-sheet, topic-sheets-roles, lib/roles). Also roles.test + use-message-search earlier: 88 passed.
 - `pnpm format:check`: pass. `pnpm lint` (oxlint): pass. `pnpm typecheck` (turbo, 10 tasks): pass.
 - No simulators, Metro, or `expo run` started (per spec).
 

@@ -5,8 +5,8 @@ import {
   type SendMessageOptions,
   type XmppCore,
   type XmppCoreOptions,
-} from '@galena/xmpp-core';
-import type { Payload } from '@galena/protocol';
+} from '@zilar/xmpp-core';
+import type { Payload } from '@zilar/protocol';
 import { and, eq, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import {

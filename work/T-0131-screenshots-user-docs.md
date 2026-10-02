@@ -80,7 +80,7 @@ Product code changes, mobile screenshots (simulators belong to Julio), a docs we
 - `pnpm lint` (oxlint): pass (one unused-var error fixed by removing the dead constant).
 - `pnpm typecheck` (turbo, 10 tasks): pass. Plus `tsc --noEmit -p scripts/tsconfig.json`: pass (scripts/ is not covered by any package tsconfig, hence the new one).
 - `pnpm build` (web + mobile): pass, 34s.
-- Looked at all 15 PNGs: mock names/places only (Ana, Luis, Dev-1, you@galena.test), no real emails, keys, or fingerprints beyond the mock's fixed test values. No product-code tests were touched, so no test run was needed beyond build/typecheck/lint (per the machine rule, no bare test runs).
+- Looked at all 15 PNGs: mock names/places only (Ana, Luis, Dev-1, you@zilar.test), no real emails, keys, or fingerprints beyond the mock's fixed test values. No product-code tests were touched, so no test run was needed beyond build/typecheck/lint (per the machine rule, no bare test runs).
 
 ### Round 2 (review findings 1-6)
 - Finding 1: linked the three orphan phone shots in the guide — `chat-phone.png` in Chats and groups, `topic-phone.png` in The task strip, `search-phone.png` in Search. All 15 PNGs are now referenced.
@@ -88,7 +88,7 @@ Product code changes, mobile screenshots (simulators belong to Julio), a docs we
 - Finding 3: fixed the Report sentence (every shot carries `?mock=1`, including `/login` — the dev build renders the email form without a session); `startDevServer` now takes an `onError` callback that records the spawn error and fails the startup wait instead of throwing inside the event handler.
 - Finding 4: renamed the mock fixture `julio-mbp` → `dev-mac` in `apps/web/src/mock/api.ts` (only occurrence wired to the mock layer; the `julio-mbp` hits in `AiPanel.test.tsx`, `api.test.ts`, `MachinesPage.test.tsx`, and `apps/server` tests are self-contained fixtures, left alone). Regenerated all 15 screenshots; `machines-desktop.png` now shows `dev-mac`.
 - Finding 5: USER_GUIDE now says a manager can archive for everyone only topics they can see themselves.
-- Checks: `pnpm format:check` pass (deleted the unformatted `PREREVIEW.md` packet per the round brief), `pnpm lint` pass, `pnpm typecheck` pass, `tsc -p scripts/tsconfig.json` pass, `pnpm --filter @galena/web test --maxWorkers=2`: 70 files / 777 tests pass, `pnpm build` pass.
+- Checks: `pnpm format:check` pass (deleted the unformatted `PREREVIEW.md` packet per the round brief), `pnpm lint` pass, `pnpm typecheck` pass, `tsc -p scripts/tsconfig.json` pass, `pnpm --filter @zilar/web test --maxWorkers=2`: 70 files / 777 tests pass, `pnpm build` pass.
 - Looked at all 15 regenerated PNGs: mock people/places only, `dev-mac` neutral, fingerprints are the mock's fixed hex fixtures, `you@example.com` placeholder on sign-in. No real emails, names, keys or hostnames.
 
 ### Problems, deviations from the spec, open questions

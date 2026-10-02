@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { SignJWT } from 'jose';
-import { JidSchema } from '@galena/protocol';
+import { JidSchema } from '@zilar/protocol';
 import type { XmppConfig } from './config';
 
 // JWT login: our server signs a short-lived HS256 token and the client sends it

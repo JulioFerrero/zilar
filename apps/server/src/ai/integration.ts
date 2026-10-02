@@ -6,10 +6,10 @@ import {
 } from './litellm-client';
 
 // Spike integration run against a live LiteLLM (127.0.0.1:4000 in the dev
-// stack). It is skipped unless GALENA_LITELLM_INTEGRATION=1 and exited non-zero
+// stack). It is skipped unless ZILAR_LITELLM_INTEGRATION=1 and exited non-zero
 // if any expectation fails. Run it with the dev creds, e.g.:
 //
-//   GALENA_LITELLM_INTEGRATION=1 pnpm --filter @galena/server exec \
+//   ZILAR_LITELLM_INTEGRATION=1 pnpm --filter @zilar/server exec \
 //     tsx --env-file=../../infra/.env src/ai/integration.ts
 //
 // It never prints the master key or a provider key, and it revokes the virtual
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   console.log(`health: HTTP ${health.status} ${await health.text()}`);
   check('proxy is reachable', health.ok);
 
-  const alias = `galena-t0007-${Date.now()}`;
+  const alias = `zilar-t0007-${Date.now()}`;
   let key: string | undefined;
   try {
     console.log(`\n-- issue a virtual key (${alias}) with a 0.01 USD hard cap --`);
@@ -209,8 +209,8 @@ async function main(): Promise<void> {
 }
 
 async function guarded(): Promise<void> {
-  if (process.env.GALENA_LITELLM_INTEGRATION !== '1') {
-    console.log('skipped: set GALENA_LITELLM_INTEGRATION=1 to run against a live LiteLLM');
+  if (process.env.ZILAR_LITELLM_INTEGRATION !== '1') {
+    console.log('skipped: set ZILAR_LITELLM_INTEGRATION=1 to run against a live LiteLLM');
     return;
   }
   await main();

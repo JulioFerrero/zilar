@@ -109,7 +109,7 @@ function setup(mainStatus: string, branchStatus: string): Harness {
   git(root, ['remote', 'add', 'origin', origin]);
   git(root, ['push', '-q', 'origin', 'main']);
   const branch = 'task/T-0099-demo';
-  const worktree = path.join(dir, 'galena-T-0099');
+  const worktree = path.join(dir, 'zilar-T-0099');
   git(root, ['worktree', 'add', '-q', worktree, '-b', branch, 'main']);
   git(worktree, ['config', 'user.email', 'test@example.com']);
   git(worktree, ['config', 'user.name', 'Test']);

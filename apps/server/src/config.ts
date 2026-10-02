@@ -91,7 +91,7 @@ const serverConfigSchema = z
     // the connections module refuses to start when it is absent (mirrors how
     // LITELLM_MASTER_KEY is handled by the AI module). At least 32 bytes, so a
     // weak key fails validation at startup rather than encrypting at rest.
-    GALENA_KEY_ENCRYPTION_KEY: z.string().min(32).optional(),
+    ZILAR_KEY_ENCRYPTION_KEY: z.string().min(32).optional(),
     // Mail transport (T-0128): `console` writes sign-in codes to the log
     // (development only), `smtp` sends real mail through nodemailer.
     // In production the transport must be chosen explicitly: leaving it
@@ -119,7 +119,7 @@ const serverConfigSchema = z
     // setting only one is a startup error.
     SMTP_USER: z.string().min(1, 'must not be empty').optional(),
     SMTP_PASSWORD: z.string().min(1, 'must not be empty').optional(),
-    // Sender shown on sign-in mails, e.g. `Galena <no-reply@example.com>`.
+    // Sender shown on sign-in mails, e.g. `Zilar <no-reply@example.com>`.
     // Required when MAIL_TRANSPORT=smtp.
     MAIL_FROM: z.string().min(1, 'must not be empty').optional(),
     // Optional Reply-To header for sign-in mails.
@@ -331,7 +331,7 @@ function checkMailConfig(
       if (mailbox !== undefined && !isMailbox(mailbox)) {
         ctx.addIssue({
           code: 'custom',
-          message: `${name} must be a valid mailbox (for example: Galena <no-reply@example.com>)`,
+          message: `${name} must be a valid mailbox (for example: Zilar <no-reply@example.com>)`,
           path: [name],
         });
       }
@@ -340,7 +340,7 @@ function checkMailConfig(
 }
 
 // Accepts a bare address (`no-reply@example.com`) or a display name plus
-// angle-addr (`Galena <no-reply@example.com>`); enough validation to catch a
+// angle-addr (`Zilar <no-reply@example.com>`); enough validation to catch a
 // typo in MAIL_FROM at startup without pulling in a mail parser.
 function isMailbox(value: string): boolean {
   const trimmed = value.trim();

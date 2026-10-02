@@ -32,7 +32,7 @@ function topicWire(overrides: Partial<Topic> = {}): Topic {
     groupId: 'g1',
     name: 'Checkout bug',
     glyph: 'B',
-    chatJid: 't-1@rooms.galena.test',
+    chatJid: 't-1@rooms.zilar.test',
     visibility: 'public',
     kind: 'bug',
     status: 'in_progress',
@@ -87,7 +87,7 @@ describe('summariesForTopicsEntry', () => {
   it('maps each visible topic to its own chat keyed by room JID', () => {
     const entry: ChatEntry = {
       kind: 'group',
-      chatJid: 'general@rooms.galena.test',
+      chatJid: 'general@rooms.zilar.test',
       title: 'Dev team',
       groupId: 'g1',
       memberCount: 6,
@@ -98,16 +98,13 @@ describe('summariesForTopicsEntry', () => {
           id: 't-general',
           name: 'General',
           isGeneral: true,
-          chatJid: 'general@rooms.galena.test',
+          chatJid: 'general@rooms.zilar.test',
         },
-        { ...topicWire(), id: 't-1', chatJid: 't-1@rooms.galena.test' },
+        { ...topicWire(), id: 't-1', chatJid: 't-1@rooms.zilar.test' },
       ],
     };
     const rows = summariesForTopicsEntry(entry);
-    expect(rows.map((row) => row.id)).toEqual([
-      'general@rooms.galena.test',
-      't-1@rooms.galena.test',
-    ]);
+    expect(rows.map((row) => row.id)).toEqual(['general@rooms.zilar.test', 't-1@rooms.zilar.test']);
     expect(rows[0]?.groupId).toBe('g1');
     expect(rows[0]?.topic?.isGeneral).toBe(true);
     expect(rows[1]?.title).toBe('Checkout bug');
@@ -116,7 +113,7 @@ describe('summariesForTopicsEntry', () => {
   it('keeps one legacy row for an older server without topics', () => {
     const entry: ChatEntry = {
       kind: 'group',
-      chatJid: 'team@rooms.galena.test',
+      chatJid: 'team@rooms.zilar.test',
       title: 'Team',
       groupId: 'g1',
       memberCount: 3,
@@ -124,7 +121,7 @@ describe('summariesForTopicsEntry', () => {
     };
     const rows = summariesForTopicsEntry(entry);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.id).toBe('team@rooms.galena.test');
+    expect(rows[0]?.id).toBe('team@rooms.zilar.test');
     expect(rows[0]?.topic).toBeUndefined();
     expect(isLegacyGroupChat(rows[0] as ChatSummary)).toBe(true);
   });
@@ -132,7 +129,7 @@ describe('summariesForTopicsEntry', () => {
   it('excludes archived topics', () => {
     const entry: ChatEntry = {
       kind: 'group',
-      chatJid: 'general@rooms.galena.test',
+      chatJid: 'general@rooms.zilar.test',
       title: 'Dev team',
       groupId: 'g1',
       memberCount: 6,
@@ -147,7 +144,7 @@ describe('summariesForTopicsEntry', () => {
   it('maps a channel feed row with the channel fields', () => {
     const entry: ChatEntry = {
       kind: 'group',
-      chatJid: 'acme@rooms.galena.test',
+      chatJid: 'acme@rooms.zilar.test',
       title: 'Acme Announcements',
       groupId: 'g-acme',
       memberCount: 4,
@@ -161,7 +158,7 @@ describe('summariesForTopicsEntry', () => {
           id: 't-feed',
           name: 'General',
           isGeneral: true,
-          chatJid: 'acme@rooms.galena.test',
+          chatJid: 'acme@rooms.zilar.test',
         },
       ],
     };
@@ -178,7 +175,7 @@ describe('summariesForTopicsEntry', () => {
   it('keeps a legacy channel row for an older server without topics', () => {
     const entry: ChatEntry = {
       kind: 'group',
-      chatJid: 'acme@rooms.galena.test',
+      chatJid: 'acme@rooms.zilar.test',
       title: 'Acme Announcements',
       groupId: 'g-acme',
       memberCount: 4,

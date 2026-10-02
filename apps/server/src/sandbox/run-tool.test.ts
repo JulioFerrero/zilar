@@ -446,8 +446,8 @@ describe('runTool escape attempts', () => {
   it('does not leak prototype pollution into a second run', async () => {
     const pollute = await runTool({
       source: `export default async function run() {
-        Object.defineProperty(Object.prototype, 'galenaPolluted', { value: 1, configurable: true });
-        return ({}).galenaPolluted === 1 ? 'polluted' : 'clean';
+        Object.defineProperty(Object.prototype, 'zilarPolluted', { value: 1, configurable: true });
+        return ({}).zilarPolluted === 1 ? 'polluted' : 'clean';
       }`,
       input: null,
       allowedHosts: [],
@@ -455,7 +455,7 @@ describe('runTool escape attempts', () => {
     });
     expect(pollute.ok).toBe(true);
     const second = await runTool({
-      source: `export default async function run() { return 'seen:' + String({}).galenaPolluted; }`,
+      source: `export default async function run() { return 'seen:' + String({}).zilarPolluted; }`,
       input: null,
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,

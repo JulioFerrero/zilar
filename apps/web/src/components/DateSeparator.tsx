@@ -1,4 +1,4 @@
-import { formatDateSeparator } from '@galena/chat-core';
+import { formatDateSeparator } from '@zilar/chat-core';
 
 export function DateSeparator({ date }: { date: Date }) {
   return (

@@ -6,6 +6,7 @@ import {
   type CipherGCM,
   type DecipherGCM,
 } from 'node:crypto';
+import { PUSH_STORAGE_KDF_LABEL } from '../kdf-labels';
 
 // Envelope encryption for the Web Push subscription keys at rest, using only
 // Node's built-in `crypto`. Same versioned-envelope shape as the provider-key
@@ -39,7 +40,7 @@ export interface PushCipher {
 }
 
 function deriveKey(masterKey: string, salt: Buffer): Buffer {
-  return Buffer.from(hkdfSync('sha256', masterKey, salt, 'galena/push-storage/v1', 32));
+  return Buffer.from(hkdfSync('sha256', masterKey, salt, PUSH_STORAGE_KDF_LABEL, 32));
 }
 
 function encryptOnce(masterKey: string, plaintext: string): string {

@@ -1,4 +1,4 @@
-import { StickerSchema } from '@galena/protocol';
+import { StickerSchema } from '@zilar/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { mockDemoStickerPacks } from './stickers';

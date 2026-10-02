@@ -10,4 +10,4 @@ export * from './mentions';
 export * from './reactions';
 export * from './edits';
 export * from './ai';
-export type { Attachment, Payload, VoiceMeta } from '@galena/protocol';
+export type { Attachment, Payload, VoiceMeta } from '@zilar/protocol';

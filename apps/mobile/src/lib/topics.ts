@@ -1,4 +1,4 @@
-import type { ChatSummary, TopicInfo, TopicKind, TopicStatus } from '@galena/chat-core';
+import type { ChatSummary, TopicInfo, TopicKind, TopicStatus } from '@zilar/chat-core';
 
 import { chatEntryTopics, type Topic } from './topics-api';
 import type { ChatEntry } from './chat-api';

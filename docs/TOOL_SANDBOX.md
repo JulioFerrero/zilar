@@ -52,7 +52,7 @@ Callers cannot raise a limit above its hard max. Error kinds: `invalid_source`,
 
 - `GET`/`HEAD` only, no body, `https:` only, no credentials, no explicit port
   except 443. Only the `accept` header passes; the host sets
-  `user-agent: GalenaTool/1`.
+  `user-agent: ZilarTool/1`.
 - The hostname must exactly equal an `allowedHosts` entry (case-insensitive,
   IDNA normalised; no wildcards, no suffix match, no IP literals).
   `allowedHosts` is the tool version's declared hosts **intersected with the

@@ -6,11 +6,11 @@ import { stateFileSchema, type StateFile, type TaskRecord } from './types.js';
 // The state file lives outside the repo so worktree removals and rebases can
 // never touch it. It holds session ids and bookkeeping only: no secrets.
 export function stateFilePath(): string {
-  const override = process.env['GALENA_LEAD_STATE'];
+  const override = process.env['ZILAR_LEAD_STATE'];
   if (override !== undefined && override.length > 0) {
     return override;
   }
-  return path.join(os.homedir(), '.galena-lead', 'state.json');
+  return path.join(os.homedir(), '.zilar-lead', 'state.json');
 }
 
 export function logFilePath(statePath: string): string {

@@ -80,7 +80,7 @@ AI replies are written in Markdown, but the web app shows them as raw text: `**b
 **3. The same-node swap** (T-0045, T-0047): the draft → final message swap keeps the same bubble node, and the reveal doesn't replay. Keep every existing test green, and add one where the draft and final text contain Markdown.
 
 **4. Chat list preview.**
-- Add `markdownToPlain(text)` in `@galena/chat-core`, so mobile can reuse it later. It strips the emphasis markers, the inline code backticks, the heading `#`s, and the list and quote markers; it keeps link text and drops the URLs; it collapses code fences to their content. It's a pure string function, with no dependencies.
+- Add `markdownToPlain(text)` in `@zilar/chat-core`, so mobile can reuse it later. It strips the emphasis markers, the inline code backticks, the heading `#`s, and the list and quote markers; it keeps link text and drops the URLs; it collapses code fences to their content. It's a pure string function, with no dependencies.
 - `ChatListItem` uses it for AI chats' last-message preview only.
 - Unit tests cover each rule, partial Markdown, and text that merely *contains* `*` (e.g. `2 * 3`), which must survive.
 
@@ -112,7 +112,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web --filter=@galena/chat-core
+pnpm exec turbo test --force --filter=@zilar/web --filter=@zilar/chat-core
 pnpm build
 ```
 
@@ -170,7 +170,7 @@ pnpm install                                        # Done in 3.5s; +96 packages
 pnpm format:check                                   # All matched files use Prettier code style!
 pnpm lint                                           # no output, exit 0
 pnpm typecheck                                      # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/web --filter=@galena/chat-core
+pnpm exec turbo test --force --filter=@zilar/web --filter=@zilar/chat-core
                                                     # chat-core: 6 files, 61 tests passed; web: 35 files, 226 tests passed; Tasks 2 successful
 pnpm build                                          # Tasks: 2 successful, 2 total; web built in ~0.9s
 ```
@@ -226,7 +226,7 @@ Tests: `markdown.test.ts` gained "does not treat an intra-word asterisk as empha
 pnpm format:check                                   # FAILS, and only on PREREVIEW.md: "[warn] PREREVIEW.md / Code style issues found". Every file I changed passes ("All matched files use Prettier code style!"). PREREVIEW.md is the lead's untracked pre-review artifact, outside the Allowed files; I left it as-is rather than reformat or ignore it. Fixing it would mean deleting/formatting the lead's file or editing .prettierignore (not allowed).
 pnpm lint                                           # no output, exit 0
 pnpm typecheck                                      # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/web --filter=@galena/chat-core
+pnpm exec turbo test --force --filter=@zilar/web --filter=@zilar/chat-core
                                                     # chat-core: 6 files, 62 tests passed (was 61); web: 35 files, 228 tests passed (was 226); Tasks 2 successful
 pnpm build                                          # Tasks: 2 successful, 2 total
 ```

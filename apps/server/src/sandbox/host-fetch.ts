@@ -39,7 +39,7 @@ export interface FetchBridgeOptions {
 export type FetchCheck =
   { ok: true; request: ValidatedFetchRequest } | { ok: false; message: string };
 
-export const TOOL_USER_AGENT = 'GalenaTool/1';
+export const TOOL_USER_AGENT = 'ZilarTool/1';
 
 export function normalizeHost(host: string): string {
   const trimmed = host.trim();

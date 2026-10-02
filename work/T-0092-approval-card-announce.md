@@ -31,7 +31,7 @@ Nothing can trigger a request in production yet (empty adapter registry), so the
 - `outcome.summary` is the adapter's `result.summary` for executed (already ≤ 500 chars) and a fixed string otherwise: failed → `The action failed.`, cancelled → `The request was not carried out.`. **Never the adapter's error text.**
 - **Agent gateway implements the port** as one new method on `AgentGateway`:
   `postToChat(input: { aiId: string; groupId: string | null; text: string; payload?: Payload }): Promise<boolean>` — returns `false` (and sends nothing) when the AI has no live session (`sessionIsLive` false / unknown AI) or the AI is not a member of the group's room (no room subscription); otherwise sends with `liveSendMessage` (groupchat to the room JID when `groupId` is set, chat to the **owner's** JID when it is `null`) and returns `true`.
-- **The card message.** Text body: `Approval needed: <summary>` (the approval's `summary`). Payload `{ v: 0, type: 'approval.request', data }` where `data` is an `ApprovalRequest` (`@galena/protocol`): `id` = approval id, `room` = the room JID (group) or the owner's bare JID (DM), `ai` = the AI's JID, `action`, `summary`, `details` (if any), `args_hash`, `worst_case_cost` (if any), `requested_by`, `expires_at` (ISO). Build it from the approval row, validate with `ApprovalRequestSchema` before sending; if it does not validate, do not send and log the class name only. Put this builder in a small pure function with its own tests.
+- **The card message.** Text body: `Approval needed: <summary>` (the approval's `summary`). Payload `{ v: 0, type: 'approval.request', data }` where `data` is an `ApprovalRequest` (`@zilar/protocol`): `id` = approval id, `room` = the room JID (group) or the owner's bare JID (DM), `ai` = the AI's JID, `action`, `summary`, `details` (if any), `args_hash`, `worst_case_cost` (if any), `requested_by`, `expires_at` (ISO). Build it from the approval row, validate with `ApprovalRequestSchema` before sending; if it does not validate, do not send and log the class name only. Put this builder in a small pure function with its own tests.
 - **Outcome notice:** plain text only, e.g. `Done: <summary>`, `The action failed.`, `The request was not carried out.`, no payload.
 - **Wiring in `index.ts`:** the announcer delegates to the agent gateway (create it lazily: the action gateway is built before the agent gateway, so pass an object whose methods call `agentGateway.postToChat(...)` at call time; when the agent gateway is disabled (`AGENT_GATEWAY_ENABLED` off) the announcer must still exist and simply do nothing). Only `index.ts` changes for wiring; `createApp`'s default gateway keeps no announcer.
 - No new HTTP routes, no new tables, no new dependencies.
@@ -73,7 +73,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -109,8 +109,8 @@ Wired the action gateway to announce tier-2 requests and their outcomes through 
 - `pnpm install`: succeeded (1010 packages, +19 dev deps, 15.3s).
 - `pnpm format:check`: `All matched files use Prettier code style!` (after `prettier --write` on the new and edited files).
 - `pnpm lint`: clean (oxlint, no errors). The first run flagged `no-useless-spread` on my `payload?: Payload` ternary; I introduced a `sendOptions` helper to satisfy the rule without changing behaviour.
-- `pnpm exec turbo typecheck --force --filter=@galena/server`: clean (`tsc --noEmit`).
-- `pnpm exec turbo test --force --filter=@galena/server`: **779 passed**, 7 skipped (53 test files passed, 5 skipped). The new announcer tests cover the action gateway (8 tests) and the agent gateway (5 tests); 13 tests in total.
+- `pnpm exec turbo typecheck --force --filter=@zilar/server`: clean (`tsc --noEmit`).
+- `pnpm exec turbo test --force --filter=@zilar/server`: **779 passed**, 7 skipped (53 test files passed, 5 skipped). The new announcer tests cover the action gateway (8 tests) and the agent gateway (5 tests); 13 tests in total.
 - `pnpm build` (turbo build): the server has no `build` script in `package.json`, so turbo reports no server task; mobile + the rest of the workspace build clean.
 - Live boot of `apps/server`: started with stub env, config validation passed, `createActionGateway` and `createAgentGateway` both instantiated the new dependencies and proxy without errors. The migration step failed with `ECONNREFUSED 127.0.0.1:1` because no Postgres is running in this environment, which is the expected behaviour for a worktree check.
 

@@ -54,7 +54,7 @@ describe('AddMachineDialog', () => {
     render(<AddMachineDialog onClose={onClose} />);
 
     expect(await screen.findByText('K7QX-M2PA')).toBeTruthy();
-    expect(screen.getByText(/galena-runner pair K7QX-M2PA/)).toBeTruthy();
+    expect(screen.getByText(/zilar-runner pair K7QX-M2PA/)).toBeTruthy();
     expect(screen.getByText('The runner app is coming soon.')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy pairing code' }));

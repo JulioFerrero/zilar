@@ -19,12 +19,12 @@ export const PEOPLE: Record<string, MockPerson> = {
 export const ME: MockPerson = { id: currentUserId, name: 'You' };
 
 export const AI_JIDS = {
-  dev1: 'dev-1@ai.galena.test',
-  qa1: 'qa-1@ai.galena.test',
-  marketing: 'marketing@ai.galena.test',
+  dev1: 'dev-1@ai.zilar.test',
+  qa1: 'qa-1@ai.zilar.test',
+  marketing: 'marketing@ai.zilar.test',
 };
 
 export const ROOMS = {
-  devTeam: 'dev-team@rooms.galena.test',
-  viernes: 'viernes@rooms.galena.test',
+  devTeam: 'dev-team@rooms.zilar.test',
+  viernes: 'viernes@rooms.zilar.test',
 };

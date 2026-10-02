@@ -1,4 +1,4 @@
-# Caddy reverse proxy for a bare-metal Galena install.
+# Caddy reverse proxy for a bare-metal Zilar install.
 #
 # Install Caddy, copy this file to /etc/caddy/Caddyfile, replace
 # chat.example.com with your domain and your@email.example with your
@@ -6,7 +6,7 @@
 # certificate itself (ports 80/443 must be reachable from the internet).
 #
 # The three backends run on this same machine: the web app's static files
-# are served by Caddy directly from /srv/galena-web (the Vite build
+# are served by Caddy directly from /srv/zilar-web (the Vite build
 # output), the server listens on 127.0.0.1:3000, ejabberd on
 # 127.0.0.1:5280. Validated with `caddy validate` (see guide §9).
 {
@@ -15,12 +15,12 @@
 }
 
 chat.example.com {
-  # Web app: static files built by `pnpm --filter @galena/web build`
-  # (output copied to /srv/galena-web). Long cache for hashed assets,
+  # Web app: static files built by `pnpm --filter @zilar/web build`
+  # (output copied to /srv/zilar-web). Long cache for hashed assets,
   # no cache for the entry point, same security headers as the Docker
   # image (apps/web/Caddyfile).
   handle {
-    root * /srv/galena-web
+    root * /srv/zilar-web
     header {
       X-Content-Type-Options nosniff
       Referrer-Policy strict-origin-when-cross-origin

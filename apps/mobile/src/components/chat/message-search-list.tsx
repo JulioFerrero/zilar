@@ -1,4 +1,4 @@
-import { formatListTime } from '@galena/chat-core';
+import { formatListTime } from '@zilar/chat-core';
 import { useRouter } from 'expo-router';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';

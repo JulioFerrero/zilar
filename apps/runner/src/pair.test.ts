@@ -5,14 +5,14 @@ import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { createPublicKey, verify } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { generateRunnerKeypair } from '@galena/runner-tunnel';
+import { generateRunnerKeypair } from '@zilar/runner-tunnel';
 import { fingerprintOfPublicKey, hasIdentity, identityPaths } from './identity.ts';
 import { normalizePairingCode, pairRunner, PairError } from './pair.ts';
 
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
 function tempHome(): { homeDir: string; cleanup: () => void } {
-  const dir = mkdtempSync(join(tmpdir(), 'galena-runner-pair-'));
+  const dir = mkdtempSync(join(tmpdir(), 'zilar-runner-pair-'));
   return {
     homeDir: dir,
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
@@ -96,7 +96,7 @@ async function startFakeServer(options: FakeServerOptions): Promise<FakeServerSt
         });
         signatureOk = verify(
           null,
-          Buffer.from(`galena-pair:v1:${normalized}`, 'ascii'),
+          Buffer.from(`zilar-pair:v1:${normalized}`, 'ascii'),
           key,
           Buffer.from(signature, 'base64'),
         );

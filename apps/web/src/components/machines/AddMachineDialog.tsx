@@ -12,7 +12,7 @@ const EXPIRED_ANNOUNCE = 'Code expired';
 
 /**
  * The "Add machine" dialog: mints a fresh pairing code, shows it big in Geist
- * Mono with a copy key, a live countdown, and the `galena-runner pair <CODE>`
+ * Mono with a copy key, a live countdown, and the `zilar-runner pair <CODE>`
  * command. The runner app is coming soon (T-0071+), so the line below the
  * command says so honestly.
  */
@@ -197,7 +197,7 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
             <p className="mt-3 text-[14px]">
               On the machine, run{' '}
               <span className="font-mono text-[13px] whitespace-nowrap">
-                galena-runner pair {pairing.code}
+                zilar-runner pair {pairing.code}
               </span>
             </p>
             <p className="mt-1 text-[13px] text-muted-foreground">The runner app is coming soon.</p>

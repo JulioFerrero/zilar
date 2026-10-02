@@ -1,6 +1,6 @@
-import type { ChatSummary, TopicInfo, TopicKind, TopicStatus } from '@galena/chat-core';
+import type { ChatSummary, TopicInfo, TopicKind, TopicStatus } from '@zilar/chat-core';
 import { atHour, plusMinutes } from './helpers';
-import type { UiMessage } from '@galena/chat-core';
+import type { UiMessage } from '@zilar/chat-core';
 import { ME, PEOPLE } from './ids';
 
 const ana = PEOPLE.ana!;

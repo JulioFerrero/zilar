@@ -1,8 +1,8 @@
 /**
  * The `?mock=` route param is a local-development convenience, so a production
- * build must not honor it: a stray deep link like `galena://ais?mock=1` should
+ * build must not honor it: a stray deep link like `zilar://ais?mock=1` should
  * never switch a real user to fake data. The param is allowed only in a dev
- * build (`__DEV__`) or when the bundle sets `EXPO_PUBLIC_GALENA_MOCK`.
+ * build (`__DEV__`) or when the bundle sets `EXPO_PUBLIC_ZILAR_MOCK`.
  */
 export function mockParamAllowed(env: { dev: boolean; envMock: string | undefined }): boolean {
   if (env.dev) {

@@ -79,7 +79,7 @@ None. `apps/server` already has everything needed (`fetch`, `zod`, `drizzle`).
 
 ### Integration check (you run it against the running stack)
 LiteLLM is **already running and healthy** on `127.0.0.1:4000`. A script or a
-test gated by `GALENA_LITELLM_INTEGRATION=1` that:
+test gated by `ZILAR_LITELLM_INTEGRATION=1` that:
 - issues a virtual key with a tiny budget
 - calls the proxy with it
 - shows the call succeeding, then the cap being enforced
@@ -134,7 +134,7 @@ pnpm build
   - `routes.ts` — `POST /api/ai/virtual-keys` (session-gated): takes a model
     list and optional caps, returns **only** `{ id, key }`.
   - `integration.ts` — the live-stack spike script, gated by
-    `GALENA_LITELLM_INTEGRATION=1`.
+    `ZILAR_LITELLM_INTEGRATION=1`.
   - `*.test.ts` — Vitest unit/route tests with a fake `fetch`.
 - `apps/server/src/config.ts` — added two **optional** env entries:
   `LITELLM_BASE_URL` and `LITELLM_MASTER_KEY`. No migration: key records are not
@@ -154,13 +154,13 @@ file with that flag — a change under `infra/**` that is outside this task.
 
 ### Budget enforcement evidence
 
-Live run, `GALENA_LITELLM_INTEGRATION=1` against `127.0.0.1:4000` (8/8 checks):
+Live run, `ZILAR_LITELLM_INTEGRATION=1` against `127.0.0.1:4000` (8/8 checks):
 
 ```
 health: HTTP 200 "I'm alive!"
 PASS  proxy is reachable
 
--- issue a virtual key (galena-t0007-1790554558276) with a 0.01 USD hard cap --
+-- issue a virtual key (zilar-t0007-1790554558276) with a 0.01 USD hard cap --
 issued: id=34c6a7e8...a33c6e57 key=sk-*** maxBudget=0.01 models=placeholder
 PASS  key is issued with the cap stored
 key info: spend=0 maxBudget=0.01 tpm=100 rpm=60
@@ -178,7 +178,7 @@ user key forwarded: true | platform key reused: false
 PASS  LiteLLM forwards the user key, not the platform placeholder key
 
 -- hard cap: spend above max_budget is rejected --
-over cap: HTTP 429 {"error":{"message":"Budget has been exceeded! Key=galena-t0007-1790554558276 (sk-...vPvg) Current cost: 0.02, Max budget: 0.01","type":"budget_exceeded","param":null,"code":"429"}}
+over cap: HTTP 429 {"error":{"message":"Budget has been exceeded! Key=zilar-t0007-1790554558276 (sk-...vPvg) Current cost: 0.02, Max budget: 0.01","type":"budget_exceeded","param":null,"code":"429"}}
 PASS  the cap is enforced: the call is rejected with budget_exceeded
 
 -- revoke: the key stops working --
@@ -227,11 +227,11 @@ No migration, no lockfile change, nothing under `infra/**`, `apps/web`,
 - `pnpm format:check`: `All matched files use Prettier code style!`
 - `pnpm lint`: `Found 0 warnings and 0 errors.` (242 files, 127 rules)
 - `pnpm typecheck`: `Tasks: 8 successful, 8 total`.
-- `pnpm test`: `Tasks: 8 successful, 8 total`; `@galena/server` 19 files,
+- `pnpm test`: `Tasks: 8 successful, 8 total`; `@zilar/server` 19 files,
   **178 passed** (includes the 23 new `src/ai` tests).
 - `pnpm build`: `Tasks: 2 successful, 2 total` (only packages with a build
-  script; `@galena/server` has no build script).
-- integration run: `GALENA_LITELLM_INTEGRATION=1 pnpm --filter @galena/server exec
+  script; `@zilar/server` has no build script).
+- integration run: `ZILAR_LITELLM_INTEGRATION=1 pnpm --filter @zilar/server exec
   tsx --env-file=<repo>/infra/.env src/ai/integration.ts` -> **8/8 checks passed**,
   exit 0. The virtual key was revoked in a `finally` block; the temp keys I used
   while probing were all deleted.
@@ -270,7 +270,7 @@ That is fixed in `apps/server/src/ai/routes.ts`:
 - `pnpm format:check`: `All matched files use Prettier code style!`
 - `pnpm lint`: `Found 0 warnings and 0 errors.`
 - `pnpm typecheck --force`: `Cached: 0 cached, 8 total`; 8/8 successful.
-- `pnpm test --force`: `Tasks: 8 successful, 8 total`; `@galena/server` 19 files,
+- `pnpm test --force`: `Tasks: 8 successful, 8 total`; `@zilar/server` 19 files,
   **180 passed** (25 in `src/ai`, up from 23). Devtools 9, chat-core 50,
   protocol 132, mobile 27, xmpp-core 115 + 3 skipped, agent-drivers 19, web 78.
 - `pnpm build --force`: `Tasks: 2 successful, 2 total`.
@@ -279,7 +279,7 @@ That is fixed in `apps/server/src/ai/routes.ts`:
 
 ```
 -- hard cap: spend above max_budget is rejected --
-over cap: HTTP 429 {"error":{"message":"Budget has been exceeded! Key=galena-t0007-1790561834227 (sk-...F7DQ) Current cost: 0.02, Max budget: 0.01","type":"budget_exceeded","param":null,"code":"429"}}
+over cap: HTTP 429 {"error":{"message":"Budget has been exceeded! Key=zilar-t0007-1790561834227 (sk-...F7DQ) Current cost: 0.02, Max budget: 0.01","type":"budget_exceeded","param":null,"code":"429"}}
 PASS  the cap is enforced: the call is rejected with budget_exceeded
 
 -- revoke: the key stops working --

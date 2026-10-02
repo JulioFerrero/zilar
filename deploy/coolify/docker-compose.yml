@@ -1,4 +1,4 @@
-# Galena production stack shaped for Coolify.
+# Zilar production stack shaped for Coolify.
 #
 # Coolify supplies the reverse proxy and HTTPS, so there is no `caddy`
 # service here: every service exposes its internal port and Coolify routes a
@@ -20,7 +20,7 @@
 # - Health checks live in Compose (Services have no separate health-check UI).
 #
 # Images are published by .github/workflows/images.yml as
-# ghcr.io/<owner>/galena-postgres and galena-ejabberd; IMAGE_OWNER/IMAGE_TAG
+# ghcr.io/<owner>/zilar-postgres and zilar-ejabberd; IMAGE_OWNER/IMAGE_TAG
 # pick the release to run. No repository files are mounted: the config is
 # baked into the images, so this file works as a lone paste into a Coolify
 # "Docker Compose Empty" service (which has no checkout of this repository).
@@ -41,15 +41,15 @@
 
 services:
   postgres:
-    image: ghcr.io/${IMAGE_OWNER:?}/galena-postgres:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-postgres:${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES:?}
       POSTGRES_DB: postgres
-      GALENA_DB_PASSWORD: ${SERVICE_PASSWORD_GALENA_DB:?}
+      ZILAR_DB_PASSWORD: ${SERVICE_PASSWORD_ZILAR_DB:?}
       EJABBERD_DB_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_DB:?}
-      GALENA_ARCHIVE_DB_PASSWORD: ${SERVICE_PASSWORD_ARCHIVE_DB:?}
+      ZILAR_ARCHIVE_DB_PASSWORD: ${SERVICE_PASSWORD_ARCHIVE_DB:?}
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -63,7 +63,7 @@ services:
     # Production config (ejabberd.yml + jwt-entrypoint.sh) is baked into the
     # image by deploy/ejabberd/Dockerfile; hosts, passwords, the upload URL
     # and the JWT secret arrive as environment below.
-    image: ghcr.io/${IMAGE_OWNER:?}/galena-ejabberd:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-ejabberd:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -86,12 +86,12 @@ services:
       # stack) flags the placeholder in plain words; on Coolify confirm
       # SERVICE_PASSWORD_PUSH_COMPONENT holds a generated value.
       EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSH_COMPONENT:-CHANGE_ME_PUSH_COMPONENT_SECRET}
-      # push.<XMPP domain> is derived at container start from GALENA_DOMAIN
+      # push.<XMPP domain> is derived at container start from ZILAR_DOMAIN
       # (see deploy/ejabberd/push-entrypoint.sh): set it to the same value
       # as XMPP_DOMAIN so the entrypoint writes push.<XMPP_DOMAIN>, matching
       # PUSH_COMPONENT_JID below.
-      GALENA_DOMAIN: ${XMPP_DOMAIN:?}
-      GALENA_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
+      ZILAR_DOMAIN: ${XMPP_DOMAIN:?}
+      ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
       EJABBERD_MACRO_UPLOAD_URL: ${EJABBERD_UPLOAD_URL:-https://uploads.example.com/upload}
       # Routed entry points on ejabberd's single HTTP listener (port 5280).
       # Coolify generates one domain per SERVICE_URL_* variable below; set
@@ -114,7 +114,7 @@ services:
       start_period: 20s
 
   server:
-    image: ghcr.io/${IMAGE_OWNER:?}/galena-server:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-server:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -129,8 +129,8 @@ services:
       # production with MAIL_TRANSPORT=smtp once T-0128 is merged.
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
-      DATABASE_URL: postgres://galena:${SERVICE_PASSWORD_GALENA_DB:?}@postgres:5432/galena
-      XMPP_ARCHIVE_DATABASE_URL: postgres://galena_archive:${SERVICE_PASSWORD_ARCHIVE_DB:?}@postgres:5432/ejabberd
+      DATABASE_URL: postgres://zilar:${SERVICE_PASSWORD_ZILAR_DB:?}@postgres:5432/zilar
+      XMPP_ARCHIVE_DATABASE_URL: postgres://zilar_archive:${SERVICE_PASSWORD_ARCHIVE_DB:?}@postgres:5432/ejabberd
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PUBLIC_URL: ${SERVICE_URL_SERVER_3000:?}
       BETTER_AUTH_SECRET: ${SERVICE_PASSWORD_BETTER_AUTH:?}
@@ -146,8 +146,8 @@ services:
       # The WS handler answers at ejabberd's /ws path, so the public token
       # URL is the routed WS domain plus /ws.
       XMPP_WS_PUBLIC_URL: ${SERVICE_URL_EJABBERD_WS_5280:?}/ws
-      GALENA_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
-      GALENA_KEY_ENCRYPTION_KEY: ${GALENA_KEY_ENCRYPTION_KEY:-@empty@}
+      ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
+      ZILAR_KEY_ENCRYPTION_KEY: ${ZILAR_KEY_ENCRYPTION_KEY:-@empty@}
       # Where sticker files live: a persistent volume (see `volumes:` below),
       # fixed absolute path, always set — never relative, never empty.
       # A manual edit of this value orphans previously uploaded stickers.
@@ -182,7 +182,7 @@ services:
       PUSH_VAPID_SUBJECT: ${PUSH_VAPID_SUBJECT:-}
       # push.<XMPP domain>: must equal the host the entrypoint writes into
       # the ejabberd_service listener from the XMPP_DOMAIN below (see
-      # deploy/ejabberd/push-entrypoint.sh). Set GALENA_DOMAIN to the same
+      # deploy/ejabberd/push-entrypoint.sh). Set ZILAR_DOMAIN to the same
       # value as XMPP_DOMAIN so the entrypoint derives it.
       PUSH_COMPONENT_JID: push.${XMPP_DOMAIN:?}
       # Must equal ejabberd's EJABBERD_MACRO_PUSH_COMPONENT_SECRET above.
@@ -211,7 +211,7 @@ services:
       - sticker-data:/data/stickers
 
   web:
-    image: ghcr.io/${IMAGE_OWNER:?}/galena-web:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-web:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       server:

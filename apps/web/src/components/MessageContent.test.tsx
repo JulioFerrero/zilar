@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { screen, within } from '@testing-library/react';
-import type { ChatSummary, UiMessage } from '@galena/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { renderApp } from '@/test/renderApp';
 
 const chat: ChatSummary = {
@@ -223,7 +223,7 @@ describe('mention chips (T-0053)', () => {
       text: '😀 @Ana hello',
       createdAt: new Date(2026, 8, 27, 12, 41),
       status: 'read',
-      mentions: [{ jid: 'u-ana@galena.test', name: 'Ana', begin: 3, end: 7 }],
+      mentions: [{ jid: 'u-ana@zilar.test', name: 'Ana', begin: 3, end: 7 }],
     });
 
     const list = screen.getByTestId('message-list');
@@ -241,7 +241,7 @@ describe('mention chips (T-0053)', () => {
       text: 'hi @You there',
       createdAt: new Date(2026, 8, 27, 12, 41),
       status: 'read',
-      mentions: [{ jid: 'u-you@galena.test', name: 'You', begin: 3, end: 7 }],
+      mentions: [{ jid: 'u-you@zilar.test', name: 'You', begin: 3, end: 7 }],
     });
 
     const chip = within(screen.getByTestId('message-list')).getByText('@You');
@@ -275,7 +275,7 @@ describe('mention chips (T-0053)', () => {
       text: 'noted @You',
       createdAt: new Date(2026, 8, 27, 12, 41),
       status: 'read',
-      mentions: [{ jid: 'u-you@galena.test', name: 'You', begin: 6, end: 10 }],
+      mentions: [{ jid: 'u-you@zilar.test', name: 'You', begin: 6, end: 10 }],
     });
 
     const chip = within(screen.getByTestId('message-list')).getByText('@You');
@@ -292,7 +292,7 @@ describe('mention chips (T-0053)', () => {
       text: '@Ana see https://x.com/a',
       createdAt: new Date(2026, 8, 27, 12, 41),
       status: 'read',
-      mentions: [{ jid: 'u-ana@galena.test', name: 'Ana', begin: 0, end: 4 }],
+      mentions: [{ jid: 'u-ana@zilar.test', name: 'Ana', begin: 0, end: 4 }],
     });
 
     const list = screen.getByTestId('message-list');

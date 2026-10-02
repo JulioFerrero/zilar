@@ -54,7 +54,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -87,7 +87,7 @@ pnpm build
 - `pnpm format:check` → `All matched files use Prettier code style!` (after `pnpm exec prettier --write apps/server/src/ais/routes.test.ts` once; the rest was already clean).
 - `pnpm lint` → exit 0.
 - `pnpm typecheck` → all 10 packages successful, exit 0.
-- `pnpm exec turbo test --force --filter=@galena/server` → **46 test files passed, 5 skipped (51); 677 tests passed, 7 skipped (684)** in 2m 39s. New audit entries describe block: 6/6 green.
+- `pnpm exec turbo test --force --filter=@zilar/server` → **46 test files passed, 5 skipped (51); 677 tests passed, 7 skipped (684)** in 2m 39s. New audit entries describe block: 6/6 green.
   - `writes exactly one ai.stopped entry on a real stop and one ai.resumed on a real resume, with no free text` ✓
   - `a second stop writes nothing; a second resume writes nothing` ✓
   - `a 404 on a missing or foreign id writes nothing` ✓

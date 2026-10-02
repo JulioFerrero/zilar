@@ -17,11 +17,11 @@ export function useAisApi(): AisApiHandle {
   const params = useGlobalSearchParams();
   // Referenced as static `process.env.EXPO_PUBLIC_*` expressions so
   // babel-preset-expo inlines them into the bundle at Metro time.
-  const envMock = process.env.EXPO_PUBLIC_GALENA_MOCK;
+  const envMock = process.env.EXPO_PUBLIC_ZILAR_MOCK;
   const scenario = aisMockScenario(
     {
-      EXPO_PUBLIC_GALENA_MOCK: envMock,
-      EXPO_PUBLIC_GALENA_MOCK_SCENARIO: process.env.EXPO_PUBLIC_GALENA_MOCK_SCENARIO,
+      EXPO_PUBLIC_ZILAR_MOCK: envMock,
+      EXPO_PUBLIC_ZILAR_MOCK_SCENARIO: process.env.EXPO_PUBLIC_ZILAR_MOCK_SCENARIO,
     },
     params,
     mockParamAllowed({ dev: __DEV__, envMock }),

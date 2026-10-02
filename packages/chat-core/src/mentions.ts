@@ -1,7 +1,7 @@
 import type { MentionMember, UiMention } from './types';
 
 // Offsets in this module are UTF-16 code units (JS string indices): the
-// textarea caret, `String.slice` and React all use them. `@galena/xmpp-core`
+// textarea caret, `String.slice` and React all use them. `@zilar/xmpp-core`
 // converts them to and from the XEP-0372 code-point offsets on the wire.
 
 export interface MentionQuery {

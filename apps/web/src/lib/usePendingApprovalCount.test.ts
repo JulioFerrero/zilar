@@ -12,7 +12,7 @@ function makeApproval(status: 'pending' | 'approved_once' | 'denied'): unknown {
     details: null,
     argsHash: 'a'.repeat(64),
     worstCase: null,
-    requestedBy: 'dev-1@ai.galena.test',
+    requestedBy: 'dev-1@ai.zilar.test',
     status,
     decidedAt: status === 'pending' ? null : new Date().toISOString(),
     note: null,

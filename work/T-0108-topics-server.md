@@ -14,7 +14,7 @@ estimate: 2 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-Decisions D25, D26 and D29 in `docs/PROJECT_PLAN.md` (Julio, 2026-09-29). Telegram forum mode with Discord-style access: a group is a list of **topics**; each topic is its own conversation with its own history and unread count; a topic is **public** (every group member) or **private** (only chosen people); a private topic is **hidden completely** from everyone else; every topic carries a thin **task strip** (type, status, owner, link). The mockup is the Claude artifact "Galena Topics Mockup" (https://claude.ai/artifact/YKvuBAcmXzRdiyx83eppSd): read it if you can; the text below is the contract.
+Decisions D25, D26 and D29 in `docs/PROJECT_PLAN.md` (Julio, 2026-09-29). Telegram forum mode with Discord-style access: a group is a list of **topics**; each topic is its own conversation with its own history and unread count; a topic is **public** (every group member) or **private** (only chosen people); a private topic is **hidden completely** from everyone else; every topic carries a thin **task strip** (type, status, owner, link). The mockup is the Claude artifact "Zilar Topics Mockup" (https://claude.ai/artifact/YKvuBAcmXzRdiyx83eppSd): read it if you can; the text below is the contract.
 
 **The design rule that matters most: every topic is its own XMPP MUC room.** One room per group could not keep a private topic private (every room member receives every message). With one members-only room per topic, ejabberd itself refuses to deliver a private topic to anyone who is not in it. Our database owns *who may see what* and syncs it into the rooms.
 
@@ -24,7 +24,7 @@ Decisions D25, D26 and D29 in `docs/PROJECT_PLAN.md` (Julio, 2026-09-29). Telegr
 - AIs are **not** added to new topics automatically (T-0109 adds AIs to topics). In this task, group AIs keep working in General exactly as today.
 - Unread counts stay client-side (as now); nothing to build for them here beyond exposing each topic as its own chat with its own room JID.
 
-### Data model (`apps/server/src/db/schema.ts`; migrations only via `pnpm --filter @galena/server db:generate`, never `npx`; the backfill via `pnpm --filter @galena/server exec drizzle-kit generate --custom --name=general-topics`)
+### Data model (`apps/server/src/db/schema.ts`; migrations only via `pnpm --filter @zilar/server db:generate`, never `npx`; the backfill via `pnpm --filter @zilar/server exec drizzle-kit generate --custom --name=general-topics`)
 - `topics`: `id` (uuid text), `group_id` (fk cascade), `name` (1–80 chars, no control characters), `glyph` (1–2 chars, default the first letter of the name, uppercased), `room_localpart` (unique), `visibility` (`public` | `private`), `kind` (`chat` | `task` | `bug` | `ui` | `routine`, default `chat`), `status` (`open` | `in_progress` | `in_review` | `blocked` | `done`, default `open`), `owner_user_id` (fk user, nullable, on delete set null), `owner_ai_id` (fk ais, nullable, on delete set null; at most one of the two owners is set), `link_url` (https URL ≤ 300, nullable), `link_label` (≤ 40, nullable), `is_general` (bool), `archived_at` (nullable), `created_by` (fk user), `created_at`, `updated_at`. Partial unique index on `(group_id, lower(name))` where `archived_at is null`; partial unique index on `(group_id)` where `is_general`.
 - `topic_members`: `topic_id` (fk cascade), `user_id` (fk cascade), `added_by`, `added_at`, pk `(topic_id, user_id)`. Rows exist **only for private topics**; a public topic's members are all group members (no rows).
 - `groups.members_can_create_topics` (bool, default false).
@@ -91,7 +91,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test -- --maxWorkers=2
+pnpm --filter @zilar/server test -- --maxWorkers=2
 pnpm build
 ```
 
@@ -121,7 +121,7 @@ pnpm build
 - `pnpm format:check`: pass ("All matched files use Prettier code style!")
 - `pnpm lint`: pass (oxlint clean; rewrote a control-char regex as a code-point loop, no disables)
 - `pnpm typecheck`: pass (turbo 10/10)
-- `pnpm --filter @galena/server test --maxWorkers=2`: 64 files passed, 5 skipped; 1093 passed, 7 skipped (269s). Note: the first attempt used the wrong `-- --maxWorkers=2` form and was killed by the lead; re-ran once with the correct form, alone.
+- `pnpm --filter @zilar/server test --maxWorkers=2`: 64 files passed, 5 skipped; 1093 passed, 7 skipped (269s). Note: the first attempt used the wrong `-- --maxWorkers=2` form and was killed by the lead; re-ran once with the correct form, alone.
 - `pnpm build`: pass (2/2 turbo tasks)
 - Scoped: `src/topics` 21 passed; `groups.test.ts`+`chats.test.ts` 35 passed; `audit/routes`+`authz-sweep` 16 passed.
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|console.log|: any` in all touched source: no hits.

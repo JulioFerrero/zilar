@@ -116,7 +116,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/chat-core --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/xmpp-core --filter=@zilar/chat-core --filter=@zilar/web
 pnpm build
 ```
 
@@ -243,14 +243,14 @@ pnpm lint
 pnpm typecheck
 # Tasks: 9 successful, 9 total
 
-pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/chat-core --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/xmpp-core --filter=@zilar/chat-core --filter=@zilar/web
 # xmpp-core: 6 files passed, 133 passed | 3 skipped (136)  [core.test.ts 34, was 33]
 # chat-core: 7 files passed, 95 passed (95)                [new mentions.test.ts adds 30]
 # web:       35 files passed, 246 passed (246)             [Composer 12, MessageContent 13, realStore 68]
 # Tasks: 3 successful, 3 total
 
 pnpm build
-# Tasks: 2 successful, 2 total (@galena/web + @galena/mobile; a cold run took 24s,
+# Tasks: 2 successful, 2 total (@zilar/web + @zilar/mobile; a cold run took 24s,
 # the final confirmation run was fully cached)
 ```
 
@@ -314,10 +314,10 @@ text `@Luis`, `mentions` undefined.
 `isMentionOfMe(jid, meJid)` now compares the exact bare JID (resource/query
 stripped) and the localpart-only fallback is gone. The Composer uses the same
 function. The mock store's default `me` now carries
-`jid: 'u-you@galena.test'`, so mock mode still excludes/highlights me.
+`jid: 'u-you@zilar.test'`, so mock mode still excludes/highlights me.
 Test: `MessageContent.test.tsx` → "does not highlight a same-named mention on
 another domain" (`u-you@other.domain` stays a plain `mention-chip`), next to the
-existing positive `u-you@galena.test` case. `MessageList.tsx` changed only for
+existing positive `u-you@zilar.test` case. `MessageList.tsx` changed only for
 this one prop pass-through, as allowed.
 
 **3. nit — `buildMessage` range validation.** `buildMessage` now skips mentions
@@ -336,7 +336,7 @@ pnpm lint
 # (no output) exit 0
 pnpm typecheck
 # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/chat-core --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/xmpp-core --filter=@zilar/chat-core --filter=@zilar/web
 # xmpp-core: 134 passed | 3 skipped (137)   [+1 build range/cap test]
 # chat-core: 95 passed (95)                 [isMentionOfMe tests updated]
 # web:       248 passed (248)               [+1 chat-switch, +1 foreign-domain chip]
@@ -354,7 +354,7 @@ pnpm build
 - Scope exceptions granted by the lead: `packages/xmpp-core/src/client.ts` and `core.test.ts` (the `sendMessage` wire-up, which the worker correctly blocked on), and `apps/web/src/components/MessageList.tsx` (passing `meJid` through).
 - The round 1 pre-review had two should-fixes: mentions leaking across chats when you switch without sending, and the me-mention check using the localpart only. Both were fixed in round 2 with tests, plus send-side range validation and the cap. The remaining nits are accepted: case normalization is latent, member names can go stale until a reload, the echo signature ignores mentions, and the backspace test asserts only the text.
 - Offsets: UTF-16 in the app, code points on the wire, converted in `buildMessage` and the parse. Emoji round trips are tested.
-- Live check in Julio's Helium (branch on :5174, live server), in his "Galena amigos" group, with nothing sent:
+- Live check in Julio's Helium (branch on :5174, live server), in his "Zilar amigos" group, with nothing sent:
   - `@` opens the picker with the real members;
   - `an` + Tab inserts `@Ana (test) `;
   - backspace removes the whole mention;

@@ -1,4 +1,4 @@
-import type { Attachment } from '@galena/protocol';
+import type { Attachment } from '@zilar/protocol';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -19,7 +19,7 @@ import {
 function attachment(overrides: Partial<Attachment> = {}): Attachment {
   return {
     kind: 'image',
-    url: 'https://upload.galena.test/x/stage.png',
+    url: 'https://upload.zilar.test/x/stage.png',
     name: 'stage.png',
     size: 245_760,
     mime: 'image/png',
@@ -61,20 +61,20 @@ describe('mobile attachments lib (T-0150)', () => {
   });
 
   it('only follows http(s) URLs', () => {
-    expect(safeHttpUrl('https://upload.galena.test/x')).toBe('https://upload.galena.test/x');
+    expect(safeHttpUrl('https://upload.zilar.test/x')).toBe('https://upload.zilar.test/x');
     expect(safeHttpUrl('javascript:alert(1)')).toBeUndefined();
     expect(safeHttpUrl('data:image/png;base64,xx')).toBeUndefined();
   });
 
   it('trusts the service host, the domain and upload.<domain>', () => {
     const hosts = trustedMediaHosts({
-      service: 'wss://chat.galena.test/ws',
-      domain: 'galena.test',
+      service: 'wss://chat.zilar.test/ws',
+      domain: 'zilar.test',
     });
-    expect(hosts.has('chat.galena.test')).toBe(true);
-    expect(hosts.has('galena.test')).toBe(true);
-    expect(hosts.has('upload.galena.test')).toBe(true);
-    expect(isTrustedMediaUrl('https://upload.galena.test/f/x.png', hosts)).toBe(true);
+    expect(hosts.has('chat.zilar.test')).toBe(true);
+    expect(hosts.has('zilar.test')).toBe(true);
+    expect(hosts.has('upload.zilar.test')).toBe(true);
+    expect(isTrustedMediaUrl('https://upload.zilar.test/f/x.png', hosts)).toBe(true);
     expect(isTrustedMediaUrl('https://evil.test/x.png', hosts)).toBe(false);
     expect(isTrustedMediaUrl('javascript:alert(1)', hosts)).toBe(false);
     expect(isTrustedMediaUrl('gradient:sunset', hosts)).toBe(false);
@@ -90,11 +90,11 @@ describe('mobile attachments lib (T-0150)', () => {
         width: 4,
         height: 3,
       },
-      'https://upload.galena.test/get/abc',
+      'https://upload.zilar.test/get/abc',
     );
     expect(data).toEqual({
       kind: 'image',
-      url: 'https://upload.galena.test/get/abc',
+      url: 'https://upload.zilar.test/get/abc',
       name: 'photo.jpg',
       size: 120,
       mime: 'image/jpeg',
@@ -129,13 +129,13 @@ describe('mobile attachments lib (T-0150)', () => {
   it('keeps a trusted image and downgrades an untrusted one to a file card', () => {
     const trusted = sanitizeIncomingAttachment(attachment(), {
       service: 'ws://x',
-      domain: 'galena.test',
+      domain: 'zilar.test',
     });
     expect(trusted.kind).toBe('image');
 
     const untrusted = sanitizeIncomingAttachment(attachment({ url: 'https://evil.test/x.png' }), {
       service: 'ws://x',
-      domain: 'galena.test',
+      domain: 'zilar.test',
     });
     expect(untrusted.kind).toBe('file');
     expect(untrusted.width).toBeUndefined();
@@ -156,12 +156,12 @@ describe('mobile attachments lib (T-0150)', () => {
   // against the API origin) renders inline through the API origin; the
   // request carries the session bearer. Any other host stays a file row.
   it('matches gif- videos on a same-origin /api/ path too', () => {
-    const trusted = new Set(['upload.galena.test', 'galena.test']);
+    const trusted = new Set(['upload.zilar.test', 'zilar.test']);
     const video = attachment({
       kind: 'file',
       name: 'gif-abc123.mp4',
       mime: 'video/mp4',
-      url: 'https://galena.test/api/files/get/abc',
+      url: 'https://zilar.test/api/files/get/abc',
     });
     expect(isGifVideoAttachment(video, trusted)).toBe(true);
     expect(
@@ -170,12 +170,12 @@ describe('mobile attachments lib (T-0150)', () => {
   });
 
   it('matches gif- videos only on trusted URLs', () => {
-    const trusted = new Set(['upload.galena.test']);
+    const trusted = new Set(['upload.zilar.test']);
     const video = attachment({
       kind: 'file',
       name: 'gif-abc123.mp4',
       mime: 'video/mp4',
-      url: 'https://upload.galena.test/get/abc',
+      url: 'https://upload.zilar.test/get/abc',
     });
     expect(isGifVideoAttachment(video, trusted)).toBe(true);
     expect(isGifVideoAttachment({ ...video, url: 'https://evil.test/x.mp4' }, trusted)).toBe(false);

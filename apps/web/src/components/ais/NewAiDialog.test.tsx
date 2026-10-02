@@ -16,7 +16,7 @@ function jsonResponse(status: number, body: unknown): Response {
 
 const auth: AuthState = {
   status: 'authenticated',
-  user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+  user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
 
@@ -42,7 +42,7 @@ const createdAi = {
   template: 'dev',
   persona: 'You are a concise senior engineer.',
   model: 'gpt-4o',
-  jid: 'ai-a-1@galena.test',
+  jid: 'ai-a-1@zilar.test',
   status: 'active',
   providerConnectionId: 'c-1',
   limits: { perDayUsd: 1, perMonthUsd: 10 },
@@ -127,8 +127,8 @@ describe('NewAiDialog', () => {
     });
 
     // Lands in the chat and the list knows the new AI immediately.
-    expect(await screen.findByText('Chat screen ai-a-1@galena.test')).toBeTruthy();
-    expect(store.getState().chats.some((chat) => chat.id === 'ai-a-1@galena.test')).toBe(true);
+    expect(await screen.findByText('Chat screen ai-a-1@zilar.test')).toBeTruthy();
+    expect(store.getState().chats.some((chat) => chat.id === 'ai-a-1@zilar.test')).toBe(true);
   });
 
   it('shows the provider picker with several connections and prefills its default model', async () => {
@@ -230,7 +230,7 @@ describe('NewAiDialog', () => {
 
     await waitFor(() => expect(postsTo(fetchMock)).toHaveLength(1));
     resolvePost?.(jsonResponse(201, createdAi));
-    await screen.findByText('Chat screen ai-a-1@galena.test');
+    await screen.findByText('Chat screen ai-a-1@zilar.test');
     expect(postsTo(fetchMock)).toHaveLength(1);
   });
 

@@ -3,10 +3,10 @@
 // `roster` when a contact is pushed to it.
 //
 //   pnpm infra:up
-//   GALENA_XMPP_INTEGRATION=1 pnpm --filter @galena/xmpp-core test
+//   ZILAR_XMPP_INTEGRATION=1 pnpm --filter @zilar/xmpp-core test
 //   pnpm infra:down
 //
-// Skipped unless GALENA_XMPP_INTEGRATION=1. Like integration.test.ts, it uses
+// Skipped unless ZILAR_XMPP_INTEGRATION=1. Like integration.test.ts, it uses
 // the server's admin client and JWT issuer through relative imports.
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,7 @@ import { issueXmppToken } from '../../../apps/server/src/xmpp/token';
 import { createXmppCore } from './index';
 import type { InvitedEvent, RosterEvent } from './types';
 
-const integrationEnabled = process.env.GALENA_XMPP_INTEGRATION === '1';
+const integrationEnabled = process.env.ZILAR_XMPP_INTEGRATION === '1';
 const WAIT_TIMEOUT_MS = 15_000;
 
 function loadConfig(): XmppConfig {
@@ -47,7 +47,7 @@ async function waitFor(predicate: () => boolean, description: string): Promise<v
   }
 }
 
-describe.skipIf(!integrationEnabled)('@galena/xmpp-core invites and roster', () => {
+describe.skipIf(!integrationEnabled)('@zilar/xmpp-core invites and roster', () => {
   it('receives invited when added to a group and roster when a contact is added', async () => {
     const config = loadConfig();
     const service = websocketUrl(config.apiUrl);
@@ -89,7 +89,7 @@ describe.skipIf(!integrationEnabled)('@galena/xmpp-core invites and roster', () 
 
       await admin.addRosterItem(bobLocal, aliceJid, {
         nick: 'Alice',
-        groups: ['Galena'],
+        groups: ['Zilar'],
         subs: 'both',
       });
       await waitFor(

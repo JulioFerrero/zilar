@@ -1,4 +1,4 @@
-import { groupMessages, unreadDividerIndex } from '@galena/chat-core';
+import { groupMessages, unreadDividerIndex } from '@zilar/chat-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -286,17 +286,17 @@ describe('isMockMode', () => {
     expect(isMockMode({ mock: '1' }, env())).toBe(false);
   });
 
-  it('honors ?mock=1 in a dev build or with EXPO_PUBLIC_GALENA_MOCK set', () => {
+  it('honors ?mock=1 in a dev build or with EXPO_PUBLIC_ZILAR_MOCK set', () => {
     expect(isMockMode({ mock: '1' }, env({ dev: true }))).toBe(true);
     expect(isMockMode({ mock: '1' }, env({ envMock: 'default' }))).toBe(true);
   });
 
-  it('never enables mock mode with EXPO_PUBLIC_GALENA_MOCK=false or 0', () => {
+  it('never enables mock mode with EXPO_PUBLIC_ZILAR_MOCK=false or 0', () => {
     expect(isMockMode({ mock: '1' }, env({ envMock: 'false' }))).toBe(false);
     expect(isMockMode({ mock: '1' }, env({ envMock: '0' }))).toBe(false);
   });
 
-  it('keeps the test and EXPO_PUBLIC_GALENA_MOCK=1 modes always on', () => {
+  it('keeps the test and EXPO_PUBLIC_ZILAR_MOCK=1 modes always on', () => {
     expect(isMockMode({}, env({ nodeEnv: 'test' }))).toBe(true);
     expect(isMockMode({}, env({ envMock: '1' }))).toBe(true);
   });

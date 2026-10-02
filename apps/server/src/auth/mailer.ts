@@ -28,9 +28,9 @@ const CONNECTION_TIMEOUT_MS = 10_000;
 const SEND_TIMEOUT_MS = 20_000;
 
 const SUBJECTS: Record<OtpPurpose, string> = {
-  'sign-in': 'Your Galena sign-in code',
+  'sign-in': 'Your Zilar sign-in code',
   'email-verification': 'Verify your email',
-  'forget-password': 'Reset your Galena sign-in',
+  'forget-password': 'Reset your Zilar sign-in',
   'change-email': 'Confirm your new email',
 };
 
@@ -40,7 +40,7 @@ function validityMinutes(): number {
 
 function buildTextBody(code: string, minutes: number): string {
   return (
-    `Your Galena code is ${code}.\n\n` +
+    `Your Zilar code is ${code}.\n\n` +
     `It is valid for ${minutes} minutes.\n\n` +
     `If you did not ask for this, ignore this email.`
   );
@@ -65,7 +65,7 @@ function escapeHtml(value: string): string {
 
 function buildHtmlBody(code: string, minutes: number): string {
   return (
-    `<p>Your Galena code is <strong>${escapeHtml(code)}</strong>.</p>` +
+    `<p>Your Zilar code is <strong>${escapeHtml(code)}</strong>.</p>` +
     `<p>It is valid for ${minutes} minutes.</p>` +
     `<p>If you did not ask for this, ignore this email.</p>`
   );

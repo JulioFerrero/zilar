@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { ChevronDown } from 'lucide-react';
 import { createAi, listConnections, type AiTemplate, type Connection } from '@/lib/api';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';

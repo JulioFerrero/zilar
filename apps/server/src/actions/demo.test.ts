@@ -57,7 +57,7 @@ async function seedAi(
   });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  const jid = `${localpart}@galena.localhost`;
+  const jid = `${localpart}@zilar.localhost`;
   await context.db.insert(ais).values({
     id: aiId,
     owner: ownerId,
@@ -164,7 +164,7 @@ describe('demo.echo adapter', () => {
       aiId,
       action: DEMO_ECHO_ACTION,
       args: { text: 'hello' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     expect(result).toEqual({ status: 'pending_approval', approvalId: expect.any(String) });
     if (result.status !== 'pending_approval') {
@@ -213,7 +213,7 @@ describe('demo.echo adapter', () => {
       aiId,
       action: DEMO_ECHO_ACTION,
       args: { text: 'nope' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     if (result.status !== 'pending_approval') {
       throw new Error('expected pending_approval');
@@ -239,7 +239,7 @@ describe('demo.echo adapter', () => {
       aiId,
       action: DEMO_ECHO_ACTION,
       args: { text: 'kill' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     if (result.status !== 'pending_approval') {
       throw new Error('expected pending_approval');
@@ -289,7 +289,7 @@ describe('demo.echo adapter', () => {
         aiId,
         action: DEMO_ECHO_ACTION,
         args: { text: 'boom' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       // Tier 2 still needs approval; onApprovalDecided runs the adapter.
       if (result.status !== 'pending_approval') {
@@ -325,7 +325,7 @@ describe('demo.echo adapter', () => {
       groupId,
       action: DEMO_ECHO_ACTION,
       args: { text: 'group' },
-      requestedBy: 'ai-bot@galena.localhost',
+      requestedBy: 'ai-bot@zilar.localhost',
     });
     expect(result).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
   });

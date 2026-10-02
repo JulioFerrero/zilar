@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { StickerMessage } from './sticker-message';
-import type { Sticker } from '@galena/protocol';
-import type { UiMessage } from '@galena/chat-core';
+import type { Sticker } from '@zilar/protocol';
+import type { UiMessage } from '@zilar/chat-core';
 
 vi.mock('react-native', () => ({
   Image: 'Image',

@@ -41,7 +41,7 @@ const FILE = '/api/stickers/223e4567-e89b-12d3-a456-426614174001/file';
 
 describe('stickers storage', () => {
   it('exports the per-device key', () => {
-    expect(RECENT_STICKERS_KEY).toBe('galena:recentStickers');
+    expect(RECENT_STICKERS_KEY).toBe('zilar:recentStickers');
   });
 
   it('reads an empty list from a fresh backend and hostile data', async () => {

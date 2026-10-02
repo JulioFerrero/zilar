@@ -14,17 +14,17 @@ estimate: 1 day
 ## Spec (written by Claude, do not edit)
 
 ### Why
-Found while building the production install (T-0126, 2026-09-30): Galena signs people in **only with an email one-time code** (Better Auth `emailOTP`; password login is off) and new people need an invite. The only mailer, `ConsoleMailer` in `apps/server/src/auth/mailer.ts`, **throws in production** ("No email provider is configured"), so a production server cannot start, and nobody but a developer reading logs can ever sign in. Every real install (self-hosted, family and friends, the hosted service) needs real email. This task adds it, and nothing else.
+Found while building the production install (T-0126, 2026-09-30): Zilar signs people in **only with an email one-time code** (Better Auth `emailOTP`; password login is off) and new people need an invite. The only mailer, `ConsoleMailer` in `apps/server/src/auth/mailer.ts`, **throws in production** ("No email provider is configured"), so a production server cannot start, and nobody but a developer reading logs can ever sign in. Every real install (self-hosted, family and friends, the hosted service) needs real email. This task adds it, and nothing else.
 
 ### What to build
 - **Dependencies (the only ones allowed, versions current at the time, pinned by the lockfile):** `nodemailer` and `@types/nodemailer` in `apps/server`.
 - `apps/server/src/auth/mailer.ts`: keep the `Mailer` interface and `ConsoleMailer` (development only, unchanged behaviour, still refuses production by default). Add `SmtpMailer implements Mailer` using `nodemailer.createTransport`. `createMailer(config, logger)` picks by config.
 - **Config (zod, in `config.ts`, all optional unless SMTP is chosen), documented in `docs/SERVER_CONFIG.md`:**
   - `MAIL_TRANSPORT`: `console` | `smtp`. Default: `console` when `NODE_ENV !== 'production'`, otherwise **unset means the server refuses to start with the same clear error as today**, now pointing at these variables.
-  - `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_SECURE` (`true` = implicit TLS, normally port 465; `false` = **STARTTLS required**: set `requireTLS: true`, never fall back to plaintext), `SMTP_USER`, `SMTP_PASSWORD` (both optional together: no auth if both absent, error if only one), `MAIL_FROM` (required with smtp, e.g. `Galena <no-reply@example.com>`; validated as a mailbox), `MAIL_REPLY_TO` optional.
+  - `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_SECURE` (`true` = implicit TLS, normally port 465; `false` = **STARTTLS required**: set `requireTLS: true`, never fall back to plaintext), `SMTP_USER`, `SMTP_PASSWORD` (both optional together: no auth if both absent, error if only one), `MAIL_FROM` (required with smtp, e.g. `Zilar <no-reply@example.com>`; validated as a mailbox), `MAIL_REPLY_TO` optional.
   - `MAIL_ALLOW_CONSOLE_IN_PRODUCTION` (boolean, default false): an explicit opt-in that lets a **single-admin private install** run with `MAIL_TRANSPORT=console` in production; the server then logs a loud startup warning ("sign-in codes are written to the server log") and the codes appear in the log at `warn` level with the email address. Off by default and documented as unsuitable for anyone but the operator.
   - Validation errors are precise (`SMTP_HOST is required when MAIL_TRANSPORT=smtp`) and **never echo `SMTP_PASSWORD`**. The password is redacted wherever config is logged (check the existing redaction list and add the new secret names).
-- **Message:** plain text and a minimal HTML alternative, English, subject by purpose (`Your Galena sign-in code`, `Verify your email`, `Reset your Galena sign-in`, `Confirm your new email`), body: the code, how long it is valid (`OTP_EXPIRES_IN_SECONDS` from `auth.ts`, expressed in minutes), a line "If you did not ask for this, ignore this email.", and nothing else (no links, no tracking, no images). The HTML is generated from escaped text (no interpolation of untrusted strings into markup: the code and purpose are the only variables, and the code is validated as digits before use).
+- **Message:** plain text and a minimal HTML alternative, English, subject by purpose (`Your Zilar sign-in code`, `Verify your email`, `Reset your Zilar sign-in`, `Confirm your new email`), body: the code, how long it is valid (`OTP_EXPIRES_IN_SECONDS` from `auth.ts`, expressed in minutes), a line "If you did not ask for this, ignore this email.", and nothing else (no links, no tracking, no images). The HTML is generated from escaped text (no interpolation of untrusted strings into markup: the code and purpose are the only variables, and the code is validated as digits before use).
 - **Safety rules:** the OTP and the SMTP password are never logged, never put in an error message, never returned by an endpoint. On failure `sendOtp` throws a generic `MailerDeliveryError` (log only the error class and SMTP response code, not the response text, which can echo the address); the auth route must answer the same way it does today for a mailer failure (read `auth.ts` and the tests; do not change the API shape). Add a connection timeout (10 s) and a send timeout (20 s) so a dead SMTP server cannot hang sign-in. **Do not weaken the existing per-email and per-IP rate limits on sending codes**; verify they still apply.
 - **Startup check:** with `MAIL_TRANSPORT=smtp`, the server verifies the SMTP connection at startup (`transporter.verify()`) and **logs a warning, does not crash**, if it fails (a temporary mail outage must not take the chat down); it retries on the next send.
 - **No new endpoint, no UI, no schema change.**
@@ -51,7 +51,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
 pnpm build
 ```
 
@@ -85,9 +85,9 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install`: ok (6.7 s).
-- `pnpm --filter @galena/server add nodemailer` / `add -D @types/nodemailer`: ok (nodemailer 10.0.12, types 8.0.2; pre-existing unmet-peer warning in apps/mobile only).
+- `pnpm --filter @zilar/server add nodemailer` / `add -D @types/nodemailer`: ok (nodemailer 10.0.12, types 8.0.2; pre-existing unmet-peer warning in apps/mobile only).
 - `pnpm format:check`: pass. `pnpm lint` (oxlint): pass. `pnpm typecheck` (turbo, all 10 tasks): pass.
-- `pnpm --filter @galena/server test --maxWorkers=2`: 64 files passed, 1141 passed, 7 skipped (pre-existing skips), 0 failed (~232 s).
+- `pnpm --filter @zilar/server test --maxWorkers=2`: 64 files passed, 1141 passed, 7 skipped (pre-existing skips), 0 failed (~232 s).
 - `pnpm build` (turbo): 2 successful (server build is type-only/cached upstream; web+mobile built).
 - Verified manually: hostile address `evil"<script>…@example.com` is neutralised by nodemailer's parser and never interpolated into HTML (probed with node + jsonTransport before writing code); a scratch test (since removed) showed a throwing mailer still yields `200 {"success":true}` on send-verification-otp — the pre-existing Better Auth behaviour, unchanged — and per-email/per-IP rate limits in `auth.ts` are untouched (rate-limit test passes).
 

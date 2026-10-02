@@ -1,4 +1,4 @@
-# Galena Postgres image with the schema bootstrap baked in.
+# Zilar Postgres image with the schema bootstrap baked in.
 #
 # The Coolify "Docker Compose Empty" path has no checkout of this repository,
 # so the plain `deploy/docker-compose.yml` bind mount of `./postgres/init`
@@ -10,10 +10,10 @@
 #
 # Build from the deploy/ directory:
 #
-#   docker build -f postgres/Dockerfile -t galena-postgres:local deploy/
+#   docker build -f postgres/Dockerfile -t zilar-postgres:local deploy/
 #
 # Published per release tag by .github/workflows/images.yml as
-# ghcr.io/<owner>/galena-postgres.
+# ghcr.io/<owner>/zilar-postgres.
 
 FROM pgvector/pgvector:0.8.6-pg18-trixie
 

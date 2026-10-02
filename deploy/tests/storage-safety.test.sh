@@ -12,9 +12,9 @@
 #   2. The production ejabberd.yml carries the quota module
 #      (mod_http_upload_quota) with literal 2048/4096 shaper rules,
 #      max_size still 50 MiB, and no max_days (no age-out).
-#   3. `galena doctor` warns at 80% disk use and fails at 95% (injected
-#      GALENA_DOCTOR_DISK_USED_PCT — no real disk is filled).
-#   4. `galena backup --dry-run` / `restore --dry-run` mention both file
+#   3. `zilar doctor` warns at 80% disk use and fails at 95% (injected
+#      ZILAR_DOCTOR_DISK_USED_PCT — no real disk is filled).
+#   4. `zilar backup --dry-run` / `restore --dry-run` mention both file
 #      stores; backup refuses without a running stack (fail-closed).
 #   5. No secrets appear in any output captured here.
 #
@@ -23,7 +23,7 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
-GALENA="$ROOT/deploy/galena"
+ZILAR="$ROOT/deploy/zilar"
 PASS=0
 FAIL=0
 
@@ -44,23 +44,23 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 cat > "$T/.env" <<'EOF'
-GALENA_DOMAIN=storage-test.example
+ZILAR_DOMAIN=storage-test.example
 ACME_EMAIL=ops@storage-test.example
 IMAGE_OWNER=testowner
 IMAGE_TAG=t0151
 POSTGRES_PASSWORD=x1
-GALENA_DB_PASSWORD=x2
+ZILAR_DB_PASSWORD=x2
 EJABBERD_DB_PASSWORD=x3
-GALENA_ARCHIVE_DB_PASSWORD=x4
+ZILAR_ARCHIVE_DB_PASSWORD=x4
 EJABBERD_ADMIN_PASSWORD=x5
-GALENA_XMPP_JWT_SECRET=x6
+ZILAR_XMPP_JWT_SECRET=x6
 BETTER_AUTH_SECRET=x7
 EOF
 cat > "$T/cool.env" <<'EOF'
 IMAGE_OWNER=testowner
 IMAGE_TAG=t0151
 SERVICE_PASSWORD_POSTGRES=x1
-SERVICE_PASSWORD_GALENA_DB=x2
+SERVICE_PASSWORD_ZILAR_DB=x2
 SERVICE_PASSWORD_EJABBERD_DB=x3
 SERVICE_PASSWORD_ARCHIVE_DB=x4
 SERVICE_PASSWORD_EJABBERD_ADMIN=x5
@@ -141,7 +141,7 @@ fi
 # also checks machine-specific things (ports); those may fail on the
 # machine running this test, so the assertions look for the disk lines,
 # not for a green exit.
-if GALENA_DOCTOR_DISK_USED_PCT=50 "$GALENA" --env-file="$T/.env" doctor > "$T/doctor50.log" 2>&1; then
+if ZILAR_DOCTOR_DISK_USED_PCT=50 "$ZILAR" --env-file="$T/.env" doctor > "$T/doctor50.log" 2>&1; then
   if grep -q 'disk has room (50% used' "$T/doctor50.log"; then
     ok "doctor reports room at 50%"
   else
@@ -154,7 +154,7 @@ else
     bad "doctor at 50% lacks the room line"
   fi
 fi
-if GALENA_DOCTOR_DISK_USED_PCT=80 "$GALENA" --env-file="$T/.env" doctor > "$T/doctor80.log" 2>&1; then
+if ZILAR_DOCTOR_DISK_USED_PCT=80 "$ZILAR" --env-file="$T/.env" doctor > "$T/doctor80.log" 2>&1; then
   if grep -q 'WARN: disk is 80% full' "$T/doctor80.log"; then
     ok "doctor warns at 80% in plain words"
   else
@@ -167,7 +167,7 @@ else
     bad "doctor at 80% lacks the warning line"
   fi
 fi
-if GALENA_DOCTOR_DISK_USED_PCT=95 "$GALENA" --env-file="$T/.env" doctor > "$T/doctor95.log" 2>&1; then
+if ZILAR_DOCTOR_DISK_USED_PCT=95 "$ZILAR" --env-file="$T/.env" doctor > "$T/doctor95.log" 2>&1; then
   bad "doctor passes at 95% disk use (should fail)"
 else
   if grep -q 'FAIL: disk is 95% full' "$T/doctor95.log"; then
@@ -183,7 +183,7 @@ fi
 mkdir -p "$T/fake"
 touch "$T/fake/nothing"
 tar -czf "$T/fake.tgz" -C "$T/fake" nothing
-if "$GALENA" --env-file="$T/.env" backup --dry-run > "$T/backup-dry.log" 2>&1; then
+if "$ZILAR" --env-file="$T/.env" backup --dry-run > "$T/backup-dry.log" 2>&1; then
   if grep -q 'uploads.tgz' "$T/backup-dry.log" && grep -q 'stickers.tgz' "$T/backup-dry.log"; then
     ok "backup dry-run lists uploads + stickers"
   else
@@ -192,7 +192,7 @@ if "$GALENA" --env-file="$T/.env" backup --dry-run > "$T/backup-dry.log" 2>&1; t
 else
   bad "backup --dry-run fails"
 fi
-if "$GALENA" --env-file="$T/.env" restore "$T/fake.tgz" --dry-run --yes > "$T/restore-dry.log" 2>&1; then
+if "$ZILAR" --env-file="$T/.env" restore "$T/fake.tgz" --dry-run --yes > "$T/restore-dry.log" 2>&1; then
   if grep -q 'uploads' "$T/restore-dry.log" && grep -q 'sticker' "$T/restore-dry.log"; then
     ok "restore dry-run lists uploads + stickers"
   else

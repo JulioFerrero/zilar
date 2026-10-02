@@ -9,24 +9,24 @@ import { describe, expect, it } from 'vitest';
  * provider connection with a made-up key. No real provider key is used.
  *
  * Required env vars:
- *   GALENA_CONNECTIONS_INTEGRATION=1            (turns the test on)
- *   GALENA_CONNECTIONS_INTEGRATION_LOG=<file>   (server log, to read the OTP)
- *   GALENA_CONNECTIONS_INVITE_CODE=<invite>     (a fresh, unused invite code)
- *   GALENA_CONNECTIONS_TEST_EMAIL=<email>       (a brand-new test email)
+ *   ZILAR_CONNECTIONS_INTEGRATION=1            (turns the test on)
+ *   ZILAR_CONNECTIONS_INTEGRATION_LOG=<file>   (server log, to read the OTP)
+ *   ZILAR_CONNECTIONS_INVITE_CODE=<invite>     (a fresh, unused invite code)
+ *   ZILAR_CONNECTIONS_TEST_EMAIL=<email>       (a brand-new test email)
  *
- * Optional: GALENA_CONNECTIONS_INTEGRATION_URL (default http://127.0.0.1:3188).
+ * Optional: ZILAR_CONNECTIONS_INTEGRATION_URL (default http://127.0.0.1:3188).
  *
- *   GALENA_CONNECTIONS_INTEGRATION=1 \
- *   GALENA_CONNECTIONS_INTEGRATION_LOG=<server log file> \
- *   GALENA_CONNECTIONS_INVITE_CODE=<fresh invite> \
- *   GALENA_CONNECTIONS_TEST_EMAIL=<new test email> \
- *   pnpm --filter @galena/server test src/connections/integration.test.ts
+ *   ZILAR_CONNECTIONS_INTEGRATION=1 \
+ *   ZILAR_CONNECTIONS_INTEGRATION_LOG=<server log file> \
+ *   ZILAR_CONNECTIONS_INVITE_CODE=<fresh invite> \
+ *   ZILAR_CONNECTIONS_TEST_EMAIL=<new test email> \
+ *   pnpm --filter @zilar/server test src/connections/integration.test.ts
  *
  * The server's ConsoleMailer writes `[dev-mailer] OTP for <email>: <code>` to
  * its log; the code is read from there, never from the response.
  */
 
-const ENABLED = process.env['GALENA_CONNECTIONS_INTEGRATION'] === '1';
+const ENABLED = process.env['ZILAR_CONNECTIONS_INTEGRATION'] === '1';
 
 const FAKE_KEY = 'sk-fake-integration-key-000000000000';
 const OTP_TIMEOUT_MS = 20_000;
@@ -127,16 +127,16 @@ function bearer(token: string): Record<string, string> {
 
 describe.skipIf(!ENABLED)('connections integration (real server)', () => {
   it('create → list → test → delete with a made-up key', async () => {
-    const baseUrl = process.env['GALENA_CONNECTIONS_INTEGRATION_URL'] ?? 'http://127.0.0.1:3188';
-    const logPath = requireEnv('GALENA_CONNECTIONS_INTEGRATION_LOG');
-    const invite = requireEnv('GALENA_CONNECTIONS_INVITE_CODE');
-    const email = requireEnv('GALENA_CONNECTIONS_TEST_EMAIL');
+    const baseUrl = process.env['ZILAR_CONNECTIONS_INTEGRATION_URL'] ?? 'http://127.0.0.1:3188';
+    const logPath = requireEnv('ZILAR_CONNECTIONS_INTEGRATION_LOG');
+    const invite = requireEnv('ZILAR_CONNECTIONS_INVITE_CODE');
+    const email = requireEnv('ZILAR_CONNECTIONS_TEST_EMAIL');
 
     // 1. Sign up through the invite, reading the OTP from the server log.
     const before = await fileSize(logPath);
     const sendResponse = await request(baseUrl, '/api/auth/email-otp/send-verification-otp', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+      headers: { 'content-type': 'application/json', 'x-zilar-invite': invite },
       body: { email, type: 'sign-in' },
     });
     expect(sendResponse.status).toBe(200);
@@ -147,7 +147,7 @@ describe.skipIf(!ENABLED)('connections integration (real server)', () => {
 
     const signInResponse = await request(baseUrl, '/api/auth/sign-in/email-otp', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+      headers: { 'content-type': 'application/json', 'x-zilar-invite': invite },
       body: { email, otp },
     });
     expect(signInResponse.status).toBe(200);

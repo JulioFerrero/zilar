@@ -8,7 +8,7 @@ import {
   generateRunnerKeypair,
   RunnerClient,
   type RunnerKeypair,
-} from '@galena/runner-tunnel';
+} from '@zilar/runner-tunnel';
 import { createApp } from '../app';
 import { HttpError } from '../errors';
 import { bootstrapUser, createTestContext, TEST_BASE_URL, type TestContext } from '../test-support';

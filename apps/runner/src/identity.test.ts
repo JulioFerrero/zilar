@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { generateRunnerKeypair } from '@galena/runner-tunnel';
+import { generateRunnerKeypair } from '@zilar/runner-tunnel';
 import {
   buildIdentity,
   fingerprintOfPublicKey,
@@ -18,7 +18,7 @@ import {
 } from './identity.ts';
 
 function tempHome(): { homeDir: string; cleanup: () => void } {
-  const dir = mkdtempSync(join(tmpdir(), 'galena-runner-id-'));
+  const dir = mkdtempSync(join(tmpdir(), 'zilar-runner-id-'));
   return {
     homeDir: dir,
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
@@ -137,7 +137,7 @@ describe('identity storage', () => {
       }),
       { mode: 0o600 },
     );
-    await expect(loadIdentity(storage)).rejects.toThrow(/not a valid Galena runner identity/);
+    await expect(loadIdentity(storage)).rejects.toThrow(/not a valid Zilar runner identity/);
   });
 
   it('never includes the private key in any thrown error message', async () => {
@@ -206,8 +206,8 @@ describe('identity storage', () => {
   it('resolves the home dir with overrides and env in priority order', () => {
     expect(resolveHomeDir('/from/flag', '/from/env')).toBe('/from/flag');
     expect(resolveHomeDir(undefined, '/from/env')).toBe('/from/env');
-    expect(resolveHomeDir(undefined, undefined)).toMatch(/\.galena-runner$/);
-    expect(resolveHomeDir('', '')).toMatch(/\.galena-runner$/);
+    expect(resolveHomeDir(undefined, undefined)).toMatch(/\.zilar-runner$/);
+    expect(resolveHomeDir('', '')).toMatch(/\.zilar-runner$/);
   });
 
   it('accepts a wss:// hubUrl and round-trips it through the identity file', async () => {
@@ -216,16 +216,16 @@ describe('identity storage', () => {
     await saveIdentity(
       storage,
       buildIdentity({
-        serverUrl: 'https://galena.example.com',
+        serverUrl: 'https://zilar.example.com',
         machineId: 'machine-wss',
         publicKey: keypair.publicKey,
         privateKey: keypair.privateKey,
         name: 'tls-machine',
-        hubUrl: 'wss://galena.example.com:3189/tunnel',
+        hubUrl: 'wss://zilar.example.com:3189/tunnel',
       }),
     );
     const loaded = await loadIdentity(storage);
-    expect(loaded.hubUrl).toBe('wss://galena.example.com:3189/tunnel');
+    expect(loaded.hubUrl).toBe('wss://zilar.example.com:3189/tunnel');
   });
 
   it('rejects an http:// hubUrl in the identity file', async () => {
@@ -233,13 +233,13 @@ describe('identity storage', () => {
     const keypair = generateRunnerKeypair();
     const parsed = IdentitySchema.safeParse({
       version: 1,
-      serverUrl: 'https://galena.example.com',
+      serverUrl: 'https://zilar.example.com',
       machineId: 'm1',
       publicKey: keypair.publicKey,
       privateKey: keypair.privateKey,
       name: 'x',
       createdAt: new Date().toISOString(),
-      hubUrl: 'http://galena.example.com:3189/tunnel',
+      hubUrl: 'http://zilar.example.com:3189/tunnel',
     });
     expect(parsed.success).toBe(false);
     if (!parsed.success) {

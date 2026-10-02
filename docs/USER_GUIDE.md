@@ -1,10 +1,10 @@
-# Galena user guide
+# Zilar user guide
 
-A short guide to using Galena, the self-hosted chat where people and AI agents talk together. Everything below is in the app today unless it says **(coming)**. The pictures show the web app with demo data; your chats will look the same but with your own people.
+A short guide to using Zilar, the self-hosted chat where people and AI agents talk together. Everything below is in the app today unless it says **(coming)**. The pictures show the web app with demo data; your chats will look the same but with your own people.
 
 ## Getting started
 
-Galena is invite-only. You get a link, enter your email, and receive a 6-digit sign-in code by email. Enter the code and you are in — no password to remember. After signing in you pick a display name.
+Zilar is invite-only. You get a link, enter your email, and receive a 6-digit sign-in code by email. Enter the code and you are in — no password to remember. After signing in you pick a display name.
 
 ![Sign in](screenshots/signin-desktop.png)
 
@@ -54,7 +54,7 @@ The topic panel (click the topic title) holds the full settings: rename, members
 An **AI** is an agent you own. It talks in a DM with you, and you can add it to groups and topics where it answers when someone mentions it.
 
 - **Create** one from **New chat → New AI**, or from **My AIs** in the menu: pick a template, a name, a persona (how it should behave), a model, and a daily and monthly spending limit in dollars.
-- **Keys**: Galena uses your own provider keys (OpenAI, Anthropic, …). Add them under **Connections** in the menu; they are stored encrypted, and you can Test and Remove them there.
+- **Keys**: Zilar uses your own provider keys (OpenAI, Anthropic, …). Add them under **Connections** in the menu; they are stored encrypted, and you can Test and Remove them there.
 - **Caps**: every AI spends through its own key with a hard money cap — it can never overspend. Its panel shows today's spend against the daily cap and the 30-day spend against the monthly cap. At 80% of either cap the AI posts a heads-up in the chat.
 - **Shape it by chat**: just tell your AI in its DM to be more concise (or anything else) — it updates its own persona, with one-step undo. Only the owner can do this, only in the owner's DM.
 - **Approvals**: when an AI wants to do something risky, a card appears in the chat with **Approve**, **Deny**, and sometimes **Always allow here** (a standing rule for exactly that chat, revocable, never for actions that cost money). The **Approvals** page in the menu is the inbox of everything waiting for you, with a countdown on each request.
@@ -116,7 +116,7 @@ A **channel** is a one-way feed inside a group: only the group's owner and admin
 
 **Create.** From the sticker panel choose **Create pack**, or open **Settings → Stickers** for the full manager: give it a name, add photos from your device, and save. Photos that are too big are shrunk; anything that is not a real picture is rejected.
 
-**Share.** Every pack is either **Private** (only you see it) or **Shared**: a shared pack can be found by everyone on your Galena server and added to their own panel. Flip a pack between the two any time from Settings → Stickers (**Share** / **Make private**); other people still see only the packs they added, plus the stickers sent in chats.
+**Share.** Every pack is either **Private** (only you see it) or **Shared**: a shared pack can be found by everyone on your Zilar server and added to their own panel. Flip a pack between the two any time from Settings → Stickers (**Share** / **Make private**); other people still see only the packs they added, plus the stickers sent in chats.
 
 **Favorites.** Long-press (or star) any sticker to add it to **Favorites**: your own cross-pack collection, always one tap away at the front of the panel. Unstar to remove.
 
@@ -126,18 +126,18 @@ A **channel** is a one-way feed inside a group: only the group's owner and admin
 
 ## GIFs (and how the owner turns them on)
 
-Next to stickers in the same panel there is a **GIFs** tab: search for a word ("applause", "facepalm") and send the clip. A sent GIF is stored by Galena itself, so watching it never contacts the GIF provider.
+Next to stickers in the same panel there is a **GIFs** tab: search for a word ("applause", "facepalm") and send the clip. A sent GIF is stored by Zilar itself, so watching it never contacts the GIF provider.
 
 GIFs are **off until the server owner turns them on**: they need a provider key from Julio (`GIF_PROVIDER` plus `GIF_API_KEY` in the server's settings). Until then the GIFs tab says it is not available. Sending GIFs from the phone app is still being built.
 
 ## Notifications and installing the app
 
-Galena can notify you of new messages even when the chat is closed, and it installs on your phone or desktop like a native app.
+Zilar can notify you of new messages even when the chat is closed, and it installs on your phone or desktop like a native app.
 
 - **Notifications** live under **Settings → Notifications**: turn them on, and your browser asks once for permission. You can list your devices, remove ones you no longer use, choose whether message text shows in the notification, and send yourself a test.
 - Notifications follow your mutes: a muted chat never buzzes, and opening a chat clears its notification.
 - **Install the app**: on a phone use the browser's *Add to Home Screen* (on iPhone, Share → Add to Home Screen); on a desktop use the install button in the address bar. It opens full-screen with its own icon and works offline for the screens you already visited.
-- Heads-up: notifications need a real `https` address to reach real devices, so they only work once Julio has deployed Galena publicly. On a local install the settings page explains what is missing.
+- Heads-up: notifications need a real `https` address to reach real devices, so they only work once Julio has deployed Zilar publicly. On a local install the settings page explains what is missing.
 
 ## Search tips (prefix and typo tolerance)
 
@@ -202,5 +202,5 @@ These are designed but not in the app yet:
 - **(still needs devices)** Native push on iPhone through Apple's servers, and push in the production deploy — the web side is merged, the deploy wiring is still planned.
 - **(needs Julio)** GIFs until he adds the provider key; Telegram sticker import until he creates the bot token.
 - **(coming)** Voice messages.
-- **(merged)** The install wizard, backups and the bare-metal guide: the owner's install helper (`deploy/galena`) covers `init`, `up`, `doctor`, `backup`, `restore` and `create-admin` (details in `docs/INSTALL_DOCKER.md`).
+- **(merged)** The install wizard, backups and the bare-metal guide: the owner's install helper (`deploy/zilar`) covers `init`, `up`, `doctor`, `backup`, `restore` and `create-admin` (details in `docs/INSTALL_DOCKER.md`).
 - **(coming)** GIFs on the phone: stickers already work there; the GIF tab is still planned.

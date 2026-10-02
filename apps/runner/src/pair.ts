@@ -1,6 +1,6 @@
 import { createPrivateKey, sign } from 'node:crypto';
 import os from 'node:os';
-import { generateRunnerKeypair, type RunnerKeypair } from '@galena/runner-tunnel';
+import { generateRunnerKeypair, type RunnerKeypair } from '@zilar/runner-tunnel';
 import { z } from 'zod';
 import { detectCapabilities, type Capabilities } from './capabilities.ts';
 import {
@@ -56,7 +56,7 @@ export function normalizePairingCode(input: string): string | null {
 // Matches the server's pairingSignatureMessage
 // (apps/server/src/machines/codes.ts).
 function pairingSignatureMessage(normalized: string): Buffer {
-  return Buffer.from(`galena-pair:v1:${normalized}`, 'ascii');
+  return Buffer.from(`zilar-pair:v1:${normalized}`, 'ascii');
 }
 
 function signPairingMessage(privateKey: RunnerKeypair, normalized: string): string {
@@ -86,7 +86,7 @@ function validateServerUrl(serverUrl: string): URL {
 
 function defaultName(): string {
   const host = os.hostname().trim();
-  return host.length > 0 ? host.slice(0, 64) : 'galena-runner';
+  return host.length > 0 ? host.slice(0, 64) : 'zilar-runner';
 }
 
 const pairResponseSchema = z.strictObject({
@@ -100,7 +100,7 @@ export async function pairRunner(options: PairOptions): Promise<PairResult> {
   if (normalized === null) {
     throw new PairError(
       'invalid_code_format',
-      'That does not look like a Galena pairing code (expect 8 letters/digits, dashes optional).',
+      'That does not look like a Zilar pairing code (expect 8 letters/digits, dashes optional).',
     );
   }
 

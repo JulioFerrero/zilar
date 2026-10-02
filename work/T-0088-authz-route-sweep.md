@@ -56,7 +56,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -85,12 +85,12 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install` — `Done in 6.2s using pnpm v10.32.1`, 1010 packages added.
-- `pnpm --filter @galena/server exec vitest run --testTimeout=30000 --hookTimeout=30000 authz-sweep` — `Test Files 1 passed (1) | Tests 5 passed (5)`. The route table printed to stderr (see below).
-- `pnpm --filter @galena/server exec vitest run --testTimeout=30000 --hookTimeout=30000` — full server suite: `Test Files 47 passed | 5 skipped (52) | Tests 682 passed | 7 skipped (689)`. The five new tests in `authz-sweep.test.ts` bring the total to 682 (up from 677 before this task).
+- `pnpm --filter @zilar/server exec vitest run --testTimeout=30000 --hookTimeout=30000 authz-sweep` — `Test Files 1 passed (1) | Tests 5 passed (5)`. The route table printed to stderr (see below).
+- `pnpm --filter @zilar/server exec vitest run --testTimeout=30000 --hookTimeout=30000` — full server suite: `Test Files 47 passed | 5 skipped (52) | Tests 682 passed | 7 skipped (689)`. The five new tests in `authz-sweep.test.ts` bring the total to 682 (up from 677 before this task).
 - `pnpm format:check` — `All matched files use Prettier code style!` (after one initial `pnpm exec prettier --write` to fix a line-break).
 - `pnpm lint` — `oxlint .` clean (no errors).
 - `pnpm typecheck` — all 10 turbo tasks `successful` (`tsc --noEmit` for every package).
-- `pnpm exec turbo test --force --filter=@galena/server` — `Test Files 47 passed | 5 skipped (52) | Tests 682 passed | 7 skipped (689)` in 182 s.
+- `pnpm exec turbo test --force --filter=@zilar/server` — `Test Files 47 passed | 5 skipped (52) | Tests 682 passed | 7 skipped (689)` in 182 s.
 - `pnpm build` — both turbo build tasks `successful`.
 
 ### Route table (printed by the sweep, every route answered exactly as expected)

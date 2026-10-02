@@ -1,5 +1,5 @@
-const COLLAPSED_KEY = 'galena:collapsedGroups';
-const ARCHIVED_KEY = 'galena:archivedOpen';
+const COLLAPSED_KEY = 'zilar:collapsedGroups';
+const ARCHIVED_KEY = 'zilar:archivedOpen';
 
 function readSet(storage: Storage | undefined, key: string): Set<string> {
   const result = new Set<string>();

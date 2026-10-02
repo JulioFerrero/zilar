@@ -9,7 +9,7 @@ import type {
   UiMention,
   UiMessage,
   UiReaction,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 import {
   applyEdit,
   applyReaction,
@@ -24,7 +24,7 @@ import {
   rebaseMentions,
   resolveEdits,
   summarize,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 import {
   createXmppCore,
   type ChatMessage,
@@ -32,8 +32,8 @@ import {
   type PresenceEvent,
   type XmppCore,
   type XmppCoreOptions,
-} from '@galena/xmpp-core';
-import { StickerSchema, type Attachment, type Payload } from '@galena/protocol';
+} from '@zilar/xmpp-core';
+import { StickerSchema, type Attachment, type Payload } from '@zilar/protocol';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import {

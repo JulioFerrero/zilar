@@ -1,4 +1,4 @@
-import { splitLinks } from '@galena/chat-core';
+import { splitLinks } from '@zilar/chat-core';
 import { Linking, Text as RNText } from 'react-native';
 
 import { safeLinkTarget } from '@/lib/links';

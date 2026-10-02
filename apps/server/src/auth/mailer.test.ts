@@ -13,11 +13,11 @@ import {
 } from './mailer';
 
 const baseEnv = {
-  DATABASE_URL: 'postgres://user:hunter2@127.0.0.1:5432/galena',
+  DATABASE_URL: 'postgres://user:hunter2@127.0.0.1:5432/zilar',
   BETTER_AUTH_SECRET: TEST_SECRET,
-  EJABBERD_ADMIN_JID: 'admin@galena.localhost',
+  EJABBERD_ADMIN_JID: 'admin@zilar.localhost',
   EJABBERD_ADMIN_PASSWORD: 'admin-password',
-  GALENA_XMPP_JWT_SECRET: 'x'.repeat(40),
+  ZILAR_XMPP_JWT_SECRET: 'x'.repeat(40),
 };
 
 function captureLogs() {
@@ -36,7 +36,7 @@ const smtpEnv = {
   ...baseEnv,
   MAIL_TRANSPORT: 'smtp',
   SMTP_HOST: 'smtp.example.com',
-  MAIL_FROM: 'Galena <no-reply@example.com>',
+  MAIL_FROM: 'Zilar <no-reply@example.com>',
 };
 
 interface SentMessage {
@@ -126,8 +126,8 @@ describe('mailer', () => {
     await mailer.sendOtp('user@example.com', '123456', 'sign-in');
 
     const message = readLastSent(captured);
-    expect(message.subject).toBe('Your Galena sign-in code');
-    expect(message.from).toEqual({ address: 'no-reply@example.com', name: 'Galena' });
+    expect(message.subject).toBe('Your Zilar sign-in code');
+    expect(message.from).toEqual({ address: 'no-reply@example.com', name: 'Zilar' });
     expect(message.to).toEqual([{ address: 'user@example.com', name: '' }]);
     expect(message.text).toContain('123456');
     expect(message.text).toContain('10 minutes');
@@ -140,9 +140,9 @@ describe('mailer', () => {
 
   it('uses one subject per purpose', async () => {
     const expected: Array<[Parameters<SmtpMailer['sendOtp']>[2], string]> = [
-      ['sign-in', 'Your Galena sign-in code'],
+      ['sign-in', 'Your Zilar sign-in code'],
       ['email-verification', 'Verify your email'],
-      ['forget-password', 'Reset your Galena sign-in'],
+      ['forget-password', 'Reset your Zilar sign-in'],
       ['change-email', 'Confirm your new email'],
     ];
     for (const [purpose, subject] of expected) {

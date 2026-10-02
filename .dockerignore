@@ -11,9 +11,9 @@ node_modules
 .gitattributes
 
 # Parallel worktrees of this repo have their own checkouts and env files.
-../galena-*
+../zilar-*
 
-# Task files, plans and install docs are not needed to run Galena.
+# Task files, plans and install docs are not needed to run Zilar.
 work
 docs
 

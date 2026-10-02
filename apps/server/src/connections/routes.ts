@@ -24,7 +24,7 @@ export interface ConnectionsRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
   logger: ConnectionsLogger;
-  /** Absent when GALENA_KEY_ENCRYPTION_KEY is not configured: every route then
+  /** Absent when ZILAR_KEY_ENCRYPTION_KEY is not configured: every route then
    * answers 503 instead of touching keys. */
   cipher?: KeyCipher;
   /** Injected in tests so no request ever hits a real provider. */

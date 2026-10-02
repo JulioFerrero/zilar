@@ -21,22 +21,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: galena-server
+          - name: zilar-server
             file: apps/server/Dockerfile
             context: .
-          - name: galena-web
+          - name: zilar-web
             file: apps/web/Dockerfile
             context: .
-          - name: galena-postgres
+          - name: zilar-postgres
             file: deploy/postgres/Dockerfile
             context: deploy
-          - name: galena-ejabberd
+          - name: zilar-ejabberd
             file: deploy/ejabberd/Dockerfile
             context: deploy
     steps:
       - uses: actions/checkout@v7
 
+      # arm64 images are built on an amd64 runner, which needs emulation for their RUN steps
+      - uses: docker/setup-qemu-action@v3
+
       - uses: docker/setup-buildx-action@v3
+
+      # GHCR only accepts lowercase repository names
+      - name: Image name
+        id: image
+        run: echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.name }}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         if: startsWith(github.ref, 'refs/tags/v')
@@ -63,4 +71,9 @@ jobs:
           file: ${{ matrix.file }}
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}:${{ github.ref_name }}
+          tags: |
+            ${{ steps.image.outputs.ref }}:${{ github.ref_name }}
+            ${{ steps.image.outputs.ref }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT

@@ -154,7 +154,7 @@ export function createMockInviteLinksStore(
         createdAt: new Date().toISOString(),
       };
       links = [link, ...links];
-      return { id: link.id, token: link.token, url: `galena://join/${link.token}` };
+      return { id: link.id, token: link.token, url: `zilar://join/${link.token}` };
     },
     revoke(groupId, linkId) {
       links = links.map((link) =>
