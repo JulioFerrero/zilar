@@ -31,8 +31,8 @@ So you may, without asking:
 
 **Things Julio has settled. Don't reopen them:**
 - **Stack:** XMPP (ejabberd) with our own React web app and Expo app. Matrix is rejected.
-- **Privacy:** the Telegram model, with no E2EE for now.
-- **UI:** as close to Telegram as possible.
+- **Privacy:** the cloud-chat model (server-stored chats), with no E2EE for now.
+- **UI:** as close to a classic messenger as possible.
 - **OpenCode network setting:** he keeps the OpenCode service open on his network. Never propose changing that again.
 - **Budget:** not a concern. First users are Julio and his friends.
 
@@ -41,7 +41,7 @@ So you may, without asking:
 ## 2. Read these first (in this order)
 
 1. `docs/PROJECT_PLAN.md`: the design, the decisions log (§3), and the self-improvement rules. Read the table of contents, then the sections you need.
-2. `docs/design/ui-style.md`: the Telegram-like style guide. Every UI spec links to it. When you add a UI rule, add it here, not only in a task.
+2. `docs/design/ui-style.md`: the messenger style guide. Every UI spec links to it. When you add a UI rule, add it here, not only in a task.
 3. `AGENTS.md`: the worker rules. Workers load it automatically. You don't edit it lightly: it's the contract.
 4. `work/BOARD.md`: tasks, statuses, follow-ups, and the Done table.
 5. `work/README.md` (statuses) and `work/TEMPLATE.md` (task file layout).
@@ -215,12 +215,12 @@ Work in the task's worktree. For each task:
    - **Tests:** do they test the behavior or just the mock? Would they fail if the feature broke? Are the named tests from the spec present?
    - **Honesty:** does the Report say what really happened? Are skipped parts admitted?
    - **Style:** matches the surrounding code, with no dead code, no `any`, no `@ts-ignore`, and no new deps outside the spec.
-5. **Visual tasks:** open every screenshot (Read the PNG) and compare it with `ui-style.md` and with Telegram. Look closely at spacing, alignment, colors, and truncation. For example, the T-0023 review found a double space after "Dani:" in group previews. Also watch for false alarms: 5 of 10 avatars being red looked like a regression but was hash luck on short mock ids. Check before you report.
+5. **Visual tasks:** open every screenshot (Read the PNG) and compare it with `ui-style.md` and with a classic messenger. Look closely at spacing, alignment, colors, and truncation. For example, the T-0023 review found a double space after "Dani:" in group previews. Also watch for false alarms: 5 of 10 avatars being red looked like a regression but was hash luck on short mock ids. Check before you report.
 6. **Live test** when the task touches real data or XMPP: run it against the stack (§12) with the test accounts. Many real bugs only show up there:
    - the list status stuck on 🕐
    - your own typing echoed back by the MUC
    - raw JID localparts shown as names
-7. **Look beyond the spec.** Julio explicitly likes it when you find bugs and propose better, more Telegram-like UI. Put small in-scope fixes in the review round, and bigger ones on the board as new tasks or follow-ups. Mention them to Julio.
+7. **Look beyond the spec.** Julio explicitly likes it when you find bugs and propose better, more polished messenger UI. Put small in-scope fixes in the review round, and bigger ones on the board as new tasks or follow-ups. Mention them to Julio.
 8. **Write the Review section** in the task file, not in chat:
    ```markdown
    ## Review (written by Claude)

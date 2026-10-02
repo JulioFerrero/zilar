@@ -1,10 +1,10 @@
-# Zilar UI style: Telegram's layout, Vercel-dark look, skeuomorphic depth
+# Zilar UI style: a classic messenger layout, Vercel-dark look, skeuomorphic depth
 
-> **Decision D24 (Julio, 2026-09-28), which supersedes the colors and type of D23:** keep Telegram's layout and patterns, but in a Vercel style ("blacks, shadcn, uber") with real, skeuomorphic depth on buttons and bubbles ("more Skeuomorphism, the buttons, bubbles").
+> **Decision D24 (Julio, 2026-09-28), which supersedes the colors and type of D23:** keep a classic messenger layout and patterns, but in a Vercel style ("blacks, shadcn, uber") with real, skeuomorphic depth on buttons and bubbles ("more Skeuomorphism, the buttons, bubbles").
 >
 > The approved mockup is in `docs/design/mockups/` (`Main.dc.html` for desktop, `Mobile.dc.html` for the mobile chat list). Its markup holds the exact values. Where this document and the mockup disagree, the mockup wins.
 >
-> **D23 still holds for layout and behavior:** chat list, folders, bubbles grouping, composer, typing, unread divider and so on. **Never** use Telegram's logo, name, wallpaper or other brand assets. Our brand is **Zilar**.
+> **D23 still holds for layout and behavior:** chat list, folders, bubbles grouping, composer, typing, unread divider and so on. **Never** use another messenger's logo, name, wallpaper or other brand assets. Our brand is **Zilar**.
 
 **Dark only for now.** The app is always dark, whatever the system setting. A light theme comes later, as its own decision.
 

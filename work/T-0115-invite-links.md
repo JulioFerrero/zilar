@@ -14,7 +14,7 @@ estimate: 1.5 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-D28: to feel like Telegram, "send this link to your friends" must work. Today people are added only by contacts and invites-to-sign-up. This task adds shareable links for **groups** (public topics come with joining the group; private topics are never joined by link).
+D28: to feel like a real messenger, "send this link to your friends" must work. Today people are added only by contacts and invites-to-sign-up. This task adds shareable links for **groups** (public topics come with joining the group; private topics are never joined by link).
 
 ### Server
 - Table `group_invite_links`: `id`, `group_id` (fk cascade), `token_hash` (SHA-256 of a 32-byte random token; the token itself is shown once at creation and never stored), `token_hint` (last 4 chars, for the admin list), `label` (≤ 60), `created_by`, `created_at`, `expires_at` (nullable), `max_uses` (nullable, ≥ 1), `uses` (int), `revoked_at`. Migration via `pnpm --filter @zilar/server db:generate`.

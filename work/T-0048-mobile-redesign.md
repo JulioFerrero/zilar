@@ -15,7 +15,7 @@ estimate: 2 days
 
 ### Goal
 
-The web app now has Julio's approved D24 look: a black Vercel-style dark theme with real skeuomorphic depth on buttons and bubbles (T-0046 and T-0047, merged). The Expo app still has the old Telegram blue theme. This task brings the **mobile app** to D24: the same tokens, font, depth recipes and bubble looks, adapted to a phone.
+The web app now has Julio's approved D24 look: a black Vercel-style dark theme with real skeuomorphic depth on buttons and bubbles (T-0046 and T-0047, merged). The Expo app still has the old blue theme. This task brings the **mobile app** to D24: the same tokens, font, depth recipes and bubble looks, adapted to a phone.
 
 **Quality bar:** the chat list must look like `docs/design/mockups/Mobile.dc.html`. The chat screen must look like the chat panel of `Main.dc.html` at phone width, and like the web app's 390 px screenshots in `work/screenshots/T-0047/*-390.png`. Put your screenshots next to those and compare them yourself.
 
@@ -54,7 +54,7 @@ Adding `expo-font` is a native change: rebuild your simulator app with `boot:ios
 ### What to build
 
 **1. Theme: dark only.**
-- Replace the Telegram tokens in `global.css` with the D24 tokens from `ui-style.md` §2, with the same names the web uses wherever they apply (`--background` `#000`, `--surface` `#0a0a0a`, `--border`, `--edge`, `--well`, `--foreground` `#ededed`, `--muted-foreground`, `--subtle-foreground`, `--accent` `#ededed` and so on, plus the bubble tokens).
+- Replace the old blue tokens in `global.css` with the D24 tokens from `ui-style.md` §2, with the same names the web uses wherever they apply (`--background` `#000`, `--surface` `#0a0a0a`, `--border`, `--edge`, `--well`, `--foreground` `#ededed`, `--muted-foreground`, `--subtle-foreground`, `--accent` `#ededed` and so on, plus the bubble tokens).
 - Keep the Tailwind color names that other screens use (`primary`, `muted`, `card`, `destructive`, `online`, `danger`...) and point them at the D24 values, so the My AIs and auth screens restyle themselves.
 - The app is always dark: force it (`userInterfaceStyle: "dark"`, NativeWind's `colorScheme.set('dark')` or the equivalent in `_layout.tsx`, and `NAV_THEME` dark). The status bar is light.
 
@@ -133,7 +133,7 @@ Adding `expo-font` is a native change: rebuild your simulator app with `boot:ios
 ### Acceptance criteria
 - [ ] Every check below passes.
 - [ ] The list and chat screens match the mockups; the depth recipes live only in `depth.ts` and `ui/*`.
-- [ ] The app is dark only, with Geist loaded, and no Telegram blue is left on any screen you screenshotted.
+- [ ] The app is dark only, with Geist loaded, and none of the old blue accent is left on any screen you screenshotted.
 - [ ] Behavior is unchanged (swipe-to-reply, the sheets, keyboard, navigation).
 - [ ] Only the Allowed files changed.
 - [ ] Your simulator is deleted, and Julio's simulators and Metro were untouched.

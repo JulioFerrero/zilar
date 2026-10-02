@@ -44,7 +44,7 @@
 
 ## 0. Summary
 
-We are building a self-hosted, Telegram-like platform where **people and AI agents work together in group chats**. It's a normal chat app for every part of life: friends, a partner, work groups, and groups with your AIs, all in one account and one chat list.
+We are building a self-hosted, messenger-style platform where **people and AI agents work together in group chats**. It's a normal chat app for every part of life: friends, a partner, work groups, and groups with your AIs, all in one account and one chat list.
 
 - **AI desks.** Each AI gets its own sandboxed computer, called a *desk*. It can clone repos, write, run and commit code, search the web, test apps and remember what it learns.
 - **Bring your own compute.** Desks run on machines the users bring themselves: a Mac, a Linux server, a cheap VPS.
@@ -90,7 +90,7 @@ We are building a self-hosted, Telegram-like platform where **people and AI agen
 
 These are Julio's requirements, quoted where possible.
 
-1. **Telegram-like chat on web and phone.** Groups and DMs with other users *and* AIs.
+1. **Messenger-style chat on web and phone.** Groups and DMs with other users *and* AIs.
 2. **AIs with "little virtual PCs".** "Have repos, run scripts, edit files", "talk to each other", "save what they learn".
 3. **General-purpose AIs**, "like any other AI agent can do, like you in Claude, OpenCode, Hermes": write code, research a topic, find bugs in a UI, and so on.
 4. **Users are friends or companies** in the same department. "That doesn't mean we don't have security."
@@ -129,16 +129,16 @@ These are Julio's requirements, quoted where possible.
 | D16 | Budget | Not a constraint during development | Julio: "don't worry about that" |
 | D17 | Pilot | Julio and his friends | Julio's answer |
 | D18 | Name | **Zilar** | Julio's choice. Basque for silver. |
-| D19 | Privacy model | **Like Telegram:** normal chats are stored on the server and readable by it (that's what lets AIs, sync and search work). **No end-to-end encrypted chats for now.** | Julio's decision |
+| D19 | Privacy model | **Cloud chats:** normal chats are stored on the server and readable by it (that's what lets AIs, sync and search work). **No end-to-end encrypted chats for now.** | Julio's decision |
 | D20 | Stack | Confirmed: Vite + React web app, Hono + Drizzle + Postgres, Better Auth, pnpm + Turborepo, Expo for mobile ([§17.2](#172-mobile-react-native--expo)) | Julio: "I love the stack" |
 | D21 | Object storage | **No MinIO:** its Docker images were deleted from Docker Hub in September 2026. File uploads use ejabberd's built-in upload for the MVP, Supabase Storage in production, and Garage or RustFS if we need S3 locally. | Research on 2026-09-27 |
 | D22 | OpenCode service network access | Julio's OpenCode v2 service stays reachable on his home network (`hostname 0.0.0.0`, password-protected) | Julio: "keep it open". He uses it from his phone. |
-| D23 | UI style | **Close to Telegram** in layout, patterns and feel, with no Telegram brand assets. Source of truth: `docs/design/ui-style.md`. | Julio: "we need to be closer to what Telegram is"; more detail once he's used the app |
+| D23 | UI style | **Close to a classic messenger** in layout, patterns and feel, with no third-party brand assets. Source of truth: `docs/design/ui-style.md`. | Julio: "we need to be closer to what a classic messenger is"; more detail once he's used the app |
 | D24 | UI depth | Vercel-dark look with skeuomorphic depth on buttons and bubbles; mockup in `docs/design/mockups/` | Julio, 2026-09-28. Source of truth: `docs/design/ui-style.md` |
-| D25 | Topics in groups | **Telegram forum style:** a group is a list of topics, each its own conversation with its own unread count. On desktop the topics are **nested under the group in the sidebar**; on mobile a group opens to its topics list. Topics and their metadata live in our database; XMPP stays the transport. | Julio, 2026-09-29, after the topics mockup |
+| D25 | Topics in groups | **Forum style:** a group is a list of topics, each its own conversation with its own unread count. On desktop the topics are **nested under the group in the sidebar**; on mobile a group opens to its topics list. Topics and their metadata live in our database; XMPP stays the transport. | Julio, 2026-09-29, after the topics mockup |
 | D26 | Task strip | **Every topic** carries a thin task strip under the header (type: bug, UI, task or routine; status; owner, a person or an AI; linked PR). It is not a board. AI progress, previews and approval cards live in the topic, so the main room stays quiet. | Julio, 2026-09-29 |
 | D27 | Stickers, GIFs, importer | Stickers are **created by users** (packs). A **Telegram sticker importer** is a must-have for migration (later task). A **GIF section** is wanted. Open: GIF provider (with a proxy so users' IPs are not sent), and the copyright stance for imported packs (personal use). | Julio, 2026-09-29 |
-| D28 | Product focus | Be a good **daily chat for humans first**, Telegram's flow (chats, groups, channels, topics, stickers, folders): PWA with web push, search, pinned messages, forwarding, media gallery, mute and archive, voice notes, invite links. Then workspaces and roles, then the AI coding flow. **No inbox and no "catch up" feature** (Julio: "I don't like that"). | Julio, 2026-09-29 |
+| D28 | Product focus | Be a good **daily chat for humans first**, a classic messenger's flow (chats, groups, channels, topics, stickers, folders): PWA with web push, search, pinned messages, forwarding, media gallery, mute and archive, voice notes, invite links. Then workspaces and roles, then the AI coding flow. **No inbox and no "catch up" feature** (Julio: "I don't like that"). | Julio, 2026-09-29 |
 | D29 | Public and private topics | **Discord-style access:** a topic is **public** (every group member) or **private** (only chosen people, roles or AIs). A private topic is hidden completely from everyone else: no name, no unread count, no history. **Each topic is its own XMPP room**, so the chat server itself enforces who receives a private topic's messages (one room per group could not). Our database owns group membership and topic membership and syncs it into the rooms. An AI reads only the topics it was added to. Roles (owner, admin, member, custom roles such as Designers) can grant topic access and can be the approvers for a topic. | Julio, 2026-09-29: "not all users in a group have access to all the tasks and channels" |
 | D30 | Easy install (A), hosted service (B), open core | **A first:** anyone can install their own Zilar with **Docker Compose, a Coolify template, or on bare metal** (systemd, own Postgres/ejabberd), using published images, a setup wizard that generates every secret, and automatic HTTPS. **B later:** a hosted Zilar run as a service for family, friends and people who want to try it; **one shared instance for everyone** (new people, friends, work), like any messenger, not one instance per team. Same code for both. **Open core:** the whole product stays open source and free; a paid enterprise layer (SSO/SAML, audit export, retention rules, an admin console, support) can come later, never by removing free features. | Julio, 2026-09-30: "easy to install with coolify or docker, maybe bare metal; B for family and friends and people to try; run it as a service but also open source and free; the instance is for everyone" |
 | D31 | AI cost on a hosted instance | AIs are **bring-your-own model key or endpoint** by default (the user's own provider, a local model, or a free provider such as OpenRouter's free models, which are weaker). A hosted service does not pay for users' AI usage. Chat itself is cheap: ejabberd on one small server handles hundreds of concurrent users. | Julio, 2026-09-30 |
@@ -414,7 +414,7 @@ It's worth reading before we design our extension, and possibly aligning with it
 
 ### 7.0 One app for personal life and work (decision D12)
 
-It works like WhatsApp or Telegram, with Slack-style workspaces added on top. Everyone has **one account**. On top of it:
+It works like WhatsApp, with Slack-style workspaces added on top. Everyone has **one account**. On top of it:
 
 - **Personal side** (always there, with no admin above you):
   - contacts
@@ -427,7 +427,7 @@ It works like WhatsApp or Telegram, with Slack-style workspaces added on top. Ev
   - work groups
   - workspace AIs
 
-**One chat list with folders** (proposal): *All · Personal · AIs · Acme (work) · …*, like Telegram folders. Every chat shows a small badge for its space. You don't have to switch apps or accounts.
+**One chat list with folders** (proposal): *All · Personal · AIs · Acme (work) · …*, like messenger folders. Every chat shows a small badge for its space. You don't have to switch apps or accounts.
 
 **Rules that fall out of this (proposal):**
 
@@ -499,16 +499,16 @@ People expect WhatsApp-level privacy in chats with a partner or friends. Today t
 
 AIs must be able to read the chats they're in, so any chat with an AI can never be end-to-end encrypted against the platform itself. See question D3.
 
-**How WhatsApp and Telegram do it:**
+**How the big messengers do it:**
 
-| | WhatsApp | Telegram |
+| | WhatsApp | Cloud-chat messengers |
 |---|---|---|
-| Normal chats and groups | **End-to-end encrypted by default** (Signal protocol) | **Not end-to-end.** "Cloud chats" are encrypted between your device and Telegram's servers, then stored in Telegram's cloud, where Telegram can decrypt them |
+| Normal chats and groups | **End-to-end encrypted by default** (Signal protocol) | **Not end-to-end.** "Cloud chats" are encrypted between your device and the provider's servers, then stored in the provider's cloud, where a classic messenger can decrypt them |
 | Why | Privacy first | Instant sync on every device, full history on a new phone, search, huge groups, bots |
 | End-to-end option | Always on | **"Secret chats"**: optional, 1-to-1 only, tied to one device, no sync, no bots |
 | AI and bots | Meta AI only receives the messages that mention it or are sent to it. That message leaves the encrypted envelope, and the rest of the chat stays encrypted. Summaries use "Private Processing" (secure enclaves that Meta says it can't read). | Bots in groups receive messages the normal way, since cloud chats aren't end-to-end encrypted |
 
-**Decision (D19): the Telegram model, without secret chats for now.**
+**Decision (D19): the cloud-chat model, without secret chats for now.**
 - Cloud chats by default, so AIs, sync, search, history on a new phone and push previews all simply work.
 - Later, optional **"secret chats"** (OMEMO): 1-to-1, human-only, with a lock icon.
 - This is option A now and option B later, limited to secret chats.
@@ -1735,7 +1735,7 @@ Do these in M0 before committing. Each is a small throwaway prototype.
 | **Cursor self-hosted cloud agents** | Workers on your own infrastructure with outbound HTTPS only, and team pools (GPU, Macs for iOS) | Direct precedent for our runners |
 | **Claude Code agent teams** | A lead with teammates, a shared task list with locked claiming, and mailboxes | Board design. AI messages never count as consent. 3–5 teammates is the sweet spot. |
 | **OpenAI Codex cloud** | A container per task. Secrets removed before the agent runs. Internet off by default. | Keep secrets out of desks, egress off by default |
-| **OpenClaw** | An open-source personal agent in WhatsApp, Telegram, Discord and Matrix. Nodes pairing. Docker sandbox. | Pairing UX. Its group-chat memory protection is prompt-only, which we must do better than. Two agents in one Telegram group can't see each other. |
+| **OpenClaw** | An open-source personal agent in WhatsApp, Discord and Matrix. Nodes pairing. Docker sandbox. | Pairing UX. Its group-chat memory protection is prompt-only, which we must do better than. Two agents in one a classic messenger group can't see each other. |
 | **Hermes Agent** (Nous) | An open-source agent with memory, skills and messaging gateways | A possible alternative engine for "assistant" AIs |
 | **OpenGrokBot / OpenMausBot / Rakazo** | Young open-source Grok Bot clones | Watch for ideas. Mostly single-human. |
 | **fluux-agent** (ProcessOne) | An experimental XMPP agent from the ejabberd team | XMPP prior art. Consider aligning our extension with it. |
@@ -1761,7 +1761,7 @@ Do these in M0 before committing. Each is a small throwaway prototype.
 | A4 | P1 | Will you **sell** it (hosted service, self-host licenses, setup services) or use it internally? | Internal pilot first, decide later |
 | A5 | ✅ | Who is the first pilot team? | **Answered:** Julio and his friends |
 | A6 | P1 | UI languages: English, Spanish, both? | English, translation-ready from day one |
-| A7 | P2 | Any brand or design direction? | Clean, Telegram-like, dark mode |
+| A7 | P2 | Any brand or design direction? | Clean, messenger-style, dark mode |
 | A8 | P1 | What does success look like for the pilot? E.g. "the team uses it daily for 2 weeks and AIs merge 10 useful PRs". | – |
 
 ### B. Team, time and money
@@ -1789,15 +1789,15 @@ Do these in M0 before committing. Each is a small throwaway prototype.
 | C7 | P1 | Is a `@username` required, or optional? | Optional. Invite links and QR codes are the main way. |
 | C8 | P1 | DMs between coworkers: always personal, or can a workspace have "work DMs" under its policies? | Personal in the MVP, work DMs later |
 | C9 | P1 | "Bring your own AI" into work groups: allowed by default? | Workspace setting, off by default |
-| C10 | P1 | Chat list: one list with folders (Telegram-style), or a space switcher (Slack/Discord-style)? | One list with folders |
+| C10 | P1 | Chat list: one list with folders (messenger-style), or a space switcher (Slack/Discord-style)? | One list with folders |
 
 ### D. Chat features
 
 | ID | Pri | Question | My default |
 |---|---|---|---|
 | D1 | P0 | MVP chat features: confirm the list in [§21](#21-mvp-scope) (DMs, groups, replies, mentions, reactions, edits, deletes, typing, read markers, uploads). Anything to add or remove? | As listed |
-| D2 | P1 | Telegram-style replies, or Slack-style threads? It matters for where AI work shows up. | Replies, plus "task threads" for AI work |
-| D3 | ✅ | End-to-end encryption? | **Answered:** follow Telegram, no encrypted chats for now (D19) |
+| D2 | P1 | Messenger-style replies, or Slack-style threads? It matters for where AI work shows up. | Replies, plus "task threads" for AI work |
+| D3 | ✅ | End-to-end encryption? | **Answered:** cloud chats, no encrypted chats for now (D19) |
 | D4 | P2 | Federation with other XMPP servers? | Off |
 | D5 | P1 | Message retention: forever, N days, or per workspace? | Forever, admins can delete |
 | D6 | P1 | Maximum upload size? | 50 MB |
@@ -1881,7 +1881,7 @@ Do these in M0 before committing. Each is a small throwaway prototype.
 | K1 | P0 | Where does your **PM** work: Jira, Linear, GitHub Issues? Should the board sync with it or stay separate? | Our board in the MVP. GitHub Issues sync next. |
 | K2 | P1 | Which **marketing** tools matter most: Google Ads, Meta Ads, LinkedIn, GA4, email tool, social scheduler, CMS? | Read-only Google Ads + GA4 after the MVP |
 | K3 | P1 | Design and docs tools: Figma, Notion, Confluence, Google Docs? | Later |
-| K4 | P2 | Bridges so people can talk to the AIs from Slack, Telegram or WhatsApp? | No |
+| K4 | P2 | Bridges so people can talk to the AIs from Slack or WhatsApp? | No |
 | K5 | P1 | Can users connect **any MCP server** to an AI, or only an admin-approved list? | Admin-approved list |
 
 ### L. Hosting and operations

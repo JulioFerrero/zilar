@@ -61,7 +61,7 @@ stop.
    - opening a chat loads 50 messages and paginates older ones on scroll-up;
    - live messages, typing, displayed markers and group online counts from
      xmpp-core events; contact presence for the DM online dot;
-   - a "Connecting…" / "Waiting for network…" bar while not online, like Telegram;
+   - a "Connecting…" / "Waiting for network…" bar while not online, like most messengers;
    - unread counts kept per chat, `markDisplayed` sent when a chat is open and a
      new message arrives.
 2. **Install the two shims the T-0004 spike proved are needed** — `process.nextTick`

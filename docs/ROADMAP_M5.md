@@ -1,4 +1,4 @@
-# Roadmap M5: a Telegram-like chat with topics, private topics, stickers and AI teammates
+# Roadmap M5: a messenger-style chat with topics, private topics, stickers and AI teammates
 
 Decisions D25 to D29 in [`PROJECT_PLAN.md`](PROJECT_PLAN.md). Visual spec: the Claude artifact "Zilar Topics Mockup" (https://claude.ai/artifact/YKvuBAcmXzRdiyx83eppSd). Every task below has a full spec in `work/T-XXXX-*.md` (status `planned`); the lead launches them one wave at a time.
 
@@ -11,7 +11,7 @@ Decisions D25 to D29 in [`PROJECT_PLAN.md`](PROJECT_PLAN.md). Visual spec: the C
 | T-0110 | Topic-scoped approvals, rules, tools | "Always allow here", approvals and tools belong to one topic; private topics leak nothing | T-0108, T-0109 | yes |
 | T-0111 | Topics, web | The nested sidebar, task strip on every topic, new-topic dialog, topic panel (as in the mockup) | T-0108 to T-0110 | no |
 | T-0112 | Topics, mobile | Topics list and topic screen on the phone | T-0111 | no |
-| T-0113 | Mute, archive, pin chats | The Telegram basics, synced across devices | T-0108 | yes |
+| T-0113 | Mute, archive, pin chats | The messenger basics, synced across devices | T-0108 | yes |
 | T-0114 | Pinned messages | Banner at the top of a chat or topic | T-0108 | yes |
 | T-0115 | Invite links | "Join by link" for groups | T-0108 | yes |
 | T-0116 | Group roles | Designers/Devs roles: private-topic access and approver rights | T-0108, T-0110, T-0111 | yes |

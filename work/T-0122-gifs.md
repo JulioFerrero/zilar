@@ -14,7 +14,7 @@ estimate: 2 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-D27: Julio wants a GIF section like Telegram's. Two rules make it fit Zilar: (1) **the user's browser never talks to the GIF provider** (that would leak IP addresses and searches), the server does; (2) **a sent GIF is stored by us**, not hot-linked, so old messages keep working when a provider link dies. GIFs are sent as normal **attachments** (T-0065: XEP-0363 upload + `attachment` payload), so chat history, the media handling and the upload limits are reused.
+D27: Julio wants a GIF section like other messengers have. Two rules make it fit Zilar: (1) **the user's browser never talks to the GIF provider** (that would leak IP addresses and searches), the server does; (2) **a sent GIF is stored by us**, not hot-linked, so old messages keep working when a provider link dies. GIFs are sent as normal **attachments** (T-0065: XEP-0363 upload + `attachment` payload), so chat history, the media handling and the upload limits are reused.
 
 > **Open decision for Julio (GIF provider).** The code is written against a `GifProvider` port with one real adapter chosen by `GIF_PROVIDER` (start with `giphy`; `klipy` or another can be added as a second adapter later). Julio must create an API key with the provider and put it in `infra/.env` as `GIF_API_KEY`. Do not read that file; without the key the feature reports itself as unavailable.
 

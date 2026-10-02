@@ -14,7 +14,7 @@ estimate: 1–2 days
 ## Spec (written by Claude, do not edit)
 
 ### Goal
-Make the web app feel even more like Telegram. Implement **every item** in `docs/design/ui-style.md` §4, under "Added after the first screenshots (2026-09-27)", in `apps/web`, still with **mock data**. Keep everything behind the `ChatStore` interface so real data can be plugged in later. Julio likes these details, and Claude will screenshot the result.
+Make the web app feel even more like a polished messenger. Implement **every item** in `docs/design/ui-style.md` §4, under "Added after the first screenshots (2026-09-27)", in `apps/web`, still with **mock data**. Keep everything behind the `ChatStore` interface so real data can be plugged in later. Julio likes these details, and Claude will screenshot the result.
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -151,7 +151,7 @@ Also `work/T-0022-web-ui-polish.md` (status + this Report). No other files touch
   - reply quotes
 
 ### Findings
-1. **(nit, next polish)** The sender name above a big-emoji message is faint (pale name with no bubble). Hide it, as Telegram does: show only the avatar.
+1. **(nit, next polish)** The sender name above a big-emoji message is faint (pale name with no bubble). Hide it, as most messengers do: show only the avatar.
 2. **(accepted)**
    - the custom message menu (focus, `Esc`, outside click)
    - the bare `typing…` in DMs

@@ -60,7 +60,7 @@ const groupEntrySchema = z.object({
   // T-0124: `group` behaves as before; `channel` is the broadcast feed (its
   // General topic is the feed). Optional so older payloads parse as groups.
   chatKind: z.enum(['group', 'channel']).optional(),
-  // T-0124: the same count under Telegram's name, for channels only.
+  // T-0124: the same count under the usual channel name, for channels only.
   subscriberCount: z.number().optional(),
   // T-0124: the channel's short blurb. Optional so older payloads parse.
   description: z.string().nullable().optional(),

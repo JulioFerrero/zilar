@@ -5,7 +5,7 @@ The Zilar mobile app: an [Expo](https://expo.dev) (SDK 57) app using
 [NativeWind](https://www.nativewind.dev) and
 [React Native Reusables](https://reactnativereusables.com).
 
-For now it shows the Telegram-like chat shell from T-0019 (mock data), polished
+For now it shows the messenger-style chat shell from T-0019 (mock data), polished
 in T-0023: the chat list with folder tabs, search, typing and the new-chat menu;
 the chat screen with bubbles, an unread divider, big emoji, safe links, reply
 quotes, swipe-to-reply, long-press actions and the composer. Shared pure logic

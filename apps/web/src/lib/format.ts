@@ -37,7 +37,7 @@ export function chatSubtitle(chat: ChatSummary, now: Date): string {
   if (chat.isAI) {
     return `AI · ${chat.aiStatus === 'working' ? 'working' : 'idle'}`;
   }
-  // T-0124: the channel header shows "N subscribers" (Telegram's wording).
+  // T-0124: the channel header shows "N subscribers" (the usual channel wording).
   if (chat.chatKind === 'channel') {
     const count = chat.subscriberCount ?? chat.memberCount ?? 0;
     return `${count} ${count === 1 ? 'subscriber' : 'subscribers'}`;

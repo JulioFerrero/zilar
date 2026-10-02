@@ -14,7 +14,7 @@ estimate: 2 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-Decisions D25, D26 and D29 in `docs/PROJECT_PLAN.md` (Julio, 2026-09-29). Telegram forum mode with Discord-style access: a group is a list of **topics**; each topic is its own conversation with its own history and unread count; a topic is **public** (every group member) or **private** (only chosen people); a private topic is **hidden completely** from everyone else; every topic carries a thin **task strip** (type, status, owner, link). The mockup is the Claude artifact "Zilar Topics Mockup" (https://claude.ai/artifact/YKvuBAcmXzRdiyx83eppSd): read it if you can; the text below is the contract.
+Decisions D25, D26 and D29 in `docs/PROJECT_PLAN.md` (Julio, 2026-09-29). Forum mode with Discord-style access: a group is a list of **topics**; each topic is its own conversation with its own history and unread count; a topic is **public** (every group member) or **private** (only chosen people); a private topic is **hidden completely** from everyone else; every topic carries a thin **task strip** (type, status, owner, link). The mockup is the Claude artifact "Zilar Topics Mockup" (https://claude.ai/artifact/YKvuBAcmXzRdiyx83eppSd): read it if you can; the text below is the contract.
 
 **The design rule that matters most: every topic is its own XMPP MUC room.** One room per group could not keep a private topic private (every room member receives every message). With one members-only room per topic, ejabberd itself refuses to deliver a private topic to anyone who is not in it. Our database owns *who may see what* and syncs it into the rooms.
 

@@ -6,7 +6,7 @@ export interface AvatarGradient {
   to: string;
 }
 
-/** The seven Telegram-like avatar gradients from `docs/design/ui-style.md` §2. */
+/** The seven messenger-style avatar gradients from `docs/design/ui-style.md` §2. */
 export const AVATAR_GRADIENTS: readonly AvatarGradient[] = [
   { index: 0, from: '#ff885e', to: '#ff516a' },
   { index: 1, from: '#ffcd6a', to: '#ffa85c' },

@@ -15,7 +15,7 @@ estimate: 1.5 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-Julio tried the Android search: a message that says "heello" is not found by "hello". Search today (T-0117) is exact whole-word full text (`to_tsvector('simple')` with `websearch_to_tsquery`): no prefixes ("hel" does not find "hello"), no typo tolerance, no accent folding. A Telegram-like chat needs search that forgives. Read `AGENTS.md` first, including the security checklist, and `work/T-0117-message-search.md` (Spec, Report, Review).
+Julio tried the Android search: a message that says "heello" is not found by "hello". Search today (T-0117) is exact whole-word full text (`to_tsvector('simple')` with `websearch_to_tsquery`): no prefixes ("hel" does not find "hello"), no typo tolerance, no accent folding. A messenger-style chat needs search that forgives. Read `AGENTS.md` first, including the security checklist, and `work/T-0117-message-search.md` (Spec, Report, Review).
 
 ### Design (decided by the lead: no database extension)
 No `pg_trgm`, no new extension, no schema change and no migration: the archive database is ejabberd's and an extension would need a superuser step on every existing install. The archive query is already bounded (the caller's own scope, the 12-month cutoff, at most `SEARCH_MAX_CANDIDATES` rows), so fuzzy matching can run in the Node server over those bounded candidates.

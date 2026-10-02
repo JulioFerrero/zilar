@@ -15,7 +15,7 @@ estimate: 1.5 days
 
 ### Goal
 
-The MVP list (`docs/PROJECT_PLAN.md` §21) has reactions, and the web has none. Add Telegram-like reactions to DMs and groups:
+The MVP list (`docs/PROJECT_PLAN.md` §21) has reactions, and the web has none. Add messenger-style reactions to DMs and groups:
 - a quick bar of 6 emoji in the message actions menu;
 - chips under a bubble with counts;
 - click a chip to toggle my reaction;

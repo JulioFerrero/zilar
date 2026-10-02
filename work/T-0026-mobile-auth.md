@@ -221,7 +221,7 @@ sign-out → 200 → second sign-in without invite → 200 → GET /api/me after
   **`second sign-in without invite → 200`** and `GET /api/me after second sign-in
   → 200`. That last pair is the one that proves the session survives a restart
   and that an existing user does not need an invite.
-- **Both screenshots opened.** `auth-code.png` is the Telegram-like code screen
+- **Both screenshots opened.** `auth-code.png` is the messenger-style code screen
   the style guide asks for: centred card, large title, six digit boxes with the
   first focused, a live `Resend in 28s` countdown and "Use a different email".
   `auth-signed-in.png` shows the guard letting a signed-in user through to the

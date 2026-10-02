@@ -19,7 +19,7 @@ Turn the web app from mock data into **the real thing**:
 - they see their real chats and DM or chat in groups in real time, with history, typing, read ticks and online status
 - they can create a group from their contacts and invite more friends
 
-This is the milestone where **Julio can actually use Zilar**. Keep the Telegram look from `docs/design/ui-style.md`.
+This is the milestone where **Julio can actually use Zilar**. Keep the messenger look from `docs/design/ui-style.md`.
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -45,7 +45,7 @@ This is the milestone where **Julio can actually use Zilar**. Keep the Telegram 
   - after a first sign-in, `/welcome/name`, which calls `PATCH /api/me`
   - `/` and `/c/:chatJid`: the app (URL-encode JIDs in routes)
   - **route guard:** no session → `/login`, preserving the target
-- **The code screen:** 6 separate digit boxes that auto-advance and accept pasting the whole code, a "Resend code" link after 30 s, and the errors "Wrong code" and "Too many attempts, try again later". It matches the Telegram look (centered card, large title).
+- **The code screen:** 6 separate digit boxes that auto-advance and accept pasting the whole code, a "Resend code" link after 30 s, and the errors "Wrong code" and "Too many attempts, try again later". It matches the a classic messenger look (centered card, large title).
 - **The real `ChatStore`** implements the **same interface** as the mock store, so components barely change:
   - On load: `GET /api/chats` and `GET /api/me`. Then connect `xmpp-core`, with `getToken` calling `POST /api/xmpp/token`, and join every group room.
   - For each chat, load the **last message** with `loadHistory(chatJid, kind, { max: 1 })`, for the list preview and sorting. Sort by last-message time, newest first.
@@ -56,7 +56,7 @@ This is the milestone where **Julio can actually use Zilar**. Keep the Telegram 
     - Keep the last-read message id per chat locally (localStorage, per user id), with a safe `try/catch`.
     - Send `markDisplayed` when a chat is open, visible, and a new message arrives.
     - Count messages after the last-read id among the loaded messages; the MVP accepts that it's approximate.
-  - Connection status: a thin bar "Connecting…" / "Waiting for network…" in the list header while not `online`, like Telegram.
+  - Connection status: a thin bar "Connecting…" / "Waiting for network…" in the list header while not `online`, like most messengers.
 - **Groups:** the new-chat menu's **"New group"** opens a two-step dialog: pick contacts (checkboxes), then set the title, then `POST /api/groups`. The new room opens.
 - **Invite a friend:** in the menu and the empty state. `POST /api/invites` → a dialog with the link and a **Copy** button.
 - **Sign out:** in the ☰ menu. It calls Better Auth's sign-out, disconnects XMPP and clears local state.
