@@ -23,8 +23,8 @@ Web first; mobile is a later task.
 ### What to build
 
 **1. Data (server, one migration).**
-- `user_handles(user_id text primary key references user(id) on delete cascade, handle text not null, handle_lower text not null unique, created_at, changed_at)`. The unique index on `handle_lower` is the only uniqueness rule; never check-then-insert.
-- `retired_handles(handle_lower text primary key, former_user_id text not null references user(id) on delete cascade, reserved_until timestamptz not null)`: a handle given up by a change stays reserved for its former owner until `reserved_until` (30 days).
+- `handles(handle_lower text primary key, handle text not null, user_id text unique references user(id) on delete cascade, group_id text unique references groups(id) on delete cascade, created_at, changed_at)` with a check that exactly one of `user_id` and `group_id` is set. One namespace for people and groups (a later task gives public groups and channels their own `@handle`), so the primary key on `handle_lower` is the only uniqueness rule; never check-then-insert. In this task only `user_id` rows are written; the `group_id` column and its check exist so the next task needs no change to the table.
+- `retired_handles(handle_lower text primary key, former_user_id text references user(id) on delete cascade, former_group_id text references groups(id) on delete cascade, reserved_until timestamptz not null)` with the same exactly-one check: a handle given up by a change stays reserved for its former owner until `reserved_until` (30 days).
 - `contact_requests(id text primary key, from_user_id, to_user_id (both references user on delete cascade), status text check in ('pending','accepted','declined','cancelled'), created_at, decided_at)`, a unique partial index on `(from_user_id, to_user_id) where status = 'pending'`, and a check that the two ids differ.
 
 **2. Handle rules (one pure, tested module shared by the checks).**
