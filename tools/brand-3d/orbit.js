@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
-// Zilar icon, variant "native silver": a big and a small silver sphere (the earth and its moon) on the black key.
+// Zilar icon, variant "native silver": a big silver sphere with a small one on a tilted orbit (the earth and its moon) on the black key.
 // `?render=1` draws one transparent front-facing frame, like main.js.
 
 const params = new URLSearchParams(location.search);
@@ -111,14 +111,26 @@ scene.add(key);
 // ---------- a big silver sphere and a small one in orbit, like the earth and the moon ----------
 const mirror = new THREE.MeshStandardMaterial({ color: 0xf2f4f8, metalness: 1, roughness: 0.24, envMapIntensity: 2.0 });
 const satin = new THREE.MeshStandardMaterial({ color: 0xe6e9ee, metalness: 1, roughness: 0.3, envMapIntensity: 2 });
-function ball(material, radius, x, y, z) {
+const system = new THREE.Group();
+function ball(material, radius, position, parent) {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 128, 96), material);
-  mesh.position.set(x, y, z);
+  mesh.position.copy(position);
   mesh.castShadow = true;
-  scene.add(mesh);
+  parent.add(mesh);
 }
-ball(mirror, 205, -40, -35, 170);
-ball(satin, 66, 215, 205, 210);
+const ORBIT = 310;
+const MOON_AT = 0.2 * Math.PI; // angle of the moon on its orbit
+const tilt = new THREE.Group();
+tilt.rotation.set(1.2, 0, 0.5);
+const orbitRing = new THREE.Mesh(new THREE.TorusGeometry(ORBIT, 4.5, 24, 360), mirror);
+orbitRing.castShadow = true;
+tilt.add(orbitRing);
+ball(satin, 58, new THREE.Vector3(Math.cos(MOON_AT) * ORBIT, Math.sin(MOON_AT) * ORBIT, 0), tilt);
+system.add(tilt);
+ball(mirror, 200, new THREE.Vector3(0, 0, 0), system);
+system.position.set(-10, -20, 400);
+system.scale.setScalar(0.88);
+scene.add(system);
 
 // ---------- light and ground ----------
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
