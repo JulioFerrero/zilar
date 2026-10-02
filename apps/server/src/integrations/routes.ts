@@ -150,6 +150,8 @@ export interface BotTokenResolverDeps {
   config: Pick<ServerConfig, 'TELEGRAM_BOT_TOKEN'>;
   db: ServerDatabase;
   cipher: { decrypt: (envelope: string) => string };
+  /** Warned (never with a secret) when a stored token cannot be decrypted. */
+  logger?: { warn: (fields: Record<string, unknown>, message: string) => void } | undefined;
 }
 
 // The token for a request: the env value wins when set, else the stored
@@ -165,6 +167,10 @@ export function createGetBotToken(deps: BotTokenResolverDeps): () => Promise<str
     try {
       return await getStoredTelegramToken(deps.db, deps.cipher);
     } catch {
+      deps.logger?.warn(
+        {},
+        'the stored Telegram token could not be decrypted; check ZILAR_KEY_ENCRYPTION_KEY',
+      );
       return null;
     }
   };
@@ -277,9 +283,6 @@ export function createIntegrationsRoutes(deps: IntegrationsRoutesDependencies): 
   routes.delete('/settings/integrations/telegram', async (c) => {
     const { user: caller } = await requireSession(deps.auth, c.req.raw.headers);
     await requireOwner(caller.id);
-    if (!telegramLimiter.allow(caller.id)) {
-      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
-    }
     await deps.db.transaction(async (tx: SetupTransaction) => {
       await deleteStoredTelegramToken(tx);
     });

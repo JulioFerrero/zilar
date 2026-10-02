@@ -16,11 +16,15 @@ import {
   type StorageLike,
 } from './realStore';
 import type { Pin } from '@/lib/api';
+import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
 
 // Sign-out must not hit Better Auth over the network in a test.
 vi.mock('@/lib/auth', () => ({
   authClient: { signOut: vi.fn(async () => ({})) },
 }));
+
+// The server-owner answer is cached per session and must not outlive sign-out.
+vi.mock('@/lib/useIsServerOwner', () => ({ resetIsServerOwnerCache: vi.fn() }));
 
 function memoryStorage(): StorageLike {
   const data = new Map<string, string>();
@@ -2755,6 +2759,14 @@ describe('AI reply drafts (T-0043)', () => {
     expect(drafts.close).toHaveBeenCalledTimes(1);
     expect(store.getState().drafts).toEqual({});
     expect(goToLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it('forgets the cached server-owner answer on signOut', async () => {
+    const { store } = await setup({}, undefined, { goToLogin: vi.fn() });
+    vi.mocked(resetIsServerOwnerCache).mockClear();
+    await store.getState().signOut();
+
+    expect(resetIsServerOwnerCache).toHaveBeenCalledTimes(1);
   });
 });
 

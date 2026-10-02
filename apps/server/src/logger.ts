@@ -1,7 +1,15 @@
 import { pino, type DestinationStream, type Logger, type LoggerOptions } from 'pino';
 import type { ServerConfig } from './config';
 
-const SENSITIVE_KEYS = ['password', 'token', 'secret', 'apiKey', 'api_key'];
+const SENSITIVE_KEYS = [
+  'password',
+  'token',
+  'secret',
+  'apiKey',
+  'api_key',
+  'botToken',
+  'resendApiKey',
+];
 
 export const redactPaths: string[] = [
   ...SENSITIVE_KEYS,

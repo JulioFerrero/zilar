@@ -354,6 +354,7 @@ export function createApp({
     config,
     db,
     cipher: settingsCipherFor(config),
+    logger,
   });
   app.route(
     '/api',

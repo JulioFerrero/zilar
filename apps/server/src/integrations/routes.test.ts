@@ -282,6 +282,23 @@ describe('PUT /api/settings/integrations/telegram', () => {
     expect(limited.status).toBe(429);
   });
 
+  it('removing the token does not use up the save budget', async () => {
+    const app = appFor();
+    for (let attempt = 0; attempt < INTEGRATIONS_TELEGRAM_RATE_LIMIT_MAX + 3; attempt += 1) {
+      const removed = await jsonRequest(
+        app,
+        'DELETE',
+        '/api/settings/integrations/telegram',
+        owner,
+      );
+      expect(removed.status).toBe(200);
+    }
+    const saved = await jsonRequest(app, 'PUT', '/api/settings/integrations/telegram', owner, {
+      botToken: SENTINEL_TOKEN,
+    });
+    expect(saved.status).toBe(200);
+  });
+
   it('the owner removes the stored token; the env value stays in effect', async () => {
     const app = appFor();
     await jsonRequest(app, 'PUT', '/api/settings/integrations/telegram', owner, {

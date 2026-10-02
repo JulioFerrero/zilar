@@ -30,6 +30,9 @@ describe('createLogger', () => {
       secret: 'shhh',
       apiKey: 'key-one',
       api_key: 'key-two',
+      botToken: 'bot-one',
+      body: { resendApiKey: 're_sentinel_two' },
+      resendApiKey: 're_sentinel_one',
       req: { headers: { authorization: 'Bearer xyz', cookie: 'session=1' } },
       DATABASE_URL: 'postgres://user:hunter2@127.0.0.1:5432/zilar',
     });
@@ -40,6 +43,8 @@ describe('createLogger', () => {
       'shhh',
       'key-one',
       'key-two',
+      'bot-one',
+      're_sentinel_one',
       'Bearer xyz',
       'session=1',
     ]) {

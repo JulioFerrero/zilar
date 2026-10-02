@@ -1,7 +1,7 @@
 ---
 id: T-0162
 title: Integration keys in the UI (Telegram bot token) and a proper import dialog
-status: review
+status: merged
 milestone: M5
 branch: task/T-0162-integrations-settings-telegram
 model: meta/muse-spark-1.3-contributor
@@ -222,3 +222,10 @@ flag aside, the regex must match the whole string). Use the exact full
 name (or `findByText`) for links.
 
 ## Review (written by Claude)
+
+Approved and merged. Pre-reviewed twice (a6dec1d and 4e1a5c0); re-ran format, lint, typecheck, the server suites for integrations, stickers, logger and the 401 sweep and the web suites for the dialog, install menu, integrations page and store on the final tree.
+
+- The Email card and its route were requested by me during the task (changing the sender and key after setup) and are in scope; the spec's Out of scope line about mail settings after setup referred to the first-run task and is superseded.
+- Review round 1 (worker): owner-only `GET` with the same 404, the shared `useIsServerOwner` hook, `token_invalid` 409 for a rejected stored token, one Escape effect, router `Link`, saved flag after the reload.
+- Review round 2 (lead, small): the owner cache is cleared on sign-out (with a test), a delete no longer uses up the save budget (with a test), the logger redacts `botToken` and `resendApiKey` (with a test), and a decrypt failure of the stored token logs one warning without a secret.
+- Known and accepted: the owner is the earliest account; the test email for the Email card carries a dummy code.
