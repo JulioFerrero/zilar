@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { StickersPage } from './StickersPage';
+import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
 
 function jsonResponse(status: number, body: unknown): Response {
   return {
@@ -41,6 +42,7 @@ const addedPack = {
 };
 
 function renderPage(fetchMock: ReturnType<typeof vi.fn>) {
+  resetIsServerOwnerCache();
   vi.stubGlobal('fetch', fetchMock);
   return render(
     <AuthProvider
@@ -310,13 +312,20 @@ describe('StickersPage', () => {
     expect(await screen.findByText('Imported from Telegram: Fun Cats')).toBeTruthy();
   });
 
-  it('hides the import entry when the server answers 501', async () => {
+  it('shows the not-set-up state when the server answers 501 and keeps the entry', async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (typeof url === 'string' && url.includes('/sticker-packs/discover')) {
         return jsonResponse(200, { packs: [], next: null });
       }
       if (typeof url === 'string' && url.includes('/sticker-favorites')) {
         return jsonResponse(200, { favorites: [] });
+      }
+      if (typeof url === 'string' && url.includes('/settings/integrations')) {
+        return jsonResponse(200, {
+          telegram: { configured: false, source: null },
+          email: { configured: true, source: 'stored', from: 'Zilar <a@b.c>' },
+          canManage: true,
+        });
       }
       if (typeof url === 'string' && url.endsWith('/sticker-packs/import/telegram')) {
         return jsonResponse(501, {
@@ -331,9 +340,47 @@ describe('StickersPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import from Telegram' }));
     fireEvent.change(screen.getByLabelText('Pack link or name'), { target: { value: 'FunCats' } });
     fireEvent.click(screen.getByRole('button', { name: 'Import' }));
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Import from Telegram' })).toBeNull();
+    // The dialog stays open and says why; the entry stays visible and the
+    // owner gets a router link to the settings page (no full reload). The
+    // hook flips after its 200, so wait for the link explicitly.
+    expect(await screen.findByText('Telegram import is not set up')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Import from Telegram' })).toBeTruthy();
+    expect(
+      await screen.findByRole('link', {
+        name: 'Open the integrations settings to add a bot token.',
+      }),
+    ).toHaveProperty('href', expect.stringContaining('/settings/integrations'));
+  });
+
+  it('shows the token-rejected state when Telegram refuses the saved token', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (typeof url === 'string' && url.includes('/sticker-packs/discover')) {
+        return jsonResponse(200, { packs: [], next: null });
+      }
+      if (typeof url === 'string' && url.includes('/sticker-favorites')) {
+        return jsonResponse(200, { favorites: [] });
+      }
+      if (typeof url === 'string' && url.endsWith('/sticker-packs/import/telegram')) {
+        return jsonResponse(409, {
+          error: {
+            code: 'token_invalid',
+            message: 'The Telegram token was rejected. The server owner needs to update it.',
+          },
+        });
+      }
+      return jsonResponse(200, { packs: [demoPack] });
     });
+    renderPage(fetchMock);
+
+    await screen.findByText('Cats');
+    fireEvent.click(screen.getByRole('button', { name: 'Import from Telegram' }));
+    fireEvent.change(screen.getByLabelText('Pack link or name'), { target: { value: 'FunCats' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    // The owner hook answers 404 here (no integrations stub above), so the
+    // dialog shows the plain text for everyone else.
+    expect(await screen.findByText('The Telegram token was rejected')).toBeTruthy();
+    expect(screen.getByText(/The server owner needs to update it/)).toBeTruthy();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('marks imported packs and locks them to private', async () => {

@@ -1172,3 +1172,61 @@ describe('sticker packs and favorites API (T-0121)', () => {
     });
   });
 });
+
+describe('integrations settings API (T-0162 + Email)', () => {
+  it('getIntegrationsStatus hits GET /api/settings/integrations and parses the shape', async () => {
+    const status = {
+      telegram: { configured: true, source: 'stored' },
+      email: { configured: true, source: 'stored', from: 'Zilar <a@b.c>' },
+      canManage: true,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, status));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { getIntegrationsStatus } = await import('@/lib/api');
+    expect(await getIntegrationsStatus()).toEqual(status);
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/settings/integrations');
+  });
+
+  it('saveTelegramBotToken PUTs the token; removeTelegramBotToken DELETEs', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { saveTelegramBotToken, removeTelegramBotToken } = await import('@/lib/api');
+    await saveTelegramBotToken('tok');
+    const [putUrl, putInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(putUrl).toBe('/api/settings/integrations/telegram');
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body as string)).toEqual({ botToken: 'tok' });
+
+    await removeTelegramBotToken();
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(deleteUrl).toBe('/api/settings/integrations/telegram');
+    expect(deleteInit.method).toBe('DELETE');
+  });
+
+  it('saveEmailSettings sends only `from` without a key, and both with one', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { saveEmailSettings } = await import('@/lib/api');
+    await saveEmailSettings({ from: 'Zilar <a@b.c>' });
+    expect(
+      JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string),
+    ).toEqual({ from: 'Zilar <a@b.c>' });
+    await saveEmailSettings({ from: 'Zilar <a@b.c>', resendApiKey: 're_x' });
+    expect(
+      JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string),
+    ).toEqual({ from: 'Zilar <a@b.c>', resendApiKey: 're_x' });
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe('/api/settings/integrations/email');
+    expect(init.method).toBe('PUT');
+  });
+});

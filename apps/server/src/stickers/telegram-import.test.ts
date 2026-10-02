@@ -103,6 +103,26 @@ describe('createTelegramClient', () => {
     expect(String((error as Error).message)).not.toContain('STICKERSET_INVALID');
   });
 
+  it('maps a 401 to invalid_token for the integrations page to verify a key', async () => {
+    const { fetch: fetchImpl, calls } = captureFetch(() =>
+      okJson({ ok: false, error_code: 401, description: 'Unauthorized: bot was blocked' }, 401),
+    );
+    const client = createTelegramClient(secretToken, fetchImpl);
+    const error = await client.getMe().catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(TelegramImportError);
+    expect((error as TelegramImportError).code).toBe('invalid_token');
+    expect(String((error as Error).message)).not.toContain(secretToken);
+    expect(calls[0]).toContain('/getMe');
+  });
+
+  it('answers getMe ok for a valid token', async () => {
+    const { fetch: fetchImpl } = captureFetch(() =>
+      okJson({ ok: true, result: { id: 1, is_bot: true, first_name: 'Z' } }),
+    );
+    const client = createTelegramClient(secretToken, fetchImpl);
+    await expect(client.getMe()).resolves.toEqual({ ok: true });
+  });
+
   it('retries a 429 once after retry_after (capped at 5 s), then reports try_later', async () => {
     let calls = 0;
     let waitedMs = 0;

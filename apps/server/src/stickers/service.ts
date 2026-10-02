@@ -1044,6 +1044,15 @@ function toImportHttpError(error: unknown): HttpError {
         return new HttpError(503, 'try_later', 'Telegram is busy, try again later');
       case 'invalid_request':
         return new HttpError(400, 'invalid_request', error.message);
+      case 'invalid_token':
+        // The stored (or env) token was revoked or replaced at Telegram's
+        // side after it was saved. 409, not 501: the feature IS configured,
+        // the credential is just dead — and the message names who fixes it.
+        return new HttpError(
+          409,
+          'token_invalid',
+          'The Telegram token was rejected. The server owner needs to update it.',
+        );
       default:
         return new HttpError(503, 'try_later', 'Telegram is busy, try again later');
     }

@@ -105,6 +105,7 @@ import {
   type XmppToken,
 } from '@/lib/api';
 import { authClient } from '@/lib/auth';
+import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
 import {
   subscribeToDrafts,
   type DraftEndEvent,
@@ -3800,6 +3801,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       signOut: async () => {
         get().stop();
         clearChatListCache(storage);
+        resetIsServerOwnerCache();
         cachedUserId = undefined;
         lastRead = {};
         if (storage !== null && lastReadUserId !== undefined) {

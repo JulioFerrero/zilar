@@ -56,6 +56,12 @@ export interface StickersRoutesDependencies {
   importLimiter?: { allow: (key: string) => boolean };
   /** Injected in tests so the import never touches the network. */
   telegramClient?: import('./telegram-import').TelegramClient;
+  /**
+   * Resolves the bot token per request: the env value wins when set, else
+   * the stored integrations value, else none. `app.ts` wires the integrations
+   * resolver; tests inject a fixed value. Absent = the legacy env-only read.
+   */
+  getBotToken?: () => Promise<string | null>;
 }
 
 // A malformed percent escape is an unknown id (404), not a server error.
@@ -130,6 +136,14 @@ const telegramImportBodySchema = z.object({ input: z.string().min(1).max(512) })
 export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
   const routes = new Hono();
   const now = deps.now ?? Date.now;
+  // The default resolver keeps the legacy env-only read for callers that do
+  // not wire the integrations module (unit tests of these routes).
+  const getBotToken =
+    deps.getBotToken ??
+    (async (): Promise<string | null> => {
+      const token = deps.config.TELEGRAM_BOT_TOKEN;
+      return token === undefined || token === '' ? null : token;
+    });
   const uploadLimiter =
     deps.uploadLimiter ??
     createRateLimiter({
@@ -178,15 +192,16 @@ export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
     return c.json(page);
   });
 
-  // Telegram import (T-0123): fetch a public pack's static stickers into a
-  // private Zilar pack. Without `TELEGRAM_BOT_TOKEN` the feature is off
-  // (501 `import_unavailable`, so the web hides it). 3 imports per hour per
-  // user; the import runs to completion within the request budget (30 s) and
-  // reports `partial: true` when the budget ran out (re-run fills the gaps).
+  // Telegram import (T-0123, stored token T-0162): fetch a public pack's
+  // static stickers into a private Zilar pack. Without a token (neither
+  // `TELEGRAM_BOT_TOKEN` env nor a stored integrations value) the feature
+  // is off (501 `import_unavailable`). 3 imports per hour per user; the
+  // import runs to completion within the request budget (30 s) and reports
+  // `partial: true` when the budget ran out (re-run fills the gaps).
   routes.post('/sticker-packs/import/telegram', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    const token = deps.config.TELEGRAM_BOT_TOKEN;
-    if (token === undefined || token === '') {
+    const token = await getBotToken();
+    if (token === null) {
       throw new HttpError(501, 'import_unavailable', 'Telegram import is not configured');
     }
     const body = await c.req.json().catch(() => null);

@@ -1593,6 +1593,66 @@ export function importTelegramStickers(input: string): Promise<TelegramImportRes
   });
 }
 
+// --- Integrations settings (T-0162 + Email follow-up) ----------------------
+// The server owner's key shelf: the Telegram bot token (sticker import)
+// and the sign-in mail sender + Resend key. The token and the key are
+// never returned by the server, not even masked — only `configured` and
+// `source` say whether one is set.
+
+const integrationsTelegramSchema = z.object({
+  configured: z.boolean(),
+  source: z.enum(['env', 'stored']).nullable(),
+});
+
+const integrationsEmailSchema = z.object({
+  configured: z.boolean(),
+  source: z.enum(['env', 'stored']).nullable(),
+  from: z.string().nullable(),
+});
+
+const integrationsStatusSchema = z.object({
+  telegram: integrationsTelegramSchema,
+  email: integrationsEmailSchema,
+  canManage: z.boolean(),
+});
+
+export type IntegrationsStatus = z.infer<typeof integrationsStatusSchema>;
+
+export function getIntegrationsStatus(): Promise<IntegrationsStatus> {
+  return request('/settings/integrations', integrationsStatusSchema);
+}
+
+export async function saveTelegramBotToken(botToken: string): Promise<void> {
+  await request('/settings/integrations/telegram', z.object({ ok: z.boolean() }), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ botToken }),
+  });
+}
+
+export async function removeTelegramBotToken(): Promise<void> {
+  await request('/settings/integrations/telegram', z.object({ ok: z.boolean() }), {
+    method: 'DELETE',
+  });
+}
+
+export interface SaveEmailSettingsInput {
+  from: string;
+  resendApiKey?: string | undefined;
+}
+
+export async function saveEmailSettings(input: SaveEmailSettingsInput): Promise<void> {
+  const body =
+    input.resendApiKey === undefined
+      ? { from: input.from }
+      : { from: input.from, resendApiKey: input.resendApiKey };
+  await request('/settings/integrations/email', z.object({ ok: z.boolean() }), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 // --- GIFs (T-0122) --------------------------------------------------------
 // Privacy-preserving search: the browser never contacts the provider. Every
 // media URL arrives as an opaque `mediaToken` minted for this user; previews
