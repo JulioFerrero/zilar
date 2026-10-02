@@ -249,12 +249,14 @@ describe('readImageSize', () => {
 describe('trustedMediaHosts', () => {
   it('includes the service hostname, the domain, and the upload subdomain', () => {
     const hosts = trustedMediaHosts({ service: 'ws://xmpp.zilar.test/ws', domain: 'zilar.test' });
-    expect([...hosts].sort()).toEqual(['zilar.test', 'upload.zilar.test', 'xmpp.zilar.test']);
+    expect([...hosts].sort()).toEqual(
+      ['zilar.test', 'upload.zilar.test', 'xmpp.zilar.test'].sort(),
+    );
   });
 
   it('drops a malformed service URL but still trusts the domain', () => {
     const hosts = trustedMediaHosts({ service: 'not a url', domain: 'zilar.test' });
-    expect([...hosts].sort()).toEqual(['zilar.test', 'upload.zilar.test']);
+    expect([...hosts].sort()).toEqual(['zilar.test', 'upload.zilar.test'].sort());
   });
 
   it('lowercases the hostnames', () => {
