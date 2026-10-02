@@ -32,7 +32,7 @@ All names dotted; every adapter takes `aiId`/`groupId`/`topicId` **only from the
 | Action | Tier | Args (zod, strict) | Behaviour |
 |---|---|---|---|
 | `web.fetch` | 1 | `{ url (https, ≤ 2048), maxChars? (≤ 16000, default 8000) }` | Fetches the page, converts HTML to plain text with a **small hand-written extractor** (drop script/style/nav/head, keep title, headings, paragraphs, list items and link text with hrefs, collapse whitespace; no new dependency), returns it as `modelText` cut at `maxChars` with `…`. `summary`: `fetched <host> (<N> chars)`. |
-| `web.wikipedia` | 0 | `{ query, lang? (2–3 letters, default 'en') }` | Uses Wikipedia's public API on `<lang>.wikipedia.org` (search + page extract; read Wikipedia's API docs and send a descriptive `User-Agent` `Galena/<version> (self-hosted; contact via server admin)` as their policy asks). `modelText`: title, short extract (≤ 3 000 chars) and the article URL; `summary`: `wikipedia: <title>` or `no article found`. Host is fixed; `lang` is validated (letters only) so it cannot change the host. |
+| `web.wikipedia` | 0 | `{ query, lang? (2–3 letters, default 'en') }` | Uses Wikipedia's public API on `<lang>.wikipedia.org` (search + page extract; read Wikipedia's API docs and send a descriptive `User-Agent` `Zilar/<version> (self-hosted; contact via server admin)` as their policy asks). `modelText`: title, short extract (≤ 3 000 chars) and the article URL; `summary`: `wikipedia: <title>` or `no article found`. Host is fixed; `lang` is validated (letters only) so it cannot change the host. |
 | `web.price` | 0 | `{ symbols: string[] (1–10; each `[A-Za-z0-9.^=_-]{1,20}`) }` | Latest price per symbol. Two keyless sources, configured in one table in code: **crypto** through CoinGecko's public "simple price" endpoint (symbols mapped from a small built-in table `BTC→bitcoin`, `ETH→ethereum`, `SOL→solana`, …; unknown symbols are reported as unknown), and **indexes, stocks, gold** through Stooq's public CSV quote endpoint (symbols such as `^spx`, `xauusd`, `aapl.us`). Read each provider's public docs to get the exact URLs and formats right; parse with `zod`/a strict CSV line parser; every number must be finite. `modelText`: one line per symbol `SYMBOL price CURRENCY (as of <timestamp or 'unknown'>, source <name>)`; unknown/failed symbols say so. Fixed hosts only (`api.coingecko.com`, `stooq.com`). |
 | `web.feed` | 1 | `{ url (https), limit? (1–20, default 10) }` | Reads an RSS or Atom feed with a **small hand-written XML reader** (no new dependency; refuse DTDs/entities: reject any body containing `<!DOCTYPE` or `<!ENTITY`) and returns the newest items (title, link, date, ≤ 300-char snippet) as `modelText`. |
 | `web.search` | 1 | `{ query (≤ 200) }` | **Best-effort**, provider behind a port: `interface WebSearchProvider { search(query, { limit }): Promise<WebSearchResult[]> }`. The only adapter in this task is `duckduckgo-html`: `GET https://html.duckduckgo.com/html/?q=<query>`, parsed with the same small extractor for result title, URL (unwrap DuckDuckGo's redirect links to the target URL) and snippet, at most 8 results. It may be blocked or change its markup at any time: **any failure, block page, captcha, or 0 parsed results returns `summary: 'search unavailable right now'`** plus a `modelText` hint to try `web.wikipedia`, `web.feed` or `web.fetch` with a known URL. Never retry in a loop; one attempt per call. Config `WEB_SEARCH_PROVIDER` (`duckduckgo-html` | `none`, default `duckduckgo-html`); `none` unregisters `web.search`. The tool description tells the model **not to put private or sensitive text in queries** because the query leaves the server. |
@@ -81,7 +81,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
 pnpm build
 ```
 
@@ -99,7 +99,7 @@ pnpm build
   - `feed.ts`: hand-written RSS/Atom reader; rejects any body containing `<!DOCTYPE`/`<!ENTITY`; items capped at 20, snippets at 300 chars.
   - `prices.ts`: keyless price table. Crypto via CoinGecko simple/price (`BTC→bitcoin`, `ETH→ethereum`, `SOL→solana`, `DOGE`, `XRP`, `ADA`, `AVAX`, `LINK`, `LTC`, `DOT`; unknown symbols reported as unknown); indexes/stocks/gold via Stooq CSV quote endpoint (`s`, `f=sd2t2ohlcv`, `h`, `e=csv`) with a strict CSV line parser; every number must be finite, `N/D`/empty/Infinity/NaN are unavailable.
   - `search.ts`: `WebSearchProvider` port with the only provider `duckduckgo-html` (one GET per call, redirect links unwrapped from `uddg=`, non-http(s) dropped, max 8 results, block markers → `[]`, never retried).
-  - `adapters.ts`: `web.fetch` (t1), `web.wikipedia` (t0, `<lang>.wikipedia.org` letters-only, search + extract, `Galena/<version> (self-hosted; contact via server admin)` UA), `web.price` (t0), `web.feed` (t1), `web.search` (t1, description warns queries leave the server + results unreliable). Shared 30/hour/(AI, topic) in-memory rate limit. `execute` never throws for expected problems. `WEB_SEARCH_PROVIDER=none` unregisters `web.search`. All descriptions ≤ 200 chars.
+  - `adapters.ts`: `web.fetch` (t1), `web.wikipedia` (t0, `<lang>.wikipedia.org` letters-only, search + extract, `Zilar/<version> (self-hosted; contact via server admin)` UA), `web.price` (t0), `web.feed` (t1), `web.search` (t1, description warns queries leave the server + results unreliable). Shared 30/hour/(AI, topic) in-memory rate limit. `execute` never throws for expected problems. `WEB_SEARCH_PROVIDER=none` unregisters `web.search`. All descriptions ≤ 200 chars.
 - Wiring: `WEB_TOOLS_ENABLED` (default `false`) + `WEB_SEARCH_PROVIDER` (default `duckduckgo-html`) in `config.ts`; `index.ts` registers the web adapters next to demo/tool adapters only when enabled; `docs/SERVER_CONFIG.md` documents both with the outbound-request warning linking `docs/TOOL_SANDBOX.md`.
 - Provider docs verified live before coding: Wikipedia search + extracts + `fullurl` API shape, CoinGecko `simple/price?ids=&vs_currencies=usd&include_last_updated_at=true`, DuckDuckGo HTML result markup (`result`/`result__a`/`result__snippet`, `uddg=` redirect wrap) via a real `curl` capture. Stooq note: `q/l/` returned a "page does not exist" HTML page and `q/d/l/` hit a JS-verification wall from this network, so the Stooq URL follows the documented `q/l/?s=&f=sd2t2ohlcv&h&e=csv` shape with the recorded-shape CSV parsed strictly; any provider-side failure surfaces per-symbol as `unavailable (...)`, never a throw.
 
@@ -115,7 +115,7 @@ pnpm build
 - `pnpm format:check`: after `prettier --write` on touched files: "All matched files use Prettier code style!"
 - `pnpm lint` (oxlint): clean, no output
 - `pnpm typecheck`: 10 tasks successful
-- `pnpm --filter @galena/server test --maxWorkers=2`: 78 files passed, 5 skipped; 1357 tests passed, 7 skipped, 0 failed (~291s)
+- `pnpm --filter @zilar/server test --maxWorkers=2`: 78 files passed, 5 skipped; 1357 tests passed, 7 skipped, 0 failed (~291s)
 - `pnpm build`: 2 tasks successful (server build cached after passing; web/mobile unaffected)
 
 ### Problems, deviations from the spec, open questions

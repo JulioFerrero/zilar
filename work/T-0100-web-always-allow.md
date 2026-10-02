@@ -67,7 +67,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/web test
+pnpm --filter @zilar/web test
 pnpm build
 ```
 
@@ -99,9 +99,9 @@ pnpm build
 - `pnpm format:check`: initially 4 files unformatted (mine); after `prettier --write`: "All matched files use Prettier code style!".
 - `pnpm lint` (oxlint): 1 error mid-way (`react(set-state-in-effect)` in the new list) — fixed with the adjust-state-during-render pattern; final run clean.
 - `pnpm typecheck`: 10 tasks successful.
-- `pnpm --filter @galena/web test`: 57 files, 639 tests, all passed (includes 31 new tests).
-- `pnpm build`: 2 tasks successful (`@galena/web` built in 757ms).
-- Full `pnpm test` (all workspaces) was not run; only `@galena/web` tests per the task's Checks.
+- `pnpm --filter @zilar/web test`: 57 files, 639 tests, all passed (includes 31 new tests).
+- `pnpm build`: 2 tasks successful (`@zilar/web` built in 757ms).
+- Full `pnpm test` (all workspaces) was not run; only `@zilar/web` tests per the task's Checks.
 
 ### Problems, deviations from the spec, open questions
 - Mock `aiId` resolution: the seeded card's `ai` is a JID with no matching mock AI row, so the mock read model resolves `apr-42` to the first mock AI (`ai-mock-dev`) — consistent with the already-seeded audit entries that treat `apr-42` as the Dev AI's approval. This is what makes the created rule visible in the AI panel's list. Mock-only, no wire change.

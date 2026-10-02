@@ -53,8 +53,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 
@@ -86,10 +86,10 @@ pnpm build
 - `pnpm install`: ok (11.5s)
 - `pnpm exec prettier --check` (all touched files): pass
 - `pnpm lint` (oxlint): pass, no findings (re-run after last edit)
-- `pnpm --filter @galena/server typecheck`: pass; `pnpm --filter @galena/web typecheck`: pass
-- `pnpm --filter @galena/server test --maxWorkers=2 src/stickers/favorites.test.ts src/stickers/routes.test.ts src/authz-sweep.test.ts`: 3 files, 36 passed (favorites 11, routes 20, sweep 5; sweep printout shows the 4 new routes — 3 favorites + `PUT /api/sticker-panel` — at 401)
-- `pnpm --filter @galena/web test --maxWorkers=2` (12 files: sticker-images, stickers, sticker-url, api, PackEditor, StickersPage, StickerPanel, mock, Composer, ChatList, ChatView, realStore): 292 passed (round 2: PackEditor 10 incl. the pack-reuse test)
-- Post-rebase: `pnpm --filter @galena/server db:generate` produced `drizzle/0032_nappy_ender_wiggin.sql` with ONLY the `sticker_favorites` table + 2 FKs + index (verified by reading the file); 0031 untouched. Removed the schema NOTE comment and the test-local DDL (+ unused `sql` import); favorites tests pass against the real migration.
+- `pnpm --filter @zilar/server typecheck`: pass; `pnpm --filter @zilar/web typecheck`: pass
+- `pnpm --filter @zilar/server test --maxWorkers=2 src/stickers/favorites.test.ts src/stickers/routes.test.ts src/authz-sweep.test.ts`: 3 files, 36 passed (favorites 11, routes 20, sweep 5; sweep printout shows the 4 new routes — 3 favorites + `PUT /api/sticker-panel` — at 401)
+- `pnpm --filter @zilar/web test --maxWorkers=2` (12 files: sticker-images, stickers, sticker-url, api, PackEditor, StickersPage, StickerPanel, mock, Composer, ChatList, ChatView, realStore): 292 passed (round 2: PackEditor 10 incl. the pack-reuse test)
+- Post-rebase: `pnpm --filter @zilar/server db:generate` produced `drizzle/0032_nappy_ender_wiggin.sql` with ONLY the `sticker_favorites` table + 2 FKs + index (verified by reading the file); 0031 untouched. Removed the schema NOTE comment and the test-local DDL (+ unused `sql` import); favorites tests pass against the real migration.
 - Full package suites and `pnpm build` NOT run (per lead instruction — the lead runs full suites once per batch)
 - One neighbor regression caught and fixed: `useNavigate` in Composer broke a router-less Composer test → moved navigation to a callback prop from ChatView (verified failing-before/passing-after)
 
@@ -120,7 +120,7 @@ pnpm build
 15. **Round 4 — panel cap aligned at 200**: `addPanelPack` enforces `STICKER_PANEL_MAX = 200` atomically under the existing per-user lock (`400 panel_full`, idempotent re-add still 200), and `reorderPanelBodySchema` uses the same constant; mock mirrors the cap. New server test arranges 199 rows, asserts 200th lands / 201st `panel_full` / re-add 200.
 
 ### Blocked / needs a decision
-- None. After rebase: run `pnpm --filter @galena/server db:generate` (expect 0032+), then delete the local DDL helper at the top of `favorites.test.ts` (`TODO(T-0121)` marks it).
+- None. After rebase: run `pnpm --filter @zilar/server db:generate` (expect 0032+), then delete the local DDL helper at the top of `favorites.test.ts` (`TODO(T-0121)` marks it).
 
 ---
 

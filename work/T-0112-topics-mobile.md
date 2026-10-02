@@ -21,11 +21,11 @@ Same product as T-0111 on the Expo app (web is 80% of the effort, mobile follows
 2. **Chat list** (`src/app/index.tsx`, `chat-list-item.tsx`): a group row shows the title, "N topics", the aggregated unread, the newest message time and the last topic's preview ("Dev AI: Preview ready"). Tapping a group with topics opens the **topics screen**; a group without topics from an older server opens its chat as today.
 3. **Topics screen** (new `src/app/group/[id].tsx`, `topic-row.tsx`): header with back, group avatar, title, "8 members, 2 AIs, 6 topics"; an inset search field; one row per topic: glyph tile, name, lock icon when private, status chip with dot (text always, never color alone), one-line preview, time, unread badge; General first, then newest first; long-press a row: Mute, Archive (managers). Raised "+" button (56 px, 18 px radius) bottom right opens the **new topic sheet** (name, type chips, Public/Private with the help text, member list for private; the creator locked in; the viewer's group AIs unticked with "AIs only read topics you add them to") only if the viewer may create.
 4. **Topic screen** (`src/app/chat/[id].tsx`, `chat-header.tsx`, new `task-strip.tsx`): the header shows the topic name with the group name small above it and a Private chip; the **task strip** (type chip, status, owner, link) sits under the header for every topic; tapping the status opens a sheet with the statuses (optimistic with rollback), owner and link open small sheets (link must be `https:`; rendered as a link only then). A topic-info sheet from the header (members, AIs, visibility; leave a private topic; managers can archive). Approval cards already render in the topic where they were requested.
-5. **Mock mode** (`src/mock/*`, honored only in dev builds or with `EXPO_PUBLIC_GALENA_MOCK`, one shared gate as today): the same seven topics as the web mock (one private).
+5. **Mock mode** (`src/mock/*`, honored only in dev builds or with `EXPO_PUBLIC_ZILAR_MOCK`, one shared gate as today): the same seven topics as the web mock (one private).
 6. Deep links: `/chat/<jid>` for any topic room JID works; a topic that disappears while open goes back to the topics screen with a short notice.
 
 ### Rules
-- No new dependencies; NativeWind + the existing primitives. `apps/mobile` Vitest cannot resolve `@/` for component modules and has no component renderer: put logic in plain modules and test those (the pattern used by `run-state.ts` / `ai-actions-sheet` tests); components stay thin. Run `pnpm --filter @galena/mobile boot:ios` only if you touch native config (you should not).
+- No new dependencies; NativeWind + the existing primitives. `apps/mobile` Vitest cannot resolve `@/` for component modules and has no component renderer: put logic in plain modules and test those (the pattern used by `run-state.ts` / `ai-actions-sheet` tests); components stay thin. Run `pnpm --filter @zilar/mobile boot:ios` only if you touch native config (you should not).
 - A private topic's name must never be shown to someone who cannot see it.
 - Image budget: about 20 screenshots (downscale with `sips -Z 900`).
 - Never use the simulators `DB167CD4` or `A3E0C081`, and never ports 3000, 8081, 5173.
@@ -57,7 +57,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test --maxWorkers=2
+pnpm --filter @zilar/mobile test --maxWorkers=2
 pnpm build
 ```
 
@@ -87,7 +87,7 @@ pnpm build
 - `pnpm format:check`: pass for all owned files (the only warn is the lead's untracked `PREREVIEW.md`, which I must not edit).
 - `pnpm lint`: pass (oxlint clean).
 - `pnpm typecheck`: pass (turbo 10/10).
-- `pnpm --filter @galena/mobile test --maxWorkers=2`: 38 files passed, 2 skipped; 403 passed, 2 skipped.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2`: 38 files passed, 2 skipped; 403 passed, 2 skipped.
 - `pnpm build`: pass (2/2 turbo tasks, after moving the hook-guard test out of `src/app` — see below).
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any` in touched non-test source: no hits.
 

@@ -59,7 +59,7 @@ export default async function run(input) {
 2. **Engine: QuickJS compiled to WebAssembly** via `quickjs-emscripten` (add it to `apps/server/package.json`; this is the one dependency this task may add — use the current stable release, pin it with `^`). Use the synchronous runtime with promise-returning host functions (`context.newPromise()` + a loop that calls `runtime.executePendingJobs()` until the result promise settles or a limit hits), or the library's documented async approach if it is simpler and keeps every limit below enforceable. Set `runtime.setMemoryLimit`, `setMaxStackSize`, and an **interrupt handler** that stops the VM when `cpuMs` of JS execution or `wallMs` overall is exceeded. Dispose the context and runtime on every path (success, error, timeout).
 3. **Run it off the main thread.** A runaway script must not freeze the API. Run each execution in a `worker_threads` Worker (with `resourceLimits`), and terminate the worker if `wallMs` (+ a small grace) passes without a reply. Find a mechanism that works under `vitest`, `tsx` (the server runs with `tsx`, there is no build step for the server) and `tsc --noEmit`; describe what you chose in the Report. If a worker turns out to be infeasible with the toolchain, stop and explain under "Blocked / needs a decision" rather than falling back to the main thread silently.
 4. **`host-fetch.ts`: the only door out.** `fetch(url, init?)` inside the sandbox is a bridge to the host with **all** of these rules, each tested:
-   - Method is `GET` or `HEAD` only; no request body; only the header `accept` (and `user-agent` set by the host to `GalenaTool/1`). Everything else is dropped or rejected.
+   - Method is `GET` or `HEAD` only; no request body; only the header `accept` (and `user-agent` set by the host to `ZilarTool/1`). Everything else is dropped or rejected.
    - The URL must parse, use `https:`, have no credentials (`user:pass@`), no explicit port other than 443, and its **hostname must equal an entry of `allowedHosts`** (case-insensitive exact match after IDNA/punycode normalisation; no wildcards, no suffix matching, no IP literals even if listed). Otherwise reject with kind `fetch_denied` and message `host not allowed: <host>`.
    - **SSRF guard:** resolve the host's addresses yourself, reject if **any** resolved address is loopback, private (RFC 1918), link-local (incl. `169.254.169.254`), carrier-grade NAT, multicast, unspecified, IPv6 loopback/ULA/link-local, or an IPv4-mapped IPv6 of one of those; then **connect to the resolved address you validated** (pin the IP; keep SNI and `Host` as the hostname) so a second DNS answer cannot swap it (DNS rebinding).
    - **No redirects followed**: a 3xx is returned to the tool as-is (status + `location` header is not exposed; give the tool `status` and empty body), so a redirect cannot leave the allowlist.
@@ -102,7 +102,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test
+pnpm --filter @zilar/server test
 pnpm build
 ```
 
@@ -144,7 +144,7 @@ pnpm build
 - Tests: 104 in `src/sandbox/` (`run-tool.test.ts` 48 happy/limit/contract/
   escape/fetch cases, `host-fetch.test.ts` 24 incl. a real local-TLS pinned
   request test proving SNI + Host stay the hostname while TCP goes to the
-  validated IP, plus a header test proving only `accept` + `GalenaTool/1`
+  validated IP, plus a header test proving only `accept` + `ZilarTool/1`
   reach the wire, `ip-guard.test.ts` 32). No real network except local
   loopback in those two tests; everything else uses injected fake
   fetchers/resolvers.
@@ -200,7 +200,7 @@ pnpm build
   (cpuMs 5000 + worker startup under load) exceeds vitest's default 5 s
   per-test timeout when vitest is run bare without the repo's
   `--testTimeout=30000`; gave that test an explicit `{ timeout: 25000 }`.
-- `pnpm --filter @galena/server test -- --maxWorkers=2` (once, at the end):
+- `pnpm --filter @zilar/server test -- --maxWorkers=2` (once, at the end):
   60 files passed, 5 skipped; 1001 tests passed, 7 skipped (~517 s).
 - `pnpm format:check`: all files use Prettier style.
 - `pnpm lint` (oxlint): clean.

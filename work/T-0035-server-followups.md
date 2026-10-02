@@ -90,7 +90,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -154,13 +154,13 @@ The only 429-specific UI mapping in web is auth-only (`AuthFlow.tsx`).
   (One iteration of the connections window test failed first: my bare `Hono` test app
   lacked `createApp`'s `HttpError` mapping so the 429 surfaced as 500. Fixed by adding a
   minimal `onError` in that one test only; prod code untouched.)
-- `pnpm exec turbo test --force --filter=@galena/server`: **262 passed, 5 skipped,
+- `pnpm exec turbo test --force --filter=@zilar/server`: **262 passed, 5 skipped,
   1 failed**. The failure is `src/chats/chats.test.ts > returns my DMs and groups…`:
   `expected title "" but got "Unnamed user"` — the intended new behaviour (see Blocked).
   A direct full-file `vitest run` (not a Checks command) additionally showed load-related
   hook timeouts scattered across unrelated files; all of those pass on re-run / in the
   turbo run, so they are parallel-PGlite flakes, except the deterministic chats one.
-- `pnpm build`: pass (2 tasks successful; `@galena/server` has no build script).
+- `pnpm build`: pass (2 tasks successful; `@zilar/server` has no build script).
 
 ### Round 2 (unblocked by the lead)
 - The lead authorized editing `apps/server/src/chats/chats.test.ts` for the stale DM
@@ -185,11 +185,11 @@ The only 429-specific UI mapping in web is auth-only (`AuthFlow.tsx`).
   style!". `pnpm lint` (oxlint): pass. `pnpm typecheck` (turbo, 9 tasks): pass.
 - Targeted `vitest run src/rate-limit.test.ts src/chats/chats.test.ts`: 2 files,
   13/13 tests pass (8 limiter + 5 chats).
-- `pnpm exec turbo test --force --filter=@galena/server`: **28 files passed,
+- `pnpm exec turbo test --force --filter=@zilar/server`: **28 files passed,
   265 tests passed, 5 skipped, 0 failed**. Round 1's scattered hook timeouts in
   unrelated files did not recur (no re-runs needed); they were parallel-PGlite load
   flakes as reported.
-- `pnpm build`: pass (2 tasks successful; `@galena/server` has no build script).
+- `pnpm build`: pass (2 tasks successful; `@zilar/server` has no build script).
 
 ### Blocked / needs a decision (resolved in Round 2)
 Round 1 ended blocked on the stale `chats.test.ts` title expectation. The lead
@@ -209,6 +209,6 @@ authorized the fix; it is done and the full suite is green. No open questions.
 
 Lead re-ran every check after rebasing onto main:
 - format:check, lint, typecheck and build pass;
-- `turbo test --force --filter=@galena/server`: 265 passed, 5 skipped (gated).
+- `turbo test --force --filter=@zilar/server`: 265 passed, 5 skipped (gated).
 
 Note for T-0033: its `chats.test.ts` import line will conflict with this one. The lead resolves it at rebase.

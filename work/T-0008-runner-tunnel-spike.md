@@ -108,11 +108,11 @@ side** (`src/runner/`), sharing a **protocol** module (`src/protocol.ts`).
    and report the peak.
 
 ### Demo and integration check
-- `pnpm --filter @galena/runner-tunnel demo` starts a server, a runner, a fake
+- `pnpm --filter @zilar/runner-tunnel demo` starts a server, a runner, a fake
   desk (HTTP + SSE) and a fake gateway on localhost, runs through items 3–5, and
   prints a short table: what was proven, and latency per request through the
   tunnel vs direct (median of 50).
-- Gated by `GALENA_TUNNEL_INTEGRATION=1`: point the model-traffic path at the
+- Gated by `ZILAR_TUNNEL_INTEGRATION=1`: point the model-traffic path at the
   **real LiteLLM** on `http://127.0.0.1:4000` and `GET /health/liveliness`
   through the tunnel. No key is needed for that endpoint; do not use or print
   any key. Paste the real output in the Report.
@@ -155,7 +155,7 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
-- Built the new `packages/runner-tunnel` package (`@galena/runner-tunnel`): server side
+- Built the new `packages/runner-tunnel` package (`@zilar/runner-tunnel`): server side
   (`src/server.ts`), runner side (`src/runner.ts`), shared protocol (`src/protocol.ts`),
   ed25519 identity + in-memory registry (`src/keys.ts`), stream multiplexing with
   backpressure (`src/mux.ts`), a loopback-bridged `http.Agent` (`src/http-agent.ts`), and
@@ -168,8 +168,8 @@ pnpm build
   traffic pinned to one gateway URL, preview tokens with 404s, ping/pong death detection,
   in-flight failure on drop, reconnect with capped backoff + re-auth, and a 50 MB slow-
   reader run with bounded heap.
-- Ran the demo (`pnpm --filter @galena/runner-tunnel demo`) and the gated LiteLLM check
-  (`GALENA_TUNNEL_INTEGRATION=1`): real LiteLLM `GET /health/liveliness` through the
+- Ran the demo (`pnpm --filter @zilar/runner-tunnel demo`) and the gated LiteLLM check
+  (`ZILAR_TUNNEL_INTEGRATION=1`): real LiteLLM `GET /health/liveliness` through the
   tunnel returned `200 "I'm alive!"`. No key used or printed. The running stack was never
   touched (no `infra:*` commands; everything on port 0, everything closed afterwards).
 - Found and fixed a real protocol bug during stress testing (see Problems): a FIN could
@@ -214,9 +214,9 @@ pnpm build
   intermittently hit the known load-sensitive web trio from T-0029's area and one real
   race in my tests; both addressed below. Final full run is green.)
 - `pnpm build`: pass.
-- `pnpm --filter @galena/runner-tunnel test`: 44/44 green repeatedly (8 solo runs + 7
+- `pnpm --filter @zilar/runner-tunnel test`: 44/44 green repeatedly (8 solo runs + 7
   scoped/full parallel runs after the FIFO fix).
-- `pnpm --filter @galena/runner-tunnel demo` output (real, 2026-09-28):
+- `pnpm --filter @zilar/runner-tunnel demo` output (real, 2026-09-28):
   `engine JSON round-trip ok (status 200)`, `engine SSE stream ok (~1010 ms end to end)`,
   `engine 5 MB byte-identical ok (5 MB hashed)`, `engine 20 concurrent ok (one WebSocket)`,
   `preview page load ok`, `model traffic to gateway ok (/v1/chat)`,
@@ -224,7 +224,7 @@ pnpm build
   (overhead measured 0.13–0.65 ms across runs),
   `50 MB to a slow reader, bounded memory ok (peak heap +0.0 MB in demo; +2.0 MB in the
   test run, bound asserted < 64 MB)`.
-- Gated (`GALENA_TUNNEL_INTEGRATION=1`): `LiteLLM /health/liveliness through the tunnel:
+- Gated (`ZILAR_TUNNEL_INTEGRATION=1`): `LiteLLM /health/liveliness through the tunnel:
   ok status 200 body "I'm alive!"`.
 - SSE incrementality (test): 4 events sent 200 ms apart; arrival span asserted ≥ 400 ms
   with every inter-event gap ≥ 30 ms (a buffered-until-end delivery would show ~ms gaps).
@@ -299,7 +299,7 @@ it fail (isolation: global kill loop; parity both sides: check disabled), then r
    runner's `WebSocket`. Regression tests: oversized pre-auth text frame → server closes
    with 1009 (`src/auth.test.ts`); 300 KiB inbound binary frame → runner closes with 1009
    (`src/runner.test.ts`, observed by the fake platform).
-- Round-2 commands, real results: `pnpm --filter @galena/runner-tunnel test` 51/51;
+- Round-2 commands, real results: `pnpm --filter @zilar/runner-tunnel test` 51/51;
   `pnpm exec turbo test --force` pass 9/9 exit 0 (incl. web 95, server 253, runner-tunnel
   51); `pnpm format:check` / `lint` / `typecheck` / `build` pass; demo unchanged (overhead
   0.18 ms this run); gated LiteLLM still `200 "I'm alive!"` through the tunnel.
@@ -316,7 +316,7 @@ it fail (isolation: global kill loop; parity both sides: check disabled), then r
 
 ### Round 1: changes requested
 
-Strong spike. The checks pass (format, lint, typecheck, build, and `turbo test --force --filter=@galena/runner-tunnel` 3/3 green after a rebase onto main). The FIFO-teardown fix is exactly the kind of finding this spike was for. Ed25519 nonces are single-use, revocation closes live sockets, the gateway destination never comes from the request, preview tokens are 128-bit, the runner allowlist is enforced, and the model listener binds to 127.0.0.1. All of that is correct.
+Strong spike. The checks pass (format, lint, typecheck, build, and `turbo test --force --filter=@zilar/runner-tunnel` 3/3 green after a rebase onto main). The FIFO-teardown fix is exactly the kind of finding this spike was for. Ed25519 nonces are single-use, revocation closes live sockets, the gateway destination never comes from the request, preview tokens are 128-bit, the runner allowlist is enforced, and the model listener binds to 127.0.0.1. All of that is correct.
 
 However, three problems break runner isolation. They must be fixed before this becomes the base for M3:
 
@@ -353,7 +353,7 @@ Every fix has a regression test, and the Report says each one was confirmed to f
 
 Lead re-ran every check in the worktree:
 - format:check, lint, typecheck and build all pass;
-- `turbo test --force --filter=@galena/runner-tunnel` passed 3 runs out of 3, with 51/51 tests each time.
+- `turbo test --force --filter=@zilar/runner-tunnel` passed 3 runs out of 3, with 51/51 tests each time.
 
 Verdict: the one-WebSocket tunnel design (§11.8) is confirmed for M3. These follow-ups go on the board:
 - TLS/wss;

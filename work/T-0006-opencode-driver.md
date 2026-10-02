@@ -14,7 +14,7 @@ estimate: 1 day
 ## Spec (written by Claude, do not edit)
 
 ### Goal
-Create `@galena/agent-drivers`: the interface Galena's gateway uses to control an AI's engine inside its desk, plus the first implementation, which talks to **OpenCode v2's HTTP API**. This is how the platform will send tasks to AIs, stream what they do into the chat, and route their permission requests to approval cards (plan §10).
+Create `@zilar/agent-drivers`: the interface Zilar's gateway uses to control an AI's engine inside its desk, plus the first implementation, which talks to **OpenCode v2's HTTP API**. This is how the platform will send tasks to AIs, stream what they do into the chat, and route their permission requests to approval cards (plan §10).
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -45,7 +45,7 @@ Create `@galena/agent-drivers`: the interface Galena's gateway uses to control a
 - **Command permissions:** the action name for shell commands is **`shell`**, not `bash`. Session-level rules override the agent's rules.
 
 ### Allowed files
-- `packages/agent-drivers/**` (new package `@galena/agent-drivers`)
+- `packages/agent-drivers/**` (new package `@zilar/agent-drivers`)
 - `pnpm-lock.yaml`
 - `work/assets/opencode-v2-openapi.json`, read only
 
@@ -130,7 +130,7 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
-- Created the new package `@galena/agent-drivers`.
+- Created the new package `@zilar/agent-drivers`.
 - `src/types.ts`: the `AgentDriver` interface, the `AgentEvent` discriminated union
   (`text`, `reasoning`, `tool_call`, `tool_result`, `permission_request`, `done`, `error`),
   `StartOptions`, `SessionRef`, `PermissionRule`/`PermissionEffect`, `PermissionDecision`, and a
@@ -176,11 +176,11 @@ No other file was touched. `work/assets/opencode-v2-openapi.json` was only read.
 - `pnpm format:check`: exit 0. "All matched files use Prettier code style!" (I also ran
   `prettier --write` on `packages/agent-drivers/**` first; it reformatted the test file.)
 - `pnpm lint`: exit 0. "Found 0 warnings and 0 errors."
-- `pnpm typecheck`: exit 0. `turbo typecheck`: 5 successful, 5 total (`@galena/agent-drivers`
+- `pnpm typecheck`: exit 0. `turbo typecheck`: 5 successful, 5 total (`@zilar/agent-drivers`
   cache miss, the other four replayed from cache).
-- `pnpm test`: exit 0. `turbo test`: 5 successful, 5 total. `@galena/agent-drivers`:
+- `pnpm test`: exit 0. `turbo test`: 5 successful, 5 total. `@zilar/agent-drivers`:
   2 test files, 15 tests passed (`rules.test.ts` 4, `opencode-v2.test.ts` 11).
-- `pnpm build`: exit 0. `turbo build`: 1 successful, 1 total (`@galena/web`; the other packages have
+- `pnpm build`: exit 0. `turbo build`: 1 successful, 1 total (`@zilar/web`; the other packages have
   no build script).
 
 The fake-server tests cover: full ordered event sequence with no duplicates; the session-create
@@ -237,8 +237,8 @@ Round 2 command results (all exit 0, run after the fixes and a `prettier --write
 - `pnpm install`: up to date.
 - `pnpm format:check`: "All matched files use Prettier code style!"
 - `pnpm lint`: "Found 0 warnings and 0 errors."
-- `pnpm typecheck`: `turbo typecheck` 5 successful, 5 total (`@galena/agent-drivers` cache miss).
-- `pnpm test`: `turbo test` 5 successful, 5 total. `@galena/agent-drivers`: 2 test files,
+- `pnpm typecheck`: `turbo typecheck` 5 successful, 5 total (`@zilar/agent-drivers` cache miss).
+- `pnpm test`: `turbo test` 5 successful, 5 total. `@zilar/agent-drivers`: 2 test files,
   **19 tests passed** (was 15; `rules.test.ts` 4, `opencode-v2.test.ts` 15).
 - `pnpm build`: `turbo build` 1 successful, 1 total (FULL TURBO cache).
 

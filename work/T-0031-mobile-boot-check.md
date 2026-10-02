@@ -60,7 +60,7 @@ already on the machine: `xcrun`, `pod`, and `expo` via `pnpm exec`.
 
 ### What to build
 A Node script, `apps/mobile/scripts/boot-check.mjs` (or `.ts` run with a tool the
-package already has), exposed as `pnpm --filter @galena/mobile boot:ios`, with
+package already has), exposed as `pnpm --filter @zilar/mobile boot:ios`, with
 `--device <udid>` and `--port <metro port>` options.
 
 1. **Native project matches the dependencies.** Resolve the iOS native modules
@@ -96,9 +96,9 @@ package already has), exposed as `pnpm --filter @galena/mobile boot:ios`, with
   **8082**. The iPhone simulator `DB167CD4-BDCE-4E04-BC5E-85EE868A6AD8` and
   Metro on **8081** are in use by Julio: never launch on, shut down or erase that
   simulator, and never stop a process you did not start.
-- Run `pnpm --filter @galena/mobile boot:ios --device A3E0C081-CEA4-453B-ABA1-23EE7D044E54`
+- Run `pnpm --filter @zilar/mobile boot:ios --device A3E0C081-CEA4-453B-ABA1-23EE7D044E54`
   and paste the real output. Open the screenshot and describe what it shows
-  (it should be the "Sign in to Galena" screen).
+  (it should be the "Sign in to Zilar" screen).
 - **Prove it catches the real failure**, without touching tracked files: run the
   comparison from item 1 against a copy of `Podfile.lock` in a temp folder with
   the `ExpoSecureStore` entries removed, and paste the output showing it is
@@ -135,7 +135,7 @@ pnpm build
 ### What I did
 
 Built `apps/mobile/scripts/boot-check.mjs`, exposed as
-`pnpm --filter @galena/mobile boot:ios`, with pure logic in two modules and
+`pnpm --filter @zilar/mobile boot:ios`, with pure logic in two modules and
 Vitest tests for both:
 
 1. **Native project matches dependencies** — runs
@@ -207,8 +207,8 @@ No other files touched (`git status` shows only the above). `ios/` and
 **Integration check (real output, exit 0):**
 
 ```
-$ pnpm --filter @galena/mobile boot:ios --device A3E0C081-CEA4-453B-ABA1-23EE7D044E54
-[boot-check] artifacts: /Users/julio/personal-projects/galena-T-0031/apps/mobile/.expo/boot-check/2026-09-28T09-55-35-381Z
+$ pnpm --filter @zilar/mobile boot:ios --device A3E0C081-CEA4-453B-ABA1-23EE7D044E54
+[boot-check] artifacts: /Users/julio/personal-projects/zilar-T-0031/apps/mobile/.expo/boot-check/2026-09-28T09-55-35-381Z
 [boot-check] device: A3E0C081-CEA4-453B-ABA1-23EE7D044E54 | metro port: 8082
 [boot-check] autolinking expects 22 iOS pods
 [boot-check] native project matches the autolinked dependencies
@@ -217,7 +217,7 @@ $ pnpm --filter @galena/mobile boot:ios --device A3E0C081-CEA4-453B-ABA1-23EE7D0
 [boot-check] building and installing with expo run:ios --no-bundler (this can take a while)
 [boot-check] build and install finished
 [boot-check] installed app points at Metro port 8082
-[boot-check] launched com.julioferrero.galena (pid 28576)
+[boot-check] launched com.julioferrero.zilar (pid 28576)
 [boot-check] stopping the Metro process it started
 [boot-check] artifacts: .../2026-09-28T09-55-35-381Z
 [boot-check] screenshot: .../2026-09-28T09-55-35-381Z/screenshot.png
@@ -233,8 +233,8 @@ Evidence in the saved logs: `metro.log` contains
 `[com.facebook.react.log:javascript] Running "main" with {"rootTag":11,"initialProps":{},"fabric":true}`.
 
 **Screenshot** (opened, `.../2026-09-28T09-55-35-381Z/screenshot.png`): it shows
-the **"Sign in to Galena"** screen, not the splash — bold title "Sign in to
-Galena", an **Email** field with the placeholder `you@example.com` and a
+the **"Sign in to Zilar"** screen, not the splash — bold title "Sign in to
+Zilar", an **Email** field with the placeholder `you@example.com` and a
 focused caret, a blue **Continue** button, and the iOS software keyboard raised
 (the field auto-focuses). Status bar reads `11:57 Mon Sep 28`, Wi-Fi, 100 %
 battery; the app runs in an iPhone-sized window on the iPad's home-screen
@@ -295,10 +295,10 @@ port 8082 was free and no boot-check process was left behind.
   on unexpected shapes; covered by tests).
 - **Load-induced flake in `pnpm exec turbo test --force`:** with other
   worktrees running vitest in parallel (load average 87), pre-existing
-  `@galena/web` tests failed twice with `Test timed out in 5000ms`
+  `@zilar/web` tests failed twice with `Test timed out in 5000ms`
   (`ChatShell.test.tsx`, `MessageActions.test.tsx`). Same command passed 8/8
   on the first attempt in this session and on the final attempt;
-  `pnpm --filter @galena/web test` alone passes 85/85. Nothing in this task
+  `pnpm --filter @zilar/web test` alone passes 85/85. Nothing in this task
   touches `apps/web`.
 
 ### Blocked / needs a decision
@@ -318,7 +318,7 @@ Verified by the lead:
   mobile 120 passed / 2 skipped (26 new tests), web 95, server 235.
 - **The lead ran the boot check** on the iPad simulator: `PASS` in 54 s, port 8082 free
   afterwards, Julio's Metro on 8081 untouched. The screenshot from the worker's run shows the
-  real "Sign in to Galena" screen.
+  real "Sign in to Zilar" screen.
 - **The regression it exists for**: with every `ExpoSecureStore` line removed from the
   git-ignored `ios/Podfile.lock`, the check printed "Podfile.lock is missing ExpoSecureStore —
   running pod install", repaired it, rebuilt, and passed only after the JS app ran.

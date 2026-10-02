@@ -199,6 +199,6 @@ This is a model spike report:
 
 Lead re-ran every check after rebasing onto main, while two other workers were running tests (load average 12–56):
 - format:check, lint, typecheck and build pass;
-- `turbo test --force --filter=@galena/web` passed 2 runs out of 2, 117/117 each time.
+- `turbo test --force --filter=@zilar/web` passed 2 runs out of 2, 117/117 each time.
 
 It also reported honestly that it couldn't `kill` its own burners. That's now a playbook gotcha.

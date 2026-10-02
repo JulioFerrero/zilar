@@ -22,7 +22,7 @@ After T-0152 the Stickers page is a centered column with cards and readable text
 3. Notifications: the "This device" card shows the state in words (Enabled / Not enabled / Blocked by the browser / Not supported) with the action next to it; a registration error shows as a readable inline message (not a tiny red line); the Devices list and the Message previews toggle and the Test button are cards in the same column.
 4. Empty states: a short friendly sentence for each page (no devices, no connections, no AIs, no machines, nothing to approve).
 5. Keep every existing behavior, route, label and test id. Update tests that assert layout classes; add a test per page that it renders inside the shell (title, description, column class).
-6. Verify in a real browser at 1280 px and 390 px wide on the dev server (`GALENA_API_URL=http://localhost:3188 pnpm --filter @galena/web dev` on a spare port such as 5174; do NOT use 5173, 3000 or 8081). The sign-in is an email code printed in the server log in development; if the sign-in is rate limited, do not create more accounts: say so in the Report and leave the real-browser check to the lead. Never send messages on a real account.
+6. Verify in a real browser at 1280 px and 390 px wide on the dev server (`ZILAR_API_URL=http://localhost:3188 pnpm --filter @zilar/web dev` on a spare port such as 5174; do NOT use 5173, 3000 or 8081). The sign-in is an email code printed in the server log in development; if the sign-in is rate limited, do not create more accounts: say so in the Report and leave the real-browser check to the lead. Never send messages on a real account.
 7. Out of scope: server, mobile, protocol, new dependencies, behavior changes, the chat view, the picker.
 
 ### Read first
@@ -37,7 +37,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/web test --maxWorkers=2 ConnectionsPage AisPage MachinesPage ApprovalsPage NotificationsPage StickersPage AiPageShell
+pnpm --filter @zilar/web test --maxWorkers=2 ConnectionsPage AisPage MachinesPage ApprovalsPage NotificationsPage StickersPage AiPageShell
 ```
 
 ### Acceptance
@@ -69,7 +69,7 @@ pnpm --filter @galena/web test --maxWorkers=2 ConnectionsPage AisPage MachinesPa
 - `pnpm format:check`: pass ("All matched files use Prettier code style!")
 - `pnpm lint` (oxlint): pass, no findings
 - `pnpm typecheck`: pass (10 tasks, turbo)
-- `pnpm --filter @galena/web test --maxWorkers=2 SettingsShell ConnectionsPage AisPage MachinesPage ApprovalsPage NotificationsPage StickersPage AiPageShell`: 7 files, 75 passed
+- `pnpm --filter @zilar/web test --maxWorkers=2 SettingsShell ConnectionsPage AisPage MachinesPage ApprovalsPage NotificationsPage StickersPage AiPageShell`: 7 files, 75 passed
 - Neighbours: `NewAiDialog AiPanel AiActivity ModelPicker ConnectionPicker PackEditor TelegramImport GifPanel StickerPanel Composer renderApp AppRoutes` — 9 files, 160 passed; `machines approvals ApprovedMachine PendingMachine RevokedMachine AddMachine ApprovalRow ApprovalsList` — 5 files, 56 passed
 
 ### Browser verification — done in mock mode (read honestly)

@@ -21,7 +21,7 @@ This task builds the **store, the service and the HTTP routes**. The sandbox tha
 ### Scope of a tool (Julio's rule for approvals, same here)
 A tool belongs to **one AI and one chat**: `(ai_id, group_id)` where `group_id = null` means the personal chat between the AI and its owner. A tool made in a group is visible and usable only in that group. Same-name tools in different chats are different tools.
 
-### Data model (`apps/server/src/db/schema.ts`; migration only with `pnpm --filter @galena/server db:generate`, never `npx`)
+### Data model (`apps/server/src/db/schema.ts`; migration only with `pnpm --filter @zilar/server db:generate`, never `npx`)
 - `ai_tools`: `id` (uuid text like the other tables), `ai_id` (fk `ais`, on delete cascade), `group_id` (fk `groups`, nullable, on delete cascade), `name` (slug, see below), `description` (≤ 200 chars), `current_version` (int), `created_by` (user id: who asked for it), `created_at`, `updated_at`, `deleted_at` (nullable, soft delete). **Partial unique indexes** on `(ai_id, name)` where `group_id is null and deleted_at is null` and on `(ai_id, group_id, name)` where `group_id is not null and deleted_at is null` (same technique as `approval_rules`).
 - `ai_tool_versions`: `id`, `tool_id` (fk cascade), `version` (int, from 1), `source` (text, ≤ 64 KiB), `hosts` (jsonb array of strings), `message` (≤ 200 chars, the "commit message"), `created_by`, `created_at`, unique `(tool_id, version)`. **Never updated or deleted by any service function** (append-only; the tests assert no update path exists by reading the history after every operation).
 - `ai_tool_runs`: `id`, `tool_id` (fk cascade), `version`, `trigger` (`manual` | `routine` | `ai`), `status` (`ok` | `error`), `error_kind` (nullable), `duration_ms`, `fetch_count`, `output_text` (nullable, truncated to 2 KiB), `created_at`. Keep only the newest 50 runs per tool (prune in the same transaction that inserts).
@@ -92,7 +92,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test
+pnpm --filter @zilar/server test
 pnpm build
 ```
 
@@ -109,7 +109,7 @@ pnpm build
   injected `ToolRunner` port, and HTTP routes with reader/manager access control.
 - Data model (`apps/server/src/db/schema.ts`, migration
   `apps/server/drizzle/0017_plain_warstar.sql` generated via `pnpm --filter
-  @galena/server db:generate`): `ai_tools` (soft delete, two partial unique
+  @zilar/server db:generate`): `ai_tools` (soft delete, two partial unique
   indexes on `(ai_id, name)` / `(ai_id, group_id, name)` for active names, same
   technique as `approval_rules`), `ai_tool_versions` (unique `(tool_id,
   version)`, never updated/deleted by service code), `ai_tool_runs` (indexed on
@@ -168,7 +168,7 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install`: up to date (first run 7.9s, later reruns cached).
-- `pnpm --filter @galena/server db:generate`: created `0017_plain_warstar.sql`;
+- `pnpm --filter @zilar/server db:generate`: created `0017_plain_warstar.sql`;
   re-run after final edits: "No schema changes, nothing to migrate".
 - `pnpm format:check`: pass ("All matched files use Prettier code style!").
 - `pnpm lint` (oxlint): pass, re-run after last edit — pass.
@@ -177,7 +177,7 @@ pnpm build
   tests, all pass.
 - `pnpm exec vitest run src/authz-sweep.test.ts`: all 9 tools routes answer
   401 without a session; 5/5 sweep tests pass.
-- `pnpm --filter @galena/server test -- --maxWorkers=2` (full suite, once):
+- `pnpm --filter @zilar/server test -- --maxWorkers=2` (full suite, once):
   59 files passed, 5 skipped; 968 tests passed, 7 skipped, 0 failed.
 - `pnpm build`: FULL TURBO (2 tasks successful).
 - No `any`, no `@ts-ignore`, no disable comments (verified with grep).

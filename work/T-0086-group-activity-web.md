@@ -58,7 +58,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -91,8 +91,8 @@ pnpm build
 - `pnpm format:check` (first run): `[warn] apps/web/src/components/ais/AiActivity.test.tsx`, `apps/web/src/components/GroupPanel.test.tsx`, `apps/web/src/lib/api.ts`. Ran `pnpm format` then `pnpm format:check`: `All matched files use Prettier code style!`.
 - `pnpm lint` (first run): `apps/web/src/components/ais/AiActivity.tsx:108:43: error react-hooks(exhaustive-deps): React Hook useEffect has a missing dependency: 'scope'`. Restructured the load effect to use a `useRef<AuditScope>` updated in a sibling effect; `pnpm lint` then `oxlint .` exits 0.
 - `pnpm typecheck`: first run failed with `TS2312: An interface can only extend an object type or intersection of object types with statically known members` (because `AuditScope` is a union and `interface extends` cannot intersect a union). Switched `ListAuditInput` from `interface extends AuditScope` to `type = AuditScope & {…}` and rewrote the function body so the union narrows with `'aiId' in input`. Subsequent runs: `Tasks: 10 successful, 10 total`.
-- `pnpm exec turbo test --force --filter=@galena/web`: first run failed on `GroupPanel > shows an inline error when an add fails, keeping the AI out` because the panel's new `/audit` fetch hit an unstubbed `fetch` and surfaced "Could not reach the server" as a second alert. Stubbed `/audit` in that test. Final run: `Test Files 54 passed (54) / Tests 574 passed (574) / Duration ~38s`. The new tests (4 group-scope component cases, 1 group-scope api test, 4 group-scope mock api tests, 4 group-scope GroupPanel tests) all pass; the existing 561 tests are still green.
-- `pnpm build`: `Tasks: 2 successful, 2 total` — `@galena/web` and `@galena/mobile` build cleanly; the chunk-size warning is unrelated to this task.
+- `pnpm exec turbo test --force --filter=@zilar/web`: first run failed on `GroupPanel > shows an inline error when an add fails, keeping the AI out` because the panel's new `/audit` fetch hit an unstubbed `fetch` and surfaced "Could not reach the server" as a second alert. Stubbed `/audit` in that test. Final run: `Test Files 54 passed (54) / Tests 574 passed (574) / Duration ~38s`. The new tests (4 group-scope component cases, 1 group-scope api test, 4 group-scope mock api tests, 4 group-scope GroupPanel tests) all pass; the existing 561 tests are still green.
+- `pnpm build`: `Tasks: 2 successful, 2 total` — `@zilar/web` and `@zilar/mobile` build cleanly; the chunk-size warning is unrelated to this task.
 - Live check (skipped): the spec marks this as optional and `curl` requires lead approval. The web dev server was not started in this session, so no screenshot was taken and none was committed.
 
 ### Problems, deviations from the spec, open questions

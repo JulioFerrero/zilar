@@ -38,7 +38,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test --maxWorkers=2 attachment gifs gif-panel real-store chat-store hooks-guard roles
+pnpm --filter @zilar/mobile test --maxWorkers=2 attachment gifs gif-panel real-store chat-store hooks-guard roles
 ```
 
 ### Acceptance

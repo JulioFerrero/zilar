@@ -119,7 +119,7 @@ None. Hono has `streamSSE` (`hono/streaming`); use it.
   - disconnect unsubscribes (the hub's listener count goes back to 0);
   - a heartbeat is sent (fake timers).
 
-### Integration check (gated `GALENA_AGENT_INTEGRATION=1`; run it yourself)
+### Integration check (gated `ZILAR_AGENT_INTEGRATION=1`; run it yourself)
 Extend T-0034's integration test:
 - keep the made-up key;
 - open `/api/drafts/stream` as the owner before sending "hello";
@@ -141,7 +141,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -235,12 +235,12 @@ unchanged, with typing indicators exactly as before.
 - `pnpm typecheck` — 9/9 pass. Two fixes along the way: `ReadableStreamReadResult`
   unavailable in the server tsconfig (used a structural read-result type);
   `hub.test.ts` imported `DraftHubEvent` from `./hub` (moved to `./events`).
-- `pnpm exec turbo test --force --filter=@galena/server` — 37 files passed,
+- `pnpm exec turbo test --force --filter=@zilar/server` — 37 files passed,
   5 skipped files; **404 passed, 7 skipped** (6 pre-existing gated + the
-  `GALENA_AGENT_INTEGRATION` test). New: 7 stream parser + 5 reply streaming +
+  `ZILAR_AGENT_INTEGRATION` test). New: 7 stream parser + 5 reply streaming +
   5 gateway draft + 7 hub + 4 route + contract tests (29 total).
 - `pnpm build` — pass.
-- **Gated integration, live** (`GALENA_AGENT_INTEGRATION=1`, branch server
+- **Gated integration, live** (`ZILAR_AGENT_INTEGRATION=1`, branch server
   from this worktree on 3199 with `AGENT_GATEWAY_ENABLED=true`, made-up
   OpenAI key, no container restarts): **1 passed in ~4 s**. Owner DM "hello"
   → exactly "My provider rejected the API key. Check it under Connections →
@@ -306,7 +306,7 @@ unchanged, with typing indicators exactly as before.
 `pnpm format:check` still reports only the lead's untracked `PREREVIEW.md`
 (pre-existing, not mine, not touched — same as T-0040 round 2); every tracked
 file I touched passes `prettier --check`; `pnpm lint` pass; `pnpm typecheck`
-9/9 pass; `pnpm --filter @galena/server test` — 37 files passed, **406
+9/9 pass; `pnpm --filter @zilar/server test` — 37 files passed, **406
 passed, 7 skipped** (+2: the order and no-newline tests); `pnpm build` pass.
 The gated live integration test was not re-run (these fixes touch nothing on
 its path — unit-covered only); the live result stands.

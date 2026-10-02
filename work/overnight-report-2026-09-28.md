@@ -1,4 +1,4 @@
-# Galena — overnight report, 28 September 2026
+# Zilar — overnight report, 28 September 2026
 
 **Window:** 00:50 → 10:16 (CEST) · **Commits on `main`:** 43 · **Merged tasks:** 7 · **CI:** green on all 7
 
@@ -218,7 +218,7 @@ during this run. All codes redacted.
 ## Appendix — raw timestamped log
 
 The 102 machine-written entries covering 01:02 → 06:18 are in
-`galena-night-log-2026-09-28.entries`, kept outside the repo. The table above extends
+`zilar-night-log-2026-09-28.entries`, kept outside the repo. The table above extends
 them to 10:16.
 
-To regenerate: `bash /tmp/galena-scratch/log.sh "<category>" "<text>"`
+To regenerate: `bash /tmp/zilar-scratch/log.sh "<category>" "<text>"`

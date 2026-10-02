@@ -23,7 +23,7 @@ You have vision. Check your own screenshots of every screen and state, and fix w
 - `AGENTS.md` (mandatory)
 - `work/T-0032-create-ai-wizard.md`, the whole thing, including the Review. The **API contract**, the error codes and the wizard steps are identical here. Don't redesign them.
 - `apps/web/src/routes/CreateAiPage.tsx`, `AisPage.tsx` and `apps/web/src/components/ais/**`: the behaviour to match. That includes limit validation, the persona prefill (and when to leave `persona` out), double-submit protection, error mapping, and model suggestions keyed by the connection's **provider**, never its id. That last one was T-0032's bug.
-- `apps/mobile/README.md`: `boot:ios`, `EXPO_PUBLIC_GALENA_MOCK` and `EXPO_PUBLIC_GALENA_API_URL`
+- `apps/mobile/README.md`: `boot:ios`, `EXPO_PUBLIC_ZILAR_MOCK` and `EXPO_PUBLIC_ZILAR_API_URL`
 - `apps/mobile/src/app/index.tsx` (the chat list screen), `src/app/_layout.tsx`, `src/lib/chat-api.ts` (its bearer-token `request` helper), `src/auth/**`, `src/mock/**`, and `src/components/ui/**`
 - `docs/design/ui-style.md`
 
@@ -31,7 +31,7 @@ You have vision. Check your own screenshots of every screen and state, and fix w
 - `apps/mobile/src/app/ais/**` (new routes: `index.tsx` for the list, `new.tsx` for the wizard, and an edit screen if you need one)
 - `apps/mobile/src/components/ais/**` (new)
 - `apps/mobile/src/lib/ais-api.ts` (new) and its test. Use the same `request` idiom as `chat-api.ts`, with zod schemas that match the contract.
-- `apps/mobile/src/mock/ais.ts` (new): mock AIs and connections for `EXPO_PUBLIC_GALENA_MOCK` mode.
+- `apps/mobile/src/mock/ais.ts` (new): mock AIs and connections for `EXPO_PUBLIC_ZILAR_MOCK` mode.
 - `apps/mobile/src/app/index.tsx`: **only** to add one header entry point to My AIs (an icon button, matching the existing header buttons).
 - `apps/mobile/src/app/_layout.tsx`: only if the new routes need registering.
 - `apps/mobile/screenshots/T-0037/` (new): the final screenshots. These are the only binary files allowed.
@@ -69,16 +69,16 @@ None. Use what the app already has: expo-router, NativeWind, lucide-react-native
    - On success, go to My AIs with the new AI visible.
    - Handle the keyboard properly: inputs are never hidden behind it.
 4. **Edit**: name, persona and limits, through PATCH with only the changed fields.
-5. **Mock mode**: with `EXPO_PUBLIC_GALENA_MOCK=1`, the screens run on `mock/ais.ts`, so you can screenshot every state without a server.
+5. **Mock mode**: with `EXPO_PUBLIC_ZILAR_MOCK=1`, the screens run on `mock/ais.ts`, so you can screenshot every state without a server.
 
 ### Visual check (you have vision: use it)
 - **Simulators.** Create your **own** simulator:
-  - `xcrun simctl create "Galena T-0037" "iPhone 17"` (pick any installed iPhone device type), then boot it.
+  - `xcrun simctl create "Zilar T-0037" "iPhone 17"` (pick any installed iPhone device type), then boot it.
   - **Never** touch the booted iPhone 17 Pro `DB167CD4-…`, which is Julio's, or the booted iPad `A3E0C081-…`.
   - **Never** run `simctl shutdown all` or `erase`.
   - At the end, shut down and delete only the simulator you created, by its UDID.
 - **Metro.** `boot:ios` runs its own Metro on 8082. Don't use 8081; that's Julio's.
-- Run `pnpm --filter @galena/mobile boot:ios --device <your-udid>` in mock mode, then navigate and screenshot each screen and state:
+- Run `pnpm --filter @zilar/mobile boot:ios --device <your-udid>` in mock mode, then navigate and screenshot each screen and state:
   - list: empty and with rows;
   - each wizard step;
   - the limits error;
@@ -111,7 +111,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/mobile
+pnpm exec turbo test --force --filter=@zilar/mobile
 pnpm build
 ```
 
@@ -192,7 +192,7 @@ not touched: expo-router auto-registers the new `ais/` routes.
 - `pnpm format:check` — "All matched files use Prettier code style!"
 - `pnpm lint` — clean (oxlint, no output).
 - `pnpm typecheck` — 9 tasks successful (8 cached).
-- `pnpm exec turbo test --force --filter=@galena/mobile` — **19 files passed,
+- `pnpm exec turbo test --force --filter=@zilar/mobile` — **19 files passed,
   159 tests passed, 2 skipped** (mobile total 161). The new mock test is one of
   the 159.
 - `pnpm build` — 2 tasks successful; iOS + Android bundles exported
@@ -200,7 +200,7 @@ not touched: expo-router auto-registers the new `ais/` routes.
 
 ### Screenshots (`apps/mobile/screenshots/T-0037/`, all checked visually)
 
-All at iPhone 17 (402×874), mock mode (`EXPO_PUBLIC_GALENA_MOCK=1`).
+All at iPhone 17 (402×874), mock mode (`EXPO_PUBLIC_ZILAR_MOCK=1`).
 
 - `list-empty.png` — My AIs empty state: icon, CTA copy and "Create an AI".
 - `list-rows.png` — three rows, each with gradient initial, name, AI badge,
@@ -268,15 +268,15 @@ shows a plain message, not a crash; the list scrolls when it grows.
 ### Problems / deviations
 
 - **No `zod` in the client.** The spec asks for zod schemas, but `zod` is not a
-  dependency of `@galena/mobile` and is not resolvable from it, and the spec's
+  dependency of `@zilar/mobile` and is not resolvable from it, and the spec's
   "Allowed dependencies: None" forbids adding it. I used hand-written type
   guards, exactly like the existing `chat-api.ts` / `auth-api.ts` boundary, and
   said so here. The contract shape is covered by tests.
 - **`boot:ios` was not re-run.** A Metro was already running on port 8082 with
-  `EXPO_PUBLIC_GALENA_MOCK=1` (started by the previous session) and the app was
+  `EXPO_PUBLIC_ZILAR_MOCK=1` (started by the previous session) and the app was
   already installed, so I reused it: an attempt to stop that Metro was refused
   by the environment (`Permission denied: shell`), and I did not want to disturb
-  it. I drove the app with `galena://` deep links, typed name/model at the
+  it. I drove the app with `zilar://` deep links, typed name/model at the
   keyboard and captured every state with `simctl io screenshot`. The `pnpm
   build` above proves the JS bundle builds; the app itself ran and was
   screenshotted on the iPhone 17 simulator.
@@ -304,9 +304,9 @@ exports `resetAisMock()` (clears the per-scenario `states` map and resets the id
 `beforeEach`, so no case depends on the order the others ran in.
 
 Proof (real results):
-- `pnpm --filter @galena/mobile exec vitest run src/mock/ais.test.ts -t "keeps each scenario"`
+- `pnpm --filter @zilar/mobile exec vitest run src/mock/ais.test.ts -t "keeps each scenario"`
   → **1 passed | 11 skipped (12)**, exit 0. It passes on its own.
-- `pnpm --filter @galena/mobile exec vitest run src/mock/ais.test.ts --sequence.shuffle`
+- `pnpm --filter @zilar/mobile exec vitest run src/mock/ais.test.ts --sequence.shuffle`
   → **12 passed (12)**; ran 4 times with seeds `1790607419899`, `1790607426940`,
   `1790607428313`, `1790607429707`, all 12/12.
 
@@ -320,10 +320,10 @@ earlier revision.)
 
 **3. Unknown mock value (nit).** `aisMockScenario` now returns
 `normalizeScenario(requested)` instead of `normalizeScenario(requested) ?? 'default'`,
-so an unrecognized value means the real API. The `EXPO_PUBLIC_GALENA_MOCK=1`
-narrowing by `EXPO_PUBLIC_GALENA_MOCK_SCENARIO` still falls back to the default
+so an unrecognized value means the real API. The `EXPO_PUBLIC_ZILAR_MOCK=1`
+narrowing by `EXPO_PUBLIC_ZILAR_MOCK_SCENARIO` still falls back to the default
 scenario (comment added), since `1` explicitly asks for mock mode. Tests:
-`?mock=nonsense`, `?mock=foo` and `EXPO_PUBLIC_GALENA_MOCK=false` all → `null`;
+`?mock=nonsense`, `?mock=foo` and `EXPO_PUBLIC_ZILAR_MOCK=false` all → `null`;
 `MOCK=1` + unknown `MOCK_SCENARIO` → `'default'`.
 
 ### Checks (Round 2, real results)
@@ -338,7 +338,7 @@ scenario (comment added), since `1` explicitly asks for mock mode. Tests:
   is green. I did not touch that file.
 - `pnpm lint` — clean (oxlint, no output).
 - `pnpm typecheck` — 9 tasks successful (8 cached).
-- `pnpm exec turbo test --force --filter=@galena/mobile` — **19 files passed,
+- `pnpm exec turbo test --force --filter=@zilar/mobile` — **19 files passed,
   160 tests passed, 2 skipped (162)**: one more test than round 1 (the mock
   isolation/scenario cases).
 - `pnpm build` — 2 tasks successful; iOS/Android bundles exported.
@@ -380,7 +380,7 @@ this round was scoped to the progress bar.
   fill logic is unit-tested instead of inline.
 
 **Proof.** `wizard-step1.png` and `wizard-step4*.png` were re-shot on a fresh
-simulator ("Galena T-0037b", `E4C29E5A-…`) in mock mode on Metro 8082. A
+simulator ("Zilar T-0037b", `E4C29E5A-…`) in mock mode on Metro 8082. A
 programmatic segment scan of the bar shows:
 - step 1 — 6 visible segments, each 14% of the width, 1 active + 5 pending;
 - step 4 — 6 visible segments, 3 done + 1 active + 2 pending.
@@ -399,7 +399,7 @@ capture, so `wizard-step4.png` and `wizard-step4-selected.png` are byte-identica
 - `pnpm format:check` — PASS ("All matched files use Prettier code style!").
 - `pnpm lint` — PASS (oxlint, no output).
 - `pnpm typecheck` — 9 tasks successful (8 cached).
-- `pnpm exec turbo test --force --filter=@galena/mobile` — **19 files passed,
+- `pnpm exec turbo test --force --filter=@zilar/mobile` — **19 files passed,
   162 tests passed, 2 skipped (164)**: +2 for `wizardSegmentState`.
 - `pnpm build` — 2 tasks successful.
 
@@ -416,7 +416,7 @@ capture, so `wizard-step4.png` and `wizard-step4-selected.png` are byte-identica
 
 The delete-dialog copy was not changed (web + mobile together, later), and
 `PREREVIEW.md` was left alone (not staged, not committed, not modified). The
-"Galena T-0037b" simulator was shut down and deleted by its UDID; DB167CD4-… and
+"Zilar T-0037b" simulator was shut down and deleted by its UDID; DB167CD4-… and
 A3E0C081-… were not touched.
 
 ## Review (written by Claude)
@@ -448,7 +448,7 @@ The lead viewed list-rows, wizard-step4 (before and after the fix) and delete-co
 
 Lead re-ran every check after rebasing onto main:
 - format:check, lint, typecheck (9/9) and build pass;
-- `turbo test --force --filter=@galena/mobile`: 162 passed, 2 skipped;
+- `turbo test --force --filter=@zilar/mobile`: 162 passed, 2 skipped;
 - scope is clean.
 
 Pending: a live check on Julio's iPhone against the real server. Julio is focused on web and server first; do it with him when he picks up mobile.

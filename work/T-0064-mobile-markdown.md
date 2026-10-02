@@ -177,8 +177,8 @@ no check was ever bypassed.
   full native prebuild/`pod install`/`expo run:ios`, and the chat screen still sits
   behind `RequireAuth`, so reaching it needs a temporary auth bypass in files outside
   this task's Allowed files (what T-0056 did and reverted). I relied on the component
-  tests, which the spec allows. To check by eye: `pnpm --filter @galena/mobile start`
-  with `EXPO_PUBLIC_GALENA_MOCK=1` (add `EXPO_PUBLIC_GALENA_MOCK_DRAFT=stream|final`
+  tests, which the spec allows. To check by eye: `pnpm --filter @zilar/mobile start`
+  with `EXPO_PUBLIC_ZILAR_MOCK=1` (add `EXPO_PUBLIC_ZILAR_MOCK_DRAFT=stream|final`
   for the generating/final reply) and open the `marketing-ai` DM or `dev-ai`.
 
 ### Blocked / needs a decision
@@ -198,7 +198,7 @@ decisions into a pure module next to the components, kept both JSX branches triv
 unit-tested the decisions:
 - `apps/mobile/src/components/chat/markdown-decision.ts` (new): `rendersMarkdown(chats,
   message, currentUserId)` (which bubble renderer) and `plainPreviewBody(chat, last,
-  rawBody, currentUserId)` (which list preview). Both delegate to `@galena/chat-core`'s
+  rawBody, currentUserId)` (which list preview). Both delegate to `@zilar/chat-core`'s
   `shouldRenderMarkdown`, so the rule lives in one place.
 - `message-bubble.tsx` now branches on `showMarkdown = useChatStore((state) =>
   rendersMarkdown(state.chats, message, currentUserId))`; `chat-list-item.tsx` computes

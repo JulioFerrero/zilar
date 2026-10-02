@@ -154,7 +154,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/chat-core --filter=@galena/web --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/xmpp-core --filter=@zilar/chat-core --filter=@zilar/web --filter=@zilar/server
 pnpm build
 ```
 
@@ -269,16 +269,16 @@ pnpm install       # 1010 packages, done in 6.3s
 pnpm format:check  # All matched files use Prettier code style!
 pnpm lint          # oxlint ., exit 0, no findings
 pnpm typecheck     # 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/chat-core --filter=@galena/web --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/xmpp-core --filter=@zilar/chat-core --filter=@zilar/web --filter=@zilar/server
                    # xmpp-core 158 passed | 3 skipped; chat-core 133 passed;
                    # web 325 passed; server 494 passed | 7 skipped; 4 tasks successful
-pnpm build         # 2 successful, 2 total (@galena/web, @galena/mobile)
+pnpm build         # 2 successful, 2 total (@zilar/web, @zilar/mobile)
 ```
 
 ### Visual check (mock mode, `?mock=1`)
 
 A throwaway Node server (in the approved temp dir, not committed) answered
-`/api/auth/get-session`; `GALENA_API_URL` pointed Vite at it, and this worktree's
+`/api/auth/get-session`; `ZILAR_API_URL` pointed Vite at it, and this worktree's
 Vite ran on `localhost:5250`. Both were stopped afterwards. Twelve PNGs at
 1440×900 and 390×844 are in `work/screenshots/T-0061/`:
 
@@ -330,7 +330,7 @@ I looked at each one; the layouts hold at both sizes and nothing clips.
 
 **Approved and merged by Claude.** Verified in the worktree: every changed path is inside Allowed files; `format:check`, `lint`, `typecheck`, `test` and `build` pass (web 325, xmpp-core 158 + 3 skipped, chat-core 133, server 494 + 7 skipped). The Muse pre-review found no must-fix or should-fix issues and re-ran the checks with the same numbers.
 
-**Live check (lead, against the dev ejabberd, throwaway users and room):** I added a gated test, `packages/xmpp-core/src/integration-edits.test.ts` (`GALENA_XMPP_INTEGRATION=1`), and it passes. In a DM and in a group: a correction arrives with the new body and the original's id, from the same sender/occupant; a retraction arrives with no fallback body (in the group it targets the room's stanza-id, read from history); and MAM replays both the corrections and the retractions to a client that connects later. This is the protocol truth that fakes cannot prove (playbook gotcha 19).
+**Live check (lead, against the dev ejabberd, throwaway users and room):** I added a gated test, `packages/xmpp-core/src/integration-edits.test.ts` (`ZILAR_XMPP_INTEGRATION=1`), and it passes. In a DM and in a group: a correction arrives with the new body and the original's id, from the same sender/occupant; a retraction arrives with no fallback body (in the group it targets the room's stanza-id, read from history); and MAM replays both the corrections and the retractions to a client that connects later. This is the protocol truth that fakes cannot prove (playbook gotcha 19).
 
 Receiver-side authorization (`edits.ts` `isSameAuthor`): bare JID in DMs; real JID, else occupant-id, else nick in groups; a retraction wins for good. Read the code and the tests (foreign sender rejected in DM and group).
 

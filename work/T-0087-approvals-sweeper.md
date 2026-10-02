@@ -55,7 +55,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -96,11 +96,11 @@ Implemented the approvals sweeper end to end as specified.
 - `pnpm install` → 1010 packages installed; `Done in 6.6s`. Lockfile up to date.
 - `pnpm format:check` → initially 2 files failed (the two new files). `pnpm format` reformatted them. Re-run `pnpm format:check` → `All matched files use Prettier code style!`.
 - `pnpm lint` → `oxlint .` exited 0.
-- `pnpm exec turbo typecheck --force --filter=@galena/server` → 1 error at first (`db.update(...).returning({...})` is not supported by PGlite; switched to `RETURNING` and mapped after). Final pass: `Tasks: 1 successful, 1 total`.
-- `pnpm exec turbo test --force --filter=@galena/server` → `Test Files 47 passed | 5 skipped (52)`, `Tests 686 passed | 7 skipped (693)`, `Duration 146.98s`. The new `src/approvals/sweeper.test.ts` runs 6 tests, all green. The expanded `src/approvals/service.test.ts` runs 39 tests, all green.
+- `pnpm exec turbo typecheck --force --filter=@zilar/server` → 1 error at first (`db.update(...).returning({...})` is not supported by PGlite; switched to `RETURNING` and mapped after). Final pass: `Tasks: 1 successful, 1 total`.
+- `pnpm exec turbo test --force --filter=@zilar/server` → `Test Files 47 passed | 5 skipped (52)`, `Tests 686 passed | 7 skipped (693)`, `Duration 146.98s`. The new `src/approvals/sweeper.test.ts` runs 6 tests, all green. The expanded `src/approvals/service.test.ts` runs 39 tests, all green.
 - `pnpm build` → `Tasks: 2 successful, 2 total` (server + web). Cache hit on re-run (`FULL TURBO`).
 
-The final command of the sequence was the full pipeline `pnpm format:check && pnpm lint && pnpm exec turbo typecheck --force --filter=@galena/server && pnpm exec turbo test --force --filter=@galena/server && pnpm build` — all green.
+The final command of the sequence was the full pipeline `pnpm format:check && pnpm lint && pnpm exec turbo typecheck --force --filter=@zilar/server && pnpm exec turbo test --force --filter=@zilar/server && pnpm build` — all green.
 
 ### Problems, deviations from the spec, open questions
 

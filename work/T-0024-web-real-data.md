@@ -15,11 +15,11 @@ estimate: 2–3 days
 
 ### Goal
 Turn the web app from mock data into **the real thing**:
-- a friend opens an invite link, enters their email and the 6-digit code, types their name, and lands in Galena, already connected to whoever invited them
+- a friend opens an invite link, enters their email and the 6-digit code, types their name, and lands in Zilar, already connected to whoever invited them
 - they see their real chats and DM or chat in groups in real time, with history, typing, read ticks and online status
 - they can create a group from their contacts and invite more friends
 
-This is the milestone where **Julio can actually use Galena**. Keep the Telegram look from `docs/design/ui-style.md`.
+This is the milestone where **Julio can actually use Zilar**. Keep the Telegram look from `docs/design/ui-style.md`.
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -38,9 +38,9 @@ This is the milestone where **Julio can actually use Galena**. Keep the Telegram
 
 ### Decisions
 - **API access in development:** the Vite dev server **proxies `/api` to the server** (`http://localhost:3000`), so the browser talks same-origin and cookies just work. The XMPP WebSocket connects directly to the `service` URL returned by `POST /api/xmpp/token`.
-- **Auth client:** Better Auth's client with the `emailOTP` plugin. On sign-up through an invite, send the invite code as the `x-galena-invite` header on **both** the send-code and the sign-in requests.
+- **Auth client:** Better Auth's client with the `emailOTP` plugin. On sign-up through an invite, send the invite code as the `x-zilar-invite` header on **both** the send-code and the sign-in requests.
 - **Routes:**
-  - `/invite/:code`: welcome ("You're invited to Galena"), then the email field, then the code screen
+  - `/invite/:code`: welcome ("You're invited to Zilar"), then the email field, then the code screen
   - `/login`: email, then code, for existing users
   - after a first sign-in, `/welcome/name`, which calls `PATCH /api/me`
   - `/` and `/c/:chatJid`: the app (URL-encode JIDs in routes)
@@ -105,7 +105,7 @@ pnpm build
 
 ### What I did
 
-**`@galena/xmpp-core` — additive contact presence (the only package change).**
+**`@zilar/xmpp-core` — additive contact presence (the only package change).**
 
 - New `PresenceEvent { jid, available }` type, exported from the package index, plus an `on('presence', cb)` overload on `XmppCore`.
 - `parseContactPresence(stanza, domain)` in `src/stanza.ts`: accepts a bare-JID presence from our own domain (available = no `type`, unavailable = `type="unavailable"`), ignores MUC presence, other domains, subscription stanzas and sender-less presence.
@@ -114,9 +114,9 @@ pnpm build
 
 **`apps/web` — real data.**
 
-- **Dev proxy:** `vite.config.ts` proxies `/api` to `http://localhost:3000` (overridable with `GALENA_API_URL`), so Better Auth cookies are first-party.
+- **Dev proxy:** `vite.config.ts` proxies `/api` to `http://localhost:3000` (overridable with `ZILAR_API_URL`), so Better Auth cookies are first-party.
 - **API client** (`src/lib/api.ts`): zod-validated `fetch` wrappers for `GET /api/me`, `PATCH /api/me`, `GET /api/chats`, `GET /api/contacts`, `POST /api/groups`, `POST /api/invites`, `GET /api/invites/:code`, `POST /api/xmpp/token`, with an `ApiError`.
-- **Auth client** (`src/lib/auth.ts`): Better Auth React client with the `emailOTP` plugin; `sendSignInCode`/`verifySignInCode` attach the `x-galena-invite` header when an invite code is present.
+- **Auth client** (`src/lib/auth.ts`): Better Auth React client with the `emailOTP` plugin; `sendSignInCode`/`verifySignInCode` attach the `x-zilar-invite` header when an invite code is present.
 - **Session + guards** (`src/auth/AuthProvider.tsx`, `src/routes/AppRoutes.tsx`): `useSession`-based provider; `/invite/:code`, `/login`, `/welcome/name`, `/`, `/c/:chatJid`; a guard redirects guests to `/login` with the target in router state, and users with an empty name to `/welcome/name`. JIDs are URL-encoded in links and decoded in `ChatShell`.
 - **Auth screens:** `InvitePage` validates the link with `GET /api/invites/:code`; the shared `AuthFlow` does email → 6-box code (`OtpInput`: auto-advance, backspace, paste, `Wrong code` / `Too many attempts, try again later`) → session; `NamePage` calls `PATCH /api/me`.
 - **Real store** (`src/store/realStore.ts`) implementing the extended `ChatStore` interface: loads `/api/me`, `/api/chats`, `/api/contacts`; connects `xmpp-core` with `getToken` calling `POST /api/xmpp/token` (first token reused, fresh token per reconnect); joins every group room; loads each chat's last message with `loadHistory(..., {max:1})` and sorts chats by recency; opening a chat loads 50 messages and paginates on scroll-up (`before`); live messages, typing, displayed markers and occupants come from xmpp-core events; contact presence drives the DM online dot; unread is counted from loaded messages with a per-user `localStorage` last-read map (safe `try/catch`) and `markDisplayed` is sent for visible open chats; a thin "Connecting…" / "Waiting for network…" bar shows while not `online`; `createGroup` creates the group then refreshes `/api/chats` and opens the room; `createInvite` returns the link; `signOut` stops XMPP, clears local state and reloads to `/login`. A generation counter makes `start`/`stop` safe under React StrictMode's double-invoked effects.
@@ -134,17 +134,17 @@ pnpm build
 
 ### Commands run and real results
 
-- `pnpm install`: PASS — "Done" (added `better-auth`, `zod`, `@galena/xmpp-core` to `apps/web`; lockfile updated).
+- `pnpm install`: PASS — "Done" (added `better-auth`, `zod`, `@zilar/xmpp-core` to `apps/web`; lockfile updated).
 - `pnpm format:check`: PASS — "All matched files use Prettier code style!" (after `pnpm format`).
 - `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (231 files, 127 rules).
 - `pnpm typecheck`: PASS — 8/8 tasks successful.
-- `pnpm test`: PASS — 8/8 tasks successful. `@galena/web` **62 passed** (17 files); `@galena/xmpp-core` **98 passed, 2 skipped** (the two live-integration files). Other packages unchanged.
+- `pnpm test`: PASS — 8/8 tasks successful. `@zilar/web` **62 passed** (17 files); `@zilar/xmpp-core` **98 passed, 2 skipped** (the two live-integration files). Other packages unchanged.
 - `pnpm build`: PASS — 2/2 tasks successful (web `dist/assets/index-*.js` 563.10 kB).
 - No live dev-stack run by me (see below).
 
 ### Problems, deviations from the spec, open questions
 
-- **New dependencies (please confirm):** `better-auth` (the spec's Decisions require Better Auth's client), `zod` (AGENTS.md requires zod validation at network boundaries), and `@galena/xmpp-core` (the real store uses it). All are workspace-consistent versions; the spec lists `pnpm-lock.yaml` as allowed.
+- **New dependencies (please confirm):** `better-auth` (the spec's Decisions require Better Auth's client), `zod` (AGENTS.md requires zod validation at network boundaries), and `@zilar/xmpp-core` (the real store uses it). All are workspace-consistent versions; the spec lists `pnpm-lock.yaml` as allowed.
 - **No end-to-end browser run.** Docker/dev-stack and the two simulator browsers are Claude's live check. Everything here is covered by unit tests with a fake `fetch`/XmppCore; the real ejabberd round trip is **not** exercised. The `vite build` warns that `@xmpp/resolve` imports `node:dns`, which Vite externalizes for the browser — the service URL is passed explicitly, so it should be inert, but this is the highest-risk untested area.
 - **Unread counts are approximate**, as the spec accepts: they count loaded messages after the stored last-read id, and a live message increments by one. On first load a chat's last message is treated as read (no server-side unread exists).
 - **Groups are all in the `personal` space** (no workspace concept yet), so the `Work` folder stays empty.
@@ -169,7 +169,7 @@ pnpm build
 - **Live on the dev stack** (Postgres, ejabberd, server on :3188, Vite on :5173 proxying `/api`):
   - **API level:** a bootstrap invite → A signs up. A's invite → B signs up. Contacts are created automatically in both directions. A creates a group. Both chat lists are correct and tokens are issued.
   - **Chat through `xmpp-core`:** a DM and a group message arrive, with the sender resolved to the real JID. Group history loads and occupants are listed.
-  - **In a real browser** (simulator Safari): the invite page validates the code ("You're invited to Galena") and the sign-in page renders.
+  - **In a real browser** (simulator Safari): the invite page validates the code ("You're invited to Zilar") and the sign-in page renders.
   - **Julio signed up himself** in his Mac browser through an invite from "Claude (test)", entering the email code and his name, and **sent his first real message**. It arrived, and he received the reply. A group with 3 real accounts works.
 
 ### Findings (from real use, fixed in T-0025)

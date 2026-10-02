@@ -17,7 +17,7 @@ estimate: 1 day
 
 M3 brings bring-your-own-compute (`docs/PROJECT_PLAN.md` §11.2, §11.5). The server already has the machines API (T-0068): an owner mints a pairing code, a runner registers with it, and the owner approves. This task gives the owner the screen for it: **Settings → Machines**.
 
-The runner app does not exist yet, so the page must say honestly that the machine side is coming: the instructions show the code and the command `galena-runner pair <CODE>` as "coming soon", not as something that works today.
+The runner app does not exist yet, so the page must say honestly that the machine side is coming: the instructions show the code and the command `zilar-runner pair <CODE>` as "coming soon", not as something that works today.
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -41,7 +41,7 @@ The runner app does not exist yet, so the page must say honestly that the machin
 1. **API client (`lib/api.ts`).** Zod schemas and functions for: `listMachines`, `createPairingCode`, `approveMachine`, `denyMachine`, `revokeMachine`, `renameMachine`, `deleteMachine`. Machine shape from the server (T-0068): `id`, `name`, `status` (`pending | approved | revoked`), `os`, `osVersion`, `arch`, `cpu`, `cores`, `ramGb`, `diskFreeGb`, `drivers`, `fingerprint`, `createdAt`, `approvedAt`, `lastSeenAt` (nullable dates as ISO strings) and, once T-0071 lands, `online` (make it **optional, default false** in the schema so this task works before T-0071 merges). Error handling as in the other calls (`ApiError` with the server's `error.code`).
 2. **The page (`/settings/machines`)** in the `AiPageShell` frame, title "Machines", subtitle "Computers where your AIs can work".
    - **Add machine** primary key at the top right. It opens a dialog:
-     - it calls `createPairingCode`, shows the code large in Geist Mono as `K7QX-M2PA`, a **Copy** key (feedback "Copied", clipboard failure handled), a countdown "Expires in 9:41" (updates each second, stops at 0 and then shows "Code expired" with a **New code** key), and the line "On the machine, run `galena-runner pair K7QX-M2PA`" followed by a muted "The runner app is coming soon".
+     - it calls `createPairingCode`, shows the code large in Geist Mono as `K7QX-M2PA`, a **Copy** key (feedback "Copied", clipboard failure handled), a countdown "Expires in 9:41" (updates each second, stops at 0 and then shows "Code expired" with a **New code** key), and the line "On the machine, run `zilar-runner pair K7QX-M2PA`" followed by a muted "The runner app is coming soon".
      - Errors from the server (`pairing_code_limit`, rate limit, network) show as an inline message.
      - The dialog closes with Esc, the ✕ or Done, and nothing lingers (timers cleared).
    - **Sections:** **Waiting for approval** (pending machines first, if any), then **Your machines** (approved), then **Revoked** (collapsed under a disclosure, only if any). An empty state when there are no machines: "No machines yet. Add one to let your AIs work on your own computers."
@@ -62,7 +62,7 @@ The runner app does not exist yet, so the page must say honestly that the machin
 - Mock layer: the seeded routes and state transitions (including 409s).
 
 ### Visual check
-Run your own Vite (`cd apps/web && (GALENA_API_URL=http://localhost:3188 pnpm exec vite --port 52xx --strictPort > $TMPDIR/vite.log 2>&1 & echo $! > $TMPDIR/vite.pid)`; never plain `pnpm dev`, never ports 3000, 3188, 5173, 8081), open `/settings/machines?mock=1` (no server needed since T-0069), and check at 1440×900 and 390×844: the list with all three kinds of card, the add dialog, a confirm, the empty state (`?mock=1` plus an empty seed if you add one; optional). Screenshots max 8, downscaled with `sips -Z 900`; save to `work/screenshots/T-0070/`. **Stop the server you started** (`kill $(cat $TMPDIR/vite.pid)`).
+Run your own Vite (`cd apps/web && (ZILAR_API_URL=http://localhost:3188 pnpm exec vite --port 52xx --strictPort > $TMPDIR/vite.log 2>&1 & echo $! > $TMPDIR/vite.pid)`; never plain `pnpm dev`, never ports 3000, 3188, 5173, 8081), open `/settings/machines?mock=1` (no server needed since T-0069), and check at 1440×900 and 390×844: the list with all three kinds of card, the add dialog, a confirm, the empty state (`?mock=1` plus an empty seed if you add one; optional). Screenshots max 8, downscaled with `sips -Z 900`; save to `work/screenshots/T-0070/`. **Stop the server you started** (`kill $(cat $TMPDIR/vite.pid)`).
 
 ### Acceptance criteria
 - [ ] The owner can add a machine (code, copy, countdown), approve or deny a pending one, rename, revoke and delete, and every destructive step asks twice.
@@ -77,7 +77,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -91,7 +91,7 @@ pnpm build
 ### What I did
 - Implemented the Machines settings page at `/settings/machines` in `apps/web/src/routes/MachinesPage.tsx`, using the existing `AiPageShell` frame, `Button`, and `FieldError` from `ais/AiPageShell.tsx` so it sits next to Connections and My AIs.
 - Built five machine components under `apps/web/src/components/machines/`:
-  - `AddMachineDialog.tsx` — mints a pairing code, shows it big in Geist Mono, a working **Copy** key (uses `lib/clipboard.ts`), a live countdown that updates each second and stops at zero with a visible **Code expired** + **New code**, the `galena-runner pair <CODE>` command line, and the honest "The runner app is coming soon." muted note. Esc, the overlay and Done close it; the countdown interval is cleared on unmount. The expiry announcement lives in an `aria-live="polite"` `sr-only` text so screen readers hear it once.
+  - `AddMachineDialog.tsx` — mints a pairing code, shows it big in Geist Mono, a working **Copy** key (uses `lib/clipboard.ts`), a live countdown that updates each second and stops at zero with a visible **Code expired** + **New code**, the `zilar-runner pair <CODE>` command line, and the honest "The runner app is coming soon." muted note. Esc, the overlay and Done close it; the countdown interval is cleared on unmount. The expiry announcement lives in an `aria-live="polite"` `sr-only` text so screen readers hear it once.
   - `PendingMachineCard.tsx` — "New machine" card with the fingerprint in mono, the safety line "Only approve a machine you just paired yourself.", and a two-step **Approve** / **Deny** with the standard confirm copy.
   - `ApprovedMachineCard.tsx` — online pill (`Online` / `Offline · last seen X ago` / `Never connected` based on `online` + `lastSeenAt`), inline rename (pencil, Enter saves, Esc cancels, 1–64 chars), and a two-step **Revoke** with the per-machine message.
   - `RevokedMachineCard.tsx` — muted card with "Revoked <date>" and a two-step **Delete**.
@@ -129,15 +129,15 @@ pnpm build
 - `pnpm install` — `Done in 6.7s using pnpm v10.32.1`. (lockfile up to date, only dev deps added)
 - `pnpm format:check` — `All matched files use Prettier code style!` (after running `prettier --write` on the new files once).
 - `pnpm lint` — `oxlint .` exits 0.
-- `pnpm --filter @galena/web typecheck` — `tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json` exits 0.
-- `pnpm exec turbo test --force --filter=@galena/web` — `Test Files 46 passed (46)`, `Tests 391 passed (391)`. The 35 new tests added by this task are:
+- `pnpm --filter @zilar/web typecheck` — `tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json` exits 0.
+- `pnpm exec turbo test --force --filter=@zilar/web` — `Test Files 46 passed (46)`, `Tests 391 passed (391)`. The 35 new tests added by this task are:
   - `src/lib/api.test.ts`: 10 (path/method/scheme, `online` optional, single-call shapes, 409 → `ApiError`).
   - `src/routes/MachinesPage.test.tsx`: 11 (loading-then-sections, empty state, error+Retry, approve moves the card, deny needs the second click, revoke needs the second click, rename Enter saves / Esc cancels, failed action leaves the card, add dialog opens with the code + copy key + command + coming-soon, Esc closes the dialog and clears timers, server error inside the dialog).
   - `src/components/machines/AddMachineDialog.test.tsx`: 3 (code + copy + command + coming-soon, countdown ticks into expiry with fake timers and the **New code** key, Esc closes and clears timers).
   - `src/components/ChatList.test.tsx`: +1 menu navigation.
   - `src/mock/api.test.ts`: +10 (seed, code shape + expiry, approve, deny, rename, revoke, delete, 409 approve, 409 delete `revoke_first`, 409 revoke already revoked).
 - `pnpm build` — both apps built; web bundle 863 KB / 258 KB gzipped (the same chunk-size warning the existing build prints).
-- Visual check: `cd apps/web && GALENA_API_URL=http://localhost:3188 pnpm exec vite --port 5299 --strictPort > $TMPDIR/vite.log 2>&1 &` on a free port, opened `/settings/machines?mock=1` in Chrome DevTools at 1440×900, confirmed the three sections render with the right copy (pending "office-linux" with fingerprint `a1b2c3d4e5f60718`, approved "julio-mbp" with the green Online pill, revoked "old-macbook" muted under the collapsed `Revoked (1)` disclosure), opened the Add dialog (it minted `XN4J-NQQU`, showed the **Copy** key, "Expires in 9:58" countdown, `galena-runner pair XN4J-NQQU`, "The runner app is coming soon.", Done), and clicked the first **Deny** to confirm the two-step confirm. Then `kill $(cat $TMPDIR/vite.pid)` stopped the server.
+- Visual check: `cd apps/web && ZILAR_API_URL=http://localhost:3188 pnpm exec vite --port 5299 --strictPort > $TMPDIR/vite.log 2>&1 &` on a free port, opened `/settings/machines?mock=1` in Chrome DevTools at 1440×900, confirmed the three sections render with the right copy (pending "office-linux" with fingerprint `a1b2c3d4e5f60718`, approved "julio-mbp" with the green Online pill, revoked "old-macbook" muted under the collapsed `Revoked (1)` disclosure), opened the Add dialog (it minted `XN4J-NQQU`, showed the **Copy** key, "Expires in 9:58" countdown, `zilar-runner pair XN4J-NQQU`, "The runner app is coming soon.", Done), and clicked the first **Deny** to confirm the two-step confirm. Then `kill $(cat $TMPDIR/vite.pid)` stopped the server.
 - I could not persist the screenshots to `work/screenshots/T-0070/` — `chrome-devtools.take_screenshot` returns the image directly but does not surface the raw bytes to a writable path, and `screencapture -l <windowId>` returned "could not create image from window" because the DevTools page does not expose a window id to the system. The visual confirmation is in the browser preview above; no screenshots were persisted.
 
 ### Problems, deviations from the spec, open questions

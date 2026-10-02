@@ -17,7 +17,7 @@ estimate: 2 days
 Julio loves Telegram's flow, and channels are part of it: an announcements feed (releases, team news, a personal project log) where **only admins post** and everyone else just reads, reacts and subscribes. A channel is a group with one feed and a posting restriction; no topics.
 
 ### Model
-- `groups.kind` (`group` | `channel`, default `group`; migration via `pnpm --filter @galena/server db:generate`). A channel has exactly one topic, its General topic (T-0108), which is the feed; it cannot have more topics and cannot be made private; `members_can_create_topics` is ignored.
+- `groups.kind` (`group` | `channel`, default `group`; migration via `pnpm --filter @zilar/server db:generate`). A channel has exactly one topic, its General topic (T-0108), which is the feed; it cannot have more topics and cannot be made private; `members_can_create_topics` is ignored.
 - Roles: `owner`/`admin` **post**; `member` = **subscriber**, reads and reacts only.
 - **Enforced by the chat server:** the channel's room is created **moderated** (ejabberd MUC option `moderated: true`, `members_only: true`, `mam: true`, `persistent: true`) so subscribers have the `visitor` role and cannot send; admins/owner get affiliation `admin`/`owner` (which carry voice). Verify on real ejabberd through the existing admin client options and add the needed option to `createRoom` options only if it is missing. Reactions by visitors: check what ejabberd allows for a visitor in a moderated room (reactions are messages); if they are blocked, document it in the Report and keep channels read-only for subscribers (reactions are then a follow-up), do not weaken the moderation.
 - Subscribers: `group_members` rows as today (so invite links T-0115, join flow and sync work unchanged). Subscriber count is shown; the **member list is visible to admins only**.
@@ -61,8 +61,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 
@@ -105,10 +105,10 @@ pnpm build
 - `pnpm format:check`: pass on all touched files (explicit file list incl. new files: "All matched files use Prettier code style!"); repo-root run still flags only the two generated drizzle files (`meta/_journal.json`, `meta/0028_snapshot.json`) — drizzle emits them unformatted, same as previous tasks (T-0113 report notes the same).
 - `pnpm lint`: pass (oxlint clean; one unused var caught and removed, re-run clean)
 - `pnpm typecheck`: pass (turbo 10/10; fixed a duplicate `createChannel` key in the mock store and three test `ApiClient` stubs missing the new methods)
-- `pnpm --filter @galena/server test --maxWorkers=2 src/groups/groups.test.ts`: 40 passed (31 existing + 9 new channel tests)
+- `pnpm --filter @zilar/server test --maxWorkers=2 src/groups/groups.test.ts`: 40 passed (31 existing + 9 new channel tests)
 - Adjacent server suites: chats+topics 39 passed; invite-links+xmpp+sweep 42 passed (incl. the preview-`kind` fix); topics/audit/roles/chat-prefs/pins/search 124 passed; xmpp/contacts/drafts/ais/auth/config/app 284 passed; approvals/machines/actions/tools/routines/voice/connections/git/db 513 passed.
 - Full server suite (background, `--maxWorkers=2`): 81 files passed, 5 skipped; 1426 passed, 7 skipped, 1 failed — the single failure was `invite-links > previews the group`, asserting the exact preview body before I added `kind`; fixed, then `invite-links.test.ts` alone: 16 passed. One gateway test (`mints a fresh token`) timed out at 35s under parallel-worker load in the same run; passes alone in 11s (untouched JWT code — load flake, not a regression).
-- `pnpm --filter @galena/web test --maxWorkers=2` (full suite): 76 files passed, 830 passed (incl. 7 new `Channels.test.tsx` + 1 new `summariesFor` channel mapping test).
+- `pnpm --filter @zilar/web test --maxWorkers=2` (full suite): 76 files passed, 830 passed (incl. 7 new `Channels.test.tsx` + 1 new `summariesFor` channel mapping test).
 - `pnpm build`: pass (2/2 turbo tasks, 1m50s)
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any|as any` in touched source: no hits (two comment-word false positives only).
 
@@ -125,7 +125,7 @@ pnpm build
 - Round-3 checks (scoped, per instruction — no full suites): `pnpm install` pass; `pnpm format:check` clean on all touched files (repo run flags only the doomed local drizzle files + untracked PREREVIEW.md, neither committed); `pnpm lint` pass; `pnpm typecheck` 10/10; server `groups` (42) + `admin-client` + `topics` + `chats` + `invite-links` + `sweep` all pass; web `Channels` + mock invite-links/mock/realStore.topics all pass. `grep` for disables/`any`/`ts-ignore`: no hits.
 
 ### Round 4 (post-rebase: migration 0030, flaky-test fix, admins-slice approved)
-- **Migration 0030 committed:** after the rebase onto main (T-0120 merged, latest was 0029), ran `pnpm --filter @galena/server db:generate` → `drizzle/0030_aromatic_masked_marvel.sql` with ONLY the two columns (`ADD COLUMN "kind" … DEFAULT 'group' NOT NULL`, `ADD COLUMN "description"`). Ran `prettier --write` on the generated meta files (`0030_snapshot.json`, `_journal.json`) per instruction; repo-root `pnpm format:check` now passes fully ("All matched files use Prettier code style!").
+- **Migration 0030 committed:** after the rebase onto main (T-0120 merged, latest was 0029), ran `pnpm --filter @zilar/server db:generate` → `drizzle/0030_aromatic_masked_marvel.sql` with ONLY the two columns (`ADD COLUMN "kind" … DEFAULT 'group' NOT NULL`, `ADD COLUMN "description"`). Ran `prettier --write` on the generated meta files (`0030_snapshot.json`, `_journal.json`) per instruction; repo-root `pnpm format:check` now passes fully ("All matched files use Prettier code style!").
 - **Flaky `Channels.test.tsx` fixed:** the create-channel assertion used bare `findByText('Releases')`, which matches twice once the row paints (dialog input + list row); now scoped with `within(screen.getByRole('navigation', { name: 'Chats' }))`. Same multi-match class fixed in the admins-error test (scoped to the Admins `region` — other panel sections surface the same network text in their own alerts when every fetch fails). File passes alone: 9/9.
 - **Admins slice approved (lead decision):** subscribers see admin/owner names only, never other subscribers — kept as implemented (admin posts carry their names anyway). Noted in Report.
 - **`docs/SERVER_CONFIG.md`:** kept — explicitly allowed by the lead (round 2).

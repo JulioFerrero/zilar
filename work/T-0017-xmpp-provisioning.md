@@ -131,7 +131,7 @@ pnpm build
 ### Commands run and real results
 
 - `pnpm install`: PASS.
-- `pnpm --filter @galena/server db:generate`: PASS — "[✓] Your SQL migration file ➜ drizzle/0002_superb_katie_power.sql"; re-run after the code was done: "No schema changes, nothing to migrate".
+- `pnpm --filter @zilar/server db:generate`: PASS — "[✓] Your SQL migration file ➜ drizzle/0002_superb_katie_power.sql"; re-run after the code was done: "No schema changes, nothing to migrate".
 - `pnpm format:check`: PASS — "All matched files use Prettier code style!".
 - `pnpm lint`: PASS — "Found 0 warnings and 0 errors."
 - `pnpm typecheck`: PASS — 6/6 tasks successful.
@@ -147,7 +147,7 @@ pnpm build
 - **Rate limiter counts requests before provisioning.** A request that later fails with 503 still consumes one of the 30 slots. This matches "at most 30 per 10 minutes per user" and prevents a failing account from being hammered.
 - **`issueXmppToken` rejects a 300 s TTL only above `MAX_TOKEN_TTL_SECONDS` (600),** so `300` is fine; the route passes `TOKEN_TTL_SECONDS = 300` explicitly.
 - **No Docker / no live check run.** As the spec requires, tests use PGlite and `FakeAdminClient`; Claude runs the live check against the dev stack.
-- **No secrets in logs, verified by a test.** `routes.test.ts` asserts the raw token and `GALENA_XMPP_JWT_SECRET` are absent from the captured log output; `.env.example` uses `CHANGE_ME` placeholders only.
+- **No secrets in logs, verified by a test.** `routes.test.ts` asserts the raw token and `ZILAR_XMPP_JWT_SECRET` are absent from the captured log output; `.env.example` uses `CHANGE_ME` placeholders only.
 
 ### Blocked / needs a decision
 

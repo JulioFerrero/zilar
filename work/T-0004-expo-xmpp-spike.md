@@ -14,7 +14,7 @@ estimate: 1 day
 ## Spec (written by Claude, do not edit)
 
 ### Goal
-The mobile app is still on mock data, and the blocker is that `@galena/xmpp-core`
+The mobile app is still on mock data, and the blocker is that `@zilar/xmpp-core`
 is built on `@xmpp/client` (xmpp.js), a **Node** library, while `apps/mobile` is
 **Expo / React Native**. This task answers, empirically, whether that stack can
 connect from a real iOS build, so the next task can put the mobile app on real
@@ -54,7 +54,7 @@ optimise for a clear answer, not for polish.
 - `work/T-0004-expo-xmpp-spike.md`
 
 **Not allowed:** `packages/**`, `apps/server/**`, `apps/web/**`, any other
-`work/T-*.md`. If `@galena/xmpp-core` itself needs a change to work on native,
+`work/T-*.md`. If `@zilar/xmpp-core` itself needs a change to work on native,
 **do not make it** — describe the exact change in the Report and stop.
 
 ### Allowed dependencies
@@ -88,7 +88,7 @@ optimise for a clear answer, not for polish.
    come back, and report what happened to the socket. State plainly whether the
    client must reconnect on foreground, and how long a message takes to arrive.
 5. **A verdict.** The Report must end with a clear answer to: *can the mobile app
-   use `@galena/xmpp-core` on iOS, and what does the next task have to do?*
+   use `@zilar/xmpp-core` on iOS, and what does the next task have to do?*
 
 ### Integration check (you run it against the running stack)
 The dev stack is **already running** and Julio is using it: the server is on
@@ -125,8 +125,8 @@ pnpm test
 ```
 
 `pnpm build` is not required for a spike (it exports the app, which is slow and
-not what you are testing), but `pnpm --filter @galena/mobile typecheck` and
-`pnpm --filter @galena/mobile test` must pass.
+not what you are testing), but `pnpm --filter @zilar/mobile typecheck` and
+`pnpm --filter @zilar/mobile test` must pass.
 
 ### Out of scope
 - Wiring the app to real data. That is the next task.
@@ -142,7 +142,7 @@ not what you are testing), but `pnpm --filter @galena/mobile typecheck` and
 ### What I did
 
 Built a throwaway diagnostic screen under `apps/mobile/src/spike/` that drives the
-**real** `@galena/xmpp-core` (which wraps `@xmpp/client`) on a real iOS build, and
+**real** `@zilar/xmpp-core` (which wraps `@xmpp/client`) on a real iOS build, and
 ran it against the already-running dev stack. The screen connects two accounts
 ("self" and "peer") to `ws://127.0.0.1:5280/ws`, logs everything to both the Metro
 console and a visible on-screen list, sends a DM from self to peer, and the peer
@@ -175,9 +175,9 @@ auto-replies with an echo — a full send/receive round trip. It also has an
 
 ### The verdict
 
-**Can `@galena/xmpp-core` run in Expo on iOS?** **Yes, with a small, well-defined
+**Can `@zilar/xmpp-core` run in Expo on iOS?** **Yes, with a small, well-defined
 polyfill list.** Proven on a real build (Expo SDK 57, React Native 0.86.3 / Hermes,
-iPhone 17 Pro simulator): two `@galena/xmpp-core` instances went `online`, exchanged a
+iPhone 17 Pro simulator): two `@zilar/xmpp-core` instances went `online`, exchanged a
 DM and its echo, then disconnected and reconnected (re-invoking `getToken`). The exact
 on-device capability probe printed
 `native globals: nextTick=false btoa=true atob=true randomUUID=false TextEncoder=true`,
@@ -197,7 +197,7 @@ so Hermes already provides `btoa`/`atob`/`TextEncoder`; only `process.nextTick` 
 - **Not needed** (proven by the capability probe): `buffer`, `text-encoding`,
   `stream-browserify`, the `events` npm package (resolves transitively — `@xmpp/events`
   declares it as a dependency), and the `process` npm package.
-- **Dependency added:** `@galena/xmpp-core` (`workspace:*`) to `apps/mobile`. No new
+- **Dependency added:** `@zilar/xmpp-core` (`workspace:*`) to `apps/mobile`. No new
   external npm package was added; `@xmpp/client` comes transitively.
 
 ### Files changed
@@ -214,11 +214,11 @@ so Hermes already provides `btoa`/`atob`/`TextEncoder`; only `process.nextTick` 
 
 ### Commands run and real results
 
-- `pnpm install`: PASS — "Already up to date" (added the `@galena/xmpp-core` symlink to `apps/mobile`).
+- `pnpm install`: PASS — "Already up to date" (added the `@zilar/xmpp-core` symlink to `apps/mobile`).
 - `pnpm format:check`: PASS — "All matched files use Prettier code style!".
 - `pnpm lint`: PASS — "Found 0 warnings and 0 errors" (243 files, 127 rules).
 - `pnpm typecheck`: PASS — turbo "8 successful, 8 total".
-- `pnpm test`: PASS — turbo "8 successful, 8 total"; `@galena/mobile` 35 passed (6 files,
+- `pnpm test`: PASS — turbo "8 successful, 8 total"; `@zilar/mobile` 35 passed (6 files,
   including 8 new spike tests).
 - `pnpm xmpp:e2e`: PASS — 12/12 (run once to confirm this worktree's `infra/.env` secret
   matches the running ejabberd, after the app first reported `not-authorized`).
@@ -234,12 +234,12 @@ Live Metro log (abridged), from the running iOS app:
 ```
 LOG [spike] native globals: nextTick=false btoa=true atob=true randomUUID=false TextEncoder=true
 LOG [spike] self status: online
-LOG [spike] self online as spike-mukibdghjg0q@galena.localhost
+LOG [spike] self online as spike-mukibdghjg0q@zilar.localhost
 LOG [spike] peer status: online
-LOG [spike] peer online as spike-peer-mukibdghjg0q@galena.localhost
+LOG [spike] peer online as spike-peer-mukibdghjg0q@zilar.localhost
 LOG [spike] self → sent "hello from the spike" (id gmukk1go0-3-f335f9)
-LOG [spike] peer ← message from spike-mukibdghjg0q@galena.localhost [chat]: hello from the spike
-LOG [spike] self ← message from spike-peer-mukibdghjg0q@galena.localhost [chat]: echo: hello from the spike
+LOG [spike] peer ← message from spike-mukibdghjg0q@zilar.localhost [chat]: hello from the spike
+LOG [spike] self ← message from spike-peer-mukibdghjg0q@zilar.localhost [chat]: echo: hello from the spike
 LOG [spike] reconnect demo: disconnecting then reconnecting
 LOG [spike] getToken called for self          ← re-invoked on reconnect
 LOG [spike] self status: online
@@ -260,12 +260,12 @@ LOG [spike] reconnect demo: done
 
 ### Problems, deviations from the spec, open questions
 
-1. **The spike uses `@galena/xmpp-core`, not raw `@xmpp/client`.** The verdict is about
+1. **The spike uses `@zilar/xmpp-core`, not raw `@xmpp/client`.** The verdict is about
    xmpp-core; it wraps `@xmpp/client`, so using the real thing is the stronger evidence.
-   This added the workspace dependency `@galena/xmpp-core` (not in the "allowed
+   This added the workspace dependency `@zilar/xmpp-core` (not in the "allowed
    dependencies" list, but it is the subject of the spike and adds no external package).
 2. **Live auth.** The mobile app has no auth yet, so the live run connected with a JWT
-   minted directly from `infra/.env` (`GALENA_XMPP_JWT_SECRET`), with the same
+   minted directly from `infra/.env` (`ZILAR_XMPP_JWT_SECRET`), with the same
    `{ jid, iat, exp }` HS256 shape `POST /api/xmpp/token` returns. That call is
    implemented and unit-tested (`fetch-token.ts`) but was not exercised live (it needs a
    Better Auth session, which is a later task).
@@ -298,7 +298,7 @@ LOG [spike] reconnect demo: done
 ### Blocked / needs a decision
 
 - Nothing blocked. Two small things the lead may want to confirm: (a) the
-  `@galena/xmpp-core` workspace dependency (subject of the spike, adds no external
+  `@zilar/xmpp-core` workspace dependency (subject of the spike, adds no external
   package), and (b) the duplicated `@xmpp/client` ambient types under `apps/mobile`.
 
 ### Round 2
@@ -313,7 +313,7 @@ Answer to review finding 1: the empty stub now lives outside the throwaway spike
   an `existsSync` check that throws a clear message if the file is ever moved or
   deleted again, so a future move fails loudly instead of silently breaking every
   bundle.
-- Finding 2 (use `@galena/xmpp-core`, ship a local `@xmpp/client` type shim) and
+- Finding 2 (use `@zilar/xmpp-core`, ship a local `@xmpp/client` type shim) and
   finding 3 (real devices suspend sockets; reconnect on `AppState` `active`) need
   no change.
 
@@ -347,14 +347,14 @@ Answer to review finding 1: the empty stub now lives outside the throwaway spike
   `build` (22 s) and `lint` (exit 0) **all PASS**. mobile 35 tests / 6 files,
   unchanged from round 1, so the move cost no coverage.
 - Scope unchanged and clean. No new dependency beyond the workspace
-  `@galena/xmpp-core`.
+  `@zilar/xmpp-core`.
 
 ### Findings
 - None outstanding. The round-1 finding is resolved and verified; round-1
   findings 2 and 3 were explicitly no-change.
 
 ### The answer this task exists to give
-**`@galena/xmpp-core` runs in Expo on iOS.** Proved on an iPhone 17 Pro
+**`@zilar/xmpp-core` runs in Expo on iOS.** Proved on an iPhone 17 Pro
 simulator, Expo SDK 57 / RN 0.86.3 / Hermes, against the running ejabberd:
 two clients online, a DM delivered, the echo returned, and a disconnect and
 reconnect that re-invokes `getToken`.

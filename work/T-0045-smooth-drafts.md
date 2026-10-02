@@ -106,7 +106,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -168,7 +168,7 @@ pnpm install                                        # Done in 10.9s, 910 package
 pnpm format:check                                   # All matched files use Prettier code style!
 pnpm lint                                           # no output, exit 0
 pnpm typecheck                                      # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/web   # Test Files 32 passed (32); Tests 194 passed (194)
+pnpm exec turbo test --force --filter=@zilar/web   # Test Files 32 passed (32); Tests 194 passed (194)
 pnpm build                                          # Tasks: 2 successful, 2 total; web built in ~0.5s
 ```
 

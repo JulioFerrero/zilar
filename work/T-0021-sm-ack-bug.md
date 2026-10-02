@@ -20,7 +20,7 @@ During the T-0016 review, ejabberd sometimes closed a client session right after
 Closing c2s session for <jid>: Stream closed by local host: Client acknowledged more stanzas than sent by server (undefined-condition)
 ```
 
-That means our client (`@xmpp/client`, used inside `@galena/xmpp-core` over **WebSocket**) sent a stream-management (XEP-0198) `<a h='N'/>` with an `h` **larger** than the number of stanzas ejabberd actually sent. In the apps this would look like **random disconnects**. There's a known discussion upstream: xmpp.js discussion #1009, "Stream-management ack for websocket connection in react native".
+That means our client (`@xmpp/client`, used inside `@zilar/xmpp-core` over **WebSocket**) sent a stream-management (XEP-0198) `<a h='N'/>` with an `h` **larger** than the number of stanzas ejabberd actually sent. In the apps this would look like **random disconnects**. There's a known discussion upstream: xmpp.js discussion #1009, "Stream-management ack for websocket connection in react native".
 
 **Find the root cause and fix it** so sessions stay up, **without** losing what stream management gives us (or, if disabling SM is the only safe choice, prove it and explain the trade-off; see Decisions).
 
@@ -40,7 +40,7 @@ That means our client (`@xmpp/client`, used inside `@galena/xmpp-core` over **We
 **Docker:** you may use the dev stack (`pnpm infra:up` / `infra:down`, no reset). You're the only worker using it now.
 
 ### Decisions
-- **Preferred fix (in `@galena/xmpp-core`):**
+- **Preferred fix (in `@zilar/xmpp-core`):**
   - Work around the miscount without patching `node_modules`, for example by correcting the counter, by wrapping or overriding the SM ack handler through the public `streamManagement` object, or by configuring it.
   - Keep stream management **enabled** if that can be done correctly.
 - **If** the only reliable fix is disabling stream management:
@@ -50,7 +50,7 @@ That means our client (`@xmpp/client`, used inside `@galena/xmpp-core` over **We
 - **Never** silence the error by catching and ignoring the disconnect.
 
 ### What to build
-1. **A reproduction first.** An integration test (gated by `GALENA_XMPP_INTEGRATION=1`, like T-0016's) that keeps two clients connected for **at least 60 s** while exchanging **≥ 200 stanzas**: messages, presence, iq pings, and forcing `<r/>` requests if possible. It asserts:
+1. **A reproduction first.** An integration test (gated by `ZILAR_XMPP_INTEGRATION=1`, like T-0016's) that keeps two clients connected for **at least 60 s** while exchanging **≥ 200 stanzas**: messages, presence, iq pings, and forcing `<r/>` requests if possible. It asserts:
    - no unexpected `disconnect` / `offline`
    - the status stays `online`
    - after the run, ejabberd's log for that window has **no** "Client acknowledged more stanzas" line (read it with `docker compose … logs --since`)
@@ -74,7 +74,7 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
-pnpm infra:up && GALENA_XMPP_INTEGRATION=1 pnpm --filter @galena/xmpp-core test; pnpm infra:down
+pnpm infra:up && ZILAR_XMPP_INTEGRATION=1 pnpm --filter @zilar/xmpp-core test; pnpm infra:down
 ```
 
 ### Out of scope
@@ -86,12 +86,12 @@ pnpm infra:up && GALENA_XMPP_INTEGRATION=1 pnpm --filter @galena/xmpp-core test;
 
 ### What I did
 
-- **Root cause reproduced and fixed in `@galena/xmpp-core`, with stream management kept enabled.**
+- **Root cause reproduced and fixed in `@zilar/xmpp-core`, with stream management kept enabled.**
 - Added `packages/xmpp-core/src/stream-management.ts`: a small XEP-0198 §4 counter that is the source of truth for the client's inbound `h`. It starts at zero on `<enabled/>`, continues on `<resumed/>`, counts only `message`/`presence`/`iq`, and rewrites the `h` of every outgoing `<a/>` and `<resume/>` before it is written (`installStreamManagementAck` patched `client.send`). It also stops counting on `disconnect`/`offline` without losing the count, so a later `<resume/>` still carries the true value. It is a no-op for clients without a `streamManagement` object (unit-test fakes).
 - Wired it in `packages/xmpp-core/src/client.ts` (`installStreamManagementAck(created)` right after `attachHandlers`).
 - Extended the ambient `@xmpp/client` types with `on('element')`, `on('send')` and `on('disconnect')`.
 - Added `packages/xmpp-core/src/stream-management.test.ts` (9 unit tests): pre-enable stanzas are not counted; `<enabled/>` resets and starts; nonzas (`<features>`, `<enable/>`, `<r/>`, `<a/>`, `<failed/>`) do not count; `<resumed/>` continues; `stop()` keeps the value; outgoing `<a/>`/`<resume/>` get the right `h` (and other elements do not); plus a regression test for the exact T-0021 sequence (pre-enable presence echo + `<enabled/>` + IQ result + `<r/>` → `<a h="1"/>`, not `2`); plus two tests for `installStreamManagementAck` (with and without a `streamManagement` object).
-- Added `packages/xmpp-core/src/integration-sm.test.ts`, the required reproduction: two clients, 60 s, 200+ stanzas (room/DM messages, typing, presence), asserting no unexpected status change, both stay `online`, and `docker compose … logs --since` has **no** "Client acknowledged more stanzas" line. Gated by `GALENA_XMPP_INTEGRATION=1` like T-0016's. `GALENA_XMPP_SM_DURATION_MS` / `GALENA_XMPP_SM_STANZAS` make it tunable (defaults 60000 / 220).
+- Added `packages/xmpp-core/src/integration-sm.test.ts`, the required reproduction: two clients, 60 s, 200+ stanzas (room/DM messages, typing, presence), asserting no unexpected status change, both stay `online`, and `docker compose … logs --since` has **no** "Client acknowledged more stanzas" line. Gated by `ZILAR_XMPP_INTEGRATION=1` like T-0016's. `ZILAR_XMPP_SM_DURATION_MS` / `ZILAR_XMPP_SM_STANZAS` make it tunable (defaults 60000 / 220).
 - Excluded the new integration file from the library tsconfig (it imports Node/server code); it is typechecked by `tsconfig.integration.json`, so the "no Node types" guarantee stays honest.
 
 ### Root cause
@@ -142,10 +142,10 @@ No `pnpm-lock.yaml` change, no dependency change, no `patches/`, no root-file ch
 
 **Before the fix**
 
-- `GALENA_XMPP_INTEGRATION=1 … vitest run src/integration.test.ts`, 8 runs in a row: **6 failed**, 2 passed. Example failure: `AssertionError: expected 'reconnecting' to be 'online' // Object.is equality`.
+- `ZILAR_XMPP_INTEGRATION=1 … vitest run src/integration.test.ts`, 8 runs in a row: **6 failed**, 2 passed. Example failure: `AssertionError: expected 'reconnecting' to be 'online' // Object.is equality`.
 - ejabberd log for those runs:
   ```
-  [warning] core-alice-…@galena.localhost/galena-… acknowledged 2 stanzas, but only 1 were sent
+  [warning] core-alice-…@zilar.localhost/zilar-… acknowledged 2 stanzas, but only 1 were sent
   [info] Closing c2s session for core-alice-…: Stream closed by local host:
          Client acknowledged more stanzas than sent by server (undefined-condition)
   ```
@@ -153,7 +153,7 @@ No `pnpm-lock.yaml` change, no dependency change, no `patches/`, no root-file ch
   ```
   AssertionError: expected [ …(2) ] to deeply equal []
       expect(alice.unexpected).toEqual([]);
-  [warning] sm-bob-…@galena.localhost/galena-… acknowledged 2 stanzas, but only 1 were sent
+  [warning] sm-bob-…@zilar.localhost/zilar-… acknowledged 2 stanzas, but only 1 were sent
   ```
 
 **After the fix**
@@ -169,10 +169,10 @@ No `pnpm-lock.yaml` change, no dependency change, no `patches/`, no root-file ch
 - `pnpm install`: PASS.
 - `pnpm format:check`: PASS — "All matched files use Prettier code style!".
 - `pnpm lint`: PASS — "Found 0 warnings and 0 errors … 191 files with 127 rules".
-- `pnpm typecheck`: PASS — turbo "8 successful, 8 total"; `@galena/xmpp-core` runs `tsc --noEmit && tsc --noEmit -p tsconfig.integration.json`, both clean.
-- `pnpm test`: PASS — turbo "8 successful, 8 total"; `@galena/xmpp-core`: **94 passed, 2 skipped** (both integration files skipped by default).
+- `pnpm typecheck`: PASS — turbo "8 successful, 8 total"; `@zilar/xmpp-core` runs `tsc --noEmit && tsc --noEmit -p tsconfig.integration.json`, both clean.
+- `pnpm test`: PASS — turbo "8 successful, 8 total"; `@zilar/xmpp-core`: **94 passed, 2 skipped** (both integration files skipped by default).
 - `pnpm build`: PASS — turbo "2 successful, 2 total".
-- `pnpm infra:up && GALENA_XMPP_INTEGRATION=1 pnpm --filter @galena/xmpp-core test; pnpm infra:down`: PASS — **7 files, 96 passed** (both integration tests, the 60 s one included); `infra:down` removed containers and network, volumes kept.
+- `pnpm infra:up && ZILAR_XMPP_INTEGRATION=1 pnpm --filter @zilar/xmpp-core test; pnpm infra:down`: PASS — **7 files, 96 passed** (both integration tests, the 60 s one included); `infra:down` removed containers and network, volumes kept.
 - No-Node-types check: `tsc --noEmit --listFiles -p packages/xmpp-core/tsconfig.json` → 0 `@types/node` files, and neither `integration.test.ts` nor `integration-sm.test.ts` is listed.
 
 ### Problems, deviations from the spec, open questions

@@ -58,7 +58,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -88,11 +88,11 @@ In the mock layer I also added the missing `POST /connections` handler (the page
 ### Commands run and real results
 
 - `pnpm install`: succeeded, 1010 packages, 17.5 s.
-- `pnpm exec turbo test --force --filter=@galena/web`: 51 test files passed, 462 tests passed (10 s).
+- `pnpm exec turbo test --force --filter=@zilar/web`: 51 test files passed, 462 tests passed (10 s).
 - `pnpm format:check`: failed once on `lib/api.ts` and `lib/api.test.ts`; ran `pnpm exec prettier --write` on those two; rerun: "All matched files use Prettier code style!".
 - `pnpm lint` (oxlint): exit 0.
 - `pnpm typecheck`: 10 tasks successful, 0 cached web because I touched it.
-- `pnpm build` (`turbo build`): both `@galena/web` and `@galena/mobile` built successfully.
+- `pnpm build` (`turbo build`): both `@zilar/web` and `@zilar/mobile` built successfully.
 
 Live check (the optional part of the spec): I started `vite --port 4321` with `VITE_MOCK=1`, opened `http://localhost:4321/settings/connections?mock=1` in chrome-devtools, and verified end-to-end with no `/api` calls leaving the browser:
 

@@ -148,7 +148,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -257,7 +257,7 @@ placeholder. `models.test.ts` (3): `defaultModelFor` for every provider + unknow
   warning by deriving the model default during render and by not re-setting `loading` in an
   effect; no rule was disabled.
 - `pnpm typecheck` — 9 tasks successful (8 cached on the last run).
-- `pnpm exec turbo test --force --filter=@galena/web` — **25 files, 128 tests, all passed**.
+- `pnpm exec turbo test --force --filter=@zilar/web` — **25 files, 128 tests, all passed**.
 - `pnpm build` — 2 tasks successful; web `dist/assets/index-*.js` 616.04 kB (the existing
   chunk-size warning is unchanged).
 
@@ -342,5 +342,5 @@ Nit, not fixed: the create and update tests don't assert the URL.
 
 Lead re-ran every check after rebasing onto main:
 - format:check, lint, typecheck (9/9) and build pass;
-- `turbo test --force --filter=@galena/web`: 128/128.
+- `turbo test --force --filter=@zilar/web`: 128/128.
 

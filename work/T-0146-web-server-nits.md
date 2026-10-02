@@ -37,8 +37,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2 <touched sticker/startup test files>
-pnpm --filter @galena/web test --maxWorkers=2 <touched test files and their neighbours>
+pnpm --filter @zilar/server test --maxWorkers=2 <touched sticker/startup test files>
+pnpm --filter @zilar/web test --maxWorkers=2 <touched test files and their neighbours>
 ```
 
 ## Report (written by the worker)
@@ -60,8 +60,8 @@ pnpm --filter @galena/web test --maxWorkers=2 <touched test files and their neig
 - `pnpm install`: ok (~8 s).
 - `pnpm format:check`: pass. `pnpm lint`: pass (two `set-state-in-effect` in my first `StickerPanel` draft fixed by deriving `visibleTab` at render time; the probe promise is created in state init, settled in one external-sync effect).
 - `pnpm typecheck`: pass (10/10 tasks).
-- `pnpm --filter @galena/server test --maxWorkers=2 src/startup.test.ts src/stickers/routes.test.ts`: 2 files, 26 passed.
-- `pnpm --filter @galena/web test --maxWorkers=2` on 11 touched files (TopicPanel, StickerPanel, GifPanel, realStore, realStore.topics, mock/api, mock/api.topics, mock/mock, Composer, GifMessage, lib/api): 11 files, 340 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 src/startup.test.ts src/stickers/routes.test.ts`: 2 files, 26 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2` on 11 touched files (TopicPanel, StickerPanel, GifPanel, realStore, realStore.topics, mock/api, mock/api.topics, mock/mock, Composer, GifMessage, lib/api): 11 files, 340 passed.
 - Neighbours: TopicsMockE2E, Channels, JoinPage, lib/api.topics, reload: 5 files, 43 passed.
 - Fail-without spot checks: the old blanket mock-store swallow resolves the new non-membership reject test (verified by reading the old code — the old branch returned on every 404); new tests are new coverage of new branches.
 

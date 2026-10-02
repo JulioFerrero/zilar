@@ -71,7 +71,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -115,14 +115,14 @@ pnpm build
 - `pnpm format:check`: `All matched files use Prettier code style!` (after running `prettier --write` on the touched source files and the generated snapshot JSON).
 - `pnpm lint`: clean (the only lint error was the unnecessary `\-` inside a character class, which I removed).
 - `pnpm typecheck`: `Tasks: 10 successful, 10 total`.
-- `pnpm exec turbo test --force --filter=@galena/server`: `Test Files 46 passed | 5 skipped (51) / Tests 648 passed | 7 skipped (655) / Duration 130.81s` (audit adds 31 tests on top of the pre-existing 617).
-- `pnpm build`: `Tasks: 2 successful, 2 total` (the only build failure considered was `@galena/mobile`, which is unrelated — both `@galena/server` and `@galena/web` build cleanly).
+- `pnpm exec turbo test --force --filter=@zilar/server`: `Test Files 46 passed | 5 skipped (51) / Tests 648 passed | 7 skipped (655) / Duration 130.81s` (audit adds 31 tests on top of the pre-existing 617).
+- `pnpm build`: `Tasks: 2 successful, 2 total` (the only build failure considered was `@zilar/mobile`, which is unrelated — both `@zilar/server` and `@zilar/web` build cleanly).
 
 ### Problems, deviations from the spec, open questions
 - PGlite supports `BEFORE TRUNCATE ... FOR EACH STATEMENT` triggers and the test that runs `truncate table audit_log` through `db.execute(sql\`truncate table audit_log\`)` does fail with the `audit_log is append-only: TRUNCATE is not allowed` exception, so the spec's "(and TRUNCATE if PGlite supports it)" clause is satisfied. No deviation needed.
 - `note` is intentionally absent from the audit row: `detail` is reserved for `decision` and ids only, and the approval `note` field never reaches the recorder.
 - The schema-level enum on `result` did not generate a Postgres CHECK constraint (Drizzle 0.45.x writes the enum only as a TypeScript hint); the service-layer zod schema is the gate, exactly as the spec's "validates with zod" line requires.
-- No new dependencies were added — only `drizzle-orm`, `zod`, `@galena/protocol`, and `@electric-sql/pglite`, all already declared in `apps/server/package.json`.
+- No new dependencies were added — only `drizzle-orm`, `zod`, `@zilar/protocol`, and `@electric-sql/pglite`, all already declared in `apps/server/package.json`.
 
 ### Blocked / needs a decision
 - None.

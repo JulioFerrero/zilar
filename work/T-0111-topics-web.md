@@ -14,12 +14,12 @@ estimate: 3 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-D25, D26, D29. The server now serves topics (T-0108), AIs per topic (T-0109) and topic-scoped approvals/rules/tools (T-0110). This task builds the web UI. **The visual spec is the Claude artifact "Galena Topics Mockup"** (https://claude.ai/artifact/YKvuBAcmXzRdiyx83eppSd; boards: desktop, mobile 1, mobile 2, new-topic dialog). Match its layout and states; tokens and depth recipes are in `docs/design/ui-style.md` (implement with the existing components/utilities, never ad hoc shadows).
+D25, D26, D29. The server now serves topics (T-0108), AIs per topic (T-0109) and topic-scoped approvals/rules/tools (T-0110). This task builds the web UI. **The visual spec is the Claude artifact "Zilar Topics Mockup"** (https://claude.ai/artifact/YKvuBAcmXzRdiyx83eppSd; boards: desktop, mobile 1, mobile 2, new-topic dialog). Match its layout and states; tokens and depth recipes are in `docs/design/ui-style.md` (implement with the existing components/utilities, never ad hoc shadows).
 
 ### What to build
 1. **Data** (`lib/api.ts`, `store/realStore.ts`, `packages/chat-core` types, mock): 
    - API client for the T-0108/T-0109/T-0110 routes with zod schemas: list/create/patch topics, members, AIs, `membersCanCreateTopics`, topic tools/rules (only what the UI shows).
-   - `GET /api/chats` group entries now carry `topics`. The store maps **each topic to its own `ChatSummary`** keyed by its room JID (`chatJid`), with new optional fields on `ChatSummary` (in `@galena/chat-core`, backward compatible): `groupId`, `topic?: { id, glyph, kind, status, visibility, isGeneral, archived, owner, linkUrl, linkLabel }`. The General topic's `chatJid` is the group's old chat id, so existing deep links `/c/<jid>` keep working. A group with no `topics` field (older server) behaves exactly as today.
+   - `GET /api/chats` group entries now carry `topics`. The store maps **each topic to its own `ChatSummary`** keyed by its room JID (`chatJid`), with new optional fields on `ChatSummary` (in `@zilar/chat-core`, backward compatible): `groupId`, `topic?: { id, glyph, kind, status, visibility, isGeneral, archived, owner, linkUrl, linkLabel }`. The General topic's `chatJid` is the group's old chat id, so existing deep links `/c/<jid>` keep working. A group with no `topics` field (older server) behaves exactly as today.
    - Joining: the store joins every visible topic room like it joins group rooms today; unread counts and last message per topic come from the existing per-chat machinery.
    - Refresh: refetch `/api/chats` when a room invitation arrives (already handled), when the tab regains focus, and every 60 s while visible, so a topic created, made private, or where I was removed appears/disappears without reload. A topic that disappears while open navigates to the group's General topic with a short notice.
 2. **Sidebar** (`ChatList.tsx`, new `TopicRow.tsx`, `ChatListItem.tsx` as needed): a group is rendered as a **header row** (group avatar, title, "N topics", aggregated unread, time of the newest message) with its topics **nested underneath** in a 1 px left rail as in the mockup: General first, then the others by newest message; each row shows a raised glyph tile, the topic name (ellipsis), a lock icon for private topics, a one-line preview, the unread badge (existing rules for muted). The selected topic is highlighted (raised segment). The header row toggles collapse (chevron; state remembered per group in `localStorage`, wrapped in try/catch); collapsed shows only the header with the aggregated unread. Archived topics live under a small "Archived (n)" toggle at the bottom of the group. Search filters topics by name and keeps their group header. Folders (All/Personal/AIs/Work) treat a topic like its group.
@@ -71,7 +71,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 
@@ -108,8 +108,8 @@ pnpm build
 - `pnpm format:check`: pass ("All matched files use Prettier code style!").
 - `pnpm lint`: pass (oxlint clean).
 - `pnpm typecheck`: pass (10/10 turbo tasks).
-- `pnpm --filter @galena/web test --maxWorkers=2`: 65 files passed, 694 passed (46 s).
-- `pnpm --filter @galena/chat-core test`: 10 files passed, 135 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2`: 65 files passed, 694 passed (46 s).
+- `pnpm --filter @zilar/chat-core test`: 10 files passed, 135 passed.
 - `pnpm build`: pass (2/2 turbo tasks).
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any` in touched non-test source: no hits.
 - Live visual check (own Vite on :5181, `?mock=1` deep links, Chrome screenshots): nested sidebar with lock/unread, bug-topic strip (BUG/In progress/Owner/PR #42 link), hiring private topic + kebab menu, topic panel (members/AIs/rules/tools/Make public/Archive), status menu with dots, new-topic dialog. Panel fetches fail when in-app navigation drops `?mock=1` (known gotcha 31) — verified via deep links.
@@ -124,7 +124,7 @@ pnpm build
 ### Round 2 (lead review fixes, 2026-09-30)
 - Fix 2 done: the topic kebab's no-op Mute entry is removed (`ChatHeader.tsx` only; the per-chat mute flag is untouched). The kebab Search entry is intentionally left as-is on this base: per the review, on rebased `main` it must call the same `searchChat` action as the header's "Search in chat" button (one search path).
 - Fix 1 (rebase onto `main`) is BLOCKED on permissions: `git rebase main` is rejected twice by the worker policy (`git rebase*` is a standing deny; `git merge`/`switch`/`push` are likewise denied), so the branch is still based on `5dc37b9` (pre-T-0117). No rebase, no merge, no branch switch was performed.
-- Rebase conflict forecast (from `git diff HEAD main`, no checkout of `main`): resolving will need to keep BOTH features. Textual merges in `ChatList.tsx`, `store.ts`, `realStore.ts`, `api.ts` must keep topics UI + search plumbing; true conflicts: `ChatHeader.tsx` (topics kebab/breadcrumb/chips vs T-0117 `setSearchChat` header button — wire the kebab Search entry to the same `setSearchChat` + `galena:focus-search` action) and `mock/api.ts` (topics handlers vs `searchMessages`; note the search index iterates `mockMessages` only, so topic threads in `mockTopicMessages` won't be searchable unless the index also covers them). `NewTopicDialog.tsx`, `TaskStrip.tsx`, `TopicPanel.tsx`, `TopicRow.tsx`, `topicsUi.ts`, `mock/topics.ts`, `api.topics.test.ts`, `realStore.topics.test.ts` and the topic test files exist only on this branch and carry over. `ChatList.test.tsx`, `ChatShell.test.tsx`, `realStore.test.tsx`, `reload.test.tsx`, `mock/api.test.ts` were edited by both sides and need hand-merging. Verified on the server side that search `chatJid` values are already topic room JIDs (`chatJidFor`: groupchat rows use the room `owner`), so search hits in a topic open that topic's chat directly via `openAtMessage` + navigate — no JID remapping needed.
+- Rebase conflict forecast (from `git diff HEAD main`, no checkout of `main`): resolving will need to keep BOTH features. Textual merges in `ChatList.tsx`, `store.ts`, `realStore.ts`, `api.ts` must keep topics UI + search plumbing; true conflicts: `ChatHeader.tsx` (topics kebab/breadcrumb/chips vs T-0117 `setSearchChat` header button — wire the kebab Search entry to the same `setSearchChat` + `zilar:focus-search` action) and `mock/api.ts` (topics handlers vs `searchMessages`; note the search index iterates `mockMessages` only, so topic threads in `mockTopicMessages` won't be searchable unless the index also covers them). `NewTopicDialog.tsx`, `TaskStrip.tsx`, `TopicPanel.tsx`, `TopicRow.tsx`, `topicsUi.ts`, `mock/topics.ts`, `api.topics.test.ts`, `realStore.topics.test.ts` and the topic test files exist only on this branch and carry over. `ChatList.test.tsx`, `ChatShell.test.tsx`, `realStore.test.tsx`, `reload.test.tsx`, `mock/api.test.ts` were edited by both sides and need hand-merging. Verified on the server side that search `chatJid` values are already topic room JIDs (`chatJidFor`: groupchat rows use the room `owner`), so search hits in a topic open that topic's chat directly via `openAtMessage` + navigate — no JID remapping needed.
 
 ### Blocked / needs a decision
 - The `git rebase main` step (review fix 1) needs the lead: the worker policy denies `git rebase*`. Either run the rebase + conflict resolution from the lead side, or grant a one-time allowance and I will finish it (resolve per the forecast above, re-run format:check, lint, typecheck, the full web suite `--maxWorkers=2` and build, and report real results).

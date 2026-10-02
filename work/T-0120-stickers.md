@@ -19,8 +19,8 @@ D27 (Julio, 2026-09-29): stickers are **created by users** as packs; a Telegram 
 ### Protocol (`packages/protocol`)
 - New payload type `sticker` in `PayloadSchema` (`v: 0`), `StickerSchema = z.strictObject({ pack_id: uuid, sticker_id: uuid, url: z.url().max(2048) (the server file URL at send time, used as a fallback), emoji: string ≤ 8 optional, width/height ints 1..512, mime: 'image/webp' | 'image/png' })`. A message with a `sticker` payload has an empty or emoji body (so clients that do not know the payload show the emoji). Tests in the protocol package like the other payloads (valid, unknown keys rejected, oversized rejected). Keep `MAX_PAYLOAD_BYTES` rules.
 
-### Data (server; migration via `pnpm --filter @galena/server db:generate`)
-- `sticker_packs`: `id`, `owner_id` (fk user cascade), `title` (1–60), `visibility` (`private` | `server`), `imported_from` (text nullable, set by T-0123), `created_at`, `updated_at`. `server` packs can be found and added by every user of this Galena server; `private` packs only by the owner (and are usable by others only through stickers already sent to them).
+### Data (server; migration via `pnpm --filter @zilar/server db:generate`)
+- `sticker_packs`: `id`, `owner_id` (fk user cascade), `title` (1–60), `visibility` (`private` | `server`), `imported_from` (text nullable, set by T-0123), `created_at`, `updated_at`. `server` packs can be found and added by every user of this Zilar server; `private` packs only by the owner (and are usable by others only through stickers already sent to them).
 - `stickers`: `id`, `pack_id` (fk cascade), `position` (int), `emoji` (≤ 8 chars, nullable), `mime` (`image/webp` | `image/png`), `width`, `height`, `bytes`, `storage_key` (relative path), `created_at`. Max 120 stickers per pack, 100 packs per user.
 - `user_sticker_packs`: `user_id`, `pack_id`, `position`, `added_at`, pk both (the packs in a user's panel; the owner's own packs are added automatically).
 - Files live on the server disk under `STICKER_STORAGE_DIR` (new env, zod, default `./data/stickers`, must be writable at startup; document in `docs/SERVER_CONFIG.md`; the docker/Coolify volume note goes there too). File names are `<uuid>.<ext>`; never derived from user input.
@@ -36,7 +36,7 @@ D27 (Julio, 2026-09-29): stickers are **created by users** as packs; a Telegram 
 ### Web (`apps/web`)
 - **Sticker panel** in the composer (the smiley button, per the mockup: tabs Stickers / GIFs / Emoji; the GIFs tab shows "Coming soon" until T-0122; the Emoji tab uses the existing emoji handling if there is one, else a small grid of common emoji): a strip of pack tabs (first: Recent), a grid of stickers (6 columns, 72 px, lazy-loaded images, `loading="lazy"`), hover/keyboard focus preview; click sends. **Recent** = the last 30 sent, kept in `localStorage` (try/catch) as ids.
 - **Sending:** builds the `sticker` payload and sends it in the current chat/topic through the store (same path as other payload messages); optimistic bubble; failure shows the usual retry.
-- **Rendering** (`MessageBubble`/a new `StickerMessage.tsx`): a sticker is shown **without a bubble**, at most 200 px, on the chat background, with the time and ticks overlaid in a small pill; reactions and reply-quote work; the image loads from the payload `url` only if it is on the **same origin as the Galena API**, otherwise show a placeholder (this stops a hostile sender from making everyone's browser fetch an arbitrary URL); alt text is the emoji or "Sticker".
+- **Rendering** (`MessageBubble`/a new `StickerMessage.tsx`): a sticker is shown **without a bubble**, at most 200 px, on the chat background, with the time and ticks overlaid in a small pill; reactions and reply-quote work; the image loads from the payload `url` only if it is on the **same origin as the Zilar API**, otherwise show a placeholder (this stops a hostile sender from making everyone's browser fetch an arbitrary URL); alt text is the emoji or "Sticker".
 - Mock mode: two built-in demo packs with simple generated SVG-as-data-URL stickers.
 
 ### Read first
@@ -66,9 +66,9 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/protocol test
-pnpm --filter @galena/server test --maxWorkers=2
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/protocol test
+pnpm --filter @zilar/server test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 
@@ -94,13 +94,13 @@ pnpm build
 
 ### Commands run and real results (final, post-rebase with migration 0029 committed)
 - `pnpm install`: ok (1021 packages, 7.6s)
-- `pnpm --filter @galena/server db:generate`: produced `drizzle/0029_sloppy_jigsaw.sql` with ONLY the three sticker tables + FKs + index (verified by reading the file); nothing else.
+- `pnpm --filter @zilar/server db:generate`: produced `drizzle/0029_sloppy_jigsaw.sql` with ONLY the three sticker tables + FKs + index (verified by reading the file); nothing else.
 - `pnpm exec prettier --write` on the generated snapshot + `_journal.json`; `pnpm format:check`: pass (only untracked `PREREVIEW.md`, which I must not touch, is unformatted)
 - `pnpm lint` (oxlint): pass, no findings
 - `pnpm typecheck` per package (protocol/server/web): all pass
-- `pnpm --filter @galena/protocol test --maxWorkers=2`: 11 files, 159 passed
-- `pnpm --filter @galena/server test --maxWorkers=2`: 85 files passed, 5 skipped; 1471 passed, 7 skipped (includes the 17 sticker route + 14 probe + 3 startup tests)
-- `pnpm --filter @galena/web test --maxWorkers=2`: 79 files, 867 passed
+- `pnpm --filter @zilar/protocol test --maxWorkers=2`: 11 files, 159 passed
+- `pnpm --filter @zilar/server test --maxWorkers=2`: 85 files passed, 5 skipped; 1471 passed, 7 skipped (includes the 17 sticker route + 14 probe + 3 startup tests)
+- `pnpm --filter @zilar/web test --maxWorkers=2`: 79 files, 867 passed
 - `pnpm build` (turbo): 2 tasks successful
 - Targeted runs while working (all `--maxWorkers=2`): sticker protocol 15 passed; image probe 14 passed; sticker routes 17 passed; startup 3 passed; config incl. new storage-dir cases; authz sweep 5 passed; web sticker panel 11, realStore 106, mock 9, recents/url lib, Composer 25 — all pass.
 

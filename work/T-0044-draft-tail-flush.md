@@ -65,7 +65,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -116,14 +116,14 @@ After this fix, the complete text is flushed as a `draft` synchronously before t
 ### Commands (real results)
 ```bash
 pnpm install                                        # Done in 6.9s, exit 0
-pnpm --filter @galena/server exec vitest run src/drafts/hub.test.ts src/agents/reply.test.ts
+pnpm --filter @zilar/server exec vitest run src/drafts/hub.test.ts src/agents/reply.test.ts
                                                     # Test Files 2 passed (2); Tests 36 passed (36)
-pnpm --filter @galena/server exec vitest run src/agents/gateway.test.ts
+pnpm --filter @zilar/server exec vitest run src/agents/gateway.test.ts
                                                     # Test Files 1 passed (1); Tests 38 passed (38)
 pnpm format:check                                   # All matched files use Prettier code style!
 pnpm lint                                           # no output, exit 0
 pnpm typecheck                                      # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
                                                     # Test Files 37 passed (37), 5 skipped (42); Tests 412 passed, 7 skipped (419)
 pnpm build                                          # Tasks: 2 successful, 2 total
 git status                                          # only the 6 Allowed files + this task file

@@ -14,10 +14,10 @@ estimate: 2 days
 ## Spec (written by Claude, do not edit)
 
 ### Goal
-Give the apps what they need to show a **real chat list**, so Julio and his friends can use Galena:
+Give the apps what they need to show a **real chat list**, so Julio and his friends can use Zilar:
 - **Contacts:** when someone signs up through my invite, we become contacts automatically, as a two-way XMPP roster subscription, so we see each other online and can DM.
 - **Groups:** I can create a group with some of my contacts. Our server creates the members-only MUC room and sets the affiliations.
-- **Chats API:** `GET /api/chats` returns my DMs (contacts) and groups, with what the chat list needs. Messages themselves come from XMPP in the apps (`@galena/xmpp-core`), not from this API.
+- **Chats API:** `GET /api/chats` returns my DMs (contacts) and groups, with what the chat list needs. Messages themselves come from XMPP in the apps (`@zilar/xmpp-core`), not from this API.
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -42,7 +42,7 @@ Give the apps what they need to show a **real chat list**, so Julio and his frie
   - A table `contacts(user_id, contact_user_id, created_at, source: 'invite'|'manual')`, one row per direction, unique on the pair.
   - When a new user is created through an invite **with a creator**, in `user.create.after` after XMPP provisioning:
     - create both rows (inviter ↔ invitee)
-    - add a **two-way roster item** in ejabberd for each side (`add_rosteritem`, subscription `both`, nick = the other person's display name, group `Galena`)
+    - add a **two-way roster item** in ejabberd for each side (`add_rosteritem`, subscription `both`, nick = the other person's display name, group `Zilar`)
   - Bootstrap invites without a creator create no contact.
   - If ejabberd fails, contacts are still stored, with `roster_synced = false`. A `syncRoster(userId)` retry runs on `POST /api/xmpp/token`, like the T-0017 lazy provisioning.
 - **Invite claim:** store which invite created each user (`users_invited_by` or a column on our side, not Better Auth's table). `consumeInvite` currently returns the invite; pass its `created_by` through.
@@ -125,8 +125,8 @@ pnpm build
   - `user_invites(user_id pk, invite_id, invited_by, created_at)` — our own claim table: which invite created each user and who invited them. `invite_id`/`invited_by` are nullable with `ON DELETE SET NULL` so deleting an invite never loses the inviter.
   - `groups(id pk, room_localpart unique, title, created_by, created_at)` and `group_members(group_id, user_id, role 'owner'|'admin'|'member', added_at)`, composite PK on `(group_id, user_id)`.
 - **Admin client (`src/xmpp/admin-client.ts`).** Added `addRosterItem(localpart, contactJid, { nick, groups, subs })`, `deleteRosterItem(localpart, contactJid)` and `getRoster(localpart)` (all zod-validated in and out; `add_rosteritem` uses the 26.07 argument names `localuser`/`localhost`/`groups`/`subs`). `CreateRoomOptions` gained `anonymous`, and `createRoom` now includes `{ name: 'anonymous', value: String(anonymous) }` **only when the caller passes it**, so the existing T-0003 call sites keep their exact body. Documented per the ejabberd 26.07 API reference (`add_rosteritem`, `delete_rosteritem`, `get_roster`, `create_room_with_opts`).
-- **Contacts (`src/contacts/service.ts`, `routes.ts`).** `addContactPair` inserts both directions idempotently; `setUpContactsFromInvite` records the invite claim then, for an invite with a creator, makes the pair contacts; `syncRoster` pushes every not-yet-synced contact with `addRosterItem(… 'both', group 'Galena')` and flips `roster_synced`. A failed admin call leaves the rows unsynced and stops early (never throws for an admin error), so the retry is safe. `listContacts` returns `{ userId, name, jid, avatarUrl? }` for one user only. `GET /api/contacts` is auth-only.
-- **Sign-up wiring (`src/auth/auth.ts`).** `user.create.after` still provisions XMPP first, then reads `x-galena-invite` from the endpoint context, records the claim and sets up the contacts/rosters. Both steps are wrapped so a failure logs a warning and never blocks sign-up. A bootstrap invite (no creator) records the claim but creates no contacts.
+- **Contacts (`src/contacts/service.ts`, `routes.ts`).** `addContactPair` inserts both directions idempotently; `setUpContactsFromInvite` records the invite claim then, for an invite with a creator, makes the pair contacts; `syncRoster` pushes every not-yet-synced contact with `addRosterItem(… 'both', group 'Zilar')` and flips `roster_synced`. A failed admin call leaves the rows unsynced and stops early (never throws for an admin error), so the retry is safe. `listContacts` returns `{ userId, name, jid, avatarUrl? }` for one user only. `GET /api/contacts` is auth-only.
+- **Sign-up wiring (`src/auth/auth.ts`).** `user.create.after` still provisions XMPP first, then reads `x-zilar-invite` from the endpoint context, records the claim and sets up the contacts/rosters. Both steps are wrapped so a failure logs a warning and never blocks sign-up. A bootstrap invite (no creator) records the claim but creates no contacts.
 - **Lazy retry (`src/xmpp/routes.ts`).** `POST /api/xmpp/token` calls `syncRoster` after provisioning. A roster failure logs `roster sync is incomplete` with the pending count and still returns the token (chat works; the next request retries).
 - **Groups (`src/groups/service.ts`, `routes.ts`).** `POST /api/groups` validates (title 1–100 after trim, `memberIds` ≤ 50), requires every member to be the creator's contact (generic 403 that never names anyone), creates the members-only/persistent/MAM/non-anonymous room with the title as its name, sets the creator `owner` and the others `member`, all inside a DB transaction so any ejabberd failure rolls the rows back and returns 503 (plus a best-effort `destroyRoom` if the room was already created). `room_localpart` is `g` + 16 random lowercase base32 chars. `GET /api/groups/:id` returns members with names to members only (404 otherwise). `POST /api/groups/:id/members` (owner/admin, caller's contacts) and `DELETE /api/groups/:id/members/:userId` (owner/admin, or self) keep the DB and the ejabberd affiliations in sync in a transaction. `listGroupsForUser` is the chat-list projection.
 - **Chats (`src/chats/routes.ts`).** `GET /api/chats` merges the caller's DMs (from contacts, `chatJid` = the contact's bare JID) and groups (`chatJid` = `<room_localpart>@<XMPP_MUC_DOMAIN>`, `memberCount`, `role`) and sorts by title.
@@ -153,7 +153,7 @@ pnpm build
 ### Commands run and real results
 
 - `pnpm install`: PASS ("Done in 9.7s").
-- `pnpm --filter @galena/server db:generate`: PASS — "`[✓] Your SQL migration file ➜ drizzle/0003_shocking_boom_boom.sql`"; re-run: "No schema changes, nothing to migrate".
+- `pnpm --filter @zilar/server db:generate`: PASS — "`[✓] Your SQL migration file ➜ drizzle/0003_shocking_boom_boom.sql`"; re-run: "No schema changes, nothing to migrate".
 - `pnpm format:check`: PASS — "All matched files use Prettier code style!".
 - `pnpm lint`: PASS — "Found 0 warnings and 0 errors." (197 files, 127 rules).
 - `pnpm typecheck`: PASS — 8/8 tasks successful.
@@ -172,7 +172,7 @@ pnpm build
 ### Problems, deviations from the spec, open questions
 
 - **Invite claim table named `user_invites`.** The spec offered "`users_invited_by` or a column"; I used a small table with `user_id`, `invite_id` and `invited_by`, which satisfies "store which invite created each user" and survives invite deletion.
-- **How `created_by` is passed to `user.create.after`.** Better Auth has no before→after channel other than the request context, and a module-level map would be racy across concurrent sign-ups, so the `after` hook re-reads the `x-galena-invite` header and looks the invite up (`findInviteByCode`, after consumption). A bootstrap invite still records a claim with `invited_by = null`.
+- **How `created_by` is passed to `user.create.after`.** Better Auth has no before→after channel other than the request context, and a module-level map would be racy across concurrent sign-ups, so the `after` hook re-reads the `x-zilar-invite` header and looks the invite up (`findInviteByCode`, after consumption). A bootstrap invite still records a claim with `invited_by = null`.
 - **Better Auth OTP sign-up creates users with `name = ''`** (verified: the probe printed `PROBE_USER_NAME=""`). The invitee therefore has no display name yet when the after hook runs, so the invitee's roster nick in the inviter's roster is the empty string, matching the stored display name. `GET /api/chats` reads the live `user.name`, so DM titles become correct as soon as the app's "enter a name" step calls `PATCH /api/me`; the XMPP roster nick is not refreshed because the spec defines `syncRoster` as a retry, not a nickname sync. **Open question:** should we refresh roster nicks when a name changes, or fall back to the email when the display name is empty? Say which and I'll add it.
 - **Group member cap.** `memberIds` is capped at 50 (the creator is implicit and not counted), so a group can hold at most 51 people. The spec says "at most 50 members"; if you meant 50 including the owner, say so.
 - **Permission statuses.** `GET /api/groups/:id` returns 404 for non-members (per spec) to avoid leaking existence; the modify routes return 403 for a non-member actor and 404 when the target is not a member. The owner cannot be removed (403), and a member removing themselves is allowed for any role.
@@ -191,7 +191,7 @@ Finding 1 (refresh roster nicks when a name changes) is implemented. Finding 2 n
 
 #### What I changed
 
-- **`src/contacts/service.ts` — new `refreshRosterNicknames(db, adminClient, domain, userId, name)`.** It selects every `contacts` row where `contact_user_id = userId` (i.e. the roster items owned by each contact where the changed user is the contact), marks all of them `roster_synced = false` first, then calls `addRosterItem(<contact's localpart>, <my JID>, { nick: newName, groups: ['Galena'], subs: 'both' })` for each. It reads my JID from `xmpp_accounts` (falling back to the deterministic `jidFor`), and on an ejabberd failure it returns `{ ok: false, pending }` with the remaining rows left unsynced. It never throws for an admin error. Marking every row unsynced up front means a failure at the first contact still leaves the rest retryable.
+- **`src/contacts/service.ts` — new `refreshRosterNicknames(db, adminClient, domain, userId, name)`.** It selects every `contacts` row where `contact_user_id = userId` (i.e. the roster items owned by each contact where the changed user is the contact), marks all of them `roster_synced = false` first, then calls `addRosterItem(<contact's localpart>, <my JID>, { nick: newName, groups: ['Zilar'], subs: 'both' })` for each. It reads my JID from `xmpp_accounts` (falling back to the deterministic `jidFor`), and on an ejabberd failure it returns `{ ok: false, pending }` with the remaining rows left unsynced. It never throws for an admin error. Marking every row unsynced up front means a failure at the first contact still leaves the rest retryable.
 - **`src/auth/routes.ts` — `PATCH /api/me` triggers the refresh.** After `updateUser` and re-reading the session, it calls `refreshRosterNicknames` with the new `user.name`. It is best-effort: the route still returns 200, and an incomplete/failed refresh is logged as a warning (the route now takes `adminClient` and an optional `logger`, like the XMPP route).
 - **`src/app.ts`** passes `adminClient` and `logger` to `createAuthRoutes`.
 - **`syncRoster` already used the current display name** (`nick: row.name` from the join on the contact's `user` row), so the lazy retry pushes the new name with no change. Confirmed by the round 2 tests.

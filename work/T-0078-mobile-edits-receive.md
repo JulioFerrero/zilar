@@ -67,7 +67,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/mobile
+pnpm exec turbo test --force --filter=@zilar/mobile
 pnpm build
 ```
 
@@ -98,11 +98,11 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install` — 1010 packages added, no errors.
-- `pnpm exec turbo test --force --filter=@galena/mobile` — 296 passed, 2 skipped (the integration test gate), 0 failed. Full output ends with `Test Files 29 passed | 2 skipped (31)`.
+- `pnpm exec turbo test --force --filter=@zilar/mobile` — 296 passed, 2 skipped (the integration test gate), 0 failed. Full output ends with `Test Files 29 passed | 2 skipped (31)`.
 - `pnpm format:check` — `All matched files use Prettier code style!`
 - `pnpm lint` — no findings.
 - `pnpm typecheck` (turbo) — `10 successful, 10 total`.
-- `pnpm exec turbo build --filter=@galena/mobile` — succeeds; bundles for iOS and Android exported to `dist/`.
+- `pnpm exec turbo build --filter=@zilar/mobile` — succeeds; bundles for iOS and Android exported to `dist/`.
 
 ### Problems, deviations from the spec, open questions
 - I did not add a dedicated component-level test of `MessageBubble` for the "edited" label, tombstone and chips. Testing `MessageBubble` directly requires the `ChatStoreProvider` and the full native component tree, neither of which the existing test pattern (`markdown-text.test.tsx`) handles. The store-level tests prove the data path (deleted → `lastMessage.text === 'Message deleted'`, edited → `edited: true` on the bubble, reactions → `reactions` populated on the bubble), and `reaction-chips.test.tsx` proves the chip rendering. The deleted-tombstone JSX is straightforward enough that a unit test of the whole bubble is not worth the new test scaffolding.
@@ -120,7 +120,7 @@ pnpm build
 
 **Verdict:** approved and merged (lead, 2026-09-29). Rebased on main; format, lint, typecheck, test (mobile 296 passed) and build green. No pre-review (OpenCode Go has no funds); reviewed by hand, including the whole store diff.
 
-**Checked:** the store uses the `@galena/chat-core` reducers (`applyEdit`, `resolveEdits`, `editsFor`, `mergeEdits`, `applyReaction`, `summarize`, `mergeTargets`) rather than copying them; the author of each message is remembered and passed as the target author, so an edit or retraction from someone else stays pending and is never applied (test `ignores a correction or retraction from a foreign sender`); history is ingested (reactions and edits first, then the messages, then `resolvePendingEdits`) for the preview, the first page and older pages, so order does not matter; origin id and stanza-id are linked through the alias map; update stanzas never become bubbles or previews; reaction-only stanzas are swallowed, a stanza with a body that also carries reactions still renders. In the bubble, every hook is above the tombstone's early return (no rules-of-hooks break), the tombstone has no actions or reactions, "edited" appears in the time line, chips are read-only. The chat list says "Message deleted" for a deleted last message.
+**Checked:** the store uses the `@zilar/chat-core` reducers (`applyEdit`, `resolveEdits`, `editsFor`, `mergeEdits`, `applyReaction`, `summarize`, `mergeTargets`) rather than copying them; the author of each message is remembered and passed as the target author, so an edit or retraction from someone else stays pending and is never applied (test `ignores a correction or retraction from a foreign sender`); history is ingested (reactions and edits first, then the messages, then `resolvePendingEdits`) for the preview, the first page and older pages, so order does not matter; origin id and stanza-id are linked through the alias map; update stanzas never become bubbles or previews; reaction-only stanzas are swallowed, a stanza with a body that also carries reactions still renders. In the bubble, every hook is above the tombstone's early return (no rules-of-hooks break), the tombstone has no actions or reactions, "edited" appears in the time line, chips are read-only. The chat list says "Message deleted" for a deleted last message.
 
 **Accepted deviation:** no component test of the whole bubble (needs the provider and native tree); the store tests cover the data and `reaction-chips.test.tsx` covers the chips.
 

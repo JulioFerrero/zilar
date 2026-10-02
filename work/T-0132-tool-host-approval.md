@@ -24,7 +24,7 @@ Julio decided on 2026-09-30: an AI-built tool's hosts are **approved once per to
 5. The card must show the hosts exactly as they will be matched (exact hostnames, no wildcards), reusing the existing host validation/normalization (`toolHostsSchema`).
 
 ### Data
-Column `approved_hosts jsonb not null default '[]'` on the tools table. Migration only via `pnpm --filter @galena/server db:generate`. This is a schema task: it starts only after T-0116 has merged (one schema task at a time).
+Column `approved_hosts jsonb not null default '[]'` on the tools table. Migration only via `pnpm --filter @zilar/server db:generate`. This is a schema task: it starts only after T-0116 has merged (one schema task at a time).
 
 ### Read first
 `AGENTS.md`, `docs/TOOL_SANDBOX.md`, `apps/server/src/tools/{adapters,service,schemas,types}.ts`, `apps/server/src/actions/registry.ts`, `work/T-0105-tool-adapters.md` (Review), `work/T-0104-routines-scheduler.md`.
@@ -38,7 +38,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
 pnpm build
 ```
 
@@ -58,7 +58,7 @@ UI (T-0107 shows approved hosts later), changing the tier of `tool.save`/`tool.r
 ## Report (written by the worker when done)
 
 ### What I did
-- Data: `approved_hosts jsonb not null default '[]'` on `ai_tools` (`db/schema.ts`) + migration `drizzle/0028_lucky_loki.sql` via `pnpm --filter @galena/server db:generate` (emitted only the one ALTER TABLE; journal `idx 28`). No backfill SQL needed: the column default covers existing rows (none in production yet). `T-0116`'s migration `0027` is on this branch via the lead's rebase.
+- Data: `approved_hosts jsonb not null default '[]'` on `ai_tools` (`db/schema.ts`) + migration `drizzle/0028_lucky_loki.sql` via `pnpm --filter @zilar/server db:generate` (emitted only the one ALTER TABLE; journal `idx 28`). No backfill SQL needed: the column default covers existing rows (none in production yet). `T-0116`'s migration `0027` is on this branch via the lead's rebase.
 - Core gate (`tools/service.ts`): `runToolVersion` passes `allowedHosts = declared ∩ approved` to the runner, so EVERY trigger (`ai`, `user`/`manual`, `routine`) gets the intersection. New `approveToolHosts` (sets the set exactly) and `revokeToolHosts` (empties it), both audited (`tool.hosts_approved` detail `{name, version, hosts}`, `tool.hosts_revoked` detail `{name}`). `PublicTool`/`ToolDetail` and the routes wire shape now carry `approvedHosts`.
 - New adapters (`tools/adapters.ts`): `tool.approve_hosts` (tier 2, args = name only; `prepareArgs` binds current-version hosts from the DB so the stored args, card, hash and execute check all use one value; card "Allow the tool <name> to contact: <hosts>"; fail-safe throw on host drift; never `allowAlways`) and `tool.revoke_hosts` (tier 1, empties the set, audited). `tool.save` model text now names unapproved hosts so the model can ask for approval. `routine.schedule` execute additionally refuses card hosts outside the tool's approved set (summary tells the model to run `tool.approve_hosts` first).
 - Defence in depth (`routines/service.ts` `createRoutine`): new `tool_hosts_not_approved` error when the routine's card hosts are not inside the tool's approved set.
@@ -75,12 +75,12 @@ UI (T-0107 shows approved hosts later), changing the tier of `tool.save`/`tool.r
 
 ### Commands run and real results
 - `pnpm install`: done, 6.8s
-- `pnpm --filter @galena/server db:generate`: created `drizzle/0028_lucky_loki.sql` containing ONLY `ALTER TABLE "ai_tools" ADD COLUMN "approved_hosts" jsonb DEFAULT '[]'::jsonb NOT NULL`
+- `pnpm --filter @zilar/server db:generate`: created `drizzle/0028_lucky_loki.sql` containing ONLY `ALTER TABLE "ai_tools" ADD COLUMN "approved_hosts" jsonb DEFAULT '[]'::jsonb NOT NULL`
 - `pnpm format:check`: FAILS on 2 generated files only (`drizzle/meta/_journal.json`, `drizzle/meta/0028_snapshot.json`) — both are drizzle-kit output; the 0027 snapshot committed by T-0116 passes, the 0028 pretty-print differs from drizzle-kit's raw emit (array-colon layout). All hand-written files pass. Re-ran after last edit: same 2 generated files only (see Problems).
 - `pnpm lint` (oxlint): clean, exit 0
 - `pnpm typecheck`: 10 tasks successful
 - Affected tests while working (`--maxWorkers=2`): `tools/service.test.ts` 45 passed, `tools/adapters.test.ts` 27 passed, `tools/routes.test.ts` + `routines/*` 40+19+21 passed, `actions/flow.e2e.test.ts` 20 passed, `actions/gateway.test.ts` 46 passed, `actions/registry.test.ts` passed
-- Full server suite once at the end (`pnpm --filter @galena/server test --maxWorkers=2`): 82 files passed, 5 skipped; 1434 tests passed, 7 skipped, 0 failed (351s)
+- Full server suite once at the end (`pnpm --filter @zilar/server test --maxWorkers=2`): 82 files passed, 5 skipped; 1434 tests passed, 7 skipped, 0 failed (351s)
 - `pnpm build`: 2 tasks successful
 - New/updated test counts: adapters.test.ts 27 (8 new T-0132), service.test.ts 45 (3 new), routines/service.test.ts 19 (1 new), scheduler.test.ts 21 (1 new), gateway.test.ts 46 (2 new prepareArgs), flow.e2e.test.ts 20 (3 new approve_hosts e2e). Pre-existing T-0104/T-0105 seed helpers updated to approve declared hosts (documented T-0132 comments).
 

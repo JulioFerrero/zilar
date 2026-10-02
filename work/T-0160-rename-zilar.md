@@ -1,6 +1,6 @@
 ---
 id: T-0160
-title: Rename EVERYTHING from Galena to Zilar (no keep-list)
+title: Rename EVERYTHING from Zilar to Zilar (no keep-list)
 status: merged
 milestone: M5
 branch: task/T-0160-rename-zilar
@@ -9,15 +9,15 @@ effort: high
 estimate: 1 day
 ---
 
-# T-0160: Rename EVERYTHING from Galena to Zilar
+# T-0160: Rename EVERYTHING from Zilar to Zilar
 
 ## Spec (written by Claude, do not edit)
 
 ### Why
-Julio chose the name **Zilar** (Basque for "silver") on 2026-10-02, bought `zilar.app`, `zilar.dev` and `zilar.org`, and ordered a TOTAL rename: every occurrence of "galena" in the project becomes "zilar", with no exceptions for internal names. About 410 files mention it. This task must run ALONE (no other worker active).
+Julio chose the name **Zilar** (Basque for "silver") on 2026-10-02, bought `zilar.app`, `zilar.dev` and `zilar.org`, and ordered a TOTAL rename: every occurrence of "zilar" in the project becomes "zilar", with no exceptions for internal names. About 410 files mention it. This task must run ALONE (no other worker active).
 
 ### The rule
-Every occurrence of `galena` / `Galena` / `GALENA` in a tracked file becomes `zilar` / `Zilar` / `ZILAR`, EXCEPT only:
+Every occurrence of `zilar` / `Zilar` / `ZILAR` in a tracked file becomes `zilar` / `Zilar` / `ZILAR`, EXCEPT only:
 - `work/**`, `docs/PROJECT_PLAN.md`, `AGENTS.md` (lead-owned; the lead renames them after the merge),
 - the git history,
 - `.env` files of any kind (never read, print or edit them; the lead migrates them),
@@ -25,27 +25,27 @@ Every occurrence of `galena` / `Galena` / `GALENA` in a tracked file becomes `zi
 No fallbacks, no shims, no compatibility aliases: the old names are simply gone (the lead migrates Julio's local environment files and data). Do not add "old name still works" code.
 
 ### What this includes (non-exhaustive: the rule above decides)
-1. **Workspace scope** `@galena/*` becomes `@zilar/*`: every `package.json` name and dependency, imports, `tsconfig` paths, vite/vitest/turbo/eslint configs, Dockerfiles, scripts, `pnpm-lock.yaml` (regenerate with `pnpm install` and commit it). From now on the checks use `pnpm --filter @zilar/<pkg>`.
-2. **Environment variables** `GALENA_*` become `ZILAR_*`, including `EXPO_PUBLIC_GALENA_*`, `VITE_GALENA_*`, `GALENA_LEAD_*`, `GALENA_XMPP_*`, `GALENA_DB_PASSWORD`, and every `.env.example`.
-3. **XMPP hosts and test domains**: `galena.localhost` becomes `zilar.localhost` (also `rooms.`, `push.`, `upload.` and every other host built from it), `galena.test`/`galena.example` become `zilar.test`/`zilar.example`, in `infra/**`, `deploy/**`, server config defaults, the web and mobile mock data, fixtures, tests and docs.
-4. **Database names and roles** `galena` become `zilar` (the app database, role and any `galena_*` names) in `infra/**` init scripts and compose, `deploy/**`, `drizzle.config.ts`, defaults and docs.
-5. **Docker and compose**: project name `galena-dev` becomes `zilar-dev`, container/service/network/volume names, image names, labels, in-container paths such as `/galena/...` become `/zilar/...` (`infra/**` and `deploy/**`). The install script `deploy/galena` is renamed with `git mv` to `deploy/zilar`; every reference follows.
+1. **Workspace scope** `@zilar/*` becomes `@zilar/*`: every `package.json` name and dependency, imports, `tsconfig` paths, vite/vitest/turbo/eslint configs, Dockerfiles, scripts, `pnpm-lock.yaml` (regenerate with `pnpm install` and commit it). From now on the checks use `pnpm --filter @zilar/<pkg>`.
+2. **Environment variables** `ZILAR_*` become `ZILAR_*`, including `EXPO_PUBLIC_ZILAR_*`, `VITE_ZILAR_*`, `ZILAR_LEAD_*`, `ZILAR_XMPP_*`, `ZILAR_DB_PASSWORD`, and every `.env.example`.
+3. **XMPP hosts and test domains**: `zilar.localhost` becomes `zilar.localhost` (also `rooms.`, `push.`, `upload.` and every other host built from it), `zilar.test`/`zilar.example` become `zilar.test`/`zilar.example`, in `infra/**`, `deploy/**`, server config defaults, the web and mobile mock data, fixtures, tests and docs.
+4. **Database names and roles** `zilar` become `zilar` (the app database, role and any `zilar_*` names) in `infra/**` init scripts and compose, `deploy/**`, `drizzle.config.ts`, defaults and docs.
+5. **Docker and compose**: project name `zilar-dev` becomes `zilar-dev`, container/service/network/volume names, image names, labels, in-container paths such as `/zilar/...` become `/zilar/...` (`infra/**` and `deploy/**`). The install script `deploy/zilar` is renamed with `git mv` to `deploy/zilar`; every reference follows.
 6. **Client storage names**: localStorage/sessionStorage keys, cookie names, IndexedDB database names, service worker and Cache Storage names, push tags, the PWA manifest `name`/`short_name`/`id`, `index.html` titles, the mobile `app.json` (`name`, `slug`, `scheme` `zilar`, iOS bundle identifier and Android package `app.zilar.chat`), asset names, notification channel ids, deep links. Existing browser sessions are lost; that is accepted.
-7. **The lead tooling** in `packages/devtools`: the state directory `~/.galena-lead` becomes `~/.zilar-lead`, the autopilot log `/tmp/galena-lead-autopilot.log` becomes `/tmp/zilar-lead-autopilot.log`, branch/worktree/prompt texts, the `GALENA_LEAD_*` variables. Keep the code path-agnostic (the repository folder name is NOT changed by this task).
-8. **Everything a person sees**: UI text, emails ("Your Zilar sign-in code" and the others), notifications, error messages, README, `docs/**` (except `docs/PROJECT_PLAN.md`), wizard/doctor output, comments and code identifiers (`galenaFoo` becomes `zilarFoo`, `GalenaError` becomes `ZilarError`), test names and fixtures. The product is written "Zilar" (capital Z).
-9. **Guard test**: a Vitest test in `packages/devtools` that runs `git ls-files`, reads every text file (skip binaries, skip the exception list above) and fails with the file:line list when the word "galena" (case-insensitive) is still present.
+7. **The lead tooling** in `packages/devtools`: the state directory `~/.zilar-lead` becomes `~/.zilar-lead`, the autopilot log `/tmp/zilar-lead-autopilot.log` becomes `/tmp/zilar-lead-autopilot.log`, branch/worktree/prompt texts, the `ZILAR_LEAD_*` variables. Keep the code path-agnostic (the repository folder name is NOT changed by this task).
+8. **Everything a person sees**: UI text, emails ("Your Zilar sign-in code" and the others), notifications, error messages, README, `docs/**` (except `docs/PROJECT_PLAN.md`), wizard/doctor output, comments and code identifiers (`zilarFoo` becomes `zilarFoo`, `ZilarError` becomes `ZilarError`), test names and fixtures. The product is written "Zilar" (capital Z).
+9. **Guard test**: a Vitest test in `packages/devtools` that runs `git ls-files`, reads every text file (skip binaries, skip the exception list above) and fails with the file:line list when the word "zilar" (case-insensitive) is still present.
 
 ### Order of work (suggested)
-1. `rg -il galena` to get the file list; do the mechanical replacement with a script that handles the three casings and the identifier forms, then review the diff by area (server, web, mobile, packages, infra, deploy, docs) for false positives (the Basque/mineral word in prose, URLs of third parties, anything that must stay English like "galena" in a quoted third-party text; there should be none).
-2. `git mv deploy/galena deploy/zilar` and fix references.
+1. `rg -il zilar` to get the file list; do the mechanical replacement with a script that handles the three casings and the identifier forms, then review the diff by area (server, web, mobile, packages, infra, deploy, docs) for false positives (the Basque/mineral word in prose, URLs of third parties, anything that must stay English like "zilar" in a quoted third-party text; there should be none).
+2. `git mv deploy/zilar deploy/zilar` and fix references.
 3. `pnpm install`, regenerate the lockfile, then run every check below.
-4. Do NOT start, stop, rebuild or modify the lead's running dev stack (`galena-dev-*` containers, ports 3188, 5173, 5280, 5222, 5347) or any local database or volume; tests use PGlite and fakes.
+4. Do NOT start, stop, rebuild or modify the lead's running dev stack (`zilar-dev-*` containers, ports 3188, 5173, 5280, 5222, 5347) or any local database or volume; tests use PGlite and fakes.
 
 ### Read first
-`AGENTS.md`, `docs/SERVER_CONFIG.md`, `infra/docker-compose.dev.yml`, `deploy/galena`, `apps/mobile/app.json`, `packages/devtools/src/lead/**`.
+`AGENTS.md`, `docs/SERVER_CONFIG.md`, `infra/docker-compose.dev.yml`, `deploy/zilar`, `apps/mobile/app.json`, `packages/devtools/src/lead/**`.
 
 ### Allowed files
-Everything tracked EXCEPT the exception list in "The rule". New dependencies: none. In the Report list every file group you changed, anything you left as "galena" and why (should be nothing outside the exception list), and every manual step the lead must do on the live environment (database/role rename, volumes, `.env` keys, native rebuild).
+Everything tracked EXCEPT the exception list in "The rule". New dependencies: none. In the Report list every file group you changed, anything you left as "zilar" and why (should be nothing outside the exception list), and every manual step the lead must do on the live environment (database/role rename, volumes, `.env` keys, native rebuild).
 
 ### Checks
 ```bash
@@ -65,7 +65,7 @@ sh deploy/tests/storage-safety.test.sh
 (the lead runs the full suites once on main afterwards)
 
 ### Acceptance
-- The guard test passes: no "galena" outside the exception list.
+- The guard test passes: no "zilar" outside the exception list.
 - Format, lint, typecheck and the checks above pass.
 - `deploy/zilar` exists and its tests pass; the compose files render.
 - No change to applied migrations; no `.env` file read or edited.
@@ -73,31 +73,31 @@ sh deploy/tests/storage-safety.test.sh
 
 ## Report (written by the worker when done)
 
-Done. Total rename `galena`/`Galena`/`GALENA` -> `zilar`/`Zilar`/`ZILAR`
+Done. Total rename `zilar`/`Zilar`/`ZILAR` -> `zilar`/`Zilar`/`ZILAR`
 in every tracked file except the lead-owned exception list. No fallbacks,
 no shims, no compatibility aliases.
 
 ### Method
-- `git mv deploy/galena deploy/zilar` first (spec step 2).
-- Built the target file list with `git ls-files | xargs grep -il galena`,
+- `git mv deploy/zilar deploy/zilar` first (spec step 2).
+- Built the target file list with `git ls-files | xargs grep -il zilar`,
   minus `work/**`, `AGENTS.md`, `docs/PROJECT_PLAN.md`,
   `apps/server/drizzle/**` (already-applied migrations, none contained the
-  word). 466 files matched (incl. the moved `deploy/galena` script itself).
-- Mechanical replace with a Python script (`GALENA`->`ZILAR`,
-  `Galena`->`Zilar`, `galena`->`zilar`) over file contents. Straightforward:
-  no third-party "galena" references found anywhere (the only mineral-word
-  hits were the project name itself); identifier forms (`createGalenaAuthClient`,
-  `GalenaTool/1` UA, `__galena_*` VM globals, `galenaPolluted` test probes,
-  `x-galena-*` headers) all renamed consistently.
+  word). 466 files matched (incl. the moved `deploy/zilar` script itself).
+- Mechanical replace with a Python script (`ZILAR`->`ZILAR`,
+  `Zilar`->`Zilar`, `zilar`->`zilar`) over file contents. Straightforward:
+  no third-party "zilar" references found anywhere (the only mineral-word
+  hits were the project name itself); identifier forms (`createZilarAuthClient`,
+  `ZilarTool/1` UA, `__zilar_*` VM globals, `zilarPolluted` test probes,
+  `x-zilar-*` headers) all renamed consistently.
 - Renamed 4 tracked filenames with `git mv` (content refs already followed):
-  `apps/web/public/icons/galena-mark.svg` -> `zilar-mark.svg`,
-  `deploy/baremetal/galena-server.service` -> `zilar-server.service`,
-  `deploy/baremetal/nginx-galena.conf` -> `nginx-zilar.conf`,
-  `galena-night-log-2026-09-28.entries` -> `zilar-night-log-2026-09-28.entries`
+  `apps/web/public/icons/zilar-mark.svg` -> `zilar-mark.svg`,
+  `deploy/baremetal/zilar-server.service` -> `zilar-server.service`,
+  `deploy/baremetal/nginx-zilar.conf` -> `nginx-zilar.conf`,
+  `zilar-night-log-2026-09-28.entries` -> `zilar-night-log-2026-09-28.entries`
   (root scratch log, referenced only from `work/overnight-report-2026-09-28.md`,
   which is lead-owned and untouched).
 - `pnpm install` re-run after the `package.json` renames; `pnpm-lock.yaml`
-  regenerated (0 `galena` left, `@zilar/*` throughout).
+  regenerated (0 `zilar` left, `@zilar/*` throughout).
 - Guard test added: `packages/devtools/src/no-legacy-name.test.ts` runs
   `git ls-files`, reads every text file (skips binaries, skips the exception
   list plus itself — the needle is built at runtime as
@@ -141,9 +141,9 @@ no shims, no compatibility aliases.
 - Devtools/lead: `~/.zilar-lead`, `/tmp/zilar-lead-autopilot.log`,
   `ZILAR_LEAD_*` vars, prompts, branch/worktree texts.
 
-### Left as "galena" (all inside the exception list, untouched)
+### Left as "zilar" (all inside the exception list, untouched)
 - `work/**` (all task files incl. this one, BOARD.md, overnight report),
-  `docs/PROJECT_PLAN.md`. Nothing else: `grep -il galena` over tracked
+  `docs/PROJECT_PLAN.md`. Nothing else: `grep -il zilar` over tracked
   files returns only those paths; `AGENTS.md` contains no occurrence.
 - Git history (not rewritten). No `.env` file read, printed or edited
   (only `.env.example` files); `apps/server/drizzle/**` untouched
@@ -174,29 +174,29 @@ no shims, no compatibility aliases.
   all renamed consistently (project `zilar-dev`, `ZILAR_*` keys).
 
 ### Manual steps for the lead on the live environment
-Julio's local env files and data still say `galena` (this task never reads
+Julio's local env files and data still say `zilar` (this task never reads
 or edits `.env`, per spec). After merge, on every machine/install:
-1. `infra/.env`: rename `GALENA_DB_PASSWORD` -> `ZILAR_DB_PASSWORD`,
-   `GALENA_ARCHIVE_DB_PASSWORD` -> `ZILAR_ARCHIVE_DB_PASSWORD`,
-   `GALENA_XMPP_JWT_SECRET` -> `ZILAR_XMPP_JWT_SECRET`
-   (values unchanged); update any other `GALENA_*` keys the same way.
+1. `infra/.env`: rename `ZILAR_DB_PASSWORD` -> `ZILAR_DB_PASSWORD`,
+   `ZILAR_ARCHIVE_DB_PASSWORD` -> `ZILAR_ARCHIVE_DB_PASSWORD`,
+   `ZILAR_XMPP_JWT_SECRET` -> `ZILAR_XMPP_JWT_SECRET`
+   (values unchanged); update any other `ZILAR_*` keys the same way.
 2. `apps/server/.env`: same renames (`ZILAR_XMPP_JWT_SECRET`,
    `ZILAR_KEY_ENCRYPTION_KEY`, `ZILAR_ARCHIVE_DB_PASSWORD`,
    `ZILAR_DOCTOR_DISK_USED_PCT` if set) + `XMPP_DOMAIN=zilar.localhost`,
    `XMPP_MUC_DOMAIN=rooms.zilar.localhost` if they were pinned to the old
    defaults; push vars (`PUSH_COMPONENT_JID=push.<domain>`) follow the
    domain automatically for new installs.
-3. Postgres: rename role/database `galena` -> `zilar` and
-   `galena_archive` -> `zilar_archive` (or recreate volumes fresh on dev;
+3. Postgres: rename role/database `zilar` -> `zilar` and
+   `zilar_archive` -> `zilar_archive` (or recreate volumes fresh on dev;
    production `deploy/.env`: `ZILAR_DOMAIN`, `ZILAR_DB_PASSWORD`,
    `ZILAR_ARCHIVE_DB_PASSWORD`, `ZILAR_XMPP_JWT_SECRET`,
    `ZILAR_KEY_ENCRYPTION_KEY`; database `zilar`, role `zilar`).
-4. Docker: `zilar-dev` project/network names change — old `galena-dev-*`
+4. Docker: `zilar-dev` project/network names change — old `zilar-dev-*`
    containers/volumes stay until removed (`docker compose down -v` on the
    dev stack wipes scratch data; production volumes need migration, not
    deletion). ejabberd re-registers `admin@zilar.localhost` on a fresh
    volume; existing volumes keep the old domain until reset.
-5. Devtools state: `~/.galena-lead/state.json` -> `~/.zilar-lead/state.json`
+5. Devtools state: `~/.zilar-lead/state.json` -> `~/.zilar-lead/state.json`
    (or re-run; `ZILAR_LEAD_STATE` override renamed too).
 6. Mobile: native rebuild required (bundle id/package
    `com.julioferrero.zilar`, scheme `zilar`); browsers lose sessions/PWA
@@ -205,7 +205,7 @@ or edits `.env`, per spec). After merge, on every machine/install:
    `docs/PROJECT_PLAN.md`, repo folder name (worktree dir keeps its name).
 
 ### Deviations / notes
-- `galena-night-log-2026-09-28.entries` renamed to `zilar-...` although it
+- `zilar-night-log-2026-09-28.entries` renamed to `zilar-...` although it
   sits at repo root: nothing outside lead-owned `work/` references it, and
   leaving it would fail the new guard test.
 - No new migration generated: no table/column name contains the word

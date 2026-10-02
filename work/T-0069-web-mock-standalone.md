@@ -61,7 +61,7 @@ So: `?mock=1` is honored only in dev builds (or with `VITE_MOCK=1`), and in mock
 - Existing web tests must pass unchanged (they run with `MODE === 'test'`, so mock mode is on there today; make sure component tests that inject their own fakes are not silently switched to the mock HTTP layer. If `request()` is faked at a different level today, keep that working).
 
 ### Integration / visual check
-- With `pnpm --filter @galena/web dev` on **your own port** (`--port 52xx --strictPort`, never 3000, 3188, 5173, 8081), open `/?mock=1`, `/ais?mock=1` and `/c/<a mock chat id>?mock=1` **without any API running**, and confirm they render (use the Chrome tools if you have them; downscale screenshots with `sips -Z 900`; at most 8 images). Then run `pnpm --filter @galena/web build`, serve the build with `vite preview` on your own port, and confirm `/?mock=1` now goes to the login page (production ignores the param). Stop every server you start.
+- With `pnpm --filter @zilar/web dev` on **your own port** (`--port 52xx --strictPort`, never 3000, 3188, 5173, 8081), open `/?mock=1`, `/ais?mock=1` and `/c/<a mock chat id>?mock=1` **without any API running**, and confirm they render (use the Chrome tools if you have them; downscale screenshots with `sips -Z 900`; at most 8 images). Then run `pnpm --filter @zilar/web build`, serve the build with `vite preview` on your own port, and confirm `/?mock=1` now goes to the login page (production ignores the param). Stop every server you start.
 - No screenshots are committed.
 
 ### Acceptance criteria
@@ -76,7 +76,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -112,17 +112,17 @@ New:
 ### Commands run and real results
 
 - `pnpm install` — `Already up to date` (lockfile is current, no install needed).
-- `pnpm exec turbo test --force --filter=@galena/web` — `Test Files 43 passed (43) / Tests 356 passed (356) / Tasks: 1 successful`.
+- `pnpm exec turbo test --force --filter=@zilar/web` — `Test Files 43 passed (43) / Tests 356 passed (356) / Tasks: 1 successful`.
 - `pnpm format:check` — `All matched files use Prettier code style!`.
 - `pnpm lint` — clean (oxlint, no findings).
-- `pnpm typecheck` — `@galena/web:typecheck: > tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json` (exit 0; cleared cache and re-ran locally to make sure).
+- `pnpm typecheck` — `@zilar/web:typecheck: > tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json` (exit 0; cleared cache and re-ran locally to make sure).
 - `pnpm build` — `Tasks: 2 successful, 2 total`; the web build emits `dist/assets/index-TuVsBlpl.js` (838 kB / 253 kB gzip) and `dist/assets/index-CB4XjFw9.css` (45 kB / 9.5 kB gzip) with no errors.
-- `pnpm --filter @galena/web dev --port 5201 --strictPort` — Vite started, served `/?mock=1`, `/settings/ais?mock=1`, `/c/c-devai?mock=1`, `/settings/connections?mock=1`. Used the Chrome DevTools MCP to take snapshots of each route:
+- `pnpm --filter @zilar/web dev --port 5201 --strictPort` — Vite started, served `/?mock=1`, `/settings/ais?mock=1`, `/c/c-devai?mock=1`, `/settings/connections?mock=1`. Used the Chrome DevTools MCP to take snapshots of each route:
   - `/?mock=1` — chat list rendered all 11 mock chats (Ana, Dev team, Viernes 🍻, Dev AI, Marta, Familia, QA squad, Luis, Marketing AI, Gym buddies, Product).
   - `/settings/ais?mock=1` — both seeded AIs rendered; Marketing AI shows `Today $1.70`, Dev AI shows no usage line.
   - `/c/c-devai?mock=1` — chat rendered the full mock transcript including the markdown review summary, date separators ("Yesterday", "Today") and read ticks.
   - `/settings/connections?mock=1` — both connections rendered, `Test OpenAI key` returned `Key works`, `New AI` dialog opened with the provider picker showing both connections.
-- `pnpm exec vite preview --port 5202 --strictPort` (against the production build) — Chrome DevTools: `http://localhost:5202/?mock=1` redirected to `/login` ("Sign in to Galena"), confirming production ignores the param.
+- `pnpm exec vite preview --port 5202 --strictPort` (against the production build) — Chrome DevTools: `http://localhost:5202/?mock=1` redirected to `/login` ("Sign in to Zilar"), confirming production ignores the param.
 
 ### Problems, deviations from the spec, open questions
 

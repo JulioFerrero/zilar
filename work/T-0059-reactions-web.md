@@ -104,7 +104,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/chat-core --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/xmpp-core --filter=@zilar/chat-core --filter=@zilar/web
 pnpm build
 ```
 
@@ -204,14 +204,14 @@ pnpm install       # 1010 packages, done in 7s
 pnpm format:check  # All matched files use Prettier code style!
 pnpm lint          # oxlint ., exit 0, no findings
 pnpm typecheck     # 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/chat-core --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/xmpp-core --filter=@zilar/chat-core --filter=@zilar/web
                    # xmpp-core 146 passed | 3 skipped; chat-core 110 passed; web 294 passed; 3 tasks successful
-pnpm build         # 2 successful, 2 total (@galena/web, @galena/mobile)
+pnpm build         # 2 successful, 2 total (@zilar/web, @zilar/mobile)
 ```
 
 ### Visual check (mock mode, `?mock=1`)
 
-`GALENA_API_URL` pointed at a throwaway Python server (in the approved temp
+`ZILAR_API_URL` pointed at a throwaway Python server (in the approved temp
 dir, not committed) that answers `/api/auth/get-session`, so the app
 authenticates while the mock store is used. This worktree's Vite ran on
 `localhost:5242`. Both were stopped afterwards. Six PNGs at 1440×900 and
@@ -319,13 +319,13 @@ $ pnpm typecheck
 $ echo $?
 0
 
-$ pnpm exec turbo test --force --filter=@galena/xmpp-core --filter=@galena/chat-core --filter=@galena/web
-@galena/chat-core:test:  Test Files  9 passed (9)
-@galena/chat-core:test:       Tests  110 passed (110)
-@galena/xmpp-core:test:  Test Files  6 passed | 3 skipped (9)
-@galena/xmpp-core:test:       Tests  146 passed | 3 skipped (149)
-@galena/web:test:  Test Files  39 passed (39)
-@galena/web:test:       Tests  297 passed (297)
+$ pnpm exec turbo test --force --filter=@zilar/xmpp-core --filter=@zilar/chat-core --filter=@zilar/web
+@zilar/chat-core:test:  Test Files  9 passed (9)
+@zilar/chat-core:test:       Tests  110 passed (110)
+@zilar/xmpp-core:test:  Test Files  6 passed | 3 skipped (9)
+@zilar/xmpp-core:test:       Tests  146 passed | 3 skipped (149)
+@zilar/web:test:  Test Files  39 passed (39)
+@zilar/web:test:       Tests  297 passed (297)
  Tasks:    3 successful, 3 total
 $ echo $?
 0

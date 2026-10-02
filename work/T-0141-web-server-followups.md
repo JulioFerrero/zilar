@@ -35,8 +35,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2 <touched sticker/config test files>
-pnpm --filter @galena/web test --maxWorkers=2 <touched test files and their neighbours>
+pnpm --filter @zilar/server test --maxWorkers=2 <touched sticker/config test files>
+pnpm --filter @zilar/web test --maxWorkers=2 <touched test files and their neighbours>
 ```
 
 ## Report (written by the worker)
@@ -57,8 +57,8 @@ pnpm --filter @galena/web test --maxWorkers=2 <touched test files and their neig
 ### Commands run and real results
 - `pnpm install`: ok (~10 s).
 - `pnpm format:check`: pass. `pnpm lint`: pass (fixed one `unicorn/no-useless-spread` in my `openChat` loop). `pnpm typecheck`: 10/10 pass (fixed one `exactOptionalPropertyTypes` in my N-cards test).
-- `pnpm --filter @galena/server test --maxWorkers=2 src/stickers/routes.test.ts src/stickers/image.test.ts src/config.test.ts src/startup.test.ts`: 4 files, 82 passed.
-- `pnpm --filter @galena/web test --maxWorkers=2` on 14 touched files (StickerPanel, ApprovalCard, TopicPanel, InviteLinksSection, GroupPanel, realStore.topics, realStore, mock, mock/api, mock/api.invite-links, lib/api, lib/stickers, lib/sticker-url, JoinPage): 14 files, 349 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 src/stickers/routes.test.ts src/stickers/image.test.ts src/config.test.ts src/startup.test.ts`: 4 files, 82 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2` on 14 touched files (StickerPanel, ApprovalCard, TopicPanel, InviteLinksSection, GroupPanel, realStore.topics, realStore, mock, mock/api, mock/api.invite-links, lib/api, lib/stickers, lib/sticker-url, JoinPage): 14 files, 349 passed.
 - Neighbours: Composer, MessageActions, MessageContent, MessageList, ApprovalsPage, TopicsMockE2E, TopicsSidebar, reload: 8 files, 95 passed.
 - Fail-without verification (stashed source, re-ran): quiet-mark test fails; removeAi single-DELETE test fails; ApprovalCard approver tests fail (2); all restored after.
 

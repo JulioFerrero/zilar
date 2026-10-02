@@ -74,7 +74,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server --filter=@galena/web --filter=@galena/mobile
+pnpm exec turbo test --force --filter=@zilar/server --filter=@zilar/web --filter=@zilar/mobile
 pnpm build
 ```
 
@@ -143,23 +143,23 @@ $ pnpm lint
 $ pnpm typecheck
 … 10 packages, all successful
 
-$ pnpm exec turbo test --force --filter=@galena/server --filter=@galena/web --filter=@galena/mobile
-@galena/server:test: Test Files  44 passed | 5 skipped (49)
-@galena/server:test:       Tests  635 passed | 7 skipped (642)
-@galena/web:test:    Test Files  51 passed (51)
-@galena/web:test:          Tests  499 passed (499)
-@galena/mobile:test:  Test Files  30 passed (30)
-@galena/mobile:test:        Tests  297 passed | 2 skipped (299)
+$ pnpm exec turbo test --force --filter=@zilar/server --filter=@zilar/web --filter=@zilar/mobile
+@zilar/server:test: Test Files  44 passed | 5 skipped (49)
+@zilar/server:test:       Tests  635 passed | 7 skipped (642)
+@zilar/web:test:    Test Files  51 passed (51)
+@zilar/web:test:          Tests  499 passed (499)
+@zilar/mobile:test:  Test Files  30 passed (30)
+@zilar/mobile:test:        Tests  297 passed | 2 skipped (299)
 
 $ pnpm build
-… @galena/web:build + @galena/mobile:build, 2 successful
+… @zilar/web:build + @zilar/mobile:build, 2 successful
 ```
 
 The server doesn't have a `build` script, so `pnpm build` exercises web + mobile only. Typecheck is the server's compile-time guard.
 
 ### Problems, deviations from the spec, open questions
 
-- **No migration for the schema change.** The `ais.status` column is plain `text` with no DB-level enum (see `drizzle/0005_clean_frightful_four.sql`), and the existing data only contains `active` and `disabled`. Drizzle-kit would not produce a migration for an enum widening on a text column. The existing rows are untouched by widening the TypeScript enum, and the service code is the only consumer that needs to recognise `stopped`. I could not run `drizzle-kit generate` here (the harness blocks `npx`), so I'm flagging this for the lead: please run `pnpm --filter @galena/server db:generate` once after merging to confirm no migration is generated; if one is, keep it.
+- **No migration for the schema change.** The `ais.status` column is plain `text` with no DB-level enum (see `drizzle/0005_clean_frightful_four.sql`), and the existing data only contains `active` and `disabled`. Drizzle-kit would not produce a migration for an enum widening on a text column. The existing rows are untouched by widening the TypeScript enum, and the service code is the only consumer that needs to recognise `stopped`. I could not run `drizzle-kit generate` here (the harness blocks `npx`), so I'm flagging this for the lead: please run `pnpm --filter @zilar/server db:generate` once after merging to confirm no migration is generated; if one is, keep it.
 - **Audit of other things that could wake an AI.** The spec asked me to audit paths that trigger an AI turn from outside the gateway session. Findings:
   - **Group-add hook** (`addGroupAi` in `apps/server/src/groups/service.ts`): does **not** refuse a non-`active` AI. Adding a stopped AI to a room does not wake it on its own (the gateway's `onGroupAi` only syncs rooms for sessions already in the map, and a fresh gateway's `reconcile` excludes `stopped` rows from `listActiveAisForGateway`), but it does leave a stale room membership around. This is outside my allowed files for this task; flagging for a follow-up.
   - **Drafts routes** (`apps/server/src/drafts/routes.ts`): SSE stream of draft events to the owner. Read-only, never wakes an AI. Nothing to change.

@@ -130,7 +130,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -223,7 +223,7 @@ pnpm install                                   # ok, +2 packages (the two fonts)
 pnpm format:check                              # All matched files use Prettier code style!
 pnpm lint                                      # ok (oxlint, no findings)
 pnpm typecheck                                 # 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
                                                # 33 files, 187 tests passed
 pnpm build                                     # 2 successful, 2 total; web built in 450ms
 ```
@@ -234,7 +234,7 @@ Screenshots in `work/screenshots/T-0046/`: `list-1440.png`, `list-390.png`,
 `login-1440.png`, `ais-1440.png`, plus `connections-1440.png`,
 `new-ai-dialog-1440.png`, `chat-1440.png`, `newchat-menu-1440.png`.
 
-Served this worktree's Vite on `localhost:5199` (`GALENA_API_URL=http://localhost:3188`)
+Served this worktree's Vite on `localhost:5199` (`ZILAR_API_URL=http://localhost:3188`)
 and opened it in the DevTools browser. To render authenticated screens without signing in
 as anyone, I used `?mock=1` and an init-script that answers `/api/auth/get-session` with a
 fake user (same shape the tests inject); `/api/ais` and `/api/connections` were stubbed for
@@ -309,7 +309,7 @@ Re-ran every check on the final tree:
 pnpm format:check                              # All matched files use Prettier code style!
 pnpm lint                                      # ok (oxlint, no findings)
 pnpm typecheck                                 # 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
                                                # 33 files, 188 tests passed (+1 new test)
 pnpm build                                     # 2 successful, 2 total; web built in 624ms
 ```

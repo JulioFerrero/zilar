@@ -65,7 +65,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -96,8 +96,8 @@ pnpm build
 - `pnpm install`: ok.
 - `pnpm format:check`: my files pass after prettier; 1 remaining warn in `packages/xmpp-core/src/integration-edits.test.ts` (outside Allowed files, untouched, pre-existing).
 - `pnpm lint` (oxlint): pass, no warnings.
-- `pnpm --filter @galena/server exec tsc --noEmit`: pass (exit 0). Repo-wide `pnpm typecheck` fails in `packages/xmpp-core` (`integration-edits.test.ts` node types + `apps/server/src/xmpp/admin-client.ts` node types via that package's tsconfig) — pre-existing, outside Allowed files, untouched by me.
-- `pnpm exec turbo test --force --filter=@galena/server`: 38 files passed / 5 skipped files, 508 tests passed / 7 skipped (was 492 passed before my 16 new tests).
+- `pnpm --filter @zilar/server exec tsc --noEmit`: pass (exit 0). Repo-wide `pnpm typecheck` fails in `packages/xmpp-core` (`integration-edits.test.ts` node types + `apps/server/src/xmpp/admin-client.ts` node types via that package's tsconfig) — pre-existing, outside Allowed files, untouched by me.
+- `pnpm exec turbo test --force --filter=@zilar/server`: 38 files passed / 5 skipped files, 508 tests passed / 7 skipped (was 492 passed before my 16 new tests).
 - `pnpm build`: pass (2 tasks).
 - `grep any/ts-ignore` on changed source: no `any`, no `@ts-ignore` (only the word "anywhere" in a comment).
 

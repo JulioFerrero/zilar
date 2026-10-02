@@ -21,7 +21,7 @@ The M2 milestone is "**first AI in a room**": an owner adds their AI to a group,
 - `AGENTS.md` (mandatory)
 - `docs/PROJECT_PLAN.md` §9, the "How AIs work together" rules 1–3 (search for "A person @mentions AIs")
 - `apps/server/src/groups/service.ts` and `routes.ts`: `createGroup`, `addGroupMembers`, `removeGroupMember`, `getGroupDetail`, `getMembership`, the role checks, `setAffiliation`, `inviteNewMembers`, `mapXmppError`. Also `groups.test.ts`.
-- `apps/server/src/db/schema.ts` and the `drizzle/` folder (migrations are generated with `pnpm --filter @galena/server db:generate`)
+- `apps/server/src/db/schema.ts` and the `drizzle/` folder (migrations are generated with `pnpm --filter @zilar/server db:generate`)
 - `apps/server/src/agents/gateway.ts` (after T-0050: the fixed resource, `replaced`, superseded AIs, `handleIncoming`, `pumpSession`, `runSessionTurn`, read markers), `context.ts` (`buildDmContext` and its budgets), `reply.ts` (`runDmTurn`, failure texts, tool rules), and their tests
 - `apps/server/src/ais/service.ts`: **read only**, for `findOwnedAi`, `listActiveAisForGateway`, `onAiLifecycle`. T-0052 is editing this file; don't touch it.
 - `packages/xmpp-core/src/types.ts`: `joinRoom`, `leaveRoom`, `loadHistory` (`groupchat`), `sendMessage` with `replyTo` and `mentions`, `ChatMessage.mentions`, `fromNick`, `occupantId`
@@ -128,7 +128,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/server
 pnpm build
 ```
 
@@ -147,7 +147,7 @@ routes, gateway room joins, and @mention-triggered group replies.
 **1. Data (`apps/server/src/db/schema.ts`, `drizzle/0008_sad_vulcan.sql`).**
 New `group_ais` table: `(group_id, ai_id)` PK, `added_by` (FK user,
 `onDelete: cascade` like the other membership FKs), `added_at`. Generated with
-`pnpm --filter @galena/server db:generate`; a re-run reports "No schema
+`pnpm --filter @zilar/server db:generate`; a re-run reports "No schema
 changes". Prettier `--write` applied to the generated journal/snapshot exactly
 like the previously committed ones.
 
@@ -215,13 +215,13 @@ in the tests.
 - `pnpm lint` (oxlint): pass, no warnings.
 - `pnpm typecheck` (turbo, 9 tasks): pass. (One `exactOptionalPropertyTypes`
   error on `displayNameOf` fixed by widening its parameter type.)
-- `pnpm exec turbo test --force --filter=@galena/server`: **37 files passed,
+- `pnpm exec turbo test --force --filter=@zilar/server`: **37 files passed,
   5 skipped files; 472 tests passed, 7 skipped, 0 failed** (~2m18s). Includes
   10 new groups-route tests, 13 new gateway group tests, 8 context tests, 5
   `runGroupTurn` tests. One test bug of mine fixed along the way (owner adding
   someone else's AI is 404, not 403).
 - `pnpm build`: pass (2 tasks).
-- `pnpm --filter @galena/server db:generate`: "No schema changes, nothing to
+- `pnpm --filter @zilar/server db:generate`: "No schema changes, nothing to
   migrate".
 
 ### Deviations / decisions (spec was silent)
@@ -291,7 +291,7 @@ Commands and real results (round 2):
   is the lead's untracked `PREREVIEW.md`, left untouched per instructions.
 - `pnpm lint` (oxlint): pass.
 - `pnpm typecheck` (turbo, 9 tasks): pass.
-- `pnpm exec turbo test --force --filter=@galena/server`: **37 files passed,
+- `pnpm exec turbo test --force --filter=@zilar/server`: **37 files passed,
   476 tests passed, 7 skipped, 0 failed** (round 1 was 472 passed; +4 new).
 - `pnpm exec turbo build --force`: pass (2 tasks, uncached).
 

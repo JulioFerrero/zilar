@@ -107,8 +107,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/mobile
-pnpm --filter @galena/mobile build
+pnpm exec turbo test --force --filter=@zilar/mobile
+pnpm --filter @zilar/mobile build
 ```
 
 ### Out of scope
@@ -149,7 +149,7 @@ pnpm --filter @galena/mobile build
 - `start()` opens the stream once after boot; `stop()` closes it, clears the timers and
   finished turns, and empties `drafts`/`finishedDraftMessages`. `RealStoreDeps.openDrafts`
   is the test seam, as in the web store. The mock store gained the same state plus a
-  screenshot scenario (`mock/drafts.ts`, `EXPO_PUBLIC_GALENA_MOCK_DRAFT=stream|final`).
+  screenshot scenario (`mock/drafts.ts`, `EXPO_PUBLIC_ZILAR_MOCK_DRAFT=stream|final`).
 
 **3. UI**
 - `lib/use-smooth-text.ts`: a port of the web reveal as a testable `SmoothTextReveal`
@@ -204,9 +204,9 @@ pnpm install                                        # Done in 7s using pnpm v10.
 pnpm format:check                                   # All matched files use Prettier code style!
 pnpm lint                                           # no output, exit 0
 pnpm typecheck                                      # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/mobile
+pnpm exec turbo test --force --filter=@zilar/mobile
                                                     # Test Files 23 passed | 2 skipped (25); Tests 203 passed | 2 skipped (205)
-pnpm --filter @galena/mobile build                  # Exported: dist (ios + android bundles)
+pnpm --filter @zilar/mobile build                  # Exported: dist (ios + android bundles)
 ```
 
 ### Problems / deviations
@@ -227,13 +227,13 @@ pnpm --filter @galena/mobile build                  # Exported: dist (ios + andr
 - **Visual check:** done on my own simulator (see below). Because the app requires a
   session to reach the chat screen, I used the same capture-only, uncommitted mock auth
   bypass T-0048 used, plus a mock-only redirect from the list to `/chat/dev-ai`
-  (`xcrun simctl openurl` on iOS 26 raises an "Open in Galena?" confirmation that cannot be
+  (`xcrun simctl openurl` on iOS 26 raises an "Open in Zilar?" confirmation that cannot be
   answered without host input). Both temporary edits were reverted before this commit.
 
 ### Visual check (mine)
-- Own simulator: created `Galena T-0056` (iPhone 17, `8929DF41-5296-496D-A83D-78AE441BBDD3`),
-  Metro on **8082**, mock mode (`EXPO_PUBLIC_GALENA_MOCK=1`,
-  `EXPO_PUBLIC_GALENA_MOCK_DRAFT=stream|final`). `boot:ios`: **PASS** (bundle loaded, JS ran,
+- Own simulator: created `Zilar T-0056` (iPhone 17, `8929DF41-5296-496D-A83D-78AE441BBDD3`),
+  Metro on **8082**, mock mode (`EXPO_PUBLIC_ZILAR_MOCK=1`,
+  `EXPO_PUBLIC_ZILAR_MOCK_DRAFT=stream|final`). `boot:ios`: **PASS** (bundle loaded, JS ran,
   no errors). At the end I stopped my Metro and shut down and **deleted** only my simulator.
   Julio's `DB167CD4` stayed shut down and was never booted; Metro 8081 was untouched (its
   process is still listening).
@@ -298,9 +298,9 @@ turning on resumes the reveal for later growth.
 pnpm format:check                                   # All matched files use Prettier code style!
 pnpm lint                                           # no output, exit 0
 pnpm typecheck                                      # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/mobile
+pnpm exec turbo test --force --filter=@zilar/mobile
                                                     # Test Files 23 passed | 2 skipped (25); Tests 209 passed | 2 skipped (211)
-pnpm --filter @galena/mobile build                  # Exported: dist (ios + android)
+pnpm --filter @zilar/mobile build                  # Exported: dist (ios + android)
 ```
 `PREREVIEW.md` (untracked) needed `prettier --write` in place to keep `format:check`
 green; it is left untracked and is not in the commit.

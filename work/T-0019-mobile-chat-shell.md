@@ -108,7 +108,7 @@ Built the Telegram-like mobile shell from `docs/design/ui-style.md` (narrow/mobi
    like RNR), added the extra tokens (`--chat-background*`, `--bubble-in/out`, `--bubble-*-meta`,
    `--list-hover`, `--list-active`, `--badge-muted`, `--divider`, `--danger`) and mapped them in
    `tailwind.config.js` (hex vars, not HSL). `shadcn` names are aliased: `--primary`/`--accent` are
-   the Galena accent, `--muted`/`--secondary` the list-hover grey.
+   the Zilar accent, `--muted`/`--secondary` the list-hover grey.
 2. **Routes.** `src/app/index.tsx` (chat list: large "Chats" title, search icon that opens an inline
    search field, `FolderTabs`, 76 px rows, compose FAB) and `src/app/chat/[id].tsx` (header with back,
    avatar, name + `AI` badge and subtitle; chat-background gradient; inverted grouped list; composer
@@ -164,7 +164,7 @@ Nothing outside the allowed files. `apps/mobile/ios/`, `android/`, `dist/`, `.ex
 
 - `expo-linear-gradient` `~57.0.2`, `react-native-svg` `15.15.4` (installed with `npx expo install`,
   so they match SDK 57), `lucide-react-native` `^1.48.0` (same command).
-- `zustand` `5.0.15` (`pnpm --filter @galena/mobile add zustand`).
+- `zustand` `5.0.15` (`pnpm --filter @zilar/mobile add zustand`).
 - React Native Reusables: no npm package; copied `Button` from the `nativewind` registry
   (`https://reactnativereusables.com/r/nativewind/button.json`), rewired to `@/components/ui/text`
   and `@/lib/utils`. The existing RNR `Text` was reused.
@@ -209,8 +209,8 @@ In `apps/mobile/screenshots/` (1206×2622, iPhone 17 Pro):
 
 ### Problems, deviations from the spec, open questions
 
-1. **How the chat screenshots were taken.** `xcrun simctl openurl booted galena://chat/…` raises an
-   iOS "Open in Galena?" confirmation that `simctl` cannot tap and System Events key events did not
+1. **How the chat screenshots were taken.** `xcrun simctl openurl booted zilar://chat/…` raises an
+   iOS "Open in Zilar?" confirmation that `simctl` cannot tap and System Events key events did not
    dismiss. To capture the chat screens I temporarily pointed `src/app/index.tsx` at a `<Redirect
    href="/chat/viernes" />`, took the shots, then restored the real list screen (the committed
    `index.tsx` is the real one; `git diff` shows only the intended list implementation).
@@ -220,7 +220,7 @@ In `apps/mobile/screenshots/` (1206×2622, iPhone 17 Pro):
    now have regression tests / fixed layout.
 3. **ChatSummary additions.** T-0018's `chat-core` type is not available yet, so `src/lib/types.ts`
    mirrors it and adds three UI fields: `lastSeenAt`, `onlineCount` and `aiStatus` (needed for the
-   header subtitle). When `@galena/chat-core` lands, these should move there.
+   header subtitle). When `@zilar/chat-core` lands, these should move there.
 4. **Chat background gradient.** The light theme is a two-stop gradient; a single CSS variable can't
    express that, so `global.css` defines `--chat-background-from/-to` for reference while the
    gradient stops used by `expo-linear-gradient` live in `src/lib/colors.ts` (same hex values).
@@ -261,5 +261,5 @@ This is excellent, faithful Telegram-like work, and the screenshots are the proo
 ### Findings (small; collected for Julio's first feedback round, not blocking)
 1. The online dot is accent blue. `ui-style.md` says green.
 2. The mute icon is too close to the chat name ("Neighbors🔇").
-3. `src/lib/*` duplicates `@galena/chat-core` (T-0018). Switch to it in the wiring task, and move `aiStatus` / `onlineCount` / `lastSeenAt` into `chat-core`'s `ChatSummary`. T-0018 added the same three fields, so they're consistent.
+3. `src/lib/*` duplicates `@zilar/chat-core` (T-0018). Switch to it in the wiring task, and move `aiStatus` / `onlineCount` / `lastSeenAt` into `chat-core`'s `ChatSummary`. T-0018 added the same three fields, so they're consistent.
 4. The temporary `<Redirect>` trick for screenshots was reverted correctly. Deep-link screenshots will be easier once real navigation state exists.

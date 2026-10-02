@@ -36,7 +36,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 (Correct form for the test command; never `test -- --maxWorkers`. Run the full web suite once, at the end.)
@@ -104,7 +104,7 @@ Packet (`PREREVIEW.md`, read then deleted, not committed) verified against HEAD 
 - `pnpm format:check`: pass ("All matched files use Prettier code style!") after deleting the lead's `PREREVIEW.md` packet (it was the only prettier-dirty file; packets are not committed).
 - `pnpm lint`: pass (oxlint clean, exit 0).
 - `pnpm typecheck`: pass (turbo 10/10 tasks successful).
-- `pnpm --filter @galena/web test --maxWorkers=2`: 69 files passed, 756 passed, exit 0, no unhandled errors.
+- `pnpm --filter @zilar/web test --maxWorkers=2`: 69 files passed, 756 passed, exit 0, no unhandled errors.
 - `pnpm build`: pass (2/2 turbo tasks).
 - Round 3 full suite (once, at the end, restricted form): 69 files passed, 759 passed, exit 0, no unhandled errors. `pnpm build`: 2/2 pass with no `INEFFECTIVE_DYNAMIC_IMPORT` warning. (`format:check`/`lint`/`typecheck` re-verified above in this round.)
 
@@ -113,7 +113,7 @@ Packet (`PREREVIEW.md`, read then deleted, not committed) verified against HEAD 
 - `pnpm format:check`: pass ("All matched files use Prettier code style!") after `prettier --write` on touched files. Note: `PREREVIEW.md` (lead's file, not committed) is prettier-dirty; all tracked files pass.
 - `pnpm lint`: pass (oxlint clean, exit 0).
 - `pnpm typecheck`: pass (turbo 10/10 tasks successful).
-- `pnpm --filter @galena/web test --maxWorkers=2`: 69 files passed, 753 passed, exit 0, no unhandled errors (first round). Full suite re-run once at the end (see below).
+- `pnpm --filter @zilar/web test --maxWorkers=2`: 69 files passed, 753 passed, exit 0, no unhandled errors (first round). Full suite re-run once at the end (see below).
 - `pnpm build`: pass (2/2 turbo tasks).
 - Per-file Vitest runs during review fixes (one command at a time, `--maxWorkers=2`): `TopicPanel.test.tsx` 9 passed; `realStore.topics.test.tsx` 13 passed; `TopicsSidebar.test.tsx` 8 passed; `TopicsMockE2E.test.tsx` 3 passed.
 - Final full suite (once, at the end): 69 files passed, 756 passed, exit 0. (`format:check`/`lint`/`typecheck`/`build` re-verified above during the review round.)

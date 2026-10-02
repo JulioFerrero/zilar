@@ -67,7 +67,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -100,9 +100,9 @@ Added `listApprovals()` to `lib/api.ts` (GET `/api/approvals`, zod-array of the 
 - `pnpm format:check` — `All matched files use Prettier code style!` (after one `prettier --write` on `apps/web/src/lib/api.test.ts`).
 - `pnpm lint` — `oxlint .`, exit code 0, no warnings.
 - `pnpm typecheck` (via `pnpm exec turbo typecheck`) — `Tasks: 10 successful, 10 total`, exit code 0.
-- `pnpm exec turbo test --force --filter=@galena/web` — `Test Files 53 passed (53) / Tests 509 passed (509)` (was 494 before, +15 new tests: 11 in `formatRelative.test.ts`, 1 new in `ApprovalsPage.test.tsx` for the timer/unmount behaviour, 1 new listApprovals happy-path + 1 invalid_response ApiError in `api.test.ts`; the rest are the 12 ApprovalsPage tests counted above).
-- `pnpm exec turbo build --force --filter=@galena/web` — `Tasks: 1 successful, 1 total`, `built in 902ms`, exit code 0.
-- `pnpm exec turbo dev --filter=@galena/web -- --port 5183` — started Vite on `http://localhost:5183/` (mock-mode via `VITE_MOCK=1`), killed after confirming it served. No browser-automation tool is available in this session, so I could not take the screenshot the spec lists under "Live check". The server start + kill is the only thing I ran there.
+- `pnpm exec turbo test --force --filter=@zilar/web` — `Test Files 53 passed (53) / Tests 509 passed (509)` (was 494 before, +15 new tests: 11 in `formatRelative.test.ts`, 1 new in `ApprovalsPage.test.tsx` for the timer/unmount behaviour, 1 new listApprovals happy-path + 1 invalid_response ApiError in `api.test.ts`; the rest are the 12 ApprovalsPage tests counted above).
+- `pnpm exec turbo build --force --filter=@zilar/web` — `Tasks: 1 successful, 1 total`, `built in 902ms`, exit code 0.
+- `pnpm exec turbo dev --filter=@zilar/web -- --port 5183` — started Vite on `http://localhost:5183/` (mock-mode via `VITE_MOCK=1`), killed after confirming it served. No browser-automation tool is available in this session, so I could not take the screenshot the spec lists under "Live check". The server start + kill is the only thing I ran there.
 
 ### Problems, deviations from the spec, open questions
 - **Live check screenshot:** the spec says "If you can, run the web dev server … and screenshot the page in its list and empty states". I started the dev server in mock mode on port 5183 (free) to confirm it boots with the new route, but no browser / screenshot tool is available in this session, so I did not capture screenshots. The Acceptance-criteria checks are all covered by the automated tests instead.

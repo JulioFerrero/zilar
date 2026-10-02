@@ -14,7 +14,7 @@ estimate: 1–2 days
 ## Spec (written by Claude, do not edit)
 
 ### Goal
-One command starts every backing service Galena needs on a developer's Mac, and one command checks that they're healthy:
+One command starts every backing service Zilar needs on a developer's Mac, and one command checks that they're healthy:
 - **Postgres** with pgvector
 - **ejabberd**: XMPP with groups, history, WebSocket, file upload and admin API
 - **LiteLLM**: the LLM gateway
@@ -35,7 +35,7 @@ Later tasks (the T-0003 ejabberd spike and the T-0007 LiteLLM spike) build on th
 
 ### Allowed files
 - `infra/**`: new folder, for compose file, configs, env example and init scripts
-- `packages/devtools/**`: new workspace package `@galena/devtools`, which holds the smoke test (see below)
+- `packages/devtools/**`: new workspace package `@zilar/devtools`, which holds the smoke test (see below)
 - Root `package.json`, only to add the `infra:*` scripts below
 - `pnpm-lock.yaml`, only the changes `pnpm install` makes for the new package
 - `README.md`, only the `## Development` section, to add an "Infrastructure" subsection
@@ -45,7 +45,7 @@ Later tasks (the T-0003 ejabberd spike and the T-0007 LiteLLM spike) build on th
 ### Requirements
 
 **General**
-- Put everything in `infra/docker-compose.dev.yml`, with the Compose project name `galena-dev`.
+- Put everything in `infra/docker-compose.dev.yml`, with the Compose project name `zilar-dev`.
 - **Bind all published ports to `127.0.0.1` only.** Never `0.0.0.0`.
 - **Pin every image to an exact version tag.** Pin LiteLLM **by digest** (`image@sha256:…`). **Never use LiteLLM 1.82.7 or 1.82.8**, which were compromised releases.
 - Keep data in named volumes. Add a `pnpm infra:reset` that removes them after asking for confirmation.
@@ -53,12 +53,12 @@ Later tasks (the T-0003 ejabberd spike and the T-0007 LiteLLM spike) build on th
 
 **Postgres**
 - Use the `pgvector/pgvector` image (pinned tag, Postgres 17 or newer).
-- An init script in `infra/postgres/init/` creates the databases `galena`, `ejabberd` and `litellm`, each with its own user and a password from env.
+- An init script in `infra/postgres/init/` creates the databases `zilar`, `ejabberd` and `litellm`, each with its own user and a password from env.
 - Healthcheck with `pg_isready`.
 
 **ejabberd**
 - Config in `infra/ejabberd/ejabberd.yml`, mounted read-only.
-- XMPP domain `galena.localhost`, groups on `rooms.galena.localhost`.
+- XMPP domain `zilar.localhost`, groups on `rooms.zilar.localhost`.
 - **SQL backend:** Postgres, database `ejabberd`, with `default_db: sql`, and the SQL schema created or updated automatically if the pinned version supports it. Otherwise ship the schema init and explain in the Report.
 - **Listeners:**
   - 5222 c2s
@@ -77,7 +77,7 @@ Later tasks (the T-0003 ejabberd spike and the T-0007 LiteLLM spike) build on th
 - **Disabled:**
   - **in-band registration** (no `mod_register`, or registration disabled)
   - **s2s federation** (no s2s listener)
-- An admin account `admin@galena.localhost` is created on first start, with its password from env. Use the image's documented mechanism, or a one-shot `ejabberdctl register` in an entrypoint or init step.
+- An admin account `admin@zilar.localhost` is created on first start, with its password from env. Use the image's documented mechanism, or a one-shot `ejabberdctl register` in an entrypoint or init step.
 - Healthcheck using `ejabberdctl status`.
 
 **LiteLLM**
@@ -93,14 +93,14 @@ Later tasks (the T-0003 ejabberd spike and the T-0007 LiteLLM spike) build on th
 | `infra:down` | Stop the containers, keeping the volumes |
 | `infra:logs` | Follow the logs |
 | `infra:reset` | Remove the volumes, after confirmation |
-| `infra:smoke` | Run `pnpm --filter @galena/devtools smoke` |
+| `infra:smoke` | Run `pnpm --filter @zilar/devtools smoke` |
 
-**Smoke test: `packages/devtools/src/smoke.ts`** (package `@galena/devtools`: private, ESM, with scripts `smoke`, `typecheck` and `test`, and dev dependency `tsx`)
+**Smoke test: `packages/devtools/src/smoke.ts`** (package `@zilar/devtools`: private, ESM, with scripts `smoke`, `typecheck` and `test`, and dev dependency `tsx`)
 - Exits non-zero, with a clear message per check, if any of these fail:
   1. Postgres accepts a connection for each of the three users. `docker compose exec` with `psql` is fine; no new npm dependency.
   2. ejabberd reports `started` (`ejabberdctl status` through `docker compose exec`).
   3. ejabberd's `/api/status`, or an equivalent admin API command, answers with admin auth.
-  4. ejabberd's WebSocket endpoint accepts an XMPP WebSocket handshake. Open a `ws://127.0.0.1:5280/ws` connection with subprotocol `xmpp` and send an `<open/>` frame for `galena.localhost`. The server must answer with an `<open` frame. Use Node 24's built-in `WebSocket`, with no new dependency.
+  4. ejabberd's WebSocket endpoint accepts an XMPP WebSocket handshake. Open a `ws://127.0.0.1:5280/ws` connection with subprotocol `xmpp` and send an `<open/>` frame for `zilar.localhost`. The server must answer with an `<open` frame. Use Node 24's built-in `WebSocket`, with no new dependency.
   5. LiteLLM's liveness endpoint returns 200.
 - Put small pure helpers (e.g. building the `<open/>` frame, parsing the response) in `packages/devtools/src/smoke-lib.ts`, with **Vitest unit tests** in `smoke-lib.test.ts` next to it. The root `pnpm test` picks them up through Turborepo.
 - The compose file path used by the smoke test must be resolved relative to the repo root, so it works from any working directory.
@@ -140,12 +140,12 @@ pnpm infra:down
 
 ### What I did
 
-- `infra/docker-compose.dev.yml` (project `galena-dev`) starts **Postgres (pgvector), ejabberd and LiteLLM**. Every published port is bound to `127.0.0.1`; data lives in three named volumes; all secrets are interpolated from `infra/.env`.
-- **Postgres**: `pgvector/pgvector:0.8.6-pg18-trixie` (PostgreSQL 18.6, pgvector 0.8.6). `infra/postgres/init/10-create-databases.sql` creates the users/databases `galena`, `ejabberd`, `litellm` (passwords from env, read with psql `\getenv`) and enables the `vector` extension in `galena`. Healthcheck `pg_isready`. The volume mounts `/var/lib/postgresql` (Postgres 18 keeps PGDATA in `/var/lib/postgresql/18/docker`).
-- **ejabberd**: `infra/ejabberd/ejabberd.yml`, mounted read-only. Domain `galena.localhost`, MUC service `rooms.galena.localhost`, SQL backend on the `ejabberd` database with `update_sql_schema: true` (tables created automatically on first start: verified 24 tables). Listeners: 5222 c2s and 5280 HTTP with `/ws` (WebSocket), `/upload` (mod_http_upload, 50 MB, volume) and `/api` (mod_http_api, admin auth). Modules: `mod_muc` (persistent, members-only, MAM), `mod_mam` (SQL, `default: always`), `mod_http_upload`, `mod_stream_mgmt`, `mod_carboncopy`, `mod_ping`, `mod_push`, `mod_http_api`, plus the usual roster/vcard/disco/offline set. Admin `admin@galena.localhost` registered on first start via `REGISTER_ADMIN_PASSWORD` + `EJABBERD_MACRO_ADMIN`. Healthcheck `ejabberdctl status`. **No `mod_register`** and **no s2s listener**, plus `s2s_access: s2s` with `s2s: deny: all`.
+- `infra/docker-compose.dev.yml` (project `zilar-dev`) starts **Postgres (pgvector), ejabberd and LiteLLM**. Every published port is bound to `127.0.0.1`; data lives in three named volumes; all secrets are interpolated from `infra/.env`.
+- **Postgres**: `pgvector/pgvector:0.8.6-pg18-trixie` (PostgreSQL 18.6, pgvector 0.8.6). `infra/postgres/init/10-create-databases.sql` creates the users/databases `zilar`, `ejabberd`, `litellm` (passwords from env, read with psql `\getenv`) and enables the `vector` extension in `zilar`. Healthcheck `pg_isready`. The volume mounts `/var/lib/postgresql` (Postgres 18 keeps PGDATA in `/var/lib/postgresql/18/docker`).
+- **ejabberd**: `infra/ejabberd/ejabberd.yml`, mounted read-only. Domain `zilar.localhost`, MUC service `rooms.zilar.localhost`, SQL backend on the `ejabberd` database with `update_sql_schema: true` (tables created automatically on first start: verified 24 tables). Listeners: 5222 c2s and 5280 HTTP with `/ws` (WebSocket), `/upload` (mod_http_upload, 50 MB, volume) and `/api` (mod_http_api, admin auth). Modules: `mod_muc` (persistent, members-only, MAM), `mod_mam` (SQL, `default: always`), `mod_http_upload`, `mod_stream_mgmt`, `mod_carboncopy`, `mod_ping`, `mod_push`, `mod_http_api`, plus the usual roster/vcard/disco/offline set. Admin `admin@zilar.localhost` registered on first start via `REGISTER_ADMIN_PASSWORD` + `EJABBERD_MACRO_ADMIN`. Healthcheck `ejabberdctl status`. **No `mod_register`** and **no s2s listener**, plus `s2s_access: s2s` with `s2s: deny: all`.
 - **LiteLLM**: `infra/litellm/config.yaml` with one placeholder model (`openai/placeholder`, key from `os.environ/PLACEHOLDER_API_KEY`), `master_key` and `database_url` from `os.environ`. Healthcheck uses the image's bundled `python` against `/health/liveliness` (the image has no curl/wget). Postgres-backed (Prisma migrated automatically: 78 tables) and verified healthy.
 - `infra/.env.example` documents each variable with a `CHANGE_ME` placeholder; `infra/.env` is git-ignored. `infra/reset.mjs` implements `pnpm infra:reset` (asks for `yes`, then `docker compose down --volumes`).
-- `packages/devtools` (`@galena/devtools`, private, ESM, scripts `smoke`/`typecheck`/`test`, dev dep `tsx`) with `src/smoke.ts` and pure helpers `src/smoke-lib.ts` + Vitest tests. The smoke test resolves `infra/docker-compose.dev.yml` and `infra/.env` from the repo root via `import.meta.url`, so it works from any cwd. Checks: Postgres for the three users (compose exec + psql), `ejabberdctl status`, `/api/status` with admin Basic auth, a real XMPP WebSocket `<open/>` handshake on `ws://127.0.0.1:5280/ws` (Node's built-in WebSocket), and LiteLLM `/health/liveliness`.
+- `packages/devtools` (`@zilar/devtools`, private, ESM, scripts `smoke`/`typecheck`/`test`, dev dep `tsx`) with `src/smoke.ts` and pure helpers `src/smoke-lib.ts` + Vitest tests. The smoke test resolves `infra/docker-compose.dev.yml` and `infra/.env` from the repo root via `import.meta.url`, so it works from any cwd. Checks: Postgres for the three users (compose exec + psql), `ejabberdctl status`, `/api/status` with admin Basic auth, a real XMPP WebSocket `<open/>` handshake on `ws://127.0.0.1:5280/ws` (Node's built-in WebSocket), and LiteLLM `/health/liveliness`.
 - Root `package.json` got the five `infra:*` scripts; README got its `### Infrastructure` subsection.
 - Note: when `/api` is called through the published port, ejabberd logs `Using module :mod_http_api for host 127.0.0.1, but it isn't configured in the configuration file`. It is benign (the Host header is the published address, not the XMPP domain, and the default/virtual-host module is used); the call is still authenticated and authorized, and all three smoke checks that use it pass.
 
@@ -181,11 +181,11 @@ pnpm infra:down
 - `cp infra/.env.example infra/.env` then filled every `CHANGE_ME` with random local dev values (git-ignored; not shown here).
 - `pnpm infra:up`: PASS — Postgres, ejabberd and LiteLLM all reach "Healthy" before `--wait` returns.
 - `pnpm infra:smoke`: PASS — all 5 checks:
-  `PASS Postgres accepts a connection for the users galena, ejabberd and litellm` / `PASS ejabberd reports "started" (ejabberdctl status)` / `PASS ejabberd answers /api/status with admin auth` / `PASS ejabberd accepts the XMPP WebSocket <open/> handshake` / `PASS LiteLLM liveness endpoint answers 200`.
-- `pnpm infra:down` then `pnpm infra:up`: PASS — a marker row created in `galena` before `down` is still there after `up` (`SELECT count(*)` → `1`).
+  `PASS Postgres accepts a connection for the users zilar, ejabberd and litellm` / `PASS ejabberd reports "started" (ejabberdctl status)` / `PASS ejabberd answers /api/status with admin auth` / `PASS ejabberd accepts the XMPP WebSocket <open/> handshake` / `PASS LiteLLM liveness endpoint answers 200`.
+- `pnpm infra:down` then `pnpm infra:up`: PASS — a marker row created in `zilar` before `down` is still there after `up` (`SELECT count(*)` → `1`).
 - `printf 'nope\n' | pnpm infra:reset`: PASS — prints "Aborted. Nothing was deleted." and the marker row is still `1`.
 - `printf 'yes\n' | pnpm infra:reset` then `pnpm infra:up`: PASS — all volumes removed, services healthy again, marker table gone, `vector` extension present again.
-- Port check `docker ps --filter name=galena-dev --format '{{.Names}} | {{.Ports}}'`: only `127.0.0.1:5432`, `127.0.0.1:5222`, `127.0.0.1:5280`, `127.0.0.1:4000` are published. The other ports shown for the ejabberd row (1880, 5269, 5443, …) are the image's `EXPOSE`s, not host bindings.
+- Port check `docker ps --filter name=zilar-dev --format '{{.Names}} | {{.Ports}}'`: only `127.0.0.1:5432`, `127.0.0.1:5222`, `127.0.0.1:5280`, `127.0.0.1:4000` are published. The other ports shown for the ejabberd row (1880, 5269, 5443, …) are the image's `EXPOSE`s, not host bindings.
 - In-band registration check: over the WebSocket, after `<open/>`, the server replies with `<stream:features>` containing only SASL mechanisms — no `<register xmlns='http://jabber.org/features/iq-register'/>` feature — and `mod_register` is absent from `infra/ejabberd/ejabberd.yml`. Registration is off.
 - s2s check: `netstat -tln` inside the ejabberd container shows listeners on 5222 and 5280 but **not 5269**, the config has no `ejabberd_s2s_in` listener, and `s2s_access: s2s` with `s2s: deny: all` blocks outgoing s2s too.
 - SQL auto-schema check: `pg_tables` in `ejabberd` → 24 tables (users, rosterusers, muc_room, archive, …) and in `litellm` → 78 tables, both created automatically.
@@ -200,7 +200,7 @@ pnpm infra:down
 6. **Extra env var `PLACEHOLDER_API_KEY`.** The placeholder model must read a key from the environment, so `.env.example` has that variable; no real provider key is present anywhere.
 7. **`s2s_access: s2s` with `s2s: deny: all`** was added on top of "no s2s listener" so outgoing federation is explicitly off, not only incoming.
 8. **Postgres 5432 is published** on `127.0.0.1` for developer convenience (psql, GUI tools). The smoke test itself only uses `docker compose exec`. Happy to drop the port if you prefer a smaller surface.
-9. **`rooms.galena.localhost`** is configured through `mod_muc`'s `hosts` option (the `host` option is deprecated in 26.07). The upload `put_url` is `http://galena.localhost:5280/upload`; uploads are not covered by the 5 smoke checks (out of scope for T-0002).
+9. **`rooms.zilar.localhost`** is configured through `mod_muc`'s `hosts` option (the `host` option is deprecated in 26.07). The upload `put_url` is `http://zilar.localhost:5280/upload`; uploads are not covered by the 5 smoke checks (out of scope for T-0002).
 10. Local dev values in `infra/.env` are random strings generated for this test run and are not committed (the file is git-ignored).
 
 ### Blocked / needs a decision
@@ -240,5 +240,5 @@ The work is excellent: careful, secure by default, and every deviation is explai
 2. **(answer a)** **Keep** the Postgres port published on `127.0.0.1`. It's useful for psql and GUI tools, and it's local only.
 3. **(answer b)** **Keep admin auth for every `/api` caller**, including loopback. Secure by default; our server will use the admin credentials (T-0003).
 4. **(follow-up, T-0003)** `muc_create: allow: local` lets any local user create rooms. Once our server owns room creation, restrict `access_create` to the admin/server account, so rooms only come from the app (with the right owners and policies).
-5. **(follow-up, T-0010/T-0003)** Upload `put_url` is `http://galena.localhost:5280/upload`. Browsers resolve `*.localhost`, but check it from Node and React Native when uploads are first tested.
+5. **(follow-up, T-0010/T-0003)** Upload `put_url` is `http://zilar.localhost:5280/upload`. Browsers resolve `*.localhost`, but check it from Node and React Native when uploads are first tested.
 6. **(nit)** The example model id in the `infra/litellm/config.yaml` comment is outdated. Update it to current model ids when real providers are added.

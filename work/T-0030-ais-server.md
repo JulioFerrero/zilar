@@ -39,7 +39,7 @@ get the shapes right.
 - `apps/server/src/xmpp/provisioning.ts`, `admin-client.ts`, `token.ts`
 - `apps/server/src/contacts/**`: how roster entries are made between people
 - `apps/server/src/db/schema.ts` and the migration mechanism
-  (`pnpm --filter @galena/server db:generate`)
+  (`pnpm --filter @zilar/server db:generate`)
 
 ### Allowed files
 - `apps/server/src/ais/**` (new module: service, routes, tests)
@@ -147,7 +147,7 @@ a database error.
 
 ### Integration check (gated, the lead runs it)
 Write `apps/server/src/ais/integration.test.ts`, gated by
-`GALENA_AIS_INTEGRATION=1`, against a real server: sign in, create a connection
+`ZILAR_AIS_INTEGRATION=1`, against a real server: sign in, create a connection
 with a made-up key, create an AI, check through the admin client that the XMPP
 account exists and is in the owner's roster, check through LiteLLM `/key/info`
 that the cap equals `perMonthUsd`, patch the limit and check again, delete, and
@@ -218,12 +218,12 @@ owner-only:
 **XMPP identity** (`apps/server/src/ais/service.ts`): localpart `ai-` + the
 existing id-derived suffix. On create the owner's account is ensured, the AI is
 registered, and two roster items are written (subscription `both`, group
-`Galena`): the AI in the owner's roster under the AI's name, the owner in the
+`Zilar`): the AI in the owner's roster under the AI's name, the owner in the
 AI's roster. On rename the owner's roster nickname is updated. `unregisterUser`
 (ejabberd `unregister`) was added to the admin client.
 
 **Capped virtual key**: `generateKey` with `max_budget = perMonthUsd`,
-`budget_duration = '30d'`, `models = [model]`, alias `galena-ai-<id>` and
+`budget_duration = '30d'`, `models = [model]`, alias `zilar-ai-<id>` and
 metadata `{ ai_id }`. The key id and the key string sealed with the T-0028
 `KeyCipher` are stored; the plaintext exists only in memory. `PATCH limits`
 calls `updateKey` with the new monthly budget first, then updates the rows.
@@ -247,7 +247,7 @@ rows); if the gateway or ejabberd is down it answers 502 and keeps the AI.
 - `apps/server/src/ais/routes.ts` (new) — `/api/ais` routes.
 - `apps/server/src/ais/routes.test.ts` (new, 14 tests).
 - `apps/server/src/ais/integration.test.ts` (new, gated by
-  `GALENA_AIS_INTEGRATION=1`; not run).
+  `ZILAR_AIS_INTEGRATION=1`; not run).
 - `apps/server/src/db/schema.ts` — `ais`, `ai_limits`, `llm_virtual_keys`.
 - `apps/server/drizzle/0005_clean_frightful_four.sql`,
   `drizzle/meta/0005_snapshot.json`, `drizzle/meta/_journal.json` — generated.
@@ -277,7 +277,7 @@ No changes under `apps/web/**`, `apps/mobile/**`, `packages/**`, `infra/**`,
 - `pnpm lint`: `Found 0 warnings and 0 errors.` (308 files, 127 rules).
 - `pnpm typecheck`: `Tasks: 8 successful, 8 total`.
 - `pnpm exec turbo test --force`: `Tasks: 8 successful, 8 total` (uncached).
-  `@galena/server`: 27 files passed, 4 skipped; **251 passed, 5 skipped**.
+  `@zilar/server`: 27 files passed, 4 skipped; **251 passed, 5 skipped**.
   This includes the new `src/ais/routes.test.ts` (14), the new admin-client
   `unregisterUser` test, and the new connections 409 test. `src/ais/integration.test.ts`
   is among the skipped files (gate not set).
@@ -366,19 +366,19 @@ value. The existing `PATCH limits` test now asserts the stored `30.00`.
   `budgetUsd === '30.00'`.
 
 **Round 2 commands (all real, on the loaded machine):**
-- `pnpm --filter @galena/server test src/ais`: 16 passed, 1 skipped
+- `pnpm --filter @zilar/server test src/ais`: 16 passed, 1 skipped
   (`integration.test.ts`), 38.9 s (test process under load; individual tests
   0.5–7.8 s, no timeout).
 - `pnpm format:check`: `All matched files use Prettier code style!`
 - `pnpm lint`: `Found 0 warnings and 0 errors.` (308 files).
 - `pnpm typecheck`: `Tasks: 8 successful, 8 total`.
 - `pnpm exec turbo test --force`: `Tasks: 8 successful, 8 total` (uncached);
-  `@galena/server` 27 files passed, 4 skipped, **253 passed, 5 skipped**
+  `@zilar/server` 27 files passed, 4 skipped, **253 passed, 5 skipped**
   (up from 251; the two new delete tests). No timeouts — the full run held
   together under load, so no separate per-package re-run was needed.
 - `pnpm build`: `Tasks: 2 successful, 2 total`.
 
-Still not run: `GALENA_AIS_INTEGRATION=1` (the lead runs it).
+Still not run: `ZILAR_AIS_INTEGRATION=1` (the lead runs it).
 
 ### Round 3
 
@@ -403,11 +403,11 @@ still runs the `finally`, and at that point there is nothing to clean.
 - `pnpm format:check`: `All matched files use Prettier code style!`
 - `pnpm lint`: exit 0 (no findings; oxlint printed no summary on this run).
 - `pnpm typecheck`: `Tasks: 8 successful, 8 total`.
-- `pnpm --filter @galena/server exec vitest run`: **27 files passed, 4 skipped
+- `pnpm --filter @zilar/server exec vitest run`: **27 files passed, 4 skipped
   (31); 253 passed, 5 skipped (258)**, 52.85 s. `integration.test.ts` is among
   the skipped files (gate not set).
 
-Not run, as instructed: the gated `GALENA_AIS_INTEGRATION=1` test and any server.
+Not run, as instructed: the gated `ZILAR_AIS_INTEGRATION=1` test and any server.
 
 ---
 
@@ -446,7 +446,7 @@ sealed with the T-0028 cipher.
    without a gateway, the `PATCH` ordering note, and relying on the LiteLLM client's
    redaction: all accepted as reported.
 
-The lead runs `GALENA_AIS_INTEGRATION=1` against a server from this branch after round 2.
+The lead runs `ZILAR_AIS_INTEGRATION=1` against a server from this branch after round 2.
 Do not start a server yourself.
 
 **Verdict:** Round 2: changes requested (test only; the product code is approved)
@@ -460,8 +460,8 @@ ejabberd, LiteLLM and Postgres; migration 0005 applied):
   `max_budget` 7.0 in LiteLLM) → deleting the connection in use gives 409
   `connection_in_use` → `DELETE` (204) → the XMPP account is gone, LiteLLM
   `/key/info` gives 404, and no rows remain.
-- the gated `GALENA_AIS_INTEGRATION=1` test **failed in its own lookup**: "no LiteLLM
-  key with alias galena-ai-…". The key did exist with that alias, a $3 cap, `30d`, the
+- the gated `ZILAR_AIS_INTEGRATION=1` test **failed in its own lookup**: "no LiteLLM
+  key with alias zilar-ai-…". The key did exist with that alias, a $3 cap, `30d`, the
   model allowlist and the `ai_id` metadata. `/key/list` without
   `return_full_object=true` returns bare token strings on this LiteLLM, so the alias
   never matches. The aborted run also left the AI behind (the lead cleaned it up).
@@ -481,7 +481,7 @@ Verified by the lead:
 - Findings 5 and 6 are fixed as asked (full-object key lookup; `try/finally` cleanup).
 - Full suite with the machine quiet: `pnpm exec turbo test --force`: 8/8, 0 cached; server
   253 passed / 5 skipped, web 95 passed. `format:check`, `lint`, `typecheck`, `build` pass.
-- **Live, by the lead**, the gated `GALENA_AIS_INTEGRATION=1` test against a server from this
+- **Live, by the lead**, the gated `ZILAR_AIS_INTEGRATION=1` test against a server from this
   branch (real ejabberd, LiteLLM, Postgres): **1 passed**, and 0 `ais` rows were left.
   Together with the manual run in round 2 (patch updates the cap in LiteLLM and Postgres;
   delete removes the XMPP account, the key and the rows; a connection in use gives 409).

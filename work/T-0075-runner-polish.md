@@ -25,7 +25,7 @@ The lead's review of T-0072 left three small follow-ups, and there is one gap: n
 - For the end-to-end test only: `apps/server/src/machines/routes.ts`, `hub.ts`, and `apps/server/src/machines/hub.test.ts` (how it builds an app with PGlite and a real hub)
 
 ### Allowed files
-- `apps/runner/**` (source, tests, README, `package.json` — dependencies: only `@galena/server` as a **devDependency** with `workspace:*` if the end-to-end test needs it; no others)
+- `apps/runner/**` (source, tests, README, `package.json` — dependencies: only `@zilar/server` as a **devDependency** with `workspace:*` if the end-to-end test needs it; no others)
 - `pnpm-lock.yaml` for that link
 - `work/T-0075-runner-polish.md`
 
@@ -56,7 +56,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/runner
+pnpm exec turbo test --force --filter=@zilar/runner
 pnpm build
 ```
 
@@ -76,12 +76,12 @@ Closed the four items from the spec inside `apps/runner` only.
 3. **Fixed 409 text.** `pair.ts` no longer echoes the server's `message`. It maps the known server codes (`key_in_use`, `machine_limit`, `pending_limit`, `pairing_code_limit`) to fixed sentences and uses one generic `"The server refused this machine."` for anything else, including non-JSON bodies. Four new tests cover: a hostile `<script>` body for each known code, six different unknown / hostile bodies (script tags, `rm -rf`, a Chinese payload, a numeric body, a plain string, `null`), and a non-parseable body. None of the hostile fragments appear in the resulting `PairError.message`.
 4. **End-to-end test.** `apps/runner/src/e2e.test.ts` starts a real HTTP server (`@hono/node-server` loaded via dynamic import so the runner does not have to list it as a direct dep) on a random loopback port, backed by the real server app on PGlite (`createTestContext`, `createApp` with a shared `DbMachineRegistry`, `FakeAdminClient`, `TestMailer`). It then: signs a user in (via `bootstrapUser` over the in-memory Hono app), mints a pairing code through `POST /api/machines/pairing-codes`, runs `pairRunner` against the real HTTP listener, checks the machine is `pending` via `GET /api/machines`, starts the real `startRunnerHub` on a random loopback port, approves the machine through `POST /api/machines/:id/approve`, runs `runRunner` against the hub URL, polls `GET /api/machines` until `online: true`, revokes through `POST /api/machines/:id/revoke`, and asserts `runRunner` returns `revoked`. All timers/servers/db are closed in `afterEach`. The test takes ~3 s on my machine, runs only on loopback, and uses no real external services or API keys.
 
-I also added `@galena/server` as a devDependency in `apps/runner/package.json` (the only allowed new dependency). Because `@galena/server` has no `exports` field, the test imports the source files directly via `@galena/server/src/...` (the same pattern `packages/xmpp-core/src/integration-*.test.ts` already uses against `apps/server/src/xmpp/*`). pnpm hoists `@galena/server`'s transitive deps into `apps/runner/node_modules/@galena/server/node_modules/`, so `import('@galena/server/src/app.ts')` resolves cleanly. `@hono/node-server` is loaded through a dynamic import to keep it out of the runner's typecheck (it's not a direct dep — it travels in via `@galena/server`).
+I also added `@zilar/server` as a devDependency in `apps/runner/package.json` (the only allowed new dependency). Because `@zilar/server` has no `exports` field, the test imports the source files directly via `@zilar/server/src/...` (the same pattern `packages/xmpp-core/src/integration-*.test.ts` already uses against `apps/server/src/xmpp/*`). pnpm hoists `@zilar/server`'s transitive deps into `apps/runner/node_modules/@zilar/server/node_modules/`, so `import('@zilar/server/src/app.ts')` resolves cleanly. `@hono/node-server` is loaded through a dynamic import to keep it out of the runner's typecheck (it's not a direct dep — it travels in via `@zilar/server`).
 
 ### Files changed
 
-- `apps/runner/package.json` — added `"@galena/server": "workspace:*"` to `devDependencies`. No other deps touched.
-- `pnpm-lock.yaml` — only the new `@galena/server` link (3 lines).
+- `apps/runner/package.json` — added `"@zilar/server": "workspace:*"` to `devDependencies`. No other deps touched.
+- `pnpm-lock.yaml` — only the new `@zilar/server` link (3 lines).
 - `apps/runner/src/identity.ts` — `IdentitySchema.hubUrl` now allows `ws://` or `wss://`.
 - `apps/runner/src/identity.test.ts` — 2 new tests: wss round-trip, http rejection.
 - `apps/runner/src/connect.ts` — new `'disconnected'` variant on `RunResult.status`; `mapFailure` reports it for unrecognised closes; `__test__mapFailure` exported for direct testing.
@@ -97,10 +97,10 @@ No edits to `apps/server/**`, `packages/**`, `web`, `mobile`, `docs/**`, `AGENTS
 
 ### Commands run and real results
 
-- `pnpm install` — `Lockfile is up to date, resolution step is skipped. Already up to date. Done in 2.7s using pnpm v10.32.1` (3 lines added to the lockfile for the new `@galena/server` link).
-- `pnpm --filter @galena/runner typecheck` — exit 0, no output.
-- `pnpm --filter @galena/runner test` — `Test Files 6 passed (6), Tests 63 passed (63)`. Breakdown: `capabilities.test.ts` 6, `identity.test.ts` 12 (was 10; +2 wss tests), `pair.test.ts` 17 (was 13; +4 hostile-body tests), `connect.test.ts` 12 (was 7; +5 mapFailure tests + 2 hubUrlFromServer/validateHubUrl tests), `cli.test.ts` 16 (was 13; +3 run-result routing tests), `e2e.test.ts` 1 (new).
-- `pnpm exec turbo test --force --filter=@galena/runner` — `Tasks: 1 successful, 1 total, Cached: 0 cached, 1 total`. Same 63/63.
+- `pnpm install` — `Lockfile is up to date, resolution step is skipped. Already up to date. Done in 2.7s using pnpm v10.32.1` (3 lines added to the lockfile for the new `@zilar/server` link).
+- `pnpm --filter @zilar/runner typecheck` — exit 0, no output.
+- `pnpm --filter @zilar/runner test` — `Test Files 6 passed (6), Tests 63 passed (63)`. Breakdown: `capabilities.test.ts` 6, `identity.test.ts` 12 (was 10; +2 wss tests), `pair.test.ts` 17 (was 13; +4 hostile-body tests), `connect.test.ts` 12 (was 7; +5 mapFailure tests + 2 hubUrlFromServer/validateHubUrl tests), `cli.test.ts` 16 (was 13; +3 run-result routing tests), `e2e.test.ts` 1 (new).
+- `pnpm exec turbo test --force --filter=@zilar/runner` — `Tasks: 1 successful, 1 total, Cached: 0 cached, 1 total`. Same 63/63.
 - `pnpm test` (full workspace) — `Tasks: 10 successful, 10 total`. Runner package now contributes 63 tests.
 - `pnpm format:check` — `All matched files use Prettier code style!` (after one `pnpm format` round on my edited files).
 - `pnpm lint` — `oxlint .`, exit 0.
@@ -127,6 +127,6 @@ None.
 
 **Lead changes:** the worker made the CLI exit non-zero for `revoked`/`auth_failed`/`version_mismatch`/`disconnected` (a good catch: T-0072 exited 0), but did it with `throw` of string literals plus an `io.stderr` call, which printed every message twice and threw non-Errors. The CLI now throws a `ConnectError` and the shared error handler prints it once. `mapFailure` is exported normally instead of as `__test__mapFailure`, and a misleading comment about reconnecting was corrected.
 
-**Checked:** identity accepts `wss://` and round-trips; a dropped connection reports `disconnected`, only a real `CLOSE_AUTH` is `auth_failed`; the 409 branch never prints server text (fixed sentences per known code, generic otherwise); the end-to-end test drives the real routes: pair, pending, approve, hub connect, `online: true`, revoke, runner returns `revoked`. The only new dependency is `@galena/server` as a devDependency of the runner (allowed by the spec).
+**Checked:** identity accepts `wss://` and round-trips; a dropped connection reports `disconnected`, only a real `CLOSE_AUTH` is `auth_failed`; the 409 branch never prints server text (fixed sentences per known code, generic otherwise); the end-to-end test drives the real routes: pair, pending, approve, hub connect, `online: true`, revoke, runner returns `revoked`. The only new dependency is `@zilar/server` as a devDependency of the runner (allowed by the spec).
 
 **Follow-up found by the worker:** `packages/runner-tunnel/src/runner.ts` (line ~19) still rejects `wss://` server URLs, so a TLS deployment needs that check loosened (own task, part of the wss/deployment work).

@@ -39,7 +39,7 @@ estimate: 0.25 day
 
 ### Acceptance criteria
 - [ ] `wss://` accepted, everything else still rejected, TLS verification untouched.
-- [ ] `pnpm exec turbo test --force --filter=@galena/runner-tunnel --filter=@galena/runner` passes.
+- [ ] `pnpm exec turbo test --force --filter=@zilar/runner-tunnel --filter=@zilar/runner` passes.
 
 ### Checks (all must pass)
 ```bash
@@ -47,7 +47,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/runner-tunnel --filter=@galena/runner --filter=@galena/server
+pnpm exec turbo test --force --filter=@zilar/runner-tunnel --filter=@zilar/runner --filter=@zilar/server
 pnpm build
 ```
 
@@ -70,12 +70,12 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install` — `Done in 6.6s`, lockfile up to date, 1010 packages.
-- `pnpm --filter @galena/runner-tunnel test` — 9 files, 61 tests passed.
-- `pnpm --filter @galena/runner-tunnel exec vitest run --reporter=verbose src/runner.test.ts` — 13/13 in that file, including the 10 new validation tests.
+- `pnpm --filter @zilar/runner-tunnel test` — 9 files, 61 tests passed.
+- `pnpm --filter @zilar/runner-tunnel exec vitest run --reporter=verbose src/runner.test.ts` — 13/13 in that file, including the 10 new validation tests.
 - `pnpm format:check` — after one prettier auto-fix on `runner.test.ts`, `All matched files use Prettier code style!`.
 - `pnpm lint` — `oxlint .` exited 0.
 - `pnpm typecheck` — `Tasks: 10 successful, 10 total`.
-- `pnpm exec turbo test --force --filter=@galena/runner-tunnel --filter=@galena/runner --filter=@galena/server` — `Tasks: 3 successful, 3 total`. `@galena/runner-tunnel`: 9 files, 61 tests passed. `@galena/runner`: 6 files, 63 tests passed. `@galena/server`: 44 files passed (5 skipped), 613 tests passed (7 skipped).
+- `pnpm exec turbo test --force --filter=@zilar/runner-tunnel --filter=@zilar/runner --filter=@zilar/server` — `Tasks: 3 successful, 3 total`. `@zilar/runner-tunnel`: 9 files, 61 tests passed. `@zilar/runner`: 6 files, 63 tests passed. `@zilar/server`: 44 files passed (5 skipped), 613 tests passed (7 skipped).
 - `pnpm build` — `Tasks: 2 successful, 2 total` (mobile + web; runner-tunnel has no build script).
 
 ### Problems, deviations from the spec, open questions

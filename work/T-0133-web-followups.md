@@ -39,7 +39,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 (Run affected tests while working; the full web suite once at the end.)
@@ -64,7 +64,7 @@ Anything not listed; no new features.
 - Fix 6 (`revokingId` never cleared): `InviteLinksSection.revoke` clears the busy mark when the parent's revoke settles (success or failure); the parent's error prop already renders the message. Test: failed DELETE → error shown, button back to "Revoke", no "Revoking…". Fails on old code.
 - Fix 7 (mock join/create fidelity): mock create 400s `invalid_request` outside 1..8760h / 1..10000 uses (server bounds; edge values still 201); mock join POST counts per-link attempts (reset with `resetMockApi`) → 429 `rate_limited` past 20, and 409 `group_full` at the 50-member cap without consuming a use (server order: limiters → cap → claim). Tests: bounds, 429, 409 incl. uses-stay-0, plus a mock-mode JoinPage render test reaching the `full` card through the real mock layer (temp 50-member group, cleaned up). All fail on old code.
 - Fix 8 (mock search covers topic threads): the index now spreads `mockTopicMessages()` over `mockMessages` (General's legacy `c-devteam` thread untouched — topic chats have their own ids). Test: `checkout` finds the `c-devteam-bug` hit; chat filter narrows to it. Fails on old code.
-- Fix 9 (screenshot setup enum): extracted the shot table into side-effect-free `scripts/shots.ts` (`SHOT_SETUPS`, `parseShots` with a zod enum, `shotTable(zod)` with zod injected so the file typechecks under both `scripts/` and `@galena/web` tsconfigs); `screenshots.ts` now imports it. Test `apps/web/src/shots.test.ts`: table parses (15 shots), a typo'd setup throws, setups match the runner. Typo test fails with a string schema (verified by temporary revert).
+- Fix 9 (screenshot setup enum): extracted the shot table into side-effect-free `scripts/shots.ts` (`SHOT_SETUPS`, `parseShots` with a zod enum, `shotTable(zod)` with zod injected so the file typechecks under both `scripts/` and `@zilar/web` tsconfigs); `screenshots.ts` now imports it. Test `apps/web/src/shots.test.ts`: table parses (15 shots), a typo'd setup throws, setups match the runner. Typo test fails with a string schema (verified by temporary revert).
 - Fail-without verification: each fix's discriminating test was run against the pre-fix code (via `git stash` of the source file, or temporary revert for fix 9) and fails there.
 
 ### Files changed
@@ -84,7 +84,7 @@ Anything not listed; no new features.
 - `pnpm lint`: pass (oxlint clean).
 - `pnpm typecheck`: pass (turbo 10/10). Note: pulling `scripts/shots.ts` into the web program (via the test import) initially failed web typecheck (`node:` modules, zod path mapping); solved with zero-import DI design (zod injected) rather than tsconfig edits.
 - `npx tsc --noEmit -p scripts/tsconfig.json`: pass.
-- `pnpm --filter @galena/web test --maxWorkers=2` (full suite, once at end): 75 files passed, 818 passed, no unhandled errors.
+- `pnpm --filter @zilar/web test --maxWorkers=2` (full suite, once at end): 75 files passed, 818 passed, no unhandled errors.
 - `pnpm build`: pass (2/2 turbo tasks).
 - Scoped runs while working (all `--maxWorkers=2`): TopicPanel 15 passed; realStore.topics 17 passed; invite-links mock + JoinPage + InviteLinksSection + mock api 55+8+5+41 pass per file; shots 3 passed.
 - Fail-without runs: TopicPanel source stashed → 3 fail (leave-403, addMember, addAi); realStore stashed → 2 fail (leaked-mark companion, superseded re-check); ChatHeader stashed → 1 fail (visible archive error); InviteLinksSection stashed → 1 fail (revoke unstick); mock api stashed → 4 fail (bounds, 429, 409, topic search + JoinPage full card); shots enum temporarily loosened → typo test fails. All restored after.

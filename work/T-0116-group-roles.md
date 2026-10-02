@@ -16,7 +16,7 @@ estimate: 2 days
 ### Why
 D29 mentions roles that can grant topic access and be approvers ("designers approve UI merges, developers approve backend"). Today there are only `owner`, `admin` and `member`. This task adds **custom roles as labels with two powers**, not a full Discord permission matrix: (1) a role can be **added to a private topic** (everyone holding it gets access, now and later); (2) a topic can name an **approver role** whose holders may decide approval cards in that topic. The built-in owner/admin/member stay as they are.
 
-### Data (migrations only via `pnpm --filter @galena/server db:generate`)
+### Data (migrations only via `pnpm --filter @zilar/server db:generate`)
 - `group_roles`: `id`, `group_id` (fk cascade), `name` (1–30 chars, unique per group ignoring case, no control characters), `created_by`, `created_at`. Max 20 roles per group.
 - `group_member_roles`: `role_id` (fk cascade), `user_id` (fk cascade), `assigned_by`, `assigned_at`, pk `(role_id, user_id)`. The user must be a group member (deleted when they leave the group: extend the remove/leave flow).
 - `topic_role_access`: `topic_id` (fk cascade), `role_id` (fk cascade), pk both; only meaningful for private topics.
@@ -64,8 +64,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 
@@ -126,7 +126,7 @@ pnpm build
   fakes.
 
 ### After the rebase (T-0115 merged, branch rebased by the lead)
-- Ran `pnpm --filter @galena/server db:generate`: produced exactly
+- Ran `pnpm --filter @zilar/server db:generate`: produced exactly
   `drizzle/0027_nice_roland_deschain.sql` + snapshot + journal entry, with
   only the three roles tables, the `topics.approver_role_id` column and
   their FKs/index — nothing unrelated. Verified the SQL by reading it.
@@ -178,14 +178,14 @@ pnpm build
 
 ### Commands run and real results (post-rebase, final)
 - `pnpm install`: ok.
-- `pnpm --filter @galena/server db:generate`: produced
+- `pnpm --filter @zilar/server db:generate`: produced
   `drizzle/0027_nice_roland_deschain.sql` (roles tables/columns only, read
   and verified) + `drizzle/meta/0027_snapshot.json` + journal entry.
 - `pnpm format:check`: pass. `pnpm lint` (oxlint): pass. `pnpm typecheck`
   (10 tasks): pass.
-- `pnpm --filter @galena/server test --maxWorkers=2`: 82 files passed,
+- `pnpm --filter @zilar/server test --maxWorkers=2`: 82 files passed,
   5 skipped; 1408 passed, 7 skipped, 0 failed.
-- `pnpm --filter @galena/web test --maxWorkers=2`: 75 files passed;
+- `pnpm --filter @zilar/web test --maxWorkers=2`: 75 files passed;
   822 passed, 0 failed.
 - `pnpm build`: pass.
 - Pre-rebase history (kept for the record): the full server suite failed
@@ -198,10 +198,10 @@ pnpm build
   + `groups/groups.test.ts` (63 passed), `approvals/service.test.ts` +
   `approvals/routes.test.ts` + `db/migrate.test.ts` +
   `topics/backfill.test.ts` (69 passed) — each run as
-  `pnpm --filter @galena/server test --maxWorkers=2 <path>`.
+  `pnpm --filter @zilar/server test --maxWorkers=2 <path>`.
 - `pnpm format:check`: pass. `pnpm lint`: pass. `pnpm typecheck`
   (10 tasks): pass.
-- Full `pnpm --filter @galena/server test --maxWorkers=2`: 82 files
+- Full `pnpm --filter @zilar/server test --maxWorkers=2`: 82 files
   passed, 5 skipped; 1417 passed, 7 skipped, 0 failed.
 - Web untouched this round (review fixes are server-only).
 

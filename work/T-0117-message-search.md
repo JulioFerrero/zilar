@@ -17,7 +17,7 @@ estimate: 2 days
 D28: "find that thing someone told me" is table stakes. ejabberd already stores every message in Postgres (`mod_mam` with `db_type: sql`, `default_db: sql`, database `ejabberd` on the same Postgres instance). The `archive` table has a plain-text column `txt`. Search reads it, **restricted to what the caller may see**.
 
 ### Discovery first (a short step you must do and report)
-With `pnpm infra:up` running, inspect the real schema: `docker exec galena-dev-postgres-1 psql -U postgres -d ejabberd -c '\d archive'` and look at real rows for (a) a DM and (b) a group room (how `username`, `bare_peer`, `peer`, `kind`, `nick`, `txt`, `id`, `timestamp` are filled, and what a retracted or corrected message looks like). Write what you found in `docs/SEARCH_NOTES.md` (≤ 60 lines) **before** the code, and build the queries on it. Do not print or copy message contents into the notes: describe columns and shapes only. Never read `infra/.env`.
+With `pnpm infra:up` running, inspect the real schema: `docker exec zilar-dev-postgres-1 psql -U postgres -d ejabberd -c '\d archive'` and look at real rows for (a) a DM and (b) a group room (how `username`, `bare_peer`, `peer`, `kind`, `nick`, `txt`, `id`, `timestamp` are filled, and what a retracted or corrected message looks like). Write what you found in `docs/SEARCH_NOTES.md` (≤ 60 lines) **before** the code, and build the queries on it. Do not print or copy message contents into the notes: describe columns and shapes only. Never read `infra/.env`.
 
 ### Server
 - New optional env `XMPP_ARCHIVE_DATABASE_URL` (zod; a **read-only** role on the ejabberd database; document how to create it with `GRANT SELECT ON archive TO ...` in `docs/SERVER_CONFIG.md` and add the role to `infra/postgres/init/` as a new numbered SQL script with a `CHANGE_ME` password placeholder, mirroring the existing ones). Absent → `GET /api/search` answers 501 `search_unavailable` and the web hides the feature. The archive pool is separate from the app pool, `max` small (3), statement timeout 3 s.
@@ -58,8 +58,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 
@@ -102,7 +102,7 @@ pnpm build
     Rate limit 30/min/user. Logs `{ userId, results, durationMs }` only —
     never `q`. No audit rows. AI gateway untouched.
   - Infra/docs: `infra/postgres/init/20-search-reader.sql` creates the
-    `galena_archive` login role with only `GRANT SELECT ON archive`
+    `zilar_archive` login role with only `GRANT SELECT ON archive`
     (`CHANGE_ME` placeholder, password from `infra/.env`, git-ignored);
     `docs/SERVER_CONFIG.md` documents the var + role setup.
 - Web: `SearchBar`/`⌘K` keeps filtering chat names; typing 2+ chars adds a
@@ -151,10 +151,10 @@ pnpm build
 - `pnpm lint`: pass (oxlint clean)
 - `pnpm typecheck`: pass — server `tsc --noEmit` clean (full turbo
   typecheck passed pre-review at 10/10; rerunning per the one-command rule)
-- `pnpm --filter @galena/server test --maxWorkers=2` (full suite, rerun
+- `pnpm --filter @zilar/server test --maxWorkers=2` (full suite, rerun
   after review fixes): 65 files passed, 5 skipped; 1114 passed, 7 skipped
   (includes the 3 new sender-attribution tests)
-- `pnpm --filter @galena/web test --maxWorkers=2`: full suite 662 passed
+- `pnpm --filter @zilar/web test --maxWorkers=2`: full suite 662 passed
   (24.8 s, pre-review; web code untouched by review fixes — `You` renders
   as plain text through the existing sender slot, no test breakage)
 - `pnpm build`: pass (2/2 turbo tasks, pre-review; rerunning below)
@@ -174,36 +174,36 @@ pnpm build
   would be faster; this follows the spec's fallback path.
 - `SEARCH_WINDOW_MS` is 365 days as "12 months"; leap-day precision is
   irrelevant for a scan cap.
-- The `galena_archive` role script only takes effect on first start of an
+- The `zilar_archive` role script only takes effect on first start of an
   empty volume (like `10-create-databases.sql`); existing volumes need the
-  manual `GRANT SELECT ON archive TO galena_archive;` from SERVER_CONFIG.
+  manual `GRANT SELECT ON archive TO zilar_archive;` from SERVER_CONFIG.
   When ejabberd creates `archive` after postgres init (the normal order),
   the DBA runs that same GRANT once the table exists — also documented.
 - No new dependencies. No secrets read or committed (`infra/.env` never opened).
 
 ### Round 2 (review fixes)
 - Fix 1 — init script no longer breaks fresh installs: the whole body is
-  guarded by `\if :{?galena_archive_password}` plus an empty-string check
+  guarded by `\if :{?zilar_archive_password}` plus an empty-string check
   (`SELECT … \gset` → `\if :has_pw`), and the `ejabberd`-database and
   `archive`-table steps are each guarded by `EXISTS` checks, so the script
   is a no-op whenever the variable, database, or table is absent. I first
   added `REVOKE CONNECT … FROM PUBLIC` for least privilege, then removed
   it before proving: it would have broken the existing
-  `galena`/`ejabberd`/`litellm` roles, which rely on the stock PUBLIC
+  `zilar`/`ejabberd`/`litellm` roles, which rely on the stock PUBLIC
   connect grant and get no explicit grant in `10-create-databases.sql`.
   The reader now gains only `CONNECT` on `ejabberd` + `SELECT` on one
   table; everything else keeps working exactly as before.
   Proved on real `pgvector/pgvector:0.8.6-pg18-trixie` scratch containers
-  (never `galena-dev-*`; only throwaway passwords; `galena-dev-postgres-1`
+  (never `zilar-dev-*`; only throwaway passwords; `zilar-dev-postgres-1`
   untouched): (a) WITHOUT the variable → init starts cleanly, no ERROR or
-  FATAL in the logs, all four databases created, `galena_archive` role
-  count 0. (b) WITH `GALENA_ARCHIVE_DB_PASSWORD=throwawayarchive` →
+  FATAL in the logs, all four databases created, `zilar_archive` role
+  count 0. (b) WITH `ZILAR_ARCHIVE_DB_PASSWORD=throwawayarchive` →
   clean start, role exists with LOGIN and a password. (c) Empty-string
   variable → clean start, role count 0. (d) With the var set but no
   `archive` table yet (the real boot order) → clean start, role exists;
   after creating a stand-in `archive` table + manual GRANT, the reader
   `SELECT count(*)` returns 0, `SELECT` on another table → permission
-  denied, `INSERT` → permission denied, `CONNECT` to `galena`/`postgres`
+  denied, `INSERT` → permission denied, `CONNECT` to `zilar`/`postgres`
   (tested after removing the REVOKE lines) still works for existing roles
   — i.e. least privilege holds without touching PUBLIC grants. All
   scratch containers stopped and removed afterwards.
@@ -224,16 +224,16 @@ pnpm build
 ### Round 3 (review fixes 2)
 - Fix 1 — fresh installs get the GRANT: inside the same guarded block,
   after `\connect ejabberd`, added `ALTER DEFAULT PRIVILEGES FOR ROLE
-  ejabberd IN SCHEMA public GRANT SELECT ON TABLES TO galena_archive;`
+  ejabberd IN SCHEMA public GRANT SELECT ON TABLES TO zilar_archive;`
   (the `ejabberd` role owns the tables ejabberd creates; role name from
   `10-create-databases.sql`). The direct `GRANT SELECT ON public.archive`
   stays for volumes where the table already exists. `SERVER_CONFIG.md`
   step 2–3 updated to match.
   Proved on a fresh `pgvector/pgvector:0.8.6-pg18-trixie` scratch
   container (throwaway passwords, no published ports, never
-  `galena-dev-*`): init ran with zero ERROR/FATAL lines; then, as role
+  `zilar-dev-*`): init ran with zero ERROR/FATAL lines; then, as role
   `ejabberd`, created stand-in `archive` + `other_stuff` tables (mirroring
-  real ownership); then as `galena_archive`: `SELECT count(*) FROM
+  real ownership); then as `zilar_archive`: `SELECT count(*) FROM
   archive` → `0` (exit 0); `INSERT INTO archive` → `ERROR: permission
   denied for table archive`; `SELECT` on a table planted by another role
   (`planted_by_dba`, superuser-owned) → `ERROR: permission denied`
@@ -246,8 +246,8 @@ pnpm build
   PUBLIC connect grants everyone relies on are untouched). Scratch tables
   dropped, container stopped and removed.
 - Fix 2 — Enter in the search box opens the top hit: `SearchBar`'s input
-  dispatches `galena:search-enter` on Enter (mirroring the existing
-  `galena:focus-search` pattern; no other input behavior changes, so the
+  dispatches `zilar:search-enter` on Enter (mirroring the existing
+  `zilar:focus-search` pattern; no other input behavior changes, so the
   `ChatList` search-filter tests are unaffected); `MessageSearchResults`
   listens and opens the current top hit through the same `openHit` path
   as click (a `topHitRef` mirrors the ready-state top item; written from
@@ -261,7 +261,7 @@ pnpm build
   existing `message_not_found` rejection instead of hanging. New store
   test with a never-settling `loadHistory` under fake timers: after
   advancing 11 s the jump rejects `message_not_found`.
-- The compose pass-through of `GALENA_ARCHIVE_DB_PASSWORD` is left to the
+- The compose pass-through of `ZILAR_ARCHIVE_DB_PASSWORD` is left to the
   lead as instructed; the script assumes the variable may be absent.
 - Round-3 verification (one Vitest command at a time): targeted
   `MessageSearchList` + `ChatList` + `realStore` 123 passed;
@@ -285,5 +285,5 @@ pnpm build
 - Round 1 and 2 fixes verified: the init script no longer breaks a fresh database, the reader role gets SELECT on future ejabberd tables through default privileges (proved in a scratch Postgres; the honest nuance is that every future table owned by the ejabberd role is readable, still read-only), DM hits from the caller say "You", Enter in the search box opens the top hit, and a stalled history fetch ends in "Message not found".
 
 ### Follow-ups
-- Compose pass-through of `GALENA_ARCHIVE_DB_PASSWORD` (dev and production) is done by the lead.
+- Compose pass-through of `ZILAR_ARCHIVE_DB_PASSWORD` (dev and production) is done by the lead.
 - Role-based rooms (T-0116) will widen the room set in `allowedArchives`.

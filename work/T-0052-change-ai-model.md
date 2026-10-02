@@ -114,7 +114,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/server --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/server --filter=@zilar/web
 pnpm build
 ```
 
@@ -152,13 +152,13 @@ pnpm install                                        # Done in 7s, 1008 packages
 pnpm format:check                                   # All matched files use Prettier code style!
 pnpm lint                                           # exit 0 (fixed one oxlint no-useless-fallback-in-spread in AiPanel)
 pnpm typecheck                                      # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/server --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/server --filter=@zilar/web
   # server: 37 files passed, 5 skipped — 426 passed, 7 skipped; web: 6 ais files 38 passed; full web suite green; Tasks 2 successful
 pnpm build                                          # Tasks: 2 successful, 2 total
 ```
 
 ### Visual check
-Served this worktree's Vite on `localhost:5231` (`GALENA_API_URL` → throwaway mock API on `127.0.0.1:4321` in the approved temp dir, answering `/api/auth/get-session`, `/api/ais`, `/api/connections`) and screenshotted `http://localhost:5231/c/c-devai?mock=1&panel=ai` at 1440×900 with headless Chrome. `work/screenshots/T-0052/ai-panel-1440.png`, looked at: panel open on the mock "Dev AI", Provider picker with DeepSeek/Main key selected + OpenAI/Backup key, Model input `deepseek-chat` with `deepseek-chat`/`deepseek-reasoner` suggestions, Save disabled. Both servers stopped (5231/4321 free); mock script left in the temp dir only, repo untouched by it. Note: `curl` started needing lead approval mid-task, so readiness probes used `python3`/sockets instead.
+Served this worktree's Vite on `localhost:5231` (`ZILAR_API_URL` → throwaway mock API on `127.0.0.1:4321` in the approved temp dir, answering `/api/auth/get-session`, `/api/ais`, `/api/connections`) and screenshotted `http://localhost:5231/c/c-devai?mock=1&panel=ai` at 1440×900 with headless Chrome. `work/screenshots/T-0052/ai-panel-1440.png`, looked at: panel open on the mock "Dev AI", Provider picker with DeepSeek/Main key selected + OpenAI/Backup key, Model input `deepseek-chat` with `deepseek-chat`/`deepseek-reasoner` suggestions, Save disabled. Both servers stopped (5231/4321 free); mock script left in the temp dir only, repo untouched by it. Note: `curl` started needing lead approval mid-task, so readiness probes used `python3`/sockets instead.
 
 ### Live check for the lead (needs Julio's OK if it spends money)
 1. Pick an AI on `deepseek-chat` owned by Julio and note its LiteLLM model id + key allowlist (`GET /model/info`, `/key/info`).
@@ -183,7 +183,7 @@ Served this worktree's Vite on `localhost:5231` (`GALENA_API_URL` → throwaway 
 pnpm format:check                                   # All matched files use Prettier code style!
 pnpm lint                                           # exit 0
 pnpm typecheck                                      # Tasks: 9 successful, 9 total
-pnpm exec turbo test --force --filter=@galena/server --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/server --filter=@zilar/web
   # server: 37 files, 427 passed / 7 skipped; web: 35 files, 235 passed; Tasks 2 successful
 pnpm build                                          # Tasks: 2 successful, 2 total
 ```

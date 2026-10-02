@@ -1,6 +1,6 @@
 ---
 id: T-0063
-title: Mobile honors the `?mock=` route param only in dev builds (or with EXPO_PUBLIC_GALENA_MOCK), for the chat store and My AIs
+title: Mobile honors the `?mock=` route param only in dev builds (or with EXPO_PUBLIC_ZILAR_MOCK), for the chat store and My AIs
 status: merged
 milestone: M2
 branch: task/T-0063-mobile-mock-gating
@@ -15,7 +15,7 @@ estimate: 0.5 day
 
 ### Goal
 
-Today any deep link such as `galena://ais?mock=1` or `galena://chat/x?mock=1` switches a **production** build to fake data (found in the T-0037 pre-review, listed on the board under Follow-ups). Fake chats and fake AIs in a real build are confusing and could be used to spoof what the user sees. The `?mock=` param must only be honored when the build is a dev build (`__DEV__`) or when `EXPO_PUBLIC_GALENA_MOCK` is set at bundle time. Everything else uses the real store and the real API.
+Today any deep link such as `zilar://ais?mock=1` or `zilar://chat/x?mock=1` switches a **production** build to fake data (found in the T-0037 pre-review, listed on the board under Follow-ups). Fake chats and fake AIs in a real build are confusing and could be used to spoof what the user sees. The `?mock=` param must only be honored when the build is a dev build (`__DEV__`) or when `EXPO_PUBLIC_ZILAR_MOCK` is set at bundle time. Everything else uses the real store and the real API.
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -35,15 +35,15 @@ Today any deep link such as `galena://ais?mock=1` or `galena://chat/x?mock=1` sw
 
 ### What to build
 
-1. **One gate (`src/mock/gate.ts`).** A pure function `mockParamAllowed(env: { dev: boolean; envMock: string | undefined }): boolean` that returns true when `dev` is true, or when `envMock` is a non-empty value other than `'0'` and `'false'`. Callers pass `dev: __DEV__` and `envMock: process.env.EXPO_PUBLIC_GALENA_MOCK` (written as a static `process.env.EXPO_PUBLIC_*` expression so Metro inlines it; see the comment in `use-ais-api.ts`). Tests: dev on/off × env unset, `'1'`, `'0'`, `'false'`, `''`.
-2. **Chat store.** `isMockMode(params)`: keep the `NODE_ENV === 'test'` and `EXPO_PUBLIC_GALENA_MOCK === '1'` behavior, but read the `?mock=1` param only when the gate allows it. Tests: with the gate closed, `?mock=1` returns false; with it open, true.
+1. **One gate (`src/mock/gate.ts`).** A pure function `mockParamAllowed(env: { dev: boolean; envMock: string | undefined }): boolean` that returns true when `dev` is true, or when `envMock` is a non-empty value other than `'0'` and `'false'`. Callers pass `dev: __DEV__` and `envMock: process.env.EXPO_PUBLIC_ZILAR_MOCK` (written as a static `process.env.EXPO_PUBLIC_*` expression so Metro inlines it; see the comment in `use-ais-api.ts`). Tests: dev on/off × env unset, `'1'`, `'0'`, `'false'`, `''`.
+2. **Chat store.** `isMockMode(params)`: keep the `NODE_ENV === 'test'` and `EXPO_PUBLIC_ZILAR_MOCK === '1'` behavior, but read the `?mock=1` param only when the gate allows it. Tests: with the gate closed, `?mock=1` returns false; with it open, true.
 3. **My AIs.** `aisMockScenario(env, params)`: ignore `params` when the gate is closed (the env var path stays as is). Give the function what it needs (for example an extra `paramAllowed` argument, or fold the gate into `env`), and keep the existing tests green. Add tests: gate closed + `?mock=default` → `null`; gate open → the scenario.
 4. `use-ais-api.ts` and the store provider pass the real `__DEV__` and env values. In a production bundle with neither set, mock code paths must be unreachable from a deep link.
 
 ### Acceptance criteria
-- [ ] A deep link `?mock=…` does nothing in a build where `__DEV__` is false and `EXPO_PUBLIC_GALENA_MOCK` is unset (proved by unit tests on the gate and both call sites).
-- [ ] Dev builds and `EXPO_PUBLIC_GALENA_MOCK=1` behave exactly as before (existing tests pass unchanged, or with the smallest edit the new argument needs).
-- [ ] `EXPO_PUBLIC_GALENA_MOCK=false` or `0` never enables mock mode.
+- [ ] A deep link `?mock=…` does nothing in a build where `__DEV__` is false and `EXPO_PUBLIC_ZILAR_MOCK` is unset (proved by unit tests on the gate and both call sites).
+- [ ] Dev builds and `EXPO_PUBLIC_ZILAR_MOCK=1` behave exactly as before (existing tests pass unchanged, or with the smallest edit the new argument needs).
+- [ ] `EXPO_PUBLIC_ZILAR_MOCK=false` or `0` never enables mock mode.
 - [ ] No `any`, no `@ts-ignore`, no new dependencies.
 
 ### Checks (all must pass)
@@ -66,10 +66,10 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
-- Added one pure gate, `mockParamAllowed({ dev, envMock })` in `src/mock/gate.ts`, that is true in a dev build or when `EXPO_PUBLIC_GALENA_MOCK` is a non-empty value other than `'0'`/`'false'`.
-- `isMockMode` (chat store) now keeps the `NODE_ENV === 'test'` and `EXPO_PUBLIC_GALENA_MOCK === '1'` short-circuits, but only reads the `?mock=1` param when the gate is open. The build values are injected through a new optional `MockEnv` argument (`{ dev, envMock, nodeEnv }`), defaulting to the real `__DEV__` / `process.env` values. `__DEV__` is read as `typeof __DEV__ !== 'undefined' && __DEV__` so Vitest (which has no React Native global) does not throw.
+- Added one pure gate, `mockParamAllowed({ dev, envMock })` in `src/mock/gate.ts`, that is true in a dev build or when `EXPO_PUBLIC_ZILAR_MOCK` is a non-empty value other than `'0'`/`'false'`.
+- `isMockMode` (chat store) now keeps the `NODE_ENV === 'test'` and `EXPO_PUBLIC_ZILAR_MOCK === '1'` short-circuits, but only reads the `?mock=1` param when the gate is open. The build values are injected through a new optional `MockEnv` argument (`{ dev, envMock, nodeEnv }`), defaulting to the real `__DEV__` / `process.env` values. `__DEV__` is read as `typeof __DEV__ !== 'undefined' && __DEV__` so Vitest (which has no React Native global) does not throw.
 - `ChatStoreProvider` passes the real `__DEV__` and env values to `isMockMode`.
-- `aisMockScenario(env, params, paramAllowed = false)` ignores the route param when the gate is closed; the `EXPO_PUBLIC_GALENA_MOCK` path is unchanged. `useAisApi` computes `mockParamAllowed({ dev: __DEV__, envMock: process.env.EXPO_PUBLIC_GALENA_MOCK })` and passes it.
+- `aisMockScenario(env, params, paramAllowed = false)` ignores the route param when the gate is closed; the `EXPO_PUBLIC_ZILAR_MOCK` path is unchanged. `useAisApi` computes `mockParamAllowed({ dev: __DEV__, envMock: process.env.EXPO_PUBLIC_ZILAR_MOCK })` and passes it.
 
 ### Files changed
 - `apps/mobile/src/mock/gate.ts` (new): the gate.
@@ -87,7 +87,7 @@ pnpm build
 - `pnpm format:check`: **PASS** — "All matched files use Prettier code style!".
 - `pnpm lint`: **PASS** — oxlint, no output, exit 0.
 - `pnpm typecheck`: **PASS** — 9/9 turbo tasks successful.
-- `pnpm test`: **PASS** — 9/9 turbo tasks successful; `@galena/mobile`: 24 files passed, 2 skipped; 217 tests passed, 2 skipped. New: `gate.test.ts` 1, `chat-store.test.ts` 14 (incl. 4 `isMockMode`), `ais.test.ts` 15 (incl. 3 gating).
+- `pnpm test`: **PASS** — 9/9 turbo tasks successful; `@zilar/mobile`: 24 files passed, 2 skipped; 217 tests passed, 2 skipped. New: `gate.test.ts` 1, `chat-store.test.ts` 14 (incl. 4 `isMockMode`), `ais.test.ts` 15 (incl. 3 gating).
 - `pnpm build`: **PASS** — expo export produced iOS (7.5 MB) and Android (7.8 MB) Hermes bundles.
 
 ### Problems, deviations from the spec, open questions
@@ -105,7 +105,7 @@ pnpm build
 
 **Verdict:** Approved.
 
-**Approved and merged by Claude.** Verified in the worktree: scope is inside Allowed files (mobile `mock/`, `store/`, `components/ais/use-ais-api.ts`, the task file); `format:check`, `lint`, `typecheck`, `test` and `build` all pass, and the Report's mobile counts hold (217 passed, 2 skipped). One gate, `mockParamAllowed`, is used by both the chat store and My AIs. The `?mock=` route param is ignored unless the build is `__DEV__` or `EXPO_PUBLIC_GALENA_MOCK` is set to something other than empty, `0` or `false`. The `NODE_ENV=test` and `EXPO_PUBLIC_GALENA_MOCK=1` paths are unchanged. No other file reads the param (grep).
+**Approved and merged by Claude.** Verified in the worktree: scope is inside Allowed files (mobile `mock/`, `store/`, `components/ais/use-ais-api.ts`, the task file); `format:check`, `lint`, `typecheck`, `test` and `build` all pass, and the Report's mobile counts hold (217 passed, 2 skipped). One gate, `mockParamAllowed`, is used by both the chat store and My AIs. The `?mock=` route param is ignored unless the build is `__DEV__` or `EXPO_PUBLIC_ZILAR_MOCK` is set to something other than empty, `0` or `false`. The `NODE_ENV=test` and `EXPO_PUBLIC_ZILAR_MOCK=1` paths are unchanged. No other file reads the param (grep).
 
 ### Findings
 1. *(No change needed.)* `isMockMode` takes an optional second `env` argument and `aisMockScenario` a third `paramAllowed` argument (default false, fail closed). Both are the smallest way to make the gate testable; accepted.

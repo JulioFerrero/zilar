@@ -195,7 +195,7 @@ RUN 2: rc=0 elapsed=0s
 RUN 3: rc=0 elapsed=1s
 ```
 
-Run 1's log (`@galena/web` was the only task not cached): `Test Files 18 passed
+Run 1's log (`@zilar/web` was the only task not cached): `Test Files 18 passed
 (18)`, `Tests 85 passed (85)`, web `Duration 3.46s`. Runs 2–3 were turbo cache
 hits (`FULL TURBO`) and ran nothing.
 
@@ -224,7 +224,7 @@ FORCED RUN 3  ✓ shows typing … 3220ms
 `apps/web` alone once:
 
 ```
-pnpm --filter @galena/web test
+pnpm --filter @zilar/web test
 Test Files  18 passed (18)
      Tests  85 passed (85)
 ```

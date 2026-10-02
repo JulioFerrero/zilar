@@ -36,7 +36,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
 pnpm build
 ```
 (Affected tests while working; the full server suite once at the end.)
@@ -78,7 +78,7 @@ Schema changes, UI, new features.
 - `pnpm lint` (oxlint): pass, clean
 - `pnpm typecheck`: 10/10 pass
 - Affected suites while working: pins 10 + config 44 + approvals/service 100 (3 files, one run); approvals routes/rules 72; search + sweep + app 30; roles + topics + groups 85; invite-links 20/20 full file (~175 s); each new test also run solo
-- Full `pnpm --filter @galena/server test --maxWorkers=2`: 82 files passed, 5 skipped; 1427 passed, 7 skipped, 0 failed (~463 s), EXIT 0
+- Full `pnpm --filter @zilar/server test --maxWorkers=2`: 82 files passed, 5 skipped; 1427 passed, 7 skipped, 0 failed (~463 s), EXIT 0
 - `pnpm build --force`: 2/2 pass (~41 s)
 - `grep` for `any|@ts-ignore|disable` in new/changed lines: no hits (two false positives: the words "forged"/"rate_limited" context and a comment)
 

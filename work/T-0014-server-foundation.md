@@ -14,7 +14,7 @@ estimate: 1 day
 ## Spec (written by Claude, do not edit)
 
 ### Goal
-Turn `@galena/server` from a single health endpoint into a solid base that every M1 feature (auth, workspaces, rooms, AIs) plugs into:
+Turn `@zilar/server` from a single health endpoint into a solid base that every M1 feature (auth, workspaces, rooms, AIs) plugs into:
 - validated configuration
 - structured logging that never leaks secrets
 - consistent JSON errors
@@ -92,7 +92,7 @@ Use the latest stable versions and list them in the Report.
    - `db:generate` (drizzle-kit generate)
    - `db:migrate` (a tiny `src/db/migrate-cli.ts` that loads config and runs migrations)
 7. **`apps/server/.env.example`:**
-   - `DATABASE_URL=postgres://galena:CHANGE_ME@127.0.0.1:5432/galena` (matches the dev stack: user and database `galena`, password = `GALENA_DB_PASSWORD` from `infra/.env`)
+   - `DATABASE_URL=postgres://zilar:CHANGE_ME@127.0.0.1:5432/zilar` (matches the dev stack: user and database `zilar`, password = `ZILAR_DB_PASSWORD` from `infra/.env`)
    - the other variables, with comments
 8. **Tests (Vitest), with no network and no Docker:**
    - **config:** valid, all-missing (lists them all), bad URL, bad port. Error messages contain no values.
@@ -166,14 +166,14 @@ pnpm build
 - (`hono` stays 4.13.9.)
 
 ### Commands run and real results
-- `pnpm install`: up to date (125 packages resolved, added). Later `pnpm --filter @galena/server add …` installed the deps above and updated `pnpm-lock.yaml`.
-- `pnpm --filter @galena/server db:generate`: `1 tables; server_meta 3 columns 0 indexes 0 fks` → wrote `drizzle/0000_medical_exodus.sql`.
-- `pnpm --filter @galena/server typecheck` / `pnpm typecheck`: pass (5/5 tasks successful).
-- `pnpm --filter @galena/server test`: 4 files, 17 tests passed (config 7, logger 1, migrate 3, app 6).
+- `pnpm install`: up to date (125 packages resolved, added). Later `pnpm --filter @zilar/server add …` installed the deps above and updated `pnpm-lock.yaml`.
+- `pnpm --filter @zilar/server db:generate`: `1 tables; server_meta 3 columns 0 indexes 0 fks` → wrote `drizzle/0000_medical_exodus.sql`.
+- `pnpm --filter @zilar/server typecheck` / `pnpm typecheck`: pass (5/5 tasks successful).
+- `pnpm --filter @zilar/server test`: 4 files, 17 tests passed (config 7, logger 1, migrate 3, app 6).
 - `pnpm test`: 5/5 tasks successful (server 17 tests above, other packages cached/passing).
 - `pnpm format:check`: `All matched files use Prettier code style!`
 - `pnpm lint`: `Found 0 warnings and 0 errors.`
-- `pnpm build`: 1/1 task successful (only `@galena/web` has a build script; `@galena/server` has none, as specified).
+- `pnpm build`: 1/1 task successful (only `@zilar/web` has a build script; `@zilar/server` has none, as specified).
 
 ### Problems, deviations from the spec, open questions
 - **Redact paths (deviation).** With fast-redact, `*.password` does not match a top-level `password`, but the required logger test logs the sensitive keys at the top level. I therefore pass both the bare keys and the `*.`-prefixed keys (`password`, `token`, `secret`, `apiKey`, `api_key`), plus the requested `req.headers.*` and `DATABASE_URL` paths.
@@ -210,7 +210,7 @@ This is a clean, well-structured foundation, and every deviation in the Report i
    - the test-only `destination` argument
    - per-driver migrator dispatch
    - Prettier on the generated JSON
-2. **(follow-up, next server task)** The `dev` script doesn't load `apps/server/.env`. Use `tsx watch --env-file-if-exists=.env src/index.ts`, or Node's `--env-file-if-exists`, so `pnpm --filter @galena/server dev` works after copying `.env.example`.
+2. **(follow-up, next server task)** The `dev` script doesn't load `apps/server/.env`. Use `tsx watch --env-file-if-exists=.env src/index.ts`, or Node's `--env-file-if-exists`, so `pnpm --filter @zilar/server dev` works after copying `.env.example`.
 3. **(follow-up, next server task)** Type `HttpError.status` as Hono's `ContentfulStatusCode`, so `onError` doesn't need the `as` cast.
 4. **(note)** Running migrations on startup is fine for a single instance. Revisit this (with a lock or a separate migration step) before running more than one server instance.
 

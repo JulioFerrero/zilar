@@ -40,7 +40,7 @@ Fix the small tooling issues found in the review of T-0001 (see the Review secti
      - `types: ["node"]`
    - Update the web `typecheck` script to check both: `tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json`.
    - **Prove the split works** before reverting the probe: temporarily add `const x = process.env;` in `src/App.tsx`, confirm `typecheck` now **fails**, then remove it. Describe this in the Report.
-3. **Declare the testing peer.** Add `@testing-library/dom` (latest) as a devDependency of `@galena/web`.
+3. **Declare the testing peer.** Add `@testing-library/dom` (latest) as a devDependency of `@zilar/web`.
 4. **CI runs once per PR.** In `ci.yml`, change the trigger to:
    ```yaml
    on:
@@ -55,7 +55,7 @@ Fix the small tooling issues found in the review of T-0001 (see the Review secti
 ### Acceptance criteria
 - [ ] `@types/node` resolves to 24.x in the lockfile.
 - [ ] The web typecheck covers both tsconfigs and fails on `process` usage inside `src/` (the probe is described in the Report and removed).
-- [ ] `@testing-library/dom` is an explicit devDependency of `@galena/web`.
+- [ ] `@testing-library/dom` is an explicit devDependency of `@zilar/web`.
 - [ ] CI triggers on push to `main` and on pull requests only.
 - [ ] All checks pass.
 
@@ -83,13 +83,13 @@ pnpm build
    - `apps/web/tsconfig.json`: `include: ["src"]`, `lib: ["ES2023", "DOM", "DOM.Iterable"]`, `jsx: "react-jsx"`, `types: ["vite/client"]` (no `node`).
    - New `apps/web/tsconfig.node.json`: extends `../../tsconfig.base.json`, `include: ["vite.config.ts"]`, `types: ["node"]`.
    - `apps/web/package.json` `typecheck` is now `tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json`.
-   - **Probe:** temporarily added `const x = process.env;` to `apps/web/src/App.tsx`. `pnpm --filter @galena/web typecheck` then failed with:
+   - **Probe:** temporarily added `const x = process.env;` to `apps/web/src/App.tsx`. `pnpm --filter @zilar/web typecheck` then failed with:
      ```
      src/App.tsx(4,9): error TS6133: 'x' is declared but its value is never read.
      src/App.tsx(4,13): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
      ```
      Removed the line; `git diff -- apps/web/src/App.tsx` is empty and the typecheck passes again. This proves `process` is no longer typed in `src/`.
-3. **Declared the testing peer.** Added `@testing-library/dom@^10.4.2` (latest, and it satisfies `@testing-library/react` 16.3.3's `^10` peer range) as a devDependency of `@galena/web`.
+3. **Declared the testing peer.** Added `@testing-library/dom@^10.4.2` (latest, and it satisfies `@testing-library/react` 16.3.3's `^10` peer range) as a devDependency of `@zilar/web`.
 4. **CI runs once per PR.** `.github/workflows/ci.yml` now triggers only on `push` to `main` and on `pull_request`.
 5. **`.prettierignore` comment.** Replaced the first two-line comment block with the exact single line requested; the four entries (`AGENTS.md`, `README.md`, `docs/`, `work/`) and the rest of the file are unchanged.
 6. Ran `pnpm exec prettier --write` on the two new/changed tsconfig files because `format:check` flagged them; their content still matches the spec exactly.
@@ -114,7 +114,7 @@ pnpm build
 - `pnpm typecheck` → PASS (turbo "3 successful, 3 total"; web runs both tsconfigs: `tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json`).
 - `pnpm test` → PASS (turbo "3 successful, 3 total": protocol 6 tests / 1 file, server 2 tests / 1 file, web 3 tests / 1 file).
 - `pnpm build` → PASS (turbo "1 successful, 1 total"; web `vite build`: `index.html` 0.39 kB, CSS 6.19 kB, JS 303.85 kB).
-- Probe (before/after): `pnpm --filter @galena/web typecheck` failed with TS2591 `Cannot find name 'process'` with the probe present; passed after removal.
+- Probe (before/after): `pnpm --filter @zilar/web typecheck` failed with TS2591 `Cannot find name 'process'` with the probe present; passed after removal.
 - `.github/workflows/ci.yml` parsed with Ruby `YAML.safe_load`: `on` resolves to `{"push" => {"branches" => ["main"]}, "pull_request" => nil}` (the `nil` is the YAML 1.1 `on`→`true` key quirk, not an error).
 - `git status` / `git diff`: only the allowed files above; `apps/web/src/App.tsx` has no diff.
 
@@ -134,7 +134,7 @@ pnpm build
 
 ### What I verified myself (on commit 6a7cadd)
 - `pnpm install --frozen-lockfile`, `format:check`, `lint`, `typecheck`, `test` (6 + 2 + 3) and `build`: all PASS.
-- An independent probe: adding a new file in `apps/web/src/` that uses `process.env` makes `pnpm --filter @galena/web typecheck` fail. So the tsconfig split works. Probe removed.
+- An independent probe: adding a new file in `apps/web/src/` that uses `process.env` makes `pnpm --filter @zilar/web typecheck` fail. So the tsconfig split works. Probe removed.
 - The diff touches only allowed files, and the Spec section is unchanged.
 
 ### Findings

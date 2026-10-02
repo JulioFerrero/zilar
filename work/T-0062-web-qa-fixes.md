@@ -57,7 +57,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm exec turbo test --force --filter=@galena/web
+pnpm exec turbo test --force --filter=@zilar/web
 pnpm build
 ```
 
@@ -143,7 +143,7 @@ and T-0060's Bug 1, Bug 2 and polish items 1, 2 and 5 first.
 
 **Round 2 (after the pre-review fixes).**
 
-- `pnpm exec turbo test --force --filter=@galena/web`: **315 passed** across 40
+- `pnpm exec turbo test --force --filter=@zilar/web`: **315 passed** across 40
   files, 0 failed (`Test Files 40 passed (40)`, `Tests 315 passed (315)`,
   29.96 s). The 2 new tests are the Invite-dialog Esc test
   (`NewChatButton.test.tsx`) and the retry-spinner reduced-motion test
@@ -162,7 +162,7 @@ and T-0060's Bug 1, Bug 2 and polish items 1, 2 and 5 first.
 - `pnpm install`: "Already up to date", 6.9 s.
 - `pnpm lint`: clean (oxlint, no output).
 - `pnpm typecheck`: 9 successful, 9 total (8 cached).
-- `pnpm exec turbo test --force --filter=@galena/web`: **313 passed** across
+- `pnpm exec turbo test --force --filter=@zilar/web`: **313 passed** across
   40 files. My first run failed 1 of 313 (`ApprovalCard` "logs the decision to
   the console" — `disabled` blocks the stub click); I updated that test to
   assert the disabled buttons do not fire the stub, then all 313 pass. New
@@ -267,5 +267,5 @@ implemented two ways (JS marker classes for skeleton/spinner vs. pure-CSS
 inconsistent style.
 
 Checks: `pnpm lint` clean, `pnpm typecheck` 9/9, `pnpm exec turbo test
---force --filter=@galena/web` 315 passed/0 failed, `pnpm build` clean,
+--force --filter=@zilar/web` 315 passed/0 failed, `pnpm build` clean,
 built CSS spot-checked for both reduced-motion rules.

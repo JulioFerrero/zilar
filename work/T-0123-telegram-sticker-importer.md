@@ -1,6 +1,6 @@
 ---
 id: T-0123
-title: Import Telegram sticker packs (static stickers) into a Galena pack
+title: Import Telegram sticker packs (static stickers) into a Zilar pack
 status: merged
 milestone: M5
 branch: task/T-0123-telegram-sticker-importer
@@ -26,7 +26,7 @@ D27 (Julio): a Telegram importer is a **must-have for migration**: bring your fa
 
 ### Server (`apps/server/src/stickers/telegram-import.ts` + routes)
 - `TelegramClient` port (`getStickerSet(name)`, `downloadFile(fileId)`) with a real implementation using `fetch` **only** to `https://api.telegram.org/bot<token>/…` and `https://api.telegram.org/file/bot<token>/…` (hard-coded host, no redirects, 10 s timeout, 1 MiB cap per file, the token never appears in logs, errors or responses; URLs are built inside the client and error messages are scrubbed), and a fake for tests. New env `TELEGRAM_BOT_TOKEN` (zod, optional; log only whether it is set).
-- `POST /api/sticker-packs/import/telegram` `{ input }` (session required; rate limit 3 imports per hour per user; max 200 stickers considered, 120 imported to respect the pack limit): creates a **private** pack titled after the Telegram pack (≤ 60 chars, trimmed), downloads each static sticker sequentially with limited concurrency (4), runs every file through the **same validation as uploads** (T-0120: magic bytes, size, dimensions; a file that fails is skipped and counted), stores the sticker with its emoji, adds the pack to the user's panel. Returns `{ pack, imported, skippedAnimated, skippedInvalid }`. The import runs to completion within the request budget (30 s); if it would exceed that, stop and return what was imported with `partial: true` (the user can run it again; already imported stickers are recognised by their Telegram `file_unique_id` stored in a new column `stickers.source_id`, migration via `pnpm --filter @galena/server db:generate`, so a re-run adds only the missing ones instead of duplicating).
+- `POST /api/sticker-packs/import/telegram` `{ input }` (session required; rate limit 3 imports per hour per user; max 200 stickers considered, 120 imported to respect the pack limit): creates a **private** pack titled after the Telegram pack (≤ 60 chars, trimmed), downloads each static sticker sequentially with limited concurrency (4), runs every file through the **same validation as uploads** (T-0120: magic bytes, size, dimensions; a file that fails is skipped and counted), stores the sticker with its emoji, adds the pack to the user's panel. Returns `{ pack, imported, skippedAnimated, skippedInvalid }`. The import runs to completion within the request budget (30 s); if it would exceed that, stop and return what was imported with `partial: true` (the user can run it again; already imported stickers are recognised by their Telegram `file_unique_id` stored in a new column `stickers.source_id`, migration via `pnpm --filter @zilar/server db:generate`, so a re-run adds only the missing ones instead of duplicating).
 - 501 `import_unavailable` without the token; 404 `pack_not_found` for unknown packs (no other Telegram error text is passed through); 429 handling on the Telegram side is retried once after the `retry_after` (capped at 5 s), then reported as `try_later`.
 - Audit `sticker_pack.imported` (ids and counts only).
 
@@ -50,7 +50,7 @@ D27 (Julio): a Telegram importer is a **must-have for migration**: bring your fa
 - Input parsing (links, `tg://`, bare names, hostile strings), the token never appears in logs/errors/responses (capture the logger and serialise every error), animated/video/custom-emoji handling, invalid files skipped, limits (200 considered, 120 imported), partial + re-run without duplicates (`source_id`), forced private visibility and rejection of a later switch to `server`, rate limit, 501/404/`try_later`, audit without names, sweep. Web: dialog states, summary text, hidden on 501, mock mode.
 
 ### Acceptance criteria
-- [ ] A public static sticker pack can be imported into a private Galena pack with its emoji; re-running fills in gaps only.
+- [ ] A public static sticker pack can be imported into a private Zilar pack with its emoji; re-running fills in gaps only.
 - [ ] The bot token never leaves the server, and only the two Telegram hosts are ever contacted.
 - [ ] Imported packs cannot be shared server-wide; the personal-use notice is shown.
 - [ ] No lint or ts disable comments, no `any`, no `@ts-ignore`; lint re-run after your last edit.
@@ -61,8 +61,8 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2
-pnpm --filter @galena/web test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2
+pnpm --filter @zilar/web test --maxWorkers=2
 pnpm build
 ```
 
@@ -92,13 +92,13 @@ pnpm build
 
 ### Commands run and real results
 - `pnpm install`: ok (6.4s)
-- `pnpm --filter @galena/server db:generate`: produced `drizzle/0033_hot_lizard.sql` with ONLY the `source_id` column + partial unique index (verified by reading the file)
+- `pnpm --filter @zilar/server db:generate`: produced `drizzle/0033_hot_lizard.sql` with ONLY the `source_id` column + partial unique index (verified by reading the file)
 - `pnpm format:check`: pass (after prettier --write on touched files + the drizzle snapshot/journal, like T-0120/T-0121)
 - `pnpm lint` (oxlint): pass, no findings (re-run after last edit; fixed 2 unused-`init` params in my page tests)
 - `pnpm typecheck` (turbo, all 10 packages): pass
-- `pnpm --filter @galena/server test --maxWorkers=2` (full suite): 100 files passed, 6 skipped; 1669 passed, 8 skipped (includes telegram-import 12, telegram-import-routes 14, config 51, sweep 5 with the new route at 401)
+- `pnpm --filter @zilar/server test --maxWorkers=2` (full suite): 100 files passed, 6 skipped; 1669 passed, 8 skipped (includes telegram-import 12, telegram-import-routes 14, config 51, sweep 5 with the new route at 401)
 - Post-review targeted re-run: `telegram-import.test.ts` + `telegram-import-routes.test.ts` + `stickers/routes.test.ts` + `favorites.test.ts` + `config.test.ts` + `authz-sweep.test.ts` (`--maxWorkers=2`): 6 files, 121 passed (new: full-pack summary, mid-batch pack_full, limiter-after-validation, oversize skip, cross-user isolation, download round-trip)
-- `pnpm --filter @galena/web test --maxWorkers=2` (full suite): 95 files, 1049 passed (includes TelegramImportDialog 7, StickersPage 10, api +1, mock +1)
+- `pnpm --filter @zilar/web test --maxWorkers=2` (full suite): 95 files, 1049 passed (includes TelegramImportDialog 7, StickersPage 10, api +1, mock +1)
 - `pnpm build` (turbo): 2 tasks successful
 - Targeted runs while working (all `--maxWorkers=2`): server stickers+config+sweep 116 passed; web sticker/dialog/api/mock/panel/editor 130 passed.
 

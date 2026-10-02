@@ -98,7 +98,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test
+pnpm --filter @zilar/server test
 pnpm build
 ```
 
@@ -129,7 +129,7 @@ pnpm build
 - `pnpm format:check`: initially 5 files unformatted; after `prettier --write`: "All matched files use Prettier code style!"
 - `pnpm lint` (oxlint): clean, no output
 - `pnpm typecheck`: 10 tasks successful
-- `pnpm --filter @galena/server test`: 72 files passed, 5 skipped; 1283 tests passed, 7 skipped, 0 failed (~250s)
+- `pnpm --filter @zilar/server test`: 72 files passed, 5 skipped; 1283 tests passed, 7 skipped, 0 failed (~250s)
 - `pnpm build`: 2 tasks successful
 
 ### Problems, deviations from the spec, open questions

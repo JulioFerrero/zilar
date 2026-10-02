@@ -19,7 +19,7 @@ Web has per-user mute/archive/pin for chats and topics (T-0113) and pinned messa
 ### What to build
 1. **Chat prefs on mobile**: use `/api/chat-prefs` (see `apps/server/src/chat-prefs/routes.ts` and the web `lib/api.ts` client for the shapes). Long-press (or the existing row action) on a chat or topic row opens an action sheet: Mute (1 hour, 8 hours, 1 week, always, unmute), Pin, Archive. Pinned chats sort first, muted rows show a muted icon and no unread badge sound/emphasis, archived chats leave the list and appear under an "Archived" entry at the bottom of the chat list. Follow the same rules the web store applies (a muted group's topics follow the group).
 2. **Pinned messages on mobile**: a pinned banner under the chat header (latest pin, tap to jump to it, "n pins" opens a list sheet), and Pin/Unpin in the message action sheet for people who may pin (same rule as web: DM either side; groups and topics owner/admin). Use `/api/pins` (see `apps/server/src/pins/routes.ts`); the message snapshot is display-only text (max 300).
-3. Mock mode: mobile has a mock (`EXPO_PUBLIC_GALENA_MOCK`); extend it so both features work without a server.
+3. Mock mode: mobile has a mock (`EXPO_PUBLIC_ZILAR_MOCK`); extend it so both features work without a server.
 4. Fix the small T-0112 should-fix items that are mobile-side: mock `addTopicAi` must not throw; a store test passes a chat JID where a group id belongs (fix the fake `getGroup` to catch it); `createTopic` must not report failure when only the follow-up chat-list re-read fails; a filtered group shows "1 topics" (pluralize); the new-topic sheet keeps the previous name.
 
 ### Read first
@@ -34,7 +34,7 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/mobile test --maxWorkers=2
+pnpm --filter @zilar/mobile test --maxWorkers=2
 ```
 (Affected tests while working; full mobile suite once at the end. Do NOT start simulators, Metro, or `expo run`.)
 
@@ -69,8 +69,8 @@ Search on mobile, stickers, push, anything on web.
 - `pnpm format:check`: pass for all owned files (the only remaining warn is the lead's untracked `PREREVIEW.md`, which I must not edit).
 - `pnpm lint`: pass (oxlint clean; fixed 5 unused-var errors first: unused `Pin`/`PinKind`/`createChatPrefsApi` imports and an unused sheet-action param).
 - `pnpm typecheck`: pass (turbo 10/10).
-- Affected tests while working (each `pnpm --filter @galena/mobile test --maxWorkers=2 <paths>`): all passed per batch (3 lib files 21 passed; prefs-pins store 10 passed; mock prefs-pins 7 passed; chat-list + chat-prefs 12 passed; 4 render suites 17 passed; topics/hooks-guard suites 31 passed).
-- Full suite once at the end: `pnpm --filter @galena/mobile test --maxWorkers=2` → 48 files passed, 2 skipped; 467 passed, 2 skipped (was 403 passed at T-0112; +64 new tests, zero regressions).
+- Affected tests while working (each `pnpm --filter @zilar/mobile test --maxWorkers=2 <paths>`): all passed per batch (3 lib files 21 passed; prefs-pins store 10 passed; mock prefs-pins 7 passed; chat-list + chat-prefs 12 passed; 4 render suites 17 passed; topics/hooks-guard suites 31 passed).
+- Full suite once at the end: `pnpm --filter @zilar/mobile test --maxWorkers=2` → 48 files passed, 2 skipped; 467 passed, 2 skipped (was 403 passed at T-0112; +64 new tests, zero regressions).
 - `grep` for `eslint-disable|oxlint-disable|@ts-ignore|: any|as any` in new/changed non-test source: no hits.
 - No simulator, Metro, or `expo run` started (per spec; Julio's simulators off limits).
 
