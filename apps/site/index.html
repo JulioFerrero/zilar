@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zilar</title>
+    <meta
+      name="description"
+      content="A self-hosted messenger for your people and the AIs you own. Your server, your keys, your rules."
+    />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Zilar" />
+    <meta
+      property="og:description"
+      content="Your friends and your AIs, in one chat. Self-hosted, with hard spending caps, approvals and a kill switch."
+    />
+    <meta property="og:image" content="https://zilar.app/og.jpg" />
+    <meta property="og:url" content="https://zilar.app/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  </head>
+  <body>
+    <header class="bar">
+      <a class="mark" href="/" aria-label="Zilar">
+        <img src="/favicon.svg" alt="" width="30" height="30" />
+        <span>Zilar</span>
+      </a>
+      <a class="key key-silver key-small" href="mailto:hello@zilar.app?subject=Zilar%20access"
+        >Request access</a
+      >
+    </header>
+
+    <main>
+      <section class="hero">
+        <canvas id="stage" aria-hidden="true"></canvas>
+        <img
+          class="stage-fallback"
+          src="/icon.webp"
+          alt=""
+          width="400"
+          height="400"
+          fetchpriority="low"
+        />
+        <div class="hero-copy">
+          <h1>Your friends and your AIs, in one chat.</h1>
+          <p class="hero-sub">
+            A self-hosted messenger for your people and the AIs you own. Your server, your keys,
+            your rules.
+          </p>
+          <div class="hero-actions">
+            <a class="key key-silver" href="mailto:hello@zilar.app?subject=Zilar%20access"
+              >Request access</a
+            >
+            <a class="quiet-link" href="#own">Run your own</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="chat" aria-labelledby="chat-title">
+        <div class="chat-copy">
+          <h2 id="chat-title">A messenger first.</h2>
+          <p>
+            Groups with topics, replies, reactions, pinned messages and search. Stickers you make
+            yourself and GIFs. On the web and on your phone, installed like any other app.
+          </p>
+        </div>
+        <div class="phones">
+          <figure class="bezel bezel-phone phone-left">
+            <img
+              src="/screens/topics-phone.png"
+              alt="A group with its topics in the Zilar chat list"
+              width="390"
+              height="844"
+              loading="lazy"
+            />
+          </figure>
+          <figure class="bezel bezel-phone phone-mid">
+            <img
+              src="/screens/chat-phone.png"
+              alt="A Zilar conversation with replies, a photo and a shared PDF"
+              width="390"
+              height="844"
+              loading="lazy"
+            />
+          </figure>
+          <figure class="bezel bezel-phone phone-right">
+            <img
+              src="/screens/search-phone.png"
+              alt="Search finding the word tickets in old messages"
+              width="390"
+              height="844"
+              loading="lazy"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <section class="ais" aria-labelledby="ais-title">
+        <figure class="bezel bezel-wide">
+          <img
+            src="/screens/topic-desktop.png"
+            alt="A Zilar group topic where an AI called Dev-1 reports that tests pass and asks to merge"
+            width="1440"
+            height="900"
+            loading="lazy"
+          />
+        </figure>
+        <div class="ais-copy">
+          <h2 id="ais-title">AIs are members, not a sidebar.</h2>
+          <p>
+            Add an AI to a group the way you add a friend. It follows the topic, answers when you
+            mention it, and asks before it does anything risky. You decide what it may spend, and
+            you can stop it at any moment.
+          </p>
+
+          <div class="plate">
+            <div class="cell">
+              <p class="control-name" id="cap-name">Monthly cap</p>
+              <div class="dial-row">
+                <div
+                  class="dial"
+                  id="cap-dial"
+                  role="slider"
+                  tabindex="0"
+                  aria-labelledby="cap-name"
+                  aria-valuemin="5"
+                  aria-valuemax="100"
+                  aria-valuenow="20"
+                >
+                  <div class="ticks" id="cap-ticks"></div>
+                  <div class="well">
+                    <div class="knob" id="cap-knob"><span class="pointer"></span></div>
+                  </div>
+                </div>
+                <output class="readout" id="cap-readout" for="cap-dial">€20</output>
+              </div>
+              <p class="control-note" id="cap-note" aria-live="polite"></p>
+            </div>
+
+            <div class="cell">
+              <p class="control-name" id="kill-name">
+                <span class="lamp" id="kill-lamp" aria-hidden="true"></span>
+                <span id="kill-state">Running</span>
+              </p>
+              <div class="switch-row">
+                <div class="guarded">
+                  <button
+                    class="rocker"
+                    id="kill-switch"
+                    type="button"
+                    aria-pressed="false"
+                    aria-label="Stop Dev-1"
+                    disabled
+                  >
+                    <span class="rocker-face"><span>Run</span><span>Stop</span></span>
+                  </button>
+                  <button
+                    class="guard"
+                    id="kill-cover"
+                    type="button"
+                    aria-expanded="false"
+                    aria-controls="kill-switch"
+                    aria-label="Lift the guard"
+                  ></button>
+                </div>
+              </div>
+              <p class="control-note" id="kill-note" aria-live="polite">
+                Lift the guard, then press Stop.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="own" id="own">
+        <div class="own-copy">
+          <h2>Runs on your server.</h2>
+          <p>
+            Docker and one helper script. Chat runs on ejabberd, so your messages and their history
+            stay on hardware you choose.
+          </p>
+          <p class="honest">Zilar is early and moving fast. It is not production-ready yet.</p>
+        </div>
+        <div class="engraving">
+          <pre><code id="commands">./deploy/zilar init
+./deploy/zilar up
+./deploy/zilar create-admin</code></pre>
+          <button class="key key-graphite key-small" id="copy-commands" type="button">
+            Copy commands
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <a class="mark" href="/" aria-label="Zilar">
+        <img src="/favicon.svg" alt="" width="24" height="24" />
+        <span>Zilar</span>
+      </a>
+      <p>Zilar is the Basque word for silver.</p>
+      <a class="quiet-link" href="mailto:hello@zilar.app?subject=Zilar%20access">hello@zilar.app</a>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
