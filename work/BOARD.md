@@ -191,3 +191,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0151](T-0151-deploy-storage-safety.md) | Production storage safety | 2026-10-01 |
 | [T-0160](T-0160-rename-zilar.md) | Rename everything from Zilar to Zilar | 2026-10-02 |
 | [T-0161](T-0161-first-run-setup.md) | First-run setup screen: email, Resend key, code; the key is stored encrypted, no manual mail setup or invite code | 2026-10-02 |
+| [T-0162](T-0162-integrations-settings-telegram.md) | Integration keys in the UI (Telegram bot token) and a proper import dialog | planned | meta/muse-spark-1.3-contributor | T-0161 | Spec ready |
