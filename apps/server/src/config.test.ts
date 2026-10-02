@@ -616,6 +616,13 @@ describe('mail transport config', () => {
     ).toBeUndefined();
   });
 
+  it('treats an empty key-encryption key as unset and still rejects a short one', () => {
+    expect(
+      loadServerConfig({ ...base, ZILAR_KEY_ENCRYPTION_KEY: '' }).ZILAR_KEY_ENCRYPTION_KEY,
+    ).toBeUndefined();
+    expect(() => loadServerConfig({ ...base, ZILAR_KEY_ENCRYPTION_KEY: 'short' })).toThrow();
+  });
+
   it('defaults the SMTP port to 587 and parses an explicit one', () => {
     expect(loadServerConfig(base).SMTP_PORT).toBe(587);
     expect(

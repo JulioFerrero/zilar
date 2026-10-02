@@ -237,8 +237,9 @@ export type ServerConfig = z.infer<typeof serverConfigSchema> & {
 
 // Docker Compose renders an unset optional as an empty string (`${VAR:-}`),
 // which a bare `.min(1).optional()` would reject. For the optional mail
-// settings an empty value means "not set".
+// settings and the optional key-encryption key an empty value means "not set".
 const EMPTY_MEANS_UNSET_KEYS = [
+  'ZILAR_KEY_ENCRYPTION_KEY',
   'MAIL_TRANSPORT',
   'SMTP_HOST',
   'SMTP_USER',

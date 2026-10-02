@@ -8,8 +8,8 @@
 # docs/INSTALL_DOCKER.md, "The Coolify path").
 #
 # Coolify conventions used (https://coolify.io/docs/services/configuration/docker-compose):
-# - `${VAR:?}` marks a variable required and blocks deployment while empty;
-#   `${VAR:-default}` supplies the initial fallback.
+# - `${VAR:-default}` supplies a fallback. Do not put `:?` on SERVICE_* variables:
+#   Coolify then leaves its generated values empty and docker refuses to start.
 # - `SERVICE_URL_<SERVICE>_<PORT>` (with an optional path suffix) asks
 #   Coolify to generate a domain for that Compose service on that internal
 #   port; the same value is reused through the Service as a normal variable.
@@ -36,11 +36,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES:?}
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
       POSTGRES_DB: postgres
-      ZILAR_DB_PASSWORD: ${SERVICE_PASSWORD_ZILAR_DB:?}
-      EJABBERD_DB_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_DB:?}
-      ZILAR_ARCHIVE_DB_PASSWORD: ${SERVICE_PASSWORD_ARCHIVE_DB:?}
+      ZILAR_DB_PASSWORD: ${SERVICE_PASSWORD_ZILAR_DB}
+      EJABBERD_DB_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_DB}
+      ZILAR_ARCHIVE_DB_PASSWORD: ${SERVICE_PASSWORD_ARCHIVE_DB}
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -64,10 +64,10 @@ services:
       # Traefik terminates TLS; ejabberd serves plain HTTP on the Service
       # network. HOST/MUC_HOST/ADMIN come from the public domain you set in
       # Coolify (SERVICE_FQDN roots), passed here as plain variables.
-      EJABBERD_MACRO_HOST: ${SERVICE_FQDN_WEB:?}
-      EJABBERD_MACRO_MUC_HOST: rooms.${SERVICE_FQDN_WEB:?}
-      EJABBERD_MACRO_ADMIN: admin@${SERVICE_FQDN_WEB:?}
-      REGISTER_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_ADMIN:?}
+      EJABBERD_MACRO_HOST: ${SERVICE_FQDN_WEB}
+      EJABBERD_MACRO_MUC_HOST: rooms.${SERVICE_FQDN_WEB}
+      EJABBERD_MACRO_ADMIN: admin@${SERVICE_FQDN_WEB}
+      REGISTER_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_ADMIN}
       EJABBERD_MACRO_SQL_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_DB}
       # Push component (T-0145, XEP-0114): the secret the server's component
       # authenticates with. Must equal the server's PUSH_COMPONENT_SECRET
@@ -81,9 +81,9 @@ services:
       # (see deploy/ejabberd/push-entrypoint.sh): set it to the same value
       # as XMPP_DOMAIN so the entrypoint writes push.<XMPP_DOMAIN>, matching
       # PUSH_COMPONENT_JID below.
-      ZILAR_DOMAIN: ${SERVICE_FQDN_WEB:?}
-      ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
-      EJABBERD_MACRO_UPLOAD_URL: https://${SERVICE_FQDN_WEB:?}/upload
+      ZILAR_DOMAIN: ${SERVICE_FQDN_WEB}
+      ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT}
+      EJABBERD_MACRO_UPLOAD_URL: https://${SERVICE_FQDN_WEB}/upload
     expose:
       - '5280'
     volumes:
@@ -112,23 +112,23 @@ services:
       # production with MAIL_TRANSPORT=smtp once T-0128 is merged.
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
-      DATABASE_URL: postgres://zilar:${SERVICE_PASSWORD_ZILAR_DB:?}@postgres:5432/zilar
-      XMPP_ARCHIVE_DATABASE_URL: postgres://zilar_archive:${SERVICE_PASSWORD_ARCHIVE_DB:?}@postgres:5432/ejabberd
+      DATABASE_URL: postgres://zilar:${SERVICE_PASSWORD_ZILAR_DB}@postgres:5432/zilar
+      XMPP_ARCHIVE_DATABASE_URL: postgres://zilar_archive:${SERVICE_PASSWORD_ARCHIVE_DB}@postgres:5432/ejabberd
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      PUBLIC_URL: ${SERVICE_URL_WEB:?}
-      BETTER_AUTH_SECRET: ${SERVICE_PASSWORD_BETTER_AUTH:?}
+      PUBLIC_URL: ${SERVICE_URL_WEB}
+      BETTER_AUTH_SECRET: ${SERVICE_PASSWORD_BETTER_AUTH}
       # The API shares the web app's domain, so the allowed origin is that domain.
-      WEB_ORIGINS: ${SERVICE_URL_WEB:?}
+      WEB_ORIGINS: ${SERVICE_URL_WEB}
       EJABBERD_API_URL: http://ejabberd:5280/api
-      EJABBERD_ADMIN_JID: admin@${SERVICE_FQDN_WEB:?}
-      EJABBERD_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_ADMIN:?}
-      XMPP_DOMAIN: ${SERVICE_FQDN_WEB:?}
-      XMPP_MUC_DOMAIN: rooms.${SERVICE_FQDN_WEB:?}
+      EJABBERD_ADMIN_JID: admin@${SERVICE_FQDN_WEB}
+      EJABBERD_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_ADMIN}
+      XMPP_DOMAIN: ${SERVICE_FQDN_WEB}
+      XMPP_MUC_DOMAIN: rooms.${SERVICE_FQDN_WEB}
       # The WS handler answers at ejabberd's /ws path, so the public token
       # URL is the routed WS domain plus /ws.
-      XMPP_WS_PUBLIC_URL: wss://${SERVICE_FQDN_WEB:?}/xmpp-ws/ws
-      ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
-      ZILAR_KEY_ENCRYPTION_KEY: ${ZILAR_KEY_ENCRYPTION_KEY:-@empty@}
+      XMPP_WS_PUBLIC_URL: wss://${SERVICE_FQDN_WEB}/xmpp-ws/ws
+      ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT}
+      ZILAR_KEY_ENCRYPTION_KEY: ${ZILAR_KEY_ENCRYPTION_KEY:-}
       # Where sticker files live: a persistent volume (see `volumes:` below),
       # fixed absolute path, always set — never relative, never empty.
       # A manual edit of this value orphans previously uploaded stickers.
@@ -165,7 +165,7 @@ services:
       # the ejabberd_service listener from the XMPP_DOMAIN below (see
       # deploy/ejabberd/push-entrypoint.sh). Set ZILAR_DOMAIN to the same
       # value as XMPP_DOMAIN so the entrypoint derives it.
-      PUSH_COMPONENT_JID: push.${SERVICE_FQDN_WEB:?}
+      PUSH_COMPONENT_JID: push.${SERVICE_FQDN_WEB}
       # Must equal ejabberd's EJABBERD_MACRO_PUSH_COMPONENT_SECRET above.
       PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSH_COMPONENT:-CHANGE_ME_PUSH_COMPONENT_SECRET}
       PUSH_STORAGE_KEY: ${PUSH_STORAGE_KEY:-}
