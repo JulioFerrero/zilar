@@ -1,8 +1,10 @@
 # Zilar brand marks
 
-Zilar is Basque for "silver". The mark is a polished silver speech bubble (chrome with a soft horizon reflection and a specular highlight) sitting on a raised near-black key, the same depth language as the app's own buttons (`docs/design/ui-style.md`). It is deliberately not a letter.
+Zilar is Basque for "silver". The mark is a brushed-silver speech bubble (fine horizontal brushing, a soft horizon reflection, a bevelled shaded rim) set into a black anodized key with a chamfered edge and a fine grain. It follows the project's skeuomorphic depth (`docs/design/ui-style.md`) and is deliberately not a letter.
 
-- `icon.svg`, `icon-1024.png`: the app icon, with transparent corners.
-- `logo-black.svg`, `logo-white.svg`: the flat bubble with a corner glint cut out, for light and dark backgrounds and for small sizes (favicon, notification badge).
+- `icon.svg`: the full-detail icon, built from SVG lighting and noise filters. Render it in a browser (Chrome) for the best result.
+- `icon-1024.png`: that icon rendered in Chrome, transparent corners. Use this for app stores and the PWA/mobile icon sets.
+- `icon-simple.svg`: the same idea with plain gradients (no filters), for small sizes and tools that do not support SVG filters.
+- `logo-black.svg`, `logo-white.svg`: flat bubble with a corner glint cut out, for light/dark backgrounds, favicons and notification badges.
 
-Colours: key `#202020` to `#060606`, silver `#ffffff` to `#5d6570`.
+Colours: key `#1d1d1f` to `#050506`, silver `#fdfeff` to `#6f7a87`.
