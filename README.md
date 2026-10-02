@@ -13,6 +13,7 @@ Friends, family, work groups, and groups with your own AIs, on your own server.
 ![XMPP](https://img.shields.io/badge/chat-XMPP%20%C2%B7%20ejabberd-2B6CB0)
 ![Self-hosted](https://img.shields.io/badge/self--hosted-yes-2EA043)
 ![Status](https://img.shields.io/badge/status-early%20%C2%B7%20in%20active%20development-orange)
+![License MIT](https://img.shields.io/badge/license-MIT-blue)
 
 [Features](#-what-it-does) · [How it works](#-how-it-works) · [Safety](#-safety-is-code-not-prompts) · [Quick start](#-quick-start) · [Docs](#-docs)
 
@@ -219,3 +220,7 @@ Everything binds to `127.0.0.1` only:
 | LiteLLM | `127.0.0.1:4000` | `master_key` and `database_url` come from `infra/.env` |
 
 Configs live in `infra/`: `docker-compose.dev.yml`, `ejabberd/ejabberd.yml`, `litellm/config.yaml` and `postgres/init/`. Images are pinned to exact tags (LiteLLM by digest); never use LiteLLM 1.82.7 or 1.82.8, those releases were compromised.
+
+## 📄 License
+
+MIT, see [`LICENSE`](LICENSE).

@@ -178,7 +178,7 @@ _gen_vapid_keys() {
 }
 
 cmd_init() {
-  _domain="" _admin_email="" _acme_email="" _owner="" _tag="latest"
+  _domain="" _admin_email="" _acme_email="" _owner="julioferrero" _tag="latest"
   _http_port="80" _https_port="443"
   _push_enabled=1 _push_subject=""
 
@@ -222,7 +222,7 @@ cmd_init() {
   [ -n "$_domain" ] || _domain="$(ask "Public domain of this install (localhost to try it out)" "localhost")"
   [ -n "$_admin_email" ] || _admin_email="$(ask "Your email address (the first account signs up with it)" "")"
   [ -n "$_acme_email" ] || _acme_email="$(ask "Email for the Let's Encrypt account" "$_admin_email")"
-  [ -n "$_owner" ] || _owner="$(ask "GitHub owner that publishes the images (ghcr.io/<owner>/zilar-*)" "")"
+  # the official images are public at ghcr.io/julioferrero; --image-owner points at a fork
   _tag="${_tag:-latest}"
 
   case "$_domain" in

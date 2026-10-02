@@ -100,7 +100,7 @@ services:
       - zilar
 
   server:
-    image: ghcr.io/${IMAGE_OWNER:?IMAGE_OWNER is required}/zilar-server:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-server:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -196,7 +196,7 @@ services:
       - zilar
 
   web:
-    image: ghcr.io/${IMAGE_OWNER:?IMAGE_OWNER is required}/zilar-web:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-web:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       server:

@@ -16,7 +16,7 @@ follow the documented conventions but were **not** verified live.
 Prerequisites: Docker with the Compose plugin, `openssl`, `curl`.
 
 ```bash
-git clone <zilar-repo-url> zilar
+git clone https://github.com/JulioFerrero/zilar.git zilar
 cd zilar
 ./deploy/zilar init     # asks for domain, emails, image owner; writes deploy/.env (0600)
 ./deploy/zilar up       # starts everything and waits until it is healthy
@@ -44,7 +44,7 @@ do what they say.
 The same steps the helper runs, by hand:
 
 ```bash
-git clone <zilar-repo-url> zilar
+git clone https://github.com/JulioFerrero/zilar.git zilar
 cd zilar
 cp deploy/.env.example deploy/.env
 ```

@@ -41,7 +41,7 @@
 
 services:
   postgres:
-    image: ghcr.io/${IMAGE_OWNER:?}/zilar-postgres:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-postgres:${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -63,7 +63,7 @@ services:
     # Production config (ejabberd.yml + jwt-entrypoint.sh) is baked into the
     # image by deploy/ejabberd/Dockerfile; hosts, passwords, the upload URL
     # and the JWT secret arrive as environment below.
-    image: ghcr.io/${IMAGE_OWNER:?}/zilar-ejabberd:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-ejabberd:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -114,7 +114,7 @@ services:
       start_period: 20s
 
   server:
-    image: ghcr.io/${IMAGE_OWNER:?}/zilar-server:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-server:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -211,7 +211,7 @@ services:
       - sticker-data:/data/stickers
 
   web:
-    image: ghcr.io/${IMAGE_OWNER:?}/zilar-web:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-web:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       server:
