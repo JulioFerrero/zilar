@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router';
 import { ApiError, importTelegramStickers, type TelegramImportResult } from '@/lib/api';
+import { useIsServerOwner } from '@/lib/useIsServerOwner';
 
 type DialogStatus = 'idle' | 'busy' | 'done';
 
@@ -20,7 +22,7 @@ export function TelegramImportDialog({
   onDone,
   onClose,
   onUnavailable,
-  isOwner = false,
+  isOwner,
   importFn = importTelegramStickers,
 }: {
   onDone: () => void;
@@ -30,8 +32,12 @@ export function TelegramImportDialog({
    * can be disabled. The entry stays visible and the dialog shows why.
    */
   onUnavailable?: () => void;
-  /** The server owner gets a link to the integrations settings page. */
-  isOwner?: boolean;
+  /**
+   * Forces the owner view (tests only). When omitted the dialog reads the
+   * shared `useIsServerOwner` hook, which starts as not-owner and switches
+   * on after the 200 — the settings link never flashes for a non-owner.
+   */
+  isOwner?: boolean | undefined;
   /** Injected in tests so no network is touched. */
   importFn?: typeof importTelegramStickers;
 }) {
@@ -40,17 +46,26 @@ export function TelegramImportDialog({
   const [error, setError] = useState('');
   const [result, setResult] = useState<TelegramImportResult | undefined>(undefined);
   const [unavailable, setUnavailable] = useState(false);
+  const [tokenInvalid, setTokenInvalid] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const busy = status === 'busy';
+  // The owner view: the prop wins when given (tests), else the shared hook.
+  // The hook call is unconditional (rules of hooks); the prop only decides
+  // which value is used.
+  const hookOwner = useIsServerOwner();
+  const ownerView = isOwner ?? hookOwner;
 
   // Focus into the dialog on open, like the other overlay dialogs.
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // Esc closes the dialog from any focus position — but never while busy.
+  // Esc closes the dialog from any focus position — but never while busy
+  // (the unavailable and token-invalid states have no in-flight request, so
+  // Esc closes those too). One listener covers every state, like
+  // `InviteDialog` and `NewGroupDialog`.
   useEffect(() => {
-    if (busy || unavailable) {
+    if (busy) {
       return;
     }
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -60,21 +75,7 @@ export function TelegramImportDialog({
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [busy, unavailable, onClose]);
-
-  // Esc also closes the unavailable state (it has no in-flight request).
-  useEffect(() => {
-    if (!unavailable) {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [unavailable, onClose]);
+  }, [busy, onClose]);
 
   const run = async (): Promise<void> => {
     if (input.trim() === '') {
@@ -91,6 +92,13 @@ export function TelegramImportDialog({
       if (cause instanceof ApiError && cause.status === 501) {
         onUnavailable?.();
         setUnavailable(true);
+        setStatus('idle');
+        return;
+      } else if (cause instanceof ApiError && cause.code === 'token_invalid') {
+        // The saved token died at Telegram's side (revoked/replaced after
+        // it was stored). Not a form error: the whole dialog becomes the
+        // message, with the settings link for the owner.
+        setTokenInvalid(true);
         setStatus('idle');
         return;
       } else if (cause instanceof ApiError && cause.status === 429) {
@@ -148,15 +156,56 @@ export function TelegramImportDialog({
         <p className="mt-1 text-[14px] text-muted-foreground">
           Telegram import is not set up on this server.
         </p>
-        {isOwner ? (
+        {ownerView ? (
           <p className="mt-3 text-[14px]">
-            <a href="/settings/integrations" className="text-accent underline hover:no-underline">
+            <Link to="/settings/integrations" className="text-accent underline hover:no-underline">
               Open the integrations settings to add a bot token.
-            </a>
+            </Link>
           </p>
         ) : (
           <p className="mt-3 text-[14px] text-muted-foreground">
             Ask the person who runs this server to set it up.
+          </p>
+        )}
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
+          >
+            Close
+          </button>
+        </div>
+      </>,
+    );
+  }
+
+  if (tokenInvalid) {
+    return overlay(
+      'Telegram token rejected',
+      <>
+        <div className="flex items-start justify-between gap-2">
+          <h2 className="text-[18px] font-semibold">The Telegram token was rejected</h2>
+          <button
+            type="button"
+            aria-label="Close"
+            title="Close"
+            onClick={onClose}
+            className="rounded-full p-1 text-muted-foreground hover:bg-muted"
+          >
+            ✕
+          </button>
+        </div>
+        {ownerView ? (
+          <p className="mt-3 text-[14px]">
+            The Telegram token was rejected. The server owner needs to update it —{' '}
+            <Link to="/settings/integrations" className="text-accent underline hover:no-underline">
+              open the integrations settings.
+            </Link>
+          </p>
+        ) : (
+          <p className="mt-3 text-[14px] text-muted-foreground">
+            The Telegram token was rejected. The server owner needs to update it.
           </p>
         )}
         <div className="mt-5 flex justify-end">

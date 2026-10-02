@@ -541,6 +541,26 @@ describe('telegram sticker import', () => {
     expect(summary.skippedInvalid).toBe(1);
   });
 
+  it('answers 409 token_invalid when Telegram rejects the stored token', async () => {
+    const client: TelegramClient = {
+      getMe: async () => ({ ok: true }),
+      getStickerSet: async () => {
+        throw new TelegramImportError('invalid_token', 'Telegram rejected the bot token');
+      },
+      downloadFile: async () => new Uint8Array(),
+    };
+    const response = await importRequest(appWithFake(client), owner, { input: 'FunCats' });
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('token_invalid');
+    expect(body.error.message).toBe(
+      'The Telegram token was rejected. The server owner needs to update it.',
+    );
+    // The token never reaches the response or the logs.
+    expect(await response.text().catch(() => '')).not.toContain('test-bot-token');
+    expect(context.logOutput()).not.toContain('test-bot-token');
+  });
+
   it('never lets the bot token reach the logs on a failed import', async () => {
     const client: TelegramClient = {
       getMe: async () => ({ ok: true }),

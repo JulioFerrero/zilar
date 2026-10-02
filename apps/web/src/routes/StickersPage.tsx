@@ -5,12 +5,12 @@ import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PackEditor } from '@/components/PackEditor';
 import { TelegramImportDialog } from '@/components/TelegramImportDialog';
+import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import {
   addStickerPanelPack,
   ApiError,
   deleteStickerPack,
   discoverStickerPacks,
-  getIntegrationsStatus,
   listStickerFavorites,
   listStickerPacks,
   patchStickerPack,
@@ -102,10 +102,11 @@ export function StickersPage() {
   const [movingPackId, setMovingPackId] = useState<string | undefined>(undefined);
   // Telegram import (T-0123, T-0162): the dialog opens from "My packs" and
   // always stays visible. A 501 only disables the button's usual flow (the
-  // server has no token); the dialog itself shows why. `ownerCanManage`
-  // decides whether the dialog links the settings page.
+  // server has no token); the dialog itself shows why. The shared owner
+  // hook decides whether the dialog links the settings page — it starts as
+  // not-owner, so the link never flashes for a non-owner.
   const [importing, setImporting] = useState(false);
-  const [ownerCanManage, setOwnerCanManage] = useState(false);
+  const isServerOwner = useIsServerOwner();
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -355,13 +356,7 @@ export function StickersPage() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setImporting(true);
-                    setOwnerCanManage(true);
-                    void getIntegrationsStatus()
-                      .then((status) => setOwnerCanManage(status.canManage))
-                      .catch(() => setOwnerCanManage(false));
-                  }}
+                  onClick={() => setImporting(true)}
                   className="rounded-full border border-border-strong bg-surface px-4 py-1.5 text-[14px] font-medium text-foreground hover:bg-surface-raised"
                 >
                   Import from Telegram
@@ -655,7 +650,7 @@ export function StickersPage() {
             // hide here. Kept so the entry point learns the feature is
             // off without closing anything.
           }}
-          isOwner={ownerCanManage}
+          isOwner={isServerOwner}
         />
       )}
     </SettingsShell>

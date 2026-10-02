@@ -7,10 +7,9 @@
 // - `GET /api/settings/integrations` → `{ telegram: { configured, source },
 //   email: { configured, source, from }, canManage }`. Secrets never: the
 //   bot token and the Resend key are not returned, not even masked. The
-//   sender address is not a secret and is returned. Any signed-in user may
-//   read the status (the dialog needs `canManage` to decide on its link);
-//   only the owner may write — every write answers the same 404 as an
-//   unknown route for anyone else.
+//   sender address is not a secret and is returned. Like the three writes,
+//   a non-owner gets the same 404 as an unknown route; the web reads "am I
+//   the owner" from 200 versus 404 (`useIsServerOwner`).
 // - `PUT /api/settings/integrations/telegram` body `{ botToken }`: the
 //   token is verified through Telegram's `getMe` (the injectable client)
 //   before storing; a rejected token answers 422 `invalid_token` and
@@ -212,12 +211,12 @@ export function createIntegrationsRoutes(deps: IntegrationsRoutesDependencies): 
 
   routes.get('/settings/integrations', async (c) => {
     const { user: caller } = await requireSession(deps.auth, c.req.raw.headers);
-    // Any signed-in user may read the status: the import dialog needs
-    // `canManage` to decide whether to link the settings page. The secrets
-    // never leave the server either way. Writes below stay owner-only.
-    const canManage = await isOwner(deps.db, caller.id);
+    // Owner-only like the three writes: anyone else gets the same 404 as
+    // an unknown route. The web reads "am I the owner" from 200 versus
+    // 404 (`useIsServerOwner`).
+    await requireOwner(caller.id);
     const [telegram, email] = await Promise.all([telegramStatus(), mailStatus()]);
-    return c.json({ telegram, email, canManage });
+    return c.json({ telegram, email, canManage: true });
   });
 
   routes.put('/settings/integrations/telegram', async (c) => {

@@ -19,6 +19,7 @@ import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { useInstallPrompt } from '@/lib/push';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import { groupChats, visibleChats } from '@/store/store';
 import { cn } from '@/lib/utils';
 import {
@@ -91,6 +92,10 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   // The badge fetches only when the menu opens; `null` is "unknown or failed",
   // which the UI treats as "show nothing". A failed call leaves the previous
   // count in place.
+  // The Integrations menu entry is owner-only (T-0162): the hook starts
+  // as not-owner and switches on after the 200, so a non-owner never sees
+  // it, even for a flash.
+  const isServerOwner = useIsServerOwner();
   const pendingApprovals = usePendingApprovalCount(menuOpen);
   // Installable app (T-0119): the browser offers `beforeinstallprompt` when
   // Zilar is installable; the menu then carries an Install entry.
@@ -228,17 +233,19 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
             >
               Stickers
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/settings/integrations');
-              }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              Integrations
-            </button>
+            {isServerOwner && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  navigate('/settings/integrations');
+                }}
+                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+              >
+                Integrations
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"

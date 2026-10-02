@@ -11,7 +11,7 @@ import {
   type IntegrationsStatus,
 } from '@/lib/api';
 
-type PageStatus = 'loading' | 'ready' | 'error' | 'forbidden';
+type PageStatus = 'loading' | 'ready' | 'forbidden';
 
 function friendlyError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -41,8 +41,10 @@ function friendlyError(error: unknown): string {
  * card (bot token for sticker import). The page is a generic list of
  * integration cards so a GIF provider key can join later (not built now).
  *
- * Non-owners see a short note instead of the cards (`canManage` is false);
- * the token and the key are never shown, not even masked.
+ * The page itself is owner-only: `GET /api/settings/integrations` answers
+ * the same 404 as an unknown route for anyone else, so a non-owner (or a
+ * failed load) sees the owner note instead of the cards. The token and
+ * the key are never shown, not even masked.
  */
 export function IntegrationsPage() {
   const navigate = useNavigate();
@@ -58,12 +60,16 @@ export function IntegrationsPage() {
           return;
         }
         setData(loaded);
-        setStatus(loaded.canManage ? 'ready' : 'forbidden');
+        setStatus('ready');
       })
       .catch((error: unknown) => {
         if (active) {
-          setErrorMessage(friendlyError(error));
-          setStatus('error');
+          // 404 (not the owner) and load failures both land here: the note
+          // below names the owner case, and Retry covers the rest.
+          if (error instanceof ApiError && error.status !== 404) {
+            setErrorMessage(friendlyError(error));
+          }
+          setStatus('forbidden');
         }
       });
     return () => {
@@ -77,10 +83,12 @@ export function IntegrationsPage() {
     try {
       const loaded = await getIntegrationsStatus();
       setData(loaded);
-      setStatus(loaded.canManage ? 'ready' : 'forbidden');
+      setStatus('ready');
     } catch (error) {
-      setErrorMessage(friendlyError(error));
-      setStatus('error');
+      if (error instanceof ApiError && error.status !== 404) {
+        setErrorMessage(friendlyError(error));
+      }
+      setStatus('forbidden');
     }
   };
 
@@ -95,25 +103,28 @@ export function IntegrationsPage() {
           <p className="text-[14px] text-muted-foreground">Loading integrations…</p>
         )}
 
-        {status === 'error' && (
-          <div className="flex flex-col items-center gap-3 text-center">
-            <p role="alert" className="text-[15px] text-danger">
-              {errorMessage}
-            </p>
-            <button
-              type="button"
-              onClick={() => void reload()}
-              className="rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
         {status === 'forbidden' && (
-          <p className="text-[14px] text-muted-foreground">
-            Only the person who runs this server can change integrations.
-          </p>
+          <div className="flex flex-col gap-3">
+            <p className="text-[14px] text-muted-foreground">
+              Only the person who runs this server can change integrations.
+            </p>
+            {errorMessage !== '' && (
+              <p role="alert" className="text-[14px] text-danger">
+                {errorMessage}
+              </p>
+            )}
+            {errorMessage !== '' && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => void reload()}
+                  className="rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {status === 'ready' && data !== undefined && (
@@ -159,10 +170,13 @@ function EmailCard({
         trimmedKey === '' ? { from: from.trim() } : { from: from.trim(), resendApiKey: trimmedKey },
       );
       setKey('');
-      setSaved(true);
       const next = await getIntegrationsStatus();
       onSaved(next.email);
+      // The flag flips only after the reload proved the save stuck; a
+      // failed reload clears it so the success line never lies.
+      setSaved(true);
     } catch (cause) {
+      setSaved(false);
       setError(friendlyError(cause));
     } finally {
       setBusy(false);
@@ -283,10 +297,12 @@ function TelegramCard({
     try {
       await saveTelegramBotToken(token.trim());
       setToken('');
-      setSaved(true);
       const next = await getIntegrationsStatus();
       onSaved(next.telegram);
+      // Only after the reload proved the save stuck (same as Email).
+      setSaved(true);
     } catch (cause) {
+      setSaved(false);
       setError(friendlyError(cause));
     } finally {
       setBusy(false);

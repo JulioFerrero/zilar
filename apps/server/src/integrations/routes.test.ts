@@ -113,18 +113,11 @@ afterEach(async () => {
 });
 
 describe('GET /api/settings/integrations', () => {
-  it('a non-owner reads the status but cannot manage (canManage false)', async () => {
+  it('a non-owner gets the same 404 as an unknown route', async () => {
     const app = appFor();
     const response = await jsonRequest(app, 'GET', '/api/settings/integrations', stranger);
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      telegram: unknown;
-      email: { from: string | null };
-      canManage: boolean;
-    };
-    expect(body.canManage).toBe(false);
-    // The sender address is not a secret and is shared; keys never are.
-    expect('telegram' in body && 'email' in body).toBe(true);
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ error: { code: 'not_found' } });
   });
 
   it('the owner reads empty state before anything is stored', async () => {

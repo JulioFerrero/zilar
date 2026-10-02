@@ -144,18 +144,21 @@ describe('IntegrationsPage', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/rejected the bot token/);
   });
 
-  it('non-owners see a note instead of the cards', async () => {
-    stubFetch(async () => jsonResponse(200, { ...baseStatus, canManage: false }));
+  it('non-owners (404) see a note instead of the cards', async () => {
+    stubFetch(async () =>
+      jsonResponse(404, { error: { code: 'not_found', message: 'Not found' } }),
+    );
     renderApp('/settings/integrations');
 
     expect(await screen.findByText(/Only the person who runs this server/)).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Email' })).toBeNull();
   });
 
-  it('shows the error state with a retry', async () => {
+  it('a non-404 load failure shows the note with a retry', async () => {
     stubFetch(async () => jsonResponse(500, { error: { code: 'boom', message: 'boom' } }));
     renderApp('/settings/integrations');
 
+    expect(await screen.findByText(/Only the person who runs this server/)).toBeTruthy();
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
