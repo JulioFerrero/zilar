@@ -77,17 +77,10 @@ Then start:
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --wait
 ```
 
-Open `https://<ZILAR_DOMAIN>` and create the first account: sign up with an
-email address and the invite CLI on the server container mints the invite
-code the form asks for:
-
-```bash
-docker compose -f deploy/docker-compose.yml --env-file deploy/.env \
-  exec server ./node_modules/.bin/tsx src/auth/invite-cli.ts
-```
-
-Sign-ups after the first need an invite created the same way (the inviter's
-code links the two accounts as contacts).
+Open `https://<ZILAR_DOMAIN>` and finish the setup screen in the browser:
+paste a Resend API key (see "Email" below), a sender address, and the admin
+email, then enter the 6-digit code the server emails to that address. The
+first admin account is created — no terminal, no invite code to copy.
 
 ## Push notifications
 
@@ -138,27 +131,33 @@ images named below, and the compose file is a lone paste.
     `IMAGE_OWNER` / `IMAGE_TAG` pick the release whose images you want (all
     four `zilar-*` images are published per `v*` tag by
     `.github/workflows/images.yml`); passwords are `SERVICE_PASSWORD_*`
-    (generated); `XMPP_DOMAIN` / `XMPP_MUC_DOMAIN` are your domains;
-    `WEB_ORIGIN` is the web app's public URL (copy it after Coolify
-    generates the web domain). For push: `PUSH_ENABLED=true`, the VAPID
-    pair (`PUSH_VAPID_PUBLIC_KEY` / `PUSH_VAPID_PRIVATE_KEY`, generated
-    with openssl per `deploy/baremetal/.env.example`), `PUSH_VAPID_SUBJECT`
-    (`mailto:<you>`), `PUSH_STORAGE_KEY` (`openssl rand -base64 48`), and
+    (generated). There are no mail variables to fill: email is configured
+    on the setup screen in the browser (next step). For push:
+    `PUSH_ENABLED=true`, the VAPID pair (`PUSH_VAPID_PUBLIC_KEY` /
+    `PUSH_VAPID_PRIVATE_KEY`, generated with openssl per
+    `deploy/baremetal/.env.example`), `PUSH_VAPID_SUBJECT` (`mailto:<you>`),
+    `PUSH_STORAGE_KEY` (`openssl rand -base64 48`), and
     `SERVICE_PASSWORD_PUSH_COMPONENT` (generated — shared by the
     `EJABBERD_MACRO_PUSH_COMPONENT_SECRET` and `PUSH_COMPONENT_SECRET`
     lines, so both sides agree). `PUSH_COMPONENT_JID` and `ZILAR_DOMAIN`
-    derive from `XMPP_DOMAIN` (all three must name the same domain, so the
-    entrypoint writes `push.<XMPP_DOMAIN>` into the listener).
-4. In the Domains configuration give the `web` component your main domain,
-   the `server` component an API domain, and the `ejabberd` component two
-   entries (WebSocket and uploads). The compose file declares the
-   `SERVICE_URL_*` variables that wire this up; adjust the hostnames after
-   Coolify generates them.
-5. Deploy and verify: the web app loads, sign-up works, chat connects
+    derive from the web domain (all three must name the same domain, so the
+    entrypoint writes `push.<domain>` into the listener).
+4. In the Domains configuration give the `web` component your main domain.
+   The compose file declares the `SERVICE_URL_*` variables that wire this
+   up; adjust the hostnames after Coolify generates them.
+5. Deploy, open the URL, and finish the setup screen: paste a Resend API
+   key, a sender address, and the admin email. A Resend key is the API key
+   of the [Resend](https://resend.com) email service (resend.com/api-keys)
+   that Zilar uses to send sign-in codes; the sender's domain must be
+   verified in Resend first. The server emails a 6-digit code to the admin
+   address — enter it and the first admin account is created. No terminal,
+   no invite code to copy.
+6. Verify: the web app loads, sign-in codes arrive by email, chat connects
    (the browser devtools Network tab shows the `/xmpp-ws/ws` WebSocket as
    `101 Switching Protocols`).
-6. Create the first account as above, via the server container's terminal in
-   Coolify (`tsx src/auth/invite-cli.ts`).
+
+Sign-ups after the first need an invite from inside the app (the inviter's
+code links the two accounts as contacts).
 
 Not verified on a live Coolify: the exact domain/ports UI mapping
 (`SERVICE_URL_*` generation per component) and the multi-domain routing to
@@ -169,19 +168,18 @@ adjust domain names after Coolify parses it.
 ## Email (required)
 
 Zilar signs people in with a one-time code **sent by email**: there is no
-password login. A production server refuses to start without a mail
-transport, so fill the `MAIL_*` / `SMTP_*` variables in `deploy/.env`
-before the first `up`.
-
-Until T-0128 (SMTP mailer) is merged, the only working transport is the
-development console mailer, which prints OTP codes to the server log
-(`docker compose ... logs server`). That means **a real production install
-cannot send sign-in emails yet** — use any SMTP provider as soon as T-0128
-lands:
+password login. A fresh server needs no mail variables: open the URL and
+the setup screen collects a Resend API key and a sender address in the
+browser (the key is stored encrypted; the sender's domain must be verified
+in Resend). A Resend key is the API key of the
+[Resend](https://resend.com) email service (resend.com/api-keys) that
+Zilar uses to send sign-in codes. Installs that prefer their own provider
+can still set the `MAIL_*` / `SMTP_*` variables in `deploy/.env` instead
+(explicit env wins over the stored settings):
 
 | Variable | What to put |
 |---|---|
-| `MAIL_TRANSPORT` | `smtp` once T-0128 is merged; `console` only for a local trial. |
+| `MAIL_TRANSPORT` | `smtp` to use your own provider; unset means the setup screen provides mail. `console` only for a local trial. |
 | `SMTP_HOST` | Your provider's host, e.g. `smtp.resend.com`, `smtp.sendgrid.net`, `email-smtp.eu-west-1.amazonaws.com`. |
 | `SMTP_PORT` / `SMTP_SECURE` | `587` + `false` (STARTTLS) for most providers; `465` + `true` for implicit TLS. |
 | `SMTP_USER` / `SMTP_PASSWORD` | The provider's username (often `apikey`) and password or API key. |
@@ -318,10 +316,12 @@ stay consistent with the databases already created.
 missing or too short (the message names it, never its value). Compare
 `deploy/.env` against `deploy/.env.example` line by line.
 
-**Server refuses production without email.** `NODE_ENV=production` needs a
-real mail transport (`MAIL_TRANSPORT=smtp`, landing in T-0128). Until then,
-a production install cannot send sign-in emails — see "Email (required)"
-above. For a local trial only, run the server with `NODE_ENV=development`
+**Sign-in codes never arrive.** The server logs one line per failed send
+(no secret in it). On a fresh install the cause is usually the setup
+screen's test email failing (bad Resend key or unverified sender domain)
+— the setup stays open, so just retry with fixed values. With explicit
+SMTP env, compare `deploy/.env` against `deploy/.env.example` line by
+line. For a local trial only, run the server with `NODE_ENV=development`
 so the console mailer prints OTP codes to the server log.
 
 **Uploads fail.** The app PUTs files to `https://<domain>/upload/<slot>/<file>`
@@ -334,8 +334,10 @@ the install test: slot request → `put`/`get` URLs under
 `https://localhost/upload/...`, `PUT` → `201 Upload successful.`, `GET` →
 the bytes back.
 
-**Sign-up asks for an invite.** By design: create one with the invite CLI
-above.
+**Sign-up asks for an invite.** By design after the first account: the
+first admin is created from the setup screen (no invite); later sign-ups
+need an invite created from inside the app (or the invite CLI above for
+the plain stack).
 
 ## What was tested
 

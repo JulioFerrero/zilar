@@ -6,10 +6,13 @@ import { createLogger } from '../logger';
 import { TEST_SECRET } from '../test-support';
 import {
   ConsoleMailer,
-  MailerConfigurationError,
+  CurrentMailer,
   MailerDeliveryError,
+  MailNotConfiguredError,
+  NotConfiguredMailer,
   SmtpMailer,
   createMailer,
+  createResendMailer,
 } from './mailer';
 
 const baseEnv = {
@@ -88,14 +91,19 @@ function smtpMailer(
 }
 
 describe('mailer', () => {
-  it('(i) refuses to start in production and never logs a code', () => {
+  it('(i) boots in production without mail and fails sends as not-configured', async () => {
     const config = loadServerConfig({ ...baseEnv, NODE_ENV: 'production' });
     const logs = captureLogs();
     const logger = createLogger(config, logs.destination);
 
-    expect(() => createMailer(config, logger)).toThrow(MailerConfigurationError);
-    expect(() => new ConsoleMailer(config, logger)).toThrow(/No email provider/);
-    expect(logs.output()).toBe('');
+    const mailer = createMailer(config, logger);
+    expect(mailer).toBeInstanceOf(NotConfiguredMailer);
+    await expect(mailer.sendOtp('user@example.com', '123456', 'sign-in')).rejects.toBeInstanceOf(
+      MailNotConfiguredError,
+    );
+    const output = logs.output();
+    expect(output).toContain('no mail transport is configured');
+    expect(output).not.toContain('123456');
   });
 
   it('logs the OTP at info in development', async () => {
@@ -282,21 +290,7 @@ describe('mailer', () => {
     expect(logs.output()).toContain('SMTP connection check failed');
   });
 
-  it('refuses console in production without the opt-in, naming the variables', () => {
-    const config = loadServerConfig({
-      ...baseEnv,
-      NODE_ENV: 'production',
-      MAIL_TRANSPORT: 'console',
-    });
-    const logs = captureLogs();
-    expect(() => new ConsoleMailer(config, createLogger(config, logs.destination))).toThrow(
-      /MAIL_ALLOW_CONSOLE_IN_PRODUCTION/,
-    );
-    expect(logs.output()).toBe('');
-  });
-
-  it('lets the console opt-in run in production with a loud warning and warn-level codes', async () => {
-    const code = '345678';
+  it('lets the console mailer run in production behind the explicit opt-in', async () => {
     const config = loadServerConfig({
       ...baseEnv,
       NODE_ENV: 'production',
@@ -307,12 +301,72 @@ describe('mailer', () => {
     const mailer = createMailer(config, createLogger(config, logs.destination));
     expect(mailer).toBeInstanceOf(ConsoleMailer);
 
-    await mailer.sendOtp('operator@example.com', code, 'sign-in');
+    await mailer.sendOtp('operator@example.com', '345678', 'sign-in');
 
     const output = logs.output();
     expect(output).toContain('sign-in codes are written to the server log');
-    expect(output).toContain(code);
+    expect(output).toContain('345678');
     expect(output).toContain('"level":40');
+  });
+
+  it('lets the console mailer run in production without the opt-in flag changing delivery', async () => {
+    const code = '456789';
+    const config = loadServerConfig({
+      ...baseEnv,
+      NODE_ENV: 'production',
+      MAIL_TRANSPORT: 'console',
+    });
+    const logs = captureLogs();
+    const mailer = createMailer(config, createLogger(config, logs.destination));
+    expect(mailer).toBeInstanceOf(ConsoleMailer);
+
+    await mailer.sendOtp('operator@example.com', code, 'sign-in');
+
+    expect(logs.output()).toContain(`[dev-mailer] OTP for operator@example.com: ${code}`);
+  });
+
+  it('builds the Resend mailer on smtp.resend.com:465 with the key as password', () => {
+    const captured: Array<{ message: string }> = [];
+    const logs = captureLogs();
+    const config = loadServerConfig({ ...baseEnv, NODE_ENV: 'production' });
+    const { factory, options } = capturingFactory(captured);
+    const mailer = createResendMailer(
+      config,
+      createLogger(config, logs.destination),
+      { resendApiKey: 're_test_key', from: 'Zilar <no-reply@example.com>' },
+      { transportFactory: factory },
+    );
+    expect(mailer).toBeInstanceOf(SmtpMailer);
+    expect(options()?.host).toBe('smtp.resend.com');
+    expect(options()?.port).toBe(465);
+    expect(options()?.secure).toBe(true);
+    expect(options()?.auth).toEqual({ user: 'resend', pass: 're_test_key' });
+  });
+
+  it('swaps the live mailer without a restart through CurrentMailer', async () => {
+    const sentinelKey = 're_ZILAR_SWAP_SENTINEL_1a2b3c4d5e6f';
+    const config = loadServerConfig({ ...baseEnv, NODE_ENV: 'production' });
+    const logs = captureLogs();
+    const logger = createLogger(config, logs.destination);
+    const live = new CurrentMailer(new NotConfiguredMailer(logger));
+
+    await expect(live.sendOtp('user@example.com', '123456', 'sign-in')).rejects.toBeInstanceOf(
+      MailNotConfiguredError,
+    );
+
+    const captured: Array<{ message: string }> = [];
+    const { factory } = capturingFactory(captured);
+    live.use(
+      createResendMailer(
+        config,
+        logger,
+        { resendApiKey: sentinelKey, from: 'Zilar <no-reply@example.com>' },
+        { transportFactory: factory },
+      ),
+    );
+    await live.sendOtp('user@example.com', '123456', 'sign-in');
+    expect(readLastSent(captured).subject).toBe('Your Zilar sign-in code');
+    expect(logs.output()).not.toContain(sentinelKey);
   });
 
   it('keeps secrets out of stringified config logs and thrown messages', () => {

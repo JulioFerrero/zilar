@@ -35,16 +35,22 @@ export function AuthFlow({
   inviteCode,
   heading,
   subheading,
+  initialEmail,
+  initialStep,
 }: {
   inviteCode?: string | undefined;
   heading: string;
   subheading?: string;
+  /** Pre-fills the email (the setup screen already collected it). */
+  initialEmail?: string | undefined;
+  /** Starts at the code step (the setup screen already sent the code). */
+  initialStep?: 'email' | 'code' | undefined;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
-  const [step, setStep] = useState<'email' | 'code'>('email');
-  const [email, setEmail] = useState('');
+  const [step, setStep] = useState<'email' | 'code'>(initialStep ?? 'email');
+  const [email, setEmail] = useState(initialEmail ?? '');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);

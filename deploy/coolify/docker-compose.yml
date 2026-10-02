@@ -106,11 +106,11 @@ services:
       ejabberd:
         condition: service_healthy
     environment:
-      # See deploy/docker-compose.yml: the SMTP mailer lands in T-0128 and
-      # the server refuses NODE_ENV=production without a mail transport.
-      # Until then Coolify operators keep the console mailer by setting
-      # NODE_ENV=development (OTP codes go to the server log); switch to
-      # production with MAIL_TRANSPORT=smtp once T-0128 is merged.
+      # See deploy/docker-compose.yml: the mailer is picked at runtime.
+      # Explicit SMTP variables below still win (unchanged behaviour); with
+      # none of them set, mail comes from the first-run setup screen
+      # (T-0161), which stores the Resend key encrypted — so there are no
+      # mail secrets to fill in here and no terminal to touch.
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
       DATABASE_URL: postgres://zilar:${SERVICE_PASSWORD_ZILARDB}@postgres:5432/zilar
@@ -144,9 +144,12 @@ services:
       ACTION_DEMO_ENABLED: ${ACTION_DEMO_ENABLED:-false}
       RUNNER_HUB_ENABLED: ${RUNNER_HUB_ENABLED:-false}
       RUNNER_HUB_PORT: 3189
-      # Outgoing email: sign-in codes are sent by email. Same final variable
-      # names as deploy/docker-compose.yml; empty means unset.
-      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-console}
+      # Outgoing email: sign-in codes are sent by email. The first-run
+      # setup screen (T-0161) collects the Resend key in the browser and
+      # stores it encrypted, so mail needs no variables here. The SMTP
+      # overrides below stay for installs that prefer their own provider:
+      # when any of them is set, it wins over the stored settings. Empty
+      # means unset.
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_SECURE: ${SMTP_SECURE:-false}
@@ -154,7 +157,6 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-}
       MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
-      MAIL_ALLOW_CONSOLE_IN_PRODUCTION: ${MAIL_ALLOW_CONSOLE_IN_PRODUCTION:-true}
       PUSH_ENABLED: ${PUSH_ENABLED:-false}
       # Same rule as deploy/docker-compose.yml: leave unfilled Coolify
       # variables unset and the server boots with push off (an empty value

@@ -421,6 +421,37 @@ describe('auth flows', () => {
     expect(context.mailer.sent.length).toBe(before + 1);
   });
 
+  it('(T-0161) answers 503 mail_not_configured when no transport is configured', async () => {
+    const { createAuth } = await import('./auth');
+    const { CurrentMailer, NotConfiguredMailer } = await import('./mailer');
+    const unconfigured = createAuth({
+      db: context.db,
+      config: { ...context.config, MAIL_TRANSPORT: undefined },
+      mailer: new CurrentMailer(new NotConfiguredMailer(context.logger)),
+      adminClient: context.adminClient,
+      logger: context.logger,
+    });
+    const unconfiguredApp = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: { ...context.config, MAIL_TRANSPORT: undefined },
+      auth: unconfigured,
+      adminClient: context.adminClient,
+    });
+    const invite = await createInvite(context.db, { createdBy: null });
+
+    const response = await post(
+      unconfiguredApp,
+      '/api/auth/email-otp/send-verification-otp',
+      { email: 'existing@example.com', type: 'sign-in' },
+      { [INVITE_HEADER]: invite.code },
+    );
+
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { code?: string };
+    expect(body.code).toBe('mail_not_configured');
+  });
+
   it('rate-limits the send-OTP endpoint to 3 per 10 minutes per IP', async () => {
     const app = appFor(context);
     const invite = await createInvite(context.db, { createdBy: null });

@@ -1,7 +1,7 @@
 ---
 id: T-0161
 title: First-run setup screen (Resend key, first admin) with no manual environment setup
-status: blocked
+status: review
 milestone: M5
 branch: task/T-0161-first-run-setup
 model: meta/muse-spark-1.3-contributor
@@ -75,27 +75,42 @@ pnpm --filter @zilar/web test --maxWorkers=2 src/auth src/routes
 
 ## Report (written by the worker when done)
 
-**Status: blocked — a second writer is editing this same worktree concurrently. I did no further source edits after discovering it.**
+Done. First-run setup works end to end: deploy, open the URL, paste a Resend key + sender + admin email, type the emailed 6-digit code. No mail variables, no terminal.
 
-What I did before discovering the conflict:
-- `pnpm install` (exit 0, ~7.5 s).
-- Read AGENTS.md, the task spec, and all "Read first" material plus Better Auth internals (OTP endpoints, `createVerificationOTP` server API, error codes, rate limits, session cookie flows) and web test patterns.
-- Added `instance_settings` to `apps/server/src/db/schema.ts` and generated the single migration `apps/server/drizzle/0034_instance-settings.sql` (+ journal + snapshot) via `drizzle-kit generate --name instance-settings`.
-- Started `apps/server/src/setup/`: wrote `crypto.ts` (AES-256-GCM + HKDF `zilar-instance-settings`, my own design) and a first draft of `settings.ts`; made a comment-only edit to `config.ts`'s mail default (production unset boots unconfigured).
+**What was built (lead-confirmed design: my salted envelope, unset-means-unconfigured, "setup needed" = no users):**
 
-What I found at ~21:04 CEST: uncommitted changes in this worktree that are NOT mine appeared while I was working:
-- `apps/server/src/auth/mailer.ts` — a duplicate `MailNotConfiguredError` class (mine at line 32, theirs at line 221), plus their `SwitchableMailer`, `RESEND_SMTP`, `createResendMailer`, and a `MAIL_TRANSPORT === 'setup'` branch in `createMailer`. File mtime 21:04, after my last edit of it.
-- `apps/server/src/app.ts` — their `setupMailer` dep + `createSetupRoutes` mount. `apps/server/src/index.ts` — their startup wiring via `setup/secret-box.ts` + `loadMailSettings`.
-- `apps/server/src/setup/` — directory created 21:01–21:05 containing BOTH my files (`crypto.ts` 21:03, `settings.ts` 21:04 — my writes) and files I never created (`secret-box.ts`, `secret-box.test.ts`, `routes.ts`, `routes.test.ts`, still being edited at 21:05 while I was reading).
-- Their design differs from mine in load-bearing ways: separate `secret-box.ts` (nonce|ciphertext|tag, zero salt, `settingsKey(config)` helper) vs my `crypto.ts` (v1 versioned envelope with random salt); their settings module has `needsSetup`/`saveMailSettings` signatures my files don't match; their routes import `{ needsSetup, saveMailSettings }` from `./settings` which my `settings.ts` does not export — the tree is currently in a non-compiling mixed state through no action of mine.
+Server:
+- `db/schema.ts` + migration `0034_instance-settings.sql` (one migration only, journal + snapshot): `instance_settings(key, value, updated_at)`.
+- `setup/crypto.ts`: AES-256-GCM with random salt+nonce per value (`v1:salt:iv:ct:tag`, base64url), key from `ZILAR_KEY_ENCRYPTION_KEY` else HKDF-SHA256(`BETTER_AUTH_SECRET`, label `zilar-instance-settings`). Fixed-message `SettingsDecryptionError`.
+- `setup/settings.ts`: `needsSetup` (no user rows), `get/save/deleteMailSettings` (key encrypted, `mail.from` plain), `takeSetupLock` (`pg_advisory_xact_lock`), `settingsCipherFor` (explicit key wins).
+- `auth/mailer.ts`: `MailNotConfiguredError`, `NotConfiguredMailer` (boots in production, logs one clear line, every send fails), `CurrentMailer` holder (swap without restart) + `isTransportConfigured`, `RESEND_SMTP` + `createResendMailer` (smtp.resend.com:465, secure, user `resend`, key as password — existing SMTP mailer, no new dep).
+- `auth/auth.ts`: send-OTP `before` hook throws 503 `mail_not_configured` while unconfigured (uniform for every email; the hook runs before the anti-enumeration fake-success). Defense-in-depth mapping kept in `sendVerificationOTP` (Better Auth swallows send errors via `runInBackgroundOrAwait`, so the hook is the load-bearing 503 — verified by test).
+- `setup/routes.ts`: `GET /api/setup/status` → `{ needsSetup, mailConfigured }`; `POST /api/setup` (zod body) does settings+invite in ONE tx under the advisory lock with re-check inside, sends a REAL test code via `auth.api.createVerificationOTP` + candidate mailer, swaps the live mailer on success, rolls settings back + 422 `mail_send_failed` (no provider detail) on failure. Post-setup POST = same 404 as unknown route. Rate limit 5/10 min per IP. Audit `setup.completed` with null ids/detail (ids only, never email/key/invite). Request log carries no bodies; all error messages are fixed strings.
+- `app.ts` mounts the routes (+ optional `mailer` dep defaulting to config-built, so no existing test call sites changed); `authz-sweep.test.ts` allowlists the two public routes; `index.ts` builds `CurrentMailer`, loads stored Resend settings at boot when env is unset, passes it to auth + app; `config.ts` comment updated (production unset now boots unconfigured; validation rules unchanged, env SMTP still wins).
 
-Why blocked, not merged: two writers on one branch/worktree means every further edit of mine risks silently overwriting or breaking their in-flight work (and vice versa — my `crypto.ts` and `settings.ts` already collide by filename with their design). Per AGENTS.md safety rules I stopped editing source files the moment I confirmed foreign writes.
+Web (`apps/web`):
+- `routes/SetupPage.tsx` at `/setup`: redirects to `/login` when not needed; form (key as password input, Resend help text incl. verified-domain note); on success goes straight to AuthFlow's code step with the invite in memory only. `AuthFlow` gained backwards-compatible `initialEmail`/`initialStep` props.
+- `routes/LoginPage.tsx`: checks status first, shows "Finish setting up this server" link instead of the form while setup is open. `lib/api.ts`: `getSetupStatus`/`postSetup` + zod schemas.
 
-Open questions / decisions needed from the lead:
-1. Who owns T-0161 — me or the other writer? If both, how is the work split (filenames/modules) and where do we coordinate so we stop writing the same files?
-2. Design call: which encryption envelope is canonical — my salted v1 `crypto.ts:SettingsCipher` or their `secret-box.ts` (`seal`/`open`/`settingsKey`)? Same for mailer shape (`NotConfiguredMailer` vs `SwitchableMailer`, `MAIL_TRANSPORT` unset vs `'setup'` value) and "setup needed" definition.
-3. The migration `0034_instance-settings.sql` (+ journal + snapshot) is mine, generated before the conflict; keep it or regenerate after the design call.
+Deploy/docs:
+- `deploy/coolify/docker-compose.yml`: removed `MAIL_TRANSPORT`/`MAIL_ALLOW_CONSOLE_IN_PRODUCTION` console defaults (lead instruction); SMTP overrides stay as optional, stored settings are the default path. Rewrote stale comments.
+- `deploy/docker-compose.yml`: comment-only (variables unchanged, setup screen is the default path).
+- `docs/INSTALL_DOCKER.md`: Coolify section rewritten (paste compose, set domain, deploy, finish setup screen; what a Resend key is); manual path no longer uses the invite CLI for the first account; Email/troubleshooting sections updated.
 
-Checked but did NOT run (tree left in a mixed, likely non-compiling state): `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, server/web tests. No commit made: committing a half-foreign tree would misattribute their work to me.
+**Files changed:** `apps/server/src/setup/**` (new: crypto, settings, routes + 2 test files), mailer.ts, auth.ts, config.ts, app.ts, index.ts, `db/schema.ts` + 1 migration, authz-sweep allowlist; web auth/lib/routes/SetupPage + tests; coolify + plain compose comments; INSTALL_DOCKER.md; this task file.
+
+**Commands (real results):**
+- `pnpm install`: exit 0.
+- `pnpm format:check`: pass (also prettier --write applied to my files + the 2 generated drizzle meta files).
+- `pnpm lint`: pass (11 tasks). `pnpm typecheck`: pass.
+- `pnpm --filter @zilar/server test --maxWorkers=2 src/setup src/auth src/config.test.ts`: 8 files, 144 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 src/auth src/routes`: 11 files, 87 passed.
+- Neighbours: server authz-sweep/app/migrate (15 passed); web api.test + components/auth (75 passed).
+
+**Acceptance:** fresh DB + no mail env boots (NotConfiguredMailer, covered in mailer.test); setup stores encrypted settings → invite → real emailed code → admin completes sign-in with invite header (covered); 404-once-done + 5/10min rate limit covered; sentinel key asserted absent from logs/audit/errors/responses (setup + mailer + crypto tests); env-SMTP behaviour untouched (config/mailer/auth suites pass unmodified except the 2 boot-refusal tests the spec retires).
+
+**Security checklist:** no secrets in logs/audit/errors/URLs (sentinel tests); settings+invite atomic under advisory lock, state read inside; permission (setup-open) checked before any effect, failure after settings-write rolls back; done-setup = same 404; new routes in 401 sweep allowlist (public by design) + POST rate-limited; audit ids-only.
+
+**Notes/deviations:** (1) Early in the session a second writer edited this worktree concurrently; per the lead's message that was the lead, it is removed, I own T-0161 alone and my design is canonical — nothing of theirs remains. (2) `createInvite` takes the full DB, not a tx, so the setup invite is inserted inline in the tx with identical shape (single-use, 7 days, no creator). (3) `invite-cli.ts` kept as-is for post-setup invites. (4) `MAIL_ALLOW_CONSOLE_IN_PRODUCTION` variable kept (harmless) — only the coolify console defaults were removed per instruction.
 
 ## Review (written by Claude)

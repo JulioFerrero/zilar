@@ -1755,3 +1755,42 @@ export function listAudit(input: ListAuditInput): Promise<ListAuditPage> {
   }
   return request(`/audit?${params.toString()}`, auditPageSchema);
 }
+
+// --- First-run setup (T-0161) ------------------------------------------------
+// A fresh server has no users: whoever opens it first finishes the setup
+// screen (Resend key + admin email) and becomes the first admin by
+// completing the emailed sign-in code. The invite code stays in memory in
+// the setup page (never in storage, URL or logs) and rides the sign-up
+// request itself.
+
+const setupStatusSchema = z.object({
+  needsSetup: z.boolean(),
+  mailConfigured: z.boolean(),
+});
+
+export type SetupStatus = z.infer<typeof setupStatusSchema>;
+
+export function getSetupStatus(): Promise<SetupStatus> {
+  return request('/setup/status', setupStatusSchema);
+}
+
+const setupResultSchema = z.object({
+  ok: z.boolean(),
+  inviteCode: z.string(),
+});
+
+export type SetupResult = z.infer<typeof setupResultSchema>;
+
+export interface SetupInput {
+  resendApiKey: string;
+  from: string;
+  adminEmail: string;
+}
+
+export function postSetup(input: SetupInput): Promise<SetupResult> {
+  return request('/setup', setupResultSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}

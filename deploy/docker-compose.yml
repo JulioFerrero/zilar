@@ -148,10 +148,13 @@ services:
       ACTION_DEMO_ENABLED: ${ACTION_DEMO_ENABLED:-false}
       RUNNER_HUB_ENABLED: ${RUNNER_HUB_ENABLED:-false}
       RUNNER_HUB_PORT: 3189
-      # Outgoing email: sign-in codes are sent by email. The SMTP mailer
-      # lands in T-0128; the variable names below are final and pass through
-      # today so a filled .env keeps working once T-0128 is merged. Empty
-      # defaults: the server treats an empty value as unset.
+      # Outgoing email: sign-in codes are sent by email. The first-run
+      # setup screen (T-0161) collects the Resend key in the browser and
+      # stores it encrypted, so a fresh install needs no mail variables.
+      # The SMTP variables below stay for installs that prefer their own
+      # provider: when any of them is set, it wins over the stored
+      # settings. Empty defaults: the server treats an empty value as
+      # unset.
       MAIL_TRANSPORT: ${MAIL_TRANSPORT:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}

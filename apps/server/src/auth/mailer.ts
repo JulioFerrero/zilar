@@ -24,6 +24,18 @@ export class MailerDeliveryError extends Error {
   }
 }
 
+// Thrown when no mail transport is configured (T-0161): no
+// `MAIL_TRANSPORT`/`SMTP_*` env and no stored Resend settings from the
+// setup screen. The sign-in hook maps it to a 503 `mail_not_configured`
+// response (see `auth/auth.ts`); the message never names a provider or a
+// secret.
+export class MailNotConfiguredError extends Error {
+  constructor() {
+    super('Email is not configured. Finish the server setup first.');
+    this.name = 'MailNotConfiguredError';
+  }
+}
+
 const CONNECTION_TIMEOUT_MS = 10_000;
 const SEND_TIMEOUT_MS = 20_000;
 
@@ -182,13 +194,6 @@ export class ConsoleMailer implements Mailer {
     if (config.MAIL_TRANSPORT === 'smtp') {
       throw new MailerConfigurationError('MAIL_TRANSPORT=smtp needs the SMTP mailer, not console.');
     }
-    if (config.NODE_ENV === 'production' && !config.MAIL_ALLOW_CONSOLE_IN_PRODUCTION) {
-      throw new MailerConfigurationError(
-        'No email provider is configured. Set MAIL_TRANSPORT=smtp with SMTP_HOST, SMTP_PORT, ' +
-          'MAIL_FROM and SMTP_USER/SMTP_PASSWORD, or MAIL_TRANSPORT=console with ' +
-          'MAIL_ALLOW_CONSOLE_IN_PRODUCTION=true for a single-admin private install.',
-      );
-    }
     this.#logger = logger;
     this.#consoleInProduction =
       config.NODE_ENV === 'production' && config.MAIL_ALLOW_CONSOLE_IN_PRODUCTION;
@@ -206,11 +211,101 @@ export class ConsoleMailer implements Mailer {
   }
 }
 
+/**
+ * The live sign-in mailer while no transport is configured (T-0161): no
+ * `MAIL_TRANSPORT`/`SMTP_*` env and no stored Resend settings from the
+ * setup screen. The server boots with it in production, and every code
+ * send fails with a clear logged error (no secret in it) so the caller
+ * can answer 503 `mail_not_configured`.
+ */
+export class NotConfiguredMailer implements Mailer {
+  readonly #logger: Logger;
+
+  constructor(logger: Logger) {
+    this.#logger = logger;
+  }
+
+  async sendOtp(_email: string, _code: string, purpose: OtpPurpose): Promise<void> {
+    this.#logger.warn(
+      { purpose },
+      'sign-in email not sent: no mail transport is configured (finish the setup screen)',
+    );
+    throw new MailNotConfiguredError();
+  }
+}
+
+/**
+ * The single live mailer the auth flow sends through (T-0161). It
+ * delegates to the current transport and swaps it without a restart:
+ * explicit `MAIL_TRANSPORT`/`SMTP_*` env sets it at boot, otherwise it
+ * starts as `NotConfiguredMailer` and the setup screen swaps in the
+ * stored Resend mailer on success (and at the next boot, from storage).
+ */
+export class CurrentMailer implements Mailer {
+  #current: Mailer;
+
+  constructor(initial: Mailer) {
+    this.#current = initial;
+  }
+
+  get configured(): boolean {
+    return isTransportConfigured(this.#current);
+  }
+
+  use(mailer: Mailer): void {
+    this.#current = mailer;
+  }
+
+  async sendOtp(email: string, code: string, purpose: OtpPurpose): Promise<void> {
+    await this.#current.sendOtp(email, code, purpose);
+  }
+}
+
+/**
+ * Whether a mailer can actually send: anything except the
+ * `NotConfiguredMailer` counts (test fakes, console, SMTP, Resend).
+ */
+export function isTransportConfigured(mailer: Mailer): boolean {
+  if (mailer instanceof CurrentMailer) {
+    return mailer.configured;
+  }
+  return !(mailer instanceof NotConfiguredMailer);
+}
+
+export const RESEND_SMTP = { host: 'smtp.resend.com', port: 465, user: 'resend' } as const;
+
+// Resend is used through its SMTP endpoint with the existing SMTP mailer:
+// the API key is the SMTP password. No new dependency.
+export function createResendMailer(
+  config: ServerConfig,
+  logger: Logger,
+  settings: { resendApiKey: string; from: string },
+  options: SmtpMailerOptions = {},
+): SmtpMailer {
+  return new SmtpMailer(
+    {
+      ...config,
+      MAIL_TRANSPORT: 'smtp',
+      SMTP_HOST: RESEND_SMTP.host,
+      SMTP_PORT: RESEND_SMTP.port,
+      SMTP_SECURE: true,
+      SMTP_USER: RESEND_SMTP.user,
+      SMTP_PASSWORD: settings.resendApiKey,
+      MAIL_FROM: settings.from,
+    },
+    logger,
+    options,
+  );
+}
+
 export function createMailer(config: ServerConfig, logger: Logger): Mailer {
   if (config.MAIL_TRANSPORT === 'smtp') {
     const mailer = new SmtpMailer(config, logger);
     void mailer.verifyConnection();
     return mailer;
   }
-  return new ConsoleMailer(config, logger);
+  if (config.MAIL_TRANSPORT === 'console') {
+    return new ConsoleMailer(config, logger);
+  }
+  return new NotConfiguredMailer(logger);
 }
