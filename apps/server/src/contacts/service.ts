@@ -5,8 +5,8 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { findInviteByCode } from '../auth/invites';
 
-// The XMPP roster group every Galena contact goes into.
-export const ROSTER_GROUP = 'Galena';
+// The XMPP roster group every Zilar contact goes into.
+export const ROSTER_GROUP = 'Zilar';
 
 // Shown for contacts who never set a display name. Never an email: a contact's
 // email must not leak into another user's chat list.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { screen, within } from '@testing-library/react';
-import type { ChatSummary, UiMessage } from '@galena/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { renderApp } from '@/test/renderApp';
 
 function at(daysAgo: number, hour: number, minute: number): Date {

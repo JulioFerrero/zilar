@@ -99,7 +99,7 @@ export const GIF_ATTRIBUTION = 'Powered by Giphy';
 /**
  * Whether a GIF preview URL may be auto-loaded: only the same-origin proxy
  * path — a relative `/api/gifs/media/…` path, or an absolute URL on the
- * Galena API origin with that path (the API client builds absolute URLs for
+ * Zilar API origin with that path (the API client builds absolute URLs for
  * native fetch; relative paths resolve against the API origin, exactly like
  * web). Anything else — a provider URL, a hostile absolute URL, a `data:`
  * URI (mock art is app-generated, never fetched), garbage — never loads;

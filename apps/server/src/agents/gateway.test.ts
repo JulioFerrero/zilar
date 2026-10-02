@@ -7,7 +7,7 @@ import type {
   ConnectionStatus,
   XmppCore,
   XmppCoreOptions,
-} from '@galena/xmpp-core';
+} from '@zilar/xmpp-core';
 import type {
   AddModelInput,
   FetchLike,

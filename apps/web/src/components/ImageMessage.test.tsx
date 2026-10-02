@@ -6,7 +6,7 @@ describe('ImageMessage', () => {
   it('reserves the aspect ratio from the known size and is lazy', () => {
     render(
       <ImageMessage
-        url="https://files.galena.test/stage.png"
+        url="https://files.zilar.test/stage.png"
         alt="stage.png"
         width={800}
         height={400}
@@ -22,10 +22,10 @@ describe('ImageMessage', () => {
   });
 
   it('links only http(s) images and opens them safely', () => {
-    render(<ImageMessage url="https://files.galena.test/stage.png" alt="stage.png" />);
+    render(<ImageMessage url="https://files.zilar.test/stage.png" alt="stage.png" />);
 
     const link = screen.getByRole('link');
-    expect(link.getAttribute('href')).toBe('https://files.galena.test/stage.png');
+    expect(link.getAttribute('href')).toBe('https://files.zilar.test/stage.png');
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
   });
@@ -38,7 +38,7 @@ describe('ImageMessage', () => {
   });
 
   it('shows a small tile when the image is broken', () => {
-    render(<ImageMessage url="https://files.galena.test/gone.png" alt="gone.png" />);
+    render(<ImageMessage url="https://files.zilar.test/gone.png" alt="gone.png" />);
 
     fireEvent.error(screen.getByRole('img'));
 

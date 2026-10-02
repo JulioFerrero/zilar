@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { Payload } from '@galena/protocol';
+import type { Payload } from '@zilar/protocol';
 import {
   aiLimits,
   ais,
@@ -106,7 +106,7 @@ describe('production announcer (T-0110 topic wiring)', () => {
     });
     const aiId = randomUUID();
     const localpart = `ai-${aiId}`;
-    const aiJid = `${localpart}@galena.localhost`;
+    const aiJid = `${localpart}@zilar.localhost`;
     await context.db.insert(ais).values({
       id: aiId,
       owner: owner.id,
@@ -151,7 +151,7 @@ describe('production announcer (T-0110 topic wiring)', () => {
         action: 'demo.echo',
         summary: 'Echo hello',
         argsHash: argsHash(1),
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
         expiresAt: new Date(Date.now() + 60_000),
       })
       .returning();
@@ -195,7 +195,7 @@ describe('production announcer (T-0110 topic wiring)', () => {
         action: 'demo.echo',
         summary: 'Echo hello',
         argsHash: argsHash(2),
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
         expiresAt: new Date(Date.now() + 60_000),
       })
       .returning();
@@ -223,7 +223,7 @@ describe('production announcer (T-0110 topic wiring)', () => {
         action: 'demo.echo',
         summary: 'Echo hello',
         argsHash: argsHash(3),
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
         expiresAt: new Date(Date.now() + 60_000),
       })
       .returning();

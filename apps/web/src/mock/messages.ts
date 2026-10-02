@@ -1,4 +1,4 @@
-import type { MessageStatus, UiMessage } from '@galena/chat-core';
+import type { MessageStatus, UiMessage } from '@zilar/chat-core';
 import { approvalCard, atHour, progressCard, svgImage, voice } from './helpers';
 import { ME, PEOPLE } from './ids';
 
@@ -248,7 +248,7 @@ const anaMessages: UiMessage[] = [
     createdAt: atHour(0, 12, 37),
     attachment: {
       kind: 'file',
-      url: 'https://files.galena.test/ana/tickets.pdf',
+      url: 'https://files.zilar.test/ana/tickets.pdf',
       name: 'tickets.pdf',
       size: 2_411_724,
       mime: 'application/pdf',
@@ -751,7 +751,7 @@ const devTeamMessages: UiMessage[] = [
     senderName: luis.name,
     text: '@You can you review the checkout fix before I merge?',
     createdAt: atHour(0, 11, 0),
-    mentions: [{ jid: 'u-you@galena.test', name: 'You', begin: 0, end: 4 }],
+    mentions: [{ jid: 'u-you@zilar.test', name: 'You', begin: 0, end: 4 }],
   }),
   message({
     id: 'dev-32',
@@ -849,7 +849,7 @@ const devAiMessages: UiMessage[] = [
       'Run the suite locally with:',
       '',
       '```bash',
-      'pnpm --filter @galena/web exec vitest run --coverage --reporter=verbose --pool=vmThreads --maxWorkers=4',
+      'pnpm --filter @zilar/web exec vitest run --coverage --reporter=verbose --pool=vmThreads --maxWorkers=4',
       '```',
       '',
       '| Change | Risk | Notes |',

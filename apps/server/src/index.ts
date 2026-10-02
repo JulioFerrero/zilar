@@ -284,9 +284,9 @@ let pushComponent: PushComponentHandle | null = null;
 // without LiteLLM plus the key cipher. It connects each active AI to XMPP so
 // owner DMs get replies.
 const gatewayCipher =
-  config.GALENA_KEY_ENCRYPTION_KEY === undefined
+  config.ZILAR_KEY_ENCRYPTION_KEY === undefined
     ? undefined
-    : createKeyCipher(config.GALENA_KEY_ENCRYPTION_KEY);
+    : createKeyCipher(config.ZILAR_KEY_ENCRYPTION_KEY);
 const gatewayLitellm =
   config.LITELLM_MASTER_KEY === undefined ? undefined : createLitellmAdminClientFromConfig(config);
 const gateway = createAgentGateway(
@@ -322,7 +322,7 @@ const gateway = createAgentGateway(
 // starts, which is the same behaviour the spec asks for.
 gatewayRef = gateway;
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
-  logger.info({ port: info.port }, 'galena-server listening');
+  logger.info({ port: info.port }, 'zilar-server listening');
 });
 
 // Runner hub (T-0071): starts only when RUNNER_HUB_ENABLED=true, after the

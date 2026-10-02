@@ -37,7 +37,7 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
   const [store] = useState<StoreApi<ChatStoreState>>(() =>
     isMockMode(params, {
       dev: __DEV__,
-      envMock: process.env.EXPO_PUBLIC_GALENA_MOCK,
+      envMock: process.env.EXPO_PUBLIC_ZILAR_MOCK,
       nodeEnv: process.env.NODE_ENV,
     })
       ? createChatStore()

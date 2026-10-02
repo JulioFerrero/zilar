@@ -1,14 +1,14 @@
-# Galena server configuration reference
+# Zilar server configuration reference
 
-This page is the source of truth for running `@galena`. Every variable here is read by `apps/server/src/config.ts` or `apps/server/src/xmpp/config.ts`; the description and default come from those files. Placeholders only — use `CHANGE_ME` everywhere a real value would go.
+This page is the source of truth for running `@zilar`. Every variable here is read by `apps/server/src/config.ts` or `apps/server/src/xmpp/config.ts`; the description and default come from those files. Placeholders only — use `CHANGE_ME` everywhere a real value would go.
 
 ## 1. What runs where
 
-A Galena install has one TypeScript server, one React web app, one Postgres database (with `pgvector` enabled), one ejabberd instance, one LiteLLM proxy and an optional runner hub. The numbers below are what the code actually binds to; check them against `infra/docker-compose.dev.yml` and `apps/server/src/config.ts` before changing anything.
+A Zilar install has one TypeScript server, one React web app, one Postgres database (with `pgvector` enabled), one ejabberd instance, one LiteLLM proxy and an optional runner hub. The numbers below are what the code actually binds to; check them against `infra/docker-compose.dev.yml` and `apps/server/src/config.ts` before changing anything.
 
 | Process | What it is | Default port (loopback) | Source |
 |---|---|---|---|
-| Galena server (`@galena`) | `@hono/node-server` HTTP API | `PORT` (default `3000`; the local dev stack uses `3188`) | `config.ts:39`, `index.ts:202` |
+| Zilar server (`@zilar`) | `@hono/node-server` HTTP API | `PORT` (default `3000`; the local dev stack uses `3188`) | `config.ts:39`, `index.ts:202` |
 | Web dev server (Vite) | React app, proxies `/api` to the server | `5173` | `apps/web/vite.config.ts:16` |
 | Postgres (`pgvector/pgvector:0.8.6-pg18-trixie`) | data store | `5432` | `infra/docker-compose.dev.yml:21` |
 | ejabberd (`26.07`) | XMPP server (C2S + admin API + WebSocket) | `5222` (C2S), `5280` (HTTP/WS + admin) | `infra/docker-compose.dev.yml:49-50` |
@@ -16,7 +16,7 @@ A Galena install has one TypeScript server, one React web app, one Postgres data
 | Runner hub (optional) | tunnel for approved AI runners | `RUNNER_HUB_PORT` (default `3189`) | `config.ts:77-84`, `index.ts:212` |
 | `ACTION_DEMO_ENABLED` | No | `false` | Registers the harmless `demo.echo` action (tier 2, no side effects) so an owner can prove the approval flow end to end: ask the AI in its DM to echo a text, approve the card, see the result (`actions/demo.ts`, `config.ts`). With the flag off no action is registered and the AI is not offered the `request_action` tool. | Not a secret. For testing only. |
 
-Port `3000` is the code default but the local dev stack does not use it (it belongs to another app on the owner's machine). The Galena server's `BETTER_AUTH_URL` defaults to `PUBLIC_URL` (`config.ts:103`), and `apps/web/vite.config.ts:16` proxies `/api` to `GALENA_API_URL` (default `http://localhost:3000`), so the dev stack runs the server with `PORT=3188` and Vite with `GALENA_API_URL=http://localhost:3188`. See `docs/LEAD_PLAYBOOK.md` §12 for the exact start commands.
+Port `3000` is the code default but the local dev stack does not use it (it belongs to another app on the owner's machine). The Zilar server's `BETTER_AUTH_URL` defaults to `PUBLIC_URL` (`config.ts:103`), and `apps/web/vite.config.ts:16` proxies `/api` to `ZILAR_API_URL` (default `http://localhost:3000`), so the dev stack runs the server with `PORT=3188` and Vite with `ZILAR_API_URL=http://localhost:3188`. See `docs/LEAD_PLAYBOOK.md` §12 for the exact start commands.
 
 ## 2. Environment variables
 
@@ -44,7 +44,7 @@ A value shown as `CHANGE_ME` here is what `apps/server/.env.example` ships with.
 
 ### Mail (sign-in codes)
 
-Galena signs people in only with an email one-time code, so every real install needs a mailer (`auth/mailer.ts`). `createMailer` picks by `MAIL_TRANSPORT` and verifies an SMTP connection at startup without crashing when it fails (a temporary mail outage must not take the chat down; `mailer.ts:209-216`).
+Zilar signs people in only with an email one-time code, so every real install needs a mailer (`auth/mailer.ts`). `createMailer` picks by `MAIL_TRANSPORT` and verifies an SMTP connection at startup without crashing when it fails (a temporary mail outage must not take the chat down; `mailer.ts:209-216`).
 
 | Variable | Required? | Default | What it does | Notes |
 |---|---|---|---|---|
@@ -53,11 +53,11 @@ Galena signs people in only with an email one-time code, so every real install n
 | `SMTP_PORT` | No | `587` | SMTP port, integer in `[1, 65535]` (`config.ts:70-78`). | Not a secret. |
 | `SMTP_SECURE` | No | `false` | `'true'` = implicit TLS (normally port 465); `'false'` = STARTTLS is required (`requireTLS: true`, never falls back to plaintext) (`mailer.ts:103-108`). | Not a secret. Junk values fail startup. |
 | `SMTP_USER` / `SMTP_PASSWORD` | Together or neither, with `smtp` | — | SMTP credentials; no auth when both are absent. Setting only one fails startup (`config.ts:196-244`). | **Secrets.** Never logged, never echoed in a config error (`config.test.ts` proves the password is absent from messages). |
-| `MAIL_FROM` | With `smtp` | — | Sender on sign-in mails, e.g. `Galena <no-reply@example.com>`. Validated as a mailbox at startup. | Not a secret. Missing it fails startup with `MAIL_FROM is required when MAIL_TRANSPORT=smtp`. |
+| `MAIL_FROM` | With `smtp` | — | Sender on sign-in mails, e.g. `Zilar <no-reply@example.com>`. Validated as a mailbox at startup. | Not a secret. Missing it fails startup with `MAIL_FROM is required when MAIL_TRANSPORT=smtp`. |
 | `MAIL_REPLY_TO` | No | — | Optional `Reply-To` header on sign-in mails. Validated as a mailbox when set. | Not a secret. |
 | `MAIL_ALLOW_CONSOLE_IN_PRODUCTION` | No | `false` | Explicit opt-in that lets a single-admin private install run with `MAIL_TRANSPORT=console` in production. The server logs a loud startup warning and the codes appear in the log at `warn` level (`mailer.ts:173-207`). | Not a secret. Unsuitable for anyone but the operator. |
 
-Mails are plain text plus a minimal HTML alternative, English only, with one subject per purpose (`Your Galena sign-in code`, `Verify your email`, `Reset your Galena sign-in`, `Confirm your new email`): the code, its validity in minutes (`OTP_EXPIRES_IN_SECONDS`, 10 minutes today), and "If you did not ask for this, ignore this email." — no links, no images. On delivery failure `sendOtp` throws a generic `MailerDeliveryError` (the auth route answers the same way it does today) and logs only the SMTP response code, never the code or the address echo. A connection timeout (10 s) and a send timeout (20 s) keep a dead SMTP server from hanging sign-in (`mailer.ts:27-28`).
+Mails are plain text plus a minimal HTML alternative, English only, with one subject per purpose (`Your Zilar sign-in code`, `Verify your email`, `Reset your Zilar sign-in`, `Confirm your new email`): the code, its validity in minutes (`OTP_EXPIRES_IN_SECONDS`, 10 minutes today), and "If you did not ask for this, ignore this email." — no links, no images. On delivery failure `sendOtp` throws a generic `MailerDeliveryError` (the auth route answers the same way it does today) and logs only the SMTP response code, never the code or the address echo. A connection timeout (10 s) and a send timeout (20 s) keep a dead SMTP server from hanging sign-in (`mailer.ts:27-28`).
 
 ### XMPP / ejabberd
 
@@ -66,20 +66,20 @@ Mails are plain text plus a minimal HTML alternative, English only, with one sub
 | `EJABBERD_API_URL` | No | `http://127.0.0.1:5280/api` | Admin HTTP API the server uses to create accounts, add roster items and manage MUC rooms (`xmpp/admin-client.ts`, `xmpp/config.ts:14`). Trailing slashes are stripped (`xmpp/config.ts:46-48`, `56`). | Not a secret, but in production it should be `https://`. |
 | `EJABBERD_ADMIN_JID` | Yes | — | Bare JID of the ejabberd admin account the server logs in as. Must match `EJABBERD_ADMIN_JID` in `infra/.env` so the container registers the same account on first boot (`infra/docker-compose.dev.yml:60`). | **Treat as semi-secret** — knowing the admin JID plus its password is enough to call the admin API. |
 | `EJABBERD_ADMIN_PASSWORD` | Yes | — | Password for the admin account above. Must match `EJABBERD_ADMIN_PASSWORD` in `infra/.env` so the container's `REGISTER_ADMIN_PASSWORD` accepts it (`infra/docker-compose.dev.yml:61`). | **Secret.** Never log. |
-| `XMPP_DOMAIN` | No | `galena.localhost` | XMPP domain users are registered on. Lowercase host name, `1-253` characters (`xmpp/config.ts:5-9`, `17`). | Not a secret. |
-| `XMPP_MUC_DOMAIN` | No | `rooms.galena.localhost` | MUC (group chat) domain. Same shape rules as `XMPP_DOMAIN` (`xmpp/config.ts:18`). | Not a secret. |
+| `XMPP_DOMAIN` | No | `zilar.localhost` | XMPP domain users are registered on. Lowercase host name, `1-253` characters (`xmpp/config.ts:5-9`, `17`). | Not a secret. |
+| `XMPP_MUC_DOMAIN` | No | `rooms.zilar.localhost` | MUC (group chat) domain. Same shape rules as `XMPP_DOMAIN` (`xmpp/config.ts:18`). | Not a secret. |
 | `XMPP_WS_PUBLIC_URL` | No | `ws://127.0.0.1:5280/ws` | Public WebSocket URL clients connect to. Must be `ws://` or `wss://` (`xmpp/config.ts:19`). | Not a secret. In production use `wss://`. |
-| `GALENA_XMPP_JWT_SECRET` | Yes | — | HS256 secret the server signs short-lived XMPP login JWTs with. Must be at least 32 characters and match `GALENA_XMPP_JWT_SECRET` in `infra/.env` so the ejabberd container's `jwt-entrypoint.sh` derives the same JWK (`infra/docker-compose.dev.yml:63`). | **Secret.** Generate with `openssl rand -base64 48`. Changing it later invalidates every issued token. |
-| `XMPP_ARCHIVE_DATABASE_URL` | No | — | Connection string for the read-only `galena_archive` role on the ejabberd MAM database (`search/service.ts`, `search/routes.ts`). Absent → `GET /api/search` answers 501 `search_unavailable` and the web hides the feature. The pool is separate from the app pool (`max` 3) with a 3 s statement timeout. | **Secret.** Password goes here. See "Message search" below. |
+| `ZILAR_XMPP_JWT_SECRET` | Yes | — | HS256 secret the server signs short-lived XMPP login JWTs with. Must be at least 32 characters and match `ZILAR_XMPP_JWT_SECRET` in `infra/.env` so the ejabberd container's `jwt-entrypoint.sh` derives the same JWK (`infra/docker-compose.dev.yml:63`). | **Secret.** Generate with `openssl rand -base64 48`. Changing it later invalidates every issued token. |
+| `XMPP_ARCHIVE_DATABASE_URL` | No | — | Connection string for the read-only `zilar_archive` role on the ejabberd MAM database (`search/service.ts`, `search/routes.ts`). Absent → `GET /api/search` answers 501 `search_unavailable` and the web hides the feature. The pool is separate from the app pool (`max` 3) with a 3 s statement timeout. | **Secret.** Password goes here. See "Message search" below. |
 
 ### Message search (T-0117)
 
 Search reads the ejabberd `archive` table through a **read-only** role. Create it:
 
-1. Add `GALENA_ARCHIVE_DB_PASSWORD=CHANGE_ME` to `infra/.env` (git-ignored; generate with `openssl rand -base64 32`).
-2. `infra/postgres/init/20-search-reader.sql` creates the `galena_archive` role on first start of an empty data volume, grants it `CONNECT` + `USAGE ON SCHEMA public`, grants `SELECT` on `archive` when the table already exists, and sets `ALTER DEFAULT PRIVILEGES FOR ROLE ejabberd … GRANT SELECT ON TABLES TO galena_archive` so tables ejabberd creates later (including its `archive`) are readable too.
-3. On an existing volume, apply the same grants manually: `GRANT SELECT ON archive TO galena_archive;` (plus the `ALTER DEFAULT PRIVILEGES` line above if the role predates it).
-4. Point the server at it: `XMPP_ARCHIVE_DATABASE_URL=postgres://galena_archive:CHANGE_ME@127.0.0.1:5432/ejabberd` (in `apps/server/.env`, git-ignored).
+1. Add `ZILAR_ARCHIVE_DB_PASSWORD=CHANGE_ME` to `infra/.env` (git-ignored; generate with `openssl rand -base64 32`).
+2. `infra/postgres/init/20-search-reader.sql` creates the `zilar_archive` role on first start of an empty data volume, grants it `CONNECT` + `USAGE ON SCHEMA public`, grants `SELECT` on `archive` when the table already exists, and sets `ALTER DEFAULT PRIVILEGES FOR ROLE ejabberd … GRANT SELECT ON TABLES TO zilar_archive` so tables ejabberd creates later (including its `archive`) are readable too.
+3. On an existing volume, apply the same grants manually: `GRANT SELECT ON archive TO zilar_archive;` (plus the `ALTER DEFAULT PRIVILEGES` line above if the role predates it).
+4. Point the server at it: `XMPP_ARCHIVE_DATABASE_URL=postgres://zilar_archive:CHANGE_ME@127.0.0.1:5432/ejabberd` (in `apps/server/.env`, git-ignored).
 
 The shape of the table and the query design are in `docs/SEARCH_NOTES.md` (≤ 60 lines). The query text is never logged or stored: the route logs only the result count and duration.
 
@@ -93,7 +93,7 @@ No database extension is used. The first pass folds accents/case (`translate(low
 |---|---|---|---|---|
 | `LITELLM_BASE_URL` | No | none → falls back to `http://127.0.0.1:4000` (`ai/litellm-client.ts:6`) | Base URL for LiteLLM admin calls and the gateway's LLM calls (`ai/integration.ts:19`, `agents/gateway.ts:283`). | Not a secret. The default lives in the AI module, not the schema, so an absent variable does not change the parsed config (`ai/litellm-client.ts:4-6`). |
 | `LITELLM_MASTER_KEY` | No | — | Bearer token for the LiteLLM admin API (`ai/integration.ts:18`, `ai/litellm-client.ts`). Absent → the AI and gateway code refuses to call LiteLLM; every AI route answers 503 (`app.ts:210-227`). | **Secret.** |
-| `GALENA_KEY_ENCRYPTION_KEY` | No | — | Envelope-encryption master key for provider keys stored in `provider_connections` (`connections/crypto.ts:1-103`). Must be at least 32 characters when set (`config.ts:61`). Absent → `provider_connections` and AI write routes answer 503 (`app.ts:184-203`, `app.ts:204-227`); the cipher is what unlocks AI access to LiteLLM. | **Secret.** Generate with `openssl rand -base64 48`. Changing it makes every stored provider key undecryptable. |
+| `ZILAR_KEY_ENCRYPTION_KEY` | No | — | Envelope-encryption master key for provider keys stored in `provider_connections` (`connections/crypto.ts:1-103`). Must be at least 32 characters when set (`config.ts:61`). Absent → `provider_connections` and AI write routes answer 503 (`app.ts:184-203`, `app.ts:204-227`); the cipher is what unlocks AI access to LiteLLM. | **Secret.** Generate with `openssl rand -base64 48`. Changing it makes every stored provider key undecryptable. |
 
 ### GitHub App (git proxy)
 
@@ -109,7 +109,7 @@ The git proxy uses `https://api.github.com` by default (`git/token.ts:12`); no e
 
 | Variable | Required? | Default | What it does | Notes |
 |---|---|---|---|---|
-| `AGENT_GATEWAY_ENABLED` | No | `false` | Off by default; set to `'true'` to enable (`config.ts:65-68`). Wires the agent gateway into `index.ts` and starts every active AI over XMPP (`agents/gateway.ts:1353-1364`). Needs `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY` and `GALENA_KEY_ENCRYPTION_KEY` to do anything useful — without any of those the gateway logs `agent gateway needs LiteLLM and the key cipher; staying off` and stays off (`agents/gateway.ts:1361-1364`). | Not a secret. |
+| `AGENT_GATEWAY_ENABLED` | No | `false` | Off by default; set to `'true'` to enable (`config.ts:65-68`). Wires the agent gateway into `index.ts` and starts every active AI over XMPP (`agents/gateway.ts:1353-1364`). Needs `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY` and `ZILAR_KEY_ENCRYPTION_KEY` to do anything useful — without any of those the gateway logs `agent gateway needs LiteLLM and the key cipher; staying off` and stays off (`agents/gateway.ts:1361-1364`). | Not a secret. |
 | `RUNNER_HUB_ENABLED` | No | `false` | Off by default; set to `'true'` to enable the tunnel for approved runners (`config.ts:73-76`). When on, the server binds `RUNNER_HUB_PORT` to `127.0.0.1` (`machines/hub.ts:200-344`) and validates that the gateway URL is `http://` (`machines/hub.ts:356-365`). A misconfigured URL exits before the HTTP server starts (`index.ts:56-59`). | Not a secret. |
 | `RUNNER_HUB_PORT` | No | `3189` | TCP port the runner hub tunnel binds to. Integer in `[1, 65535]` (`config.ts:77-84`). | Not a secret. |
 | `ROUTINES_ENABLED` | No | `false` | Off by default; set to `'true'` to enable the routines scheduler (`routines/scheduler.ts`, `config.ts`). When on, the server fires due routines every 30 s through the configured tool runner and posts the output as the AI (`index.ts`). With the flag on but no tool runner configured, the scheduler logs one warning and stays off. | Not a secret. |
@@ -148,9 +148,9 @@ Default `false`. When `true`, the server builds an agent gateway (`createAgentGa
 
 - `LITELLM_BASE_URL` unset → the gateway logs `agent gateway needs LiteLLM and the key cipher; staying off` and exits `start()` early (`agents/gateway.ts:1361-1364`).
 - `LITELLM_MASTER_KEY` unset → same `litellm === undefined` check (`agents/gateway.ts:347-349`, `1361-1364`).
-- `GALENA_KEY_ENCRYPTION_KEY` unset → `cipher === undefined`, same outcome (`agents/gateway.ts:1361-1364`, `connections/crypto.ts:98-103`).
+- `ZILAR_KEY_ENCRYPTION_KEY` unset → `cipher === undefined`, same outcome (`agents/gateway.ts:1361-1364`, `connections/crypto.ts:98-103`).
 
-The flag gates only the gateway's XMPP connections. The AI HTTP routes depend on LiteLLM and the key cipher instead: without `LITELLM_MASTER_KEY` or `GALENA_KEY_ENCRYPTION_KEY` the AI write routes answer 503 `ais_unavailable` and the connections routes answer 503 `connections_unavailable` (`app.ts:185`, `app.ts:207`), whatever the flag says.
+The flag gates only the gateway's XMPP connections. The AI HTTP routes depend on LiteLLM and the key cipher instead: without `LITELLM_MASTER_KEY` or `ZILAR_KEY_ENCRYPTION_KEY` the AI write routes answer 503 `ais_unavailable` and the connections routes answer 503 `connections_unavailable` (`app.ts:185`, `app.ts:207`), whatever the flag says.
 
 ### `RUNNER_HUB_ENABLED` (T-0071) — `config.ts:73-76`, validated in `index.ts:56-59`, started in `index.ts:211-226`
 
@@ -178,14 +178,14 @@ Chat preferences add no env vars. `chat_prefs` holds one row per (user, chat JID
 
 Web push through ejabberd's `mod_push` plus an installable web app (PWA). Off by default (`PUSH_ENABLED=false`); when on, the server runs as an XEP-0114 component that receives XEP-0357 publish IQs and fans them out to browsers with `web-push` (VAPID + RFC 8291: the payload is encrypted end to end, relays see ciphertext). The component dials the `ejabberd_service` listener on port 5347 (`PUSH_COMPONENT_PORT`) from inside the Compose network (Docker) or over loopback (bare metal); no host port is published for it in production.
 
-The literal-host rule (learned live 2026-10-01): ejabberd does NOT expand macros in map keys, so the `ejabberd_service` host is always written literally as `push.<domain>` and the key must equal `PUSH_COMPONENT_JID` in the server env. Everything else (the secret) stays a macro. Each deploy path writes the literal host its own way: the dev stack (`infra/`) hardcodes `push.galena.localhost`, the Docker image generates `push.<GALENA_DOMAIN>` at container start (`deploy/ejabberd/push-entrypoint.sh`), and bare metal writes it out by hand (`deploy/baremetal/ejabberd.yml`).
+The literal-host rule (learned live 2026-10-01): ejabberd does NOT expand macros in map keys, so the `ejabberd_service` host is always written literally as `push.<domain>` and the key must equal `PUSH_COMPONENT_JID` in the server env. Everything else (the secret) stays a macro. Each deploy path writes the literal host its own way: the dev stack (`infra/`) hardcodes `push.zilar.localhost`, the Docker image generates `push.<ZILAR_DOMAIN>` at container start (`deploy/ejabberd/push-entrypoint.sh`), and bare metal writes it out by hand (`deploy/baremetal/ejabberd.yml`).
 
 | Variable | Required? | Default | What it does | Notes |
 |---|---|---|---|---|
 | `PUSH_ENABLED` | No | `false` | `'true'` starts the push component and enables the `/api/push/*` routes. With anything else the routes answer 404 and no component starts. | Not a secret. |
-| `PUSH_VAPID_PUBLIC_KEY` / `PUSH_VAPID_PRIVATE_KEY` | With push | — | VAPID key pair the browsers subscribe against. Generate with `web-push generate-vapid-keys` (one-off; needs the `web-push` CLI, not a dependency) — or take the pair `./galena init` generates with openssl (same curve and encodings, verified against the library). | **Secrets** (the private key; the public key is served to logged-in browsers at `GET /api/push/config`). |
+| `PUSH_VAPID_PUBLIC_KEY` / `PUSH_VAPID_PRIVATE_KEY` | With push | — | VAPID key pair the browsers subscribe against. Generate with `web-push generate-vapid-keys` (one-off; needs the `web-push` CLI, not a dependency) — or take the pair `./zilar init` generates with openssl (same curve and encodings, verified against the library). | **Secrets** (the private key; the public key is served to logged-in browsers at `GET /api/push/config`). |
 | `PUSH_VAPID_SUBJECT` | With push | — | Contact URI for the push services, e.g. `mailto:admin@example.com`. | Not a secret. |
-| `PUSH_COMPONENT_JID` | With push | — | The component domain, e.g. `push.galena.localhost`. Must equal the host key written literally under the `ejabberd_service` listener in `infra/ejabberd/ejabberd.yml` (ejabberd does not expand macros in map keys). | Not a secret. |
+| `PUSH_COMPONENT_JID` | With push | — | The component domain, e.g. `push.zilar.localhost`. Must equal the host key written literally under the `ejabberd_service` listener in `infra/ejabberd/ejabberd.yml` (ejabberd does not expand macros in map keys). | Not a secret. |
 | `PUSH_COMPONENT_SECRET` | With push | — | Shared secret with ejabberd's `ejabberd_service` listener. Must equal the container's `EJABBERD_MACRO_PUSH_COMPONENT_SECRET`. | **Secret.** Generate with `openssl rand -base64 32`. |
 | `PUSH_COMPONENT_PORT` | No | `5347` | Component listener port. Integer in `[1, 65535]`. | Not a secret. Must match the `port` in `infra/ejabberd/ejabberd.yml`. |
 | `PUSH_STORAGE_KEY` | With push | — | Seals browser subscription keys at rest (AES-256-GCM envelope). At least 32 characters. Rotating it orphans existing rows (the component drops undecryptable devices instead of sending). | **Secret.** Generate with `openssl rand -base64 48`. |
@@ -195,17 +195,17 @@ Wiring a new install (all three must agree, then restart ejabberd so the listene
 
 Dev stack:
 
-1. `infra/ejabberd/ejabberd.yml` ships the `ejabberd_service` listener on port 5347 (all container interfaces; the compose file publishes it on `127.0.0.1` only) with the host written literally (`push.galena.localhost`) and the `PUSH_COMPONENT_SECRET` macro (`CHANGE_ME` default, never committed).
+1. `infra/ejabberd/ejabberd.yml` ships the `ejabberd_service` listener on port 5347 (all container interfaces; the compose file publishes it on `127.0.0.1` only) with the host written literally (`push.zilar.localhost`) and the `PUSH_COMPONENT_SECRET` macro (`CHANGE_ME` default, never committed).
 2. `infra/docker-compose.dev.yml` already passes `EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}` to ejabberd and publishes `127.0.0.1:5347`. Set `PUSH_COMPONENT_SECRET` in `infra/.env` (git-ignored) to the same value as the server's `PUSH_COMPONENT_SECRET`.
 3. `apps/server/.env` (git-ignored) needs the seven `PUSH_*` variables above plus `XMPP_ARCHIVE_DATABASE_URL`.
 
-Production install (Docker Compose, `./galena init` does all of this):
+Production install (Docker Compose, `./zilar init` does all of this):
 
-1. `deploy/ejabberd/ejabberd.yml` ships the same `ejabberd_service` listener (all container interfaces, no host port published — the server is on the same network) plus `mod_push` (`include_sender`/`include_body` off) and `mod_push_keepalive`. The host key is generated at container start from `GALENA_DOMAIN` by `deploy/ejabberd/push-entrypoint.sh` (called from `jwt-entrypoint.sh`); the secret stays the `EJABBERD_MACRO_PUSH_COMPONENT_SECRET` macro. `deploy/docker-compose.yml` passes both `EJABBERD_MACRO_PUSH_COMPONENT_SECRET` and `GALENA_DOMAIN` to ejabberd, and derives the server's `PUSH_COMPONENT_JID` as `push.${GALENA_DOMAIN}` — so all three agree with no manual step.
+1. `deploy/ejabberd/ejabberd.yml` ships the same `ejabberd_service` listener (all container interfaces, no host port published — the server is on the same network) plus `mod_push` (`include_sender`/`include_body` off) and `mod_push_keepalive`. The host key is generated at container start from `ZILAR_DOMAIN` by `deploy/ejabberd/push-entrypoint.sh` (called from `jwt-entrypoint.sh`); the secret stays the `EJABBERD_MACRO_PUSH_COMPONENT_SECRET` macro. `deploy/docker-compose.yml` passes both `EJABBERD_MACRO_PUSH_COMPONENT_SECRET` and `ZILAR_DOMAIN` to ejabberd, and derives the server's `PUSH_COMPONENT_JID` as `push.${ZILAR_DOMAIN}` — so all three agree with no manual step.
 2. The server gets the seven `PUSH_*` variables from `deploy/.env` (written by `init`: VAPID pair, `PUSH_VAPID_SUBJECT`, component JID/secret, storage key) plus the already-required `XMPP_ARCHIVE_DATABASE_URL`. Missing push lines mean push off (`PUSH_ENABLED=false`); never write an empty value (`KEY=` renders as an empty string and the schema rejects it at startup — leave the line out instead).
-3. `./galena doctor` checks the pieces (keys present with the right shape, JID matches the domain, and — when the stack runs — that ejabberd accepted the component handshake, which proves the secret and the host both agree). `backup`/`restore` carry `deploy/.env`, so `PUSH_STORAGE_KEY` survives (losing it orphans every device).
+3. `./zilar doctor` checks the pieces (keys present with the right shape, JID matches the domain, and — when the stack runs — that ejabberd accepted the component handshake, which proves the secret and the host both agree). `backup`/`restore` carry `deploy/.env`, so `PUSH_STORAGE_KEY` survives (losing it orphans every device).
 
-Coolify: same variables through the Coolify env UI (`SERVICE_PASSWORD_PUSH_COMPONENT` feeds both secret lines; `PUSH_COMPONENT_JID` and `GALENA_DOMAIN` derive from `XMPP_DOMAIN` — all three must name the same domain). Bare metal: write the listener host and password out literally in `deploy/baremetal/ejabberd.yml` and set the same values in `/etc/galena/galena.env` (see `docs/INSTALL_BARE_METAL.md` §3-§4); the component dials `127.0.0.1:5347`.
+Coolify: same variables through the Coolify env UI (`SERVICE_PASSWORD_PUSH_COMPONENT` feeds both secret lines; `PUSH_COMPONENT_JID` and `ZILAR_DOMAIN` derive from `XMPP_DOMAIN` — all three must name the same domain). Bare metal: write the listener host and password out literally in `deploy/baremetal/ejabberd.yml` and set the same values in `/etc/zilar/zilar.env` (see `docs/INSTALL_BARE_METAL.md` §3-§4); the component dials `127.0.0.1:5347`.
 
 Behaviour: one push node per device (`POST /api/push/subscriptions` returns the `{ jid, node }` the browser enables over its own XMPP session — ejabberd requires the enable IQ from the user's session, there is no admin shortcut). Every topic/group room is created with `allow_subscription: true` (older rooms are reconciled with `change_room_option` at component start); members holding a push device are subscribed to the rooms they may see and unsubscribed when they lose access. At send time the component reads the newest archived message, re-checks mute (topics inherit the group General mute) and private-topic visibility with `canSeeTopic`, and sends `{ title: "Ana in Group › Topic", body: first 120 chars when the user's previews setting is on }` capped at 3000 bytes. Expired endpoints (404/410) delete the row; every publish IQ is answered `result` even when dropped. Devices with no send for 90 days list as `inactive`. `POST /api/push/test` (5 per 10 min per user) sends a fixed "Push notifications work on this device." payload. Logs carry ids only — never message text or endpoint URLs.
 
@@ -233,14 +233,14 @@ Where each kind of file lives, and what covers it:
 
 | Kind | Where it lives | Backed up by | Notes |
 |---|---|---|---|
-| Attachments (XEP-0363) | ejabberd upload docroot: `/opt/ejabberd/upload` in the container (volume `ejabberd-uploads`); `/var/lib/ejabberd/upload` on bare metal | `./galena backup` archives the uploads volume (`uploads.tgz`); bare metal: copy the docroot dir (§7) | Per-file cap `max_size` 50 MiB; per-user quotas below |
-| Stickers | `STICKER_STORAGE_DIR`, fixed at `/data/stickers` in both compose files (volume `sticker-data`); `/var/lib/galena/stickers` on bare metal | `./galena backup` archives the sticker volume (`stickers.tgz`); bare metal: copy the dir (§7) | Never relative in production: a relative path resolves against the server package root and a moved base silently orphans files (see Stickers above) |
+| Attachments (XEP-0363) | ejabberd upload docroot: `/opt/ejabberd/upload` in the container (volume `ejabberd-uploads`); `/var/lib/ejabberd/upload` on bare metal | `./zilar backup` archives the uploads volume (`uploads.tgz`); bare metal: copy the docroot dir (§7) | Per-file cap `max_size` 50 MiB; per-user quotas below |
+| Stickers | `STICKER_STORAGE_DIR`, fixed at `/data/stickers` in both compose files (volume `sticker-data`); `/var/lib/zilar/stickers` on bare metal | `./zilar backup` archives the sticker volume (`stickers.tgz`); bare metal: copy the dir (§7) | Never relative in production: a relative path resolves against the server package root and a moved base silently orphans files (see Stickers above) |
 | GIFs | Not stored: the server proxies provider media (`/api/gifs/media/:token`) and a sent GIF becomes a normal attachment | As attachments, once sent | Needs `GIF_PROVIDER` + `GIF_API_KEY` |
 | Voice | Not built | — | Planned (plan §6.5) |
 
 Upload quotas (ejabberd `mod_http_upload_quota`, stock module, always on): each user's files under the upload docroot count against `soft_upload_quota` (default 2048 MiB) / `hard_upload_quota` (default 4096 MiB) in `deploy/ejabberd/ejabberd.yml` (`shaper_rules`, plain numbers). Past the hard quota ejabberd deletes the user's oldest files until usage is back at the soft quota; `max_days` is unset (infinity), so files never age out without the owner. Retune by editing the two shaper numbers in `deploy/ejabberd/ejabberd.yml` (shaper keys are literal — macros do not expand there, verified live against the stock image), so they are not environment settings and the ejabberd image must be rebuilt for a change to apply. Bare metal carries the same 2048/4096 rules literally in `deploy/baremetal/ejabberd.yml`.
 
-Disk: `./galena doctor` reports free space of the Docker data filesystem (warns at 80% used, fails at 95%, in plain words) and checks the sticker directory is on a mounted volume, not the container layer. The thresholds are fixed; `GALENA_DOCTOR_DISK_USED_PCT` injects a value for tests only.
+Disk: `./zilar doctor` reports free space of the Docker data filesystem (warns at 80% used, fails at 95%, in plain words) and checks the sticker directory is on a mounted volume, not the container layer. The thresholds are fixed; `ZILAR_DOCTOR_DISK_USED_PCT` injects a value for tests only.
 
 When to consider S3: ejabberd's upload module writes only to local disk, and the sticker store is a local directory too. One server instance with the volumes above is fine for hundreds of users; consider S3-compatible object storage (ejabberd ships `mod_s3_upload`) when you run more than one server instance (local disks disagree) or growth outruns one disk. That migration is out of scope here — no S3 code ships in this task.
 
@@ -277,13 +277,13 @@ Migrations run **at startup**, not on demand. `index.ts:47-48` opens the databas
 For an out-of-band migration run (e.g. against a read replica during a deploy):
 
 ```bash
-pnpm --filter @galena/server db:migrate
+pnpm --filter @zilar/server db:migrate
 ```
 
 The command is defined at `apps/server/package.json:12` and runs `tsx --env-file-if-exists=.env src/db/migrate-cli.ts`, which loads the same config schema and exits non-zero on failure (`db/migrate-cli.ts:6`). Generate a new migration after editing `apps/server/src/db/schema.ts`:
 
 ```bash
-pnpm --filter @galena/server db:generate
+pnpm --filter @zilar/server db:generate
 ```
 
 (`apps/server/package.json:11`; `drizzle.config.ts:1-3` pins the dialect, schema and out folder.) Never use `npx drizzle-kit …` — the lockfile drift and the missing schema flag produce surprising diffs.
@@ -319,10 +319,10 @@ The agent gateway `start()` is launched with `void` and `.catch(...)` (`index.ts
 
 `apps/server/src/app.ts:229-241` mounts a single GET route at `/health`. It runs `SELECT 1` against the database with a `1_000` ms timeout (`app.ts:79`, `app.ts:278-285`). The response is JSON:
 
-- `200` + `{ ok: true, name: 'galena-server', version: serverVersion, protocolVersion, db: 'ok' }` when the ping resolves.
-- `503` + `{ ok: false, name: 'galena-server', version: serverVersion, protocolVersion, db: 'down' }` when it does not.
+- `200` + `{ ok: true, name: 'zilar-server', version: serverVersion, protocolVersion, db: 'ok' }` when the ping resolves.
+- `503` + `{ ok: false, name: 'zilar-server', version: serverVersion, protocolVersion, db: 'down' }` when it does not.
 
-The 503 is the only signal a load balancer should treat as unhealthy. `version` comes from `apps/server/package.json` (`version.ts:1-13`); `protocolVersion` from `@galena/protocol` (`app.ts:6`).
+The 503 is the only signal a load balancer should treat as unhealthy. `version` comes from `apps/server/package.json` (`version.ts:1-13`); `protocolVersion` from `@zilar/protocol` (`app.ts:6`).
 
 ### Graceful shutdown
 
@@ -343,14 +343,14 @@ If a step blocks past the grace period, the 15 s hard exit fires. That is the co
 
 ## Mismatches found
 
-- `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY` and `GALENA_KEY_ENCRYPTION_KEY` are in `config.ts` (`config.ts:49-61`) but **not** listed in `apps/server/.env.example` (the example ends at `AGENT_GATEWAY_ENABLED`).
+- `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY` and `ZILAR_KEY_ENCRYPTION_KEY` are in `config.ts` (`config.ts:49-61`) but **not** listed in `apps/server/.env.example` (the example ends at `AGENT_GATEWAY_ENABLED`).
 - `RUNNER_HUB_ENABLED` and `RUNNER_HUB_PORT` are in `config.ts` (`config.ts:73-84`) but **not** in `apps/server/.env.example`.
 - `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` and `GITHUB_APP_INSTALLATION_ID` are in `config.ts` (`config.ts:53-55`) but **not** in `apps/server/.env.example` (the App config is intentionally gated behind all-or-nothing validation; not listing them in the example is a UX miss).
 - `EJABBERD_API_URL`, `XMPP_DOMAIN`, `XMPP_MUC_DOMAIN` and `XMPP_WS_PUBLIC_URL` are in both `apps/server/.env.example` and `xmpp/config.ts` with the same defaults — no mismatch, mentioned for completeness.
 
 ## Open questions
 
-- Several env vars appear only in test files (`apps/server/src/agents/integration.test.ts`, `apps/server/src/ais/integration.test.ts`, `apps/server/src/connections/integration.test.ts`, `apps/server/src/voice/integration.test.ts`, `apps/server/src/ai/integration.ts`): `GALENA_AGENT_INTEGRATION`, `GALENA_AIS_INTEGRATION`, `GALENA_AI_MODELS_INTEGRATION`, `GALENA_VOICE_INTEGRATION`, `GALENA_CONNECTIONS_INTEGRATION`, `GALENA_LITELLM_INTEGRATION`, plus the matching `*_URL` and `XMPP_WS_URL` variants. Each is gated by `=== '1'` and only checked in tests, so it is configuration of the test suite, not the server. Listing them here would be misleading; the live server never reads them.
-- The web app reads one env var of its own: `GALENA_API_URL` in `apps/web/vite.config.ts:16` (default `http://localhost:3000`). It is read by Vite, not by `@galena`, but it has to agree with `PORT` on the server or `/api` 404s. Not documented in `apps/web/.env.example` (there is no web `.env.example` file yet).
+- Several env vars appear only in test files (`apps/server/src/agents/integration.test.ts`, `apps/server/src/ais/integration.test.ts`, `apps/server/src/connections/integration.test.ts`, `apps/server/src/voice/integration.test.ts`, `apps/server/src/ai/integration.ts`): `ZILAR_AGENT_INTEGRATION`, `ZILAR_AIS_INTEGRATION`, `ZILAR_AI_MODELS_INTEGRATION`, `ZILAR_VOICE_INTEGRATION`, `ZILAR_CONNECTIONS_INTEGRATION`, `ZILAR_LITELLM_INTEGRATION`, plus the matching `*_URL` and `XMPP_WS_URL` variants. Each is gated by `=== '1'` and only checked in tests, so it is configuration of the test suite, not the server. Listing them here would be misleading; the live server never reads them.
+- The web app reads one env var of its own: `ZILAR_API_URL` in `apps/web/vite.config.ts:16` (default `http://localhost:3000`). It is read by Vite, not by `@zilar`, but it has to agree with `PORT` on the server or `/api` 404s. Not documented in `apps/web/.env.example` (there is no web `.env.example` file yet).
 - The runner hub accepts a `gatewayUrl` argument whose default comes from `LITELLM_BASE_URL ?? DEFAULT_LITELLM_BASE_URL` (`index.ts:58`, `index.ts:217`). Whether to expose that as a separate `RUNNER_HUB_GATEWAY_URL` env var is **unclear from the code** — the hub will reuse whatever LiteLLM uses, and a misconfigured scheme fails the explicit `http://` check.
 - The agent gateway `postToChat` path is reachable only when `AGENT_GATEWAY_ENABLED=true`; whether a separate `ACTION_ANNOUNCER_ENABLED` flag exists to silence the action gateway announcer while keeping the gateway off is **unclear from the code** (the announcer object exists unconditionally in `index.ts:86-142` but `postToChat` is no-op while the gateway is stopped).

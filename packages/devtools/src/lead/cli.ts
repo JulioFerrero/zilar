@@ -27,7 +27,7 @@ Usage: lead <command> [options]
   merge <T-XXXX> --summary "<one line>"                     rebase, fast-forward main, board, push, clean up
   status                                                    compact table of every tracked task
 
-State lives outside the repo at ~/.galena-lead/state.json (or GALENA_LEAD_STATE).
+State lives outside the repo at ~/.zilar-lead/state.json (or ZILAR_LEAD_STATE).
 Escalations print as one LEAD: line each on stdout; everything else goes to lead.log.
 The autopilot never merges, pushes, or edits task files or the board.
 `;
@@ -41,7 +41,7 @@ function findRepoRoot(): string {
     }
     const parent = path.dirname(dir);
     if (parent === dir) {
-      throw new Error('not inside a Galena checkout (no work/BOARD.md above the cwd)');
+      throw new Error('not inside a Zilar checkout (no work/BOARD.md above the cwd)');
     }
     dir = parent;
   }
@@ -155,7 +155,7 @@ async function runMerge(positional: string[], args: string[]): Promise<void> {
   const root = findRepoRoot();
   const file = findTaskFile(root, task);
   const frontMatter = parseTaskFrontMatter(fs.readFileSync(path.join(root, 'work', file), 'utf8'));
-  const worktree = path.join(path.dirname(path.resolve(root)), `galena-${task}`);
+  const worktree = path.join(path.dirname(path.resolve(root)), `zilar-${task}`);
   const statePath = stateFilePath();
   await mergeTask({
     root,

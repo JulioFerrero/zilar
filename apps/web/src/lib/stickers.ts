@@ -3,7 +3,7 @@
  * Hostile stored data (wrong shapes, non-strings, huge arrays) is ignored so
  * a tampered value can never break the panel.
  */
-export const RECENT_STICKERS_KEY = 'galena:recentStickers';
+export const RECENT_STICKERS_KEY = 'zilar:recentStickers';
 export const MAX_RECENT_STICKERS = 30;
 
 export interface RecentStickerEntry {
@@ -88,7 +88,7 @@ export function rememberRecentSticker(
 
 /**
  * Whether a sticker payload `url` may be auto-loaded: only when it is on
- * the same origin as the Galena API. A hostile sender's arbitrary URL shows
+ * the same origin as the Zilar API. A hostile sender's arbitrary URL shows
  * a placeholder instead, so nobody's browser fetches it.
  */
 export function isSameOriginStickerUrl(url: string, apiBase: string = '/api'): boolean {

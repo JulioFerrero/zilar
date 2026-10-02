@@ -26,8 +26,8 @@ export function SearchBar() {
       inputRef.current?.focus();
       inputRef.current?.select();
     };
-    window.addEventListener('galena:focus-search', onFocusSearch);
-    return () => window.removeEventListener('galena:focus-search', onFocusSearch);
+    window.addEventListener('zilar:focus-search', onFocusSearch);
+    return () => window.removeEventListener('zilar:focus-search', onFocusSearch);
   }, []);
 
   const scopedChat =
@@ -63,7 +63,7 @@ export function SearchBar() {
           // Enter opens the top message hit when the Messages section has
           // one; the results list (a separate subtree) listens for this.
           if (event.key === 'Enter') {
-            window.dispatchEvent(new Event('galena:search-enter'));
+            window.dispatchEvent(new Event('zilar:search-enter'));
           }
         }}
         placeholder={scopedChat === undefined ? 'Search' : `Search in ${scopedChat.title}`}

@@ -1,4 +1,4 @@
-import { formatListTime } from '@galena/chat-core';
+import { formatListTime } from '@zilar/chat-core';
 import { Pin, VolumeX } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 

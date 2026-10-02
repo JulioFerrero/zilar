@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { Archive, Bell, BellOff, Pin, PinOff } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { MUTE_DURATIONS, type MuteDurationId } from '@/lib/chatPrefs';

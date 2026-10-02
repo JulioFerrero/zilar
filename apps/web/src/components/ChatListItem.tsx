@@ -5,7 +5,7 @@ import {
   previewPrefix,
   shouldRenderMarkdown,
   type ChatSummary,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 import { Megaphone, MoreHorizontal, Pin, VolumeX } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';

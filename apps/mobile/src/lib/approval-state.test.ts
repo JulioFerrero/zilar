@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ApprovalRequest } from '@galena/protocol';
+import type { ApprovalRequest } from '@zilar/protocol';
 
 import { ApprovalsApiError, type ApprovalsApi, type PublicApproval } from './approvals-api';
 import { applyDecision, approvalStatusLabel, loadApprovalCardState } from './approval-state';
@@ -10,14 +10,14 @@ import { applyDecision, approvalStatusLabel, loadApprovalCardState } from './app
 
 const REQUEST: ApprovalRequest = {
   id: 'apr-1',
-  room: 'dev-ai@galena.chat',
-  ai: 'dev-ai@galena.chat',
+  room: 'dev-ai@zilar.chat',
+  ai: 'dev-ai@zilar.chat',
   action: 'Rotate the staging API token',
   summary: 'The staging token leaked in a CI log.',
   details: 'Rotate and update the CI secret.',
   args_hash: '8f14e45fceea167a5a36dedd4bea2543c9f4d5a7b0c1e2d3f4a5b6c7d8e9f0a1',
   worst_case_cost: { currency: 'EUR', amount: 0.02 },
-  requested_by: 'me@galena.chat',
+  requested_by: 'me@zilar.chat',
   expires_at: '2026-09-28T03:00:00.000Z',
 };
 
@@ -32,7 +32,7 @@ const PENDING: PublicApproval = {
   details: 'Rotate and update the CI secret.',
   argsHash: '8f14e45fceea167a5a36dedd4bea2543c9f4d5a7b0c1e2d3f4a5b6c7d8e9f0a1',
   worstCase: { currency: 'EUR', amount: 0.02 },
-  requestedBy: 'me@galena.chat',
+  requestedBy: 'me@zilar.chat',
   status: 'pending',
   decidedAt: null,
   note: null,

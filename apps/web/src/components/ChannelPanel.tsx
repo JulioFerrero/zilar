@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { Megaphone, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';

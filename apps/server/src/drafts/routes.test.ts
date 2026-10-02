@@ -11,7 +11,7 @@ import {
 import { createDraftHub, type DraftHub } from './hub';
 import { createDraftsRoutes, DRAFT_SSE_HEARTBEAT_MS } from './routes';
 
-const CHAT_JID = 'ai-abc@galena.localhost';
+const CHAT_JID = 'ai-abc@zilar.localhost';
 const decoder = new TextDecoder();
 
 async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void> {

@@ -13,7 +13,7 @@ end.
 0.14.0 (same xmpp.js family as `xmpp-core`'s `@xmpp/client`; ISC licence;
 no other library needed). The spike wires it in
 `push-spike/component.ts`: `component({ service:
-'xmpp://127.0.0.1:5347', domain: 'push.galena.localhost', password })`,
+'xmpp://127.0.0.1:5347', domain: 'push.zilar.localhost', password })`,
 receives `<notification/>` publish IQs, answers each with IQ `result`, and
 relies on the library's built-in reconnect. ejabberd side is one loopback
 listener plus the push secret (marked `PUSH SPIKE (T-0118)` in

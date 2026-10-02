@@ -51,5 +51,5 @@ export function InvitePage() {
     );
   }
 
-  return <AuthFlow inviteCode={code} heading="You're invited to Galena" />;
+  return <AuthFlow inviteCode={code} heading="You're invited to Zilar" />;
 }

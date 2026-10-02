@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { atHour } from './helpers';
 import { mockLastMessage } from './messages';
 

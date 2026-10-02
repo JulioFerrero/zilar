@@ -8,18 +8,18 @@
 # What it proves, without touching the lead's running dev stack and
 # without reading any real `.env` file:
 #
-#   1. `galena init` writes a 0600 env file whose push lines parse in the
+#   1. `zilar init` writes a 0600 env file whose push lines parse in the
 #      server's push schema and whose VAPID pair really matches
 #      (ECDH-derived public point compared byte for byte — shape checks
 #      alone accept mismatched pairs).
-#   2. `galena init --no-push` writes no push secrets and no empty values.
+#   2. `zilar init --no-push` writes no push secrets and no empty values.
 #   3. Both compose files render (`config`) with the wizard env, the two
 #      component secrets agree, no host port is published for 5347, and
 #      the ejabberd host derivation matches PUSH_COMPONENT_JID.
 #   4. `push-entrypoint.sh` writes the literal host into a copy of the
 #      production ejabberd.yml, is a no-op on rerun (restart-safe), and
 #      refuses a config without its marker.
-#   5. `galena doctor` passes the push checks on the good env and fails
+#   5. `zilar doctor` passes the push checks on the good env and fails
 #      them in plain words on a tampered one.
 #   6. Secrets never appear in `init --dry-run` output or doctor output.
 #
@@ -28,7 +28,7 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
-GALENA="$ROOT/deploy/galena"
+ZILAR="$ROOT/deploy/zilar"
 PUSH_ENTRY="$ROOT/deploy/ejabberd/push-entrypoint.sh"
 PASS=0
 FAIL=0
@@ -46,7 +46,7 @@ bad() {
 # A throwaway env file from the wizard. $2 are extra init flags.
 make_env() {
   _dir="$(mktemp -d)"
-  if ! printf '\n' | "$GALENA" --env-file="$_dir/.env" init --domain "$1" \
+  if ! printf '\n' | "$ZILAR" --env-file="$_dir/.env" init --domain "$1" \
     --admin-email "ops@$1" --acme-email "ops@$1" --image-owner testowner \
     ${2-} > "$_dir/init.log" 2>&1 < /dev/null; then
     bad "init failed for domain $1 (see $_dir/init.log)"
@@ -146,7 +146,7 @@ cat > "$T/cool-off.env" <<EOF
 IMAGE_OWNER=testowner
 IMAGE_TAG=t0145
 SERVICE_PASSWORD_POSTGRES=x1
-SERVICE_PASSWORD_GALENA_DB=x2
+SERVICE_PASSWORD_ZILAR_DB=x2
 SERVICE_PASSWORD_EJABBERD_DB=x3
 SERVICE_PASSWORD_ARCHIVE_DB=x4
 SERVICE_PASSWORD_EJABBERD_ADMIN=x5
@@ -207,7 +207,7 @@ cat > "$T/cool.env" <<EOF
 IMAGE_OWNER=testowner
 IMAGE_TAG=t0145
 SERVICE_PASSWORD_POSTGRES=x1
-SERVICE_PASSWORD_GALENA_DB=x2
+SERVICE_PASSWORD_ZILAR_DB=x2
 SERVICE_PASSWORD_EJABBERD_DB=x3
 SERVICE_PASSWORD_ARCHIVE_DB=x4
 SERVICE_PASSWORD_EJABBERD_ADMIN=x5
@@ -231,7 +231,7 @@ if docker compose -f "$ROOT/deploy/coolify/docker-compose.yml" --env-file "$T/co
 else
   bad "coolify compose does not render: $(head -n 2 "$T/cool.err")"
 fi
-if grep -q "PUSH_COMPONENT_JID: push.push-test.example" "$T/cool.yml" && grep -q "GALENA_DOMAIN: push-test.example" "$T/cool.yml"; then
+if grep -q "PUSH_COMPONENT_JID: push.push-test.example" "$T/cool.yml" && grep -q "ZILAR_DOMAIN: push-test.example" "$T/cool.yml"; then
   ok "coolify derives push.<domain> on both sides"
 else
   bad "coolify push host derivation disagrees"
@@ -242,14 +242,14 @@ fi
 # a config without its marker.
 cp "$ROOT/deploy/ejabberd/ejabberd.yml" "$T/ejabberd.yml"
 chmod u+w "$T/ejabberd.yml"
-if GALENA_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd.yml" 2> "$T/entry.err" \
+if ZILAR_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd.yml" 2> "$T/entry.err" \
   && grep -q "^[[:space:]]*push.push-test.example:[[:space:]]*$" "$T/ejabberd.yml" \
-  && ! grep -q "GALENA_PUSH_COMPONENT_HOST" "$T/ejabberd.yml"; then
+  && ! grep -q "ZILAR_PUSH_COMPONENT_HOST" "$T/ejabberd.yml"; then
   ok "entrypoint writes the literal push host"
 else
   bad "entrypoint did not write the literal push host ($(head -n 1 "$T/entry.err"))"
 fi
-if GALENA_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd.yml" 2> "$T/entry2.err" \
+if ZILAR_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd.yml" 2> "$T/entry2.err" \
   && grep -q "^[[:space:]]*push.push-test.example:[[:space:]]*$" "$T/ejabberd.yml" \
   && [ "$(grep -c "password: PUSH_COMPONENT_SECRET" "$T/ejabberd.yml")" -eq 1 ]; then
   ok "entrypoint rerun is a no-op (restart-safe)"
@@ -258,15 +258,15 @@ else
 fi
 cp "$ROOT/deploy/ejabberd/ejabberd.yml" "$T/ejabberd-nomarker.yml"
 chmod u+w "$T/ejabberd-nomarker.yml"
-sed -i.bak '/GALENA_PUSH_COMPONENT_HOST/d' "$T/ejabberd-nomarker.yml"
-if GALENA_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd-nomarker.yml" 2> /dev/null; then
+sed -i.bak '/ZILAR_PUSH_COMPONENT_HOST/d' "$T/ejabberd-nomarker.yml"
+if ZILAR_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd-nomarker.yml" 2> /dev/null; then
   bad "entrypoint accepted a config without its marker"
 else
   ok "entrypoint refuses a config without its marker"
 fi
 
 # 6. Doctor passes on the good env, fails in plain words on a tampered one.
-if "$GALENA" --env-file="$ENV_FILE" doctor > "$T/doctor.log" 2>&1; then
+if "$ZILAR" --env-file="$ENV_FILE" doctor > "$T/doctor.log" 2>&1; then
   # Doctor may still fail on machine-specific checks (ports); the push
   # line must be green either way.
   if grep -q "ok: push env is present and agrees" "$T/doctor.log"; then
@@ -285,7 +285,7 @@ cp "$ENV_FILE" "$T/tampered.env"
 sed -i.bak 's/^PUSH_VAPID_PUBLIC_KEY=.*/PUSH_VAPID_PUBLIC_KEY=short/' "$T/tampered.env"
 sed -i.bak 's/^PUSH_COMPONENT_JID=.*/PUSH_COMPONENT_JID=wrong.example/' "$T/tampered.env"
 sed -i.bak 's/^PUSH_COMPONENT_SECRET=.*/PUSH_COMPONENT_SECRET=CHANGE_ME_PUSH_COMPONENT_SECRET/' "$T/tampered.env"
-if "$GALENA" --env-file="$T/tampered.env" doctor > "$T/doctor-bad.log" 2>&1; then
+if "$ZILAR" --env-file="$T/tampered.env" doctor > "$T/doctor-bad.log" 2>&1; then
   bad "doctor passed a tampered push env"
 else
   if grep -q "PUSH_VAPID_PUBLIC_KEY has the wrong shape" "$T/doctor-bad.log" \
@@ -298,7 +298,7 @@ else
 fi
 
 # 7. Secrets never appear in dry-run or doctor output.
-if "$GALENA" --env-file="$T/.env" init --dry-run --domain push-test.example \
+if "$ZILAR" --env-file="$T/.env" init --dry-run --domain push-test.example \
   --admin-email "ops@push-test.example" --image-owner testowner \
   --push-subject "mailto:ops@push-test.example" 2> /dev/null | grep -qE "[A-Za-z0-9_-]{32,}"; then
   bad "dry-run output looks like it contains secret-shaped values"

@@ -9,10 +9,10 @@ import type { XmppConfig } from './config';
 
 const config: XmppConfig = {
   apiUrl: 'http://ejabberd.test/api',
-  adminJid: 'admin@galena.localhost',
+  adminJid: 'admin@zilar.localhost',
   adminPassword: 'admin-secret-value',
-  domain: 'galena.localhost',
-  mucDomain: 'rooms.galena.localhost',
+  domain: 'zilar.localhost',
+  mucDomain: 'rooms.zilar.localhost',
   wsPublicUrl: 'ws://ejabberd.test:5280/ws',
   jwtSecret: 's'.repeat(40),
 };
@@ -47,7 +47,7 @@ function headerOf(call: Call, name: string): string | null {
 describe('createEjabberdAdminClient', () => {
   it('registers a user with the admin auth header, host and a long random password', async () => {
     const { fetchImpl, calls } = createFetch(() =>
-      jsonResponse('User alice@galena.localhost successfully registered'),
+      jsonResponse('User alice@zilar.localhost successfully registered'),
     );
     const client = createEjabberdAdminClient(config, fetchImpl);
 
@@ -59,11 +59,11 @@ describe('createEjabberdAdminClient', () => {
     expect(call.init.method).toBe('POST');
     expect(headerOf(call, 'content-type')).toBe('application/json');
     expect(headerOf(call, 'authorization')).toBe(
-      `Basic ${Buffer.from('admin@galena.localhost:admin-secret-value').toString('base64')}`,
+      `Basic ${Buffer.from('admin@zilar.localhost:admin-secret-value').toString('base64')}`,
     );
     const body = bodyOf(call);
     expect(body['user']).toBe('alice');
-    expect(body['host']).toBe('galena.localhost');
+    expect(body['host']).toBe('zilar.localhost');
     expect(typeof body['password']).toBe('string');
     expect((body['password'] as string).length).toBeGreaterThanOrEqual(32);
   });
@@ -74,7 +74,7 @@ describe('createEjabberdAdminClient', () => {
         {
           status: 'error',
           code: 10090,
-          message: 'User alice@galena.localhost already registered',
+          message: 'User alice@zilar.localhost already registered',
         },
         409,
       ),
@@ -92,7 +92,7 @@ describe('createEjabberdAdminClient', () => {
     const call = calls[0]!;
     expect(call.url).toBe('http://ejabberd.test/api/unregister');
     expect(call.init.method).toBe('POST');
-    expect(bodyOf(call)).toEqual({ user: 'alice', host: 'galena.localhost' });
+    expect(bodyOf(call)).toEqual({ user: 'alice', host: 'zilar.localhost' });
   });
 
   it('maps userExists from check_account (0 means the account exists)', async () => {
@@ -117,7 +117,7 @@ describe('createEjabberdAdminClient', () => {
     expect(call.url).toBe('http://ejabberd.test/api/change_password');
     expect(bodyOf(call)).toEqual({
       user: 'alice',
-      host: 'galena.localhost',
+      host: 'zilar.localhost',
       newpass: 'known-password',
     });
   });
@@ -142,8 +142,8 @@ describe('createEjabberdAdminClient', () => {
     expect(call.url).toBe('http://ejabberd.test/api/create_room_with_opts');
     expect(bodyOf(call)).toEqual({
       room: 'project-a',
-      service: 'rooms.galena.localhost',
-      host: 'galena.localhost',
+      service: 'rooms.zilar.localhost',
+      host: 'zilar.localhost',
       options: [
         { name: 'members_only', value: 'true' },
         { name: 'persistent', value: 'true' },
@@ -187,13 +187,13 @@ describe('createEjabberdAdminClient', () => {
     const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
     const client = createEjabberdAdminClient(config, fetchImpl);
 
-    await client.setAffiliation('project-a', 'alice@galena.localhost', 'owner');
+    await client.setAffiliation('project-a', 'alice@zilar.localhost', 'owner');
 
     expect(bodyOf(calls[0]!)).toEqual({
       room: 'project-a',
-      service: 'rooms.galena.localhost',
+      service: 'rooms.zilar.localhost',
       user: 'alice',
-      host: 'galena.localhost',
+      host: 'zilar.localhost',
       affiliation: 'owner',
     });
   });
@@ -201,14 +201,14 @@ describe('createEjabberdAdminClient', () => {
   it('returns the validated affiliation list', async () => {
     const { fetchImpl } = createFetch(() =>
       jsonResponse([
-        { jid: 'alice@galena.localhost', affiliation: 'owner', reason: '' },
-        { jid: 'bob@galena.localhost', affiliation: 'member', reason: 'invited' },
+        { jid: 'alice@zilar.localhost', affiliation: 'owner', reason: '' },
+        { jid: 'bob@zilar.localhost', affiliation: 'member', reason: 'invited' },
       ]),
     );
     const client = createEjabberdAdminClient(config, fetchImpl);
     await expect(client.getAffiliations('project-a')).resolves.toEqual([
-      { jid: 'alice@galena.localhost', affiliation: 'owner', reason: '' },
-      { jid: 'bob@galena.localhost', affiliation: 'member', reason: 'invited' },
+      { jid: 'alice@zilar.localhost', affiliation: 'owner', reason: '' },
+      { jid: 'bob@zilar.localhost', affiliation: 'member', reason: 'invited' },
     ]);
   });
 
@@ -217,18 +217,18 @@ describe('createEjabberdAdminClient', () => {
     const client = createEjabberdAdminClient(config, fetchImpl);
 
     await client.sendDirectInvitation('project-a', [
-      'alice@galena.localhost',
-      'bob@galena.localhost',
+      'alice@zilar.localhost',
+      'bob@zilar.localhost',
     ]);
 
     const call = calls[0]!;
     expect(call.url).toBe('http://ejabberd.test/api/send_direct_invitation');
     expect(bodyOf(call)).toEqual({
       room: 'project-a',
-      service: 'rooms.galena.localhost',
+      service: 'rooms.zilar.localhost',
       password: 'none',
       reason: 'none',
-      users: ['alice@galena.localhost', 'bob@galena.localhost'],
+      users: ['alice@zilar.localhost', 'bob@zilar.localhost'],
     });
   });
 
@@ -236,7 +236,7 @@ describe('createEjabberdAdminClient', () => {
     const { fetchImpl, calls } = createFetch(() => jsonResponse(''));
     const client = createEjabberdAdminClient(config, fetchImpl);
 
-    await client.sendDirectInvitation('project-a', ['alice@galena.localhost'], {
+    await client.sendDirectInvitation('project-a', ['alice@zilar.localhost'], {
       reason: 'Join us',
       password: 'secret',
     });
@@ -250,30 +250,30 @@ describe('createEjabberdAdminClient', () => {
 
     await expect(client.sendDirectInvitation('project-a', [])).rejects.toThrow();
     await expect(
-      client.sendDirectInvitation('Bad/../Room', ['alice@galena.localhost']),
+      client.sendDirectInvitation('Bad/../Room', ['alice@zilar.localhost']),
     ).rejects.toThrow('roomId');
     await expect(client.sendDirectInvitation('project-a', ['not-a-jid'])).rejects.toThrow();
     expect(calls).toHaveLength(0);
   });
 
-  it('adds a roster item with both subscriptions and the Galena group', async () => {
+  it('adds a roster item with both subscriptions and the Zilar group', async () => {
     const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
     const client = createEjabberdAdminClient(config, fetchImpl);
 
-    await client.addRosterItem('alice', 'bob@galena.localhost', {
+    await client.addRosterItem('alice', 'bob@zilar.localhost', {
       nick: 'Bob',
-      groups: ['Galena'],
+      groups: ['Zilar'],
     });
 
     const call = calls[0]!;
     expect(call.url).toBe('http://ejabberd.test/api/add_rosteritem');
     expect(bodyOf(call)).toEqual({
       localuser: 'alice',
-      localhost: 'galena.localhost',
+      localhost: 'zilar.localhost',
       user: 'bob',
-      host: 'galena.localhost',
+      host: 'zilar.localhost',
       nick: 'Bob',
-      groups: ['Galena'],
+      groups: ['Zilar'],
       subs: 'both',
     });
   });
@@ -282,14 +282,14 @@ describe('createEjabberdAdminClient', () => {
     const { fetchImpl, calls } = createFetch(() => jsonResponse(0));
     const client = createEjabberdAdminClient(config, fetchImpl);
 
-    await client.deleteRosterItem('alice', 'bob@galena.localhost');
+    await client.deleteRosterItem('alice', 'bob@zilar.localhost');
 
     expect(calls[0]!.url).toBe('http://ejabberd.test/api/delete_rosteritem');
     expect(bodyOf(calls[0]!)).toEqual({
       localuser: 'alice',
-      localhost: 'galena.localhost',
+      localhost: 'zilar.localhost',
       user: 'bob',
-      host: 'galena.localhost',
+      host: 'zilar.localhost',
     });
   });
 
@@ -297,22 +297,22 @@ describe('createEjabberdAdminClient', () => {
     const { fetchImpl } = createFetch(() =>
       jsonResponse([
         {
-          jid: 'bob@galena.localhost',
+          jid: 'bob@zilar.localhost',
           nick: 'Bob',
           subscription: 'both',
           pending: 'none',
-          groups: ['Galena'],
+          groups: ['Zilar'],
         },
       ]),
     );
     const client = createEjabberdAdminClient(config, fetchImpl);
     await expect(client.getRoster('alice')).resolves.toEqual([
       {
-        jid: 'bob@galena.localhost',
+        jid: 'bob@zilar.localhost',
         nick: 'Bob',
         subscription: 'both',
         pending: 'none',
-        groups: ['Galena'],
+        groups: ['Zilar'],
       },
     ]);
   });
@@ -339,13 +339,13 @@ describe('createEjabberdAdminClient', () => {
     const client = createEjabberdAdminClient(config, fetchImpl);
 
     await expect(
-      client.addRosterItem('Alice', 'bob@galena.localhost', { nick: 'Bob', groups: ['Galena'] }),
+      client.addRosterItem('Alice', 'bob@zilar.localhost', { nick: 'Bob', groups: ['Zilar'] }),
     ).rejects.toThrow('localpart');
     await expect(
-      client.addRosterItem('alice', 'not-a-jid', { nick: 'Bob', groups: ['Galena'] }),
+      client.addRosterItem('alice', 'not-a-jid', { nick: 'Bob', groups: ['Zilar'] }),
     ).rejects.toThrow('jid');
     await expect(
-      client.addRosterItem('alice', 'bob@galena.localhost', { nick: 'Bob', groups: [] }),
+      client.addRosterItem('alice', 'bob@zilar.localhost', { nick: 'Bob', groups: [] }),
     ).rejects.toThrow();
     await expect(client.getRoster('Bad/Jid')).rejects.toThrow('localpart');
     expect(calls).toHaveLength(0);
@@ -386,7 +386,7 @@ describe('createEjabberdAdminClient', () => {
     await expect(
       client.setAffiliation(
         'project-a',
-        'alice@galena.localhost',
+        'alice@zilar.localhost',
         'superuser' as unknown as RoomAffiliation,
       ),
     ).rejects.toThrow();

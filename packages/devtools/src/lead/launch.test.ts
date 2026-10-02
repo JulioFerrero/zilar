@@ -47,7 +47,7 @@ function setupRepo(
   statePath: string;
 } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-launch-'));
-  const repoRoot = path.join(dir, 'galena');
+  const repoRoot = path.join(dir, 'zilar');
   fs.mkdirSync(path.join(repoRoot, 'work'), { recursive: true });
   fs.writeFileSync(path.join(repoRoot, 'work', 'T-0099-demo.md'), TASK_MD(model, effort));
   return { repoRoot, statePath: path.join(dir, 'state.json') };
@@ -92,7 +92,7 @@ describe('launchTask', () => {
     });
 
     // Sibling worktree on the task branch from main.
-    expect(worktree).toBe(path.join(path.dirname(repoRoot), 'galena-T-0099'));
+    expect(worktree).toBe(path.join(path.dirname(repoRoot), 'zilar-T-0099'));
     expect(gitCalls[0]?.slice(1)).toEqual([
       'worktree',
       'add',
@@ -158,7 +158,7 @@ describe('launchTask', () => {
 
   it('rejects a task file without a model', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-launch-'));
-    const repoRoot = path.join(dir, 'galena');
+    const repoRoot = path.join(dir, 'zilar');
     fs.mkdirSync(path.join(repoRoot, 'work'), { recursive: true });
     fs.writeFileSync(
       path.join(repoRoot, 'work', 'T-0099-demo.md'),
@@ -198,7 +198,7 @@ describe('startWorkerSession', () => {
         promptsDirPath: promptsDir(),
         task: 'T-0099',
         file: 'T-0099-demo.md',
-        worktree: '/tmp/galena-T-0099',
+        worktree: '/tmp/zilar-T-0099',
         branch: 'task/T-0099-demo',
         title: 'T-0099',
         model: { providerID: 'opencode-go', id: 'muse-spark-1.3-contributor' },
@@ -235,7 +235,7 @@ describe('startWorkerSession', () => {
         promptsDirPath: promptsDir(),
         task: 'T-0099',
         file: 'T-0099-demo.md',
-        worktree: '/tmp/galena-T-0099',
+        worktree: '/tmp/zilar-T-0099',
         branch: 'task/T-0099-demo',
         title: 'T-0099',
         model: { providerID: 'opencode-go', id: 'muse-spark-1.3-contributor' },

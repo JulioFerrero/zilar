@@ -1,4 +1,4 @@
-import type { Attachment } from '@galena/protocol';
+import type { Attachment } from '@zilar/protocol';
 
 import { gradientImage } from '../lib/image-presets';
 
@@ -30,7 +30,7 @@ export function mockDemoAttachments(): Attachment[] {
     },
     {
       kind: 'file',
-      url: 'https://files.galena.test/demo/tickets.pdf',
+      url: 'https://files.zilar.test/demo/tickets.pdf',
       name: 'tickets.pdf',
       size: 2_411_724,
       mime: 'application/pdf',

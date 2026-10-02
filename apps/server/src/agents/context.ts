@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@galena/xmpp-core';
+import type { ChatMessage } from '@zilar/xmpp-core';
 
 export interface ChatCompletionMessage {
   role: 'system' | 'user' | 'assistant';
@@ -54,7 +54,7 @@ export function buildSystemMessage(input: {
 }): string {
   const persona = input.persona.trim();
   const platform =
-    `You are ${input.aiName}, an AI in the Galena chat app, talking in a private chat ` +
+    `You are ${input.aiName}, an AI in the Zilar chat app, talking in a private chat ` +
     `with ${input.ownerName}. Reply in plain text; keep it concise unless asked.`;
   return joinPrefix([
     persona,
@@ -109,7 +109,7 @@ export function buildGroupSystemMessage(input: {
         : `You are in the topic ${topic}. `
       : '';
   const platform =
-    `You are ${input.aiName}, an AI in the Galena chat app, talking in a group chat. ` +
+    `You are ${input.aiName}, an AI in the Zilar chat app, talking in a group chat. ` +
     `${where}` +
     `${sender} mentioned you: reply to them directly. Reply in plain text; keep it brief unless asked for more.`;
   return joinPrefix([persona, platform, `Today is ${input.today}.`]);

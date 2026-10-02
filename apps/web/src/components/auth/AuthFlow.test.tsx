@@ -7,7 +7,7 @@ import { AuthFlow } from './AuthFlow';
 import { authClient, sendSignInCode, verifySignInCode } from '@/lib/auth';
 
 vi.mock('@/lib/auth', () => ({
-  INVITE_HEADER: 'x-galena-invite',
+  INVITE_HEADER: 'x-zilar-invite',
   authClient: { getSession: vi.fn(async () => ({ data: { user: { name: 'You' } } })) },
   sendSignInCode: vi.fn(),
   verifySignInCode: vi.fn(),
@@ -29,7 +29,7 @@ function renderFlow(props: { inviteCode?: string }) {
       }}
     >
       <MemoryRouter>
-        <AuthFlow inviteCode={props.inviteCode} heading="You're invited to Galena" />
+        <AuthFlow inviteCode={props.inviteCode} heading="You're invited to Zilar" />
       </MemoryRouter>
     </AuthProvider>,
   );

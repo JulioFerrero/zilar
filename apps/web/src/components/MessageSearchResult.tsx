@@ -1,5 +1,5 @@
 import type { SearchItem } from '@/lib/api';
-import { formatListTime } from '@galena/chat-core';
+import { formatListTime } from '@zilar/chat-core';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 import { Avatar } from './Avatar';

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { UiReaction } from '@galena/chat-core';
+import type { UiReaction } from '@zilar/chat-core';
 
 import { ReactionChips } from './reaction-chips';
 

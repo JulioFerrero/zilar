@@ -1,4 +1,4 @@
-# Galena: features and changes
+# Zilar: features and changes
 
 Everything that exists in the repository today, grouped by area, with the task that built it. Status is stated honestly. New here? Start with the [user guide](USER_GUIDE.md) — every screen with a screenshot.
 
@@ -20,7 +20,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | @mentions in groups | XEP-0372 references, `@` picker, chips, highlight when it is you | web | 🟡 Merged | T-0053 |
 | Reactions | XEP-0444: quick bar, chips, history-safe, DMs and groups | web | 🟡 Merged | T-0059 |
 | Edit and delete for everyone | XEP-0308 corrections and XEP-0424 retractions, "edited" label, tombstones, sender-only | web | 🟡 Merged | T-0061 |
-| Attachments | Images and files via XEP-0363 upload, paste, drag-and-drop, retry; images auto-load only from Galena's own upload host | web | 🟡 Merged | T-0065 |
+| Attachments | Images and files via XEP-0363 upload, paste, drag-and-drop, retry; images auto-load only from Zilar's own upload host | web | 🟡 Merged | T-0065 |
 | Loading is never "empty" | Skeletons, inline errors with Retry, reloaded chats load their history | web, mobile | ✅ Live (web) · 🟡 (mobile) | T-0042, T-0057, T-0067 |
 | Safe rich text | Markdown in AI replies (safe subset, no HTML, no images, `http/https/mailto` links only) | web, mobile | 🟡 Merged | T-0049, T-0064 |
 | Topics in groups | Each group has topics (public or private) with General first; members-only rooms, a task strip with owner and status, new-topic dialog, topic panel; AIs are per topic. Web and mobile | server, web, mobile | 🟡 Merged | T-0108, T-0109, T-0110, T-0111, T-0112, T-0130 |
@@ -106,8 +106,8 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 |---|---|---|---|---|
 | Web app | React, Vite, Tailwind; dark skeuomorphic design system (Geist, depth primitives, floating panels) | web | ✅ Live | T-0018, T-0046, T-0047, T-0062 |
 | Mobile app | Expo (SDK 57, React Native 0.86), Expo Router, iOS-verified; same design language | mobile | ✅ Live (chat) | T-0011, T-0019, T-0023, T-0048 |
-| Mock mode | `?mock=1` on web (dev builds only), `EXPO_PUBLIC_GALENA_MOCK` on mobile, for design and demos without a server | web, mobile | ✅ | T-0063, T-0069 |
-| Mobile boot check | `pnpm --filter @galena/mobile boot:ios`: pods, deps, own Metro, passes only when the JS app really runs | mobile | ✅ | T-0031 |
+| Mock mode | `?mock=1` on web (dev builds only), `EXPO_PUBLIC_ZILAR_MOCK` on mobile, for design and demos without a server | web, mobile | ✅ | T-0063, T-0069 |
+| Mobile boot check | `pnpm --filter @zilar/mobile boot:ios`: pods, deps, own Metro, passes only when the JS app really runs | mobile | ✅ | T-0031 |
 
 ## 8. Platform and engineering
 
@@ -118,7 +118,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Server foundation | zod config, redacted logs, JSON errors, request ids, Drizzle migrations at startup, PGlite tests | server | ✅ Live | T-0014 |
 | Protocol | Versioned payload schemas for rich messages (cards, progress, attachments, approvals) | package | ✅ | T-0013 |
 | Server configuration reference | Every env var, flag, migration, background job and health check | docs | ✅ | T-0094 → [`SERVER_CONFIG.md`](SERVER_CONFIG.md) |
-| Self-hosted install | Production images and compose (Caddy, Coolify; config baked into images, no bind mounts), SMTP sign-in codes, `./deploy/galena init/up/doctor/backup/restore/create-admin`, bare-metal guide ([`INSTALL_DOCKER.md`](INSTALL_DOCKER.md)) | deploy | 🟡 Merged (wizard proven live on scratch containers) | T-0126, T-0128, T-0129, T-0127 |
+| Self-hosted install | Production images and compose (Caddy, Coolify; config baked into images, no bind mounts), SMTP sign-in codes, `./deploy/zilar init/up/doctor/backup/restore/create-admin`, bare-metal guide ([`INSTALL_DOCKER.md`](INSTALL_DOCKER.md)) | deploy | 🟡 Merged (wizard proven live on scratch containers) | T-0126, T-0128, T-0129, T-0127 |
 | Built by an AI team | A lead Claude writes specs and reviews every diff; workers implement in isolated worktrees; the `lead` CLI launches, supervises, reviews and merges; a fail-closed permission policy guards what workers may run | devtools | ✅ | T-0038, T-0051 → [`LEAD_PLAYBOOK.md`](LEAD_PLAYBOOK.md) |
 | Mobile parity (chat prefs, pins, invites, roles, search, channels, stickers) | Per-user mute/archive/pin, pinned banner, invite links, roles, message search, channels, stickers — same features as web | mobile | 🟡 Merged (not run on a simulator or device yet) | T-0135, T-0136, T-0137, T-0138, T-0139, T-0140, T-0143, T-0144, T-0147 |
 

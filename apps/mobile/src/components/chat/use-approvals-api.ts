@@ -35,13 +35,13 @@ export interface ApprovalsApiHandle {
 
 /**
  * Picks the real API or the mock one from the route's `?mock=` param or the
- * bundle-time `EXPO_PUBLIC_GALENA_MOCK` env. The mock serves the same pending
+ * bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env. The mock serves the same pending
  * approval the chat's mock card references, so the card can be approved end to
  * end without a server.
  */
 export function useApprovalsApi(): ApprovalsApiHandle {
   const params = useGlobalSearchParams();
-  const envMock = process.env.EXPO_PUBLIC_GALENA_MOCK;
+  const envMock = process.env.EXPO_PUBLIC_ZILAR_MOCK;
   const mock = approvalsMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
   const api = useMemo(
     () => (mock ? createMockApprovalsApi() : createApprovalsApi(getSessionToken)),

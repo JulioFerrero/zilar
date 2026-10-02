@@ -4,7 +4,7 @@ import {
   type ChatSummary,
   type MessageItem,
   type UiMessage,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, View } from 'react-native';
 

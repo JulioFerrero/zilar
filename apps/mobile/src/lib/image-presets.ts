@@ -1,4 +1,4 @@
-import { AVATAR_GRADIENTS } from '@galena/chat-core';
+import { AVATAR_GRADIENTS } from '@zilar/chat-core';
 
 const FALLBACK: readonly [string, string] = ['#c9dfc5', '#d8e8f0'];
 

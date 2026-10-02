@@ -9,7 +9,7 @@ import { loadXmppConfig, type XmppConfig } from '../xmpp/config';
 // MUC/Sub event for a subscribed user with no session produces the XEP-0357
 // notification IQ at our component.
 //
-//   GALENA_PUSH_GATE=1 pnpm --filter @galena/server test --maxWorkers=2 src/push/live-gate.test.ts
+//   ZILAR_PUSH_GATE=1 pnpm --filter @zilar/server test --maxWorkers=2 src/push/live-gate.test.ts
 //
 // Skipped otherwise. Infra credentials come from `infra/.env` (the same
 // pattern as the xmpp-core integration test); values are used, never logged.
@@ -17,7 +17,7 @@ import { loadXmppConfig, type XmppConfig } from '../xmpp/config';
 // live server as-is. Stage B (the IQ itself) needs the component listener
 // from `infra/ejabberd/ejabberd.yml` plus a restart; without a listener on
 // 127.0.0.1:5347 it reports SKIP with the reason instead of failing.
-const gateEnabled = process.env.GALENA_PUSH_GATE === '1';
+const gateEnabled = process.env.ZILAR_PUSH_GATE === '1';
 
 function loadConfig(): XmppConfig {
   const envFile = fileURLToPath(new URL('../../../../infra/.env', import.meta.url));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { act, screen } from '@testing-library/react';
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { renderApp } from '@/test/renderApp';
 
 const aiChat: ChatSummary = {
@@ -129,7 +129,7 @@ describe('ChatListItem', () => {
           lastMessage: {
             id: 'm-4',
             chatId: 'g-dev',
-            senderId: 'ai-dev-1@galena.test',
+            senderId: 'ai-dev-1@zilar.test',
             senderName: 'Dev-1',
             text: '**Deployed** to `staging`',
             createdAt: new Date(2026, 8, 28, 10, 0),
@@ -158,7 +158,7 @@ describe('ChatListItem', () => {
           lastMessage: {
             id: 'm-5',
             chatId: 'g-fam',
-            senderId: 'u-ana@galena.test',
+            senderId: 'u-ana@zilar.test',
             senderName: 'Ana',
             text: 'a **bold** word',
             createdAt: new Date(2026, 8, 28, 10, 0),

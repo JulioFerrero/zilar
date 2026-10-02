@@ -10,7 +10,7 @@ function jsonResponse(status: number, body: unknown): Response {
   } as Response;
 }
 
-const pushConfig = { vapidPublicKey: 'dGVzdA', pushJid: 'push.galena.test' };
+const pushConfig = { vapidPublicKey: 'dGVzdA', pushJid: 'push.zilar.test' };
 
 function stubBrowserGlobals(): {
   manager: {
@@ -91,7 +91,7 @@ function stubFetch(initialDevices: unknown[] = [], showPreviews = true): ReturnT
           inactive: false,
         },
       ];
-      return jsonResponse(200, { id: 'device-1', node: 'p-device-1', jid: 'push.galena.test' });
+      return jsonResponse(200, { id: 'device-1', node: 'p-device-1', jid: 'push.zilar.test' });
     }
     if (path.startsWith('/push/subscriptions/') && method === 'DELETE') {
       devices = devices.filter(
@@ -183,7 +183,7 @@ describe('NotificationsPage', () => {
     const registration = await window.navigator.serviceWorker.getRegistration();
     const subscription = await registration?.pushManager.getSubscription();
     expect(subscription).toBeNull();
-    expect(window.localStorage.getItem('galena:pushDevice')).toBeNull();
+    expect(window.localStorage.getItem('zilar:pushDevice')).toBeNull();
   });
 
   it('unsubscribes the browser subscription when registration fails (N2)', async () => {
@@ -224,7 +224,7 @@ describe('NotificationsPage', () => {
     const registration = await window.navigator.serviceWorker.getRegistration();
     const subscription = await registration?.pushManager.getSubscription();
     expect(subscription).toBeNull();
-    expect(window.localStorage.getItem('galena:pushDevice')).toBeNull();
+    expect(window.localStorage.getItem('zilar:pushDevice')).toBeNull();
   });
 
   it('shows the server-off state when push is disabled server-side', async () => {
@@ -255,7 +255,7 @@ describe('NotificationsPage', () => {
       },
     ]);
     window.localStorage.setItem(
-      'galena:pushDevice',
+      'zilar:pushDevice',
       JSON.stringify({ id: 'device-1', node: 'p-device-1' }),
     );
     renderApp('/settings/notifications');
@@ -288,7 +288,7 @@ describe('NotificationsPage', () => {
       },
     ]);
     window.localStorage.setItem(
-      'galena:pushDevice',
+      'zilar:pushDevice',
       JSON.stringify({ id: 'device-1', node: 'p-device-1' }),
     );
     renderApp('/settings/notifications');
@@ -298,6 +298,6 @@ describe('NotificationsPage', () => {
     // The row is gone and the page no longer treats this browser as the
     // stored device — the enable button returns immediately.
     expect(await screen.findByRole('button', { name: /Enable on this device/ })).toBeTruthy();
-    expect(window.localStorage.getItem('galena:pushDevice')).toBeNull();
+    expect(window.localStorage.getItem('zilar:pushDevice')).toBeNull();
   });
 });

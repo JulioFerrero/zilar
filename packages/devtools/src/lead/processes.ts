@@ -21,7 +21,7 @@ const EXIT_POLL_MS = 50;
 
 // True only when `candidate` lives inside `worktree`. Matches the exact
 // worktree path, or a path that starts with the worktree plus a separator, so
-// `galena-T-0047` never matches `galena-T-00470`. Comparison is case-sensitive
+// `zilar-T-0047` never matches `zilar-T-00470`. Comparison is case-sensitive
 // on purpose: macOS filesystems are case-insensitive but case-preserving, and
 // process cwd strings come from the kernel unchanged.
 function isInsideWorktree(worktree: string, candidate: string): boolean {
@@ -80,8 +80,8 @@ function stripEnvAssignments(command: string): string {
 // delimited token after env assignments, with any leading path stripped. We
 // never print the rest of the command line — arguments often carry secrets
 // (`--token=…`, `-e PASSWORD=…`, etc.) and there's no safe way to scrub them.
-// `node` running `/…/galena-T-0047/apps/server/src/index.ts` becomes `node`;
-// `…/galena-T-0047/node_modules/.bin/vite` becomes `vite`.
+// `node` running `/…/zilar-T-0047/apps/server/src/index.ts` becomes `node`;
+// `…/zilar-T-0047/node_modules/.bin/vite` becomes `vite`.
 export function executableBasename(command: string): string {
   const cleaned = stripEnvAssignments(command).trim();
   if (cleaned.length === 0) {
@@ -98,8 +98,8 @@ export function executableBasename(command: string): string {
 // Reads `ps -Ao pid=,command=` output. Each line is `<pid> <command>`. A pid
 // counts as "inside" when the command line contains the worktree path with a
 // trailing separator (`<worktree>/…`) anywhere in it. Exact-prefix matters:
-// `galena-T-0047` never matches `galena-T-00470`. This catches interpreter-
-// first commands (`node /…/galena-T-0047/apps/server/src/index.ts`) which
+// `zilar-T-0047` never matches `zilar-T-00470`. This catches interpreter-
+// first commands (`node /…/zilar-T-0047/apps/server/src/index.ts`) which
 // have no worktree path as their leading token.
 function parsePs(output: string, worktree: string): Map<number, string> {
   const map = new Map<number, string>();

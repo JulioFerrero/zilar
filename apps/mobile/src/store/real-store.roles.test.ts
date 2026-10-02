@@ -16,7 +16,7 @@ function topicRow(overrides: Record<string, unknown> = {}): Record<string, unkno
     groupId: 'g1',
     name: 'Hiring: frontend role',
     glyph: 'H',
-    chatJid: 't-hiring@rooms.galena.test',
+    chatJid: 't-hiring@rooms.zilar.test',
     visibility: 'private',
     kind: 'task',
     status: 'blocked',
@@ -39,7 +39,7 @@ function generalRow(): Record<string, unknown> {
     id: 't-g',
     name: 'General',
     glyph: 'G',
-    chatJid: 'general@rooms.galena.test',
+    chatJid: 'general@rooms.zilar.test',
     visibility: 'public',
     kind: 'chat',
     status: 'open',
@@ -51,7 +51,7 @@ function generalRow(): Record<string, unknown> {
 function groupEntry(): ChatEntry {
   return {
     kind: 'group',
-    chatJid: 'general@rooms.galena.test',
+    chatJid: 'general@rooms.zilar.test',
     title: 'Dev team',
     groupId: 'g1',
     memberCount: 6,
@@ -76,9 +76,9 @@ function fakeApi(): ChatApi {
   return {
     getMe: vi.fn(async () => ({
       id: 'u-me',
-      email: 'me@galena.test',
+      email: 'me@zilar.test',
       name: 'Me',
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
     })),
     getChats: vi.fn(async () => [groupEntry()]),
     getContacts: vi.fn(async () => []),
@@ -93,12 +93,12 @@ function fakeApi(): ChatApi {
       ais: [],
     })),
     getXmppToken: vi.fn(async () => ({
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
       token: 'tok',
       expiresAt: '2026-09-28T12:05:00Z',
       service: 'ws://x',
-      domain: 'galena.test',
-      mucDomain: 'rooms.galena.test',
+      domain: 'zilar.test',
+      mucDomain: 'rooms.zilar.test',
     })),
   };
 }
@@ -242,7 +242,7 @@ describe('real store group roles (T-0137)', () => {
         ?.map((entry) => entry.name),
     ).toEqual(['Designers', 'Devs']);
     // A chat id is NOT the group key.
-    expect(store.getState().groupRoles('t-hiring@rooms.galena.test')).toBeUndefined();
+    expect(store.getState().groupRoles('t-hiring@rooms.zilar.test')).toBeUndefined();
   });
 
   it('maps the first roles load failure through describeRolesError load', async () => {
@@ -349,10 +349,10 @@ describe('real store topic roles (T-0137)', () => {
     store.getState().start();
     await flush();
 
-    expect(store.getState().topicRoles('t-hiring@rooms.galena.test')).toBeUndefined();
-    await store.getState().refreshTopicRoles('t-hiring@rooms.galena.test');
+    expect(store.getState().topicRoles('t-hiring@rooms.zilar.test')).toBeUndefined();
+    await store.getState().refreshTopicRoles('t-hiring@rooms.zilar.test');
     expect(vi.mocked(topics.getTopic)).toHaveBeenCalledWith('t-hiring');
-    expect(store.getState().topicRoles('t-hiring@rooms.galena.test')).toEqual({
+    expect(store.getState().topicRoles('t-hiring@rooms.zilar.test')).toEqual({
       roles: [{ id: 'role-designers', name: 'Designers', memberCount: 2 }],
       approverRole: null,
     });
@@ -363,14 +363,14 @@ describe('real store topic roles (T-0137)', () => {
     store.getState().start();
     await flush();
 
-    await store.getState().setTopicRoles('t-hiring@rooms.galena.test', {
+    await store.getState().setTopicRoles('t-hiring@rooms.zilar.test', {
       roleIds: ['role-designers', 'role-devs'],
       approverRoleId: 'role-designers',
     });
     expect(topics.bodies).toEqual([
       { roleIds: ['role-designers', 'role-devs'], approverRoleId: 'role-designers' },
     ]);
-    expect(store.getState().topicRoles('t-hiring@rooms.galena.test')).toEqual({
+    expect(store.getState().topicRoles('t-hiring@rooms.zilar.test')).toEqual({
       roles: [
         { id: 'role-designers', name: 'role-designers', memberCount: 1 },
         { id: 'role-devs', name: 'role-devs', memberCount: 1 },
@@ -383,13 +383,13 @@ describe('real store topic roles (T-0137)', () => {
     const { store, api } = setup();
     store.getState().start();
     await flush();
-    await store.getState().refreshTopicRoles('t-hiring@rooms.galena.test');
-    expect(store.getState().topicRoles('t-hiring@rooms.galena.test')?.roles).toHaveLength(1);
+    await store.getState().refreshTopicRoles('t-hiring@rooms.zilar.test');
+    expect(store.getState().topicRoles('t-hiring@rooms.zilar.test')?.roles).toHaveLength(1);
 
     // The server truth after the flip: the topic reads public with no roles.
     const publicEntry = {
       kind: 'group',
-      chatJid: 'general@rooms.galena.test',
+      chatJid: 'general@rooms.zilar.test',
       title: 'Dev team',
       groupId: 'g1',
       memberCount: 6,
@@ -397,15 +397,15 @@ describe('real store topic roles (T-0137)', () => {
       topics: [generalRow(), topicRow({ visibility: 'public', roles: [], approverRole: null })],
     } as unknown as ChatEntry;
     vi.mocked(api.getChats).mockResolvedValue([publicEntry]);
-    await store.getState().patchTopic('t-hiring@rooms.galena.test', { visibility: 'public' });
+    await store.getState().patchTopic('t-hiring@rooms.zilar.test', { visibility: 'public' });
 
     // The patch response is the server truth: no roles, no approver.
-    expect(store.getState().topicRoles('t-hiring@rooms.galena.test')).toEqual({
+    expect(store.getState().topicRoles('t-hiring@rooms.zilar.test')).toEqual({
       roles: [],
       approverRole: null,
     });
     expect(
-      store.getState().chats.find((chat) => chat.id === 't-hiring@rooms.galena.test')?.topic
+      store.getState().chats.find((chat) => chat.id === 't-hiring@rooms.zilar.test')?.topic
         ?.visibility,
     ).toBe('public');
   });
@@ -419,7 +419,7 @@ describe('real store topic roles (T-0137)', () => {
     );
 
     await expect(
-      store.getState().setTopicRoles('t-hiring@rooms.galena.test', {
+      store.getState().setTopicRoles('t-hiring@rooms.zilar.test', {
         roleIds: [],
         approverRoleId: null,
       }),

@@ -43,14 +43,14 @@ describe('findFailureReason', () => {
 
   it('ignores platform noise that merely contains ERROR, like a socket SO_ERROR (seen in the real app log)', () => {
     const line =
-      '2026-09-28 11:50:59.957 E  Galena[23488:444373] [com.apple.network:connection] nw_socket_handle_socket_event [C5.1.1:1] Socket SO_ERROR [61: Connection refused]';
+      '2026-09-28 11:50:59.957 E  Zilar[23488:444373] [com.apple.network:connection] nw_socket_handle_socket_event [C5.1.1:1] Socket SO_ERROR [61: Connection refused]';
     expect(findFailureReason(line)).toBeNull();
   });
 
   it('returns null for benign lines', () => {
     expect(findFailureReason('iOS Bundled 156ms (.expo/.virtual-metro-entry)')).toBeNull();
     expect(findFailureReason(' LOG  Rendered 120 frames in 34ms')).toBeNull();
-    expect(findFailureReason('2026-09-28 10:00:00.123 localhost Galena[42] Booted')).toBeNull();
+    expect(findFailureReason('2026-09-28 10:00:00.123 localhost Zilar[42] Booted')).toBeNull();
   });
 });
 
@@ -69,14 +69,14 @@ describe('isBundleLoadedLine', () => {
 describe('isFirstRenderLine', () => {
   it("detects the real 'Running main' line the app logged on this machine", () => {
     const line =
-      '2026-09-28 11:51:00.328 I  Galena[23488:444388] [com.facebook.react.log:javascript] Running "main" with {"rootTag":11,"initialProps":{},"fabric":true}';
+      '2026-09-28 11:51:00.328 I  Zilar[23488:444388] [com.facebook.react.log:javascript] Running "main" with {"rootTag":11,"initialProps":{},"fabric":true}';
     expect(isFirstRenderLine(line)).toBe(true);
   });
 
   it('ignores module-init and other app-log lines', () => {
     expect(
       isFirstRenderLine(
-        "2026-09-28 11:51:00.583 I  Galena[23488:444388] [dev.expo.modules:expo] Creating JS object for module 'ExpoSecureStore'",
+        "2026-09-28 11:51:00.583 I  Zilar[23488:444388] [dev.expo.modules:expo] Creating JS object for module 'ExpoSecureStore'",
       ),
     ).toBe(false);
     expect(isFirstRenderLine('iOS Bundled 13971ms ... (4092 modules)')).toBe(false);
@@ -85,7 +85,7 @@ describe('isFirstRenderLine', () => {
 
 describe('logLineTimestampMs', () => {
   it('parses the leading timestamp of a compact log-show line', () => {
-    const ms = logLineTimestampMs('2026-09-28 11:51:00.328 I  Galena[23488:444388] hello');
+    const ms = logLineTimestampMs('2026-09-28 11:51:00.328 I  Zilar[23488:444388] hello');
     expect(ms).toBe(new Date('2026-09-28T11:51:00.328').getTime());
   });
 

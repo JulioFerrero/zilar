@@ -1,5 +1,5 @@
 import type { ChatPref } from '@/lib/api';
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 
 // T-0113: mute durations offered by the chat menu.
 export const MUTE_DURATIONS = [

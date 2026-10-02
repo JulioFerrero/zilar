@@ -1,5 +1,5 @@
 // Live check for XEP-0308 corrections and XEP-0424 retractions against the dev
-// stack (T-0061). Skipped unless GALENA_XMPP_INTEGRATION=1, like the other
+// stack (T-0061). Skipped unless ZILAR_XMPP_INTEGRATION=1, like the other
 // integration tests. It creates two throwaway users and a room.
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +10,7 @@ import { issueXmppToken } from '../../../apps/server/src/xmpp/token';
 import { createXmppCore } from './index';
 import type { ChatMessage } from './types';
 
-const integrationEnabled = process.env.GALENA_XMPP_INTEGRATION === '1';
+const integrationEnabled = process.env.ZILAR_XMPP_INTEGRATION === '1';
 const WAIT_TIMEOUT_MS = 15_000;
 
 function loadConfig(): XmppConfig {
@@ -40,7 +40,7 @@ async function waitFor(predicate: () => boolean, description: string): Promise<v
   }
 }
 
-describe.skipIf(!integrationEnabled)('@galena/xmpp-core edits integration', () => {
+describe.skipIf(!integrationEnabled)('@zilar/xmpp-core edits integration', () => {
   it('delivers and archives corrections and retractions in a DM and a group', async () => {
     const config = loadConfig();
     const service = websocketUrl(config.apiUrl);

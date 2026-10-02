@@ -150,19 +150,19 @@ describe('extractJoinToken', () => {
   const token = 'a'.repeat(64);
 
   it('accepts the custom scheme, the web URL shape and a bare token', () => {
-    expect(extractJoinToken(`galena://join/${token}`)).toBe(token);
-    expect(extractJoinToken(`https://galena.example/j/${token}`)).toBe(token);
-    expect(extractJoinToken(`https://galena.example/join/${token}`)).toBe(token);
+    expect(extractJoinToken(`zilar://join/${token}`)).toBe(token);
+    expect(extractJoinToken(`https://zilar.example/j/${token}`)).toBe(token);
+    expect(extractJoinToken(`https://zilar.example/join/${token}`)).toBe(token);
     expect(extractJoinToken(`  ${token}  `)).toBe(token);
   });
 
   it('rejects anything else, so junk never reaches the server', () => {
     expect(extractJoinToken('')).toBeUndefined();
     expect(extractJoinToken('hello friends')).toBeUndefined();
-    expect(extractJoinToken('galena://invite/abc')).toBeUndefined();
-    expect(extractJoinToken('galena://join/short')).toBeUndefined();
-    expect(extractJoinToken('https://galena.example/j/short')).toBeUndefined();
-    expect(extractJoinToken('https://galena.example/groups/g1')).toBeUndefined();
+    expect(extractJoinToken('zilar://invite/abc')).toBeUndefined();
+    expect(extractJoinToken('zilar://join/short')).toBeUndefined();
+    expect(extractJoinToken('https://zilar.example/j/short')).toBeUndefined();
+    expect(extractJoinToken('https://zilar.example/groups/g1')).toBeUndefined();
     expect(extractJoinToken('javascript:alert(1)')).toBeUndefined();
     expect(extractJoinToken(token.slice(0, 32))).toBeUndefined();
   });

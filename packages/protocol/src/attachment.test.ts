@@ -3,7 +3,7 @@ import { AttachmentSchema, type Attachment } from './index';
 
 const image: Attachment = {
   kind: 'image',
-  url: 'https://upload.galena.localhost/upload/abc/photo.png',
+  url: 'https://upload.zilar.localhost/upload/abc/photo.png',
   name: 'holiday photo.png',
   size: 245_760,
   mime: 'image/png',
@@ -13,7 +13,7 @@ const image: Attachment = {
 
 const file: Attachment = {
   kind: 'file',
-  url: 'https://upload.galena.localhost/upload/abc/report.pdf',
+  url: 'https://upload.zilar.localhost/upload/abc/report.pdf',
   name: 'Q3 report.pdf',
   size: 2_400_000,
   mime: 'application/pdf',

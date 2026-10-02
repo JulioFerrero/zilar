@@ -51,7 +51,7 @@ export default function InviteRoute() {
       />
     );
   }
-  return <AuthFlow inviteCode={code} heading="You're invited to Galena" />;
+  return <AuthFlow inviteCode={code} heading="You're invited to Zilar" />;
 }
 
 function InviteMessage({ title, body }: { title: string; body?: string }) {

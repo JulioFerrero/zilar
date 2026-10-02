@@ -4,7 +4,7 @@ import type {
   ReactionsState,
   ReplyRef,
   UiMessage,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 
 import type { Contact, GroupDetail, Me } from '../lib/chat-api';
 import type {

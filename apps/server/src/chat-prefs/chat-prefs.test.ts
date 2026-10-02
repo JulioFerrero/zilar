@@ -197,7 +197,7 @@ describe('chat prefs', () => {
 
     // A group room for a group I am not in.
     const group = await createGroup(bob.cookie, 'Secret club', []);
-    const unknownRoom = `nope-${group.id.slice(0, 8)}@rooms.galena.localhost`;
+    const unknownRoom = `nope-${group.id.slice(0, 8)}@rooms.zilar.localhost`;
     expect((await putPref(alice.cookie, unknownRoom, { archived: true })).status).toBe(404);
   });
 
@@ -249,7 +249,7 @@ describe('chat prefs', () => {
   it('enforces the row and pin caps', async () => {
     const { alice } = await setupPair();
     for (let index = 0; index < 20; index += 1) {
-      const response = await putPref(alice.cookie, `room${index}@rooms.galena.localhost`, {
+      const response = await putPref(alice.cookie, `room${index}@rooms.zilar.localhost`, {
         pinned: true,
       });
       // These rooms do not exist, so they 404 before the cap matters.

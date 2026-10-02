@@ -40,7 +40,7 @@ describe('Topics sidebar (T-0111)', () => {
     fireEvent.click(toggle);
     expect(screen.queryByText('Checkout button hidden on Safari')).toBeNull();
     expect(screen.getByText('Dev team')).toBeTruthy();
-    expect(JSON.parse(window.localStorage.getItem('galena:collapsedGroups') ?? '[]')).toEqual([
+    expect(JSON.parse(window.localStorage.getItem('zilar:collapsedGroups') ?? '[]')).toEqual([
       'g-devteam',
     ]);
   });

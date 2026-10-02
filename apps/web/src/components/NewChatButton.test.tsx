@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { renderApp } from '@/test/renderApp';
 
 afterEach(() => {
@@ -10,7 +10,7 @@ afterEach(() => {
 describe('NewChatButton', () => {
   it('creates a group from the dialog and opens it', async () => {
     const room: ChatSummary = {
-      id: 'new@rooms.galena.test',
+      id: 'new@rooms.zilar.test',
       title: 'Crew',
       kind: 'group',
       isAI: false,
@@ -21,7 +21,7 @@ describe('NewChatButton', () => {
     };
     const { store } = renderApp('/', {
       chats: [],
-      contacts: [{ userId: 'u-ana', name: 'Ana', jid: 'ana@galena.test' }],
+      contacts: [{ userId: 'u-ana', name: 'Ana', jid: 'ana@zilar.test' }],
     });
     const createGroup = vi.fn(async (_title: string, _memberIds: string[]) => {
       store.setState((state) => ({ chats: [...state.chats, room] }));
@@ -119,7 +119,7 @@ describe('NewChatButton Escape handling (T-0062)', () => {
 
   it('closes the New group dialog with Escape and returns focus to the trigger', () => {
     renderApp('/', {
-      contacts: [{ userId: 'u-ana', name: 'Ana', jid: 'ana@galena.test' }],
+      contacts: [{ userId: 'u-ana', name: 'Ana', jid: 'ana@zilar.test' }],
     });
 
     const trigger = screen.getByLabelText('New chat');

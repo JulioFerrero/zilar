@@ -1,6 +1,6 @@
 # Roadmap M5: a Telegram-like chat with topics, private topics, stickers and AI teammates
 
-Decisions D25 to D29 in [`PROJECT_PLAN.md`](PROJECT_PLAN.md). Visual spec: the Claude artifact "Galena Topics Mockup" (https://claude.ai/artifact/YKvuBAcmXzRdiyx83eppSd). Every task below has a full spec in `work/T-XXXX-*.md` (status `planned`); the lead launches them one wave at a time.
+Decisions D25 to D29 in [`PROJECT_PLAN.md`](PROJECT_PLAN.md). Visual spec: the Claude artifact "Zilar Topics Mockup" (https://claude.ai/artifact/YKvuBAcmXzRdiyx83eppSd). Every task below has a full spec in `work/T-XXXX-*.md` (status `planned`); the lead launches them one wave at a time.
 
 ## The tasks
 
@@ -17,7 +17,7 @@ Decisions D25 to D29 in [`PROJECT_PLAN.md`](PROJECT_PLAN.md). Visual spec: the C
 | T-0116 | Group roles | Designers/Devs roles: private-topic access and approver rights | T-0108, T-0110, T-0111 | yes |
 | T-0117 | Message search | Find messages across everything you may see | T-0108 | no |
 | T-0118 | Web push spike | Proof that notifications work through ejabberd | none | no |
-| T-0119 | PWA and web push | Installable Galena with notifications | T-0118, T-0113 | yes |
+| T-0119 | PWA and web push | Installable Zilar with notifications | T-0118, T-0113 | yes |
 | T-0120 | Stickers | User-made packs, sticker panel, sending | none | yes |
 | T-0121 | Sticker creator | Make packs from photos, favorites, discover | T-0120 | yes |
 | T-0122 | GIFs | GIF search and sending, private (no provider tracking) | T-0120; **provider key from Julio** | no |
@@ -28,7 +28,7 @@ Decisions D25 to D29 in [`PROJECT_PLAN.md`](PROJECT_PLAN.md). Visual spec: the C
 | T-0129 | Coolify without bind mounts | The pasted Coolify compose file cannot see repository files; bake config into images (found in review of T-0126) | none | no |
 | T-0126 | Production images and compose | Docker Compose and Coolify install, Caddy HTTPS (D30, easy install) | none | no |
 | T-0131 | Screenshots and user guide | Screenshot script (mock mode, desktop and phone), `docs/USER_GUIDE.md`, README "See it" (Julio asked 2026-09-30) | T-0114 | no |
-| T-0127 | Install wizard, backup, bare metal | `./galena init`, backup/restore, systemd guide | T-0126 | no |
+| T-0127 | Install wizard, backup, bare metal | `./zilar init`, backup/restore, systemd guide | T-0126 | no |
 | T-0125 | Web tools for AIs | `web.price` (gold, S&P, BTC), Wikipedia, feeds, page reading and a best-effort search, all keyless (no SearXNG/Exa for now) | T-0105 | no |
 
 ## Order for tonight

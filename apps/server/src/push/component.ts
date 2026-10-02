@@ -10,7 +10,7 @@ import { PUBSUB_NAMESPACE, type PushNotification } from './protocol';
 import { handleIncomingPush, type PushServiceDeps } from './service';
 
 export type PushComponentOptions = {
-  /** XEP-0114 component domain, e.g. `push.galena.localhost`. */
+  /** XEP-0114 component domain, e.g. `push.zilar.localhost`. */
   domain: string;
   /** Shared secret with ejabberd's component listener. */
   secret: string;

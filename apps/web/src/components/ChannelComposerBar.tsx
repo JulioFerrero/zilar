@@ -1,7 +1,7 @@
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { useState } from 'react';
 import { Composer } from './Composer';
-import type { ReplyRef } from '@galena/chat-core';
+import type { ReplyRef } from '@zilar/chat-core';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 /**

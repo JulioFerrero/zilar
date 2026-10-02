@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { Attachment } from '@galena/chat-core';
+import type { Attachment } from '@zilar/chat-core';
 import { FileMessage } from './FileMessage';
 
 const file: Attachment = {
   kind: 'file',
-  url: 'https://files.galena.test/tickets.pdf',
+  url: 'https://files.zilar.test/tickets.pdf',
   name: 'tickets.pdf',
   size: 2_411_724,
   mime: 'application/pdf',

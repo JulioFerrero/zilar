@@ -50,9 +50,9 @@ describe('pins api client', () => {
       fetchImpl as typeof fetch,
       'http://127.0.0.1:3188',
     );
-    expect(await api.listPins('ana@galena.test')).toEqual([ROW]);
+    expect(await api.listPins('ana@zilar.test')).toEqual([ROW]);
     const [listUrl] = fetchImpl.mock.calls[0] as unknown as [string];
-    expect(listUrl).toContain('/api/pins?chat=ana%40galena.test');
+    expect(listUrl).toContain('/api/pins?chat=ana%40zilar.test');
   });
 
   it('pins with a snapshot and echoes the deleted row on unpin', async () => {

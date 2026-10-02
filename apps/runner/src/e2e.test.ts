@@ -3,19 +3,19 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createApp } from '@galena/server/src/app.ts';
+import { createApp } from '@zilar/server/src/app.ts';
 import {
   bootstrapUser,
   createTestContext,
   type TestContext,
-} from '@galena/server/src/test-support.ts';
-import { startRunnerHub } from '@galena/server/src/machines/hub.ts';
-import { createDbMachineRegistry } from '@galena/server/src/machines/registry.ts';
+} from '@zilar/server/src/test-support.ts';
+import { startRunnerHub } from '@zilar/server/src/machines/hub.ts';
+import { createDbMachineRegistry } from '@zilar/server/src/machines/registry.ts';
 import { pairRunner } from './pair.ts';
 import { runRunner } from './connect.ts';
 import { identityPaths, type RunnerIdentity } from './identity.ts';
 
-// `serve` from `@hono/node-server` lives inside `@galena/server/node_modules`
+// `serve` from `@hono/node-server` lives inside `@zilar/server/node_modules`
 // because the runner does not list it as a direct dependency. A dynamic
 // import lets Node resolve it through the workspace symlink and keeps the
 // runner's typecheck free of `@hono/node-server` types.
@@ -25,7 +25,7 @@ type ServeOptions = {
 };
 type ServeFn = (options: ServeOptions) => http.Server;
 async function loadServe(): Promise<ServeFn> {
-  const mod = (await import('@galena/server/node_modules/@hono/node-server/dist/index.mjs')) as {
+  const mod = (await import('@zilar/server/node_modules/@hono/node-server/dist/index.mjs')) as {
     serve: ServeFn;
   };
   return mod.serve;
@@ -84,7 +84,7 @@ async function startE2E(): Promise<E2EHandle> {
     machineRegistry: registry,
   });
   const user = await bootstrapUser(context, bootstrapApp, 'e2e@example.com');
-  const homeDir = mkdtempSync(join(tmpdir(), 'galena-runner-e2e-'));
+  const homeDir = mkdtempSync(join(tmpdir(), 'zilar-runner-e2e-'));
   let closed = false;
   return {
     context,

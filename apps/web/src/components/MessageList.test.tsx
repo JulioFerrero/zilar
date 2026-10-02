@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent } from '@testing-library/react';
-import type { ChatSummary, UiMessage } from '@galena/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { MessageList } from './MessageList';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
@@ -38,7 +38,7 @@ function renderMessages(seed: ChatStoreSeed, activeChat: ChatSummary = chat) {
     <AuthProvider
       value={{
         status: 'authenticated',
-        user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+        user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
         refetch: async () => {},
       }}
     >

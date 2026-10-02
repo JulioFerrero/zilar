@@ -62,7 +62,7 @@ export function InviteDialog({ onClose }: { onClose: () => void }) {
       >
         <h2 className="text-[18px] font-semibold">Invite a friend</h2>
         <p className="mt-1 text-[14px] text-muted-foreground">
-          Send them this link. They join Galena already connected to you.
+          Send them this link. They join Zilar already connected to you.
         </p>
 
         {error !== undefined ? (

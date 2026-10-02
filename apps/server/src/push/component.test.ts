@@ -30,7 +30,7 @@ function publishStanza(node: string, id = 'n1'): PushXmppElement {
   const attrs: Record<string, string | undefined> = {
     type: 'set',
     from: TEST_XMPP_DOMAIN,
-    to: 'push.galena.localhost',
+    to: 'push.zilar.localhost',
     id,
   };
   return {
@@ -187,7 +187,7 @@ describe('push component', () => {
 
     const { fake, listeners, sentStanzas } = fakeComponent();
     const handle = startPushComponent({
-      domain: 'push.galena.localhost',
+      domain: 'push.zilar.localhost',
       secret: 'secret',
       port: 5347,
       service: service(),
@@ -212,7 +212,7 @@ describe('push component', () => {
   it('answers result for unknown nodes and non-push IQs', async () => {
     const { fake, listeners, sentStanzas } = fakeComponent();
     const handle = startPushComponent({
-      domain: 'push.galena.localhost',
+      domain: 'push.zilar.localhost',
       secret: 'secret',
       port: 5347,
       service: service(),
@@ -310,7 +310,7 @@ describe('push component', () => {
 
     const { fake, listeners } = fakeComponent();
     const handle = startPushComponent({
-      domain: 'push.galena.localhost',
+      domain: 'push.zilar.localhost',
       secret: 'secret',
       port: 5347,
       service: service(),

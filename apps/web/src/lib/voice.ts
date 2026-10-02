@@ -1,4 +1,4 @@
-import type { UploadSlot } from '@galena/xmpp-core';
+import type { UploadSlot } from '@zilar/xmpp-core';
 import { API_BASE } from './api';
 
 /** Hard cap on a recording, matching the server's `POST /api/voice` limit. */
@@ -186,7 +186,7 @@ export async function convertVoice(
     throw new VoiceError(await errorCode(response), 'The server could not convert the recording');
   }
 
-  const durationMs = Number(response.headers.get('x-galena-duration-ms'));
+  const durationMs = Number(response.headers.get('x-zilar-duration-ms'));
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
     throw new VoiceError('invalid_response', 'The server sent no duration');
   }

@@ -31,9 +31,9 @@ export type { PickedFile, PickResult } from './attachment-ports';
 const TOO_LARGE_MESSAGE = 'That file is larger than 50 MB.';
 const EMPTY_MESSAGE = 'That file is empty.';
 const DENIED_MESSAGE =
-  'Galena needs access to your photos to attach them. You can allow it in Settings.';
+  'Zilar needs access to your photos to attach them. You can allow it in Settings.';
 const CAMERA_DENIED_MESSAGE =
-  'Galena needs access to your camera to take a photo. You can allow it in Settings.';
+  'Zilar needs access to your camera to take a photo. You can allow it in Settings.';
 const PICK_FAILED_MESSAGE = 'Could not pick that file. Try again.';
 const OPEN_FAILED_MESSAGE = 'Could not open that file. Try again.';
 

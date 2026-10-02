@@ -48,7 +48,7 @@ export function createVoiceRoutes({
       throw new HttpError(400, 'voice_empty', 'The recording is empty');
     }
 
-    const dir = await mkdtemp(join(tmpdir(), 'galena-voice-'));
+    const dir = await mkdtemp(join(tmpdir(), 'zilar-voice-'));
     const inputPath = join(dir, 'input.bin');
     const outputPath = join(dir, 'output.m4a');
 
@@ -88,7 +88,7 @@ export function createVoiceRoutes({
           'content-type': 'audio/mp4',
           'content-length': String(converted.byteLength),
           'cache-control': 'no-store',
-          'x-galena-duration-ms': String(durationMs),
+          'x-zilar-duration-ms': String(durationMs),
         },
       });
     } finally {

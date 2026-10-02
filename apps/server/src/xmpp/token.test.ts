@@ -5,10 +5,10 @@ import type { XmppConfig } from './config';
 
 const config: XmppConfig = {
   apiUrl: 'http://ejabberd.test/api',
-  adminJid: 'admin@galena.localhost',
+  adminJid: 'admin@zilar.localhost',
   adminPassword: 'admin-secret-value',
-  domain: 'galena.localhost',
-  mucDomain: 'rooms.galena.localhost',
+  domain: 'zilar.localhost',
+  mucDomain: 'rooms.zilar.localhost',
   wsPublicUrl: 'ws://ejabberd.test:5280/ws',
   jwtSecret: 'shared-secret-that-is-long-enough-1234',
 };
@@ -23,11 +23,11 @@ function secondsFromNow(): number {
 
 describe('issueXmppToken', () => {
   it('signs an HS256 token that verifies with the same secret', async () => {
-    const { token, expiresAt } = await issueXmppToken(config, 'alice@galena.localhost', 120);
+    const { token, expiresAt } = await issueXmppToken(config, 'alice@zilar.localhost', 120);
 
     const { payload, protectedHeader } = await jwtVerify(token, secretBytes(config.jwtSecret));
     expect(protectedHeader.alg).toBe('HS256');
-    expect(payload.jid).toBe('alice@galena.localhost');
+    expect(payload.jid).toBe('alice@zilar.localhost');
 
     const exp = payload.exp;
     expect(typeof exp).toBe('number');
@@ -41,7 +41,7 @@ describe('issueXmppToken', () => {
   });
 
   it('defaults to a 5 minute lifetime', async () => {
-    const { token } = await issueXmppToken(config, 'alice@galena.localhost');
+    const { token } = await issueXmppToken(config, 'alice@zilar.localhost');
     const { payload } = await jwtVerify(token, secretBytes(config.jwtSecret));
     expect(payload.exp).toBeDefined();
     expect((payload.exp as number) - secondsFromNow()).toBeLessThanOrEqual(300);
@@ -59,12 +59,12 @@ describe('issueXmppToken', () => {
 
   it('rejects a lifetime beyond the maximum', async () => {
     await expect(
-      issueXmppToken(config, 'alice@galena.localhost', MAX_TOKEN_TTL_SECONDS + 1),
+      issueXmppToken(config, 'alice@zilar.localhost', MAX_TOKEN_TTL_SECONDS + 1),
     ).rejects.toThrow();
   });
 
   it('does not verify with a different secret', async () => {
-    const { token } = await issueXmppToken(config, 'alice@galena.localhost');
+    const { token } = await issueXmppToken(config, 'alice@zilar.localhost');
     await expect(
       jwtVerify(token, secretBytes('a-completely-different-secret-1234567')),
     ).rejects.toThrow();

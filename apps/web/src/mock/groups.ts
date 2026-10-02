@@ -1,6 +1,6 @@
 import type { GroupAi, GroupDetail, GroupMember, PublicAi } from '@/lib/api';
 
-const DOMAIN = 'galena.test';
+const DOMAIN = 'zilar.test';
 const OWNER = 'u-you';
 
 function member(
@@ -13,7 +13,7 @@ function member(
 }
 
 // AIs are provisioned as `ai-<aiId>`; the id is the localpart without the
-// `ai-` prefix, so `dev-1` becomes `ai-dev-1@galena.test`.
+// `ai-` prefix, so `dev-1` becomes `ai-dev-1@zilar.test`.
 function ai(aiId: string, name: string, ownerId: string): GroupAi {
   return { aiId, jid: `ai-${aiId}@${DOMAIN}`, name, ownerId };
 }

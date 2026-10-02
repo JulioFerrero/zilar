@@ -1,5 +1,5 @@
-import { formatTime, type UiMessage } from '@galena/chat-core';
-import type { Sticker } from '@galena/protocol';
+import { formatTime, type UiMessage } from '@zilar/chat-core';
+import type { Sticker } from '@zilar/protocol';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, View } from 'react-native';
 
@@ -23,7 +23,7 @@ type StickerMessageProps = {
 /**
  * A sticker without a bubble: at most 200 pt on the chat background, with
  * the time and ticks overlaid in a small pill. The image loads from the
- * payload `url` only when it is on the same origin as the Galena API;
+ * payload `url` only when it is on the same origin as the Zilar API;
  * anything else shows the emoji or a placeholder so a hostile sender cannot
  * make every viewer's device fetch an arbitrary URL. The bearer token rides
  * along only to the API origin (the file route requires a session).

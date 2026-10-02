@@ -11,12 +11,12 @@ beforeEach(() => {
 describe('aisMockScenario', () => {
   it('returns null without a mock request', () => {
     expect(aisMockScenario({}, {})).toBeNull();
-    expect(aisMockScenario({ EXPO_PUBLIC_GALENA_MOCK: '0' }, {})).toBeNull();
+    expect(aisMockScenario({ EXPO_PUBLIC_ZILAR_MOCK: '0' }, {})).toBeNull();
   });
 
   it('uses the default scenario for ?mock=1', () => {
     expect(aisMockScenario({}, { mock: '1' }, true)).toBe('default');
-    expect(aisMockScenario({ EXPO_PUBLIC_GALENA_MOCK: '1' }, {})).toBe('default');
+    expect(aisMockScenario({ EXPO_PUBLIC_ZILAR_MOCK: '1' }, {})).toBe('default');
   });
 
   it('reads a named scenario from the param or the env default', () => {
@@ -24,7 +24,7 @@ describe('aisMockScenario', () => {
     expect(aisMockScenario({}, { mock: 'unavailable' }, true)).toBe('unavailable');
     expect(
       aisMockScenario(
-        { EXPO_PUBLIC_GALENA_MOCK: '1', EXPO_PUBLIC_GALENA_MOCK_SCENARIO: 'error' },
+        { EXPO_PUBLIC_ZILAR_MOCK: '1', EXPO_PUBLIC_ZILAR_MOCK_SCENARIO: 'error' },
         {},
       ),
     ).toBe('error');
@@ -33,13 +33,13 @@ describe('aisMockScenario', () => {
   it('returns null for an unknown value instead of mocking', () => {
     expect(aisMockScenario({}, { mock: 'nonsense' }, true)).toBeNull();
     expect(aisMockScenario({}, { mock: 'foo' }, true)).toBeNull();
-    expect(aisMockScenario({ EXPO_PUBLIC_GALENA_MOCK: 'false' }, {})).toBeNull();
+    expect(aisMockScenario({ EXPO_PUBLIC_ZILAR_MOCK: 'false' }, {})).toBeNull();
   });
 
   it('still runs the default scenario when MOCK=1 has an unknown narrowing', () => {
     expect(
       aisMockScenario(
-        { EXPO_PUBLIC_GALENA_MOCK: '1', EXPO_PUBLIC_GALENA_MOCK_SCENARIO: 'nonsense' },
+        { EXPO_PUBLIC_ZILAR_MOCK: '1', EXPO_PUBLIC_ZILAR_MOCK_SCENARIO: 'nonsense' },
         {},
       ),
     ).toBe('default');
@@ -55,8 +55,8 @@ describe('aisMockScenario', () => {
     expect(aisMockScenario({}, { mock: 'empty' }, true)).toBe('empty');
   });
 
-  it('keeps the EXPO_PUBLIC_GALENA_MOCK path when the gate is closed', () => {
-    expect(aisMockScenario({ EXPO_PUBLIC_GALENA_MOCK: '1' }, { mock: 'empty' }, false)).toBe(
+  it('keeps the EXPO_PUBLIC_ZILAR_MOCK path when the gate is closed', () => {
+    expect(aisMockScenario({ EXPO_PUBLIC_ZILAR_MOCK: '1' }, { mock: 'empty' }, false)).toBe(
       'default',
     );
   });

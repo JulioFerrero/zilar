@@ -124,7 +124,7 @@ describe('Composer mentions (T-0053)', () => {
 
     const sent = store.getState().messages('c-viernes').at(-1);
     expect(sent?.text).toBe('@Luis');
-    expect(sent?.mentions).toEqual([{ jid: 'u-luis@galena.test', name: 'Luis', begin: 0, end: 5 }]);
+    expect(sent?.mentions).toEqual([{ jid: 'u-luis@zilar.test', name: 'Luis', begin: 0, end: 5 }]);
   });
 
   it('closes the picker with Escape without changing the text', () => {
@@ -288,7 +288,7 @@ describe('Composer chat switching (T-0053 review)', () => {
     const store = createChatStore();
     const auth = {
       status: 'authenticated' as const,
-      user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+      user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
       refetch: async () => {},
     };
     const tree = (chatId: string) => (

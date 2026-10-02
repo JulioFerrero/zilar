@@ -6,11 +6,11 @@ import { describe, expect, it } from 'vitest';
 /**
  * The gated live check. It drives the real dev server (no mocks):
  *
- *   GALENA_AUTH_INTEGRATION=1 \
- *   GALENA_AUTH_INTEGRATION_LOG=<server log file> \
- *   GALENA_AUTH_INVITE_CODE=<fresh invite> \
- *   GALENA_AUTH_TEST_EMAIL=<new test email> \
- *   pnpm --filter @galena/mobile test
+ *   ZILAR_AUTH_INTEGRATION=1 \
+ *   ZILAR_AUTH_INTEGRATION_LOG=<server log file> \
+ *   ZILAR_AUTH_INVITE_CODE=<fresh invite> \
+ *   ZILAR_AUTH_TEST_EMAIL=<new test email> \
+ *   pnpm --filter @zilar/mobile test
  *
  * Requests go over `node:http` without browser-only headers, like React Native
  * does, so Better Auth's Fetch-Metadata CSRF check behaves as it does on a phone.
@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
  * its log; the test reads the code from there, never from the response.
  */
 
-const ENABLED = process.env['GALENA_AUTH_INTEGRATION'] === '1';
+const ENABLED = process.env['ZILAR_AUTH_INTEGRATION'] === '1';
 
 const OTP_TIMEOUT_MS = 20_000;
 const POLL_INTERVAL_MS = 300;
@@ -125,7 +125,7 @@ async function sendCode(baseUrl: string, email: string, invite?: string): Promis
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      ...(invite === undefined ? {} : { 'x-galena-invite': invite }),
+      ...(invite === undefined ? {} : { 'x-zilar-invite': invite }),
     },
     body: { email, type: 'sign-in' },
   });
@@ -141,7 +141,7 @@ async function signIn(
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      ...(invite === undefined ? {} : { 'x-galena-invite': invite }),
+      ...(invite === undefined ? {} : { 'x-zilar-invite': invite }),
     },
     body: { email, otp },
   });
@@ -155,10 +155,10 @@ describe.skipIf(!ENABLED)('auth integration (real server)', () => {
   it(
     'invite → code → name → sign out → sign in again',
     async () => {
-      const baseUrl = process.env['GALENA_AUTH_INTEGRATION_URL'] ?? 'http://127.0.0.1:3188';
-      const logPath = requireEnv('GALENA_AUTH_INTEGRATION_LOG');
-      const invite = requireEnv('GALENA_AUTH_INVITE_CODE');
-      const email = requireEnv('GALENA_AUTH_TEST_EMAIL');
+      const baseUrl = process.env['ZILAR_AUTH_INTEGRATION_URL'] ?? 'http://127.0.0.1:3188';
+      const logPath = requireEnv('ZILAR_AUTH_INTEGRATION_LOG');
+      const invite = requireEnv('ZILAR_AUTH_INVITE_CODE');
+      const email = requireEnv('ZILAR_AUTH_TEST_EMAIL');
       const steps: string[] = [];
 
       // 1. Request a code for a brand-new email, with the invite header.

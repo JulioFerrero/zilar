@@ -32,12 +32,12 @@ function renderJoin(
       : auth === 'nameless'
         ? {
             status: 'authenticated' as const,
-            user: { id: 'u-you', name: '  ', email: 'you@galena.test' },
+            user: { id: 'u-you', name: '  ', email: 'you@zilar.test' },
             refetch: async () => {},
           }
         : {
             status: 'authenticated' as const,
-            user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+            user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
             refetch: async () => {},
           };
   render(

@@ -1,4 +1,4 @@
-import { StickerSchema, type Attachment } from '@galena/protocol';
+import { StickerSchema, type Attachment } from '@zilar/protocol';
 import { ArrowUp, Mic, Paperclip, Smile, Sticker, X } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
@@ -222,7 +222,7 @@ export function Composer({
     demoGifs === undefined ? gifsAvailability() : true,
   );
   const demoGifItems = useMemo(
-    () => demoGifs ?? (process.env.EXPO_PUBLIC_GALENA_MOCK === '1' ? mockDemoGifs() : undefined),
+    () => demoGifs ?? (process.env.EXPO_PUBLIC_ZILAR_MOCK === '1' ? mockDemoGifs() : undefined),
     [demoGifs],
   );
 

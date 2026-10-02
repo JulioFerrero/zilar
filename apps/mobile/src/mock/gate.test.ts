@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { mockParamAllowed } from './gate';
 
 describe('mockParamAllowed', () => {
-  it('covers dev on/off against every EXPO_PUBLIC_GALENA_MOCK value', () => {
+  it('covers dev on/off against every EXPO_PUBLIC_ZILAR_MOCK value', () => {
     const cases: Array<[boolean, string | undefined, boolean]> = [
       [true, undefined, true],
       [true, '1', true],

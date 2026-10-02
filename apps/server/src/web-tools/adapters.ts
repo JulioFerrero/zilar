@@ -132,7 +132,7 @@ function duckduckgoProvider(fetcher?: PinnedFetcher, dnsLookup?: DnsLookup): Web
 // Wikipedia's API etiquette asks for a descriptive User-Agent; the
 // contact is deliberately vague (no personal address in code).
 function wikipediaUserAgent(): string {
-  return `Galena/${serverVersion} (self-hosted; contact via server admin)`;
+  return `Zilar/${serverVersion} (self-hosted; contact via server admin)`;
 }
 
 // The shared gate for every web action. Counts all five actions in one

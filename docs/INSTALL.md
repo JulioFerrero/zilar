@@ -1,4 +1,4 @@
-# Install Galena
+# Install Zilar
 
 Your own chat server, where people and your AIs talk together. Pick one
 path — they all run the same code:
@@ -13,7 +13,7 @@ Requirements for any path: 1 vCPU / 2 GB RAM is enough for a small
 group and a few hundred users of chat; you need more only if many AI
 turns run on the same machine. Every path needs a domain pointing at
 the host (or `localhost` just to try it out) and an email provider for
-sign-in codes — Galena signs people in with a one-time code sent by
+sign-in codes — Zilar signs people in with a one-time code sent by
 email, there is no password login.
 
 What was actually tested: the Docker stack on `localhost` (full proof

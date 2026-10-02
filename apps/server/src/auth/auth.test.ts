@@ -520,14 +520,14 @@ describe('auth flows', () => {
       headers: {
         origin: 'http://localhost:5173',
         'access-control-request-method': 'POST',
-        'access-control-request-headers': 'content-type, x-galena-invite',
+        'access-control-request-headers': 'content-type, x-zilar-invite',
       },
     });
     expect(trusted.status).toBe(204);
     expect(trusted.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
     expect(trusted.headers.get('access-control-allow-credentials')).toBe('true');
     expect(trusted.headers.get('access-control-allow-headers')?.toLowerCase()).toContain(
-      'x-galena-invite',
+      'x-zilar-invite',
     );
 
     const untrusted = await app.request(`${BASE_URL}/api/invites`, {

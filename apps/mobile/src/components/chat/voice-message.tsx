@@ -1,5 +1,5 @@
-import { formatDuration } from '@galena/chat-core';
-import type { VoiceMeta } from '@galena/protocol';
+import { formatDuration } from '@zilar/chat-core';
+import type { VoiceMeta } from '@zilar/protocol';
 import { Pause, Play } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';

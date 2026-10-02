@@ -118,7 +118,7 @@ describe('mock invite links flow (T-0136)', () => {
   });
   it('previews and joins by a pasted link', async () => {
     const store = createChatStore();
-    const token = extractJoinToken(`galena://join/${MOCK_JOIN_TOKEN}`);
+    const token = extractJoinToken(`zilar://join/${MOCK_JOIN_TOKEN}`);
     expect(token).toBe(MOCK_JOIN_TOKEN);
     await expect(store.getState().previewJoinLink(token as string)).resolves.toMatchObject({
       groupTitle: 'Dev team',

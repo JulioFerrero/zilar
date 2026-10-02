@@ -1,5 +1,5 @@
 {
-  "name": "@galena/xmpp-core",
+  "name": "@zilar/xmpp-core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@galena/protocol": "workspace:*",
+    "@zilar/protocol": "workspace:*",
     "@xmpp/client": "^0.14.0"
   }
 }

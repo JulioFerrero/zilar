@@ -1,4 +1,4 @@
-You are an implementer on the Galena project. The lead switched this task from another model (quota fallback), so you are continuing the work that another session already started.
+You are an implementer on the Zilar project. The lead switched this task from another model (quota fallback), so you are continuing the work that another session already started.
 
 Do the task in work/{{TASK_FILE}} and follow AGENTS.md strictly (read both completely first).
 

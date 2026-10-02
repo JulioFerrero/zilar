@@ -43,5 +43,5 @@ export function hashPairingCode(normalized: string): string {
 // normalized code binds the signature to one code, so a signature cannot be
 // replayed against another code.
 export function pairingSignatureMessage(normalized: string): Buffer {
-  return Buffer.from(`galena-pair:v1:${normalized}`, 'ascii');
+  return Buffer.from(`zilar-pair:v1:${normalized}`, 'ascii');
 }

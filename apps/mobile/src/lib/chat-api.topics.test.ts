@@ -15,7 +15,7 @@ function generalTopic(overrides: Record<string, unknown> = {}): Record<string, u
     groupId: 'g1',
     name: 'General',
     glyph: 'G',
-    chatJid: 'general@rooms.galena.test',
+    chatJid: 'general@rooms.zilar.test',
     visibility: 'public',
     kind: 'chat',
     status: 'open',
@@ -33,7 +33,7 @@ function generalTopic(overrides: Record<string, unknown> = {}): Record<string, u
 function groupEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     kind: 'group',
-    chatJid: 'general@rooms.galena.test',
+    chatJid: 'general@rooms.zilar.test',
     title: 'Dev team',
     groupId: 'g1',
     memberCount: 6,

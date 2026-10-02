@@ -12,7 +12,7 @@ export function renderApp(initialPath = '/', seed?: ChatStoreSeed, options?: { a
     user: {
       id: seed?.currentUserId ?? 'u-you',
       name: seed?.me?.name ?? 'You',
-      email: 'you@galena.test',
+      email: 'you@zilar.test',
     },
     refetch: async () => {},
   };

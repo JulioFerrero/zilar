@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApprovalRequestSchema } from '@galena/protocol';
+import { ApprovalRequestSchema } from '@zilar/protocol';
 import { approvals } from '../db/schema';
 import {
   approvalCardBody,
@@ -23,7 +23,7 @@ function approvalRow(overrides: Partial<ApprovalRow> = {}): ApprovalRow {
     argsHash: 'a'.repeat(64),
     worstCaseCurrency: null,
     worstCaseAmount: null,
-    requestedBy: 'owner-1@galena.localhost',
+    requestedBy: 'owner-1@zilar.localhost',
     status: 'pending',
     decidedBy: null,
     decidedAt: null,
@@ -44,9 +44,9 @@ describe('approval card builder', () => {
     });
     const payload = buildApprovalCardPayload({
       approval: row,
-      aiJid: 'ai-1@galena.localhost',
-      ownerJid: 'owner-1@galena.localhost',
-      roomJid: 'room123@rooms.galena.localhost',
+      aiJid: 'ai-1@zilar.localhost',
+      ownerJid: 'owner-1@zilar.localhost',
+      roomJid: 'room123@rooms.zilar.localhost',
     });
     expect(payload).not.toBeNull();
     if (payload === null) {
@@ -59,14 +59,14 @@ describe('approval card builder', () => {
     }
     expect(payload.data).toEqual({
       id: 'approval-1',
-      room: 'room123@rooms.galena.localhost',
-      ai: 'ai-1@galena.localhost',
+      room: 'room123@rooms.zilar.localhost',
+      ai: 'ai-1@zilar.localhost',
       action: 'demo.echo',
       summary: 'Echo hello',
       details: 'long body text',
       args_hash: 'a'.repeat(64),
       worst_case_cost: { currency: 'EUR', amount: 12.5 },
-      requested_by: 'owner-1@galena.localhost',
+      requested_by: 'owner-1@zilar.localhost',
       expires_at: '2026-12-01T12:00:00.000Z',
     });
     expect(ApprovalRequestSchema.safeParse(payload.data).success).toBe(true);
@@ -76,15 +76,15 @@ describe('approval card builder', () => {
     const row = approvalRow({ groupId: null });
     const payload = buildApprovalCardPayload({
       approval: row,
-      aiJid: 'ai-1@galena.localhost',
-      ownerJid: 'owner-1@galena.localhost',
+      aiJid: 'ai-1@zilar.localhost',
+      ownerJid: 'owner-1@zilar.localhost',
       roomJid: null,
     });
     expect(payload).not.toBeNull();
     if (payload === null || payload.type !== 'approval.request') {
       return;
     }
-    expect(payload.data.room).toBe('owner-1@galena.localhost');
+    expect(payload.data.room).toBe('owner-1@zilar.localhost');
     expect(payload.data.details).toBeUndefined();
     expect(payload.data.worst_case_cost).toBeUndefined();
   });
@@ -93,8 +93,8 @@ describe('approval card builder', () => {
     const row = approvalRow();
     const payload = buildApprovalCardPayload({
       approval: row,
-      aiJid: 'ai-1@galena.localhost',
-      ownerJid: 'owner-1@galena.localhost',
+      aiJid: 'ai-1@zilar.localhost',
+      ownerJid: 'owner-1@zilar.localhost',
       roomJid: null,
     });
     if (payload === null || payload.type !== 'approval.request') {
@@ -108,8 +108,8 @@ describe('approval card builder', () => {
     const row = approvalRow({ details: 'a'.repeat(20_001) });
     const payload = buildApprovalCardPayload({
       approval: row,
-      aiJid: 'ai-1@galena.localhost',
-      ownerJid: 'owner-1@galena.localhost',
+      aiJid: 'ai-1@zilar.localhost',
+      ownerJid: 'owner-1@zilar.localhost',
       roomJid: null,
     });
     expect(payload).toBeNull();
@@ -119,8 +119,8 @@ describe('approval card builder', () => {
     const row = approvalRow({ argsHash: 'not-a-hash' });
     const payload = buildApprovalCardPayload({
       approval: row,
-      aiJid: 'ai-1@galena.localhost',
-      ownerJid: 'owner-1@galena.localhost',
+      aiJid: 'ai-1@zilar.localhost',
+      ownerJid: 'owner-1@zilar.localhost',
       roomJid: null,
     });
     expect(payload).toBeNull();
@@ -130,8 +130,8 @@ describe('approval card builder', () => {
     const row = approvalRow({ groupId: 'group-1' });
     const payload = buildApprovalCardPayload({
       approval: row,
-      aiJid: 'ai-1@galena.localhost',
-      ownerJid: 'owner-1@galena.localhost',
+      aiJid: 'ai-1@zilar.localhost',
+      ownerJid: 'owner-1@zilar.localhost',
       roomJid: null,
     });
     expect(payload).toBeNull();

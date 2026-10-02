@@ -1,17 +1,17 @@
 #!/bin/sh
 #
-# galena — install helper for a Galena production install.
+# zilar — install helper for a Zilar production install.
 #
 # Lives in deploy/ next to docker-compose.yml and .env. Single POSIX shell
 # script; needs only `sh`, `openssl` and `docker` (plus the POSIX core
 # tools every Linux and macOS ships: grep, sed, tar, date, mktemp).
 #
-#   ./galena init          write deploy/.env with generated secrets
-#   ./galena up|down|logs|status|update   run the compose stack
-#   ./galena doctor        check the machine before/after install
-#   ./galena backup [dir]  timestamped archive (databases, file stores, .env)
-#   ./galena restore <archive>   bring an install back (needs --yes)
-#   ./galena create-admin  mint the invite code for the first account
+#   ./zilar init          write deploy/.env with generated secrets
+#   ./zilar up|down|logs|status|update   run the compose stack
+#   ./zilar doctor        check the machine before/after install
+#   ./zilar backup [dir]  timestamped archive (databases, file stores, .env)
+#   ./zilar restore <archive>   bring an install back (needs --yes)
+#   ./zilar create-admin  mint the invite code for the first account
 #
 # Global options (accepted before or after the command):
 #   --env-file=PATH   use another env file (default: deploy/.env next to this script)
@@ -32,7 +32,7 @@
 
 set -eu
 
-PROG="galena"
+PROG="zilar"
 
 # The deploy directory is wherever this script lives.
 DEPLOY_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
@@ -71,7 +71,7 @@ run() {
 }
 
 # Thin wrapper so every compose call uses the same file and env file.
-# Extra compose flags (e.g. `galena logs --tail 20`) pass straight through.
+# Extra compose flags (e.g. `zilar logs --tail 20`) pass straight through.
 # COMPOSE_FILE/COMPOSE_PROJECT_NAME may be overridden from the environment
 # (the install test does this to run a scratch copy of the compose file
 # under its own project name).
@@ -222,7 +222,7 @@ cmd_init() {
   [ -n "$_domain" ] || _domain="$(ask "Public domain of this install (localhost to try it out)" "localhost")"
   [ -n "$_admin_email" ] || _admin_email="$(ask "Your email address (the first account signs up with it)" "")"
   [ -n "$_acme_email" ] || _acme_email="$(ask "Email for the Let's Encrypt account" "$_admin_email")"
-  [ -n "$_owner" ] || _owner="$(ask "GitHub owner that publishes the images (ghcr.io/<owner>/galena-*)" "")"
+  [ -n "$_owner" ] || _owner="$(ask "GitHub owner that publishes the images (ghcr.io/<owner>/zilar-*)" "")"
   _tag="${_tag:-latest}"
 
   case "$_domain" in
@@ -251,7 +251,7 @@ cmd_init() {
 
   # Empty here means the operator passed --domain= explicitly (the prompt
   # defaults to localhost otherwise): fall back to localhost rather than
-  # writing an empty GALENA_DOMAIN.
+  # writing an empty ZILAR_DOMAIN.
   _domain="${_domain:-localhost}"
 
   # Push is on by default: Web Push needs HTTPS, which the Caddy setup gives
@@ -284,7 +284,7 @@ cmd_init() {
 
   # Every secret comes from openssl; nothing is printed, ever.
   _postgres_pw="$(openssl rand -hex 24)"
-  _galena_pw="$(openssl rand -hex 24)"
+  _zilar_pw="$(openssl rand -hex 24)"
   _ejabberd_pw="$(openssl rand -hex 24)"
   _archive_pw="$(openssl rand -hex 24)"
   _ejabberd_admin_pw="$(openssl rand -hex 24)"
@@ -300,15 +300,15 @@ cmd_init() {
   if [ "$DRY_RUN" -eq 1 ]; then
     cat <<EOF
 + would write $ENV_FILE (mode 0600) with:
-+   GALENA_DOMAIN=$_domain, ACME_EMAIL set, HTTP_PORT=$_http_port, HTTPS_PORT=$_https_port
++   ZILAR_DOMAIN=$_domain, ACME_EMAIL set, HTTP_PORT=$_http_port, HTTPS_PORT=$_https_port
 +   NODE_ENV=$_node_env, MAIL_TRANSPORT=$_mail_transport
 +   (localhost trial: MAIL_ALLOW_CONSOLE_IN_PRODUCTION=true so the console
 +    mailer boots in production; OTP codes go to the server log. Real
 +    installs get false and must fill SMTP_* below.)
-+   MAIL_FROM=Galena <no-reply@$_domain>
++   MAIL_FROM=Zilar <no-reply@$_domain>
 +   IMAGE_OWNER=$_owner, IMAGE_TAG=$_tag
-+   5 generated passwords (<48 hex chars> each: POSTGRES, GALENA_DB,
-+     EJABBERD_DB, GALENA_ARCHIVE_DB, EJABBERD_ADMIN)
++   5 generated passwords (<48 hex chars> each: POSTGRES, ZILAR_DB,
++     EJABBERD_DB, ZILAR_ARCHIVE_DB, EJABBERD_ADMIN)
 +   3 generated secrets (base64: XMPP_JWT <64 chars>, BETTER_AUTH <44 chars>,
 +     KEY_ENCRYPTION <64 chars>)
 +   push: $([ "$_push_enabled" -eq 1 ] && echo "ENABLED (VAPID pair + PUSH_VAPID_SUBJECT=$_push_subject + component/secret storage keys generated)" || echo "disabled (PUSH_ENABLED=false, no keys written)")
@@ -366,7 +366,7 @@ SMTP_PASSWORD=
 MAIL_REPLY_TO="
   fi
   (umask 077; cat > "$ENV_FILE") <<EOF
-# Galena install env, written by '$PROG init'. Contains live secrets:
+# Zilar install env, written by '$PROG init'. Contains live secrets:
 # keep it private (mode 0600). Admin contact: $_admin_email.
 # The first account signs up with that address (see '$PROG create-admin').
 #
@@ -375,7 +375,7 @@ MAIL_REPLY_TO="
 # these variables, so a real install adds the SMTP_* lines back when it
 # switches MAIL_TRANSPORT to smtp.
 
-GALENA_DOMAIN=$_domain
+ZILAR_DOMAIN=$_domain
 ACME_EMAIL=$_acme_email
 HTTP_PORT=$_http_port
 HTTPS_PORT=$_https_port
@@ -390,19 +390,19 @@ NODE_ENV=$_node_env
 POSTGRES_PASSWORD=$_postgres_pw
 IMAGE_OWNER=$_owner
 IMAGE_TAG=$_tag
-GALENA_DB_PASSWORD=$_galena_pw
+ZILAR_DB_PASSWORD=$_zilar_pw
 EJABBERD_DB_PASSWORD=$_ejabberd_pw
-GALENA_ARCHIVE_DB_PASSWORD=$_archive_pw
+ZILAR_ARCHIVE_DB_PASSWORD=$_archive_pw
 EJABBERD_ADMIN_PASSWORD=$_ejabberd_admin_pw
-GALENA_XMPP_JWT_SECRET=$_jwt_secret
+ZILAR_XMPP_JWT_SECRET=$_jwt_secret
 BETTER_AUTH_SECRET=$_auth_secret
-GALENA_KEY_ENCRYPTION_KEY=$_key_enc_key
+ZILAR_KEY_ENCRYPTION_KEY=$_key_enc_key
 
 AGENT_GATEWAY_ENABLED=false
 ACTION_DEMO_ENABLED=false
 RUNNER_HUB_ENABLED=false
 
-# Outgoing email: Galena signs people in with a one-time code sent by
+# Outgoing email: Zilar signs people in with a one-time code sent by
 # email. A localhost trial uses the console mailer; a real install must
 # fill in the SMTP settings or the server refuses to start (production)
 # or cannot send codes. See docs/INSTALL_DOCKER.md "Email (required)".
@@ -410,7 +410,7 @@ MAIL_TRANSPORT=$_mail_transport
 $_smtp_lines
 SMTP_PORT=587
 SMTP_SECURE=false
-MAIL_FROM=Galena <no-reply@$_domain>
+MAIL_FROM=Zilar <no-reply@$_domain>
 MAIL_ALLOW_CONSOLE_IN_PRODUCTION=$_console_in_prod
 
 PUSH_ENABLED=$_push_enabled_value
@@ -418,7 +418,7 @@ PUSH_ENABLED=$_push_enabled_value
 # VAPID pair below; PUSH_VAPID_SUBJECT is the contact address shown to the
 # push provider. PUSH_COMPONENT_JID (push.<this domain>) must equal the host
 # the ejabberd entrypoint writes into the ejabberd_service listener — the
-# compose file derives it from GALENA_DOMAIN, so this line needs no edit.
+# compose file derives it from ZILAR_DOMAIN, so this line needs no edit.
 # Losing PUSH_STORAGE_KEY orphans every device (browsers must re-enable):
 # it is backed up with this file, never regenerated on an existing install.
 PUSH_COMPONENT_JID=push.$_domain
@@ -446,8 +446,8 @@ EOF
 cmd_up() {
   require_env_file
   require_docker
-  _domain="$(env_get GALENA_DOMAIN)"
-  info "starting Galena (${_domain:-unknown domain})..."
+  _domain="$(env_get ZILAR_DOMAIN)"
+  info "starting Zilar (${_domain:-unknown domain})..."
   run compose up -d --wait "$@"
   if [ "$DRY_RUN" -eq 0 ] && [ -n "$_domain" ]; then
     _scheme="https"
@@ -459,7 +459,7 @@ cmd_up() {
 cmd_down() {
   require_env_file
   require_docker
-  info "stopping Galena (data volumes are kept; add -v to wipe everything)..."
+  info "stopping Zilar (data volumes are kept; add -v to wipe everything)..."
   run compose down "$@"
 }
 
@@ -571,7 +571,7 @@ cmd_doctor() {
   # *.invalid) never need public DNS: the trial install reaches them on
   # this machine by definition, so resolving them is an auto-pass.
   if [ -f "$ENV_FILE" ]; then
-    _domain="$(env_get GALENA_DOMAIN)"
+    _domain="$(env_get ZILAR_DOMAIN)"
     if [ -n "$_domain" ]; then
       case "$_domain" in
         localhost|*.localhost|*.local|*.test|*.example|*.invalid)
@@ -653,10 +653,10 @@ cmd_doctor() {
       fi
       _component_jid="$(env_get PUSH_COMPONENT_JID)"
       if [ -z "$_component_jid" ]; then
-        doctor_bad "PUSH_COMPONENT_JID is missing in $ENV_FILE" "set PUSH_COMPONENT_JID=push.$(env_get GALENA_DOMAIN) (it must equal the ejabberd listener host)"
+        doctor_bad "PUSH_COMPONENT_JID is missing in $ENV_FILE" "set PUSH_COMPONENT_JID=push.$(env_get ZILAR_DOMAIN) (it must equal the ejabberd listener host)"
         _push_ok=0
       fi
-      _domain="$(env_get GALENA_DOMAIN)"
+      _domain="$(env_get ZILAR_DOMAIN)"
       if [ -n "$_domain" ] && [ "$_component_jid" != "push.$_domain" ]; then
         doctor_bad "PUSH_COMPONENT_JID ($_component_jid) is not push.$_domain" "set PUSH_COMPONENT_JID=push.$_domain in $ENV_FILE so it matches the ejabberd listener"
         _push_ok=0
@@ -681,11 +681,11 @@ cmd_doctor() {
 
   # 6. Disk space for the Docker data (volumes live there) + the sticker
   # directory is a mounted volume, not the container layer.
-  # GALENA_DOCTOR_DISK_USED_PCT overrides the measured value (tests inject
+  # ZILAR_DOCTOR_DISK_USED_PCT overrides the measured value (tests inject
   # 80/95 without filling a real disk; never set it on a real install).
   _disk_used=""
-  if [ -n "${GALENA_DOCTOR_DISK_USED_PCT-}" ]; then
-    _disk_used="$GALENA_DOCTOR_DISK_USED_PCT"
+  if [ -n "${ZILAR_DOCTOR_DISK_USED_PCT-}" ]; then
+    _disk_used="$ZILAR_DOCTOR_DISK_USED_PCT"
   elif compose ps --status running server 2>/dev/null | grep -q server; then
     # Same filesystem the volumes live on (Docker data root): df inside the
     # server container, POSIX -P output (second line, 5th field, "NN%").
@@ -768,7 +768,7 @@ cmd_create_admin() {
   # invite CLI mints the code the sign-up form asks for. The inviter is
   # empty for this first code, so no contacts are linked.
   _admin_email="$(sed -n 's/^# Admin contact: //p' "$ENV_FILE" | tail -n 1)"
-  _domain="$(env_get GALENA_DOMAIN)"
+  _domain="$(env_get ZILAR_DOMAIN)"
   if [ "$_uses" -eq 1 ] && [ "$_days" -eq 7 ]; then
     _lifetime="single use, 7 days"
   else
@@ -804,13 +804,13 @@ cmd_backup() {
     || die "ejabberd is not running — start the stack with '$PROG up' first (same --env-file and COMPOSE_FILE_OVERRIDE, if any)"
 
   _stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  _name="galena-backup-$_stamp.tgz"
-  _domain="$(env_get GALENA_DOMAIN)"
+  _name="zilar-backup-$_stamp.tgz"
+  _domain="$(env_get ZILAR_DOMAIN)"
 
   if [ "$DRY_RUN" -eq 1 ]; then
     cat <<EOF
 + would write $_dir/$_name (mode 0600) containing:
-+   galena.dump      pg_dump custom format of the Galena database
++   zilar.dump      pg_dump custom format of the Zilar database
 +   ejabberd.dump    pg_dump custom format of the ejabberd database
 +   globals.sql      roles and globals (pg_dumpall -g) so a fresh cluster
 +                    can recreate the roles the dumps need
@@ -835,9 +835,9 @@ EOF
   # forwards that container-side value into the exec session — the secret
   # is expanded only inside the container and never appears in `ps`
   # output on this host.
-  info "dumping the Galena database..."
+  info "dumping the Zilar database..."
   compose exec -T -e POSTGRES_PASSWORD postgres \
-    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -Fc -U postgres -d galena' > "$_tmp/galena.dump"
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -Fc -U postgres -d zilar' > "$_tmp/zilar.dump"
   info "dumping the ejabberd database..."
   compose exec -T -e POSTGRES_PASSWORD postgres \
     sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -Fc -U postgres -d ejabberd' > "$_tmp/ejabberd.dump"
@@ -855,26 +855,26 @@ EOF
   compose exec -T server tar -C /data -czf - stickers > "$_tmp/stickers.tgz"
 
   cp "$ENV_FILE" "$_tmp/.env"
-  chmod 600 "$_tmp/.env" "$_tmp/galena.dump" "$_tmp/ejabberd.dump" "$_tmp/globals.sql" "$_tmp/uploads.tgz" "$_tmp/stickers.tgz"
+  chmod 600 "$_tmp/.env" "$_tmp/zilar.dump" "$_tmp/ejabberd.dump" "$_tmp/globals.sql" "$_tmp/uploads.tgz" "$_tmp/stickers.tgz"
   cat > "$_tmp/SECRETS_WARNING.txt" <<EOF
 This archive contains LIVE SECRETS (the .env file: database passwords,
-JWT and session secrets). Anyone holding it owns this Galena install.
+JWT and session secrets). Anyone holding it owns this Zilar install.
 Store it encrypted, copy it off the machine, restrict who can read it.
 EOF
   cat > "$_tmp/manifest.json" <<EOF
 {
-  "tool": "galena-backup-v1",
+  "tool": "zilar-backup-v1",
   "created_at": "$_stamp",
   "domain": "$_domain",
   "image_owner": "$(env_get IMAGE_OWNER)",
   "image_tag": "$(env_get IMAGE_TAG)",
   "postgres_version": "${_pg_version:-unknown}",
   "ejabberd_status": "${_ej_version:-unknown}",
-  "databases": ["galena", "ejabberd"]
+  "databases": ["zilar", "ejabberd"]
 }
 EOF
 
-  tar -czf "$_dir/$_name" -C "$_tmp" galena.dump ejabberd.dump globals.sql uploads.tgz stickers.tgz .env SECRETS_WARNING.txt manifest.json
+  tar -czf "$_dir/$_name" -C "$_tmp" zilar.dump ejabberd.dump globals.sql uploads.tgz stickers.tgz .env SECRETS_WARNING.txt manifest.json
   chmod 600 "$_dir/$_name"
   trap - EXIT
   rm -rf "$_tmp"
@@ -909,7 +909,7 @@ cmd_restore() {
 + would: unpack $_archive to a temp dir and check manifest.json
 + would: stop server, web and ejabberd (postgres keeps running)
 + would: recreate roles/globals from globals.sql, then pg_restore --clean
-+        into the galena and ejabberd databases (credentials from the ARCHIVE)
++        into the zilar and ejabberd databases (credentials from the ARCHIVE)
 + would: restore the uploads volume and the sticker volume, back up $ENV_FILE to $ENV_FILE.bak-<stamp>,
 +        install the archived .env (mode 0600)
 + would: start everything and wait for health
@@ -921,9 +921,9 @@ EOF
   _tmp="$(mktemp -d)"
   trap 'rm -rf "$_tmp"' EXIT
   tar -xzf "$_archive" -C "$_tmp"
-  [ -f "$_tmp/manifest.json" ] && grep -q galena-backup-v1 "$_tmp/manifest.json" \
-    || die "$_archive is not a galena backup (no manifest.json)"
-  for _f in galena.dump ejabberd.dump uploads.tgz .env; do
+  [ -f "$_tmp/manifest.json" ] && grep -q zilar-backup-v1 "$_tmp/manifest.json" \
+    || die "$_archive is not a zilar backup (no manifest.json)"
+  for _f in zilar.dump ejabberd.dump uploads.tgz .env; do
     [ -f "$_tmp/$_f" ] || die "$_archive is missing $_f"
   done
   # Archives taken before the sticker volume was backed up carry no
@@ -944,7 +944,7 @@ EOF
   # Runs best-effort: failures are reported but never abort recovery.
   _ensure_audit_triggers() {
     POSTGRES_PASSWORD="$_arch_pw" compose exec -T -e POSTGRES_PASSWORD postgres \
-      sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -v ON_ERROR_STOP=1 -c "DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log" -c "CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_truncate BEFORE TRUNCATE ON audit_log FOR EACH STATEMENT EXECUTE FUNCTION audit_log_block_mutations()"' 2>/dev/null \
+      sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d zilar -v ON_ERROR_STOP=1 -c "DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log" -c "CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_truncate BEFORE TRUNCATE ON audit_log FOR EACH STATEMENT EXECUTE FUNCTION audit_log_block_mutations()"' 2>/dev/null \
       || warn "could not recreate the audit_log triggers — run the CREATE TRIGGER statements from apps/server/drizzle/0013_audit_log_immutable.sql by hand, then verify with: SELECT tgname FROM pg_trigger WHERE tgrelid='audit_log'::regclass;"
   }
   _recover() {
@@ -1001,9 +1001,9 @@ EOF
     # CREATE ROLE only when missing (DO block), then the password-setting
     # ALTER ROLE lines unconditionally (so the archived passwords win).
     _run_with_arch_pw \
-      sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -c "DO \$\$BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '"'"'galena'"'"') THEN CREATE ROLE galena LOGIN; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '"'"'ejabberd'"'"') THEN CREATE ROLE ejabberd LOGIN; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '"'"'galena_archive'"'"') THEN CREATE ROLE galena_archive LOGIN; END IF; END\$\$;"' \
+      sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -c "DO \$\$BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '"'"'zilar'"'"') THEN CREATE ROLE zilar LOGIN; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '"'"'ejabberd'"'"') THEN CREATE ROLE ejabberd LOGIN; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '"'"'zilar_archive'"'"') THEN CREATE ROLE zilar_archive LOGIN; END IF; END\$\$;"' \
       || { _step="restore roles and globals"; _recover; }
-    grep -E '^ALTER ROLE (galena|ejabberd|galena_archive) WITH .* PASSWORD' "$_tmp/globals.sql" > "$_tmp/role-passwords.sql" || true
+    grep -E '^ALTER ROLE (zilar|ejabberd|zilar_archive) WITH .* PASSWORD' "$_tmp/globals.sql" > "$_tmp/role-passwords.sql" || true
     if [ -s "$_tmp/role-passwords.sql" ]; then
       _run_with_arch_pw \
         sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f -' < "$_tmp/role-passwords.sql" \
@@ -1013,8 +1013,8 @@ EOF
     warn "no globals.sql in this archive (pre-restore-roles backup) — roles must already exist."
   fi
 
-  _step="restore the Galena database"
-  info "restoring the Galena database..."
+  _step="restore the Zilar database"
+  info "restoring the Zilar database..."
   # The audit_log triggers reject TRUNCATE/DELETE, and pg_restore --clean
   # must empty the table first. Drop the three immutability triggers,
   # restore, then recreate them from the migration that owns them
@@ -1022,15 +1022,15 @@ EOF
   # way is identical to the backup; the triggers only ever blocked
   # writes, never reads.
   _run_with_arch_pw \
-    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -v ON_ERROR_STOP=1 -c "DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log"'
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d zilar -v ON_ERROR_STOP=1 -c "DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log"'
   # pg_restore reads the dump from a FILE. The dump reaches the container
   # over stdin (no host file to clean up), so stage it through a temp file
   # inside the container first — this keeps stdin free for the pipe while
   # giving pg_restore the seekable file it needs (a bare stdin redirect
   # silently restores nothing).
   _run_with_arch_pw \
-    sh -c 'cat > /tmp/galena-restore.dump && PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U postgres -d galena --clean --if-exists /tmp/galena-restore.dump; _rc=$?; rm -f /tmp/galena-restore.dump; exit $_rc' < "$_tmp/galena.dump" \
-    || { _step="restore the Galena database"; _recover; }
+    sh -c 'cat > /tmp/zilar-restore.dump && PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U postgres -d zilar --clean --if-exists /tmp/zilar-restore.dump; _rc=$?; rm -f /tmp/zilar-restore.dump; exit $_rc' < "$_tmp/zilar.dump" \
+    || { _step="restore the Zilar database"; _recover; }
   # Recreate the audit_log immutability triggers dropped above (same
   # statements as apps/server/drizzle/0013_audit_log_immutable.sql, which
   # owns them — the function survives --clean, only the triggers were
@@ -1039,12 +1039,12 @@ EOF
   _step="recreate the audit_log triggers"
   info "recreating the audit_log immutability triggers..."
   _run_with_arch_pw \
-    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -v ON_ERROR_STOP=1 -c "DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log" -c "CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_truncate BEFORE TRUNCATE ON audit_log FOR EACH STATEMENT EXECUTE FUNCTION audit_log_block_mutations()"' \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d zilar -v ON_ERROR_STOP=1 -c "DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log" -c "DROP TRIGGER IF EXISTS audit_log_no_truncate ON audit_log" -c "CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_block_mutations()" -c "CREATE TRIGGER audit_log_no_truncate BEFORE TRUNCATE ON audit_log FOR EACH STATEMENT EXECUTE FUNCTION audit_log_block_mutations()"' \
     || { _step="recreate the audit_log triggers"; _recover; }
   _step="restore the ejabberd database"
   info "restoring the ejabberd database..."
   _run_with_arch_pw \
-    sh -c 'cat > /tmp/galena-restore.dump && PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U postgres -d ejabberd --clean --if-exists /tmp/galena-restore.dump; _rc=$?; rm -f /tmp/galena-restore.dump; exit $_rc' < "$_tmp/ejabberd.dump" \
+    sh -c 'cat > /tmp/zilar-restore.dump && PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U postgres -d ejabberd --clean --if-exists /tmp/zilar-restore.dump; _rc=$?; rm -f /tmp/zilar-restore.dump; exit $_rc' < "$_tmp/ejabberd.dump" \
     || { _step="restore the ejabberd database"; _recover; }
 
   _step="restore file stores"
@@ -1080,11 +1080,11 @@ EOF
   # triggers exist and fail loudly (non-zero, clear message) if not.
   _step="verify the audit_log triggers"
   _found="$(POSTGRES_PASSWORD="$_arch_pw" compose exec -T -e POSTGRES_PASSWORD postgres \
-    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -tAc "SELECT count(*) FROM pg_trigger WHERE tgrelid='"'"'audit_log'"'"'::regclass AND tgname IN ('"'"'audit_log_no_update'"'"','"'"'audit_log_no_delete'"'"','"'"'audit_log_no_truncate'"'"')"' 2>/dev/null | tr -d '[:space:]')"
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d zilar -tAc "SELECT count(*) FROM pg_trigger WHERE tgrelid='"'"'audit_log'"'"'::regclass AND tgname IN ('"'"'audit_log_no_update'"'"','"'"'audit_log_no_delete'"'"','"'"'audit_log_no_truncate'"'"')"' 2>/dev/null | tr -d '[:space:]')"
   if [ "$_found" != "3" ]; then
     _ensure_audit_triggers
     _found="$(POSTGRES_PASSWORD="$_arch_pw" compose exec -T -e POSTGRES_PASSWORD postgres \
-      sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d galena -tAc "SELECT count(*) FROM pg_trigger WHERE tgrelid='"'"'audit_log'"'"'::regclass AND tgname IN ('"'"'audit_log_no_update'"'"','"'"'audit_log_no_delete'"'"','"'"'audit_log_no_truncate'"'"')"' 2>/dev/null | tr -d '[:space:]')"
+      sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d zilar -tAc "SELECT count(*) FROM pg_trigger WHERE tgrelid='"'"'audit_log'"'"'::regclass AND tgname IN ('"'"'audit_log_no_update'"'"','"'"'audit_log_no_delete'"'"','"'"'audit_log_no_truncate'"'"')"' 2>/dev/null | tr -d '[:space:]')"
     [ "$_found" = "3" ] || die "restore finished but the audit_log immutability triggers are missing (found $_found of 3). The stack is running WITHOUT append-only audit protection. Recreate them from apps/server/drizzle/0013_audit_log_immutable.sql, verify with: SELECT tgname FROM pg_trigger WHERE tgrelid='audit_log'::regclass;"
   fi
   info "audit_log immutability triggers verified (3 of 3)."

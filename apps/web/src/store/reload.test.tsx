@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
-import type { ChatMessage, XmppCore } from '@galena/xmpp-core';
+import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { MessageList } from '@/components/MessageList';
 import { AppRoutes } from '@/routes/AppRoutes';
@@ -25,15 +25,15 @@ function fakeApi(): ApiClient {
   return {
     getMe: vi.fn(async () => ({
       id: 'u-me',
-      email: 'me@galena.test',
+      email: 'me@zilar.test',
       name: 'Me',
       image: null,
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
     })),
     getChats: vi.fn(async () => [
-      { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+      { kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
     ]),
-    getContacts: vi.fn(async () => [{ userId: 'u-ana', name: 'Ana', jid: 'ana@galena.test' }]),
+    getContacts: vi.fn(async () => [{ userId: 'u-ana', name: 'Ana', jid: 'ana@zilar.test' }]),
     getGroup: vi.fn(async () => ({
       id: 'g1',
       title: 'Team',
@@ -42,12 +42,12 @@ function fakeApi(): ApiClient {
       ais: [],
     })),
     getXmppToken: vi.fn(async () => ({
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
       token: 'tok',
       expiresAt: '2026-09-28T12:05:00Z',
       service: 'ws://x',
-      domain: 'galena.test',
-      mucDomain: 'rooms.galena.test',
+      domain: 'zilar.test',
+      mucDomain: 'rooms.zilar.test',
     })),
     createGroup: vi.fn(async () => ({
       id: 'g2',
@@ -144,12 +144,12 @@ function fakeXmpp(): {
 } {
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
   const history: Record<string, ChatMessage[]> = {
-    'ana@galena.test': [
+    'ana@zilar.test': [
       {
         id: 'ana-1',
         kind: 'chat',
-        chatJid: 'ana@galena.test',
-        fromJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
+        fromJid: 'ana@zilar.test',
         fromResolved: true,
         timestamp: new Date('2026-09-28T10:00:00Z'),
         outgoing: false,
@@ -228,12 +228,12 @@ describe('reload on /c/<jid> (T-0042)', () => {
       <AuthProvider
         value={{
           status: 'authenticated',
-          user: { id: 'u-me', name: 'Me', email: 'me@galena.test' },
+          user: { id: 'u-me', name: 'Me', email: 'me@zilar.test' },
           refetch: async () => {},
         }}
       >
         <ChatStoreProvider store={store}>
-          <MemoryRouter initialEntries={['/c/ana@galena.test']}>
+          <MemoryRouter initialEntries={['/c/ana@zilar.test']}>
             <AppRoutes />
           </MemoryRouter>
         </ChatStoreProvider>
@@ -246,7 +246,7 @@ describe('reload on /c/<jid> (T-0042)', () => {
 
     const messageList = await screen.findByTestId('message-list');
     expect(await within(messageList).findByText('hello after reload')).toBeTruthy();
-    expect(pageLoadCount(xmpp, 'ana@galena.test')).toBe(1);
+    expect(pageLoadCount(xmpp, 'ana@zilar.test')).toBe(1);
   });
 
   it('shows loading on first paint when history was never requested', async () => {
@@ -259,7 +259,7 @@ describe('reload on /c/<jid> (T-0042)', () => {
     });
     store.getState().start();
     await waitForState(() => store.getState().chatsState === 'ready');
-    const chat = store.getState().chats.find((entry) => entry.id === 'ana@galena.test');
+    const chat = store.getState().chats.find((entry) => entry.id === 'ana@zilar.test');
     if (chat === undefined) {
       throw new Error('expected Ana in the chat list');
     }
@@ -270,7 +270,7 @@ describe('reload on /c/<jid> (T-0042)', () => {
       <AuthProvider
         value={{
           status: 'authenticated',
-          user: { id: 'u-me', name: 'Me', email: 'me@galena.test' },
+          user: { id: 'u-me', name: 'Me', email: 'me@zilar.test' },
           refetch: async () => {},
         }}
       >
@@ -298,20 +298,20 @@ describe('reload on /c/<jid> (T-0042)', () => {
       createXmpp: () => xmpp.core,
     });
 
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     store.getState().start();
     // The chats merged but the connection is still down: nothing loads yet.
     await waitForState(() => store.getState().chatsState === 'ready');
-    expect(pageLoadCount(xmpp, 'ana@galena.test')).toBe(0);
+    expect(pageLoadCount(xmpp, 'ana@zilar.test')).toBe(0);
 
     // The reconnect completes: the pending open runs exactly once.
     xmpp.emit('status', 'online');
-    await waitForState(() => store.getState().messages('ana@galena.test').length > 0);
-    await waitForState(() => pageLoadCount(xmpp, 'ana@galena.test') === 1);
+    await waitForState(() => store.getState().messages('ana@zilar.test').length > 0);
+    await waitForState(() => pageLoadCount(xmpp, 'ana@zilar.test') === 1);
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .map((item) => item.text),
     ).toContain('hello after reload');
 

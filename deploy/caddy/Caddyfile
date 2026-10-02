@@ -1,17 +1,17 @@
-# Caddy reverse proxy for a Galena production install.
+# Caddy reverse proxy for a Zilar production install.
 #
 # Rendered by the `caddy` service in deploy/docker-compose.yml from
-# GALENA_DOMAIN and ACME_EMAIL. {$GALENA_DOMAIN} is the public domain
+# ZILAR_DOMAIN and ACME_EMAIL. {$ZILAR_DOMAIN} is the public domain
 # (chat.example.com); `localhost` keeps Caddy on its local CA for trying the
 # stack out. Only Caddy publishes ports; every backend is reachable on the
-# internal `galena` network only.
+# internal `zilar` network only.
 
 {
   admin off
   email {$ACME_EMAIL}
 }
 
-{$GALENA_DOMAIN} {
+{$ZILAR_DOMAIN} {
   # Web app.
   handle {
     reverse_proxy web:80

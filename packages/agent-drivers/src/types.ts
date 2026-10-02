@@ -1,4 +1,4 @@
-// The interface the Galena gateway uses to control an AI's engine inside a desk.
+// The interface the Zilar gateway uses to control an AI's engine inside a desk.
 // It is shaped like the Agent Client Protocol so engines can be swapped per AI later.
 
 export type PermissionEffect = 'allow' | 'ask' | 'deny';

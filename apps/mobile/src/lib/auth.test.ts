@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  createGalenaAuthClient,
+  createZilarAuthClient,
   inviteFetchOptions,
   resolveApiUrl,
   sendSignInCode,
@@ -45,11 +45,11 @@ function capture(requests: CapturedRequest[]): typeof fetch {
 describe('resolveApiUrl', () => {
   it('defaults when the variable is missing or empty', () => {
     expect(resolveApiUrl({})).toBe('http://127.0.0.1:3188');
-    expect(resolveApiUrl({ EXPO_PUBLIC_GALENA_API_URL: '' })).toBe('http://127.0.0.1:3188');
+    expect(resolveApiUrl({ EXPO_PUBLIC_ZILAR_API_URL: '' })).toBe('http://127.0.0.1:3188');
   });
 
   it('uses an explicit server URL', () => {
-    expect(resolveApiUrl({ EXPO_PUBLIC_GALENA_API_URL: 'https://chat.example.com' })).toBe(
+    expect(resolveApiUrl({ EXPO_PUBLIC_ZILAR_API_URL: 'https://chat.example.com' })).toBe(
       'https://chat.example.com',
     );
   });
@@ -59,14 +59,14 @@ describe('inviteFetchOptions', () => {
   it('adds the invite header only when a code is present', () => {
     expect(inviteFetchOptions(undefined)).toEqual({});
     expect(inviteFetchOptions('')).toEqual({});
-    expect(inviteFetchOptions('code-1')).toEqual({ headers: { 'x-galena-invite': 'code-1' } });
+    expect(inviteFetchOptions('code-1')).toEqual({ headers: { 'x-zilar-invite': 'code-1' } });
   });
 });
 
 describe('sign-in requests', () => {
   it('sends the invite header on both the send-code and sign-in calls', async () => {
     const requests: CapturedRequest[] = [];
-    const client = createGalenaAuthClient({
+    const client = createZilarAuthClient({
       baseURL: 'http://server.test',
       fetchImpl: capture(requests),
     });
@@ -76,27 +76,27 @@ describe('sign-in requests', () => {
 
     expect(requests).toHaveLength(2);
     expect(requests[0]?.url).toContain('/email-otp/send-verification-otp');
-    expect(requests[0]?.headers.get('x-galena-invite')).toBe('INVITE-123');
+    expect(requests[0]?.headers.get('x-zilar-invite')).toBe('INVITE-123');
     expect(requests[1]?.url).toContain('/sign-in/email-otp');
-    expect(requests[1]?.headers.get('x-galena-invite')).toBe('INVITE-123');
+    expect(requests[1]?.headers.get('x-zilar-invite')).toBe('INVITE-123');
   });
 
   it('omits the invite header for an existing user sign-in', async () => {
     const requests: CapturedRequest[] = [];
-    const client = createGalenaAuthClient({
+    const client = createZilarAuthClient({
       baseURL: 'http://server.test',
       fetchImpl: capture(requests),
     });
 
     await sendSignInCode(client, 'old@example.com');
 
-    expect(requests[0]?.headers.get('x-galena-invite')).toBeNull();
+    expect(requests[0]?.headers.get('x-zilar-invite')).toBeNull();
   });
 
   it('returns the bearer token from the sign-in response header', async () => {
     const requests: CapturedRequest[] = [];
     const onToken = vi.fn();
-    const client = createGalenaAuthClient({
+    const client = createZilarAuthClient({
       baseURL: 'http://server.test',
       fetchImpl: capture(requests),
       onToken,
@@ -130,7 +130,7 @@ describe('the session token is never logged', () => {
       vi.spyOn(console, method).mockImplementation(() => undefined),
     );
 
-    const client = createGalenaAuthClient({ baseURL: 'http://server.test', fetchImpl });
+    const client = createZilarAuthClient({ baseURL: 'http://server.test', fetchImpl });
     await verifySignInCode(client, 'new@example.com', '123456', 'INVITE-123');
 
     const leaked = spies.some((spy) =>

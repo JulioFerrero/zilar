@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatKind } from '@galena/xmpp-core';
+import type { ChatKind } from '@zilar/xmpp-core';
 import type { FetchLike } from '../ai/litellm-client';
 import type { ChatCompletionMessage } from './context';
 import {
@@ -27,7 +27,7 @@ const VIRTUAL_KEY = 'sk-virtual-rounds-test-key-aaaa';
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
 const MODEL = 'ai-abc-123';
 const BASE_URL = 'http://litellm.test:4000';
-const OWNER_JID = 'julio@galena.localhost';
+const OWNER_JID = 'julio@zilar.localhost';
 
 const MESSAGES: ChatCompletionMessage[] = [
   { role: 'system', content: 'Be helpful.' },
@@ -557,9 +557,9 @@ describe('multi-round group turns', () => {
     const run = () =>
       runGroupTurn({
         aiId: 'ai-1',
-        roomJid: 'room@rooms.galena.localhost',
+        roomJid: 'room@rooms.zilar.localhost',
         triggerId: 'm-1',
-        senderJid: 'ana@galena.localhost',
+        senderJid: 'ana@zilar.localhost',
         senderName: 'Ana',
         messages: MESSAGES,
         baseUrl: BASE_URL,

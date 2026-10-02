@@ -13,9 +13,9 @@ export type {
   ReplyRef,
   UiImage,
   UiMessage,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 
-import type { UiMessage } from '@galena/chat-core';
+import type { UiMessage } from '@zilar/chat-core';
 
 /**
  * A mobile chat message: the shared `UiMessage` plus local-only upload state

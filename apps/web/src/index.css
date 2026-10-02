@@ -580,7 +580,7 @@
   scrollbar-color: color-mix(in srgb, var(--muted-foreground) 35%, transparent) transparent;
 }
 
-@keyframes galena-typing {
+@keyframes zilar-typing {
   0%,
   80%,
   100% {
@@ -591,7 +591,7 @@
   }
 }
 
-@keyframes galena-pulse {
+@keyframes zilar-pulse {
   0%,
   100% {
     opacity: 0.35;
@@ -602,11 +602,11 @@
 }
 
 .typing-dot {
-  animation: galena-typing 1.2s infinite ease-in-out both;
+  animation: zilar-typing 1.2s infinite ease-in-out both;
 }
 
 .pulse-dot {
-  animation: galena-pulse 1.4s ease-in-out infinite;
+  animation: zilar-pulse 1.4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

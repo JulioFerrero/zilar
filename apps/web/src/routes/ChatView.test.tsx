@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { AuthProvider, type AuthState } from '@/auth/AuthProvider';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { createChatStore } from '@/store/store';
@@ -9,7 +9,7 @@ import { ChatView } from './ChatView';
 
 const auth: AuthState = {
   status: 'authenticated',
-  user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+  user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
 

@@ -208,7 +208,7 @@ describe('StickerPanel', () => {
     });
     // The dialog closes and the sticker lands in recents.
     expect(screen.queryByRole('dialog', { name: 'Stickers' })).toBeNull();
-    expect(window.localStorage.getItem('galena:recentStickers')).toContain(
+    expect(window.localStorage.getItem('zilar:recentStickers')).toContain(
       '223e4567-e89b-12d3-a456-426614174001',
     );
   });
@@ -262,7 +262,7 @@ describe('StickerPanel', () => {
 
   it('refuses a tampered recents entry with a visible error and no bubble', async () => {
     window.localStorage.setItem(
-      'galena:recentStickers',
+      'zilar:recentStickers',
       JSON.stringify([
         { stickerId: 'not-a-uuid', packId: 'also-not-a-uuid', url: '/api/stickers/x/file' },
       ]),
@@ -284,7 +284,7 @@ describe('StickerPanel', () => {
   });
 
   it('keeps hostile localStorage recents from breaking the panel', async () => {
-    window.localStorage.setItem('galena:recentStickers', '[{"nope":true},42]');
+    window.localStorage.setItem('zilar:recentStickers', '[{"nope":true},42]');
     renderApp('/c/c-ana');
 
     fireEvent.click(screen.getByLabelText('Open sticker panel'));
@@ -293,7 +293,7 @@ describe('StickerPanel', () => {
 
   it('never fetches a hostile URL planted in recents', async () => {
     window.localStorage.setItem(
-      'galena:recentStickers',
+      'zilar:recentStickers',
       JSON.stringify([
         {
           stickerId: 'st-evil',

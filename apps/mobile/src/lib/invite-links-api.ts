@@ -285,7 +285,7 @@ export function createInviteLinksApi(
 
 /**
  * Extracts the join token from a link the user pastes or opens. Accepts the
- * custom scheme (`galena://join/<token>`), the web URL shape
+ * custom scheme (`zilar://join/<token>`), the web URL shape
  * (`https://host/j/<token>`), and a bare 64-hex token. Returns undefined for
  * anything else, so random clipboard text never reaches the server.
  */
@@ -301,7 +301,7 @@ export function extractJoinToken(raw: string): string | undefined {
   } catch {
     return undefined;
   }
-  if (parsed.protocol === 'galena:' && parsed.hostname.toLowerCase() === 'join') {
+  if (parsed.protocol === 'zilar:' && parsed.hostname.toLowerCase() === 'join') {
     const token = parsed.pathname.replace(/^\/+/, '').split('/')[0] ?? '';
     return /^[0-9a-f]{64}$/i.test(token) ? token.toLowerCase() : undefined;
   }

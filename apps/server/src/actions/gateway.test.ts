@@ -86,7 +86,7 @@ async function seedAi(
   });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  const jid = `${localpart}@galena.localhost`;
+  const jid = `${localpart}@zilar.localhost`;
   await context.db.insert(ais).values({
     id: aiId,
     owner: ownerId,
@@ -274,7 +274,7 @@ describe('action gateway', () => {
         aiId,
         action: 'no.such.action',
         args: { value: 'x' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result).toEqual({ status: 'denied', reason: 'unknown_action' });
     });
@@ -286,7 +286,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier0.echo',
         args: { value: 'x' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result).toEqual({ status: 'denied', reason: 'ai_not_active' });
     });
@@ -298,7 +298,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier0.echo',
         args: { value: 'x' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result).toEqual({ status: 'denied', reason: 'ai_not_active' });
     });
@@ -313,7 +313,7 @@ describe('action gateway', () => {
         topicId: generalTopicId,
         action: 'tier0.echo',
         args: { value: 'x' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
     });
@@ -329,7 +329,7 @@ describe('action gateway', () => {
         groupId: first.groupId,
         action: 'tier0.echo',
         args: { value: 'x' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(missing).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
       // A topic of another group: denied.
@@ -339,7 +339,7 @@ describe('action gateway', () => {
         topicId: second.generalTopicId,
         action: 'tier0.echo',
         args: { value: 'x' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(foreign).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
       // A non-General topic the AI was never added to: denied.
@@ -350,7 +350,7 @@ describe('action gateway', () => {
         topicId: other,
         action: 'tier0.echo',
         args: { value: 'x' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(unjoined).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
       // An archived topic: denied, the room is gone.
@@ -364,7 +364,7 @@ describe('action gateway', () => {
         topicId: first.generalTopicId,
         action: 'tier0.echo',
         args: { value: 'x' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(archived).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
     });
@@ -376,7 +376,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier0.echo',
         args: { value: 42 },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result).toEqual({ status: 'denied', reason: 'invalid_args' });
     });
@@ -388,7 +388,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier0.echo',
         args: { value: 'hello' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result).toEqual({ status: 'executed', summary: 'Echoed: hello' });
       expect(harness.adapters[0]?.calls).toHaveLength(1);
@@ -403,7 +403,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier1.echo',
         args: { value: 'mid' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result).toEqual({ status: 'executed', summary: 'Echoed: mid' });
       expect(harness.adapters[1]?.calls).toHaveLength(1);
@@ -416,7 +416,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'spicy' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result).toEqual({ status: 'pending_approval', approvalId: expect.any(String) });
       expect(harness.adapters[2]?.calls).toHaveLength(0);
@@ -431,7 +431,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'spicy' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -464,7 +464,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: mutableArgs,
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -503,7 +503,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'spicy' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -536,7 +536,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'spicy' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -564,7 +564,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'race' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -592,7 +592,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'tamper' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -630,7 +630,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'kill' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -688,7 +688,7 @@ describe('action gateway', () => {
           aiId,
           action: 'tier2.bound',
           args: { value: 'raw' },
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
         });
         if (result.status !== 'pending_approval') {
           throw new Error('expected pending_approval');
@@ -739,7 +739,7 @@ describe('action gateway', () => {
           aiId,
           action: 'tier2.failingprepare',
           args: { value: 'raw' },
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
         });
         expect(result).toEqual({ status: 'failed' });
         expect(await context.db.select().from(approvals)).toHaveLength(0);
@@ -805,7 +805,7 @@ describe('action gateway', () => {
           aiId,
           action: 'tier0.withtext',
           args: { value: 'x' },
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
         });
         expect(result).toEqual({
           status: 'executed',
@@ -837,7 +837,7 @@ describe('action gateway', () => {
           aiId,
           action: 'tier0.echo',
           args: { value: 'x' },
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
         });
         expect(result).toEqual({ status: 'executed', summary: 'Echoed: x' });
         expect('modelText' in result).toBe(false);
@@ -865,7 +865,7 @@ describe('action gateway', () => {
           aiId,
           action: 'tier0.bigtext',
           args: { value: 'x' },
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
         });
         if (result.status !== 'executed') {
           throw new Error(`expected executed, got ${result.status}`);
@@ -922,7 +922,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier0.failing',
         args: { value: 'boom' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result).toEqual({ status: 'failed' });
 
@@ -946,7 +946,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'race-2' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -996,7 +996,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'cap' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result).toEqual({ status: 'denied', reason: 'ai_not_active' });
       // The transaction rolled back: no new approval or pending-action
@@ -1016,7 +1016,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'stuck' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -1052,7 +1052,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'slow-approval' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -1082,7 +1082,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'undecided' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -1105,7 +1105,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'orphan' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -1134,7 +1134,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: secret },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -1185,7 +1185,7 @@ describe('action gateway', () => {
         aiId,
         action: 'anything.at_all',
         args: { value: 'x' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result).toEqual({ status: 'denied', reason: 'unknown_action' });
       await context.close();
@@ -1270,7 +1270,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'spicy' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -1291,7 +1291,7 @@ describe('action gateway', () => {
         topicId: generalTopicId,
         action: 'tier2.echo',
         args: { value: 'spicy' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result.status).toBe('pending_approval');
       if (result.status !== 'pending_approval') {
@@ -1320,13 +1320,13 @@ describe('action gateway', () => {
         aiId,
         action: 'tier0.echo',
         args: { value: 'fast' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       await harness.gateway.request({
         aiId,
         action: 'tier1.echo',
         args: { value: 'mid' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(harness.announcerCalls.approvalRequested).toEqual([]);
       expect(harness.announcerCalls.outcome).toEqual([]);
@@ -1339,7 +1339,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'x' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result).toEqual({ status: 'denied', reason: 'ai_not_active' });
       expect(harness.announcerCalls.approvalRequested).toEqual([]);
@@ -1352,7 +1352,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'yay' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -1410,7 +1410,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.fail',
         args: { value: 'x' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -1441,7 +1441,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'a' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (r1.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -1458,7 +1458,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'b' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (r2.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -1474,7 +1474,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'c' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (r3.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -1536,7 +1536,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.boom',
         args: { value: 'spicy' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
@@ -1581,7 +1581,7 @@ describe('action gateway', () => {
         aiId,
         action: 'tier2.echo',
         args: { value: 'silent' },
-        requestedBy: 'ai-bot@galena.localhost',
+        requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(result.status).toBe('pending_approval');
     });
@@ -1658,7 +1658,7 @@ describe('action gateway', () => {
           aiId,
           action: 'rules.echo',
           args: { value: 'fast' },
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
         });
         expect(outcome).toEqual({ status: 'executed', summary: 'Echoed: fast' });
         expect(await ruled.context.db.select().from(approvals)).toHaveLength(
@@ -1716,7 +1716,7 @@ describe('action gateway', () => {
           aiId,
           action: 'rules.echo',
           args: { value: 'boom' },
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
         });
         expect(outcome).toEqual({ status: 'failed' });
         const auditRows = await context.db.select().from(auditLog);
@@ -1742,7 +1742,7 @@ describe('action gateway', () => {
           aiId,
           action: 'rules.echo',
           args: { value: 'nope' },
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
         });
         expect(outcome).toEqual({ status: 'denied', reason: 'ai_not_active' });
         expect(ruled.picked.calls).toHaveLength(0);
@@ -1783,7 +1783,7 @@ describe('action gateway', () => {
           aiId,
           action: 'rules.echo',
           args: { value: 'card-again' },
-          requestedBy: 'ai-bot@galena.localhost',
+          requestedBy: 'ai-bot@zilar.localhost',
         });
         expect(outcome.status).toBe('pending_approval');
       } finally {

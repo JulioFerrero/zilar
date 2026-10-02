@@ -1,6 +1,6 @@
 /**
  * The mock draft scenario used for screenshots (T-0056). Real mock mode has no
- * SSE server, so `EXPO_PUBLIC_GALENA_MOCK_DRAFT` selects a fixed phase:
+ * SSE server, so `EXPO_PUBLIC_ZILAR_MOCK_DRAFT` selects a fixed phase:
  *
  * - `stream`: `dev-ai` is mid-reply, so the chat shows the recessed generating
  *   bubble, the caret and label, and the header/list show `writing…`;
@@ -33,7 +33,7 @@ export const MOCK_DRAFT_STREAM_TEXT = [
 ].join('\n');
 
 /** The complete reply: the stream text plus the tail the reveal finishes with. */
-export const MOCK_DRAFT_FINAL_TEXT = `${MOCK_DRAFT_STREAM_TEXT}\n\n> Want me to redeploy staging?\n\nDetails: https://galena.test/builds/last`;
+export const MOCK_DRAFT_FINAL_TEXT = `${MOCK_DRAFT_STREAM_TEXT}\n\n> Want me to redeploy staging?\n\nDetails: https://zilar.test/builds/last`;
 
 /** The final message that takes over the draft in the `final` phase. */
 export const MOCK_DRAFT_FINAL_MESSAGE_ID = 'dev-ai-draft-final';
@@ -57,6 +57,6 @@ export type MockDraftPhase = 'stream' | 'final';
 export function readMockDraftPhase(
   env: Record<string, string | undefined> = process.env,
 ): MockDraftPhase | undefined {
-  const value = env['EXPO_PUBLIC_GALENA_MOCK_DRAFT'];
+  const value = env['EXPO_PUBLIC_ZILAR_MOCK_DRAFT'];
   return value === 'stream' || value === 'final' ? value : undefined;
 }

@@ -39,7 +39,7 @@ export interface PushCipher {
 }
 
 function deriveKey(masterKey: string, salt: Buffer): Buffer {
-  return Buffer.from(hkdfSync('sha256', masterKey, salt, 'galena/push-storage/v1', 32));
+  return Buffer.from(hkdfSync('sha256', masterKey, salt, 'zilar/push-storage/v1', 32));
 }
 
 function encryptOnce(masterKey: string, plaintext: string): string {

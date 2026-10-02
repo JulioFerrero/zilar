@@ -125,7 +125,7 @@ function defaultGenerateId(): string {
 }
 
 function defaultResource(): string {
-  return `galena-${Math.random().toString(36).slice(2, 10)}`;
+  return `zilar-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function defaultClientFactory(options: ClientOptions): XmppClient {

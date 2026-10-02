@@ -31,7 +31,7 @@ describe('PWA static assets', () => {
       background_color: string;
       icons: Array<{ src: string; sizes: string; type: string; purpose?: string }>;
     };
-    expect(manifest.name).toBe('Galena');
+    expect(manifest.name).toBe('Zilar');
     expect(manifest.display).toBe('standalone');
     expect(manifest.start_url).toBe('/');
     expect(manifest.theme_color).toBe('#000000');

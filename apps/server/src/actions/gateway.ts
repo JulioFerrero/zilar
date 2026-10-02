@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, lt } from 'drizzle-orm';
-import { ARGS_HASH_PATTERN } from '@galena/protocol';
+import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import type { AuditEntry, AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { ais, approvals, groupAis, pendingActions, topics } from '../db/schema';

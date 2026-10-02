@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import type { Payload } from '@galena/protocol';
+import type { Payload } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
 import { ais, approvals, groups, topics } from '../db/schema';
 import { jidFor, localpartFor } from '../xmpp/provisioning';

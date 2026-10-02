@@ -1,4 +1,4 @@
-# Galena local development infrastructure: Postgres (pgvector), ejabberd and LiteLLM.
+# Zilar local development infrastructure: Postgres (pgvector), ejabberd and LiteLLM.
 #
 #   pnpm infra:up      start everything and wait for the healthchecks
 #   pnpm infra:down    stop the containers, keep the data volumes
@@ -9,7 +9,7 @@
 # published port binds to 127.0.0.1 only. Image tags and the LiteLLM digest are
 # pinned on purpose; do not switch to floating tags.
 
-name: galena-dev
+name: zilar-dev
 
 services:
   postgres:
@@ -23,11 +23,11 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in infra/.env}
       POSTGRES_DB: postgres
-      GALENA_DB_PASSWORD: ${GALENA_DB_PASSWORD:?GALENA_DB_PASSWORD is required in infra/.env}
+      ZILAR_DB_PASSWORD: ${ZILAR_DB_PASSWORD:?ZILAR_DB_PASSWORD is required in infra/.env}
       EJABBERD_DB_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required in infra/.env}
       LITELLM_DB_PASSWORD: ${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD is required in infra/.env}
       # Optional: creates the read-only search role on a fresh data volume.
-      GALENA_ARCHIVE_DB_PASSWORD: ${GALENA_ARCHIVE_DB_PASSWORD:-}
+      ZILAR_ARCHIVE_DB_PASSWORD: ${ZILAR_ARCHIVE_DB_PASSWORD:-}
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
@@ -38,7 +38,7 @@ services:
       retries: 12
       start_period: 10s
     networks:
-      - galena
+      - zilar
 
   ejabberd:
     # XMPP server, pinned to the 26.07 release.
@@ -53,23 +53,23 @@ services:
       # Push component (T-0119): the server on the host dials it; loopback only.
       - '127.0.0.1:5347:5347'
     # jwt-entrypoint.sh derives /opt/ejabberd/conf/jwt.jwk from
-    # GALENA_XMPP_JWT_SECRET, then runs the image's normal tini + ejabberdctl.
+    # ZILAR_XMPP_JWT_SECRET, then runs the image's normal tini + ejabberdctl.
     # command is repeated because overriding entrypoint drops the image CMD.
-    entrypoint: ['/bin/sh', '/galena/jwt-entrypoint.sh']
+    entrypoint: ['/bin/sh', '/zilar/jwt-entrypoint.sh']
     command: ['foreground']
     environment:
-      EJABBERD_MACRO_HOST: galena.localhost
-      # The container registers admin@galena.localhost on first start and
+      EJABBERD_MACRO_HOST: zilar.localhost
+      # The container registers admin@zilar.localhost on first start and
       # overrides the ADMIN macro in infra/ejabberd/ejabberd.yml with it.
-      EJABBERD_MACRO_ADMIN: admin@galena.localhost
+      EJABBERD_MACRO_ADMIN: admin@zilar.localhost
       REGISTER_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required in infra/.env}
       EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required in infra/.env}
       # Same value as the server's PUSH_COMPONENT_SECRET (push stays off unless enabled).
       EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}
-      GALENA_XMPP_JWT_SECRET: ${GALENA_XMPP_JWT_SECRET:?GALENA_XMPP_JWT_SECRET is required in infra/.env}
+      ZILAR_XMPP_JWT_SECRET: ${ZILAR_XMPP_JWT_SECRET:?ZILAR_XMPP_JWT_SECRET is required in infra/.env}
     volumes:
       - ./ejabberd/ejabberd.yml:/opt/ejabberd/conf/ejabberd.yml:ro
-      - ./ejabberd/jwt-entrypoint.sh:/galena/jwt-entrypoint.sh:ro
+      - ./ejabberd/jwt-entrypoint.sh:/zilar/jwt-entrypoint.sh:ro
       - ejabberd-database:/opt/ejabberd/database
       - ejabberd-uploads:/opt/ejabberd/upload
     healthcheck:
@@ -79,7 +79,7 @@ services:
       retries: 30
       start_period: 20s
     networks:
-      - galena
+      - zilar
 
   litellm:
     # LiteLLM proxy 1.102.1, pinned by digest. Never use 1.82.7 or 1.82.8:
@@ -113,11 +113,11 @@ services:
       retries: 30
       start_period: 30s
     networks:
-      - galena
+      - zilar
 
 networks:
-  galena:
-    name: galena-dev
+  zilar:
+    name: zilar-dev
 
 volumes:
   postgres-data:

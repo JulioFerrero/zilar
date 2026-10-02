@@ -41,13 +41,13 @@ importers:
       '@expo-google-fonts/geist-mono':
         specifier: ^0.4.3
         version: 0.4.3
-      '@galena/chat-core':
+      '@zilar/chat-core':
         specifier: workspace:*
         version: link:../../packages/chat-core
-      '@galena/protocol':
+      '@zilar/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
-      '@galena/xmpp-core':
+      '@zilar/xmpp-core':
         specifier: workspace:*
         version: link:../../packages/xmpp-core
       '@rn-primitives/portal':
@@ -183,14 +183,14 @@ importers:
 
   apps/runner:
     dependencies:
-      '@galena/runner-tunnel':
+      '@zilar/runner-tunnel':
         specifier: workspace:*
         version: link:../../packages/runner-tunnel
       zod:
         specifier: ^4.6.5
         version: 4.6.5
     devDependencies:
-      '@galena/server':
+      '@zilar/server':
         specifier: workspace:*
         version: link:../server
       tsx:
@@ -202,13 +202,13 @@ importers:
 
   apps/server:
     dependencies:
-      '@galena/protocol':
+      '@zilar/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
-      '@galena/runner-tunnel':
+      '@zilar/runner-tunnel':
         specifier: workspace:*
         version: link:../../packages/runner-tunnel
-      '@galena/xmpp-core':
+      '@zilar/xmpp-core':
         specifier: workspace:*
         version: link:../../packages/xmpp-core
       '@hono/node-server':
@@ -275,13 +275,13 @@ importers:
       '@fontsource-variable/geist-mono':
         specifier: ^5.3.0
         version: 5.3.0
-      '@galena/chat-core':
+      '@zilar/chat-core':
         specifier: workspace:*
         version: link:../../packages/chat-core
-      '@galena/protocol':
+      '@zilar/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
-      '@galena/xmpp-core':
+      '@zilar/xmpp-core':
         specifier: workspace:*
         version: link:../../packages/xmpp-core
       better-auth:
@@ -363,7 +363,7 @@ importers:
 
   packages/chat-core:
     dependencies:
-      '@galena/protocol':
+      '@zilar/protocol':
         specifier: workspace:*
         version: link:../protocol
 
@@ -401,7 +401,7 @@ importers:
 
   packages/xmpp-core:
     dependencies:
-      '@galena/protocol':
+      '@zilar/protocol':
         specifier: workspace:*
         version: link:../protocol
       '@xmpp/client':

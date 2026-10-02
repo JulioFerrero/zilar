@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "Galena",
-    "slug": "galena",
+    "name": "Zilar",
+    "slug": "zilar",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "galena",
+    "scheme": "zilar",
     "userInterfaceStyle": "dark",
     "ios": {
-      "bundleIdentifier": "com.julioferrero.galena"
+      "bundleIdentifier": "com.julioferrero.zilar"
     },
     "android": {
-      "package": "com.julioferrero.galena",
+      "package": "com.julioferrero.zilar",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -38,8 +38,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Galena to access your photos to attach them to chats.",
-          "cameraPermission": "Allow Galena to access your camera to take photos to attach to chats."
+          "photosPermission": "Allow Zilar to access your photos to attach them to chats.",
+          "cameraPermission": "Allow Zilar to access your camera to take photos to attach to chats."
         }
       ]
     ],

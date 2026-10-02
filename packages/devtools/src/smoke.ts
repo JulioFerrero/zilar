@@ -16,7 +16,7 @@ const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const composeFile = join(repoRoot, 'infra', 'docker-compose.dev.yml');
 const envFile = join(repoRoot, 'infra', '.env');
 
-const XMPP_DOMAIN = 'galena.localhost';
+const XMPP_DOMAIN = 'zilar.localhost';
 const ADMIN_JID = `admin@${XMPP_DOMAIN}`;
 const XMPP_WEBSOCKET_URL = 'ws://127.0.0.1:5280/ws';
 const EJABBERD_API_URL = 'http://127.0.0.1:5280/api/status';
@@ -24,7 +24,7 @@ const LITELLM_LIVELINESS_URL = 'http://127.0.0.1:4000/health/liveliness';
 const TIMEOUT_MS = 10_000;
 
 const POSTGRES_USERS = [
-  { user: 'galena', database: 'galena' },
+  { user: 'zilar', database: 'zilar' },
   { user: 'ejabberd', database: 'ejabberd' },
   { user: 'litellm', database: 'litellm' },
 ];
@@ -36,7 +36,7 @@ type Check = {
 
 const checks: Check[] = [
   {
-    name: 'Postgres accepts a connection for the users galena, ejabberd and litellm',
+    name: 'Postgres accepts a connection for the users zilar, ejabberd and litellm',
     run: checkPostgres,
   },
   { name: 'ejabberd reports "started" (ejabberdctl status)', run: checkEjabberdStatus },

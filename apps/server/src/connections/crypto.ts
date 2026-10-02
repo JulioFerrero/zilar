@@ -43,7 +43,7 @@ export interface KeyCipher {
 }
 
 function deriveKey(masterKey: string, salt: Buffer): Buffer {
-  return Buffer.from(hkdfSync('sha256', masterKey, salt, 'galena/provider-key/v1', 32));
+  return Buffer.from(hkdfSync('sha256', masterKey, salt, 'zilar/provider-key/v1', 32));
 }
 
 function encryptOnce(masterKey: string, plaintext: string): string {
@@ -93,7 +93,7 @@ function decryptOnce(masterKey: string, envelope: string): string {
 }
 
 // Builds the cipher from the environment's master key. The key is validated by
-// the config schema (GALENA_KEY_ENCRYPTION_KEY, at least 32 characters) before
+// the config schema (ZILAR_KEY_ENCRYPTION_KEY, at least 32 characters) before
 // it reaches here.
 export function createKeyCipher(masterKey: string): KeyCipher {
   return {

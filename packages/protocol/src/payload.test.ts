@@ -147,7 +147,7 @@ const payloadExamples: Payload[] = [
     type: 'attachment',
     data: {
       kind: 'image',
-      url: 'https://upload.galena.localhost/upload/abc/stage.png',
+      url: 'https://upload.zilar.localhost/upload/abc/stage.png',
       name: 'stage.png',
       size: 245_760,
       mime: 'image/png',
@@ -232,7 +232,7 @@ describe('decodePayload', () => {
       type: 'attachment',
       data: {
         kind: 'file',
-        url: 'https://upload.galena.localhost/upload/abc/report.pdf',
+        url: 'https://upload.zilar.localhost/upload/abc/report.pdf',
         name: 'a'.repeat(255),
         size: 1,
         mime: 'application/pdf',

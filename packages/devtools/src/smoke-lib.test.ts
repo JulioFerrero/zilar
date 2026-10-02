@@ -8,9 +8,9 @@ import {
 
 describe('buildOpenFrame', () => {
   it('builds the RFC 7395 open frame for a domain', () => {
-    const frame = buildOpenFrame('galena.localhost');
+    const frame = buildOpenFrame('zilar.localhost');
     expect(frame).toContain(XMPP_FRAMING_NAMESPACE);
-    expect(frame).toContain("to='galena.localhost'");
+    expect(frame).toContain("to='zilar.localhost'");
     expect(frame.startsWith('<open')).toBe(true);
   });
 
@@ -22,16 +22,16 @@ describe('buildOpenFrame', () => {
 describe('parseOpenFrame', () => {
   it('parses the server reply and its from attribute', () => {
     const reply = parseOpenFrame(
-      "<open xmlns='urn:ietf:params:xml:ns:xmpp-framing' from='galena.localhost' id='abc' version='1.0'/>",
+      "<open xmlns='urn:ietf:params:xml:ns:xmpp-framing' from='zilar.localhost' id='abc' version='1.0'/>",
     );
-    expect(reply).toEqual({ from: 'galena.localhost' });
+    expect(reply).toEqual({ from: 'zilar.localhost' });
   });
 
   it('parses double-quoted attributes and tolerates surrounding whitespace', () => {
     const reply = parseOpenFrame(
-      '\n  <open xmlns="urn:ietf:params:xml:ns:xmpp-framing" from="galena.localhost">\n',
+      '\n  <open xmlns="urn:ietf:params:xml:ns:xmpp-framing" from="zilar.localhost">\n',
     );
-    expect(reply).toEqual({ from: 'galena.localhost' });
+    expect(reply).toEqual({ from: 'zilar.localhost' });
   });
 
   it('returns a null from when the reply has no from attribute', () => {
@@ -46,7 +46,7 @@ describe('parseOpenFrame', () => {
   });
 
   it('returns null when the framing namespace is missing', () => {
-    expect(parseOpenFrame('<open to="galena.localhost"/>')).toBeNull();
+    expect(parseOpenFrame('<open to="zilar.localhost"/>')).toBeNull();
   });
 
   it('returns null for a raw stream header or garbage', () => {
@@ -59,9 +59,9 @@ describe('parseOpenFrame', () => {
 
 describe('basicAuthHeader', () => {
   it('encodes the JID and password as HTTP Basic credentials', () => {
-    expect(basicAuthHeader('admin@galena.localhost', 'secret')).toBe(
-      `Basic ${Buffer.from('admin@galena.localhost:secret', 'utf8').toString('base64')}`,
+    expect(basicAuthHeader('admin@zilar.localhost', 'secret')).toBe(
+      `Basic ${Buffer.from('admin@zilar.localhost:secret', 'utf8').toString('base64')}`,
     );
-    expect(basicAuthHeader('admin@galena.localhost', 'secret')).toMatch(/^Basic [A-Za-z0-9+/=]+$/);
+    expect(basicAuthHeader('admin@zilar.localhost', 'secret')).toMatch(/^Basic [A-Za-z0-9+/=]+$/);
   });
 });

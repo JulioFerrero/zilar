@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, loadState, saveState, stateFilePath } from './state';
 import { newTaskRecord } from './types';
 
-const ENV_KEY = 'GALENA_LEAD_STATE';
+const ENV_KEY = 'ZILAR_LEAD_STATE';
 const saved = process.env[ENV_KEY];
 
 afterEach(() => {
@@ -19,7 +19,7 @@ afterEach(() => {
 describe('state file', () => {
   it('defaults outside the repo and honors the override', () => {
     delete process.env[ENV_KEY];
-    expect(stateFilePath()).toContain('.galena-lead');
+    expect(stateFilePath()).toContain('.zilar-lead');
     process.env[ENV_KEY] = '/tmp/custom-state.json';
     expect(stateFilePath()).toBe('/tmp/custom-state.json');
   });

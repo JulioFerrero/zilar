@@ -6,7 +6,7 @@ import { createDraftHub, DRAFT_MAX_CHARS, DRAFT_THROTTLE_MS } from './hub';
 
 const OWNER = 'user-owner-1';
 const OTHER = 'user-other-2';
-const CHAT_JID = 'ai-abc@galena.localhost';
+const CHAT_JID = 'ai-abc@zilar.localhost';
 
 function turn(hub: ReturnType<typeof createDraftHub>, owner = OWNER) {
   return hub.publishTurn(owner, CHAT_JID, randomUUID());

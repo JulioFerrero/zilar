@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatKind } from '@galena/xmpp-core';
+import type { ChatKind } from '@zilar/xmpp-core';
 import type { FetchLike } from '../ai/litellm-client';
 import type { ChatCompletionMessage } from './context';
 import {
@@ -23,7 +23,7 @@ const VIRTUAL_KEY = 'sk-virtual-turn-test-key-aaaa';
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
 const MODEL = 'ai-abc-123';
 const BASE_URL = 'http://litellm.test:4000';
-const OWNER_JID = 'julio@galena.localhost';
+const OWNER_JID = 'julio@zilar.localhost';
 
 const MESSAGES: ChatCompletionMessage[] = [
   { role: 'system', content: 'Be helpful.' },
@@ -955,8 +955,8 @@ describe('runDmTurn beforeFinalSend', () => {
 });
 
 describe('runGroupTurn', () => {
-  const ROOM_JID = 'gtestroom@rooms.galena.localhost';
-  const SENDER_JID = 'ana@galena.localhost';
+  const ROOM_JID = 'gtestroom@rooms.zilar.localhost';
+  const SENDER_JID = 'ana@zilar.localhost';
 
   interface GroupSend {
     to: string;

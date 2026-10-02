@@ -1,4 +1,4 @@
-import { isMentionOfMe, splitLinks, splitMentions, type UiMention } from '@galena/chat-core';
+import { isMentionOfMe, splitLinks, splitMentions, type UiMention } from '@zilar/chat-core';
 
 /**
  * Renders message text: http/https URLs become safe external links and XEP-0372

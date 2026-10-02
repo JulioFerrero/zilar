@@ -3,7 +3,7 @@ import {
   shouldRenderMarkdown,
   type ChatSummary,
   type UiMessage,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 
 /**
  * The two Markdown wiring decisions, kept pure and next to the components so

@@ -9,7 +9,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-const ME = { id: 'u1', email: 'you@example.com', name: 'Ada', jid: 'you@galena.localhost' };
+const ME = { id: 'u1', email: 'you@example.com', name: 'Ada', jid: 'you@zilar.localhost' };
 
 describe('fetchMe', () => {
   it('GETs /api/me with the bearer token and parses the profile', async () => {

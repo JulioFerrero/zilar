@@ -50,7 +50,7 @@ export const MAX_RECENT_STICKERS = 30;
 
 /**
  * Whether a sticker payload `url` may be auto-loaded: only when it is a
- * relative `/api/stickers/…/file` path resolved against the Galena API origin,
+ * relative `/api/stickers/…/file` path resolved against the Zilar API origin,
  * or an absolute URL on that same origin. An absolute URL of another host is
  * never loaded — a hostile sender must not make every viewer fetch an
  * arbitrary URL — so it shows the emoji or a placeholder instead.

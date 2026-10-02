@@ -5,7 +5,7 @@ import {
   InMemoryKeyRegistry,
   generateRunnerKeypair,
   TunnelServer,
-} from '@galena/runner-tunnel';
+} from '@zilar/runner-tunnel';
 import { startFakeGateway } from '../../../packages/runner-tunnel/src/test-harness.ts';
 import { mapFailure, hubUrlFromServer, runRunner, validateHubUrl } from './connect.ts';
 import { buildIdentity } from './identity.ts';
@@ -104,17 +104,17 @@ describe('runRunner', () => {
 
 describe('hubUrlFromServer', () => {
   it('maps http:// to ws:// on the given hub port', () => {
-    expect(hubUrlFromServer('http://galena.example.com', 3189)).toBe(
-      'ws://galena.example.com:3189/tunnel',
+    expect(hubUrlFromServer('http://zilar.example.com', 3189)).toBe(
+      'ws://zilar.example.com:3189/tunnel',
     );
   });
 
   it('maps https:// to wss:// on the given hub port', () => {
-    expect(hubUrlFromServer('https://galena.example.com', 3189)).toBe(
-      'wss://galena.example.com:3189/tunnel',
+    expect(hubUrlFromServer('https://zilar.example.com', 3189)).toBe(
+      'wss://zilar.example.com:3189/tunnel',
     );
-    expect(hubUrlFromServer('https://galena.example.com:3000', 3189)).toBe(
-      'wss://galena.example.com:3189/tunnel',
+    expect(hubUrlFromServer('https://zilar.example.com:3000', 3189)).toBe(
+      'wss://zilar.example.com:3189/tunnel',
     );
   });
 });
@@ -124,8 +124,8 @@ describe('validateHubUrl', () => {
     expect(validateHubUrl('ws://127.0.0.1:3189/tunnel').toString()).toBe(
       'ws://127.0.0.1:3189/tunnel',
     );
-    expect(validateHubUrl('wss://galena.example.com:3189/tunnel').toString()).toBe(
-      'wss://galena.example.com:3189/tunnel',
+    expect(validateHubUrl('wss://zilar.example.com:3189/tunnel').toString()).toBe(
+      'wss://zilar.example.com:3189/tunnel',
     );
   });
 });

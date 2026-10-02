@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ChatKind, SendMessageOptions } from '@galena/xmpp-core';
+import type { ChatKind, SendMessageOptions } from '@zilar/xmpp-core';
 import { LitellmApiError, redactSecrets, type FetchLike } from '../ai/litellm-client';
 import type { ChatCompletionMessage } from './context';
 import { ChatStreamInterruptedError, consumeChatCompletionStream } from './stream';

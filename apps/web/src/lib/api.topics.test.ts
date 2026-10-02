@@ -47,7 +47,7 @@ function topicFixture(overrides: Record<string, unknown> = {}): Record<string, u
     groupId: 'g-1',
     name: 'General',
     glyph: 'G',
-    chatJid: 'general@rooms.galena.test',
+    chatJid: 'general@rooms.zilar.test',
     visibility: 'public',
     kind: 'chat',
     status: 'open',
@@ -76,7 +76,7 @@ describe('topics API (T-0111)', () => {
   it('chatEntryTopics validates each topic and drops malformed ones', () => {
     const entry = {
       kind: 'group' as const,
-      chatJid: 'general@rooms.galena.test',
+      chatJid: 'general@rooms.zilar.test',
       title: 'Team',
       groupId: 'g-1',
       memberCount: 4,
@@ -91,7 +91,7 @@ describe('topics API (T-0111)', () => {
   it('chatEntryTopics is empty for a group without topics (older server)', () => {
     const entry = {
       kind: 'group' as const,
-      chatJid: 'team@rooms.galena.test',
+      chatJid: 'team@rooms.zilar.test',
       title: 'Team',
       groupId: 'g-1',
       memberCount: 3,

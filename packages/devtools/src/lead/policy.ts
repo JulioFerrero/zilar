@@ -239,7 +239,7 @@ function containsJulioUdid(segment: string): boolean {
 // temp folder (or the task itself) and never the lead's scratch folder.
 function isOwnTemp(target: string, task: string): boolean {
   const lowerTarget = target.toLowerCase();
-  if (/galena-scratch/.test(lowerTarget)) {
+  if (/zilar-scratch/.test(lowerTarget)) {
     return false;
   }
   const base = path.basename(target).toLowerCase();
@@ -453,7 +453,7 @@ const REJECT_RULES: Rule[] = [
     test: (segment) => /(^|\s)--port\s+3000(\s|$)/.test(segment),
     verdict: 'reject',
     message:
-      "Port 3000 is Julio's own app. Never bind it; the Galena server uses 3188 and Vite 5173.",
+      "Port 3000 is Julio's own app. Never bind it; the Zilar server uses 3188 and Vite 5173.",
   },
   {
     test: (segment) => mentionsSecretEnv(segment),
@@ -915,12 +915,12 @@ function classifySegment(segment: string, ctx: PolicyContext): Classification {
 // Every element is classified on its own and the worst verdict wins
 // (reject > escalate > allow), so one dangerous pipeline segment can never
 // hide behind a harmless one.
-// Julio's explicit choice (2026-09-30): with GALENA_LEAD_ALLOW_ALL=1 the
+// Julio's explicit choice (2026-09-30): with ZILAR_LEAD_ALLOW_ALL=1 the
 // autopilot answers `once` to every permission request, including the ones
 // the rules below would reject or escalate. Off by default; unset the
 // variable and restart the autopilot to bring the rules back.
 export function allowAllEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return env.GALENA_LEAD_ALLOW_ALL === '1';
+  return env.ZILAR_LEAD_ALLOW_ALL === '1';
 }
 
 export function classifyPermission(request: PermissionRequest, ctx: PolicyContext): Classification {

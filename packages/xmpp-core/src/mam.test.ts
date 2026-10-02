@@ -7,9 +7,9 @@ import type { ChatMessage } from './types';
 function message(id: string, timestamp: string, body: string): ChatMessage {
   return {
     id,
-    chatJid: 'project@rooms.galena.localhost',
+    chatJid: 'project@rooms.zilar.localhost',
     kind: 'groupchat',
-    fromJid: 'alice@galena.localhost',
+    fromJid: 'alice@zilar.localhost',
     fromResolved: true,
     body,
     timestamp: new Date(timestamp),
@@ -20,9 +20,9 @@ function message(id: string, timestamp: string, body: string): ChatMessage {
 describe('buildMamQuery', () => {
   it('queries a room archive with the max page size', () => {
     const iq = buildMamQuery({
-      chatJid: 'project@rooms.galena.localhost',
+      chatJid: 'project@rooms.zilar.localhost',
       kind: 'groupchat',
-      me: 'bob@galena.localhost',
+      me: 'bob@zilar.localhost',
       queryId: 'q1',
       iqId: 'iq-1',
       max: 50,
@@ -31,7 +31,7 @@ describe('buildMamQuery', () => {
     expect(iq.attrs).toMatchObject({
       type: 'set',
       id: 'iq-1',
-      to: 'project@rooms.galena.localhost',
+      to: 'project@rooms.zilar.localhost',
     });
     const query = iq.getChild('query', MAM_NAMESPACE);
     expect(query?.attrs['queryid']).toBe('q1');
@@ -44,29 +44,29 @@ describe('buildMamQuery', () => {
 
   it('queries a DM archive of my own account with <with>', () => {
     const iq = buildMamQuery({
-      chatJid: 'alice@galena.localhost',
+      chatJid: 'alice@zilar.localhost',
       kind: 'chat',
-      me: 'bob@galena.localhost',
+      me: 'bob@zilar.localhost',
       queryId: 'q2',
       iqId: 'iq-2',
       max: 25,
     });
 
-    expect(iq.attrs['to']).toBe('bob@galena.localhost');
+    expect(iq.attrs['to']).toBe('bob@zilar.localhost');
     const fields =
       iq
         .getChild('query', MAM_NAMESPACE)
         ?.getChild('x', DATA_FORMS_NAMESPACE)
         ?.getChildren('field') ?? [];
     const withField = fields.find((field) => field.attrs['var'] === 'with');
-    expect(withField?.getChildText('value')).toBe('alice@galena.localhost');
+    expect(withField?.getChildText('value')).toBe('alice@zilar.localhost');
   });
 
   it('adds a before cursor when paging', () => {
     const iq = buildMamQuery({
-      chatJid: 'project@rooms.galena.localhost',
+      chatJid: 'project@rooms.zilar.localhost',
       kind: 'groupchat',
-      me: 'bob@galena.localhost',
+      me: 'bob@zilar.localhost',
       queryId: 'q3',
       iqId: 'iq-3',
       max: 50,

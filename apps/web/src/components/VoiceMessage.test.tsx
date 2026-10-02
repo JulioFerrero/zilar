@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { VoiceMeta } from '@galena/chat-core';
+import type { VoiceMeta } from '@zilar/chat-core';
 import { VoiceMessage } from './VoiceMessage';
 
 const voice: VoiceMeta = {

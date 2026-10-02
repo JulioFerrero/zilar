@@ -1,5 +1,5 @@
 {
-  "name": "@galena/chat-core",
+  "name": "@zilar/chat-core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,6 +11,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@galena/protocol": "workspace:*"
+    "@zilar/protocol": "workspace:*"
   }
 }

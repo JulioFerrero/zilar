@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { and, desc, eq, inArray, lt, or } from 'drizzle-orm';
 import { z } from 'zod';
-import { ARGS_HASH_PATTERN } from '@galena/protocol';
+import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
 import {
   ais,

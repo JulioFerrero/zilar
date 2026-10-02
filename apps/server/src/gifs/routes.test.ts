@@ -334,7 +334,7 @@ describe('gifs routes with a fake provider', () => {
     const { join } = await import('node:path');
     const { createServer } = await import('node:https');
     const { fetchProxiedMedia } = await import('./routes');
-    const dir = mkdtempSync(join(tmpdir(), 'galena-gif-proxy-'));
+    const dir = mkdtempSync(join(tmpdir(), 'zilar-gif-proxy-'));
     try {
       execFileSync('openssl', [
         'req',

@@ -9,7 +9,7 @@ import { RoutinesSection } from './RoutinesSection';
 
 const auth: AuthState = {
   status: 'authenticated',
-  user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+  user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
 

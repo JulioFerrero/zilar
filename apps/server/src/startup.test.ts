@@ -7,7 +7,7 @@ import { bootstrapUser, createTestContext } from './test-support';
 
 describe('ensureWritableDir', () => {
   it('logs one warning when the directory is created', async () => {
-    const parent = await mkdtemp(join(tmpdir(), 'galena-startup-'));
+    const parent = await mkdtemp(join(tmpdir(), 'zilar-startup-'));
     try {
       const dir = join(parent, 'stickers');
       const onError = vi.fn();
@@ -32,7 +32,7 @@ describe('ensureWritableDir', () => {
   });
 
   it('does not log when the directory already exists', async () => {
-    const parent = await mkdtemp(join(tmpdir(), 'galena-startup-'));
+    const parent = await mkdtemp(join(tmpdir(), 'zilar-startup-'));
     try {
       const onError = vi.fn();
       const exit = vi.fn();
@@ -62,7 +62,7 @@ describe('warnOnEmptyStorageDir', () => {
       // Seed one sticker row through the real routes into a temp dir, then
       // check a *different* empty temp dir: the database has sticker rows
       // while the resolved dir holds no files — the moved-base case.
-      const seedDir = await mkdtemp(join(tmpdir(), 'galena-startup-seed-'));
+      const seedDir = await mkdtemp(join(tmpdir(), 'zilar-startup-seed-'));
       try {
         const { createApp } = await import('./app');
         const seedApp = createApp({
@@ -99,7 +99,7 @@ describe('warnOnEmptyStorageDir', () => {
       } finally {
         await rm(seedDir, { recursive: true, force: true });
       }
-      const dir = await mkdtemp(join(tmpdir(), 'galena-startup-empty-'));
+      const dir = await mkdtemp(join(tmpdir(), 'zilar-startup-empty-'));
       try {
         const warn = vi.fn();
         await warnOnEmptyStorageDir({ db: context.db, storageDir: dir, warn });
@@ -116,7 +116,7 @@ describe('warnOnEmptyStorageDir', () => {
   it('stays quiet when the database has no stickers, or the dir holds files', async () => {
     const context = await createTestContext();
     try {
-      const empty = await mkdtemp(join(tmpdir(), 'galena-startup-norows-'));
+      const empty = await mkdtemp(join(tmpdir(), 'zilar-startup-norows-'));
       try {
         const warn = vi.fn();
         await warnOnEmptyStorageDir({ db: context.db, storageDir: empty, warn });
@@ -132,7 +132,7 @@ describe('warnOnEmptyStorageDir', () => {
   it('stays quiet when the dir holds the uploaded sticker files', async () => {
     const context = await createTestContext();
     try {
-      const dir = await mkdtemp(join(tmpdir(), 'galena-startup-withfile-'));
+      const dir = await mkdtemp(join(tmpdir(), 'zilar-startup-withfile-'));
       try {
         const { createApp } = await import('./app');
         const seedApp = createApp({

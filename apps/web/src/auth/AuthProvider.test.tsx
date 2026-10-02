@@ -10,7 +10,7 @@ vi.mock('@/mock/gate', () => ({
 }));
 
 vi.mock('@/lib/auth', () => ({
-  INVITE_HEADER: 'x-galena-invite',
+  INVITE_HEADER: 'x-zilar-invite',
   authClient: {
     useSession: vi.fn(() => ({ data: null, isPending: false, refetch: vi.fn(async () => {}) })),
   },

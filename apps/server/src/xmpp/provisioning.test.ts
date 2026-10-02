@@ -50,7 +50,7 @@ describe('localpartFor', () => {
 
 describe('jidFor', () => {
   it('joins localpart and domain', () => {
-    expect(jidFor('alice', 'galena.localhost')).toBe('alice@galena.localhost');
+    expect(jidFor('alice', 'zilar.localhost')).toBe('alice@zilar.localhost');
   });
 });
 
@@ -74,7 +74,7 @@ describe('ensureXmppAccount', () => {
       context.xmppConfig.domain,
     );
 
-    expect(result).toEqual({ jid: 'user-one@galena.localhost', provisioned: true });
+    expect(result).toEqual({ jid: 'user-one@zilar.localhost', provisioned: true });
     expect(context.adminClient.registered).toEqual(['user-one']);
 
     const row = await findXmppAccount(context.db, 'user-one');
@@ -91,7 +91,7 @@ describe('ensureXmppAccount', () => {
     );
 
     for (const result of results) {
-      expect(result).toEqual({ jid: 'user-race@galena.localhost', provisioned: true });
+      expect(result).toEqual({ jid: 'user-race@zilar.localhost', provisioned: true });
     }
     expect(await context.db.select().from(xmppAccounts)).toHaveLength(1);
   });
@@ -136,7 +136,7 @@ describe('ensureXmppAccount', () => {
       { requesterId: 'user-lazy' },
     );
 
-    expect(result).toEqual({ jid: 'user-lazy@galena.localhost', provisioned: false });
+    expect(result).toEqual({ jid: 'user-lazy@zilar.localhost', provisioned: false });
   });
 
   it('retries provisioning lazily and flips provisioned to true', async () => {

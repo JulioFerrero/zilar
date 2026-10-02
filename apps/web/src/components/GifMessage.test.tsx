@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { Attachment } from '@galena/chat-core';
+import type { Attachment } from '@zilar/chat-core';
 import { GifMessage, isGifVideoAttachment } from '@/components/GifMessage';
 
-const TRUSTED = new Set(['files.galena.test', 'upload.galena.test']);
+const TRUSTED = new Set(['files.zilar.test', 'upload.zilar.test']);
 
 function gifVideo(name = 'gif-abc123.mp4'): Attachment {
   return {
     kind: 'file',
-    url: 'https://files.galena.test/get/1/gif-abc123.mp4',
+    url: 'https://files.zilar.test/get/1/gif-abc123.mp4',
     name,
     size: 1024,
     mime: 'video/mp4',

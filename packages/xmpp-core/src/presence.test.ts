@@ -11,8 +11,8 @@ import {
 import { MUC_USER_NAMESPACE, OCCUPANT_ID_NAMESPACE, STANZA_ID_NAMESPACE } from './namespaces';
 import type { Occupant } from './types';
 
-const roomJid = 'project@rooms.galena.localhost';
-const mucDomain = 'rooms.galena.localhost';
+const roomJid = 'project@rooms.zilar.localhost';
+const mucDomain = 'rooms.zilar.localhost';
 
 function item(attrs: Record<string, string>): ReturnType<typeof xml> {
   return xml('x', { xmlns: MUC_USER_NAMESPACE }, xml('item', attrs));
@@ -32,8 +32,8 @@ describe('parseMucPresence', () => {
   it('parses a join with the real JID, occupant-id, affiliation and role', () => {
     const stanza = xml(
       'presence',
-      { from: `${roomJid}/alice`, to: 'bob@galena.localhost' },
-      item({ affiliation: 'member', role: 'participant', jid: 'alice@galena.localhost/phone' }),
+      { from: `${roomJid}/alice`, to: 'bob@zilar.localhost' },
+      item({ affiliation: 'member', role: 'participant', jid: 'alice@zilar.localhost/phone' }),
       xml('occupant-id', { xmlns: OCCUPANT_ID_NAMESPACE, id: 'occ-alice' }),
     );
 
@@ -42,7 +42,7 @@ describe('parseMucPresence', () => {
       occupantJid: `${roomJid}/alice`,
       nick: 'alice',
       available: true,
-      realJid: 'alice@galena.localhost',
+      realJid: 'alice@zilar.localhost',
       occupantId: 'occ-alice',
       affiliation: 'member',
       role: 'participant',
@@ -73,7 +73,7 @@ describe('parseMucPresence', () => {
         nick: 'new',
         affiliation: 'member',
         role: 'participant',
-        jid: 'alice@galena.localhost',
+        jid: 'alice@zilar.localhost',
       }),
     );
 
@@ -86,15 +86,15 @@ describe('parseMucPresence', () => {
       occupantJid: `${roomJid}/new`,
       nick: 'new',
       available: true,
-      realJid: 'alice@galena.localhost',
+      realJid: 'alice@zilar.localhost',
     });
   });
 
   it('ignores presence from a non-room sender', () => {
     const stanza = xml(
       'presence',
-      { from: 'alice@galena.localhost/phone' },
-      item({ jid: 'alice@galena.localhost' }),
+      { from: 'alice@zilar.localhost/phone' },
+      item({ jid: 'alice@zilar.localhost' }),
     );
     expect(parseMucPresence(stanza, mucDomain)).toBeUndefined();
   });
@@ -135,21 +135,21 @@ describe('parseMucPresence', () => {
 });
 
 describe('parseContactPresence', () => {
-  const domain = 'galena.localhost';
+  const domain = 'zilar.localhost';
 
   it('parses an available presence into a bare JID', () => {
     expect(
-      parseContactPresence(xml('presence', { from: 'alice@galena.localhost/phone' }), domain),
-    ).toEqual({ jid: 'alice@galena.localhost', available: true });
+      parseContactPresence(xml('presence', { from: 'alice@zilar.localhost/phone' }), domain),
+    ).toEqual({ jid: 'alice@zilar.localhost', available: true });
   });
 
   it('parses an unavailable presence', () => {
     expect(
       parseContactPresence(
-        xml('presence', { from: 'alice@galena.localhost/phone', type: 'unavailable' }),
+        xml('presence', { from: 'alice@zilar.localhost/phone', type: 'unavailable' }),
         domain,
       ),
-    ).toEqual({ jid: 'alice@galena.localhost', available: false });
+    ).toEqual({ jid: 'alice@zilar.localhost', available: false });
   });
 
   it('ignores another domain, a MUC domain, subscription requests and no sender', () => {
@@ -161,7 +161,7 @@ describe('parseContactPresence', () => {
     ).toBeUndefined();
     expect(
       parseContactPresence(
-        xml('presence', { from: 'alice@galena.localhost', type: 'subscribe' }),
+        xml('presence', { from: 'alice@zilar.localhost', type: 'subscribe' }),
         domain,
       ),
     ).toBeUndefined();
@@ -173,7 +173,7 @@ describe('resolveSender', () => {
   const alice = occupant({
     jid: `${roomJid}/alice`,
     nick: 'alice',
-    realJid: 'alice@galena.localhost',
+    realJid: 'alice@zilar.localhost',
     occupantId: 'occ-alice',
   });
   const roster = rosterOf(alice);
@@ -183,13 +183,13 @@ describe('resolveSender', () => {
       resolveSender({
         kind: 'groupchat',
         from: `${roomJid}/ghost`,
-        itemJid: 'alice@galena.localhost/phone',
+        itemJid: 'alice@zilar.localhost/phone',
         occupantId: 'occ-alice',
-        me: 'bob@galena.localhost',
+        me: 'bob@zilar.localhost',
         roster,
       }),
     ).toEqual({
-      jid: 'alice@galena.localhost',
+      jid: 'alice@zilar.localhost',
       resolved: true,
       occupantId: 'occ-alice',
       outgoing: false,
@@ -203,10 +203,10 @@ describe('resolveSender', () => {
         kind: 'groupchat',
         from: `${roomJid}/carol`,
         occupantId: 'occ-alice',
-        me: 'bob@galena.localhost',
+        me: 'bob@zilar.localhost',
         roster,
       }),
-    ).toMatchObject({ jid: 'alice@galena.localhost', resolved: true });
+    ).toMatchObject({ jid: 'alice@zilar.localhost', resolved: true });
   });
 
   it('resolves through the nick when there is no occupant-id', () => {
@@ -214,10 +214,10 @@ describe('resolveSender', () => {
       resolveSender({
         kind: 'groupchat',
         from: `${roomJid}/alice`,
-        me: 'bob@galena.localhost',
+        me: 'bob@zilar.localhost',
         roster,
       }),
-    ).toMatchObject({ jid: 'alice@galena.localhost', resolved: true });
+    ).toMatchObject({ jid: 'alice@zilar.localhost', resolved: true });
   });
 
   it('stays unresolved when neither the occupant-id nor the nick is known', () => {
@@ -241,7 +241,7 @@ describe('resolveSender', () => {
       resolveSender({
         kind: 'groupchat',
         from: `${roomJid}/alice`,
-        me: 'alice@galena.localhost',
+        me: 'alice@zilar.localhost',
         roster,
       }),
     ).toMatchObject({ outgoing: true });
@@ -260,11 +260,11 @@ describe('resolveSender', () => {
     expect(
       resolveSender({
         kind: 'chat',
-        from: 'alice@galena.localhost/phone',
-        me: 'bob@galena.localhost',
+        from: 'alice@zilar.localhost/phone',
+        me: 'bob@zilar.localhost',
       }),
     ).toEqual({
-      jid: 'alice@galena.localhost',
+      jid: 'alice@zilar.localhost',
       resolved: true,
       outgoing: false,
     });
@@ -276,20 +276,20 @@ describe('decodeMessageStanza with a room roster', () => {
     occupant({
       jid: `${roomJid}/alice`,
       nick: 'alice',
-      realJid: 'alice@galena.localhost',
+      realJid: 'alice@zilar.localhost',
       occupantId: 'occ-alice',
     }),
     occupant({
       jid: `${roomJid}/bob`,
       nick: 'bob',
-      realJid: 'bob@galena.localhost',
+      realJid: 'bob@zilar.localhost',
       occupantId: 'occ-bob',
     }),
   );
 
   const ctx: ParseContext = {
-    me: 'bob@galena.localhost',
-    domain: 'galena.localhost',
+    me: 'bob@zilar.localhost',
+    domain: 'zilar.localhost',
     mucDomain,
     now: () => new Date('2026-09-27T12:00:00.000Z'),
     rosterFor: (room) => (room === roomJid ? roster : undefined),
@@ -305,7 +305,7 @@ describe('decodeMessageStanza with a room roster', () => {
     );
     const { message } = decodeMessageStanza(stanza, ctx);
     expect(message).toMatchObject({
-      fromJid: 'alice@galena.localhost',
+      fromJid: 'alice@zilar.localhost',
       fromResolved: true,
       occupantId: 'occ-alice',
       fromNick: 'alice',
@@ -316,7 +316,7 @@ describe('decodeMessageStanza with a room roster', () => {
   it('resolves a MAM-archived message through the nick', () => {
     const stanza = xml(
       'message',
-      { from: roomJid, to: 'bob@galena.localhost/laptop' },
+      { from: roomJid, to: 'bob@zilar.localhost/laptop' },
       xml(
         'result',
         { xmlns: 'urn:xmpp:mam:2', queryid: 'q', id: 'archive-1' },
@@ -334,7 +334,7 @@ describe('decodeMessageStanza with a room roster', () => {
     );
     const { message } = decodeMessageStanza(stanza, ctx);
     expect(message).toMatchObject({
-      fromJid: 'alice@galena.localhost',
+      fromJid: 'alice@zilar.localhost',
       fromResolved: true,
       fromNick: 'alice',
       outgoing: false,
@@ -363,7 +363,7 @@ describe('decodeMessageStanza with a room roster', () => {
       xml('body', {}, 'mine'),
     );
     expect(decodeMessageStanza(stanza, ctx).message).toMatchObject({
-      fromJid: 'bob@galena.localhost',
+      fromJid: 'bob@zilar.localhost',
       fromResolved: true,
       outgoing: true,
     });

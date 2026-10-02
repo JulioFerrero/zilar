@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
+import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { MessageBubble } from '@/components/MessageBubble';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
@@ -39,7 +39,7 @@ function message(overrides: Partial<ChatMessage> & { chatJid: string; body: stri
   return {
     id: `m-${overrides.body}`,
     kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
-    fromJid: 'ana@galena.test',
+    fromJid: 'ana@zilar.test',
     fromResolved: true,
     timestamp: new Date('2026-09-28T10:00:00Z'),
     outgoing: false,
@@ -61,7 +61,7 @@ function reactionMessage(overrides: {
     id: overrides.id,
     chatJid: overrides.chatJid,
     kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
-    fromJid: overrides.fromJid ?? 'ana@galena.test',
+    fromJid: overrides.fromJid ?? 'ana@zilar.test',
     fromResolved: true,
     timestamp: overrides.timestamp,
     outgoing: overrides.outgoing ?? false,
@@ -87,7 +87,7 @@ function correctionMessage(overrides: {
     id: overrides.id,
     chatJid: overrides.chatJid,
     kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
-    fromJid: overrides.fromJid ?? 'ana@galena.test',
+    fromJid: overrides.fromJid ?? 'ana@zilar.test',
     fromResolved: overrides.fromResolved ?? true,
     timestamp: overrides.timestamp,
     outgoing: overrides.outgoing ?? false,
@@ -114,7 +114,7 @@ function retractionMessage(overrides: {
     id: overrides.id,
     chatJid: overrides.chatJid,
     kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
-    fromJid: overrides.fromJid ?? 'ana@galena.test',
+    fromJid: overrides.fromJid ?? 'ana@zilar.test',
     fromResolved: overrides.fromResolved ?? true,
     timestamp: overrides.timestamp,
     outgoing: overrides.outgoing ?? false,
@@ -139,7 +139,7 @@ function fakeXmpp(): FakeXmpp {
 
   const core = {
     status: () => 'online' as const,
-    me: () => 'me@galena.test',
+    me: () => 'me@zilar.test',
     connect: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
     joinRoom: vi.fn(async () => {}),
@@ -150,8 +150,8 @@ function fakeXmpp(): FakeXmpp {
     sendCorrection: vi.fn(async () => ({ id: 'edit-1' })),
     sendRetraction: vi.fn(async () => {}),
     requestUploadSlot: vi.fn(async () => ({
-      putUrl: 'http://upload.galena.test/put/1',
-      getUrl: 'http://upload.galena.test/get/1/voice.m4a',
+      putUrl: 'http://upload.zilar.test/put/1',
+      getUrl: 'http://upload.zilar.test/get/1/voice.m4a',
       headers: {},
     })),
     loadHistory: vi.fn(
@@ -199,23 +199,23 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     getMe: vi.fn(async () => ({
       id: 'u-me',
-      email: 'me@galena.test',
+      email: 'me@zilar.test',
       name: 'Me',
       image: null,
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
     })),
     getChats: vi.fn(async () => [
-      { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+      { kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
       {
         kind: 'group' as const,
-        chatJid: 'team@rooms.galena.test',
+        chatJid: 'team@rooms.zilar.test',
         title: 'Team',
         groupId: 'g1',
         memberCount: 3,
         role: 'member' as const,
       },
     ]),
-    getContacts: vi.fn(async () => [{ userId: 'u-ana', name: 'Ana', jid: 'ana@galena.test' }]),
+    getContacts: vi.fn(async () => [{ userId: 'u-ana', name: 'Ana', jid: 'ana@zilar.test' }]),
     getGroup: vi.fn(async () => ({
       id: 'g1',
       title: 'Team',
@@ -224,12 +224,12 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       ais: [],
     })),
     getXmppToken: vi.fn(async () => ({
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
       token: 'tok',
       expiresAt: '2026-09-28T12:05:00Z',
       service: 'ws://x',
-      domain: 'galena.test',
-      mucDomain: 'rooms.galena.test',
+      domain: 'zilar.test',
+      mucDomain: 'rooms.zilar.test',
     })),
     createGroup: vi.fn(async () => ({
       id: 'g2',
@@ -338,26 +338,26 @@ async function setup(
 ) {
   const api = fakeApi(overrides);
   const xmpp = fakeXmpp();
-  xmpp.history['ana@galena.test'] = [
+  xmpp.history['ana@zilar.test'] = [
     message({
       id: 'ana-1',
-      chatJid: 'ana@galena.test',
+      chatJid: 'ana@zilar.test',
       body: 'older',
       timestamp: new Date('2026-09-28T09:00:00Z'),
     }),
     message({
       id: 'ana-2',
-      chatJid: 'ana@galena.test',
+      chatJid: 'ana@zilar.test',
       body: 'newest',
       timestamp: new Date('2026-09-28T10:00:00Z'),
     }),
   ];
-  xmpp.history['team@rooms.galena.test'] = [
+  xmpp.history['team@rooms.zilar.test'] = [
     message({
       id: 'team-1',
-      chatJid: 'team@rooms.galena.test',
+      chatJid: 'team@rooms.zilar.test',
       body: 'group hello',
-      fromJid: 'ana@galena.test',
+      fromJid: 'ana@zilar.test',
       fromNick: 'ana',
       timestamp: new Date('2026-09-28T11:00:00Z'),
     }),
@@ -384,9 +384,9 @@ describe('createRealChatStore', () => {
     const { store } = await setup();
 
     const chats = store.getState().chats;
-    expect(chats.map((chat) => chat.id)).toEqual(['team@rooms.galena.test', 'ana@galena.test']);
-    expect(chats.find((chat) => chat.id === 'ana@galena.test')?.lastMessage?.text).toBe('newest');
-    expect(chats.find((chat) => chat.id === 'team@rooms.galena.test')?.lastMessage?.text).toBe(
+    expect(chats.map((chat) => chat.id)).toEqual(['team@rooms.zilar.test', 'ana@zilar.test']);
+    expect(chats.find((chat) => chat.id === 'ana@zilar.test')?.lastMessage?.text).toBe('newest');
+    expect(chats.find((chat) => chat.id === 'team@rooms.zilar.test')?.lastMessage?.text).toBe(
       'group hello',
     );
     expect(store.getState().currentUserId).toBe('u-me');
@@ -396,7 +396,7 @@ describe('createRealChatStore', () => {
     const { store } = await setup({
       listChatPrefs: vi.fn(async () => [
         {
-          chatJid: 'ana@galena.test',
+          chatJid: 'ana@zilar.test',
           mutedUntil: '2026-09-28T13:00:00.000Z',
           archived: false,
           pinnedAt: '2026-09-28T11:00:00.000Z',
@@ -404,17 +404,17 @@ describe('createRealChatStore', () => {
         },
       ]),
     });
-    const ana = store.getState().chats.find((chat) => chat.id === 'ana@galena.test');
+    const ana = store.getState().chats.find((chat) => chat.id === 'ana@zilar.test');
     expect(ana?.muted).toBe(true);
     expect(ana?.pinnedAt).toEqual(new Date('2026-09-28T11:00:00.000Z'));
-    expect(store.getState().chatPrefs['ana@galena.test']?.mutedUntil).toBe(
+    expect(store.getState().chatPrefs['ana@zilar.test']?.mutedUntil).toBe(
       '2026-09-28T13:00:00.000Z',
     );
   });
 
   it('pins optimistically and rolls back when the PUT fails', async () => {
     const putChatPref = vi.fn(async () => ({
-      chatJid: 'ana@galena.test',
+      chatJid: 'ana@zilar.test',
       mutedUntil: null,
       archived: false,
       pinnedAt: '2026-09-28T12:00:00.000Z',
@@ -422,16 +422,16 @@ describe('createRealChatStore', () => {
     }));
     const { store } = await setup({ putChatPref });
 
-    await store.getState().setPinned('ana@galena.test', true);
-    expect(putChatPref).toHaveBeenCalledWith('ana@galena.test', { pinned: true });
-    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.pinnedAt).toEqual(
+    await store.getState().setPinned('ana@zilar.test', true);
+    expect(putChatPref).toHaveBeenCalledWith('ana@zilar.test', { pinned: true });
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.pinnedAt).toEqual(
       new Date('2026-09-28T12:00:00.000Z'),
     );
 
     putChatPref.mockRejectedValueOnce(new Error('offline'));
-    await expect(store.getState().setPinned('ana@galena.test', false)).rejects.toThrow('offline');
+    await expect(store.getState().setPinned('ana@zilar.test', false)).rejects.toThrow('offline');
     // The rollback restores the pinned state.
-    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.pinnedAt).toEqual(
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.pinnedAt).toEqual(
       new Date('2026-09-28T12:00:00.000Z'),
     );
   });
@@ -457,28 +457,26 @@ describe('createRealChatStore', () => {
       const { store, xmpp } = await setup({ putChatPref });
 
       // A live message bumps Ana to unread 1 and the badge follows.
-      xmpp.emit('message', message({ chatJid: 'ana@galena.test', body: 'live badge' }));
+      xmpp.emit('message', message({ chatJid: 'ana@zilar.test', body: 'live badge' }));
       await flush();
-      expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.unread).toBe(1);
+      expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.unread).toBe(1);
       expect(badges.at(-1)).toBe(1);
 
       // Muting drops Ana out of the badge total.
       putChatPref.mockImplementationOnce(async () => ({
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         mutedUntil: '2026-09-28T13:00:00.000Z',
         archived: false,
         pinnedAt: null,
         updatedAt: '2026-09-28T12:00:00.000Z',
       }));
-      await store.getState().setMuted('ana@galena.test', 'hour');
-      expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.muted).toBe(
-        true,
-      );
+      await store.getState().setMuted('ana@zilar.test', 'hour');
+      expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.muted).toBe(true);
       expect(badges.at(-1)).toBe(0);
 
       // Unmuting brings the unread back into the badge.
-      await store.getState().setMuted('ana@galena.test', null);
-      expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.muted).toBe(
+      await store.getState().setMuted('ana@zilar.test', null);
+      expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.muted).toBe(
         false,
       );
       expect(badges.at(-1)).toBe(1);
@@ -499,19 +497,19 @@ describe('createRealChatStore', () => {
     const putChatPref = vi.fn(async () => null);
     const { store } = await setup({ putChatPref });
 
-    await store.getState().setMuted('ana@galena.test', 'hour');
-    expect(putChatPref).toHaveBeenCalledWith('ana@galena.test', {
+    await store.getState().setMuted('ana@zilar.test', 'hour');
+    expect(putChatPref).toHaveBeenCalledWith('ana@zilar.test', {
       mutedUntil: '2026-09-28T13:00:00.000Z',
     });
     // The mock PUT answered null (defaults deleted), so the chat reads unmuted.
-    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.muted).toBe(false);
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.muted).toBe(false);
 
     putChatPref.mockRejectedValueOnce(new Error('offline'));
-    await expect(store.getState().setArchived('team@rooms.galena.test', true)).rejects.toThrow(
+    await expect(store.getState().setArchived('team@rooms.zilar.test', true)).rejects.toThrow(
       'offline',
     );
     expect(
-      store.getState().chats.find((chat) => chat.id === 'team@rooms.galena.test')?.archived,
+      store.getState().chats.find((chat) => chat.id === 'team@rooms.zilar.test')?.archived,
     ).toBeUndefined();
   });
 
@@ -521,7 +519,7 @@ describe('createRealChatStore', () => {
       putChatPref,
       listChatPrefs: vi.fn(async () => [
         {
-          chatJid: 'ana@galena.test',
+          chatJid: 'ana@zilar.test',
           mutedUntil: '2026-09-28T13:00:00.000Z',
           archived: false,
           pinnedAt: null,
@@ -529,10 +527,10 @@ describe('createRealChatStore', () => {
         },
       ]),
     });
-    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.muted).toBe(true);
-    await store.getState().setMuted('ana@galena.test', null);
-    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.muted).toBe(false);
-    expect(store.getState().chatPrefs['ana@galena.test']).toBeUndefined();
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.muted).toBe(true);
+    await store.getState().setMuted('ana@zilar.test', null);
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.muted).toBe(false);
+    expect(store.getState().chatPrefs['ana@zilar.test']).toBeUndefined();
   });
 
   it('updates the preview and unread count from a live message', async () => {
@@ -542,18 +540,18 @@ describe('createRealChatStore', () => {
       'message',
       message({
         id: 'ana-3',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'live one',
         timestamp: new Date('2026-09-28T12:01:00Z'),
       }),
     );
 
-    const chat = store.getState().chats.find((entry) => entry.id === 'ana@galena.test');
+    const chat = store.getState().chats.find((entry) => entry.id === 'ana@zilar.test');
     expect(chat?.lastMessage?.text).toBe('live one');
     expect(chat?.unread).toBe(1);
-    expect(store.getState().messages('ana@galena.test').at(-1)?.id).toBe('ana-3');
+    expect(store.getState().messages('ana@zilar.test').at(-1)?.id).toBe('ana-3');
     // The chat with the newest message moves to the top.
-    expect(store.getState().chats[0]?.id).toBe('ana@galena.test');
+    expect(store.getState().chats[0]?.id).toBe('ana@zilar.test');
   });
 
   it('clears unread and sends a displayed marker when a chat is opened', async () => {
@@ -562,19 +560,19 @@ describe('createRealChatStore', () => {
       'message',
       message({
         id: 'ana-3',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'unread',
         timestamp: new Date('2026-09-28T12:01:00Z'),
       }),
     );
-    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.unread).toBe(1);
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.unread).toBe(1);
 
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
-    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.unread).toBe(0);
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.unread).toBe(0);
     expect(xmpp.core.markDisplayed).toHaveBeenCalledWith(
-      'ana@galena.test',
+      'ana@zilar.test',
       'chat',
       expect.any(String),
     );
@@ -583,8 +581,8 @@ describe('createRealChatStore', () => {
   it('adds a sent message optimistically and confirms it without duplicating the echo', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendText('ana@galena.test', 'hello there');
-    const optimist = store.getState().messages('ana@galena.test').at(-1);
+    store.getState().sendText('ana@zilar.test', 'hello there');
+    const optimist = store.getState().messages('ana@zilar.test').at(-1);
     expect(optimist?.text).toBe('hello there');
     expect(optimist?.status).toBe('sending');
 
@@ -592,7 +590,7 @@ describe('createRealChatStore', () => {
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .find((item) => item.text === 'hello there')?.status,
     ).toBe('sent');
 
@@ -600,9 +598,9 @@ describe('createRealChatStore', () => {
       'message',
       message({
         id: 'srv-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'hello there',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:02:00Z'),
       }),
@@ -610,7 +608,7 @@ describe('createRealChatStore', () => {
 
     const matches = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .filter((item) => item.text === 'hello there');
     expect(matches).toHaveLength(1);
     expect(matches[0]?.id).toBe('srv-1');
@@ -622,18 +620,18 @@ describe('createRealChatStore', () => {
         audio: new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/mp4' }),
         durationMs: 4321,
       })),
-      upload: vi.fn(async () => 'http://upload.galena.test/get/1/voice.m4a'),
+      upload: vi.fn(async () => 'http://upload.zilar.test/get/1/voice.m4a'),
     };
     const { store, xmpp } = await setup({}, voice);
 
-    store.getState().sendVoice('ana@galena.test', {
+    store.getState().sendVoice('ana@zilar.test', {
       blob: new Blob([new Uint8Array([1, 2])], { type: 'audio/webm' }),
       // The client's own duration must not reach the payload.
       durationMs: 9999,
       waveform: [1, 2, 3],
     });
 
-    const optimistic = store.getState().messages('ana@galena.test').at(-1);
+    const optimistic = store.getState().messages('ana@zilar.test').at(-1);
     expect(optimistic?.voice?.duration_ms).toBe(9999);
     expect(optimistic?.status).toBe('sending');
 
@@ -641,7 +639,7 @@ describe('createRealChatStore', () => {
 
     expect(voice.convert).toHaveBeenCalledTimes(1);
     expect(voice.upload).toHaveBeenCalledTimes(1);
-    expect(xmpp.core.sendMessage).toHaveBeenCalledWith('ana@galena.test', 'chat', '', {
+    expect(xmpp.core.sendMessage).toHaveBeenCalledWith('ana@zilar.test', 'chat', '', {
       payload: {
         v: 0,
         type: 'voice',
@@ -649,24 +647,24 @@ describe('createRealChatStore', () => {
           duration_ms: 4321,
           mime: 'audio/mp4',
           waveform: [1, 2, 3],
-          url: 'http://upload.galena.test/get/1/voice.m4a',
+          url: 'http://upload.zilar.test/get/1/voice.m4a',
         },
       },
     });
-    const sent = store.getState().messages('ana@galena.test').at(-1);
+    const sent = store.getState().messages('ana@zilar.test').at(-1);
     expect(sent?.voice?.duration_ms).toBe(4321);
-    expect(sent?.voice?.url).toBe('http://upload.galena.test/get/1/voice.m4a');
+    expect(sent?.voice?.url).toBe('http://upload.zilar.test/get/1/voice.m4a');
     expect(sent?.status).toBe('sent');
   });
 
   it('updates the list preview when the optimistic send is confirmed', async () => {
     const { store } = await setup();
 
-    store.getState().sendText('ana@galena.test', 'hello there');
+    store.getState().sendText('ana@zilar.test', 'hello there');
     await flush();
 
-    const chat = store.getState().chats.find((entry) => entry.id === 'ana@galena.test');
-    const bubble = store.getState().messages('ana@galena.test').at(-1);
+    const chat = store.getState().chats.find((entry) => entry.id === 'ana@zilar.test');
+    const bubble = store.getState().messages('ana@zilar.test').at(-1);
     expect(chat?.lastMessage?.status).toBe('sent');
     expect(bubble?.status).toBe('sent');
   });
@@ -674,17 +672,17 @@ describe('createRealChatStore', () => {
   it('marks the bubble and the list read when a displayed marker arrives', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendText('ana@galena.test', 'read me');
+    store.getState().sendText('ana@zilar.test', 'read me');
     await flush();
     // `sendMessage` resolves with the id the server echoes back.
     xmpp.emit('displayed', {
-      chatJid: 'ana@galena.test',
-      fromJid: 'ana@galena.test',
+      chatJid: 'ana@zilar.test',
+      fromJid: 'ana@zilar.test',
       messageId: 'srv-1',
     });
 
-    const chat = store.getState().chats.find((entry) => entry.id === 'ana@galena.test');
-    const bubble = store.getState().messages('ana@galena.test').at(-1);
+    const chat = store.getState().chats.find((entry) => entry.id === 'ana@zilar.test');
+    const bubble = store.getState().messages('ana@zilar.test').at(-1);
     expect(chat?.lastMessage?.status).toBe('read');
     expect(bubble?.status).toBe('read');
   });
@@ -692,60 +690,60 @@ describe('createRealChatStore', () => {
   it('keeps the bubble and the list in agreement through sending and reading', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendText('ana@galena.test', 'agree');
-    const sending = store.getState().messages('ana@galena.test').at(-1);
+    store.getState().sendText('ana@zilar.test', 'agree');
+    const sending = store.getState().messages('ana@zilar.test').at(-1);
     expect(sending?.status).toBe('sending');
     expect(
-      store.getState().chats.find((entry) => entry.id === 'ana@galena.test')?.lastMessage?.status,
+      store.getState().chats.find((entry) => entry.id === 'ana@zilar.test')?.lastMessage?.status,
     ).toBe('sending');
 
     await flush();
     expect(
-      store.getState().chats.find((entry) => entry.id === 'ana@galena.test')?.lastMessage?.status,
+      store.getState().chats.find((entry) => entry.id === 'ana@zilar.test')?.lastMessage?.status,
     ).toBe('sent');
 
     xmpp.emit('displayed', {
-      chatJid: 'ana@galena.test',
-      fromJid: 'ana@galena.test',
+      chatJid: 'ana@zilar.test',
+      fromJid: 'ana@zilar.test',
       messageId: 'srv-1',
     });
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .find((item) => item.text === 'agree')?.status,
     ).toBe('read');
     expect(
-      store.getState().chats.find((entry) => entry.id === 'ana@galena.test')?.lastMessage?.status,
+      store.getState().chats.find((entry) => entry.id === 'ana@zilar.test')?.lastMessage?.status,
     ).toBe('read');
   });
 
   it('keeps a message read when the server echo arrives after a displayed marker', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendText('ana@galena.test', 'late echo');
+    store.getState().sendText('ana@zilar.test', 'late echo');
     await flush();
     xmpp.emit('displayed', {
-      chatJid: 'ana@galena.test',
-      fromJid: 'ana@galena.test',
+      chatJid: 'ana@zilar.test',
+      fromJid: 'ana@zilar.test',
       messageId: 'srv-1',
     });
     xmpp.emit(
       'message',
       message({
         id: 'srv-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'late echo',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:02:00Z'),
       }),
     );
 
-    const chat = store.getState().chats.find((entry) => entry.id === 'ana@galena.test');
+    const chat = store.getState().chats.find((entry) => entry.id === 'ana@zilar.test');
     const bubble = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((item) => item.text === 'late echo');
     expect(bubble?.status).toBe('read');
     expect(chat?.lastMessage?.status).toBe('read');
@@ -755,74 +753,74 @@ describe('createRealChatStore', () => {
     const { store, xmpp } = await setup();
 
     xmpp.emit('typing', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'me@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'me@zilar.test',
       state: 'composing',
     });
-    expect(store.getState().typing['team@rooms.galena.test']).toBeUndefined();
+    expect(store.getState().typing['team@rooms.zilar.test']).toBeUndefined();
 
     xmpp.emit('typing', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'ana@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'ana@zilar.test',
       state: 'composing',
     });
-    expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Ana']);
+    expect(store.getState().typing['team@rooms.zilar.test']?.names).toEqual(['Ana']);
   });
 
   it('ignores my own displayed marker reflected from a group', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendText('team@rooms.galena.test', 'mine');
+    store.getState().sendText('team@rooms.zilar.test', 'mine');
     await flush();
 
     xmpp.emit('displayed', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'me@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'me@zilar.test',
       messageId: 'srv-1',
     });
-    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.status).toBe('sent');
+    expect(store.getState().messages('team@rooms.zilar.test').at(-1)?.status).toBe('sent');
     expect(
-      store.getState().chats.find((entry) => entry.id === 'team@rooms.galena.test')?.lastMessage
+      store.getState().chats.find((entry) => entry.id === 'team@rooms.zilar.test')?.lastMessage
         ?.status,
     ).toBe('sent');
 
     xmpp.emit('displayed', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'ana@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'ana@zilar.test',
       messageId: 'srv-1',
     });
-    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.status).toBe('read');
+    expect(store.getState().messages('team@rooms.zilar.test').at(-1)?.status).toBe('read');
   });
 
   it('ignores an unresolved own typing reflection from a group', async () => {
     const { store, xmpp } = await setup();
 
     xmpp.emit('typing', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'team@rooms.galena.test/mynick',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'team@rooms.zilar.test/mynick',
       state: 'composing',
       outgoing: true,
     });
 
-    expect(store.getState().typing['team@rooms.galena.test']).toBeUndefined();
+    expect(store.getState().typing['team@rooms.zilar.test']).toBeUndefined();
   });
 
   it('ignores an unresolved own displayed reflection from a group', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendText('team@rooms.galena.test', 'mine');
+    store.getState().sendText('team@rooms.zilar.test', 'mine');
     await flush();
 
     xmpp.emit('displayed', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'team@rooms.galena.test/mynick',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'team@rooms.zilar.test/mynick',
       messageId: 'srv-1',
       outgoing: true,
     });
 
-    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.status).toBe('sent');
+    expect(store.getState().messages('team@rooms.zilar.test').at(-1)?.status).toBe('sent');
     expect(
-      store.getState().chats.find((entry) => entry.id === 'team@rooms.galena.test')?.lastMessage
+      store.getState().chats.find((entry) => entry.id === 'team@rooms.zilar.test')?.lastMessage
         ?.status,
     ).toBe('sent');
   });
@@ -839,12 +837,12 @@ describe('createRealChatStore', () => {
     await flush();
 
     xmpp.emit('typing', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'u-luis@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'u-luis@zilar.test',
       state: 'composing',
     });
 
-    expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Luis']);
+    expect(store.getState().typing['team@rooms.zilar.test']?.names).toEqual(['Luis']);
   });
 
   it('maps a received mention to the member name', async () => {
@@ -862,15 +860,15 @@ describe('createRealChatStore', () => {
       'message',
       message({
         id: 'team-2',
-        chatJid: 'team@rooms.galena.test',
+        chatJid: 'team@rooms.zilar.test',
         body: 'hi @Ana',
-        fromJid: 'u-ana@galena.test',
-        mentions: [{ jid: 'u-ana@galena.test', begin: 3, end: 7 }],
+        fromJid: 'u-ana@zilar.test',
+        mentions: [{ jid: 'u-ana@zilar.test', begin: 3, end: 7 }],
       }),
     );
 
-    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.mentions).toEqual([
-      { jid: 'u-ana@galena.test', name: 'Ana', begin: 3, end: 7 },
+    expect(store.getState().messages('team@rooms.zilar.test').at(-1)?.mentions).toEqual([
+      { jid: 'u-ana@zilar.test', name: 'Ana', begin: 3, end: 7 },
     ]);
   });
 
@@ -881,15 +879,15 @@ describe('createRealChatStore', () => {
       'message',
       message({
         id: 'team-3',
-        chatJid: 'team@rooms.galena.test',
+        chatJid: 'team@rooms.zilar.test',
         body: 'hi @Zed',
-        fromJid: 'u-zed@galena.test',
-        mentions: [{ jid: 'zed@galena.test', begin: 3, end: 7 }],
+        fromJid: 'u-zed@zilar.test',
+        mentions: [{ jid: 'zed@zilar.test', begin: 3, end: 7 }],
       }),
     );
 
-    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.mentions).toEqual([
-      { jid: 'zed@galena.test', name: '@Zed', begin: 3, end: 7 },
+    expect(store.getState().messages('team@rooms.zilar.test').at(-1)?.mentions).toEqual([
+      { jid: 'zed@zilar.test', name: '@Zed', begin: 3, end: 7 },
     ]);
   });
 
@@ -900,14 +898,14 @@ describe('createRealChatStore', () => {
       'message',
       message({
         id: 'team-4',
-        chatJid: 'team@rooms.galena.test',
+        chatJid: 'team@rooms.zilar.test',
         body: 'hi @Ana',
-        fromJid: 'u-ana@galena.test',
-        mentions: [{ jid: 'u-ana@galena.test' }],
+        fromJid: 'u-ana@zilar.test',
+        mentions: [{ jid: 'u-ana@zilar.test' }],
       }),
     );
 
-    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.mentions).toBeUndefined();
+    expect(store.getState().messages('team@rooms.zilar.test').at(-1)?.mentions).toBeUndefined();
   });
 
   it('exposes the group members with their JIDs', async () => {
@@ -923,12 +921,12 @@ describe('createRealChatStore', () => {
     }));
     const { store } = await setup({ getGroup });
     await flush();
-    store.getState().openChat('team@rooms.galena.test');
+    store.getState().openChat('team@rooms.zilar.test');
     await flush();
 
-    expect(store.getState().groupMembers('team@rooms.galena.test')).toEqual([
-      { jid: 'u-me@galena.test', name: 'Me' },
-      { jid: 'u-ana@galena.test', name: 'Ana' },
+    expect(store.getState().groupMembers('team@rooms.zilar.test')).toEqual([
+      { jid: 'u-me@zilar.test', name: 'Me' },
+      { jid: 'u-ana@zilar.test', name: 'Ana' },
     ]);
   });
 
@@ -938,19 +936,19 @@ describe('createRealChatStore', () => {
       title: 'Team',
       createdBy: 'u-me',
       members: [{ userId: 'u-me', name: 'Me', role: 'owner' as const }],
-      ais: [{ aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-me' }],
+      ais: [{ aiId: 'dev-1', jid: 'ai-dev-1@zilar.test', name: 'Dev-1', ownerId: 'u-me' }],
     }));
     const { store } = await setup({ getGroup });
     await flush();
-    store.getState().openChat('team@rooms.galena.test');
+    store.getState().openChat('team@rooms.zilar.test');
     await flush();
 
-    expect(store.getState().groupMembers('team@rooms.galena.test')).toEqual([
-      { jid: 'u-me@galena.test', name: 'Me' },
-      { jid: 'ai-dev-1@galena.test', name: 'Dev-1' },
+    expect(store.getState().groupMembers('team@rooms.zilar.test')).toEqual([
+      { jid: 'u-me@zilar.test', name: 'Me' },
+      { jid: 'ai-dev-1@zilar.test', name: 'Dev-1' },
     ]);
-    expect(store.getState().groupInfo('team@rooms.galena.test')?.ais).toEqual([
-      { aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-me' },
+    expect(store.getState().groupInfo('team@rooms.zilar.test')?.ais).toEqual([
+      { aiId: 'dev-1', jid: 'ai-dev-1@zilar.test', name: 'Dev-1', ownerId: 'u-me' },
     ]);
   });
 
@@ -964,23 +962,23 @@ describe('createRealChatStore', () => {
     };
     const after = {
       ...before,
-      ais: [{ aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-me' }],
+      ais: [{ aiId: 'dev-1', jid: 'ai-dev-1@zilar.test', name: 'Dev-1', ownerId: 'u-me' }],
     };
     const getGroup = vi.fn(async () => before);
     const addGroupAi = vi.fn(async () => after);
     const { store } = await setup({ getGroup, addGroupAi });
     await flush();
-    store.getState().openChat('team@rooms.galena.test');
+    store.getState().openChat('team@rooms.zilar.test');
     await flush();
 
-    await store.getState().addGroupAi('team@rooms.galena.test', 'dev-1');
+    await store.getState().addGroupAi('team@rooms.zilar.test', 'dev-1');
 
     expect(addGroupAi).toHaveBeenCalledWith('g1', 'dev-1');
-    expect(store.getState().groupMembers('team@rooms.galena.test')).toContainEqual({
-      jid: 'ai-dev-1@galena.test',
+    expect(store.getState().groupMembers('team@rooms.zilar.test')).toContainEqual({
+      jid: 'ai-dev-1@zilar.test',
       name: 'Dev-1',
     });
-    expect(store.getState().groupInfo('team@rooms.galena.test')?.ais).toHaveLength(1);
+    expect(store.getState().groupInfo('team@rooms.zilar.test')?.ais).toHaveLength(1);
   });
 
   it('removes an AI through the API and refreshes the members', async () => {
@@ -989,21 +987,21 @@ describe('createRealChatStore', () => {
       title: 'Team',
       createdBy: 'u-me',
       members: [{ userId: 'u-me', name: 'Me', role: 'owner' as const }],
-      ais: [{ aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-me' }],
+      ais: [{ aiId: 'dev-1', jid: 'ai-dev-1@zilar.test', name: 'Dev-1', ownerId: 'u-me' }],
     };
     const after = { ...before, ais: [] };
     const getGroup = vi.fn(async () => before);
     const removeGroupAi = vi.fn(async () => after);
     const { store } = await setup({ getGroup, removeGroupAi });
     await flush();
-    store.getState().openChat('team@rooms.galena.test');
+    store.getState().openChat('team@rooms.zilar.test');
     await flush();
 
-    await store.getState().removeGroupAi('team@rooms.galena.test', 'dev-1');
+    await store.getState().removeGroupAi('team@rooms.zilar.test', 'dev-1');
 
     expect(removeGroupAi).toHaveBeenCalledWith('g1', 'dev-1');
-    expect(store.getState().groupMembers('team@rooms.galena.test')).toEqual([
-      { jid: 'u-me@galena.test', name: 'Me' },
+    expect(store.getState().groupMembers('team@rooms.zilar.test')).toEqual([
+      { jid: 'u-me@zilar.test', name: 'Me' },
     ]);
   });
 
@@ -1013,26 +1011,26 @@ describe('createRealChatStore', () => {
       title: 'Team',
       createdBy: 'u-me',
       members: [{ userId: 'u-me', name: 'Me', role: 'owner' as const }],
-      ais: [{ aiId: 'dev-1', jid: 'ai-dev-1@galena.test', name: 'Dev-1', ownerId: 'u-me' }],
+      ais: [{ aiId: 'dev-1', jid: 'ai-dev-1@zilar.test', name: 'Dev-1', ownerId: 'u-me' }],
     }));
     const { store, xmpp } = await setup({ getGroup });
     await flush();
-    store.getState().openChat('team@rooms.galena.test');
+    store.getState().openChat('team@rooms.zilar.test');
     await flush();
 
     xmpp.emit(
       'message',
       message({
         id: 'ai-msg-1',
-        chatJid: 'team@rooms.galena.test',
+        chatJid: 'team@rooms.zilar.test',
         body: '**done**',
-        fromJid: 'ai-dev-1@galena.test',
+        fromJid: 'ai-dev-1@zilar.test',
         timestamp: new Date('2026-09-28T12:01:00Z'),
       }),
     );
 
-    const last = store.getState().messages('team@rooms.galena.test').at(-1);
-    const chat = store.getState().chats.find((entry) => entry.id === 'team@rooms.galena.test');
+    const last = store.getState().messages('team@rooms.zilar.test').at(-1);
+    const chat = store.getState().chats.find((entry) => entry.id === 'team@rooms.zilar.test');
     expect(last?.senderName).toBe('Dev-1');
     if (last === undefined || chat === undefined) {
       throw new Error('the group AI message was not stored');
@@ -1042,7 +1040,7 @@ describe('createRealChatStore', () => {
       <AuthProvider
         value={{
           status: 'authenticated',
-          user: { id: 'u-me', name: 'Me', email: 'me@galena.test' },
+          user: { id: 'u-me', name: 'Me', email: 'me@zilar.test' },
           refetch: async () => {},
         }}
       >
@@ -1067,18 +1065,18 @@ describe('createRealChatStore', () => {
   it('passes outgoing mentions to the core', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendText('team@rooms.galena.test', 'hi @Ana', {
-      mentions: [{ jid: 'u-ana@galena.test', name: 'Ana', begin: 3, end: 7 }],
+    store.getState().sendText('team@rooms.zilar.test', 'hi @Ana', {
+      mentions: [{ jid: 'u-ana@zilar.test', name: 'Ana', begin: 3, end: 7 }],
     });
 
     expect(xmpp.core.sendMessage).toHaveBeenCalledWith(
-      'team@rooms.galena.test',
+      'team@rooms.zilar.test',
       'groupchat',
       'hi @Ana',
-      { mentions: [{ jid: 'u-ana@galena.test', begin: 3, end: 7 }] },
+      { mentions: [{ jid: 'u-ana@zilar.test', begin: 3, end: 7 }] },
     );
-    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.mentions).toEqual([
-      { jid: 'u-ana@galena.test', name: 'Ana', begin: 3, end: 7 },
+    expect(store.getState().messages('team@rooms.zilar.test').at(-1)?.mentions).toEqual([
+      { jid: 'u-ana@zilar.test', name: 'Ana', begin: 3, end: 7 },
     ]);
   });
 
@@ -1086,92 +1084,92 @@ describe('createRealChatStore', () => {
     const { store, xmpp } = await setup();
 
     xmpp.emit('typing', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'z9y8x7@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'z9y8x7@zilar.test',
       state: 'composing',
     });
 
-    expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Someone']);
+    expect(store.getState().typing['team@rooms.zilar.test']?.names).toEqual(['Someone']);
   });
 
   it('uses the occupant nick when a group sender is not a known member', async () => {
     const { store, xmpp } = await setup();
     vi.mocked(xmpp.core.occupants).mockReturnValue([
       {
-        jid: 'team@rooms.galena.test/pablo',
+        jid: 'team@rooms.zilar.test/pablo',
         nick: 'Pablo',
         available: true,
-        realJid: 'pablo@galena.test',
+        realJid: 'pablo@zilar.test',
       },
     ]);
 
     xmpp.emit('typing', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'pablo@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'pablo@zilar.test',
       state: 'composing',
     });
 
-    expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Pablo']);
+    expect(store.getState().typing['team@rooms.zilar.test']?.names).toEqual(['Pablo']);
   });
 
   it('paginates older messages on demand', async () => {
     const history = Array.from({ length: 60 }, (_, index) =>
       message({
         id: `ana-${index}`,
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: `msg ${index}`,
         timestamp: new Date(Date.UTC(2026, 8, 28, 8, index)),
       }),
     );
     const { store, xmpp } = await setup();
-    xmpp.history['ana@galena.test'] = history;
+    xmpp.history['ana@zilar.test'] = history;
 
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
-    expect(store.getState().messages('ana@galena.test')).toHaveLength(50);
-    expect(store.getState().hasMore('ana@galena.test')).toBe(true);
+    expect(store.getState().messages('ana@zilar.test')).toHaveLength(50);
+    expect(store.getState().hasMore('ana@zilar.test')).toBe(true);
 
-    store.getState().loadOlder('ana@galena.test');
+    store.getState().loadOlder('ana@zilar.test');
     await flush();
 
-    expect(store.getState().messages('ana@galena.test')).toHaveLength(60);
-    expect(store.getState().messages('ana@galena.test')[0]?.id).toBe('ana-0');
-    expect(store.getState().hasMore('ana@galena.test')).toBe(false);
+    expect(store.getState().messages('ana@zilar.test')).toHaveLength(60);
+    expect(store.getState().messages('ana@zilar.test')[0]?.id).toBe('ana-0');
+    expect(store.getState().hasMore('ana@zilar.test')).toBe(false);
   });
 
   it('opens a chat at a loaded message without paging', async () => {
     const { store } = await setup();
-    const found = await store.getState().openAtMessage('ana@galena.test', 'ana-2');
+    const found = await store.getState().openAtMessage('ana@zilar.test', 'ana-2');
     expect(found.id).toBe('ana-2');
-    expect(store.getState().activeChatId).toBe('ana@galena.test');
+    expect(store.getState().activeChatId).toBe('ana@zilar.test');
   });
 
   it('pages backwards until a far-back message is loaded', async () => {
     const history = Array.from({ length: 60 }, (_, index) =>
       message({
         id: `ana-${index}`,
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: `msg ${index}`,
         timestamp: new Date(Date.UTC(2026, 8, 28, 8, index)),
       }),
     );
     const { store, xmpp } = await setup();
-    xmpp.history['ana@galena.test'] = history;
+    xmpp.history['ana@zilar.test'] = history;
 
-    const found = await store.getState().openAtMessage('ana@galena.test', 'ana-3');
+    const found = await store.getState().openAtMessage('ana@zilar.test', 'ana-3');
     expect(found.text).toBe('msg 3');
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .some((item) => item.id === 'ana-3'),
     ).toBe(true);
   });
 
   it('rejects message_not_found when history runs out', async () => {
     const { store } = await setup();
-    await expect(store.getState().openAtMessage('ana@galena.test', 'ghost')).rejects.toThrow(
+    await expect(store.getState().openAtMessage('ana@zilar.test', 'ghost')).rejects.toThrow(
       'message_not_found',
     );
   });
@@ -1180,7 +1178,7 @@ describe('createRealChatStore', () => {
     function pinRow(messageId: string, text = 'pinned text'): Pin {
       return {
         id: `pin-${messageId}`,
-        chat: 'ana@galena.test',
+        chat: 'ana@zilar.test',
         messageId,
         senderName: 'Ana',
         text,
@@ -1193,16 +1191,16 @@ describe('createRealChatStore', () => {
     it('loads pins when a chat opens', async () => {
       const { store, api } = await setup({ listPins: vi.fn(async () => [pinRow('ana-2')]) });
       expect(api.listPins).not.toHaveBeenCalled();
-      store.getState().openChat('ana@galena.test');
+      store.getState().openChat('ana@zilar.test');
       await flush();
-      expect(api.listPins).toHaveBeenCalledWith('ana@galena.test');
+      expect(api.listPins).toHaveBeenCalledWith('ana@zilar.test');
       expect(
         store
           .getState()
-          .pins('ana@galena.test')
+          .pins('ana@zilar.test')
           .map((pin) => pin.messageId),
       ).toEqual(['ana-2']);
-      expect(store.getState().pinsLoaded('ana@galena.test')).toBe(true);
+      expect(store.getState().pinsLoaded('ana@zilar.test')).toBe(true);
     });
 
     it('refreshes pins on focus and every 60 s while the chat is open', async () => {
@@ -1214,16 +1212,16 @@ describe('createRealChatStore', () => {
         });
         const api = fakeApi({ listPins: vi.fn(async () => [pinRow('ana-2')]) });
         const xmpp = fakeXmpp();
-        xmpp.history['ana@galena.test'] = [
+        xmpp.history['ana@zilar.test'] = [
           message({
             id: 'ana-1',
-            chatJid: 'ana@galena.test',
+            chatJid: 'ana@zilar.test',
             body: 'older',
             timestamp: new Date('2026-09-28T09:00:00Z'),
           }),
           message({
             id: 'ana-2',
-            chatJid: 'ana@galena.test',
+            chatJid: 'ana@zilar.test',
             body: 'newest',
             timestamp: new Date('2026-09-28T10:00:00Z'),
           }),
@@ -1237,7 +1235,7 @@ describe('createRealChatStore', () => {
         store.getState().start();
         await vi.advanceTimersByTimeAsync(0);
         await vi.advanceTimersByTimeAsync(0);
-        store.getState().openChat('ana@galena.test');
+        store.getState().openChat('ana@zilar.test');
         await vi.advanceTimersByTimeAsync(0);
         expect(api.listPins).toHaveBeenCalledTimes(1);
 
@@ -1247,7 +1245,7 @@ describe('createRealChatStore', () => {
 
         await vi.advanceTimersByTimeAsync(60_000);
         expect(api.listPins).toHaveBeenCalledTimes(3);
-        expect(store.getState().pins('ana@galena.test')).toHaveLength(1);
+        expect(store.getState().pins('ana@zilar.test')).toHaveLength(1);
         store.getState().stop();
       } finally {
         vi.useRealTimers();
@@ -1261,12 +1259,12 @@ describe('createRealChatStore', () => {
         pinMessage: vi.fn(async () => saved),
         unpinMessage: vi.fn(async () => {}),
       });
-      store.getState().openChat('ana@galena.test');
+      store.getState().openChat('ana@zilar.test');
       await flush();
 
-      await store.getState().pinMessage('ana@galena.test', 'ana-2');
+      await store.getState().pinMessage('ana@zilar.test', 'ana-2');
       expect(api.pinMessage).toHaveBeenCalledWith({
-        chat: 'ana@galena.test',
+        chat: 'ana@zilar.test',
         messageId: 'ana-2',
         senderName: 'Ana',
         text: 'newest',
@@ -1275,22 +1273,22 @@ describe('createRealChatStore', () => {
       expect(
         store
           .getState()
-          .pins('ana@galena.test')
+          .pins('ana@zilar.test')
           .map((pin) => pin.id),
       ).toEqual([saved.id]);
 
-      await store.getState().unpinMessage('ana@galena.test', saved.id);
+      await store.getState().unpinMessage('ana@zilar.test', saved.id);
       expect(api.unpinMessage).toHaveBeenCalledWith(saved.id);
-      expect(store.getState().pins('ana@galena.test')).toEqual([]);
+      expect(store.getState().pins('ana@zilar.test')).toEqual([]);
 
       // A failed pin rolls back and reports inline.
       vi.mocked(api.pinMessage).mockRejectedValueOnce(new Error('offline'));
-      await expect(store.getState().pinMessage('ana@galena.test', 'ana-1')).rejects.toThrow(
+      await expect(store.getState().pinMessage('ana@zilar.test', 'ana-1')).rejects.toThrow(
         'offline',
       );
-      expect(store.getState().pins('ana@galena.test')).toEqual([]);
+      expect(store.getState().pins('ana@zilar.test')).toEqual([]);
       expect(store.getState().pinsError).toEqual({
-        chatId: 'ana@galena.test',
+        chatId: 'ana@zilar.test',
         message: 'Could not pin the message. Try again.',
       });
     });
@@ -1307,13 +1305,13 @@ describe('createRealChatStore', () => {
         })),
       });
       // DMs: either side may pin.
-      expect(store.getState().canPin('ana@galena.test')).toBe(true);
+      expect(store.getState().canPin('ana@zilar.test')).toBe(true);
       // The legacy group row starts unknown (detail not loaded yet).
-      expect(store.getState().canPin('team@rooms.galena.test')).toBe(false);
-      store.getState().openChat('team@rooms.galena.test');
+      expect(store.getState().canPin('team@rooms.zilar.test')).toBe(false);
+      store.getState().openChat('team@rooms.zilar.test');
       await flush();
       // A plain member may not pin.
-      expect(store.getState().canPin('team@rooms.galena.test')).toBe(false);
+      expect(store.getState().canPin('team@rooms.zilar.test')).toBe(false);
     });
   });
 
@@ -1323,7 +1321,7 @@ describe('createRealChatStore', () => {
     try {
       // The opening page never settles: openAtMessage must not hang forever.
       vi.mocked(xmpp.core.loadHistory).mockImplementationOnce(() => new Promise(() => {}));
-      const pending = store.getState().openAtMessage('ana@galena.test', 'ana-2');
+      const pending = store.getState().openAtMessage('ana@zilar.test', 'ana-2');
       // Attach the assertion before the timers fire, so the rejection never
       // sits unhandled while the fake clock advances.
       const rejected = expect(pending).rejects.toThrow('message_not_found');
@@ -1363,7 +1361,7 @@ describe('createRealChatStore', () => {
         const groups = [
           {
             kind: 'group' as const,
-            chatJid: 'new@rooms.galena.test',
+            chatJid: 'new@rooms.zilar.test',
             title: 'New',
             groupId: 'g2',
             memberCount: 2,
@@ -1386,19 +1384,17 @@ describe('createRealChatStore', () => {
     await flush();
 
     const chatJid = await store.getState().createGroup('New', ['u-ana']);
-    expect(chatJid).toBe('new@rooms.galena.test');
+    expect(chatJid).toBe('new@rooms.zilar.test');
     expect(api.createGroup).toHaveBeenCalledWith({ title: 'New', memberIds: ['u-ana'] });
-    expect(xmpp.core.joinRoom).toHaveBeenCalledWith('new@rooms.galena.test', 'Me');
+    expect(xmpp.core.joinRoom).toHaveBeenCalledWith('new@rooms.zilar.test', 'Me');
   });
 
   it('updates presence for a DM contact', async () => {
     const { store, xmpp } = await setup();
-    xmpp.emit('presence', { jid: 'ana@galena.test', available: true });
-    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.online).toBe(true);
-    xmpp.emit('presence', { jid: 'ana@galena.test', available: false });
-    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.online).toBe(
-      false,
-    );
+    xmpp.emit('presence', { jid: 'ana@zilar.test', available: true });
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.online).toBe(true);
+    xmpp.emit('presence', { jid: 'ana@zilar.test', available: false });
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.online).toBe(false);
   });
 
   it('returns the invite URL', async () => {
@@ -1412,7 +1408,7 @@ describe('createRealChatStore', () => {
     // a list refresh that rebuilds the rows from server truth.
     const feed = {
       kind: 'group' as const,
-      chatJid: 'acme@rooms.galena.test',
+      chatJid: 'acme@rooms.zilar.test',
       title: 'Acme Announcements',
       groupId: 'g-acme',
       memberCount: 3,
@@ -1438,26 +1434,26 @@ describe('createRealChatStore', () => {
       ais: [],
     }));
     const { store } = await setup({ getChats, changeGroupMemberRole });
-    expect(
-      store.getState().chats.find((chat) => chat.id === 'acme@rooms.galena.test')?.myRole,
-    ).toBe('member');
+    expect(store.getState().chats.find((chat) => chat.id === 'acme@rooms.zilar.test')?.myRole).toBe(
+      'member',
+    );
 
-    await store.getState().changeChannelRole('acme@rooms.galena.test', 'u-me', 'admin');
+    await store.getState().changeChannelRole('acme@rooms.zilar.test', 'u-me', 'admin');
 
     expect(changeGroupMemberRole).toHaveBeenCalledWith('g-acme', 'u-me', 'admin');
     expect(calls).toBeGreaterThan(1);
-    expect(
-      store.getState().chats.find((chat) => chat.id === 'acme@rooms.galena.test')?.myRole,
-    ).toBe('admin');
+    expect(store.getState().chats.find((chat) => chat.id === 'acme@rooms.zilar.test')?.myRole).toBe(
+      'admin',
+    );
   });
 
   it('refreshes the chat list on an invitation and joins the new group room', async () => {
     const base = [
-      { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+      { kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
     ];
     const invited = {
       kind: 'group' as const,
-      chatJid: 'new@rooms.galena.test',
+      chatJid: 'new@rooms.zilar.test',
       title: 'New',
       groupId: 'g2',
       memberCount: 2,
@@ -1471,26 +1467,26 @@ describe('createRealChatStore', () => {
     const { store, xmpp } = await setup({ getChats });
 
     xmpp.emit('invited', {
-      roomJid: 'new@rooms.galena.test',
-      fromJid: 'ana@galena.test',
+      roomJid: 'new@rooms.zilar.test',
+      fromJid: 'ana@zilar.test',
       reason: 'Join us',
     });
     await waitForRefresh();
 
-    expect(store.getState().chats[0]?.id).toBe('new@rooms.galena.test');
-    expect(xmpp.core.joinRoom).toHaveBeenCalledWith('new@rooms.galena.test', 'Me');
-    expect(xmpp.core.loadHistory).toHaveBeenCalledWith('new@rooms.galena.test', 'groupchat', {
+    expect(store.getState().chats[0]?.id).toBe('new@rooms.zilar.test');
+    expect(xmpp.core.joinRoom).toHaveBeenCalledWith('new@rooms.zilar.test', 'Me');
+    expect(xmpp.core.loadHistory).toHaveBeenCalledWith('new@rooms.zilar.test', 'groupchat', {
       max: 1,
     });
   });
 
   it('refreshes the chat list on a roster push', async () => {
     const base = [
-      { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+      { kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
     ];
     const added = [
       ...base,
-      { kind: 'dm' as const, chatJid: 'carla@galena.test', title: 'Carla', userId: 'u-carla' },
+      { kind: 'dm' as const, chatJid: 'carla@zilar.test', title: 'Carla', userId: 'u-carla' },
     ];
     let calls = 0;
     const getChats = vi.fn(async () => {
@@ -1499,23 +1495,23 @@ describe('createRealChatStore', () => {
     });
     const { store, xmpp } = await setup({ getChats });
 
-    xmpp.emit('roster', { jid: 'carla@galena.test', subscription: 'both', name: 'Carla' });
+    xmpp.emit('roster', { jid: 'carla@zilar.test', subscription: 'both', name: 'Carla' });
     await waitForRefresh();
 
-    expect(store.getState().chats[0]?.id).toBe('carla@galena.test');
+    expect(store.getState().chats[0]?.id).toBe('carla@zilar.test');
   });
 
   it('debounces repeated refresh events into a single refetch', async () => {
     const base = [
-      { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+      { kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
     ];
     const getChats = vi.fn(async () => base);
     const { xmpp } = await setup({ getChats });
     getChats.mockClear();
 
-    xmpp.emit('invited', { roomJid: 'new@rooms.galena.test' });
-    xmpp.emit('roster', { jid: 'carla@galena.test', subscription: 'both' });
-    xmpp.emit('invited', { roomJid: 'other@rooms.galena.test' });
+    xmpp.emit('invited', { roomJid: 'new@rooms.zilar.test' });
+    xmpp.emit('roster', { jid: 'carla@zilar.test', subscription: 'both' });
+    xmpp.emit('invited', { roomJid: 'other@rooms.zilar.test' });
     await waitForRefresh();
 
     expect(getChats).toHaveBeenCalledTimes(1);
@@ -1523,50 +1519,43 @@ describe('createRealChatStore', () => {
 
   it('toggles my reaction, sends the set and shows the chip', async () => {
     const { store, xmpp } = await setup();
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
-    store.getState().react('ana@galena.test', 'ana-1', '👍');
+    store.getState().react('ana@zilar.test', 'ana-1', '👍');
     await flush();
 
-    expect(xmpp.core.sendReactions).toHaveBeenCalledWith('ana@galena.test', 'chat', 'ana-1', [
-      '👍',
-    ]);
+    expect(xmpp.core.sendReactions).toHaveBeenCalledWith('ana@zilar.test', 'chat', 'ana-1', ['👍']);
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .find((m) => m.id === 'ana-1')?.reactions,
     ).toEqual([{ emoji: '👍', count: 1, mine: true, reactors: ['You'] }]);
 
-    store.getState().react('ana@galena.test', 'ana-1', '👍');
+    store.getState().react('ana@zilar.test', 'ana-1', '👍');
     await flush();
 
-    expect(xmpp.core.sendReactions).toHaveBeenLastCalledWith(
-      'ana@galena.test',
-      'chat',
-      'ana-1',
-      [],
-    );
+    expect(xmpp.core.sendReactions).toHaveBeenLastCalledWith('ana@zilar.test', 'chat', 'ana-1', []);
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .find((m) => m.id === 'ana-1')?.reactions,
     ).toBeUndefined();
   });
 
   it('reverts my optimistic reaction when the send fails', async () => {
     const { store, xmpp } = await setup();
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
     vi.mocked(xmpp.core.sendReactions).mockRejectedValueOnce(new Error('offline'));
-    store.getState().react('ana@galena.test', 'ana-1', '👍');
+    store.getState().react('ana@zilar.test', 'ana-1', '👍');
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .find((m) => m.id === 'ana-1')?.reactions,
     ).toEqual([{ emoji: '👍', count: 1, mine: true, reactors: ['You'] }]);
 
@@ -1574,40 +1563,40 @@ describe('createRealChatStore', () => {
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .find((m) => m.id === 'ana-1')?.reactions,
     ).toBeUndefined();
   });
 
   it('applies history reactions before and after the target message', async () => {
     const { store, xmpp } = await setup();
-    xmpp.history['ana@galena.test'] = [
+    xmpp.history['ana@zilar.test'] = [
       reactionMessage({
         id: 'r-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-1',
         emojis: ['👍'],
         timestamp: new Date('2026-09-28T09:01:00Z'),
       }),
       message({
         id: 'ana-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'older',
         timestamp: new Date('2026-09-28T09:00:00Z'),
       }),
       reactionMessage({
         id: 'r-2',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-1',
         emojis: ['👍', '❤️'],
         timestamp: new Date('2026-09-28T09:02:00Z'),
       }),
     ];
 
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
-    const list = store.getState().messages('ana@galena.test');
+    const list = store.getState().messages('ana@zilar.test');
     expect(list.map((m) => m.id)).toEqual(['ana-1']);
     expect(list[0]?.reactions).toEqual([
       { emoji: '👍', count: 1, mine: false, reactors: ['Ana'] },
@@ -1617,49 +1606,49 @@ describe('createRealChatStore', () => {
 
   it('applies a live reaction message without adding a bubble', async () => {
     const { store, xmpp } = await setup();
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
-    const before = store.getState().messages('ana@galena.test').length;
+    const before = store.getState().messages('ana@zilar.test').length;
 
     xmpp.emit(
       'message',
       reactionMessage({
         id: 'r-live',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-1',
         emojis: ['❤️'],
         timestamp: new Date('2026-09-28T12:05:00Z'),
       }),
     );
 
-    const list = store.getState().messages('ana@galena.test');
+    const list = store.getState().messages('ana@zilar.test');
     expect(list).toHaveLength(before);
     expect(list.find((m) => m.id === 'ana-1')?.reactions).toEqual([
       { emoji: '❤️', count: 1, mine: false, reactors: ['Ana'] },
     ]);
-    expect(store.getState().chats.find((c) => c.id === 'ana@galena.test')?.lastMessage?.id).toBe(
+    expect(store.getState().chats.find((c) => c.id === 'ana@zilar.test')?.lastMessage?.id).toBe(
       'ana-2',
     );
   });
 
   it('renders a message that carries both a body and reactions', async () => {
     const { store, xmpp } = await setup();
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
-    const before = store.getState().messages('ana@galena.test').length;
+    const before = store.getState().messages('ana@zilar.test').length;
 
     xmpp.emit(
       'message',
       message({
         id: 'ana-3',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'text plus a reaction',
         timestamp: new Date('2026-09-28T12:07:00Z'),
         reactions: { targetId: 'ana-1', emojis: ['🎉'] },
       }),
     );
 
-    const list = store.getState().messages('ana@galena.test');
+    const list = store.getState().messages('ana@zilar.test');
     expect(list).toHaveLength(before + 1);
     expect(list.find((m) => m.id === 'ana-3')?.text).toBe('text plus a reaction');
     expect(list.find((m) => m.id === 'ana-1')?.reactions).toEqual([
@@ -1671,7 +1660,7 @@ describe('createRealChatStore', () => {
     const history: ChatMessage[] = Array.from({ length: 60 }, (_, index) =>
       message({
         id: `ana-${index}`,
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: `msg ${index}`,
         timestamp: new Date(Date.UTC(2026, 8, 28, 8, index)),
       }),
@@ -1679,23 +1668,23 @@ describe('createRealChatStore', () => {
     history.push(
       reactionMessage({
         id: 'r-old',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-0',
         emojis: ['👍'],
         timestamp: new Date(Date.UTC(2026, 8, 28, 8, 40)),
       }),
     );
     const { store, xmpp } = await setup();
-    xmpp.history['ana@galena.test'] = history;
+    xmpp.history['ana@zilar.test'] = history;
 
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
-    expect(store.getState().messages('ana@galena.test')[0]?.id).toBe('ana-11');
+    expect(store.getState().messages('ana@zilar.test')[0]?.id).toBe('ana-11');
 
-    store.getState().loadOlder('ana@galena.test');
+    store.getState().loadOlder('ana@zilar.test');
     await flush();
 
-    const first = store.getState().messages('ana@galena.test')[0];
+    const first = store.getState().messages('ana@zilar.test')[0];
     expect(first?.id).toBe('ana-0');
     expect(first?.reactions).toEqual([{ emoji: '👍', count: 1, mine: false, reactors: ['Ana'] }]);
   });
@@ -1710,29 +1699,29 @@ describe('createRealChatStore', () => {
     }));
     const { store, xmpp } = await setup({ getGroup });
     await flush();
-    store.getState().openChat('team@rooms.galena.test');
+    store.getState().openChat('team@rooms.zilar.test');
     await flush();
 
     xmpp.emit(
       'message',
       reactionMessage({
         id: 'r-g',
-        chatJid: 'team@rooms.galena.test',
+        chatJid: 'team@rooms.zilar.test',
         targetId: 'team-1',
         emojis: ['👍'],
-        fromJid: 'ana@galena.test',
+        fromJid: 'ana@zilar.test',
         fromNick: 'ana',
         timestamp: new Date('2026-09-28T12:02:00Z'),
       }),
     );
 
-    expect(store.getState().messages('team@rooms.galena.test')[0]?.reactions).toEqual([
+    expect(store.getState().messages('team@rooms.zilar.test')[0]?.reactions).toEqual([
       { emoji: '👍', count: 1, mine: false, reactors: ['Ana'] },
     ]);
 
-    store.getState().react('team@rooms.galena.test', 'team-1', '❤️');
+    store.getState().react('team@rooms.zilar.test', 'team-1', '❤️');
     expect(xmpp.core.sendReactions).toHaveBeenCalledWith(
-      'team@rooms.galena.test',
+      'team@rooms.zilar.test',
       'groupchat',
       'team-1',
       ['❤️'],
@@ -1741,29 +1730,27 @@ describe('createRealChatStore', () => {
 
   it('matches a reaction to my optimistic message through the id alias', async () => {
     const { store, xmpp } = await setup();
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
-    store.getState().sendText('ana@galena.test', 'hello');
+    store.getState().sendText('ana@zilar.test', 'hello');
     await flush();
-    const local = store.getState().messages('ana@galena.test').at(-1)?.id;
+    const local = store.getState().messages('ana@zilar.test').at(-1)?.id;
     if (local === undefined) {
       throw new Error('the optimistic message was not stored');
     }
     expect(local).toBe('local-1');
 
-    store.getState().react('ana@galena.test', local, '👍');
-    expect(xmpp.core.sendReactions).toHaveBeenCalledWith('ana@galena.test', 'chat', 'srv-1', [
-      '👍',
-    ]);
+    store.getState().react('ana@zilar.test', local, '👍');
+    expect(xmpp.core.sendReactions).toHaveBeenCalledWith('ana@zilar.test', 'chat', 'srv-1', ['👍']);
 
     xmpp.emit(
       'message',
       message({
         id: 'srv-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'hello',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:06:00Z'),
       }),
@@ -1772,14 +1759,14 @@ describe('createRealChatStore', () => {
 
     const echoed = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((m) => m.id === 'srv-1');
     expect(echoed?.reactions).toEqual([{ emoji: '👍', count: 1, mine: true, reactors: ['You'] }]);
   });
 
   it('does not react to a message whose server id is not known yet', async () => {
     const { store, xmpp } = await setup();
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
     // The send never resolves, so the optimistic message keeps its local id
@@ -1787,71 +1774,71 @@ describe('createRealChatStore', () => {
     vi.mocked(xmpp.core.sendMessage).mockImplementationOnce(
       () => new Promise<{ id: string }>(() => {}),
     );
-    store.getState().sendText('ana@galena.test', 'still sending');
-    const local = store.getState().messages('ana@galena.test').at(-1)?.id;
+    store.getState().sendText('ana@zilar.test', 'still sending');
+    const local = store.getState().messages('ana@zilar.test').at(-1)?.id;
     if (local === undefined) {
       throw new Error('the optimistic message was not stored');
     }
     expect(local.startsWith('local-')).toBe(true);
 
-    store.getState().react('ana@galena.test', local, '👍');
+    store.getState().react('ana@zilar.test', local, '👍');
 
     expect(xmpp.core.sendReactions).not.toHaveBeenCalled();
-    expect(store.getState().messages('ana@galena.test').at(-1)?.reactions).toBeUndefined();
+    expect(store.getState().messages('ana@zilar.test').at(-1)?.reactions).toBeUndefined();
   });
 });
 
 describe('message edits and deletes (T-0061)', () => {
   it('edits my own message optimistically, sends the origin id and shows the new text', async () => {
     const { store, xmpp } = await setup();
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
-    store.getState().sendText('ana@galena.test', 'hello');
+    store.getState().sendText('ana@zilar.test', 'hello');
     await flush();
-    const local = store.getState().messages('ana@galena.test').at(-1)?.id;
+    const local = store.getState().messages('ana@zilar.test').at(-1)?.id;
     if (local === undefined) {
       throw new Error('the optimistic message was not stored');
     }
 
-    store.getState().editMessage('ana@galena.test', local, 'hello there');
+    store.getState().editMessage('ana@zilar.test', local, 'hello there');
 
     // A correction names the original by its sender-generated id (srv-1 is what
     // sendMessage returned; xmpp-core's origin id).
     expect(xmpp.core.sendCorrection).toHaveBeenCalledWith(
-      'ana@galena.test',
+      'ana@zilar.test',
       'chat',
       'srv-1',
       'hello there',
       undefined,
     );
-    const edited = store.getState().messages('ana@galena.test').at(-1);
+    const edited = store.getState().messages('ana@zilar.test').at(-1);
     expect(edited?.text).toBe('hello there');
     expect(edited?.edited).toBe(true);
   });
 
   it('reverts an optimistic edit when the send fails', async () => {
     const { store, xmpp } = await setup();
-    xmpp.history['ana@galena.test'] = [
+    xmpp.history['ana@zilar.test'] = [
       message({
         id: 'ana-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'older',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         originId: 'origin-older',
         timestamp: new Date('2026-09-28T09:00:00Z'),
       }),
     ];
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
     vi.mocked(xmpp.core.sendCorrection).mockRejectedValueOnce(new Error('offline'));
-    store.getState().editMessage('ana@galena.test', 'ana-1', 'changed');
-    expect(store.getState().messages('ana@galena.test')[0]?.text).toBe('changed');
+    store.getState().editMessage('ana@zilar.test', 'ana-1', 'changed');
+    expect(store.getState().messages('ana@zilar.test')[0]?.text).toBe('changed');
 
     await flush();
-    const reverted = store.getState().messages('ana@galena.test')[0];
+    const reverted = store.getState().messages('ana@zilar.test')[0];
     expect(reverted?.text).toBe('older');
     expect(reverted?.edited).toBeUndefined();
     expect(store.getState().actionError?.message).toContain('Could not save the edit');
@@ -1859,12 +1846,12 @@ describe('message edits and deletes (T-0061)', () => {
 
   it('deletes for everyone in a DM by the origin id and shows a tombstone', async () => {
     const { store, xmpp } = await setup();
-    xmpp.history['ana@galena.test'] = [
+    xmpp.history['ana@zilar.test'] = [
       message({
         id: 'ana-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'older',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         originId: 'origin-older',
         timestamp: new Date('2026-09-28T09:00:00Z'),
@@ -1872,21 +1859,17 @@ describe('message edits and deletes (T-0061)', () => {
       }),
       message({
         id: 'ana-2',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'newest',
         timestamp: new Date('2026-09-28T10:00:00Z'),
       }),
     ];
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
-    store.getState().deleteForEveryone('ana@galena.test', 'ana-1');
-    expect(xmpp.core.sendRetraction).toHaveBeenCalledWith(
-      'ana@galena.test',
-      'chat',
-      'origin-older',
-    );
-    const deleted = store.getState().messages('ana@galena.test')[0];
+    store.getState().deleteForEveryone('ana@zilar.test', 'ana-1');
+    expect(xmpp.core.sendRetraction).toHaveBeenCalledWith('ana@zilar.test', 'chat', 'origin-older');
+    const deleted = store.getState().messages('ana@zilar.test')[0];
     expect(deleted?.deleted).toBe(true);
     expect(deleted?.text).toBeUndefined();
     expect(deleted?.reactions).toBeUndefined();
@@ -1894,27 +1877,27 @@ describe('message edits and deletes (T-0061)', () => {
 
   it('reverts an optimistic delete, restoring text and reactions', async () => {
     const { store, xmpp } = await setup();
-    xmpp.history['ana@galena.test'] = [
+    xmpp.history['ana@zilar.test'] = [
       message({
         id: 'ana-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'older',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         originId: 'origin-older',
         timestamp: new Date('2026-09-28T09:00:00Z'),
         reactions: { targetId: 'ana-1', emojis: ['👍'] },
       }),
     ];
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
     vi.mocked(xmpp.core.sendRetraction).mockRejectedValueOnce(new Error('offline'));
-    store.getState().deleteForEveryone('ana@galena.test', 'ana-1');
-    expect(store.getState().messages('ana@galena.test')[0]?.deleted).toBe(true);
+    store.getState().deleteForEveryone('ana@zilar.test', 'ana-1');
+    expect(store.getState().messages('ana@zilar.test')[0]?.deleted).toBe(true);
 
     await flush();
-    const reverted = store.getState().messages('ana@galena.test')[0];
+    const reverted = store.getState().messages('ana@zilar.test')[0];
     expect(reverted?.deleted).toBeUndefined();
     expect(reverted?.text).toBe('older');
     expect(store.getState().actionError?.message).toContain('Could not delete');
@@ -1922,23 +1905,23 @@ describe('message edits and deletes (T-0061)', () => {
 
   it('applies a live correction without adding a bubble', async () => {
     const { store, xmpp } = await setup();
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
-    const before = store.getState().messages('ana@galena.test').length;
+    const before = store.getState().messages('ana@zilar.test').length;
 
     xmpp.emit(
       'message',
       correctionMessage({
         id: 'c-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-1',
         text: 'corrected live',
-        fromJid: 'ana@galena.test',
+        fromJid: 'ana@zilar.test',
         timestamp: new Date('2026-09-28T12:05:00Z'),
       }),
     );
 
-    const list = store.getState().messages('ana@galena.test');
+    const list = store.getState().messages('ana@zilar.test');
     expect(list).toHaveLength(before);
     const target = list.find((m) => m.id === 'ana-1');
     expect(target?.text).toBe('corrected live');
@@ -1947,32 +1930,32 @@ describe('message edits and deletes (T-0061)', () => {
 
   it('resolves a correction that names the origin id of a message stored under its stanza-id', async () => {
     const { store, xmpp } = await setup();
-    xmpp.history['ana@galena.test'] = [
+    xmpp.history['ana@zilar.test'] = [
       message({
         id: 'stanza-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'older',
-        fromJid: 'ana@galena.test',
+        fromJid: 'ana@zilar.test',
         originId: 'origin-1',
         timestamp: new Date('2026-09-28T09:00:00Z'),
       }),
     ];
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
     xmpp.emit(
       'message',
       correctionMessage({
         id: 'c-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'origin-1',
         text: 'matched by origin',
-        fromJid: 'ana@galena.test',
+        fromJid: 'ana@zilar.test',
         timestamp: new Date('2026-09-28T12:05:00Z'),
       }),
     );
 
-    const target = store.getState().messages('ana@galena.test')[0];
+    const target = store.getState().messages('ana@zilar.test')[0];
     expect(target?.id).toBe('stanza-1');
     expect(target?.text).toBe('matched by origin');
     expect(target?.edited).toBe(true);
@@ -1980,22 +1963,22 @@ describe('message edits and deletes (T-0061)', () => {
 
   it('applies a live retraction, stripping the message and leaving its place', async () => {
     const { store, xmpp } = await setup();
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
-    const before = store.getState().messages('ana@galena.test').length;
+    const before = store.getState().messages('ana@zilar.test').length;
 
     xmpp.emit(
       'message',
       retractionMessage({
         id: 'r-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-1',
-        fromJid: 'ana@galena.test',
+        fromJid: 'ana@zilar.test',
         timestamp: new Date('2026-09-28T12:05:00Z'),
       }),
     );
 
-    const list = store.getState().messages('ana@galena.test');
+    const list = store.getState().messages('ana@zilar.test');
     expect(list).toHaveLength(before);
     const target = list.find((m) => m.id === 'ana-1');
     expect(target?.deleted).toBe(true);
@@ -2004,17 +1987,17 @@ describe('message edits and deletes (T-0061)', () => {
 
   it('ignores a correction or retraction from a foreign sender', async () => {
     const { store, xmpp } = await setup();
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
     xmpp.emit(
       'message',
       correctionMessage({
         id: 'c-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-1',
         text: 'hijacked',
-        fromJid: 'luis@galena.test',
+        fromJid: 'luis@zilar.test',
         timestamp: new Date('2026-09-28T12:05:00Z'),
       }),
     );
@@ -2022,54 +2005,54 @@ describe('message edits and deletes (T-0061)', () => {
       'message',
       retractionMessage({
         id: 'r-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-2',
-        fromJid: 'luis@galena.test',
+        fromJid: 'luis@zilar.test',
         timestamp: new Date('2026-09-28T12:06:00Z'),
       }),
     );
 
-    const list = store.getState().messages('ana@galena.test');
+    const list = store.getState().messages('ana@zilar.test');
     expect(list.find((m) => m.id === 'ana-1')?.text).toBe('older');
     expect(list.find((m) => m.id === 'ana-2')?.deleted).toBeUndefined();
   });
 
   it('applies history edits before and after the target', async () => {
     const { store, xmpp } = await setup();
-    xmpp.history['ana@galena.test'] = [
+    xmpp.history['ana@zilar.test'] = [
       correctionMessage({
         id: 'c-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-1',
         text: 'corrected twice',
-        fromJid: 'ana@galena.test',
+        fromJid: 'ana@zilar.test',
         timestamp: new Date('2026-09-28T09:00:30Z'),
       }),
       message({
         id: 'ana-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'older',
         timestamp: new Date('2026-09-28T09:00:00Z'),
       }),
       retractionMessage({
         id: 'r-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-2',
-        fromJid: 'ana@galena.test',
+        fromJid: 'ana@zilar.test',
         timestamp: new Date('2026-09-28T10:00:30Z'),
       }),
       message({
         id: 'ana-2',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'newest',
         timestamp: new Date('2026-09-28T10:00:00Z'),
       }),
     ];
 
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
-    const list = store.getState().messages('ana@galena.test');
+    const list = store.getState().messages('ana@zilar.test');
     expect(list.map((m) => m.id)).toEqual(['ana-1', 'ana-2']);
     expect(list[0]?.text).toBe('corrected twice');
     expect(list[0]?.edited).toBe(true);
@@ -2081,7 +2064,7 @@ describe('message edits and deletes (T-0061)', () => {
     const history: ChatMessage[] = Array.from({ length: 60 }, (_, index) =>
       message({
         id: `ana-${index}`,
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: `msg ${index}`,
         timestamp: new Date(Date.UTC(2026, 8, 28, 8, index)),
       }),
@@ -2089,24 +2072,24 @@ describe('message edits and deletes (T-0061)', () => {
     history.push(
       correctionMessage({
         id: 'c-old',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-0',
         text: 'fixed later',
-        fromJid: 'ana@galena.test',
+        fromJid: 'ana@zilar.test',
         timestamp: new Date(Date.UTC(2026, 8, 28, 8, 40)),
       }),
     );
     const { store, xmpp } = await setup();
-    xmpp.history['ana@galena.test'] = history;
+    xmpp.history['ana@zilar.test'] = history;
 
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
-    expect(store.getState().messages('ana@galena.test')[0]?.id).toBe('ana-11');
+    expect(store.getState().messages('ana@zilar.test')[0]?.id).toBe('ana-11');
 
-    store.getState().loadOlder('ana@galena.test');
+    store.getState().loadOlder('ana@zilar.test');
     await flush();
 
-    const first = store.getState().messages('ana@galena.test')[0];
+    const first = store.getState().messages('ana@zilar.test')[0];
     expect(first?.id).toBe('ana-0');
     expect(first?.text).toBe('fixed later');
     expect(first?.edited).toBe(true);
@@ -2114,45 +2097,45 @@ describe('message edits and deletes (T-0061)', () => {
 
   it('updates the preview and reply quotes for edits and deletes', async () => {
     const { store, xmpp } = await setup();
-    xmpp.history['ana@galena.test'] = [
+    xmpp.history['ana@zilar.test'] = [
       message({
         id: 'ana-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'older',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         originId: 'origin-1',
         timestamp: new Date('2026-09-28T09:00:00Z'),
       }),
       message({
         id: 'ana-2',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'reply to older',
         timestamp: new Date('2026-09-28T10:00:00Z'),
         replyTo: { id: 'ana-1' },
       }),
       message({
         id: 'ana-3',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'reply to the reply',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         originId: 'origin-3',
         timestamp: new Date('2026-09-28T11:00:00Z'),
         replyTo: { id: 'ana-2' },
       }),
     ];
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
     xmpp.emit(
       'message',
       correctionMessage({
         id: 'c-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-1',
         text: 'corrected preview',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:00:00Z'),
       }),
@@ -2161,7 +2144,7 @@ describe('message edits and deletes (T-0061)', () => {
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .find((m) => m.id === 'ana-2')?.replyTo?.text,
     ).toBe('corrected preview');
 
@@ -2169,7 +2152,7 @@ describe('message edits and deletes (T-0061)', () => {
       'message',
       retractionMessage({
         id: 'r-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-2',
         timestamp: new Date('2026-09-28T12:01:00Z'),
       }),
@@ -2178,7 +2161,7 @@ describe('message edits and deletes (T-0061)', () => {
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .find((m) => m.id === 'ana-3')?.replyTo?.text,
     ).toBe('Deleted message');
 
@@ -2186,15 +2169,15 @@ describe('message edits and deletes (T-0061)', () => {
       'message',
       retractionMessage({
         id: 'r-2',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         targetId: 'ana-3',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:02:00Z'),
       }),
     );
 
-    expect(store.getState().chats.find((c) => c.id === 'ana@galena.test')?.lastMessage?.text).toBe(
+    expect(store.getState().chats.find((c) => c.id === 'ana@zilar.test')?.lastMessage?.text).toBe(
       'Message deleted',
     );
   });
@@ -2209,13 +2192,13 @@ describe('message edits and deletes (T-0061)', () => {
     }));
     const { store, xmpp } = await setup({ getGroup });
     await flush();
-    store.getState().openChat('team@rooms.galena.test');
+    store.getState().openChat('team@rooms.zilar.test');
     await flush();
 
-    store.getState().sendText('team@rooms.galena.test', 'hello room');
+    store.getState().sendText('team@rooms.zilar.test', 'hello room');
     await flush();
 
-    const local = store.getState().messages('team@rooms.galena.test').at(-1)?.id;
+    const local = store.getState().messages('team@rooms.zilar.test').at(-1)?.id;
     if (local === undefined) {
       throw new Error('the optimistic group message was not stored');
     }
@@ -2225,18 +2208,18 @@ describe('message edits and deletes (T-0061)', () => {
       'message',
       message({
         id: 'sid-1',
-        chatJid: 'team@rooms.galena.test',
+        chatJid: 'team@rooms.zilar.test',
         body: 'hello room',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:06:00Z'),
       }),
     );
     await flush();
 
-    store.getState().deleteForEveryone('team@rooms.galena.test', local);
+    store.getState().deleteForEveryone('team@rooms.zilar.test', local);
     expect(xmpp.core.sendRetraction).toHaveBeenCalledWith(
-      'team@rooms.galena.test',
+      'team@rooms.zilar.test',
       'groupchat',
       'sid-1',
     );
@@ -2270,20 +2253,20 @@ describe('loading states (T-0042)', () => {
   } {
     const api = fakeApi(overrides);
     const xmpp = fakeXmpp();
-    xmpp.history['ana@galena.test'] = [
+    xmpp.history['ana@zilar.test'] = [
       message({
         id: 'ana-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'hello before ready',
         timestamp: new Date('2026-09-28T09:00:00Z'),
       }),
     ];
-    xmpp.history['team@rooms.galena.test'] = [
+    xmpp.history['team@rooms.zilar.test'] = [
       message({
         id: 'team-1',
-        chatJid: 'team@rooms.galena.test',
+        chatJid: 'team@rooms.zilar.test',
         body: 'group hello',
-        fromJid: 'ana@galena.test',
+        fromJid: 'ana@zilar.test',
         fromNick: 'ana',
         timestamp: new Date('2026-09-28T11:00:00Z'),
       }),
@@ -2303,12 +2286,12 @@ describe('loading states (T-0042)', () => {
     store.getState().start();
     await waitForState(() => store.getState().chatsState === 'ready');
 
-    expect(store.getState().chats.map((chat) => chat.id)).toContain('ana@galena.test');
+    expect(store.getState().chats.map((chat) => chat.id)).toContain('ana@zilar.test');
   });
 
   it('goes loading -> error -> retry -> ready when /api/chats fails first', async () => {
     const chats = [
-      { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+      { kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
     ];
     const getChats = vi
       .fn()
@@ -2322,23 +2305,23 @@ describe('loading states (T-0042)', () => {
 
     store.getState().retryChats();
     await waitForState(() => store.getState().chatsState === 'ready');
-    expect(store.getState().chats.map((chat) => chat.id)).toEqual(['ana@galena.test']);
+    expect(store.getState().chats.map((chat) => chat.id)).toEqual(['ana@zilar.test']);
   });
 
   it('loads history for a chat opened before the core and chats are ready', async () => {
     const { store, xmpp } = unstartedStore();
 
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     store.getState().start();
-    await waitForState(() => store.getState().messages('ana@galena.test').length > 0);
+    await waitForState(() => store.getState().messages('ana@zilar.test').length > 0);
 
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .map((item) => item.text),
     ).toContain('hello before ready');
-    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(1);
+    expect(pageLoads(xmpp, 'ana@zilar.test')).toBe(1);
   });
 
   it('retries the connection after a failed token request instead of staying offline', async () => {
@@ -2384,14 +2367,14 @@ describe('loading states (T-0042)', () => {
 
     store.getState().start();
     await waitForState(() => store.getState().chatsState === 'ready');
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
-    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(0);
-    expect(store.getState().historyState['ana@galena.test']).toBe('loading');
+    expect(pageLoads(xmpp, 'ana@zilar.test')).toBe(0);
+    expect(store.getState().historyState['ana@zilar.test']).toBe('loading');
 
     finishConnect();
-    await waitForState(() => store.getState().historyState['ana@galena.test'] === 'ready');
-    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(1);
+    await waitForState(() => store.getState().historyState['ana@zilar.test'] === 'ready');
+    expect(pageLoads(xmpp, 'ana@zilar.test')).toBe(1);
   });
 
   it('loads a group history only after the room is joined', async () => {
@@ -2405,78 +2388,78 @@ describe('loading states (T-0042)', () => {
         }),
     );
 
-    store.getState().openChat('team@rooms.galena.test');
+    store.getState().openChat('team@rooms.zilar.test');
     store.getState().start();
     await waitForState(() => store.getState().status === 'online');
     await flush();
-    expect(pageLoads(xmpp, 'team@rooms.galena.test')).toBe(0);
+    expect(pageLoads(xmpp, 'team@rooms.zilar.test')).toBe(0);
 
     finishJoin();
-    await waitForState(() => store.getState().historyState['team@rooms.galena.test'] === 'ready');
-    expect(pageLoads(xmpp, 'team@rooms.galena.test')).toBe(1);
+    await waitForState(() => store.getState().historyState['team@rooms.zilar.test'] === 'ready');
+    expect(pageLoads(xmpp, 'team@rooms.zilar.test')).toBe(1);
   });
 
   it('only the latest pending chat loads', async () => {
     const { store, xmpp } = unstartedStore();
 
-    store.getState().openChat('ana@galena.test');
-    store.getState().openChat('team@rooms.galena.test');
+    store.getState().openChat('ana@zilar.test');
+    store.getState().openChat('team@rooms.zilar.test');
     store.getState().start();
-    await waitForState(() => store.getState().messages('team@rooms.galena.test').length > 0);
+    await waitForState(() => store.getState().messages('team@rooms.zilar.test').length > 0);
     await flush();
 
-    expect(pageLoads(xmpp, 'team@rooms.galena.test')).toBe(1);
-    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(0);
+    expect(pageLoads(xmpp, 'team@rooms.zilar.test')).toBe(1);
+    expect(pageLoads(xmpp, 'ana@zilar.test')).toBe(0);
   });
 
   it('does not load the same chat history twice', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().openChat('ana@galena.test');
-    store.getState().openChat('ana@galena.test');
-    await waitForState(() => store.getState().messages('ana@galena.test').length > 0);
+    store.getState().openChat('ana@zilar.test');
+    store.getState().openChat('ana@zilar.test');
+    await waitForState(() => store.getState().messages('ana@zilar.test').length > 0);
     await flush();
 
-    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(1);
+    expect(pageLoads(xmpp, 'ana@zilar.test')).toBe(1);
   });
 
   it('marks per-chat history loading, then ready', async () => {
     const { store } = unstartedStore();
 
-    store.getState().openChat('ana@galena.test');
-    expect(store.getState().historyState['ana@galena.test']).toBe('loading');
+    store.getState().openChat('ana@zilar.test');
+    expect(store.getState().historyState['ana@zilar.test']).toBe('loading');
 
     store.getState().start();
-    await waitForState(() => store.getState().historyState['ana@galena.test'] === 'ready');
+    await waitForState(() => store.getState().historyState['ana@zilar.test'] === 'ready');
   });
 
   it('marks per-chat history error when the page load fails', async () => {
     const { store, xmpp } = await setup();
     vi.mocked(xmpp.core.loadHistory).mockRejectedValueOnce(new Error('mam failed'));
 
-    store.getState().openChat('ana@galena.test');
-    await waitForState(() => store.getState().historyState['ana@galena.test'] === 'error');
+    store.getState().openChat('ana@zilar.test');
+    await waitForState(() => store.getState().historyState['ana@zilar.test'] === 'error');
   });
 
   it('clears the loading marker of a superseded pending chat', async () => {
     const { store, xmpp } = unstartedStore();
 
-    store.getState().openChat('ana@galena.test');
-    expect(store.getState().historyState['ana@galena.test']).toBe('loading');
+    store.getState().openChat('ana@zilar.test');
+    expect(store.getState().historyState['ana@zilar.test']).toBe('loading');
 
-    store.getState().openChat('team@rooms.galena.test');
-    expect(store.getState().historyState['ana@galena.test']).toBeUndefined();
-    expect(store.getState().historyState['team@rooms.galena.test']).toBe('loading');
+    store.getState().openChat('team@rooms.zilar.test');
+    expect(store.getState().historyState['ana@zilar.test']).toBeUndefined();
+    expect(store.getState().historyState['team@rooms.zilar.test']).toBe('loading');
 
     store.getState().start();
-    await waitForState(() => store.getState().messages('team@rooms.galena.test').length > 0);
-    expect(pageLoads(xmpp, 'team@rooms.galena.test')).toBe(1);
-    expect(pageLoads(xmpp, 'ana@galena.test')).toBe(0);
+    await waitForState(() => store.getState().messages('team@rooms.zilar.test').length > 0);
+    expect(pageLoads(xmpp, 'team@rooms.zilar.test')).toBe(1);
+    expect(pageLoads(xmpp, 'ana@zilar.test')).toBe(0);
   });
 });
 
 describe('AI reply drafts (T-0043)', () => {
-  const CHAT = 'ana@galena.test';
+  const CHAT = 'ana@zilar.test';
   const TURN_ONE = '3f1a2b3c-4d5e-6f70-8a9b-0c1d2e3f4a5b';
   const TURN_TWO = '11111111-2222-3333-4444-555555555555';
 
@@ -2586,7 +2569,7 @@ describe('AI reply drafts (T-0043)', () => {
         id: 'mine-1',
         chatJid: CHAT,
         body: 'note to self',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         timestamp: new Date('2026-09-28T12:00:05Z'),
       }),
     );
@@ -2789,7 +2772,7 @@ describe('attachments (T-0065)', () => {
     return {
       classify: () => 'image',
       readImageSize: vi.fn(async () => ({ width: 800, height: 600 })),
-      upload: vi.fn(async () => 'http://upload.galena.test/get/1/photo.png'),
+      upload: vi.fn(async () => 'http://upload.zilar.test/get/1/photo.png'),
       ...overrides,
     };
   }
@@ -2802,9 +2785,9 @@ describe('attachments (T-0065)', () => {
     const attachments = fakeAttachments();
     const { store, xmpp } = await setup({}, undefined, { attachments });
 
-    store.getState().sendAttachment('ana@galena.test', imageFile(), { caption: 'the stage' });
+    store.getState().sendAttachment('ana@zilar.test', imageFile(), { caption: 'the stage' });
 
-    const optimistic = store.getState().messages('ana@galena.test').at(-1);
+    const optimistic = store.getState().messages('ana@zilar.test').at(-1);
     expect(optimistic?.attachment?.kind).toBe('image');
     expect(optimistic?.attachment?.name).toBe('photo.png');
     expect(optimistic?.text).toBe('the stage');
@@ -2813,13 +2796,13 @@ describe('attachments (T-0065)', () => {
     await flush();
 
     expect(attachments.upload).toHaveBeenCalledTimes(1);
-    expect(xmpp.core.sendMessage).toHaveBeenCalledWith('ana@galena.test', 'chat', 'the stage', {
+    expect(xmpp.core.sendMessage).toHaveBeenCalledWith('ana@zilar.test', 'chat', 'the stage', {
       payload: {
         v: 0,
         type: 'attachment',
         data: {
           kind: 'image',
-          url: 'http://upload.galena.test/get/1/photo.png',
+          url: 'http://upload.zilar.test/get/1/photo.png',
           name: 'photo.png',
           size: 4,
           mime: 'image/png',
@@ -2828,8 +2811,8 @@ describe('attachments (T-0065)', () => {
         },
       },
     });
-    const sent = store.getState().messages('ana@galena.test').at(-1);
-    expect(sent?.attachment?.url).toBe('http://upload.galena.test/get/1/photo.png');
+    const sent = store.getState().messages('ana@zilar.test').at(-1);
+    expect(sent?.attachment?.url).toBe('http://upload.zilar.test/get/1/photo.png');
     expect(sent?.status).toBe('sent');
   });
 
@@ -2840,43 +2823,43 @@ describe('attachments (T-0065)', () => {
       if (attempt === 1) {
         throw new AttachmentError('upload_failed', 'nope');
       }
-      return 'http://upload.galena.test/get/1/photo.png';
+      return 'http://upload.zilar.test/get/1/photo.png';
     });
     const attachments = fakeAttachments({ upload });
     const { store } = await setup({}, undefined, { attachments });
 
-    store.getState().sendAttachment('ana@galena.test', imageFile(), { caption: 'retry me' });
+    store.getState().sendAttachment('ana@zilar.test', imageFile(), { caption: 'retry me' });
     await flush();
 
-    const failed = store.getState().messages('ana@galena.test').at(-1);
+    const failed = store.getState().messages('ana@zilar.test').at(-1);
     expect(failed?.failed).toBe(true);
     expect(failed?.status).toBe('sending');
     expect(failed?.attachment?.url).toBe('');
 
-    store.getState().retryAttachment('ana@galena.test', failed?.id ?? '');
-    expect(store.getState().messages('ana@galena.test').at(-1)?.failed).toBeUndefined();
+    store.getState().retryAttachment('ana@zilar.test', failed?.id ?? '');
+    expect(store.getState().messages('ana@zilar.test').at(-1)?.failed).toBeUndefined();
 
     await flush();
 
-    const retried = store.getState().messages('ana@galena.test').at(-1);
+    const retried = store.getState().messages('ana@zilar.test').at(-1);
     expect(upload).toHaveBeenCalledTimes(2);
     expect(retried?.failed).toBeUndefined();
     expect(retried?.status).toBe('sent');
-    expect(retried?.attachment?.url).toBe('http://upload.galena.test/get/1/photo.png');
+    expect(retried?.attachment?.url).toBe('http://upload.zilar.test/get/1/photo.png');
   });
 
   it('carries the reply target on the sent payload', async () => {
     const attachments = fakeAttachments();
     const { store, xmpp } = await setup({}, undefined, { attachments });
 
-    store.getState().sendAttachment('ana@galena.test', imageFile(), {
+    store.getState().sendAttachment('ana@zilar.test', imageFile(), {
       caption: 'look',
       replyTo: { id: 'ana-2', senderName: 'Ana', text: 'newest' },
     });
     await flush();
 
     expect(xmpp.core.sendMessage).toHaveBeenCalledWith(
-      'ana@galena.test',
+      'ana@zilar.test',
       'chat',
       'look',
       expect.objectContaining({ replyTo: { id: 'ana-2' } }),
@@ -2890,14 +2873,14 @@ describe('attachments (T-0065)', () => {
       'message',
       message({
         id: 'att-in',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '',
         payload: {
           v: 0,
           type: 'attachment',
           data: {
             kind: 'file',
-            url: 'http://upload.galena.test/get/1/plan.pdf',
+            url: 'http://upload.zilar.test/get/1/plan.pdf',
             name: 'plan.pdf',
             size: 2048,
             mime: 'application/pdf',
@@ -2908,7 +2891,7 @@ describe('attachments (T-0065)', () => {
 
     const incoming = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((m) => m.id === 'att-in');
     expect(incoming?.attachment?.kind).toBe('file');
     expect(incoming?.attachment?.name).toBe('plan.pdf');
@@ -2921,7 +2904,7 @@ describe('attachments (T-0065)', () => {
       'message',
       message({
         id: 'not-att',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'just text',
         payload: {
           v: 0,
@@ -2933,7 +2916,7 @@ describe('attachments (T-0065)', () => {
 
     const incoming = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((m) => m.id === 'not-att');
     expect(incoming?.attachment).toBeUndefined();
     expect(incoming?.text).toBe('just text');
@@ -2947,7 +2930,7 @@ describe('attachments (T-0065)', () => {
       'message',
       message({
         id: 'voice-trusted',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '',
         payload: {
           v: 0,
@@ -2956,7 +2939,7 @@ describe('attachments (T-0065)', () => {
             duration_ms: 1000,
             mime: 'audio/mp4',
             waveform: [10, 20],
-            url: 'https://upload.galena.test/upload/abc/voice.m4a',
+            url: 'https://upload.zilar.test/upload/abc/voice.m4a',
           },
         },
       }),
@@ -2964,9 +2947,9 @@ describe('attachments (T-0065)', () => {
 
     const incoming = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((m) => m.id === 'voice-trusted');
-    expect(incoming?.voice?.url).toBe('https://upload.galena.test/upload/abc/voice.m4a');
+    expect(incoming?.voice?.url).toBe('https://upload.zilar.test/upload/abc/voice.m4a');
   });
 
   it('drops the audio URL of an incoming voice message on an untrusted host', async () => {
@@ -2976,7 +2959,7 @@ describe('attachments (T-0065)', () => {
       'message',
       message({
         id: 'voice-untrusted',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '',
         payload: {
           v: 0,
@@ -2993,7 +2976,7 @@ describe('attachments (T-0065)', () => {
 
     const incoming = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((m) => m.id === 'voice-untrusted');
     expect(incoming?.voice).toBeDefined();
     expect(incoming?.voice?.duration_ms).toBe(1000);
@@ -3007,14 +2990,14 @@ describe('attachments (T-0065)', () => {
       'message',
       message({
         id: 'att-trusted',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '',
         payload: {
           v: 0,
           type: 'attachment',
           data: {
             kind: 'image',
-            url: 'https://upload.galena.test/upload/abc/stage.png',
+            url: 'https://upload.zilar.test/upload/abc/stage.png',
             name: 'stage.png',
             size: 200,
             mime: 'image/png',
@@ -3027,7 +3010,7 @@ describe('attachments (T-0065)', () => {
 
     const incoming = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((m) => m.id === 'att-trusted');
     expect(incoming?.attachment?.kind).toBe('image');
     expect(incoming?.attachment?.width).toBe(800);
@@ -3041,7 +3024,7 @@ describe('attachments (T-0065)', () => {
       'message',
       message({
         id: 'att-untrusted',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '',
         payload: {
           v: 0,
@@ -3061,7 +3044,7 @@ describe('attachments (T-0065)', () => {
 
     const incoming = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((m) => m.id === 'att-untrusted');
     expect(incoming?.attachment?.kind).toBe('file');
     // Width/height must not leak through, otherwise the bubble would still
@@ -3085,7 +3068,7 @@ describe('attachments (T-0065)', () => {
       'message',
       message({
         id: 'att-gif-image-kind',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '',
         payload: {
           v: 0,
@@ -3105,7 +3088,7 @@ describe('attachments (T-0065)', () => {
 
     const incoming = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((m) => m.id === 'att-gif-image-kind');
     expect(incoming?.attachment?.kind).toBe('file');
     expect(incoming?.attachment?.name).toBe('x');
@@ -3121,7 +3104,7 @@ describe('attachments (T-0065)', () => {
       'message',
       message({
         id: 'att-file-untrusted',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '',
         payload: {
           v: 0,
@@ -3139,7 +3122,7 @@ describe('attachments (T-0065)', () => {
 
     const incoming = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((m) => m.id === 'att-file-untrusted');
     expect(incoming?.attachment?.kind).toBe('file');
     expect(incoming?.attachment?.url).toBe('https://files.example.com/random.bin');
@@ -3152,7 +3135,7 @@ describe('attachments (T-0065)', () => {
       'message',
       message({
         id: 'att-gif-untrusted',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '',
         payload: {
           v: 0,
@@ -3170,7 +3153,7 @@ describe('attachments (T-0065)', () => {
 
     const incoming = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((m) => m.id === 'att-gif-untrusted');
     // The rename breaks the inline-video match, so the bubble renders a
     // click-to-load file card; the download link keeps working.
@@ -3186,14 +3169,14 @@ describe('attachments (T-0065)', () => {
       'message',
       message({
         id: 'att-gif-trusted',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '',
         payload: {
           v: 0,
           type: 'attachment',
           data: {
             kind: 'file',
-            url: 'https://upload.galena.test/get/1/gif-abc.mp4',
+            url: 'https://upload.zilar.test/get/1/gif-abc.mp4',
             name: 'gif-abc',
             size: 1024,
             mime: 'video/mp4',
@@ -3204,26 +3187,26 @@ describe('attachments (T-0065)', () => {
 
     const incoming = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((m) => m.id === 'att-gif-trusted');
     expect(incoming?.attachment?.kind).toBe('file');
     expect(incoming?.attachment?.name).toBe('gif-abc');
-    expect(incoming?.attachment?.url).toBe('https://upload.galena.test/get/1/gif-abc.mp4');
+    expect(incoming?.attachment?.url).toBe('https://upload.zilar.test/get/1/gif-abc.mp4');
   });
 
   it('maps history attachments through the same trusted-host check', async () => {
     const xmpp = fakeXmpp();
-    xmpp.history['ana@galena.test'] = [
+    xmpp.history['ana@zilar.test'] = [
       message({
         id: 'att-history-trusted',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '',
         payload: {
           v: 0,
           type: 'attachment',
           data: {
             kind: 'image',
-            url: 'https://upload.galena.test/upload/abc/photo.png',
+            url: 'https://upload.zilar.test/upload/abc/photo.png',
             name: 'photo.png',
             size: 100,
             mime: 'image/png',
@@ -3235,7 +3218,7 @@ describe('attachments (T-0065)', () => {
       }),
       message({
         id: 'att-history-untrusted',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '',
         payload: {
           v: 0,
@@ -3264,10 +3247,10 @@ describe('attachments (T-0065)', () => {
       },
     });
     store.getState().start();
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
-    const list = store.getState().messages('ana@galena.test');
+    const list = store.getState().messages('ana@zilar.test');
     const trusted = list.find((m) => m.id === 'att-history-trusted');
     const untrusted = list.find((m) => m.id === 'att-history-untrusted');
     expect(trusted?.attachment?.kind).toBe('image');
@@ -3291,10 +3274,10 @@ describe('stickers (T-0120)', () => {
   it('sends the sticker payload shape over XMPP with the emoji body', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendSticker('ana@galena.test', stickerInput);
+    store.getState().sendSticker('ana@zilar.test', stickerInput);
     await flush();
 
-    expect(xmpp.core.sendMessage).toHaveBeenCalledWith('ana@galena.test', 'chat', '🐱', {
+    expect(xmpp.core.sendMessage).toHaveBeenCalledWith('ana@zilar.test', 'chat', '🐱', {
       payload: {
         v: 0,
         type: 'sticker',
@@ -3309,7 +3292,7 @@ describe('stickers (T-0120)', () => {
         },
       },
     });
-    const sent = store.getState().messages('ana@galena.test').at(-1);
+    const sent = store.getState().messages('ana@zilar.test').at(-1);
     expect(sent?.card).toEqual({
       v: 0,
       type: 'sticker',
@@ -3330,18 +3313,18 @@ describe('stickers (T-0120)', () => {
     const { store, xmpp } = await setup();
     vi.mocked(xmpp.core.sendMessage).mockRejectedValueOnce(new Error('offline'));
 
-    store.getState().sendSticker('ana@galena.test', stickerInput);
+    store.getState().sendSticker('ana@zilar.test', stickerInput);
     await flush();
 
-    const failed = store.getState().messages('ana@galena.test').at(-1);
+    const failed = store.getState().messages('ana@zilar.test').at(-1);
     expect(failed?.failed).toBe(true);
     expect(failed?.status).toBe('sending');
 
-    store.getState().retrySticker('ana@galena.test', failed?.id ?? '');
-    expect(store.getState().messages('ana@galena.test').at(-1)?.failed).toBeUndefined();
+    store.getState().retrySticker('ana@zilar.test', failed?.id ?? '');
+    expect(store.getState().messages('ana@zilar.test').at(-1)?.failed).toBeUndefined();
     await flush();
 
-    const retried = store.getState().messages('ana@galena.test').at(-1);
+    const retried = store.getState().messages('ana@zilar.test').at(-1);
     expect(xmpp.core.sendMessage).toHaveBeenCalledTimes(2);
     expect(retried?.failed).toBeUndefined();
     expect(retried?.status).toBe('sent');
@@ -3354,7 +3337,7 @@ describe('stickers (T-0120)', () => {
       'message',
       message({
         id: 'st-in',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '🐱',
         payload: {
           v: 0,
@@ -3374,7 +3357,7 @@ describe('stickers (T-0120)', () => {
 
     const incoming = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((m) => m.id === 'st-in');
     expect(incoming?.card).toEqual({
       v: 0,
@@ -3396,9 +3379,9 @@ describe('stickers (T-0120)', () => {
     // synchronously, so the send must refuse with a visible error and no
     // bubble — never a stuck `sending` message.
     const { store, xmpp } = await setup();
-    const before = store.getState().messages('ana@galena.test').length;
+    const before = store.getState().messages('ana@zilar.test').length;
 
-    store.getState().sendSticker('ana@galena.test', {
+    store.getState().sendSticker('ana@zilar.test', {
       ...stickerInput,
       stickerId: 'not-a-uuid',
       packId: 'also-not-a-uuid',
@@ -3406,9 +3389,9 @@ describe('stickers (T-0120)', () => {
     await flush();
 
     expect(xmpp.core.sendMessage).not.toHaveBeenCalled();
-    expect(store.getState().messages('ana@galena.test')).toHaveLength(before);
+    expect(store.getState().messages('ana@zilar.test')).toHaveLength(before);
     expect(store.getState().actionError).toEqual({
-      chatId: 'ana@galena.test',
+      chatId: 'ana@zilar.test',
       message: 'That sticker could not be sent.',
     });
   });
@@ -3417,11 +3400,11 @@ describe('stickers (T-0120)', () => {
     const { store, xmpp } = await setup();
     const second = { ...stickerInput, stickerId: '323e4567-e89b-12d3-a456-426614174002' };
 
-    store.getState().sendSticker('ana@galena.test', stickerInput);
-    store.getState().sendSticker('ana@galena.test', second);
+    store.getState().sendSticker('ana@zilar.test', stickerInput);
+    store.getState().sendSticker('ana@zilar.test', second);
     await flush();
 
-    const sent = store.getState().messages('ana@galena.test').slice(-2);
+    const sent = store.getState().messages('ana@zilar.test').slice(-2);
     expect(sent).toHaveLength(2);
     const [firstLocal, secondLocal] = sent.map((m) => m.id);
 
@@ -3448,7 +3431,7 @@ describe('stickers (T-0120)', () => {
       'message',
       message({
         id: 'srv-second',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '🐱',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:00:01Z'),
@@ -3459,7 +3442,7 @@ describe('stickers (T-0120)', () => {
       'message',
       message({
         id: 'srv-first',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: '🐱',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:00:02Z'),
@@ -3467,7 +3450,7 @@ describe('stickers (T-0120)', () => {
       }),
     );
 
-    const list = store.getState().messages('ana@galena.test');
+    const list = store.getState().messages('ana@zilar.test');
     expect(list.some((m) => m.id === firstLocal)).toBe(false);
     expect(list.some((m) => m.id === secondLocal)).toBe(false);
     const firstEcho = list.find((m) => m.id === 'srv-first');

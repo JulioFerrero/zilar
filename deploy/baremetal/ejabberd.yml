@@ -1,5 +1,5 @@
 ###
-### Galena bare-metal ejabberd configuration.
+### Zilar bare-metal ejabberd configuration.
 ###
 ### Installed at /etc/ejabberd/ejabberd.yml (see docs/INSTALL_BARE_METAL.md).
 ### Derived from deploy/ejabberd/ejabberd.yml (the production Docker config);
@@ -12,8 +12,8 @@
 define_macro:
   HOST: chat.example.com
   MUC_HOST: rooms.chat.example.com
-  # The admin account the Galena server logs in as for the admin API
-  # (EJABBERD_ADMIN_JID in /etc/galena/galena.env). Register it after the
+  # The admin account the Zilar server logs in as for the admin API
+  # (EJABBERD_ADMIN_JID in /etc/zilar/zilar.env). Register it after the
   # first start: ejabberdctl register admin chat.example.com <password>.
   ADMIN: admin@chat.example.com
   SQL_SERVER: localhost
@@ -60,10 +60,10 @@ s2s_access: s2s
 ### JWT, so a stored account password can never be used to log in. `sql` stays
 ### only for the admin account (used by /api basic auth). jwt_key points at a
 ### JWK file you write once (see the guide §4): derive it from the same
-### GALENA_XMPP_JWT_SECRET as the server with the recipe from
+### ZILAR_XMPP_JWT_SECRET as the server with the recipe from
 ### deploy/ejabberd/jwt-entrypoint.sh (base64url of the raw secret bytes):
 ###
-###   printf '%s' "$GALENA_XMPP_JWT_SECRET" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '='
+###   printf '%s' "$ZILAR_XMPP_JWT_SECRET" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '='
 ###   → {"kty":"oct","k":"<that>","alg":"HS256","use":"sig"} in /etc/ejabberd/jwt.jwk (mode 0600).
 auth_method: [jwt, sql]
 jwt_key: /etc/ejabberd/jwt.jwk
@@ -71,7 +71,7 @@ jwt_auth_only_rule: jwt_only
 
 listen:
   # All three listeners bind loopback only: the reverse proxy and the
-  # Galena server on this same machine are the only clients (federation is
+  # Zilar server on this same machine are the only clients (federation is
   # off, and C2S goes through the proxy's /xmpp-ws route). Nothing about
   # ejabberd is reachable from the network.
   - port: PORT_C2S
@@ -93,12 +93,12 @@ listen:
   # this same machine dials port 5347 and receives the XEP-0357 publish IQs.
   # ejabberd does not expand macros in map keys, so the host below is
   # written out literally — it must equal PUSH_COMPONENT_JID in
-  # /etc/galena/galena.env (push.<your domain>). The secret is the push
+  # /etc/zilar/zilar.env (push.<your domain>). The secret is the push
   # component password, also literal here (there is no entrypoint filling
   # macros on bare metal): edit both values by hand when you copy this
   # file. Loopback only: nothing else needs this listener.
   # (The Docker stack generates the same host at container start from
-  # GALENA_DOMAIN — see deploy/ejabberd/push-entrypoint.sh.)
+  # ZILAR_DOMAIN — see deploy/ejabberd/push-entrypoint.sh.)
   - port: 5347
     ip: '127.0.0.1'
     module: ejabberd_service
@@ -208,7 +208,7 @@ modules:
       persistent: true
       mam: true
       # Non-anonymous: every occupant sees members' real JIDs, so clients can
-      # show who sent each message (Galena groups are between known contacts).
+      # show who sent each message (Zilar groups are between known contacts).
       anonymous: false
   # MUC room management commands (create_room_with_opts, set_room_affiliation,
   # get_room_affiliations, destroy_room) used through /api.

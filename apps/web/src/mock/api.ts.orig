@@ -898,10 +898,10 @@ function seedState(): MockState {
   return {
     me: {
       id: currentUserId,
-      email: 'you@galena.test',
+      email: 'you@zilar.test',
       name: 'You',
       image: null,
-      jid: `${currentUserId}@galena.test`,
+      jid: `${currentUserId}@zilar.test`,
     },
     // Two AIs: one without usage, one at 85% of its daily limit (T-0069).
     // Their jids match the bundled AI chats so the AI panel finds them.
@@ -1437,7 +1437,7 @@ function createAi(init: RequestInit): Response {
     template: isTemplate(body.template) ? body.template : 'custom',
     persona: typeof body.persona === 'string' ? body.persona : '',
     model: typeof body.model === 'string' && body.model !== '' ? body.model : 'gpt-4o',
-    jid: `ai-${id}@galena.test`,
+    jid: `ai-${id}@zilar.test`,
     status: 'active',
     providerConnectionId:
       typeof body.providerConnectionId === 'string' ? body.providerConnectionId : 'conn-openai',
@@ -1602,7 +1602,7 @@ function contacts(): Contact[] {
   return Object.values(PEOPLE).map((person) => ({
     userId: person.id,
     name: person.name,
-    jid: `${person.id}@galena.test`,
+    jid: `${person.id}@zilar.test`,
   }));
 }
 
@@ -2552,7 +2552,7 @@ export async function mockRequest(
         name,
         glyph:
           typeof body.glyph === 'string' && body.glyph !== '' ? body.glyph : glyphForTopic(name),
-        chatJid: `${id}@rooms.galena.test`,
+        chatJid: `${id}@rooms.zilar.test`,
         visibility,
         kind,
         status: 'open',

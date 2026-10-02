@@ -1,4 +1,4 @@
-# Galena ejabberd image with the production config baked in.
+# Zilar ejabberd image with the production config baked in.
 #
 # The Coolify "Docker Compose Empty" path has no checkout of this repository,
 # so the plain `deploy/docker-compose.yml` bind mounts of `ejabberd.yml` and
@@ -11,16 +11,16 @@
 #
 # Build from the deploy/ directory:
 #
-#   docker build -f ejabberd/Dockerfile -t galena-ejabberd:local deploy/
+#   docker build -f ejabberd/Dockerfile -t zilar-ejabberd:local deploy/
 #
 # Published per release tag by .github/workflows/images.yml as
-# ghcr.io/<owner>/galena-ejabberd.
+# ghcr.io/<owner>/zilar-ejabberd.
 
 FROM ghcr.io/processone/ejabberd:26.07
 
 COPY ejabberd/ejabberd.yml /opt/ejabberd/conf/ejabberd.yml
-COPY --chmod=755 ejabberd/jwt-entrypoint.sh /galena/jwt-entrypoint.sh
-COPY --chmod=755 ejabberd/push-entrypoint.sh /galena/push-entrypoint.sh
+COPY --chmod=755 ejabberd/jwt-entrypoint.sh /zilar/jwt-entrypoint.sh
+COPY --chmod=755 ejabberd/push-entrypoint.sh /zilar/push-entrypoint.sh
 
-ENTRYPOINT ["/bin/sh", "/galena/jwt-entrypoint.sh"]
+ENTRYPOINT ["/bin/sh", "/zilar/jwt-entrypoint.sh"]
 CMD ["foreground"]

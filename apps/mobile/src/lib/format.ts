@@ -5,7 +5,7 @@ import {
   type ChatSummary,
   type ReplyRef,
   type UiMessage,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;

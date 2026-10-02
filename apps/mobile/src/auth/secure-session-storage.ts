@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { SessionStorage } from './session-storage';
 
 /** SecureStore key. One session token per install, cleared on sign-out. */
-export const SESSION_TOKEN_KEY = 'galena.session-token';
+export const SESSION_TOKEN_KEY = 'zilar.session-token';
 
 /**
  * The session token lives in the OS keychain/keystore via SecureStore, never in

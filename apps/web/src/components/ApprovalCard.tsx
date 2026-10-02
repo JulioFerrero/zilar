@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ApprovalRequest } from '@galena/protocol';
+import type { ApprovalRequest } from '@zilar/protocol';
 import { ShieldAlert } from 'lucide-react';
 import {
   ApiError,

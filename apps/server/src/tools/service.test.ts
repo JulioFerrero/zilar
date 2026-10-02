@@ -66,7 +66,7 @@ async function seedAi(context: TestContext, ownerId: string): Promise<string> {
     providerConnectionId: connectionId,
     model: 'gpt-4o-mini',
     localpart,
-    jid: `${localpart}@galena.localhost`,
+    jid: `${localpart}@zilar.localhost`,
     status: 'active',
   });
   await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });

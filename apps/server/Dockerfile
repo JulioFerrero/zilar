@@ -1,4 +1,4 @@
-# Galena production server image.
+# Zilar production server image.
 #
 # Build from the repo root so the workspace layout is visible:
 #
@@ -28,8 +28,8 @@ COPY packages/runner-tunnel/package.json packages/runner-tunnel/
 RUN pnpm install --frozen-lockfile
 
 # Now the sources the server imports (keep this list in sync with what
-# apps/server imports from the workspace: @galena/protocol,
-# @galena/runner-tunnel, @galena/xmpp-core).
+# apps/server imports from the workspace: @zilar/protocol,
+# @zilar/runner-tunnel, @zilar/xmpp-core).
 COPY apps/server apps/server
 COPY packages/protocol packages/protocol
 COPY packages/xmpp-core packages/xmpp-core
@@ -39,7 +39,7 @@ COPY packages/runner-tunnel packages/runner-tunnel
 # dependencies, production dependencies only. `--legacy` because this
 # workspace does not use injected workspace packages (pnpm v10 deploys only
 # from injected workspaces by default).
-RUN pnpm --filter @galena/server deploy --prod --legacy /opt/galena-server
+RUN pnpm --filter @zilar/server deploy --prod --legacy /opt/zilar-server
 
 FROM node:24.11.1-alpine AS runtime
 
@@ -61,19 +61,19 @@ WORKDIR /app
 # pino-pretty is deliberately NOT installed: development mode needs it for
 # the pretty logger, but a production image must not carry dev-only
 # packages; NODE_ENV stays "production" and logging is plain JSON.
-COPY --from=builder /opt/galena-server /app
+COPY --from=builder /opt/zilar-server /app
 COPY deploy/scripts/healthcheck.mjs /app/deploy-scripts/healthcheck.mjs
 RUN mkdir -p /opt/tsx && cd /opt/tsx && npm init -y >/dev/null \
   && npm install --omit=dev --no-audit --no-fund tsx@4.23.15 \
   && node /opt/tsx/node_modules/tsx/dist/cli.mjs --version
 
 # Non-root user. Alpine's `node` image ships no `node` user, so create one.
-RUN addgroup -S galena && adduser -S galena -G galena && chown -R galena:galena /app /opt/tsx
+RUN addgroup -S zilar && adduser -S zilar -G zilar && chown -R zilar:zilar /app /opt/tsx
 # The sticker volume mounts here in production. Docker seeds an empty named
 # volume with the image's directory ownership, so create it owned by the
 # server user or the non-root server cannot write to a fresh volume.
-RUN mkdir -p /data/stickers && chown galena:galena /data/stickers
-USER galena
+RUN mkdir -p /data/stickers && chown zilar:zilar /data/stickers
+USER zilar
 
 EXPOSE 3000 3189
 

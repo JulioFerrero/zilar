@@ -46,10 +46,10 @@ async function loadXmppCore(): Promise<XmppCoreModule> {
 // with the real ffmpeg and then uploads/downloads it through the real ejabberd
 // XEP-0363 upload service:
 //
-//   GALENA_VOICE_INTEGRATION=1 pnpm --filter @galena/server test
+//   ZILAR_VOICE_INTEGRATION=1 pnpm --filter @zilar/server test
 //
 // It never starts or stops infrastructure; it uses the running one.
-const enabled = process.env.GALENA_VOICE_INTEGRATION === '1';
+const enabled = process.env.ZILAR_VOICE_INTEGRATION === '1';
 const SAMPLE_RATE = 8000;
 
 function loadConfig(): XmppConfig {
@@ -95,7 +95,7 @@ describe.skipIf(!enabled)('voice integration (real ffmpeg + real upload service)
   let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'galena-voice-int-'));
+    dir = await mkdtemp(join(tmpdir(), 'zilar-voice-int-'));
     engine = createFfmpegEngine();
   });
 

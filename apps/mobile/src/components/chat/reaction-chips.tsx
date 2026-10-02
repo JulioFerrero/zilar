@@ -1,4 +1,4 @@
-import type { UiReaction } from '@galena/chat-core';
+import type { UiReaction } from '@zilar/chat-core';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';

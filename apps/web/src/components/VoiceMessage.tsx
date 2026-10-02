@@ -1,4 +1,4 @@
-import { formatDuration, type VoiceMeta } from '@galena/chat-core';
+import { formatDuration, type VoiceMeta } from '@zilar/chat-core';
 import { Pause, Play } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';

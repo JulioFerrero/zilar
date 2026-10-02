@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { ArrowLeft, Lock, MoreVertical, Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -45,7 +45,7 @@ export function ChatHeader({
     }
     // The list search box lives outside this view; focus it on the next
     // frame so the scope chip is already painted.
-    window.setTimeout(() => window.dispatchEvent(new Event('galena:focus-search')), 0);
+    window.setTimeout(() => window.dispatchEvent(new Event('zilar:focus-search')), 0);
   };
   const groupTitle = chat.groupTitle ?? store.groupInfo(chat.id)?.title;
   const openPanel = onOpenTopicPanel ?? onOpenAiPanel ?? onOpenGroupPanel;

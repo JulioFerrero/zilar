@@ -1568,7 +1568,7 @@ export async function removeStickerFavorite(stickerId: string): Promise<void> {
 }
 
 // --- Telegram import (T-0123) -------------------------------------------------
-// A public Telegram pack's static stickers, imported into a private Galena
+// A public Telegram pack's static stickers, imported into a private Zilar
 // pack through the server (`TELEGRAM_BOT_TOKEN` lives there; the browser
 // never sees it). Animated/video stickers are skipped and counted;
 // `partial` means the request budget ran out — running the import again

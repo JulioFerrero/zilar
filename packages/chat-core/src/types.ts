@@ -1,4 +1,4 @@
-import type { Attachment, Payload, VoiceMeta } from '@galena/protocol';
+import type { Attachment, Payload, VoiceMeta } from '@zilar/protocol';
 
 export type ChatKind = 'dm' | 'group' | 'ai';
 

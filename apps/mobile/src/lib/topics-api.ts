@@ -1,4 +1,4 @@
-import type { TopicKind, TopicOwner, TopicStatus, TopicVisibility } from '@galena/chat-core';
+import type { TopicKind, TopicOwner, TopicStatus, TopicVisibility } from '@zilar/chat-core';
 
 /**
  * The mobile twin of the web topics client (`apps/web/src/lib/api.ts`): list,

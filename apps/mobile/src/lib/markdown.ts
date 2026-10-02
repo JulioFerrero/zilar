@@ -85,7 +85,7 @@ function countCharacter(value: string, character: string): number {
   return total;
 }
 
-/** Mirrors `@galena/chat-core`'s `trimTrailingPunctuation` for bare URLs. */
+/** Mirrors `@zilar/chat-core`'s `trimTrailingPunctuation` for bare URLs. */
 function trimTrailingPunctuation(raw: string): string {
   let url = raw;
   while (url.length > 0) {

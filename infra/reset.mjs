@@ -10,7 +10,7 @@ const envFile = fileURLToPath(new URL('.env', import.meta.url));
 
 const readline = createInterface({ input: process.stdin, output: process.stdout });
 const answer = await readline.question(
-  'This deletes every Galena dev volume (Postgres data and ejabberd uploads).\n' +
+  'This deletes every Zilar dev volume (Postgres data and ejabberd uploads).\n' +
     'Type "yes" to continue: ',
 );
 readline.close();

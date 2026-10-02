@@ -1,6 +1,6 @@
-# Lead playbook: how the boss Claude runs Galena
+# Lead playbook: how the boss Claude runs Zilar
 
-This is for a Claude instance acting as **lead** (the "boss") on Galena, or on any project run the same way. It covers how to plan work, run cheap worker agents, review what they produce, merge it, and keep Julio in the loop. Everything here comes from what actually worked, and failed, while building M0 and M1 (tasks T-0001 to T-0025, 2026-09-27/28).
+This is for a Claude instance acting as **lead** (the "boss") on Zilar, or on any project run the same way. It covers how to plan work, run cheap worker agents, review what they produce, merge it, and keep Julio in the loop. Everything here comes from what actually worked, and failed, while building M0 and M1 (tasks T-0001 to T-0025, 2026-09-27/28).
 
 Read it fully once. After that, use §4 (the loop) and §15 (gotchas) as your checklist.
 
@@ -52,7 +52,7 @@ So you may, without asking:
 
 Two boss Claudes on one repo will collide unless you split the work explicitly:
 - **Claim before you start.** Put your name in the Notes column of `work/BOARD.md` (e.g. "lead: Claude B") and commit it to `main` before creating the worktree.
-- **Stay out of the other lead's worktrees** (`../galena-T-XXXX`), sessions and monitors. `workers.txt` (see §6) records who launched what.
+- **Stay out of the other lead's worktrees** (`../zilar-T-XXXX`), sessions and monitors. `workers.txt` (see §6) records who launched what.
 - **Split by area**, not by task number. For example, one lead takes mobile and the other takes server + web. Never let two tasks share Allowed files, even across leads.
 - **Merge one at a time.** Before merging, `git pull --ff-only` on `main`, then rebase the task onto it. If a push is rejected, pull and rebase again; never force-push.
 - **Leave the live stack alone** (§12). It may be serving Julio.
@@ -100,7 +100,7 @@ Flash-class models are good at executing precise instructions and bad at guessin
 **Rules that saved rounds:**
 - If the dev stack is running for Julio, say so in the spec: *"You may run integration tests against the running stack at 127.0.0.1. Never run `pnpm infra:up`, `infra:down` or `infra:reset`, and never stop any running process."* Also add the matching deny rules (appendix C, the "live stack" extras).
 - Give UI tasks a reference: the style-guide section, plus "match the behavior of the web version in T-00XX".
-- Put shared logic in shared packages (`@galena/chat-core`, `@galena/protocol`, `@galena/xmpp-core`) and tell each app to consume it, not duplicate it.
+- Put shared logic in shared packages (`@zilar/chat-core`, `@zilar/protocol`, `@zilar/xmpp-core`) and tell each app to consume it, not duplicate it.
 - Size: 1–2 days of human work at most. If a spec has more than ~6 build items, split it.
 - Don't let two parallel tasks touch the same package. Sequence them with `depends_on`.
 
@@ -136,14 +136,14 @@ Facts (OpenCode v2.0.12):
 - `session.permission.reply --param sessionID=… --param requestID=per_… -d '{"decision":"once|always|reject","message":"…"}'`.
   - Use **`once`**. Don't use `always`: it persists beyond this task.
   - A `reject` with a helpful `message` is how you steer the worker.
-- **Julio can watch any worker live** with `cd ../galena-T-XXXX && opencode2 -s <session>`. Put that line on the board.
+- **Julio can watch any worker live** with `cd ../zilar-T-XXXX && opencode2 -s <session>`. Put that line on the board.
 
 ### 6.1 The lead tools (T-0038): use these first
 
-Run everything from `packages/devtools` as `pnpm exec tsx src/lead/cli.ts <command>` (or `pnpm --filter @galena/devtools lead <command>`, which prints pnpm banner lines on stdout). The state file lives in `~/.galena-lead/state.json` (or `$GALENA_LEAD_STATE`), outside the repo, and holds no secrets.
+Run everything from `packages/devtools` as `pnpm exec tsx src/lead/cli.ts <command>` (or `pnpm --filter @zilar/devtools lead <command>`, which prints pnpm banner lines on stdout). The state file lives in `~/.zilar-lead/state.json` (or `$ZILAR_LEAD_STATE`), outside the repo, and holds no secrets.
 
 - **`launch T-XXXX [--extra-rules f.json]`**: creates the worktree and branch from `main`, then the session with the model from the spec's `model:` (it refuses V4 Pro). It sends `prompts/worker.md` and records the task in the state file.
-- **`autopilot [--once] [--dry-run]`**: arm it as a Monitor on `… autopilot 2>>/tmp/galena-scratch/autopilot.err | grep --line-buffered '^LEAD:'`. Every event is a decision for you:
+- **`autopilot [--once] [--dry-run]`**: arm it as a Monitor on `… autopilot 2>>/tmp/zilar-scratch/autopilot.err | grep --line-buffered '^LEAD:'`. Every event is a decision for you:
   - a `PERMISSION` it couldn't classify;
   - a `QUESTION`;
   - `QUOTA` (at most hourly);
@@ -191,8 +191,8 @@ Work in the task's worktree. For each task:
 1. **Read the Spec again, then the Report.** Note every claim in the Report: you will verify them.
 2. **Scope check:**
    ```bash
-   git -C ../galena-T-XXXX diff --stat main...HEAD
-   git -C ../galena-T-XXXX diff --name-only main...HEAD   # every path must match Allowed files
+   git -C ../zilar-T-XXXX diff --stat main...HEAD
+   git -C ../zilar-T-XXXX diff --name-only main...HEAD   # every path must match Allowed files
    ```
    A file outside the allowed list is a finding, even if the change is harmless.
 3. **Run every check yourself** and don't trust the Report. Write the output to log files so a truncated pipe can't hide a failure:
@@ -251,7 +251,7 @@ Work in the task's worktree. For each task:
 Workers can't rebase or merge, so you do it:
 
 ```bash
-cd ../galena-T-XXXX
+cd ../zilar-T-XXXX
 git rebase -q main
 # Lockfile conflict (common when two tasks added deps):
 #   git checkout --ours pnpm-lock.yaml && pnpm install && git add pnpm-lock.yaml && git rebase --continue
@@ -259,23 +259,23 @@ git rebase -q main
 pnpm install --frozen-lockfile        # must pass, or the lockfile is wrong
 # Re-run the full check loop from §8. The merge result is what counts.
 
-cd ../galena                          # main checkout
+cd ../zilar                          # main checkout
 git merge --ff-only -q task/T-XXXX-name
 # Edit work/BOARD.md: remove the row from the active table and add it to Done with a one-line summary
 # (e.g. "(2 rounds: fixed javascript: link injection)") and the date. Set the task file's status: merged.
 git commit -qam "board: T-XXXX merged"
 git push -q origin main
 gh run list --limit 1 --commit "$(git rev-parse HEAD)"   # watch it until it's completed; a red CI is your job to fix
-git worktree remove ../galena-T-XXXX && git branch -d task/T-XXXX-name
+git worktree remove ../zilar-T-XXXX && git branch -d task/T-XXXX-name
 ```
 
-**Exception:** don't remove a worktree whose processes are serving Julio's live stack. Right now that's `../galena-T-0024`: the server, Vite and the test bridge run from it.
+**Exception:** don't remove a worktree whose processes are serving Julio's live stack. Right now that's `../zilar-T-0024`: the server, Vite and the test bridge run from it.
 
 ## 11. Talking to Julio
 
 - He follows along from his phone (Remote Control), often away from home. Keep messages short: what merged, what's in progress, anything you need from him, and what's next.
 - **Send screenshots proactively** for anything visual: send the file (SendUserFile when it's available), and also save it in the repo or your scratch folder. He loves seeing progress.
-- He sometimes writes in Spanish, including inside Galena chats. Answer in the language he used, in English by default.
+- He sometimes writes in Spanish, including inside Zilar chats. Answer in the language he used, in English by default.
 - When he reports a bug from real use, reproduce it live, turn it into a task (or a round on an in-flight task), and tell him which one.
 - When something is blocked on him (an Apple Developer account, installing CocoaPods, a style call), ask one clear question with options, then keep working on other things.
 - Report outcomes faithfully. "Tests fail: X" beats a vague "almost done".
@@ -285,21 +285,21 @@ git worktree remove ../galena-T-XXXX && git branch -d task/T-XXXX-name
 - **Infra:** `pnpm infra:up` / `infra:smoke` / `xmpp:e2e` (Postgres 18 + pgvector, ejabberd 26.07, LiteLLM 1.102.1 pinned by digest). There's no MinIO: its images were deleted on 2026-09-11, so uploads use ejabberd's upload volume for now.
 - **Ports:**
   - **3000 belongs to Julio's own Next.js app.** Never use it.
-  - The Galena server runs on **3188**.
-  - Vite runs on **5173**, with `GALENA_API_URL=http://localhost:3188` for its `/api` proxy.
+  - The Zilar server runs on **3188**.
+  - Vite runs on **5173**, with `ZILAR_API_URL=http://localhost:3188` for its `/api` proxy.
 - **Start commands** (from the worktree that serves the live stack, with logs in your scratch folder):
   ```bash
   (cd apps/server && PORT=3188 nohup pnpm exec tsx --env-file=.env src/index.ts > "$S/srv.log" 2>&1 &)
-  (cd apps/web && GALENA_API_URL=http://localhost:3188 nohup pnpm exec vite --port 5173 --strictPort > "$S/web.log" 2>&1 &)
+  (cd apps/web && ZILAR_API_URL=http://localhost:3188 nohup pnpm exec vite --port 5173 --strictPort > "$S/web.log" 2>&1 &)
   ```
 - **Sign-in codes:** in dev, the server logs `OTP for <email>: <code>`. A Monitor on the server log with `grep -oE "OTP for [^ ]+: [0-9]{6}|ERROR.*|\"level\":50.*"` gives you codes and errors. Never paste codes or invite tokens into commits or docs.
 - **Test accounts:** "Ana (test)" and "Claude (test)". Their cookie jars live in the scratch folder, with `curl -b/-c`.
-- **The bridge:** a temporary script, `packages/xmpp-core/src/zz-bridge.ts`, in the live worktree. **It is untracked: never commit it.** It keeps "Claude (test)" online, so Julio can chat with you inside Galena:
+- **The bridge:** a temporary script, `packages/xmpp-core/src/zz-bridge.ts`, in the live worktree. **It is untracked: never commit it.** It keeps "Claude (test)" online, so Julio can chat with you inside Zilar:
   - it appends inbound messages to `inbox.log` (watch it with a Monitor on `^IN |STATUS (offline|reconnecting)`)
   - it sends each line appended to `outbox.jsonl` (with typing first)
   - it sends displayed markers and joins groups at start
 
-  Run it with `pnpm --filter @galena/devtools exec tsx ../xmpp-core/src/zz-bridge.ts <scratch> <cookie-jar>`. Scripts must live inside a package to resolve `@xmpp/client`.
+  Run it with `pnpm --filter @zilar/devtools exec tsx ../xmpp-core/src/zz-bridge.ts <scratch> <cookie-jar>`. Scripts must live inside a package to resolve `@xmpp/client`.
 - **Screenshots without the Chrome extension:** use the iOS Simulator's Safari.
   ```bash
   xcrun simctl openurl <udid> http://localhost:5173
@@ -331,7 +331,7 @@ git worktree remove ../galena-T-XXXX && git branch -d task/T-XXXX-name
 4. **Monitors expire after 30 minutes.** Re-arm them, including the stack and bridge monitors.
 5. **Stalled workers:** a missed permission request stalls a worker silently. The watcher's `STILL PENDING` line exists for this.
 6. **Lockfile conflicts on rebase:** see the recipe in §10. Always verify with `--frozen-lockfile`.
-7. **Port 3000 is Julio's.** Galena uses 3188 and 5173.
+7. **Port 3000 is Julio's.** Zilar uses 3188 and 5173.
 8. **Scripts outside the repo can't resolve workspace deps.** Put them inside a package and run them with the devtools `tsx`.
 9. **Real-use XMPP bugs:**
    - MUC reflects your own chat states and markers to you.
@@ -340,28 +340,28 @@ git worktree remove ../galena-T-XXXX && git branch -d task/T-XXXX-name
 10. **Better Auth behind a proxy:** it needs `advanced.ipAddress` configured (a board follow-up for deployment).
 11. **Hashes on tiny samples cluster.** Don't file a "colors are broken" bug without computing the distribution first.
 12. **Stash:** the git stash is shared across worktrees and sessions. Use WIP commits instead.
-13. **Start Vite with `GALENA_API_URL=http://localhost:3188`, never plain `pnpm dev`.** Without it the `/api` proxy falls back to `localhost:3000`, which is Julio's Next.js app: every API call 404s and the web app looks completely broken (2026-09-28, cost Julio a morning). Check with `curl -s -o /dev/null -w '%{http_code}' http://localhost:5173/api/me`: 401 is right, 404 is wrong.
+13. **Start Vite with `ZILAR_API_URL=http://localhost:3188`, never plain `pnpm dev`.** Without it the `/api` proxy falls back to `localhost:3000`, which is Julio's Next.js app: every API call 404s and the web app looks completely broken (2026-09-28, cost Julio a morning). Check with `curl -s -o /dev/null -w '%{http_code}' http://localhost:5173/api/me`: 401 is right, 404 is wrong.
 14. **Run the live server with the plain command in §12, not `pnpm dev` (`tsx watch`).** Under heavy load (a parallel Xcode build) `tsx watch` force-killed the server on a reload and never restarted it: 3188 was down for ~25 minutes before anyone noticed (2026-09-28). Restart it yourself after merging server changes, and keep a Monitor on `/health` and `localhost:5173/api/me` so an outage is reported, not discovered.
 
 15. **Workers can't `kill`.** The permission rules block `kill` and `pkill`. A worker that starts a CPU burner or a background server can't stop it, and asks you to (T-0036 left eight `yes` processes, load average 82, 2026-09-28). In any spec that uses background load or processes, require them to end on their own (`perl -e 'alarm 600; exec "yes"' > /dev/null &`). Before you kill anything a worker names, check the PIDs with `ps -o pid,comm -p …`. Machine load hurts every other worker's test runs, so re-run their checks yourself before trusting a timeout.
 16. **Julio's Vite listens on `[::1]:5173` only.** `127.0.0.1:5173` is a free port, and it is a trusted auth origin with its own cookies. For a live click-through as a test account, run a second Vite from main bound to `127.0.0.1` (Julio approved this on 2026-09-28), and stop it afterwards. Never sign in as someone else on `localhost:5173`: that replaces Julio's session.
 17. **A session can hold at most 30 images** (`provider.invalid-request`: "Too many images in request: 31 > 30"). Once past that, the session is dead for good. T-0037's Flash session hit it after screenshotting every state (2026-09-28). In UI specs, set an image budget of about 20: downscale with `sips -Z 900` before viewing, and capture each state once, after the code is final. To recover, relaunch in a new session in the same worktree (`relaunch.py`). Have it commit the uncommitted work first as "wip (takeover)".
-18. **Merges that add a dependency break the live server until `pnpm install` runs in main.** After T-0034 added `@galena/xmpp-core` to the server, the restart died with `ERR_MODULE_NOT_FOUND` and 3188 was down for about 45 s. The same thing happened to `lead` itself (zod). Run `pnpm install` in the main checkout after every merge, before any restart.
+18. **Merges that add a dependency break the live server until `pnpm install` runs in main.** After T-0034 added `@zilar/xmpp-core` to the server, the restart died with `ERR_MODULE_NOT_FOUND` and 3188 was down for about 45 s. The same thing happened to `lead` itself (zod). Run `pnpm install` in the main checkout after every merge, before any restart.
 19. **Green tests are not a live check for loading and connection code.** The fake XMPP core's `connect()` resolves instantly, so T-0042 passed 147 tests and two pre-reviews, yet on Julio's first reload it showed "Couldn't load messages" every time: `core` is assigned before `connect()` resolves, and a MAM query sent while still connecting fails. Its skeletons also flashed on fast loads. For any web change to loading, reconnect or the store, reload the live app yourself (or ask Julio to) **before** merging, and make fakes slow: a deferred `connect`, delayed API calls. Live-check with an account that has **history in both a DM and a group** (DM history needs the core's own JID, group history needs the room join; each broke separately), and hard-reload inside each chat several times. Julio's Helium has the Claude extension: testing there on his real data is the most faithful check (read and reload only, never sign in as someone else).
 20. **Board rows are links.** `lead merge` only finds an Active row written as `| [T-XXXX](T-XXXX-file.md) | … |`. A hand-written `| T-XXXX |` row makes the merge stop after the fast-forward ("board has no Active row"); fix the row, commit, and re-run `lead merge`, which picks up where it stopped. To live-check a web branch without replacing Julio's 5173, serve it on `localhost:5174` (cookies are shared across ports) through a temporary untracked Vite config whose `/api` proxy sets `origin: http://localhost:5173`; the server rejects other origins with 403 on `/api/xmpp/token`.
-21. **Stale worker processes and new dependencies.** Workers leave dev servers running (T-0040's and T-0041's servers ran for hours after their merges, each with its own AI gateway, so Julio's AI **answered twice**). After every merge, run `ps -Ao pid,command | grep galena-T-` and stop what belongs to finished tasks, but never Julio's Metro (8081) or his 5173 Vite. When a merge adds a dependency, `pnpm install` in main and then **restart Julio's Vite** (same env: `GALENA_API_URL=http://localhost:3188 pnpm exec vite --port 5173 --strictPort` from `apps/web`): Vite caches the failed import and serves a 500.
-22. **The newest gateway wins (T-0050).** Every server logs each AI in with the fixed XMPP resource `gateway`. Starting any second server (a worker's, or a test instance) takes the AIs away from the live one on 3188, which logs `AI session replaced by another gateway; standing down` and **stays down until it is restarted**. So if Julio's AI goes silent, check the 3188 log for that line, stop the stray server, and restart 3188. Proven live on 2026-09-28: A stood down once, and there was no reconnect loop after the 60 s reconcile. When restarting 3188, **wait for the old process to exit** before starting the new one (`p=$(lsof -tiTCP:3188 -sTCP:LISTEN); kill $p; while kill -0 $p 2>/dev/null; do sleep 0.5; done`). Its graceful shutdown takes several seconds, and meanwhile it keeps writing into the log you just truncated. Check the AI is connected with `docker exec galena-dev-ejabberd-1 ejabberdctl connected_users | grep ai-` (expect `/gateway`).
-23. **Simulator navigation without the host mouse.** T-0048's worker drove the Simulator with `cliclick` (real mouse clicks on Julio's Mac). Mobile specs now forbid host input automation: navigate with mock-mode deep links (`xcrun simctl openurl <udid> galena://...`). Also: after T-0048, Julio's iPad simulator `A3E0C081` was gone and the iPhone `DB167CD4` was shut down, cause unknown (the worker's history shows only its own `$U`). Check both before and after every mobile task.
+21. **Stale worker processes and new dependencies.** Workers leave dev servers running (T-0040's and T-0041's servers ran for hours after their merges, each with its own AI gateway, so Julio's AI **answered twice**). After every merge, run `ps -Ao pid,command | grep zilar-T-` and stop what belongs to finished tasks, but never Julio's Metro (8081) or his 5173 Vite. When a merge adds a dependency, `pnpm install` in main and then **restart Julio's Vite** (same env: `ZILAR_API_URL=http://localhost:3188 pnpm exec vite --port 5173 --strictPort` from `apps/web`): Vite caches the failed import and serves a 500.
+22. **The newest gateway wins (T-0050).** Every server logs each AI in with the fixed XMPP resource `gateway`. Starting any second server (a worker's, or a test instance) takes the AIs away from the live one on 3188, which logs `AI session replaced by another gateway; standing down` and **stays down until it is restarted**. So if Julio's AI goes silent, check the 3188 log for that line, stop the stray server, and restart 3188. Proven live on 2026-09-28: A stood down once, and there was no reconnect loop after the 60 s reconcile. When restarting 3188, **wait for the old process to exit** before starting the new one (`p=$(lsof -tiTCP:3188 -sTCP:LISTEN); kill $p; while kill -0 $p 2>/dev/null; do sleep 0.5; done`). Its graceful shutdown takes several seconds, and meanwhile it keeps writing into the log you just truncated. Check the AI is connected with `docker exec zilar-dev-ejabberd-1 ejabberdctl connected_users | grep ai-` (expect `/gateway`).
+23. **Simulator navigation without the host mouse.** T-0048's worker drove the Simulator with `cliclick` (real mouse clicks on Julio's Mac). Mobile specs now forbid host input automation: navigate with mock-mode deep links (`xcrun simctl openurl <udid> zilar://...`). Also: after T-0048, Julio's iPad simulator `A3E0C081` was gone and the iPhone `DB167CD4` was shut down, cause unknown (the worker's history shows only its own `$U`). Check both before and after every mobile task.
 
 24. **Re-run every check after you add or edit a file on the task branch during review.** In T-0061 I added a live integration test and merged without re-running `format:check` and `typecheck`: `main` went red until the next task's pre-review caught it (the file was unformatted and missing from the no-node-types tsconfig `exclude`, like the other `integration*.test.ts` files). Run the whole check loop after your last edit, not before it.
 25. **OpenCode Go can run out of money.** `provider.quota` with `402 Insufficient account funds` (2026-09-29, ~02:15) stops every `opencode-go/*` model at once, including the Muse pre-reviews (`LEAD: PRE-REVIEW STALLED … idle, no PREREVIEW.md`). Julio cannot be asked at night. What worked: `lead switch-model T-XXXX minimax-coding-plan/MiniMax-M3` for running tasks, `model: minimax-coding-plan/MiniMax-M3` in new specs, and reviewing the diff yourself in place of the pre-review (read every line of security-sensitive code, run all checks after a rebase onto `main`). Keep specs for MiniMax explicit and small.
 26. **`TunnelServer`/API `SIGTERM` used to hang** with an open SSE stream (`/api/drafts/stream`): `server.close()` waits for every connection. Fixed in `index.ts` (idle connections closed at once, the rest after 3 s, a hard exit after 15 s). If an older process is stuck in `shutting down`, `kill -9` it and start the new one.
-27. **Monitors and autopilots.** A `Monitor` expiring does not always kill the autopilot it started, and a second `Monitor` starts a second health loop. Before re-arming: `pkill -f "lead/cli.ts autopilot"`, check `ps` shows none, then arm one Monitor (stop the old one with `TaskStop` if it is still listed). The autopilot cannot read `HANDOFF.md`-style scratch files in the repo: `lead merge` refuses when the main checkout has untracked files, so keep scratch files in `/tmp/galena-scratch`.
-28. **Pipelines that start a dev server never end.** A worker asked to run `pnpm dev … | tee … | sleep 6 | curl …`. Reject it and give the pattern: start Vite in the background on the worker's own port with `GALENA_API_URL=http://localhost:3188`, write its pid to a file, curl in a separate command, then `kill $(cat pidfile)`.
+27. **Monitors and autopilots.** A `Monitor` expiring does not always kill the autopilot it started, and a second `Monitor` starts a second health loop. Before re-arming: `pkill -f "lead/cli.ts autopilot"`, check `ps` shows none, then arm one Monitor (stop the old one with `TaskStop` if it is still listed). The autopilot cannot read `HANDOFF.md`-style scratch files in the repo: `lead merge` refuses when the main checkout has untracked files, so keep scratch files in `/tmp/zilar-scratch`.
+28. **Pipelines that start a dev server never end.** A worker asked to run `pnpm dev … | tee … | sleep 6 | curl …`. Reject it and give the pattern: start Vite in the background on the worker's own port with `ZILAR_API_URL=http://localhost:3188`, write its pid to a file, curl in a separate command, then `kill $(cat pidfile)`.
 29. **`lead merge` can be killed halfway (exit 144) when the tool call is too long.** It had already committed the board change on the task branch. Run `lead merge` again, redirecting its output to a file; if it then says `board commit failed` but `git log` shows `main` fast-forwarded, only `git push origin main` is missing. Remove the worktree with `git worktree remove --force` and delete the branch afterwards (it may already be gone).
 30. **Never trust a worker's "lint passed".** MiniMax reports (T-0081, T-0075) claimed green checks while `oxlint` failed (`react(set-state-in-effect)` for a state setter called from an effect, and `throw` of string literals that also double-printed). Re-run `format:check`, `lint`, `typecheck`, `test` and `build` yourself after the rebase, and read the diff for the parts a linter cannot see (duplicated logic, existence leaks, security ordering: T-0073 checked expiry before permission).
 31. **Mock mode is a deep link.** `?mock=1` is dropped by in-app navigation, and after that the web app calls the real `/api` (a dev server without a backend answers 404). Open mock screens with a full URL such as `http://localhost:5181/c/c-devteam?mock=1` on a spare port, never 3000, 5173 or 8081.
-32. **A worker can sit blocked on a permission prompt while no autopilot is armed.** T-0080 waited ~40 minutes on `npx drizzle-kit generate` that arrived in the gap between two Monitors, and `LEAD: PERMISSION` events fired during a gap are not replayed. After every re-arm run `opencode2 api session.permission.list --param sessionID=ses_…` for each running worker and answer what is pending. Migrations are generated with `pnpm --filter @galena/server db:generate`, never `npx` (reject `npx` and say so).
+32. **A worker can sit blocked on a permission prompt while no autopilot is armed.** T-0080 waited ~40 minutes on `npx drizzle-kit generate` that arrived in the gap between two Monitors, and `LEAD: PERMISSION` events fired during a gap are not replayed. After every re-arm run `opencode2 api session.permission.list --param sessionID=ses_…` for each running worker and answer what is pending. Migrations are generated with `pnpm --filter @zilar/server db:generate`, never `npx` (reject `npx` and say so).
 33. **A green lint run can hide a disabled rule.** T-0085's composer passed `pnpm lint` only because of `// eslint-disable-next-line react-hooks/exhaustive-deps` (removing it produced two errors: `set-state-in-effect` and `exhaustive-deps`). `grep -rn "eslint-disable\|oxlint-disable\|@ts-ignore\|console.log" <changed files>` on every review; for state derived from props/store use the "adjust state while rendering" pattern (compare a stored key during render), not an effect.
 
 ## 16. State snapshot (2026-09-28, evening)
@@ -398,13 +398,13 @@ Save it in your scratch folder next to `rules.json`. Usage: `python3 launch.py T
 #!/usr/bin/env python3
 """Create a worktree + OpenCode session for a task and send the first prompt.
 Usage: launch.py TASK_ID TASK_FILE BRANCH [extra_rules.json]
-Env: REPO (default: the Galena checkout), MODEL_PROVIDER, MODEL_ID."""
+Env: REPO (default: the Zilar checkout), MODEL_PROVIDER, MODEL_ID."""
 import json, os, subprocess, sys
 
 task, task_file, branch = sys.argv[1], sys.argv[2], sys.argv[3]
 extra = json.load(open(sys.argv[4])) if len(sys.argv) > 4 else []
 S = os.path.dirname(os.path.abspath(__file__))
-repo = os.environ.get("REPO", "/Users/julio/personal-projects/galena")
+repo = os.environ.get("REPO", "/Users/julio/personal-projects/zilar")
 wt = os.path.join(os.path.dirname(repo), f"{os.path.basename(repo)}-{task}")
 model = {"providerID": os.environ.get("MODEL_PROVIDER", "opencode-go"),
          "id": os.environ.get("MODEL_ID", "deepseek-v4.1-flash")}
@@ -419,7 +419,7 @@ with open(out_file, "w") as f:
 sid = json.load(open(out_file))["data"]["id"]
 
 prompt = (
-    f"You are an implementer on the Galena project. Do the task in work/{task_file} and follow AGENTS.md strictly (read both completely first).\n\n"
+    f"You are an implementer on the Zilar project. Do the task in work/{task_file} and follow AGENTS.md strictly (read both completely first).\n\n"
     f"Context: you are in a git worktree at {wt}, already on branch {branch}. Run pnpm install first. Other workers are working in parallel in other worktrees, so stay strictly inside your task's Allowed files.\n\n"
     f"When finished: fill in the Report section with real command results, set status: review in the task front matter, and commit to this branch with a message starting with \"{task}:\". Do not push, merge or switch branches (those commands are blocked).\n\n"
     "Some commands (curl, npx, docker, rm -rf) need approval from the lead; if one is rejected, read the rejection message and adapt.\n\n"
@@ -551,4 +551,4 @@ nohup opencode2 api session.prompt --param sessionID=ses_… -d "$(cat "$S/p.jso
 
 35. **Julio wants Muse Spark on everything for now, no MiniMax (2026-09-29).** All new specs use `model: meta/muse-spark-1.3-contributor`; running MiniMax workers were switched with `lead switch-model`. Julio checks usage and cost himself in the Meta dashboard: do not build or report usage tracking.
 
-36. **Stop the autopilot before `lead switch-model`, and check `lead status` afterwards.** The autopilot and the CLI both rewrite `~/.galena-lead/state.json`; on 2026-09-29 the autopilot's write undid the switch for T-0098, so `lead reply` re-prompted the old MiniMax session while the Muse one sat idle. After any switch, confirm the MODEL column, then re-arm the autopilot.
+36. **Stop the autopilot before `lead switch-model`, and check `lead status` afterwards.** The autopilot and the CLI both rewrite `~/.zilar-lead/state.json`; on 2026-09-29 the autopilot's write undid the switch for T-0098, so `lead reply` re-prompted the old MiniMax session while the Muse one sat idle. After any switch, confirm the MODEL column, then re-arm the autopilot.

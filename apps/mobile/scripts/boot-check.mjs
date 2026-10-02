@@ -46,9 +46,9 @@ function say(message) {
 }
 
 function usage() {
-  return `Usage: pnpm --filter @galena/mobile boot:ios --device <udid> [options]
+  return `Usage: pnpm --filter @zilar/mobile boot:ios --device <udid> [options]
 
-Build, install and launch the Galena iOS app on a simulator and fail loudly if
+Build, install and launch the Zilar iOS app on a simulator and fail loudly if
 it does not come up.
 
 Options:

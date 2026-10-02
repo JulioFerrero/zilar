@@ -1,4 +1,4 @@
-import type { Attachment } from '@galena/protocol';
+import type { Attachment } from '@zilar/protocol';
 import { Image } from 'expo-image';
 import { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, View } from 'react-native';

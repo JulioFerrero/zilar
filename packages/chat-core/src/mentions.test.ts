@@ -10,7 +10,7 @@ import {
 } from './mentions';
 import type { MentionMember, UiMention } from './types';
 
-const ana: MentionMember = { jid: 'u-ana@galena.test', name: 'Ana' };
+const ana: MentionMember = { jid: 'u-ana@zilar.test', name: 'Ana' };
 
 function mention(jid: string, name: string, begin: number, end: number): UiMention {
   return { jid, name, begin, end };
@@ -41,7 +41,7 @@ describe('insertMention', () => {
     expect(insertMention('hello @an', 9, ana)).toEqual({
       text: 'hello @Ana ',
       caret: 11,
-      mention: { jid: 'u-ana@galena.test', name: 'Ana', begin: 6, end: 10 },
+      mention: { jid: 'u-ana@zilar.test', name: 'Ana', begin: 6, end: 10 },
     });
   });
 
@@ -141,9 +141,9 @@ describe('splitMentions', () => {
 
 describe('filterMentionMembers', () => {
   const members: MentionMember[] = [
-    { jid: 'u-ana@galena.test', name: 'Ana' },
-    { jid: 'u-sofia@galena.test', name: 'Sofía' },
-    { jid: 'ai-dev-1@galena.test', name: 'Dev-1' },
+    { jid: 'u-ana@zilar.test', name: 'Ana' },
+    { jid: 'u-sofia@zilar.test', name: 'Sofía' },
+    { jid: 'ai-dev-1@zilar.test', name: 'Dev-1' },
   ];
 
   it('returns everyone for an empty query', () => {
@@ -165,18 +165,18 @@ describe('filterMentionMembers', () => {
 
 describe('isMentionOfMe', () => {
   it('matches the exact bare JID only', () => {
-    expect(isMentionOfMe('u-you@galena.test', 'u-you@galena.test')).toBe(true);
-    expect(isMentionOfMe('u-you@other.domain', 'u-you@galena.test')).toBe(false);
-    expect(isMentionOfMe('u-ana@galena.test', 'u-you@galena.test')).toBe(false);
+    expect(isMentionOfMe('u-you@zilar.test', 'u-you@zilar.test')).toBe(true);
+    expect(isMentionOfMe('u-you@other.domain', 'u-you@zilar.test')).toBe(false);
+    expect(isMentionOfMe('u-ana@zilar.test', 'u-you@zilar.test')).toBe(false);
   });
 
   it('is false when there is no me JID', () => {
-    expect(isMentionOfMe('u-you@galena.test', undefined)).toBe(false);
+    expect(isMentionOfMe('u-you@zilar.test', undefined)).toBe(false);
   });
 
   it('ignores the resource and query', () => {
-    expect(isMentionOfMe('u-you@galena.test/phone', 'u-you@galena.test')).toBe(true);
-    expect(isMentionOfMe('u-you@galena.test?q=1', 'u-you@galena.test')).toBe(true);
+    expect(isMentionOfMe('u-you@zilar.test/phone', 'u-you@zilar.test')).toBe(true);
+    expect(isMentionOfMe('u-you@zilar.test?q=1', 'u-you@zilar.test')).toBe(true);
   });
 });
 

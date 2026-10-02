@@ -66,8 +66,8 @@ describe('MarkdownText', () => {
   });
 
   it('allows mailto links', () => {
-    renderMarkdown('[mail](mailto:hi@galena.test)');
-    expect(screen.getByRole('link').getAttribute('href')).toBe('mailto:hi@galena.test');
+    renderMarkdown('[mail](mailto:hi@zilar.test)');
+    expect(screen.getByRole('link').getAttribute('href')).toBe('mailto:hi@zilar.test');
   });
 
   it('renders a javascript: link as plain text', () => {

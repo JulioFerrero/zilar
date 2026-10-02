@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import type { UiMessage } from '@galena/chat-core';
+import type { UiMessage } from '@zilar/chat-core';
 
 import { AttachmentBody } from './attachment-body';
 
@@ -55,7 +55,7 @@ vi.mock('@/components/chat/ticks', () => ({
 }));
 
 vi.mock('@/store/chat-store-provider', () => ({
-  useChatStore: () => new Set(['upload.galena.test', 'galena.test']),
+  useChatStore: () => new Set(['upload.zilar.test', 'zilar.test']),
   useChatStoreApi: () => ({ getState: () => ({}) }),
 }));
 
@@ -74,7 +74,7 @@ function bodyMessage(overrides: Partial<UiMessage> = {}): UiMessage {
     status: 'read',
     attachment: {
       kind: 'image',
-      url: 'https://upload.galena.test/get/stage.png',
+      url: 'https://upload.zilar.test/get/stage.png',
       name: 'stage.png',
       size: 245_760,
       mime: 'image/png',
@@ -101,7 +101,7 @@ describe('attachment bubble body (T-0150)', () => {
           text: undefined,
           attachment: {
             kind: 'file',
-            url: 'https://upload.galena.test/get/tickets.pdf',
+            url: 'https://upload.zilar.test/get/tickets.pdf',
             name: 'tickets.pdf',
             size: 2_411_724,
             mime: 'application/pdf',
@@ -121,7 +121,7 @@ describe('attachment bubble body (T-0150)', () => {
           text: undefined,
           attachment: {
             kind: 'file',
-            url: 'https://upload.galena.test/get/abc',
+            url: 'https://upload.zilar.test/get/abc',
             name: 'gif-abc123.mp4',
             size: 1_000_000,
             mime: 'video/mp4',

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Attachment } from '@galena/chat-core';
+import type { Attachment } from '@zilar/chat-core';
 import { isTrustedMediaUrl, safeHttpUrl } from '@/lib/attachments';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 

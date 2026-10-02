@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 
 import { archivedChats, sortChatPinnedFirst, unarchivedChats } from './chat-prefs';
 import { filterChats } from './filter';

@@ -22,36 +22,36 @@ import { aiLocalpart, ensureAiModel, virtualKeyAlias } from './service';
  * deletes whatever it created, so it never leaves an AI or a connection behind.
  *
  * Required env vars:
- *   GALENA_AIS_INTEGRATION=1                 (turns the test on)
- *   GALENA_AIS_INTEGRATION_LOG=<file>        (server log, to read the OTP)
- *   GALENA_AIS_INVITE_CODE=<invite>          (a fresh, unused invite code)
- *   GALENA_AIS_TEST_EMAIL=<email>            (a brand-new test email)
+ *   ZILAR_AIS_INTEGRATION=1                 (turns the test on)
+ *   ZILAR_AIS_INTEGRATION_LOG=<file>        (server log, to read the OTP)
+ *   ZILAR_AIS_INVITE_CODE=<invite>          (a fresh, unused invite code)
+ *   ZILAR_AIS_TEST_EMAIL=<email>            (a brand-new test email)
  *   EJABBERD_API_URL=<url>                   (ejabberd admin API, e.g. http://127.0.0.1:5280/api)
- *   EJABBERD_ADMIN_JID=<jid>                 (e.g. admin@galena.localhost)
+ *   EJABBERD_ADMIN_JID=<jid>                 (e.g. admin@zilar.localhost)
  *   EJABBERD_ADMIN_PASSWORD=<password>
  *   LITELLM_MASTER_KEY=<key>                 (LiteLLM admin key)
  *
  * Optional:
- *   GALENA_AIS_INTEGRATION_URL (default http://127.0.0.1:3188)
- *   XMPP_DOMAIN                (default galena.localhost)
+ *   ZILAR_AIS_INTEGRATION_URL (default http://127.0.0.1:3188)
+ *   XMPP_DOMAIN                (default zilar.localhost)
  *   LITELLM_BASE_URL           (default http://127.0.0.1:4000)
  *
- *   GALENA_AIS_INTEGRATION=1 \
- *   GALENA_AIS_INTEGRATION_LOG=<server log file> \
- *   GALENA_AIS_INVITE_CODE=<fresh invite> \
- *   GALENA_AIS_TEST_EMAIL=<new test email> \
+ *   ZILAR_AIS_INTEGRATION=1 \
+ *   ZILAR_AIS_INTEGRATION_LOG=<server log file> \
+ *   ZILAR_AIS_INVITE_CODE=<fresh invite> \
+ *   ZILAR_AIS_TEST_EMAIL=<new test email> \
  *   EJABBERD_API_URL=http://127.0.0.1:5280/api \
- *   EJABBERD_ADMIN_JID=admin@galena.localhost \
+ *   EJABBERD_ADMIN_JID=admin@zilar.localhost \
  *   EJABBERD_ADMIN_PASSWORD=<password> \
  *   LITELLM_MASTER_KEY=<key> \
- *   pnpm --filter @galena/server test src/ais/integration.test.ts
+ *   pnpm --filter @zilar/server test src/ais/integration.test.ts
  *
  * The server's ConsoleMailer writes `[dev-mailer] OTP for <email>: <code>` to
  * its log; the code is read from there, never from the response.
  */
 
-const ENABLED = process.env['GALENA_AIS_INTEGRATION'] === '1';
-const MODELS_ENABLED = process.env['GALENA_AI_MODELS_INTEGRATION'] === '1';
+const ENABLED = process.env['ZILAR_AIS_INTEGRATION'] === '1';
+const MODELS_ENABLED = process.env['ZILAR_AI_MODELS_INTEGRATION'] === '1';
 
 const FAKE_PROVIDER_KEY = 'sk-fake-integration-key-000000000000';
 const OTP_TIMEOUT_MS = 20_000;
@@ -196,11 +196,11 @@ async function isKeyPresent(baseUrl: string, masterKey: string, alias: string): 
 
 describe.skipIf(!ENABLED)('AIs integration (real server)', () => {
   it('create → cap → patch cap → delete, against real ejabberd and LiteLLM', async () => {
-    const baseUrl = process.env['GALENA_AIS_INTEGRATION_URL'] ?? 'http://127.0.0.1:3188';
-    const logPath = requireEnv('GALENA_AIS_INTEGRATION_LOG');
-    const invite = requireEnv('GALENA_AIS_INVITE_CODE');
-    const email = requireEnv('GALENA_AIS_TEST_EMAIL');
-    const domain = process.env['XMPP_DOMAIN'] ?? 'galena.localhost';
+    const baseUrl = process.env['ZILAR_AIS_INTEGRATION_URL'] ?? 'http://127.0.0.1:3188';
+    const logPath = requireEnv('ZILAR_AIS_INTEGRATION_LOG');
+    const invite = requireEnv('ZILAR_AIS_INVITE_CODE');
+    const email = requireEnv('ZILAR_AIS_TEST_EMAIL');
+    const domain = process.env['XMPP_DOMAIN'] ?? 'zilar.localhost';
     const litellmBaseUrl = (process.env['LITELLM_BASE_URL'] ?? DEFAULT_LITELLM_BASE_URL).replace(
       /\/+$/,
       '',
@@ -230,7 +230,7 @@ describe.skipIf(!ENABLED)('AIs integration (real server)', () => {
       const before = await fileSize(logPath);
       const sendResponse = await request(baseUrl, '/api/auth/email-otp/send-verification-otp', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+        headers: { 'content-type': 'application/json', 'x-zilar-invite': invite },
         body: { email, type: 'sign-in' },
       });
       expect(sendResponse.status).toBe(200);
@@ -241,7 +241,7 @@ describe.skipIf(!ENABLED)('AIs integration (real server)', () => {
 
       const signInResponse = await request(baseUrl, '/api/auth/sign-in/email-otp', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+        headers: { 'content-type': 'application/json', 'x-zilar-invite': invite },
         body: { email, otp },
       });
       expect(signInResponse.status).toBe(200);
@@ -382,23 +382,23 @@ async function listModels(baseUrl: string, masterKey: string): Promise<ModelList
  * A failure part way best-effort deletes whatever it created.
  *
  * Required env vars (the same as the AIs test, plus):
- *   GALENA_AI_MODELS_INTEGRATION=1
+ *   ZILAR_AI_MODELS_INTEGRATION=1
  *   LITELLM_MASTER_KEY=<key>
 + *   DATABASE_URL=<the same Postgres the server runs against>
-+ *   GALENA_KEY_ENCRYPTION_KEY=<the same key cipher the server runs with>
++ *   ZILAR_KEY_ENCRYPTION_KEY=<the same key cipher the server runs with>
  *
  * Optional:
- *   GALENA_AIS_INTEGRATION_URL (default http://127.0.0.1:3188)
-+ *   XMPP_DOMAIN                (default galena.localhost)
+ *   ZILAR_AIS_INTEGRATION_URL (default http://127.0.0.1:3188)
++ *   XMPP_DOMAIN                (default zilar.localhost)
  *   LITELLM_BASE_URL           (default http://127.0.0.1:4000)
  */
 describe.skipIf(!MODELS_ENABLED)('AI models integration (real server + LiteLLM)', () => {
   it('registers a private model, routes it to the owner key, and deletes both', async () => {
-    const baseUrl = process.env['GALENA_AIS_INTEGRATION_URL'] ?? 'http://127.0.0.1:3188';
-    const logPath = requireEnv('GALENA_AIS_INTEGRATION_LOG');
-    const invite = requireEnv('GALENA_AIS_INVITE_CODE');
-    const email = requireEnv('GALENA_AIS_TEST_EMAIL');
-    const domain = process.env['XMPP_DOMAIN'] ?? 'galena.localhost';
+    const baseUrl = process.env['ZILAR_AIS_INTEGRATION_URL'] ?? 'http://127.0.0.1:3188';
+    const logPath = requireEnv('ZILAR_AIS_INTEGRATION_LOG');
+    const invite = requireEnv('ZILAR_AIS_INVITE_CODE');
+    const email = requireEnv('ZILAR_AIS_TEST_EMAIL');
+    const domain = process.env['XMPP_DOMAIN'] ?? 'zilar.localhost';
     const litellmBaseUrl = (process.env['LITELLM_BASE_URL'] ?? DEFAULT_LITELLM_BASE_URL).replace(
       /\/+$/,
       '',
@@ -417,7 +417,7 @@ describe.skipIf(!MODELS_ENABLED)('AI models integration (real server + LiteLLM)'
       const before = await fileSize(logPath);
       const sendResponse = await request(baseUrl, '/api/auth/email-otp/send-verification-otp', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+        headers: { 'content-type': 'application/json', 'x-zilar-invite': invite },
         body: { email, type: 'sign-in' },
       });
       expect(sendResponse.status).toBe(200);
@@ -428,7 +428,7 @@ describe.skipIf(!MODELS_ENABLED)('AI models integration (real server + LiteLLM)'
 
       const signInResponse = await request(baseUrl, '/api/auth/sign-in/email-otp', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+        headers: { 'content-type': 'application/json', 'x-zilar-invite': invite },
         body: { email, otp },
       });
       expect(signInResponse.status).toBe(200);
@@ -514,7 +514,7 @@ describe.skipIf(!MODELS_ENABLED)('AI models integration (real server + LiteLLM)'
             // Unused by `ensureAiModel`; the in-memory stand-in makes no calls.
             adminClient: new FakeAdminClient(),
             litellm,
-            cipher: createKeyCipher(requireEnv('GALENA_KEY_ENCRYPTION_KEY')),
+            cipher: createKeyCipher(requireEnv('ZILAR_KEY_ENCRYPTION_KEY')),
             logger: { warn: () => undefined },
             domain,
           },

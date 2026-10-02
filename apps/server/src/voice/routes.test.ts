@@ -47,7 +47,7 @@ let ipCounter = 0;
 
 async function signIn(context: TestContext, app: TestApp): Promise<string> {
   ipCounter += 1;
-  const email = `voice-${ipCounter}@galena.test`;
+  const email = `voice-${ipCounter}@zilar.test`;
   const invite = await createInvite(context.db, { createdBy: null });
   const headers = {
     'content-type': 'application/json',
@@ -90,7 +90,7 @@ describe('POST /api/voice', () => {
         authorization: `Bearer ${bearer}`,
         'content-type': 'audio/webm',
         // A client-reported duration must never be trusted.
-        'x-galena-duration-ms': '999999',
+        'x-zilar-duration-ms': '999999',
       },
       body: new Uint8Array([1, 2, 3, 4, 5]),
     });
@@ -99,7 +99,7 @@ describe('POST /api/voice', () => {
     expect(response.headers.get('content-type')).toBe('audio/mp4');
     // The input container had no duration; this is the converted file's.
     expect(engine.inputProbed.durationMs).toBeUndefined();
-    expect(response.headers.get('x-galena-duration-ms')).toBe('1234');
+    expect(response.headers.get('x-zilar-duration-ms')).toBe('1234');
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(CONVERTED);
     expect(engine.conversions).toHaveLength(1);
   });

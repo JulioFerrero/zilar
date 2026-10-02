@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import type { Sticker } from '@galena/protocol';
+import type { Sticker } from '@zilar/protocol';
 import { isSameOriginStickerUrl } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
 import { MessageTicks } from './MessageTicks';
-import type { UiMessage } from '@galena/chat-core';
-import { formatFullDateTime, formatTime } from '@galena/chat-core';
+import type { UiMessage } from '@zilar/chat-core';
+import { formatFullDateTime, formatTime } from '@zilar/chat-core';
 
 export interface StickerMessageProps {
   sticker: Sticker;
@@ -15,7 +15,7 @@ export interface StickerMessageProps {
 /**
  * A sticker without a bubble: at most 200 px on the chat background, with
  * the time and ticks overlaid in a small pill. The image loads from the
- * payload `url` only when it is on the same origin as the Galena API;
+ * payload `url` only when it is on the same origin as the Zilar API;
  * anything else shows a placeholder so a hostile sender cannot make every
  * viewer's browser fetch an arbitrary URL.
  */

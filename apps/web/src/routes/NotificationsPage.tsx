@@ -28,7 +28,7 @@ import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 
-const DEVICE_KEY = 'galena:pushDevice';
+const DEVICE_KEY = 'zilar:pushDevice';
 
 interface StoredDevice {
   id: string;
@@ -86,7 +86,7 @@ function friendlyError(error: unknown): string {
       return 'The browser did not grant permission. Allow notifications for this site, then try again.';
     }
     if (error.message.includes('cannot toggle push')) {
-      return 'The chat connection is offline. Open Galena, wait for it to connect, then try again.';
+      return 'The chat connection is offline. Open Zilar, wait for it to connect, then try again.';
     }
     return error.message;
   }
@@ -382,7 +382,7 @@ export function NotificationsPage() {
             {showIosHint && (
               <p className="rounded-xl border border-border bg-surface-raised p-3 text-[14px]">
                 On iPhone, push needs the installed app (iOS 16.4+): open the Share menu, choose
-                “Add to Home Screen”, then open Galena from the home screen and enable below.
+                “Add to Home Screen”, then open Zilar from the home screen and enable below.
               </p>
             )}
             <section aria-label="This device" className="flex flex-col gap-2">

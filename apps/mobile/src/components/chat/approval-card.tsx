@@ -1,4 +1,4 @@
-import type { ApprovalRequest } from '@galena/protocol';
+import type { ApprovalRequest } from '@zilar/protocol';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 

@@ -61,7 +61,7 @@ export function fingerprintOfPublicKey(publicKeyBase64: string): string {
 }
 
 // Proof-of-possession check: `signature` must be an ed25519 signature by
-// `publicKey` over `galena-pair:v1:<NORMALIZED_CODE>`. Returns false (never
+// `publicKey` over `zilar-pair:v1:<NORMALIZED_CODE>`. Returns false (never
 // throws) for a malformed key, a malformed signature, or a signature over
 // anything else — including someone else's public key.
 export function verifyPairingSignature(

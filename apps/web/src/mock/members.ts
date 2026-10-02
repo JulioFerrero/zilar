@@ -1,4 +1,4 @@
-import type { MentionMember } from '@galena/chat-core';
+import type { MentionMember } from '@zilar/chat-core';
 import { mockGroupDetails } from './groups';
 
 /**
@@ -11,7 +11,7 @@ export const mockGroupMembers: Record<string, MentionMember[]> = Object.fromEntr
     chatId,
     [
       ...detail.members.map((member) => ({
-        jid: `${member.userId.toLowerCase()}@galena.test`,
+        jid: `${member.userId.toLowerCase()}@zilar.test`,
         name: member.name,
       })),
       ...detail.ais.map((ai) => ({ jid: ai.jid, name: ai.name })),

@@ -9,7 +9,7 @@ import {
   type MentionMember,
   type ReplyRef,
   type UiMention,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 import { ArrowUp, Mic, Paperclip, Smile, X } from 'lucide-react';
 import {
   useCallback,

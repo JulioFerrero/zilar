@@ -1,4 +1,4 @@
-import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@galena/xmpp-core';
+import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import { describe, expect, it, vi } from 'vitest';
 
 import { connectionLabel } from '../lib/connection';
@@ -17,7 +17,7 @@ function message(overrides: Partial<ChatMessage> & { chatJid: string; body: stri
   return {
     id: `m-${overrides.body}`,
     kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
-    fromJid: 'ana@galena.test',
+    fromJid: 'ana@zilar.test',
     fromResolved: true,
     timestamp: new Date('2026-09-28T10:00:00Z'),
     outgoing: false,
@@ -38,7 +38,7 @@ function correctionMessage(overrides: {
     id: overrides.id,
     chatJid: overrides.chatJid,
     kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
-    fromJid: overrides.fromJid ?? 'ana@galena.test',
+    fromJid: overrides.fromJid ?? 'ana@zilar.test',
     fromResolved: true,
     timestamp: overrides.timestamp,
     outgoing: false,
@@ -60,7 +60,7 @@ function retractionMessage(overrides: {
     id: overrides.id,
     chatJid: overrides.chatJid,
     kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
-    fromJid: overrides.fromJid ?? 'ana@galena.test',
+    fromJid: overrides.fromJid ?? 'ana@zilar.test',
     fromResolved: true,
     timestamp: overrides.timestamp,
     outgoing: false,
@@ -81,7 +81,7 @@ function reactionMessage(overrides: {
     id: overrides.id,
     chatJid: overrides.chatJid,
     kind: overrides.chatJid.includes('@rooms.') ? 'groupchat' : 'chat',
-    fromJid: overrides.fromJid ?? 'ana@galena.test',
+    fromJid: overrides.fromJid ?? 'ana@zilar.test',
     fromResolved: true,
     timestamp: overrides.timestamp,
     outgoing: false,
@@ -128,7 +128,7 @@ function fakeXmpp(connectGate?: Promise<void>): FakeXmpp {
 
   const core = {
     status: () => 'online' as const,
-    me: () => 'me@galena.test',
+    me: () => 'me@zilar.test',
     connect: vi.fn(async () => {
       await connectGate;
     }),
@@ -186,22 +186,22 @@ function fakeApi(overrides: Partial<ChatApi> = {}): ChatApi {
   return {
     getMe: vi.fn(async () => ({
       id: 'u-me',
-      email: 'me@galena.test',
+      email: 'me@zilar.test',
       name: 'Me',
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
     })),
     getChats: vi.fn(async () => [
-      { kind: 'dm' as const, chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+      { kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
       {
         kind: 'group' as const,
-        chatJid: 'team@rooms.galena.test',
+        chatJid: 'team@rooms.zilar.test',
         title: 'Team',
         groupId: 'g1',
         memberCount: 3,
         role: 'member' as const,
       },
     ]),
-    getContacts: vi.fn(async () => [{ userId: 'u-ana', name: 'Ana', jid: 'ana@galena.test' }]),
+    getContacts: vi.fn(async () => [{ userId: 'u-ana', name: 'Ana', jid: 'ana@zilar.test' }]),
     getGroup: vi.fn(async () => ({
       id: 'g1',
       title: 'Team',
@@ -210,12 +210,12 @@ function fakeApi(overrides: Partial<ChatApi> = {}): ChatApi {
       ais: [],
     })),
     getXmppToken: vi.fn(async () => ({
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
       token: 'tok',
       expiresAt: '2026-09-28T12:05:00Z',
       service: 'ws://x',
-      domain: 'galena.test',
-      mucDomain: 'rooms.galena.test',
+      domain: 'zilar.test',
+      mucDomain: 'rooms.zilar.test',
     })),
     ...overrides,
   };
@@ -249,26 +249,26 @@ async function setup(
   const api = fakeApi(overrides);
   const xmpp = fakeXmpp(connectGate);
   const appState = fakeAppState();
-  xmpp.history['ana@galena.test'] = [
+  xmpp.history['ana@zilar.test'] = [
     message({
       id: 'ana-1',
-      chatJid: 'ana@galena.test',
+      chatJid: 'ana@zilar.test',
       body: 'older',
       timestamp: new Date('2026-09-28T09:00:00Z'),
     }),
     message({
       id: 'ana-2',
-      chatJid: 'ana@galena.test',
+      chatJid: 'ana@zilar.test',
       body: 'newest',
       timestamp: new Date('2026-09-28T10:00:00Z'),
     }),
   ];
-  xmpp.history['team@rooms.galena.test'] = [
+  xmpp.history['team@rooms.zilar.test'] = [
     message({
       id: 'team-1',
-      chatJid: 'team@rooms.galena.test',
+      chatJid: 'team@rooms.zilar.test',
       body: 'group hello',
-      fromJid: 'ana@galena.test',
+      fromJid: 'ana@zilar.test',
       fromNick: 'ana',
       timestamp: new Date('2026-09-28T11:00:00Z'),
     }),
@@ -294,9 +294,9 @@ describe('createRealChatStore', () => {
     const { store } = await setup();
 
     const chats = store.getState().chats;
-    expect(chats.map((chat) => chat.id)).toEqual(['team@rooms.galena.test', 'ana@galena.test']);
-    expect(chats.find((chat) => chat.id === 'ana@galena.test')?.lastMessage?.text).toBe('newest');
-    expect(chats.find((chat) => chat.id === 'team@rooms.galena.test')?.lastMessage?.text).toBe(
+    expect(chats.map((chat) => chat.id)).toEqual(['team@rooms.zilar.test', 'ana@zilar.test']);
+    expect(chats.find((chat) => chat.id === 'ana@zilar.test')?.lastMessage?.text).toBe('newest');
+    expect(chats.find((chat) => chat.id === 'team@rooms.zilar.test')?.lastMessage?.text).toBe(
       'group hello',
     );
     expect(store.getState().currentUserId).toBe('u-me');
@@ -309,17 +309,17 @@ describe('createRealChatStore', () => {
       'message',
       message({
         id: 'ana-3',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'live one',
         timestamp: new Date('2026-09-28T12:01:00Z'),
       }),
     );
 
-    const chat = store.getState().chats.find((entry) => entry.id === 'ana@galena.test');
+    const chat = store.getState().chats.find((entry) => entry.id === 'ana@zilar.test');
     expect(chat?.lastMessage?.text).toBe('live one');
     expect(chat?.unread).toBe(1);
-    expect(store.getState().messages('ana@galena.test').at(-1)?.id).toBe('ana-3');
-    expect(store.getState().chats[0]?.id).toBe('ana@galena.test');
+    expect(store.getState().messages('ana@zilar.test').at(-1)?.id).toBe('ana-3');
+    expect(store.getState().chats[0]?.id).toBe('ana@zilar.test');
   });
 
   it('clears unread and sends a displayed marker when a chat is opened', async () => {
@@ -328,19 +328,19 @@ describe('createRealChatStore', () => {
       'message',
       message({
         id: 'ana-3',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'unread',
         timestamp: new Date('2026-09-28T12:01:00Z'),
       }),
     );
-    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.unread).toBe(1);
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.unread).toBe(1);
 
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
-    expect(store.getState().chats.find((chat) => chat.id === 'ana@galena.test')?.unread).toBe(0);
+    expect(store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.unread).toBe(0);
     expect(xmpp.core.markDisplayed).toHaveBeenCalledWith(
-      'ana@galena.test',
+      'ana@zilar.test',
       'chat',
       expect.any(String),
     );
@@ -349,8 +349,8 @@ describe('createRealChatStore', () => {
   it('adds a sent message optimistically and confirms it without duplicating the echo', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendText('ana@galena.test', 'hello there');
-    const optimist = store.getState().messages('ana@galena.test').at(-1);
+    store.getState().sendText('ana@zilar.test', 'hello there');
+    const optimist = store.getState().messages('ana@zilar.test').at(-1);
     expect(optimist?.text).toBe('hello there');
     expect(optimist?.status).toBe('sending');
 
@@ -358,7 +358,7 @@ describe('createRealChatStore', () => {
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .find((item) => item.text === 'hello there')?.status,
     ).toBe('sent');
 
@@ -366,9 +366,9 @@ describe('createRealChatStore', () => {
       'message',
       message({
         id: 'srv-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'hello there',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:02:00Z'),
       }),
@@ -376,7 +376,7 @@ describe('createRealChatStore', () => {
 
     const matches = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .filter((item) => item.text === 'hello there');
     expect(matches).toHaveLength(1);
     expect(matches[0]?.id).toBe('srv-1');
@@ -385,41 +385,41 @@ describe('createRealChatStore', () => {
   it('keeps the bubble and the list in agreement through sending and reading', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendText('ana@galena.test', 'agree');
+    store.getState().sendText('ana@zilar.test', 'agree');
     expect(
-      store.getState().chats.find((entry) => entry.id === 'ana@galena.test')?.lastMessage?.status,
+      store.getState().chats.find((entry) => entry.id === 'ana@zilar.test')?.lastMessage?.status,
     ).toBe('sending');
 
     await flush();
     expect(
-      store.getState().chats.find((entry) => entry.id === 'ana@galena.test')?.lastMessage?.status,
+      store.getState().chats.find((entry) => entry.id === 'ana@zilar.test')?.lastMessage?.status,
     ).toBe('sent');
 
     xmpp.emit('displayed', {
-      chatJid: 'ana@galena.test',
-      fromJid: 'ana@galena.test',
+      chatJid: 'ana@zilar.test',
+      fromJid: 'ana@zilar.test',
       messageId: 'srv-1',
       outgoing: false,
     });
     expect(
       store
         .getState()
-        .messages('ana@galena.test')
+        .messages('ana@zilar.test')
         .find((item) => item.text === 'agree')?.status,
     ).toBe('read');
     expect(
-      store.getState().chats.find((entry) => entry.id === 'ana@galena.test')?.lastMessage?.status,
+      store.getState().chats.find((entry) => entry.id === 'ana@zilar.test')?.lastMessage?.status,
     ).toBe('read');
   });
 
   it('keeps a message read when the server echo arrives after a displayed marker', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendText('ana@galena.test', 'late echo');
+    store.getState().sendText('ana@zilar.test', 'late echo');
     await flush();
     xmpp.emit('displayed', {
-      chatJid: 'ana@galena.test',
-      fromJid: 'ana@galena.test',
+      chatJid: 'ana@zilar.test',
+      fromJid: 'ana@zilar.test',
       messageId: 'srv-1',
       outgoing: false,
     });
@@ -427,18 +427,18 @@ describe('createRealChatStore', () => {
       'message',
       message({
         id: 'srv-1',
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: 'late echo',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:02:00Z'),
       }),
     );
 
-    const chat = store.getState().chats.find((entry) => entry.id === 'ana@galena.test');
+    const chat = store.getState().chats.find((entry) => entry.id === 'ana@zilar.test');
     const bubble = store
       .getState()
-      .messages('ana@galena.test')
+      .messages('ana@zilar.test')
       .find((item) => item.text === 'late echo');
     expect(bubble?.status).toBe('read');
     expect(chat?.lastMessage?.status).toBe('read');
@@ -448,72 +448,72 @@ describe('createRealChatStore', () => {
     const { store, xmpp } = await setup();
 
     xmpp.emit('typing', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'me@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'me@zilar.test',
       state: 'composing',
       outgoing: false,
     });
-    expect(store.getState().typing['team@rooms.galena.test']).toBeUndefined();
+    expect(store.getState().typing['team@rooms.zilar.test']).toBeUndefined();
 
     xmpp.emit('typing', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'ana@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'ana@zilar.test',
       state: 'composing',
       outgoing: false,
     });
-    expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Ana']);
+    expect(store.getState().typing['team@rooms.zilar.test']?.names).toEqual(['Ana']);
   });
 
   it('ignores my own displayed marker reflected from a group', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendText('team@rooms.galena.test', 'mine');
+    store.getState().sendText('team@rooms.zilar.test', 'mine');
     await flush();
 
     xmpp.emit('displayed', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'me@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'me@zilar.test',
       messageId: 'srv-1',
       outgoing: false,
     });
-    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.status).toBe('sent');
+    expect(store.getState().messages('team@rooms.zilar.test').at(-1)?.status).toBe('sent');
 
     xmpp.emit('displayed', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'ana@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'ana@zilar.test',
       messageId: 'srv-1',
       outgoing: false,
     });
-    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.status).toBe('read');
+    expect(store.getState().messages('team@rooms.zilar.test').at(-1)?.status).toBe('read');
   });
 
   it('ignores an unresolved own typing reflection from a group', async () => {
     const { store, xmpp } = await setup();
 
     xmpp.emit('typing', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'team@rooms.galena.test/mynick',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'team@rooms.zilar.test/mynick',
       state: 'composing',
       outgoing: true,
     });
 
-    expect(store.getState().typing['team@rooms.galena.test']).toBeUndefined();
+    expect(store.getState().typing['team@rooms.zilar.test']).toBeUndefined();
   });
 
   it('ignores an unresolved own displayed reflection from a group', async () => {
     const { store, xmpp } = await setup();
 
-    store.getState().sendText('team@rooms.galena.test', 'mine');
+    store.getState().sendText('team@rooms.zilar.test', 'mine');
     await flush();
 
     xmpp.emit('displayed', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'team@rooms.galena.test/mynick',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'team@rooms.zilar.test/mynick',
       messageId: 'srv-1',
       outgoing: true,
     });
 
-    expect(store.getState().messages('team@rooms.galena.test').at(-1)?.status).toBe('sent');
+    expect(store.getState().messages('team@rooms.zilar.test').at(-1)?.status).toBe('sent');
   });
 
   it('shows a group member name for typing when they are not a contact', async () => {
@@ -528,73 +528,73 @@ describe('createRealChatStore', () => {
     await flush();
 
     xmpp.emit('typing', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'u-luis@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'u-luis@zilar.test',
       state: 'composing',
       outgoing: false,
     });
 
-    expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Luis']);
+    expect(store.getState().typing['team@rooms.zilar.test']?.names).toEqual(['Luis']);
   });
 
   it('shows Someone instead of a JID localpart for an unknown group sender', async () => {
     const { store, xmpp } = await setup();
 
     xmpp.emit('typing', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'z9y8x7@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'z9y8x7@zilar.test',
       state: 'composing',
       outgoing: false,
     });
 
-    expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Someone']);
+    expect(store.getState().typing['team@rooms.zilar.test']?.names).toEqual(['Someone']);
   });
 
   it('uses the occupant nick when a group sender is not a known member', async () => {
     const { store, xmpp } = await setup();
     vi.mocked(xmpp.core.occupants).mockReturnValue([
       {
-        jid: 'team@rooms.galena.test/pablo',
+        jid: 'team@rooms.zilar.test/pablo',
         nick: 'Pablo',
         available: true,
-        realJid: 'pablo@galena.test',
+        realJid: 'pablo@zilar.test',
       },
     ]);
 
     xmpp.emit('typing', {
-      chatJid: 'team@rooms.galena.test',
-      fromJid: 'pablo@galena.test',
+      chatJid: 'team@rooms.zilar.test',
+      fromJid: 'pablo@zilar.test',
       state: 'composing',
       outgoing: false,
     });
 
-    expect(store.getState().typing['team@rooms.galena.test']?.names).toEqual(['Pablo']);
+    expect(store.getState().typing['team@rooms.zilar.test']?.names).toEqual(['Pablo']);
   });
 
   it('paginates older messages on demand', async () => {
     const history = Array.from({ length: 60 }, (_, index) =>
       message({
         id: `ana-${index}`,
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         body: `msg ${index}`,
         timestamp: new Date(Date.UTC(2026, 8, 28, 8, index)),
       }),
     );
     const { store, xmpp } = await setup();
-    xmpp.history['ana@galena.test'] = history;
+    xmpp.history['ana@zilar.test'] = history;
 
-    store.getState().openChat('ana@galena.test');
+    store.getState().openChat('ana@zilar.test');
     await flush();
 
-    expect(store.getState().messages('ana@galena.test')).toHaveLength(50);
-    expect(store.getState().hasMore('ana@galena.test')).toBe(true);
+    expect(store.getState().messages('ana@zilar.test')).toHaveLength(50);
+    expect(store.getState().hasMore('ana@zilar.test')).toBe(true);
 
-    store.getState().loadOlder('ana@galena.test');
+    store.getState().loadOlder('ana@zilar.test');
     await flush();
 
-    expect(store.getState().messages('ana@galena.test')).toHaveLength(60);
-    expect(store.getState().messages('ana@galena.test')[0]?.id).toBe('ana-0');
-    expect(store.getState().hasMore('ana@galena.test')).toBe(false);
+    expect(store.getState().messages('ana@zilar.test')).toHaveLength(60);
+    expect(store.getState().messages('ana@zilar.test')[0]?.id).toBe('ana-0');
+    expect(store.getState().hasMore('ana@zilar.test')).toBe(false);
   });
 
   it('reflects connection status changes and the connecting bar', async () => {
@@ -648,7 +648,7 @@ describe('createRealChatStore', () => {
 });
 
 describe('AI reply drafts (T-0056)', () => {
-  const CHAT = 'ana@galena.test';
+  const CHAT = 'ana@zilar.test';
   const TURN_ONE = '3f1a2b3c-4d5e-6f70-8a9b-0c1d2e3f4a5b';
   const TURN_TWO = '11111111-2222-3333-4444-555555555555';
 
@@ -749,7 +749,7 @@ describe('AI reply drafts (T-0056)', () => {
         id: 'mine-1',
         chatJid: CHAT,
         body: 'note to self',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
       }),
     );
 
@@ -903,7 +903,7 @@ describe('AI reply drafts (T-0056)', () => {
 });
 
 describe('loading states (T-0067)', () => {
-  const ANA = 'ana@galena.test';
+  const ANA = 'ana@zilar.test';
 
   it('reports the chat list as loading until it arrives, then loaded', async () => {
     const gate = deferred();
@@ -921,7 +921,7 @@ describe('loading states (T-0067)', () => {
     await flushUntil(() => store.getState().chatsLoad === 'loaded');
 
     expect(store.getState().chatsLoad).toBe('loaded');
-    expect(store.getState().chats.map((chat) => chat.id)).toEqual(['team@rooms.galena.test', ANA]);
+    expect(store.getState().chats.map((chat) => chat.id)).toEqual(['team@rooms.zilar.test', ANA]);
   });
 
   it('lands a failed chat list in error and reloadChats recovers', async () => {
@@ -1096,17 +1096,17 @@ describe('loading states (T-0067)', () => {
     loadHistory.mockClear();
 
     store.getState().openChat(ANA);
-    store.getState().openChat('team@rooms.galena.test');
+    store.getState().openChat('team@rooms.zilar.test');
     // The superseded chat's pending marker is cleared, so it is not loading.
     expect(store.getState().historyLoad[ANA]).toBeUndefined();
-    expect(store.getState().historyLoad['team@rooms.galena.test']).toBe('loading');
+    expect(store.getState().historyLoad['team@rooms.zilar.test']).toBe('loading');
 
     gate.resolve();
-    await flushUntil(() => store.getState().historyLoad['team@rooms.galena.test'] === 'loaded');
+    await flushUntil(() => store.getState().historyLoad['team@rooms.zilar.test'] === 'loaded');
 
     const pageLoads = loadHistory.mock.calls.filter((call) => call[2]?.max === 50);
     expect(pageLoads).toHaveLength(1);
-    expect(pageLoads[0]?.[0]).toBe('team@rooms.galena.test');
+    expect(pageLoads[0]?.[0]).toBe('team@rooms.zilar.test');
   });
 
   it('lands a failed history in error and retryHistory recovers', async () => {
@@ -1194,7 +1194,7 @@ describe('loading states (T-0067)', () => {
     });
 
     await expect(
-      store.getState().openAtMessage('team@rooms.galena.test', 'team-99'),
+      store.getState().openAtMessage('team@rooms.zilar.test', 'team-99'),
     ).rejects.toThrow('message_not_found');
     expect(pages).toBeLessThanOrEqual(MESSAGE_JUMP_MAX_PAGES + 1);
   });
@@ -1239,7 +1239,7 @@ describe('loading states (T-0067)', () => {
 });
 
 describe('message edits, retractions and reactions received (T-0078)', () => {
-  const ANA = 'ana@galena.test';
+  const ANA = 'ana@zilar.test';
 
   it('applies a live correction and retraction from the original sender', async () => {
     const { store, xmpp } = await setup();
@@ -1296,7 +1296,7 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
         targetId: 'ana-1',
         text: 'hijacked',
         timestamp: new Date('2026-09-28T12:05:00Z'),
-        fromJid: 'luis@galena.test',
+        fromJid: 'luis@zilar.test',
       }),
     );
     xmpp.emit(
@@ -1306,7 +1306,7 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
         chatJid: ANA,
         targetId: 'ana-2',
         timestamp: new Date('2026-09-28T12:06:00Z'),
-        fromJid: 'luis@galena.test',
+        fromJid: 'luis@zilar.test',
       }),
     );
 
@@ -1603,7 +1603,7 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
 });
 
 describe('mobile sends reactions, deletions and edits (T-0085)', () => {
-  const ANA = 'ana@galena.test';
+  const ANA = 'ana@zilar.test';
 
   function outgoingMessage(overrides: {
     id: string;
@@ -1615,7 +1615,7 @@ describe('mobile sends reactions, deletions and edits (T-0085)', () => {
   }): ChatMessage {
     return message({
       ...overrides,
-      fromJid: overrides.fromJid ?? 'me@galena.test',
+      fromJid: overrides.fromJid ?? 'me@zilar.test',
       outgoing: true,
     });
   }
@@ -1749,7 +1749,7 @@ describe('mobile sends reactions, deletions and edits (T-0085)', () => {
 
   it('uses the stanza-id as the wire target for a group message', async () => {
     const { store, xmpp } = await setup();
-    const group = 'team@rooms.galena.test';
+    const group = 'team@rooms.zilar.test';
     // The mobile store keys group messages by their stanza-id, the only id
     // the wire sees in a room.
     xmpp.emit(
@@ -1812,7 +1812,7 @@ describe('mobile sends reactions, deletions and edits (T-0085)', () => {
 
   it('uses the stanza-id for a group retraction and the origin id for a DM', async () => {
     const { store, xmpp } = await setup();
-    const group = 'team@rooms.galena.test';
+    const group = 'team@rooms.zilar.test';
     // Mine in a DM with the origin id different from the stanza id.
     xmpp.emit(
       'message',
@@ -1981,7 +1981,7 @@ describe('mobile sends reactions, deletions and edits (T-0085)', () => {
 });
 
 describe('mobile sends stickers (T-0143)', () => {
-  const ANA = 'ana@galena.test';
+  const ANA = 'ana@zilar.test';
   const STICKER_ID = '223e4567-e89b-12d3-a456-426614174001';
   const CHOICE = {
     stickerId: STICKER_ID,
@@ -2032,7 +2032,7 @@ describe('mobile sends stickers (T-0143)', () => {
         id: 'srv-sticker-1',
         chatJid: ANA,
         body: '🐱',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:02:00Z'),
         payload: {
@@ -2073,7 +2073,7 @@ describe('mobile sends stickers (T-0143)', () => {
         id,
         chatJid: ANA,
         body: '🐱',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:02:00Z'),
         payload: {
@@ -2202,7 +2202,7 @@ describe('mobile sends stickers (T-0143)', () => {
         id: 'srv-retry-1',
         chatJid: ANA,
         body: '🐱',
-        fromJid: 'me@galena.test',
+        fromJid: 'me@zilar.test',
         outgoing: true,
         timestamp: new Date('2026-09-28T12:02:00Z'),
         payload: {

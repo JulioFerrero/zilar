@@ -1,6 +1,6 @@
 import {
   API_URL,
-  createGalenaAuthClient,
+  createZilarAuthClient,
   sendSignInCode,
   signOutSession,
   verifySignInCode,
@@ -11,7 +11,7 @@ import { createAuthStore, toAuthError, type AuthApi, type AuthError } from './se
 
 const storage = createSecureSessionStorage();
 
-const authClient = createGalenaAuthClient({
+const authClient = createZilarAuthClient({
   baseURL: API_URL,
   getToken: () => storage.getToken(),
   onToken: (token) => {

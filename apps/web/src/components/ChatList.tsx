@@ -93,7 +93,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   // count in place.
   const pendingApprovals = usePendingApprovalCount(menuOpen);
   // Installable app (T-0119): the browser offers `beforeinstallprompt` when
-  // Galena is installable; the menu then carries an Install entry.
+  // Zilar is installable; the menu then carries an Install entry.
   const { installEvent, promptInstall } = useInstallPrompt();
   const [installFailed, setInstallFailed] = useState(false);
   const approvalsBadge =

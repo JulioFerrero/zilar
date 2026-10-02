@@ -1,5 +1,5 @@
 {
-  "name": "galena",
+  "name": "zilar",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.32.1",
@@ -18,8 +18,8 @@
     "infra:down": "docker compose -f infra/docker-compose.dev.yml --env-file infra/.env down",
     "infra:logs": "docker compose -f infra/docker-compose.dev.yml --env-file infra/.env logs -f",
     "infra:reset": "node infra/reset.mjs",
-    "infra:smoke": "pnpm --filter @galena/devtools smoke",
-    "xmpp:e2e": "pnpm --filter @galena/devtools xmpp:e2e",
+    "infra:smoke": "pnpm --filter @zilar/devtools smoke",
+    "xmpp:e2e": "pnpm --filter @zilar/devtools xmpp:e2e",
     "screenshots": "node --experimental-strip-types scripts/screenshots.ts"
   },
   "devDependencies": {

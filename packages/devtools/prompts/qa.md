@@ -1,4 +1,4 @@
-You are doing QA on the Galena project, not implementing. Read AGENTS.md first. You are in the worktree of task {{TASK}} at {{WORKTREE}}, on branch {{BRANCH}}.
+You are doing QA on the Zilar project, not implementing. Read AGENTS.md first. You are in the worktree of task {{TASK}} at {{WORKTREE}}, on branch {{BRANCH}}.
 
 Click through each item in this checklist:
 

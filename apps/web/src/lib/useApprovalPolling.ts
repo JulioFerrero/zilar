@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ApprovalRequest } from '@galena/protocol';
+import type { ApprovalRequest } from '@zilar/protocol';
 import { ApiError, getApproval, type PublicApproval } from '@/lib/api';
 
 export type ApprovalPollingState =

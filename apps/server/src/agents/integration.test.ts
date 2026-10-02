@@ -2,7 +2,7 @@
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { createXmppCore, type ChatMessage } from '@galena/xmpp-core';
+import { createXmppCore, type ChatMessage } from '@zilar/xmpp-core';
 import { PROVIDER_KEY_REJECTED_REPLY } from './reply';
 import type { XmppConfig } from '../xmpp/config';
 import { localpartFor } from '../xmpp/provisioning';
@@ -31,24 +31,24 @@ import { issueXmppToken } from '../xmpp/token';
  *    test support allows.
  *
  * Required env vars:
- *   GALENA_AGENT_INTEGRATION=1                  (turns the test on)
- *   GALENA_AIS_INTEGRATION_URL=<branch server>  (e.g. http://127.0.0.1:3199)
- *   GALENA_AIS_INTEGRATION_LOG=<file>           (server log, to read the OTP)
- *   GALENA_AIS_INVITE_CODE=<invite>             (a fresh, unused invite code)
- *   GALENA_AIS_TEST_EMAIL=<email>               (a brand-new test email)
+ *   ZILAR_AGENT_INTEGRATION=1                  (turns the test on)
+ *   ZILAR_AIS_INTEGRATION_URL=<branch server>  (e.g. http://127.0.0.1:3199)
+ *   ZILAR_AIS_INTEGRATION_LOG=<file>           (server log, to read the OTP)
+ *   ZILAR_AIS_INVITE_CODE=<invite>             (a fresh, unused invite code)
+ *   ZILAR_AIS_TEST_EMAIL=<email>               (a brand-new test email)
  *   EJABBERD_API_URL=<url>                      (e.g. http://127.0.0.1:5280/api)
- *   EJABBERD_ADMIN_JID=<jid>                    (e.g. admin@galena.localhost)
+ *   EJABBERD_ADMIN_JID=<jid>                    (e.g. admin@zilar.localhost)
  *   EJABBERD_ADMIN_PASSWORD=<password>
- *   GALENA_XMPP_JWT_SECRET=<the same JWT secret the server signs with>
+ *   ZILAR_XMPP_JWT_SECRET=<the same JWT secret the server signs with>
  *
  * Optional:
- *   XMPP_DOMAIN       (default galena.localhost)
+ *   XMPP_DOMAIN       (default zilar.localhost)
  *   XMPP_WS_URL       (default ws://127.0.0.1:5280/ws)
  *
  * A failure part way best-effort deletes whatever it created.
  */
 
-const ENABLED = process.env['GALENA_AGENT_INTEGRATION'] === '1';
+const ENABLED = process.env['ZILAR_AGENT_INTEGRATION'] === '1';
 
 const FAKE_PROVIDER_KEY = 'sk-fake-agent-key-000000000000';
 const OTP_TIMEOUT_MS = 20_000;
@@ -275,11 +275,11 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
     'owner DM in, provider-key rejection out, failed end on the draft stream',
     { timeout: REPLY_TIMEOUT_MS + 60_000 },
     async () => {
-      const baseUrl = requireEnv('GALENA_AIS_INTEGRATION_URL');
-      const logPath = requireEnv('GALENA_AIS_INTEGRATION_LOG');
-      const invite = requireEnv('GALENA_AIS_INVITE_CODE');
-      const email = requireEnv('GALENA_AIS_TEST_EMAIL');
-      const domain = process.env['XMPP_DOMAIN'] ?? 'galena.localhost';
+      const baseUrl = requireEnv('ZILAR_AIS_INTEGRATION_URL');
+      const logPath = requireEnv('ZILAR_AIS_INTEGRATION_LOG');
+      const invite = requireEnv('ZILAR_AIS_INVITE_CODE');
+      const email = requireEnv('ZILAR_AIS_TEST_EMAIL');
+      const domain = process.env['XMPP_DOMAIN'] ?? 'zilar.localhost';
       const wsUrl = process.env['XMPP_WS_URL'] ?? 'ws://127.0.0.1:5280/ws';
       const xmppConfig: XmppConfig = {
         apiUrl: requireEnv('EJABBERD_API_URL').replace(/\/+$/, ''),
@@ -288,7 +288,7 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
         domain,
         mucDomain: process.env['XMPP_MUC_DOMAIN'] ?? `rooms.${domain}`,
         wsPublicUrl: wsUrl,
-        jwtSecret: requireEnv('GALENA_XMPP_JWT_SECRET'),
+        jwtSecret: requireEnv('ZILAR_XMPP_JWT_SECRET'),
       };
 
       let token: string | undefined;
@@ -303,7 +303,7 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
         const before = await fileSize(logPath);
         const sendResponse = await request(baseUrl, '/api/auth/email-otp/send-verification-otp', {
           method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+          headers: { 'content-type': 'application/json', 'x-zilar-invite': invite },
           body: { email, type: 'sign-in' },
         });
         expect(sendResponse.status).toBe(200);
@@ -314,7 +314,7 @@ describe.skipIf(!ENABLED)('agent gateway integration (real XMPP + LiteLLM)', () 
 
         const signInResponse = await request(baseUrl, '/api/auth/sign-in/email-otp', {
           method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-galena-invite': invite },
+          headers: { 'content-type': 'application/json', 'x-zilar-invite': invite },
           body: { email, otp },
         });
         expect(signInResponse.status).toBe(200);

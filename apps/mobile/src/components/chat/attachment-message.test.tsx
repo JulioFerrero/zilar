@@ -1,4 +1,4 @@
-import type { Attachment } from '@galena/protocol';
+import type { Attachment } from '@zilar/protocol';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -45,12 +45,12 @@ vi.mock('@/lib/session-token', () => ({
   getSessionToken: async () => 'tok',
 }));
 
-const TRUSTED = new Set(['upload.galena.test', 'galena.test']);
+const TRUSTED = new Set(['upload.zilar.test', 'zilar.test']);
 
 function image(overrides: Partial<Attachment> = {}): Attachment {
   return {
     kind: 'image',
-    url: 'https://upload.galena.test/get/stage.png',
+    url: 'https://upload.zilar.test/get/stage.png',
     name: 'stage.png',
     size: 245_760,
     mime: 'image/png',
@@ -63,7 +63,7 @@ function image(overrides: Partial<Attachment> = {}): Attachment {
 function file(overrides: Partial<Attachment> = {}): Attachment {
   return {
     kind: 'file',
-    url: 'https://upload.galena.test/get/tickets.pdf',
+    url: 'https://upload.zilar.test/get/tickets.pdf',
     name: 'tickets.pdf',
     size: 2_411_724,
     mime: 'application/pdf',
@@ -176,7 +176,7 @@ describe('attachment rendering (T-0150)', () => {
   it('renders the viewer with a close button and the image', () => {
     const html = renderToStaticMarkup(
       createElement(AttachmentViewer, {
-        url: 'https://upload.galena.test/get/stage.png',
+        url: 'https://upload.zilar.test/get/stage.png',
         name: 'stage.png',
         onClose: () => {},
       }),

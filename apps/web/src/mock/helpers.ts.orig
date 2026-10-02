@@ -1,5 +1,5 @@
-import type { VoiceMeta } from '@galena/chat-core';
-import type { Payload } from '@galena/protocol';
+import type { VoiceMeta } from '@zilar/chat-core';
+import type { Payload } from '@zilar/protocol';
 import { AI_JIDS, ROOMS } from './ids';
 
 /** A local date `daysAgo` days back at the given wall-clock time. */

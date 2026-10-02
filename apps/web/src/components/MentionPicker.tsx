@@ -1,4 +1,4 @@
-import { isAiJid, type MentionMember } from '@galena/chat-core';
+import { isAiJid, type MentionMember } from '@zilar/chat-core';
 import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
 import { cn } from '@/lib/utils';

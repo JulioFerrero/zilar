@@ -274,10 +274,10 @@ export function mockDevteamGroupDetail(): {
       { userId: 'marta', name: 'Marta', role: 'member', roles: [] },
     ],
     ais: [
-      { aiId: 'dev-ai', jid: 'ai-dev-ai@galena.test', name: 'Dev AI', ownerId: 'me' },
+      { aiId: 'dev-ai', jid: 'ai-dev-ai@zilar.test', name: 'Dev AI', ownerId: 'me' },
       {
         aiId: 'marketing-ai',
-        jid: 'ai-marketing-ai@galena.test',
+        jid: 'ai-marketing-ai@zilar.test',
         name: 'Marketing AI',
         ownerId: 'me',
       },

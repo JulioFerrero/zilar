@@ -21,7 +21,7 @@ const SESSION: SessionRef = { sessionId: 'ses_1' };
 const AFTER: PromptRef = { messageId: 'msg_user_1', createdAt: 0 };
 
 const startOptions: StartOptions = {
-  directory: '/tmp/galena-desk',
+  directory: '/tmp/zilar-desk',
   model: { providerID: 'opencode', id: 'deepseek-v4.1-flash' },
   rules: [{ action: 'shell', resource: 'git push*', effect: 'deny' }],
 };
@@ -151,7 +151,7 @@ describe('createOpenCodeV2Driver', () => {
     expect(create?.method).toBe('POST');
     expect(create?.body).toEqual({
       model: { providerID: 'opencode', id: 'deepseek-v4.1-flash' },
-      location: { directory: '/tmp/galena-desk' },
+      location: { directory: '/tmp/zilar-desk' },
       permissions: [{ action: 'shell', resource: 'git push*', effect: 'deny' }],
     });
   });

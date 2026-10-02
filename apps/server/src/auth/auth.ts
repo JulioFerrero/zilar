@@ -11,7 +11,7 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { consumeInvite, findUsableInvite } from './invites';
 import type { Mailer } from './mailer';
 
-export const INVITE_HEADER = 'x-galena-invite';
+export const INVITE_HEADER = 'x-zilar-invite';
 export const OTP_LENGTH = 6;
 export const OTP_EXPIRES_IN_SECONDS = 10 * 60;
 export const OTP_ALLOWED_ATTEMPTS = 5;

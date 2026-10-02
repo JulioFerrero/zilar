@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadServerConfig } from './config';
 
-const VALID_DATABASE_URL = 'postgres://galena:hunter2@127.0.0.1:5432/galena';
+const VALID_DATABASE_URL = 'postgres://zilar:hunter2@127.0.0.1:5432/zilar';
 const VALID_SECRET = 'a'.repeat(32);
 
 const VALID_XMPP_ENV = {
-  EJABBERD_ADMIN_JID: 'admin@galena.localhost',
+  EJABBERD_ADMIN_JID: 'admin@zilar.localhost',
   EJABBERD_ADMIN_PASSWORD: 'admin-password',
-  GALENA_XMPP_JWT_SECRET: 'x'.repeat(40),
+  ZILAR_XMPP_JWT_SECRET: 'x'.repeat(40),
 };
 
 const VALID_XMPP = {
   apiUrl: 'http://127.0.0.1:5280/api',
-  adminJid: 'admin@galena.localhost',
+  adminJid: 'admin@zilar.localhost',
   adminPassword: 'admin-password',
-  domain: 'galena.localhost',
-  mucDomain: 'rooms.galena.localhost',
+  domain: 'zilar.localhost',
+  mucDomain: 'rooms.zilar.localhost',
   wsPublicUrl: 'ws://127.0.0.1:5280/ws',
   jwtSecret: 'x'.repeat(40),
 };
@@ -75,19 +75,19 @@ describe('loadServerConfig', () => {
       loadServerConfig({
         NODE_ENV: 'production',
         PORT: '8080',
-        DATABASE_URL: 'postgresql://galena:hunter2@db.internal:5432/galena',
+        DATABASE_URL: 'postgresql://zilar:hunter2@db.internal:5432/zilar',
         LOG_LEVEL: 'debug',
         PUBLIC_URL: 'https://chat.example.com',
         BETTER_AUTH_SECRET: VALID_SECRET,
         BETTER_AUTH_URL: 'https://auth.example.com',
         WEB_ORIGINS: 'https://app.example.com, https://admin.example.com',
-        XMPP_ARCHIVE_DATABASE_URL: 'postgres://galena_archive:hunter2@127.0.0.1:5432/ejabberd',
+        XMPP_ARCHIVE_DATABASE_URL: 'postgres://zilar_archive:hunter2@127.0.0.1:5432/ejabberd',
         ...VALID_XMPP_ENV,
       }),
     ).toEqual({
       NODE_ENV: 'production',
       PORT: 8080,
-      DATABASE_URL: 'postgresql://galena:hunter2@db.internal:5432/galena',
+      DATABASE_URL: 'postgresql://zilar:hunter2@db.internal:5432/zilar',
       LOG_LEVEL: 'debug',
       PUBLIC_URL: 'https://chat.example.com',
       BETTER_AUTH_SECRET: VALID_SECRET,
@@ -101,7 +101,7 @@ describe('loadServerConfig', () => {
       SMTP_PORT: 587,
       SMTP_SECURE: false,
       MAIL_ALLOW_CONSOLE_IN_PRODUCTION: false,
-      XMPP_ARCHIVE_DATABASE_URL: 'postgres://galena_archive:hunter2@127.0.0.1:5432/ejabberd',
+      XMPP_ARCHIVE_DATABASE_URL: 'postgres://zilar_archive:hunter2@127.0.0.1:5432/ejabberd',
       AGENT_GATEWAY_ENABLED: false,
       RUNNER_HUB_ENABLED: false,
       RUNNER_HUB_PORT: 3189,
@@ -178,7 +178,7 @@ describe('loadServerConfig', () => {
     const message = configErrorMessage({
       DATABASE_URL: VALID_DATABASE_URL,
       BETTER_AUTH_SECRET: VALID_SECRET,
-      XMPP_ARCHIVE_DATABASE_URL: 'mysql://galena_archive:hunter2@127.0.0.1:3306/ejabberd',
+      XMPP_ARCHIVE_DATABASE_URL: 'mysql://zilar_archive:hunter2@127.0.0.1:3306/ejabberd',
       ...VALID_XMPP_ENV,
     });
     expect(message).toContain('XMPP_ARCHIVE_DATABASE_URL');
@@ -191,7 +191,7 @@ describe('loadServerConfig', () => {
       BETTER_AUTH_SECRET: VALID_SECRET,
     });
     expect(message).toContain('EJABBERD_ADMIN_JID');
-    expect(message).toContain('GALENA_XMPP_JWT_SECRET');
+    expect(message).toContain('ZILAR_XMPP_JWT_SECRET');
     expect(message).not.toContain('admin-password');
   });
 
@@ -230,10 +230,10 @@ describe('loadServerConfig', () => {
     const config = loadServerConfig({
       DATABASE_URL: VALID_DATABASE_URL,
       BETTER_AUTH_SECRET: VALID_SECRET,
-      PUBLIC_URL: 'https://galena.example.com',
+      PUBLIC_URL: 'https://zilar.example.com',
       ...VALID_XMPP_ENV,
     });
-    expect(config.BETTER_AUTH_URL).toBe('https://galena.example.com');
+    expect(config.BETTER_AUTH_URL).toBe('https://zilar.example.com');
   });
 
   it('lists every missing required variable without printing values', () => {
@@ -247,7 +247,7 @@ describe('loadServerConfig', () => {
     const message = configErrorMessage({
       NODE_ENV: 'nope',
       PORT: 'abc',
-      DATABASE_URL: 'mysql://galena:hunter2@127.0.0.1:3306/galena',
+      DATABASE_URL: 'mysql://zilar:hunter2@127.0.0.1:3306/zilar',
       LOG_LEVEL: 'loud',
       PUBLIC_URL: 'not-a-url',
       BETTER_AUTH_SECRET: 'too-short-to-be-a-valid-secret',
@@ -471,9 +471,9 @@ describe('loadServerConfig', () => {
     };
     expect(loadServerConfig(base).STICKER_STORAGE_DIR).toBe('./data/stickers');
     expect(
-      loadServerConfig({ ...base, STICKER_STORAGE_DIR: '/var/lib/galena/stickers' })
+      loadServerConfig({ ...base, STICKER_STORAGE_DIR: '/var/lib/zilar/stickers' })
         .STICKER_STORAGE_DIR,
-    ).toBe('/var/lib/galena/stickers');
+    ).toBe('/var/lib/zilar/stickers');
   });
 
   it('rejects an empty sticker storage dir', () => {
@@ -623,7 +623,7 @@ describe('mail transport config', () => {
         ...base,
         MAIL_TRANSPORT: 'smtp',
         SMTP_HOST: 'smtp.example.com',
-        MAIL_FROM: 'Galena <no-reply@example.com>',
+        MAIL_FROM: 'Zilar <no-reply@example.com>',
         SMTP_PORT: '465',
       }).SMTP_PORT,
     ).toBe(465);
@@ -648,7 +648,7 @@ describe('mail transport config', () => {
       ...base,
       MAIL_TRANSPORT: 'smtp',
       SMTP_HOST: 'smtp.example.com',
-      MAIL_FROM: 'Galena <no-reply@example.com>',
+      MAIL_FROM: 'Zilar <no-reply@example.com>',
       SMTP_USER: 'smtp-user',
       SMTP_PASSWORD: 'smtp-password',
     });
@@ -672,7 +672,7 @@ describe('mail transport config', () => {
         ...base,
         MAIL_TRANSPORT: 'smtp',
         SMTP_HOST: 'smtp.example.com',
-        MAIL_FROM: 'Galena <no-reply@example.com>',
+        MAIL_FROM: 'Zilar <no-reply@example.com>',
         ...partial,
       });
       expect(message).toContain('SMTP_USER and SMTP_PASSWORD must be set together');
@@ -706,7 +706,7 @@ describe('mail transport config', () => {
       ...base,
       MAIL_TRANSPORT: 'smtp',
       SMTP_HOST: 'smtp.example.com',
-      MAIL_FROM: 'Galena <no-reply@example.com>',
+      MAIL_FROM: 'Zilar <no-reply@example.com>',
       MAIL_REPLY_TO: badReplyTo,
     });
     expect(replyTo).toContain('MAIL_REPLY_TO');
@@ -719,7 +719,7 @@ describe('mail transport config', () => {
       ...base,
       MAIL_TRANSPORT: 'smtp',
       SMTP_HOST: 'smtp.example.com',
-      MAIL_FROM: 'Galena <no-reply@example.com>',
+      MAIL_FROM: 'Zilar <no-reply@example.com>',
       SMTP_PASSWORD: password,
       SMTP_PORT: 'bogus-port',
     });

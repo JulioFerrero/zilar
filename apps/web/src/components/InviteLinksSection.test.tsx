@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import { AuthProvider, type AuthState } from '@/auth/AuthProvider';
 import type { GroupDetail } from '@/lib/api';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
@@ -9,7 +9,7 @@ import { GroupPanel } from './GroupPanel';
 
 const auth: AuthState = {
   status: 'authenticated',
-  user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+  user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
 

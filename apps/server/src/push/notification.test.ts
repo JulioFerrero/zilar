@@ -42,7 +42,7 @@ function publishIq(node: string, fields: Array<[string, string]> = []): PushXmpp
   ]);
   return element(
     'iq',
-    { type: 'set', from: 'galena.localhost', to: 'push.galena.localhost', id: 'n1' },
+    { type: 'set', from: 'zilar.localhost', to: 'push.zilar.localhost', id: 'n1' },
     [
       element('pubsub', { xmlns: PUBSUB_NAMESPACE }, [
         element('publish', { node }, [
@@ -57,27 +57,27 @@ describe('parsePushIq', () => {
   it('parses a publish IQ with the summary fields', () => {
     const parsed = parsePushIq(
       publishIq('p-device1', [
-        ['last-message-sender', 'ana@galena.localhost'],
+        ['last-message-sender', 'ana@zilar.localhost'],
         ['last-message-body', 'hello'],
       ]),
     );
     expect(parsed).toMatchObject({
       node: 'p-device1',
-      from: 'galena.localhost',
-      lastMessageSender: 'ana@galena.localhost',
+      from: 'zilar.localhost',
+      lastMessageSender: 'ana@zilar.localhost',
       lastMessageBody: 'hello',
     });
   });
 
   it('parses a notification without a summary form', () => {
-    const stanza = element('iq', { type: 'set', from: 'galena.localhost', id: 'n1' }, [
+    const stanza = element('iq', { type: 'set', from: 'zilar.localhost', id: 'n1' }, [
       element('pubsub', { xmlns: PUBSUB_NAMESPACE }, [
         element('publish', { node: 'p-x' }, [
           element('item', {}, [element('notification', { xmlns: PUSH_NAMESPACE }, [])]),
         ]),
       ]),
     ]);
-    expect(parsePushIq(stanza)).toMatchObject({ node: 'p-x', from: 'galena.localhost' });
+    expect(parsePushIq(stanza)).toMatchObject({ node: 'p-x', from: 'zilar.localhost' });
   });
 
   it('rejects non-publish stanzas', () => {

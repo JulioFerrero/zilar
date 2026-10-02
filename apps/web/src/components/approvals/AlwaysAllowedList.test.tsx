@@ -8,7 +8,7 @@ import type { ApprovalRule } from '@/lib/api';
 
 const auth: AuthState = {
   status: 'authenticated',
-  user: { id: 'u-you', name: 'You', email: 'you@galena.test' },
+  user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
 

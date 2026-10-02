@@ -18,8 +18,8 @@ const PUSH_ENV = {
   PUSH_ENABLED: 'true',
   PUSH_VAPID_PUBLIC_KEY: 'test-vapid-public-key',
   PUSH_VAPID_PRIVATE_KEY: 'test-vapid-private-key',
-  PUSH_VAPID_SUBJECT: 'mailto:test@galena.localhost',
-  PUSH_COMPONENT_JID: 'push.galena.localhost',
+  PUSH_VAPID_SUBJECT: 'mailto:test@zilar.localhost',
+  PUSH_COMPONENT_JID: 'push.zilar.localhost',
   PUSH_COMPONENT_SECRET: 'test-component-secret-0000000000000000',
   PUSH_STORAGE_KEY: 'test-push-storage-key-0000000000000000',
 };
@@ -100,7 +100,7 @@ describe('push routes', () => {
     });
     expect(subscribe.status).toBe(200);
     const registered = (await subscribe.json()) as { id: string; node: string; jid: string };
-    expect(registered.jid).toBe('push.galena.localhost');
+    expect(registered.jid).toBe('push.zilar.localhost');
     expect(registered.node).toMatch(/^[A-Za-z0-9._~-]{1,256}$/);
 
     const listed = await app.request(`${TEST_BASE_URL}/api/push/subscriptions`, { headers });
@@ -285,7 +285,7 @@ describe('push routes', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]!.endpoint).toBe('https://push.example.com/test-1');
     expect(JSON.parse(sent[0]!.payload)).toEqual({
-      title: 'Galena',
+      title: 'Zilar',
       body: 'Push notifications work on this device.',
     });
     // A successful test proves receipt: last_used_at is stamped (N1).

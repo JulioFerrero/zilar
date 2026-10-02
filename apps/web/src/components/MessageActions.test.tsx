@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, within } from '@testing-library/react';
-import type { ChatSummary, UiMessage } from '@galena/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { renderApp } from '@/test/renderApp';
 
 afterEach(() => {

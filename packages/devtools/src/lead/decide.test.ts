@@ -10,7 +10,7 @@ import {
 } from './decide';
 import { newTaskRecord, type TaskRecord } from './types';
 
-const WORKTREE = '/Users/julio/personal-projects/galena-T-0038';
+const WORKTREE = '/Users/julio/personal-projects/zilar-T-0038';
 
 function record(overrides: Partial<TaskRecord> = {}): TaskRecord {
   return {

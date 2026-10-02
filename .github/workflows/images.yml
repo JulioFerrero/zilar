@@ -21,16 +21,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: galena-server
+          - name: zilar-server
             file: apps/server/Dockerfile
             context: .
-          - name: galena-web
+          - name: zilar-web
             file: apps/web/Dockerfile
             context: .
-          - name: galena-postgres
+          - name: zilar-postgres
             file: deploy/postgres/Dockerfile
             context: deploy
-          - name: galena-ejabberd
+          - name: zilar-ejabberd
             file: deploy/ejabberd/Dockerfile
             context: deploy
     steps:

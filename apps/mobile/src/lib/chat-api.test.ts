@@ -14,10 +14,10 @@ describe('createChatApi', () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({
         chats: [
-          { kind: 'dm', chatJid: 'ana@galena.test', title: 'Ana', userId: 'u-ana' },
+          { kind: 'dm', chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
           {
             kind: 'group',
-            chatJid: 'team@rooms.galena.test',
+            chatJid: 'team@rooms.zilar.test',
             title: 'Team',
             groupId: 'g1',
             memberCount: 3,
@@ -33,7 +33,7 @@ describe('createChatApi', () => {
     expect(chats).toHaveLength(2);
     expect(chats[0]).toEqual({
       kind: 'dm',
-      chatJid: 'ana@galena.test',
+      chatJid: 'ana@zilar.test',
       title: 'Ana',
       userId: 'u-ana',
     });
@@ -45,10 +45,10 @@ describe('createChatApi', () => {
   it('parses the profile, contacts, group and XMPP token', async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       if (url.endsWith('/api/me')) {
-        return jsonResponse({ id: 'u-me', email: 'me@galena.test', name: 'Me', jid: null });
+        return jsonResponse({ id: 'u-me', email: 'me@zilar.test', name: 'Me', jid: null });
       }
       if (url.endsWith('/api/contacts')) {
-        return jsonResponse([{ userId: 'u-ana', name: 'Ana', jid: 'ana@galena.test' }]);
+        return jsonResponse([{ userId: 'u-ana', name: 'Ana', jid: 'ana@zilar.test' }]);
       }
       if (url.includes('/api/groups/')) {
         return jsonResponse({
@@ -59,28 +59,28 @@ describe('createChatApi', () => {
         });
       }
       return jsonResponse({
-        jid: 'me@galena.test',
+        jid: 'me@zilar.test',
         token: 'jwt',
         expiresAt: '2026-09-28T12:05:00Z',
         service: 'ws://x',
-        domain: 'galena.test',
-        mucDomain: 'rooms.galena.test',
+        domain: 'zilar.test',
+        mucDomain: 'rooms.zilar.test',
       });
     });
     const api = createChatApi(async () => 't', fetchImpl as unknown as typeof fetch);
 
     await expect(api.getMe()).resolves.toEqual({
       id: 'u-me',
-      email: 'me@galena.test',
+      email: 'me@zilar.test',
       name: 'Me',
       jid: null,
     });
     await expect(api.getContacts()).resolves.toEqual([
-      { userId: 'u-ana', name: 'Ana', jid: 'ana@galena.test' },
+      { userId: 'u-ana', name: 'Ana', jid: 'ana@zilar.test' },
     ]);
     await expect(api.getGroup('g1')).resolves.toMatchObject({ id: 'g1', title: 'Team' });
     await expect(api.getXmppToken()).resolves.toMatchObject({
-      jid: 'me@galena.test',
+      jid: 'me@zilar.test',
       token: 'jwt',
     });
   });
@@ -138,7 +138,7 @@ describe('createChatApi', () => {
           chats: [
             {
               kind: 'group',
-              chatJid: 'acme@rooms.galena.test',
+              chatJid: 'acme@rooms.zilar.test',
               title: 'Acme Announcements',
               groupId: 'g-acme',
               memberCount: 4,
@@ -164,7 +164,7 @@ describe('createChatApi', () => {
     await expect(api.getChats()).resolves.toEqual([
       {
         kind: 'group',
-        chatJid: 'acme@rooms.galena.test',
+        chatJid: 'acme@rooms.zilar.test',
         title: 'Acme Announcements',
         groupId: 'g-acme',
         memberCount: 4,
@@ -186,7 +186,7 @@ describe('createChatApi', () => {
         chats: [
           {
             kind: 'group',
-            chatJid: 'team@rooms.galena.test',
+            chatJid: 'team@rooms.zilar.test',
             title: 'Team',
             groupId: 'g1',
             memberCount: 3,
@@ -200,7 +200,7 @@ describe('createChatApi', () => {
     await expect(api.getChats()).resolves.toEqual([
       {
         kind: 'group',
-        chatJid: 'team@rooms.galena.test',
+        chatJid: 'team@rooms.zilar.test',
         title: 'Team',
         groupId: 'g1',
         memberCount: 3,
@@ -215,7 +215,7 @@ describe('createChatApi', () => {
         chats: [
           {
             kind: 'group',
-            chatJid: 'team@rooms.galena.test',
+            chatJid: 'team@rooms.zilar.test',
             title: 'Team',
             groupId: 'g1',
             memberCount: 3,

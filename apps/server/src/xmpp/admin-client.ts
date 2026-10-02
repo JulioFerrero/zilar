@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import { JidSchema } from '@galena/protocol';
+import { JidSchema } from '@zilar/protocol';
 import type { XmppConfig } from './config';
 
 // Localparts and room ids are lowercase by design; they become part of a JID.

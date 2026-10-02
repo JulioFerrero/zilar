@@ -8,7 +8,7 @@ import {
   shouldRenderMarkdown,
   type ChatSummary,
   type UiMessage,
-} from '@galena/chat-core';
+} from '@zilar/chat-core';
 import { MoreHorizontal } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { AiBadge } from './AiBadge';

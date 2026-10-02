@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
-import type { ChatSummary, UiMessage } from '@galena/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { renderApp } from '@/test/renderApp';
 
 const chat: ChatSummary = {
@@ -35,7 +35,7 @@ describe('attachment bubbles (T-0065)', () => {
       message({
         attachment: {
           kind: 'image',
-          url: 'https://files.galena.test/stage.png',
+          url: 'https://files.zilar.test/stage.png',
           name: 'stage.png',
           size: 200,
           mime: 'image/png',
@@ -52,7 +52,7 @@ describe('attachment bubbles (T-0065)', () => {
     expect(image.style.aspectRatio).toBe('800 / 400');
 
     const link = within(list).getByRole('link');
-    expect(link.getAttribute('href')).toBe('https://files.galena.test/stage.png');
+    expect(link.getAttribute('href')).toBe('https://files.zilar.test/stage.png');
   });
 
   it('renders a file attachment as a card with a download link', () => {
@@ -60,7 +60,7 @@ describe('attachment bubbles (T-0065)', () => {
       message({
         attachment: {
           kind: 'file',
-          url: 'https://files.galena.test/tickets.pdf',
+          url: 'https://files.zilar.test/tickets.pdf',
           name: 'tickets.pdf',
           size: 2_411_724,
           mime: 'application/pdf',
@@ -80,7 +80,7 @@ describe('attachment bubbles (T-0065)', () => {
         failed: true,
         attachment: {
           kind: 'image',
-          url: 'https://files.galena.test/stage.png',
+          url: 'https://files.zilar.test/stage.png',
           name: 'stage.png',
           size: 200,
           mime: 'image/png',
@@ -144,7 +144,7 @@ describe('attachment bubbles (T-0065)', () => {
             senderName: 'You',
             attachment: {
               kind: 'file',
-              url: 'https://files.galena.test/tickets.pdf',
+              url: 'https://files.zilar.test/tickets.pdf',
               name: 'tickets.pdf',
               size: 100,
               mime: 'application/pdf',

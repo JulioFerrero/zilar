@@ -1,16 +1,16 @@
-# Galena web icons
+# Zilar web icons
 
-Source: `galena-mark.svg` (a chat bubble with three dots on near-black,
+Source: `zilar-mark.svg` (a chat bubble with three dots on near-black,
 matching the app's dark theme). The PNGs below are generated from it with
 macOS `sips` — no new dependency. Re-run these exact commands after changing
 the mark:
 
 ```bash
 cd apps/web
-sips -s format png public/icons/galena-mark.svg --out public/icons/icon-512.png -z 512 512
-sips -s format png public/icons/galena-mark.svg --out public/icons/icon-maskable-512.png -z 512 512
-sips -s format png public/icons/galena-mark.svg --out public/icons/icon-192.png -z 192 192
-sips -s format png public/icons/galena-mark.svg --out public/icons/apple-touch-icon.png -z 180 180
+sips -s format png public/icons/zilar-mark.svg --out public/icons/icon-512.png -z 512 512
+sips -s format png public/icons/zilar-mark.svg --out public/icons/icon-maskable-512.png -z 512 512
+sips -s format png public/icons/zilar-mark.svg --out public/icons/icon-192.png -z 192 192
+sips -s format png public/icons/zilar-mark.svg --out public/icons/apple-touch-icon.png -z 180 180
 ```
 
 Notes:

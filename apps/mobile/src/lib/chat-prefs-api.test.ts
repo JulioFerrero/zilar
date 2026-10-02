@@ -14,13 +14,13 @@ describe('parseChatPref', () => {
   it('parses a valid row', () => {
     expect(
       parseChatPref({
-        chatJid: 'ana@galena.test',
+        chatJid: 'ana@zilar.test',
         mutedUntil: null,
         archived: false,
         pinnedAt: null,
         updatedAt: '2026-09-30T11:00:00Z',
       }),
-    ).toMatchObject({ chatJid: 'ana@galena.test', archived: false });
+    ).toMatchObject({ chatJid: 'ana@zilar.test', archived: false });
   });
 
   it('drops malformed rows', () => {
@@ -34,7 +34,7 @@ describe('parseChatPref', () => {
 
 describe('chat-prefs api client', () => {
   const row: ChatPref = {
-    chatJid: 'ana@galena.test',
+    chatJid: 'ana@zilar.test',
     mutedUntil: null,
     archived: false,
     pinnedAt: null,
@@ -48,15 +48,15 @@ describe('chat-prefs api client', () => {
 
     const putImpl = vi.fn(async () => jsonResponse(row));
     const putApi = createChatPrefsApi(async () => 'tok', putImpl as typeof fetch);
-    expect(await putApi.putChatPref('ana@galena.test', { archived: true })).toEqual(row);
+    expect(await putApi.putChatPref('ana@zilar.test', { archived: true })).toEqual(row);
     const [putUrl] = putImpl.mock.calls[0] as unknown as [string];
-    expect(putUrl).toContain('/api/chat-prefs/ana%40galena.test');
+    expect(putUrl).toContain('/api/chat-prefs/ana%40zilar.test');
   });
 
   it('answers null when the write landed on defaults (row deleted)', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ prefs: null }));
     const api = createChatPrefsApi(async () => 'tok', fetchImpl as typeof fetch);
-    expect(await api.putChatPref('ana@galena.test', { archived: false })).toBeNull();
+    expect(await api.putChatPref('ana@zilar.test', { archived: false })).toBeNull();
   });
 
   it('throws unauthorized without a session', async () => {

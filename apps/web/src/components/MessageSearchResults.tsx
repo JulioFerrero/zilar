@@ -62,8 +62,8 @@ export function MessageSearchResults({
         openHit(top);
       }
     };
-    window.addEventListener('galena:search-enter', onSearchEnter);
-    return () => window.removeEventListener('galena:search-enter', onSearchEnter);
+    window.addEventListener('zilar:search-enter', onSearchEnter);
+    return () => window.removeEventListener('zilar:search-enter', onSearchEnter);
   }, [openHit]);
 
   if (search.status === 'idle' || search.status === 'unavailable') {

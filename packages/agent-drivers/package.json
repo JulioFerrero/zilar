@@ -1,5 +1,5 @@
 {
-  "name": "@galena/agent-drivers",
+  "name": "@zilar/agent-drivers",
   "version": "0.1.0",
   "private": true,
   "type": "module",

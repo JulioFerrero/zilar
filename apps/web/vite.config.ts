@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: process.env.GALENA_API_URL ?? 'http://localhost:3000',
+        target: process.env.ZILAR_API_URL ?? 'http://localhost:3000',
         changeOrigin: true,
       },
     },

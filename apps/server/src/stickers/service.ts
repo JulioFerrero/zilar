@@ -800,7 +800,7 @@ export async function readStickerFile(
 }
 
 // Telegram import (T-0123): fetch a public pack's static stickers into a
-// private Galena pack. At most 200 stickers are considered and 120 imported
+// private Zilar pack. At most 200 stickers are considered and 120 imported
 // (the pack limit); animated/video stickers and invalid files are skipped
 // and counted; custom emoji sets are refused. The import runs inside the
 // request budget (`deadlineMs`): when the time is up it stops and reports

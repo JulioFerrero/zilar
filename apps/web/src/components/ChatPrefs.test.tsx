@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { act, fireEvent, screen, within } from '@testing-library/react';
-import type { ChatSummary } from '@galena/chat-core';
+import type { ChatSummary } from '@zilar/chat-core';
 import type { ChatPref } from '@/lib/api';
 import { renderApp } from '@/test/renderApp';
 

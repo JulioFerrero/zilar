@@ -1,4 +1,4 @@
-import { initials } from '@galena/chat-core';
+import { initials } from '@zilar/chat-core';
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';

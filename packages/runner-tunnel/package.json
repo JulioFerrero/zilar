@@ -1,5 +1,5 @@
 {
-  "name": "@galena/runner-tunnel",
+  "name": "@zilar/runner-tunnel",
   "version": "0.1.0",
   "private": true,
   "type": "module",
