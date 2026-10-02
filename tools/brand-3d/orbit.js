@@ -94,36 +94,55 @@ function smoothExtrude(shape, depth, bevel, offset = 0) {
   geo.computeVertexNormals();
   return geo;
 }
-// fine anodized grain, so the black key catches light like real machined metal
-function grainTexture(repeat) {
-  const size = 512;
+// machined-metal textures drawn on a canvas: `lines` are 1px streaks (horizontal in texture space), `noise` is fine grain
+function metalTexture({ width, height, seed, lines, noise, base = 128, spread = 40, repeat = [1, 1] }) {
   const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext('2d');
-  const image = ctx.createImageData(size, size);
-  const r = rand(3);
-  for (let i = 0; i < size * size; i++) {
-    const v = 110 + r() * 36;
+  const r = rand(seed);
+  const image = ctx.createImageData(width, height);
+  for (let i = 0; i < width * height; i++) {
+    const v = base + (r() - 0.5) * noise;
     image.data.set([v, v, v, 255], i * 4);
   }
   ctx.putImageData(image, 0, 0);
+  for (let i = 0; i < lines; i++) {
+    const y = r() * height;
+    const v = base + (r() - 0.5) * spread * 2;
+    ctx.strokeStyle = `rgba(${v},${v},${v},${0.35 + r() * 0.5})`;
+    ctx.lineWidth = 0.7 + r() * 1.3;
+    const x = r() * width;
+    const len = width * (0.3 + r() * 0.7);
+    ctx.beginPath();
+    ctx.moveTo(x - len, y);
+    ctx.lineTo(x + len, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - len + width, y);
+    ctx.lineTo(x + len + width, y);
+    ctx.stroke();
+  }
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(repeat, repeat);
+  texture.anisotropy = 8;
+  texture.repeat.set(...repeat);
   return texture;
 }
 const keyShape = roundedSquare(824, 190);
+const keyGrain = metalTexture({ width: 1024, height: 1024, seed: 3, lines: 5200, noise: 60, spread: 70, repeat: [1 / 520, 1 / 520] });
 const key = new THREE.Mesh(
   smoothExtrude(keyShape, 60, 30),
   new THREE.MeshPhysicalMaterial({
-    color: 0x0c0c0e,
-    metalness: 0.85,
-    roughness: 0.4,
-    envMapIntensity: 0.15,
-    clearcoat: 0.5,
-    clearcoatRoughness: 0.18,
-    bumpMap: grainTexture(1 / 300),
-    bumpScale: 0.6,
+    color: 0x131316,
+    metalness: 0.9,
+    roughness: 1,
+    roughnessMap: keyGrain,
+    envMapIntensity: 0.45,
+    bumpMap: keyGrain,
+    bumpScale: 1.5,
+    clearcoat: 0.25,
+    clearcoatRoughness: 0.35,
   }),
 );
 key.position.z = -60;
@@ -131,12 +150,19 @@ key.receiveShadow = true;
 scene.add(key);
 
 // ---------- a big silver sphere and a small one in orbit, like the earth and the moon ----------
-const mirror = new THREE.MeshStandardMaterial({ color: 0xf2f4f8, metalness: 1, roughness: 0.24, envMapIntensity: 2.0 });
-const satin = new THREE.MeshStandardMaterial({ color: 0xe6e9ee, metalness: 1, roughness: 0.3, envMapIntensity: 2 });
-mirror.bumpMap = grainTexture(7);
-mirror.bumpScale = 0.5;
-satin.bumpMap = grainTexture(4);
-satin.bumpScale = 0.5;
+const mirror = new THREE.MeshStandardMaterial({ color: 0xf2f4f8, metalness: 1, roughness: 0.12, envMapIntensity: 2.2 });
+// lathe-turned planet: fine latitude grooves; polished chrome moon
+const turned = metalTexture({ width: 64, height: 1024, seed: 8, lines: 900, noise: 14, base: 70, spread: 45 });
+const planetMaterial = new THREE.MeshStandardMaterial({
+  color: 0xe9ecf1,
+  metalness: 1,
+  roughness: 1,
+  roughnessMap: turned,
+  bumpMap: turned,
+  bumpScale: 0.8,
+  envMapIntensity: 2.4,
+});
+const moonMaterial = new THREE.MeshStandardMaterial({ color: 0xf5f6f9, metalness: 1, roughness: 0.2, envMapIntensity: 3 });
 const system = new THREE.Group();
 function ball(material, radius, position, parent) {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 128, 96), material);
@@ -148,12 +174,12 @@ const ORBIT = 310;
 const MOON_AT = 0.2 * Math.PI; // angle of the moon on its orbit
 const tilt = new THREE.Group();
 tilt.rotation.set(1.2, 0, 0.5);
-const orbitRing = new THREE.Mesh(new THREE.TorusGeometry(ORBIT, 4.5, 24, 360), mirror);
+const orbitRing = new THREE.Mesh(new THREE.TorusGeometry(ORBIT, 15, 32, 360), mirror);
 orbitRing.castShadow = true;
 tilt.add(orbitRing);
-ball(satin, 58, new THREE.Vector3(Math.cos(MOON_AT) * ORBIT, Math.sin(MOON_AT) * ORBIT, 0), tilt);
+ball(moonMaterial, 60, new THREE.Vector3(Math.cos(MOON_AT) * ORBIT, Math.sin(MOON_AT) * ORBIT, 0), tilt);
 system.add(tilt);
-ball(mirror, 200, new THREE.Vector3(0, 0, 0), system);
+ball(planetMaterial, 200, new THREE.Vector3(0, 0, 0), system);
 system.position.set(-6, -8, 400);
 system.scale.setScalar(0.88);
 scene.add(system);
