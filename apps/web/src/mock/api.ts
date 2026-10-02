@@ -911,6 +911,9 @@ function seedState(): MockState {
       email: 'you@zilar.test',
       name: 'You',
       image: null,
+      // T-0163: the mock user starts handle-less so the handle gate can be
+      // exercised; claiming sets it below.
+      handle: null,
       jid: `${currentUserId}@zilar.test`,
     },
     // Two AIs: one without usage, one at 85% of its daily limit (T-0069).
@@ -1175,6 +1178,36 @@ function notImplemented(): Response {
 function notFound(message: string): Response {
   return jsonResponse({ error: { code: 'not_found', message } }, 404);
 }
+
+// T-0163: mock handle availability. `taken-user` is always taken; reserved
+// words and bad shapes map like the server; everything else is free.
+function mockCheckHandle(raw: string): { available: boolean; reason?: string } {
+  const normalized = raw.toLowerCase();
+  if (!/^[a-z][a-z0-9_]{2,31}$/.test(raw)) {
+    return { available: false, reason: 'invalid' };
+  }
+  if (MOCK_RESERVED_HANDLES.has(normalized)) {
+    return { available: false, reason: 'reserved' };
+  }
+  if (normalized === 'taken_user') {
+    return { available: false, reason: 'taken' };
+  }
+  return { available: true };
+}
+
+const MOCK_RESERVED_HANDLES = new Set([
+  'admin',
+  'support',
+  'root',
+  'system',
+  'zilar',
+  'api',
+  'settings',
+  'me',
+  'bot',
+  'owner',
+  'moderator',
+]);
 
 function readJsonBody(init: RequestInit): Record<string, unknown> {
   if (typeof init.body !== 'string' || init.body === '') {
@@ -1804,15 +1837,36 @@ export async function mockRequest(
   }
 
   if (head === 'me') {
-    if (method === 'GET') return jsonResponse(state.me);
-    if (method === 'PATCH') {
+    if (method === 'GET' && first === undefined) return jsonResponse(state.me);
+    if (method === 'PATCH' && first === undefined) {
       const body = readJsonBody(init);
       if (typeof body.name === 'string') {
         state.me = { ...state.me, name: body.name };
       }
       return jsonResponse(state.me);
     }
+    // T-0163: claiming a handle in memory for the page load. `taken-user`
+    // is always taken; anything valid-shaped and non-reserved is free.
+    if (method === 'PUT' && first === 'handle') {
+      const body = readJsonBody(init);
+      const raw = typeof body.handle === 'string' ? body.handle.trim() : '';
+      const checked = mockCheckHandle(raw);
+      if (!checked.available) {
+        const code = checked.reason === 'invalid' ? 'handle_invalid' : 'handle_taken';
+        return jsonResponse({ error: { code, message: 'That username is not available' } }, 409);
+      }
+      state.me = { ...state.me, handle: raw };
+      return jsonResponse({ handle: raw });
+    }
     return notImplemented();
+  }
+
+  // T-0163: live handle availability, in memory for the page load.
+  // `taken-user` is always taken; anything valid-shaped and non-reserved is
+  // free.
+  if (head === 'handles' && first === 'check' && method === 'GET') {
+    const params = new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
+    return jsonResponse(mockCheckHandle((params.get('handle') ?? '').trim()));
   }
 
   if (head === 'chats' && method === 'GET') {

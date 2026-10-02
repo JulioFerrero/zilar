@@ -15,6 +15,7 @@ import {
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { HandleSuffix } from './HandleSuffix';
 import { ActivitySection } from './ais/AiActivity';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { PinsSection } from './PinsPanel';
@@ -365,7 +366,9 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                       className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
                     >
                       <Avatar id={member.userId} name={member.name} size={32} />
-                      <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
+                      <span className="min-w-0 flex-1 truncate text-[14px]">
+                        {member.name} <HandleSuffix handle={member.handle} />
+                      </span>
                       {chipRoles.map((role) => (
                         <span
                           key={role.id}

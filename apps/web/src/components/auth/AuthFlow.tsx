@@ -108,7 +108,8 @@ export function AuthFlow({
     const name = session.data?.user.name ?? '';
     const from = (location.state as { from?: string } | null)?.from;
     // A nameless user picks a name first, then continues to `from` — the
-    // name step reads the same `next` state JoinPage writes.
+    // name step reads the same `next` state JoinPage writes. The handle
+    // step follows the name step (HandlePage chains the same way).
     navigate(
       name.trim() === '' ? '/welcome/name' : (from ?? '/'),
       name.trim() === ''

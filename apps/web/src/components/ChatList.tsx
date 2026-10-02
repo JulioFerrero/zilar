@@ -1,6 +1,7 @@
 import { Archive, Loader2, Menu } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { AddContactDialog } from './AddContactDialog';
 import { ChatListItem } from './ChatListItem';
 import { EmptyState } from './EmptyState';
 import { FolderTabs } from './FolderTabs';
@@ -15,6 +16,7 @@ import { TopicKeyboardNav } from './TopicKeyboardNav';
 import { useDelayed } from '@/lib/useDelayed';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
+import { useContactRequestCount } from '@/lib/useContactRequestCount';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { useInstallPrompt } from '@/lib/push';
@@ -56,6 +58,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const archived = store.archivedChats();
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [addContactOpen, setAddContactOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [newTopicGroup, setNewTopicGroup] = useState<string | undefined>(undefined);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedGroups());
@@ -97,6 +100,9 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   // it, even for a flash.
   const isServerOwner = useIsServerOwner();
   const pendingApprovals = usePendingApprovalCount(menuOpen);
+  // T-0163: the incoming contact-request count badge, refetched on focus
+  // and every 60 seconds by the hook (no realtime channel in this task).
+  const incomingRequests = useContactRequestCount(true);
   // Installable app (T-0119): the browser offers `beforeinstallprompt` when
   // Zilar is installable; the menu then carries an Install entry.
   const { installEvent, promptInstall } = useInstallPrompt();
@@ -144,6 +150,36 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
               className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
             >
               Invite a friend
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                setAddContactOpen(true);
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+            >
+              Add contact
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                navigate('/settings/requests');
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+            >
+              <span className="flex-1">Requests</span>
+              {incomingRequests !== null && incomingRequests > 0 && (
+                <span
+                  aria-label={`${incomingRequests} incoming contact requests`}
+                  className="shrink-0 rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
+                >
+                  {incomingRequests > 9 ? '9+' : String(incomingRequests)}
+                </span>
+              )}
             </button>
             <button
               type="button"
@@ -327,7 +363,11 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
               </div>
             )}
             {chats.length === 0 && archived.length === 0 ? (
-              <EmptyState variant="no-chats" onInvite={() => setInviteOpen(true)} />
+              <EmptyState
+                variant="no-chats"
+                onInvite={() => setInviteOpen(true)}
+                onAddContact={() => setAddContactOpen(true)}
+              />
             ) : (
               <>
                 <TopicKeyboardNav>
@@ -402,8 +442,9 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
           </>
         )}
       </nav>
-      <NewChatButton />
+      <NewChatButton onAddContact={() => setAddContactOpen(true)} />
       {inviteOpen && <InviteDialog onClose={() => setInviteOpen(false)} />}
+      {addContactOpen && <AddContactDialog onClose={() => setAddContactOpen(false)} />}
       {newTopicGroup !== undefined && (
         <NewTopicDialog groupId={newTopicGroup} onClose={() => setNewTopicGroup(undefined)} />
       )}

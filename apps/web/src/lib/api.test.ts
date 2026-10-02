@@ -1230,3 +1230,87 @@ describe('integrations settings API (T-0162 + Email)', () => {
     expect(init.method).toBe('PUT');
   });
 });
+
+describe('handles and contact requests API', () => {
+  it('checkHandle encodes the handle as a query param', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { available: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { checkHandle } = await import('@/lib/api');
+    await expect(checkHandle('Ada Bo')).resolves.toEqual({ available: true });
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/handles/check?handle=Ada+Bo');
+  });
+
+  it('claimHandle PUTs the trimmed handle', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { handle: 'ada' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { claimHandle } = await import('@/lib/api');
+    await expect(claimHandle('ada')).resolves.toEqual({ handle: 'ada' });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/me/handle');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(init.body as string)).toEqual({ handle: 'ada' });
+  });
+
+  it('lookupByHandle encodes the handle in the path', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        userId: 'u-1',
+        name: 'Bob',
+        handle: 'bob_b',
+        image: null,
+        relation: 'none',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { lookupByHandle } = await import('@/lib/api');
+    await expect(lookupByHandle('bob_b')).resolves.toMatchObject({
+      userId: 'u-1',
+      relation: 'none',
+    });
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/users/by-handle/bob_b');
+  });
+
+  it('sendContactRequest POSTs the handle and parses the reverse flag', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(409, {
+        error: { code: 'request_exists', message: 'A request is already pending' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { sendContactRequest, ApiError } = await import('@/lib/api');
+    await expect(sendContactRequest('bob_b')).rejects.toMatchObject({
+      code: 'request_exists',
+    });
+    expect(ApiError).toBeDefined();
+  });
+
+  it('listContactRequests parses incoming and outgoing', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        incoming: [
+          {
+            id: 'r-1',
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+            other: { userId: 'u-2', name: 'Bob', handle: 'bob_b', image: null },
+          },
+        ],
+        outgoing: [],
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { listContactRequests } = await import('@/lib/api');
+    const list = await listContactRequests();
+    expect(list.incoming).toHaveLength(1);
+    expect(list.incoming[0]?.other.handle).toBe('bob_b');
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/contact-requests');
+  });
+});

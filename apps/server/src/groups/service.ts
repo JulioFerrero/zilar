@@ -8,6 +8,7 @@ import {
   groupAis,
   groupMembers,
   groups,
+  handles,
   topicAis,
   topicMembers,
   topics,
@@ -44,6 +45,8 @@ export interface GroupMemberView {
   role: GroupRole;
   /** T-0116: the custom group roles this member holds. */
   roles: Array<{ id: string; name: string }>;
+  /** T-0163: the member's `@username`, when they have one. */
+  handle?: string | null | undefined;
 }
 
 export type ChannelKind = 'group' | 'channel';
@@ -944,9 +947,15 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
 
 async function listGroupMembers(db: ServerDatabase, groupId: string): Promise<GroupMemberView[]> {
   const rows = await db
-    .select({ userId: groupMembers.userId, role: groupMembers.role, name: user.name })
+    .select({
+      userId: groupMembers.userId,
+      role: groupMembers.role,
+      name: user.name,
+      handle: handles.handle,
+    })
     .from(groupMembers)
     .innerJoin(user, eq(user.id, groupMembers.userId))
+    .leftJoin(handles, eq(handles.userId, groupMembers.userId))
     .where(eq(groupMembers.groupId, groupId));
 
   // T-0116: fold each member's custom roles into the same row. Role
@@ -958,6 +967,7 @@ async function listGroupMembers(db: ServerDatabase, groupId: string): Promise<Gr
       name: row.name,
       role: row.role,
       roles: byUser.get(row.userId) ?? [],
+      ...(row.handle ? { handle: row.handle } : {}),
     }))
     .sort(
       (a, b) =>

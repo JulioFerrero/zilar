@@ -1,7 +1,7 @@
 ---
 id: T-0163
 title: @usernames and contact requests
-status: planned
+status: review
 milestone: M5
 branch: task/T-0163-usernames-and-contact-requests
 model: meta/muse-spark-1.3-contributor
@@ -83,5 +83,43 @@ pnpm --filter @zilar/web test --maxWorkers=2 src/routes src/components src/lib/a
 ---
 
 ## Report (written by the worker when done)
+
+Done. @usernames and contact requests work end to end: pick a handle during onboarding, change it (14-day interval, 30-day reservation), add people by @username with a request they accept/decline, share links like `/@ada`.
+
+**Server** (`apps/server/src/`):
+- `db/schema.ts` + migration `0035_handles-contact-requests.sql` (one migration only, journal + snapshot): `handles` (PK `handle_lower`, typed `handle`, `user_id`/`group_id` unique FKs with exactly-one check; only `user_id` rows written), `retired_handles` (reservation until `reserved_until`), `contact_requests` (status enum check, partial unique pending index, different-users check).
+- `handles/rules.ts` (pure, tested): 3–32 chars `[a-z0-9_]` letter-first (typed casing accepted, compared lowercased), 19 reserved words (nobody may take them), `handle_invalid`/`handle_reserved`/`handle_taken`. `suggestHandle` shapes a suggestion from the name/email local part.
+- `handles/store.ts`: `checkHandleAvailability` (shape → live row → retired; own reservation reads as available), `claimHandle` in one tx under a per-user advisory lock (interval check with `nextChangeAt`, retire old, insert new; unique violation → `handle_taken`), opportunistic reap of expired retired rows. Concurrent claims race on the PK: exactly one wins (tested).
+- `handles/routes.ts`: `GET /handles/check` (30/10min per user) and `PUT /me/handle` (10/day per user, audit `handle.claimed` ids-only).
+- `contact-requests/service.ts`: `resolveHandleUser` (exact case-insensitive; unknown + retired = same 404), `createContactRequest` in one tx under a per-pair advisory lock (self 400, `already_contact` 409, duplicate-either-direction 409 `request_exists` returning the existing row, 20 outgoing cap 429, 7-day decline cooldown 429 `declined_recently`), `listContactRequests` (incoming/outgoing newest-first, name+handle+image, never email), conditional-update accept/decline/cancel (double accept idempotent; not-actable = same 404), accept reuses `addContactPair` + roster sync with the same retry (source `manual`), `profileForHandle` with `relation`, audits `contact_request.created|accepted|declined|cancelled` ids-only.
+- `contact-requests/routes.ts`: POST/GET `/contact-requests` (create 20/day per user), accept/decline/cancel, `GET /users/by-handle/:handle` (30/10min per user). No prefix search anywhere.
+- `auth/routes.ts`: `GET /me` also returns `handle` (null until chosen). `contacts/service.ts`: contacts carry `handle`. `groups/service.ts`: member rows carry `handle`. `app.ts`: mounts both routers (session-required; sweep asserts 401).
+
+**Web** (`apps/web/src/`):
+- `routes/HandlePage.tsx` at `/welcome/handle` (after the name step; NamePage chains there; `RequireAuth` gates handle-less users once with `next` preserved; always skippable). Live debounced availability with the exact reason, suggestion from name/email, Continue + Skip for now.
+- `auth/AuthProvider.tsx`: `AuthUser.handle` from `GET /me` (Better Auth session has no handle field), refreshed on `refetch`. `test/renderApp.tsx`: default handle so the suite is not gated.
+- `components/AddContactDialog.tsx` (overlay like InviteDialog): type @username, result card, Send request / Already a contact / Accept-via-Requests-link. From chat-list menu ("Add contact"), + new chat menu (entry + New message dialog button), empty state button, and `/@handle` + `/u/handle` share routes (logged out → login → back).
+- `routes/RequestsPage.tsx` at `/settings/requests` (+ ChatList menu entry with incoming-count badge from `useContactRequestCount`, refetched on focus + every 60s).
+- `components/ProfileSettingsSection.tsx`: show/edit handle with live check, too-soon message with the next-change date, copy share-link button (`<origin>/@handle`).
+- `HandleSuffix` (`@handle` next to names) in GroupPanel members and NewGroupDialog contacts. `lib/api.ts`: all endpoints + zod schemas. `mock/api.ts`: handle check/claim + seeded null handle.
+- Docs: "Usernames and contacts" section in `docs/USER_GUIDE.md` (the page exists).
+
+**Tests (real results):**
+- `pnpm install`: exit 0.
+- `pnpm format:check`: pass. `pnpm lint`: pass (fixed 5 oxlint findings: no sync setState-in-effect — promise-helper pattern; `userId` dep in AuthProvider).
+- `pnpm typecheck`: pass (11 tasks).
+- Server: `src/handles src/contact-requests src/contacts src/auth src/authz-sweep.test.ts` — 9 files, 105 passed (sweep: 129 routes, all non-allowlisted 401).
+- Web: `src/routes src/components src/lib/api.test.ts` — 71 files, 718 passed; `src/mock` + hook — 7 files, 86 passed.
+- Neighbours: full web `src/routes+components+api+mock` green; no other suites touched.
+
+**Security checklist:** no secrets/emails in new responses, logs, or audit (sentinels in tests; by-handle/list/check carry name+handle+image only); deletes/updates scoped (per-user lock, per-pair lock, conditional status updates); caps enforced atomically (PK race, partial unique index + in-tx re-read, advisory locks; all decision rows read INSIDE the tx); permission before effect (session on every route; recipient/sender checks before transitions; owner reclamation only); unknown = not-allowed 404s; every new route in the 401 sweep (none allowlisted) with a rate limit (check 30/10min, claim 10/day, create 20/day, by-handle 30/10min, list 60/min) or a cap (20 outgoing, 7-day cooldown, 14-day interval, 30-day reservation); audits ids-only.
+
+**Notes/deviations:**
+1. PGlite quirk found while testing: raw `sql` fragments with bound params inside transactions misbehave (a `pending` row read as `declined` in-tx); all such predicates rewritten as plain `eq()` pairs (two selects instead of OR). Worth knowing for future tasks.
+2. `me` (2 chars) is shorter than the 3-char minimum but is still answered `reserved` (reserved-first ordering) — the useful answer, asserted by test.
+3. AddContactDialog's "Accept" deep-links to `/settings/requests` instead of accepting inline (the incoming request row is not fetched by the dialog; the list page owns the call).
+4. The report's item 6 says "not needed" and names no user-facing docs page, but `docs/USER_GUIDE.md` exists and covers features, so one short section was added there per the "only if a page exists" rule.
+5. `useContactHandles`-style batch resolution was dropped: no batch endpoint exists and prefix search is forbidden, so member/contact lists get handles from their own list endpoints (server-joined), and the dialog uses exact lookup.
+
 
 ## Review (written by Claude)

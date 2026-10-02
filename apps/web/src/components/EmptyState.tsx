@@ -6,9 +6,11 @@ export type EmptyStateVariant = 'no-chats' | 'no-chat-selected';
 export function EmptyState({
   variant,
   onInvite,
+  onAddContact,
 }: {
   variant: EmptyStateVariant;
   onInvite?: () => void;
+  onAddContact?: () => void;
 }) {
   if (variant === 'no-chats') {
     return (
@@ -18,6 +20,17 @@ export function EmptyState({
         <Button type="button" size="lg" className="rounded-full px-5" onClick={onInvite}>
           Invite a friend
         </Button>
+        {onAddContact !== undefined && (
+          <Button
+            type="button"
+            size="lg"
+            variant="outline"
+            className="rounded-full px-5"
+            onClick={onAddContact}
+          >
+            Add contact
+          </Button>
+        )}
       </div>
     );
   }

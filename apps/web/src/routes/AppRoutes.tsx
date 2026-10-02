@@ -1,14 +1,17 @@
-import { Navigate, Route, Routes, useLocation } from 'react-router';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import type { ReactNode } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
 import { SKELETON_DELAY_MS } from '@/components/Skeleton';
 import { useDelayed } from '@/lib/useDelayed';
+import { AddContactRoute } from './AddContactRoute';
 import { ChatShell } from './ChatShell';
+import { HandlePage } from './HandlePage';
 import { AisPage } from './AisPage';
 import { ConnectionsPage } from './ConnectionsPage';
 import { InvitePage } from './InvitePage';
 import { JoinPage } from './JoinPage';
 import { LoginPage } from './LoginPage';
+import { RequestsPage } from './RequestsPage';
 import { SetupPage } from './SetupPage';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { MachinesPage } from './MachinesPage';
@@ -55,6 +58,22 @@ function RequireAuth({ children }: { children: ReactNode }) {
   if ((auth.user?.name ?? '').trim() === '') {
     return <Navigate to="/welcome/name" replace />;
   }
+  // T-0163: people who already have an account but no handle are sent to
+  // the handle step once at their next visit; skip is always allowed, so
+  // the app works without a handle.
+  if (
+    (auth.user?.handle ?? null) === null &&
+    location.pathname !== '/welcome/handle' &&
+    !location.pathname.startsWith('/welcome/handle/')
+  ) {
+    return (
+      <Navigate
+        to="/welcome/handle"
+        replace
+        state={{ next: `${location.pathname}${location.search}` }}
+      />
+    );
+  }
   return children;
 }
 
@@ -70,6 +89,14 @@ export function AppRoutes() {
         element={
           <RequireUser>
             <NamePage />
+          </RequireUser>
+        }
+      />
+      <Route
+        path="/welcome/handle"
+        element={
+          <RequireUser>
+            <HandlePage />
           </RequireUser>
         }
       />
@@ -138,6 +165,22 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/settings/requests"
+        element={
+          <RequireAuth>
+            <RequestsRoute />
+          </RequireAuth>
+        }
+      />
+      {/* Share links: /@handle opens the Add contact dialog prefilled with
+          the result when logged in, and goes to login (returning afterwards)
+          when logged out. /u/handle is the fallback for routers that cannot
+          match `@` (react-router matches it, but some static hosts do not).
+          Both are plain top-level routes so the handle gate (which only
+          guards the chat and settings pages) never redirects them. */}
+      <Route path="/u/:handle" element={<AddContactRoute />} />
+      <Route path="/@:handle" element={<AddContactRoute />} />
+      <Route
         path="/settings/integrations"
         element={
           <RequireAuth>
@@ -161,4 +204,9 @@ function JoinRoute() {
       openGroupChat={(groupId) => storeApi.getState().refreshGeneralTopic(groupId)}
     />
   );
+}
+
+function RequestsRoute() {
+  const navigate = useNavigate();
+  return <RequestsPage onBack={() => navigate('/')} />;
 }

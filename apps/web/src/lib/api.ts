@@ -26,6 +26,9 @@ const meSchema = z.object({
   email: z.string(),
   name: z.string(),
   image: z.string().nullable().optional(),
+  // T-0163: the caller's own `@username`. Optional (not just nullable) so
+  // payloads from an older server still parse — absent reads like null.
+  handle: z.string().nullable().optional(),
   jid: z.string().nullable().optional(),
 });
 
@@ -36,6 +39,9 @@ const contactSchema = z.object({
   name: z.string(),
   jid: z.string(),
   avatarUrl: z.string().optional(),
+  // T-0163: the contact's `@username`. Optional so payloads from an older
+  // server still parse (treated as none).
+  handle: z.string().nullable().optional(),
 });
 
 export type Contact = z.infer<typeof contactSchema>;
@@ -99,6 +105,9 @@ const groupMemberSchema = z.object({
   userId: z.string(),
   name: z.string(),
   role: z.enum(['owner', 'admin', 'member']),
+  // T-0163: the member's `@username`. Optional so payloads from an older
+  // server still parse (treated as none).
+  handle: z.string().nullable().optional(),
   // T-0116: the custom group roles this member holds. Optional so payloads
   // from an older server still parse (treated as none).
   roles: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
@@ -1852,5 +1861,137 @@ export function postSetup(input: SetupInput): Promise<SetupResult> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
+  });
+}
+
+// --- @usernames and contact requests (T-0163) --------------------------------
+// Every person has a unique `@username`. Adding someone by handle sends a
+// contact request the other person must accept. Handles are stored with the
+// typed casing but compared case-insensitively; there is no prefix search.
+
+export type HandleCheckReason = 'invalid' | 'reserved' | 'taken';
+
+const handleCheckSchema = z.object({
+  available: z.boolean(),
+  reason: z.enum(['invalid', 'reserved', 'taken']).optional(),
+});
+
+export interface HandleCheck {
+  available: boolean;
+  reason?: HandleCheckReason | undefined;
+}
+
+export function checkHandle(handle: string): Promise<HandleCheck> {
+  const params = new URLSearchParams();
+  params.set('handle', handle);
+  return request(`/handles/check?${params.toString()}`, handleCheckSchema);
+}
+
+const claimedHandleSchema = z.object({ handle: z.string() });
+
+export function claimHandle(handle: string): Promise<{ handle: string }> {
+  return request('/me/handle', claimedHandleSchema, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ handle }),
+  });
+}
+
+export type ContactRelation = 'none' | 'contact' | 'request_sent' | 'request_received' | 'self';
+
+const handleProfileSchema = z.object({
+  userId: z.string(),
+  name: z.string(),
+  handle: z.string(),
+  image: z.string().nullable(),
+  relation: z.enum(['none', 'contact', 'request_sent', 'request_received', 'self']),
+});
+
+export type HandleProfile = z.infer<typeof handleProfileSchema>;
+
+export function lookupByHandle(handle: string): Promise<HandleProfile> {
+  return request(`/users/by-handle/${encodeURIComponent(handle)}`, handleProfileSchema);
+}
+
+export type ContactRequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
+
+export const contactRequestPersonSchema = z.object({
+  userId: z.string(),
+  name: z.string(),
+  handle: z.string().nullable(),
+  image: z.string().nullable(),
+});
+
+export type ContactRequestPerson = z.infer<typeof contactRequestPersonSchema>;
+
+export const contactRequestViewSchema = z.object({
+  id: z.string(),
+  status: z.enum(['pending', 'accepted', 'declined', 'cancelled']),
+  createdAt: z.string(),
+  other: contactRequestPersonSchema,
+});
+
+export type ContactRequestView = z.infer<typeof contactRequestViewSchema>;
+
+const contactRequestListSchema = z.object({
+  incoming: z.array(contactRequestViewSchema),
+  outgoing: z.array(contactRequestViewSchema),
+});
+
+export interface ContactRequestList {
+  incoming: ContactRequestView[];
+  outgoing: ContactRequestView[];
+}
+
+const contactRequestRowSchema = z.object({
+  id: z.string(),
+  fromUserId: z.string(),
+  toUserId: z.string(),
+  status: z.enum(['pending', 'accepted', 'declined', 'cancelled']),
+  createdAt: z.string(),
+  decidedAt: z.string().optional(),
+});
+
+export type ContactRequestRow = z.infer<typeof contactRequestRowSchema>;
+
+const createdRequestSchema = z.object({
+  request: contactRequestRowSchema,
+  // Present when the other side already asked: the web offers "Accept" on
+  // the existing request instead of creating a second row.
+  incoming: z.boolean().optional(),
+});
+
+export function sendContactRequest(handle: string): Promise<{
+  request: ContactRequestRow;
+  incoming?: boolean | undefined;
+}> {
+  return request('/contact-requests', createdRequestSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ handle }),
+  });
+}
+
+export function listContactRequests(): Promise<ContactRequestList> {
+  return request('/contact-requests', contactRequestListSchema);
+}
+
+const decidedRequestSchema = z.object({ request: contactRequestRowSchema });
+
+export function acceptContactRequest(id: string): Promise<{ request: ContactRequestRow }> {
+  return request(`/contact-requests/${encodeURIComponent(id)}/accept`, decidedRequestSchema, {
+    method: 'POST',
+  });
+}
+
+export function declineContactRequest(id: string): Promise<{ request: ContactRequestRow }> {
+  return request(`/contact-requests/${encodeURIComponent(id)}/decline`, decidedRequestSchema, {
+    method: 'POST',
+  });
+}
+
+export function cancelContactRequest(id: string): Promise<{ request: ContactRequestRow }> {
+  return request(`/contact-requests/${encodeURIComponent(id)}`, decidedRequestSchema, {
+    method: 'DELETE',
   });
 }

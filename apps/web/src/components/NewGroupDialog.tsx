@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { HandleSuffix } from './HandleSuffix';
 import { cn } from '@/lib/utils';
 
 /** Two-step dialog: pick contacts, set a title, then create the group. */
@@ -101,7 +102,9 @@ export function NewGroupDialog({
                       onChange={() => toggle(contact.userId)}
                       className="size-4 accent-[var(--accent)]"
                     />
-                    <span className="truncate text-[15px]">{contact.name}</span>
+                    <span className="truncate text-[15px]">
+                      {contact.name} <HandleSuffix handle={contact.handle} />
+                    </span>
                   </label>
                 ))
               )}

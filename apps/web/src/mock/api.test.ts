@@ -69,6 +69,17 @@ describe('mockRequest', () => {
     expect((await getMe()).name).toBe('Ada');
   });
 
+  it('checks and claims handles through the real schemas', async () => {
+    const { checkHandle, claimHandle } = await import('@/lib/api');
+    expect((await getMe()).handle ?? null).toBeNull();
+    expect(await checkHandle('ab')).toEqual({ available: false, reason: 'invalid' });
+    expect(await checkHandle('admin')).toEqual({ available: false, reason: 'reserved' });
+    expect(await checkHandle('taken_user')).toEqual({ available: false, reason: 'taken' });
+    expect(await checkHandle('ada_new')).toEqual({ available: true });
+    expect(await claimHandle('ada_new')).toEqual({ handle: 'ada_new' });
+    expect((await getMe()).handle).toBe('ada_new');
+  });
+
   it('serves chats and contacts that pass the real schemas', async () => {
     const chats = await getChats();
     expect(chats.some((chat) => chat.kind === 'dm')).toBe(true);

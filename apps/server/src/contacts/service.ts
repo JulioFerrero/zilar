@@ -1,6 +1,6 @@
 import { and, asc, eq } from 'drizzle-orm';
 import type { ServerDatabase } from '../db/client';
-import { contacts, user, userInvites, xmppAccounts } from '../db/schema';
+import { contacts, handles, user, userInvites, xmppAccounts } from '../db/schema';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { findInviteByCode } from '../auth/invites';
@@ -19,6 +19,8 @@ export interface Contact {
   name: string;
   jid: string;
   avatarUrl?: string;
+  /** The contact's `@username`, when they have one (T-0163). */
+  handle?: string | null;
 }
 
 export interface AddContactPairInput {
@@ -64,10 +66,12 @@ export async function listContacts(
       name: user.name,
       image: user.image,
       jid: xmppAccounts.jid,
+      handle: handles.handle,
     })
     .from(contacts)
     .innerJoin(user, eq(user.id, contacts.contactUserId))
     .leftJoin(xmppAccounts, eq(xmppAccounts.userId, contacts.contactUserId))
+    .leftJoin(handles, eq(handles.userId, contacts.contactUserId))
     .where(eq(contacts.userId, userId))
     .orderBy(asc(user.name));
 
@@ -77,6 +81,7 @@ export async function listContacts(
       name: row.name.trim() === '' ? UNNAMED_CONTACT_NAME : row.name,
       jid: row.jid ?? jidFor(localpartFor(row.userId), domain),
       ...(row.image ? { avatarUrl: row.image } : {}),
+      ...(row.handle ? { handle: row.handle } : {}),
     } satisfies Contact,
     unnamed: row.name.trim() === '',
   }));

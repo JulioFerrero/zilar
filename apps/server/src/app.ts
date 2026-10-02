@@ -27,6 +27,8 @@ import { createKeyCipher, type KeyCipher } from './connections/crypto';
 import type { ProviderProbe } from './connections/probe';
 import { createConnectionsRoutes, type ConnectionsLogger } from './connections/routes';
 import { createContactsRoutes } from './contacts/routes';
+import { createContactRequestsRoutes } from './contact-requests/routes';
+import { createHandlesRoutes } from './handles/routes';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
@@ -279,6 +281,13 @@ export function createApp({
     }),
   );
   app.route('/api', createContactsRoutes({ auth, db, config }));
+  // @usernames and contact requests (T-0163): session-required, rate
+  // limited; the sweep asserts every one of them answers 401 unauthenticated.
+  app.route('/api', createHandlesRoutes({ auth, db, audit: auditRecorder }));
+  app.route(
+    '/api',
+    createContactRequestsRoutes({ auth, db, config, adminClient, audit: auditRecorder }),
+  );
   app.route(
     '/api',
     createMachinesRoutes({

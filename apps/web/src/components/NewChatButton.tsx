@@ -1,5 +1,6 @@
 import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { AddContactDialog } from './AddContactDialog';
 import { InviteDialog } from './InviteDialog';
 import { NewAiDialog } from './ais/NewAiDialog';
 import { NewGroupDialog } from './NewGroupDialog';
@@ -12,10 +13,16 @@ import { cn } from '@/lib/utils';
 const MENU_ITEM_CLASS =
   'flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none';
 
-type Dialog = 'group' | 'channel' | 'message' | 'invite' | 'ai' | 'topic';
+type Dialog = 'group' | 'channel' | 'message' | 'invite' | 'add-contact' | 'ai' | 'topic';
 
 /** New chat: a full-width primary key on wide screens, a primary FAB on narrow. */
-export function NewChatButton({ defaultGroupId }: { defaultGroupId?: string } = {}) {
+export function NewChatButton({
+  defaultGroupId,
+  onAddContact,
+}: {
+  defaultGroupId?: string;
+  onAddContact?: () => void;
+} = {}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog | undefined>(undefined);
   // "New topic" from a group header pre-selects that group; the menu asks
@@ -184,6 +191,21 @@ export function NewChatButton({ defaultGroupId }: { defaultGroupId?: string } = 
               type="button"
               role="menuitem"
               className={MENU_ITEM_CLASS}
+              onClick={() => {
+                if (onAddContact !== undefined) {
+                  setMenuOpen(false);
+                  onAddContact();
+                } else {
+                  openDialog('add-contact');
+                }
+              }}
+            >
+              Add contact
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={MENU_ITEM_CLASS}
               onClick={() => openDialog('ai')}
             >
               New AI
@@ -236,6 +258,7 @@ export function NewChatButton({ defaultGroupId }: { defaultGroupId?: string } = 
       {dialog === 'channel' && <NewGroupDialog onClose={closeDialog} channel />}
       {dialog === 'ai' && <NewAiDialog onClose={closeDialog} />}
       {dialog === 'invite' && <InviteDialog onClose={closeDialog} />}
+      {dialog === 'add-contact' && <AddContactDialog onClose={closeDialog} />}
       {dialog === 'topic' &&
         (topicGroupId !== undefined ? (
           <NewTopicDialog groupId={topicGroupId} onClose={closeDialog} />
@@ -284,9 +307,25 @@ export function NewChatButton({ defaultGroupId }: { defaultGroupId?: string } = 
           >
             <h2 className="text-[16px] font-semibold">New message</h2>
             <p className="mt-1 text-[15px] text-muted-foreground">
-              Invite a friend to start a conversation.
+              Invite a friend to start a conversation, or add someone by their @username.
             </p>
             <div className="mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (onAddContact !== undefined) {
+                    setMenuOpen(false);
+                    setDialog(undefined);
+                    onAddContact();
+                  } else {
+                    openDialog('add-contact');
+                  }
+                }}
+                className="h-9 rounded-full px-4"
+              >
+                Add contact
+              </Button>
               <Button
                 type="button"
                 onClick={() => openDialog('invite')}
