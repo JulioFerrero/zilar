@@ -191,7 +191,7 @@ export function MessageBubble({
     message.card === undefined &&
     isBigEmoji(message.text ?? '');
   // A big-emoji message is shown without its bubble, so the sender name would
-  // float on its own; Telegram shows only the avatar in that case.
+  // float on its own; a classic messenger shows only the avatar in that case.
   const showSender = !own && chat.kind === 'group' && firstInGroup && !bigEmoji;
   // In a group, an incoming AI reply (recognisable from its `ai-` JID) carries
   // the small AI badge next to its name (T-0055).

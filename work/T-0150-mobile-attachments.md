@@ -15,7 +15,7 @@ estimate: 2 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-Found while starting T-0148 (mobile GIFs): the mobile app has NO attachment support at all. The paperclip button is a stub; there is no picker, no upload (XEP-0363), no attachment rendering (an attachment sent from the web arrives as a caption-only bubble) and no video playback. Photos and files are core to a Telegram-like chat, and GIFs, voice notes and more build on this. Mobile is the smaller share of the work, but this is the missing base: build it small and clean, following how web does it. Read `AGENTS.md` first, including the security checklist.
+Found while starting T-0148 (mobile GIFs): the mobile app has NO attachment support at all. The paperclip button is a stub; there is no picker, no upload (XEP-0363), no attachment rendering (an attachment sent from the web arrives as a caption-only bubble) and no video playback. Photos and files are core to a messenger-style chat, and GIFs, voice notes and more build on this. Mobile is the smaller share of the work, but this is the missing base: build it small and clean, following how web does it. Read `AGENTS.md` first, including the security checklist.
 
 ### Dependencies (allowed for this task, and only these)
 `expo-image-picker`, `expo-document-picker`, `expo-image` (animated GIF/WebP and fast images), `expo-video`, `expo-file-system`, installed with versions matching Expo SDK 57 (`~57.x`), the permission strings in `apps/mobile/app.json` (config plugins), and the lockfile. A native build is needed afterwards; say so in the Report. If another package is needed, stop and ask in the Report.

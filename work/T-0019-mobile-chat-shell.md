@@ -1,6 +1,6 @@
 ---
 id: T-0019
-title: Mobile app — Telegram-like chat shell (list, folders, chat screen, composer) with mock data
+title: Mobile app — messenger-style chat shell (list, folders, chat screen, composer) with mock data
 status: merged
 milestone: M1
 branch: task/T-0019-mobile-chat-shell
@@ -9,12 +9,12 @@ depends_on: [T-0011, T-0013]
 estimate: 2 days
 ---
 
-# T-0019: Mobile chat shell (Telegram-like)
+# T-0019: Mobile chat shell (Messenger-style)
 
 ## Spec (written by Claude, do not edit)
 
 ### Goal
-Build the Expo app's main screens so they **look and feel like the Telegram iOS/Android app**, following `docs/design/ui-style.md`: the chat list with folder tabs and search, a chat screen with bubbles, and the composer. Use **mock data** for now. The real data gets wired in later. Julio asked for a Telegram-like UI, and he'll try it on his phone, so **visual quality matters**. Claude will review your simulator screenshots.
+Build the Expo app's main screens so they **look and feel like a polished iOS/Android messenger**, following `docs/design/ui-style.md`: the chat list with folder tabs and search, a chat screen with bubbles, and the composer. Use **mock data** for now. The real data gets wired in later. Julio asked for a messenger-style UI, and he'll try it on his phone, so **visual quality matters**. Claude will review your simulator screenshots.
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -77,7 +77,7 @@ Build the Expo app's main screens so they **look and feel like the Telegram iOS/
 - [ ] `pnpm format:check`, `lint`, `typecheck`, `test` and `build` (expo export) pass for the whole repo.
 - [ ] 4 simulator screenshots committed and matching `ui-style.md`.
 - [ ] No Metro process left running at the end (check port 8081).
-- [ ] No external network assets. No Telegram brand assets.
+- [ ] No external network assets. No third-party brand assets.
 - [ ] Only allowed files touched.
 
 ### Checks (all must pass)
@@ -102,7 +102,7 @@ pnpm build
 
 ### What I did
 
-Built the Telegram-like mobile shell from `docs/design/ui-style.md` (narrow/mobile layout) with mock data:
+Built the messenger-style mobile shell from `docs/design/ui-style.md` (narrow/mobile layout) with mock data:
 
 1. **Theme.** Rewrote `src/global.css` with every §2 token as CSS variables (light + dark, `.dark:root`
    like RNR), added the extra tokens (`--chat-background*`, `--bubble-in/out`, `--bubble-*-meta`,
@@ -224,7 +224,7 @@ In `apps/mobile/screenshots/` (1206×2622, iPhone 17 Pro):
 4. **Chat background gradient.** The light theme is a two-stop gradient; a single CSS variable can't
    express that, so `global.css` defines `--chat-background-from/-to` for reference while the
    gradient stops used by `expo-linear-gradient` live in `src/lib/colors.ts` (same hex values).
-5. **Online dot color.** ui-style.md maps "online" to `--accent`, so the dot is blue, not Telegram's
+5. **Online dot color.** ui-style.md maps "online" to `--accent`, so the dot is blue, not the usual
    green; I followed the spec.
 6. **`messages(chatId)`** returns a shared empty array when a chat has no messages, so the zustand
    selector keeps a stable identity and doesn't re-render in a loop.
@@ -240,7 +240,7 @@ Dev AI for the AI cards instead of the extra file), say so and I'll re-shoot.
 
 **Verdict: approved.** Merged by Claude.
 
-This is excellent, faithful Telegram-like work, and the screenshots are the proof.
+This is excellent, faithful messenger-style work, and the screenshots are the proof.
 
 ### What I verified myself (on commit fb3b0f7)
 - `install`, `format:check`, `lint`, `typecheck`, `test` (mobile **48**) and `build` (expo export): all PASS.

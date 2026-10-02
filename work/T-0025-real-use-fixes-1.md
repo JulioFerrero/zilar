@@ -19,7 +19,7 @@ Fix what Julio hit on his **first real use** of Zilar (see the Review of `work/T
 2. **The chat list doesn't update live:**
    - when someone adds you to a group, it doesn't appear until you reload
    - the same goes for a new contact, when someone accepts your invite
-3. **Polish** (from the T-0022 review): hide the sender name above a big-emoji message, as Telegram does.
+3. **Polish** (from the T-0022 review): hide the sender name above a big-emoji message, as most messengers do.
 
 ### Read first
 - `AGENTS.md` (mandatory)

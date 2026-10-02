@@ -67,7 +67,7 @@ optimise for a clear answer, not for polish.
 
 ### What to build
 1. **A spike screen that connects.** `apps/mobile/src/spike/` — a minimal screen
-   (it does not have to look like Telegram; this is a diagnostic tool) with a
+   (it does not have to look like a real messenger; this is a diagnostic tool) with a
    "Connect" button that:
    - calls `POST /api/xmpp/token` on the running server,
    - connects to the returned `service` with `@xmpp/client`, SASL PLAIN using

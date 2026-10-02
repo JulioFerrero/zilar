@@ -34,7 +34,7 @@ The `/api/ais` contract doesn't change. This is a web-only task.
 - `apps/web/src/routes/CreateAiPage.tsx`, `AisPage.tsx`, `AppRoutes.tsx`, and `apps/web/src/components/ais/**` (reuse `limits.ts`, `models.ts`, `templates.ts`, `errors.ts`, `ConnectionPicker`, `LimitsFields`)
 - `apps/web/src/components/NewGroupDialog.tsx` and `NewChatButton.tsx`: the existing Radix dialog and the "new …" menu. The new dialog must look and behave like them.
 - `apps/web/src/components/ChatHeader.tsx` and `routes/ChatView.tsx`: where the panel opens. `ChatListEntry.isAi` marks AI DMs, and `GET /api/ais` returns each AI's `jid`.
-- `docs/design/ui-style.md` (Telegram-like: compact, calm, no big empty pages)
+- `docs/design/ui-style.md` (Messenger-style: compact, calm, no big empty pages)
 
 ### Allowed files
 - `apps/web/src/components/ais/**`: new dialog and panel components, and helpers with their tests

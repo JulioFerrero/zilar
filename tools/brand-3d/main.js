@@ -46,11 +46,6 @@ const FOV = (2 * Math.atan(512 / DIST) * 180) / Math.PI;
 const camera = new THREE.PerspectiveCamera(FOV, RENDER ? 1 : innerWidth / innerHeight, 100, 10000);
 camera.position.set(0, 0, DIST);
 
-function rand(seed) {
-  let s = seed;
-  return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
-}
-
 // real studio lighting: a Poly Haven HDRI (CC0) instead of hand-placed softboxes
 const HDRI = params.get('hdri') ?? 'studio_small_09_2k.hdr';
 const hdr = await new RGBELoader().loadAsync(`./textures/${HDRI}`);

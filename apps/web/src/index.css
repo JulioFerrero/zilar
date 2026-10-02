@@ -2,7 +2,7 @@
 @import 'tw-animate-css';
 
 /*
- * D24: Telegram's layout, Vercel-dark look, skeuomorphic depth. Dark only for
+ * D24: a classic messenger layout, Vercel-dark look, skeuomorphic depth. Dark only for
  * now, so tokens live in `:root` with no system-scheme switch. The `dark:`
  * variant stays for the untouched part-2 components, but it is class-based and
  * therefore inert.

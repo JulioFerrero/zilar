@@ -31,7 +31,7 @@ export type ChatEntry =
       // parse; the store maps the feed row from the General topic with the
       // channel fields (chatKind, subscriberCount, description, myRole).
       chatKind?: 'group' | 'channel';
-      // T-0144: the same count under Telegram's name, for channels only.
+      // T-0144: the same count under the usual channel name, for channels only.
       subscriberCount?: number;
       // T-0144: the channel's short blurb. Optional so older payloads parse.
       description?: string | null;

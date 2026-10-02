@@ -1,6 +1,6 @@
 ---
 id: T-0023
-title: Mobile UI polish — Telegram additions, swipe-to-reply, haptics, switch to @zilar/chat-core
+title: Mobile UI polish — messenger additions, swipe-to-reply, haptics, switch to @zilar/chat-core
 status: merged
 milestone: M1
 branch: task/T-0023-mobile-ui-polish
@@ -14,7 +14,7 @@ estimate: 1–2 days
 ## Spec (written by Claude, do not edit)
 
 ### Goal
-Bring the mobile app to the same Telegram level as the web app after T-0022. Implement **every item** in `docs/design/ui-style.md` §4, under "Added after the first screenshots (2026-09-27)", **including the mobile-only ones**: swipe right to reply, and a light haptic on long-press. Also fix T-0019's review findings, and **switch to the shared `@zilar/chat-core`** instead of the duplicated helpers. Still mock data.
+Bring the mobile app to the same messenger polish as the web app after T-0022. Implement **every item** in `docs/design/ui-style.md` §4, under "Added after the first screenshots (2026-09-27)", **including the mobile-only ones**: swipe right to reply, and a light haptic on long-press. Also fix T-0019's review findings, and **switch to the shared `@zilar/chat-core`** instead of the duplicated helpers. Still mock data.
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -51,7 +51,7 @@ Bring the mobile app to the same Telegram level as the web app after T-0022. Imp
    - Past about 60 px, a light haptic, and releasing sets the reply.
    - Use `react-native-gesture-handler` + reanimated.
 8. **The reply bar** above the composer, with `×` to cancel. The sent bubble shows the quote.
-9. **Big emoji:** no bubble, about 48 px, a time pill. **Hide the sender name** above big emoji (Telegram style, from the T-0022 review).
+9. **Big emoji:** no bubble, about 48 px, a time pill. **Hide the sender name** above big emoji (as most messengers do, from the T-0022 review).
 10. **Safe links:** http/https only, through `splitLinks`, opened with `Linking.openURL`. Other schemes stay plain text.
 
 ### Tests (Vitest, pure logic)

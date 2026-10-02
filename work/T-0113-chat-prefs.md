@@ -14,7 +14,7 @@ estimate: 1.5 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-D28: a good daily chat needs the Telegram basics. Today `muted` exists only in client state and is never saved. This task stores per-user preferences on the server so they follow the user across web and phone: **mute** (with a duration), **archive** (hidden from the main list), **pin** (kept at the top). They apply to a DM, a group, and to individual **topics** (T-0108).
+D28: a good daily chat needs the messenger basics. Today `muted` exists only in client state and is never saved. This task stores per-user preferences on the server so they follow the user across web and phone: **mute** (with a duration), **archive** (hidden from the main list), **pin** (kept at the top). They apply to a DM, a group, and to individual **topics** (T-0108).
 
 ### Data and API
 - Table `chat_prefs`: `user_id` (fk cascade), `chat_jid` (the room JID or DM JID, text ≤ 255), `muted_until` (timestamp, nullable; a far-future value means "forever"), `archived` (bool), `pinned_at` (timestamp, nullable; newer pins sort first), `updated_at`; pk `(user_id, chat_jid)`. Migration via `pnpm --filter @zilar/server db:generate`. A row with all defaults is deleted rather than kept.
@@ -24,7 +24,7 @@ D28: a good daily chat needs the Telegram basics. Today `muted` exists only in c
 
 ### Web (`apps/web`)
 - `lib/api.ts` + store: load prefs with the chat list, merge into `ChatSummary` (`muted`, new `archived`, `pinnedAt`), optimistic updates with rollback.
-- Chat list: pinned chats/topics first (a small pin icon), archived hidden from the main list with an **Archived (n)** row at the bottom that opens the archived list; a new archive does not auto-unarchive on a new message (Telegram does for muted chats not; here archived chats stay archived until the user unarchives; document it).
+- Chat list: pinned chats/topics first (a small pin icon), archived hidden from the main list with an **Archived (n)** row at the bottom that opens the archived list; a new archive does not auto-unarchive on a new message (a classic messenger does for muted chats not; here archived chats stay archived until the user unarchives; document it).
 - Row and header menus: Pin/Unpin, Mute (options: 1 hour, 8 hours, 1 day, 1 week, forever, Unmute), Archive/Unarchive. Muted rows show a muted icon and a grey badge. Folder unread totals exclude muted chats.
 - Topics: the same menu on a topic row; muting a group mutes all its topics (stored as a pref on the General room JID and applied by the client to every topic of the group unless a topic has its own row).
 - Mock mode supports all of it in memory.

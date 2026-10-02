@@ -242,7 +242,7 @@ The web suite contains the five new "Composer attachments (T-0065)" tests, the f
 
 ### Must-fix applied: trusted-host auto-load allow-list
 
-The reviewer flagged a tracking-pixel leak: any incoming `attachment` payload with `kind: 'image'` and an arbitrary http(s) URL was being auto-rendered as `<img src=url>`, so a chat peer could force every viewer's browser to fetch a third-party URL the moment the message scrolled into view (leaking IP + UA). Telegram-style apps only auto-load media from their own servers, and T-0049 already rejects remote images in Markdown for the same reason.
+The reviewer flagged a tracking-pixel leak: any incoming `attachment` payload with `kind: 'image'` and an arbitrary http(s) URL was being auto-rendered as `<img src=url>`, so a chat peer could force every viewer's browser to fetch a third-party URL the moment the message scrolled into view (leaking IP + UA). Messenger-style apps only auto-load media from their own servers, and T-0049 already rejects remote images in Markdown for the same reason.
 
 **Fix shape.** The pure logic lives in `apps/web/src/lib/attachments.ts`:
 

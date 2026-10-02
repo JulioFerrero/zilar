@@ -133,7 +133,7 @@ export interface ChatSummary {
    * (its General topic is the feed; only admins post). Absent = group.
    */
   chatKind?: 'group' | 'channel';
-  /** T-0124: the same count under Telegram's name, for channels only. */
+  /** T-0124: the same count under the usual channel name, for channels only. */
   subscriberCount?: number;
   /** T-0124: the channel's short blurb, or null. Absent on groups. */
   description?: string | null;

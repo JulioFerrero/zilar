@@ -1,6 +1,6 @@
 ---
 id: T-0018
-title: Web app — Telegram-like chat shell (list, folders, chat view, composer) with mock data
+title: Web app — messenger-style chat shell (list, folders, chat view, composer) with mock data
 status: merged
 milestone: M1
 branch: task/T-0018-web-chat-shell
@@ -9,14 +9,14 @@ depends_on: [T-0013]
 estimate: 2 days
 ---
 
-# T-0018: Web chat shell (Telegram-like)
+# T-0018: Web chat shell (Messenger-style)
 
 ## Spec (written by Claude, do not edit)
 
 ### Goal
-Build the web app's main screens so they **look and feel like Telegram**, following `docs/design/ui-style.md` exactly: chat list with folder tabs and search, the open chat with bubbles, and the composer. Use **mock data** for now. The real login and XMPP data get wired in later tasks, so keep the UI state behind a small store interface that can be swapped for real data.
+Build the web app's main screens so they **look and feel like a polished messenger**, following `docs/design/ui-style.md` exactly: chat list with folder tabs and search, the open chat with bubbles, and the composer. Use **mock data** for now. The real login and XMPP data get wired in later tasks, so keep the UI state behind a small store interface that can be swapped for real data.
 
-Julio asked for this directly: "for the UI we need to be closer to what Telegram is". **Visual quality matters.** Claude will review screenshots.
+Julio asked for this directly: "for the UI we need to be closer to what a classic messenger is". **Visual quality matters.** Claude will review screenshots.
 
 ### Read first
 - `AGENTS.md` (mandatory)
@@ -109,9 +109,9 @@ Other workers are editing those.
 
 ### Acceptance criteria
 - [ ] `pnpm format:check`, `lint`, `typecheck`, `test` and `build` pass for the whole repo.
-- [ ] `pnpm --filter @zilar/web dev` shows the Telegram-like UI in light and dark (Claude will screenshot it).
+- [ ] `pnpm --filter @zilar/web dev` shows the messenger-style UI in light and dark (Claude will screenshot it).
 - [ ] Every token, size and component rule from `ui-style.md` is implemented. List any you couldn't match in the Report.
-- [ ] No external network assets (images or fonts from URLs). No Telegram logos or brand assets.
+- [ ] No external network assets (images or fonts from URLs). No third-party logos or brand assets.
 - [ ] Only allowed files touched.
 
 ### Checks (all must pass)
@@ -135,7 +135,7 @@ pnpm build
 ## Report (written by the worker when done)
 
 ### What I did
-- Built the Telegram-like web chat shell in `apps/web` on top of the existing Vite + React + Tailwind v4 scaffold, following `docs/design/ui-style.md`.
+- Built the messenger-style web chat shell in `apps/web` on top of the existing Vite + React + Tailwind v4 scaffold, following `docs/design/ui-style.md`.
 - **Theme** (`apps/web/src/index.css`): every §2 token as a CSS variable for light and dark (`prefers-color-scheme`), mapped into Tailwind v4 `@theme inline` so `bg-bubble-out`, `text-muted-foreground`, `bg-list-active`, etc. work. shadcn/ui is initialised on the same variables (`components.json`, `src/lib/utils.ts` `cn`, `src/components/ui/button.tsx`). Added `.chat-background`, bubble-tail clip-path classes (out/in), thin scrollbars and the typing-dots keyframes.
 - **Routing/layout** (`src/routes/`): `react-router` v7 with `/` and `/c/:chatId`; two panes at ≥ 900 px (custom `wide` breakpoint) and one pane below, where the chat list is home and the chat has a back arrow. `Esc` closes the chat on narrow layouts, `Ctrl/Cmd+K` focuses search. The store is injected through `ChatStoreProvider` so it can be swapped for real data.
 - **`packages/chat-core`** (new, `@zilar/chat-core`, plain TypeScript + Vitest): `formatListTime`, `formatDateSeparator`, `avatarGradient`, `initials`, `groupMessages`, `previewText` (plus small helpers `formatTime`, `formatWeekday`, `formatShortDate`, `formatDuration`, `previewPrefix`, `previewBody`, `firstName`) and the shared `ChatSummary`/`UiMessage`/`RenderItem` types. 29 tests cover the edge cases (midnight, year change, empty names, emoji names, grouping, previews).
@@ -192,10 +192,10 @@ Fixing review finding 1 (must fix): `initials()` no longer counts emoji or symbo
 
 ## Review (written by Claude)
 
-**Verdict (round 1): changes requested (one small bug).** This is excellent, Telegram-faithful work.
+**Verdict (round 1): changes requested (one small bug).** This is excellent, messenger-faithful work.
 
 ### What I verified myself (on commit af4fd12)
-- `install`, `format:check`, `lint`, `typecheck`, `test` (web **24**, chat-core **29**) and `build`: all PASS. No external URLs, no Telegram brand references.
+- `install`, `format:check`, `lint`, `typecheck`, `test` (web **24**, chat-core **29**) and `build`: all PASS. No external URLs, no third-party brand references.
 - **Visual check in iPad simulator Safari** (≥ 900 px, two panes), light and dark, of the chat list, the "Viernes 🍻" group and the Dev AI chat:
   - layout, tokens, folder tabs and badges match `ui-style.md`
   - selected row in the accent color
@@ -223,7 +223,7 @@ Fixing review finding 1 (must fix): `initials()` no longer counts emoji or symbo
    - The type-only dependency on `@zilar/protocol`.
    - The helper functions.
    - Dropping the shadcn preset extras.
-3. **(accepted, note)** The `--bubble-in-meta` contrast of about 2.4:1 matches Telegram's own low-contrast meta text. We keep it for now and revisit with Julio's feedback.
+3. **(accepted, note)** The `--bubble-in-meta` contrast of about 2.4:1 matches the low-contrast meta text common in messengers. We keep it for now and revisit with Julio's feedback.
 4. **(note)** Mock chat ids (`c-viernes`) differ from the room JIDs in `ids.ts`. That's fine for mock data, and the wiring task will use real JIDs.
 
 **Verdict (round 2): approved.** Merged by Claude. The initials fix is verified: the chat-core tests pass, and they include the emoji cases.

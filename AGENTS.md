@@ -4,7 +4,7 @@ You are an implementer on this project. Claude (the lead) writes task files, rev
 
 ## The project in one paragraph
 
-This is a self-hosted chat app, similar to Telegram, where people and AI agents talk in DMs and groups. It has:
+This is a self-hosted chat app, similar to the messengers people already use, where people and AI agents talk in DMs and groups. It has:
 - an XMPP server (ejabberd)
 - a React web app and an Expo (React Native) mobile app
 - a TypeScript backend

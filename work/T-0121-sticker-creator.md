@@ -14,7 +14,7 @@ estimate: 2 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-D27: stickers are **created by users**. T-0120 stores and sends stickers; this task lets people make packs in the app the way Telegram's sticker bot does, but in the UI: pick images, get them ready, name the pack, share it.
+D27: stickers are **created by users**. T-0120 stores and sends stickers; this task lets people make packs in the app the way a sticker bot does, but in the UI: pick images, get them ready, name the pack, share it.
 
 ### What to build (web only)
 1. **Entry points:** the sticker panel's "+" tab, a "Manage stickers" link in the panel, and Settings → Stickers (new page `routes/StickersPage.tsx`).

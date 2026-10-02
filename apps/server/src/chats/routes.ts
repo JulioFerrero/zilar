@@ -27,7 +27,7 @@ export type ChatListEntry =
       role: GroupRole;
       // T-0124: `group` behaves as before; `channel` is the broadcast feed
       // (its General topic is the feed). Channels also carry the count under
-      // `subscriberCount` (same number, Telegram's wording).
+      // `subscriberCount` (same number, the usual channel wording).
       chatKind: 'group' | 'channel';
       subscriberCount?: number;
       /** The channel's short blurb, or null. Absent on groups. */
@@ -81,7 +81,7 @@ export function createChatsRoutes({ auth, db, config }: ChatsRoutesDependencies)
         memberCount: group.memberCount,
         role: group.role,
         chatKind: group.kind,
-        // T-0124: the same count under Telegram's name, for channels only.
+        // T-0124: the same count under the usual channel name, for channels only.
         // Groups keep exactly the shape they had (no extra keys).
         ...(group.kind === 'channel'
           ? { subscriberCount: group.memberCount, description: group.description }

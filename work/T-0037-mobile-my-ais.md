@@ -15,7 +15,7 @@ estimate: 2 days
 
 ### Goal
 
-On the web, a person can create, list, edit and delete their AIs (T-0032). **The mobile app can't do any of it yet.** Bring the same two screens to the Expo app, against the same live API: a **My AIs** list and a **Create an AI** wizard. It must feel native (Telegram-like, per `docs/design/ui-style.md`), not like a web page squeezed onto a phone.
+On the web, a person can create, list, edit and delete their AIs (T-0032). **The mobile app can't do any of it yet.** Bring the same two screens to the Expo app, against the same live API: a **My AIs** list and a **Create an AI** wizard. It must feel native (Messenger-style, per `docs/design/ui-style.md`), not like a web page squeezed onto a phone.
 
 You have vision. Check your own screenshots of every screen and state, and fix what looks wrong before you report.
 

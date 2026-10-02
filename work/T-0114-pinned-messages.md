@@ -14,7 +14,7 @@ estimate: 1.5 days
 ## Spec (written by Claude, do not edit)
 
 ### Why
-D28 (Telegram basics). A topic like "Release 2.4" or "General" needs the important message kept at the top, as in Telegram: a slim banner under the header, click to jump to it, a list of all pins.
+D28 (messenger basics). A topic like "Release 2.4" or "General" needs the important message kept at the top, as in most messengers: a slim banner under the header, click to jump to it, a list of all pins.
 
 ### Data and API (server)
 - Table `pinned_messages`: `id`, `chat_jid` (the room JID or the DM's JID pair key; for DMs store the **canonical pair** `min(jidA,jidB)|max(jidA,jidB)` so both people share one list), `message_id` (the identifier the clients already use to target corrections, retractions and reactions: T-0059/T-0061; use the same one), `sender_name` (snapshot, ≤ 80), `text` (snapshot, ≤ 300 chars; empty for attachments, then `kind` says `image` | `file` | `voice` | `card`), `kind`, `pinned_by` (fk user), `pinned_at`. Unique `(chat_jid, message_id)`. Max 20 per chat (400 `pin_limit`). Migration only via `pnpm --filter @zilar/server db:generate`.

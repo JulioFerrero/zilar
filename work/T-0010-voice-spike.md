@@ -61,7 +61,7 @@ need a change there, describe it in the Report and stop.
 
 ### What to build
 1. **Record on the web.** A hold-to-record button in the composer, in the
-   Telegram style already used by `composer.tsx`: press to start, release to
+   the hold-to-record style already used by `composer.tsx`: press to start, release to
    send, slide to cancel. Show a live duration. `MediaRecorder` cannot assume a
    format: on Safari/iOS it gives `audio/mp4`, on Chrome `audio/webm`. **Detect
    what the browser actually produced** and record it in the Report.
@@ -332,7 +332,7 @@ to clear, not a code problem.
   So it is a **load-sensitive flake**, not a regression from this task — see
   Finding 3. T-0010 touched no file in that path.
 - **The screenshot**, opened: `voice-received.png` shows the voice bubble in the
-  Telegram-like style (play button, waveform, `0:18`, sender name) and the new
+  messenger style (play button, waveform, `0:18`, sender name) and the new
   microphone button in the composer, consistent with `ui-style.md`. It is
   `?mock=1` with a synthesised WAV, exactly as the Report says, so it is
   **UI and playability evidence, not end-to-end audio evidence**. The real

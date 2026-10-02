@@ -15,7 +15,7 @@ estimate: 1.5 days
 
 ### Goal
 
-Julio approved a new look on 2026-09-28 (decision D24): Telegram's layout in a Vercel-dark style (black, Geist, shadcn) with **real skeuomorphic depth**, meaning glossy raised buttons and bubbles and recessed fields. He loved it: "omg so much better i love it, lets do that".
+Julio approved a new look on 2026-09-28 (decision D24): a classic messenger layout in a Vercel-dark style (black, Geist, shadcn) with **real skeuomorphic depth**, meaning glossy raised buttons and bubbles and recessed fields. He loved it: "omg so much better i love it, lets do that".
 
 This is part 1 of 2:
 - **Part 1 (this task):** the foundation (tokens, fonts, dark only, the four depth primitives), the page layout with two floating panels, and the whole **sidebar** (search, folder segmented control, chat list, New chat).

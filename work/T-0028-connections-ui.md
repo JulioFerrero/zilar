@@ -109,7 +109,7 @@ timestamps. Follow the existing migration mechanism exactly.
 - An "Add connection" flow: pick a provider from a fixed list matching the plan
   (OpenAI, Anthropic, Google Gemini, DeepSeek, xAI, OpenRouter, GitHub), paste
   the key, optional label, save.
-- **Telegram-like, per `docs/design/ui-style.md`.** Read it before you write a
+- **Messenger-style, per `docs/design/ui-style.md`.** Read it before you write a
   single component. This is a settings screen, not a landing page: compact,
   list-driven, one obvious primary action.
 - Password-type input with a reveal toggle. Never render a stored key back into
@@ -201,7 +201,7 @@ key is configured (mirrors LITELLM_MASTER_KEY).
 
 **Web** — `ConnectionsPage.tsx` (route `/settings/connections`, registered in
 `AppRoutes.tsx` under `RequireAuth`), plus `ConnectionsPage.test.tsx`. Compact,
-list-driven Telegram-style screen: empty/loading/error/list states, one primary
+list-driven messenger-style screen: empty/loading/error/list states, one primary
 "Add a connection" action, password input with reveal toggle, Test + Remove per
 row. API keys only (copy says so). Real path is the default; it does not use the
 `?mock=1` store.
@@ -356,7 +356,7 @@ error strings), the owner check on every query, and 404-not-403 are correct.
    menuitem** to the "Main menu", between "Invite a friend" and "Sign out", that
    navigates to `/settings/connections`. In `ConnectionsPage.tsx`, add a back
    button (arrow icon, `aria-label="Back"`) left of the "Connections" title that
-   goes to `/`, like a Telegram settings screen.
+   goes to `/`, like a messenger settings screen.
    Tests: the menu item navigates to the page; Back returns to the chat list.
 2. **An unconfigured server gives a misleading error.** Without
    `ZILAR_KEY_ENCRYPTION_KEY` the routes are not mounted, so the page shows a

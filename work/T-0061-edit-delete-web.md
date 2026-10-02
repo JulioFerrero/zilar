@@ -15,7 +15,7 @@ estimate: 1.5 days
 
 ### Goal
 
-The MVP list (`docs/PROJECT_PLAN.md` §21) has message edit and delete, and the web has neither. Add Telegram-like editing and delete-for-everyone to DMs and groups. Both must survive reloads: they come back from MAM history, just like T-0059's reactions.
+The MVP list (`docs/PROJECT_PLAN.md` §21) has message edit and delete, and the web has neither. Add messenger-style editing and delete-for-everyone to DMs and groups. Both must survive reloads: they come back from MAM history, just like T-0059's reactions.
 
 ### Protocol (decided)
 
@@ -104,7 +104,7 @@ The MVP list (`docs/PROJECT_PLAN.md` §21) has message edit and delete, and the 
      - an edit that doesn't change the text sends nothing;
      - an empty edit is not allowed: the send key is disabled.
      - Edit and reply are exclusive: starting one cancels the other.
-   - **↑ in an empty composer** edits my last editable message, as in Telegram.
+   - **↑ in an empty composer** edits my last editable message, as in most messengers.
    - **Delete:** a confirm dialog titled "Delete message?" with the body "This deletes it for everyone in the chat." and the keys Cancel and **Delete** (danger). Esc cancels. Focus is trapped and returns to the bubble's ⋯ key or the composer.
    - **Bubbles:**
      - an edited message shows "edited" before the time in the meta row, in the same muted style;

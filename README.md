@@ -21,7 +21,7 @@ Friends, family, work groups, and groups with your own AIs, on your own server.
 
 ---
 
-Think Telegram, but some of the people in the room are AIs you own. They join your DMs and groups, answer @mentions, stream their replies, and can be given real work under rules the **platform** enforces: spending caps, approvals for risky actions, an audit trail, and a kill switch. No rule lives only in a prompt.
+Think of the messenger you already use, but some of the people in the room are AIs you own. They join your DMs and groups, answer @mentions, stream their replies, and can be given real work under rules the **platform** enforces: spending caps, approvals for risky actions, an audit trail, and a kill switch. No rule lives only in a prompt.
 
 > *Zilar* is the Basque word for silver.
 
@@ -32,7 +32,7 @@ Think Telegram, but some of the people in the room are AIs you own. They join yo
 | 💬 **Real chat** | DMs and groups over XMPP: history, typing, read receipts, replies, reactions, edit and delete, attachments, @mentions |
 | 🤖 **AIs as people** | Create an AI in one screen, give it a persona, add it to a group, change it just by asking it in chat |
 | 🔑 **Bring your own keys** | Any provider, keys encrypted at rest, every AI behind a **hard money cap** |
-| 🧵 **Topics** | Groups have topics like Telegram forums: public or private, a task strip with owners, AIs per topic; plus per-user mute, archive and pin, pinned messages, and search across everything (prefix and typo tolerant) |
+| 🧵 **Topics** | Groups have forum-style topics: public or private, a task strip with owners, AIs per topic; plus per-user mute, archive and pin, pinned messages, and search across everything (prefix and typo tolerant) |
 | 🔗 **Invites, roles, channels** | Shareable group invite links, named roles with private-topic access and approver rights, one-way channels where only admins post |
 | 🏷️ **Stickers and GIFs** | User-made sticker packs, a creator, favorites, and GIF search that stays private (GIFs need the owner's provider key) |
 | 🔔 **Notifications** | Installable app with web push: per-device subscription, mute-aware, dismiss-on-read (needs HTTPS on a real deploy) |
@@ -110,7 +110,7 @@ Early and moving fast, built by one person with an AI team. Chat, AIs, streaming
 | M2 AIs that talk (create, keys, caps, streaming, groups) | ✅ done |
 | M3 Bring your own machine (registry, runner, tunnel) | 🟡 registry, runner and hub merged; desks and docker driver next |
 | M4 AIs that act (approvals, gateway, rules, tools) | 🟡 approvals, gateway, sandbox, routines and web tools merged (off by default); UI next |
-| M5 Feels like Telegram (topics, search, pins, stickers, install) | 🟡 topics, chat prefs, pins, search, invites, roles, channels, stickers, GIFs, push and the install wizard merged (several need keys, HTTPS or a device check); voice, Telegram import, mobile GIFs and deploy push next ([`docs/ROADMAP_M5.md`](docs/ROADMAP_M5.md)) |
+| M5 A complete daily messenger (topics, search, pins, stickers, install) | 🟡 topics, chat prefs, pins, search, invites, roles, channels, stickers, GIFs, push and the install wizard merged (several need keys, HTTPS or a device check); voice, Telegram import, mobile GIFs and deploy push next ([`docs/ROADMAP_M5.md`](docs/ROADMAP_M5.md)) |
 
 ## 🚀 Quick start
 

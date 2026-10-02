@@ -413,7 +413,7 @@ export function Composer({
     store.cancelEdit();
   };
 
-  // ↑ in an empty composer edits my last editable message, as in Telegram.
+  // ↑ in an empty composer edits my last editable message, as in most messengers.
   const editLastMessage = (): void => {
     const last = [...store.messages(chatId)]
       .reverse()
