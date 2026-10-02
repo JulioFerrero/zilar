@@ -1,10 +1,9 @@
 # Zilar production web app: static file server with SPA fallback.
 #
-# The API (`/api/*`), the XMPP WebSocket (`/xmpp-ws/*`) and uploads
-# (`/upload/*`) are NOT served here: the production reverse proxy (Caddy in
-# deploy/docker-compose.yml, Traefik in deploy/coolify/docker-compose.yml)
-# routes those paths to the server and ejabberd before they reach this
-# service. This file only serves the built Vite app.
+# Serves the built Vite app, and forwards the API (`/api/*`), the XMPP
+# WebSocket (`/xmpp-ws/*`) and uploads (`/upload/*`) to the server and ejabberd.
+# deploy/docker-compose.yml routes those paths before they reach this
+# service; deploy/coolify/docker-compose.yml relies on the forwarding below.
 
 {
   admin off
@@ -36,7 +35,30 @@
     header Cache-Control "no-store"
   }
 
-  # SPA fallback: every non-file path serves index.html.
-  try_files {path} /index.html
-  file_server
+  # Behind a proxy that routes these paths itself (Caddy in deploy/docker-compose.yml)
+  # they never arrive here. Behind a proxy that only knows one domain per service
+  # (Coolify), this makes the web container the single entry point. Hosts resolve
+  # when a request arrives, so the plain stack never needs them from here.
+  handle /api/* {
+    reverse_proxy server:3000
+  }
+
+  handle /health {
+    reverse_proxy server:3000
+  }
+
+  handle /xmpp-ws/* {
+    uri strip_prefix /xmpp-ws
+    reverse_proxy ejabberd:5280
+  }
+
+  handle /upload/* {
+    reverse_proxy ejabberd:5280
+  }
+
+  handle {
+    # SPA fallback: every non-file path serves index.html.
+    try_files {path} /index.html
+    file_server
+  }
 }

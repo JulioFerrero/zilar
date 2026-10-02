@@ -25,19 +25,10 @@
 # baked into the images, so this file works as a lone paste into a Coolify
 # "Docker Compose Empty" service (which has no checkout of this repository).
 #
-# What this file does NOT do (Coolify limitation, verified in the docs but
-# not on a live Coolify — see the T-0126 Report):
-# - Path-based routing (`/`, `/api`, `/xmpp-ws`, `/upload` on ONE domain)
-#   through a single Coolify Service. Each SERVICE_URL_* domain maps to one
-#   component and one internal port, with an optional path prefix appended
-#   to the URL value — it is not a reverse-proxy rule. The supported shape
-#   is one domain (Coolify "Domain" entry) per component below: the web app,
-#   the API (same-origin for cookies cannot hold here, so the API gets its
-#   own subdomain and WEB_ORIGINS allows the web origin), the XMPP WebSocket
-#   and the uploads path each get their own routed port on ejabberd.
-# - ejabberd serves XMPP over WebSocket, uploads and the admin API on one
-#   HTTP listener (port 5280). Traefik routes each domain to that port; the
-#   path decides the handler inside ejabberd, exactly like the Caddy setup.
+# One domain: Coolify routes the install's single domain to the `web` service, and the
+# web container forwards /api to the server and /xmpp-ws and /upload to ejabberd
+# (apps/web/Caddyfile). The XMPP domain is that same host, so there is nothing to
+# configure besides the domain itself.
 
 services:
   postgres:
@@ -73,9 +64,9 @@ services:
       # Traefik terminates TLS; ejabberd serves plain HTTP on the Service
       # network. HOST/MUC_HOST/ADMIN come from the public domain you set in
       # Coolify (SERVICE_FQDN roots), passed here as plain variables.
-      EJABBERD_MACRO_HOST: ${XMPP_DOMAIN:?}
-      EJABBERD_MACRO_MUC_HOST: ${XMPP_MUC_DOMAIN:?}
-      EJABBERD_MACRO_ADMIN: admin@${XMPP_DOMAIN:?}
+      EJABBERD_MACRO_HOST: ${SERVICE_FQDN_WEB:?}
+      EJABBERD_MACRO_MUC_HOST: rooms.${SERVICE_FQDN_WEB:?}
+      EJABBERD_MACRO_ADMIN: admin@${SERVICE_FQDN_WEB:?}
       REGISTER_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_ADMIN:?}
       EJABBERD_MACRO_SQL_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_DB}
       # Push component (T-0145, XEP-0114): the secret the server's component
@@ -90,17 +81,9 @@ services:
       # (see deploy/ejabberd/push-entrypoint.sh): set it to the same value
       # as XMPP_DOMAIN so the entrypoint writes push.<XMPP_DOMAIN>, matching
       # PUSH_COMPONENT_JID below.
-      ZILAR_DOMAIN: ${XMPP_DOMAIN:?}
+      ZILAR_DOMAIN: ${SERVICE_FQDN_WEB:?}
       ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
-      EJABBERD_MACRO_UPLOAD_URL: ${EJABBERD_UPLOAD_URL:-https://uploads.example.com/upload}
-      # Routed entry points on ejabberd's single HTTP listener (port 5280).
-      # Coolify generates one domain per SERVICE_URL_* variable below; set
-      # the hostnames in the Domains configuration after pasting this file.
-      # The path suffixes are ejabberd-internal paths (the WS handler and
-      # the upload handler), not reverse-proxy rules: Traefik routes each
-      # domain to port 5280 and the path picks the handler inside ejabberd.
-      SERVICE_URL_EJABBERD_WS_5280: /ws
-      SERVICE_URL_EJABBERD_UPLOAD_5280: /upload
+      EJABBERD_MACRO_UPLOAD_URL: https://${SERVICE_FQDN_WEB:?}/upload
     expose:
       - '5280'
     volumes:
@@ -132,20 +115,18 @@ services:
       DATABASE_URL: postgres://zilar:${SERVICE_PASSWORD_ZILAR_DB:?}@postgres:5432/zilar
       XMPP_ARCHIVE_DATABASE_URL: postgres://zilar_archive:${SERVICE_PASSWORD_ARCHIVE_DB:?}@postgres:5432/ejabberd
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      PUBLIC_URL: ${SERVICE_URL_SERVER_3000:?}
+      PUBLIC_URL: ${SERVICE_URL_WEB:?}
       BETTER_AUTH_SECRET: ${SERVICE_PASSWORD_BETTER_AUTH:?}
-      # The web app lives on its own domain under Coolify, so the API must
-      # allow that origin for cookie auth. Set WEB_ORIGIN to the web app's
-      # public URL after Coolify generates it.
-      WEB_ORIGINS: ${WEB_ORIGIN:?}
+      # The API shares the web app's domain, so the allowed origin is that domain.
+      WEB_ORIGINS: ${SERVICE_URL_WEB:?}
       EJABBERD_API_URL: http://ejabberd:5280/api
-      EJABBERD_ADMIN_JID: admin@${XMPP_DOMAIN:?}
+      EJABBERD_ADMIN_JID: admin@${SERVICE_FQDN_WEB:?}
       EJABBERD_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_ADMIN:?}
-      XMPP_DOMAIN: ${XMPP_DOMAIN:?}
-      XMPP_MUC_DOMAIN: ${XMPP_MUC_DOMAIN:?}
+      XMPP_DOMAIN: ${SERVICE_FQDN_WEB:?}
+      XMPP_MUC_DOMAIN: rooms.${SERVICE_FQDN_WEB:?}
       # The WS handler answers at ejabberd's /ws path, so the public token
       # URL is the routed WS domain plus /ws.
-      XMPP_WS_PUBLIC_URL: ${SERVICE_URL_EJABBERD_WS_5280:?}/ws
+      XMPP_WS_PUBLIC_URL: wss://${SERVICE_FQDN_WEB:?}/xmpp-ws/ws
       ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
       ZILAR_KEY_ENCRYPTION_KEY: ${ZILAR_KEY_ENCRYPTION_KEY:-@empty@}
       # Where sticker files live: a persistent volume (see `volumes:` below),
@@ -184,15 +165,13 @@ services:
       # the ejabberd_service listener from the XMPP_DOMAIN below (see
       # deploy/ejabberd/push-entrypoint.sh). Set ZILAR_DOMAIN to the same
       # value as XMPP_DOMAIN so the entrypoint derives it.
-      PUSH_COMPONENT_JID: push.${XMPP_DOMAIN:?}
+      PUSH_COMPONENT_JID: push.${SERVICE_FQDN_WEB:?}
       # Must equal ejabberd's EJABBERD_MACRO_PUSH_COMPONENT_SECRET above.
       PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSH_COMPONENT:-CHANGE_ME_PUSH_COMPONENT_SECRET}
       PUSH_STORAGE_KEY: ${PUSH_STORAGE_KEY:-}
       TOOLS_ENABLED: ${TOOLS_ENABLED:-false}
       ROUTINES_ENABLED: ${ROUTINES_ENABLED:-false}
       WEB_TOOLS_ENABLED: ${WEB_TOOLS_ENABLED:-false}
-      # Public domain for the API itself, routed to the server's port.
-      SERVICE_URL_SERVER_3000: /api
     expose:
       - '3000'
     healthcheck:
@@ -217,7 +196,8 @@ services:
       server:
         condition: service_healthy
     environment:
-      # The web app's public domain, routed to the static file server.
+      # The one public domain of the install. The web container forwards /api,
+      # /xmpp-ws and /upload to the server and ejabberd (apps/web/Caddyfile).
       SERVICE_URL_WEB_80: /
     expose:
       - '80'
