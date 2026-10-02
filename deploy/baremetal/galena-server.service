@@ -29,6 +29,9 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
+# /var/lib/galena holds the sticker store (STICKER_STORAGE_DIR in
+# /etc/galena/galena.env, default /var/lib/galena/stickers): keep it
+# writable or sticker uploads fail at startup ("not writable").
 ReadWritePaths=/opt/galena/apps/server /var/lib/galena
 # The env file may be world-unreadable already (mode 0600 galena:galena),
 # but pass the service name check anyway.

@@ -38,10 +38,11 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Tool host approval | New sites a tool wants to contact need one approval per tool; runs use declared ∩ approved hosts; approvals happen through the AI's card | server, web | 🟡 Merged (off by default) | T-0132 |
 | Model side of AI tools | Tool guide in the turn, several model rounds per turn, "working on it" progress line | server | 🟡 Merged (not tried against a real model yet) | T-0106 |
 | Tools and Routines UI | Tool list, read-only source, version history with revert, Run now, routines with plain-words schedules, pause/resume/delete | web | 🟡 Merged | T-0107 |
-| Voice messages | Designed, not built | | 🧭 Planned | plan §6.5 |
+| Voice messages | Record and play on web (server converts to AAC/M4A, sent as an attachment); the phone mic button is still a stub | server, web | 🟡 Merged (web) · 🧭 Planned (mobile, T-0154) | T-0154 |
 | Telegram sticker import | Bring your Telegram packs (needs a bot token in the server config) | server | 🟡 Merged (not yet tried with a real bot) | T-0123 |
-| Mobile GIFs | Render and send GIFs on the phone | | 🧭 Planned | T-0148 |
-| Push in the production deploy | ejabberd component, compose, wizard keys, doctor | | 🧭 Planned | T-0145 |
+| Mobile GIFs | Render, search and send GIFs on the phone (needs the GIF provider key in the server env) | mobile | 🟡 Merged (not yet on a device) | T-0148 |
+| Push in the production deploy | ejabberd component, compose, wizard keys, doctor | deploy | 🟡 Merged (not yet on a real deploy) | T-0145 |
+| Production storage safety | Sticker volume, backup/restore of both file stores, disk check, upload quotas | deploy, docs | 🟡 Merged (not yet on a real deploy) | T-0151 |
 | Native iOS push | Push chain through Apple's servers (needs an Apple Developer account) | | 🧭 Planned | T-0005 |
 
 ## 2. Accounts and identity

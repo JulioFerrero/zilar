@@ -173,7 +173,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0144](T-0144-mobile-channels.md) | mobile channels: read-only bar, channel screen, create, promote/demote | 2026-10-01 |
 | [T-0121](T-0121-sticker-creator.md) | sticker pack creator, favorites, panel reorder (migration 0032) | 2026-10-01 |
 | [T-0147](T-0147-mobile-nits.md) | mobile nits: group fetch ordering, join link cleanups, jump-scroll retries | 2026-10-01 |
-| [T-0151](T-0151-deploy-storage-safety.md) | Production storage safety: sticker volume, backups of both file stores, disk check in doctor, ejabberd upload quota | planned | meta/muse-spark-1.3-contributor | T-0145 | Spec ready, not launched (Julio asked to close tasks first) |
 | [T-0146](T-0146-web-server-nits.md) | web/server nits: sticker dir warning, leave 404, AI reload, GIF host rule, GIF tab | 2026-10-01 |
 | [T-0143](T-0143-mobile-stickers.md) | mobile stickers: render, panel, send, recents, mock packs | 2026-10-01 |
 | [T-0123](T-0123-telegram-sticker-importer.md) | Telegram sticker pack importer | 2026-10-01 |
@@ -182,4 +181,12 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0150](T-0150-mobile-attachments.md) | Mobile attachments | 2026-10-01 |
 | [T-0152](T-0152-web-sticker-ui.md) | Web sticker UI fixes | 2026-10-01 |
 | [T-0153](T-0153-web-settings-layout.md) | Web settings pages layout | 2026-10-01 |
+| [T-0154](T-0154-mobile-voice-messages.md) | Mobile voice messages: record, send, play (expo-audio) | planned | meta/muse-spark-1.3-contributor | T-0150 | Spec ready |
+| [T-0155](T-0155-web-ui-polish-2.md) | Web UI polish round 2: Machines, Approvals, dialogs, text size, sticker nits | planned | meta/muse-spark-1.3-contributor | T-0153 | Spec ready |
+| [T-0156](T-0156-server-deploy-nits.md) | Server and deploy nits bundle | planned | meta/muse-spark-1.3-contributor | T-0145, T-0151 | Spec ready |
+| [T-0157](T-0157-mobile-nits-2.md) | Mobile nits bundle 2: attachments, GIFs, roles load error | planned | meta/muse-spark-1.3-contributor | T-0148, T-0150 | Spec ready |
+| [T-0158](T-0158-scheduled-backups.md) | Scheduled backups with retention and a freshness check | planned | meta/muse-spark-1.3-contributor | T-0151 | Spec ready |
+| [T-0159](T-0159-install-rehearsal.md) | Fresh production install rehearsal (run only on a free machine) | planned | meta/muse-spark-1.3-contributor | T-0145, T-0151, T-0158 | Spec ready |
+| [T-0160](T-0160-rename-zilar.md) | Rename EVERYTHING from Galena to Zilar (scope, env, hosts, DB names, compose, storage keys, deploy script; no keep-list) | in-progress | meta/muse-spark-1.3-contributor | none (runs ALONE) | Launched 2026-10-02; dev DB backup in ~/zilar-rename-backup |
 | [T-0148](T-0148-mobile-gifs.md) | Mobile GIFs | 2026-10-01 |
+| [T-0151](T-0151-deploy-storage-safety.md) | Production storage safety | 2026-10-01 |

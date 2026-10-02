@@ -9,7 +9,7 @@
 #   ./galena init          write deploy/.env with generated secrets
 #   ./galena up|down|logs|status|update   run the compose stack
 #   ./galena doctor        check the machine before/after install
-#   ./galena backup [dir]  timestamped archive (databases, uploads, .env)
+#   ./galena backup [dir]  timestamped archive (databases, file stores, .env)
 #   ./galena restore <archive>   bring an install back (needs --yes)
 #   ./galena create-admin  mint the invite code for the first account
 #
@@ -141,7 +141,7 @@ Usage: $PROG [--env-file=PATH] [--dry-run] <command> [args]
   update                  Pull images, restart, wait until healthy.
   doctor                  Check Docker, ports, DNS and /health with fix hints.
   backup [dir]            Write a timestamped archive (default dir: deploy/backups).
-  restore <archive> --yes Stop services, restore databases/uploads/.env, restart.
+  restore <archive> --yes Stop services, restore databases/file stores/.env, restart.
   create-admin [--uses N] [--days D]
       Mint the invite code for the first account on the running server.
 
@@ -679,6 +679,52 @@ cmd_doctor() {
     echo "skip: push is off (PUSH_ENABLED is not true — run '$PROG init' without --no-push to enable it)"
   fi
 
+  # 6. Disk space for the Docker data (volumes live there) + the sticker
+  # directory is a mounted volume, not the container layer.
+  # GALENA_DOCTOR_DISK_USED_PCT overrides the measured value (tests inject
+  # 80/95 without filling a real disk; never set it on a real install).
+  _disk_used=""
+  if [ -n "${GALENA_DOCTOR_DISK_USED_PCT-}" ]; then
+    _disk_used="$GALENA_DOCTOR_DISK_USED_PCT"
+  elif compose ps --status running server 2>/dev/null | grep -q server; then
+    # Same filesystem the volumes live on (Docker data root): df inside the
+    # server container, POSIX -P output (second line, 5th field, "NN%").
+    _disk_used="$(compose exec -T server df -P /data/stickers 2>/dev/null | awk 'NR==2 {gsub(/%/, "", $5); print $5}')"
+  fi
+  if [ -z "$_disk_used" ]; then
+    echo "skip: the stack is not running, so disk usage cannot be checked (run '$PROG up' first)"
+  else
+    case "$_disk_used" in
+      *[!0-9]*) echo "skip: could not read disk usage (got '$_disk_used')" ;;
+      *)
+        if [ "$_disk_used" -ge 95 ]; then
+          doctor_bad "disk is $_disk_used% full (Docker data filesystem) — uploads and stickers will fail" "free space now: prune old backups in deploy/backups/, run 'docker system prune', or grow the disk"
+        elif [ "$_disk_used" -ge 80 ]; then
+          echo "WARN: disk is $_disk_used% full (Docker data filesystem) — plan to free space or grow the disk soon" >&2
+          doctor_ok "disk usage checked ($_disk_used% used — warning at 80%, failure at 95%)"
+        else
+          doctor_ok "disk has room ($_disk_used% used — warning at 80%, failure at 95%)"
+        fi
+        ;;
+    esac
+  fi
+  if compose ps --status running server 2>/dev/null | grep -q server; then
+    # The sticker directory must be a mounted volume: compare the device of
+    # the directory against the device of / (same device = container layer,
+    # files lost on replace). `stat -c %d` is GNU; busybox stat needs %d too.
+    _sticker_dev="$(compose exec -T server stat -c %d /data/stickers 2>/dev/null | tr -d '[:space:]')"
+    _root_dev="$(compose exec -T server stat -c %d / 2>/dev/null | tr -d '[:space:]')"
+    if [ -z "$_sticker_dev" ] || [ -z "$_root_dev" ]; then
+      echo "skip: could not compare the sticker mount (stat unavailable in the server container)"
+    elif [ "$_sticker_dev" != "$_root_dev" ]; then
+      doctor_ok "STICKER_STORAGE_DIR (/data/stickers) is on a mounted volume, not the container layer"
+    else
+      doctor_bad "STICKER_STORAGE_DIR (/data/stickers) is on the container layer, not a mounted volume — stickers are lost when the server container is replaced" "mount the sticker-data volume at /data/stickers (see deploy/docker-compose.yml)"
+    fi
+  else
+    echo "skip: the stack is not running, so the sticker mount cannot be checked (run '$PROG up' first)"
+  fi
+
   if [ "$doctor_fail" -ne 0 ]; then
     die "doctor found problems (see FAIL lines above)"
   fi
@@ -768,7 +814,8 @@ cmd_backup() {
 +   ejabberd.dump    pg_dump custom format of the ejabberd database
 +   globals.sql      roles and globals (pg_dumpall -g) so a fresh cluster
 +                    can recreate the roles the dumps need
-+   uploads.tgz      the ejabberd uploads volume
++   uploads.tgz      the ejabberd uploads volume (/opt/ejabberd/upload)
++   stickers.tgz     the sticker volume (STICKER_STORAGE_DIR=/data/stickers)
 +   .env             a copy of $ENV_FILE (mode 0600 in the archive)
 +   SECRETS_WARNING.txt   "this archive contains live secrets"
 +   manifest.json    versions and provenance (domain, image tag,
@@ -804,9 +851,11 @@ EOF
   _ej_version="$(compose exec -T ejabberd ejabberdctl status 2>/dev/null | head -n 1 | tr -d '\r\n' || true)"
   info "archiving uploads..."
   compose exec -T ejabberd tar -C /opt/ejabberd -czf - upload > "$_tmp/uploads.tgz"
+  info "archiving stickers..."
+  compose exec -T server tar -C /data -czf - stickers > "$_tmp/stickers.tgz"
 
   cp "$ENV_FILE" "$_tmp/.env"
-  chmod 600 "$_tmp/.env" "$_tmp/galena.dump" "$_tmp/ejabberd.dump" "$_tmp/globals.sql" "$_tmp/uploads.tgz"
+  chmod 600 "$_tmp/.env" "$_tmp/galena.dump" "$_tmp/ejabberd.dump" "$_tmp/globals.sql" "$_tmp/uploads.tgz" "$_tmp/stickers.tgz"
   cat > "$_tmp/SECRETS_WARNING.txt" <<EOF
 This archive contains LIVE SECRETS (the .env file: database passwords,
 JWT and session secrets). Anyone holding it owns this Galena install.
@@ -825,7 +874,7 @@ EOF
 }
 EOF
 
-  tar -czf "$_dir/$_name" -C "$_tmp" galena.dump ejabberd.dump globals.sql uploads.tgz .env SECRETS_WARNING.txt manifest.json
+  tar -czf "$_dir/$_name" -C "$_tmp" galena.dump ejabberd.dump globals.sql uploads.tgz stickers.tgz .env SECRETS_WARNING.txt manifest.json
   chmod 600 "$_dir/$_name"
   trap - EXIT
   rm -rf "$_tmp"
@@ -861,7 +910,7 @@ cmd_restore() {
 + would: stop server, web and ejabberd (postgres keeps running)
 + would: recreate roles/globals from globals.sql, then pg_restore --clean
 +        into the galena and ejabberd databases (credentials from the ARCHIVE)
-+ would: restore the uploads volume, back up $ENV_FILE to $ENV_FILE.bak-<stamp>,
++ would: restore the uploads volume and the sticker volume, back up $ENV_FILE to $ENV_FILE.bak-<stamp>,
 +        install the archived .env (mode 0600)
 + would: start everything and wait for health
 + on any failure: the stack is restarted first, then the error is reported
@@ -877,6 +926,13 @@ EOF
   for _f in galena.dump ejabberd.dump uploads.tgz .env; do
     [ -f "$_tmp/$_f" ] || die "$_archive is missing $_f"
   done
+  # Archives taken before the sticker volume was backed up carry no
+  # stickers.tgz: restore them with an empty sticker store, said out loud.
+  _has_stickers=1
+  if [ ! -f "$_tmp/stickers.tgz" ]; then
+    _has_stickers=0
+    warn "$_archive has no stickers.tgz (made before sticker files were backed up): the sticker store will stay as it is."
+  fi
   info "archive ok (backed up by $(sed -n 's/.*"created_at": "\(.*\)".*/\1/p' "$_tmp/manifest.json" | head -n 1))."
 
   # From here on every failure restarts the stack before reporting: never
@@ -991,12 +1047,17 @@ EOF
     sh -c 'cat > /tmp/galena-restore.dump && PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U postgres -d ejabberd --clean --if-exists /tmp/galena-restore.dump; _rc=$?; rm -f /tmp/galena-restore.dump; exit $_rc' < "$_tmp/ejabberd.dump" \
     || { _step="restore the ejabberd database"; _recover; }
 
-  _step="restore uploads"
-  info "starting ejabberd so uploads can be restored..."
-  compose up -d ejabberd
+  _step="restore file stores"
+  info "starting ejabberd and the server so the file stores can be restored..."
+  compose up -d ejabberd server
   info "restoring uploads..."
   compose exec -T ejabberd tar -C /opt/ejabberd -xzf - upload < "$_tmp/uploads.tgz" \
-    || { _step="restore uploads"; _recover; }
+    || { _step="restore file stores"; _recover; }
+  if [ "$_has_stickers" = 1 ]; then
+    info "restoring stickers..."
+    compose exec -T server tar -C /data -xzf - stickers < "$_tmp/stickers.tgz" \
+      || { _step="restore file stores"; _recover; }
+  fi
 
   _step="install the archived .env"
   _stamp="$(date -u +%Y%m%dT%H%M%SZ)"

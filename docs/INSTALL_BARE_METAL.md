@@ -31,6 +31,10 @@ sudo chmod 700 /etc/galena
 PostgreSQL's peer auth maps the `galena` OS user to the `galena` database
 role later (§2), so run the database steps as that user where noted.
 
+`/var/lib/galena` holds the server's file data: stickers
+(`STICKER_STORAGE_DIR`, default `/var/lib/galena/stickers` — created at
+startup when missing, must stay writable, backed up in §7).
+
 ## 2. Database: PostgreSQL + pgvector
 
 Install PostgreSQL 16 or newer and the pgvector extension for it
@@ -247,22 +251,42 @@ Migrations run at startup. Back up first if the install matters (§8):
 
 **Backups.** There is no wizard for this path (the `./galena backup`
 helper only drives the Docker stack). At minimum, dump both databases
-nightly and copy the archives plus `/etc/galena/galena.env` (live
-secrets — mode 0600, store encrypted) off the machine. The env file
-backup matters twice for push: it holds `PUSH_STORAGE_KEY`, and losing
-that key orphans every device (browsers must re-enable push):
+nightly, tar the two file stores below, and copy the archives plus
+`/etc/galena/galena.env` (live secrets — mode 0600, store encrypted)
+off the machine. The env file backup matters twice for push: it holds
+`PUSH_STORAGE_KEY`, and losing that key orphans every device (browsers
+must re-enable push):
 
 ```bash
 pg_dump -Fc -U galena -h localhost galena > "galena-$(date -u +%Y%m%dT%H%M%SZ).dump"
 pg_dump -Fc -U ejabberd -h localhost ejabberd > "ejabberd-$(date -u +%Y%m%dT%H%M%SZ).dump"
+tar -czf "ejabberd-upload-$(date -u +%Y%m%dT%H%M%SZ).tgz" -C /var/lib/ejabberd upload
+tar -czf "galena-stickers-$(date -u +%Y%m%dT%H%M%SZ).tgz" -C /var/lib/galena stickers
+chmod 600 galena-*.dump ejabberd-*.dump ejabberd-upload-*.tgz galena-stickers-*.tgz
 ```
 
-A systemd timer running those two lines plus the ejabberd upload dir
-(`/var/lib/ejabberd/upload` — the `docroot` in `deploy/baremetal/ejabberd.yml`)
-and an off-machine copy (rsync/scp to another host) is enough for a small
-install. Restore = recreate roles/databases (§2), `pg_restore --clean`,
-restore the upload dir, put the env file back, restart ejabberd and
-`galena-server`. Practice the restore once before you need it.
+Where each kind of file lives: attachments (XEP-0363) in the ejabberd
+upload dir (`/var/lib/ejabberd/upload` — the `docroot` in
+`deploy/baremetal/ejabberd.yml`); stickers in `/var/lib/galena`
+(`STICKER_STORAGE_DIR` — set it in `/etc/galena/galena.env` to
+`/var/lib/galena/stickers`, create it owned by `galena:galena`; never a
+relative path — see `docs/SERVER_CONFIG.md` "Stickers"); GIFs are not
+stored (proxied; a sent GIF becomes a normal attachment); voice is not
+built. The database dumps hold neither file store — skip the two tar
+lines and a restore brings back rows pointing at missing files.
+
+Upload quotas work the same as Docker: `deploy/baremetal/ejabberd.yml`
+enables `mod_http_upload_quota` with 2048 MiB soft / 4096 MiB hard per
+user (oldest files trimmed first past the hard quota, no age-out);
+retune the two shaper numbers there. Watch disk space (`df -h /`):
+at 80% used plan to free space or grow the disk; at 95% uploads and
+stickers start failing.
+
+A systemd timer running the dump + tar lines plus an off-machine copy
+(rsync/scp to another host) is enough for a small install. Restore =
+recreate roles/databases (§2), `pg_restore --clean`, restore both file
+dirs, put the env file back, restart ejabberd and `galena-server`.
+Practice the restore once before you need it.
 
 ## 8. What was and was not tested
 

@@ -148,6 +148,10 @@ services:
       XMPP_WS_PUBLIC_URL: ${SERVICE_URL_EJABBERD_WS_5280:?}/ws
       GALENA_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT:?}
       GALENA_KEY_ENCRYPTION_KEY: ${GALENA_KEY_ENCRYPTION_KEY:-@empty@}
+      # Where sticker files live: a persistent volume (see `volumes:` below),
+      # fixed absolute path, always set — never relative, never empty.
+      # A manual edit of this value orphans previously uploaded stickers.
+      STICKER_STORAGE_DIR: /data/stickers
       # See deploy/docker-compose.yml: an empty string fails the `z.url()`
       # schema, so the default is an unreachable placeholder URL. The AI
       # module treats "no master key" as "no gateway" and the placeholder is
@@ -199,6 +203,12 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+    # Sticker files (STICKER_STORAGE_DIR above) live on this named volume,
+    # not the container layer: without it every server replace wipes them.
+    # The server starts as non-root (see apps/server/Dockerfile), so the
+    # mount must stay writable by that user (default named-volume ownership).
+    volumes:
+      - sticker-data:/data/stickers
 
   web:
     image: ghcr.io/${IMAGE_OWNER:?}/galena-web:${IMAGE_TAG:-latest}
@@ -222,3 +232,5 @@ volumes:
   postgres-data:
   ejabberd-database:
   ejabberd-uploads:
+  # Sticker files (STICKER_STORAGE_DIR=/data/stickers on `server` above).
+  sticker-data:

@@ -225,7 +225,24 @@ Shareable links join a **group** as `member` (public topics come with joining; p
 
 Uploaded stickers are validated by magic bytes (PNG or WebP only, ≤ 512 KiB, ≤ 512 × 512 px) and served with `Content-Type` from the stored mime, `X-Content-Type-Options: nosniff`, `Content-Disposition: inline`, `Cache-Control: public, max-age=31536000, immutable` and `Content-Security-Policy: default-src 'none'; sandbox`. Deleting a pack removes its files; messages already sent keep their sticker URL, which no longer loads a sticker. Uploads are rate limited to 60/hour/user (in-memory, per process, like the other caps in `rate-limit.ts`). Audited as `sticker_pack.created` / `sticker_pack.deleted` (pack id only).
 
-Docker/Coolify note: mount a persistent volume at `STICKER_STORAGE_DIR` (e.g. `./data/stickers`), or the files are lost when the container is replaced. The directory is git-ignored (`data/` is covered by the `*.log`-adjacent local-data rules; add an explicit `data/` entry if one is missing) and never backed up by the database dump — back it up with the volume.
+Docker/Coolify note: the production compose files already mount the `sticker-data` volume at `/data/stickers` (`STICKER_STORAGE_DIR` is fixed there); on other setups mount a persistent absolute path, or the files are lost when the container is replaced. The directory is git-ignored (`data/` is covered by the `*.log`-adjacent local-data rules; add an explicit `data/` entry if one is missing) and never backed up by the database dump — back it up with the volume.
+
+### File storage, backups, quotas, disk (T-0151)
+
+Where each kind of file lives, and what covers it:
+
+| Kind | Where it lives | Backed up by | Notes |
+|---|---|---|---|
+| Attachments (XEP-0363) | ejabberd upload docroot: `/opt/ejabberd/upload` in the container (volume `ejabberd-uploads`); `/var/lib/ejabberd/upload` on bare metal | `./galena backup` archives the uploads volume (`uploads.tgz`); bare metal: copy the docroot dir (§7) | Per-file cap `max_size` 50 MiB; per-user quotas below |
+| Stickers | `STICKER_STORAGE_DIR`, fixed at `/data/stickers` in both compose files (volume `sticker-data`); `/var/lib/galena/stickers` on bare metal | `./galena backup` archives the sticker volume (`stickers.tgz`); bare metal: copy the dir (§7) | Never relative in production: a relative path resolves against the server package root and a moved base silently orphans files (see Stickers above) |
+| GIFs | Not stored: the server proxies provider media (`/api/gifs/media/:token`) and a sent GIF becomes a normal attachment | As attachments, once sent | Needs `GIF_PROVIDER` + `GIF_API_KEY` |
+| Voice | Not built | — | Planned (plan §6.5) |
+
+Upload quotas (ejabberd `mod_http_upload_quota`, stock module, always on): each user's files under the upload docroot count against `soft_upload_quota` (default 2048 MiB) / `hard_upload_quota` (default 4096 MiB) in `deploy/ejabberd/ejabberd.yml` (`shaper_rules`, plain numbers). Past the hard quota ejabberd deletes the user's oldest files until usage is back at the soft quota; `max_days` is unset (infinity), so files never age out without the owner. Retune by editing the two shaper numbers in `deploy/ejabberd/ejabberd.yml` (shaper keys are literal — macros do not expand there, verified live against the stock image), so they are not environment settings and the ejabberd image must be rebuilt for a change to apply. Bare metal carries the same 2048/4096 rules literally in `deploy/baremetal/ejabberd.yml`.
+
+Disk: `./galena doctor` reports free space of the Docker data filesystem (warns at 80% used, fails at 95%, in plain words) and checks the sticker directory is on a mounted volume, not the container layer. The thresholds are fixed; `GALENA_DOCTOR_DISK_USED_PCT` injects a value for tests only.
+
+When to consider S3: ejabberd's upload module writes only to local disk, and the sticker store is a local directory too. One server instance with the volumes above is fine for hundreds of users; consider S3-compatible object storage (ejabberd ships `mod_s3_upload`) when you run more than one server instance (local disks disagree) or growth outruns one disk. That migration is out of scope here — no S3 code ships in this task.
 
 ### GIFs (T-0122)
 
