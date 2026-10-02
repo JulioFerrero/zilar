@@ -187,6 +187,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0157](T-0157-mobile-nits-2.md) | Mobile nits bundle 2: attachments, GIFs, roles load error | planned | meta/muse-spark-1.3-contributor | T-0148, T-0150 | Spec ready |
 | [T-0158](T-0158-scheduled-backups.md) | Scheduled backups with retention and a freshness check | planned | meta/muse-spark-1.3-contributor | T-0151 | Spec ready |
 | [T-0159](T-0159-install-rehearsal.md) | Fresh production install rehearsal (run only on a free machine) | planned | meta/muse-spark-1.3-contributor | T-0145, T-0151, T-0158 | Spec ready |
-| [T-0160](T-0160-rename-zilar.md) | Rename EVERYTHING from Galena to Zilar (scope, env, hosts, DB names, compose, storage keys, deploy script; no keep-list) | in-progress | meta/muse-spark-1.3-contributor | none (runs ALONE) | Launched 2026-10-02; dev DB backup in ~/zilar-rename-backup |
 | [T-0148](T-0148-mobile-gifs.md) | Mobile GIFs | 2026-10-01 |
 | [T-0151](T-0151-deploy-storage-safety.md) | Production storage safety | 2026-10-01 |
+| [T-0160](T-0160-rename-zilar.md) | Rename everything from Galena to Zilar | 2026-10-02 |
