@@ -2,13 +2,13 @@
 // test-code send with rollback, the post-setup 404, and the rate limit.
 // No test touches a real mail provider: the test-code send is injected.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { createAuditRecorder } from '../audit/service';
 import { CurrentMailer, type Mailer } from '../auth/mailer';
 import { createApp } from '../app';
-import { instanceSettings, invites, user } from '../db/schema';
+import { auditLog, instanceSettings, invites, user } from '../db/schema';
 import { createTestContext, TEST_BASE_URL, type TestContext } from '../test-support';
 import { createSetupRoutes, SETUP_RATE_LIMIT_MAX, type SetupRoutesDependencies } from './routes';
 import {
@@ -207,6 +207,43 @@ describe('POST /api/setup', () => {
     expect(await needsSetup(context.db)).toBe(true);
   });
 
+  it('a failed send leaves no invite rows behind', async () => {
+    const app = appFor({ sendTestCode: failingSend() });
+    const response = await postSetup(app, validBody);
+
+    expect(response.status).toBe(422);
+    const rows = await context.db.select().from(invites);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('still answers 422 when the rollback itself fails', async () => {
+    const app = appFor({ sendTestCode: failingSend() });
+    // Break the rollback transaction (the second one): it must never mask
+    // the specified 422 or leak anything.
+    const realTransaction = context.db.transaction.bind(context.db);
+    let calls = 0;
+    const spy = vi.spyOn(context.db, 'transaction').mockImplementation(((
+      callback: (tx: unknown) => Promise<unknown>,
+    ) => {
+      calls += 1;
+      if (calls > 1) {
+        throw new Error('database is down');
+      }
+      return realTransaction(callback as never);
+    }) as typeof context.db.transaction);
+    try {
+      const response = await postSetup(app, validBody);
+      expect(response.status).toBe(422);
+      const raw = await response.text();
+      expect(JSON.parse(raw)).toMatchObject({ error: { code: 'mail_send_failed' } });
+      expect(raw).not.toContain(SENTINEL_KEY);
+      expect(raw).not.toContain('down');
+      expect(context.logOutput()).not.toContain(SENTINEL_KEY);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('rejects invalid bodies without touching settings', async () => {
     const app = appFor();
     for (const body of [
@@ -257,6 +294,40 @@ describe('POST /api/setup', () => {
     const ok = await postSetup(okApp, validBody, '10.9.9.10');
     expect(ok.status).toBe(200);
     expect(context.logOutput()).not.toContain(SENTINEL_KEY);
+
+    // The audit row carries ids only: detail is null and no audit column
+    // holds the key, the sender, the admin email or the invite code.
+    const auditRows = await context.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, 'setup.completed'));
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0]?.detail).toBeNull();
+    expect(JSON.stringify(auditRows[0])).not.toContain(SENTINEL_KEY);
+    expect(JSON.stringify(auditRows[0])).not.toContain(SENTINEL_FROM);
+    expect(JSON.stringify(auditRows[0])).not.toContain('admin@example.com');
+    const { inviteCode } = (await ok.json()) as { inviteCode: string };
+    expect(JSON.stringify(auditRows[0])).not.toContain(inviteCode);
+  });
+
+  it('answers 404 after setup even when the rate limit is exhausted', async () => {
+    const app = appFor();
+    // Burn the whole IP budget while setup is still open (400s count).
+    for (let attempt = 0; attempt < SETUP_RATE_LIMIT_MAX; attempt += 1) {
+      expect((await postSetup(app, {})).status).toBe(400);
+    }
+    expect((await postSetup(app, {})).status).toBe(429);
+    // Setup finishes another way (a user exists): every caller now gets
+    // the same 404 as an unknown route, never a 429.
+    await context.db.insert(user).values({
+      id: 'u-admin',
+      name: 'Admin',
+      email: 'admin@example.com',
+      emailVerified: true,
+    });
+    const response = await postSetup(app, validBody);
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ error: { code: 'not_found' } });
   });
 });
 

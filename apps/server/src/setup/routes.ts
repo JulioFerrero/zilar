@@ -16,8 +16,8 @@
 // code, so a wrong email cannot take the server over and setup stays
 // open for a retry.
 
-import { getConnInfo } from '@hono/node-server/conninfo';
 import { Hono, type Context } from 'hono';
+import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { Logger } from 'pino';
 import { z } from 'zod';
@@ -34,6 +34,7 @@ import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { invites } from '../db/schema';
 import { HttpError } from '../errors';
+import { clientIpFor } from '../invite-links/routes';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
   deleteMailSettings,
@@ -78,8 +79,10 @@ export interface SetupRoutesDependencies {
   audit?: AuditRecorder;
   /** Overrides the per-IP setup limiter (tests inject a small budget). */
   limiter?: RateLimiter | undefined;
-  /** Injected in tests; production uses the socket address. */
+  /** Injected in tests; production trusts proxy hops like the join limiter. */
   getClientIp?: ((c: Context) => string) | undefined;
+  /** Injected in tests; production trusts TRUSTED_PROXY_HOPS like the join limiter. */
+  trustedProxyHops?: number | undefined;
   /** Sends the test code through the new mailer; tests inject a fake. */
   sendTestCode?:
     | ((input: { auth: Auth; mailer: Mailer; email: string; inviteCode: string }) => Promise<void>)
@@ -100,7 +103,12 @@ export function createSetupRoutes(deps: SetupRoutesDependencies): Hono {
   const limiter =
     deps.limiter ??
     createRateLimiter({ max: SETUP_RATE_LIMIT_MAX, windowMs: SETUP_RATE_LIMIT_WINDOW_MS });
-  const clientIp = deps.getClientIp ?? socketAddress;
+  // Same client-IP rule as the join limiter: with N trusted proxy hops
+  // the Nth address from the right of `x-forwarded-for` counts, otherwise
+  // the socket address — behind Coolify every visitor must not share one
+  // budget.
+  const clientIp =
+    deps.getClientIp ?? clientIpFor(deps.trustedProxyHops ?? deps.config.TRUSTED_PROXY_HOPS);
 
   routes.get('/setup/status', async (c) => {
     if (!(await needsSetup(deps.db))) {
@@ -110,11 +118,13 @@ export function createSetupRoutes(deps: SetupRoutesDependencies): Hono {
   });
 
   routes.post('/setup', async (c) => {
-    if (!limiter.allow(clientIp(c))) {
-      throw new HttpError(429, 'rate_limited', 'Too many setup attempts, try again later');
-    }
+    // Setup-done first: once an admin exists every caller gets the same
+    // 404 as an unknown route, never a 429.
     if (!(await needsSetup(deps.db))) {
       throw notFound();
+    }
+    if (!limiter.allow(clientIp(c))) {
+      throw new HttpError(429, 'rate_limited', 'Too many setup attempts, try again later');
     }
     const body = await c.req.json().catch(() => null);
     const parsed = setupSchema.safeParse(body);
@@ -157,15 +167,26 @@ export function createSetupRoutes(deps: SetupRoutesDependencies): Hono {
     try {
       await send({ auth: deps.auth, mailer: candidate, email: adminEmail, inviteCode: code });
     } catch {
-      await deps.db.transaction(async (tx) => {
-        await takeSetupLock(tx);
-        // Roll back the settings only while setup is still open (no user
-        // signed up in the meantime). Never delete on a concurrent
-        // success: the settings belong to the finished setup then.
-        if (await needsSetup(tx)) {
-          await deleteMailSettings(tx);
-        }
-      });
+      try {
+        await deps.db.transaction(async (tx) => {
+          await takeSetupLock(tx);
+          // Roll back the settings AND the invite only while setup is
+          // still open (no user signed up in the meantime). Never delete
+          // on a concurrent success: both rows belong to the finished
+          // setup then.
+          if (await needsSetup(tx)) {
+            await deleteMailSettings(tx);
+            await tx.delete(invites).where(eq(invites.code, code));
+          }
+        });
+      } catch (rollbackError) {
+        // The cleanup must never mask the specified answer or leak
+        // provider detail: one line with the error name, then 422 below.
+        deps.logger.warn(
+          { errName: rollbackError instanceof Error ? rollbackError.name : 'unknown' },
+          'setup rollback failed after a failed test email',
+        );
+      }
       throw new HttpError(
         422,
         'mail_send_failed',
@@ -252,13 +273,4 @@ async function sendSetupTestCode(input: {
     headers: new Headers({ [INVITE_HEADER]: input.inviteCode }),
   });
   await input.mailer.sendOtp(input.email, otp, 'sign-in');
-}
-
-function socketAddress(c: Context): string {
-  try {
-    const address = getConnInfo(c).remote.address;
-    return typeof address === 'string' && address.length > 0 ? address : 'unknown';
-  } catch {
-    return 'unknown';
-  }
 }

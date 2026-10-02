@@ -66,7 +66,13 @@ export interface AppDependencies {
   mailer?: CurrentMailer;
   /** T-0161: overrides the setup routes (tests inject a fake sender). */
   setup?:
-    Partial<Pick<SetupRoutesDependencies, 'limiter' | 'getClientIp' | 'sendTestCode'>> | undefined;
+    | Partial<
+        Pick<
+          SetupRoutesDependencies,
+          'limiter' | 'getClientIp' | 'trustedProxyHops' | 'sendTestCode'
+        >
+      >
+    | undefined;
   /** Overrides the ffmpeg engine; tests inject a fake. */
   voice?: VoiceEngine;
   /** Overrides the upload size cap; tests use a small one. */

@@ -103,14 +103,21 @@ Deploy/docs:
 - `pnpm install`: exit 0.
 - `pnpm format:check`: pass (also prettier --write applied to my files + the 2 generated drizzle meta files).
 - `pnpm lint`: pass (11 tasks). `pnpm typecheck`: pass.
-- `pnpm --filter @zilar/server test --maxWorkers=2 src/setup src/auth src/config.test.ts`: 8 files, 144 passed.
-- `pnpm --filter @zilar/web test --maxWorkers=2 src/auth src/routes`: 11 files, 87 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 src/setup src/auth src/config.test.ts`: 8 files, 147 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 src/auth src/routes`: 11 files, 88 passed.
 - Neighbours: server authz-sweep/app/migrate (15 passed); web api.test + components/auth (75 passed).
 
 **Acceptance:** fresh DB + no mail env boots (NotConfiguredMailer, covered in mailer.test); setup stores encrypted settings → invite → real emailed code → admin completes sign-in with invite header (covered); 404-once-done + 5/10min rate limit covered; sentinel key asserted absent from logs/audit/errors/responses (setup + mailer + crypto tests); env-SMTP behaviour untouched (config/mailer/auth suites pass unmodified except the 2 boot-refusal tests the spec retires).
 
 **Security checklist:** no secrets in logs/audit/errors/URLs (sentinel tests); settings+invite atomic under advisory lock, state read inside; permission (setup-open) checked before any effect, failure after settings-write rolls back; done-setup = same 404; new routes in 401 sweep allowlist (public by design) + POST rate-limited; audit ids-only.
 
-**Notes/deviations:** (1) Early in the session a second writer edited this worktree concurrently; per the lead's message that was the lead, it is removed, I own T-0161 alone and my design is canonical — nothing of theirs remains. (2) `createInvite` takes the full DB, not a tx, so the setup invite is inserted inline in the tx with identical shape (single-use, 7 days, no creator). (3) `invite-cli.ts` kept as-is for post-setup invites. (4) `MAIL_ALLOW_CONSOLE_IN_PRODUCTION` variable kept (harmless) — only the coolify console defaults were removed per instruction.
+**Notes/deviations:** (1) Early in the session a second writer edited this worktree concurrently; per the lead's message that was the lead, it is removed, I own T-0161 alone and my design is canonical — nothing of theirs remains. (2) `createInvite` takes the full DB, not a tx, so the setup invite is inserted inline in the tx with identical shape (single-use, 7 days, no creator). (3) `invite-cli.ts` kept as-is for post-setup invites. (4) `MAIL_ALLOW_CONSOLE_IN_PRODUCTION` variable kept (harmless) — only the coolify console defaults were removed per instruction. (5) Item 5 of the review (invite code in memory in the DOM): accepted as is — the code lives only in React state, never in storage/URL/logs (asserted by the success-path test checking the invite header on sign-up).
+
+**Review fixes (lead review of e64785b):**
+1. `POST /api/setup` checks `needsSetup` BEFORE the rate limiter: post-setup POST is the same 404 for everyone, never a 429 (new test burns the budget, then asserts 404).
+2. Client IP now uses `clientIpFor(TRUSTED_PROXY_HOPS)` shared with the join limiter (new `trustedProxyHops` dep, plumbable through `app.ts`), not the raw socket address.
+3. Rollback wrapped in try/catch (logs only the error name) so a failed cleanup still answers 422 `mail_send_failed`; the rollback now also deletes the failed attempt's invite in the same guarded transaction (new test: failed send leaves zero invites; new test: broken rollback tx still 422 with no leak).
+4. `SetupPage` shows an error card with Retry when the status check fails, instead of the form (new test: failure → error card → Retry → form).
+6. Key test now reads the `setup.completed` audit row: `detail` is null and neither the sentinel key, sender, admin email nor invite code appears in any audit column.
 
 ## Review (written by Claude)

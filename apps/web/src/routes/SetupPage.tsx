@@ -16,13 +16,14 @@ function isEmailValid(email: string): boolean {
  * code from their inbox.
  */
 export function SetupPage() {
-  const [status, setStatus] = useState<'checking' | 'ready' | 'done'>('checking');
+  const [status, setStatus] = useState<'checking' | 'ready' | 'done' | 'statusFailed'>('checking');
   const [resendApiKey, setResendApiKey] = useState('');
   const [from, setFrom] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [inviteCode, setInviteCode] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+  const [checkNonce, setCheckNonce] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -34,18 +35,41 @@ export function SetupPage() {
       })
       .catch(() => {
         if (active) {
-          setStatus('ready');
+          setStatus('statusFailed');
         }
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [checkNonce]);
 
   if (status === 'checking') {
     return (
       <div className="chat-background flex min-h-dvh items-center justify-center text-[15px] text-muted-foreground">
         Checking server setup…
+      </div>
+    );
+  }
+
+  if (status === 'statusFailed') {
+    return (
+      <div className="chat-background flex min-h-dvh items-center justify-center p-4">
+        <div className="w-full max-w-sm rounded-2xl bg-background p-6 text-center shadow-xl">
+          <h1 className="text-[24px] leading-8 font-semibold">Could not reach the server</h1>
+          <p className="mt-2 text-[15px] text-muted-foreground">
+            The setup status could not be loaded. Check your connection and try again.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setStatus('checking');
+              setCheckNonce((value) => value + 1);
+            }}
+            className="mt-5 rounded-full bg-accent px-5 py-2.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }

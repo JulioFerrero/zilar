@@ -128,6 +128,23 @@ describe('SetupPage (T-0161)', () => {
     expect(getSessionMock).toHaveBeenCalled();
   });
 
+  it('shows an error with Retry when the status check fails', async () => {
+    const statusSpy = vi
+      .spyOn(api, 'getSetupStatus')
+      .mockRejectedValueOnce(new api.ApiError(0, 'network_error', 'Could not reach the server'))
+      .mockResolvedValue({ needsSetup: true, mailConfigured: false });
+
+    renderSetup();
+
+    await waitFor(() => expect(screen.getByText('Could not reach the server')).toBeTruthy());
+    expect(screen.queryByLabelText('Resend API key')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Resend API key')).toBeTruthy());
+    expect(statusSpy).toHaveBeenCalledTimes(2);
+  });
+
   it('validates the form before calling the API', async () => {
     vi.spyOn(api, 'getSetupStatus').mockResolvedValue({ needsSetup: true, mailConfigured: false });
     const postSpy = vi.spyOn(api, 'postSetup').mockResolvedValue({ ok: true, inviteCode: 'X' });
