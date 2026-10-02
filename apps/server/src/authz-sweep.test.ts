@@ -21,6 +21,10 @@ const PUBLIC_ALLOWLIST = {
   // Pairing endpoint: the pairing code + signature are the credential.
   'POST|/api/runner/pair':
     'Pairing endpoint; signature is the credential (expect 400 invalid_code)',
+  // First-run setup (T-0161): public while no user exists; both answer the
+  // same 404 as an unknown route once setup is done.
+  'GET|/api/setup/status': 'Setup status check (public by design until setup is done)',
+  'POST|/api/setup': 'First-run setup (public by design until setup is done)',
   // Health check, used by load balancers and uptime monitors.
   'GET|/health': 'Health check',
 } as const satisfies Record<string, string>;

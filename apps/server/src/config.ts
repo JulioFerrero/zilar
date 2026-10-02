@@ -92,10 +92,12 @@ const serverConfigSchema = z
     // LITELLM_MASTER_KEY is handled by the AI module). At least 32 bytes, so a
     // weak key fails validation at startup rather than encrypting at rest.
     ZILAR_KEY_ENCRYPTION_KEY: z.string().min(32).optional(),
-    // Mail transport (T-0128): `console` writes sign-in codes to the log
-    // (development only), `smtp` sends real mail through nodemailer.
-    // In production the transport must be chosen explicitly: leaving it
-    // unset refuses to start with an error that names these variables.
+    // Mail transport (T-0128, T-0161): `console` writes sign-in codes to
+    // the log (development only), `smtp` sends real mail through
+    // nodemailer. Unset means "unconfigured": the server boots (production
+    // included) and sending a code fails with a clear logged error until
+    // explicit `MAIL_TRANSPORT`/`SMTP_*` env or the setup screen's stored
+    // Resend settings provide a transport (see `auth/mailer.ts`).
     MAIL_TRANSPORT: z.enum(['console', 'smtp']).optional(),
     // SMTP host, required when MAIL_TRANSPORT=smtp.
     SMTP_HOST: z.string().min(1, 'must not be empty').optional(),

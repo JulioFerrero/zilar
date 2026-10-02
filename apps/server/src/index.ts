@@ -19,8 +19,15 @@ import { resolveStorageDir } from './stickers/service';
 import { startApprovalsSweeper, type ApprovalsSweeperHandle } from './approvals/sweeper';
 import { createAuditRecorder } from './audit/service';
 import { createAuth } from './auth/auth';
-import { createMailer, MailerConfigurationError, type Mailer } from './auth/mailer';
+import {
+  createMailer,
+  createResendMailer,
+  CurrentMailer,
+  MailerConfigurationError,
+  type Mailer,
+} from './auth/mailer';
 import { loadServerConfigOrExit } from './config';
+import { getMailSettings, settingsCipherFor } from './setup/settings';
 import { createKeyCipher } from './connections/crypto';
 import { createDb } from './db/client';
 import { runMigrations } from './db/migrate';
@@ -59,6 +66,19 @@ try {
 const { db, close } = createDb(config.DATABASE_URL);
 await runMigrations(db);
 
+// First-run setup (T-0161): the auth flow sends through this holder, so
+// the setup screen can swap the transport without a restart. Stored
+// Resend settings (from a finished setup) take effect here at boot;
+// explicit `MAIL_TRANSPORT`/`SMTP_*` env already set the transport above
+// and stored settings are ignored for it.
+const currentMailer = new CurrentMailer(mailer);
+if (config.MAIL_TRANSPORT === undefined) {
+  const stored = await getMailSettings(db, settingsCipherFor(config));
+  if (stored) {
+    currentMailer.use(createResendMailer(config, logger, stored));
+  }
+}
+
 // Stickers (T-0120): the storage dir must exist or be creatable and
 // writable at startup, so a bad mount fails fast with a clear message
 // instead of failing the first upload. Resolved against the server package
@@ -79,7 +99,7 @@ await warnOnEmptyStorageDir({
 });
 
 const adminClient = createEjabberdAdminClient(config.xmpp);
-const auth = createAuth({ db, config, mailer, adminClient, logger });
+const auth = createAuth({ db, config, mailer: currentMailer, adminClient, logger });
 
 // Runner hub (T-0071): validated here so a misconfiguration fails fast with
 // a single clear message, before the HTTP server starts. The actual listener
@@ -209,6 +229,7 @@ const app = createApp({
   config,
   auth,
   adminClient,
+  mailer: currentMailer,
   machineRegistry,
   // Message search (T-0117): a separate small pool on the ejabberd archive
   // with a 3 s statement timeout. Absent = GET /api/search answers 501.

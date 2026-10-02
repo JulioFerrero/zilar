@@ -10,6 +10,7 @@ import { ensureXmppAccount } from '../xmpp/provisioning';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { consumeInvite, findUsableInvite } from './invites';
 import type { Mailer } from './mailer';
+import { isTransportConfigured, MailNotConfiguredError } from './mailer';
 
 export const INVITE_HEADER = 'x-zilar-invite';
 export const OTP_LENGTH = 6;
@@ -74,7 +75,17 @@ export function createAuth({
         allowedAttempts: OTP_ALLOWED_ATTEMPTS,
         storeOTP: 'hashed',
         async sendVerificationOTP({ email, otp, type }) {
-          await mailer.sendOtp(email, otp, type);
+          try {
+            await mailer.sendOtp(email, otp, type);
+          } catch (error) {
+            if (error instanceof MailNotConfiguredError) {
+              throw new APIError(503, {
+                code: 'mail_not_configured',
+                message: 'Email is not configured. Finish the server setup first.',
+              });
+            }
+            throw error;
+          }
         },
       }),
       bearer(),
@@ -83,6 +94,17 @@ export function createAuth({
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path !== SEND_OTP_PATH) {
           return;
+        }
+
+        // No transport can send while unconfigured (T-0161): fail every
+        // code request loudly with 503 `mail_not_configured` instead of
+        // the fake success below. Uniform for every email, so nothing
+        // about accounts leaks.
+        if (!isTransportConfigured(mailer)) {
+          throw new APIError(503, {
+            code: 'mail_not_configured',
+            message: 'Email is not configured. Finish the server setup first.',
+          });
         }
 
         const rawEmail = ctx.body?.email;

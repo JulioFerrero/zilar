@@ -239,6 +239,13 @@
       "when": 1790824152259,
       "tag": "0033_hot_lizard",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790967812788,
+      "tag": "0034_instance-settings",
+      "breakpoints": true
     }
   ]
 }

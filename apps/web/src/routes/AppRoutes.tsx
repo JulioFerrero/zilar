@@ -9,6 +9,7 @@ import { ConnectionsPage } from './ConnectionsPage';
 import { InvitePage } from './InvitePage';
 import { JoinPage } from './JoinPage';
 import { LoginPage } from './LoginPage';
+import { SetupPage } from './SetupPage';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { MachinesPage } from './MachinesPage';
 import { NamePage } from './NamePage';
@@ -62,6 +63,7 @@ export function AppRoutes() {
       <Route path="/invite/:code" element={<InvitePage />} />
       <Route path="/j/:token" element={<JoinRoute />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/setup" element={<SetupPage />} />
       <Route
         path="/welcome/name"
         element={

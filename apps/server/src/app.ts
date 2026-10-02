@@ -14,6 +14,8 @@ import { createAuditRecorder, type AuditRecorder } from './audit/service';
 import { createAuditRoutes } from './audit/routes';
 import type { Auth } from './auth/auth';
 import { createAuthRoutes } from './auth/routes';
+import { CurrentMailer, createMailer } from './auth/mailer';
+import { createSetupRoutes, type SetupRoutesDependencies } from './setup/routes';
 import { createChatsRoutes } from './chats/routes';
 import { createChatPrefsRoutes } from './chat-prefs/routes';
 import type { ServerConfig } from './config';
@@ -60,6 +62,17 @@ export interface AppDependencies {
   config: ServerConfig;
   auth: Auth;
   adminClient: EjabberdAdminClient;
+  /** T-0161: the live mailer (swapped by the setup screen, no restart). */
+  mailer?: CurrentMailer;
+  /** T-0161: overrides the setup routes (tests inject a fake sender). */
+  setup?:
+    | Partial<
+        Pick<
+          SetupRoutesDependencies,
+          'limiter' | 'getClientIp' | 'trustedProxyHops' | 'sendTestCode'
+        >
+      >
+    | undefined;
   /** Overrides the ffmpeg engine; tests inject a fake. */
   voice?: VoiceEngine;
   /** Overrides the upload size cap; tests use a small one. */
@@ -149,6 +162,8 @@ export function createApp({
   config,
   auth,
   adminClient,
+  mailer,
+  setup,
   voice,
   voiceMaxBytes,
   connections,
@@ -229,6 +244,23 @@ export function createApp({
 
   app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
   app.route('/api', createAuthRoutes({ auth, db, config, adminClient, logger }));
+  // First-run setup (T-0161): public while no user exists, same 404 as an
+  // unknown route once setup is done. Allowlisted in the authz sweep.
+  // Without an explicit mailer the routes build one from the config, like
+  // `index.ts` does for production.
+  const currentMailer = mailer ?? new CurrentMailer(createMailer(config, logger));
+  app.route(
+    '/api',
+    createSetupRoutes({
+      auth,
+      db,
+      config,
+      mailer: currentMailer,
+      logger,
+      audit: auditRecorder,
+      ...setup,
+    }),
+  );
   app.route('/api', createContactsRoutes({ auth, db, config }));
   app.route(
     '/api',

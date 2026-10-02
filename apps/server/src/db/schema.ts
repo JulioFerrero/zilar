@@ -24,6 +24,15 @@ export const serverMeta = pgTable('server_meta', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// First-run setup (T-0161): instance mail settings. `mail.resend_api_key`
+// is stored encrypted (see `setup/crypto.ts`); `mail.from` is stored in
+// clear text.
+export const instanceSettings = pgTable('instance_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const invites = pgTable('invites', {
   id: text('id').primaryKey(),
   code: text('code').notNull().unique(),
