@@ -222,7 +222,8 @@ spin.add(tilt);
 system.add(spin);
 ball(planetMaterial, PLANET_RADIUS, new THREE.Vector3(0, 0, 0), system);
 system.position.set(-4, -6, 390);
-system.scale.setScalar(LAYER === 'foreground' || MONO ? 0.8 : 0.88);
+// the adaptive-icon layers stay inside the 66 dp safe circle of the 108 dp canvas, so no launcher mask clips the moon
+system.scale.setScalar(LAYER === 'foreground' || MONO ? 0.64 : 0.88);
 if (LAYER !== 'background') scene.add(system);
 
 // ---------- light and ground ----------
