@@ -104,7 +104,7 @@ Deploy/docs:
 - `pnpm format:check`: pass (also prettier --write applied to my files + the 2 generated drizzle meta files).
 - `pnpm lint`: pass (11 tasks). `pnpm typecheck`: pass.
 - `pnpm --filter @zilar/server test --maxWorkers=2 src/setup src/auth src/config.test.ts`: 8 files, 147 passed.
-- `pnpm --filter @zilar/web test --maxWorkers=2 src/auth src/routes`: 11 files, 88 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 src/auth src/routes`: 11 files, 89 passed.
 - Neighbours: server authz-sweep/app/migrate (15 passed); web api.test + components/auth (75 passed).
 
 **Acceptance:** fresh DB + no mail env boots (NotConfiguredMailer, covered in mailer.test); setup stores encrypted settings → invite → real emailed code → admin completes sign-in with invite header (covered); 404-once-done + 5/10min rate limit covered; sentinel key asserted absent from logs/audit/errors/responses (setup + mailer + crypto tests); env-SMTP behaviour untouched (config/mailer/auth suites pass unmodified except the 2 boot-refusal tests the spec retires).
@@ -112,6 +112,8 @@ Deploy/docs:
 **Security checklist:** no secrets in logs/audit/errors/URLs (sentinel tests); settings+invite atomic under advisory lock, state read inside; permission (setup-open) checked before any effect, failure after settings-write rolls back; done-setup = same 404; new routes in 401 sweep allowlist (public by design) + POST rate-limited; audit ids-only.
 
 **Notes/deviations:** (1) Early in the session a second writer edited this worktree concurrently; per the lead's message that was the lead, it is removed, I own T-0161 alone and my design is canonical — nothing of theirs remains. (2) `createInvite` takes the full DB, not a tx, so the setup invite is inserted inline in the tx with identical shape (single-use, 7 days, no creator). (3) `invite-cli.ts` kept as-is for post-setup invites. (4) `MAIL_ALLOW_CONSOLE_IN_PRODUCTION` variable kept (harmless) — only the coolify console defaults were removed per instruction. (5) Item 5 of the review (invite code in memory in the DOM): accepted as is — the code lives only in React state, never in storage/URL/logs (asserted by the success-path test checking the invite header on sign-up).
+
+**Setup screen order (follow-up):** three steps, server unchanged (one `POST /api/setup` with all three values; key stored only if the test send worked). Step 1: admin email only (Next). Step 2: Resend key (password input, resend.com/api-keys hint) + From address prefilled `Zilar <onboarding@resend.dev>` with the testing-domain note; Back + "Send my code" (busy state "Sending your code…"). Errors stay on step 2 with all typed values kept (state only — key never in storage/URL). Step 3: the normal code step, email prefilled, invite attached automatically. Status-failed Retry kept. `SetupPage.test.tsx` covers email-first → key → code-step success, failure-stays-on-step-2 with values kept, Back-keeps-email, validation ordering. `INSTALL_DOCKER.md` order lines updated.
 
 **Review fixes (lead review of e64785b):**
 1. `POST /api/setup` checks `needsSetup` BEFORE the rate limiter: post-setup POST is the same 404 for everyone, never a 429 (new test burns the budget, then asserts 404).

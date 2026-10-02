@@ -68,7 +68,40 @@ describe('SetupPage (T-0161)', () => {
     await waitFor(() => expect(screen.getByText('Login page')).toBeTruthy());
   });
 
-  it('shows the mail-failed error without leaving the form', async () => {
+  it('asks for the admin email first, then the key', async () => {
+    vi.spyOn(api, 'getSetupStatus').mockResolvedValue({ needsSetup: true, mailConfigured: false });
+    const postSpy = vi.spyOn(api, 'postSetup').mockResolvedValue({ ok: true, inviteCode: 'X' });
+
+    renderSetup();
+
+    // Step 1: email only — no key field yet.
+    await waitFor(() => expect(screen.getByLabelText('Admin email')).toBeTruthy());
+    expect(screen.queryByLabelText('Resend API key')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(screen.getByText('Enter a valid admin email address')).toBeTruthy());
+    expect(postSpy).not.toHaveBeenCalled();
+
+    // Step 2: the key field appears, prefilled sender, email kept.
+    fireEvent.change(screen.getByLabelText('Admin email'), {
+      target: { value: 'admin@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(screen.getByLabelText('Resend API key')).toBeTruthy());
+    expect((screen.getByLabelText('From address') as HTMLInputElement).value).toBe(
+      'Zilar <onboarding@resend.dev>',
+    );
+    expect(screen.queryByLabelText('Admin email')).toBeNull();
+
+    // Back returns to step 1 with the email kept.
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    await waitFor(() =>
+      expect((screen.getByLabelText('Admin email') as HTMLInputElement).value).toBe(
+        'admin@example.com',
+      ),
+    );
+  });
+
+  it('shows the mail-failed error on step 2 and keeps the typed values', async () => {
     vi.spyOn(api, 'getSetupStatus').mockResolvedValue({ needsSetup: true, mailConfigured: false });
     vi.spyOn(api, 'postSetup').mockRejectedValue(
       new api.ApiError(422, 'mail_send_failed', 'The test email could not be sent.'),
@@ -76,18 +109,25 @@ describe('SetupPage (T-0161)', () => {
 
     renderSetup();
 
-    await waitFor(() => expect(screen.getByLabelText('Resend API key')).toBeTruthy());
-    fireEvent.change(screen.getByLabelText('Resend API key'), { target: { value: 're_bad' } });
-    fireEvent.change(screen.getByLabelText('Sender address'), {
-      target: { value: 'Zilar <no-reply@example.com>' },
-    });
+    await waitFor(() => expect(screen.getByLabelText('Admin email')).toBeTruthy());
     fireEvent.change(screen.getByLabelText('Admin email'), {
       target: { value: 'admin@example.com' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Resend API key')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('Resend API key'), { target: { value: 're_bad' } });
+    fireEvent.change(screen.getByLabelText('From address'), {
+      target: { value: 'Zilar <no-reply@example.com>' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send my code' }));
 
     await waitFor(() => expect(screen.getByText(/The test email could not be sent/)).toBeTruthy());
-    expect(screen.getByLabelText('Resend API key')).toBeTruthy();
+    // Still on step 2 with everything kept.
+    expect((screen.getByLabelText('Resend API key') as HTMLInputElement).value).toBe('re_bad');
+    expect((screen.getByLabelText('From address') as HTMLInputElement).value).toBe(
+      'Zilar <no-reply@example.com>',
+    );
   });
 
   it('goes straight to the code step on success, with the invite attached', async () => {
@@ -99,20 +139,20 @@ describe('SetupPage (T-0161)', () => {
 
     renderSetup();
 
-    await waitFor(() => expect(screen.getByLabelText('Resend API key')).toBeTruthy());
-    fireEvent.change(screen.getByLabelText('Resend API key'), { target: { value: 're_good' } });
-    fireEvent.change(screen.getByLabelText('Sender address'), {
-      target: { value: 'Zilar <no-reply@example.com>' },
-    });
+    await waitFor(() => expect(screen.getByLabelText('Admin email')).toBeTruthy());
     fireEvent.change(screen.getByLabelText('Admin email'), {
       target: { value: 'admin@example.com' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Resend API key')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('Resend API key'), { target: { value: 're_good' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send my code' }));
 
     await waitFor(() =>
       expect(postSpy).toHaveBeenCalledWith({
         resendApiKey: 're_good',
-        from: 'Zilar <no-reply@example.com>',
+        from: 'Zilar <onboarding@resend.dev>',
         adminEmail: 'admin@example.com',
       }),
     );
@@ -137,22 +177,28 @@ describe('SetupPage (T-0161)', () => {
     renderSetup();
 
     await waitFor(() => expect(screen.getByText('Could not reach the server')).toBeTruthy());
-    expect(screen.queryByLabelText('Resend API key')).toBeNull();
+    expect(screen.queryByLabelText('Admin email')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
-    await waitFor(() => expect(screen.getByLabelText('Resend API key')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('Admin email')).toBeTruthy());
     expect(statusSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('validates the form before calling the API', async () => {
+  it('validates the key before calling the API', async () => {
     vi.spyOn(api, 'getSetupStatus').mockResolvedValue({ needsSetup: true, mailConfigured: false });
     const postSpy = vi.spyOn(api, 'postSetup').mockResolvedValue({ ok: true, inviteCode: 'X' });
 
     renderSetup();
 
+    await waitFor(() => expect(screen.getByLabelText('Admin email')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('Admin email'), {
+      target: { value: 'admin@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
     await waitFor(() => expect(screen.getByLabelText('Resend API key')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send my code' }));
 
     await waitFor(() => expect(screen.getByText('Enter your Resend API key')).toBeTruthy());
     expect(postSpy).not.toHaveBeenCalled();

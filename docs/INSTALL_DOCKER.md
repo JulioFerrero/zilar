@@ -78,9 +78,10 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --wait
 ```
 
 Open `https://<ZILAR_DOMAIN>` and finish the setup screen in the browser:
-paste a Resend API key (see "Email" below), a sender address, and the admin
-email, then enter the 6-digit code the server emails to that address. The
-first admin account is created — no terminal, no invite code to copy.
+enter the admin email, then a Resend API key (see "Email" below) and a
+sender address, then enter the 6-digit code the server emails to that
+address. The first admin account is created — no terminal, no invite code
+to copy.
 
 ## Push notifications
 
@@ -145,8 +146,8 @@ images named below, and the compose file is a lone paste.
 4. In the Domains configuration give the `web` component your main domain.
    The compose file declares the `SERVICE_URL_*` variables that wire this
    up; adjust the hostnames after Coolify generates them.
-5. Deploy, open the URL, and finish the setup screen: paste a Resend API
-   key, a sender address, and the admin email. A Resend key is the API key
+5. Deploy, open the URL, and finish the setup screen: enter the admin
+   email, then a Resend API key and a sender address. A Resend key is the API key
    of the [Resend](https://resend.com) email service (resend.com/api-keys)
    that Zilar uses to send sign-in codes; the sender's domain must be
    verified in Resend first. The server emails a 6-digit code to the admin
