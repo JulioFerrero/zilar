@@ -193,3 +193,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0161](T-0161-first-run-setup.md) | First-run setup screen: email, Resend key, code; the key is stored encrypted, no manual mail setup or invite code | 2026-10-02 |
 | [T-0162](T-0162-integrations-settings-telegram.md) | Integration keys in the UI (Telegram bot token) and a proper import dialog | planned | meta/muse-spark-1.3-contributor | T-0161 | Spec ready |
 | [T-0163](T-0163-usernames-and-contact-requests.md) | @usernames and contact requests | planned | meta/muse-spark-1.3-contributor | T-0162 | Spec ready; launch after T-0162 merges (shared web files) |
+| [T-0164](T-0164-public-groups-and-channels.md) | Public and private groups and channels: handles, directory, open join | planned | meta/muse-spark-1.3-contributor | T-0163 | Spec ready; launch after T-0163 merges |
