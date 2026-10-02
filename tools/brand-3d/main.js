@@ -174,31 +174,34 @@ function ball(material, radius, position, parent, part = 'body') {
     parent.add(halo);
   }
 }
-const ORBIT = 310;
-const MOON_AT = -0.15; // angle of the moon on its orbit: out at the right end of the ring, clear of the planet
+const PLANET_RADIUS = 175;
+const ORBIT = 335;
+const MOON_AT = 0; // angle of the moon on its orbit: upper right, where the ring runs across the screen so the gap around the moon stays visible
 const tilt = new THREE.Group();
 tilt.rotation.set(1.2, 0, 0.5);
 const MOON_RADIUS = 68;
 const RING_TUBE = 15;
-// the ring stops short of the moon on both sides, so the two never intersect
-const GAP = (MOON_RADIUS + RING_TUBE + 16) / ORBIT;
+// the ring stops short of the moon on both sides. The orbit is tilted, so a gap in the ring plane
+// shrinks to about half on screen: this angle leaves a clear gap there, not just in 3D
+const GAP_AHEAD = 0.5; // angle left free on the upper-left side of the moon
+const GAP_BEHIND = 0.9; // and on the lower-right side, where the ring bends away from the camera
 const orbitRing = new THREE.Mesh(
-  new THREE.TorusGeometry(ORBIT, RING_TUBE, 32, 360, Math.PI * 2 - 2 * GAP),
+  new THREE.TorusGeometry(ORBIT, RING_TUBE, 32, 360, Math.PI * 2 - GAP_AHEAD - GAP_BEHIND),
   ringMaterial,
 );
-orbitRing.rotation.z = MOON_AT + GAP;
+orbitRing.rotation.z = MOON_AT + GAP_AHEAD;
 orbitRing.castShadow = true;
 if (MONO) {
   orbitRing.material = INK;
   const halo = new THREE.Mesh(
-    new THREE.TorusGeometry(ORBIT, RING_TUBE + HALO, 32, 360, Math.PI * 2 - 2 * GAP),
+    new THREE.TorusGeometry(ORBIT, RING_TUBE + HALO, 32, 360, Math.PI * 2 - GAP_AHEAD - GAP_BEHIND),
     PAPER,
   );
   halo.rotation.z = orbitRing.rotation.z;
   if (!ONLY_MOON) tilt.add(halo);
 }
 if (!ONLY_MOON) tilt.add(orbitRing);
-for (const end of [MOON_AT + GAP, MOON_AT - GAP]) {
+for (const end of [MOON_AT + GAP_AHEAD, MOON_AT - GAP_BEHIND]) {
   ball(
     ringMaterial,
     RING_TUBE,
@@ -214,8 +217,8 @@ ball(
   'moon',
 );
 system.add(tilt);
-ball(planetMaterial, 200, new THREE.Vector3(0, 0, 0), system);
-system.position.set(-30, -8, 400);
+ball(planetMaterial, PLANET_RADIUS, new THREE.Vector3(0, 0, 0), system);
+system.position.set(-8, -10, 400);
 system.scale.setScalar(LAYER === 'foreground' || MONO ? 0.8 : 0.88);
 if (LAYER !== 'background') scene.add(system);
 
