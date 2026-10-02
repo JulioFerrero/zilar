@@ -1,6 +1,6 @@
 ---
 id: T-0160
-title: Rename the project from Galena to Zilar (user-visible names, config, deploy; stored identifiers stay)
+title: Rename EVERYTHING from Galena to Zilar (no keep-list)
 status: planned
 milestone: M5
 branch: task/T-0160-rename-zilar
@@ -9,39 +9,43 @@ effort: high
 estimate: 1 day
 ---
 
-# T-0160: Rename the project from Galena to Zilar
+# T-0160: Rename EVERYTHING from Galena to Zilar
 
 ## Spec (written by Claude, do not edit)
 
 ### Why
-Julio chose the name **Zilar** (Basque for "silver") on 2026-10-02 and bought `zilar.app`, `zilar.dev` and `zilar.org`. About 410 files still say "Galena". This task renames everything a person sees or configures. It must run ALONE (no other worker active), because it touches almost every package, and it must not break anything that is stored in data.
+Julio chose the name **Zilar** (Basque for "silver") on 2026-10-02, bought `zilar.app`, `zilar.dev` and `zilar.org`, and ordered a TOTAL rename: every occurrence of "galena" in the project becomes "zilar", with no exceptions for internal names. About 410 files mention it. This task must run ALONE (no other worker active).
 
-### Decisions by the lead (fixed, do not revisit)
-1. **Renamed (user-visible and configuration):**
-   - Every string a person sees: web and mobile UI text, page titles, the PWA manifest and service worker names, notification titles, the sign-in mail subjects and bodies ("Your Zilar sign-in code" and the others), error messages that name the product, the mobile app display name and splash text, `README.md`, `docs/**`, install wizard and doctor texts, the Caddyfile comments and the default admin mail subject lines.
-   - Environment variables: `GALENA_*` become `ZILAR_*` (`ZILAR_DOMAIN`, `ZILAR_XMPP_JWT_SECRET`, `ZILAR_DB_PASSWORD`, `ZILAR_ARCHIVE_DB_PASSWORD`, `ZILAR_KEY_ENCRYPTION_KEY`, `ZILAR_API_URL`, `ZILAR_XMPP_INTEGRATION`, `ZILAR_MOCK`, `ZILAR_MOCK_SCENARIO`, `ZILAR_DOCTOR_DISK_USED_PCT`, `ZILAR_PUSH_COMPONENT_HOST`, `ZILAR_LEAD_ALLOW_ALL`, plus `EXPO_PUBLIC_GALENA_*` and `VITE_GALENA_*`). **The old `GALENA_*` names keep working as a fallback** read in one place per package (the config module, the wizard, the dev scripts): the new name wins; when only the old one is set, log ONE startup warning naming the variable (names only, never values) telling the owner to rename it. Julio's existing `.env` files keep working.
-   - The deploy script `deploy/galena` becomes `deploy/zilar`; leave a tiny `deploy/galena` shim that prints "renamed to ./deploy/zilar" and execs it. Backup archives keep the manifest tag `galena-backup-v1` accepted on restore (add `zilar-backup-v1` for new archives).
-   - Mobile: display name "Zilar"; deep link scheme `zilar://` (keep `galena://` registered as well so old links still open); `slug` and the Android/iOS bundle ids change to `app.zilar.chat` (new app identity: the old dev build stays installed next to it). This needs a native rebuild: say so in the Report.
-   - Docker image names, compose service labels and container names in `deploy/**` use `zilar`.
-2. **NOT renamed (identifiers stored in data or workspace plumbing):**
-   - The dev XMPP domain `galena.localhost`, the `galena-dev` compose project name and its volumes, database names and users (`galena`, `ejabberd`), and any default that appears in JIDs already stored in Julio's dev database. Changing them would orphan every existing chat. The domain stays configurable as before; docs may use `zilar.example` or `chat.example.com` for examples.
-   - The workspace package scope `@galena/*` (packages, imports, `--filter` strings in every spec and in `AGENTS.md`). It is invisible to users, nothing is published to npm, and renaming it would invalidate the Checks of all historical specs. A later task may do it when we publish.
-   - The `galena_` prefix of existing database tables/columns/indexes and migration files (never edit applied migrations).
-   - Git history, `work/**` task files, `docs/PROJECT_PLAN.md` and `AGENTS.md` (lead-owned; the lead updates them after the merge).
-3. **Visible name rules:** the product is written "Zilar" (capital Z, no other styling). Where a sentence says "Galena server" it becomes "Zilar server". "Self-hosted Zilar" in the README intro.
+### The rule
+Every occurrence of `galena` / `Galena` / `GALENA` in a tracked file becomes `zilar` / `Zilar` / `ZILAR`, EXCEPT only:
+- `work/**`, `docs/PROJECT_PLAN.md`, `AGENTS.md` (lead-owned; the lead renames them after the merge),
+- the git history,
+- `.env` files of any kind (never read, print or edit them; the lead migrates them),
+- already-applied migration files under `apps/server/drizzle/**` (none contain the word today; do not edit them; a new migration is needed only if a table or column name contains it, and then it is generated with `pnpm --filter @zilar/server db:generate` and reviewed).
+No fallbacks, no shims, no compatibility aliases: the old names are simply gone (the lead migrates Julio's local environment files and data). Do not add "old name still works" code.
 
-### What to build
-1. A word list first: run `rg -i galena` over the repo (excluding `node_modules`, `.git`, `work/`, `docs/PROJECT_PLAN.md`, `AGENTS.md`, `apps/server/drizzle/**`) and classify every hit as RENAME or KEEP per the decisions above. Put the KEEP list with reasons in the Report.
-2. Apply the renames. Config fallback helper: one small tested function per package (`readEnvWithFallback(newName, oldName)`), no copy-paste.
-3. Tests: update every test that asserts the old name; add tests for the fallback (new wins, old works and warns once, neither set), for the sign-in mail subjects, for the mobile deep link config (both schemes), for the deploy shim and for the restore accepting both manifest tags. Add a guard test that fails when a user-visible string in `apps/web/src` or `apps/mobile/src` contains "Galena" (allow-list the KEEP identifiers).
-4. Verify in a browser (dev server on a spare port, never 5173/3000/8081) that the title, header and sign-in page say Zilar; the Report says what you saw.
-5. Out of scope: package scope, XMPP domain, DB names, migrations, logos or new artwork (a text wordmark is fine), buying or configuring the domains.
+### What this includes (non-exhaustive: the rule above decides)
+1. **Workspace scope** `@galena/*` becomes `@zilar/*`: every `package.json` name and dependency, imports, `tsconfig` paths, vite/vitest/turbo/eslint configs, Dockerfiles, scripts, `pnpm-lock.yaml` (regenerate with `pnpm install` and commit it). From now on the checks use `pnpm --filter @zilar/<pkg>`.
+2. **Environment variables** `GALENA_*` become `ZILAR_*`, including `EXPO_PUBLIC_GALENA_*`, `VITE_GALENA_*`, `GALENA_LEAD_*`, `GALENA_XMPP_*`, `GALENA_DB_PASSWORD`, and every `.env.example`.
+3. **XMPP hosts and test domains**: `galena.localhost` becomes `zilar.localhost` (also `rooms.`, `push.`, `upload.` and every other host built from it), `galena.test`/`galena.example` become `zilar.test`/`zilar.example`, in `infra/**`, `deploy/**`, server config defaults, the web and mobile mock data, fixtures, tests and docs.
+4. **Database names and roles** `galena` become `zilar` (the app database, role and any `galena_*` names) in `infra/**` init scripts and compose, `deploy/**`, `drizzle.config.ts`, defaults and docs.
+5. **Docker and compose**: project name `galena-dev` becomes `zilar-dev`, container/service/network/volume names, image names, labels, in-container paths such as `/galena/...` become `/zilar/...` (`infra/**` and `deploy/**`). The install script `deploy/galena` is renamed with `git mv` to `deploy/zilar`; every reference follows.
+6. **Client storage names**: localStorage/sessionStorage keys, cookie names, IndexedDB database names, service worker and Cache Storage names, push tags, the PWA manifest `name`/`short_name`/`id`, `index.html` titles, the mobile `app.json` (`name`, `slug`, `scheme` `zilar`, iOS bundle identifier and Android package `app.zilar.chat`), asset names, notification channel ids, deep links. Existing browser sessions are lost; that is accepted.
+7. **The lead tooling** in `packages/devtools`: the state directory `~/.galena-lead` becomes `~/.zilar-lead`, the autopilot log `/tmp/galena-lead-autopilot.log` becomes `/tmp/zilar-lead-autopilot.log`, branch/worktree/prompt texts, the `GALENA_LEAD_*` variables. Keep the code path-agnostic (the repository folder name is NOT changed by this task).
+8. **Everything a person sees**: UI text, emails ("Your Zilar sign-in code" and the others), notifications, error messages, README, `docs/**` (except `docs/PROJECT_PLAN.md`), wizard/doctor output, comments and code identifiers (`galenaFoo` becomes `zilarFoo`, `GalenaError` becomes `ZilarError`), test names and fixtures. The product is written "Zilar" (capital Z).
+9. **Guard test**: a Vitest test in `packages/devtools` that runs `git ls-files`, reads every text file (skip binaries, skip the exception list above) and fails with the file:line list when the word "galena" (case-insensitive) is still present.
+
+### Order of work (suggested)
+1. `rg -il galena` to get the file list; do the mechanical replacement with a script that handles the three casings and the identifier forms, then review the diff by area (server, web, mobile, packages, infra, deploy, docs) for false positives (the Basque/mineral word in prose, URLs of third parties, anything that must stay English like "galena" in a quoted third-party text; there should be none).
+2. `git mv deploy/galena deploy/zilar` and fix references.
+3. `pnpm install`, regenerate the lockfile, then run every check below.
+4. Do NOT start, stop, rebuild or modify the lead's running dev stack (`galena-dev-*` containers, ports 3188, 5173, 5280, 5222, 5347) or any local database or volume; tests use PGlite and fakes.
 
 ### Read first
-`AGENTS.md`, `docs/SERVER_CONFIG.md`, `deploy/galena`, `apps/mobile/app.json`, `apps/server/src/config.ts`, `apps/server/src/auth/mailer.ts`, `apps/web/index.html` and the PWA manifest.
+`AGENTS.md`, `docs/SERVER_CONFIG.md`, `infra/docker-compose.dev.yml`, `deploy/galena`, `apps/mobile/app.json`, `packages/devtools/src/lead/**`.
 
 ### Allowed files
-Everything in the repo EXCEPT: `work/**` (except this task's file), `docs/PROJECT_PLAN.md`, `AGENTS.md`, `apps/server/drizzle/**`, lockfile changes beyond what the renames require, and `.env` files of any kind (never read or edit them). New dependencies: none.
+Everything tracked EXCEPT the exception list in "The rule". New dependencies: none. In the Report list every file group you changed, anything you left as "galena" and why (should be nothing outside the exception list), and every manual step the lead must do on the live environment (database/role rename, volumes, `.env` keys, native rebuild).
 
 ### Checks
 ```bash
@@ -49,20 +53,23 @@ pnpm install
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm --filter @galena/server test --maxWorkers=2 config auth mailer startup
-pnpm --filter @galena/web test --maxWorkers=2 App Login Settings
-pnpm --filter @galena/mobile test --maxWorkers=2 hooks-guard config
+pnpm --filter @zilar/devtools test --maxWorkers=2
+pnpm --filter @zilar/protocol test --maxWorkers=2
+pnpm --filter @zilar/chat-core test --maxWorkers=2
+pnpm --filter @zilar/server test --maxWorkers=2 config auth mailer startup stickers push
+pnpm --filter @zilar/web test --maxWorkers=2 App Login Settings Sticker
+pnpm --filter @zilar/mobile test --maxWorkers=2 hooks-guard store
 sh deploy/tests/push-deploy.test.sh
 sh deploy/tests/storage-safety.test.sh
 ```
-(plus the tests you add or touch)
+(the lead runs the full suites once on main afterwards)
 
 ### Acceptance
-- No user-visible "Galena" remains in web, mobile, mails, docs and deploy output (guard test).
-- Old `GALENA_*` variables still work with a single warning; new `ZILAR_*` win.
-- Existing chats and the dev database are unaffected (no JID, domain, table or migration change).
-- The deploy shim and both backup manifest tags work.
-- The Report lists the KEEP list and everything that needs a native rebuild or a manual step by Julio.
+- The guard test passes: no "galena" outside the exception list.
+- Format, lint, typecheck and the checks above pass.
+- `deploy/zilar` exists and its tests pass; the compose files render.
+- No change to applied migrations; no `.env` file read or edited.
+- The Report has the manual-steps list for the live environment.
 
 ## Report (written by the worker when done)
 
