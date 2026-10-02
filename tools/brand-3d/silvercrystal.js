@@ -142,9 +142,9 @@ const silver = new THREE.MeshStandardMaterial({
   envMapIntensity: 2.4,
 });
 const crystal = new THREE.Mesh(crystalGeometry(), silver);
-crystal.scale.setScalar(118);
+crystal.scale.setScalar(108);
 crystal.rotation.set(0.62, 0.52, 0.18);
-crystal.position.set(0, 10, 90);
+crystal.position.set(0, 10, 260);
 crystal.castShadow = true;
 scene.add(crystal);
 
