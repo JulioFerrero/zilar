@@ -2689,7 +2689,8 @@ describe('AI reply drafts (T-0043)', () => {
 
   it('clears the finished-draft message record on stop and signOut', async () => {
     const drafts = fakeDrafts();
-    const { store, xmpp } = await setup({}, undefined, { openDrafts: drafts.open });
+    const goToLogin = vi.fn();
+    const { store, xmpp } = await setup({}, undefined, { openDrafts: drafts.open, goToLogin });
     drafts.emit(draft(CHAT, TURN_ONE, 'Hello'));
     xmpp.emit('message', message({ id: 'ai-1', chatJid: CHAT, body: 'Hello', fromJid: CHAT }));
     expect(store.getState().finishedDraftMessages['ai-1']).toBe(TURN_ONE);
@@ -2703,13 +2704,8 @@ describe('AI reply drafts (T-0043)', () => {
     xmpp.emit('message', message({ id: 'ai-2', chatJid: CHAT, body: 'Bye', fromJid: CHAT }));
     expect(store.getState().finishedDraftMessages['ai-2']).toBe(TURN_TWO);
 
-    const assign = vi.fn();
-    vi.stubGlobal('location', { assign });
-    try {
-      await store.getState().signOut();
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    await store.getState().signOut();
+    expect(goToLogin).toHaveBeenCalledTimes(1);
     expect(store.getState().finishedDraftMessages).toEqual({});
   });
 
@@ -2752,18 +2748,13 @@ describe('AI reply drafts (T-0043)', () => {
 
   it('closes the stream on signOut', async () => {
     const drafts = fakeDrafts();
-    const { store } = await setup({}, undefined, { openDrafts: drafts.open });
-    const assign = vi.fn();
-    vi.stubGlobal('location', { assign });
-    try {
-      await store.getState().signOut();
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    const goToLogin = vi.fn();
+    const { store } = await setup({}, undefined, { openDrafts: drafts.open, goToLogin });
+    await store.getState().signOut();
 
     expect(drafts.close).toHaveBeenCalledTimes(1);
     expect(store.getState().drafts).toEqual({});
-    expect(assign).toHaveBeenCalledWith('/login');
+    expect(goToLogin).toHaveBeenCalledTimes(1);
   });
 });
 

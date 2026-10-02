@@ -20,6 +20,11 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // vmThreads builds jsdom once per worker instead of once per file (it was
+    // a third of the suite's time) and still gives every file its own globals.
+    // The price: window.location cannot be redefined, so code that navigates
+    // takes the navigation as an injected dependency (see goToLogin).
+    pool: 'vmThreads',
     setupFiles: ['./src/test/setup.ts'],
     // First full-app render in each file (renderApp) pays the cold
     // jsdom/module warm-up plus a full render: ~0.2-0.5 s idle, up to

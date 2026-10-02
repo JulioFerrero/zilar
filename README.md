@@ -152,11 +152,7 @@ The details, prerequisites and every script are below in [Development](#developm
 | [`docs/LIVE_CHECKS_2026-09-29.md`](docs/LIVE_CHECKS_2026-09-29.md) | What still needs a human on real devices |
 | [`docs/design/ui-style.md`](docs/design/ui-style.md) | The visual language |
 | [`AGENTS.md`](AGENTS.md) | Rules for AI workers |
-| [`work/README.md`](work/README.md) · [`work/BOARD.md`](work/BOARD.md) | How the human and the AI team collaborate; the live task board |
-
-## 🤝 Built by a human and an AI team
-
-Julio decides. A lead Claude writes a spec for every task, launches an isolated AI worker, reviews **every diff line by line** (security code twice), and merges only when it is clean. Workers can only touch the files a task lists and run commands a fail-closed permission policy allows. Every task, report and review is in [`work/`](work/) and the process is in [`docs/LEAD_PLAYBOOK.md`](docs/LEAD_PLAYBOOK.md). Over 1,000 server tests and 640 web tests back the result.
+| [`work/README.md`](work/README.md) · [`work/BOARD.md`](work/BOARD.md) | How work is organized; the live task board |
 
 ---
 
