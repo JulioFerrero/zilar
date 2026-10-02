@@ -6,6 +6,11 @@
 }
 
 :80 {
+  # www is the main address: the bare domain redirects to it (Traefik already
+  # terminated TLS for both names).
+  @apex host zilar.app
+  redir @apex https://www.zilar.app{uri} permanent
+
   root * /srv/zilar-site
   encode zstd gzip
 
