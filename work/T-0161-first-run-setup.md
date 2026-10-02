@@ -30,21 +30,20 @@ Installing on Coolify (or anywhere) today needs an operator to hand-fill mail se
 - Saving the settings swaps the live mailer without a restart.
 
 **3. Setup gate.**
-- "Setup needed" means: no user with the admin role exists.
-- On boot while setup is needed, the server generates a random one-time setup token (32 bytes, base64url), keeps only its SHA-256 in memory, and logs ONE line: `Zilar setup: open <PUBLIC_URL>/setup#<token>`. This is the single deliberate exception to the rule that bearer tokens never reach logs: it proves the caller can read the server log. The token goes in the URL fragment so no proxy or access log ever sees it. Add a test that the token is logged exactly once, only while setup is needed, and never appears in request logs or errors.
+- "Setup needed" means: no user with the admin role exists. Like other self-hosted apps, whoever opens the new server first sets it up; there is no setup token.
 - `GET /api/setup/status` (public): `{ needsSetup: boolean, mailConfigured: boolean }`. Nothing else.
-- `POST /api/setup` (public but token-gated): body `{ token, resendApiKey, from, adminEmail }` (zod). Compare the token hash with `timingSafeEqual`. In ONE transaction under an advisory lock: re-check that setup is still needed, store the settings, create the first-admin invite for `adminEmail`. Then send a test sign-in code to `adminEmail` through the new mailer; if sending fails, roll back the settings and answer 422 `mail_send_failed` with no provider detail. Success answers 200 `{ ok: true }`.
-- Once an admin exists, both routes answer the same 404 as an unknown route and the token is discarded. Wrong token and "setup already done" are indistinguishable from outside except the status route.
+- `POST /api/setup` (public): body `{ resendApiKey, from, adminEmail }` (zod). In ONE transaction under an advisory lock: re-check that setup is still needed, store the settings, create the first-admin invite for `adminEmail`. Then send a test sign-in code to `adminEmail` through the new mailer; if sending fails, roll back the settings and answer 422 `mail_send_failed` with no provider detail. Success answers 200 `{ ok: true }`.
+- Once an admin exists, `POST /api/setup` answers the same 404 as an unknown route. The first admin is created only when its email completes the sign-in code, so a visitor who sets a wrong email cannot take the server over without access to that inbox, and the setup stays open for a retry until an admin exists.
 - Rate limit `POST /api/setup`: 5 per 10 minutes per IP. Audit entry `setup.completed` with ids only (no email, no key).
 
 **4. Web.**
-- Route `/setup`: if `needsSetup` is false, redirect to `/login`. Otherwise a three-field form (setup token prefilled from the URL fragment and then removed from the address bar, Resend API key as a password input, from address) plus the admin email. Plain explanation of where to get a Resend key and that the from-domain must be verified in Resend. On success go to the normal sign-up screen with the email prefilled and the code step shown.
+- Route `/setup`: if `needsSetup` is false, redirect to `/login`. Otherwise a form (Resend API key as a password input, from address) plus the admin email. Plain explanation of where to get a Resend key and that the from-domain must be verified in Resend. On success go to the normal sign-up screen with the email prefilled and the code step shown.
 - The login screen checks `needsSetup` first and shows a "Finish setting up this server" link to `/setup` instead of an unusable form.
-- Match the existing auth screens' components and style. Tests with Vitest + Testing Library: redirect when not needed, token prefill and fragment removal, error states (wrong token, mail failed), success path.
+- Match the existing auth screens' components and style. Tests with Vitest + Testing Library: redirect when not needed, error states (mail failed), success path.
 
 **5. Deploy files.**
 - `deploy/coolify/docker-compose.yml`: remove the mail variables and `MAIL_ALLOW_CONSOLE_IN_PRODUCTION`; keep optional SMTP overrides out of the required set. Remove the manual-key instructions that no longer apply.
-- `docs/INSTALL_DOCKER.md`: rewrite the Coolify section as: paste the compose file, set the domain, deploy, open the log, open the setup link. Say what a Resend key is and that the setup link is in the server log.
+- `docs/INSTALL_DOCKER.md`: rewrite the Coolify section as: paste the compose file, set the domain, deploy, open the URL, finish the setup screen. Say what a Resend key is.
 
 ### Read first
 `AGENTS.md` (security checklist, all of it), `apps/server/src/auth/` (`mailer.ts`, `invites.ts`, `invite-cli.ts`, `routes.ts`, `auth.ts`), `apps/server/src/config.ts` (mail validation and the `EMPTY_MEANS_UNSET_KEYS` list), `apps/web/src/auth/`, `deploy/coolify/docker-compose.yml`, `docs/INSTALL_DOCKER.md`.
@@ -63,9 +62,9 @@ pnpm --filter @zilar/web test --maxWorkers=2 src/auth src/routes
 ```
 
 ### Acceptance
-- A fresh database with no mail variables set boots in production; the log shows the setup line once.
-- `/setup` with the right token and a working Resend key stores encrypted settings, creates the first-admin invite, and the admin can complete sign-in with a code sent by email.
-- Wrong token, repeated attempts, and any call after setup is done are covered by tests (401-sweep style: same 404 once done; rate limit hit).
+- A fresh database with no mail variables set boots in production.
+- `/setup` with a working Resend key stores encrypted settings, creates the first-admin invite, and the admin can complete sign-in with a code sent by email.
+- Repeated attempts and any call after setup is done are covered by tests (same 404 once done; rate limit hit).
 - The key never appears in logs, audit detail, errors, or API responses (test with a sentinel value).
 - Existing env-based SMTP installs behave exactly as before.
 

@@ -15,6 +15,7 @@
 #   port; the same value is reused through the Service as a normal variable.
 # - `SERVICE_PASSWORD_<ID>` asks Coolify to generate and persist a random
 #   password, shared by every component that references the same name.
+#   <ID> must have NO underscore: Coolify leaves `SERVICE_PASSWORD_A_B` empty.
 # - Components in one stack reach each other by Compose service name; no
 #   `ports:` are published because Coolify's Traefik proxy is the entry point.
 # - Health checks live in Compose (Services have no separate health-check UI).
@@ -38,9 +39,9 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
       POSTGRES_DB: postgres
-      ZILAR_DB_PASSWORD: ${SERVICE_PASSWORD_ZILAR_DB}
-      EJABBERD_DB_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_DB}
-      ZILAR_ARCHIVE_DB_PASSWORD: ${SERVICE_PASSWORD_ARCHIVE_DB}
+      ZILAR_DB_PASSWORD: ${SERVICE_PASSWORD_ZILARDB}
+      EJABBERD_DB_PASSWORD: ${SERVICE_PASSWORD_EJABBERDDB}
+      ZILAR_ARCHIVE_DB_PASSWORD: ${SERVICE_PASSWORD_ARCHIVEDB}
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -67,22 +68,22 @@ services:
       EJABBERD_MACRO_HOST: ${SERVICE_FQDN_WEB}
       EJABBERD_MACRO_MUC_HOST: rooms.${SERVICE_FQDN_WEB}
       EJABBERD_MACRO_ADMIN: admin@${SERVICE_FQDN_WEB}
-      REGISTER_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_ADMIN}
-      EJABBERD_MACRO_SQL_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_DB}
+      REGISTER_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERDADMIN}
+      EJABBERD_MACRO_SQL_PASSWORD: ${SERVICE_PASSWORD_EJABBERDDB}
       # Push component (T-0145, XEP-0114): the secret the server's component
       # authenticates with. Must equal the server's PUSH_COMPONENT_SECRET
       # below. The placeholder default matches the placeholder in the image:
       # with it the component handshake fails (wrong secret) and push stays
       # non-functional until a real password is generated. `doctor` (plain
       # stack) flags the placeholder in plain words; on Coolify confirm
-      # SERVICE_PASSWORD_PUSH_COMPONENT holds a generated value.
-      EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSH_COMPONENT:-CHANGE_ME_PUSH_COMPONENT_SECRET}
+      # SERVICE_PASSWORD_PUSHCOMPONENT holds a generated value.
+      EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSHCOMPONENT:-CHANGE_ME_PUSH_COMPONENT_SECRET}
       # push.<XMPP domain> is derived at container start from ZILAR_DOMAIN
       # (see deploy/ejabberd/push-entrypoint.sh): set it to the same value
       # as XMPP_DOMAIN so the entrypoint writes push.<XMPP_DOMAIN>, matching
       # PUSH_COMPONENT_JID below.
       ZILAR_DOMAIN: ${SERVICE_FQDN_WEB}
-      ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT}
+      ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPPJWT}
       EJABBERD_MACRO_UPLOAD_URL: https://${SERVICE_FQDN_WEB}/upload
     expose:
       - '5280'
@@ -112,23 +113,23 @@ services:
       # production with MAIL_TRANSPORT=smtp once T-0128 is merged.
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
-      DATABASE_URL: postgres://zilar:${SERVICE_PASSWORD_ZILAR_DB}@postgres:5432/zilar
-      XMPP_ARCHIVE_DATABASE_URL: postgres://zilar_archive:${SERVICE_PASSWORD_ARCHIVE_DB}@postgres:5432/ejabberd
+      DATABASE_URL: postgres://zilar:${SERVICE_PASSWORD_ZILARDB}@postgres:5432/zilar
+      XMPP_ARCHIVE_DATABASE_URL: postgres://zilar_archive:${SERVICE_PASSWORD_ARCHIVEDB}@postgres:5432/ejabberd
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PUBLIC_URL: ${SERVICE_URL_WEB}
-      BETTER_AUTH_SECRET: ${SERVICE_PASSWORD_BETTER_AUTH}
+      BETTER_AUTH_SECRET: ${SERVICE_PASSWORD_BETTERAUTH}
       # The API shares the web app's domain, so the allowed origin is that domain.
       WEB_ORIGINS: ${SERVICE_URL_WEB}
       EJABBERD_API_URL: http://ejabberd:5280/api
       EJABBERD_ADMIN_JID: admin@${SERVICE_FQDN_WEB}
-      EJABBERD_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERD_ADMIN}
+      EJABBERD_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERDADMIN}
       XMPP_DOMAIN: ${SERVICE_FQDN_WEB}
       XMPP_MUC_DOMAIN: rooms.${SERVICE_FQDN_WEB}
       # The WS handler answers at ejabberd's /ws path, so the public token
       # URL is the routed WS domain plus /ws.
       XMPP_WS_PUBLIC_URL: wss://${SERVICE_FQDN_WEB}/xmpp-ws/ws
-      ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPP_JWT}
-      ZILAR_KEY_ENCRYPTION_KEY: ${ZILAR_KEY_ENCRYPTION_KEY:-}
+      ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPPJWT}
+      ZILAR_KEY_ENCRYPTION_KEY: ${SERVICE_PASSWORD_KEYENCRYPTION}
       # Where sticker files live: a persistent volume (see `volumes:` below),
       # fixed absolute path, always set — never relative, never empty.
       # A manual edit of this value orphans previously uploaded stickers.
@@ -145,7 +146,7 @@ services:
       RUNNER_HUB_PORT: 3189
       # Outgoing email: sign-in codes are sent by email. Same final variable
       # names as deploy/docker-compose.yml; empty means unset.
-      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-}
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-console}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_SECURE: ${SMTP_SECURE:-false}
@@ -153,7 +154,7 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-}
       MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
-      MAIL_ALLOW_CONSOLE_IN_PRODUCTION: ${MAIL_ALLOW_CONSOLE_IN_PRODUCTION:-false}
+      MAIL_ALLOW_CONSOLE_IN_PRODUCTION: ${MAIL_ALLOW_CONSOLE_IN_PRODUCTION:-true}
       PUSH_ENABLED: ${PUSH_ENABLED:-false}
       # Same rule as deploy/docker-compose.yml: leave unfilled Coolify
       # variables unset and the server boots with push off (an empty value
@@ -167,7 +168,7 @@ services:
       # value as XMPP_DOMAIN so the entrypoint derives it.
       PUSH_COMPONENT_JID: push.${SERVICE_FQDN_WEB}
       # Must equal ejabberd's EJABBERD_MACRO_PUSH_COMPONENT_SECRET above.
-      PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSH_COMPONENT:-CHANGE_ME_PUSH_COMPONENT_SECRET}
+      PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSHCOMPONENT:-CHANGE_ME_PUSH_COMPONENT_SECRET}
       PUSH_STORAGE_KEY: ${PUSH_STORAGE_KEY:-}
       TOOLS_ENABLED: ${TOOLS_ENABLED:-false}
       ROUTINES_ENABLED: ${ROUTINES_ENABLED:-false}
