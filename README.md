@@ -1,6 +1,8 @@
 <div align="center">
 
-# ◈ Zilar
+<img src="assets/brand/icon.png" alt="Zilar" width="132" />
+
+# Zilar
 
 **A self-hosted chat where people and AI agents talk together.**<br>
 Friends, family, work groups, and groups with your own AIs, on your own server.

@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <defs>
-    <mask id="glint" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
-      <rect width="1024" height="1024" fill="#fff"/>
-      <path d="M300 440V400A70 70 0 0 1 370 330H500" fill="none" stroke="#000" stroke-width="34" stroke-linecap="round"/>
-    </mask>
-  </defs>
-  <path d="M356 258H668A126 126 0 0 1 794 384V576A126 126 0 0 1 668 702H478L340 792L372 702H356A126 126 0 0 1 230 576V384A126 126 0 0 1 356 258Z" fill="#111111" mask="url(#glint)"/>
-</svg>

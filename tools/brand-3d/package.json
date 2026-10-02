@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Renders the Zilar app icon with Three.js (physically based silver bubble on an anodized key).",
+  "description": "Renders the Zilar app icon with Three.js (silver planet with an orbit ring on a brushed-metal key, and the assets derived from it).",
   "scripts": {
     "serve": "python3 -m http.server 5199",
     "render": "sh render.sh"

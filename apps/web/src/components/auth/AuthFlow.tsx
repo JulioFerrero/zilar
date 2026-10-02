@@ -114,6 +114,7 @@ export function AuthFlow({
   return (
     <div className="chat-background flex min-h-dvh items-center justify-center p-4">
       <div className="w-full max-w-sm rounded-2xl bg-background p-6 shadow-xl">
+        <img src="/icons/icon-192.png" alt="" width={72} height={72} className="mx-auto mb-3" />
         <h1 className="text-center text-[24px] leading-8 font-semibold">{heading}</h1>
         {subheading !== undefined && (
           <p className="mt-1 text-center text-[15px] text-muted-foreground">{subheading}</p>
