@@ -10,7 +10,7 @@ import {
   type ReplyRef,
   type UiMention,
 } from '@zilar/chat-core';
-import { ArrowUp, Mic, Paperclip, Smile, X } from 'lucide-react';
+import { ArrowUp, Mic, Paperclip, Send, Smile, Trash2, X } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -36,19 +36,33 @@ import {
   objectUrlFor,
   type PendingAttachment,
 } from '@/lib/attachments';
-import { VOICE_MAX_BYTES, VOICE_MIN_MS, VoiceRecorder, computeWaveform } from '@/lib/voice';
+import {
+  VOICE_MAX_BYTES,
+  VOICE_MIN_MS,
+  VoiceError,
+  VoiceRecorder,
+  computeWaveform,
+} from '@/lib/voice';
 import { useChatStore } from '@/store/ChatStoreProvider';
 
 const LINE_HEIGHT = 22;
 const MAX_LINES = 6;
 const SLIDE_CANCEL_PX = 60;
+/** A press held past this point is a hold-to-send; a shorter press clicks over to toggle mode. */
+const HOLD_MS = 400;
 const MENTION_MAX_ROWS = 6;
 const MENTION_PICKER_ID = 'mention-picker';
 
 interface PressState {
+  /** Client X where the press began, for the slide-to-cancel gesture. */
   startX: number;
-  cancel: boolean;
+  slidToCancel: boolean;
+  /** Set on pointer-up when the recorder has not started yet. */
   released: boolean;
+  /** Set once the 400 ms hold timer fires. */
+  hold: boolean;
+  /** Fires `finishRecording` when a long press crosses the threshold. */
+  holdTimer: number | undefined;
 }
 
 export function Composer({
@@ -72,6 +86,8 @@ export function Composer({
   // reset them during render (React's "adjust state when a prop changes").
   const [trackedChatId, setTrackedChatId] = useState(chatId);
   const [recording, setRecording] = useState(false);
+  /** Click/tap mode: the recording keeps running until Send or Cancel. */
+  const [locked, setLocked] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [cancelArmed, setCancelArmed] = useState(false);
   const [voiceError, setVoiceError] = useState<string | undefined>(undefined);
@@ -85,8 +101,15 @@ export function Composer({
   // Composer subtree cannot contain it).
   const stickerWrapRef = useRef<HTMLSpanElement>(null);
   const lastTypingRef = useRef(0);
+  // Leaving the chat or unmounting while recording stops the microphone
+  // tracks (the browser's recording indicator must go off) and discards the
+  // recording. The recorder cancels itself; the guards below ignore its
+  // late `start()` promise if it resolves afterwards.
   const recorderRef = useRef<VoiceRecorder | null>(null);
   const pressRef = useRef<PressState | null>(null);
+  const recordingRef = useRef(false);
+  const chatIdRef = useRef(chatId);
+  chatIdRef.current = chatId;
 
   // The picker, paste and drop all funnel a chosen file through here. An empty
   // or oversized file is refused inline, before any request.
@@ -292,6 +315,60 @@ export function Composer({
     element.style.height = `${Math.min(Math.max(element.scrollHeight, LINE_HEIGHT), maxHeight)}px`;
   }, [value]);
 
+  // Cancels any in-flight recording when the composer unmounts.
+  useEffect(
+    () => () => {
+      if (pressRef.current?.holdTimer !== undefined) {
+        window.clearTimeout(pressRef.current.holdTimer);
+      }
+      pressRef.current = null;
+      const recorder = recorderRef.current;
+      recorderRef.current = null;
+      recordingRef.current = false;
+      recorder?.cancel();
+    },
+    [],
+  );
+
+  // Escape cancels a click-mode recording (before the textarea's own
+  // Escape handlers for pickers, attachments, edits and replies).
+  const cancelRecording = useCallback((): boolean => {
+    if (!recordingRef.current) {
+      return false;
+    }
+    if (pressRef.current?.holdTimer !== undefined) {
+      window.clearTimeout(pressRef.current.holdTimer);
+    }
+    pressRef.current = null;
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+    recordingRef.current = false;
+    recorder?.cancel();
+    setRecording(false);
+    setLocked(false);
+    setCancelArmed(false);
+    return true;
+  }, []);
+
+  // Switching chats while recording stops the microphone tracks (the
+  // browser's recording indicator must go off) and discards the recording.
+  useEffect(() => {
+    if (!recordingRef.current && pressRef.current?.holdTimer === undefined) {
+      return;
+    }
+    if (pressRef.current?.holdTimer !== undefined) {
+      window.clearTimeout(pressRef.current.holdTimer);
+    }
+    pressRef.current = null;
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+    recordingRef.current = false;
+    recorder?.cancel();
+    setRecording(false);
+    setLocked(false);
+    setCancelArmed(false);
+  }, [chatId]);
+
   useEffect(() => {
     if (!recording) {
       return;
@@ -304,6 +381,24 @@ export function Composer({
     }, 100);
     return () => window.clearInterval(timer);
   }, [recording]);
+
+  // Escape is a backstop while recording (click mode or a held press):
+  // a document listener, since the mic button holds pointer capture and
+  // the textarea is hidden while the recording row shows.
+  useEffect(() => {
+    if (!recording) {
+      return;
+    }
+    const onDocumentKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        cancelRecording();
+      }
+    };
+    document.addEventListener('keydown', onDocumentKeyDown);
+    return () => document.removeEventListener('keydown', onDocumentKeyDown);
+  }, [recording, cancelRecording]);
 
   const pickMention = (member: MentionMember): void => {
     const caret = textareaRef.current?.selectionStart ?? value.length;
@@ -423,7 +518,17 @@ export function Composer({
     }
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+  // Escape cancels an active recording first, before the textarea's own
+  // handlers for pickers, attachments, edits and replies. Hold-mode presses
+  // are bound to the mic button instead and end on release, but Escape is a
+  // harmless backstop for them too while the button still has capture.
+  const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (event.key === 'Escape' && recordingRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelRecording();
+      return;
+    }
     if (pickerActive) {
       if (event.key === 'ArrowDown' && candidates.length > 0) {
         event.preventDefault();
@@ -511,44 +616,104 @@ export function Composer({
     }
   };
 
-  const beginRecording = async (startX: number): Promise<void> => {
-    pressRef.current = { startX, cancel: false, released: false };
+  // The permission prompt must never cancel the recording: only an
+  // explicit release after the recorder has started can finish it. The
+  // press is captured in a local so the async `start()` below can tell a
+  // stale prompt (chat switched, composer unmounted) from the live one.
+  // `reply` is captured too: the reply may change while the browser's
+  // microphone prompt is showing.
+  const beginRecording = async (startX: number, reply: ReplyRef | undefined): Promise<void> => {
+    const press: PressState = {
+      startX,
+      slidToCancel: false,
+      released: false,
+      hold: false,
+      holdTimer: undefined,
+    };
+    pressRef.current = press;
     setVoiceError(undefined);
     setElapsedMs(0);
+    setLocked(false);
     setCancelArmed(false);
+    press.holdTimer = window.setTimeout(() => {
+      // A press held this long is a hold-to-send: when the recorder starts
+      // it runs in hold mode until release.
+      press.hold = true;
+    }, HOLD_MS);
+    let recorder: VoiceRecorder;
     try {
-      const recorder = await VoiceRecorder.start();
-      recorderRef.current = recorder;
-      setRecording(true);
-      if (pressRef.current?.released === true) {
-        recorder.cancel();
-        recorderRef.current = null;
-        setRecording(false);
+      recorder = await VoiceRecorder.start();
+    } catch (error) {
+      if (pressRef.current !== press) {
+        return;
       }
-    } catch {
       pressRef.current = null;
-      setVoiceError('Microphone unavailable');
+      setVoiceError(error instanceof VoiceError ? error.message : 'Microphone unavailable');
+      return;
+    }
+    // The composer unmounted or the chat switched while the prompt was up.
+    if (pressRef.current !== press) {
+      recorder.cancel();
+      return;
+    }
+    recorderRef.current = recorder;
+    recordingRef.current = true;
+    setRecording(true);
+    setElapsedMs(0);
+    if (press.released) {
+      if (press.hold) {
+        // A long press released during the prompt still sends: it was
+        // always a hold gesture, even though the recorder started late.
+        if (press.holdTimer !== undefined) {
+          window.clearTimeout(press.holdTimer);
+          press.holdTimer = undefined;
+        }
+        void finishRecording(false, reply);
+      } else {
+        // A short press released during the prompt: the user clicked while
+        // the browser asked for permission. Keep recording in click mode
+        // instead of silently discarding it. The press is over either way,
+        // so its hold timer is cleared.
+        if (press.holdTimer !== undefined) {
+          window.clearTimeout(press.holdTimer);
+          press.holdTimer = undefined;
+        }
+        pressRef.current = null;
+        setLocked(true);
+      }
+    } else if (press.hold) {
+      // The hold threshold passed while the prompt was up, with the button
+      // still down: this is a hold-to-send, finished by the release.
+    } else {
+      // The recorder beat the hold timer with the button still down: this
+      // may still become a hold or fall back to click mode on release.
     }
   };
 
-  const finishRecording = async (): Promise<void> => {
+  // Stops the recorder and either sends or discards the result. `cancel`
+  // discards (trash button, slide-off, Escape); otherwise the recording is
+  // validated and sent through the store. The reply is the one active when
+  // the press began: it may have changed while the prompt was showing.
+  const finishRecording = async (cancel: boolean, reply: ReplyRef | undefined): Promise<void> => {
     const press = pressRef.current;
     const recorder = recorderRef.current;
     pressRef.current = null;
     recorderRef.current = null;
+    recordingRef.current = false;
     setRecording(false);
+    setLocked(false);
     setCancelArmed(false);
     if (recorder === null) {
       return;
     }
-    if (press?.cancel === true) {
+    if (cancel || press?.slidToCancel === true) {
       recorder.cancel();
       return;
     }
 
     const recorded = await recorder.stop();
     if (recorded.durationMs < VOICE_MIN_MS) {
-      setVoiceError('Hold to record');
+      setVoiceError('Recording too short');
       return;
     }
     if (recorded.blob.size > VOICE_MAX_BYTES) {
@@ -557,38 +722,130 @@ export function Composer({
     }
     const waveform = await computeWaveform(recorded.blob);
     store.sendVoice(
-      chatId,
+      chatIdRef.current,
       { blob: recorded.blob, durationMs: recorded.durationMs, waveform },
-      replyTo === undefined ? undefined : { replyTo },
+      reply === undefined ? undefined : { replyTo: reply },
     );
     onCancelReply();
   };
 
+  // Press-and-hold still works for touch and mouse: a press held past
+  // 400 ms sends on release (sliding left cancels instead). A shorter
+  // press falls back to click mode and keeps recording until Send. The
+  // recording starts on pointer-down and ends on pointer-up; a click
+  // without pointer events (keyboard activation) starts a click-mode
+  // recording instead.
+  const onMicClick = (): void => {
+    if (pressRef.current !== null || canSend || recordingRef.current) {
+      return;
+    }
+    void beginRecording(0, replyTo);
+  };
+
   const onMicPointerDown = (event: ReactPointerEvent<HTMLButtonElement>): void => {
-    if (canSend) {
+    if (canSend || recordingRef.current || pressRef.current !== null) {
       return;
     }
     event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    void beginRecording(event.clientX);
+    // jsdom has no pointer capture: guard the call so the recording still
+    // starts there (and in any browser where capture throws).
+    const target = event.currentTarget as HTMLElement & {
+      setPointerCapture?: (pointerId: number) => void;
+    };
+    try {
+      target.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Pointer capture is best-effort; the press state still works.
+    }
+    void beginRecording(event.clientX, replyTo);
   };
 
-  const onMicPointerMove = (event: ReactPointerEvent<HTMLButtonElement>): void => {
+  // The slide-to-cancel gesture while holding: shared with the document
+  // pointer-move listener below.
+  const onMicPointerMove = (clientX: number): void => {
     const press = pressRef.current;
-    if (press === null) {
+    if (press === null || recorderRef.current === null) {
       return;
     }
-    const cancel = event.clientX < press.startX - SLIDE_CANCEL_PX;
-    press.cancel = cancel;
+    const cancel = clientX < press.startX - SLIDE_CANCEL_PX;
+    press.slidToCancel = cancel;
     setCancelArmed(cancel);
   };
 
   const onMicPointerUp = (): void => {
-    if (pressRef.current !== null) {
-      pressRef.current.released = true;
+    const press = pressRef.current;
+    if (press === null) {
+      // Click mode: the mic button is hidden while recording, so a press
+      // here means the recorder never started; nothing to finish.
+      if (recorderRef.current !== null) {
+        void finishRecording(false, replyTo);
+      }
+      return;
     }
-    if (recorderRef.current !== null || pressRef.current === null) {
-      void finishRecording();
+    if (press.holdTimer !== undefined) {
+      window.clearTimeout(press.holdTimer);
+      press.holdTimer = undefined;
+    }
+    press.released = true;
+    if (recorderRef.current === null) {
+      // The permission prompt is still up: `beginRecording` decides on
+      // hold vs. click mode once `VoiceRecorder.start()` resolves.
+      return;
+    }
+    if (press.hold && !press.slidToCancel) {
+      // A long press: releasing sends, as before.
+      void finishRecording(false, replyTo);
+      return;
+    }
+    if (press.slidToCancel) {
+      void finishRecording(true, replyTo);
+      return;
+    }
+    // A hold released before the recorder started but after the prompt
+    // resolved is handled by `beginRecording` (late-grant path above). A
+    // pointer-up that arrives here with a live recorder and a short press
+    // keeps recording in click mode until Send or Cancel.
+    pressRef.current = null;
+    setLocked(true);
+  };
+
+  // The pointer-up may land anywhere: with pointer capture the browser
+  // retargets it to the mic button (since replaced by the recording row),
+  // without capture it lands on the element under the pointer. A document
+  // listener finishes the press no matter where it lands; same for the
+  // slide-to-cancel move.
+  useEffect(() => {
+    const onDocumentPointerUp = (): void => {
+      if (pressRef.current !== null) {
+        onMicPointerUp();
+      }
+    };
+    const onDocumentPointerMove = (event: globalThis.PointerEvent): void => {
+      onMicPointerMove(event.clientX);
+    };
+    document.addEventListener('pointerup', onDocumentPointerUp);
+    document.addEventListener('pointermove', onDocumentPointerMove);
+    return () => {
+      document.removeEventListener('pointerup', onDocumentPointerUp);
+      document.removeEventListener('pointermove', onDocumentPointerMove);
+    };
+    // `onMicPointerUp` reads live refs and the current reply, so the
+    // listener is stable across renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onMicPointerCancel = (): void => {
+    // The system took over the gesture (an alert, a call): keep a started
+    // recording in click mode rather than silently dropping it, but do not
+    // resurrect a prompt that failed before starting.
+    const press = pressRef.current;
+    if (press?.holdTimer !== undefined) {
+      window.clearTimeout(press.holdTimer);
+      press.holdTimer = undefined;
+    }
+    pressRef.current = null;
+    if (recorderRef.current !== null) {
+      setLocked(true);
     }
   };
 
@@ -654,10 +911,17 @@ export function Composer({
         {recording ? (
           <div className="flex h-9 min-w-0 flex-1 items-center gap-3 px-1">
             <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-danger motion-reduce:animate-none" />
-            <span className="shrink-0 text-[15px] tabular-nums">{formatDuration(elapsedMs)}</span>
-            <span className="min-w-0 flex-1 truncate text-center text-[13px] text-muted-foreground">
-              {cancelArmed ? 'Release to cancel' : 'Slide to cancel'}
+            <span className="shrink-0 text-[15px] tabular-nums" aria-live="off">
+              {formatDuration(elapsedMs)}
             </span>
+            <span className="min-w-0 flex-1 truncate text-center text-[13px] text-muted-foreground">
+              {cancelArmed ? 'Release to cancel' : locked ? 'Tap Send to send' : 'Slide to cancel'}
+            </span>
+            {locked && (
+              <IconButton aria-label="Cancel voice message" onClick={cancelRecording} size={36}>
+                <Trash2 className="size-5" aria-hidden="true" />
+              </IconButton>
+            )}
           </div>
         ) : (
           <>
@@ -684,7 +948,7 @@ export function Composer({
               rows={1}
               value={value}
               onChange={(event) => onChange(event.target.value, event.target.selectionStart ?? 0)}
-              onKeyDown={onKeyDown}
+              onKeyDown={onComposerKeyDown}
               placeholder={placeholder}
               aria-label="Message"
               aria-autocomplete="list"
@@ -728,7 +992,16 @@ export function Composer({
             )}
           </>
         )}
-        {canSend ? (
+        {recording && locked ? (
+          <Button
+            type="button"
+            aria-label="Send voice message"
+            onClick={() => void finishRecording(false, replyTo)}
+            className="size-9 rounded-[10px] p-0"
+          >
+            <Send className="size-4" aria-hidden="true" />
+          </Button>
+        ) : canSend ? (
           <Button
             type="button"
             aria-label={editing !== undefined ? 'Save edit' : 'Send message'}
@@ -748,11 +1021,10 @@ export function Composer({
           </Button>
         ) : (
           <IconButton
-            aria-label={recording ? 'Cancel voice message' : 'Record voice message'}
+            aria-label="Record voice message"
+            onClick={onMicClick}
             onPointerDown={onMicPointerDown}
-            onPointerMove={onMicPointerMove}
-            onPointerUp={onMicPointerUp}
-            onPointerCancel={onMicPointerUp}
+            onPointerCancel={onMicPointerCancel}
           >
             <Mic className="size-5" aria-hidden="true" />
           </IconButton>
