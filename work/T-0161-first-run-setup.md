@@ -1,7 +1,7 @@
 ---
 id: T-0161
 title: First-run setup screen (Resend key, first admin) with no manual environment setup
-status: review
+status: merged
 milestone: M5
 branch: task/T-0161-first-run-setup
 model: meta/muse-spark-1.3-contributor
@@ -123,3 +123,10 @@ Deploy/docs:
 6. Key test now reads the `setup.completed` audit row: `detail` is null and neither the sentinel key, sender, admin email nor invite code appears in any audit column.
 
 ## Review (written by Claude)
+
+Approved and merged. Read `setup/routes.ts` in full and re-ran format, lint, typecheck, the server suites for setup, auth, config and the 401 sweep (147 passed) and the web suites for auth and routes (89 passed) on the final commit.
+
+- Done as specified: instance settings in one migration, key encrypted with a per-value salt and nonce, mail switched at runtime, setup gate, three-step web screen, Coolify compose and install guide without mail variables or the invite CLI.
+- The five should-fix findings from the pre-review were fixed in the same round: 404 before the limiter, trusted-proxy client IP, rollback that cannot mask the 422 and also removes the invite, error state with Retry, and a test of the audit row.
+- Accepted trade-off (Julio's decision): until the first account exists, whoever opens a new server can run the setup. There is no setup token.
+- Follow-up: ejabberd prints the admin password in its start-up log (image `REGISTER_ADMIN_PASSWORD`); it is not part of this task.
