@@ -1,0 +1,87 @@
+---
+id: T-0163
+title: @usernames and contact requests
+status: planned
+milestone: M5
+branch: task/T-0163-usernames-and-contact-requests
+model: meta/muse-spark-1.3-contributor
+effort: high
+depends_on: [T-0162]
+estimate: 2 days
+---
+
+# T-0163: @usernames and contact requests
+
+## Spec (written by Claude, do not edit)
+
+### Why
+Today the only way to become someone's contact is an invite link, and people are identified only by a free-text display name. Julio wants an "arroba" system: every person has a unique `@username` that is easy to say, type and share. Decisions already taken by Julio:
+- Adding someone by `@username` sends a **contact request that the other person must accept**.
+- A username can be **changed, but with limits** (once every 14 days, and the old one stays reserved for its previous owner for 30 days).
+Web first; mobile is a later task.
+
+### What to build
+
+**1. Data (server, one migration).**
+- `user_handles(user_id text primary key references user(id) on delete cascade, handle text not null, handle_lower text not null unique, created_at, changed_at)`. The unique index on `handle_lower` is the only uniqueness rule; never check-then-insert.
+- `retired_handles(handle_lower text primary key, former_user_id text not null references user(id) on delete cascade, reserved_until timestamptz not null)`: a handle given up by a change stays reserved for its former owner until `reserved_until` (30 days).
+- `contact_requests(id text primary key, from_user_id, to_user_id (both references user on delete cascade), status text check in ('pending','accepted','declined','cancelled'), created_at, decided_at)`, a unique partial index on `(from_user_id, to_user_id) where status = 'pending'`, and a check that the two ids differ.
+
+**2. Handle rules (one pure, tested module shared by the checks).**
+3 to 32 characters, `a-z`, `0-9` and `_`, starting with a letter, stored with the typed casing but compared case-insensitively. A reserved-words list that nobody may take: `admin, administrator, support, help, root, system, zilar, ejabberd, api, settings, me, everyone, all, here, channel, bot, owner, moderator`. Anything else is valid. Error codes: `handle_invalid`, `handle_reserved`, `handle_taken`.
+
+**3. Handle API (server, session required, all rate limited).**
+- `GET /api/handles/check?handle=` returns `{ available: boolean, reason?: 'invalid' | 'reserved' | 'taken' }` (a handle held by the asker's own retired reservation counts as available). 30 per 10 minutes per user.
+- `PUT /api/me/handle` body `{ handle }`. In one transaction: the change interval is checked (409 `handle_change_too_soon` with `nextChangeAt` in the body; the first claim is always allowed), the old handle goes to `retired_handles` for 30 days, the new row is written. A unique violation maps to 409 `handle_taken`. 10 per day per user.
+- `GET /api/me` also returns `handle` (null until chosen).
+- `GET /api/users/by-handle/:handle`: exact, case-insensitive match only; returns `{ userId, name, handle, image, relation: 'none' | 'contact' | 'request_sent' | 'request_received' | 'self' }`. An unknown handle and a retired handle answer the same 404. There is **no prefix or partial search anywhere** (it would allow enumeration). 30 per 10 minutes per user.
+
+**4. Contact request API (server, session required).**
+- `POST /api/contact-requests` body `{ handle }`: creates a pending request. Refuse (same 404 for unknown handles): to yourself (400), to an existing contact (409 `already_contact`), a duplicate pending request in either direction (409 `request_exists`; if the other side already sent one, answer with that request so the web can offer "Accept"), more than 20 pending outgoing (429 `too_many_requests`), a re-request within 7 days after a decline (429 `declined_recently`). 20 per day per user.
+- `GET /api/contact-requests` returns `{ incoming: [...], outgoing: [...] }` with the other person's name, handle and image, newest first, pending only.
+- `POST /api/contact-requests/:id/accept` (only the recipient), `POST /api/contact-requests/:id/decline` (only the recipient), `DELETE /api/contact-requests/:id` (only the sender, cancels). A request the caller may not act on and an unknown id answer the same 404. Every transition is a conditional update on `status = 'pending'` in one statement, so a double click cannot run twice.
+- Accepting creates the mutual contact exactly like an invite does today (reuse the existing contacts service function that records contacts and the two roster items; do not duplicate it; roster failures are retried the same way). Accepting is idempotent.
+- Audit entries `contact_request.created|accepted|declined|cancelled`, ids only.
+
+**5. Web.**
+- New onboarding step `/welcome/handle` after the name step: input with live availability (debounced, shows the exact reason), a suggestion built from the name or the email local part, and Continue. People who already have an account but no handle are sent to this step once at their next visit (a gate in the same place as the name gate), and can finish later with "Skip for now" only if the server owner has not made it mandatory (not in this task: skip is always allowed; the app works without a handle).
+- Profile/Settings: show and edit the handle with the same live check, the "next change possible on <date>" message when too soon, and a copy button for the share link `<origin>/@handle`.
+- "Add contact" dialog (an overlay like `InviteDialog`): type a `@username`, see the result card (name, avatar, handle), button "Send request" (or "Accept" when they already asked you, or "Already a contact"). Reachable from the chat list, the + new chat menu (next to "Invite a friend") and the empty state.
+- Requests: a "Requests" list (Settings or the contacts area, follow the existing patterns) with Accept and Decline for incoming and Cancel for outgoing, plus a small badge with the incoming count where contacts are shown. The count comes from `GET /api/contact-requests` refetched on window focus and every 60 seconds (no new realtime channel in this task).
+- Show `@handle` next to the name in member lists and profile cards where a name is shown now, when the person has one.
+- Route `/@handle` (and `/u/handle` as a fallback if the router cannot match `@`): logged in opens the Add contact dialog prefilled with the result; logged out goes to login and returns afterwards.
+- Match the style of the neighbouring components. Vitest + Testing Library tests for each new component and flow.
+
+**6. Docs.** One short section in `docs/INSTALL_DOCKER.md` is not needed. Add a "Usernames and contacts" note to the user-facing docs only if a page for them already exists; otherwise skip.
+
+### Read first
+`AGENTS.md` (the whole security checklist), `apps/server/src/auth/auth-schema.ts`, `apps/server/src/auth/routes.ts`, `apps/server/src/contacts/` (service and routes), `apps/server/src/auth/invites.ts`, `apps/server/src/rate-limit.ts`, `apps/server/src/authz-sweep.test.ts`, `work/T-0161-first-run-setup.md` and `work/T-0162-integrations-settings-telegram.md` (Reports), `apps/web/src/routes/NamePage.tsx`, `apps/web/src/components/InviteDialog.tsx`, `apps/web/src/components/NewChatButton.tsx`, `apps/web/src/components/ChatList.tsx`, `apps/web/src/routes/AppRoutes.tsx`, `apps/web/src/lib/api.ts`.
+
+### Allowed files
+`apps/server/src/handles/**` (new), `apps/server/src/contact-requests/**` (new), `apps/server/src/db/schema.ts` and exactly one new migration (+ journal and snapshot), `apps/server/src/auth/routes.ts` (only `GET /me` and mounting), `apps/server/src/contacts/service.ts` (only to export what accepting needs), `apps/server/src/app.ts`, `apps/server/src/authz-sweep.test.ts`, the web files for the onboarding step, settings, Add contact dialog, requests list, profile and member list display, route changes, `apps/web/src/lib/api.ts` and its test, `work/T-0163-usernames-and-contact-requests.md`. No new dependencies, no mobile.
+
+### Checks
+```bash
+pnpm install
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm --filter @zilar/server test --maxWorkers=2 src/handles src/contact-requests src/contacts src/auth src/authz-sweep.test.ts
+pnpm --filter @zilar/web test --maxWorkers=2 src/routes src/components src/lib/api.test.ts
+```
+
+### Acceptance
+- A new user picks a handle during onboarding; an existing user is asked once; the handle shows in the profile and can be changed no more than once every 14 days; the old handle cannot be taken by others for 30 days.
+- Two people choosing the same handle at the same moment: exactly one wins (unique index test with concurrent calls).
+- Adding by `@username` creates a pending request; the other person accepts or declines; accepting makes both contacts and roster items exist; a double accept changes nothing; both sides requesting each other do not create two requests.
+- No endpoint returns a list of users by prefix; unknown, retired and not-allowed all answer the same 404 where specified; every new route is in the 401 sweep and has a rate limit or cap.
+- No email address is returned by any new endpoint; audit entries carry ids only.
+
+### Out of scope
+`@mentions` inside messages (next task), blocking users, usernames for AIs, mobile, changing the display name rules, making a handle mandatory.
+
+---
+
+## Report (written by the worker when done)
+
+## Review (written by Claude)
