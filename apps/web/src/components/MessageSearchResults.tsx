@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { SearchItem } from '@/lib/api';
 import { useMessageSearch } from '@/lib/useMessageSearch';
@@ -47,11 +47,13 @@ export function MessageSearchResults({
   // The search input lives in `SearchBar`, outside this subtree, so Enter
   // there arrives as a window event. The ref mirrors the current top hit
   // (or undefined while loading); it is only read inside the listener and
-  // written from an effect, never touched during render.
+  // written from a layout effect, never touched during render. A layout
+  // effect runs before the hit is visible, so Enter pressed the moment the
+  // results appear already finds it (a passive effect left a short gap).
   const topHitRef = useRef<SearchItem | undefined>(undefined);
 
   const topHit = search.status === 'ready' ? search.items[0] : undefined;
-  useEffect(() => {
+  useLayoutEffect(() => {
     topHitRef.current = topHit;
   }, [topHit]);
 
