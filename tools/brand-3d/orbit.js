@@ -94,14 +94,36 @@ function smoothExtrude(shape, depth, bevel, offset = 0) {
   geo.computeVertexNormals();
   return geo;
 }
+// fine anodized grain, so the black key catches light like real machined metal
+function grainTexture(repeat) {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const image = ctx.createImageData(size, size);
+  const r = rand(3);
+  for (let i = 0; i < size * size; i++) {
+    const v = 110 + r() * 36;
+    image.data.set([v, v, v, 255], i * 4);
+  }
+  ctx.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(repeat, repeat);
+  return texture;
+}
+const keyShape = roundedSquare(824, 190);
 const key = new THREE.Mesh(
-  smoothExtrude(roundedSquare(824, 190), 60, 30),
+  smoothExtrude(keyShape, 60, 30),
   new THREE.MeshPhysicalMaterial({
-    color: 0x1a1a1d,
-    metalness: 0.9,
-    roughness: 0.5,
+    color: 0x0c0c0e,
+    metalness: 0.85,
+    roughness: 0.4,
     envMapIntensity: 0.15,
-    clearcoat: 0.3,
+    clearcoat: 0.5,
+    clearcoatRoughness: 0.18,
+    bumpMap: grainTexture(1 / 300),
+    bumpScale: 0.6,
   }),
 );
 key.position.z = -60;
@@ -111,6 +133,10 @@ scene.add(key);
 // ---------- a big silver sphere and a small one in orbit, like the earth and the moon ----------
 const mirror = new THREE.MeshStandardMaterial({ color: 0xf2f4f8, metalness: 1, roughness: 0.24, envMapIntensity: 2.0 });
 const satin = new THREE.MeshStandardMaterial({ color: 0xe6e9ee, metalness: 1, roughness: 0.3, envMapIntensity: 2 });
+mirror.bumpMap = grainTexture(7);
+mirror.bumpScale = 0.5;
+satin.bumpMap = grainTexture(4);
+satin.bumpScale = 0.5;
 const system = new THREE.Group();
 function ball(material, radius, position, parent) {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 128, 96), material);
@@ -128,13 +154,13 @@ tilt.add(orbitRing);
 ball(satin, 58, new THREE.Vector3(Math.cos(MOON_AT) * ORBIT, Math.sin(MOON_AT) * ORBIT, 0), tilt);
 system.add(tilt);
 ball(mirror, 200, new THREE.Vector3(0, 0, 0), system);
-system.position.set(-10, -20, 400);
+system.position.set(-6, -8, 400);
 system.scale.setScalar(0.88);
 scene.add(system);
 
 // ---------- light and ground ----------
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-sun.position.set(-500, 700, 1600);
+sun.position.set(-300, 450, 1700);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
 sun.shadow.camera.left = -700;
@@ -142,7 +168,7 @@ sun.shadow.camera.right = 700;
 sun.shadow.camera.top = 700;
 sun.shadow.camera.bottom = -700;
 sun.shadow.camera.far = 4000;
-sun.shadow.radius = 5;
+sun.shadow.radius = 9;
 sun.shadow.bias = -0.0004;
 scene.add(sun);
 scene.add(new THREE.AmbientLight(0xffffff, 0.5));
