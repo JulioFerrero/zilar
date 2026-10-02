@@ -3,8 +3,10 @@ import '@fontsource-variable/geist-mono';
 import './styles.css';
 
 import { initControls } from './controls';
+import { initInstruments } from './instruments';
 
 initControls(document);
+initInstruments(document);
 
 const canvas = document.querySelector<HTMLCanvasElement>('#stage');
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;

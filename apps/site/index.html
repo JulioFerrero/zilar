@@ -117,7 +117,7 @@
             you can stop it at any moment.
           </p>
 
-          <div class="plate">
+          <div class="plate sheen">
             <div class="cell">
               <p class="control-name" id="cap-name">Monthly cap</p>
               <div class="dial-row">
@@ -185,19 +185,44 @@
             it, or always allow it in that one chat.
           </p>
           <p class="feature-note">
-            Every decision lands in an audit log that the database itself refuses to edit.
+            Every decision lands in an audit log that the database itself refuses to edit. It keeps
+            ids, never what was said.
           </p>
         </div>
-        <div class="tray">
-          <figure class="sheet sheet-main">
-            <img
-              src="/features/approval.webp"
-              alt="An approval card: merge pull request 42, worst case 40 cents, with Approve and Deny"
-              width="672"
-              height="221"
-              loading="lazy"
-            />
-          </figure>
+
+        <div class="plate sheen instrument approval" id="approval">
+          <div class="request">
+            <div class="request-head">
+              <span class="lamp pulse" id="request-lamp" aria-hidden="true"></span>
+              <span class="request-from">Dev-1 asks</span>
+              <span class="mini-readout" id="request-timer">59:59</span>
+            </div>
+            <p class="request-title">Merge PR #42</p>
+            <p class="request-detail">
+              Squash-merges fix/checkout into main and deletes the branch.
+            </p>
+            <div class="request-cost">
+              <span>Worst case</span>
+              <span class="mini-readout">€0.40</span>
+            </div>
+            <span class="stamp" id="request-stamp" aria-hidden="true"></span>
+          </div>
+
+          <div class="decide">
+            <button class="key key-silver" id="approve" type="button">Approve</button>
+            <button class="key key-graphite" id="deny" type="button">Deny</button>
+            <button class="quiet-button" id="ask-again" type="button" hidden>Ask again</button>
+          </div>
+          <p class="control-note" id="approval-note" aria-live="polite">
+            Nothing happens until you press one of the two keys.
+          </p>
+
+          <div class="printer" aria-label="Audit log">
+            <span class="slot" aria-hidden="true"></span>
+            <div class="paper">
+              <ol class="ticket" id="ticket"></ol>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -211,25 +236,57 @@
           </p>
           <p class="feature-note">In preview, and off by default while it matures.</p>
         </div>
-        <div class="tray tray-stack">
-          <figure class="sheet sheet-back">
-            <img
-              src="/features/tool.webp"
-              alt="A tool called prices with its source code and version history"
-              width="378"
-              height="499"
-              loading="lazy"
-            />
-          </figure>
-          <figure class="sheet sheet-front">
-            <img
-              src="/features/routines.webp"
-              alt="Two routines: morning prices daily at nine, and paused standup notes"
-              width="378"
-              height="163"
-              loading="lazy"
-            />
-          </figure>
+
+        <div class="plate sheen instrument routine">
+          <div class="routine-top">
+            <div class="flap-board">
+              <span class="engraved-label">Next run</span>
+              <div class="flaps" id="flaps" aria-live="polite"></div>
+            </div>
+            <div class="lever-cell">
+              <button
+                class="lever"
+                id="routine-lever"
+                type="button"
+                role="switch"
+                aria-checked="true"
+                aria-label="Routine running"
+              >
+                <span class="lever-bat" aria-hidden="true"></span>
+              </button>
+              <span class="lever-label">
+                <span class="lamp" id="routine-lamp" aria-hidden="true"></span>
+                <span id="routine-state">On</span>
+              </span>
+            </div>
+          </div>
+
+          <div class="presets" role="group" aria-label="Schedule">
+            <button class="preset" type="button" data-schedule="hourly" aria-pressed="false">
+              Hourly
+            </button>
+            <button class="preset" type="button" data-schedule="daily" aria-pressed="true">
+              Daily
+            </button>
+            <button class="preset" type="button" data-schedule="weekdays" aria-pressed="false">
+              Weekdays
+            </button>
+          </div>
+          <p class="control-note" id="routine-note" aria-live="polite"></p>
+
+          <div class="versions">
+            <div
+              class="version-tabs"
+              id="version-tabs"
+              role="tablist"
+              aria-label="Tool versions"
+            ></div>
+            <div class="code-window" role="tabpanel" id="version-panel">
+              <p class="version-title" id="version-title"></p>
+              <ol class="code" id="version-code"></ol>
+              <button class="key key-graphite key-small" id="revert" type="button">Revert</button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -237,38 +294,62 @@
         <div class="feature-copy">
           <h2 id="keys-title">Your keys, your computers.</h2>
           <p>
-            Connect OpenAI, Anthropic or another provider with your own key, stored encrypted. Pair
-            your Mac or a Linux box, check its fingerprint, and your AIs work there.
+            Connect OpenAI, Anthropic, Gemini, DeepSeek, xAI or OpenRouter with your own key, stored
+            encrypted. Pair your Mac or a Linux box, check its fingerprint, and your AIs work there.
           </p>
           <p class="feature-note">
             Each AI gets its own key with a hard money cap, checked before every call.
           </p>
         </div>
-        <div class="tray tray-stack tray-pair">
-          <figure class="sheet sheet-back">
-            <img
-              src="/features/machine.webp"
-              alt="A new machine waiting for approval, with its specs and fingerprint"
-              width="672"
-              height="304"
-              loading="lazy"
-            />
-          </figure>
-          <figure class="sheet sheet-front">
-            <img
-              src="/features/providers.webp"
-              alt="Choosing a provider and model for an AI: OpenAI with a work key, or Anthropic"
-              width="378"
-              height="376"
-              loading="lazy"
-            />
-          </figure>
+
+        <div class="plate sheen instrument hardware">
+          <div class="cell">
+            <p class="control-name" id="provider-name">Provider</p>
+            <div class="dial-row">
+              <div
+                class="dial selector"
+                id="provider-dial"
+                role="slider"
+                tabindex="0"
+                aria-labelledby="provider-name"
+                aria-valuemin="0"
+                aria-valuemax="5"
+                aria-valuenow="1"
+              >
+                <div class="ticks" id="provider-ticks"></div>
+                <div class="well">
+                  <div class="knob" id="provider-knob"><span class="pointer"></span></div>
+                </div>
+              </div>
+              <output class="readout readout-word" id="provider-readout" for="provider-dial"
+                >Anthropic</output
+              >
+            </div>
+            <p class="control-note" id="provider-note" aria-live="polite"></p>
+          </div>
+
+          <div class="cell">
+            <p class="control-name">
+              <span class="lamp off" id="machine-lamp" aria-hidden="true"></span>
+              <span id="machine-state">dev-mac</span>
+            </p>
+            <div class="prints">
+              <span class="engraved-label">Runner shows</span>
+              <span class="fingerprint" id="print-runner">---- ---- ----</span>
+              <span class="engraved-label">Zilar shows</span>
+              <span class="fingerprint" id="print-zilar">---- ---- ----</span>
+            </div>
+            <button class="key key-silver key-small" id="pair" type="button">Pair dev-mac</button>
+            <p class="control-note" id="pair-note" aria-live="polite">
+              Run the runner on your Mac, then pair it here.
+            </p>
+          </div>
         </div>
       </section>
 
       <section class="spec" aria-labelledby="spec-title">
         <h2 id="spec-title">Everything else in the box.</h2>
-        <dl class="spec-plate">
+        <dl class="spec-plate sheen">
           <div>
             <dt>Chat</dt>
             <dd>DMs and groups, replies, reactions, edits, files, mentions, read receipts</dd>
@@ -315,7 +396,7 @@
           </p>
         </div>
 
-        <div class="engraving">
+        <div class="engraving sheen">
           <ol class="steps">
             <li>
               <code>git clone &lt;your access link&gt; zilar &amp;&amp; cd zilar</code>

@@ -609,7 +609,7 @@ h1 {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
-/* ---------- features: words on one side, real app parts on a metal tray on the other ---------- */
+/* ---------- features: words on one side, a working instrument on the other ---------- */
 .feature {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
@@ -639,81 +639,570 @@ h1 {
   font-size: 15px;
 }
 
-/* a machined tray, slightly recessed, holding the pieces of the app like printed sheets */
-.tray {
+/* ---------- instruments: shared hardware ---------- */
+.plate.instrument {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 0;
+  padding: 34px 32px 30px;
+}
+
+.plate.hardware {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  padding: 10px;
+}
+
+/* light that follows the pointer across the metal, set by instruments.ts */
+.sheen {
   position: relative;
-  display: grid;
-  place-items: center;
-  min-height: 340px;
-  padding: clamp(24px, 3vw, 40px);
-  border-radius: 28px;
-  background: var(--brushed), linear-gradient(180deg, #16161a 0%, #0c0c0e 100%);
-  box-shadow:
-    inset 0 2px 12px rgba(0, 0, 0, 0.9),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
-    0 0 0 1px #000;
-  perspective: 1600px;
 }
 
-.sheet {
-  margin: 0;
-  border-radius: 14px;
-  background: #0d0d0f;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.07),
-    0 1px 0 1px rgba(255, 255, 255, 0.04),
-    0 28px 50px -18px rgba(0, 0, 0, 0.95),
-    0 8px 16px -8px rgba(0, 0, 0, 0.9);
-  overflow: hidden;
+.sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    420px circle at var(--mx, 30%) var(--my, -40%),
+    rgba(255, 255, 255, 0.07),
+    transparent 62%
+  );
+  mix-blend-mode: screen;
+  pointer-events: none;
 }
 
-.sheet img {
+/* four domed screws holding the plate on */
+.instrument::before,
+.spec-plate::before {
+  --screw: radial-gradient(
+    circle at 40% 35%,
+    #d3d6db 0,
+    #7d8189 45%,
+    #2c2d32 68%,
+    rgba(0, 0, 0, 0.9) 72%,
+    transparent 78%
+  );
+  content: '';
+  position: absolute;
+  inset: 11px;
+  background: var(--screw), var(--screw), var(--screw), var(--screw);
+  background-position:
+    top left,
+    top right,
+    bottom left,
+    bottom right;
+  background-size: 9px 9px;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+.engraved-label {
   display: block;
-  width: 100%;
-  height: auto;
+  color: #6c7079;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.9);
 }
 
-.sheet-main {
-  width: min(100%, 600px);
-  transform: rotateX(8deg) rotateY(-6deg);
+.mini-readout {
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: #030304;
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.95),
+    0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--silver);
+  font: 500 13px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
 }
 
-/* two sheets: one lying back, one resting on top of it */
-.tray-stack {
-  grid-template-areas: 'stack';
+.key:disabled {
+  cursor: default;
+  opacity: 0.42;
+  transform: none;
 }
 
-.tray-stack .sheet {
-  grid-area: stack;
+.quiet-button {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--steel);
+  font: 500 14.5px/1 var(--font);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
 }
 
-.tray-stack {
-  min-height: 520px;
+/* ---------- approval: a request behind glass, two keys, and the audit printer ---------- */
+.request {
+  position: relative;
+  overflow: hidden;
+  padding: 18px 20px 16px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #0d0d10, #08080a);
+  box-shadow:
+    inset 0 3px 10px rgba(0, 0, 0, 0.95),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
-.tray-stack .sheet-back {
-  width: min(66%, 340px);
-  transform: translateX(-24%) rotateY(10deg) rotateZ(-2deg);
-  filter: brightness(0.8);
+/* a reflection across the glass */
+.request::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, rgba(255, 255, 255, 0.05), transparent 38%);
+  pointer-events: none;
 }
 
-.tray-stack .sheet-front {
-  width: min(70%, 360px);
-  transform: translate(22%, 120%) rotateY(-8deg) rotateZ(1.5deg);
+.request-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--steel);
+  font-size: 14px;
 }
 
-.tray-pair {
-  min-height: 480px;
+.request-from {
+  flex: 1;
 }
 
-.tray-pair .sheet-back {
-  width: min(92%, 520px);
-  transform: translate(-6%, -40%) rotateY(8deg) rotateZ(-1.5deg);
+.request-title {
+  margin-top: 14px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
-.tray-pair .sheet-front {
-  width: min(56%, 300px);
-  transform: translate(40%, 26%) rotateY(-8deg) rotateZ(2deg);
+.request-detail {
+  margin-top: 4px;
+  color: var(--steel);
+  font-size: 14.5px;
+}
+
+.request-cost {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding-top: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: var(--steel);
+  font-size: 14px;
+}
+
+.stamp {
+  position: absolute;
+  top: 44px;
+  right: 20px;
+  padding: 7px 14px;
+  border: 3px solid currentColor;
+  border-radius: 10px;
+  color: #c9ccd2;
+  font: 700 20px/1 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0;
+  transform: rotate(-9deg) scale(1.7);
+  pointer-events: none;
+}
+
+.stamp.approved {
+  color: var(--gold);
+}
+
+.stamp.stamped {
+  opacity: 0.92;
+  transform: rotate(-9deg) scale(1);
+  transition:
+    transform 0.22s cubic-bezier(0.2, 1.6, 0.4, 1),
+    opacity 0.1s;
+}
+
+.decide {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.decide .key {
+  flex: 1;
+}
+
+.printer {
+  position: relative;
+  height: 150px;
+}
+
+.slot {
+  position: relative;
+  z-index: 1;
+  display: block;
+  height: 10px;
+  margin: 0 14px;
+  border-radius: 5px;
+  background: #000;
+  box-shadow:
+    inset 0 3px 4px #000,
+    0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* thermal paper hanging out of the slot, fading as it curls away */
+.paper {
+  position: absolute;
+  inset: 5px 30px 0;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, #000 62%, transparent);
+  mask-image: linear-gradient(180deg, #000 62%, transparent);
+}
+
+.ticket {
+  min-height: 100%;
+  margin: 0;
+  padding: 8px 14px;
+  list-style: none;
+  background: linear-gradient(180deg, #c9c7c0, #e9e8e2 18%, #e4e3dc);
+  color: #2b2b2e;
+  font: 500 11.5px/1.45 var(--mono);
+}
+
+.ticket li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.2);
+}
+
+.ticket-detail {
+  grid-column: 2;
+  color: #6a6a70;
+}
+
+/* ---------- routine: split-flap board, a toggle lever, preset keys and the version drawer ---------- */
+.routine-top {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+}
+
+.flap-board {
+  flex: 1;
+  min-width: 0;
+}
+
+.flap-board .engraved-label {
+  margin-bottom: 8px;
+}
+
+.flaps {
+  display: flex;
+  gap: 3px;
+  padding: 7px;
+  border-radius: 12px;
+  background: #030304;
+  box-shadow:
+    inset 0 3px 8px rgba(0, 0, 0, 0.95),
+    0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.flap {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  min-width: 0;
+  height: 40px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #2c2c31 0 49%, #000 49% 51%, #1e1e22 51% 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.9);
+  color: #eceef2;
+  font: 600 clamp(13px, 1.5vw, 19px)/1 var(--mono);
+  white-space: pre;
+}
+
+.lever-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* a bat-handle toggle on a knurled nut: up is on, down is off */
+.lever {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  margin: 14px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #cfd2d7 0 7px, #61646b 8px 10px, transparent 11px),
+    repeating-conic-gradient(#3a3b41 0 6deg, #1d1d21 6deg 12deg);
+  box-shadow:
+    0 0 0 1px #000,
+    0 8px 14px -4px rgba(0, 0, 0, 0.95),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+}
+
+.lever-bat {
+  position: absolute;
+  bottom: 50%;
+  left: 50%;
+  width: 8px;
+  height: 32px;
+  margin-left: -4px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #6d7078, #f3f4f6 40%, #a4a8af 70%, #55585f);
+  box-shadow: 2px 3px 4px rgba(0, 0, 0, 0.6);
+  transform-origin: 50% 100%;
+  transition: transform 0.18s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.lever-bat::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff, #b9bcc3 45%, #5e6168);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
+}
+
+.lever[aria-checked='false'] .lever-bat {
+  transform: rotate(180deg);
+}
+
+.lever-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 5px;
+  border-radius: 14px;
+  background: #050506;
+  box-shadow:
+    inset 0 3px 8px rgba(0, 0, 0, 0.95),
+    0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.preset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  border: 0;
+  background: var(--brushed), linear-gradient(180deg, #2c2c31, #1b1b1f);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.4),
+    0 0 0 1px #000;
+  color: var(--steel);
+  font: 600 14.5px/1 var(--font);
+  cursor: pointer;
+  transition:
+    transform 0.08s ease,
+    box-shadow 0.08s ease,
+    color 0.15s ease;
+}
+
+.preset:first-child {
+  border-radius: 10px 0 0 10px;
+}
+
+.preset:last-child {
+  border-radius: 0 10px 10px 0;
+}
+
+/* a small indicator in each key, lit gold on the one that is latched down */
+.preset::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #17171a;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.9);
+}
+
+.preset[aria-pressed='true'] {
+  background: var(--brushed), linear-gradient(180deg, #151518, #212125);
+  box-shadow:
+    inset 0 3px 6px rgba(0, 0, 0, 0.75),
+    0 0 0 1px #000;
+  color: var(--silver);
+  transform: translateY(2px);
+}
+
+.preset[aria-pressed='true']::before {
+  background: var(--gold);
+  box-shadow: 0 0 8px rgba(240, 180, 69, 0.8);
+}
+
+.preset:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.version-tabs {
+  display: flex;
+  gap: 4px;
+  padding-left: 14px;
+}
+
+.version-tab {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(180deg, #232327, #151518);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 0 0 1px #000;
+  color: #6c7079;
+  font: 600 12.5px/1 var(--mono);
+  cursor: pointer;
+}
+
+.version-tab[aria-selected='true'] {
+  background: #08080a;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    1px 0 0 #000,
+    -1px 0 0 #000;
+  color: var(--gold);
+}
+
+.code-window {
+  position: relative;
+  height: 212px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: #08080a;
+  box-shadow:
+    inset 0 3px 10px rgba(0, 0, 0, 0.95),
+    0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 0 1px #000;
+}
+
+.version-title {
+  color: var(--steel);
+  font-size: 13.5px;
+}
+
+.code {
+  margin: 10px 0 0;
+  padding: 0;
+  overflow-x: auto;
+  list-style: none;
+  counter-reset: line;
+  color: #c9ccd2;
+  font: 400 13px/1.75 var(--mono);
+}
+
+.code li {
+  position: relative;
+  padding-left: 34px;
+  counter-increment: line;
+  white-space: pre;
+}
+
+.code li::before {
+  content: counter(line);
+  position: absolute;
+  left: 0;
+  width: 20px;
+  color: #45474e;
+  text-align: right;
+}
+
+/* lines that are new in this version */
+.code li.changed {
+  background: linear-gradient(90deg, rgba(240, 180, 69, 0.12), transparent 75%);
+}
+
+.code li.changed::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 26px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--gold);
+}
+
+.code-window .key {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+}
+
+/* ---------- hardware: provider selector and machine pairing ---------- */
+.selector {
+  --size: 112px;
+}
+
+.hardware .dial-row {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.readout-word {
+  min-width: 0;
+  padding: 11px 12px;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.prints {
+  display: grid;
+  gap: 6px;
+}
+
+.prints .engraved-label + .fingerprint {
+  margin-bottom: 6px;
+}
+
+.fingerprint {
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: #030304;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.95),
+    0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #8d929b;
+  font: 500 15px/1 var(--mono);
+  letter-spacing: 0.04em;
+  white-space: pre;
+  transition:
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.fingerprint.match {
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.95),
+    0 0 0 1px rgba(240, 180, 69, 0.3),
+    0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--gold);
+}
+
+.hardware .key {
+  align-self: flex-start;
 }
 
 /* ---------- spec plate: an engraved rating plate listing the rest ---------- */
@@ -963,6 +1452,39 @@ h1 {
     }
   }
 
+  .lamp.pulse {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    50% {
+      box-shadow:
+        0 0 18px rgba(240, 180, 69, 0.95),
+        0 0 0 1px rgba(0, 0, 0, 0.6);
+    }
+  }
+
+  /* the paper steps out of the printer a line at a time */
+  .ticket.feeding {
+    animation: feed 0.5s steps(8) both;
+  }
+
+  @keyframes feed {
+    from {
+      transform: translateY(-48px);
+    }
+  }
+
+  .flap.turn {
+    animation: flap-turn 0.055s linear;
+  }
+
+  @keyframes flap-turn {
+    50% {
+      transform: scaleY(0.12);
+    }
+  }
+
   @supports (animation-timeline: view()) {
     .bezel-wide {
       animation: settle linear both;
@@ -980,13 +1502,13 @@ h1 {
       animation-range: entry 0% cover 35%;
     }
 
-    .tray {
-      animation: tray-rise linear both;
+    .instrument {
+      animation: instrument-rise linear both;
       animation-timeline: view();
       animation-range: entry 0% cover 40%;
     }
 
-    @keyframes tray-rise {
+    @keyframes instrument-rise {
       from {
         translate: 0 70px;
         opacity: 0.35;
@@ -1036,27 +1558,17 @@ h1 {
     padding: 6px 20px 22px;
   }
 
-  .tray {
-    min-height: 0;
-    padding: 22px 16px;
+  .plate.instrument {
+    padding: 28px 20px 24px;
   }
 
-  /* on a phone the sheets lie flat: tilted, their small type stops being readable */
-  .tray-stack {
-    display: flex;
-    flex-direction: column;
+  .plate.hardware {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 6px;
   }
 
-  .sheet,
-  .tray-stack .sheet {
-    width: 100%;
-    transform: none;
-  }
-
-  .tray-stack .sheet-front {
-    width: 88%;
-    margin: -36px 0 0 auto;
-    transform: rotate(1.5deg);
+  .routine-top {
+    gap: 14px;
   }
 
   .spec-plate > div {

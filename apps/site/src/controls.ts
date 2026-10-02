@@ -37,6 +37,8 @@ function initDial(root: ParentNode): void {
     dial.classList.remove('clicked');
     void dial.offsetWidth;
     dial.classList.add('clicked');
+    // the provider selector further down quotes the cap set here
+    dial.dispatchEvent(new CustomEvent('capchange', { bubbles: true }));
   }
 
   function fromPointer(event: PointerEvent): void {

@@ -6,7 +6,8 @@ A small Vite site: plain HTML, CSS and TypeScript, with the hero rendered live i
 - `src/scene.ts`: the hero. The Zilar mark (silver planet, orbit, gold moon) with the same proportions as the icon in `tools/brand-3d`, lit by a Poly Haven studio HDRI and ambientCG metal textures (both CC0, in `public/textures`). It loads after the text, renders only while visible, honours `prefers-reduced-motion` (a still frame), and falls back to the icon image without WebGL. Phones get fewer particles and a lower pixel ratio.
 - `src/shaders.ts`: the GLSL. A domain-warped nebula behind the mark, twinkling stars, dust drifting along the orbit that glows gold where the moon has just passed, and a finishing pass (lens fringing and film grain) after bloom and tone mapping. The shaders write linear colour; `OutputPass` tone-maps once for everything.
 - `src/controls.ts`, `src/cap.ts`: the monthly-cap dial and the guarded kill switch in the AI section.
-- `public/screens`: screenshots from `docs/screenshots` (demo data). `public/features`: tight crops of the same screenshots (approval card, tool, routines, providers, machine) for the feature sections.
+- `src/instruments.ts`, `src/demo.ts`: the feature instruments, each acting out a real rule: an approval request with an audit-log printer (ids only), a routine with a split-flap board, schedule presets, a pause lever and append-only version history, a provider selector that quotes the cap from the dial, and machine pairing by fingerprint. `demo.ts` holds the pure state and is unit tested.
+- `public/screens`: screenshots from `docs/screenshots` (demo data).
 
 ```bash
 pnpm --filter @zilar/site dev      # http://localhost:5197
