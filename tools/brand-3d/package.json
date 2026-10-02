@@ -1,0 +1,14 @@
+{
+  "name": "zilar-brand-3d",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Renders the Zilar app icon with Three.js (physically based silver bubble on an anodized key).",
+  "scripts": {
+    "serve": "python3 -m http.server 5199",
+    "render": "sh render.sh"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  }
+}
