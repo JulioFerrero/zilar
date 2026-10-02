@@ -7,8 +7,10 @@ import {
   Group,
   HalfFloatType,
   MathUtils,
+  CanvasTexture,
   Mesh,
   MeshStandardMaterial,
+  OrthographicCamera,
   PerspectiveCamera,
   PlaneGeometry,
   PMREMGenerator,
@@ -17,6 +19,8 @@ import {
   Scene,
   ShaderMaterial,
   SphereGeometry,
+  Sprite,
+  SpriteMaterial,
   SRGBColorSpace,
   type Texture,
   TextureLoader,
@@ -29,24 +33,24 @@ import {
 } from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {
   BACKDROP_FRAGMENT,
-  BACKDROP_VERTEX,
   DUST_FRAGMENT,
   DUST_VERTEX,
   FINISH_FRAGMENT,
   FINISH_VERTEX,
+  NEBULA_VERTEX,
   STARS_FRAGMENT,
   STARS_VERTEX,
 } from './shaders';
 
 // The hero: the Zilar mark (silver planet, tilted orbit, gold moon) live in WebGL in deep space.
 // A nebula haze and twinkling stars sit behind it, dust drifts along the orbit and glows gold
-// where the moon has just passed, and the frame goes through bloom, lens fringing and film grain.
+// where the moon has just passed, and the frame gets a warm halo on the moon, lens fringing and grain.
 // Proportions match the icon in tools/brand-3d: planet 1, orbit 1.82, ring tube 0.14, moon 0.44.
 const PLANET = 1;
 const ORBIT = 1.82;
@@ -56,7 +60,42 @@ const GAP_AHEAD = 0.9;
 const GAP_BEHIND = 0.75;
 const ORBIT_SPEED = 0.14; // radians per second: one orbit in about 45 s
 const INTRO_SECONDS = 2.2;
-const BACKDROP_DEPTH = 6;
+// the nebula is soft haze, so it is computed at half the CSS resolution: a sixteenth of the pixels
+// of a retina frame, and indistinguishable once upscaled
+const NEBULA_SCALE = 0.5;
+// when frames run slower than this, the pixel ratio steps down until they keep up
+const SLOW_FRAME_SECONDS = 1 / 50;
+const MIN_PIXEL_RATIO = 1;
+
+// A soft radial glow, drawn once: the moon's warm halo, so no bloom pass has to find it.
+function glowTexture(): CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  if (context) {
+    const gradient = context.createRadialGradient(
+      size / 2,
+      size / 2,
+      0,
+      size / 2,
+      size / 2,
+      size / 2,
+    );
+    // an exponential-looking falloff, so the halo has no visible edge
+    gradient.addColorStop(0, 'rgba(255, 196, 96, 0.9)');
+    gradient.addColorStop(0.2, 'rgba(255, 180, 80, 0.42)');
+    gradient.addColorStop(0.45, 'rgba(255, 165, 60, 0.12)');
+    gradient.addColorStop(0.75, 'rgba(255, 150, 40, 0.03)');
+    gradient.addColorStop(1, 'rgba(255, 150, 40, 0)');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, size, size);
+  }
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  return texture;
+}
 
 type Maps = { map: Texture; roughnessMap: Texture; normalMap: Texture };
 
@@ -121,7 +160,7 @@ function additive(
   });
 }
 
-// Most stars are faint and small; a few are bright enough to catch the bloom.
+// Most stars are faint and small; a few are bright enough to stand out.
 function starGeometry(count: number): BufferGeometry {
   const random = seeded(7);
   const positions = new Float32Array(count * 3);
@@ -185,7 +224,7 @@ export type SceneOptions = { reducedMotion: boolean; onFirstFrame: () => void };
 export async function startScene(canvas: HTMLCanvasElement, options: SceneOptions): Promise<void> {
   // phones get fewer particles and a lower pixel ratio: the post-processing runs per pixel
   const narrowAtStart = canvas.clientWidth / Math.max(1, canvas.clientHeight) < 0.85;
-  const pixelRatio = Math.min(window.devicePixelRatio, narrowAtStart ? 1.5 : 1.75);
+  let pixelRatio = Math.min(window.devicePixelRatio, narrowAtStart ? 1.5 : 1.75);
   const renderer = new WebGLRenderer({ canvas, powerPreference: 'high-performance' });
   renderer.setPixelRatio(pixelRatio);
   renderer.outputColorSpace = SRGBColorSpace;
@@ -204,25 +243,29 @@ export async function startScene(canvas: HTMLCanvasElement, options: SceneOption
   pmrem.dispose();
   hdr.dispose();
 
-  // ---------- backdrop ----------
+  // ---------- backdrop: the nebula, rendered small and shown as the scene background ----------
   const backdropUniforms = {
     uLight: { value: new Vector2(0.74, 0.55) },
     uPower: { value: 0 },
     uAspect: { value: 1 },
     uTime: { value: 0 },
   };
-  const backdrop = new Mesh(
-    new PlaneGeometry(1, 1),
+  const nebulaTarget = new WebGLRenderTarget(1, 1, { type: HalfFloatType, depthBuffer: false });
+  const nebulaScene = new Scene();
+  const nebulaCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const nebula = new Mesh(
+    new PlaneGeometry(2, 2),
     new ShaderMaterial({
       uniforms: backdropUniforms,
-      vertexShader: BACKDROP_VERTEX,
+      vertexShader: NEBULA_VERTEX,
       fragmentShader: BACKDROP_FRAGMENT,
+      depthTest: false,
       depthWrite: false,
     }),
   );
-  backdrop.position.z = -BACKDROP_DEPTH;
-  backdrop.renderOrder = -1;
-  scene.add(backdrop);
+  nebula.frustumCulled = false;
+  nebulaScene.add(nebula);
+  scene.background = nebulaTarget.texture;
 
   // ---------- stars ----------
   const starUniforms = {
@@ -284,6 +327,17 @@ export async function startScene(canvas: HTMLCanvasElement, options: SceneOption
   const moon = new Mesh(new SphereGeometry(MOON, 96, 64), moonMaterial);
   moon.position.set(ORBIT, 0, 0);
   orbit.add(moon);
+  const halo = new Sprite(
+    new SpriteMaterial({
+      map: glowTexture(),
+      blending: AdditiveBlending,
+      depthWrite: false,
+      opacity: 0,
+    }),
+  );
+  halo.position.copy(moon.position);
+  halo.scale.setScalar(MOON * 5);
+  orbit.add(halo);
 
   const dustUniforms = {
     uTime: { value: 0 },
@@ -306,17 +360,17 @@ export async function startScene(canvas: HTMLCanvasElement, options: SceneOption
   scene.add(key);
 
   // ---------- post-processing ----------
-  // a multisampled half-float target keeps edges smooth and highlights above 1 for the bloom,
-  // whose threshold sits above 1 so only real highlights glow, never the whole metal
+  // A half-float target keeps highlights above 1 until the output pass tone-maps them. There is
+  // no multisampling: at retina sizes it cost more than everything else together, and FXAA
+  // smooths the silhouettes for a fraction of that.
   const composer = new EffectComposer(
     renderer,
-    new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 }),
+    new WebGLRenderTarget(1, 1, { type: HalfFloatType }),
   );
   composer.setPixelRatio(pixelRatio);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new Vector2(1, 1), 0.28, 0.35, 1.8);
-  composer.addPass(bloom);
   composer.addPass(new OutputPass());
+  composer.addPass(new FXAAPass());
   const finishUniforms = {
     tDiffuse: { value: null },
     uTime: { value: 0 },
@@ -341,6 +395,10 @@ export async function startScene(canvas: HTMLCanvasElement, options: SceneOption
     const height = canvas.clientHeight;
     renderer.setSize(width, height, false);
     composer.setSize(width, height);
+    nebulaTarget.setSize(
+      Math.max(1, Math.round(width * NEBULA_SCALE)),
+      Math.max(1, Math.round(height * NEBULA_SCALE)),
+    );
     finishUniforms.uResolution.value.set(width * pixelRatio, height * pixelRatio);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
@@ -349,9 +407,6 @@ export async function startScene(canvas: HTMLCanvasElement, options: SceneOption
     home.set(narrow ? 0.1 : 2.15, narrow ? 0.95 : 0.05, 0);
     homeScale = narrow ? 0.46 : 0.64;
     dustUniforms.uScale.value = homeScale;
-    const viewHeight =
-      2 * Math.tan(MathUtils.degToRad(camera.fov / 2)) * (camera.position.z + BACKDROP_DEPTH);
-    backdrop.scale.set(viewHeight * camera.aspect * 1.2, viewHeight * 1.2, 1);
     backdropUniforms.uAspect.value = camera.aspect;
   }
 
@@ -383,17 +438,40 @@ export async function startScene(canvas: HTMLCanvasElement, options: SceneOption
   resize();
   window.addEventListener('resize', resize);
 
+  // a machine that cannot keep up gets fewer pixels, one step at a time, never more effects cut
+  let slowFrames = 0;
+  let measuredFrames = 0;
+  function adapt(frameSeconds: number): void {
+    if (pixelRatio <= MIN_PIXEL_RATIO || frameSeconds > 0.25) return;
+    measuredFrames += 1;
+    if (frameSeconds > SLOW_FRAME_SECONDS) slowFrames += 1;
+    if (measuredFrames < 90) return;
+    if (slowFrames > measuredFrames / 2) {
+      pixelRatio = Math.max(MIN_PIXEL_RATIO, pixelRatio - 0.25);
+      renderer.setPixelRatio(pixelRatio);
+      composer.setPixelRatio(pixelRatio);
+      starUniforms.uPixelRatio.value = pixelRatio;
+      dustUniforms.uPixelRatio.value = pixelRatio;
+      resize();
+    }
+    slowFrames = 0;
+    measuredFrames = 0;
+  }
+
   renderer.setAnimationLoop(() => {
     timer.update();
-    const dt = Math.min(timer.getDelta(), 0.05);
+    const frameSeconds = timer.getDelta();
+    const dt = Math.min(frameSeconds, 0.05);
     if (!visible || document.hidden) return;
     elapsed += dt;
+    if (elapsed > INTRO_SECONDS) adapt(frameSeconds);
     const intro = options.reducedMotion ? 1 : easeOutCubic(Math.min(1, elapsed / INTRO_SECONDS));
 
     // one orchestrated moment: space and its light come up while the camera settles
     backdropUniforms.uPower.value = intro;
     starUniforms.uPower.value = intro;
     dustUniforms.uPower.value = intro;
+    halo.material.opacity = 0.22 * intro;
     scene.environmentIntensity = 0.72 * intro;
     key.intensity = 1.1 * intro;
     camera.position.z = options.reducedMotion ? 9 : MathUtils.lerp(11, 9, intro);
@@ -425,6 +503,9 @@ export async function startScene(canvas: HTMLCanvasElement, options: SceneOption
     stars.position.x = MathUtils.lerp(stars.position.x, -pointer.x * tiltAmount, 0.04);
     stars.position.y = MathUtils.lerp(stars.position.y, pointer.y * tiltAmount * 0.7, 0.04);
 
+    renderer.setRenderTarget(nebulaTarget);
+    renderer.render(nebulaScene, nebulaCamera);
+    renderer.setRenderTarget(null);
     composer.render(dt);
     if (first) {
       first = false;

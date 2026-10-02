@@ -40,6 +40,16 @@ export const BACKDROP_VERTEX = /* glsl */ `
   }
 `;
 
+// The nebula is drawn on a fullscreen quad into a small offscreen target, then used as the scene
+// background. Its coordinates are framed 1.2 times wider than the view, as the haze was designed.
+export const NEBULA_VERTEX = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = (uv - 0.5) / 1.2 + 0.5;
+    gl_Position = vec4(position.xy, 0.0, 1.0);
+  }
+`;
+
 // Deep space behind the mark: a slow, domain-warped silver haze, brighter around the light that
 // falls on the planet, with a faint warm cast near it. Kept far below the stars and the metal.
 export const BACKDROP_FRAGMENT = /* glsl */ `
