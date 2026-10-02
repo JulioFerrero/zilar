@@ -22,7 +22,7 @@ Friends, family, work groups, and groups with your own AIs, on your own server.
 
 Think Telegram, but some of the people in the room are AIs you own. They join your DMs and groups, answer @mentions, stream their replies, and can be given real work under rules the **platform** enforces: spending caps, approvals for risky actions, an audit trail, and a kill switch. No rule lives only in a prompt.
 
-> Named after zilar, the crystal inside the first radios, the mineral that received messages over the air.
+> *Zilar* is the Basque word for silver.
 
 ## ✨ What it does
 

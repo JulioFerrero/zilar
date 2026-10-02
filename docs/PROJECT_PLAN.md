@@ -3,7 +3,7 @@
 > **Status:** design phase, no code yet
 > **Last updated:** 2026-09-27
 > **Owner:** Julio
-> **Name:** Zilar, after the crystal inside the first radios, the mineral that received messages over the air.
+> **Name:** Zilar, the Basque word for silver.
 > **Repo:** `JulioFerrero/zilar` (private)
 >
 > This document collects everything decided and researched so far, the proposed architecture, the MVP scope, the roadmap, the risks, and every open question. Anything marked **(proposal)** still needs Julio's OK.
@@ -128,7 +128,7 @@ These are Julio's requirements, quoted where possible.
 | D15 | Hosting | Julio's personal Coolify server for the control plane, if it has enough free RAM | Julio: the server is personal |
 | D16 | Budget | Not a constraint during development | Julio: "don't worry about that" |
 | D17 | Pilot | Julio and his friends | Julio's answer |
-| D18 | Name | **Zilar** | Julio's choice. The crystal inside the first radios. |
+| D18 | Name | **Zilar** | Julio's choice. Basque for silver. |
 | D19 | Privacy model | **Like Telegram:** normal chats are stored on the server and readable by it (that's what lets AIs, sync and search work). **No end-to-end encrypted chats for now.** | Julio's decision |
 | D20 | Stack | Confirmed: Vite + React web app, Hono + Drizzle + Postgres, Better Auth, pnpm + Turborepo, Expo for mobile ([§17.2](#172-mobile-react-native--expo)) | Julio: "I love the stack" |
 | D21 | Object storage | **No MinIO:** its Docker images were deleted from Docker Hub in September 2026. File uploads use ejabberd's built-in upload for the MVP, Supabase Storage in production, and Garage or RustFS if we need S3 locally. | Research on 2026-09-27 |
