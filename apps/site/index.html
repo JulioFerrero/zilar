@@ -176,22 +176,184 @@
         </div>
       </section>
 
-      <section class="own" id="own">
-        <div class="own-copy">
-          <h2>Runs on your server.</h2>
+      <section class="feature" aria-labelledby="approvals-title">
+        <div class="feature-copy">
+          <h2 id="approvals-title">Risky moves wait for your yes.</h2>
           <p>
-            Docker and one helper script. Chat runs on ejabberd, so your messages and their history
-            stay on hardware you choose.
+            When an AI wants to merge code, spend money or reach a new site, it asks in the chat
+            first. The card says what will happen and what it can cost at worst. Approve it, deny
+            it, or always allow it in that one chat.
           </p>
-          <p class="honest">Zilar is early and moving fast. It is not production-ready yet.</p>
+          <p class="feature-note">
+            Every decision lands in an audit log that the database itself refuses to edit.
+          </p>
         </div>
+        <div class="tray">
+          <figure class="sheet sheet-main">
+            <img
+              src="/features/approval.webp"
+              alt="An approval card: merge pull request 42, worst case 40 cents, with Approve and Deny"
+              width="672"
+              height="221"
+              loading="lazy"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <section class="feature feature-flip" aria-labelledby="routines-title">
+        <div class="feature-copy">
+          <h2 id="routines-title">Teach it a daily habit.</h2>
+          <p>
+            Say "every morning, post gold, the S&amp;P 500 and BTC". The AI writes a small tool,
+            runs it in a sandbox and keeps every version. Once you approve the sites it may reach,
+            it posts on schedule.
+          </p>
+          <p class="feature-note">In preview, and off by default while it matures.</p>
+        </div>
+        <div class="tray tray-stack">
+          <figure class="sheet sheet-back">
+            <img
+              src="/features/tool.webp"
+              alt="A tool called prices with its source code and version history"
+              width="378"
+              height="499"
+              loading="lazy"
+            />
+          </figure>
+          <figure class="sheet sheet-front">
+            <img
+              src="/features/routines.webp"
+              alt="Two routines: morning prices daily at nine, and paused standup notes"
+              width="378"
+              height="163"
+              loading="lazy"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <section class="feature" aria-labelledby="keys-title">
+        <div class="feature-copy">
+          <h2 id="keys-title">Your keys, your computers.</h2>
+          <p>
+            Connect OpenAI, Anthropic or another provider with your own key, stored encrypted. Pair
+            your Mac or a Linux box, check its fingerprint, and your AIs work there.
+          </p>
+          <p class="feature-note">
+            Each AI gets its own key with a hard money cap, checked before every call.
+          </p>
+        </div>
+        <div class="tray tray-stack tray-pair">
+          <figure class="sheet sheet-back">
+            <img
+              src="/features/machine.webp"
+              alt="A new machine waiting for approval, with its specs and fingerprint"
+              width="672"
+              height="304"
+              loading="lazy"
+            />
+          </figure>
+          <figure class="sheet sheet-front">
+            <img
+              src="/features/providers.webp"
+              alt="Choosing a provider and model for an AI: OpenAI with a work key, or Anthropic"
+              width="378"
+              height="376"
+              loading="lazy"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <section class="spec" aria-labelledby="spec-title">
+        <h2 id="spec-title">Everything else in the box.</h2>
+        <dl class="spec-plate">
+          <div>
+            <dt>Chat</dt>
+            <dd>DMs and groups, replies, reactions, edits, files, mentions, read receipts</dd>
+          </div>
+          <div>
+            <dt>Groups</dt>
+            <dd>Topics with a task strip, roles, invite links, pinned messages, channels</dd>
+          </div>
+          <div>
+            <dt>Search</dt>
+            <dd>Every chat and topic, forgiving of typos, straight to the message</dd>
+          </div>
+          <div>
+            <dt>Fun</dt>
+            <dd>Sticker packs you make from photos, and GIF search through a privacy proxy</dd>
+          </div>
+          <div>
+            <dt>Everywhere</dt>
+            <dd>The web, an installable app with push, and a phone app</dd>
+          </div>
+          <div>
+            <dt>AIs</dt>
+            <dd>Personas, streaming replies, spending caps, approvals, a kill switch, audit log</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="own" id="own" aria-labelledby="own-title">
+        <div class="own-copy">
+          <h2 id="own-title">Runs on your server.</h2>
+          <p>
+            One small Linux server runs everything: the chat, the web app, its database and the
+            HTTPS certificate. Your messages and their history never leave it.
+          </p>
+          <h3>You need</h3>
+          <ul class="needs">
+            <li>A Linux server with Docker and its Compose plugin.</li>
+            <li>A domain whose A record points at that server, with ports 80 and 443 open.</li>
+            <li>An SMTP account. Zilar has no passwords, so sign-in codes arrive by email.</li>
+          </ul>
+          <p class="honest">
+            Zilar is early and not production-ready yet. The code is private for now and shared with
+            everyone who requests access.
+          </p>
+        </div>
+
         <div class="engraving">
-          <pre><code id="commands">./deploy/zilar init
-./deploy/zilar up
-./deploy/zilar create-admin</code></pre>
-          <button class="key key-graphite key-small" id="copy-commands" type="button">
-            Copy commands
-          </button>
+          <ol class="steps">
+            <li>
+              <code>git clone &lt;your access link&gt; zilar &amp;&amp; cd zilar</code>
+              <p>Get the code with the link you receive after requesting access.</p>
+            </li>
+            <li>
+              <code>./deploy/zilar init</code>
+              <p>
+                Asks for your domain and email, generates every password and key, and saves them to
+                <span class="path">deploy/.env</span>. Add your SMTP details there. Answer
+                <span class="path">localhost</span> to try it on your laptop first.
+              </p>
+            </li>
+            <li>
+              <code>./deploy/zilar up</code>
+              <p>
+                Starts the five containers: Postgres, the ejabberd chat server, the Zilar server,
+                the web app and Caddy, which fetches the HTTPS certificate. It waits until all of
+                them are healthy.
+              </p>
+            </li>
+            <li>
+              <code>./deploy/zilar create-admin</code>
+              <p>
+                Prints a one-time invite code. Open your domain, sign up with your email and paste
+                the code. You are the first member.
+              </p>
+            </li>
+          </ol>
+          <div class="engraving-foot">
+            <p>
+              Something off? <code>./deploy/zilar doctor</code> checks DNS, ports, keys and disk and
+              says how to fix each problem.
+            </p>
+            <button class="key key-graphite key-small" id="copy-commands" type="button">
+              Copy commands
+            </button>
+          </div>
         </div>
       </section>
     </main>

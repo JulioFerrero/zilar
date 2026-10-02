@@ -1,13 +1,18 @@
 import {
   ACESFilmicToneMapping,
+  AdditiveBlending,
+  BufferAttribute,
+  BufferGeometry,
   DirectionalLight,
   Group,
+  HalfFloatType,
   MathUtils,
   Mesh,
   MeshStandardMaterial,
   PerspectiveCamera,
   PlaneGeometry,
   PMREMGenerator,
+  Points,
   RepeatWrapping,
   Scene,
   ShaderMaterial,
@@ -20,12 +25,29 @@ import {
   Vector2,
   Vector3,
   WebGLRenderer,
+  WebGLRenderTarget,
 } from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {
+  BACKDROP_FRAGMENT,
+  BACKDROP_VERTEX,
+  DUST_FRAGMENT,
+  DUST_VERTEX,
+  FINISH_FRAGMENT,
+  FINISH_VERTEX,
+  STARS_FRAGMENT,
+  STARS_VERTEX,
+} from './shaders';
 
-// The hero: the Zilar mark (silver planet, tilted orbit, gold moon) live in WebGL, lit in a dark
-// photo studio whose key light drifts a little with the pointer. Proportions match the icon
-// in tools/brand-3d: planet 1, orbit 1.82, ring tube 0.14, moon 0.44.
+// The hero: the Zilar mark (silver planet, tilted orbit, gold moon) live in WebGL in deep space.
+// A nebula haze and twinkling stars sit behind it, dust drifts along the orbit and glows gold
+// where the moon has just passed, and the frame goes through bloom, lens fringing and film grain.
+// Proportions match the icon in tools/brand-3d: planet 1, orbit 1.82, ring tube 0.14, moon 0.44.
 const PLANET = 1;
 const ORBIT = 1.82;
 const RING = 0.142;
@@ -34,44 +56,7 @@ const GAP_AHEAD = 0.9;
 const GAP_BEHIND = 0.75;
 const ORBIT_SPEED = 0.14; // radians per second: one orbit in about 45 s
 const INTRO_SECONDS = 2.2;
-
-const BACKDROP_VERTEX = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-// A seamless photo-studio sweep: a soft pool of key light behind the mark, a faint band where the
-// floor curves up into the wall, and darkness everywhere else. No texture, only light.
-const BACKDROP_FRAGMENT = /* glsl */ `
-  precision highp float;
-  varying vec2 vUv;
-  uniform vec2 uLight;
-  uniform float uPower;
-  uniform float uAspect;
-  uniform float uTime;
-
-  float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-
-  void main() {
-    vec2 q = vec2((vUv.x - 0.5) * uAspect, vUv.y - 0.5);
-    vec2 light = vec2((uLight.x - 0.5) * uAspect, uLight.y - 0.5);
-    vec2 d = q - light;
-    float pool = exp(-dot(d, d) * 2.2);
-    float core = exp(-dot(d, d) * 9.0);
-    float sweep = exp(-pow((q.y + 0.24) * 5.5, 2.0)) * exp(-d.x * d.x * 0.9);
-    vec3 col = vec3(0.006, 0.006, 0.008);
-    col += vec3(0.060, 0.062, 0.069) * pool;
-    col += vec3(0.040, 0.041, 0.045) * core;
-    col += vec3(0.022, 0.022, 0.025) * sweep;
-    col *= smoothstep(1.25, 0.15, length(q * vec2(0.8, 1.1)));
-    col *= uPower;
-    col += (hash2(gl_FragCoord.xy + fract(uTime)) - 0.5) / 255.0;
-    gl_FragColor = vec4(col, 1.0);
-  }
-`;
+const BACKDROP_DEPTH = 6;
 
 type Maps = { map: Texture; roughnessMap: Texture; normalMap: Texture };
 
@@ -105,18 +90,107 @@ function easeOutCubic(t: number): number {
   return 1 - (1 - t) ** 3;
 }
 
+// A small seeded generator, so the sky is the same on every visit.
+function seeded(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+}
+
+function floats(count: number, fill: (index: number) => number): BufferAttribute {
+  return new BufferAttribute(
+    Float32Array.from({ length: count }, (_, index) => fill(index)),
+    1,
+  );
+}
+
+function additive(
+  vertexShader: string,
+  fragmentShader: string,
+  uniforms: Record<string, { value: unknown }>,
+): ShaderMaterial {
+  return new ShaderMaterial({
+    uniforms,
+    vertexShader,
+    fragmentShader,
+    blending: AdditiveBlending,
+    depthWrite: false,
+    transparent: true,
+  });
+}
+
+// Most stars are faint and small; a few are bright enough to catch the bloom.
+function starGeometry(count: number): BufferGeometry {
+  const random = seeded(7);
+  const positions = new Float32Array(count * 3);
+  for (let index = 0; index < count; index++) {
+    positions[index * 3] = (random() - 0.5) * 18;
+    positions[index * 3 + 1] = (random() - 0.5) * 11;
+    positions[index * 3 + 2] = -1.5 - random() * 4;
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(positions, 3));
+  geometry.setAttribute(
+    'aSize',
+    floats(count, () => 0.7 + 2.4 * random() ** 3),
+  );
+  geometry.setAttribute(
+    'aPhase',
+    floats(count, () => random()),
+  );
+  geometry.setAttribute(
+    'aBright',
+    floats(count, () => 0.08 + 1.2 * random() ** 4),
+  );
+  return geometry;
+}
+
+// Dust in the orbit plane: a soft band around the ring, slower than the moon so it overtakes it.
+function dustGeometry(count: number): BufferGeometry {
+  const random = seeded(19);
+  const spread = () => (random() + random() + random() - 1.5) / 1.5;
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(count * 3), 3));
+  geometry.setAttribute(
+    'aAngle',
+    floats(count, () => random() * Math.PI * 2),
+  );
+  geometry.setAttribute(
+    'aRadius',
+    floats(count, () => ORBIT + spread() * 0.32),
+  );
+  geometry.setAttribute(
+    'aHeight',
+    floats(count, () => spread() * 0.09),
+  );
+  geometry.setAttribute(
+    'aSize',
+    floats(count, () => 0.6 + 2.2 * random() ** 2),
+  );
+  geometry.setAttribute(
+    'aPhase',
+    floats(count, () => random()),
+  );
+  geometry.setAttribute(
+    'aSpeed',
+    floats(count, () => 0.02 + random() * 0.09),
+  );
+  return geometry;
+}
+
 export type SceneOptions = { reducedMotion: boolean; onFirstFrame: () => void };
 
 export async function startScene(canvas: HTMLCanvasElement, options: SceneOptions): Promise<void> {
-  const renderer = new WebGLRenderer({
-    canvas,
-    antialias: true,
-    powerPreference: 'high-performance',
-  });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+  // phones get fewer particles and a lower pixel ratio: the post-processing runs per pixel
+  const narrowAtStart = canvas.clientWidth / Math.max(1, canvas.clientHeight) < 0.85;
+  const pixelRatio = Math.min(window.devicePixelRatio, narrowAtStart ? 1.5 : 1.75);
+  const renderer = new WebGLRenderer({ canvas, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(pixelRatio);
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.9;
 
   const scene = new Scene();
   const camera = new PerspectiveCamera(30, 1, 0.1, 100);
@@ -146,10 +220,21 @@ export async function startScene(canvas: HTMLCanvasElement, options: SceneOption
       depthWrite: false,
     }),
   );
-  const BACKDROP_DEPTH = 6;
   backdrop.position.z = -BACKDROP_DEPTH;
   backdrop.renderOrder = -1;
   scene.add(backdrop);
+
+  // ---------- stars ----------
+  const starUniforms = {
+    uTime: { value: 0 },
+    uPower: { value: 0 },
+    uPixelRatio: { value: pixelRatio },
+  };
+  const stars = new Points(
+    starGeometry(narrowAtStart ? 420 : 900),
+    additive(STARS_VERTEX, STARS_FRAGMENT, starUniforms),
+  );
+  scene.add(stars);
 
   // ---------- the mark ----------
   const planetMaterial = new MeshStandardMaterial({
@@ -199,11 +284,54 @@ export async function startScene(canvas: HTMLCanvasElement, options: SceneOption
   const moon = new Mesh(new SphereGeometry(MOON, 96, 64), moonMaterial);
   moon.position.set(ORBIT, 0, 0);
   orbit.add(moon);
+
+  const dustUniforms = {
+    uTime: { value: 0 },
+    uMoon: { value: 0 },
+    uPower: { value: 0 },
+    uPixelRatio: { value: pixelRatio },
+    uScale: { value: 1 },
+  };
+  const dust = new Points(
+    dustGeometry(narrowAtStart ? 1100 : 2600),
+    additive(DUST_VERTEX, DUST_FRAGMENT, dustUniforms),
+  );
+  // positions are computed in the vertex shader, so the bounds never match the buffer
+  dust.frustumCulled = false;
+  tilt.add(dust);
   scene.add(system);
 
   const key = new DirectionalLight(0xffffff, 1.1);
   key.position.set(-3, 4, 6);
   scene.add(key);
+
+  // ---------- post-processing ----------
+  // a multisampled half-float target keeps edges smooth and highlights above 1 for the bloom,
+  // whose threshold sits above 1 so only real highlights glow, never the whole metal
+  const composer = new EffectComposer(
+    renderer,
+    new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 }),
+  );
+  composer.setPixelRatio(pixelRatio);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new Vector2(1, 1), 0.28, 0.35, 1.8);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+  const finishUniforms = {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uResolution: { value: new Vector2(1, 1) },
+  };
+  // a material, not a shader object: ShaderPass would clone the uniforms of a plain object
+  composer.addPass(
+    new ShaderPass(
+      new ShaderMaterial({
+        uniforms: finishUniforms,
+        vertexShader: FINISH_VERTEX,
+        fragmentShader: FINISH_FRAGMENT,
+      }),
+    ),
+  );
 
   // ---------- layout ----------
   const home = new Vector3();
@@ -212,12 +340,15 @@ export async function startScene(canvas: HTMLCanvasElement, options: SceneOption
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     renderer.setSize(width, height, false);
+    composer.setSize(width, height);
+    finishUniforms.uResolution.value.set(width * pixelRatio, height * pixelRatio);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     const narrow = camera.aspect < 0.85;
     // the mark sits to the right of the copy on wide screens and above it on phones
     home.set(narrow ? 0.1 : 2.15, narrow ? 0.95 : 0.05, 0);
     homeScale = narrow ? 0.46 : 0.64;
+    dustUniforms.uScale.value = homeScale;
     const viewHeight =
       2 * Math.tan(MathUtils.degToRad(camera.fov / 2)) * (camera.position.z + BACKDROP_DEPTH);
     backdrop.scale.set(viewHeight * camera.aspect * 1.2, viewHeight * 1.2, 1);
@@ -259,17 +390,25 @@ export async function startScene(canvas: HTMLCanvasElement, options: SceneOption
     elapsed += dt;
     const intro = options.reducedMotion ? 1 : easeOutCubic(Math.min(1, elapsed / INTRO_SECONDS));
 
-    // one orchestrated moment: the studio lights come up while the camera settles
+    // one orchestrated moment: space and its light come up while the camera settles
     backdropUniforms.uPower.value = intro;
-    scene.environmentIntensity = intro;
+    starUniforms.uPower.value = intro;
+    dustUniforms.uPower.value = intro;
+    scene.environmentIntensity = 0.72 * intro;
     key.intensity = 1.1 * intro;
     camera.position.z = options.reducedMotion ? 9 : MathUtils.lerp(11, 9, intro);
 
+    // with reduced motion the frame is still: no orbit, no drift, no twinkle, no moving grain
+    const time = options.reducedMotion ? 0 : elapsed;
     if (!options.reducedMotion) {
       orbit.rotation.z += dt * ORBIT_SPEED;
       backdropUniforms.uLight.value.lerp(lightTarget, 0.05);
     }
-    backdropUniforms.uTime.value = elapsed;
+    backdropUniforms.uTime.value = time;
+    starUniforms.uTime.value = time;
+    dustUniforms.uTime.value = time;
+    dustUniforms.uMoon.value = orbit.rotation.z;
+    finishUniforms.uTime.value = time;
 
     // the pointer tilts the mark a little; scrolling lifts it out of the hero
     const scroll = Math.min(1, window.scrollY / Math.max(1, canvas.clientHeight));
@@ -282,8 +421,11 @@ export async function startScene(canvas: HTMLCanvasElement, options: SceneOption
     system.rotation.y = MathUtils.lerp(system.rotation.y, pointer.x * tiltAmount, 0.06);
     system.position.set(home.x, home.y + scroll * 1.6, home.z);
     system.scale.setScalar(homeScale);
+    // the stars sit far behind the mark, so they slide the other way: a little parallax
+    stars.position.x = MathUtils.lerp(stars.position.x, -pointer.x * tiltAmount, 0.04);
+    stars.position.y = MathUtils.lerp(stars.position.y, pointer.y * tiltAmount * 0.7, 0.04);
 
-    renderer.render(scene, camera);
+    composer.render(dt);
     if (first) {
       first = false;
       options.onFirstFrame();

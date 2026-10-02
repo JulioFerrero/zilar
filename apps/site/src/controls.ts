@@ -1,6 +1,6 @@
 import { CAP, angleToCap, capLabel, capToAngle, pointerAngle, stepCap } from './cap';
 
-// The control plate: three physical controls that act out real Zilar guarantees.
+// The control plate: physical controls that act out real Zilar guarantees.
 
 function required<T extends Element>(root: ParentNode, selector: string): T {
   const element = root.querySelector<T>(selector);
@@ -33,7 +33,7 @@ function initDial(root: ParentNode): void {
     dial.setAttribute('aria-valuenow', String(value));
     dial.setAttribute('aria-valuetext', `${label} a month`);
     readout.textContent = label;
-    note.textContent = `Dev-1 stops at ${label} this month, whatever it is asked to do.`;
+    note.textContent = `Dev-1 cannot spend past ${label} this month.`;
     dial.classList.remove('clicked');
     void dial.offsetWidth;
     dial.classList.add('clicked');
@@ -97,8 +97,11 @@ function initKill(root: ParentNode): void {
     cover.setAttribute('aria-label', open ? 'Close the guard' : 'Lift the guard');
     lamp.classList.toggle('off', stopped);
     state.textContent = stopped ? 'Stopped' : 'Running';
-    if (stopped) note.textContent = 'Dev-1 is stopped. Nothing it was doing can land afterwards.';
-    else note.textContent = open ? 'Press Stop.' : 'Lift the guard, then press Stop.';
+    if (stopped) note.textContent = 'Stopped. Nothing it started can land.';
+    else
+      note.textContent = open
+        ? 'Guard up. Press Stop to halt Dev-1.'
+        : 'Lift the guard, then press Stop.';
   }
 
   cover.addEventListener('click', () => {
@@ -114,10 +117,12 @@ function initKill(root: ParentNode): void {
 
 function initCopy(root: ParentNode): void {
   const button = required<HTMLButtonElement>(root, '#copy-commands');
-  const code = required<HTMLElement>(root, '#commands');
+  const commands = [...root.querySelectorAll<HTMLElement>('.steps > li > code')]
+    .map((code) => code.textContent?.trim() ?? '')
+    .join('\n');
   button.addEventListener('click', async () => {
     try {
-      await navigator.clipboard.writeText(code.textContent?.trim() ?? '');
+      await navigator.clipboard.writeText(commands);
       button.textContent = 'Copied';
     } catch {
       button.textContent = 'Select and copy';

@@ -362,8 +362,10 @@ h1 {
   font-size: 15px;
 }
 
+/* exactly two lines, whatever the state: flipping a control never moves the page */
 .control-note {
-  min-height: 3em;
+  height: 3em;
+  overflow: hidden;
   color: var(--steel);
   font-size: 14.5px;
   line-height: 1.5;
@@ -504,6 +506,8 @@ h1 {
   justify-content: flex-start;
   min-height: 132px;
   align-items: center;
+  /* room for the lifted guard, so it never covers the state label above */
+  padding-top: 40px;
 }
 
 .rocker {
@@ -562,6 +566,8 @@ h1 {
   width: 74px;
   height: 120px;
   perspective: 500px;
+  /* seen from the hinge, so the lifted guard stays close to it instead of looming upwards */
+  perspective-origin: 50% 0;
 }
 
 .guard {
@@ -582,7 +588,7 @@ h1 {
 }
 
 .guard[aria-expanded='true'] {
-  transform: rotateX(118deg);
+  transform: rotateX(100deg);
 }
 
 .lamp {
@@ -603,26 +609,232 @@ h1 {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
+/* ---------- features: words on one side, real app parts on a metal tray on the other ---------- */
+.feature {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  align-items: center;
+  gap: clamp(32px, 6vw, 96px);
+  padding: 140px var(--page-x) 0;
+}
+
+.feature-flip .feature-copy {
+  order: 2;
+}
+
+.feature h2,
+.spec h2 {
+  font-size: clamp(32px, 3.6vw, 50px);
+  line-height: 1.05;
+}
+
+.feature-copy p {
+  margin-top: 20px;
+  max-width: 30em;
+  color: var(--steel);
+}
+
+.feature-copy .feature-note {
+  color: #6c7079;
+  font-size: 15px;
+}
+
+/* a machined tray, slightly recessed, holding the pieces of the app like printed sheets */
+.tray {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 340px;
+  padding: clamp(24px, 3vw, 40px);
+  border-radius: 28px;
+  background: var(--brushed), linear-gradient(180deg, #16161a 0%, #0c0c0e 100%);
+  box-shadow:
+    inset 0 2px 12px rgba(0, 0, 0, 0.9),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px #000;
+  perspective: 1600px;
+}
+
+.sheet {
+  margin: 0;
+  border-radius: 14px;
+  background: #0d0d0f;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.07),
+    0 1px 0 1px rgba(255, 255, 255, 0.04),
+    0 28px 50px -18px rgba(0, 0, 0, 0.95),
+    0 8px 16px -8px rgba(0, 0, 0, 0.9);
+  overflow: hidden;
+}
+
+.sheet img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.sheet-main {
+  width: min(100%, 600px);
+  transform: rotateX(8deg) rotateY(-6deg);
+}
+
+/* two sheets: one lying back, one resting on top of it */
+.tray-stack {
+  grid-template-areas: 'stack';
+}
+
+.tray-stack .sheet {
+  grid-area: stack;
+}
+
+.tray-stack {
+  min-height: 520px;
+}
+
+.tray-stack .sheet-back {
+  width: min(66%, 340px);
+  transform: translateX(-24%) rotateY(10deg) rotateZ(-2deg);
+  filter: brightness(0.8);
+}
+
+.tray-stack .sheet-front {
+  width: min(70%, 360px);
+  transform: translate(22%, 120%) rotateY(-8deg) rotateZ(1.5deg);
+}
+
+.tray-pair {
+  min-height: 480px;
+}
+
+.tray-pair .sheet-back {
+  width: min(92%, 520px);
+  transform: translate(-6%, -40%) rotateY(8deg) rotateZ(-1.5deg);
+}
+
+.tray-pair .sheet-front {
+  width: min(56%, 300px);
+  transform: translate(40%, 26%) rotateY(-8deg) rotateZ(2deg);
+}
+
+/* ---------- spec plate: an engraved rating plate listing the rest ---------- */
+.spec {
+  padding: 150px var(--page-x) 0;
+}
+
+.spec-plate {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 36px 0 0;
+  border-radius: 24px;
+  background: var(--brushed), linear-gradient(180deg, #202025 0%, #141418 55%, #0f0f12 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.8),
+    0 0 0 1px #000,
+    0 30px 60px -30px rgba(0, 0, 0, 0.95);
+}
+
+.spec-plate > div {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  padding: 24px 30px;
+}
+
+/* engraved grooves between the rows, and between the columns when there are two */
+.spec-plate > div + div {
+  box-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.8),
+    inset 0 2px 0 rgba(255, 255, 255, 0.04);
+}
+
+@media (min-width: 961px) {
+  .spec-plate > div:nth-child(2) {
+    box-shadow:
+      inset 1px 0 0 rgba(0, 0, 0, 0.8),
+      inset 2px 0 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .spec-plate > div:nth-child(even):nth-child(n + 3) {
+    box-shadow:
+      inset 0 1px 0 rgba(0, 0, 0, 0.8),
+      inset 0 2px 0 rgba(255, 255, 255, 0.04),
+      inset 1px 0 0 rgba(0, 0, 0, 0.8),
+      inset 2px 0 0 rgba(255, 255, 255, 0.04);
+  }
+}
+
+.spec-plate dt {
+  color: var(--gold);
+  font: 500 13px/1.6 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.9);
+}
+
+.spec-plate dd {
+  margin: 0;
+  color: #c3c6cd;
+  font-size: 15.5px;
+  line-height: 1.55;
+  text-shadow:
+    0 -1px 0 rgba(0, 0, 0, 0.9),
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
 /* ---------- self-hosting ---------- */
 .own {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: center;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  align-items: start;
   gap: clamp(32px, 6vw, 96px);
   padding: 140px var(--page-x) 120px;
 }
 
+.own h3 {
+  margin: 34px 0 12px;
+  color: var(--silver);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.needs {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--steel);
+  font-size: 15.5px;
+  line-height: 1.5;
+}
+
+.needs li {
+  position: relative;
+  padding-left: 22px;
+}
+
+/* a small machined rivet instead of a bullet */
+.needs li::before {
+  content: '';
+  position: absolute;
+  top: 0.5em;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f2f3f5, #8d9099 60%, #4a4c52);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
+}
+
 .own .honest {
+  margin-top: 28px;
   color: #6c7079;
   font-size: 15px;
 }
 
 .engraving {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 22px;
-  padding: 30px 32px;
+  padding: 12px 32px 26px;
   border-radius: 24px;
   background: var(--brushed), linear-gradient(180deg, #17171b, #0e0e11);
   box-shadow:
@@ -631,19 +843,90 @@ h1 {
     0 0 0 1px #000;
 }
 
-.engraving pre {
+.steps {
   margin: 0;
-  overflow-x: auto;
-  max-width: 100%;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
 }
 
-.engraving code {
-  color: #c9ccd2;
-  font: 400 16px/1.9 var(--mono);
+.steps li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  column-gap: 16px;
+  padding: 20px 0;
+  counter-increment: step;
+}
+
+.steps li + li {
+  box-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.85),
+    inset 0 2px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* the step number is stamped into a small recessed well */
+.steps li::before {
+  content: counter(step);
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #0a0a0c;
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.95),
+    0 1px 0 rgba(255, 255, 255, 0.07);
+  color: var(--gold);
+  font: 600 13px/1 var(--mono);
+}
+
+.steps code,
+.engraving-foot code {
+  color: #d5d8de;
+  font: 400 15px/1.6 var(--mono);
+  overflow-wrap: anywhere;
   /* engraved: dark above, a light catch below */
   text-shadow:
     0 -1px 0 rgba(0, 0, 0, 0.9),
     0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.steps p {
+  margin: 6px 0 0;
+  color: var(--steel);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+.path {
+  color: #b7bac2;
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+
+.engraving-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  padding-top: 20px;
+  box-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.85),
+    inset 0 2px 0 rgba(255, 255, 255, 0.04);
+}
+
+.engraving-foot p {
+  flex: 1 1 260px;
+  margin: 0;
+  color: var(--steel);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+.engraving-foot code {
+  font-size: 14px;
 }
 
 /* ---------- footer ---------- */
@@ -697,6 +980,19 @@ h1 {
       animation-range: entry 0% cover 35%;
     }
 
+    .tray {
+      animation: tray-rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 40%;
+    }
+
+    @keyframes tray-rise {
+      from {
+        translate: 0 70px;
+        opacity: 0.35;
+      }
+    }
+
     @keyframes settle {
       from {
         transform: perspective(1800px) rotateY(-14deg) scale(0.94);
@@ -716,15 +1012,66 @@ h1 {
 /* ---------- smaller screens ---------- */
 @media (max-width: 960px) {
   .ais,
-  .own {
+  .own,
+  .feature {
     grid-template-columns: 1fr;
     padding-top: 110px;
+  }
+
+  .feature-flip .feature-copy {
+    order: 0;
+  }
+
+  .spec-plate {
+    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 640px) {
   body {
     font-size: 16px;
+  }
+
+  .engraving {
+    padding: 6px 20px 22px;
+  }
+
+  .tray {
+    min-height: 0;
+    padding: 22px 16px;
+  }
+
+  /* on a phone the sheets lie flat: tilted, their small type stops being readable */
+  .tray-stack {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sheet,
+  .tray-stack .sheet {
+    width: 100%;
+    transform: none;
+  }
+
+  .tray-stack .sheet-front {
+    width: 88%;
+    margin: -36px 0 0 auto;
+    transform: rotate(1.5deg);
+  }
+
+  .spec-plate > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 20px 22px;
+  }
+
+  .steps li {
+    grid-template-columns: 30px minmax(0, 1fr);
+    column-gap: 12px;
+  }
+
+  .steps code {
+    font-size: 13.5px;
   }
 
   .hero-copy {
