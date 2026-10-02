@@ -8,7 +8,7 @@ ROOT="$(cd ../.. && pwd)"
 BRAND="$ROOT/assets/brand"
 WEB="$ROOT/apps/web/public"
 MOBILE="$ROOT/apps/mobile/assets/images"
-for layer in full bleed foreground background mono mono-rest mono-moon; do LAYER=$layer sh render.sh >/dev/null; done
+for layer in full bleed foreground background mono-rest mono-moon; do LAYER=$layer sh render.sh >/dev/null; done
 mkdir -p "$BRAND" "$WEB/icons" "$MOBILE"
 
 # --- the 3D icon: rounded key with its drop shadow (transparent), and a full-bleed square for stores / maskable
@@ -16,6 +16,8 @@ cp out/icon-full-1024.png "$BRAND/icon.png"
 magick out/icon-bleed-2048.png -filter Lanczos -resize 1024x1024 -background '#0a0a0a' -alpha remove -alpha off "$BRAND/icon-bleed.png"
 
 # --- monochrome mark: trace the flat renders into SVG paths (all three share one crop, so they line up)
+# the whole mark is the planet and ring plus the moon, so the two renders are merged (darkest pixel wins)
+magick out/icon-mono-rest-2048.png out/icon-mono-moon-2048.png -compose Darken -composite out/icon-mono-2048.png
 CROP="$(magick out/icon-mono-2048.png -alpha off -colorspace Gray -threshold 50% -format %@ info:)"
 for part in mono mono-rest mono-moon; do
   magick out/icon-$part-2048.png -alpha off -colorspace Gray -threshold 50% -crop "$CROP" +repage out/$part.pbm

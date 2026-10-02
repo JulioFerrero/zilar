@@ -158,10 +158,10 @@ const PAPER = new THREE.MeshBasicMaterial({ color: 0xffffff });
 PAPER.onBeforeCompile = (shader) => {
   shader.vertexShader = shader.vertexShader.replace(
     '#include <project_vertex>',
-    '#include <project_vertex>\n  gl_Position.z += 0.0008 * gl_Position.w;',
+    '#include <project_vertex>\n  gl_Position.z += 0.0018 * gl_Position.w;',
   );
 };
-const HALO = 11; // the white gap that separates the parts in the monochrome mark
+const HALO = 15; // the white gap that separates the parts in the monochrome mark
 function ball(material, radius, position, parent, part = 'body') {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 128, 96), MONO ? INK : material);
   mesh.position.copy(position);
@@ -174,19 +174,19 @@ function ball(material, radius, position, parent, part = 'body') {
     parent.add(halo);
   }
 }
-const PLANET_RADIUS = 205;
-const ORBIT = 360;
+const PLANET_RADIUS = 190;
+const ORBIT = 345;
 const MOON_AT = 0; // angle of the moon on its orbit: upper right, where the ring runs across the screen so the gap around the moon stays visible
 const tilt = new THREE.Group();
 tilt.rotation.x = 1.15; // lays the circle down into a thin ellipse
 const spin = new THREE.Group();
 spin.rotation.z = 0.72; // and turns that ellipse onto the diagonal
-const MOON_RADIUS = 58;
-const RING_TUBE = 17;
+const MOON_RADIUS = 84;
+const RING_TUBE = 27;
 // the ring stops short of the moon on both sides. The orbit is tilted, so a gap in the ring plane
 // shrinks to about half on screen: this angle leaves a clear gap there, not just in 3D
-const GAP_AHEAD = 0.5; // angle left free on the upper-left side of the moon
-const GAP_BEHIND = 0.5; // and on the lower-right side
+const GAP_AHEAD = 0.9; // angle left free on the upper-left side of the moon
+const GAP_BEHIND = 0.75; // and on the lower-right side
 const orbitRing = new THREE.Mesh(
   new THREE.TorusGeometry(ORBIT, RING_TUBE, 32, 360, Math.PI * 2 - GAP_AHEAD - GAP_BEHIND),
   ringMaterial,
