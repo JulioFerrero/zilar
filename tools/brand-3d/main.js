@@ -175,7 +175,7 @@ function ball(material, radius, position, parent, part = 'body') {
   }
 }
 const ORBIT = 310;
-const MOON_AT = 0.2 * Math.PI; // angle of the moon on its orbit
+const MOON_AT = -0.15; // angle of the moon on its orbit: out at the right end of the ring, clear of the planet
 const tilt = new THREE.Group();
 tilt.rotation.set(1.2, 0, 0.5);
 const MOON_RADIUS = 68;
@@ -215,7 +215,7 @@ ball(
 );
 system.add(tilt);
 ball(planetMaterial, 200, new THREE.Vector3(0, 0, 0), system);
-system.position.set(-6, -8, 400);
+system.position.set(-30, -8, 400);
 system.scale.setScalar(LAYER === 'foreground' || MONO ? 0.8 : 0.88);
 if (LAYER !== 'background') scene.add(system);
 
