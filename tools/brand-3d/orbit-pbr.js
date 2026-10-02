@@ -149,10 +149,21 @@ const ORBIT = 310;
 const MOON_AT = 0.2 * Math.PI; // angle of the moon on its orbit
 const tilt = new THREE.Group();
 tilt.rotation.set(1.2, 0, 0.5);
-const orbitRing = new THREE.Mesh(new THREE.TorusGeometry(ORBIT, 15, 32, 360), ringMaterial);
+const MOON_RADIUS = 60;
+const RING_TUBE = 15;
+// the ring stops short of the moon on both sides, so the two never intersect
+const GAP = (MOON_RADIUS + RING_TUBE + 16) / ORBIT;
+const orbitRing = new THREE.Mesh(
+  new THREE.TorusGeometry(ORBIT, RING_TUBE, 32, 360, Math.PI * 2 - 2 * GAP),
+  ringMaterial,
+);
+orbitRing.rotation.z = MOON_AT + GAP;
 orbitRing.castShadow = true;
 tilt.add(orbitRing);
-ball(moonMaterial, 60, new THREE.Vector3(Math.cos(MOON_AT) * ORBIT, Math.sin(MOON_AT) * ORBIT, 0), tilt);
+for (const end of [MOON_AT + GAP, MOON_AT - GAP]) {
+  ball(ringMaterial, RING_TUBE, new THREE.Vector3(Math.cos(end) * ORBIT, Math.sin(end) * ORBIT, 0), tilt);
+}
+ball(moonMaterial, MOON_RADIUS, new THREE.Vector3(Math.cos(MOON_AT) * ORBIT, Math.sin(MOON_AT) * ORBIT, 0), tilt);
 system.add(tilt);
 ball(planetMaterial, 200, new THREE.Vector3(0, 0, 0), system);
 system.position.set(-6, -8, 400);
