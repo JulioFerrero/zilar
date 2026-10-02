@@ -234,6 +234,8 @@ export interface RealStoreDeps {
   attachments?: AttachmentPort;
   /** The AI draft SSE stream; tests inject a fake. */
   openDrafts?: OpenDraftStream;
+  /** Leaves for the sign-in page after sign-out; tests inject a fake. */
+  goToLogin?: () => void;
 }
 
 const realApi: ApiClient = {
@@ -610,6 +612,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
   const voicePort = deps.voice ?? defaultVoicePort;
   const attachmentPort = deps.attachments ?? defaultAttachmentPort;
   const openDrafts = deps.openDrafts ?? subscribeToDrafts;
+  // A reload gives the next user a fresh store and XMPP connection.
+  const goToLogin =
+    deps.goToLogin ??
+    (() => {
+      if (typeof window !== 'undefined') {
+        window.location.assign('/login');
+      }
+    });
 
   return createStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
@@ -3838,10 +3848,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         } catch {
           // The app still clears local state even if sign-out fails.
         }
-        // A reload gives the next user a fresh store and XMPP connection.
-        if (typeof window !== 'undefined') {
-          window.location.assign('/login');
-        }
+        goToLogin();
       },
       start: () => {
         generation += 1;

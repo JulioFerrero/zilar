@@ -113,13 +113,15 @@ describe('runTool limits', () => {
   it('does not count fetch wait time against cpuMs', async () => {
     // Lead repro: cpuMs 300, fetch delayed 800 ms, then real work. Under the
     // old wall-clock cpuDeadline this reported timeout; cpu time here is only
-    // the loop, so the run must succeed.
+    // the loop, so the run must succeed. The loop is kept small: the budget is
+    // measured as time spent executing, which a busy CI runner stretches, and
+    // the point is the 800 ms wait, not how much work fits in 300 ms.
     const result = await runTool({
       source: `export default async function run() {
         const res = await fetch('https://api.example.com/x');
         const body = await res.text();
         let total = 0;
-        for (let i = 0; i < 200000; i++) { total += i; }
+        for (let i = 0; i < 20000; i++) { total += i; }
         return body + ':' + (total > 0 ? 'worked' : 'idle');
       }`,
       input: null,

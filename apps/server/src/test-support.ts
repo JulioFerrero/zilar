@@ -282,10 +282,27 @@ const TEST_XMPP_ENV = {
   ZILAR_XMPP_JWT_SECRET: TEST_XMPP_JWT_SECRET,
 };
 
+// Running every migration takes most of a second, and nearly every test needs a fresh database.
+// Each test worker migrates once, keeps a snapshot of the data directory, and starts every later
+// database from that snapshot: same schema, a fraction of the time.
+let migratedSnapshot: Promise<Blob> | undefined;
+
+async function snapshotOfMigratedDatabase(): Promise<Blob> {
+  const template = new PGlite();
+  await runMigrations(drizzle(template, { schema }));
+  const snapshot = await template.dumpDataDir('none');
+  await template.close();
+  return snapshot;
+}
+
+async function freshDatabase(): Promise<PGlite> {
+  migratedSnapshot ??= snapshotOfMigratedDatabase();
+  return new PGlite({ loadDataDir: await migratedSnapshot });
+}
+
 export async function createTestContext(options: TestContextOptions = {}): Promise<TestContext> {
-  const client = new PGlite();
+  const client = await freshDatabase();
   const db = drizzle(client, { schema });
-  await runMigrations(db);
 
   const config = loadServerConfig({
     NODE_ENV: options.nodeEnv ?? 'test',

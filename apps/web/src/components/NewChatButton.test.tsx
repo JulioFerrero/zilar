@@ -37,7 +37,10 @@ describe('NewChatButton', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() => expect(createGroup).toHaveBeenCalledWith('Crew', ['u-ana']));
-    expect(await screen.findByText('Crew')).toBeTruthy();
+    // The new group shows in the list and, once opened, in the header too, so
+    // the check waits for it to open instead of expecting a single "Crew".
+    await waitFor(() => expect(store.getState().activeChatId).toBe(room.id));
+    expect(screen.getAllByText('Crew').length).toBeGreaterThan(0);
   });
 
   it('shows the invite link and copies it', async () => {
