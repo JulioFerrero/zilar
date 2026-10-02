@@ -19,7 +19,7 @@ magick out/icon-bleed-2048.png -filter Lanczos -resize 1024x1024 -background '#0
 CROP="$(magick out/icon-mono-2048.png -alpha off -colorspace Gray -threshold 50% -format %@ info:)"
 for part in mono mono-rest mono-moon; do
   magick out/icon-$part-2048.png -alpha off -colorspace Gray -threshold 50% -crop "$CROP" +repage out/$part.pbm
-  potrace -b svg -u 1 --turdsize 40 --opttolerance 0.6 --flat -o out/$part-raw.svg out/$part.pbm
+  potrace -b svg -u 1 --turdsize 6000 --opttolerance 0.6 --flat -o out/$part-raw.svg out/$part.pbm
 done
 python3 - "$BRAND" <<'PY'
 import re, sys
