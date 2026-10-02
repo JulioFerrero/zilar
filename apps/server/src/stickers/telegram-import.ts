@@ -16,7 +16,12 @@ export const TELEGRAM_IMPORT_TIMEOUT_MS = 10_000;
 export const TELEGRAM_IMPORT_MAX_BYTES = 1024 * 1024;
 
 export type TelegramImportErrorCode =
-  'pack_not_found' | 'try_later' | 'import_unavailable' | 'invalid_request' | 'file_too_large';
+  | 'pack_not_found'
+  | 'try_later'
+  | 'import_unavailable'
+  | 'invalid_request'
+  | 'file_too_large'
+  | 'invalid_token';
 
 export class TelegramImportError extends Error {
   readonly code: TelegramImportErrorCode;
@@ -93,6 +98,7 @@ export interface TelegramStickerSet {
 }
 
 export interface TelegramClient {
+  getMe(): Promise<{ ok: boolean }>;
   getStickerSet(name: string): Promise<TelegramStickerSet>;
   downloadFile(fileId: string): Promise<Uint8Array>;
 }
@@ -263,8 +269,9 @@ function toStickerSet(name: string, raw: unknown): TelegramStickerSet {
  * The real Telegram client: `fetch` only to the two hard-coded Telegram
  * URLs, no redirects, 10 s timeout, 1 MiB cap per file. Telegram's 429
  * (`retry_after`, capped at 5 s) is retried once, then reported as
- * `try_later`; a missing pack is `pack_not_found`; no other Telegram text
- * is passed through.
+ * `try_later`; an unknown bot token (401 on any method) is `invalid_token`
+ * so the integrations page can verify a pasted key; a missing pack is
+ * `pack_not_found`; no other Telegram text is passed through.
  */
 export function createTelegramClient(token: string, fetchFn: FetchFn = fetch): TelegramClient {
   async function callMethod(method: string, params: Record<string, string>): Promise<unknown> {
@@ -294,6 +301,11 @@ export function createTelegramClient(token: string, fetchFn: FetchFn = fetch): T
     }
     if (envelope.ok) {
       return envelope.result;
+    }
+    // A 401 means the bot token itself is unknown: report it distinctly so
+    // the integrations page can verify a pasted key before storing it.
+    if (response.status === 401 || envelope.error_code === 401) {
+      throw new TelegramImportError('invalid_token', 'Telegram rejected the bot token');
     }
     const retryAfter =
       typeof envelope.parameters?.retry_after === 'number'
@@ -342,6 +354,9 @@ export function createTelegramClient(token: string, fetchFn: FetchFn = fetch): T
     if (envelope.ok) {
       return envelope.result;
     }
+    if (response.status === 401 || envelope.error_code === 401) {
+      throw new TelegramImportError('invalid_token', 'Telegram rejected the bot token');
+    }
     if (response.status === 400 || envelope.error_code === 400 || response.status === 429) {
       if (response.status === 400 || envelope.error_code === 400) {
         throw new TelegramImportError('pack_not_found', 'That Telegram sticker pack was not found');
@@ -355,6 +370,21 @@ export function createTelegramClient(token: string, fetchFn: FetchFn = fetch): T
   }
 
   return {
+    // `getMe` verifies a bot token: a 401 is `invalid_token`, anything
+    // else failing is `try_later`. Only the owner-gated integrations route
+    // calls this; the import flow never needs it.
+    async getMe(): Promise<{ ok: boolean }> {
+      try {
+        await callMethod('getMe', {});
+        return { ok: true };
+      } catch (error) {
+        if (error instanceof TelegramImportError) {
+          throw error;
+        }
+        throw new TelegramImportError('try_later', 'Could not reach Telegram, try again later');
+      }
+    },
+
     async getStickerSet(name: string): Promise<TelegramStickerSet> {
       try {
         const result = await callMethod('getStickerSet', { name });

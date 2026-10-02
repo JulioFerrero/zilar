@@ -188,6 +188,25 @@ can still set the `MAIL_*` / `SMTP_*` variables in `deploy/.env` instead
 | `MAIL_REPLY_TO` | Optional; empty means no Reply-To header. |
 | `MAIL_ALLOW_CONSOLE_IN_PRODUCTION` | Scratch-only escape hatch (`true` lets the console mailer boot in production). Never on a real install. |
 
+### Changing the sender later
+
+After you verify your own domain in Resend, change the sender in the app:
+Settings → Integrations → Email. Enter the new From address (on the
+verified domain, e.g. `Zilar <no-reply@mail.example.com>`) and save — the
+server sends a test email to your own address first, and only stores the
+change when it arrives. Leave the key field empty to keep the current key.
+While mail comes from environment variables the page says so and the
+change happens there, not in the app.
+
+### Optional: sticker import from Telegram
+
+Sticker import needs a Telegram bot token: open @BotFather in Telegram,
+send /newbot, and copy the token. Paste it in the app under Settings →
+Integrations → Telegram (the server owner only) and save — the server
+checks the token with Telegram before storing it, and imports start
+working right away with no restart. Without a token the sticker page's
+import dialog says so instead of failing silently.
+
 ## Updating
 
 Images are published per release tag. To update:

@@ -10,6 +10,7 @@ import {
   ApiError,
   deleteStickerPack,
   discoverStickerPacks,
+  getIntegrationsStatus,
   listStickerFavorites,
   listStickerPacks,
   patchStickerPack,
@@ -99,10 +100,12 @@ export function StickersPage() {
   const [creating, setCreating] = useState(false);
   const [deletingPack, setDeletingPack] = useState<StickerPack | undefined>(undefined);
   const [movingPackId, setMovingPackId] = useState<string | undefined>(undefined);
-  // Telegram import (T-0123): the dialog opens from "My packs"; `importReady`
-  // is false while the server answers 501 (feature off), hiding the entry.
+  // Telegram import (T-0123, T-0162): the dialog opens from "My packs" and
+  // always stays visible. A 501 only disables the button's usual flow (the
+  // server has no token); the dialog itself shows why. `ownerCanManage`
+  // decides whether the dialog links the settings page.
   const [importing, setImporting] = useState(false);
-  const [importReady, setImportReady] = useState(true);
+  const [ownerCanManage, setOwnerCanManage] = useState(false);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -350,15 +353,19 @@ export function StickersPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-[16px] font-semibold">My packs</h2>
               <div className="flex flex-wrap gap-2">
-                {importReady && (
-                  <button
-                    type="button"
-                    onClick={() => setImporting(true)}
-                    className="rounded-full border border-border-strong bg-surface px-4 py-1.5 text-[14px] font-medium text-foreground hover:bg-surface-raised"
-                  >
-                    Import from Telegram
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImporting(true);
+                    setOwnerCanManage(true);
+                    void getIntegrationsStatus()
+                      .then((status) => setOwnerCanManage(status.canManage))
+                      .catch(() => setOwnerCanManage(false));
+                  }}
+                  className="rounded-full border border-border-strong bg-surface px-4 py-1.5 text-[14px] font-medium text-foreground hover:bg-surface-raised"
+                >
+                  Import from Telegram
+                </button>
                 <button
                   type="button"
                   onClick={() => setCreating(true)}
@@ -643,7 +650,12 @@ export function StickersPage() {
             void refresh();
           }}
           onClose={() => setImporting(false)}
-          onUnavailable={() => setImportReady(false)}
+          onUnavailable={() => {
+            // The dialog shows the not-set-up state itself; nothing to
+            // hide here. Kept so the entry point learns the feature is
+            // off without closing anything.
+          }}
+          isOwner={ownerCanManage}
         />
       )}
     </SettingsShell>

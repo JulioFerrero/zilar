@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { TelegramImportDialog } from './TelegramImportDialog';
 import { ApiError } from '@/lib/api';
 
@@ -108,7 +108,7 @@ describe('TelegramImportDialog', () => {
     }
   });
 
-  it('closes and reports unavailable on 501 so the entry hides', async () => {
+  it('shows the not-set-up state on 501 and never closes silently', async () => {
     const importFn = vi.fn(async () => {
       throw new ApiError(501, 'import_unavailable', 'off');
     });
@@ -124,10 +124,49 @@ describe('TelegramImportDialog', () => {
     );
     fireEvent.change(screen.getByLabelText('Pack link or name'), { target: { value: 'FunCats' } });
     fireEvent.click(screen.getByRole('button', { name: 'Import' }));
-    await waitFor(() => {
-      expect(onUnavailable).toHaveBeenCalled();
-      expect(onClose).toHaveBeenCalled();
+    // The dialog stays open and says why, instead of closing itself.
+    expect(await screen.findByText('Telegram import is not set up')).toBeTruthy();
+    expect(screen.getByText(/not set up on this server/)).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onUnavailable).toHaveBeenCalled();
+  });
+
+  it('links the settings page for the owner, and names the server runner for others', async () => {
+    const failing = vi.fn(async () => {
+      throw new ApiError(501, 'import_unavailable', 'off');
     });
+    const { unmount } = render(
+      <TelegramImportDialog onDone={() => {}} onClose={() => {}} isOwner importFn={failing} />,
+    );
+    fireEvent.change(screen.getByLabelText('Pack link or name'), { target: { value: 'FunCats' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect(await screen.findByText(/integrations settings/)).toBeTruthy();
+    unmount();
+
+    render(<TelegramImportDialog onDone={() => {}} onClose={() => {}} importFn={failing} />);
+    fireEvent.change(screen.getByLabelText('Pack link or name'), { target: { value: 'FunCats' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect(await screen.findByText(/Ask the person who runs this server/)).toBeTruthy();
+  });
+
+  it('renders as an overlay like the other dialogs', async () => {
+    const importFn = vi.fn(async () => ({
+      pack: donePack,
+      imported: 1,
+      skippedAnimated: 0,
+      skippedInvalid: 0,
+    }));
+    const { container } = render(
+      <TelegramImportDialog onDone={() => {}} onClose={() => {}} importFn={importFn} />,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Import from Telegram' });
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.className).toContain('fixed');
+    expect(dialog.className).toContain('inset-0');
+    // Focus moves into the dialog on open.
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Pack link or name');
+    void container;
+    void importFn;
   });
 
   it('requires an input before importing', async () => {

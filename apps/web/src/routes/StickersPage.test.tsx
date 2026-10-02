@@ -310,13 +310,20 @@ describe('StickersPage', () => {
     expect(await screen.findByText('Imported from Telegram: Fun Cats')).toBeTruthy();
   });
 
-  it('hides the import entry when the server answers 501', async () => {
+  it('shows the not-set-up state when the server answers 501 and keeps the entry', async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (typeof url === 'string' && url.includes('/sticker-packs/discover')) {
         return jsonResponse(200, { packs: [], next: null });
       }
       if (typeof url === 'string' && url.includes('/sticker-favorites')) {
         return jsonResponse(200, { favorites: [] });
+      }
+      if (typeof url === 'string' && url.includes('/settings/integrations')) {
+        return jsonResponse(200, {
+          telegram: { configured: false, source: null },
+          email: { configured: true, source: 'stored', from: 'Zilar <a@b.c>' },
+          canManage: true,
+        });
       }
       if (typeof url === 'string' && url.endsWith('/sticker-packs/import/telegram')) {
         return jsonResponse(501, {
@@ -331,9 +338,10 @@ describe('StickersPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import from Telegram' }));
     fireEvent.change(screen.getByLabelText('Pack link or name'), { target: { value: 'FunCats' } });
     fireEvent.click(screen.getByRole('button', { name: 'Import' }));
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Import from Telegram' })).toBeNull();
-    });
+    // The dialog stays open and says why; the entry stays visible and the
+    // owner gets a link to the settings page.
+    expect(await screen.findByText('Telegram import is not set up')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Import from Telegram' })).toBeTruthy();
   });
 
   it('marks imported packs and locks them to private', async () => {

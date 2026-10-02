@@ -42,6 +42,7 @@ function fakeClient(
   const fileCalls: string[] = [];
   return {
     fileCalls,
+    getMe: async () => ({ ok: true }),
     getStickerSet: async () => set,
     downloadFile: async (fileId: string) => {
       fileCalls.push(fileId);
@@ -215,6 +216,7 @@ describe('telegram sticker import', () => {
 
   it('answers 404 pack_not_found for unknown packs without Telegram text', async () => {
     const client: TelegramClient = {
+      getMe: async () => ({ ok: true }),
       getStickerSet: async () => {
         throw new TelegramImportError('pack_not_found', 'That Telegram sticker pack was not found');
       },
@@ -228,6 +230,7 @@ describe('telegram sticker import', () => {
 
   it('reports try_later when Telegram rate limits', async () => {
     const client: TelegramClient = {
+      getMe: async () => ({ ok: true }),
       getStickerSet: async () => {
         throw new TelegramImportError('try_later', 'Telegram is busy, try again later');
       },
@@ -540,6 +543,7 @@ describe('telegram sticker import', () => {
 
   it('never lets the bot token reach the logs on a failed import', async () => {
     const client: TelegramClient = {
+      getMe: async () => ({ ok: true }),
       getStickerSet: async () => {
         throw new TelegramImportError('try_later', 'Telegram is busy, try again later');
       },

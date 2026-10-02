@@ -16,6 +16,8 @@ import type { Auth } from './auth/auth';
 import { createAuthRoutes } from './auth/routes';
 import { CurrentMailer, createMailer } from './auth/mailer';
 import { createSetupRoutes, type SetupRoutesDependencies } from './setup/routes';
+import { createIntegrationsRoutes, createGetBotToken } from './integrations/routes';
+import { settingsCipherFor } from './setup/settings';
 import { createChatsRoutes } from './chats/routes';
 import { createChatPrefsRoutes } from './chat-prefs/routes';
 import type { ServerConfig } from './config';
@@ -140,6 +142,20 @@ export interface AppDependencies {
   telegramClient?: import('./stickers/telegram-import').TelegramClient;
   /** T-0123: overrides the Telegram import limiter (tests inject a window). */
   telegramImportNow?: () => number;
+  /** T-0162: overrides the integrations routes (tests inject fake senders). */
+  integrations?:
+    | Partial<
+        Pick<
+          import('./integrations/routes').IntegrationsRoutesDependencies,
+          | 'createTelegram'
+          | 'telegramLimiter'
+          | 'emailLimiter'
+          | 'now'
+          | 'sendTestMail'
+          | 'swapMailer'
+        >
+      >
+    | undefined;
   /**
    * T-0119: push env (kept separate from the server config so push stays
    * optional). Absent = push off (every push route answers 404).
@@ -181,6 +197,7 @@ export function createApp({
   uploadLimiter,
   telegramClient,
   telegramImportNow,
+  integrations,
   push,
   gifProvider,
   gifMediaFetcher,
@@ -331,6 +348,13 @@ export function createApp({
   app.route('/api', createDraftsRoutes({ auth }));
   // Stickers (T-0120): packs, uploads and file serving. The storage dir
   // comes from `STICKER_STORAGE_DIR`; tests override it with a temp dir.
+  // The bot token resolves per request: env wins, else the stored
+  // integrations value, else none (T-0162), so saving needs no restart.
+  const getBotToken = createGetBotToken({
+    config,
+    db,
+    cipher: settingsCipherFor(config),
+  });
   app.route(
     '/api',
     createStickersRoutes({
@@ -339,10 +363,26 @@ export function createApp({
       config,
       storageDir: stickerStorageDir ?? config.STICKER_STORAGE_DIR,
       audit: auditRecorder,
+      getBotToken,
       ...(stickerNow === undefined ? {} : { now: stickerNow }),
       ...(uploadLimiter === undefined ? {} : { uploadLimiter }),
       ...(telegramClient === undefined ? {} : { telegramClient }),
       ...(telegramImportNow === undefined ? {} : { now: telegramImportNow }),
+    }),
+  );
+  // Integration settings (T-0162 + Email): owner-only; everyone else gets
+  // the same 404 as an unknown route. Covered by the 401 sweep as
+  // session-required routes (never allowlisted).
+  app.route(
+    '/api',
+    createIntegrationsRoutes({
+      auth,
+      db,
+      config,
+      logger,
+      mailer: currentMailer,
+      audit: auditRecorder,
+      ...integrations,
     }),
   );
   app.route('/api', createAuditRoutes({ auth, db }));
