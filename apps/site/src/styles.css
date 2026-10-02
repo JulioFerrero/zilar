@@ -1,7 +1,9 @@
 /* Zilar landing page.
    Material language: the icon's brushed black key and polished silver, lit like hardware.
    One accent, the moon's gold, kept for state: the indicator lamp and the dial pointer.
-   Corner radii: keys 12px, plates and bezels 24px, knobs and lamps round. */
+   Corner radii: keys 12px, plates and bezels 24px, knobs and lamps round.
+   Type: Archivo, wide for what is engraved on the hardware (headlines, labels, keys) and normal
+   width for reading; Martian Mono, slightly condensed, for everything a readout displays. */
 :root {
   --black: #000;
   --graphite-1: #0b0b0d;
@@ -11,8 +13,8 @@
   --steel: #8c919a;
   --silver: #e9ebef;
   --gold: #f0b445;
-  --font: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
-  --mono: 'Geist Mono Variable', ui-monospace, monospace;
+  --font: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+  --mono: 'Martian Mono Variable', ui-monospace, monospace;
   --page-x: max(20px, calc((100vw - 1180px) / 2));
   /* brushed metal: fractal noise stretched along x, drawn once as a tiny SVG */
   --brushed: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='240'%3E%3Cfilter id='b'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0035 0.9' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23b)'/%3E%3C/svg%3E");
@@ -50,7 +52,8 @@ h1,
 h2 {
   margin: 0;
   font-weight: 600;
-  letter-spacing: -0.035em;
+  font-stretch: 118%;
+  letter-spacing: -0.03em;
   text-wrap: balance;
 }
 
@@ -88,9 +91,10 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-size: 19px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-size: 18px;
+  font-weight: 700;
+  font-stretch: 125%;
+  letter-spacing: 0.01em;
   text-decoration: none;
 }
 
@@ -104,8 +108,8 @@ a {
   padding: 0 22px;
   border: 0;
   border-radius: 12px;
-  font: 600 16px/1 var(--font);
-  letter-spacing: -0.01em;
+  font: semi-expanded 600 16px/1 var(--font);
+  letter-spacing: 0;
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
@@ -360,6 +364,7 @@ h1 {
   color: var(--silver);
   font-weight: 600;
   font-size: 15px;
+  font-stretch: 112%;
 }
 
 /* exactly two lines, whatever the state: flipping a control never moves the page */
@@ -494,7 +499,7 @@ h1 {
     inset 0 3px 8px rgba(0, 0, 0, 0.95),
     0 1px 0 rgba(255, 255, 255, 0.07);
   color: var(--silver);
-  font: 500 28px/1 var(--mono);
+  font: semi-condensed 500 27px/1 var(--mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.04em;
   text-align: center;
@@ -541,8 +546,9 @@ h1 {
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 0 0 1px #000;
   color: #8d929b;
-  font: 600 12px/1 var(--font);
-  letter-spacing: 0.02em;
+  font: expanded 700 10px/1 var(--font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   transform: rotateX(14deg);
   transition: transform 0.16s cubic-bezier(0.3, 1.5, 0.5, 1);
 }
@@ -700,8 +706,8 @@ h1 {
 .engraved-label {
   display: block;
   color: #6c7079;
-  font: 500 11px/1 var(--mono);
-  letter-spacing: 0.12em;
+  font: expanded 600 10.5px/1 var(--font);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.9);
 }
@@ -714,7 +720,7 @@ h1 {
     inset 0 2px 5px rgba(0, 0, 0, 0.95),
     0 1px 0 rgba(255, 255, 255, 0.06);
   color: var(--silver);
-  font: 500 13px/1 var(--mono);
+  font: semi-condensed 500 13px/1 var(--mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -773,6 +779,7 @@ h1 {
   margin-top: 14px;
   font-size: 22px;
   font-weight: 600;
+  font-stretch: 115%;
   letter-spacing: -0.02em;
 }
 
@@ -801,8 +808,8 @@ h1 {
   border: 3px solid currentColor;
   border-radius: 10px;
   color: #c9ccd2;
-  font: 700 20px/1 var(--mono);
-  letter-spacing: 0.14em;
+  font: expanded 800 19px/1 var(--font);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   opacity: 0;
   transform: rotate(-9deg) scale(1.7);
@@ -865,7 +872,7 @@ h1 {
   list-style: none;
   background: linear-gradient(180deg, #c9c7c0, #e9e8e2 18%, #e4e3dc);
   color: #2b2b2e;
-  font: 500 11.5px/1.45 var(--mono);
+  font: semi-condensed 400 11px/1.5 var(--mono);
 }
 
 .ticket li {
@@ -920,7 +927,7 @@ h1 {
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 1px 2px rgba(0, 0, 0, 0.9);
   color: #eceef2;
-  font: 600 clamp(13px, 1.5vw, 19px)/1 var(--mono);
+  font: semi-condensed 600 clamp(13px, 1.5vw, 19px)/1 var(--mono);
   white-space: pre;
 }
 
@@ -986,6 +993,7 @@ h1 {
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
+  font-stretch: 112%;
 }
 
 .presets {
@@ -1012,7 +1020,7 @@ h1 {
     inset 0 -2px 0 rgba(0, 0, 0, 0.4),
     0 0 0 1px #000;
   color: var(--steel);
-  font: 600 14.5px/1 var(--font);
+  font: semi-expanded 600 14px/1 var(--font);
   cursor: pointer;
   transition:
     transform 0.08s ease,
@@ -1073,7 +1081,7 @@ h1 {
     inset 0 1px 0 rgba(255, 255, 255, 0.09),
     0 0 0 1px #000;
   color: #6c7079;
-  font: 600 12.5px/1 var(--mono);
+  font: semi-condensed 600 12px/1 var(--mono);
   cursor: pointer;
 }
 
@@ -1110,7 +1118,7 @@ h1 {
   list-style: none;
   counter-reset: line;
   color: #c9ccd2;
-  font: 400 13px/1.75 var(--mono);
+  font: semi-condensed 400 12.5px/1.8 var(--mono);
 }
 
 .code li {
@@ -1185,8 +1193,8 @@ h1 {
     inset 0 2px 6px rgba(0, 0, 0, 0.95),
     0 1px 0 rgba(255, 255, 255, 0.06);
   color: #8d929b;
-  font: 500 15px/1 var(--mono);
-  letter-spacing: 0.04em;
+  font: semi-condensed 500 15px/1 var(--mono);
+  letter-spacing: 0.02em;
   white-space: pre;
   transition:
     color 0.2s ease,
@@ -1255,8 +1263,8 @@ h1 {
 
 .spec-plate dt {
   color: var(--gold);
-  font: 500 13px/1.6 var(--mono);
-  letter-spacing: 0.04em;
+  font: expanded 600 12px/1.9 var(--font);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.9);
 }
@@ -1367,13 +1375,13 @@ h1 {
     inset 0 2px 4px rgba(0, 0, 0, 0.95),
     0 1px 0 rgba(255, 255, 255, 0.07);
   color: var(--gold);
-  font: 600 13px/1 var(--mono);
+  font: semi-condensed 600 13px/1 var(--mono);
 }
 
 .steps code,
 .engraving-foot code {
   color: #d5d8de;
-  font: 400 15px/1.6 var(--mono);
+  font: semi-condensed 400 14.5px/1.6 var(--mono);
   overflow-wrap: anywhere;
   /* engraved: dark above, a light catch below */
   text-shadow:
@@ -1391,7 +1399,8 @@ h1 {
 .path {
   color: #b7bac2;
   font-family: var(--mono);
-  font-size: 0.92em;
+  font-size: 0.9em;
+  font-stretch: 87.5%;
 }
 
 .engraving-foot {
