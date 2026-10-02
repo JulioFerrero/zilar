@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Zilar icon, silver dendrite</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0b0b0c;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+      #hint {
+        position: fixed;
+        left: 12px;
+        bottom: 10px;
+        font: 12px/1.4 ui-monospace, monospace;
+        color: #8a8a8a;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./node_modules/three/build/three.module.js",
+          "three/addons/": "./node_modules/three/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="hint">drag to orbit, scroll to zoom, double-click to reset</div>
+    <script type="module" src="./dendrite.js"></script>
+  </body>
+</html>
