@@ -8,38 +8,51 @@ ROOT="$(cd ../.. && pwd)"
 BRAND="$ROOT/assets/brand"
 WEB="$ROOT/apps/web/public"
 MOBILE="$ROOT/apps/mobile/assets/images"
-for layer in full bleed foreground background mono; do LAYER=$layer sh render.sh >/dev/null; done
+for layer in full bleed foreground background mono mono-rest mono-moon; do LAYER=$layer sh render.sh >/dev/null; done
 mkdir -p "$BRAND" "$WEB/icons" "$MOBILE"
 
 # --- the 3D icon: rounded key with its drop shadow (transparent), and a full-bleed square for stores / maskable
 cp out/icon-full-1024.png "$BRAND/icon.png"
 magick out/icon-bleed-2048.png -filter Lanczos -resize 1024x1024 -background '#0a0a0a' -alpha remove -alpha off "$BRAND/icon-bleed.png"
 
-# --- monochrome mark: trace the flat render into one SVG path (fill follows the text colour)
-magick out/icon-mono-2048.png -alpha off -colorspace Gray -threshold 50% -trim +repage out/mark.pbm
-potrace -b svg -u 1 --turdsize 40 --opttolerance 0.6 --flat -o out/mark-raw.svg out/mark.pbm
+# --- monochrome mark: trace the flat renders into SVG paths (all three share one crop, so they line up)
+CROP="$(magick out/icon-mono-2048.png -alpha off -colorspace Gray -threshold 50% -format %@ info:)"
+for part in mono mono-rest mono-moon; do
+  magick out/icon-$part-2048.png -alpha off -colorspace Gray -threshold 50% -crop "$CROP" +repage out/$part.pbm
+  potrace -b svg -u 1 --turdsize 40 --opttolerance 0.6 --flat -o out/$part-raw.svg out/$part.pbm
+done
 python3 - "$BRAND" <<'PY'
 import re, sys
 brand = sys.argv[1]
-raw = open('out/mark-raw.svg').read()
-w, h = (float(v) for v in re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', raw).groups())
-group = re.search(r'<g .*?</g>', raw, re.S).group(0)
-group = re.sub(r'fill="[^"]*"', 'fill="currentColor"', group)
-group = re.sub(r'stroke="[^"]*"', 'stroke="none"', group)
-def svg(fill):
-    body = group.replace('currentColor', fill) if fill else group
+
+def read(part):
+    raw = open(f'out/{part}-raw.svg').read()
+    w, h = (float(v) for v in re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', raw).groups())
+    group = re.search(r'<g .*?</g>', raw, re.S).group(0)
+    group = re.sub(r'stroke="[^"]*"', 'stroke="none"', group)
+    return w, h, group
+
+w, h, whole = read('mono')
+_, _, rest = read('mono-rest')
+_, _, moon = read('mono-moon')
+
+def fill(group, colour):
+    return re.sub(r'fill="[^"]*"', f'fill="{colour}"', group)
+
+def mark(colour):
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w:g} {h:g}" role="img" aria-label="Zilar">\n'
-            f'  <title>Zilar</title>\n  {body}\n</svg>\n')
-open(f'{brand}/logo-mark.svg', 'w').write(svg(None))
-open(f'{brand}/logo-mark-black.svg', 'w').write(svg('#000000'))
-open(f'{brand}/logo-mark-white.svg', 'w').write(svg('#ffffff'))
-# flat app icon (favicon): the mark in white on the near-black key, centred at 70% of the width
+            f'  <title>Zilar</title>\n  {fill(whole, colour)}\n</svg>\n')
+
+open(f'{brand}/logo-mark.svg', 'w').write(mark('currentColor'))
+open(f'{brand}/logo-mark-black.svg', 'w').write(mark('#000000'))
+open(f'{brand}/logo-mark-white.svg', 'w').write(mark('#ffffff'))
+# flat app icon (favicon): white planet and ring with a gold moon on the near-black key, 70% of the width
 scale = 1024 * 0.70 / w
-inner = group.replace('currentColor', '#fafafa')
 open(f'{brand}/icon-flat.svg', 'w').write(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Zilar">\n'
     '  <rect width="1024" height="1024" rx="230" fill="#0a0a0a"/>\n'
-    f'  <g transform="translate({(1024 - w * scale) / 2:g} {(1024 - h * scale) / 2:g}) scale({scale:g})">{inner}</g>\n'
+    f'  <g transform="translate({(1024 - w * scale) / 2:g} {(1024 - h * scale) / 2:g}) scale({scale:g})">'
+    f'{fill(rest, "#fafafa")}{fill(moon, "#f0b445")}</g>\n'
     '</svg>\n')
 PY
 

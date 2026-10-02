@@ -12,7 +12,10 @@ const RENDER = params.get('render') === '1';
 // full: the icon with its drop shadow; bleed: key fills the canvas (stores, maskable); foreground / background:
 // the two Android adaptive layers; mono: flat black on white with knock-out gaps, to trace into an SVG
 const LAYER = params.get('layer') ?? 'full';
-const MONO = LAYER === 'mono';
+const MONO = LAYER.startsWith('mono');
+// mono-moon / mono-rest split the mark in two, so the favicon can colour the moon
+const ONLY_MOON = LAYER === 'mono-moon';
+const NO_MOON = LAYER === 'mono-rest';
 const BLEED = LAYER === 'bleed' || LAYER === 'background';
 const SIZE = RENDER ? 1024 : Math.min(innerWidth, innerHeight);
 
@@ -133,9 +136,10 @@ const planetMaterial = new THREE.MeshStandardMaterial({
   roughness: 0.55,
   envMapIntensity: 2.4,
 });
+// the moon is warm gold, so it stands apart from the silver planet even at small sizes
 const moonMaterial = new THREE.MeshStandardMaterial({
   ...(await silverMaps([1.5, 1])),
-  color: 0xffffff,
+  color: 0xf0b445,
   metalness: 1,
   roughness: 0.3,
   envMapIntensity: 2.6,
@@ -158,12 +162,13 @@ PAPER.onBeforeCompile = (shader) => {
   );
 };
 const HALO = 11; // the white gap that separates the parts in the monochrome mark
-function ball(material, radius, position, parent) {
+function ball(material, radius, position, parent, part = 'body') {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 128, 96), MONO ? INK : material);
   mesh.position.copy(position);
   mesh.castShadow = true;
-  parent.add(mesh);
-  if (MONO) {
+  const hidden = (ONLY_MOON && part !== 'moon') || (NO_MOON && part === 'moon');
+  if (!hidden) parent.add(mesh);
+  if (MONO && !ONLY_MOON) {
     const halo = new THREE.Mesh(new THREE.SphereGeometry(radius + HALO, 128, 96), PAPER);
     halo.position.copy(position);
     parent.add(halo);
@@ -173,7 +178,7 @@ const ORBIT = 310;
 const MOON_AT = 0.2 * Math.PI; // angle of the moon on its orbit
 const tilt = new THREE.Group();
 tilt.rotation.set(1.2, 0, 0.5);
-const MOON_RADIUS = 60;
+const MOON_RADIUS = 68;
 const RING_TUBE = 15;
 // the ring stops short of the moon on both sides, so the two never intersect
 const GAP = (MOON_RADIUS + RING_TUBE + 16) / ORBIT;
@@ -190,9 +195,9 @@ if (MONO) {
     PAPER,
   );
   halo.rotation.z = orbitRing.rotation.z;
-  tilt.add(halo);
+  if (!ONLY_MOON) tilt.add(halo);
 }
-tilt.add(orbitRing);
+if (!ONLY_MOON) tilt.add(orbitRing);
 for (const end of [MOON_AT + GAP, MOON_AT - GAP]) {
   ball(
     ringMaterial,
@@ -206,6 +211,7 @@ ball(
   MOON_RADIUS,
   new THREE.Vector3(Math.cos(MOON_AT) * ORBIT, Math.sin(MOON_AT) * ORBIT, 0),
   tilt,
+  'moon',
 );
 system.add(tilt);
 ball(planetMaterial, 200, new THREE.Vector3(0, 0, 0), system);
