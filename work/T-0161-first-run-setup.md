@@ -1,7 +1,7 @@
 ---
 id: T-0161
 title: First-run setup screen (Resend key, first admin) with no manual environment setup
-status: planned
+status: blocked
 milestone: M5
 branch: task/T-0161-first-run-setup
 model: meta/muse-spark-1.3-contributor
@@ -74,5 +74,28 @@ pnpm --filter @zilar/web test --maxWorkers=2 src/auth src/routes
 ---
 
 ## Report (written by the worker when done)
+
+**Status: blocked — a second writer is editing this same worktree concurrently. I did no further source edits after discovering it.**
+
+What I did before discovering the conflict:
+- `pnpm install` (exit 0, ~7.5 s).
+- Read AGENTS.md, the task spec, and all "Read first" material plus Better Auth internals (OTP endpoints, `createVerificationOTP` server API, error codes, rate limits, session cookie flows) and web test patterns.
+- Added `instance_settings` to `apps/server/src/db/schema.ts` and generated the single migration `apps/server/drizzle/0034_instance-settings.sql` (+ journal + snapshot) via `drizzle-kit generate --name instance-settings`.
+- Started `apps/server/src/setup/`: wrote `crypto.ts` (AES-256-GCM + HKDF `zilar-instance-settings`, my own design) and a first draft of `settings.ts`; made a comment-only edit to `config.ts`'s mail default (production unset boots unconfigured).
+
+What I found at ~21:04 CEST: uncommitted changes in this worktree that are NOT mine appeared while I was working:
+- `apps/server/src/auth/mailer.ts` — a duplicate `MailNotConfiguredError` class (mine at line 32, theirs at line 221), plus their `SwitchableMailer`, `RESEND_SMTP`, `createResendMailer`, and a `MAIL_TRANSPORT === 'setup'` branch in `createMailer`. File mtime 21:04, after my last edit of it.
+- `apps/server/src/app.ts` — their `setupMailer` dep + `createSetupRoutes` mount. `apps/server/src/index.ts` — their startup wiring via `setup/secret-box.ts` + `loadMailSettings`.
+- `apps/server/src/setup/` — directory created 21:01–21:05 containing BOTH my files (`crypto.ts` 21:03, `settings.ts` 21:04 — my writes) and files I never created (`secret-box.ts`, `secret-box.test.ts`, `routes.ts`, `routes.test.ts`, still being edited at 21:05 while I was reading).
+- Their design differs from mine in load-bearing ways: separate `secret-box.ts` (nonce|ciphertext|tag, zero salt, `settingsKey(config)` helper) vs my `crypto.ts` (v1 versioned envelope with random salt); their settings module has `needsSetup`/`saveMailSettings` signatures my files don't match; their routes import `{ needsSetup, saveMailSettings }` from `./settings` which my `settings.ts` does not export — the tree is currently in a non-compiling mixed state through no action of mine.
+
+Why blocked, not merged: two writers on one branch/worktree means every further edit of mine risks silently overwriting or breaking their in-flight work (and vice versa — my `crypto.ts` and `settings.ts` already collide by filename with their design). Per AGENTS.md safety rules I stopped editing source files the moment I confirmed foreign writes.
+
+Open questions / decisions needed from the lead:
+1. Who owns T-0161 — me or the other writer? If both, how is the work split (filenames/modules) and where do we coordinate so we stop writing the same files?
+2. Design call: which encryption envelope is canonical — my salted v1 `crypto.ts:SettingsCipher` or their `secret-box.ts` (`seal`/`open`/`settingsKey`)? Same for mailer shape (`NotConfiguredMailer` vs `SwitchableMailer`, `MAIL_TRANSPORT` unset vs `'setup'` value) and "setup needed" definition.
+3. The migration `0034_instance-settings.sql` (+ journal + snapshot) is mine, generated before the conflict; keep it or regenerate after the design call.
+
+Checked but did NOT run (tree left in a mixed, likely non-compiling state): `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, server/web tests. No commit made: committing a half-foreign tree would misattribute their work to me.
 
 ## Review (written by Claude)
