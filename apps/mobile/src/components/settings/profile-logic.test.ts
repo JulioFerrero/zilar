@@ -102,6 +102,26 @@ describe('friendlyClaimError', () => {
     ).toContain('just taken');
     expect(
       friendlyClaimError(
+        new ProfileApiError(
+          409,
+          'handle_change_too_soon',
+          'You can change your username again',
+          '2026-11-01T00:00:00.000Z',
+        ),
+      ),
+    ).toContain('Next change possible on');
+    expect(
+      friendlyClaimError(
+        new ProfileApiError(
+          409,
+          'handle_change_too_soon',
+          'You can change your username again',
+          '2026-11-01T00:00:00.000Z',
+        ),
+      ),
+    ).toContain(new Date('2026-11-01T00:00:00.000Z').toLocaleDateString());
+    expect(
+      friendlyClaimError(
         new ProfileApiError(409, 'handle_change_too_soon', 'Next change possible on 10/10/2026'),
       ),
     ).toContain('10/10/2026');

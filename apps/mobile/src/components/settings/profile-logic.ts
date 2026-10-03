@@ -77,8 +77,17 @@ export function friendlyClaimError(error: unknown): string {
         return 'That username is reserved. Try another.';
       case 'handle_taken':
         return 'That username was just taken. Try another.';
-      case 'handle_change_too_soon':
+      case 'handle_change_too_soon': {
+        // The server sends the next-change date as `nextChangeAt` in the
+        // 409 error body; the message is only the fallback.
+        if (error.nextChangeAt !== undefined) {
+          const date = new Date(error.nextChangeAt);
+          if (!Number.isNaN(date.getTime())) {
+            return `Next change possible on ${date.toLocaleDateString()}`;
+          }
+        }
         return error.message;
+      }
       case 'rate_limited':
         return 'Too many tries — wait a little and try again.';
       default:

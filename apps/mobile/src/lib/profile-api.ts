@@ -56,12 +56,18 @@ export interface ProfileApi {
 export class ProfileApiError extends Error {
   readonly status: number;
   readonly code: string;
+  /**
+   * The server's `nextChangeAt` for `handle_change_too_soon` (validated as
+   * a date at the boundary); undefined for every other error.
+   */
+  readonly nextChangeAt?: string | undefined;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, nextChangeAt?: string | undefined) {
     super(message);
     this.name = 'ProfileApiError';
     this.status = status;
     this.code = code;
+    this.nextChangeAt = nextChangeAt;
   }
 }
 
@@ -129,10 +135,21 @@ function parseAvatarUrl(value: unknown): { url: string } | null {
 }
 
 /** Pulls the `{ code, message }` envelope out of a failed response body. */
-export function parseApiErrorBody(body: unknown): { code: string; message: string | null } {
+export function parseApiErrorBody(body: unknown): {
+  code: string;
+  message: string | null;
+  nextChangeAt?: string | undefined;
+} {
   const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
   const code = isString(error?.['code']) ? error['code'] : 'request_failed';
   const message = isString(error?.['message']) ? error['message'] : null;
+  // The handle claim carries the next-change date alongside the code (web
+  // reads it the same way); anything that is not a parseable date is
+  // dropped, so callers never format garbage.
+  const nextChangeAt = error?.['nextChangeAt'];
+  if (isString(nextChangeAt) && !Number.isNaN(new Date(nextChangeAt).getTime())) {
+    return { code, message, nextChangeAt };
+  }
   return { code, message };
 }
 
@@ -176,11 +193,12 @@ async function request(
 
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const { code, message } = parseApiErrorBody(body);
+    const { code, message, nextChangeAt } = parseApiErrorBody(body);
     throw new ProfileApiError(
       response.status,
       code,
       message ?? `Request failed (${response.status})`,
+      nextChangeAt,
     );
   }
   return body;

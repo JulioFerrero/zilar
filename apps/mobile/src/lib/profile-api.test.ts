@@ -52,6 +52,30 @@ describe('parseApiErrorBody', () => {
   it('falls back to request_failed without an envelope', () => {
     expect(parseApiErrorBody({ nope: true })).toEqual({ code: 'request_failed', message: null });
   });
+
+  it('keeps a valid nextChangeAt from the error detail', () => {
+    expect(
+      parseApiErrorBody({
+        error: {
+          code: 'handle_change_too_soon',
+          message: 'You can change your username again',
+          nextChangeAt: '2026-11-01T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({
+      code: 'handle_change_too_soon',
+      message: 'You can change your username again',
+      nextChangeAt: '2026-11-01T00:00:00.000Z',
+    });
+  });
+
+  it('drops a nextChangeAt that is not a date', () => {
+    expect(
+      parseApiErrorBody({
+        error: { code: 'handle_change_too_soon', message: 'Slow down', nextChangeAt: 'soon' },
+      }),
+    ).toEqual({ code: 'handle_change_too_soon', message: 'Slow down' });
+  });
 });
 
 describe('createProfileApi profile', () => {
@@ -175,14 +199,38 @@ describe('createProfileApi handles', () => {
     }
   });
 
-  it('keeps handle_change_too_soon with the server message (next-change date)', async () => {
+  it('keeps handle_change_too_soon with the next-change date on the error', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(
+        {
+          error: {
+            code: 'handle_change_too_soon',
+            message: 'You can change your username again',
+            nextChangeAt: '2026-11-01T00:00:00.000Z',
+          },
+        },
+        409,
+      ),
+    );
+
+    const error = await api(fetchImpl)
+      .claimHandle('ada')
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ProfileApiError);
+    expect(error).toMatchObject({
+      status: 409,
+      code: 'handle_change_too_soon',
+      nextChangeAt: '2026-11-01T00:00:00.000Z',
+    });
+  });
+
+  it('keeps handle_change_too_soon without the date when the field is absent', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse(
         {
           error: {
             code: 'handle_change_too_soon',
             message: 'Next change possible on 10/10/2026',
-            nextChangeAt: '2026-10-10T00:00:00.000Z',
           },
         },
         409,
@@ -193,6 +241,7 @@ describe('createProfileApi handles', () => {
       status: 409,
       code: 'handle_change_too_soon',
       message: 'Next change possible on 10/10/2026',
+      nextChangeAt: undefined,
     });
   });
 
