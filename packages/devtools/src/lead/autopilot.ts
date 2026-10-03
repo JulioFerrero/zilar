@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { type OpenCodeClient } from './client.js';
-import { applyRecordPatch, decide, type Action } from './decide.js';
+import { applyRecordPatch, decide, type Action, type FindingCounts } from './decide.js';
 import { currentHead, type GitRunner } from './git.js';
 import { findTaskFile } from './launch.js';
 import { loadPrompt, renderPrompt } from './prompts.js';
@@ -38,6 +38,23 @@ export function extractVerdict(text: string): string {
   return line === undefined ? '(no verdict line)' : line.trim();
 }
 
+// The `Counts: must-fix=N, should-fix=N, nit=N` line the pre-review prompt asks
+// for. Undefined when the reviewer skipped it, so the lead reads the packet.
+export function extractCounts(text: string): FindingCounts | undefined {
+  const match =
+    /counts:[\s*]*must-?fix\s*[=:]?\s*(\d+)\s*[,;]?\s*should-?fix\s*[=:]?\s*(\d+)\s*[,;]?\s*nits?\s*[=:]?\s*(\d+)/i.exec(
+      text,
+    );
+  if (match === null) {
+    return undefined;
+  }
+  return {
+    mustFix: Number(match[1]),
+    shouldFix: Number(match[2]),
+    nit: Number(match[3]),
+  };
+}
+
 function readTaskInfo(
   worktree: string,
   task: string,
@@ -63,15 +80,19 @@ function readTaskInfo(
   };
 }
 
-function prereviewInfo(worktree: string): { present: boolean; verdict: string } {
+function prereviewInfo(worktree: string): {
+  present: boolean;
+  verdict: string;
+  counts: FindingCounts | undefined;
+} {
   const file = path.join(worktree, 'PREREVIEW.md');
   let text: string;
   try {
     text = fs.readFileSync(file, 'utf8');
   } catch {
-    return { present: false, verdict: '' };
+    return { present: false, verdict: '', counts: undefined };
   }
-  return { present: true, verdict: extractVerdict(text) };
+  return { present: true, verdict: extractVerdict(text), counts: extractCounts(text) };
 }
 
 async function applyActions(
@@ -212,6 +233,7 @@ export async function tickOnce(
         head,
         prereviewFilePresent: review.present,
         prereviewVerdict: review.verdict,
+        prereviewCounts: review.counts,
         prereviewSessionState,
       });
       if (options.dryRun) {

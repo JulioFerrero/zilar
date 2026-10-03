@@ -51,6 +51,7 @@ export function loadState(statePath: string): StateFile {
       prereview: value.prereview,
       packetReadyForHead: value.packetReadyForHead,
       prereviewStalledEscalated: value.prereviewStalledEscalated,
+      autoFixRounds: value.autoFixRounds,
       escalatedPermissionIds: value.escalatedPermissionIds,
       escalatedQuestionIds: value.escalatedQuestionIds,
       stalledEscalated: value.stalledEscalated,

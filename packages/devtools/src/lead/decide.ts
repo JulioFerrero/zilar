@@ -5,6 +5,16 @@ import type { PrereviewRecord, TaskRecord } from './types.js';
 export const QUOTA_RETRY_MS = 10 * 60 * 1000;
 export const QUOTA_ESCALATE_MS = 60 * 60 * 1000;
 export const NUDGE_LIMIT = 2;
+// Automatic fix rounds per task: the autopilot sends the pre-review's must-fix
+// and should-fix findings back to the worker this many times, then hands the
+// packet to the lead.
+export const AUTOFIX_LIMIT = 2;
+
+export interface FindingCounts {
+  mustFix: number;
+  shouldFix: number;
+  nit: number;
+}
 
 export interface DecideInput {
   now: number;
@@ -24,6 +34,8 @@ export interface DecideInput {
   head: string | undefined;
   prereviewFilePresent: boolean;
   prereviewVerdict: string;
+  // From the `Counts:` line of PREREVIEW.md; undefined when the reviewer skipped it.
+  prereviewCounts: FindingCounts | undefined;
   prereviewSessionState: SessionState | 'none';
 }
 
@@ -35,7 +47,7 @@ export type Action =
       decision: 'once' | 'reject';
       message?: string | undefined;
     }
-  | { kind: 'send-prompt'; template: 'resume' | 'nudge' }
+  | { kind: 'send-prompt'; template: 'resume' | 'nudge' | 'autofix' }
   | { kind: 'start-prereview'; head: string }
   | { kind: 'escalate'; line: string }
   | { kind: 'record'; patch: RecordPatch };
@@ -46,11 +58,26 @@ export interface RecordPatch {
   lastQuotaEscalatedAt?: number;
   packetReadyForHead?: string;
   prereviewStalledEscalated?: boolean;
+  autoFixRounds?: number;
   addEscalatedPermissionIds?: string[];
   addEscalatedQuestionIds?: string[];
   stalledEscalated?: boolean;
   blockedEscalatedText?: string;
   lastEscalation?: string;
+}
+
+// The word the lead reads first on a PACKET READY line: clean means the
+// pre-review found nothing must-fix or should-fix, so the lead only checks the
+// gate and merges.
+function packetTag(counts: FindingCounts | undefined, rounds: number): string {
+  if (counts === undefined) {
+    return '[no counts line, read it]';
+  }
+  const done = rounds === 0 ? '' : ` after ${rounds} auto round(s)`;
+  if (counts.mustFix + counts.shouldFix === 0) {
+    return `[CLEAN${done}, nit ${counts.nit}]`;
+  }
+  return `[NEEDS LEAD${done}: must-fix ${counts.mustFix}, should-fix ${counts.shouldFix}]`;
 }
 
 function oneLine(text: string, max: number): string {
@@ -148,8 +175,24 @@ export function decide(input: DecideInput): Action[] {
     ) {
       if (input.prereviewFilePresent) {
         if (input.record.packetReadyForHead !== input.head) {
-          escalate(`LEAD: PACKET READY ${input.task} (${oneLine(input.prereviewVerdict, 160)})`);
-          actions.push({ kind: 'record', patch: { packetReadyForHead: input.head } });
+          const counts = input.prereviewCounts;
+          const blocking = counts === undefined ? 0 : counts.mustFix + counts.shouldFix;
+          if (counts !== undefined && blocking > 0 && input.record.autoFixRounds < AUTOFIX_LIMIT) {
+            const round = input.record.autoFixRounds + 1;
+            escalate(
+              `LEAD: AUTOFIX ${input.task} round ${round} (must-fix ${counts.mustFix}, should-fix ${counts.shouldFix})`,
+            );
+            actions.push({ kind: 'send-prompt', template: 'autofix' });
+            actions.push({
+              kind: 'record',
+              patch: { autoFixRounds: round, packetReadyForHead: input.head },
+            });
+          } else {
+            escalate(
+              `LEAD: PACKET READY ${input.task} ${packetTag(counts, input.record.autoFixRounds)} (${oneLine(input.prereviewVerdict, 160)})`,
+            );
+            actions.push({ kind: 'record', patch: { packetReadyForHead: input.head } });
+          }
         }
       } else if (!input.record.prereviewStalledEscalated) {
         escalate(`LEAD: PRE-REVIEW STALLED ${input.task} (idle, no PREREVIEW.md)`);
@@ -207,6 +250,7 @@ export function applyRecordPatch(record: TaskRecord, patch: RecordPatch): TaskRe
     lastQuotaEscalatedAt: patch.lastQuotaEscalatedAt ?? record.lastQuotaEscalatedAt,
     packetReadyForHead: patch.packetReadyForHead ?? record.packetReadyForHead,
     prereviewStalledEscalated: patch.prereviewStalledEscalated ?? record.prereviewStalledEscalated,
+    autoFixRounds: patch.autoFixRounds ?? record.autoFixRounds,
     escalatedPermissionIds: [...merged],
     escalatedQuestionIds: [...questions],
     stalledEscalated: patch.stalledEscalated ?? record.stalledEscalated,

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { extractVerdict, tickOnce, type AutopilotDeps } from './autopilot';
+import { extractCounts, extractVerdict, tickOnce, type AutopilotDeps } from './autopilot';
 import { FakeOpenCodeClient } from './client';
 import type { GitRunner } from './git';
 import { promptsDir } from './prompts';
@@ -262,5 +262,27 @@ describe('extractVerdict', () => {
 
   it('falls back when there is none', () => {
     expect(extractVerdict('# R\n\nnothing\n')).toBe('(no verdict line)');
+  });
+});
+
+describe('extractCounts', () => {
+  it('reads the Counts line in the requested form', () => {
+    expect(extractCounts('Counts: must-fix=1, should-fix=2, nit=3')).toEqual({
+      mustFix: 1,
+      shouldFix: 2,
+      nit: 3,
+    });
+  });
+
+  it('tolerates spacing and case', () => {
+    expect(extractCounts('**counts:** must-fix = 0; should-fix = 0; nits = 4')).toEqual({
+      mustFix: 0,
+      shouldFix: 0,
+      nit: 4,
+    });
+  });
+
+  it('is undefined when the line is missing', () => {
+    expect(extractCounts('# R\n\nVerdict: ok')).toBeUndefined();
   });
 });
