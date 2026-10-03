@@ -123,6 +123,36 @@ describe('voice transcripts store (T-0179)', () => {
     await expect(deleteTranscript('m-1', failing)).resolves.toBeUndefined();
   });
 
+  it('two saves started at the same time both survive', async () => {
+    const file = memoryFile();
+    await Promise.all([
+      saveTranscript('m-1', { text: 'one' }, file),
+      saveTranscript('m-2', { text: 'two' }, file),
+    ]);
+    expect(await readTranscripts(file)).toEqual({
+      'm-1': { text: 'one' },
+      'm-2': { text: 'two' },
+    });
+  });
+
+  it('a failed write does not block later ones', async () => {
+    let stored: string | null = null;
+    let writes = 0;
+    const flaky: TranscriptFile = {
+      read: async () => stored,
+      write: async (raw: string) => {
+        writes += 1;
+        if (writes === 1) {
+          throw new Error('no storage in tests');
+        }
+        stored = raw;
+      },
+    };
+    await saveTranscript('m-1', { text: 'lost' }, flaky);
+    await saveTranscript('m-2', { text: 'kept' }, flaky);
+    expect(parseTranscripts(stored)).toEqual({ 'm-2': { text: 'kept' } });
+  });
+
   it('an empty id or empty text stores nothing', async () => {
     const file = memoryFile();
     await saveTranscript('', { text: 'hi' }, file);

@@ -101,6 +101,20 @@ export async function readTranscripts(file?: TranscriptFile): Promise<Transcript
 }
 
 /**
+ * All writes run one at a time (T-0179, round 1): `saveTranscript` and
+ * `deleteTranscript` each wait for the previous write, so two saves started
+ * together never lose one to a stale read. A failed write never blocks
+ * later ones. Reads stay unchained.
+ */
+let writeChain: Promise<void> = Promise.resolve();
+
+function chainWrite(work: () => Promise<void>): Promise<void> {
+  const next = writeChain.then(work, work);
+  writeChain = next.catch(() => {});
+  return next;
+}
+
+/**
  * Stores one transcript, capped at `MAX_TRANSCRIPT_CHARS` and
  * `MAX_STORED_TRANSCRIPTS` entries (oldest dropped). A failing storage
  * never breaks the chat: it resolves without throwing.
@@ -113,6 +127,16 @@ export async function saveTranscript(
   if (id === '') {
     return;
   }
+  return chainWrite(async () => {
+    await writeTranscript(id, entry, file);
+  });
+}
+
+async function writeTranscript(
+  id: string,
+  entry: StoredTranscript,
+  file?: TranscriptFile,
+): Promise<void> {
   const backend = file ?? defaultTranscriptFile();
   let current: TranscriptMap = {};
   try {
@@ -142,21 +166,23 @@ export async function saveTranscript(
 
 /** Forgets one transcript; a failing storage resolves without throwing. */
 export async function deleteTranscript(id: string, file?: TranscriptFile): Promise<void> {
-  const backend = file ?? defaultTranscriptFile();
-  let current: TranscriptMap = {};
-  try {
-    current = parseTranscripts(await backend.read());
-  } catch {
-    return;
-  }
-  if (current[id] === undefined) {
-    return;
-  }
-  const next: TranscriptMap = { ...current };
-  delete next[id];
-  try {
-    await backend.write(JSON.stringify(next));
-  } catch {
-    // A blocked storage must never break the chat.
-  }
+  return chainWrite(async () => {
+    const backend = file ?? defaultTranscriptFile();
+    let current: TranscriptMap = {};
+    try {
+      current = parseTranscripts(await backend.read());
+    } catch {
+      return;
+    }
+    if (current[id] === undefined) {
+      return;
+    }
+    const next: TranscriptMap = { ...current };
+    delete next[id];
+    try {
+      await backend.write(JSON.stringify(next));
+    } catch {
+      // A blocked storage must never break the chat.
+    }
+  });
 }
