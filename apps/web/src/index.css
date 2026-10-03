@@ -53,6 +53,8 @@
   --color-bubble-out: var(--bubble-out);
   --color-bubble-in-meta: var(--bubble-in-meta);
   --color-bubble-out-meta: var(--bubble-out-meta);
+  --color-voice-played: var(--voice-played);
+  --color-voice-unplayed: var(--voice-unplayed);
   --color-online: var(--online);
 
   --radius-sm: calc(var(--radius) - 4px);
@@ -118,6 +120,14 @@
   --bubble-out: #dedede;
   --bubble-in-meta: var(--subtle-foreground);
   --bubble-out-meta: #525252;
+
+  /*
+   * Voice waveform bars, resolved per bubble by the selectors below. Played
+   * bars use the bubble's own foreground; unplayed bars a muted step toward
+   * the bubble fill. Dark only for now, like the rest of this file.
+   */
+  --voice-played: #0a0a0a;
+  --voice-unplayed: #8a8a8a;
 
   --radius: 0.75rem;
   --chat-background: radial-gradient(#1c1c1c 1px, transparent 1px) 0 0 / 22px 22px var(--panel);
@@ -362,6 +372,20 @@
 .bubble-gen a {
   color: #ededed;
   text-decoration: underline;
+}
+
+/* The voice player's waveform inherits its bubble: played bars in the
+ * bubble's foreground, unplayed bars muted. The bubble class must wrap
+ * the player for the tokens to resolve. */
+.bubble-out {
+  --voice-played: #0a0a0a;
+  --voice-unplayed: #8a8a8a;
+}
+
+.bubble-in,
+.bubble-gen {
+  --voice-played: #ededed;
+  --voice-unplayed: #525252;
 }
 
 /* XEP-0372 mention chips (ui-style.md §5). */

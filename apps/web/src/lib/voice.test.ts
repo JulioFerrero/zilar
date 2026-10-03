@@ -1,10 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UploadSlot } from '@zilar/xmpp-core';
 import {
   VOICE_MAX_BYTES,
   VoiceError,
+  VoiceRecorder,
   convertVoice,
   uploadVoice,
+  voiceErrorFromGetUserMedia,
   type UploadSlotRequester,
 } from './voice';
 
@@ -69,6 +71,25 @@ describe('convertVoice', () => {
   });
 });
 
+describe('voiceErrorFromGetUserMedia', () => {
+  it('tells a blocked microphone from a missing one', () => {
+    const blocked = voiceErrorFromGetUserMedia(new DOMException('denied', 'NotAllowedError'));
+    expect(blocked).toBeInstanceOf(VoiceError);
+    expect(blocked.code).toBe('voice_blocked');
+    expect(blocked.message).toContain('site settings');
+
+    const missing = voiceErrorFromGetUserMedia(new DOMException('none', 'NotFoundError'));
+    expect(missing.code).toBe('voice_no_microphone');
+  });
+
+  it('reports a busy microphone and falls back for unknown failures', () => {
+    expect(voiceErrorFromGetUserMedia(new DOMException('busy', 'NotReadableError')).code).toBe(
+      'voice_unavailable',
+    );
+    expect(voiceErrorFromGetUserMedia(new Error('boom')).code).toBe('voice_unavailable');
+  });
+});
+
 describe('uploadVoice', () => {
   it('requests a slot and PUTs the bytes to it, returning the download url', async () => {
     const slot: UploadSlot = {
@@ -112,5 +133,26 @@ describe('uploadVoice', () => {
     await expect(
       uploadVoice(requester, new Blob([new Uint8Array([1])]), fetchFn as unknown as typeof fetch),
     ).rejects.toMatchObject({ code: 'upload_failed' });
+  });
+});
+
+describe('VoiceRecorder.start', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('stops the microphone tracks when no recorder can be built', async () => {
+    const stop = vi.fn();
+    const stream = { getTracks: () => [{ stop }, { stop }] } as unknown as MediaStream;
+    vi.stubGlobal('navigator', {
+      mediaDevices: { getUserMedia: vi.fn(async () => stream) },
+    });
+    const FailingRecorder = vi.fn(() => {
+      throw new Error('NotSupportedError');
+    });
+    vi.stubGlobal('MediaRecorder', Object.assign(FailingRecorder, { isTypeSupported: () => true }));
+
+    await expect(VoiceRecorder.start()).rejects.toMatchObject({ code: 'voice_unsupported' });
+    expect(stop).toHaveBeenCalledTimes(2);
   });
 });

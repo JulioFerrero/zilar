@@ -80,7 +80,12 @@ export class VoiceRecorder {
     if (!isVoiceRecordingSupported()) {
       throw new VoiceError('voice_unsupported', 'This browser cannot record audio');
     }
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+      throw voiceErrorFromGetUserMedia(error);
+    }
     const preferred = mimeType ?? pickRecorderMime();
     let recorder: MediaRecorder;
     try {
@@ -90,7 +95,16 @@ export class VoiceRecorder {
       );
     } catch {
       // Some browsers reject an explicit mime; let the browser choose.
-      recorder = new MediaRecorder(stream);
+      try {
+        recorder = new MediaRecorder(stream);
+      } catch {
+        // Never leave the microphone open (the browser's recording
+        // indicator) when no recorder can be built.
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        throw new VoiceError('voice_unsupported', 'This browser cannot record audio');
+      }
     }
     return new VoiceRecorder(recorder, stream);
   }
@@ -137,6 +151,28 @@ export class VoiceRecorder {
       track.stop();
     }
   }
+}
+
+/**
+ * Maps a `getUserMedia` rejection to a `VoiceError` the composer can show.
+ * The `DOMException` name tells the cases apart: a denial is actionable
+ * (the user blocked the microphone), a missing device is not.
+ */
+export function voiceErrorFromGetUserMedia(error: unknown): VoiceError {
+  const name = error instanceof DOMException ? error.name : '';
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+    return new VoiceError('voice_no_microphone', 'No microphone was found.');
+  }
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return new VoiceError(
+      'voice_blocked',
+      "Microphone access is blocked. Allow it in the browser's site settings.",
+    );
+  }
+  if (name === 'NotReadableError' || name === 'AbortError') {
+    return new VoiceError('voice_unavailable', 'The microphone is busy. Try again.');
+  }
+  return new VoiceError('voice_unavailable', 'Microphone unavailable');
 }
 
 export interface ConvertedVoice {

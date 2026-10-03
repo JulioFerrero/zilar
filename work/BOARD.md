@@ -195,3 +195,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0164](T-0164-public-groups-and-channels.md) | Public and private groups and channels: handles, directory, open join | planned | meta/muse-spark-1.3-contributor | T-0163 | Spec ready; launch after T-0163 merges |
 | [T-0165](T-0165-avatars.md) | Profile pictures for people, AIs, groups and channels | planned | meta/muse-spark-1.3-contributor | T-0164 | Spec ready; launch after T-0164 merges |
 | [T-0162](T-0162-integrations-settings-telegram.md) | Integration keys in the UI: Telegram bot token and email sender and key (owner only, stored encrypted), import dialog as an overlay with a clear reason | 2026-10-02 |
+| [T-0166](T-0166-voice-fixes.md) | Voice notes on web: click to record with Send/Cancel, play/pause follows the audio, readable waveform colors, clear errors | 2026-10-03 |
