@@ -1,7 +1,7 @@
 ---
 id: T-0167
 title: Keep the ejabberd admin password out of the container logs
-status: planned
+status: review
 milestone: M5
 branch: task/T-0167-ejabberd-admin-password-log
 model: meta/muse-spark-1.3-contributor
@@ -51,5 +51,117 @@ Rotating the password that was already printed on the live install (Julio will d
 ---
 
 ## Report (written by the worker when done)
+
+### What I did
+Stopped passing the admin password through the base image's
+`REGISTER_ADMIN_PASSWORD` mechanism (it echoes
+`ejabberdctl register ... <password>` into the container log) and register
+the admin account from our own entrypoint instead, with all command output
+discarded.
+
+- `deploy/ejabberd/jwt-entrypoint.sh`: after the push-host step, a
+  background step waits for `ejabberdctl status` in a bounded loop
+  (60 x 2s, fixed timeout message), then runs `ejabberdctl register` — or
+  `change_password` when the account already exists, so a password change
+  in the environment takes effect. All output of register/change_password
+  is discarded (never `set -x`, never echoed); failures print a fixed
+  message without the password. The password is read from
+  `EJABBERD_ADMIN_PASSWORD`. The step ignores stop signals so it cannot
+  delay `docker stop`, and the server stays the main process
+  (`exec ... tini`). `REGISTER_ADMIN_PASSWORD` must stay unset.
+- `deploy/docker-compose.yml`: ejabberd service now sets
+  `EJABBERD_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?...}` instead of
+  `REGISTER_ADMIN_PASSWORD`. Server side unchanged.
+- `deploy/coolify/docker-compose.yml`: ejabberd service now sets
+  `EJABBERD_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERDADMIN}` (same magic
+  variable, no underscore in the id — the live install keeps its stored
+  value). Server's `EJABBERD_ADMIN_PASSWORD` line unchanged.
+- `deploy/.env.example`: comment-only update — notes the entrypoint
+  registers the account without printing it and that logs never contain it.
+- `deploy/tests/admin-password-log.test.sh` (new): builds the image from
+  deploy/, starts it with sentinel passwords against a throwaway Postgres,
+  asserts account exists + live password, sentinel nowhere in
+  `docker logs`, restart with a new sentinel changes the password and
+  leaks nothing, and both compose files wire the password under the
+  entrypoint's name only. Skips with a clear message when Docker is
+  missing. Removes all containers/networks afterwards.
+- `docs/INSTALL_DOCKER.md`: one sentence (in the ejabberd-unhealthy
+  troubleshooting entry) that container logs never contain the admin
+  password.
+
+### Reproduction (before the fix, throwaway sentinel only)
+Built `deploy/ejabberd/Dockerfile` and started it with
+`REGISTER_ADMIN_PASSWORD=SENTINEL_ADMIN_PW_123` (plus a throwaway Postgres
+and the other env vars). `docker logs` contained exactly one sentinel line:
+`49::> ejabberdctl register admin repro.example SENTINEL_ADMIN_PW_123`.
+It comes from the base image: `/usr/local/bin/ejabberdctl` builds
+`CTL_ON_CREATE="register ... $REGISTER_ADMIN_PASSWORD ..."` and
+`/opt/ejabberd-26.07/bin/ejabberdctl` `post_waiter_loop` echoes
+`:> ejabberdctl $HEAD2` before running it. Containers and network removed
+afterwards.
+
+### Commands and real results
+- `pnpm install`: done (7.4s).
+- `pnpm format:check`: "All matched files use Prettier code style!"
+  (before the change and after).
+- `sh deploy/tests/admin-password-log.test.sh`: `pass=12 fail=0` —
+  image builds; fresh start: account exists, sentinel password live,
+  sentinel nowhere in logs, no REGISTER_ADMIN_PASSWORD mention; restart:
+  new password live, old password rejected, no leak; both compose files
+  no longer set REGISTER_ADMIN_PASSWORD, plain compose passes
+  EJABBERD_ADMIN_PASSWORD, Coolify keeps SERVICE_PASSWORD_EJABBERDADMIN
+  mapped to EJABBERD_ADMIN_PASSWORD. Full run takes ~4 min (two boots).
+  Note: the first run (before a test bugfix) was `pass=10 fail=2` — the
+  two failures were the test's own `grep REGISTER_ADMIN_PASSWORD`
+  matching the new comments in the compose files, not a real leak; fixed
+  by matching `REGISTER_ADMIN_PASSWORD:` (the env-key shape).
+- `sh deploy/tests/storage-safety.test.sh`: `pass=24 fail=0` (both compose
+  files still render after the env rename).
+- Test image `zilar-ejabberd-adminpw-test:local` removed after the run.
+  `docker ps -a` / `docker network ls` show no leftover t0167 containers
+  or networks.
+
+### Security checklist
+- The admin password never reaches logs: register/change_password output
+  fully discarded, failure messages are fixed strings, no `set -x`, value
+  never echoed. Verified by the test scan of `docker logs`, not a claim.
+- No deletes/updates in app code; no caps/uniqueness rules touched; no new
+  routes; no audit entries. No secrets read, printed or committed (only
+  throwaway sentinels used in local containers, removed afterwards).
+- Skipped-scope note: `infra/docker-compose.dev.yml:65` still uses
+  `REGISTER_ADMIN_PASSWORD` for the dev stack — out of scope (Allowed
+  files cover only the deploy files), flagging for the lead.
+
+### Other secrets in other containers (spec asks to list only)
+- `server`: `DATABASE_URL`, `XMPP_ARCHIVE_DATABASE_URL` (embed DB
+  passwords), `BETTER_AUTH_SECRET`, `ZILAR_KEY_ENCRYPTION_KEY`,
+  `LITELLM_MASTER_KEY`, `SMTP_PASSWORD`, `PUSH_VAPID_PRIVATE_KEY`,
+  `PUSH_STORAGE_KEY`, `EJABBERD_ADMIN_PASSWORD` (sent as Basic-auth header
+  to ejabberd /api — not logged: `apps/server/src/logger.ts:17` redacts
+  `req.headers.authorization`; the admin client itself logs nothing), JWT
+  secret. These arrive as env vars, not command lines, so they do not hit
+  `docker logs` the way REGISTER_ADMIN_PASSWORD did — but `DATABASE_URL`
+  with an embedded password could leak if the server ever logs its config
+  (worth a check in a follow-up).
+- `postgres`: `POSTGRES_PASSWORD`, `ZILAR_DB_PASSWORD`,
+  `EJABBERD_DB_PASSWORD`, `ZILAR_ARCHIVE_DB_PASSWORD` (env only).
+- `ejabberd`: `EJABBERD_MACRO_SQL_PASSWORD`, `EJABBERD_MACRO_PUSH_COMPONENT_SECRET`
+  (macros consumed by the server at boot; not echoed), `ZILAR_XMPP_JWT_SECRET`
+  (only its base64url JWK form is written to a 0600 file inside the
+  container).
+- `zilar doctor`/`backup --dry-run` outputs contain no secret material
+  (covered by the storage-safety test).
+
+### Deviations / open questions
+- None from the spec. One judgment call: when `EJABBERD_ADMIN_PASSWORD`
+  or `EJABBERD_MACRO_ADMIN` is unset the entrypoint silently skips
+  registration (both compose files always set them, so this only affects
+  hand-rolled runs — failing fast there would break existing dev-style
+  usage of the image without an admin).
+- The failing-registration path (fixed message, ejabberd still running)
+  is implemented but was not exercised live — forcing it would need a
+  broken SQL backend while the server answers, which the throwaway setup
+  does not cover. The message shape is asserted by reading the script,
+  not by a test run.
 
 ## Review (written by Claude)

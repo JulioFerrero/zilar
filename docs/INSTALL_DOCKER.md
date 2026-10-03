@@ -329,7 +329,10 @@ ejabberd; a `502/503` means ejabberd is down (`docker compose ... ps`,
 `... logs ejabberd`). `ejabberdctl status` inside the container must answer.
 
 **ejabberd unhealthy.** It waits for Postgres (`depends_on: service_healthy`).
-Check `docker compose ... logs postgres ejabberd`. A wrong
+Check `docker compose ... logs postgres ejabberd`. Container logs never
+contain the admin password: the entrypoint registers the admin account with
+all output discarded (the base image's `REGISTER_ADMIN_PASSWORD` mechanism,
+which echoes the password into the log, is not used). A wrong
 `EJABBERD_DB_PASSWORD` shows as SQL auth failures; changing any `*_PASSWORD`
 after the first start needs a volume reset (`down -v` wipes everything) to
 stay consistent with the databases already created.
