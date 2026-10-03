@@ -42,6 +42,9 @@ export interface MergeOptions {
   findProcsDeps?: FindProcsDeps;
   stopProcsDeps?: StopProcessesDeps;
   print?: (line: string) => void;
+  // Runs the checks in the rebased worktree (production: `pnpm gate`). A red
+  // result stops the merge before main is touched. Omitted: no gate.
+  gate?: (worktree: string) => { ok: boolean; output: string };
 }
 
 function taskStatus(options: MergeOptions): string {
@@ -141,6 +144,14 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
     throw new MergeError(
       `rebase conflicted on: ${conflicted.join(', ') || '(unknown files)'}. Aborted; resolve by hand.`,
     );
+  }
+  if (options.gate !== undefined) {
+    const gated = options.gate(options.worktree);
+    if (!gated.ok) {
+      throw new MergeError(
+        `refusing to merge: the gate failed after the rebase. Fix it in ${options.worktree}, commit, and run \`lead merge ${options.task}\` again.\n${gated.output}`,
+      );
+    }
   }
   const fastForward = options.runner.run(options.root, ['merge', '--ff-only', options.branch]);
   if (!fastForward.ok) {

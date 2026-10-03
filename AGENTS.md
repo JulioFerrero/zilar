@@ -27,7 +27,7 @@ The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links 
 2. Set `status: in-progress` in the task's front matter.
 3. Do the work. **Only edit the files and folders listed under "Allowed files".**
    - If you need to touch anything else, stop, explain why in the Report under "Blocked / needs a decision", and set `status: blocked`.
-4. Run every command under "Checks". All must pass.
+4. Run every command under "Checks". All must pass. Then run `pnpm gate` from the repo root: it runs install, format, lint, typecheck and the tests of every package you touched, and lists files you changed outside your Allowed files. It must end with `GATE PASS` and no files outside scope. Paste its summary lines in the Report. The lead's merge runs the same gate again, so a red gate costs you a round.
    - If one fails and you can't fix it within the task's scope, say so honestly in the Report.
 5. Fill in the **Report** section: what you did, the files you changed, the commands you ran with their real results, problems, deviations from the spec, and open questions.
 6. Set `status: review`.
@@ -44,6 +44,16 @@ The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links 
 - Write tests with Vitest for the logic you add. Tests must not call real external services or use real API keys.
 - Keep functions small and names clear. Don't leave dead code or commented-out code.
 - Write English in code, comments and docs.
+
+## Pitfalls that already cost us a round (mobile and shared code)
+
+- Registry files (`apps/mobile/src/lib/settings-items.ts`, the new-chat menu) are touched by many tasks: add ONE entry, never reorder or reformat the others.
+- Never swap one gradient style for another on a live view: give the element a `key` that changes with the look (see `apps/mobile/src/lib/gradient-swap.test.ts`).
+- Native module functions: no `Promise` parameter inside a `Coroutine` (Expo cannot convert it). Hermes has no `crypto.subtle`.
+- Server URLs from the API may be relative (`/api/avatars/<id>`): resolve them against the API origin on native.
+- The server accepts PNG or WebP for avatars and stickers; phone photos are JPEG, so re-encode first.
+- User-facing errors are fixed sentences, never raw server text. Icons come from lucide, never emoji, in app chrome.
+- Check every claim in your Report against the code: say "I tested X" only if you ran it.
 
 ## Safety rules (never break these)
 

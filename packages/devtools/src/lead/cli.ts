@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { runAutopilot, type AutopilotDeps } from './autopilot.js';
@@ -24,7 +25,7 @@ Usage: lead <command> [options]
   autopilot [--once] [--dry-run]                            watch sessions, answer permissions, nudge, pre-review
   prereview <T-XXXX>                                        start a Muse pre-review manually
   reply <T-XXXX> <prompt-file>                              interrupt the worker and re-prompt it
-  merge <T-XXXX> --summary "<one line>"                     rebase, fast-forward main, board, push, clean up
+  merge <T-XXXX> --summary "<one line>" [--skip-gate]       rebase, run the gate, fast-forward main, board, push, clean up
   status                                                    compact table of every tracked task
 
 State lives outside the repo at ~/.zilar-lead/state.json (or ZILAR_LEAD_STATE).
@@ -146,6 +147,18 @@ function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// The checks every merge must pass, run in the rebased worktree. The output
+// tail is kept so the lead sees the failing step without rerunning it.
+function runGate(worktree: string): { ok: boolean; output: string } {
+  const result = spawnSync('pnpm', ['gate'], {
+    cwd: worktree,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim().split('\n').slice(-45);
+  return { ok: result.status === 0, output: output.join('\n') };
+}
+
 async function runMerge(positional: string[], args: string[]): Promise<void> {
   const task = positional[0];
   const summary = flagValue(args, '--summary');
@@ -168,6 +181,7 @@ async function runMerge(positional: string[], args: string[]): Promise<void> {
     runner: new RealGitRunner(),
     readText: (entry) => fs.readFileSync(entry, 'utf8'),
     writeText: (entry, text) => fs.writeFileSync(entry, text),
+    ...(args.includes('--skip-gate') ? {} : { gate: runGate }),
     dropFromState: (entry) => {
       const state = loadState(statePath);
       delete state.tasks[entry];
