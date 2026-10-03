@@ -1,7 +1,7 @@
 ---
 id: T-0178
 title: Whistle module: cut long voice notes at real quiet moments (amplitude envelope from the native decoder)
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0178-whistle-quiet-cut-chunks
 model: meta/muse-spark-1.3-contributor
@@ -55,4 +55,38 @@ The voice bubble UI (T-0179), iOS, overlapping chunks, word timestamps.
 
 ## Report (written by the worker when done)
 
+### What I did
+- Native (`ZilarWhistleModule.kt`): added `AsyncFunction("amplitudeEnvelope")` returning a value (no Promise param, per T-0177 lesson). It throws `CodedException("unavailable", ...)` off arm64, decodes via `decodeToMono16k(path)` (which already strips `file://` via `localPath`, so the function passes `path` straight through), and returns one mean-absolute-amplitude `Double` per 160-sample window, clamped 0..1, capped at 60 000 entries. Silent clip => all zeros. Shipped as a private `amplitudeEnvelope(FloatArray)` helper.
+- JS interface (`ZilarWhistleModule.ts`): declared `amplitudeEnvelope: (path: string) => Promise<number[]>`.
+- JS planner (`transcribe.ts`): `planRangesMs` is now async and takes `(localPath?, options?)` (backwards-compatible: still accepts `(options?)` alone). `runTranscribe` awaits it with the local path. When `audioMs > 28_000` and no caller `amplitudes` given, it fetches the envelope and maps `sample -> envelope[floor(sample/160)] ?? 0`; any failure (null module, reject, empty array) falls back to `() => 1`. Short clips return null before touching the native module.
+- Tests (`whistle-native.test.ts`, new `whistle quiet-cut envelope (T-0178)` block): (a) 60 s clip with zero gap at 27.0-27.5 s cuts at ~27.0 s, not 28 000; (b) rejecting envelope still transcribes via fallback plan; (c) 28 s clip never calls `amplitudeEnvelope`. Added `amplitudeEnvelope` to the native stub default (resolves `[]`, which triggers the fallback path).
+
+### Deviation from spec (deliberate, documented)
+- Spec test (a) says "silent gap at 25.0-25.5 s of a 60 s clip". That gap is UNREACHABLE: `planQuietCutChunks` searches `WHISTLE_CUT_SEARCH_SAMPLES` (2 s) before each 28 s limit, i.e. 26-28 s for the first cut — a 25 s gap can never win. My first attempt with the spec's gap failed exactly this way (cut at 26000.06 ms, the earliest tied sample of the 26-28 s window). I placed the gap at 27.0-27.5 s (inside the search window) instead. Same for test (b): the fallback with `() => 1` does NOT cut at 28 000 (ties keep the earliest sample, so cuts land at the window start, ~26 s) — I assert that pre-existing T-0177 flat behaviour rather than even 28 s windows. The old "long clip sends ranges" T-0177 test still passes unchanged.
+- Mutation check (a): restoring `() => 1` makes the gap test fail (1 failed / 15 passed), as required. Note: pnpm hardlinks `file:./modules/zilar-whistle` into the store, so vitest resolves the INSTALLED copy — I had to apply the mutation to both copies to observe the failure, then restored both (verified IDENTICAL afterwards).
+
+### Files changed
+- `apps/mobile/modules/zilar-whistle/android/src/main/java/expo/modules/whistle/ZilarWhistleModule.kt` (+37)
+- `apps/mobile/modules/zilar-whistle/src/ZilarWhistleModule.ts` (+1)
+- `apps/mobile/modules/zilar-whistle/src/transcribe.ts` (async planRangesMs + envelopeAmplitudes)
+- `apps/mobile/src/lib/whistle-native.test.ts` (+~60, 3 new tests)
+- Reverted an incidental `pnpm-lock.yaml` churn from `pnpm install` (2 peer lines).
+
+### Commands and real results
+- `pnpm install`: ok (1051 packages, one unmet-peer warning for @types/react-dom).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 whistle`: 4 files, 44 passed.
+- Mutation run (`() => 1` in both copies): 1 failed / 15 passed (gap test fails) — then restored, 44 passed again.
+- `pnpm format:check`: pass (after prettier --write on transcribe.ts).
+- `pnpm lint` (oxlint): pass (after `Array.from({length})` fix for unicorn/no-new-array).
+- `pnpm typecheck` (turbo, 11 tasks): pass.
+- Kotlin NOT compiled — cannot compile Kotlin in this task's checks; the lead builds the APK and tests on emulator/phone.
+
+### Security checklist
+- No secrets/tokens involved; envelope is amplitude floats, no audio or text leaves the device. No new route, no DB, no caps/permissions touched. No `any`, no new dependency.
+
+### Open questions
+- None. Ready for the lead's APK build + emulator/phone test.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved and merged. The pre-review found no must-fix or should-fix issues; I accepted its two comment nits (the flat fallback cuts near 26 s, not on a 28 s boundary, so the comments saying "even 28 s windows" are slightly off). The Kotlin compiles in a release build. Julio asked to skip further device testing for this task; the real long-clip check happens with T-0179.

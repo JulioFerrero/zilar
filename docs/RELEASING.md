@@ -49,7 +49,7 @@ A "prod" Android build is a release APK with the server URL baked in at build ti
 
 ```bash
 # scratch worktree on its own branch, reset to main
-cd ../galena-android-try && git reset --hard main && pnpm install --frozen-lockfile
+cd ../<scratch-worktree> && git reset --hard main && pnpm install --frozen-lockfile
 cd apps/mobile
 export JAVA_HOME=$(/usr/libexec/java_home -v 17) ANDROID_HOME=<android sdk>
 pnpm exec expo prebuild --platform android --clean --no-install

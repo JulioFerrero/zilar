@@ -18,6 +18,9 @@ export const OTP_EXPIRES_IN_SECONDS = 10 * 60;
 export const OTP_ALLOWED_ATTEMPTS = 5;
 
 const RATE_LIMIT_WINDOW_SECONDS = 10 * 60;
+// Asking for a code: 3 per minute, so a typo or a resend never locks a
+// household out for ten minutes. Guessing a code stays capped separately.
+const SEND_OTP_WINDOW_SECONDS = 60;
 const SEND_OTP_PATH = '/email-otp/send-verification-otp';
 
 export interface CreateAuthInput {
@@ -51,7 +54,7 @@ export function createAuth({
       enabled: true,
       storage: 'memory',
       customRules: {
-        [SEND_OTP_PATH]: { window: RATE_LIMIT_WINDOW_SECONDS, max: 3 },
+        [SEND_OTP_PATH]: { window: SEND_OTP_WINDOW_SECONDS, max: 3 },
         '/sign-in/email-otp': { window: RATE_LIMIT_WINDOW_SECONDS, max: 10 },
         '/email-otp/check-verification-otp': { window: RATE_LIMIT_WINDOW_SECONDS, max: 10 },
         '/email-otp/verify-email': { window: RATE_LIMIT_WINDOW_SECONDS, max: 10 },
