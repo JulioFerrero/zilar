@@ -2,20 +2,70 @@ import { formatDuration, type VoiceMeta } from '@zilar/chat-core';
 import { Pause, Play } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { ApiError, getVoiceTranscript } from '@/lib/api';
+import { useVoiceTranscriptionEnabled } from '@/lib/useVoiceTranscription';
 
 const TICK_MS = 100;
 
+type TranscriptState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'ready'; text: string }
+  | { kind: 'error'; message: string };
+
 /** The audio element sending play/pause events right now, if any. */
 let activeVoiceAudio: HTMLAudioElement | null = null;
+
+/** Session memory of fetched transcripts, keyed by voice URL: toggling a
+ * transcript (or meeting the same message again) never refetches. */
+const transcriptCache = new Map<string, string>();
+
+/** Forgets the session cache (tests only). */
+export function resetVoiceTranscriptCache(): void {
+  transcriptCache.clear();
+}
+
+function friendlyTranscriptError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === 'transcription_not_configured') {
+      return 'Transcription is not set up on this server.';
+    }
+    if (error.code === 'rate_limited') {
+      return 'Too many tries — wait a little and try again.';
+    }
+    if (error.code === 'voice_too_large') {
+      return 'The recording is too large to transcribe.';
+    }
+    if (error.code === 'not_audio') {
+      return 'The file is not a supported recording.';
+    }
+    if (error.code === 'network_error') {
+      return 'Could not reach the server.';
+    }
+    return 'Transcription failed. Try again.';
+  }
+  return error instanceof Error ? error.message : 'Transcription failed. Try again.';
+}
 
 export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [failed, setFailed] = useState(false);
-  const [showTranscript, setShowTranscript] = useState(false);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [transcript, setTranscript] = useState<TranscriptState>(() => {
+    // A transcript that arrived with the message (older servers may embed
+    // one) shows without a fetch.
+    if (voice.transcript !== undefined) {
+      return { kind: 'ready', text: voice.transcript.text };
+    }
+    return { kind: 'idle' };
+  });
   const labelId = useId();
   const playable = voice.url !== undefined && voice.url !== '' && !failed;
+  const transcriptionEnabled = useVoiceTranscriptionEnabled();
+  const canTranscribe = transcriptionEnabled && voice.url !== undefined && voice.url !== '';
+  const showControl = voice.transcript !== undefined || canTranscribe;
 
   useEffect(() => {
     if (!playing) {
@@ -66,6 +116,53 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
     if (activeVoiceAudio === audio) {
       activeVoiceAudio = null;
     }
+  };
+
+  const toggleTranscript = (): void => {
+    if (transcriptOpen) {
+      setTranscriptOpen(false);
+      return;
+    }
+    setTranscriptOpen(true);
+    if (transcript.kind === 'ready' || transcript.kind === 'loading') {
+      return;
+    }
+    const url = voice.url;
+    if (url === undefined || url === '') {
+      return;
+    }
+    const cached = transcriptCache.get(url);
+    if (cached !== undefined) {
+      setTranscript({ kind: 'ready', text: cached });
+      return;
+    }
+    setTranscript({ kind: 'loading' });
+    void getVoiceTranscript(url).then(
+      ({ text }) => {
+        transcriptCache.set(url, text);
+        setTranscript({ kind: 'ready', text });
+      },
+      (error: unknown) => {
+        setTranscript({ kind: 'error', message: friendlyTranscriptError(error) });
+      },
+    );
+  };
+
+  const retryTranscript = (): void => {
+    const url = voice.url;
+    if (url === undefined || url === '') {
+      return;
+    }
+    setTranscript({ kind: 'loading' });
+    void getVoiceTranscript(url).then(
+      ({ text }) => {
+        transcriptCache.set(url, text);
+        setTranscript({ kind: 'ready', text });
+      },
+      (error: unknown) => {
+        setTranscript({ kind: 'error', message: friendlyTranscriptError(error) });
+      },
+    );
   };
 
   const togglePlay = (): void => {
@@ -162,21 +259,36 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
         >
           {formatDuration(voice.duration_ms)}
         </span>
-        {voice.transcript !== undefined && (
+        {showControl && (
           <button
             type="button"
-            aria-label={showTranscript ? 'Hide transcript' : 'Show transcript'}
-            aria-pressed={showTranscript}
-            onClick={() => setShowTranscript((value) => !value)}
+            aria-label={transcriptOpen ? 'Hide transcript' : 'Show transcript'}
+            aria-pressed={transcriptOpen}
+            onClick={toggleTranscript}
             className="key-icon shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold"
           >
             Aa
           </button>
         )}
       </div>
-      {showTranscript && voice.transcript !== undefined && (
+      {transcriptOpen && showControl && transcript.kind === 'loading' && (
+        <p className="mt-1.5 text-[14px] text-muted-foreground">Transcribing…</p>
+      )}
+      {transcriptOpen && showControl && transcript.kind === 'ready' && (
         <p className="mt-1.5 max-w-[420px] text-[14px] leading-5 whitespace-pre-wrap">
-          {voice.transcript.text}
+          {transcript.text}
+        </p>
+      )}
+      {transcriptOpen && showControl && transcript.kind === 'error' && (
+        <p className="mt-1.5 text-[14px]">
+          <span className="text-danger">{transcript.message}</span>{' '}
+          <button
+            type="button"
+            onClick={retryTranscript}
+            className="key-icon rounded-md px-1.5 py-0.5 text-[13px] font-medium"
+          >
+            Retry
+          </button>
         </p>
       )}
     </div>

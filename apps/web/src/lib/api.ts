@@ -1651,6 +1651,13 @@ const integrationsEmailSchema = z.object({
 const integrationsStatusSchema = z.object({
   telegram: integrationsTelegramSchema,
   email: integrationsEmailSchema,
+  voiceTranscription: z
+    .object({
+      configured: z.boolean(),
+      baseUrl: z.string().nullable(),
+      model: z.string().nullable(),
+    })
+    .optional(),
   canManage: z.boolean(),
 });
 
@@ -1688,6 +1695,52 @@ export async function saveEmailSettings(input: SaveEmailSettingsInput): Promise<
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  });
+}
+
+// --- Voice transcripts (T-0170) --------------------------------------------
+// Transcription is off by default and configured by the server owner (an
+// OpenAI-compatible endpoint); the web shows "Show transcript" on voice
+// messages only while the server says it is enabled. The per-session cache
+// in `VoiceMessage` keeps a tap from refetching; the server caches per URL.
+export interface SaveVoiceTranscriptionInput {
+  baseUrl: string;
+  apiKey?: string | undefined;
+  model?: string | undefined;
+}
+
+export function getVoiceTranscriptionStatus(): Promise<{ enabled: boolean }> {
+  return request('/voice/transcription', z.object({ enabled: z.boolean() }));
+}
+
+export function getVoiceTranscript(url: string): Promise<{ text: string }> {
+  return request('/voice/transcript', z.object({ text: z.string() }), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+}
+
+export async function saveVoiceTranscriptionSettings(
+  input: SaveVoiceTranscriptionInput,
+): Promise<void> {
+  const body: Record<string, string> = { baseUrl: input.baseUrl };
+  if (input.apiKey !== undefined) {
+    body['apiKey'] = input.apiKey;
+  }
+  if (input.model !== undefined) {
+    body['model'] = input.model;
+  }
+  await request('/settings/integrations/voice-transcription', z.object({ ok: z.boolean() }), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function removeVoiceTranscriptionSettings(): Promise<void> {
+  await request('/settings/integrations/voice-transcription', z.object({ ok: z.boolean() }), {
+    method: 'DELETE',
   });
 }
 

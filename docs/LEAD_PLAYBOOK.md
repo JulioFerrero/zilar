@@ -182,6 +182,15 @@ Real example of a steering reject:
 {"decision":"reject","message":"Not needed: the lead copied the matching local dev infra/.env into YOUR worktree (infra/.env). Use it as it is, do not look outside your worktree, do not print its values, and do not run infra:reset."}
 ```
 
+**Since 2026-10-03 the autopilot allows the read-only cases itself** (`packages/devtools/src/lead/policy.ts`, tests in `policy.test.ts`): pure filters (`grep`, `echo`, `printf`, `sleep`, `cmp`, `diff`, `sed` that only prints or substitutes), `docker volume ls` and `docker network ls`, `docker logs|exec|inspect|top` on containers named `zilar-rehearsal-*` only, and `curl` to `https://localhost:18443` (the rehearsal stack's port) with file output only in a temp folder. Anything with `$(...)`, backticks or a redirect to a file still escalates, and so does everything aimed at another container or port. A rule change needs an autopilot restart (see §17). Julio does not want to approve read-only things by hand: if one reaches you, extend the policy and its tests instead of approving it forever.
+
+To answer an escalation by hand, read the FULL command first (the `LEAD:` line is cut off):
+
+```bash
+opencode2 api session.permission.list --param sessionID=<ses_...>
+opencode2 api session.permission.reply --param sessionID=<ses_...> --param requestID=<per_...> -d '{"decision":"once"}'
+```
+
 If a request sits pending over 3 minutes (the watcher prints `STILL PENDING`), handle it right away. A missed permission once stalled a worker for a long time.
 
 ## 8. Reviewing: the part that matters most
@@ -552,3 +561,31 @@ nohup opencode2 api session.prompt --param sessionID=ses_… -d "$(cat "$S/p.jso
 35. **Julio wants Muse Spark on everything for now, no MiniMax (2026-09-29).** All new specs use `model: meta/muse-spark-1.3-contributor`; running MiniMax workers were switched with `lead switch-model`. Julio checks usage and cost himself in the Meta dashboard: do not build or report usage tracking.
 
 36. **Stop the autopilot before `lead switch-model`, and check `lead status` afterwards.** The autopilot and the CLI both rewrite `~/.zilar-lead/state.json`; on 2026-09-29 the autopilot's write undid the switch for T-0098, so `lead reply` re-prompted the old MiniMax session while the Muse one sat idle. After any switch, confirm the MODEL column, then re-arm the autopilot.
+
+
+## 17. Lessons from 2026-10-03 (a long unattended day)
+
+Workers and parallelism
+- Julio sets the cap: 2 workers while he works on the machine, 4 normally, up to 8 only when he says he is away. More than 4 overloaded the review queue. One schema task at a time, always.
+- Read the task file's real `status:` before launching. Board rows can look planned while the task is merged (T-0042 and T-0067 were launched by mistake).
+- After a `lead launch`, run `lead status`. Launching right after another launch lost an entry in `~/.zilar-lead/state.json` (the autopilot rewrote the file). Entry shape: task, sessionId, worktree, model, role, startedAt, nudgesSent, prereviewStalledEscalated, escalatedPermissionIds, escalatedQuestionIds, stalledEscalated.
+- A worker that loops on one failing step (T-0159 spent an hour on a wrong header name) gets a `lead reply` that time-boxes it: write the finding in the Report under Problems and move on.
+- The autopilot is a separate `nohup` process. After editing `policy.ts` or other lead code, kill it (`pkill -f "lead/cli.ts autopilot"` from your own shell) and start it again with output to the scratchpad file; the Monitor on that file must be re-armed every 30 minutes.
+
+Reviewing
+- A worktree branch cut from an older main shows a huge diff against main. Look at `git log main..HEAD` (the branch's own commits), not the stat.
+- Mutation-check every new test: remove the fix, the test must fail. Several worker tests passed vacuously (an always-true assertion, an injected seam production never wires).
+- PGlite has one connection and hides real-Postgres problems (aborted transactions, lock timing). Think about the real database when a task holds a transaction.
+- Never hold a database transaction or advisory lock across a network call.
+- A check on the input comes before the rate limiter, so malformed requests do not spend the budget.
+
+Testing traps
+- Fixtures with a fixed date go stale (an "edit window" test failed once the date was 48 hours old). Use `new Date()`.
+- Signal and timing tests (`apps/runner/src/connect.test.ts`) can be flaky on CI while passing locally. Run a suspicious one four times before blaming a change.
+
+Tooling traps
+- macOS `sed -i` needs a suffix argument: `sed -i '' 's/a/b/' file`. Without it the script is taken as the suffix and the file name is parsed as a command.
+- Rehearsal resources are named `zilar-rehearsal-*` (containers, volumes `zilar-rehearsal_*`, images `:rehearsal`); clean up only those.
+
+Effect
+- The plan to adopt Effect 4.0 is in `docs/ROADMAP_EFFECT.md`; worker reference material is in `docs/effect-reference/` (read it before any Effect code: Effect 4 differs from v3).

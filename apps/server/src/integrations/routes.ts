@@ -5,7 +5,8 @@
 // as an unknown route, so existence is never leaked.
 //
 // - `GET /api/settings/integrations` → `{ telegram: { configured, source },
-//   email: { configured, source, from }, canManage }`. Secrets never: the
+//   email: { configured, source, from }, voiceTranscription: { configured,
+//   baseUrl, model }, canManage }`. Secrets never: the
 //   bot token and the Resend key are not returned, not even masked. The
 //   sender address is not a secret and is returned. Like the three writes,
 //   a non-owner gets the same 404 as an unknown route; the web reads "am I
@@ -48,6 +49,7 @@ import {
   type SetupTransaction,
 } from '../setup/settings';
 import { createTelegramClient, type TelegramClient } from '../stickers/telegram-import';
+import { voiceTranscriptionStatusFor } from '../voice-transcription/routes';
 import {
   deleteStoredTelegramToken,
   saveStoredTelegramToken,
@@ -221,8 +223,12 @@ export function createIntegrationsRoutes(deps: IntegrationsRoutesDependencies): 
     // an unknown route. The web reads "am I the owner" from 200 versus
     // 404 (`useIsServerOwner`).
     await requireOwner(caller.id);
-    const [telegram, email] = await Promise.all([telegramStatus(), mailStatus()]);
-    return c.json({ telegram, email, canManage: true });
+    const [telegram, email, voiceTranscription] = await Promise.all([
+      telegramStatus(),
+      mailStatus(),
+      voiceTranscriptionStatusFor(deps.db, deps.config, deps.logger),
+    ]);
+    return c.json({ telegram, email, voiceTranscription, canManage: true });
   });
 
   routes.put('/settings/integrations/telegram', async (c) => {

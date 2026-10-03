@@ -127,6 +127,7 @@ describe('GET /api/settings/integrations', () => {
     expect(await response.json()).toEqual({
       telegram: { configured: false, source: null },
       email: { configured: true, source: 'env', from: null },
+      voiceTranscription: { configured: false, baseUrl: null, model: null },
       canManage: true,
     });
   });

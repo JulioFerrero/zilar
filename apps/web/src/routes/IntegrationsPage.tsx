@@ -6,8 +6,10 @@ import {
   ApiError,
   getIntegrationsStatus,
   removeTelegramBotToken,
+  removeVoiceTranscriptionSettings,
   saveEmailSettings,
   saveTelegramBotToken,
+  saveVoiceTranscriptionSettings,
   type IntegrationsStatus,
 } from '@/lib/api';
 
@@ -24,6 +26,12 @@ function friendlyError(error: unknown): string {
     if (error.code === 'managed_by_environment') {
       return 'Email is managed by environment variables on this server.';
     }
+    if (error.code === 'endpoint_unreachable') {
+      return 'The transcription endpoint could not be reached. Check the URL.';
+    }
+    if (error.code === 'endpoint_rejected') {
+      return 'The transcription endpoint rejected the test request. Check the URL, key and model.';
+    }
     if (error.code === 'rate_limited') {
       return 'Too many tries — wait a little and try again.';
     }
@@ -36,9 +44,11 @@ function friendlyError(error: unknown): string {
 }
 
 /**
- * Settings → Integrations (T-0162 + Email follow-up). The server owner's
- * key shelf: an Email card (sign-in sender + Resend key) above a Telegram
- * card (bot token for sticker import). The page is a generic list of
+ * Settings → Integrations (T-0162 + Email follow-up + T-0170 voice
+ * transcription). The server owner's key shelf: an Email card (sign-in
+ * sender + Resend key), a Telegram card (bot token for sticker import) and
+ * a Voice transcription card (OpenAI-compatible endpoint for on-demand
+ * voice transcripts). The page is a generic list of
  * integration cards so a GIF provider key can join later (not built now).
  *
  * The page itself is owner-only: `GET /api/settings/integrations` answers
@@ -133,6 +143,12 @@ export function IntegrationsPage() {
             <TelegramCard
               telegram={data.telegram}
               onSaved={(next) => setData({ ...data, telegram: next })}
+            />
+            <VoiceTranscriptionCard
+              voiceTranscription={
+                data.voiceTranscription ?? { configured: false, baseUrl: null, model: null }
+              }
+              onSaved={(next) => setData({ ...data, voiceTranscription: next })}
             />
           </div>
         )}
@@ -268,6 +284,177 @@ function EmailCard({
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+function VoiceTranscriptionCard({
+  voiceTranscription,
+  onSaved,
+}: {
+  voiceTranscription: NonNullable<IntegrationsStatus['voiceTranscription']>;
+  onSaved: (next: NonNullable<IntegrationsStatus['voiceTranscription']>) => void;
+}) {
+  const [baseUrl, setBaseUrl] = useState(voiceTranscription.baseUrl ?? '');
+  const [key, setKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [model, setModel] = useState(voiceTranscription.model ?? 'whisper-1');
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async (): Promise<void> => {
+    setError('');
+    setSaved(false);
+    if (baseUrl.trim() === '') {
+      setError('Enter the endpoint base URL first.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const trimmedKey = key.trim();
+      await saveVoiceTranscriptionSettings({
+        baseUrl: baseUrl.trim(),
+        ...(trimmedKey === '' ? {} : { apiKey: trimmedKey }),
+        model: model.trim() === '' ? 'whisper-1' : model.trim(),
+      });
+      setKey('');
+      const next = await getIntegrationsStatus();
+      onSaved(
+        next.voiceTranscription ?? {
+          configured: true,
+          baseUrl: baseUrl.trim(),
+          model: model.trim(),
+        },
+      );
+      // Only after the reload proved the save stuck (same as Email).
+      setSaved(true);
+    } catch (cause) {
+      setSaved(false);
+      setError(friendlyError(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (): Promise<void> => {
+    setError('');
+    setSaved(false);
+    setBusy(true);
+    try {
+      await removeVoiceTranscriptionSettings();
+      setSaved(false);
+      const next = await getIntegrationsStatus();
+      onSaved(next.voiceTranscription ?? { configured: false, baseUrl: null, model: null });
+    } catch (cause) {
+      setError(friendlyError(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section
+      aria-label="Voice transcription"
+      className="flex flex-col gap-2 rounded-xl border border-border bg-surface px-3 py-2.5"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-[16px] font-semibold">Voice transcription</h2>
+        <span className="rounded-full bg-surface-raised px-2 py-0.5 text-[12px] text-muted-foreground">
+          {voiceTranscription.configured ? 'Connected' : 'Not set up'}
+        </span>
+      </div>
+      <p className="text-[14px] text-muted-foreground">
+        Adds a “Show transcript” control under voice messages
+        {voiceTranscription.model ? ` — currently ${voiceTranscription.model}` : ''}. Transcription
+        is off until an endpoint is saved. Audio goes only to the endpoint below, never anywhere
+        else.
+      </p>
+      <p className="text-[13px] text-muted-foreground">
+        Any OpenAI-compatible <code>/audio/transcriptions</code> endpoint works: OpenAI (
+        <code>https://api.openai.com/v1</code>), Groq (<code>https://api.groq.com/openai/v1</code>),
+        or a self-hosted Whisper server (plain http is allowed only for localhost or a private
+        address).
+      </p>
+      <label className="flex flex-col gap-1 text-[14px]">
+        Base URL
+        <input
+          value={baseUrl}
+          aria-label="Base URL"
+          placeholder="https://api.openai.com/v1"
+          maxLength={512}
+          disabled={busy}
+          onChange={(event) => setBaseUrl(event.target.value)}
+          className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-[14px]">
+        Model
+        <input
+          value={model}
+          aria-label="Model"
+          placeholder="whisper-1"
+          maxLength={128}
+          disabled={busy}
+          onChange={(event) => setModel(event.target.value)}
+          className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-[14px]">
+        API key
+        <span className="relative">
+          <input
+            type={showKey ? 'text' : 'password'}
+            value={key}
+            aria-label="API key"
+            placeholder="sk-…"
+            maxLength={512}
+            autoComplete="off"
+            disabled={busy}
+            onChange={(event) => setKey(event.target.value)}
+            className="w-full rounded-lg border border-input bg-background py-2 pr-10 pl-3 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
+          />
+          <button
+            type="button"
+            aria-label={showKey ? 'Hide key' : 'Show key'}
+            title={showKey ? 'Hide key' : 'Show key'}
+            onClick={() => setShowKey((value) => !value)}
+            className="absolute top-1/2 right-1 -translate-y-1/2 rounded-full p-1.5 text-muted-foreground hover:bg-muted"
+          >
+            {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </button>
+        </span>
+      </label>
+      <p className="text-[13px] text-muted-foreground">
+        Optional — leave empty for a self-hosted server without one. The key is never shown again
+        after saving.
+      </p>
+      {error !== '' && (
+        <p role="alert" className="text-[14px] text-danger">
+          {error}
+        </p>
+      )}
+      {saved && <p className="text-[14px] text-online">Saved — transcripts are on.</p>}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={busy}
+          className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+        >
+          {busy ? 'Checking…' : 'Save'}
+        </button>
+        {voiceTranscription.configured && (
+          <button
+            type="button"
+            onClick={() => void remove()}
+            disabled={busy}
+            className="rounded-full border border-border-strong bg-surface-raised px-4 py-1.5 text-[14px] font-medium text-foreground hover:bg-muted disabled:opacity-60"
+          >
+            Remove
+          </button>
+        )}
+      </div>
     </section>
   );
 }
