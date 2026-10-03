@@ -1,59 +1,141 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
-import { WHISTLE_MODEL_SHA256 } from 'zilar-whistle/src/model';
+import { downloadModel } from 'zilar-whistle/src/download';
+import { WHISTLE_MODEL_BYTES, WHISTLE_MODEL_SHA256 } from 'zilar-whistle/src/model';
+import { WhistleError } from 'zilar-whistle/src/result';
+
+vi.mock('zilar-whistle/src/ZilarWhistleModule', () => ({
+  getNativeModule: () => ({ isAvailable: () => true }),
+}));
+
+vi.mock('expo-file-system', () => ({
+  File: class FakeFile {},
+  Paths: { cache: 'file:///cache/', document: 'file:///document/' },
+}));
+
+interface FakeFsFile {
+  exists: boolean;
+  size: number;
+  uri: string;
+  deleted: boolean;
+  delete: () => void;
+  move: (destination: FakeFsFile) => Promise<void>;
+}
+
+function fakeFile(overrides: Partial<FakeFsFile> = {}): FakeFsFile {
+  const file: FakeFsFile = {
+    exists: false,
+    size: 0,
+    uri: 'file:///document/whistle.cact',
+    deleted: false,
+    delete: () => {
+      file.deleted = true;
+      file.exists = false;
+    },
+    move: async (destination: FakeFsFile) => {
+      destination.exists = true;
+      destination.size = file.size;
+      file.exists = false;
+    },
+    ...overrides,
+  };
+  return file;
+}
 
 /**
- * The sha256 verification wrapper `downloadModel` relies on (T-0177): the
- * production path hashes the downloaded temp file with SubtleCrypto; these
- * tests pin the same vectors through Node's crypto so a wrong digest is
- * caught before any rename.
+ * The `downloadModel` seam through its injected `deps` (T-0177 finding 4):
+ * the native handle and the filesystem stay faked, so these tests drive the
+ * real verify-then-rename flow without network or device files.
  */
-export function hexDigest(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
-
-export function verifyModelDigest(digest: string, size: number, expectedSize: number): void {
-  if (digest.toLowerCase() !== WHISTLE_MODEL_SHA256) {
-    throw new Error('bad_checksum');
-  }
-  if (size !== expectedSize) {
-    throw new Error('truncated');
-  }
-}
-
-describe('whistle model checksum (T-0177)', () => {
-  it('hashes bytes to the pinned sha256 shape', () => {
-    const digest = hexDigest(new TextEncoder().encode('whistle-test'));
-    expect(digest).toMatch(/^[0-9a-f]{64}$/);
-    expect(hexDigest(new TextEncoder().encode('whistle-test'))).toBe(digest);
-    expect(hexDigest(new TextEncoder().encode('whistle-test!'))).not.toBe(digest);
-  });
-
-  it('accepts the pinned digest case-insensitively at the pinned size', () => {
-    expect(() =>
-      verifyModelDigest(WHISTLE_MODEL_SHA256.toUpperCase(), 16919407, 16919407),
-    ).not.toThrow();
-  });
-
-  it('rejects a corrupted download', () => {
-    expect(() => verifyModelDigest('0'.repeat(64), 16919407, 16919407)).toThrowError(
-      'bad_checksum',
-    );
-  });
-
-  it('rejects a truncated download even with the right hash', () => {
-    expect(() => verifyModelDigest(WHISTLE_MODEL_SHA256, 100, 16919407)).toThrowError('truncated');
-  });
-
-  it('a download twice keeps the verified file (idempotent)', async () => {
-    const seen: string[] = [];
-    const download = vi.fn(async (url: string) => {
-      seen.push(url);
+describe('whistle downloadModel (T-0177)', () => {
+  it('a second call with a verified file present downloads nothing', async () => {
+    const destination = fakeFile({ exists: true, size: WHISTLE_MODEL_BYTES });
+    const tmp = fakeFile();
+    const download = vi.fn();
+    const sha256Of = vi.fn(async () => WHISTLE_MODEL_SHA256);
+    const seen: number[] = [];
+    await downloadModel((fraction) => seen.push(fraction), {
+      download: download as never,
+      sha256Of: sha256Of as never,
+      modelFile: () => destination as never,
+      tempFile: () => tmp as never,
     });
-    await download('https://huggingface.co/Cactus-Compute/whistle/model');
-    await download('https://huggingface.co/Cactus-Compute/whistle/model');
-    expect(download).toHaveBeenCalledTimes(2);
-    expect(seen[0]).toBe(seen[1]);
+    expect(seen).toEqual([1]);
+    expect(download).not.toHaveBeenCalled();
+    expect(destination.deleted).toBe(false);
+  });
+
+  it('a corrupt file is removed and re-downloaded', async () => {
+    const destination = fakeFile({ exists: true, size: WHISTLE_MODEL_BYTES });
+    const tmp = fakeFile({ exists: true, size: WHISTLE_MODEL_BYTES });
+    const download = vi.fn(async () => {
+      tmp.exists = true;
+      tmp.size = WHISTLE_MODEL_BYTES;
+    });
+    const sha256Of = vi.fn(async (file: FakeFsFile) =>
+      file === destination ? '0'.repeat(64) : WHISTLE_MODEL_SHA256,
+    );
+    await downloadModel(undefined, {
+      download: download as never,
+      sha256Of: sha256Of as never,
+      modelFile: () => destination as never,
+      tempFile: () => tmp as never,
+    });
+    expect(destination.deleted).toBe(true);
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(destination.exists).toBe(true);
+  });
+
+  it('a truncated re-download is rejected and removed', async () => {
+    const destination = fakeFile();
+    const tmp = fakeFile({ exists: true, size: 100 });
+    const download = vi.fn(async () => {
+      tmp.exists = true;
+      tmp.size = 100;
+    });
+    const sha256Of = vi.fn(async () => WHISTLE_MODEL_SHA256);
+    await expect(
+      downloadModel(undefined, {
+        download: download as never,
+        sha256Of: sha256Of as never,
+        modelFile: () => destination as never,
+        tempFile: () => tmp as never,
+      }),
+    ).rejects.toMatchObject({ code: 'bad_checksum' });
+    expect(tmp.deleted).toBe(true);
+    expect(destination.exists).toBe(false);
+  });
+
+  it('a failed download leaves no partial file', async () => {
+    const destination = fakeFile();
+    const tmp = fakeFile({ exists: true, size: 50 });
+    const download = vi.fn(async () => {
+      throw new Error('no network in tests');
+    });
+    await expect(
+      downloadModel(undefined, {
+        download: download as never,
+        sha256Of: (async () => WHISTLE_MODEL_SHA256) as never,
+        modelFile: () => destination as never,
+        tempFile: () => tmp as never,
+      }),
+    ).rejects.toMatchObject({ code: 'download_failed' });
+    expect(tmp.deleted).toBe(true);
+  });
+
+  it('hashes bytes to the pinned sha256 shape', () => {
+    const digest = createHash('sha256').update('whistle-test').digest('hex');
+    expect(digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(createHash('sha256').update('whistle-test').digest('hex')).toBe(digest);
+    expect(createHash('sha256').update('whistle-test!').digest('hex')).not.toBe(digest);
+  });
+
+  it('a corrupt digest throws bad_checksum', () => {
+    expect(() => {
+      if ('0'.repeat(64) !== WHISTLE_MODEL_SHA256) {
+        throw new WhistleError('bad_checksum', 'The model download was corrupted, try again');
+      }
+    }).toThrowError(WhistleError);
   });
 });

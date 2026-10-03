@@ -59,13 +59,15 @@ export async function downloadModel(
   deps?: {
     download?: typeof File.downloadFileAsync;
     sha256Of?: (file: File) => Promise<string>;
+    modelFile?: () => File;
+    tempFile?: () => File;
   },
 ): Promise<void> {
   const native = getNativeModule();
   if (native === null || !native.isAvailable()) {
     throw new WhistleError('unavailable', 'On-device transcription needs Android arm64');
   }
-  const destination = modelFile();
+  const destination = deps?.modelFile?.() ?? modelFile();
   if (destination.exists && destination.size === WHISTLE_MODEL_BYTES) {
     const digest = await (deps?.sha256Of ?? sha256OfFile)(destination);
     if (digest.toLowerCase() === WHISTLE_MODEL_SHA256) {
@@ -75,7 +77,7 @@ export async function downloadModel(
     destination.delete();
   }
   const download = deps?.download ?? File.downloadFileAsync;
-  const tmp = tempFile();
+  const tmp = deps?.tempFile?.() ?? tempFile();
   if (tmp.exists) {
     tmp.delete();
   }
