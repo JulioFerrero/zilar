@@ -1,7 +1,7 @@
 ---
 id: T-0180
 title: Sign-in: tell people why no code arrived (new here? you need an invite link), web and mobile, without leaking who has an account
-status: planned
+status: review
 milestone: M5
 branch: task/T-0180-signin-no-code-hint
 model: meta/muse-spark-1.3-contributor
@@ -53,5 +53,53 @@ Any server change, a "request an invite" feature, other auth screens.
 ---
 
 ## Report (written by the worker when done)
+
+### What I did
+Added the no-code hints to the login screens (no `inviteCode`) on web and mobile,
+using each screen's existing muted style. Invite screens (invite code set) and the
+setup page (which always passes an invite code) show nothing new. Server untouched.
+
+- Email step: muted line under the field —
+  "New here? Open the invite link you were sent first, then sign in."
+- Code step: muted line under the instructions —
+  "No email after a minute? Check spam, and if you are new here you need an
+  invite link from whoever runs this server." "Resend code" kept as-is.
+
+### Files changed
+- `apps/web/src/components/auth/AuthFlow.tsx` — both hints behind
+  `inviteCode === undefined` (covers setup page too, since SetupPage always
+  passes `inviteCode`).
+- `apps/web/src/components/auth/AuthFlow.test.tsx` — new `AuthFlow sign-in
+  hints (T-0180)` describe: email hint shown/hidden, code hint shown/hidden,
+  setup-props render shows neither, resend slot kept, and "account" /
+  "registered" / "exists" absent from the rendered body and both copy lines.
+- `apps/mobile/src/auth/AuthFlow.tsx` — same two hints, same copy/placement,
+  same `inviteCode === undefined` gate.
+- `apps/mobile/src/auth/AuthFlow.test.tsx` — new file following the repo's
+  `renderToStaticMarkup` + mocked-native pattern: hints shown without
+  `inviteCode`, hidden with one; code step covered by forcing the initial
+  `step` state to `"code"`; leak-word check on copy and rendered output.
+
+### Commands and real results
+- `pnpm install` — done, 9.9s (it also touched `pnpm-lock.yaml`; reverted that
+  hunk to stay inside Allowed files).
+- `pnpm format:check` — pass (after `prettier --write` on the two web files).
+- `pnpm lint` — pass, no warnings.
+- `pnpm typecheck` — pass (11 tasks successful).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 AuthFlow` — 3 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 AuthFlow SetupPage` — 17 passed
+  (8 AuthFlow incl. 4 new, 9 SetupPage, confirming the setup page is unchanged).
+
+### Notes / deviations
+- The new web code-step test first asserted "Resend code" immediately, but that
+  button only appears after the 30s countdown (`Resend in Ns` shows first); the
+  test now accepts either state. No spec change — the spec says to keep the
+  existing resend behavior, which I did not touch.
+- Mobile test mocks `expo-router`, `react-native`, `nativewind`,
+  `expo-linear-gradient`, `OtpInput` and `./session`, per existing mobile
+  `.test.tsx` convention; plain modules (`errors`, `guard`, colors) are real.
+- Security checklist: no secrets/logs touched; no new routes, writes, caps, or
+  audit entries; both hints are static copy shown identically to every
+  login-screen visitor, so nothing about accounts can leak.
 
 ## Review (written by Claude)

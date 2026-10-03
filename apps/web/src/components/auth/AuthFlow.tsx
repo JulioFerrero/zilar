@@ -141,6 +141,11 @@ export function AuthFlow({
               placeholder="you@example.com"
               className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
             />
+            {inviteCode === undefined && (
+              <p className="text-[13px] text-muted-foreground">
+                New here? Open the invite link you were sent first, then sign in.
+              </p>
+            )}
             {error !== undefined && (
               <p role="alert" className="text-[14px] text-danger">
                 {error}
@@ -159,6 +164,12 @@ export function AuthFlow({
             <p className="text-center text-[15px] text-muted-foreground">
               Enter the 6-digit code we sent to <span className="text-foreground">{email}</span>
             </p>
+            {inviteCode === undefined && (
+              <p className="text-center text-[13px] text-muted-foreground">
+                No email after a minute? Check spam, and if you are new here you need an invite link
+                from whoever runs this server.
+              </p>
+            )}
             <OtpInput
               value={code}
               onChange={setCode}
