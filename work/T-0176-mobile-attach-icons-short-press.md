@@ -78,3 +78,12 @@ The emoji, sticker and GIF panel (T-0175), any other screen.
 - No deletes/updates beyond the local recorder discard via the existing `cancel()` seam.
 
 ## Review (written by Claude)
+
+**Verdict:** Round 1: changes requested
+
+Verified: scope is the Allowed files, the recorder logic (a press under 1 s is cancelled before `stop`, nothing sent, no hint), `RECORD_TOO_SHORT_MESSAGE` gone, checks pass per the pre-review.
+
+### Findings
+1. **Vacuous fallback-icon test** (`attach-sheet.test.tsx:121`). It only asserts the file name, which also renders on the thumbnail path. Make it fail when the icon is wrong or missing: render the failed-preview state (or test `isImageName` and the chosen icon through an exported seam) and assert the `FileText` icon for `doc.pdf` and the image icon for `pic.png`. Mutation-check it by swapping the branches.
+2. **Julio asked for icons everywhere** ("always icons for the UI, not emojis"). `attachment-message.tsx:215` and `attachment-video.tsx:136` still render a paperclip glyph. Replace both with the lucide `FileText` (file) / `Video` (video) icon, same size and colour rules as the attach sheet, and add both files and their tests to this task's scope. Pin with a source test that no `\p{Extended_Pictographic}` character remains in either file.
+3. *(No change needed.)* The post-`stop()` short guard at `voice-recorder.tsx:125` is unreachable on the real path; fine as a safety net.
