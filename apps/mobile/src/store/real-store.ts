@@ -1025,9 +1025,19 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     // A status only moves forward: sending -> sent -> read. A late echo or
     // send confirmation must never downgrade a message the peer already read.
-    const STATUS_RANK: Record<MessageStatus, number> = { sending: 0, sent: 1, read: 2 };
+    // `failed` is outside the ladder: `advanceStatus` never moves into or out
+    // of it by accident — only an explicit retry does (web's T-0168).
+    const STATUS_RANK: Record<MessageStatus, number> = {
+      sending: 0,
+      sent: 1,
+      read: 2,
+      failed: 2,
+    };
 
     function advanceStatus(current: MessageStatus, next: MessageStatus): MessageStatus {
+      if (current === 'failed' || next === 'failed') {
+        return current;
+      }
       return STATUS_RANK[next] > STATUS_RANK[current] ? next : current;
     }
 

@@ -95,6 +95,11 @@ function BubbleMeta({
       <Text className="font-mono text-[10px]" color={color}>
         {formatTime(message.createdAt)}
       </Text>
+      {outgoing && message.status === 'failed' ? (
+        <Text className="font-mono text-[10px]" color={color}>
+          Not sent
+        </Text>
+      ) : null}
       {outgoing ? <Ticks status={message.status} color={color} size={13} /> : null}
     </View>
   );
@@ -102,7 +107,7 @@ function BubbleMeta({
 
 /** Delivered/read ticks as glyphs, so they flow inline at the end of the text (as main did). */
 function outgoingTicks(status: UiMessage['status']): string {
-  if (status === 'sending') {
+  if (status === 'sending' || status === 'failed') {
     return ' ○';
   }
   return status === 'read' ? ' ✓✓' : ' ✓';
