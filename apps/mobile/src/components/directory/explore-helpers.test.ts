@@ -26,6 +26,15 @@ describe('explore-helpers', () => {
     ).toBe('Too many searches, try again in a few minutes');
   });
 
+  it('never renders raw server text', () => {
+    const rendered = describeDirectoryError(
+      new DirectoryApiError(500, 'internal', 'db timeout on shard 3'),
+      'Could not load the directory. Try again.',
+    );
+    expect(rendered).toBe('Could not load the directory. Try again.');
+    expect(rendered).not.toContain('shard');
+  });
+
   it('maps join failures without raw server text', () => {
     expect(describeJoinError(new DirectoryApiError(409, 'group_full', 'full'))).toBe(
       'That group is full right now.',

@@ -17,10 +17,9 @@ export function describeDirectoryError(error: unknown, fallback: string): string
     if (error.status === 0 || error.code === 'network_error') {
       return 'Could not reach the server. Check your connection and try again.';
     }
-    if (error.message !== '') {
-      return error.message;
-    }
   }
+  // Never the server's message: it can carry internals ("db timeout on
+  // shard 3"). Every other code or status reads the caller fallback.
   return fallback;
 }
 
