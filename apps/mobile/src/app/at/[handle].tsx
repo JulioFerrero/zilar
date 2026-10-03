@@ -10,14 +10,14 @@ import { describeJoinError, directorySubtitle } from '@/components/directory/exp
 import {
   handleJoinLabel,
   handleRouteViewFor,
+  postJoinTarget,
   type HandleView,
 } from '@/components/directory/handle-helpers';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import type { DirectoryEntry } from '@/lib/directory-api';
-import { resolveGroupChat } from '@/lib/invite-links-api';
-import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
+import { useChatStore } from '@/store/chat-store-provider';
 
 /**
  * The `@handle` share entry (T-0183): `zilar://at/<handle>` (custom scheme,
@@ -47,7 +47,6 @@ function HandleCard({ handle }: { handle: string | undefined }) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   void scheme;
   const { api } = useDirectoryApi();
-  const store = useChatStoreApi();
   const reloadChats = useChatStore((state) => state.reloadChats);
   const [view, setView] = useState<HandleView>(
     handle === undefined || handle === '' ? { state: 'not-found' } : { state: 'checking' },
@@ -96,40 +95,26 @@ function HandleCard({ handle }: { handle: string | undefined }) {
     setRetries((count) => count + 1);
   };
 
+  // After a join the store refreshes the list, but the refresh has not
+  // landed when the join resolves — so the group screen opens from the id
+  // the server answered (or the entry), never from a synchronous list read
+  // that would fall through to the chats list on every success.
   const join = (entry: DirectoryEntry) => {
     if (busy) {
       return;
     }
     if (entry.joined) {
       reloadChats();
-      const target = resolveGroupChat(store.getState().chats, entry.id);
-      if (target.kind === 'chat') {
-        router.replace({ pathname: '/chat/[id]', params: { id: target.chatId } });
-        return;
-      }
-      if (target.kind === 'group') {
-        router.replace({ pathname: '/group/[id]', params: { id: target.groupId } });
-        return;
-      }
-      router.replace('/');
+      router.replace(postJoinTarget(entry.id));
       return;
     }
     setBusy(true);
     setJoinError('');
     void api
       .joinPublicGroup(entry.id)
-      .then(() => {
+      .then((result) => {
         reloadChats();
-        const target = resolveGroupChat(store.getState().chats, entry.id);
-        if (target.kind === 'chat') {
-          router.replace({ pathname: '/chat/[id]', params: { id: target.chatId } });
-          return;
-        }
-        if (target.kind === 'group') {
-          router.replace({ pathname: '/group/[id]', params: { id: target.groupId } });
-          return;
-        }
-        router.replace('/');
+        router.replace(postJoinTarget(result.groupId));
       })
       .catch((error: unknown) => {
         setJoinError(describeJoinError(error));

@@ -32,3 +32,20 @@ export function handleJoinLabel(entry: DirectoryEntry): string {
   }
   return entry.kind === 'channel' ? 'Join the channel' : 'Join the group';
 }
+
+export type PostJoinTarget =
+  { pathname: '/group/[id]'; params: { id: string } } | { pathname: '/' };
+
+/**
+ * Where to land after a public join (T-0183): the group screen for the id
+ * from the join result (or the directory entry), never a synchronous read
+ * of the chat list — the list refresh has not landed yet when the join
+ * resolves, so reading it would fall through to the chats list on every
+ * success. Only a missing id falls back to the list.
+ */
+export function postJoinTarget(groupId: string | undefined): PostJoinTarget {
+  if (groupId === undefined || groupId === '') {
+    return { pathname: '/' };
+  }
+  return { pathname: '/group/[id]', params: { id: groupId } };
+}

@@ -20,8 +20,8 @@ import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
 import type { DirectoryEntry, DirectoryKind } from '@/lib/directory-api';
-import { resolveGroupChat } from '@/lib/invite-links-api';
-import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
+import { postJoinTarget } from '@/components/directory/handle-helpers';
+import { useChatStore } from '@/store/chat-store-provider';
 
 type KindFilter = 'all' | DirectoryKind;
 
@@ -50,7 +50,6 @@ function ExploreList() {
   const router = useRouter();
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api } = useDirectoryApi();
-  const store = useChatStoreApi();
   const reloadChats = useChatStore((state) => state.reloadChats);
 
   const [query, setQuery] = useState('');
@@ -146,18 +145,13 @@ function ExploreList() {
       .finally(() => setLoadingMore(false));
   };
 
+  // After a join the store refreshes the list, but the refresh has not
+  // landed when the join resolves — so the group screen opens from the id
+  // the server answered (or the entry), never from a synchronous list read
+  // that would fall through to the chats list on every success.
   const openEntry = (entry: DirectoryEntry) => {
     reloadChats();
-    const target = resolveGroupChat(store.getState().chats, entry.id);
-    if (target.kind === 'chat') {
-      router.replace({ pathname: '/chat/[id]', params: { id: target.chatId } });
-      return;
-    }
-    if (target.kind === 'group') {
-      router.replace({ pathname: '/group/[id]', params: { id: target.groupId } });
-      return;
-    }
-    router.replace('/');
+    router.replace(postJoinTarget(entry.id));
   };
 
   const join = (entry: DirectoryEntry) => {
@@ -172,11 +166,12 @@ function ExploreList() {
     setJoinError('');
     void api
       .joinPublicGroup(entry.id)
-      .then(() => {
+      .then((result) => {
         setEntries((current) =>
           current.map((row) => (row.id === entry.id ? { ...row, joined: true } : row)),
         );
-        openEntry(entry);
+        reloadChats();
+        router.replace(postJoinTarget(result.groupId));
       })
       .catch((error: unknown) => setJoinError(describeJoinError(error)))
       .finally(() => setJoiningId(undefined));
