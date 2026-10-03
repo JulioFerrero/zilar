@@ -26,7 +26,65 @@ export type StickerProbeError =
   | 'invalid_dimensions'
   | 'too_large'
   | 'decode_too_large'
-  | 'unsupported_layout';
+  | 'unsupported_layout'
+  | 'animated';
+
+/** True when the bytes carry an animated image: an animated WebP (VP8X with
+ *  the animation flag) or an APNG (an `acTL` chunk before any `IDAT`). */
+export function isAnimatedImage(bytes: Uint8Array): boolean {
+  return isAnimatedWebp(bytes) || isAnimatedPng(bytes);
+}
+
+/** A VP8X WebP whose animation flag (bit 1 of the flags byte) is set. */
+export function isAnimatedWebp(bytes: Uint8Array): boolean {
+  if (!isWebp(bytes) || bytes.length < 21) {
+    return false;
+  }
+  const chunk = String.fromCharCode(bytes[12]!, bytes[13]!, bytes[14]!, bytes[15]!);
+  if (chunk !== 'VP8X') {
+    return false;
+  }
+  // VP8X chunk: 4-byte chunk size at 16..19, then flags at 20, reserved at
+  // 21..23, then canvas (width-1, height-1). Bit 1 of the flags is the
+  // animation bit. parseWebp already read the canvas at 24/27.
+  if (bytes.length < 21) {
+    return false;
+  }
+  return (bytes[20]! & 0x02) !== 0;
+}
+
+/** A PNG with an `acTL` chunk before the first `IDAT`: an APNG. Chunks are
+ *  walked by length (never by trusting a claimed size past the buffer end),
+ *  so a truncated file simply answers false. */
+export function isAnimatedPng(bytes: Uint8Array): boolean {
+  if (!isPng(bytes)) {
+    return false;
+  }
+  let offset = 8;
+  while (offset + 8 <= bytes.length) {
+    const length = readU32BE(bytes, offset);
+    if (!Number.isSafeInteger(length) || length > bytes.length) {
+      return false;
+    }
+    const name = String.fromCharCode(
+      bytes[offset + 4]!,
+      bytes[offset + 5]!,
+      bytes[offset + 6]!,
+      bytes[offset + 7]!,
+    );
+    if (name === 'acTL') {
+      return true;
+    }
+    if (name === 'IDAT') {
+      return false;
+    }
+    if (offset + 12 + length > bytes.length) {
+      return false;
+    }
+    offset += 12 + length;
+  }
+  return false;
+}
 
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
 const RIFF_MAGIC = [0x52, 0x49, 0x46, 0x46] as const;
@@ -200,10 +258,24 @@ export function probeStickerBytes(bytes: Uint8Array): StickerProbeResult {
     return { ok: false, error: 'too_large' };
   }
   if (isPng(bytes)) {
-    return parsePng(bytes);
+    const parsed = parsePng(bytes);
+    if (!parsed.ok) {
+      return parsed;
+    }
+    if (isAnimatedPng(bytes)) {
+      return { ok: false, error: 'animated' };
+    }
+    return parsed;
   }
   if (isWebp(bytes)) {
-    return parseWebp(bytes);
+    const parsed = parseWebp(bytes);
+    if (!parsed.ok) {
+      return parsed;
+    }
+    if (isAnimatedWebp(bytes)) {
+      return { ok: false, error: 'animated' };
+    }
+    return parsed;
   }
   if (bytes.byteLength < 12) {
     return { ok: false, error: 'too_small' };
@@ -211,7 +283,10 @@ export function probeStickerBytes(bytes: Uint8Array): StickerProbeResult {
   return { ok: false, error: 'unknown_type' };
 }
 
-/** Maps a probe failure to the public error code of the upload route. */
+/** Maps a probe failure to the public error code of the upload route.
+ *  `animated` maps to `sticker_not_image`: stickers accept animated WebP,
+ *  so callers that need the distinction (avatars) check the probe error
+ *  itself instead of this code. */
 export function probeErrorCode(
   error: StickerProbeError,
 ): 'sticker_not_image' | 'sticker_too_large' {

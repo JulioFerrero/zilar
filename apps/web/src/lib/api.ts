@@ -32,6 +32,9 @@ const meSchema = z.object({
   // T-0163: the caller's own `@username`. Optional (not just nullable) so
   // payloads from an older server still parse — absent reads like null.
   handle: z.string().nullable().optional(),
+  // T-0165: the caller's own picture, when set. Optional so older payloads
+  // parse (treated as none).
+  avatarUrl: z.string().optional(),
   jid: z.string().nullable().optional(),
 });
 
@@ -83,6 +86,9 @@ const groupEntrySchema = z.object({
   // Parsed loosely here — each entry is validated by `topicSchema` when
   // mapping to chats — and unknown entries are dropped there.
   topics: z.array(z.unknown()).optional(),
+  // T-0165: the group's picture, when it has one. Optional so older
+  // payloads parse (treated as none).
+  avatarUrl: z.string().optional(),
 });
 
 const chatEntrySchema = z.discriminatedUnion('kind', [dmEntrySchema, groupEntrySchema]);
@@ -120,6 +126,8 @@ const groupMemberSchema = z.object({
   // T-0116: the custom group roles this member holds. Optional so payloads
   // from an older server still parse (treated as none).
   roles: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
+  // T-0165: the member's picture. Optional so older payloads parse.
+  avatarUrl: z.string().optional(),
 });
 
 const groupAiSchema = z.object({
@@ -127,6 +135,8 @@ const groupAiSchema = z.object({
   jid: z.string(),
   name: z.string(),
   ownerId: z.string(),
+  // T-0165: the AI's picture. Optional so older payloads parse.
+  avatarUrl: z.string().optional(),
 });
 
 const groupDetailSchema = z.object({
@@ -148,6 +158,8 @@ const groupDetailSchema = z.object({
   // T-0164: the group's `@handle` while public, null while private.
   // Optional so older payloads parse as none.
   handle: z.string().nullable().optional(),
+  // T-0165: the group's picture. Optional so older payloads parse.
+  avatarUrl: z.string().optional(),
   members: z.array(groupMemberSchema),
   ais: z.array(groupAiSchema),
 });
@@ -879,6 +891,9 @@ const publicAiSchema = z.object({
   // Optional so a payload from a server that has not been upgraded yet
   // still parses — the panel renders the same way when it is absent.
   machineId: z.string().nullable().optional(),
+  // T-0165: the AI's picture, when it has one. Optional so older payloads
+  // parse (treated as none).
+  avatarUrl: z.string().optional(),
   createdAt: z.string(),
 });
 
@@ -2018,6 +2033,9 @@ export const directoryEntrySchema = z.object({
   description: z.string().nullable(),
   memberCount: z.number(),
   joined: z.boolean(),
+  // T-0165: the group's picture, when it has one. Optional so older
+  // payloads parse (treated as none).
+  avatarUrl: z.string().optional(),
 });
 
 export type DirectoryEntry = z.infer<typeof directoryEntrySchema>;
@@ -2097,4 +2115,61 @@ export function checkGroupHandle(handle: string): Promise<HandleCheck> {
   params.set('handle', handle);
   params.set('kind', 'group');
   return request(`/handles/check?${params.toString()}`, handleCheckSchema);
+}
+
+// --- Avatars (T-0165) ------------------------------------------------------
+// Profile pictures for people, AIs, groups and channels. The browser crops
+// and resizes (see `AvatarUploader`); the client uploads the raw bytes and
+// the server validates by magic bytes (static WebP/PNG only, square,
+// 64–512 px, ≤ 256 KB). The response carries the new `url`
+// (`/api/avatars/<id>`), which every list route also serves as `avatarUrl`.
+const avatarUrlSchema = z.object({ url: z.string() });
+
+export function uploadAvatar(
+  kind: 'user' | 'ai' | 'group',
+  ownerId: string,
+  blob: Blob,
+): Promise<{ url: string }> {
+  return uploadAvatarBytes(`/avatars/${kind}/${encodeURIComponent(ownerId)}`, blob);
+}
+
+async function uploadAvatarBytes(path: string, blob: Blob): Promise<{ url: string }> {
+  let response: Response;
+  if (isMockApiEnabled()) {
+    response = await mockRequest(path, {
+      method: 'PUT',
+      headers: { 'Content-Type': blob.type },
+      body: blob as unknown as string,
+    });
+  } else {
+    try {
+      response = await fetch(`${API_BASE}${path}`, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': blob.type },
+        body: blob,
+      });
+    } catch {
+      throw new ApiError(0, 'network_error', 'Could not reach the server');
+    }
+  }
+  const raw: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw toApiError(response.status, raw);
+  }
+  const parsed = avatarUrlSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ApiError(
+      response.status,
+      'invalid_response',
+      'The server sent an unexpected response',
+    );
+  }
+  return parsed.data;
+}
+
+export async function removeAvatar(kind: 'user' | 'ai' | 'group', ownerId: string): Promise<void> {
+  await request(`/avatars/${kind}/${encodeURIComponent(ownerId)}`, z.object({ ok: z.boolean() }), {
+    method: 'DELETE',
+  });
 }

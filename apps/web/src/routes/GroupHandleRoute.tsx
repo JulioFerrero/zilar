@@ -207,7 +207,7 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
         className="w-full max-w-sm rounded-2xl bg-background p-6 text-center shadow-xl"
       >
         <div className="flex justify-center">
-          <Avatar id={entry.id} name={entry.title} size={56} />
+          <Avatar id={entry.id} name={entry.title} size={56} avatarUrl={entry.avatarUrl} />
         </div>
         <h2 className="mt-3 text-[20px] font-semibold">{entry.title}</h2>
         <p className="mt-1 text-[14px] text-muted-foreground">@{entry.handle}</p>

@@ -197,7 +197,7 @@ function AiRow({
 }) {
   return (
     <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
-      <Avatar id={ai.id} name={ai.name} size={44} />
+      <Avatar id={ai.id} name={ai.name} size={44} ai avatarUrl={ai.avatarUrl} />
       <div className="min-w-0 flex-1 basis-40">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[15px] font-medium">{ai.name}</span>

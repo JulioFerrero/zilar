@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, count, eq, inArray } from 'drizzle-orm';
 import { findOwnedAi } from '../ais/service';
+import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
 import {
   ais,
@@ -51,6 +52,8 @@ export interface GroupMemberView {
   roles: Array<{ id: string; name: string }>;
   /** T-0163: the member's `@username`, when they have one. */
   handle?: string | null | undefined;
+  /** T-0165: the member's picture, when they have one. Omitted when none. */
+  avatarUrl?: string | undefined;
 }
 
 export type ChannelKind = 'group' | 'channel';
@@ -74,6 +77,8 @@ export interface GroupDetail {
   // T-0164: the group's `@handle` while public, null while private.
   // Optional in older payloads = null.
   handle: string | null;
+  // T-0165: the group's picture, when it has one. Omitted when none.
+  avatarUrl?: string | undefined;
   members: GroupMemberView[];
   ais: GroupAiView[];
 }
@@ -83,6 +88,8 @@ export interface GroupAiView {
   jid: string;
   name: string;
   ownerId: string;
+  /** T-0165: the AI's picture, when it has one. Omitted when none. */
+  avatarUrl?: string | undefined;
 }
 
 export interface ChatGroup {
@@ -359,6 +366,18 @@ export async function getGroupDetail(
   const members = await listGroupMembers(db, groupId);
   const aiViews = await listGroupAis(db, groupId);
   const handle = await handleForGroup(db, groupId);
+  // T-0165: the group's own picture plus every group AI's picture, each in
+  // one query — every group response that already carries a name gets
+  // `avatarUrl` when a picture exists (omitted when none, like today).
+  const [groupAvatar, aiAvatars] = await Promise.all([
+    avatarIdsByOwner(db, 'group', [groupId]),
+    avatarIdsByOwner(
+      db,
+      'ai',
+      aiViews.map((ai) => ai.aiId),
+    ),
+  ]);
+  const avatarId = groupAvatar.get(groupId);
   return {
     id: group.id,
     title: group.title,
@@ -369,8 +388,13 @@ export async function getGroupDetail(
     description: group.description,
     visibility: group.visibility,
     handle,
+    ...(avatarId === undefined ? {} : { avatarUrl: avatarUrlFor(avatarId) }),
     members,
-    ais: aiViews,
+    ais: aiViews.map((ai) =>
+      aiAvatars.get(ai.aiId) === undefined
+        ? ai
+        : { ...ai, avatarUrl: avatarUrlFor(aiAvatars.get(ai.aiId)!) },
+    ),
   };
 }
 
@@ -1065,7 +1089,13 @@ async function listGroupMembers(db: ServerDatabase, groupId: string): Promise<Gr
 
   // T-0116: fold each member's custom roles into the same row. Role
   // membership is not secret: every group member sees the same list.
+  // T-0165: fold each member's picture in too, in one query.
   const byUser = await roleHoldersByGroup(db, groupId);
+  const memberAvatars = await avatarIdsByOwner(
+    db,
+    'user',
+    rows.map((row) => row.userId),
+  );
   return rows
     .map((row) => ({
       userId: row.userId,
@@ -1073,6 +1103,9 @@ async function listGroupMembers(db: ServerDatabase, groupId: string): Promise<Gr
       role: row.role,
       roles: byUser.get(row.userId) ?? [],
       ...(row.handle ? { handle: row.handle } : {}),
+      ...(memberAvatars.get(row.userId) === undefined
+        ? {}
+        : { avatarUrl: avatarUrlFor(memberAvatars.get(row.userId)!) }),
     }))
     .sort(
       (a, b) =>

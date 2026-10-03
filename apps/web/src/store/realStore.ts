@@ -545,6 +545,8 @@ function summaryFor(entry: ChatEntry): ChatSummary {
     onlineCount: 0,
     visibility: entry.visibility ?? 'private',
     handle: entry.handle ?? null,
+    // T-0165: the group's picture rides the entry, like DMs carry theirs.
+    ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
     ...(chatKind === 'channel'
       ? {
           chatKind: 'channel' as const,
@@ -575,6 +577,7 @@ function summaryForTopic(
   } | null,
   visibility: 'private' | 'public' = 'private',
   handle: string | null = null,
+  avatarUrl?: string | undefined,
 ): ChatSummary {
   return {
     id: topic.chatJid,
@@ -590,6 +593,8 @@ function summaryForTopic(
     // header and the list paint the "Public" label on topics too.
     visibility,
     handle,
+    // T-0165: topic rows keep their group's picture too.
+    ...(avatarUrl === undefined ? {} : { avatarUrl }),
     ...(channel === null
       ? {}
       : {
@@ -640,7 +645,15 @@ export function summariesFor(entry: ChatEntry): ChatSummary[] {
         }
       : null;
   return topics.map((topic) =>
-    summaryForTopic(entry.title, entry.groupId, topic, channel, entry.visibility, entry.handle),
+    summaryForTopic(
+      entry.title,
+      entry.groupId,
+      topic,
+      channel,
+      entry.visibility,
+      entry.handle,
+      entry.avatarUrl,
+    ),
   );
 }
 

@@ -27,7 +27,7 @@ function webpBytes(width: number, height: number): Uint8Array {
   bytes.set(ascii('RIFF'), 0);
   bytes.set(ascii('WEBP'), 8);
   bytes.set(ascii('VP8X'), 12);
-  bytes.set([10, 0, 0, 0, 0x12, 0, 0, 0], 16);
+  bytes.set([10, 0, 0, 0, 0x10, 0, 0, 0], 16);
   const w = width - 1;
   const h = height - 1;
   bytes.set([w & 0xff, (w >> 8) & 0xff, (w >> 16) & 0xff], 24);

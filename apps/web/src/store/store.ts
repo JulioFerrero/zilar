@@ -1417,6 +1417,8 @@ export interface ChatGroup {
   title: string;
   /** The group's id for avatar + collapse state; undefined for DMs/AIs. */
   groupId: string | undefined;
+  /** T-0165: the group's picture, from its first topic row. */
+  avatarUrl?: string | undefined;
   topics: ChatSummary[];
 }
 
@@ -1470,7 +1472,15 @@ export function groupChats(state: ChatStoreState): ChatGroup[] {
       continue;
     }
     const title = groupTitleOf(matching[0] ?? topics[0]!);
-    groups.push({ key: `group:${groupId}`, title, groupId, topics: sortTopics(matching) });
+    groups.push({
+      key: `group:${groupId}`,
+      title,
+      groupId,
+      // T-0165: every topic row carries the group's picture, so the first
+      // one paints the header.
+      ...(matching[0]?.avatarUrl === undefined ? {} : { avatarUrl: matching[0].avatarUrl }),
+      topics: sortTopics(matching),
+    });
   }
   for (const chat of singles) {
     groups.push({ key: `chat:${chat.id}`, title: chat.title, groupId: undefined, topics: [chat] });

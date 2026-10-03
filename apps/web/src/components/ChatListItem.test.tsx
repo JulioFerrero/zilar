@@ -36,6 +36,8 @@ const publicGroup: ChatSummary = {
   memberCount: 12,
   visibility: 'public',
   handle: 'hiking_club',
+  // T-0165: the group's picture rides the row.
+  avatarUrl: '/api/avatars/g-hiking',
 };
 
 describe('ChatListItem', () => {
@@ -192,5 +194,16 @@ describe('ChatListItem', () => {
 
     expect(screen.getByText('PUBLIC')).toBeTruthy();
     expect(screen.queryByText('CHANNEL')).toBeNull();
+  });
+
+  it('shows the group picture when the row carries one (T-0165)', () => {
+    const { container } = renderApp('/', { chats: [publicGroup], messagesByChat: {} });
+    expect(container.querySelector('img[src="/api/avatars/g-hiking"]')).not.toBeNull();
+  });
+
+  it('falls back to initials when the row carries no picture (T-0165)', () => {
+    const { container } = renderApp('/', { chats: [personChat], messagesByChat: {} });
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.textContent).toContain('A');
   });
 });

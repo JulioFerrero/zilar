@@ -19,6 +19,7 @@ import {
 } from '@/lib/api';
 import { AiBadge } from '@/components/AiBadge';
 import { Avatar } from '@/components/Avatar';
+import { AvatarUploader } from '@/components/AvatarUploader';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 import { Button, FieldError } from './AiPageShell';
@@ -35,6 +36,28 @@ import { defaultModelFor, modelSuggestionsFor } from './models';
 import { buildPatch } from './aiForm';
 
 type PanelStatus = 'loading' | 'ready' | 'missing' | 'error';
+
+/** The AI's picture (T-0165), for the AI's owner. Refreshes the panel row
+ *  from the uploader's answer so the header shows the new picture at once. */
+function AiPictureSection({ ai, onChanged }: { ai: PublicAi; onChanged: (ai: PublicAi) => void }) {
+  return (
+    <AvatarUploader
+      kind="ai"
+      ownerId={ai.id}
+      ownerName={ai.name}
+      currentUrl={ai.avatarUrl}
+      onChanged={(url) =>
+        onChanged(url === undefined ? stripAvatarUrl(ai) : { ...ai, avatarUrl: url })
+      }
+    />
+  );
+}
+
+function stripAvatarUrl(ai: PublicAi): PublicAi {
+  const { avatarUrl: _removed, ...rest } = ai;
+  void _removed;
+  return rest;
+}
 
 /** `$2` -> `$2.00`. Server amounts are plain USD numbers. */
 function formatUsd(value: number): string {
@@ -469,7 +492,13 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
         className="flex h-full w-full max-w-sm flex-col bg-background shadow-xl sm:w-[380px]"
       >
         <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-          <Avatar id={ai?.id ?? chat.id} name={ai?.name ?? chat.title} size={44} />
+          <Avatar
+            id={ai?.id ?? chat.id}
+            name={ai?.name ?? chat.title}
+            size={44}
+            ai
+            avatarUrl={ai?.avatarUrl ?? chat.avatarUrl}
+          />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="truncate text-[16px] font-semibold">{ai?.name ?? chat.title}</span>
@@ -601,6 +630,9 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
               </div>
 
               <UsageBlock ai={ai} />
+
+              {/* T-0165: the AI's picture, for the AI's owner. */}
+              <AiPictureSection ai={ai} onChanged={setAi} />
 
               <LimitsFields
                 day={day}

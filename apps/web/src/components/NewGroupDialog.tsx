@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ApiError, checkGroupHandle } from '@/lib/api';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { Avatar } from './Avatar';
 import { HandleSuffix } from './HandleSuffix';
 import { cn } from '@/lib/utils';
 
@@ -167,6 +168,12 @@ export function NewGroupDialog({
                       checked={selected.includes(contact.userId)}
                       onChange={() => toggle(contact.userId)}
                       className="size-4 accent-[var(--accent)]"
+                    />
+                    <Avatar
+                      id={contact.userId}
+                      name={contact.name}
+                      size={28}
+                      avatarUrl={contact.avatarUrl}
                     />
                     <span className="truncate text-[15px]">
                       {contact.name} <HandleSuffix handle={contact.handle} />

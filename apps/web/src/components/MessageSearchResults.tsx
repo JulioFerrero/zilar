@@ -100,7 +100,7 @@ export function MessageSearchResults({
 
   const groups = groupByChat(
     search.items,
-    store.chats.map((chat) => ({ id: chat.id, title: chat.title })),
+    store.chats.map((chat) => ({ id: chat.id, title: chat.title, avatarUrl: chat.avatarUrl })),
   );
 
   // Enter on this list opens the top hit (Enter in the search input takes
@@ -126,7 +126,7 @@ export function MessageSearchResults({
       {groups.map((group) => (
         <div key={group.chatJid}>
           <div className="flex items-center gap-2 px-[10px] pt-1.5 pb-0.5">
-            <Avatar id={group.chatJid} name={group.title} size={20} />
+            <Avatar id={group.chatJid} name={group.title} size={20} avatarUrl={group.avatarUrl} />
             <span className="truncate text-[12px] font-medium text-muted-foreground">
               {group.title}
             </span>
@@ -153,9 +153,9 @@ export function MessageSearchResults({
 
 export function groupByChat(
   items: SearchItem[],
-  chats: Array<{ id: string; title: string }>,
-): Array<{ chatJid: string; title: string; items: SearchItem[] }> {
-  const titles = new Map(chats.map((chat) => [chat.id, chat.title]));
+  chats: Array<{ id: string; title: string; avatarUrl?: string | undefined }>,
+): Array<{ chatJid: string; title: string; avatarUrl?: string | undefined; items: SearchItem[] }> {
+  const byId = new Map(chats.map((chat) => [chat.id, chat]));
   const order: string[] = [];
   const byChat = new Map<string, SearchItem[]>();
   for (const item of items) {
@@ -167,9 +167,13 @@ export function groupByChat(
       list.push(item);
     }
   }
-  return order.map((chatJid) => ({
-    chatJid,
-    title: titles.get(chatJid) ?? chatJid,
-    items: byChat.get(chatJid) ?? [],
-  }));
+  return order.map((chatJid) => {
+    const chat = byId.get(chatJid);
+    return {
+      chatJid,
+      title: chat?.title ?? chatJid,
+      ...(chat?.avatarUrl === undefined ? {} : { avatarUrl: chat.avatarUrl }),
+      items: byChat.get(chatJid) ?? [],
+    };
+  });
 }

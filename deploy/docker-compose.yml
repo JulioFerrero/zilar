@@ -137,6 +137,11 @@ services:
       # `init` writes no sticker line (the default here is final); a manual
       # edit of this value orphans previously uploaded stickers.
       STICKER_STORAGE_DIR: /data/stickers
+      # Where profile pictures live: a persistent volume (see `volumes:`
+      # below), fixed absolute path, always set — never relative, never
+      # empty. Same rules as the sticker dir: a manual edit orphans
+      # previously uploaded pictures.
+      AVATAR_STORAGE_DIR: /data/avatars
       # Compose has no way to say "unset if empty": an empty LITELLM_BASE_URL
       # fails the `z.url()` schema, so default to an unreachable placeholder
       # URL instead. The AI module treats "no master key" as "no gateway",
@@ -193,8 +198,11 @@ services:
     # not the container layer: without it every server replace wipes them.
     # The server starts as non-root (see apps/server/Dockerfile), so the
     # mount must stay writable by that user (default named-volume ownership).
+    # Avatar pictures (AVATAR_STORAGE_DIR above) live on their own named
+    # volume, for the same reason.
     volumes:
       - sticker-data:/data/stickers
+      - avatar-data:/data/avatars
     networks:
       - zilar
 
@@ -263,5 +271,8 @@ volumes:
   # Sticker files (STICKER_STORAGE_DIR=/data/stickers on `server` above).
   # Backed up by `./zilar backup` together with the uploads volume.
   sticker-data:
+  # Profile pictures (AVATAR_STORAGE_DIR=/data/avatars on `server` above).
+  # Backed up by `./zilar backup` together with the sticker volume.
+  avatar-data:
   caddy-data:
   caddy-config:

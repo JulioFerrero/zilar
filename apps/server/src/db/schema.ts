@@ -650,6 +650,37 @@ export const userStickerPacks = pgTable(
   (table) => [primaryKey({ columns: [table.userId, table.packId] })],
 );
 
+// Profile pictures for people, AIs, groups and channels (T-0165). One
+// row per owner (`owner_kind` + `owner_id` is unique); a channel is a
+// group. The bytes live on disk under `AVATAR_STORAGE_DIR` as a random
+// `<uuid>.<ext>` (never user input), like the sticker files. Better Auth's
+// `user` table is untouched: `avatarUrl` is read by joining this table at
+// read time (`/api/avatars/<id>`), falling back to `user.image` when there
+// is no row. `owner_id` carries no FK on purpose — one column names a user,
+// an AI or a group id, and exactly one of the three tables owns it.
+export const avatarOwnerKindSchema = z.enum(['user', 'ai', 'group']);
+export type AvatarOwnerKind = z.infer<typeof avatarOwnerKindSchema>;
+
+export const avatars = pgTable(
+  'avatars',
+  {
+    id: text('id').primaryKey(),
+    ownerKind: text('owner_kind', { enum: ['user', 'ai', 'group'] }).notNull(),
+    ownerId: text('owner_id').notNull(),
+    mime: text('mime', { enum: ['image/webp', 'image/png'] }).notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    bytes: integer('bytes'),
+    storageKey: text('storage_key').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('avatars_owner_idx').on(table.ownerKind, table.ownerId),
+    check('avatars_owner_kind_check', sql`${table.ownerKind} IN ('user', 'ai', 'group')`),
+    check('avatars_mime_check', sql`${table.mime} IN ('image/webp', 'image/png')`),
+  ],
+);
+
 // Web push devices (T-0119). One row per browser subscription: the `node`
 // identifies the XEP-0357 push pair ejabberd notifies, `endpoint`/`p256dh`/
 // `auth` are the Web Push subscription (the keys sealed with PUSH_STORAGE_KEY,

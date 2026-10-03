@@ -103,14 +103,14 @@ function stubAudit(entries: unknown[]): ReturnType<typeof vi.fn> {
 }
 
 function renderStore(store: ReturnType<typeof createChatStore>, onClose = vi.fn()) {
-  render(
+  const result = render(
     <AuthProvider value={auth}>
       <ChatStoreProvider store={store}>
         <GroupPanel chat={chat} onClose={onClose} />
       </ChatStoreProvider>
     </AuthProvider>,
   );
-  return onClose;
+  return { onClose, container: result.container };
 }
 
 function setup(seed: ChatStoreSeed = {}, auditEntries: AuditAnswer = []) {
@@ -118,7 +118,7 @@ function setup(seed: ChatStoreSeed = {}, auditEntries: AuditAnswer = []) {
   if (auditEntries !== 'no-stub') {
     stubAudit(auditEntries);
   }
-  const onClose = renderStore(store);
+  const { onClose } = renderStore(store);
   return { store, onClose };
 }
 
@@ -139,6 +139,22 @@ describe('GroupPanel', () => {
     expect(ais.getByText('Dev-1')).toBeTruthy();
     expect(ais.getByText('AI')).toBeTruthy();
     expect(ais.getByText('Added by You')).toBeTruthy();
+  });
+
+  it('shows member and AI pictures when the server sends them', () => {
+    const pictured = detail({
+      avatarUrl: '/api/avatars/g-1',
+      members: [
+        { userId: 'u-you', name: 'You', role: 'owner' },
+        { userId: 'u-ana', name: 'Ana', role: 'member', avatarUrl: '/api/avatars/u-ana' },
+      ],
+      ais: [{ ...devAi, avatarUrl: '/api/avatars/ai-1' }],
+    });
+    const { container } = renderStore(
+      createChatStore(seedWith({ groupInfos: { 'c-devteam': pictured } })),
+    );
+    expect(container.querySelector('img[src="/api/avatars/u-ana"]')).not.toBeNull();
+    expect(container.querySelector('img[src="/api/avatars/ai-1"]')).not.toBeNull();
   });
 
   it('shows Add my AI for an owner with an eligible AI', async () => {

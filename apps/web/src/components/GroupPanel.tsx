@@ -20,6 +20,7 @@ import { ActivitySection } from './ais/AiActivity';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { PinsSection } from './PinsPanel';
 import { AiBadge } from './AiBadge';
+import { AvatarUploader } from './AvatarUploader';
 import { FieldError } from './ais/AiPageShell';
 import { describeAiError } from './ais/errors';
 import { Avatar } from './Avatar';
@@ -332,7 +333,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
         className="flex h-full w-full flex-col bg-surface shadow-xl outline-none sm:w-[380px]"
       >
         <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-          <Avatar id={chat.id} name={chat.title} size={44} />
+          <Avatar id={chat.id} name={chat.title} size={44} avatarUrl={chat.avatarUrl} />
           <div className="min-w-0 flex-1">
             <div className="truncate text-[16px] font-semibold">{chat.title}</div>
             <p className="text-[13px] text-muted-foreground">
@@ -354,6 +355,15 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
 
           {info !== undefined && (
             <>
+              {/* T-0165: the group's picture, for owners and admins. */}
+              {isManager && (
+                <GroupPictureSection
+                  groupId={info.id}
+                  title={info.title}
+                  currentUrl={info.avatarUrl}
+                  chatId={chat.id}
+                />
+              )}
               <section aria-label="Members" className="flex flex-col gap-1">
                 <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Members</h2>
                 {info.members.map((member) => {
@@ -367,7 +377,12 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                       key={member.userId}
                       className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
                     >
-                      <Avatar id={member.userId} name={member.name} size={32} />
+                      <Avatar
+                        id={member.userId}
+                        name={member.name}
+                        size={32}
+                        avatarUrl={member.avatarUrl}
+                      />
                       <span className="min-w-0 flex-1 truncate text-[14px]">
                         {member.name} <HandleSuffix handle={member.handle} />
                       </span>
@@ -397,6 +412,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   members={info.members.map((member) => ({
                     userId: member.userId,
                     name: member.name,
+                    ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
                   }))}
                   rolesState={rolesState}
                   onReload={() => void reloadRoles()}
@@ -419,7 +435,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                       key={ai.aiId}
                       className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
                     >
-                      <Avatar id={ai.jid} name={ai.name} size={32} ai />
+                      <Avatar id={ai.jid} name={ai.name} size={32} ai avatarUrl={ai.avatarUrl} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="truncate text-[14px]">{ai.name}</span>
@@ -483,7 +499,13 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                               'hover:bg-surface-raised disabled:opacity-50',
                             )}
                           >
-                            <Avatar id={ai.jid} name={ai.name} size={28} ai />
+                            <Avatar
+                              id={ai.jid}
+                              name={ai.name}
+                              size={28}
+                              ai
+                              avatarUrl={ai.avatarUrl}
+                            />
                             <span className="min-w-0 flex-1 truncate">{ai.name}</span>
                             <AiBadge />
                             {addingId === ai.id && (
@@ -614,6 +636,42 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
 }
 
 /**
+ * The group's picture (T-0165), for owners and admins. Refreshes the
+ * group's chats from the server after a change (the uploader reports the
+ * new url or undefined), so the list and header show it at once.
+ */
+function GroupPictureSection({
+  groupId,
+  title,
+  currentUrl,
+  chatId,
+}: {
+  groupId: string;
+  title: string;
+  currentUrl?: string | undefined;
+  chatId: string;
+}) {
+  const storeApi = useChatStoreApi();
+  // The uploader reports the new url (or undefined after a remove) through
+  // `onChanged`; while no change happened this render, the server row wins.
+  const [changedUrl, setChangedUrl] = useState<string | undefined | null>(null);
+  const shown = changedUrl !== null ? changedUrl : currentUrl;
+  return (
+    <AvatarUploader
+      kind="group"
+      ownerId={groupId}
+      ownerName={title}
+      currentUrl={shown}
+      onChanged={(next) => {
+        setChangedUrl(next);
+        storeApi.getState().refreshChats();
+        storeApi.getState().refreshGroupInfo(chatId);
+      }}
+    />
+  );
+}
+
+/**
  * Custom group roles for managers (T-0116): create, rename, delete, and
  * assign with a member multi-select. A role grants private-topic access and
  * approver rights in the topics it is attached to — picked per topic in
@@ -626,7 +684,7 @@ function RolesSection({
   onReload,
 }: {
   groupId: string;
-  members: Array<{ userId: string; name: string }>;
+  members: Array<{ userId: string; name: string; avatarUrl?: string | undefined }>;
   rolesState: { status: 'loading' | 'ready' | 'error'; roles: GroupRole[]; message: string };
   onReload: () => void;
 }) {
@@ -831,7 +889,12 @@ function RolesSection({
                           onChange={() => void toggleHolder(role, member.userId)}
                           className="size-4 accent-white"
                         />
-                        <Avatar id={member.userId} name={member.name} size={28} />
+                        <Avatar
+                          id={member.userId}
+                          name={member.name}
+                          size={28}
+                          avatarUrl={member.avatarUrl}
+                        />
                         <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
                       </label>
                     );

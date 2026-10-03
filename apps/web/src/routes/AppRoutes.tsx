@@ -20,6 +20,7 @@ import { MachinesPage } from './MachinesPage';
 import { NamePage } from './NamePage';
 import { NotificationsPage } from './NotificationsPage';
 import { IntegrationsPage } from './IntegrationsPage';
+import { ProfilePage } from './ProfilePage';
 import { StickersPage } from './StickersPage';
 import { ApprovalsPage } from './ApprovalsPage';
 
@@ -170,6 +171,14 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <StickersPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/settings/profile"
+        element={
+          <RequireAuth>
+            <ProfilePage />
           </RequireAuth>
         }
       />

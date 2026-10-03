@@ -30,6 +30,7 @@ import {
   listConnections,
   machineSchema,
   publicApprovalSchema,
+  removeAvatar,
   renameGroupRole,
   renameMachine,
   resumeAi,
@@ -42,6 +43,7 @@ import {
   setTopicRoles,
   stopAi,
   testConnection,
+  uploadAvatar,
 } from '@/lib/api';
 import { isMockApiEnabled } from '@/mock/gate';
 
@@ -1268,6 +1270,41 @@ describe('sticker packs and favorites API (T-0121)', () => {
     expect(JSON.parse(init.body as string)).toEqual({
       input: 'https://t.me/addstickers/FunCats',
     });
+  });
+});
+
+describe('avatars API (T-0165)', () => {
+  it('uploadAvatar PUTs the bytes and parses the url', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { url: '/api/avatars/a-1' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const blob = new Blob([new Uint8Array([1, 2])], { type: 'image/webp' });
+    const result = await uploadAvatar('group', 'g-1', blob);
+    expect(result).toEqual({ url: '/api/avatars/a-1' });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/avatars/group/g-1');
+    expect(init.method).toBe('PUT');
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('image/webp');
+  });
+
+  it('uploadAvatar surfaces the server refusal code through ApiError', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse(400, { error: { code: 'avatar_not_square', message: 'not square' } }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(uploadAvatar('user', 'u-1', new Blob(['x']))).rejects.toMatchObject({
+      code: 'avatar_not_square',
+    });
+  });
+
+  it('removeAvatar DELETEs the owner picture', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    await removeAvatar('ai', 'ai-1');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/avatars/ai/ai-1');
+    expect(init.method).toBe('DELETE');
   });
 });
 

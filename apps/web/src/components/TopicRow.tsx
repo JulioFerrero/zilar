@@ -163,6 +163,7 @@ export function TopicRow({
 export function GroupHeaderRow({
   groupTitle,
   groupId,
+  avatarUrl,
   topics,
   selectedId,
   collapsed,
@@ -174,6 +175,7 @@ export function GroupHeaderRow({
 }: {
   groupTitle: string;
   groupId: string;
+  avatarUrl?: string | undefined;
   topics: ChatSummary[];
   selectedId: string | undefined;
   collapsed: boolean;
@@ -216,7 +218,7 @@ export function GroupHeaderRow({
           aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${groupTitle}, ${active.length} topics`}
           className="flex min-w-0 flex-1 items-center gap-3 rounded-[12px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
-          <Avatar id={groupId} name={groupTitle} size={isWide ? 44 : 52} />
+          <Avatar id={groupId} name={groupTitle} size={isWide ? 44 : 52} avatarUrl={avatarUrl} />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
               <span className="truncate text-[14px] leading-5 font-semibold text-foreground">

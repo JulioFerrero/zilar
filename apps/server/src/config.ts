@@ -65,6 +65,11 @@ const serverConfigSchema = z
     // File names are `<uuid>.<ext>`; the dir must exist or be creatable and
     // writable at startup (checked in `index.ts`).
     STICKER_STORAGE_DIR: z.string().min(1).default('./data/stickers'),
+    // Avatars (T-0165): the directory profile pictures are stored under.
+    // Same rules as `STICKER_STORAGE_DIR`: file names are `<uuid>.<ext>`
+    // (never user input), the dir must exist or be creatable and writable
+    // at startup (checked in `index.ts`).
+    AVATAR_STORAGE_DIR: z.string().min(1).default('./data/avatars'),
     // Telegram sticker import (T-0123): the token of a bot that may call
     // `getStickerSet`/`getFile` for public packs (Julio creates one with
     // @BotFather and puts it in `infra/.env`). Unset = the import route

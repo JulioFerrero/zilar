@@ -82,8 +82,7 @@ if (config.MAIL_TRANSPORT === undefined) {
 // Stickers (T-0120): the storage dir must exist or be creatable and
 // writable at startup, so a bad mount fails fast with a clear message
 // instead of failing the first upload. Resolved against the server package
-// root like the routes, so a relative value means the same dir here and
-// there whatever the cwd is. T-0146: when the dir did not exist yet and is
+// root like the routes, so a relative value means the same dir here and there whatever the cwd is. T-0146: when the dir did not exist yet and is
 // created now, the startup helper logs ONE warning line with the resolved
 // path — a relative value resolving to an empty, unexpected directory (e.g.
 // a build step moved the package root) is the "moved base" case, and the
@@ -97,6 +96,11 @@ await warnOnEmptyStorageDir({
   storageDir: stickerDir,
   warn: (message) => logger.warn(message),
 });
+
+// Avatars (T-0165): same rules as the sticker dir — a missing directory is
+// created, an unwritable one fails fast with a clear message.
+const avatarDir = resolveStorageDir(config.AVATAR_STORAGE_DIR);
+await ensureWritableDir(avatarDir, 'AVATAR_STORAGE_DIR');
 
 const adminClient = createEjabberdAdminClient(config.xmpp);
 const auth = createAuth({ db, config, mailer: currentMailer, adminClient, logger });

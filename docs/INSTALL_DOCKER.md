@@ -221,7 +221,7 @@ Migrations run at server startup, so the new server container migrates the
 database itself. Back up first if the install matters to you:
 
 ```bash
-./deploy/zilar backup          # timestamped archive (databases, uploads, stickers, .env + manifest)
+./deploy/zilar backup          # timestamped archive (databases, uploads, stickers, avatars, .env + manifest)
 ```
 
 `backup [dir]` writes `zilar-backup-<UTC stamp>.tgz` (mode 0600: it
@@ -229,7 +229,8 @@ contains live secrets) with a `pg_dump` custom-format dump of both
 databases, a `pg_dumpall -g` roles/globals dump (role definitions incl.
 SCRAM password hashes — secret material, hence 0600), the ejabberd
 uploads volume (`uploads.tgz`: `/opt/ejabberd/upload`) AND the sticker
-volume (`stickers.tgz`: `STICKER_STORAGE_DIR=/data/stickers`), a copy of
+volume (`stickers.tgz`: `STICKER_STORAGE_DIR=/data/stickers`) AND the avatar
+volume (`avatars.tgz`: `AVATAR_STORAGE_DIR=/data/avatars`), a copy of
 `deploy/.env`, and a `manifest.json` with
 versions (domain, image owner/tag, postgres version, ejabberd status
 line, date) — all taken through the running containers. `restore <archive>` needs an
@@ -239,7 +240,7 @@ the *archived* credentials (a restore to a new machine with different
 passwords works), recreates the `audit_log` immutability triggers and
 verifies all three exist before finishing (a missing trigger fails the
 restore loudly — the stack never runs without append-only audit
-protection), restores uploads AND stickers plus the `.env` (the current `.env` is
+protection), restores uploads, stickers AND avatars plus the `.env` (the current `.env` is
 kept as `.env.bak-<stamp>`), restarts and waits for health. If any step
 fails, restore recreates the triggers, restarts the stack first and tells
 you what is safe to re-run — never leaves the install down silently. Backups live in
@@ -275,6 +276,7 @@ Where each kind of file lives on the Docker stack:
 |---|---|---|
 | Attachments (XEP-0363) | ejabberd upload volume (`ejabberd-uploads`, `/opt/ejabberd/upload`) | Per-file cap 50 MiB (`max_size`); per-user quotas below |
 | Stickers | sticker volume (`sticker-data`, `STICKER_STORAGE_DIR=/data/stickers` — fixed, always set) | Without the volume every server replace wipes them; `doctor` checks the mount |
+| Avatars | avatar volume (`avatar-data`, `AVATAR_STORAGE_DIR=/data/avatars` — fixed, always set) | Profile pictures for people, AIs, groups and channels (256 × 256 WebP/PNG, cropped in the browser, ≤ 256 KB); backed up with the stickers (`avatars.tgz`) |
 | GIFs | Not stored: proxied (`/api/gifs/media/:token`); a sent GIF becomes a normal attachment | Needs `GIF_PROVIDER` + `GIF_API_KEY` |
 | Voice | Not built | Planned |
 

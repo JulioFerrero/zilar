@@ -96,6 +96,16 @@ for _file in "deploy/docker-compose.yml" "deploy/coolify/docker-compose.yml"; do
   else
     bad "$_file does not mount sticker-data at /data/stickers"
   fi
+  if grep -q 'AVATAR_STORAGE_DIR: /data/avatars' "$T/rendered.yml"; then
+    ok "$_file sets AVATAR_STORAGE_DIR=/data/avatars"
+  else
+    bad "$_file does not set AVATAR_STORAGE_DIR=/data/avatars"
+  fi
+  if grep -q 'source: avatar-data' "$T/rendered.yml" && grep -q 'target: /data/avatars' "$T/rendered.yml"; then
+    ok "$_file mounts avatar-data at /data/avatars"
+  else
+    bad "$_file does not mount avatar-data at /data/avatars"
+  fi
   if grep -q 'ejabberd-uploads:/opt/ejabberd/upload' "$T/rendered.yml" || grep -q 'target: /opt/ejabberd/upload' "$T/rendered.yml"; then
     ok "$_file keeps the ejabberd uploads volume"
   else
@@ -184,19 +194,19 @@ mkdir -p "$T/fake"
 touch "$T/fake/nothing"
 tar -czf "$T/fake.tgz" -C "$T/fake" nothing
 if "$ZILAR" --env-file="$T/.env" backup --dry-run > "$T/backup-dry.log" 2>&1; then
-  if grep -q 'uploads.tgz' "$T/backup-dry.log" && grep -q 'stickers.tgz' "$T/backup-dry.log"; then
-    ok "backup dry-run lists uploads + stickers"
+  if grep -q 'uploads.tgz' "$T/backup-dry.log" && grep -q 'stickers.tgz' "$T/backup-dry.log" && grep -q 'avatars.tgz' "$T/backup-dry.log"; then
+    ok "backup dry-run lists uploads + stickers + avatars"
   else
-    bad "backup dry-run does not list both file stores"
+    bad "backup dry-run does not list all three file stores"
   fi
 else
   bad "backup --dry-run fails"
 fi
 if "$ZILAR" --env-file="$T/.env" restore "$T/fake.tgz" --dry-run --yes > "$T/restore-dry.log" 2>&1; then
-  if grep -q 'uploads' "$T/restore-dry.log" && grep -q 'sticker' "$T/restore-dry.log"; then
-    ok "restore dry-run lists uploads + stickers"
+  if grep -q 'uploads' "$T/restore-dry.log" && grep -q 'sticker' "$T/restore-dry.log" && grep -q 'avatar' "$T/restore-dry.log"; then
+    ok "restore dry-run lists uploads + stickers + avatars"
   else
-    bad "restore dry-run does not list both file stores"
+    bad "restore dry-run does not list all three file stores"
   fi
 else
   bad "restore --dry-run fails"
