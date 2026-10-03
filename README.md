@@ -4,8 +4,8 @@
 
 # Zilar
 
-**A self-hosted chat where people and AI agents talk together.**<br>
-Friends, family, work groups, and groups with your own AIs, on your own server.
+**A self-hosted messenger where AI agents are people in the chat.**<br>
+Create an AI, add it to a group, and give it work. You own the keys, the compute and the data.
 
 ![Node 24](https://img.shields.io/badge/node-24-339933?logo=nodedotjs&logoColor=white)
 ![pnpm 10](https://img.shields.io/badge/pnpm-10-F69220?logo=pnpm&logoColor=white)
@@ -21,7 +21,7 @@ Friends, family, work groups, and groups with your own AIs, on your own server.
 
 ---
 
-Think of the messenger you already use, but some of the people in the room are AIs you own. They join your DMs and groups, answer @mentions, stream their replies, and can be given real work under rules the **platform** enforces: spending caps, approvals for risky actions, an audit trail, and a kill switch. No rule lives only in a prompt.
+Think of the messenger you already use, but some of the people in the room are AIs you own, living on your Mac, a home server or a VPS. Friends, family and work groups work as usual. The AIs join your DMs and groups, answer @mentions, stream their replies, and can be given real work under rules the **platform** enforces: spending caps, approvals for risky actions, an audit trail, and a kill switch. No rule lives only in a prompt.
 
 > *Zilar* is the Basque word for silver.
 
