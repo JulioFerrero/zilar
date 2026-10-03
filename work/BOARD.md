@@ -216,7 +216,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0195](T-0195-mobile-parity-audit.md) | Audit (docs only): web vs mobile for AI tools, routines, activity, @mentions, dialogs | planned | meta/muse-spark-1.3-contributor | — | Spec ready; feeds the specs of T-0189 and T-0190 |
 | [T-0196](T-0196-lead-doctor.md) | Lead tooling: the doctor, a Muse session that audits main after merges | planned | meta/muse-spark-1.3-contributor | T-0197, T-0198 | Spec ready; same files as T-0198, so after it |
 | [T-0198](T-0198-lead-state-lost-writes.md) | Lead tooling: the autopilot overwrites state written by lead launch and lead merge during a tick | planned | meta/muse-spark-1.3-contributor | T-0197 | Spec ready; until merged, launch only while the autopilot is stopped |
-| [T-0197](T-0197-old-name-in-smoke-script.md) | Remove the old product name from the emulator smoke script (main's legacy-name test is red) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; first in the queue |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
@@ -225,3 +224,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0193](T-0193-mobile-search-people-by-handle.md) | Mobile: find people by @handle in the search bar, replacing the add-contact menu entry | 2026-10-03 |
 | [T-0185](T-0185-mobile-machines-connections.md) | Mobile machines and model connections screens, home machine picker on an AI | 2026-10-03 |
 | [T-0192](T-0192-web-search-people-by-handle.md) | Web: find people by @handle in the search bar, replacing Add contact in the new-chat menu | 2026-10-03 |
+| [T-0197](T-0197-old-name-in-smoke-script.md) | Old product name out of the smoke script; reviewer files at worktree roots are git-ignored | 2026-10-03 |
