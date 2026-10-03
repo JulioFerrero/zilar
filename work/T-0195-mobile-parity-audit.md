@@ -30,7 +30,7 @@ ONE file: `docs/audit/mobile-parity-gaps.md`, in English, with these sections. E
 At the end, add a section "Suggested task split" listing for each of T-0189 and T-0190 a proposed split into tasks of at most one day, with the Allowed files for each, as plain suggestions for the lead.
 
 ### Read first
-`AGENTS.md`, `docs/ROADMAP_MOBILE_PARITY.md`, `docs/FEATURES.md`, `docs/MOBILE_UX.md` if it exists.
+`AGENTS.md`, `docs/ROADMAP_MOBILE_PARITY.md`, `docs/FEATURES.md`.
 
 ### Allowed files
 `docs/audit/mobile-parity-gaps.md` (create the folder), `work/T-0195-mobile-parity-audit.md`. No code file may change.
