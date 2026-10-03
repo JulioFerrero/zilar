@@ -121,8 +121,9 @@ function ApprovalsBody() {
     async (pending: PublicApproval[]) => {
       setRulesStatus('loading');
       try {
-        // One AI-list fetch for display names, then one rules fetch per AI
-        // with a pending request (group rules are out of scope: T-0184).
+        // One AI-list fetch for display names, then one rules fetch per AI the
+        // person owns, whether or not it has a pending request (a standing
+        // rule must stay revocable). Group rules are out of scope: T-0184.
         const ais = await createAisApi(getSessionToken)
           .listAis()
           .catch(() => []);
@@ -131,7 +132,9 @@ function ApprovalsBody() {
           names[ai.id] = ai.name;
         }
         setAiNames(names);
-        const aiIds = [...new Set(pending.map((approval) => approval.aiId))];
+        const aiIds = [
+          ...new Set([...ais.map((ai) => ai.id), ...pending.map((approval) => approval.aiId)]),
+        ];
         // One AI's rules failure must not blank the others: each AI is
         // handled on its own (`mergeRulesFanOut` skips failures), and only
         // when every AI fails does the section show the error state.
@@ -153,9 +156,9 @@ function ApprovalsBody() {
         setOwnedRules(merged);
         setRulesStatus('ready');
         setRulesError('');
-      } catch (error) {
+      } catch {
         setRulesStatus('error');
-        setRulesError(error instanceof Error ? error.message : 'Could not load the rules.');
+        setRulesError('Could not load the rules.');
       }
     },
     [api],

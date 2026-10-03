@@ -1,7 +1,7 @@
 ---
 id: T-0184
 title: Mobile: approvals page (pending, history, always-allowed rules)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0184-mobile-approvals-page
 model: meta/muse-spark-1.3-contributor
@@ -103,3 +103,5 @@ Round 2 checks (real results): `pnpm format:check` clean ("All matched files use
 - The lead tests on the emulator and the phone.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved and merged after three rounds. My spec asked for a History tab by mistake (the web page has none): removed in round 1, replaced by a short confirmation line. Round 1 also fixed one AI's failing rules call blanking the others, double-tap deciding, and a still-pending row filed as decided. Round 2: a failed decision no longer wedges the row. Round 3 (lead): the always-allowed rules are listed for every AI the person owns, not only those with a pending request (a standing rule must stay revocable), and the load error is a fixed sentence. Format, lint, typecheck and 63 tests pass. Accepted nit: the AI names come from `createAisApi` directly, not the real-or-mock hook (mock mode shows ids).
