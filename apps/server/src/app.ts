@@ -50,6 +50,7 @@ import { createRoutinesRoutes } from './routines/routes';
 import type { ToolRunner } from './tools/types';
 import type { VoiceEngine } from './voice/engine';
 import { createVoiceRoutes } from './voice/routes';
+import { createVoiceTranscriptionRoutes } from './voice-transcription/routes';
 import type { EjabberdAdminClient } from './xmpp/admin-client';
 import { createXmppRoutes } from './xmpp/routes';
 
@@ -152,6 +153,15 @@ export interface AppDependencies {
   telegramClient?: import('./stickers/telegram-import').TelegramClient;
   /** T-0123: overrides the Telegram import limiter (tests inject a window). */
   telegramImportNow?: () => number;
+  /** T-0170: overrides the voice transcription routes (tests inject fakes). */
+  voiceTranscription?:
+    | Partial<
+        Pick<
+          import('./voice-transcription/routes').VoiceTranscriptionRoutesDependencies,
+          'transcriptLimiter' | 'settingsLimiter' | 'now' | 'audioFetcher' | 'transcribe'
+        >
+      >
+    | undefined;
   /** T-0162: overrides the integrations routes (tests inject fake senders). */
   integrations?:
     | Partial<
@@ -210,6 +220,7 @@ export function createApp({
   avatarUploadLimiter,
   telegramClient,
   telegramImportNow,
+  voiceTranscription,
   integrations,
   push,
   gifProvider,
@@ -466,6 +477,22 @@ export function createApp({
       auth,
       ...(voice === undefined ? {} : { engine: voice }),
       ...(voiceMaxBytes === undefined ? {} : { maxBytes: voiceMaxBytes }),
+    }),
+  );
+  // Voice transcripts on demand (T-0170): the enabled flag plus the
+  // transcript route for any signed-in user, and the owner-only endpoint
+  // settings. Covered by the 401 sweep as session-required routes (never
+  // allowlisted). Tests inject the audio fetcher and the transcriber so no
+  // request ever reaches ejabberd or a real provider.
+  app.route(
+    '/api',
+    createVoiceTranscriptionRoutes({
+      auth,
+      db,
+      config,
+      logger,
+      audit: auditRecorder,
+      ...voiceTranscription,
     }),
   );
 

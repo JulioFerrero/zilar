@@ -267,6 +267,13 @@
       "when": 1791003409266,
       "tag": "0037_calm_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791028259424,
+      "tag": "0038_voice-transcripts",
+      "breakpoints": true
     }
   ]
 }

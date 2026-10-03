@@ -33,6 +33,19 @@ export const instanceSettings = pgTable('instance_settings', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Voice transcripts (T-0170): one row per transcribed voice message, keyed
+// by SHA-256 of the upload URL. The transcript text is cached so each voice
+// message is transcribed once; concurrent duplicates serialize on an
+// advisory lock over the hash (see `voice-transcription/routes.ts`) and
+// re-check inside it. `language` is what the provider detected, null when
+// it said none.
+export const voiceTranscripts = pgTable('voice_transcripts', {
+  urlHash: text('url_hash').primaryKey(),
+  text: text('text').notNull(),
+  language: text('language'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const invites = pgTable('invites', {
   id: text('id').primaryKey(),
   code: text('code').notNull().unique(),

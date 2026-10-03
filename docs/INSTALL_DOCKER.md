@@ -210,6 +210,20 @@ checks the token with Telegram before storing it, and imports start
 working right away with no restart. Without a token the sticker page's
 import dialog says so instead of failing silently.
 
+### Optional: voice message transcripts
+
+Voice messages show a "Show transcript" control only after the server owner
+configures a transcription endpoint under Settings → Integrations → Voice
+transcription — transcription is off by default, and each voice message is
+transcribed once, on demand, when someone taps the control. The endpoint is
+any OpenAI-compatible `POST {base}/audio/transcriptions` service, so cost
+and privacy stay your choice: OpenAI (`https://api.openai.com/v1` with an
+API key and model `whisper-1`), Groq (`https://api.groq.com/openai/v1`
+with a Groq key and model `whisper-large-v3`), or a self-hosted Whisper
+server such as whisper.cpp or faster-whisper behind an OpenAI-compatible
+wrapper (its LAN URL with no key). Saving verifies the endpoint with a
+second of generated silence first and stores nothing when the check fails.
+
 ## Updating
 
 Images are published per release tag. To update:

@@ -1366,6 +1366,64 @@ describe('integrations settings API (T-0162 + Email)', () => {
   });
 });
 
+describe('voice transcription API (T-0170)', () => {
+  it('getVoiceTranscriptionStatus hits GET /api/voice/transcription', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { enabled: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { getVoiceTranscriptionStatus } = await import('@/lib/api');
+    expect(await getVoiceTranscriptionStatus()).toEqual({ enabled: true });
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/voice/transcription');
+  });
+
+  it('getVoiceTranscript POSTs the URL and parses the text', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { text: 'hello' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { getVoiceTranscript } = await import('@/lib/api');
+    expect(await getVoiceTranscript('http://localhost:3000/upload/x.m4a')).toEqual({
+      text: 'hello',
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/voice/transcript');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ url: 'http://localhost:3000/upload/x.m4a' });
+  });
+
+  it('saveVoiceTranscriptionSettings omits unset fields; remove DELETEs', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { saveVoiceTranscriptionSettings, removeVoiceTranscriptionSettings } =
+      await import('@/lib/api');
+    await saveVoiceTranscriptionSettings({ baseUrl: 'https://x.example/v1' });
+    expect(
+      JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string),
+    ).toEqual({ baseUrl: 'https://x.example/v1' });
+    await saveVoiceTranscriptionSettings({
+      baseUrl: 'https://x.example/v1',
+      apiKey: 'k',
+      model: 'whisper-1',
+    });
+    expect(
+      JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string),
+    ).toEqual({ baseUrl: 'https://x.example/v1', apiKey: 'k', model: 'whisper-1' });
+    const [putUrl, putInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(putUrl).toBe('/api/settings/integrations/voice-transcription');
+    expect(putInit.method).toBe('PUT');
+
+    await removeVoiceTranscriptionSettings();
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(deleteUrl).toBe('/api/settings/integrations/voice-transcription');
+    expect(deleteInit.method).toBe('DELETE');
+  });
+});
+
 describe('handles and contact requests API', () => {
   it('checkHandle encodes the handle as a query param', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { available: true }));

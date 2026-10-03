@@ -3625,6 +3625,25 @@ export async function mockRequest(
     return notImplemented();
   }
 
+  // T-0170: voice transcripts on demand, in memory for the page load. The
+  // mock has an endpoint configured, so the control shows and one tap
+  // resolves to a fixed sentence per URL (cached, like the real server).
+  if (head === 'voice' && first === 'transcription' && method === 'GET') {
+    return jsonResponse({ enabled: true });
+  }
+
+  if (head === 'voice' && first === 'transcript' && method === 'POST') {
+    const body = readJsonBody(init);
+    const url = typeof body.url === 'string' ? body.url : '';
+    if (url === '') {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'url must not be empty' } },
+        400,
+      );
+    }
+    return jsonResponse({ text: `Transcript of ${url}` });
+  }
+
   return notImplemented();
 }
 
