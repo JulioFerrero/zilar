@@ -138,4 +138,46 @@ Security checklist: no keys/tokens/codes in logs, errors or rendered trees
 single-id routes; confirms precede revoke/delete; double-tap refs on all
 writes; user-facing error text is always a fixed sentence.
 
+## Round 1 (lead review findings, six commits)
+
+1. `T-0185: finding 1 - parse machineId on PublicAi…`: added optional
+   `machineId` to `PublicAi` (optional, not required, so `mock/ais.ts` —
+   outside Allowed files — still typechecks) and parse it in
+   `parsePublicAi` (string kept, missing/non-string → null). The edit
+   screen reads `loaded.machineId` directly; the raw-record helper is gone.
+   Tests: string kept, missing/non-string → null, picker marks the AI's
+   home row selected. Note: `UpdateAiInput` still predates the
+   model/connection fields, so the edit screen keeps sending them via a
+   local extension type — say if you want that promoted into `ais-api.ts`.
+2+3. `T-0185: findings 2 and 3 - home machine state round-trips…`: new
+   `components/machines/machine-change.ts` (`applyMachineChange`) — success
+   shows the PUT answer, failure restores the previous value; errors go
+   through `describeMachinesError`, never `describeAisError`. Tested both
+   paths including a 503 with raw text.
+4. `T-0185: finding 4 - mappers answer the fallback…`: both `errors.ts`
+   `default:` branches return the call-site `fallback`; added fixed
+   sentences for `invalid_transition` (machines), `key_unreadable` and
+   `connections_unavailable` (connections). New `errors.test.ts` for both
+   mappers: unmapped code + raw message → fallback, raw string absent.
+5. `T-0185: finding 5 - test and add double-tap guards…`: Test button
+   ignores taps while a test is in flight; `openAdd` has an `addBusyRef`
+   (each tap mints a code, 10/hour); the `✕` glyph is lucide `X`.
+6. `T-0185: finding 6 - extract the connection save…`: new
+   `components/connections/save-connection.ts` (`saveConnection` +
+   `keyAfterSave`, wired into the form's submit). Tests execute the real
+   path with a test-typed key: (a) key sent in the POST body, (b) success →
+   field becomes `''` and the created connection carries no key field,
+   (c) failure → key kept for retry but absent from error text. No
+   `react-test-renderer` (not installed, and no new deps allowed), so the
+   executed unit is the handler's async core + the exact field transition
+   the submit runs — not a press through a renderer.
+
+Round 1 checks (real results): `pnpm --filter @zilar/mobile test
+--maxWorkers=2 machines connections ais` → 13 files, 107 tests, all
+passed. `pnpm lint` → pass. `pnpm typecheck` (turbo, 11 packages) → pass.
+`pnpm exec prettier --check apps/mobile/src work/T-0185…` → pass (repo-wide
+`format:check` flags only the untracked `PREREVIEW.md`, not mine — left
+untouched). Used `pnpm exec prettier`, never `npx`. Status stays `review`.
+The lead tests on the emulator and the phone.
+
 ## Review (written by Claude)
