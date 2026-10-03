@@ -1,7 +1,7 @@
 ---
 id: T-0159
 title: Fresh production install rehearsal (find the real defects)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0159-install-rehearsal
 model: meta/muse-spark-1.3-contributor
@@ -174,3 +174,7 @@ archive copies deleted); no `.env` committed; no routes/caps/audit touched; the 
 value never appears in this Report (only its shape/where it was logged).
 
 ## Review (written by Claude)
+
+Merged, no fix round (report-only task). The rehearsal is honest and the checks reproduce. It proved on a fresh production-shaped install: init, up (5 healthy), doctor, invite and OTP sign-in, sticker volume write and read, XEP-0363 upload, backup, delete and `restore --yes`, update dry-run, send-OTP rate limit. Teardown verified (no rehearsal container, volume, image or network left).
+
+Finding for follow-up: the push component dials `xmpp://127.0.0.1` inside the server container, so push can never connect in a compose install (live has push off, so nothing broke). Specced as T-0172 together with two docs notes (the `x-zilar-invite` header, the `upload.` subhost). The worker lost about an hour on a wrong invite header name; the lead told it to time-box. Not verified: the browser session flow (cookie from curl did not carry, bearer worked; likely a curl and Secure-cookie artifact). `push-deploy.test.sh` had 1 failing check on this older branch that passes on current main (25/0).
