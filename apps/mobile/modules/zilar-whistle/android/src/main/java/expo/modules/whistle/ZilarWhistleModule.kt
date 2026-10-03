@@ -23,8 +23,9 @@ private const val OUT_JSON_CAPACITY = 8192
  * Cactus Whistle model through the Needle engine.
  *
  * Android arm64-v8a only: the prebuilt `libneedle.a` is AArch64, so every
- * method reports `unavailable` on other ABIs (and the iOS side reports
- * `unavailable` too — see `ios/ZilarWhistleModule.swift`).
+ * method reports `unavailable` on other ABIs (and on iOS, where the module
+ * is not declared — `expo-module.config.json` lists Android only — the JS
+ * side reports `unavailable` too).
  *
  * The engine holds one process-global, non-thread-safe model, so all
  * loads and transcriptions are serialised on one lock.

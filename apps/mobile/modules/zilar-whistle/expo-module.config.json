@@ -1,9 +1,6 @@
 {
-  "platforms": ["android", "apple"],
+  "platforms": ["android"],
   "android": {
     "modules": ["expo.modules.whistle.ZilarWhistleModule"]
-  },
-  "apple": {
-    "modules": ["ZilarWhistleModule"]
   }
 }
