@@ -48,13 +48,19 @@ if ! command -v docker > /dev/null 2>&1 || ! docker info > /dev/null 2>&1; then
 fi
 
 # The leak scan matches only log lines that carry the sentinel itself.
-NET="t0167pwlog"
-PG="t0167pwlog-pg"
-EJ="t0167pwlog-ej"
-IMAGE="zilar-ejabberd-adminpw-test:local"
+# One suffix per run, so two runs at the same time (CI and a developer, or
+# a review) never share container, network or image names.
+RUN_ID="$$"
+NET="t0167pwlog-$RUN_ID"
+PG="t0167pwlog-pg-$RUN_ID"
+EJ="t0167pwlog-ej-$RUN_ID"
+IMAGE="zilar-ejabberd-adminpw-test:$RUN_ID"
+LEAK_LOG="$(mktemp)"
 cleanup() {
   docker rm -f "$EJ" "$PG" > /dev/null 2>&1 || true
   docker network rm "$NET" > /dev/null 2>&1 || true
+  docker rmi "$IMAGE" > /dev/null 2>&1 || true
+  rm -f "$LEAK_LOG"
 }
 trap cleanup EXIT INT TERM
 
@@ -91,12 +97,12 @@ start_stack() {
 assert_no_leak() {
   _sentinel="$1"
   _where="$2"
-  if docker logs "$EJ" 2>&1 | grep -F -- "$_sentinel" > /tmp/t0167-leak.log 2> /dev/null; then
-    bad "$_where: password appears in docker logs: $(head -n 1 /tmp/t0167-leak.log)"
+  if docker logs "$EJ" 2>&1 | grep -F -- "$_sentinel" > "$LEAK_LOG" 2> /dev/null; then
+    bad "$_where: password appears in docker logs: $(head -n 1 "$LEAK_LOG")"
   else
     ok "$_where: password is nowhere in docker logs"
   fi
-  rm -f /tmp/t0167-leak.log
+  : > "$LEAK_LOG"
 }
 
 # Assert the account exists and the given password is the live one.

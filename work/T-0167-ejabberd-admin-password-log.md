@@ -1,7 +1,7 @@
 ---
 id: T-0167
 title: Keep the ejabberd admin password out of the container logs
-status: review
+status: merged
 milestone: M5
 branch: task/T-0167-ejabberd-admin-password-log
 model: meta/muse-spark-1.3-contributor
@@ -192,3 +192,12 @@ afterwards.
   not by a test run.
 
 ## Review (written by Claude)
+
+Approved and merged after two pre-review rounds. I ran the new leak test myself on the final tree (24 checks, passing five times, and twice at the same time), plus `storage-safety.test.sh` (24 passing), format and lint.
+
+- What changed: the ejabberd entrypoint registers the admin account itself with all output discarded (register, then change_password so a changed `EJABBERD_ADMIN_PASSWORD` takes effect on restart), `REGISTER_ADMIN_PASSWORD` is gone from the plain and Coolify compose files (the Coolify file keeps `SERVICE_PASSWORD_EJABBERDADMIN`), and a Docker-based test proves the sentinel password is nowhere in `docker logs` on a fresh start or after a restart.
+- Round 1 (worker): dev stack mirrored (`infra/ejabberd/jwt-entrypoint.sh`, `infra/docker-compose.dev.yml`, approved by me), docs carve-out for `EJABBERD_ADMIN_PASSWORD`, a dead check removed, a fixed warning when the admin password is unset.
+- Round 2 (lead): the first run of the test failed once while another run was using Docker, because container, network and image names and a temp file were fixed. Names now carry a per-run suffix, the temp file is `mktemp`, and cleanup also removes the image; two simultaneous runs both pass. `docs/SERVER_CONFIG.md` no longer describes the old mechanism or stale line numbers.
+- Scope sign-off (lead): `infra/docker-compose.dev.yml`, `infra/ejabberd/jwt-entrypoint.sh`, `docs/SERVER_CONFIG.md`.
+- Not exercised: the failure path where registration fails while the server answers (three lines, output discarded, disclosed by the worker).
+- Deployment: the live install must pull the new ejabberd image; the old admin password was printed in its log earlier and should be rotated after the deploy (change `SERVICE_PASSWORD_EJABBERDADMIN` in Coolify, restart; the entrypoint then applies it).
