@@ -120,8 +120,10 @@ describe('channels', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
+    // T-0164: the dialog passes visibility options as a fourth argument
+    // (undefined for a private channel).
     await waitFor(() =>
-      expect(createChannel).toHaveBeenCalledWith('Releases', ['u-ana'], 'Ship notes'),
+      expect(createChannel).toHaveBeenCalledWith('Releases', ['u-ana'], 'Ship notes', undefined),
     );
     // Scoped to the chat list: the dialog's own "Releases" input also
     // matches a bare text query once the row paints.

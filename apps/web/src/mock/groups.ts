@@ -93,12 +93,16 @@ export const mockGroupDetails: Record<string, GroupDetail> = {
   },
   // T-0124: the mock channel's detail (the feed id is the chat id). The mock
   // user is its owner; Ana is an admin, Luis a subscriber.
+  // T-0164: public with the `@acme` handle, so Explore and the `/@acme`
+  // share card have content in mock mode.
   'c-acme': {
     id: 'g-acme',
     title: 'Acme Announcements',
     createdBy: OWNER,
     kind: 'channel',
     description: 'Release notes and team news.',
+    visibility: 'public',
+    handle: 'acme',
     members: [
       member('u-you', 'You', 'owner'),
       member('u-ana', 'Ana', 'admin'),

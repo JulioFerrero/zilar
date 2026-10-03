@@ -90,6 +90,45 @@ export async function checkHandleAvailability(
   return { available: true };
 }
 
+// Whether a handle is free for a public group or channel to take: same
+// shape and reserved words as users (one namespace), then the live row,
+// then the retired reservation (expired reads as free). A reservation held
+// by the *asking group* reads as available (going public again may reuse
+// it); anyone else's reservation — a user or another group — reads as
+// taken. The asker passes their group id (`null` when they have no group
+// yet, e.g. the create flow checks before the row exists).
+export async function checkGroupHandleAvailability(
+  db: ServerDatabase,
+  handle: string,
+  groupId: string | null = null,
+  now: Date = new Date(),
+): Promise<{ available: boolean; reason?: 'invalid' | 'reserved' | 'taken' }> {
+  const rule = classifyHandle(handle);
+  if (rule !== null) {
+    return { available: false, reason: rule };
+  }
+  const lower = normalizeHandle(handle);
+  const [live] = await db.select().from(handles).where(eq(handles.handleLower, lower)).limit(1);
+  if (live) {
+    if (groupId !== null && live.groupId === groupId) {
+      return { available: true };
+    }
+    return { available: false, reason: 'taken' };
+  }
+  const [retired] = await db
+    .select()
+    .from(retiredHandles)
+    .where(eq(retiredHandles.handleLower, lower))
+    .limit(1);
+  if (retired && retired.reservedUntil.getTime() > now.getTime()) {
+    if (groupId !== null && retired.formerGroupId === groupId) {
+      return { available: true };
+    }
+    return { available: false, reason: 'taken' };
+  }
+  return { available: true };
+}
+
 // Claims `handle` for `userId`: the first claim is always allowed, later
 // ones only 14 days after the previous change. Saving the same handle
 // (case-insensitively) returns the existing row before the interval check:

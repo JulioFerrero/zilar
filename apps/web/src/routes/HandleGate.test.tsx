@@ -1,7 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import { matchRoutes } from 'react-router';
 import { renderApp } from '@/test/renderApp';
+
+// T-0164: `/@handle` resolves the group lookup first. The lookup needs the
+// network, so the person fallback is pinned by rejecting it with a 404
+// (a group lookup that fails any other way shows the error state, covered
+// in `GroupHandleRoute.test.tsx`).
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>();
+  return {
+    ...actual,
+    lookupGroupByHandle: vi.fn(async () => {
+      throw new actual.ApiError(404, 'not_found', 'No public group');
+    }),
+  };
+});
 
 describe('handle gate', () => {
   it('sends a handle-less user to /welcome/handle once', () => {

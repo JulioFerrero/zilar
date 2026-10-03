@@ -28,6 +28,7 @@ import type { ProviderProbe } from './connections/probe';
 import { createConnectionsRoutes, type ConnectionsLogger } from './connections/routes';
 import { createContactsRoutes } from './contacts/routes';
 import { createContactRequestsRoutes } from './contact-requests/routes';
+import { createDirectoryRoutes } from './directory/routes';
 import { createHandlesRoutes } from './handles/routes';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
@@ -288,6 +289,10 @@ export function createApp({
     '/api',
     createContactRequestsRoutes({ auth, db, config, adminClient, audit: auditRecorder }),
   );
+  // Public groups and channels (T-0164): the Explore directory and the
+  // exact `@handle` lookup — public rows only, session-required, rate
+  // limited; the sweep asserts both answer 401 unauthenticated.
+  app.route('/api', createDirectoryRoutes({ auth, db }));
   app.route(
     '/api',
     createMachinesRoutes({

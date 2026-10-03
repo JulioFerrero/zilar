@@ -69,4 +69,10 @@ describe('ChatView panels', () => {
     rerender(tree(group));
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+
+  it('shows a PUBLIC tag in the header of a public group', () => {
+    renderView({ ...group, visibility: 'public', handle: 'dev_team' });
+
+    expect(screen.getByText('PUBLIC')).toBeTruthy();
+  });
 });

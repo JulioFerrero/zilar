@@ -60,11 +60,13 @@ import {
   getTopic as getTopicRequest,
   getXmppToken,
   joinByLink as joinByLinkRequest,
+  joinPublicGroup as joinPublicGroupRequest,
   listAis as listAisRequest,
   listChatPrefs as listChatPrefsRequest,
   listGroupInviteLinks as listGroupInviteLinksRequest,
   listGroupMembers as listGroupMembersRequest,
   listGroupTopics as listGroupTopicsRequest,
+  lookupGroupByHandle as lookupGroupByHandleRequest,
   listPins as listPinsRequest,
   listTopicAis as listTopicAisRequest,
   listTopicMembers as listTopicMembersRequest,
@@ -77,6 +79,8 @@ import {
   removeTopicAi as removeTopicAiRequest,
   removeTopicMember as removeTopicMemberRequest,
   revokeGroupInviteLink as revokeGroupInviteLinkRequest,
+  searchDirectory as searchDirectoryRequest,
+  setGroupVisibility as setGroupVisibilityRequest,
   setMembersCanCreateTopics as setMembersCanCreateTopicsRequest,
   setTopicRoles as setTopicRolesRequest,
   unpinMessage as unpinMessageRequest,
@@ -86,6 +90,8 @@ import {
   type CreateGroupInviteLinkInput,
   type CreatedInviteLink,
   type CreateTopicInput,
+  type DirectoryEntry,
+  type DirectoryPage,
   type GroupDetail,
   type GroupInviteLink,
   type GroupMember,
@@ -97,6 +103,7 @@ import {
   type Pin,
   type PinMessageInput,
   type PublicAi,
+  type PublicJoinResult,
   type PutChatPrefInput,
   type Topic,
   type TopicAi,
@@ -178,8 +185,24 @@ export interface ApiClient {
     memberIds: string[];
     kind?: 'group' | 'channel';
     description?: string;
+    // T-0164: `public` creates the group with a handle in one transaction.
+    visibility?: 'private' | 'public';
+    handle?: string;
   }): Promise<GroupDetail>;
   listGroupMembers(groupId: string): Promise<GroupMember[]>;
+  // T-0164: public visibility with a handle (directory + open join), the
+  // Explore search, the exact by-handle lookup, and the one-tap join.
+  setGroupVisibility(
+    groupId: string,
+    input: { visibility: 'private' | 'public'; handle?: string },
+  ): Promise<GroupDetail>;
+  searchDirectory(input: {
+    q?: string;
+    kind?: 'group' | 'channel';
+    cursor?: string;
+  }): Promise<DirectoryPage>;
+  lookupGroupByHandle(handle: string): Promise<DirectoryEntry>;
+  joinPublicGroup(groupId: string): Promise<PublicJoinResult>;
   createInvite(): Promise<Invite>;
   createGroupInviteLink(
     groupId: string,
@@ -248,6 +271,10 @@ const realApi: ApiClient = {
   getXmppToken,
   createGroup: createGroupRequest,
   listGroupMembers: listGroupMembersRequest,
+  setGroupVisibility: setGroupVisibilityRequest,
+  searchDirectory: searchDirectoryRequest,
+  lookupGroupByHandle: lookupGroupByHandleRequest,
+  joinPublicGroup: joinPublicGroupRequest,
   createInvite: createInviteRequest,
   createGroupInviteLink: createGroupInviteLinkRequest,
   listGroupInviteLinks: listGroupInviteLinksRequest,
@@ -508,12 +535,16 @@ function summaryFor(entry: ChatEntry): ChatSummary {
   // T-0124: channels ride the same rows as groups (their General topic is
   // the feed); the feed row carries `chatKind: 'channel'`, the subscriber
   // count and the blurb, plus the viewer's role (admins post, members read).
+  // T-0164: every group row also carries `visibility` + `handle` (the web
+  // paints a "Public" label from them).
   const chatKind = entry.chatKind ?? 'group';
   return {
     ...base,
     kind: 'group',
     memberCount: entry.memberCount,
     onlineCount: 0,
+    visibility: entry.visibility ?? 'private',
+    handle: entry.handle ?? null,
     ...(chatKind === 'channel'
       ? {
           chatKind: 'channel' as const,
@@ -542,6 +573,8 @@ function summaryForTopic(
     description: string | null;
     role: 'owner' | 'admin' | 'member';
   } | null,
+  visibility: 'private' | 'public' = 'private',
+  handle: string | null = null,
 ): ChatSummary {
   return {
     id: topic.chatJid,
@@ -553,6 +586,10 @@ function summaryForTopic(
     muted: false,
     memberCount: topic.memberCount,
     onlineCount: 0,
+    // T-0164: topic rows keep their group's visibility + handle, so the
+    // header and the list paint the "Public" label on topics too.
+    visibility,
+    handle,
     ...(channel === null
       ? {}
       : {
@@ -602,7 +639,9 @@ export function summariesFor(entry: ChatEntry): ChatSummary[] {
           role: entry.role,
         }
       : null;
-  return topics.map((topic) => summaryForTopic(entry.title, entry.groupId, topic, channel));
+  return topics.map((topic) =>
+    summaryForTopic(entry.title, entry.groupId, topic, channel, entry.visibility, entry.handle),
+  );
 }
 
 export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStoreState> {
@@ -3025,7 +3064,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       // T-0124: channels share the create/list/refresh flow with groups (the
       // detail carries `kind`, the chat list paints the feed row).
-      createChannel: async (title, memberIds, description) => {
+      // T-0164: `visibility: 'public'` + `handle` creates the channel with
+      // its directory entry in one transaction.
+      createChannel: async (title, memberIds, description, options) => {
         const detail = await api.createGroup({
           title,
           memberIds,
@@ -3033,6 +3074,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           ...(description === undefined || description.trim() === ''
             ? {}
             : { description: description.trim() }),
+          ...(options?.visibility === undefined ? {} : { visibility: options.visibility }),
+          ...(options?.handle === undefined ? {} : { handle: options.handle }),
         });
         const [entries, prefs] = await Promise.all([
           api.getChats(),
@@ -3120,6 +3163,33 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         const domain = mine.slice(mine.indexOf('@') + 1);
         const detail = await api.setMembersCanCreateTopics(groupId, allowed);
         applyGroupDetail(chatId, detail, domain);
+      },
+      // T-0164: the owner flips a group public (with a handle) or back to
+      // private. The detail refreshes from server truth (like the role
+      // change), so the panel, the label and the share link update at once.
+      setGroupVisibility: async (chatId, input) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const groupId = chat?.groupId ?? groupIds.get(chatId);
+        const mine = myJid();
+        if (groupId === undefined || mine === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const domain = mine.slice(mine.indexOf('@') + 1);
+        const detail = await api.setGroupVisibility(groupId, input);
+        applyGroupDetail(chatId, detail, domain);
+        await refreshChatsOrThrow();
+      },
+      // T-0164: joins a public group with one request, then opens it: the
+      // list refreshes (the new membership arrives) and the General chat id
+      // resolves from the painted rows, falling back to undefined when the
+      // list has not caught up yet (the caller navigates home instead).
+      joinPublicGroup: async (groupId) => {
+        await api.joinPublicGroup(groupId);
+        await refreshChatsOrThrow();
+        const opened = get().chats.find(
+          (entry) => entry.groupId === groupId && entry.topic?.isGeneral !== false,
+        );
+        return opened?.id;
       },
       addGroupAi: async (chatId, aiId) => {
         const groupId = groupIds.get(chatId);
@@ -3743,11 +3813,20 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         clearAttachmentFailure(chatId, messageId);
         runAttachmentUpload(chat, messageId, file, message.text ?? '', message.replyTo);
       },
-      createGroup: async (title, memberIds) => {
+      createGroup: async (title, memberIds, options) => {
         // T-0124: channels share this entry point (the dialog passes `kind`
         // and `description` through the same call). The detail carries
         // `kind`, and the chat list paints the feed row.
-        const detail = await api.createGroup({ title, memberIds });
+        // T-0164: `visibility: 'public'` + `handle` creates the group with
+        // its directory entry in one transaction.
+        const detail = await api.createGroup({
+          title,
+          memberIds,
+          ...(options?.kind === undefined ? {} : { kind: options.kind }),
+          ...(options?.description === undefined ? {} : { description: options.description }),
+          ...(options?.visibility === undefined ? {} : { visibility: options.visibility }),
+          ...(options?.handle === undefined ? {} : { handle: options.handle }),
+        });
         const [entries, prefs] = await Promise.all([
           api.getChats(),
           api.listChatPrefs().catch(() => [] as ChatPref[]),

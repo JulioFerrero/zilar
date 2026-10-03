@@ -480,7 +480,8 @@ export async function joinByInviteLink(
 // last seat can both pass it and both join, exceeding the cap by one — the
 // same known race as the existing add-member flow (`addGroupMembers`), which
 // checks the cap before its transaction without a serializing lock. Accepted.
-async function assertGroupHasRoom(db: ServerDatabase, groupId: string): Promise<void> {
+// T-0164: shared with the public-group join below.
+export async function assertGroupHasRoom(db: ServerDatabase, groupId: string): Promise<void> {
   const [row] = await db
     .select({ total: count() })
     .from(groupMembers)
@@ -519,7 +520,13 @@ async function claimLinkUse(db: ServerDatabase, linkId: string, now: Date): Prom
 // ignore the contacts rule on purpose: the link is the introduction. Topic
 // sync is best effort after the commit, like the group flows: a failure is
 // logged with the group id (never a topic name), never thrown.
-async function syncPublicTopicsByLink(deps: InviteLinkServiceDeps, groupId: string): Promise<void> {
+// T-0164: shared with the public-group join below (same shape, no link
+// claim and no invitation — the XMPP room affiliation plus the direct
+// invitation below still happen, since the room must learn the newcomer).
+export async function syncPublicTopicsByLink(
+  deps: InviteLinkServiceDeps,
+  groupId: string,
+): Promise<void> {
   const topicRows = await deps.db.select().from(topics).where(eq(topics.groupId, groupId));
   for (const topic of topicRows) {
     if (topic.archivedAt !== null) {

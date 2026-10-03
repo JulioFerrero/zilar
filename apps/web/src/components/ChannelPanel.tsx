@@ -20,6 +20,7 @@ import { describeAiError } from './ais/errors';
 import { Avatar } from './Avatar';
 import { Button } from './ui/button';
 import { InviteLinksSection } from './InviteLinksSection';
+import { VisibilitySection } from './VisibilitySection';
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -561,6 +562,17 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
                   // button busy until the revoke settles (T-0141).
                   onRevoke={(linkId) => revokeLink(linkId)}
                   onDismissCreated={() => setCreatedLink(undefined)}
+                />
+              )}
+
+              {/* T-0164: public visibility with a handle — the owner only. */}
+              {isOwner && info !== undefined && (
+                <VisibilitySection
+                  chatId={chat.id}
+                  groupId={info.id}
+                  visibility={info.visibility ?? 'private'}
+                  handle={info.handle ?? null}
+                  title={info.title}
                 />
               )}
 

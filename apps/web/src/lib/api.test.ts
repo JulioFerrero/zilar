@@ -8,6 +8,7 @@ import { ApiError } from '@/lib/api';
 import {
   approvalRuleSchema,
   approveMachine,
+  checkGroupHandle,
   createConnection,
   createGroupRole,
   createPairingCode,
@@ -17,6 +18,7 @@ import {
   deleteMachine,
   denyMachine,
   getApproval,
+  joinPublicGroup,
   listAiApprovalRules,
   listAis,
   listApprovals,
@@ -24,6 +26,7 @@ import {
   listGroupApprovalRules,
   listGroupRoles,
   listMachines,
+  lookupGroupByHandle,
   listConnections,
   machineSchema,
   publicApprovalSchema,
@@ -32,8 +35,10 @@ import {
   resumeAi,
   revokeApprovalRule,
   revokeMachine,
+  searchDirectory,
   setAiMachine,
   setGroupRoleMembers,
+  setGroupVisibility,
   setTopicRoles,
   stopAi,
   testConnection,
@@ -1048,6 +1053,99 @@ describe('group roles API (T-0116)', () => {
     const topic = await getTopic('t-1');
     expect(topic.roles).toBeUndefined();
     expect(topic.approverRole).toBeUndefined();
+  });
+});
+
+describe('public groups API (T-0164)', () => {
+  const entry = {
+    id: 'g-1',
+    kind: 'group',
+    title: 'Hiking club',
+    handle: 'hiking_club',
+    description: null,
+    memberCount: 12,
+    joined: false,
+  };
+
+  it('searchDirectory GETs /api/directory with q, kind and cursor', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { entries: [entry], next: null }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const page = await searchDirectory({ q: 'hiking', kind: 'group' });
+    expect(page.entries).toEqual([entry]);
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/directory?q=hiking&kind=group');
+  });
+
+  it('searchDirectory with no input hits the bare path', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { entries: [], next: null }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await searchDirectory();
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/directory');
+  });
+
+  it('lookupGroupByHandle hits GET /api/groups/by-handle/:handle', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, entry));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const found = await lookupGroupByHandle('hiking_club');
+    expect(found).toEqual(entry);
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/groups/by-handle/hiking_club');
+  });
+
+  it('joinPublicGroup POSTs /api/groups/:id/join', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { groupId: 'g-1', alreadyMember: false }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await joinPublicGroup('g-1');
+    expect(result).toEqual({ groupId: 'g-1', alreadyMember: false });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/groups/g-1/join');
+    expect(init.method).toBe('POST');
+  });
+
+  it('setGroupVisibility PATCHes visibility and handle', async () => {
+    const detail = {
+      id: 'g-1',
+      title: 'Hiking club',
+      createdBy: 'u-me',
+      visibility: 'public',
+      handle: 'hiking_club',
+      members: [],
+      ais: [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, detail));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const updated = await setGroupVisibility('g-1', {
+      visibility: 'public',
+      handle: 'hiking_club',
+    });
+    expect(updated.handle).toBe('hiking_club');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/groups/g-1');
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toEqual({
+      visibility: 'public',
+      handle: 'hiking_club',
+    });
+  });
+
+  it('checkGroupHandle asks the shared check with kind=group', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { available: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const checked = await checkGroupHandle('hiking_club');
+    expect(checked).toEqual({ available: true });
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/handles/check?handle=hiking_club&kind=group');
   });
 });
 

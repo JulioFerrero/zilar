@@ -27,6 +27,7 @@ import { Button } from './ui/button';
 import { InviteLinksSection } from './InviteLinksSection';
 import { RoutinesSection } from './tools/RoutinesSection';
 import { ToolsSection } from './tools/ToolsSection';
+import { VisibilitySection } from './VisibilitySection';
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -297,6 +298,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
 
   const ownerName = (ai: GroupAi): string =>
     info?.members.find((member) => member.userId === ai.ownerId)?.name ?? 'someone';
+  const isOwner = meRole === 'owner';
 
   const flipTopicSwitch = async (): Promise<void> => {
     if (info === undefined || switchBusy) {
@@ -587,6 +589,19 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   </label>
                   {switchError !== '' && <FieldError>{switchError}</FieldError>}
                 </section>
+              )}
+
+              {/* T-0164: public visibility with a handle — the owner only.
+                  Going private removes the group from Explore at once;
+                  going public puts it in the directory with one tap join. */}
+              {isOwner && (
+                <VisibilitySection
+                  chatId={chat.id}
+                  groupId={info.id}
+                  visibility={info.visibility ?? 'private'}
+                  handle={info.handle ?? null}
+                  title={info.title}
+                />
               )}
 
               {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}

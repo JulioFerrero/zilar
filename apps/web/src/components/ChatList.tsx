@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { AddContactDialog } from './AddContactDialog';
 import { ChatListItem } from './ChatListItem';
 import { EmptyState } from './EmptyState';
+import { ExplorePage } from './ExplorePage';
 import { FolderTabs } from './FolderTabs';
 import { InviteDialog } from './InviteDialog';
 import { MessageSearchResults } from './MessageSearchResults';
@@ -59,6 +60,8 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addContactOpen, setAddContactOpen] = useState(false);
+  // T-0164: the Explore overlay (public groups and channels to join).
+  const [exploreOpen, setExploreOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [newTopicGroup, setNewTopicGroup] = useState<string | undefined>(undefined);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedGroups());
@@ -180,6 +183,17 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                   {incomingRequests > 9 ? '9+' : String(incomingRequests)}
                 </span>
               )}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                setExploreOpen(true);
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+            >
+              Explore groups
             </button>
             <button
               type="button"
@@ -367,6 +381,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                 variant="no-chats"
                 onInvite={() => setInviteOpen(true)}
                 onAddContact={() => setAddContactOpen(true)}
+                onExplore={() => setExploreOpen(true)}
               />
             ) : (
               <>
@@ -442,9 +457,13 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
           </>
         )}
       </nav>
-      <NewChatButton onAddContact={() => setAddContactOpen(true)} />
+      <NewChatButton
+        onAddContact={() => setAddContactOpen(true)}
+        onExplore={() => setExploreOpen(true)}
+      />
       {inviteOpen && <InviteDialog onClose={() => setInviteOpen(false)} />}
       {addContactOpen && <AddContactDialog onClose={() => setAddContactOpen(false)} />}
+      {exploreOpen && <ExplorePage onClose={() => setExploreOpen(false)} />}
       {newTopicGroup !== undefined && (
         <NewTopicDialog groupId={newTopicGroup} onClose={() => setNewTopicGroup(undefined)} />
       )}
