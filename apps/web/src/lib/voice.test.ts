@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UploadSlot } from '@zilar/xmpp-core';
 import {
   VOICE_MAX_BYTES,
   VoiceError,
+  VoiceRecorder,
   convertVoice,
   uploadVoice,
   voiceErrorFromGetUserMedia,
@@ -132,5 +133,26 @@ describe('uploadVoice', () => {
     await expect(
       uploadVoice(requester, new Blob([new Uint8Array([1])]), fetchFn as unknown as typeof fetch),
     ).rejects.toMatchObject({ code: 'upload_failed' });
+  });
+});
+
+describe('VoiceRecorder.start', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('stops the microphone tracks when no recorder can be built', async () => {
+    const stop = vi.fn();
+    const stream = { getTracks: () => [{ stop }, { stop }] } as unknown as MediaStream;
+    vi.stubGlobal('navigator', {
+      mediaDevices: { getUserMedia: vi.fn(async () => stream) },
+    });
+    const FailingRecorder = vi.fn(() => {
+      throw new Error('NotSupportedError');
+    });
+    vi.stubGlobal('MediaRecorder', Object.assign(FailingRecorder, { isTypeSupported: () => true }));
+
+    await expect(VoiceRecorder.start()).rejects.toMatchObject({ code: 'voice_unsupported' });
+    expect(stop).toHaveBeenCalledTimes(2);
   });
 });

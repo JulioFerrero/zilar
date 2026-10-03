@@ -95,7 +95,16 @@ export class VoiceRecorder {
       );
     } catch {
       // Some browsers reject an explicit mime; let the browser choose.
-      recorder = new MediaRecorder(stream);
+      try {
+        recorder = new MediaRecorder(stream);
+      } catch {
+        // Never leave the microphone open (the browser's recording
+        // indicator) when no recorder can be built.
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        throw new VoiceError('voice_unsupported', 'This browser cannot record audio');
+      }
     }
     return new VoiceRecorder(recorder, stream);
   }

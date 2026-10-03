@@ -1,7 +1,7 @@
 ---
 id: T-0166
 title: Fix voice notes on web (recording, play/pause state, waveform colors)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0166-voice-fixes
 model: meta/muse-spark-1.3-contributor
@@ -179,3 +179,9 @@ absence of hex. A real-browser visual check was not possible in this environment
 - No checks, tests or lint rules disabled; no `--no-verify`.
 
 ## Review (written by Claude)
+
+Approved and merged. Pre-reviewed twice (350cbd0 and 9b69581); re-ran format, lint, typecheck and the voice, composer and player tests on the final tree.
+
+- Round 1 (worker): reply kept through a ref on hold-to-send, a visible message when saving the recording fails, keyboard activation goes straight to locked click mode, hold timer cleared on start failure, voice error cleared on chat switch, comment fixed.
+- Round 2 (lead, small): the microphone tracks are stopped when no recorder can be built (browser recording indicator no longer stays on) and the error is a `voice_unsupported` VoiceError, with a test; a failed audio can be retried by clicking again instead of leaving a dead button, with a test.
+- Not verified in a real browser by the worker: the microphone permission flow needs a manual check on chat.zilar.app (first use, denied, granted).

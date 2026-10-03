@@ -101,6 +101,21 @@ describe('VoiceMessage player (T-0166)', () => {
     expect(button.className).toContain('opacity-50');
   });
 
+  it('retries playback when the button is clicked after an error', () => {
+    render(<VoiceMessage voice={voice} own={false} />);
+    const audio = playableAudio();
+    fireEvent.error(audio);
+    expect(screen.getByLabelText('Play voice message').getAttribute('title')).toBe(
+      'Audio unavailable',
+    );
+    stubPlay(audio);
+
+    fireEvent.click(screen.getByLabelText('Play voice message'));
+
+    expect(screen.getByLabelText('Pause voice message')).toBeTruthy();
+    expect(screen.getByLabelText('Pause voice message').getAttribute('title')).toBeNull();
+  });
+
   it('shows the unavailable state without a url instead of doing nothing', () => {
     const { url: _url, ...withoutUrl } = voice;
     render(<VoiceMessage voice={withoutUrl} own={false} />);

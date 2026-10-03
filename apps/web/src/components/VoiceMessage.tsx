@@ -70,7 +70,9 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
 
   const togglePlay = (): void => {
     const audio = audioRef.current;
-    if (audio === null || !playable) {
+    // A failed audio may be retried by clicking again (the error can be
+    // transient); only a message without any audio URL is a dead button.
+    if (audio === null || voice.url === undefined || voice.url === '') {
       return;
     }
     if (playing) {
@@ -85,6 +87,7 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
       audio.currentTime = 0;
       setProgress(0);
     }
+    setFailed(false);
     try {
       const play = audio.play();
       // A rejected play (autoplay policy, missing bytes) shows the
