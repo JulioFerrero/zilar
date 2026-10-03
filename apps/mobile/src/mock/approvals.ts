@@ -1,6 +1,7 @@
 import {
   ApprovalsApiError,
   type ApprovalDecision,
+  type ApprovalRule,
   type ApprovalStatus,
   type ApprovalsApi,
   type PublicApproval,
@@ -111,6 +112,18 @@ export function createMockApprovalsApi(): ApprovalsApi {
         note: note ?? null,
       };
       return toPublic(state);
+    },
+    async listApprovals() {
+      return state.status === 'pending' ? [toPublic(state)] : [];
+    },
+    async listAiApprovalRules(): Promise<ApprovalRule[]> {
+      return [];
+    },
+    async listGroupApprovalRules(): Promise<ApprovalRule[]> {
+      return [];
+    },
+    async revokeApprovalRule() {
+      throw new ApprovalsApiError(404, 'not_found', 'Approval rule not found');
     },
   };
 }

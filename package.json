@@ -21,7 +21,10 @@
     "infra:reset": "node infra/reset.mjs",
     "infra:smoke": "pnpm --filter @zilar/devtools smoke",
     "xmpp:e2e": "pnpm --filter @zilar/devtools xmpp:e2e",
-    "screenshots": "node --experimental-strip-types scripts/screenshots.ts"
+    "screenshots": "node --experimental-strip-types scripts/screenshots.ts",
+    "gate": "pnpm --filter @zilar/devtools exec tsx src/gate/cli.ts --base main",
+    "phone:install": "bash scripts/phone/install.sh",
+    "phone:crash": "bash scripts/phone/crash.sh"
   },
   "devDependencies": {
     "@types/node": "^24",

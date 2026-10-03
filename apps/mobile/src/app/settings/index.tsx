@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Bot, ChevronRight, UserPlus, UserRound } from 'lucide-react-native';
+import { Bot, ChevronRight, ShieldCheck, UserPlus, UserRound } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
@@ -32,6 +32,9 @@ function hubIcon(icon: SettingsIconId, scheme: 'light' | 'dark') {
   }
   if (icon === 'requests') {
     return <UserPlus size={22} color={color} />;
+  }
+  if (icon === 'approvals') {
+    return <ShieldCheck size={22} color={color} />;
   }
   return <Bot size={22} color={color} />;
 }

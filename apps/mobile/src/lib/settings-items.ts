@@ -6,7 +6,7 @@
  * `lucide-react-native`, so the icon itself stays out of this module).
  */
 
-export type SettingsIconId = 'profile' | 'ai' | 'requests';
+export type SettingsIconId = 'profile' | 'ai' | 'requests' | 'approvals';
 
 export interface SettingsItem {
   id: string;
@@ -14,7 +14,7 @@ export interface SettingsItem {
   subtitle: string;
   icon: SettingsIconId;
   /** The expo-router route pushed when the row is tapped. */
-  href: '/settings/profile' | '/ais' | '/settings/requests';
+  href: '/settings/profile' | '/ais' | '/settings/requests' | '/settings/approvals';
 }
 
 export const SETTINGS_ITEMS: readonly SettingsItem[] = [
@@ -38,5 +38,12 @@ export const SETTINGS_ITEMS: readonly SettingsItem[] = [
     subtitle: 'People who asked to connect, and your own requests.',
     icon: 'requests',
     href: '/settings/requests',
+  },
+  {
+    id: 'approvals',
+    title: 'Approvals',
+    subtitle: 'Pending requests and always-allowed rules.',
+    icon: 'approvals',
+    href: '/settings/approvals',
   },
 ];

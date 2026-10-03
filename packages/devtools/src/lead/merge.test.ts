@@ -411,3 +411,42 @@ describe('mergeTask process cleanup', () => {
     expect(stopCalled).toBe(false);
   });
 });
+
+describe('mergeTask gate', () => {
+  it('runs the gate in the rebased worktree and merges when it passes', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    const gated: string[] = [];
+
+    await mergeTask({
+      ...options(harness),
+      gate: (worktree) => {
+        gated.push(worktree);
+        return { ok: true, output: '' };
+      },
+    });
+
+    expect(gated).toEqual([harness.worktree]);
+    expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(true);
+  });
+
+  it('refuses to merge, and leaves main alone, when the gate fails', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+
+    await expect(
+      mergeTask({
+        ...options(harness),
+        gate: () => ({ ok: false, output: 'FAIL  lint' }),
+      }),
+    ).rejects.toThrowError(/gate failed.*FAIL {2}lint/s);
+
+    expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(false);
+    expect(fs.existsSync(harness.worktree)).toBe(true);
+    expect(harness.dropped).toEqual([]);
+  });
+});

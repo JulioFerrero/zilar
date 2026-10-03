@@ -50,7 +50,18 @@ function buildApi(overrides: Partial<ApprovalsApi> = {}): ApprovalsApi {
       return PENDING;
     });
   const decideApproval = overrides.decideApproval ?? (async () => PENDING);
-  return { getApproval, decideApproval };
+  const listApprovals = overrides.listApprovals ?? (async () => [PENDING]);
+  const listAiApprovalRules = overrides.listAiApprovalRules ?? (async () => []);
+  const listGroupApprovalRules = overrides.listGroupApprovalRules ?? (async () => []);
+  const revokeApprovalRule = overrides.revokeApprovalRule ?? (async () => {});
+  return {
+    getApproval,
+    decideApproval,
+    listApprovals,
+    listAiApprovalRules,
+    listGroupApprovalRules,
+    revokeApprovalRule,
+  };
 }
 
 describe('approvalStatusLabel', () => {
@@ -137,37 +148,37 @@ describe('applyDecision', () => {
 
   it('treats a 409 not_pending as a reload (returns the fresh row)', async () => {
     const refreshed: PublicApproval = { ...PENDING, status: 'approved_once', decidedAt: NOW };
-    const api: ApprovalsApi = {
+    const api = buildApi({
       getApproval: async () => refreshed,
       decideApproval: async () => {
         throw new ApprovalsApiError(409, 'not_pending', 'already decided');
       },
-    };
+    });
     const result = await applyDecision(api, REQUEST.id, 'approve_once');
     expect(result).toEqual({ kind: 'reloaded', approval: refreshed });
   });
 
   it('treats a 409 expired as a reload (returns the fresh row)', async () => {
     const refreshed: PublicApproval = { ...PENDING, status: 'expired', decidedAt: NOW };
-    const api: ApprovalsApi = {
+    const api = buildApi({
       getApproval: async () => refreshed,
       decideApproval: async () => {
         throw new ApprovalsApiError(409, 'expired', 'expired');
       },
-    };
+    });
     const result = await applyDecision(api, REQUEST.id, 'approve_once');
     expect(result).toEqual({ kind: 'reloaded', approval: refreshed });
   });
 
   it('returns null from the reload when getApproval after a 409 also fails', async () => {
-    const api: ApprovalsApi = {
+    const api = buildApi({
       getApproval: async () => {
         throw new ApprovalsApiError(500, 'internal_error', 'boom');
       },
       decideApproval: async () => {
         throw new ApprovalsApiError(409, 'not_pending', 'already decided');
       },
-    };
+    });
     const result = await applyDecision(api, REQUEST.id, 'approve_once');
     expect(result).toEqual({ kind: 'reloaded', approval: null });
   });

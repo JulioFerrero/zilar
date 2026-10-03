@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyRecordPatch,
+  AUTOFIX_LIMIT,
   decide,
   QUOTA_ESCALATE_MS,
   QUOTA_RETRY_MS,
   type Action,
   type DecideInput,
+  type FindingCounts,
   type RecordPatch,
 } from './decide';
 import { newTaskRecord, type TaskRecord } from './types';
@@ -45,6 +47,7 @@ function base(overrides: Partial<DecideInput> = {}): DecideInput {
     head: 'abc123',
     prereviewFilePresent: false,
     prereviewVerdict: '',
+    prereviewCounts: undefined,
     prereviewSessionState: 'none',
     ...overrides,
   };
@@ -213,6 +216,53 @@ describe('decide review', () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('PACKET READY T-0038');
     expect(lines[0]).toContain('Verdict: approved');
+  });
+
+  describe('automatic fix rounds', () => {
+    const packet = (counts: FindingCounts | undefined, rounds: number) =>
+      base({
+        ...reviewBase,
+        head: 'deadbee',
+        record: record({
+          prereview: { sessionId: 'ses_pre', head: 'deadbee', startedAt: 'x' },
+          autoFixRounds: rounds,
+        }),
+        prereviewSessionState: 'idle',
+        prereviewFilePresent: true,
+        prereviewVerdict: 'Verdict: needs work',
+        prereviewCounts: counts,
+      });
+
+    it('sends must-fix and should-fix findings back to the worker', () => {
+      const actions = decide(packet({ mustFix: 1, shouldFix: 2, nit: 3 }, 0));
+      expect(actions).toContainEqual({ kind: 'send-prompt', template: 'autofix' });
+      expect(escalations(actions)).toEqual([
+        'LEAD: AUTOFIX T-0038 round 1 (must-fix 1, should-fix 2)',
+      ]);
+      const next = applyAll(record(), actions);
+      expect(next.autoFixRounds).toBe(1);
+      expect(next.packetReadyForHead).toBe('deadbee');
+    });
+
+    it('stops after the round limit and hands the packet to the lead', () => {
+      const actions = decide(packet({ mustFix: 1, shouldFix: 0, nit: 0 }, AUTOFIX_LIMIT));
+      expect(actions.some((action) => action.kind === 'send-prompt')).toBe(false);
+      expect(escalations(actions)[0]).toContain('PACKET READY T-0038 [NEEDS LEAD after 2');
+    });
+
+    it('announces a clean packet with only nits as CLEAN', () => {
+      const actions = decide(packet({ mustFix: 0, shouldFix: 0, nit: 2 }, 1));
+      expect(actions.some((action) => action.kind === 'send-prompt')).toBe(false);
+      expect(escalations(actions)[0]).toContain(
+        'PACKET READY T-0038 [CLEAN after 1 auto round(s), nit 2]',
+      );
+    });
+
+    it('asks the lead to read the packet when the counts line is missing', () => {
+      const actions = decide(packet(undefined, 0));
+      expect(actions.some((action) => action.kind === 'send-prompt')).toBe(false);
+      expect(escalations(actions)[0]).toContain('[no counts line, read it]');
+    });
   });
 
   it('does not report the packet twice for the same HEAD', () => {

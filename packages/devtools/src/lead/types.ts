@@ -49,6 +49,7 @@ export interface TaskRecord {
   prereview: PrereviewRecord | undefined;
   packetReadyForHead: string | undefined;
   prereviewStalledEscalated: boolean;
+  autoFixRounds: number;
   escalatedPermissionIds: string[];
   escalatedQuestionIds: string[];
   stalledEscalated: boolean;
@@ -76,6 +77,7 @@ const taskRecordSchema = z.object({
   prereview: prereviewRecordSchema.optional(),
   packetReadyForHead: z.string().optional(),
   prereviewStalledEscalated: z.boolean().default(false),
+  autoFixRounds: z.number().int().nonnegative().default(0),
   escalatedPermissionIds: z.array(z.string()).default([]),
   escalatedQuestionIds: z.array(z.string()).default([]),
   stalledEscalated: z.boolean().default(false),
@@ -110,6 +112,7 @@ export function newTaskRecord(init: {
     prereview: undefined,
     packetReadyForHead: undefined,
     prereviewStalledEscalated: false,
+    autoFixRounds: 0,
     escalatedPermissionIds: [],
     escalatedQuestionIds: [],
     stalledEscalated: false,
