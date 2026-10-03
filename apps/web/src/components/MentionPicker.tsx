@@ -34,7 +34,9 @@ export function MentionPicker({ id, members, activeIndex, onSelect, onHover }: M
             role="option"
             aria-selected={index === activeIndex}
             aria-label={
-              member.handle === undefined ? member.name : `${member.name} @${member.handle}`
+              member.handle === undefined || member.handle === ''
+                ? member.name
+                : `${member.name} @${member.handle}`
             }
             // Keep the textarea focused so typing and the keyboard keep working.
             onMouseDown={(event) => event.preventDefault()}
@@ -48,7 +50,7 @@ export function MentionPicker({ id, members, activeIndex, onSelect, onHover }: M
             <Avatar id={member.jid} name={member.name} ai={ai} size={28} />
             <span className="min-w-0 flex-1 truncate">
               {member.name}
-              {member.handle !== undefined && (
+              {member.handle !== undefined && member.handle !== '' && (
                 <span className="ml-1 text-muted-foreground">@{member.handle}</span>
               )}
             </span>

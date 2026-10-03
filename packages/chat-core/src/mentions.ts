@@ -56,7 +56,8 @@ export function insertMention(
   if (query === undefined) {
     return undefined;
   }
-  const token = member.handle === undefined ? `@${member.name}` : `@${member.handle}`;
+  const token =
+    member.handle === undefined || member.handle === '' ? `@${member.name}` : `@${member.handle}`;
   const next = `${text.slice(0, query.start)}${token} ${text.slice(caret)}`;
   return {
     text: next,
@@ -181,7 +182,8 @@ export function filterMentionMembers(
   const byHandle: MentionMember[] = [];
   const byName: MentionMember[] = [];
   for (const member of members) {
-    const handle = member.handle === undefined ? undefined : fold(member.handle);
+    const handle =
+      member.handle === undefined || member.handle === '' ? undefined : fold(member.handle);
     if (handle !== undefined && handle.startsWith(needle)) {
       byHandle.push(member);
       continue;

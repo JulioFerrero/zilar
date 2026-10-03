@@ -1,7 +1,7 @@
 ---
 id: T-0169
 title: Mentions find people by @handle and show handles
-status: review
+status: merged
 milestone: M5
 branch: task/T-0169-mentions-by-handle
 model: meta/muse-spark-1.3-contributor
@@ -79,3 +79,7 @@ Deviations: none. Security checklist: no secrets/logs/routes touched; no deletes
 Files changed: `packages/chat-core/src/types.ts`, `mentions.ts`, `mentions.test.ts`; `apps/web/src/components/MentionPicker.tsx`, `MentionPicker.test.tsx`, `Composer.test.tsx`, `MessageContent.test.tsx`; `apps/web/src/store/store.ts`, `realStore.ts`; `apps/web/src/mock/groups.ts`, `members.ts`; this task file.
 
 ## Review (written by Claude)
+
+Merged, no fix round. Pre-review: no must-fix. Nit 1 fixed by me (empty-string handle now treated like no handle in the picker label, token and matching). Nit 2: narrowing name matching from substring to word prefix is what the spec asks for. Nit 3: the extra MessageContent test change is test-only and covers spec item 7.
+
+Checks: format, lint, typecheck pass; chat-core mentions tests 40 passed; web MentionPicker/Composer/MessageContent 52 passed; store/mock neighbours 248 passed.
