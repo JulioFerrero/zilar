@@ -45,6 +45,30 @@ function flatWaveform(durationMs: number): number[] {
   return Array.from({ length: buckets }, () => 12);
 }
 
+/** How often the input level is sampled while recording. */
+const LEVEL_TICK_MS = 100;
+/** An error hint disappears by itself after this long. */
+const ERROR_VISIBLE_MS = 3000;
+const WAVEFORM_BARS = 48;
+
+/**
+ * Turns the sampled input levels (0..1) into the sent waveform: at most 48
+ * bars, each the loudest sample of its slice, as 6..255 integers. No samples
+ * (metering unavailable) falls back to the flat placeholder.
+ */
+export function waveformFromLevels(levels: readonly number[], durationMs: number): number[] {
+  if (levels.length === 0) {
+    return flatWaveform(durationMs);
+  }
+  const bars = Math.min(WAVEFORM_BARS, levels.length);
+  return Array.from({ length: bars }, (_, index) => {
+    const from = Math.floor((index * levels.length) / bars);
+    const to = Math.max(from + 1, Math.floor(((index + 1) * levels.length) / bars));
+    const peak = Math.max(...levels.slice(from, to));
+    return Math.max(6, Math.min(255, Math.round(peak * 255)));
+  });
+}
+
 /**
  * Runs `begin`: asks the recorder to start and reports the denied copy when
  * the permission is refused. Resolves true once recording, false otherwise.
@@ -192,8 +216,17 @@ export function VoiceRecorderButton({
     onRecordingChange?.(recording);
   }, [recording, onRecordingChange]);
   const [willCancel, setWillCancel] = useState(false);
+  const levelsRef = useRef<number[]>([]);
+  const levelTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (error === undefined) {
+      return undefined;
+    }
+    const timer = setTimeout(() => setError(undefined), ERROR_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [error]);
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const recordingRef = useRef(false);
   // Set synchronously before the first await so a double tap cannot create
@@ -207,6 +240,9 @@ export function VoiceRecorderButton({
       if (timerRef.current !== undefined) {
         clearInterval(timerRef.current);
       }
+      if (levelTimerRef.current !== undefined) {
+        clearInterval(levelTimerRef.current);
+      }
       if (recordingRef.current) {
         recordingRef.current = false;
         void recorder.cancel().catch(() => {});
@@ -216,6 +252,10 @@ export function VoiceRecorderButton({
   );
 
   const stopTimer = () => {
+    if (levelTimerRef.current !== undefined) {
+      clearInterval(levelTimerRef.current);
+      levelTimerRef.current = undefined;
+    }
     if (timerRef.current !== undefined) {
       clearInterval(timerRef.current);
       timerRef.current = undefined;
@@ -245,6 +285,10 @@ export function VoiceRecorderButton({
         recordingRef.current = true;
         setRecording(true);
         setElapsedMs(0);
+        levelsRef.current = [];
+        levelTimerRef.current = setInterval(() => {
+          levelsRef.current.push(recorder.currentLevel());
+        }, LEVEL_TICK_MS);
         timerRef.current = setInterval(() => {
           const elapsed = recorder.currentDurationMs();
           setElapsedMs(elapsed);
@@ -271,8 +315,15 @@ export function VoiceRecorderButton({
     recordingRef.current = false;
     setRecording(false);
     setWillCancel(false);
+    const levels = levelsRef.current;
     const copy = await runRecorderFinish(
-      { recorder, onSendVoice, onCancelReply, replyTo, waveformFor },
+      {
+        recorder,
+        onSendVoice,
+        onCancelReply,
+        replyTo,
+        waveformFor: waveformFor ?? ((durationMs) => waveformFromLevels(levels, durationMs)),
+      },
       cancel,
     );
     if (copy !== undefined) {
@@ -307,7 +358,7 @@ export function VoiceRecorderButton({
   }
 
   return (
-    <View className={recording ? 'min-w-0 flex-1' : undefined}>
+    <View className={recording ? 'relative min-w-0 flex-1' : 'relative'}>
       <View className="flex-row items-center gap-3">
         {recording ? (
           <View className="h-9 min-w-0 flex-1 flex-row items-center gap-3 px-1">
@@ -344,8 +395,11 @@ export function VoiceRecorderButton({
           accessibilityRole="button"
           accessibilityLabel="Dismiss error"
           onPress={() => setError(undefined)}
+          className="absolute right-0 bottom-full mb-3 w-64 rounded-[10px] bg-surface-raised px-3 py-2"
         >
-          <Text className="mt-1 px-1 text-[12px] text-danger">{error}</Text>
+          <Text numberOfLines={2} className="text-[12px] text-danger">
+            {error}
+          </Text>
         </Pressable>
       ) : null}
     </View>

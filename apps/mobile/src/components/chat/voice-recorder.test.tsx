@@ -2,7 +2,12 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { VoiceRecorderButton, runRecorderBegin, runRecorderFinish } from './voice-recorder';
+import {
+  VoiceRecorderButton,
+  runRecorderBegin,
+  runRecorderFinish,
+  waveformFromLevels,
+} from './voice-recorder';
 import { MIC_DENIED_MESSAGE, RECORD_TOO_SHORT_MESSAGE } from '@/lib/voice-native';
 import type { VoiceRecorderPort } from '@/lib/voice-native';
 
@@ -51,6 +56,7 @@ function fakeRecorder(
     })),
     cancel: vi.fn(async () => {}),
     currentDurationMs: () => overrides.durationMs ?? 5000,
+    currentLevel: () => 0,
     isRecording: () => false,
   };
 }
@@ -155,5 +161,26 @@ describe('voice recorder button (T-0154 review)', () => {
     }
     expect(starts).toBe(1);
     expect(recorder.start).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('waveformFromLevels', () => {
+  it('keeps the loud and quiet parts of the recording, not a flat line', () => {
+    const levels = [0.05, 0.9, 0.1, 0.8, 0.02, 0.5];
+    const bars = waveformFromLevels(levels, 600);
+    expect(bars).toHaveLength(6);
+    expect(Math.max(...bars)).toBeGreaterThan(200);
+    expect(Math.min(...bars)).toBeLessThan(30);
+  });
+
+  it('caps at 48 bars (the protocol allows 128) and stays within 6..255', () => {
+    const levels = Array.from({ length: 500 }, (_, i) => (i % 10) / 10);
+    const bars = waveformFromLevels(levels, 50_000);
+    expect(bars).toHaveLength(48);
+    expect(bars.every((bar) => Number.isInteger(bar) && bar >= 6 && bar <= 255)).toBe(true);
+  });
+
+  it('falls back to a flat placeholder when metering gave no samples', () => {
+    expect(new Set(waveformFromLevels([], 3000)).size).toBe(1);
   });
 });
