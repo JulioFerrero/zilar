@@ -1001,11 +1001,13 @@ export function createChatStore(
         if (!get().chats.some((chat) => chat.id === chatId)) {
           return;
         }
-        if (file.size === 0) {
+        // Only a REAL zero says "That file is empty": an unknown size is
+        // never refused as empty.
+        if (file.size !== undefined && file.size === 0) {
           set({ actionError: { chatId, message: 'That file is empty.' } });
           return;
         }
-        if (file.size > MAX_MOCK_ATTACHMENT_BYTES) {
+        if (file.size !== undefined && file.size > MAX_MOCK_ATTACHMENT_BYTES) {
           set({ actionError: { chatId, message: 'That file is larger than 50 MB.' } });
           return;
         }

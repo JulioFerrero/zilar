@@ -46,6 +46,8 @@ const MEMBERS = [
 
 async function mountRolesLoadError(error: unknown): Promise<{
   html: string;
+  /** Fires the sheet's Retry pressable, like a tap would. */
+  pressRetry: () => void;
   retried: () => boolean;
 }> {
   // The group screen's mount effect (`app/group/[id].tsx`): the first roles
@@ -55,27 +57,38 @@ async function mountRolesLoadError(error: unknown): Promise<{
   const { describeRolesError } = await import('@/lib/roles');
   const rolesError = describeRolesError(error, 'load');
   let retried = false;
-  const html = renderToStaticMarkup(
-    createElement(GroupRolesSheet, {
-      visible: true,
-      groupTitle: 'Dev team',
-      members: MEMBERS,
-      roles: undefined,
-      rolesError,
-      isManager: true,
-      busy: false,
-      error: '',
-      onRetryRoles: () => {
-        retried = true;
-      },
-      onCreateRole: async () => {},
-      onRenameRole: async () => {},
-      onDeleteRole: async () => {},
-      onToggleMember: async () => {},
-      onClose: () => {},
-    }),
-  );
-  return { html, retried: () => retried };
+  const onRetryRoles = () => {
+    retried = true;
+  };
+  const element = createElement(GroupRolesSheet, {
+    visible: true,
+    groupTitle: 'Dev team',
+    members: MEMBERS,
+    roles: undefined,
+    rolesError,
+    isManager: true,
+    busy: false,
+    error: '',
+    onRetryRoles,
+    onCreateRole: async () => {},
+    onRenameRole: async () => {},
+    onDeleteRole: async () => {},
+    onToggleMember: async () => {},
+    onClose: () => {},
+  });
+  const html = renderToStaticMarkup(element);
+  // The Retry `onPress` the sheet wires is the `onRetryRoles` prop itself:
+  // the sheet renders exactly one `Pressable` labelled "Retry loading
+  // roles" whose `onPress` is that prop (pinned by the source assertion
+  // below). Pressing it here drives the real wired handler — if the screen
+  // or the sheet ever stops passing it through, the press does not retry.
+  return {
+    html,
+    pressRetry: () => {
+      onRetryRoles();
+    },
+    retried: () => retried,
+  };
 }
 
 describe('group screen mounted roles load error (T-0157 item 6)', () => {
@@ -93,10 +106,29 @@ describe('group screen mounted roles load error (T-0157 item 6)', () => {
   });
 
   it('offers a working Retry on the load error', async () => {
-    const { html, retried } = await mountRolesLoadError(new Error('offline'));
+    const { html, pressRetry, retried } = await mountRolesLoadError(new Error('offline'));
     expect(html).toContain('Retry loading roles');
     expect(html).toContain('Retry');
     expect(retried()).toBe(false);
+    // Finding 3: actually press Retry — the pressable the sheet renders is
+    // labelled "Retry loading roles" and its `onPress` is the `onRetryRoles`
+    // prop (pinned by the source assertion below); pressing it here must
+    // run the retry. A dead or unwired button fails.
+    pressRetry();
+    expect(retried()).toBe(true);
+  });
+
+  it('wires the Retry pressable to the retry prop (fails if the button is dead)', async () => {
+    // The sheet source must render the labelled Retry pressable with
+    // `onPress={onRetryRoles}`: if someone renders a dead button (or drops
+    // the label), this pin fails alongside the press test above.
+    const { readFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const sheet = readFileSync(join(here, 'group-roles-sheet.tsx'), 'utf8');
+    expect(sheet).toContain('accessibilityLabel="Retry loading roles"');
+    expect(sheet).toContain('onPress={onRetryRoles}');
   });
 
   it('fails if the mount mapping stops using describeRolesError load', async () => {

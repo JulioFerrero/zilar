@@ -12,7 +12,12 @@ export interface PickedFile extends PendingMobileFile {
   uri: string;
   name: string;
   mimeType: string;
-  size: number;
+  /**
+   * Byte size when known. `undefined` means unknown: the picker reported no
+   * size and the stat failed (or was never attempted). Only a real zero says
+   * "That file is empty" (T-0157); an unknown size is never refused as empty.
+   */
+  size?: number | undefined;
 }
 
 /**

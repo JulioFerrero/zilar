@@ -148,6 +148,13 @@ export interface RealStoreDeps {
   createXmpp?: (options: XmppCoreOptions) => XmppCore;
   /** Uploads picked bytes to a XEP-0363 slot (T-0150); tests inject a fake. */
   uploader?: AttachmentUploader;
+  /**
+   * Resolves the real byte size of a local file (T-0157): the store re-stats
+   * an unknown-size pick right before the slot request, since the slot API
+   * needs an exact count. Tests inject a fake; the app injects the
+   * `expo-file-system` stat.
+   */
+  statSize?: (uri: string) => Promise<number | undefined>;
   now?: () => Date;
   appState?: AppStateLike;
   /** The AI draft SSE stream; tests inject a fake. */
@@ -1213,9 +1220,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       void (async () => {
         try {
           const contentType = file.mimeType === '' ? 'application/octet-stream' : file.mimeType;
+          // Unknown size: the slot API needs an exact byte count, so stat
+          // once more right before the request; a still-unknown size fails
+          // the send like any other upload failure (Retry stays available).
+          const statSize = deps.statSize;
+          const size = file.size ?? (statSize === undefined ? undefined : await statSize(file.uri));
+          if (size === undefined) {
+            markAttachmentFailed(chat.id, localId);
+            return;
+          }
           const slot = await current.requestUploadSlot({
             filename: attachmentDataFor(file, '').name,
-            size: file.size,
+            size,
             contentType,
           });
           // A cancel during the slot round-trip removes the bubble: stop
@@ -2976,12 +2992,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         // An empty or oversized file is refused inline, before any request,
         // exactly like web's composer. The cap follows the server upload
         // limit (50 MiB); a refused slot still fails on Retry with the same
-        // message.
-        if (file.size === 0) {
+        // message. Only a REAL zero says "That file is empty": an unknown
+        // size (undefined) is never refused as empty — the upload decides.
+        if (file.size !== undefined && file.size === 0) {
           set({ actionError: { chatId, message: 'That file is empty.' } });
           return;
         }
-        if (file.size > MAX_ATTACHMENT_BYTES) {
+        if (file.size !== undefined && file.size > MAX_ATTACHMENT_BYTES) {
           set({ actionError: { chatId, message: 'That file is larger than 50 MB.' } });
           return;
         }

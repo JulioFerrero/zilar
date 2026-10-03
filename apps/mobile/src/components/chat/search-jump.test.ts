@@ -53,16 +53,12 @@ describe('openSearchHit (T-0157 item 7)', () => {
     expect(onNotFound).toHaveBeenCalledWith('ana');
   });
 
-  it('stops after the page cap: the store pages at most MESSAGE_JUMP_MAX_PAGES + 1 loads', async () => {
-    // Pins the store side of the contract: `openAtMessage` pages backwards
-    // at most `MESSAGE_JUMP_MAX_PAGES` history pages before giving up with
-    // "Message not found" (the real-store suite covers the endless-archive
-    // case). The driver above makes exactly one attempt and then lands at
-    // the bottom once — never a retry loop.
-    const { MESSAGE_JUMP_MAX_PAGES } = await import('@/store/real-store');
-    expect(MESSAGE_JUMP_MAX_PAGES).toBeGreaterThan(0);
+  it('lets an unexpected error propagate instead of mis-landing at the bottom', async () => {
+    // Finding 4: only the `message_not_found` signal lands at the bottom.
+    // A programming error (or a router failure) must surface, not silently
+    // open the wrong place.
     const openAtMessage = vi.fn(async () => {
-      throw new Error('message_not_found');
+      throw new TypeError('cannot read property of undefined');
     });
     const pushChat = vi.fn();
     const pushChatNotFound = vi.fn();
@@ -70,8 +66,9 @@ describe('openSearchHit (T-0157 item 7)', () => {
 
     await expect(
       openSearchHit({ openAtMessage, pushChat, pushChatNotFound, onNotFound }, 'ana', 'm-99'),
-    ).resolves.toBe('not-found');
-    expect(openAtMessage).toHaveBeenCalledTimes(1);
-    expect(pushChatNotFound).toHaveBeenCalledTimes(1);
+    ).rejects.toBeInstanceOf(TypeError);
+    expect(pushChat).not.toHaveBeenCalled();
+    expect(pushChatNotFound).not.toHaveBeenCalled();
+    expect(onNotFound).not.toHaveBeenCalled();
   });
 });

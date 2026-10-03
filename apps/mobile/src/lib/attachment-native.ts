@@ -63,11 +63,13 @@ function pickedFile(input: {
   }
   const mime = mimeForAsset(input.mimeType);
   const fallbackName = `photo.${extensionForMime(mime)}`;
+  // Unknown stays unknown: only a real zero says "That file is empty".
+  // Never coerce to 0 here — the send layer must see unknown as unknown.
   const file: PickedFile = {
     uri: input.uri,
     name: input.name ?? fallbackName,
     mimeType: mime,
-    size: size ?? 0,
+    ...(size === undefined ? {} : { size }),
   };
   if (input.width !== undefined && input.height !== undefined) {
     file.width = input.width;
@@ -78,7 +80,9 @@ function pickedFile(input: {
 
 /** The real picker: library (photo or video), camera, and generic files. */
 export function createAttachmentPicker(sizeReader?: SizeReader): AttachmentPicker {
-  const reader = sizeReader;
+  // Production defaults to the real `expo-file-system` stat (like the opener
+  // defaults to `File.downloadFileAsync`); tests inject a fake reader.
+  const reader = sizeReader ?? createSizeReader();
   // An unknown picker size is read from the file before the cap check: only
   // a real zero says "That file is empty".
   async function withRealSize(input: {
@@ -89,7 +93,7 @@ export function createAttachmentPicker(sizeReader?: SizeReader): AttachmentPicke
     width?: number | undefined;
     height?: number | undefined;
   }): Promise<PickResult> {
-    if (input.size !== undefined || reader === undefined) {
+    if (input.size !== undefined) {
       return pickedFile(input);
     }
     return pickedFile({ ...input, measuredSize: await reader.sizeOf(input.uri) });

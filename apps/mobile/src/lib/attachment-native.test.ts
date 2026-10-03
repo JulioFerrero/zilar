@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 
 import {
@@ -12,16 +13,17 @@ import {
 import { cleanFilename } from './attachments';
 
 const mockedImagePicker = vi.mocked(ImagePicker, true);
+const mockedFileSystem = vi.mocked(FileSystem, true);
 
 vi.mock('expo-document-picker', () => ({
   getDocumentAsync: async () => ({ canceled: true }),
 }));
 
 vi.mock('expo-file-system/legacy', () => ({
-  downloadAsync: async () => {
+  downloadAsync: vi.fn(async () => {
     throw new Error('no network in tests');
-  },
-  getInfoAsync: async () => ({ exists: false }),
+  }),
+  getInfoAsync: vi.fn(async () => ({ exists: false })),
   cacheDirectory: 'file:///cache/',
 }));
 
@@ -108,9 +110,10 @@ describe('attachment picker unknown size (T-0157 item 1)', () => {
       throw new Error('no stat');
     });
     const result = await picker.pickImageOrVideo();
-    expect(result.status).toBe('picked');
+    // Unknown stays unknown: the send layer must not refuse it as empty.
+    expect(result).toMatchObject({ status: 'picked' });
     if (result.status === 'picked') {
-      expect(result.file.size).toBe(0);
+      expect(result.file.size).toBeUndefined();
     }
   });
 
@@ -123,6 +126,25 @@ describe('attachment picker unknown size (T-0157 item 1)', () => {
       message: 'That file is empty.',
     });
     expect(getInfo).not.toHaveBeenCalled();
+  });
+
+  it('resolves an unknown picker size through the default production reader', async () => {
+    // Finding 1: the app must actually run the real-size stat. The default
+    // picker (no injected reader, the production wiring path) reads unknown
+    // sizes through the `expo-file-system` stat — mocked one module down at
+    // `expo-file-system/legacy`'s `getInfoAsync` here.
+    libraryOk(undefined);
+    mockedFileSystem.getInfoAsync.mockResolvedValueOnce({
+      exists: true,
+      isDirectory: false,
+      size: 240_000,
+    } as never);
+    const picker = createAttachmentPicker();
+    const result = await picker.pickImageOrVideo();
+    expect(result).toMatchObject({
+      status: 'picked',
+      file: { name: 'stage.png', mimeType: 'image/png', size: 240_000 },
+    });
   });
 });
 

@@ -26,7 +26,10 @@ export interface SearchJumpDeps {
 /**
  * Opens one search hit: `openAtMessage` does the paging (capped by
  * `MESSAGE_JUMP_MAX_PAGES` inside the store, like web); success lands on the
- * message, failure lands at the bottom with the notice — never a loop.
+ * message, failure lands at the bottom with the notice — never a loop. Only
+ * the not-found signal lands at the bottom: any other error (a programming
+ * bug, a router failure) propagates to the caller instead of silently
+ * mis-landing the user.
  */
 export async function openSearchHit(
   deps: SearchJumpDeps,
@@ -35,11 +38,19 @@ export async function openSearchHit(
 ): Promise<'landed' | 'not-found'> {
   try {
     await deps.openAtMessage(chatId, messageId);
-  } catch {
+  } catch (error) {
+    if (!isMessageNotFound(error)) {
+      throw error;
+    }
     deps.pushChatNotFound(chatId);
     deps.onNotFound(chatId);
     return 'not-found';
   }
   deps.pushChat(chatId);
   return 'landed';
+}
+
+/** The store's give-up signal: history ran out (or the page cap hit). */
+function isMessageNotFound(error: unknown): boolean {
+  return error instanceof Error && error.message === 'message_not_found';
 }

@@ -164,6 +164,8 @@ export function Composer({
   const [attachBusy, setAttachBusy] = useState(false);
   const [attachError, setAttachError] = useState<string | undefined>(undefined);
   const [picked, setPicked] = useState<PickedFile | undefined>(undefined);
+  // Production defaults to the real `expo-file-system` stat for unknown
+  // picker sizes (T-0157); tests inject a fake picker.
   const picker = useMemo(() => pickerProp ?? createAttachmentPicker(), [pickerProp]);
   const gifDownloader = useMemo(
     () => gifDownloaderProp ?? createGifDownloader(),
