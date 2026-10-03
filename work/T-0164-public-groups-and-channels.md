@@ -1,7 +1,7 @@
 ---
 id: T-0164
 title: Public and private groups and channels (handles, directory, open join)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0164-public-groups-and-channels
 model: meta/muse-spark-1.3-contributor
@@ -122,3 +122,10 @@ Done. Public and private groups and channels work end to end: the owner flips a 
 7. Acceptance re-check (spec list, each against a test): existing groups private + old suites green (1); make-public → Explore by title/handle prefix → one-tap join → member affiliation asserted (posting = room voice, like invite joins) → private/unknown same 404 (2); group/group + group/user handle races → one winner (3); private-again hides at once, members kept, 30-day reservation + reclaim (4); join-twice harmless, last-seat concurrency → one wins + 409 + rows == cap (5); sweep 401s + rate limits + ids-only audits + no user rows in directory/by-handle payloads (6).
 
 ## Review (written by Claude)
+
+Approved and merged after two pre-review rounds; format, lint, typecheck and the server (groups, directory, handles, invite links, chats, 401 sweep) and web (routes, dialogs, store, mock, api) suites pass on the final tree.
+
+- Round 1 fixes: the public join cap is atomic (per-group advisory lock, one helper counting people plus AIs, concurrency test with an injectable limit), share links show an error with Retry for anything but a 404, a database CHECK on `visibility` (migration 0036 edited in place before merge), mock directory cursor.
+- Scope sign-off (lead): `packages/chat-core/src/types.ts`, `apps/web/src/mock/api.ts`, `apps/web/src/mock/groups.ts`, `apps/web/src/store/realStore.ts`, `apps/web/src/store/store.ts`, `apps/server/src/chats/routes.ts`, `apps/server/src/invite-links/service.ts` (two exports) and the related test edits.
+- Accepted nits: a member (not owner) changing visibility gets the 404 of the visibility rule, which leaks less than a 403; a join that races with a public-to-private switch still lands the member, which matches "members stay when a group goes private".
+- Needs a manual check on chat.zilar.app: make a group public with a handle, find it in Explore from a second account, join, open the `/@handle` link, then make it private again.
