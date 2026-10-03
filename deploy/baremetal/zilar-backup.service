@@ -1,0 +1,35 @@
+[Unit]
+Description=Zilar nightly backup (databases, file stores, env)
+Documentation=https://github.com/<owner>/zilar/blob/main/docs/INSTALL_BARE_METAL.md
+# A backup on the same disk is not a backup: pair this with the
+# off-machine copy in the guide (§7) — encrypt first (age/gpg), then
+# scp/rclone. `./deploy/zilar backup --offsite-hint` prints the recipe
+# on the Docker path; the bare-metal equivalent is in §7.
+
+[Service]
+Type=oneshot
+User=zilar
+Group=zilar
+# Read-only on the checkout (the script only reads), read-write on the
+# backup dir and /tmp (temp archives), no network (dumps and tars are
+# local; the off-machine copy is a separate step the operator runs).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/lib/zilar-backups
+UMask=0077
+# Dump both databases, tar the file stores (ejabberd uploads + stickers
+# + avatars — a dump alone leaves rows pointing at missing files), bundle
+# with the env file, keep the newest 7 only after the new archive reads
+# back. BACKUP_KEEP_N overrides the default 7.
+Environment=BACKUP_KEEP_N=7
+# Postgres auth for the dumps below (never on the command line, never in
+# the environment): pg_dump/pg_dumpall read $PGPASSFILE. Created once per
+# the guide §7 (mode 0600, zilar:zilar, one line per role on localhost).
+Environment=PGPASSFILE=/etc/zilar/pgpass
+ExecStart=/opt/zilar/deploy/baremetal/zilar-backup.sh

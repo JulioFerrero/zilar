@@ -246,19 +246,83 @@ fails, restore recreates the triggers, restarts the stack first and tells
 you what is safe to re-run — never leaves the install down silently. Backups live in
 `deploy/backups/` by default: the archive contains live secrets, is
 mode 0600, and the command warns loudly — NEVER commit that directory
-(a `deploy/backups/` `.gitignore` entry is a pending lead decision).
-Copy them off the machine (rsync/scp to another host). For nightly
-backups, a cron line on the host is enough:
+(it is gitignored since T-0158; still never add archives by hand).
+Copy them off the machine (encrypt first, then scp/rclone — see
+"Backups: schedule, retention, off-machine copy" below). For nightly
+backups, the scheduled cron line below is enough (the old
+`find ... -mtime +7 -delete` sidecar is retired: `backup --keep 7`
+prunes itself, only after the new archive verifies):
 
 ```cron
-# Every night at 03:00, keep 7 days, sync off the machine.
-0 3 * * * /opt/zilar/deploy/zilar backup >>/var/log/zilar-backup.log 2>&1 && find /opt/zilar/deploy/backups -name 'zilar-backup-*.tgz' -mtime +7 -delete && rsync -a /opt/zilar/deploy/backups/ backup-host:/srv/zilar-backups/
+# Every night at 03:30, keep the newest 7 archives (see deploy/backup-cron.example).
+30 3 * * * /opt/zilar/deploy/zilar backup --keep 7 >>/var/log/zilar-backup.log 2>&1
 ```
 
 (Prefer a systemd timer if your host already uses them; the commands are
 the same.) Practice a restore to a scratch checkout before you need it:
 create data, back up, `down -v`, restore with `--yes`, confirm the data
 is back.
+
+## Backups: schedule, retention, off-machine copy
+
+One backup exists only when someone remembers to run it — for a real
+install with people depending on it, schedule it. One host cron line is
+the whole schedule (no extra container, no Docker socket mount — the
+helper talks to the stack through the local docker CLI). The commented
+recipe lives in `deploy/backup-cron.example`; installed, it reads:
+
+```cron
+# Every night at 03:30, keep the newest 7 archives.
+30 3 * * * /opt/zilar/deploy/zilar backup --keep 7 >>/var/log/zilar-backup.log 2>&1
+```
+
+(Replace `/opt/zilar` with the checkout path, installed as the user that
+owns the checkout.) `backup --keep N` (default 7) retains the newest N
+`zilar-backup-*.tgz` archives in `deploy/backups/` and deletes the
+oldest beyond N — only after the new archive is written AND verified
+readable (`tar -tzf` must list it back). A failed dump deletes nothing:
+the old archives stay. Retention never touches anything else in the
+directory (notes, unrelated files) and never follows symlinks. All
+archives stay mode 0600: they hold the live `.env`.
+
+`doctor` watches freshness: it warns when the newest backup is 2 days
+old and fails past 2 days, naming the exact command to run — so a silent
+cron failure surfaces the next time anyone checks the install. With no
+backup at all it warns (fail-soft) instead of failing a fresh install's
+first `doctor` run.
+
+A backup on the same disk is not a backup. `./deploy/zilar backup
+--offsite-hint` prints (never runs) the encrypt-then-copy recipe for the
+newest archive: encrypt first with `age` or `gpg`, then `scp` (or
+`rclone` to your own remote) — with a loud warning that the archive
+contains live secrets. The wizard never uploads anything itself.
+
+### Restore drill (practice before you need it)
+
+A backup you never restored is a hope, not a backup. Once per quarter,
+prove the archives work — into a THROWAWAY project name, never the live
+one (restore overwrites live data):
+
+```bash
+# 1. Note the live sticker and upload counts (source of truth).
+#    Sticker count: sign in, open the sticker picker (or GET /api/stickers
+#    with a session). Upload count: compare the file count under the
+#    uploads volume: docker compose ... exec ejabberd find /opt/ejabberd/upload -type f | wc -l
+# 2. Take a fresh backup and copy it aside.
+./deploy/zilar backup --keep 7
+cp deploy/backups/zilar-backup-<stamp>.tgz /tmp/drill.tgz
+# 3. Restore into a scratch checkout (its own COMPOSE_PROJECT_NAME and
+#    ports, per the T-0127 test-isolation rules — never the live stack).
+#    In the scratch checkout:
+./deploy/zilar restore /tmp/drill.tgz --yes
+# 4. Confirm: sign in, the sticker count matches step 1, uploads open
+#    (spot-check two files end to end), /health answers ok:true.
+# 5. Tear the scratch stack down (down -v) and delete /tmp/drill.tgz.
+```
+
+If any step fails, the restore report (which phase, what is safe to
+re-run) tells you where to pick up — and tells you before you need it
+for real.
 
 ## What ports must be open
 
