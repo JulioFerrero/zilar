@@ -107,13 +107,13 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
   }, [fail, port, refresh]);
 
   const transcribeUri = useCallback(
-    async (uri: string, label: string, language?: string) => {
+    async (uri: string, label: string, language?: string, audioMs?: number) => {
       setResult(undefined);
       setPhase({ kind: 'transcribing', label });
       const started = Date.now();
       try {
         await port.loadModel().catch(() => {});
-        const transcript = await port.transcribe(uri, { language });
+        const transcript = await port.transcribe(uri, { language, audioMs });
         if (!mounted.current) {
           return;
         }
@@ -147,7 +147,12 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
         );
         return;
       }
-      await transcribeUri(stop.recording.uri, 'Transcribing the 5 s clip…');
+      await transcribeUri(
+        stop.recording.uri,
+        'Transcribing the 5 s clip…',
+        undefined,
+        stop.recording.durationMs,
+      );
     } catch (error) {
       fail(error);
     }
@@ -158,7 +163,12 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
       fail(new Error('No voice note in any chat yet.'));
       return;
     }
-    await transcribeUri(lastNote.uri, 'Transcribing the last voice note…');
+    await transcribeUri(
+      lastNote.uri,
+      'Transcribing the last voice note…',
+      undefined,
+      lastNote.durationMs,
+    );
   }, [fail, lastNote, transcribeUri]);
 
   const busy = phase.kind !== 'idle' && phase.kind !== 'error';

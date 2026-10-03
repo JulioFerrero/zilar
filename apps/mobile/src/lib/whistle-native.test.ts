@@ -29,6 +29,13 @@ function nativeStub(overrides: Record<string, unknown> = {}) {
       decodeTps: 20,
       audioMs: 1000,
     })),
+    transcribeRanges: vi.fn(async () => ({
+      text: 'hello-ranged',
+      language: 'en',
+      ttftMs: 10,
+      decodeTps: 20,
+      audioMs: 61000,
+    })),
     ...overrides,
   };
   mockedGetNative.mockReturnValue(stub as unknown as ReturnType<typeof getNativeModule>);
@@ -142,6 +149,33 @@ describe('whistle transcribe wrapper (T-0177)', () => {
   it('reports unavailable on a non-arm64 stub', async () => {
     mockedGetNative.mockReturnValue(null);
     await expect(transcribe('file:///a.m4a')).rejects.toMatchObject({ code: 'unavailable' });
+  });
+
+  it('a long clip sends the JS-planned ranges to native (finding 6)', async () => {
+    const stub = nativeStub();
+    const result = await transcribe('file:///long.m4a', { audioMs: 61_000 });
+    expect(stub.transcribeRanges).toHaveBeenCalledTimes(1);
+    expect(stub.transcribeFile).not.toHaveBeenCalled();
+    const [, ranges, language] = stub.transcribeRanges.mock.calls[0] as unknown as [
+      string,
+      Array<[number, number]>,
+      string | null,
+    ];
+    expect(language).toBeNull();
+    expect(ranges).toHaveLength(3);
+    expect(ranges[0]?.[0]).toBe(0);
+    expect(ranges.at(-1)?.[1]).toBeCloseTo(61_000, 0);
+    for (const [startMs, endMs] of ranges) {
+      expect(endMs - startMs).toBeLessThanOrEqual(28_000);
+    }
+    expect(result.text).toBe('hello-ranged');
+  });
+
+  it('a short clip skips ranges and uses the whole-clip path', async () => {
+    const stub = nativeStub();
+    await transcribe('file:///short.m4a', { audioMs: 10_000 });
+    expect(stub.transcribeFile).toHaveBeenCalledTimes(1);
+    expect(stub.transcribeRanges).not.toHaveBeenCalled();
   });
 
   it('keeps file paths intact', () => {

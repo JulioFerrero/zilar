@@ -12,6 +12,11 @@ export interface ZilarWhistleNativeModule {
   modelStatus: () => string;
   loadModel: (path: string) => Promise<string>;
   transcribeFile: (path: string, language: string | null) => Promise<Record<string, unknown>>;
+  transcribeRanges: (
+    path: string,
+    rangesMs: Array<[number, number]> | null,
+    language: string | null,
+  ) => Promise<Record<string, unknown>>;
 }
 
 export function getNativeModule(): ZilarWhistleNativeModule | null {

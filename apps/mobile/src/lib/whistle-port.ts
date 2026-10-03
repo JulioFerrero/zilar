@@ -14,7 +14,7 @@ export interface WhistlePort {
   loadModel: () => Promise<void>;
   transcribe: (
     fileUri: string,
-    options?: { language?: string | undefined },
+    options?: { language?: string | undefined; audioMs?: number | undefined },
   ) => Promise<WhistleTranscript>;
 }
 
@@ -35,7 +35,10 @@ export function createWhistlePort(deps?: {
   downloadModel?: ((onProgress?: (fraction: number) => void) => Promise<void>) | undefined;
   loadModel?: (() => Promise<void>) | undefined;
   transcribe?:
-    | ((fileUri: string, options?: { language?: string | undefined }) => Promise<WhistleTranscript>)
+    | ((
+        fileUri: string,
+        options?: { language?: string | undefined; audioMs?: number | undefined },
+      ) => Promise<WhistleTranscript>)
     | undefined;
 }): WhistlePort {
   if (deps !== undefined) {

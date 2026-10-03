@@ -106,14 +106,39 @@ class ZilarWhistleModule : Module() {
     }
 
     AsyncFunction("transcribeFile") Coroutine { path: String, language: String?, promise: Promise ->
+      transcribeRanges(path, null, language, promise)
+    }
+
+    AsyncFunction("transcribeRanges") Coroutine {
+        path: String,
+        rangesMs: List<List<Double>>?,
+        language: String?,
+        promise: Promise,
+      ->
+      transcribeRanges(path, rangesMs, language, promise)
+    }
+  }
+
+  /**
+   * The shared transcription body: decodes the file, then transcribes the
+   * JS-planned (startMs, endMs) ranges — or the whole clip when `rangesMs`
+   * is null. The native side never plans chunks itself: the tested
+   * `planQuietCutChunks` in `whistle-last-voice.ts` owns the rule.
+   */
+  private suspend fun transcribeRanges(
+    path: String,
+    rangesMs: List<List<Double>>?,
+    language: String?,
+    promise: Promise,
+  ) {
       if (!abiSupported()) {
         promise.reject(CodedException("unavailable", "Whistle runs on Android arm64 only", null))
-        return@Coroutine
+        return
       }
       val loaded = synchronized(lock) { modelLoaded }
       if (!loaded) {
         promise.reject(CodedException("model_missing", "The Whistle model is not loaded", null))
-        return@Coroutine
+        return
       }
       try {
         val audio = decodeToMono16k(path)
@@ -127,9 +152,9 @@ class ZilarWhistleModule : Module() {
               "audioMs" to audio.durationMs,
             ),
           )
-          return@Coroutine
+          return
         }
-        val chunks = splitIntoChunks(audio.samples)
+        val chunks = sliceRanges(audio.samples, rangesMs)
         val texts = mutableListOf<String>()
         var detectedLanguage = ""
         var ttftMs = 0.0
@@ -170,7 +195,43 @@ class ZilarWhistleModule : Module() {
       } catch (error: Exception) {
         promise.reject(CodedException("transcribe_failed", error.message ?: "The transcription failed", error))
       }
+  }
+
+  /**
+   * Slices the decoded 16 kHz mono samples into the JS-planned ranges. Each
+   * range is (startMs, endMs); a null or empty plan means the whole clip as
+   * one chunk. Ranges are clamped to the clip and capped at 28 s each so a
+   * drifted plan can never breach the 30 s engine limit.
+   */
+  private fun sliceRanges(
+    samples: FloatArray,
+    rangesMs: List<List<Double>>?,
+  ): List<FloatArray> {
+    val maxChunk = 28 * TARGET_SAMPLE_RATE
+    if (rangesMs.isNullOrEmpty()) {
+      return listOf(samples)
     }
+    val totalSamples = samples.size
+    val chunks = mutableListOf<FloatArray>()
+    for (range in rangesMs) {
+      if (range.size < 2) {
+        continue
+      }
+      val startSample = ((range[0] ?: 0.0) * TARGET_SAMPLE_RATE / 1000.0).toInt().coerceIn(0, totalSamples)
+      val endSample = ((range[1] ?: 0.0) * TARGET_SAMPLE_RATE / 1000.0).toInt().coerceIn(startSample, totalSamples)
+      if (endSample - startSample <= 0) {
+        continue
+      }
+      var cursor = startSample
+      // A drifted range longer than 28 s is hard-split; the JS plan never
+      // sends one, but the engine limit must hold regardless.
+      while (cursor < endSample) {
+        val hardEnd = minOf(cursor + maxChunk, endSample)
+        chunks.add(samples.copyOfRange(cursor, hardEnd))
+        cursor = hardEnd
+      }
+    }
+    return if (chunks.isEmpty()) listOf(samples) else chunks
   }
 
   private data class DecodedAudio(val samples: FloatArray, val durationMs: Int, val isSilent: Boolean)
@@ -327,44 +388,6 @@ class ZilarWhistleModule : Module() {
       val fraction = (position - lower).toFloat()
       mono[lower] * (1 - fraction) + mono[upper] * fraction
     }
-  }
-
-  /**
-   * Splits 16 kHz mono PCM into consecutive chunks of at most 28 s for the
-   * 30 s engine limit. Each cut lands on the quietest point in the last 2 s
-   * of the chunk, never mid-sample (cuts are sample-aligned by construction).
-   */
-  private fun splitIntoChunks(samples: FloatArray): List<FloatArray> {
-    val maxChunk = 28 * TARGET_SAMPLE_RATE
-    val tailWindow = 2 * TARGET_SAMPLE_RATE
-    if (samples.size <= maxChunk) {
-      return listOf(samples)
-    }
-    val chunks = mutableListOf<FloatArray>()
-    var start = 0
-    while (start < samples.size) {
-      val end = minOf(start + maxChunk, samples.size)
-      if (end - start <= maxChunk && end == samples.size) {
-        chunks.add(samples.copyOfRange(start, end))
-        break
-      }
-      val searchFrom = maxOf(start, end - tailWindow)
-      var quietest = end - 1
-      var quietestEnergy = Float.MAX_VALUE
-      var index = searchFrom
-      while (index < end) {
-        val energy = abs(samples[index])
-        if (energy < quietestEnergy) {
-          quietestEnergy = energy
-          quietest = index
-        }
-        index += 1
-      }
-      val cut = (quietest + 1).coerceIn(start + 1, end)
-      chunks.add(samples.copyOfRange(start, cut))
-      start = cut
-    }
-    return chunks
   }
 
   private fun parseTranscriptJson(json: String): ParsedTranscript? {

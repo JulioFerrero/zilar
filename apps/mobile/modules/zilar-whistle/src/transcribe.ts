@@ -1,3 +1,4 @@
+import { planQuietCutChunks } from './chunks';
 import { normalizeWhistleLanguage } from './model';
 import { parseWhistleResult, WhistleError, whistleErrorFor } from './result';
 import type { WhistleTranscript } from './result';
@@ -26,14 +27,28 @@ let inFlight: Promise<WhistleTranscript> | undefined;
 
 export interface TranscribeOptions {
   language?: string | undefined;
+  /**
+   * Known audio length in ms (voice pipeline duration). Lets JS plan the
+   * chunks with the tested `planQuietCutChunks` WITHOUT decoding first; the
+   * native side only slices those ranges. Omit when unknown: the native
+   * side transcribes the whole clip as one chunk.
+   */
+  audioMs?: number | undefined;
+  /**
+   * Reads the absolute sample amplitude at an index for the quiet-cut plan.
+   * Production passes undefined (the plan falls back to even 28 s windows);
+   * tests inject fakes. Kept out of the hot path: only called for long clips.
+   */
+  amplitudes?: ((sample: number) => number) | undefined;
 }
 
 /**
  * Transcribes an audio file on the device (m4a/AAC as the app records, also
- * wav). The native side decodes to 16 kHz mono, splits audio longer than
- * 30 s into quiet-cut chunks and joins their texts with a single space.
- * Empty/silent audio resolves with an empty text. `wallMs` covers the whole
- * call including decode; `audioMs` is the decoded audio length.
+ * wav). JS plans the chunks with the tested `planQuietCutChunks` and the
+ * native side only decodes and transcribes those (startMs, endMs) ranges;
+ * texts join with a single space. Empty/silent audio resolves with an empty
+ * text. `wallMs` covers the whole call including decode; `audioMs` is the
+ * decoded audio length.
  */
 export function transcribe(
   fileUri: string,
@@ -76,9 +91,14 @@ async function runTranscribe(
   }
   const localPath = toLocalPath(fileUri);
   const started = Date.now();
+  const language = normalizeWhistleLanguage(options?.language);
+  const ranges = planRangesMs(options);
   let raw: Record<string, unknown>;
   try {
-    raw = await native.transcribeFile(localPath, normalizeWhistleLanguage(options?.language));
+    raw =
+      ranges === null
+        ? await native.transcribeFile(localPath, language)
+        : await native.transcribeRanges(localPath, ranges, language);
   } catch (error) {
     throw whistleErrorFor(error);
   }
@@ -96,4 +116,30 @@ async function runTranscribe(
 /** Strips the `file://` scheme the recorder URIs carry for the native side. */
 export function toLocalPath(fileUri: string): string {
   return fileUri.startsWith('file://') ? fileUri.slice('file://'.length) : fileUri;
+}
+
+/**
+ * Plans the native (startMs, endMs) ranges with the tested quiet-cut planner
+ * (finding 6): the native side only slices these, it never splits itself.
+ * Returns null when the length is unknown or fits one chunk — the native
+ * side then transcribes the whole clip as a single chunk.
+ */
+export function planRangesMs(options?: TranscribeOptions): Array<[number, number]> | null {
+  const audioMs = options?.audioMs ?? 0;
+  if (!Number.isFinite(audioMs) || audioMs <= 28_000) {
+    return null;
+  }
+  const totalSamples = Math.floor((audioMs * 16000) / 1000);
+  if (totalSamples <= 0) {
+    return null;
+  }
+  const amplitudes = options?.amplitudes ?? (() => 1);
+  const chunks = planQuietCutChunks(totalSamples, amplitudes);
+  if (chunks.length <= 1) {
+    return null;
+  }
+  return chunks.map((chunk): [number, number] => [
+    (chunk.start * 1000) / 16000,
+    (chunk.end * 1000) / 16000,
+  ]);
 }

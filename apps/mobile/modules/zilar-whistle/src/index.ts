@@ -11,5 +11,5 @@ export {
 export type { WhistleLanguage } from './model';
 export { parseWhistleResult, WhistleError, whistleErrorFor } from './result';
 export type { WhistleRawResult, WhistleTranscript } from './result';
-export { isAvailable, toLocalPath, transcribe } from './transcribe';
+export { isAvailable, planRangesMs, toLocalPath, transcribe } from './transcribe';
 export type { TranscribeOptions } from './transcribe';
