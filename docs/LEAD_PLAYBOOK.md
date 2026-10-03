@@ -587,5 +587,14 @@ Tooling traps
 - macOS `sed -i` needs a suffix argument: `sed -i '' 's/a/b/' file`. Without it the script is taken as the suffix and the file name is parsed as a command.
 - Rehearsal resources are named `zilar-rehearsal-*` (containers, volumes `zilar-rehearsal_*`, images `:rehearsal`); clean up only those.
 
+Making life easy for the Muse Spark workers (2026-10-03, after T-0175 lost two hours)
+- Muse Spark thinks very long per step: about 16,000 reasoning tokens for 250 tokens of action, 5 to 6 minutes a step. A vague spec makes it explore, and exploring is where the hours go (T-0175: 83 tool calls, one edit, no code; about 20 calls hunting icon names in `node_modules`).
+- Put the decisions in the spec so the worker has none to make: the exact order of steps, a commit after each step, "write code from the first minutes", and "do not explore beyond Read first".
+- Give it the facts it would otherwise search for: verified icon names, the existing file to copy a pattern from (a sheet, a test), exact function names and signatures, the numbers (sizes, caps). Check them yourself before launching (a one-line `grep` or `node -e`).
+- Prefer small tasks (one component, one fix) over a task with five parts. Set `effort: low` for anything mechanical; keep `medium` for security or protocol work.
+- Pin logic in small pure functions with unit tests (the mobile app has no React Native testing library), and name those functions in the spec.
+- Never interrupt a running turn with `lead reply` unless it is stalled: an interrupt throws away the step in progress and the worker re-reads everything from scratch (T-0175 was restarted twice this way). Collect all extra requests into ONE message, or send them after the turn ends.
+- If a worker has made no commit after 30 minutes, look at its tool calls (`session.message.list`), then relaunch with a sharper spec instead of waiting.
+
 Effect
 - The plan to adopt Effect 4.0 is in `docs/ROADMAP_EFFECT.md`; worker reference material is in `docs/effect-reference/` (read it before any Effect code: Effect 4 differs from v3).
