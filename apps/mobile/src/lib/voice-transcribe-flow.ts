@@ -37,6 +37,26 @@ export interface TranscribeFileDeps {
   deleteCache: (uri: string) => Promise<void>;
 }
 
+/** The cap refusal the download maps to the too-long user message. */
+export class TranscribeTooLargeError extends Error {
+  constructor() {
+    super('voice too large for on-device transcription');
+    this.name = 'TranscribeTooLargeError';
+  }
+}
+
+/**
+ * Whether a served download must stop (T-0179, round 1): the same guard as
+ * the attachment opener — abort once the written or the reported total
+ * bytes pass `VOICE_MAX_BYTES`. Pure so tests drive it without native code.
+ */
+export function transcribeDownloadOverCap(
+  progress: { bytesWritten: number; totalBytes: number },
+  capBytes: number,
+): boolean {
+  return progress.totalBytes > capBytes || progress.bytesWritten > capBytes;
+}
+
 export interface TranscribeVoiceNoteInput {
   port: WhistlePort;
   source: VoiceTranscribeSource;
@@ -99,17 +119,35 @@ function errorMessageOf(error: unknown): string {
 
 async function defaultFiles(): Promise<TranscribeFileDeps> {
   const { File, Paths } = await import('expo-file-system');
+  const { VOICE_MAX_BYTES } = await import('./voice');
   return {
     downloadUrl: async (url, headers) => {
       const destination = new File(
         Paths.cache,
         `voice-transcribe-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}.m4a`,
       );
-      const downloaded = await File.downloadFileAsync(url, destination, {
-        idempotent: true,
-        ...(headers === undefined ? {} : { headers }),
-      });
-      return downloaded.uri;
+      const controller = new AbortController();
+      try {
+        const downloaded = await File.downloadFileAsync(url, destination, {
+          idempotent: true,
+          ...(headers === undefined ? {} : { headers }),
+          signal: controller.signal,
+          onProgress: (progress) => {
+            if (transcribeDownloadOverCap(progress, VOICE_MAX_BYTES)) {
+              controller.abort();
+            }
+          },
+        });
+        return downloaded.uri;
+      } catch (error) {
+        if (destination.exists) {
+          destination.delete();
+        }
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new TranscribeTooLargeError();
+        }
+        throw error;
+      }
     },
     deleteCache: async (uri) => {
       try {
@@ -178,7 +216,10 @@ export async function transcribeVoiceNote(
       const files = input.files ?? (await defaultFiles());
       try {
         cachedUri = await files.downloadUrl(url, input.source.headers, onPhase);
-      } catch {
+      } catch (error) {
+        if (error instanceof TranscribeTooLargeError) {
+          return { status: 'error', message: TRANSCRIBE_TOO_LONG_MESSAGE };
+        }
         return { status: 'error', message: TRANSCRIBE_FAILED_MESSAGE };
       }
       fileUri = cachedUri;

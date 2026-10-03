@@ -9,10 +9,13 @@ import {
   TRANSCRIBE_TOO_LONG_MESSAGE,
   TRANSCRIBE_UNAVAILABLE_MESSAGE,
   transcribeCacheName,
+  transcribeDownloadOverCap,
+  TranscribeTooLargeError,
   transcribeVoiceNote,
   type TranscribeFileDeps,
   type TranscribePhase,
 } from './voice-transcribe-flow';
+import { VOICE_MAX_BYTES } from './voice';
 
 function port(overrides: Partial<WhistlePort> = {}): WhistlePort {
   return createWhistlePort({
@@ -225,6 +228,58 @@ describe('transcribe voice note (T-0179)', () => {
       }),
     });
     expect(result).toEqual({ status: 'error', message: TRANSCRIBE_FAILED_MESSAGE });
+  });
+
+  it('the cap guard aborts past VOICE_MAX_BYTES on either counter', () => {
+    expect(
+      transcribeDownloadOverCap(
+        { bytesWritten: 10, totalBytes: VOICE_MAX_BYTES + 1 },
+        VOICE_MAX_BYTES,
+      ),
+    ).toBe(true);
+    expect(
+      transcribeDownloadOverCap(
+        { bytesWritten: VOICE_MAX_BYTES + 1, totalBytes: -1 },
+        VOICE_MAX_BYTES,
+      ),
+    ).toBe(true);
+    expect(
+      transcribeDownloadOverCap(
+        { bytesWritten: VOICE_MAX_BYTES, totalBytes: VOICE_MAX_BYTES },
+        VOICE_MAX_BYTES,
+      ),
+    ).toBe(false);
+  });
+
+  it('an oversized download is aborted, deleted, and too-long', async () => {
+    const deleted: string[] = [];
+    const transcribe = vi.fn(async () => ({
+      text: 'hello there',
+      language: 'en',
+      ttftMs: 5,
+      decodeTps: 30,
+      audioMs: 2000,
+      wallMs: 900,
+    }));
+    const result = await transcribeVoiceNote({
+      port: port({ transcribe }),
+      source: { url: 'https://api.zilar.test/voice.m4a' },
+      files: files({
+        downloadUrl: async () => {
+          // The fake mirrors the production guard: past the cap it aborts
+          // and deletes the partial cache file before refusing (the flow
+          // itself deletes only files its seam returned).
+          deleted.push('file:///cache/voice-transcribe.m4a');
+          throw new TranscribeTooLargeError();
+        },
+        deleteCache: async (uri) => {
+          deleted.push(uri);
+        },
+      }),
+    });
+    expect(result).toEqual({ status: 'error', message: TRANSCRIBE_TOO_LONG_MESSAGE });
+    expect(transcribe).not.toHaveBeenCalled();
+    expect(deleted).toEqual(['file:///cache/voice-transcribe.m4a']);
   });
 
   it('the cache name is a safe file name', () => {
