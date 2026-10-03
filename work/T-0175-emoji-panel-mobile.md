@@ -5,7 +5,7 @@ status: planned
 milestone: M5
 branch: task/T-0175-emoji-panel-mobile
 model: meta/muse-spark-1.3-contributor
-effort: medium
+effort: low
 depends_on: []
 estimate: 1 day
 ---
@@ -24,11 +24,24 @@ Julio, testing the Android build: "the emoji button is the only one needed, the 
 4. **Sizing.** The sheet takes about half of the screen height and never hides the text field's current line; on Android with the keyboard open it replaces the keyboard (dismiss the keyboard when it opens, and closing it with a tap on the field brings the keyboard back).
 5. **Tests (Vitest, same style as the existing panel tests):** the composer row has exactly one emoji-related button and no Sticker or GIF buttons; the panel shows the three tabs; the GIFs tab is hidden when the probe says off; picking an emoji inserts it at a given caret and at the end when there is no selection; a pick of a sticker and of a GIF still sends (reuse the existing assertions); recents are updated and capped at 24.
 
+### Implementation hints from the lead (read this; a first worker lost two hours without writing code)
+Work in this order and **commit after each step**: (1) `apps/mobile/src/lib/emoji-data.ts` plus its test; (2) the emoji tab body component plus its test; (3) the tabbed sheet hosting the three tab bodies; (4) the composer change (one button, caret tracking); (5) the sticker grid spacing, GIF-tab hiding and composer height fixes listed under "Addenda"; (6) checks and Report. Write code from the first minutes. Do not explore beyond the files under "Read first".
+- **Do not hunt for icons.** These lucide-react-native icons are verified to exist in this repo: `Smile, Hand, Heart, PawPrint, Pizza, Trophy, Plane, Lightbulb, Hash, Clock, Sticker, Film, Search, Utensils, Dumbbell, Car, Shapes, ThumbsUp, Leaf, Music, Flag, Gamepad2`. Import them from `lucide-react-native` as `composer.tsx` does. Suggested category icons: smileys `Smile`, gestures and people `Hand`, hearts `Heart`, animals `PawPrint`, food `Pizza`, activities `Trophy`, travel `Plane`, objects `Lightbulb`, symbols `Hash`, recent `Clock`; tabs: Emoji `Smile`, Stickers `Sticker`, GIFs `Film`.
+- A real sheet pattern already exists: copy how `attach-sheet.tsx` builds its bottom sheet (Modal, handle, safe area); do not invent a new one.
+- Keyboard: call `Keyboard.dismiss()` from `react-native` when the sheet opens; back button via the Modal's `onRequestClose`.
+- Tests render with `react-dom/server` and mocked `react-native` (see `sticker-panel.test.tsx`); there is no React Native testing library, so pin logic in pure functions (emoji insertion at a caret, recents cap at 24, grid cell size, field height) and test those.
+
+### Addenda from Julio's phone test (2026-10-03), also in scope
+1. **Sticker grid spacing is wrong** inside the sheet (uneven gaps, crowded items). Fix `sticker-panel.tsx`: 5 columns, equal cell size computed from the sheet width, equal gaps, padding like the other sheets. Pin the cell-size computation with a test.
+2. **The GIFs tab must not make the panel vanish**: when the GIF provider is off the tab is hidden and the sheet stays open on the first visible tab. Test it.
+3. **Lucide icons for every control; emoji characters only as emoji content** in the grid and the Recent row.
+4. **The composer well is about twice as tall as it should be** (a big empty gap above the buttons and the placeholder; one empty line should be about 52 px: a 36 px field plus 8 px padding top and bottom). Probable cause in `composer.tsx`: `onContentSizeChange` sets the field height to `contentSize.height + 16`, but on Android the reported content height already includes the field's `py-2` padding, so it is counted twice. Make the sizing a small pure function `fieldHeightFor(contentHeight)`, unit-test it for 1, 2 and 8 lines and the cap, and make an empty one-line field exactly `MIN_INPUT_HEIGHT`. The voice recorder file must not be edited, but you may change how the composer lays it out.
+
 ### Read first
 `AGENTS.md`, `apps/mobile/src/components/chat/composer.tsx`, `sticker-panel.tsx`, `gif-panel.tsx` and their tests, `apps/web/src/components/StickerPanel.tsx` (the model for tabs and emoji), `docs/design/ui-style.md`.
 
 ### Allowed files
-`apps/mobile/src/components/chat/composer.tsx`, `sticker-panel.tsx`, `gif-panel.tsx`, new files `apps/mobile/src/components/chat/emoji-*.tsx|ts` and `apps/mobile/src/lib/emoji-data.ts`, and their tests, `work/T-0175-emoji-panel-mobile.md`. Do not touch the voice recorder files (`voice-recorder.tsx`, `voice-message.tsx`, `voice-*.ts`); another change is editing them.
+`apps/mobile/src/components/chat/composer.tsx`, `composer-gifs.test.tsx`, `composer-layout.test.ts`, `sticker-panel.tsx`, `gif-panel.tsx`, new files `apps/mobile/src/components/chat/emoji-*.tsx|ts` and `apps/mobile/src/lib/emoji-data.ts`, and their tests, `work/T-0175-emoji-panel-mobile.md`. Do not touch the voice recorder files (`voice-recorder.tsx`, `voice-message.tsx`, `voice-*.ts`); another change is editing them.
 
 ### Checks
 ```bash
