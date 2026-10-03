@@ -267,9 +267,7 @@ export function VoiceMessage({
         const audioSource: VoiceTranscribeSource =
           upload.localUri !== undefined && upload.localUri !== ''
             ? { localUri: upload.localUri }
-            : source.headers === undefined
-              ? { localUri: source.uri }
-              : { url: source.uri, headers: source.headers };
+            : { url: source.uri, headers: source.headers };
         // The model download needs the user's yes (round 1): the sheet's
         // Download sets `transcribeConsent` for this run, and the gate
         // consumes it — no yes, no download, the sheet re-opens instead.
@@ -311,10 +309,11 @@ export function VoiceMessage({
           setTranscribeError(result.message);
           return;
         }
+        const text = result.transcript.text.trim();
         const entry: StoredTranscript =
           result.transcript.language === ''
-            ? { text: result.transcript.text }
-            : { text: result.transcript.text, language: result.transcript.language };
+            ? { text }
+            : { text, language: result.transcript.language };
         setLocalText(entry);
         setShowTranscript(true);
         setStoredTranscripts((current) => ({ ...current, [message.id]: entry }));

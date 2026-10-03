@@ -1,7 +1,7 @@
 ---
 id: T-0179
 title: Mobile: transcribe a voice note on the phone with Whistle (button in the voice bubble, on-device, free, private)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0179-mobile-transcribe-voice-notes
 model: meta/muse-spark-1.3-contributor
@@ -188,3 +188,5 @@ keyed by message id, never sent on the wire).
 - The lead tests on the emulator and the phone (per spec: not run here).
 
 ## Review (written by Claude)
+
+**Verdict:** Round 1: changes requested (consent race, cache wipe, lost update, uncapped download), all four fixed by the worker. Round 2 pre-review found one should-fix: a served URL without headers was handed to the native decoder in place instead of being downloaded to the cache; fixed by the lead (served URLs always go through the download, with headers when present), plus the transcript is trimmed before it is stored. Format, lint, typecheck and 160 tests pass. Accepted nits (four, none affects behaviour). Julio asked to skip further device testing; the first real run on the phone is his.
