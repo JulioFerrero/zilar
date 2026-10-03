@@ -12,6 +12,17 @@ export interface XmppCoreOptions {
   /** Called for every (re)connect; must return a fresh short-lived JWT. */
   getToken: () => Promise<{ jid: string; token: string }>;
   /**
+   * Idle time without any received stanza before the client pings the
+   * server domain (XEP-0199). Defaults to 30 000; 0 disables the keepalive.
+   */
+  keepaliveMs?: number;
+  /**
+   * Time to wait for the keepalive ping reply (a result or an error counts
+   * as alive) before the connection is treated as dead and reconnected.
+   * Defaults to 15 000; 0 disables the keepalive.
+   */
+  keepaliveTimeoutMs?: number;
+  /**
    * Fixed XMPP resource, e.g. `gateway`. When absent, a random
    * `zilar-xxxxxxxx` resource is used, as before.
    */

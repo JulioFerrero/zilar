@@ -7,6 +7,7 @@ import {
 } from '@xmpp/client';
 import { jidLocalPart } from './jid';
 import { DEFAULT_HISTORY_MAX, buildMamQuery, parseMamFin, toHistoryPage } from './mam';
+import { PING_NAMESPACE } from './namespaces';
 import { installStreamManagementAck } from './stream-management';
 import {
   buildAvailablePresence,
@@ -16,6 +17,8 @@ import {
   buildJoinPresence,
   buildLeavePresence,
   buildMessage,
+  buildPingRequest,
+  buildPingResult,
   buildPushDisable,
   buildPushEnable,
   buildReactions,
@@ -64,6 +67,16 @@ const JOIN_TIMEOUT_MS = 15_000;
 const HISTORY_TIMEOUT_MS = 30_000;
 const UPLOAD_TIMEOUT_MS = 15_000;
 const PUSH_TIMEOUT_MS = 15_000;
+// Idle time without any received stanza before the client pings the server
+// (XEP-0199), and the wait for the reply before the connection counts as
+// dead. Both are overridable per `XmppCoreOptions`; 0 disables the keepalive.
+const DEFAULT_KEEPALIVE_MS = 30_000;
+const DEFAULT_KEEPALIVE_TIMEOUT_MS = 15_000;
+// Waits between reconnect attempts after transient failures: 1 s, 2 s, 4 s,
+// 8 s, 15 s, then 30 s, reset to 1 s after a successful connect. Even at the
+// 30 s floor a client attempts about 20 tokens per 10 minutes, far under the
+// token route's rate limit (120 per 10 minutes).
+const RECONNECT_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000];
 
 export type ClientOptions = {
   service: string;
@@ -145,6 +158,21 @@ function isSaslError(error: unknown): boolean {
   return error instanceof Error && error.name === 'SASLError';
 }
 
+// Only an error that proves the credentials are bad is a fatal token
+// failure: `getToken` rejecting with an error whose numeric `status` is 401
+// or 403 (what the web and mobile token calls carry for an HTTP error
+// response). A failed fetch (no response), a timeout, a 5xx or a 429 carry
+// no fatal status and stay transient: the client keeps reconnecting.
+function isFatalTokenError(error: unknown): boolean {
+  if (error === null || typeof error !== 'object') return false;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === 'number' && (status === 401 || status === 403);
+}
+
+function reconnectDelayFor(attempt: number): number {
+  return RECONNECT_BACKOFF_MS[Math.min(attempt, RECONNECT_BACKOFF_MS.length - 1)] ?? 30_000;
+}
+
 // A `conflict` stream error: another session logged in with the same full
 // JID and the server replaced this one. @xmpp/client reports it through the
 // `error` event as a StreamError whose `condition` is the stanza condition
@@ -178,6 +206,18 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   let desiredOnline = false;
   let hasBeenOnline = false;
   let authFailed = false;
+  // The token error of the in-flight authentication, when the failure was
+  // transient. The client's error event carries the same object, so the
+  // handler recognises it and tears the stuck stream down for a retry
+  // instead of stopping for good.
+  let transientTokenError: unknown;
+  // Count of reconnect attempts since the last online; drives the
+  // `reconnect.delay` the library waits before each retry.
+  let reconnectAttempt = 0;
+  // The keepalive ping id while its reply is pending, if any.
+  let keepalivePingId: string | undefined;
+  let keepaliveIdleTimer: ReturnType<typeof setTimeout> | undefined;
+  let keepaliveReplyTimer: ReturnType<typeof setTimeout> | undefined;
   let latestToken: string | undefined;
   let xmpp: XmppClient | undefined;
 
@@ -319,9 +359,14 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     try {
       fresh = await options.getToken();
     } catch (error) {
-      // The thrown error reaches the client's error handler, which reports it
-      // and stops reconnecting. Flag it so a failed token fetch is fatal.
-      authFailed = true;
+      // The thrown error reaches the client's error handler, which reports
+      // it. Only a fatal error (bad credentials) stops reconnecting; any
+      // other token failure is transient and the client keeps trying.
+      if (isFatalTokenError(error)) {
+        authFailed = true;
+      } else {
+        transientTokenError = error;
+      }
       throw error;
     }
 
@@ -333,6 +378,8 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   async function stopAfterFailure(): Promise<void> {
     desiredOnline = false;
     hasBeenOnline = false;
+    reconnectAttempt = 0;
+    stopKeepalive();
     setStatus('offline');
     meJid = undefined;
     clearAllRosters();
@@ -353,6 +400,98 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       clearTimeout(pending.timer);
       pending.reject(new Error(reason));
     }
+  }
+
+  function keepaliveEnabled(): boolean {
+    const idle = options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS;
+    const timeout = options.keepaliveTimeoutMs ?? DEFAULT_KEEPALIVE_TIMEOUT_MS;
+    return idle > 0 && timeout > 0;
+  }
+
+  function stopKeepalive(): void {
+    keepalivePingId = undefined;
+    if (keepaliveIdleTimer !== undefined) {
+      clearTimeout(keepaliveIdleTimer);
+      keepaliveIdleTimer = undefined;
+    }
+    if (keepaliveReplyTimer !== undefined) {
+      clearTimeout(keepaliveReplyTimer);
+      keepaliveReplyTimer = undefined;
+    }
+  }
+
+  // Drives the library's wait before its next auto-reconnect: the schedule
+  // in `reconnect.delay` is read when the retry is queued, so setting it at
+  // the start of every attempt governs the wait after that attempt fails.
+  function setReconnectDelay(ms: number): void {
+    const current = xmpp;
+    if (current === undefined) return;
+    try {
+      current.reconnect.delay = ms;
+    } catch {
+      // A client without a reconnect driver (some test fakes); the status
+      // flow still reports reconnecting.
+    }
+  }
+
+  // While online, pings the server domain after `keepaliveMs` without any
+  // received stanza; without a reply in `keepaliveTimeoutMs` the connection
+  // counts as dead and is torn down so the normal path reconnects.
+  function startKeepalive(): void {
+    stopKeepalive();
+    if (!keepaliveEnabled() || !desiredOnline) return;
+    keepaliveIdleTimer = setTimeout(() => {
+      keepaliveIdleTimer = undefined;
+      void sendKeepalivePing();
+    }, options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS);
+  }
+
+  async function sendKeepalivePing(): Promise<void> {
+    const current = xmpp;
+    if (current === undefined || !desiredOnline || currentStatus !== 'online') return;
+    const id = generateId();
+    keepalivePingId = id;
+    try {
+      await current.send(buildPingRequest({ id, to: options.domain }));
+    } catch {
+      keepalivePingId = undefined;
+      reconnectDeadConnection();
+      return;
+    }
+    keepaliveReplyTimer = setTimeout(() => {
+      keepaliveReplyTimer = undefined;
+      keepalivePingId = undefined;
+      reconnectDeadConnection();
+    }, options.keepaliveTimeoutMs ?? DEFAULT_KEEPALIVE_TIMEOUT_MS);
+  }
+
+  // The keepalive found a dead connection: tear the socket down. The
+  // resulting `disconnect` status lets the library reconnect through the
+  // normal path (status `reconnecting`, then `online` again).
+  function reconnectDeadConnection(): void {
+    stopKeepalive();
+    const current = xmpp;
+    if (current === undefined || !desiredOnline) return;
+    try {
+      void current.disconnect().catch(() => {
+        // The stream is already dead; the disconnect status still fires.
+      });
+    } catch {
+      // A client whose disconnect throws synchronously; nothing to retry on.
+    }
+  }
+
+  function handleKeepaliveReply(id: string): boolean {
+    if (keepalivePingId === undefined || keepalivePingId !== id) return false;
+    keepalivePingId = undefined;
+    if (keepaliveReplyTimer !== undefined) {
+      clearTimeout(keepaliveReplyTimer);
+      keepaliveReplyTimer = undefined;
+    }
+    // A result or an error both prove the connection is alive: a fresh idle
+    // period starts.
+    startKeepalive();
+    return true;
   }
 
   async function afterOnline(current: XmppClient): Promise<void> {
@@ -402,14 +541,23 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       // that carries the bound JID. Going online here would let a listener
       // query history with no identity yet, so only that event goes online.
       if (raw === 'online') return;
+      // Every attempt starts here: arm the wait after it, so a failure
+      // backs off 1 s, 2 s, 4 s, 8 s, 15 s, then 30 s.
+      if (raw === 'connecting') {
+        reconnectAttempt += 1;
+        setReconnectDelay(reconnectDelayFor(reconnectAttempt));
+      }
       applyRawStatus(raw);
     });
 
     current.on('online', (jid) => {
       meJid = jid.bare().toString();
       hasBeenOnline = true;
+      reconnectAttempt = 0;
+      setReconnectDelay(reconnectDelayFor(0));
       setStatus('online');
       finishConnect();
+      startKeepalive();
       void afterOnline(current);
     });
 
@@ -428,10 +576,30 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         authFailed = false;
         finishConnect(error);
         void stopAfterFailure();
+        return;
+      }
+      if (error === transientTokenError) {
+        // A transient token failure leaves a stuck unauthenticated stream:
+        // tear it down so the client reconnects and tries a fresh token
+        // with backoff, instead of idling until the server closes it.
+        transientTokenError = undefined;
+        if (desiredOnline && currentStatus !== 'online') {
+          try {
+            void current.disconnect().catch(() => {
+              // The stream is already failing; the disconnect status fires
+              // and the normal path reconnects.
+            });
+          } catch {
+            // A client whose disconnect throws synchronously.
+          }
+        }
       }
     });
 
     current.on('stanza', (stanza) => {
+      // Any traffic proves the connection is alive and restarts the idle
+      // period; the keepalive only fires on a truly silent connection.
+      if (currentStatus === 'online' && keepaliveEnabled()) startKeepalive();
       handleStanza(stanza);
     });
   }
@@ -515,6 +683,9 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   function handleIq(stanza: XmppElement): void {
     const id = stanza.attrs['id'];
     if (id !== undefined) {
+      // Our own keepalive ping answered (a result or an error both prove
+      // the connection is alive).
+      if (handleKeepaliveReply(id)) return;
       const pending = pendingIqs.get(id);
       if (pending !== undefined) {
         pendingIqs.delete(id);
@@ -526,6 +697,22 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         }
         return;
       }
+    }
+
+    // An incoming server ping (XEP-0199) gets an empty result back.
+    if (
+      stanza.attrs['type'] === 'get' &&
+      id !== undefined &&
+      stanza.getChild('ping', PING_NAMESPACE) !== undefined
+    ) {
+      const current = xmpp;
+      if (current !== undefined) {
+        const from = stanza.attrs['from'];
+        void current.send(buildPingResult(id, from)).catch((error: unknown) => {
+          emitError(errorMessage(error));
+        });
+      }
+      return;
     }
 
     const rosterPush = parseRosterPush(stanza, options.domain, meJid);
@@ -594,6 +781,9 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   async function disconnect(): Promise<void> {
     desiredOnline = false;
     hasBeenOnline = false;
+    reconnectAttempt = 0;
+    transientTokenError = undefined;
+    stopKeepalive();
     setStatus('offline');
     finishConnect(new Error('the XMPP client was disconnected'));
     clearAllRosters();

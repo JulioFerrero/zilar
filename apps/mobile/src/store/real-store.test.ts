@@ -645,6 +645,44 @@ describe('createRealChatStore', () => {
     await flush();
     expect(xmpp.core.connect).toHaveBeenCalledTimes(1);
   });
+
+  it('a resume during an in-flight boot waits for it instead of booting twice', async () => {
+    // Slow chats fetch: the boot is still in flight when the app resumes.
+    // (The topics poller also refetches the list on resume; what must not
+    // happen is a second boot creating a second XMPP core.)
+    const gate = deferred();
+    const api = fakeApi({
+      getChats: vi.fn(async () => {
+        await gate.promise;
+        return [{ kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' }];
+      }),
+    });
+    const xmpp = fakeXmpp();
+    const appState = fakeAppState();
+    const createXmpp = vi.fn((options: XmppCoreOptions) => {
+      xmpp.options.current = options;
+      return xmpp.core;
+    });
+    const store = createRealChatStore({
+      api,
+      appState,
+      now: () => new Date('2026-09-28T12:00:00Z'),
+      createXmpp,
+    });
+    store.getState().start();
+    await flush();
+    expect(api.getChats).toHaveBeenCalledTimes(1);
+
+    appState.setActive();
+    await flush();
+    // Still one boot in flight: no second core while it runs.
+    expect(createXmpp).toHaveBeenCalledTimes(0);
+
+    gate.resolve();
+    await flushUntil(() => store.getState().status === 'online');
+    expect(store.getState().chats.map((chat) => chat.id)).toEqual(['ana@zilar.test']);
+    expect(createXmpp).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('AI reply drafts (T-0056)', () => {

@@ -2899,13 +2899,29 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     // A real device suspends the socket in the background, so on resume we must
     // not assume it is alive: reconnect whenever the status is not `online`.
+    // A boot already in flight (slow network, quick background/foreground)
+    // is awaited instead of starting a second one: two boots would create
+    // two cores and double every XMPP subscription.
+    let bootPromise: Promise<void> | undefined;
+    async function runBoot(gen: number): Promise<void> {
+      if (bootPromise === undefined) {
+        bootPromise = boot(gen).finally(() => {
+          bootPromise = undefined;
+        });
+      }
+      await bootPromise;
+    }
     async function reconnect(): Promise<void> {
       if (!started) {
         return;
       }
+      if (bootPromise !== undefined) {
+        await bootPromise;
+        return;
+      }
       const current = core;
       if (current === undefined) {
-        await boot(generation);
+        await runBoot(generation);
         return;
       }
       if (get().status === 'online') {
@@ -2989,7 +3005,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         // retried whole; a running session just refetches the list.
         if (core === undefined) {
           generation += 1;
-          void boot(generation);
+          void runBoot(generation);
           return;
         }
         void reloadChatsList();
@@ -3892,7 +3908,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           void reconnect();
         });
         startTopicsPolling(generation);
-        void boot(generation);
+        void runBoot(generation);
       },
       stop: () => {
         started = false;

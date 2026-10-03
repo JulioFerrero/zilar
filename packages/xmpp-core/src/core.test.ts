@@ -334,9 +334,11 @@ describe('createXmppCore: token login', () => {
     );
   });
 
-  it('goes offline with an error and stops when getToken fails', async () => {
+  it('goes offline with an error and stops when getToken fails with 401', async () => {
+    // Only a fatal token error (bad credentials) stops reconnecting; any
+    // other failure is transient (see connection-resilience.test.ts).
     const getToken = vi.fn(async () => {
-      throw new Error('the token endpoint is down');
+      throw Object.assign(new Error('the session is gone'), { status: 401 });
     });
     const fake = createFakeClient();
     let captured: ClientOptions | undefined;
@@ -356,11 +358,11 @@ describe('createXmppCore: token login', () => {
         fake,
         vi.fn(async () => {}),
       ),
-    ).rejects.toThrow('the token endpoint is down');
-    await expect(connecting).rejects.toThrow('the token endpoint is down');
+    ).rejects.toThrow('the session is gone');
+    await expect(connecting).rejects.toThrow('the session is gone');
     await flush();
 
-    expect(errors.some((message) => message.includes('the token endpoint is down'))).toBe(true);
+    expect(errors.some((message) => message.includes('the session is gone'))).toBe(true);
     expect(core.status()).toBe('offline');
     expect(fake.stopCalls).toBe(1);
   });

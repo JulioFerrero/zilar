@@ -252,7 +252,15 @@ modules:
   mod_stream_mgmt:
     resend_on_timeout: if_offline
   mod_carboncopy: {}
-  mod_ping: {}
+  # Keepalive (T-0174): the server pings idle clients every 60 s so a quiet
+  # connection still carries traffic (mobile networks drop idle ones after a
+  # few minutes). `timeout_action: none` keeps it traffic-only: the server
+  # never kills a session, the client detects a dead connection itself with
+  # its own ping (xmpp-core `keepaliveMs`) and reconnects.
+  mod_ping:
+    send_pings: true
+    ping_interval: 60
+    timeout_action: none
   # Push notifications (T-0145): mod_push routes offline and MAM events to
   # our XEP-0114 component (see the listener above). `include_sender` and
   # `include_body` stay off: the component resolves who and what itself from
