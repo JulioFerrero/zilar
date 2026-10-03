@@ -26,6 +26,10 @@ import { ProfileCard } from './profile-card';
  * action per relation. Thin view: the owner passes the API and the
  * navigation callbacks.
  */
+// Lookups spend the server's budget (30 per 10 minutes), so wait for a real
+// pause in typing instead of looking up after every keystroke.
+const LOOKUP_PAUSE_MS = 900;
+
 export function AddContactSheet({
   api,
   initialHandle,
@@ -86,7 +90,7 @@ export function AddContactSheet({
             setView(addContactLookupFailure(error));
           }
         });
-    }, 300);
+    }, LOOKUP_PAUSE_MS);
     return () => {
       active = false;
       clearTimeout(pending);

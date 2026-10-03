@@ -1,7 +1,7 @@
 ---
 id: T-0182
 title: Mobile: find people by @handle, profile card and contact requests
-status: review
+status: merged
 milestone: M5
 branch: task/T-0182-mobile-contacts-requests
 model: meta/muse-spark-1.3-contributor
@@ -158,3 +158,5 @@ contacts requests new-chat`: 5 files, 60 tests, all pass. Status stays
 review.
 
 ## Review (written by Claude)
+
+**Verdict:** Round 1: changes requested (must-fix: the card never updated after Cancel, Accept or Decline because the refresh re-entered a held guard; requests-screen tests were missing). Both fixed by the worker; round 2 pre-review: nits only. Lead change: the lookup pause went from 300 ms to 900 ms, so typing does not spend the server's 30-lookups-per-10-minutes budget on every keystroke. Format, lint, typecheck and 60 tests pass. Accepted nits: duck-typed 404 branch, the global busy guard on the requests list, an unused exported type, a vacuous render assertion (the unit test covers the mapping).
