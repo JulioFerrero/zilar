@@ -42,3 +42,24 @@ The old container keeps answering while the new one starts, so a 200 from `/heal
 ## 6. If it goes wrong
 
 Set `IMAGE_TAG` to the previous tag and restart again. A migration is not undone by that: restore the backup if the migration was destructive.
+
+## 7. Android release build (sideload on a phone)
+
+A "prod" Android build is a release APK with the server URL baked in at build time (`EXPO_PUBLIC_ZILAR_API_URL`, see `apps/mobile/src/lib/auth.ts`; the XMPP address comes from the server). It bundles the JavaScript, so it needs no Metro. It is signed with the standard debug key, which is fine for sideloading but not for the Play Store. Never build in the main checkout: `android/` is generated and gitignored, so use a scratch worktree.
+
+```bash
+# scratch worktree on its own branch, reset to main
+cd ../galena-android-try && git reset --hard main && pnpm install --frozen-lockfile
+cd apps/mobile
+export JAVA_HOME=$(/usr/libexec/java_home -v 17) ANDROID_HOME=<android sdk>
+pnpm exec expo prebuild --platform android --clean --no-install
+cd android
+EXPO_PUBLIC_ZILAR_API_URL=https://<domain> NODE_ENV=production ./gradlew assembleRelease --console=plain
+# about 6 minutes; output: app/build/outputs/apk/release/app-release.apk (~120 MB, all ABIs)
+adb -s <device> install -r app/build/outputs/apk/release/app-release.apk
+```
+
+- Check the URL is inside: extract `assets/index.android.bundle` from the APK and grep it for `https://<domain>`.
+- `@babel/plugin-transform-react-jsx` must be a devDependency of `apps/mobile` (a production bundle needs it; pnpm's strict layout does not provide it otherwise).
+- A vivo phone may show a confirmation prompt on the phone for a USB install; the first `adb install` can fail with an empty message until it is accepted. A phone that shows as `unauthorized` needs the "Allow USB debugging" prompt accepted.
+- Recording needs the microphone permission, which the app asks for on first use.
