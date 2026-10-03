@@ -1,0 +1,121 @@
+import {
+  ApprovalsApiError,
+  type ApprovalDecision,
+  type ApprovalRule,
+  type ApprovalsApi,
+  type PublicApproval,
+} from '@/lib/approvals-api';
+import { applyDecision } from '@/lib/approval-state';
+
+export type RowBusy = null | 'approve_once' | 'approve_always' | 'deny';
+
+export interface ScreenRow {
+  approval: PublicApproval;
+  busy: RowBusy;
+  error: string;
+}
+
+export type RowsById = Record<string, ScreenRow>;
+
+/** A rule with the AI id re-attached: the rule route is per AI (`/ais/:id/…`) but the row carries none. */
+export interface OwnedScreenRule {
+  aiId: string;
+  rule: ApprovalRule;
+}
+
+/** One `ScreenRow` per approval, keeping any in-flight decision state. */
+export function rowsForList(list: PublicApproval[], previous: RowsById): RowsById {
+  const next: RowsById = {};
+  for (const approval of list) {
+    const prior = previous[approval.id];
+    next[approval.id] = {
+      approval,
+      busy: prior?.busy ?? null,
+      error: prior?.error ?? '',
+    };
+  }
+  return next;
+}
+
+/** Newest first, like the web inbox. */
+export function orderedRows(rows: RowsById): ScreenRow[] {
+  return Object.values(rows).sort(
+    (a, b) => new Date(b.approval.createdAt).getTime() - new Date(a.approval.createdAt).getTime(),
+  );
+}
+
+/**
+ * Groups owned rules per AI for the "Always allowed" section. Pure, so tests
+ * pin it without rendering. (Also exported for the Approvals screen.)
+ */
+export function groupRulesForScreen(
+  owned: OwnedScreenRule[],
+): { aiId: string; rules: ApprovalRule[] }[] {
+  const byAi = new Map<string, ApprovalRule[]>();
+  for (const { aiId, rule } of owned) {
+    const list = byAi.get(aiId) ?? [];
+    list.push(rule);
+    byAi.set(aiId, list);
+  }
+  return [...byAi.entries()].map(([aiId, rules]) => ({ aiId, rules }));
+}
+
+/**
+ * Decisions for the screen's pending tab: Approve once (`approve_once`),
+ * Always (`approve_always`, the standing rule) and Deny (`deny`).
+ */
+export const SCREEN_DECISIONS: ReadonlyArray<{
+  decision: ApprovalDecision;
+  label: string;
+  busyLabel: string;
+}> = [
+  { decision: 'approve_once', label: 'Approve once', busyLabel: 'Approving…' },
+  { decision: 'approve_always', label: 'Always', busyLabel: 'Allowing…' },
+  { decision: 'deny', label: 'Deny', busyLabel: 'Denying…' },
+];
+
+export type DecideOutcome =
+  | { kind: 'decided'; approval: PublicApproval }
+  | { kind: 'gone'; message: string }
+  | { kind: 'error'; message: string };
+
+/**
+ * Sends one decision through the card's `applyDecision`, so the screen
+ * shares its 404/409 handling. A `reloaded` row means the request was
+ * decided or expired elsewhere: when the fresh row is still pending it
+ * replaces the stale one, otherwise the row drops from pending (the
+ * history tab picks it up on its next refresh) with the "already decided"
+ * notice.
+ */
+export async function decideScreenRow(
+  api: ApprovalsApi,
+  approvalId: string,
+  decision: ApprovalDecision,
+): Promise<DecideOutcome> {
+  const outcome = await applyDecision(api, approvalId, decision);
+  if (outcome.kind === 'ready') {
+    return { kind: 'decided', approval: outcome.approval };
+  }
+  if (outcome.kind === 'reloaded') {
+    if (outcome.approval !== null && outcome.approval.status === 'pending') {
+      return { kind: 'decided', approval: outcome.approval };
+    }
+    return { kind: 'gone', message: 'That request was already decided or expired.' };
+  }
+  return { kind: 'error', message: outcome.message };
+}
+
+export function revokeFailedMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Could not revoke the rule.';
+}
+
+/**
+ * Drops a revoked rule from the list; a 404 means it is already gone
+ * (revoked elsewhere), so the row drops quietly like a success.
+ */
+export function revokeFailedOutcome(error: unknown): { dropped: boolean; message: string } {
+  if (error instanceof ApprovalsApiError && error.status === 404) {
+    return { dropped: true, message: '' };
+  }
+  return { dropped: false, message: revokeFailedMessage(error) };
+}

@@ -4,6 +4,7 @@ import {
   ApprovalsApiError,
   buildDecisionBody,
   createApprovalsApi,
+  type ApprovalRule,
   type PublicApproval,
 } from './approvals-api';
 
@@ -172,5 +173,118 @@ describe('createApprovalsApi', () => {
       code: 'unauthorized',
     });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+const APPROVAL_RULE: ApprovalRule = {
+  id: 'rule-1',
+  action: 'Rotate the staging API token',
+  scope: 'personal',
+  groupId: null,
+  topicId: null,
+  topicName: null,
+  createdAt: '2026-09-28T01:30:00.000Z',
+  createdBy: 'me',
+};
+
+describe('createApprovalsApi lists and rules', () => {
+  it('GETs /api/approvals and returns the typed list', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse([PENDING_APPROVAL]));
+    const api = createApprovalsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.listApprovals()).resolves.toEqual([PENDING_APPROVAL]);
+
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/approvals');
+    expect(init.method).toBe('GET');
+    expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer t');
+  });
+
+  it('returns an empty list when nothing is pending', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse([]));
+    const api = createApprovalsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.listApprovals()).resolves.toEqual([]);
+  });
+
+  it('rejects a list whose row shape is wrong', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse([{ nope: true }]));
+    const api = createApprovalsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.listApprovals()).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('GETs the AI rules route and URL-encodes the AI id', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse([APPROVAL_RULE]));
+    const api = createApprovalsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.listAiApprovalRules('ai/with spaces')).resolves.toEqual([APPROVAL_RULE]);
+
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/ais/ai%2Fwith%20spaces/approval-rules');
+    expect(init.method).toBe('GET');
+  });
+
+  it('GETs the group rules route and URL-encodes the group id', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse([APPROVAL_RULE]));
+    const api = createApprovalsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.listGroupApprovalRules('g/1')).resolves.toEqual([APPROVAL_RULE]);
+
+    const [url] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/groups/g%2F1/approval-rules');
+  });
+
+  it('parses a rule without the optional topic fields (older servers)', async () => {
+    const legacy = { ...APPROVAL_RULE, topicId: undefined, topicName: undefined };
+    const fetchImpl = vi.fn(async () => jsonResponse([legacy]));
+    const api = createApprovalsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.listAiApprovalRules('ai-1')).resolves.toEqual([APPROVAL_RULE]);
+  });
+
+  it('rejects a rule whose scope is not in the enum', async () => {
+    const broken = { ...APPROVAL_RULE, scope: 'org' };
+    const fetchImpl = vi.fn(async () => jsonResponse([broken]));
+    const api = createApprovalsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.listAiApprovalRules('ai-1')).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+  });
+
+  it('keeps the 404 when the viewer may not manage the rules', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { code: 'not_found', message: 'AI not found' } }, 404),
+    );
+    const api = createApprovalsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.listAiApprovalRules('ai-1')).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+    });
+  });
+
+  it('DELETEs the rule route and URL-encodes the id', async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+    const api = createApprovalsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.revokeApprovalRule('rule/with spaces')).resolves.toBeUndefined();
+
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/approval-rules/rule%2Fwith%20spaces');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('keeps the 404 when the rule is already gone', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { code: 'not_found', message: 'Approval rule not found' } }, 404),
+    );
+    const api = createApprovalsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.revokeApprovalRule('rule-1')).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+    });
   });
 });

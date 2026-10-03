@@ -41,6 +41,23 @@ export interface PublicApproval {
 export interface ApprovalsApi {
   getApproval(id: string): Promise<PublicApproval>;
   decideApproval(id: string, decision: ApprovalDecision, note?: string): Promise<PublicApproval>;
+  listApprovals(): Promise<PublicApproval[]>;
+  listAiApprovalRules(aiId: string): Promise<ApprovalRule[]>;
+  listGroupApprovalRules(groupId: string): Promise<ApprovalRule[]>;
+  revokeApprovalRule(id: string): Promise<void>;
+}
+
+export type ApprovalRuleScope = 'personal' | 'group';
+
+export interface ApprovalRule {
+  id: string;
+  action: string;
+  scope: ApprovalRuleScope;
+  groupId: string | null;
+  topicId: string | null;
+  topicName: string | null;
+  createdAt: string;
+  createdBy: string;
 }
 
 export class ApprovalsApiError extends Error {
@@ -136,6 +153,43 @@ function parsePublicApproval(value: unknown): PublicApproval | null {
   };
 }
 
+function isApprovalRuleScope(value: unknown): value is ApprovalRuleScope {
+  return value === 'personal' || value === 'group';
+}
+
+function parseApprovalRule(value: unknown): ApprovalRule | null {
+  if (!isRecord(value)) return null;
+  const id = value['id'];
+  const action = value['action'];
+  const scope = value['scope'];
+  const groupId = value['groupId'];
+  const topicId = value['topicId'];
+  const topicName = value['topicName'];
+  const createdAt = value['createdAt'];
+  const createdBy = value['createdBy'];
+  if (
+    !isString(id) ||
+    !isString(action) ||
+    !isApprovalRuleScope(scope) ||
+    !isString(createdAt) ||
+    !isString(createdBy)
+  ) {
+    return null;
+  }
+  return {
+    id,
+    action,
+    scope,
+    groupId: isString(groupId) ? groupId : null,
+    // Optional on the wire (older servers omit them); a non-string value
+    // reads like absence rather than failing the whole list.
+    topicId: isString(topicId) ? topicId : null,
+    topicName: isString(topicName) ? topicName : null,
+    createdAt,
+    createdBy,
+  };
+}
+
 /** The exact POST body the server's strict `decisionSchema` accepts. */
 export function buildDecisionBody(
   decision: ApprovalDecision,
@@ -183,6 +237,16 @@ export function createApprovalsApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): ApprovalsApi {
+  const parseList = <T>(value: unknown, parseItem: (item: unknown) => T | null): T[] | null => {
+    if (!Array.isArray(value)) return null;
+    const parsed: T[] = [];
+    for (const item of value) {
+      const result = parseItem(item);
+      if (result === null) return null;
+      parsed.push(result);
+    }
+    return parsed;
+  };
   const withToken = async (
     path: string,
     init: RequestInit,
@@ -225,6 +289,36 @@ export function createApprovalsApi(
         parsePublicApproval,
       );
       return result as PublicApproval;
+    },
+    async listApprovals() {
+      const body = await withToken('/api/approvals', { method: 'GET' }, (value) =>
+        parseList(value, parsePublicApproval),
+      );
+      return body as PublicApproval[];
+    },
+    async listAiApprovalRules(aiId) {
+      const body = await withToken(
+        `/api/ais/${encodeURIComponent(aiId)}/approval-rules`,
+        { method: 'GET' },
+        (value) => parseList(value, parseApprovalRule),
+      );
+      return body as ApprovalRule[];
+    },
+    async listGroupApprovalRules(groupId) {
+      const body = await withToken(
+        `/api/groups/${encodeURIComponent(groupId)}/approval-rules`,
+        { method: 'GET' },
+        (value) => parseList(value, parseApprovalRule),
+      );
+      return body as ApprovalRule[];
+    },
+    async revokeApprovalRule(id) {
+      await withToken(
+        `/api/approval-rules/${encodeURIComponent(id)}`,
+        { method: 'DELETE' },
+        // A 204 has no body (`request` yields null): any 2xx means revoked.
+        () => true,
+      );
     },
   };
 }
