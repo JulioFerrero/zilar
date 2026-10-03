@@ -11,6 +11,7 @@ export interface ZilarWhistleNativeModule {
   isAvailable: () => boolean;
   modelStatus: () => string;
   loadModel: (path: string) => Promise<string>;
+  sha256File: (path: string) => Promise<string>;
   transcribeFile: (path: string, language: string | null) => Promise<Record<string, unknown>>;
   transcribeRanges: (
     path: string,

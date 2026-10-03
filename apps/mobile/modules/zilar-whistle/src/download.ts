@@ -131,11 +131,13 @@ export async function loadModel(): Promise<void> {
 }
 
 /**
- * The sha256 hex of a file. Reads the whole file into memory — fine for the
- * 17 MB model on a phone, but not for larger files.
+ * The sha256 hex of a file, streamed natively (Hermes has no
+ * `crypto.subtle`, and this never holds the whole model in memory).
  */
 export async function sha256OfFile(file: File): Promise<string> {
-  const bytes = await file.bytes();
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  const native = getNativeModule();
+  if (native === null) {
+    throw new WhistleError('unavailable', 'On-device transcription is unavailable');
+  }
+  return native.sha256File(file.uri);
 }

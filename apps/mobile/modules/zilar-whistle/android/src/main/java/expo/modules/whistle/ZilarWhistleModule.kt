@@ -6,10 +6,10 @@ import android.media.MediaFormat
 import android.os.Build
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
-import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
+import java.security.MessageDigest
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
@@ -50,6 +50,23 @@ class ZilarWhistleModule : Module() {
     }
   }
 
+  /** JS hands over `file://` URIs (expo-file-system); the platform APIs want a plain path. */
+  private fun localPath(raw: String): String =
+    if (raw.startsWith("file://")) android.net.Uri.parse(raw).path ?: raw else raw
+
+  private fun sha256Hex(path: String): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    File(localPath(path)).inputStream().use { input ->
+      val buffer = ByteArray(64 * 1024)
+      while (true) {
+        val read = input.read(buffer)
+        if (read < 0) break
+        digest.update(buffer, 0, read)
+      }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
+  }
+
   private fun abiSupported(): Boolean =
     Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }
 
@@ -78,29 +95,33 @@ class ZilarWhistleModule : Module() {
       abiSupported()
     }
 
+    // Streams the file through SHA-256: Hermes has no `crypto.subtle`, and
+    // this never holds the whole model in memory.
+    AsyncFunction("sha256File") { path: String -> sha256Hex(path) }
+
     Function("modelStatus") {
       synchronized(lock) {
         if (modelLoaded) "ready" else "missing"
       }
     }
 
-    AsyncFunction("loadModel") Coroutine { path: String, promise: Promise ->
+    AsyncFunction("loadModel") { path: String, promise: Promise ->
       if (!abiSupported()) {
         promise.reject(CodedException("unavailable", "Whistle runs on Android arm64 only", null))
-        return@Coroutine
+        return@AsyncFunction
       }
-      val file = File(path)
+      val file = File(localPath(path))
       if (!file.isFile || file.length() == 0L) {
         promise.reject(CodedException("model_missing", "The Whistle model file is missing", null))
-        return@Coroutine
+        return@AsyncFunction
       }
       synchronized(lock) {
         try {
-          val result = nativeLoadModel(path)
+          val result = nativeLoadModel(localPath(path))
           if (result < 0) {
             val detail = runCatching { nativeLastError() }.getOrNull().orEmpty()
             promise.reject(CodedException("load_failed", "Could not load the Whistle model: $detail".trimEnd(':').trim(), null))
-            return@Coroutine
+            return@AsyncFunction
           }
           modelLoaded = true
           promise.resolve("ready")
@@ -110,11 +131,11 @@ class ZilarWhistleModule : Module() {
       }
     }
 
-    AsyncFunction("transcribeFile") Coroutine { path: String, language: String?, promise: Promise ->
+    AsyncFunction("transcribeFile") { path: String, language: String?, promise: Promise ->
       transcribeRanges(path, null, language, promise)
     }
 
-    AsyncFunction("transcribeRanges") Coroutine {
+    AsyncFunction("transcribeRanges") {
         path: String,
         rangesMs: List<List<Double>>?,
         language: String?,
@@ -130,7 +151,7 @@ class ZilarWhistleModule : Module() {
    * is null. The native side never plans chunks itself: the tested
    * `planQuietCutChunks` in `whistle-last-voice.ts` owns the rule.
    */
-  private suspend fun transcribeRanges(
+  private fun transcribeRanges(
     path: String,
     rangesMs: List<List<Double>>?,
     language: String?,
@@ -263,7 +284,7 @@ class ZilarWhistleModule : Module() {
   private fun decodeToMono16k(path: String): DecodedAudio {
     val extractor = MediaExtractor()
     try {
-      extractor.setDataSource(path)
+      extractor.setDataSource(localPath(path))
     } catch (error: Exception) {
       extractor.release()
       throw CodedException("not_audio", "Could not read the audio file", error)
