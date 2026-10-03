@@ -34,6 +34,8 @@ Think of the messenger you already use, but some of the people in the room are A
 | 🔑 **Bring your own keys** | Any provider, keys encrypted at rest, every AI behind a **hard money cap** |
 | 🧵 **Topics** | Groups have forum-style topics: public or private, a task strip with owners, AIs per topic; plus per-user mute, archive and pin, pinned messages, and search across everything (prefix and typo tolerant) |
 | 🔗 **Invites, roles, channels** | Shareable group invite links, named roles with private-topic access and approver rights, one-way channels where only admins post |
+| 🎙️ **Voice notes, transcribed on your phone** | Hold to record, release to send. On an Android phone a Transcribe button turns a voice note into text with the Whistle model running on the device: free, offline, private |
+| 👥 **Contacts** | Find people by exact @handle, send and accept contact requests |
 | 🏷️ **Stickers and GIFs** | User-made sticker packs, a creator, favorites, and GIF search that stays private (GIFs need the owner's provider key) |
 | 🔔 **Notifications** | Installable app with web push: per-device subscription, mute-aware, dismiss-on-read (needs HTTPS on a real deploy) |
 | ⚡ **Streaming replies** | Answers appear as they are written, on web and mobile |
@@ -110,7 +112,7 @@ Early and moving fast, built by one person with an AI team. Chat, AIs, streaming
 | M2 AIs that talk (create, keys, caps, streaming, groups) | ✅ done |
 | M3 Bring your own machine (registry, runner, tunnel) | 🟡 registry, runner and hub merged; desks and docker driver next |
 | M4 AIs that act (approvals, gateway, rules, tools) | 🟡 approvals, gateway, sandbox, routines and web tools merged (off by default); UI next |
-| M5 A complete daily messenger (topics, search, pins, stickers, install) | 🟡 topics, chat prefs, pins, search, invites, roles, channels, stickers, GIFs, push and the install wizard merged (several need keys, HTTPS or a device check); voice, Telegram import, mobile GIFs and deploy push next ([`docs/ROADMAP_M5.md`](docs/ROADMAP_M5.md)) |
+| M5 A complete daily messenger (topics, search, pins, stickers, install) | 🟡 topics, chat prefs, pins, search, invites, roles, channels, stickers, GIFs, push and the install wizard merged (several need keys, HTTPS or a device check); voice notes, on-device transcripts, mobile GIFs and contacts merged; the web settings screens on the phone, Telegram import and deploy push next ([`docs/ROADMAP_M5.md`](docs/ROADMAP_M5.md), [`docs/ROADMAP_MOBILE_PARITY.md`](docs/ROADMAP_MOBILE_PARITY.md)) |
 
 ## 🚀 Quick start
 
@@ -149,6 +151,8 @@ The details, prerequisites and every script are below in [Development](#developm
 | [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) | The full design: architecture, roadmap, risks, open questions |
 | [`docs/SERVER_CONFIG.md`](docs/SERVER_CONFIG.md) | Every environment variable, flag, migration and job |
 | [`docs/TOOL_SANDBOX.md`](docs/TOOL_SANDBOX.md) | The tool contract, limits and threat model |
+| [`docs/ROADMAP_MOBILE_PARITY.md`](docs/ROADMAP_MOBILE_PARITY.md) | Every web feature on the phone, task by task |
+| [`docs/RELEASING.md`](docs/RELEASING.md) | Tag, deploy and verify a release; the Android and iOS build recipes |
 | [`docs/LIVE_CHECKS_2026-09-29.md`](docs/LIVE_CHECKS_2026-09-29.md) | What still needs a human on real devices |
 | [`docs/design/ui-style.md`](docs/design/ui-style.md) | The visual language |
 | [`AGENTS.md`](AGENTS.md) | Rules for AI workers |
