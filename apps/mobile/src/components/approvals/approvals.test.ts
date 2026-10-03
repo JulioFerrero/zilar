@@ -171,6 +171,24 @@ describe('decideScreenRow', () => {
     });
   });
 
+  it('keeps a still-pending row after a 409 race (stale, not decided)', async () => {
+    const refreshed = approval({ summary: 'Updated summary.' });
+    const api = {
+      getApproval: async () => refreshed,
+      decideApproval: async () => {
+        throw new ApprovalsApiError(409, 'not_pending', 'already decided');
+      },
+      listApprovals: async () => [],
+      listAiApprovalRules: async () => [],
+      listGroupApprovalRules: async () => [],
+      revokeApprovalRule: async () => {},
+    };
+    await expect(decideScreenRow(api, 'apr-1', 'approve_once')).resolves.toEqual({
+      kind: 'stale',
+      approval: refreshed,
+    });
+  });
+
   it('returns the inline message for any other error', async () => {
     const api = {
       getApproval: async () => approval(),

@@ -96,6 +96,7 @@ export const SCREEN_DECISIONS: ReadonlyArray<{
 export type DecideOutcome =
   | { kind: 'decided'; approval: PublicApproval }
   | { kind: 'gone'; message: string }
+  | { kind: 'stale'; approval: PublicApproval }
   | { kind: 'error'; message: string };
 
 /** The short confirmation line shown where a decided row was. */
@@ -113,10 +114,10 @@ export function confirmationForDecision(decision: ApprovalDecision): string {
 /**
  * Sends one decision through the card's `applyDecision`, so the screen
  * shares its 404/409 handling. A `reloaded` row means the request was
- * decided or expired elsewhere: when the fresh row is still pending it
- * replaces the stale one, otherwise the row drops from pending (the
- * history tab picks it up on its next refresh) with the "already decided"
- * notice.
+ * decided or expired elsewhere: when the fresh row is still pending the
+ * decision did not land, so the row stays in the list with the refreshed
+ * state (`stale`); otherwise the row drops from pending with the
+ * "already decided" notice (`gone`).
  */
 export async function decideScreenRow(
   api: ApprovalsApi,
@@ -129,7 +130,7 @@ export async function decideScreenRow(
   }
   if (outcome.kind === 'reloaded') {
     if (outcome.approval !== null && outcome.approval.status === 'pending') {
-      return { kind: 'decided', approval: outcome.approval };
+      return { kind: 'stale', approval: outcome.approval };
     }
     return { kind: 'gone', message: 'That request was already decided or expired.' };
   }

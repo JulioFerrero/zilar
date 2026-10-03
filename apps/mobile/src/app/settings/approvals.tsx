@@ -229,13 +229,19 @@ function ApprovalsBody() {
               return next;
             });
             showNotice(outcome.message);
-          } else {
+          } else if (outcome.kind === 'stale') {
+            // The 409 race reloaded a row that is still pending: the decision
+            // did not land, so the row stays in the list with the refreshed
+            // server state and no error.
             setRows((previous) => {
               const current = previous[id];
               if (current === undefined) {
                 return previous;
               }
-              return { ...previous, [id]: { ...current, busy: null, error: outcome.message } };
+              return {
+                ...previous,
+                [id]: { approval: outcome.approval, busy: null, error: '' },
+              };
             });
           }
         } finally {
