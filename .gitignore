@@ -42,3 +42,6 @@ infra/data/
 # backup archives contain a live .env (T-0127)
 deploy/backups/
 /apps/server/data/
+
+# fetched native binaries, never committed (T-0177: Needle engine)
+apps/mobile/modules/zilar-whistle/android/third_party/
