@@ -8,6 +8,7 @@ import { findTaskFile, launchTask } from './launch.js';
 import { mergeTask } from './merge.js';
 import { promptsDir } from './prompts.js';
 import { replyToWorker } from './reply.js';
+import { checkSpec, formatProblems } from './spec-check.js';
 import { startPrereviewSession } from './start-prereview.js';
 import { switchModel } from './switch-model.js';
 import { collectStatus, formatStatus } from './status.js';
@@ -26,6 +27,7 @@ Usage: lead <command> [options]
   prereview <T-XXXX>                                        start a Muse pre-review manually
   reply <T-XXXX> <prompt-file>                              interrupt the worker and re-prompt it
   merge <T-XXXX> --summary "<one line>" [--skip-gate]       rebase, run the gate, fast-forward main, board, push, clean up
+  spec-check <T-XXXX>                                       check a spec's paths, routes and web claims against the code
   status                                                    compact table of every tracked task
 
 State lives outside the repo at ~/.zilar-lead/state.json (or ZILAR_LEAD_STATE).
@@ -191,6 +193,39 @@ async function runMerge(positional: string[], args: string[]): Promise<void> {
   console.log(`${task} merged`);
 }
 
+function runSpecCheck(positional: string[]): void {
+  const task = positional[0];
+  if (task === undefined) {
+    throw new Error('usage: lead spec-check <T-XXXX>');
+  }
+  const root = findRepoRoot();
+  const file = findTaskFile(root, task);
+  const text = fs.readFileSync(path.join(root, 'work', file), 'utf8');
+  const serverRoot = path.join(root, 'apps', 'server', 'src');
+  const problems = checkSpec(text, {
+    exists: (relative) => fs.existsSync(path.join(root, relative)),
+    serverText: () => {
+      const chunks: string[] = [];
+      const walk = (dir: string): void => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walk(full);
+          } else if (entry.name.endsWith('.ts')) {
+            chunks.push(fs.readFileSync(full, 'utf8'));
+          }
+        }
+      };
+      walk(serverRoot);
+      return chunks.join('\n');
+    },
+  });
+  console.log(formatProblems(task, problems));
+  if (problems.length > 0) {
+    process.exitCode = 1;
+  }
+}
+
 async function runStatus(): Promise<void> {
   const rows = await collectStatus({
     client: new OpencodeCliClient(),
@@ -216,6 +251,8 @@ export async function main(argv: string[]): Promise<void> {
     await runPrereview(positional);
   } else if (command === 'reply') {
     await runReply(positional);
+  } else if (command === 'spec-check') {
+    runSpecCheck(positional);
   } else if (command === 'merge') {
     await runMerge(positional, rest);
   } else if (command === 'status') {
