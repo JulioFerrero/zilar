@@ -136,4 +136,30 @@ both new routes sit behind `RequireAuth`; audit is server-side.
 
 Open questions: none.
 
+## Round 1 (pre-review findings, two commits)
+
+Finding 1 — post-join navigation race (`app/explore.tsx`, `app/at/[handle].tsx`):
+replaced the synchronous `resolveGroupChat(store.getState().chats, …)` read
+with `postJoinTarget(groupId)` in `components/directory/handle-helpers.ts`
+(navigates to `/group/<id>` from the join result or the directory entry;
+only a missing id falls back to `/`). `reloadChats()` still fires so the
+list catches up behind the group screen. Test in `handle-route.test.ts`
+covers id → group screen and missing id → list. Mutation check: restoring
+the fall-through `/` made the new test fail (1 failed, 3 passed); with the
+fix, 4/4 pass. Commit `f673448`.
+
+Finding 2 — raw server text (`explore-helpers.ts` `describeDirectoryError`):
+removed the `error.message` return; 429 → rate-limit copy, network errors →
+offline copy, every other code/status → caller fallback. New test:
+`DirectoryApiError(500, 'internal', 'db timeout on shard 3')` renders the
+fallback and never contains 'shard'. Mutation check: restoring the
+`error.message` return failed the new test; with the fix, 4/4 pass. Commit
+`38e1a19`.
+
+Full verification after both: `pnpm lint` pass, `pnpm --filter
+@zilar/mobile typecheck` pass, `pnpm --filter @zilar/mobile test
+--maxWorkers=2 explore directory visibility` 4 files / 19 tests pass.
+`pnpm format:check` warns only on the untracked `PREREVIEW.md` (not mine,
+left untouched); all task files pass Prettier. Status stays `review`.
+
 ## Review (written by Claude)
