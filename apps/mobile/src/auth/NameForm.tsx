@@ -37,7 +37,14 @@ export function NameForm() {
       setError('Could not save your name. Try again.');
       return;
     }
-    router.replace(safeTarget(params.from) as Href);
+    // Callers (e.g. the join-by-link page) pass `from` to come back after
+    // the name step; the default chains into the handle step, like web.
+    const from = safeTarget(params.from);
+    if (from !== '/') {
+      router.replace(from as Href);
+      return;
+    }
+    router.replace('/welcome/handle' as Href);
   };
 
   return (
