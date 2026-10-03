@@ -1,7 +1,7 @@
 ---
 id: T-0175
 title: Mobile: one emoji button opens a panel with Emoji, Stickers and GIFs tabs (like web)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0175-emoji-panel-mobile
 model: meta/muse-spark-1.3-contributor
@@ -93,3 +93,14 @@ Built the one-button mobile emoji panel with Emoji | Stickers | GIFs tabs, plus 
 None.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved.
+
+Verified: read the composer diff in full; the pre-review found no must-fix or should-fix items; after the rebase onto main I re-ran format, lint, typecheck and the composer, sticker, gif, emoji, message-bubble and voice tests (25 files, 193 passed). No lint suppressions in the touched files.
+
+Not verified live: the emulator needs a login on the live install, which the lead does not create, so the layout (one emoji button, three tabs, sticker grid spacing, composer height) is untested on a device. `fieldHeightFor` assumes Android's reported content height already includes the field padding; if a multi-line field looks clipped on the phone, add the padding back for lines beyond the first.
+
+### Follow-ups (nits from the pre-review)
+- Remove the unused `EmojiSheetTabBodyProps` export and the unused `EMOJI_RECENTS_KEY`; move the mid-file import in `emoji-data.ts` to the top; drop the discarded `useSafeAreaInsets()` call in `emoji-tab.tsx`.
+- Make `persistEmojiRecent` and `readStoredEmojiRecents` use one seam.
+- Two composer tests only grep the source; replace them with behavioural ones when a React Native test renderer exists.
