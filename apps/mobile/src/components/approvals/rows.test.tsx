@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { PublicApproval } from '@/lib/approvals-api';
 
 import { AlwaysAllowedRow, RevokeConfirmDialog } from './always-allowed-row';
-import { HistoryApprovalRow, PendingApprovalRow } from './approval-row';
+import { PendingApprovalRow } from './approval-row';
 
 vi.mock('react-native', () => ({
   Modal: 'Modal',
@@ -113,22 +113,6 @@ describe('PendingApprovalRow', () => {
       }),
     );
     expect(html).toContain('boom');
-  });
-});
-
-describe('HistoryApprovalRow', () => {
-  it('is read-only with the decision and the time', () => {
-    const html = renderToStaticMarkup(
-      createElement(HistoryApprovalRow, {
-        approval: approval({ status: 'approved_once', decidedAt: '2026-09-28T01:00:00.000Z' }),
-        aiName: 'Dev-1',
-        now: NOW,
-      }),
-    );
-    expect(html).toContain('Approved');
-    expect(html).toContain('1 hour ago');
-    expect(html).not.toContain('Approve once');
-    expect(html).not.toContain('Deny');
   });
 });
 

@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest';
 import type { ApprovalRule, PublicApproval } from '@/lib/approvals-api';
 import { ApprovalsApiError } from '@/lib/approvals-api';
 
-import { decidedAgoText, expiresInText, worstCaseText } from './format-relative';
+import { expiresInText, worstCaseText } from './format-relative';
 import {
+  confirmationForDecision,
   decideScreenRow,
   groupRulesForScreen,
   orderedRows,
@@ -76,12 +77,11 @@ describe('worstCaseText', () => {
   });
 });
 
-describe('decidedAgoText', () => {
-  it('reads just now, minutes, hours and days ago', () => {
-    expect(decidedAgoText('2026-09-28T02:00:00.000Z', NOW)).toBe('just now');
-    expect(decidedAgoText('2026-09-28T01:58:00.000Z', NOW)).toBe('2 min ago');
-    expect(decidedAgoText('2026-09-28T01:00:00.000Z', NOW)).toBe('1 hour ago');
-    expect(decidedAgoText('2026-09-27T02:00:00.000Z', NOW)).toBe('1 day ago');
+describe('confirmationForDecision', () => {
+  it('confirms with a short line per decision', () => {
+    expect(confirmationForDecision('approve_once')).toBe('Approved once');
+    expect(confirmationForDecision('approve_always')).toBe('Approved always');
+    expect(confirmationForDecision('deny')).toBe('Denied');
   });
 });
 

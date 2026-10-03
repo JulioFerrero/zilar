@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -10,16 +10,15 @@ import { useApprovalsApi } from '@/components/chat/use-approvals-api';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { createAisApi } from '@/lib/ais-api';
-import { approvalStatusLabel } from '@/lib/approval-state';
 import type { ApprovalDecision, ApprovalRule, PublicApproval } from '@/lib/approvals-api';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT, MUTED_FOREGROUND } from '@/lib/colors';
 import { getSessionToken } from '@/lib/session-token';
-import { cn } from '@/lib/utils';
 
 import { AlwaysAllowedRow, RevokeConfirmDialog } from '@/components/approvals/always-allowed-row';
-import { HistoryApprovalRow, PendingApprovalRow } from '@/components/approvals/approval-row';
+import { PendingApprovalRow } from '@/components/approvals/approval-row';
 import {
+  confirmationForDecision,
   decideScreenRow,
   groupRulesForScreen,
   orderedRows,
@@ -30,11 +29,12 @@ import {
   type RowBusy,
 } from '@/components/approvals/rows';
 
-type Tab = 'pending' | 'history';
 type LoadStatus = 'loading' | 'ready' | 'error';
 
 /** A rule with the AI id re-attached: the rule route is per AI (`/ais/:id/…`) but the row carries none. */
 export type OwnedRule = OwnedScreenRule;
+
+const NOTICE_TIMEOUT_MS = 4000;
 
 export default function ApprovalsScreen() {
   return (
@@ -49,15 +49,14 @@ function ApprovalsBody() {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api } = useApprovalsApi();
 
-  const [tab, setTab] = useState<Tab>('pending');
   const [rows, setRows] = useState<RowsById>({});
-  const [history, setHistory] = useState<PublicApproval[]>([]);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [errorMessage, setErrorMessage] = useState('');
   // Requests decided in this session: an in-flight list that lands after the
   // decision must not bring their rows back.
   const decidedIds = useRef(new Set<string>());
   const [notice, setNotice] = useState('');
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [now, setNow] = useState<Date>(() => new Date());
 
   const [aiNames, setAiNames] = useState<Record<string, string>>({});
@@ -69,6 +68,27 @@ function ApprovalsBody() {
   const [revokeError, setRevokeError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const revokingRef = useRef(false);
+
+  // The confirmation line after a decision ("Approved once", …) shows for a
+  // few seconds where the row was, then clears itself.
+  const showNotice = useCallback((message: string) => {
+    setNotice(message);
+    if (noticeTimer.current !== null) {
+      clearTimeout(noticeTimer.current);
+    }
+    noticeTimer.current = setTimeout(() => {
+      setNotice('');
+      noticeTimer.current = null;
+    }, NOTICE_TIMEOUT_MS);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimer.current !== null) {
+        clearTimeout(noticeTimer.current);
+      }
+    };
+  }, []);
 
   const load = useCallback(
     async (showLoading: boolean) => {
@@ -170,34 +190,22 @@ function ApprovalsBody() {
       void decideScreenRow(api, id, decision).then((outcome) => {
         if (outcome.kind === 'decided') {
           decidedIds.current.add(id);
-          setHistory((previous) => [outcome.approval, ...previous]);
           setRows((previous) => {
             const next = { ...previous };
             delete next[id];
             return next;
           });
-          setNotice(
-            `Decided "${outcome.approval.action}" (${approvalStatusLabel(outcome.approval)}).`,
-          );
+          showNotice(confirmationForDecision(decision));
         } else if (outcome.kind === 'gone') {
           // Decided or expired elsewhere: drop the row and explain, instead
-          // of failing silently. The fresh row lands in history when it is
-          // no longer pending.
+          // of failing silently.
           decidedIds.current.add(id);
           setRows((previous) => {
             const next = { ...previous };
             delete next[id];
             return next;
           });
-          void api
-            .getApproval(id)
-            .then((fresh) => {
-              if (fresh.status !== 'pending') {
-                setHistory((previous) => [fresh, ...previous]);
-              }
-            })
-            .catch(() => {});
-          setNotice(outcome.message);
+          showNotice(outcome.message);
         } else {
           setRows((previous) => {
             const current = previous[id];
@@ -209,7 +217,7 @@ function ApprovalsBody() {
         }
       });
     },
-    [api],
+    [api, showNotice],
   );
 
   const askRevoke = useCallback((owned: OwnedRule) => {
@@ -260,8 +268,6 @@ function ApprovalsBody() {
       subtitle="Requests from your AIs that are waiting for you."
       onBack={() => router.back()}
     >
-      <TabBar tab={tab} onTab={setTab} />
-
       {notice !== '' ? (
         <Text role="status" className="mb-3 text-[14px] text-muted-foreground">
           {notice}
@@ -300,28 +306,22 @@ function ApprovalsBody() {
             />
           }
         >
-          {tab === 'pending' ? (
-            <PendingTab
-              rows={pendingList}
-              now={now}
-              nameFor={nameFor}
-              onDecide={decide}
-              onRefresh={() => void load(false)}
-            />
-          ) : (
-            <HistoryTab history={history} now={now} nameFor={nameFor} />
-          )}
+          <PendingTab
+            rows={pendingList}
+            now={now}
+            nameFor={nameFor}
+            onDecide={decide}
+            onRefresh={() => void load(false)}
+          />
 
-          {tab === 'pending' ? (
-            <RulesSection
-              status={rulesStatus}
-              sections={ruleSections}
-              error={rulesError}
-              nameFor={nameFor}
-              onAsk={askRevoke}
-              onRetry={() => void loadRules(pendingList.map((row) => row.approval))}
-            />
-          ) : null}
+          <RulesSection
+            status={rulesStatus}
+            sections={ruleSections}
+            error={rulesError}
+            nameFor={nameFor}
+            onAsk={askRevoke}
+            onRetry={() => void loadRules(pendingList.map((row) => row.approval))}
+          />
         </ScrollView>
       ) : null}
 
@@ -333,32 +333,6 @@ function ApprovalsBody() {
         onConfirm={confirmRevoke}
       />
     </AisScreenShell>
-  );
-}
-
-function TabBar({ tab, onTab }: { tab: Tab; onTab: (tab: Tab) => void }) {
-  return (
-    <View className="mb-3 flex-row rounded-xl border border-divider bg-well p-1">
-      {(['pending', 'history'] as const).map((option) => (
-        <Pressable
-          key={option}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: tab === option }}
-          accessibilityLabel={option === 'pending' ? 'Pending' : 'History'}
-          onPress={() => onTab(option)}
-          className={cn(
-            'flex-1 items-center rounded-lg px-3 py-2',
-            tab === option && 'bg-surface-raised',
-          )}
-        >
-          <Text
-            className={cn('text-[14px] font-medium', tab === option ? '' : 'text-muted-foreground')}
-          >
-            {option === 'pending' ? 'Pending' : 'History'}
-          </Text>
-        </Pressable>
-      ))}
-    </View>
   );
 }
 
@@ -400,39 +374,6 @@ function PendingTab({
           busy={row.busy}
           actionError={row.error}
           onDecide={onDecide}
-        />
-      ))}
-    </View>
-  );
-}
-
-function HistoryTab({
-  history,
-  now,
-  nameFor,
-}: {
-  history: PublicApproval[];
-  now: Date;
-  nameFor: (aiId: string) => string;
-}) {
-  if (history.length === 0) {
-    return (
-      <View className="items-center gap-3 py-10">
-        <ShieldCheck size={32} color={ACCENT.dark} aria-hidden />
-        <Text className="px-4 text-center text-[15px] text-muted-foreground">
-          Nothing decided yet. Decisions you make here will show up in this tab.
-        </Text>
-      </View>
-    );
-  }
-  return (
-    <View className="gap-2">
-      {history.map((approval) => (
-        <HistoryApprovalRow
-          key={approval.id}
-          approval={approval}
-          aiName={nameFor(approval.aiId)}
-          now={now}
         />
       ))}
     </View>

@@ -37,24 +37,3 @@ export function worstCaseText(cost: ApprovalWorstCase | null): string {
   }
   return `Worst case: ${cost.currency} ${cost.amount.toFixed(2)}`;
 }
-
-/**
- * "2 min ago" for a decided row. Mirrors web's `formatRelativeAudit` wording
- * (`AiActivity.tsx`) without the month-day tail: the phone's history tab
- * holds recent rows, and `Intl` date output differs between engines.
- */
-export function decidedAgoText(decidedAt: string, now: Date): string {
-  const minutes = Math.max(0, Math.floor((now.getTime() - new Date(decidedAt).getTime()) / 60_000));
-  if (minutes < 1) {
-    return 'just now';
-  }
-  if (minutes < 60) {
-    return `${minutes} min ago`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
-  }
-  const days = Math.floor(hours / 24);
-  return `${days} ${days === 1 ? 'day' : 'days'} ago`;
-}

@@ -4,12 +4,11 @@ import { useColorScheme } from 'nativewind';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { approvalStatusLabel } from '@/lib/approval-state';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT } from '@/lib/colors';
 import type { PublicApproval } from '@/lib/approvals-api';
 
-import { decidedAgoText, expiresInText, worstCaseText } from './format-relative';
+import { expiresInText, worstCaseText } from './format-relative';
 import { SCREEN_DECISIONS, type RowBusy } from './rows';
 import type { ApprovalDecision } from '@/lib/approvals-api';
 
@@ -84,40 +83,6 @@ export function PendingApprovalRow({
           {actionError}
         </Text>
       ) : null}
-    </View>
-  );
-}
-
-/**
- * One decided approval: read-only, with the decision and when it happened.
- * The server has no history endpoint, so these are rows the viewer decided
- * in this session (kept in memory) plus anything no longer pending.
- */
-export function HistoryApprovalRow({
-  approval,
-  aiName,
-  now,
-}: {
-  approval: PublicApproval;
-  aiName: string;
-  now: Date;
-}) {
-  return (
-    <View className="gap-1.5 rounded-xl border border-divider bg-surface p-4">
-      <View className="flex-row items-start justify-between gap-3">
-        <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px] font-semibold">
-          {approval.action}
-        </Text>
-        <View className="shrink-0 rounded-full bg-badge-muted px-2 py-0.5">
-          <Text className="text-[11px]">{approvalStatusLabel(approval)}</Text>
-        </View>
-      </View>
-      <Text className="text-[13px] text-muted-foreground">
-        {aiName} · {approval.summary}
-      </Text>
-      <Text className="text-[12px] text-muted-foreground">
-        {approval.decidedAt !== null ? decidedAgoText(approval.decidedAt, now) : 'Decided'}
-      </Text>
     </View>
   );
 }

@@ -79,6 +79,18 @@ export type DecideOutcome =
   | { kind: 'gone'; message: string }
   | { kind: 'error'; message: string };
 
+/** The short confirmation line shown where a decided row was. */
+export function confirmationForDecision(decision: ApprovalDecision): string {
+  switch (decision) {
+    case 'approve_once':
+      return 'Approved once';
+    case 'approve_always':
+      return 'Approved always';
+    case 'deny':
+      return 'Denied';
+  }
+}
+
 /**
  * Sends one decision through the card's `applyDecision`, so the screen
  * shares its 404/409 handling. A `reloaded` row means the request was
