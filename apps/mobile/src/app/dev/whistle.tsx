@@ -12,7 +12,6 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { ACCENT } from '@/lib/colors';
-import { primaryKey } from '@/lib/depth';
 import { createVoiceRecorder } from '@/lib/voice-native';
 import { lastVoiceNoteOf } from '@/lib/whistle-last-note';
 import { createWhistlePort, type WhistlePort, type WhistleStatus } from '@/lib/whistle-port';
@@ -27,6 +26,9 @@ type Phase =
   | { kind: 'recording' }
   | { kind: 'transcribing'; label: string }
   | { kind: 'error'; message: string };
+
+/** Long on purpose: the spike needs a clip that forces several 28 s chunks. */
+const RECORD_MS = 120_000;
 
 export interface WhistleScreenDeps {
   port?: WhistlePort | undefined;
@@ -136,7 +138,7 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
         fail(new Error(start.message));
         return;
       }
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      await new Promise((resolve) => setTimeout(resolve, RECORD_MS));
       const stop = await recorder.stop();
       if (!mounted.current) {
         return;
@@ -149,7 +151,7 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
       }
       await transcribeUri(
         stop.recording.uri,
-        'Transcribing the 5 s clip…',
+        'Transcribing the recording…',
         undefined,
         stop.recording.durationMs,
       );
@@ -215,7 +217,7 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
             testID="whistle-record"
           >
             <Mic size={16} color={ACCENT[scheme]} />
-            <Text>Record 5 s and transcribe</Text>
+            <Text>Record 2 min and transcribe</Text>
           </Button>
           <Button
             onPress={() => void transcribeLast()}
@@ -238,7 +240,7 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
             <ActivityIndicator color={ACCENT[scheme]} />
             <Text className="text-[13px] text-muted-foreground">
               {phase.kind === 'recording'
-                ? 'Recording 5 s…'
+                ? 'Recording 2 min…'
                 : phase.kind === 'loading-model'
                   ? 'Loading the model…'
                   : phase.label}
@@ -253,7 +255,10 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
         ) : null}
 
         {result !== undefined ? (
-          <View className="mt-5 rounded-xl p-4" style={primaryKey} testID="whistle-result">
+          <View
+            className="mt-5 rounded-xl border border-border-strong bg-surface p-4"
+            testID="whistle-result"
+          >
             <View className="flex-row items-center gap-2">
               <AudioLines size={16} color={ACCENT[scheme]} />
               <Text className="text-[13px] font-semibold">
