@@ -221,7 +221,7 @@ describe('voice failure reasons (T-0154 review)', () => {
   });
 
   it('documents the recorder refusal copies', () => {
-    expect(RECORD_TOO_SHORT_MESSAGE).toContain('too short');
+    expect(RECORD_TOO_SHORT_MESSAGE).toContain('Too short');
     expect(RECORD_TOO_LONG_MESSAGE).toContain('too long');
   });
 });
