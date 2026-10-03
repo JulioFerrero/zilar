@@ -14,6 +14,7 @@ import { LoadError, LoadErrorBanner } from '@/components/chat/load-error';
 import { MessageSearchList } from '@/components/chat/message-search-list';
 import { NewChatButton } from '@/components/chat/new-chat-button';
 import { ChatListSkeleton } from '@/components/chat/skeleton';
+import { peopleHandleFor } from '@/components/contacts/people-search';
 import { PeopleSearchResult } from '@/components/contacts/people-search-result';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { IconButton } from '@/components/ui/icon-button';
@@ -197,7 +198,9 @@ function ChatsList() {
   // People section above (T-0193), even under 2 characters — the section
   // itself decides whether the handle is worth looking up.
   const messageQuery = search.trim().length >= 2 ? search : null;
-  const peopleSearch = search.trim().startsWith('@');
+  // Only a handle the lookup accepts switches to the People view; a bare `@`
+  // keeps showing the normal chat list.
+  const peopleSearch = peopleHandleFor(search) !== null;
   const { api: contactsApi } = useContactsApi();
 
   const searchHeader = searchOpen ? (
@@ -307,9 +310,8 @@ function ChatsList() {
     );
   }
 
-  // A short `@handle` (under 2 characters, e.g. '@j') shows only the People
-  // section: today only chat names filter here, and chat names keep working
-  // below in the normal list.
+  // A valid `@handle` shows only the People section: chat names rarely
+  // contain `@`, and the normal list stays reachable by removing the `@`.
   if (searchOpen && peopleSearch) {
     return (
       <SafeAreaView className="flex-1 bg-background" edges={['top']}>

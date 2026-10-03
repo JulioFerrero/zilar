@@ -46,10 +46,6 @@ vi.mock('@/components/chat/new-channel-sheet', () => ({
   NewChannelSheet: 'NewChannelSheet',
 }));
 
-vi.mock('@/components/contacts/use-contacts-api', () => ({
-  useContactsApi: () => ({ api: {}, scenario: null }),
-}));
-
 vi.mock('@/store/chat-store-provider', () => ({
   useChatStore: (select: (state: Record<string, unknown>) => unknown) =>
     select({ createChannel: async () => 'g-1' }),

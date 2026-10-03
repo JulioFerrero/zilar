@@ -1,7 +1,7 @@
 ---
 id: T-0193
 title: Mobile: typing @handle in the search shows the person (replaces Add contact in the new-chat menu)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0193-mobile-search-people-by-handle
 model: meta/muse-spark-1.3-contributor
@@ -146,3 +146,5 @@ The lead tests on the emulator or in the browser (per Checks note).
 Blocked / needs a decision: none.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved and merged. Pre-review finding 1 (a bare `@` showed a blank screen because the People view replaced the chat list) is fixed by the lead: the People view now needs a handle the lookup accepts (`peopleHandleFor(search) !== null`), so a bare `@` keeps the normal chat list. Nit 2 (unused test mock) removed. Format, lint, typecheck and 77 related tests pass. Accepted nit: the Report line about the old add-contact sheet having no callers is inaccurate (`use-people-search.ts` still imports `resolveContactChat` from it); keeping the file was right.
