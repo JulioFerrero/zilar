@@ -1,7 +1,7 @@
 ---
 id: T-0168
 title: A failed voice or attachment send shows "Not sent" with Retry, never a clock forever
-status: review
+status: merged
 milestone: M5
 branch: task/T-0168-send-failure-state
 model: meta/muse-spark-1.3-contributor
@@ -152,3 +152,9 @@ old-behavior assertion, new T-0168 suite), `apps/web/src/components/MessageBubbl
 None.
 
 ## Review (written by Claude)
+
+Merged after one fix round. Round 1 findings fixed: double Retry click on attachments (guard), stale pipeline vs live retry (run token now guards outcomes), server echo of a delivered-but-failed send (promotes to sent), late-result tests added, dead offline argument removed.
+
+Accepted consciously: a stale run's `sendMessage` that resolves after a retry still links its message ids before the staleness guard. That message really was delivered, so linking keeps its echo from showing as a duplicate bubble. Redundant `markAttachmentFailed` and the mobile `advanceStatus` guard are harmless nits. Stickers stay out of scope. The mobile `message-bubble-stickers` failure is pre-existing (fixture date older than 48 h), unrelated.
+
+Checks: format, lint pass; web `realStore.test.tsx` + `SendFailure.test.tsx` 130 passed; pre-review ran chat-core and neighbour suites green.
