@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { MessageSquare, UserCheck, UserMinus, UserPlus, UserX } from 'lucide-react';
 import {
   ApiError,
@@ -10,6 +10,7 @@ import {
   sendContactRequest,
   type HandleProfile,
 } from '@/lib/api';
+import { useChatStore } from '@/store/ChatStoreProvider';
 import { Avatar } from './Avatar';
 
 /**
@@ -25,6 +26,7 @@ export function ContactProfileRow({
   onRelationChange: (profile: HandleProfile) => void;
 }) {
   const navigate = useNavigate();
+  const store = useChatStore();
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -89,110 +91,127 @@ export function ContactProfileRow({
     }
   };
 
+  // The DM chat id is the contact's JID; the lookup profile carries no
+  // JID, so the row finds the DM two ways: the contact list (userId ->
+  // jid) first, then a chat whose id matches that JID. No DM yet means no
+  // Message button (only the status line shows).
+  const dmChatId = (() => {
+    const contact = store.contacts.find((entry) => entry.userId === profile.userId);
+    if (contact === undefined) {
+      return undefined;
+    }
+    return store.chats.some((chat) => chat.id === contact.jid) ? contact.jid : undefined;
+  })();
+
   const openChat = (): void => {
-    navigate(`/c/${encodeURIComponent(profile.userId)}`);
+    if (dmChatId !== undefined) {
+      navigate(`/c/${encodeURIComponent(dmChatId)}`);
+    }
   };
 
   const sentLabel = sent && profile.relation === 'none';
 
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
-      <Avatar
-        id={profile.userId}
-        name={profile.name}
-        size={40}
-        avatarUrl={profile.image ?? undefined}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[15px] font-medium">
-          {profile.name}{' '}
-          <span className="font-normal text-muted-foreground">@{profile.handle}</span>
-        </p>
-        {profile.relation === 'self' && (
-          <p className="mt-0.5 text-[13px] text-muted-foreground">That&apos;s you.</p>
-        )}
-        {profile.relation === 'contact' && (
-          <p className="mt-0.5 text-[13px] text-muted-foreground">You&apos;re already contacts.</p>
-        )}
-        {profile.relation === 'request_sent' && (
-          <p className="mt-0.5 text-[13px] text-muted-foreground">
-            Request already sent — they haven&apos;t answered yet.
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">
+      <div className="flex items-center gap-3">
+        <Avatar
+          id={profile.userId}
+          name={profile.name}
+          size={40}
+          avatarUrl={profile.image ?? undefined}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-medium">
+            {profile.name}{' '}
+            <span className="font-normal text-muted-foreground">@{profile.handle}</span>
           </p>
-        )}
-        {profile.relation === 'request_received' && (
-          <p className="mt-0.5 text-[13px] text-muted-foreground">They already asked to add you.</p>
-        )}
-        {sentLabel && <p className="mt-0.5 text-[13px] text-muted-foreground">Request sent.</p>}
-      </div>
-      {profile.relation === 'self' ? null : profile.relation === 'contact' ? (
-        <button
-          type="button"
-          onClick={openChat}
-          className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-foreground hover:bg-accent/90"
-        >
-          <MessageSquare className="size-3.5" aria-hidden="true" />
-          Message
-        </button>
-      ) : profile.relation === 'none' ? (
-        sentLabel ? (
-          <span className="flex shrink-0 items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
-            <UserCheck className="size-3.5" aria-hidden="true" />
-            Request sent
-          </span>
+          {profile.relation === 'self' && (
+            <p className="mt-0.5 text-[13px] text-muted-foreground">That&apos;s you.</p>
+          )}
+          {profile.relation === 'contact' && (
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
+              You&apos;re already contacts.
+            </p>
+          )}
+          {profile.relation === 'request_sent' && (
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
+              Request already sent — they haven&apos;t answered yet.
+            </p>
+          )}
+          {profile.relation === 'request_received' && (
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
+              They already asked to add you.
+            </p>
+          )}
+          {sentLabel && <p className="mt-0.5 text-[13px] text-muted-foreground">Request sent.</p>}
+        </div>
+        {profile.relation === 'self' ? null : profile.relation === 'contact' &&
+          dmChatId !== undefined ? (
+          <button
+            type="button"
+            onClick={openChat}
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-foreground hover:bg-accent/90"
+          >
+            <MessageSquare className="size-3.5" aria-hidden="true" />
+            Message
+          </button>
+        ) : profile.relation === 'none' ? (
+          sentLabel ? (
+            <span className="flex shrink-0 items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
+              <UserCheck className="size-3.5" aria-hidden="true" />
+              Request sent
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void send()}
+              disabled={busy}
+              className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+            >
+              <UserPlus className="size-3.5" aria-hidden="true" />
+              {busy ? 'Sending…' : 'Add contact'}
+            </button>
+          )
+        ) : profile.relation === 'request_sent' ? (
+          <button
+            type="button"
+            onClick={() => void decide('cancel')}
+            disabled={busy}
+            className="flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-surface-raised disabled:opacity-60"
+          >
+            <UserMinus className="size-3.5" aria-hidden="true" />
+            {busy ? 'Cancelling…' : 'Cancel'}
+          </button>
         ) : (
-          <button
-            type="button"
-            onClick={() => void send()}
-            disabled={busy}
-            className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-          >
-            <UserPlus className="size-3.5" aria-hidden="true" />
-            {busy ? 'Sending…' : 'Add contact'}
-          </button>
-        )
-      ) : profile.relation === 'request_sent' ? (
-        <button
-          type="button"
-          onClick={() => void decide('cancel')}
-          disabled={busy}
-          className="flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-surface-raised disabled:opacity-60"
-        >
-          <UserMinus className="size-3.5" aria-hidden="true" />
-          {busy ? 'Cancelling…' : 'Cancel'}
-        </button>
-      ) : (
-        <span className="flex shrink-0 gap-2">
-          <button
-            type="button"
-            onClick={() => void decide('accept')}
-            disabled={busy}
-            className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-          >
-            <UserCheck className="size-3.5" aria-hidden="true" />
-            Accept
-          </button>
-          <button
-            type="button"
-            onClick={() => void decide('decline')}
-            disabled={busy}
-            className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-surface-raised disabled:opacity-60"
-          >
-            <UserX className="size-3.5" aria-hidden="true" />
-            Decline
-          </button>
-        </span>
-      )}
+          <span className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={() => void decide('accept')}
+              disabled={busy}
+              className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+            >
+              <UserCheck className="size-3.5" aria-hidden="true" />
+              Accept
+            </button>
+            <button
+              type="button"
+              onClick={() => void decide('decline')}
+              disabled={busy}
+              className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-surface-raised disabled:opacity-60"
+            >
+              <UserX className="size-3.5" aria-hidden="true" />
+              Decline
+            </button>
+          </span>
+        )}
+      </div>
       {error !== undefined && (
-        <p role="alert" className="mt-2 w-full text-[13px] text-danger">
+        <p role="alert" className="text-[13px] text-danger">
           {error}
         </p>
       )}
     </div>
   );
-}
-
-export function friendlyContactError(error: unknown): string {
-  return friendlySendError(error);
 }
 
 function friendlySendError(error: unknown): string {

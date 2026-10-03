@@ -6,12 +6,10 @@ export type EmptyStateVariant = 'no-chats' | 'no-chat-selected';
 export function EmptyState({
   variant,
   onInvite,
-  onAddContact,
   onExplore,
 }: {
   variant: EmptyStateVariant;
   onInvite?: () => void;
-  onAddContact?: () => void;
   // T-0164: reaching the Explore directory from the empty state.
   onExplore?: () => void;
 }) {
@@ -23,17 +21,6 @@ export function EmptyState({
         <Button type="button" size="lg" className="rounded-full px-5" onClick={onInvite}>
           Invite a friend
         </Button>
-        {onAddContact !== undefined && (
-          <Button
-            type="button"
-            size="lg"
-            variant="outline"
-            className="rounded-full px-5"
-            onClick={onAddContact}
-          >
-            Add contact
-          </Button>
-        )}
         {onExplore !== undefined && (
           <Button
             type="button"

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
+import { AuthProvider } from '@/auth/AuthProvider';
+import { ChatStoreProvider } from '@/store/ChatStoreProvider';
+import { createChatStore } from '@/store/store';
 import { PeopleSearchResult } from './PeopleSearchResult';
 import { ContactProfileRow } from './ContactProfileRow';
 import { ApiError, lookupByHandle, sendContactRequest } from '@/lib/api';
@@ -197,6 +200,25 @@ describe('usePeopleSearch via the search bar', () => {
 
 describe('ContactProfileRow relations', () => {
   it('each relation shows the right action', () => {
+    const store = createChatStore({
+      chats: [
+        {
+          id: 'u-ana@zilar.test',
+          title: 'Ana',
+          kind: 'dm',
+          isAI: false,
+          space: 'personal',
+          unread: 0,
+          muted: false,
+        },
+      ],
+      contacts: [{ userId: 'u-ana', name: 'Ana', jid: 'u-ana@zilar.test' }],
+    });
+    const auth = {
+      status: 'authenticated' as const,
+      user: { id: 'u-you', name: 'You', email: 'you@zilar.test', handle: 'you' },
+      refetch: async () => {},
+    };
     const cases = [
       ['contact', 'Message'],
       ['none', 'Add contact'],
@@ -205,9 +227,13 @@ describe('ContactProfileRow relations', () => {
     ] as const;
     for (const [relation, action] of cases) {
       const { unmount } = render(
-        <MemoryRouter>
-          <ContactProfileRow profile={{ ...PROFILE, relation }} onRelationChange={() => {}} />
-        </MemoryRouter>,
+        <AuthProvider value={auth}>
+          <ChatStoreProvider store={store}>
+            <MemoryRouter>
+              <ContactProfileRow profile={{ ...PROFILE, relation }} onRelationChange={() => {}} />
+            </MemoryRouter>
+          </ChatStoreProvider>
+        </AuthProvider>,
       );
       expect(screen.getByRole('button', { name: action })).toBeTruthy();
       if (relation === 'request_received') {
@@ -216,12 +242,88 @@ describe('ContactProfileRow relations', () => {
       unmount();
     }
     const { unmount } = render(
-      <MemoryRouter>
-        <ContactProfileRow profile={{ ...PROFILE, relation: 'self' }} onRelationChange={() => {}} />
-      </MemoryRouter>,
+      <AuthProvider value={auth}>
+        <ChatStoreProvider store={store}>
+          <MemoryRouter>
+            <ContactProfileRow
+              profile={{ ...PROFILE, relation: 'self' }}
+              onRelationChange={() => {}}
+            />
+          </MemoryRouter>
+        </ChatStoreProvider>
+      </AuthProvider>,
     );
     expect(screen.getByText("That's you.")).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
+    unmount();
+  });
+
+  it('Message opens the DM chat for a contact', () => {
+    const store = createChatStore({
+      chats: [
+        {
+          id: 'u-ana@zilar.test',
+          title: 'Ana',
+          kind: 'dm',
+          isAI: false,
+          space: 'personal',
+          unread: 0,
+          muted: false,
+        },
+      ],
+      contacts: [{ userId: 'u-ana', name: 'Ana', jid: 'u-ana@zilar.test' }],
+    });
+    const auth = {
+      status: 'authenticated' as const,
+      user: { id: 'u-you', name: 'You', email: 'you@zilar.test', handle: 'you' },
+      refetch: async () => {},
+    };
+    const { unmount } = render(
+      <AuthProvider value={auth}>
+        <ChatStoreProvider store={store}>
+          <MemoryRouter initialEntries={['/']}>
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <ContactProfileRow
+                    profile={{ ...PROFILE, relation: 'contact' }}
+                    onRelationChange={() => {}}
+                  />
+                }
+              />
+              <Route path="/c/:chatId" element={<p>chat open</p>} />
+            </Routes>
+          </MemoryRouter>
+        </ChatStoreProvider>
+      </AuthProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Message' }));
+    expect(screen.getByText('chat open')).toBeTruthy();
+    unmount();
+  });
+
+  it('hides Message when no DM exists yet for the contact', () => {
+    const store = createChatStore();
+    const auth = {
+      status: 'authenticated' as const,
+      user: { id: 'u-you', name: 'You', email: 'you@zilar.test', handle: 'you' },
+      refetch: async () => {},
+    };
+    const { unmount } = render(
+      <AuthProvider value={auth}>
+        <ChatStoreProvider store={store}>
+          <MemoryRouter>
+            <ContactProfileRow
+              profile={{ ...PROFILE, relation: 'contact' }}
+              onRelationChange={() => {}}
+            />
+          </MemoryRouter>
+        </ChatStoreProvider>
+      </AuthProvider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Message' })).toBeNull();
+    expect(screen.getAllByText("You're already contacts.")).toHaveLength(1);
     unmount();
   });
 
@@ -236,9 +338,19 @@ describe('ContactProfileRow relations', () => {
       },
     });
     render(
-      <MemoryRouter>
-        <ContactProfileRow profile={PROFILE} onRelationChange={() => {}} />
-      </MemoryRouter>,
+      <AuthProvider
+        value={{
+          status: 'authenticated',
+          user: { id: 'u-you', name: 'You', email: 'you@zilar.test', handle: 'you' },
+          refetch: async () => {},
+        }}
+      >
+        <ChatStoreProvider store={createChatStore()}>
+          <MemoryRouter>
+            <ContactProfileRow profile={PROFILE} onRelationChange={() => {}} />
+          </MemoryRouter>
+        </ChatStoreProvider>
+      </AuthProvider>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Add contact' }));
     expect(await screen.findByText('Request sent.')).toBeTruthy();
@@ -249,9 +361,19 @@ describe('ContactProfileRow relations', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     lookupMock.mockResolvedValue(PROFILE);
     render(
-      <MemoryRouter>
-        <PeopleSearchResult query="@taken_user" />
-      </MemoryRouter>,
+      <AuthProvider
+        value={{
+          status: 'authenticated',
+          user: { id: 'u-you', name: 'You', email: 'you@zilar.test', handle: 'you' },
+          refetch: async () => {},
+        }}
+      >
+        <ChatStoreProvider store={createChatStore()}>
+          <MemoryRouter>
+            <PeopleSearchResult query="@taken_user" />
+          </MemoryRouter>
+        </ChatStoreProvider>
+      </AuthProvider>,
     );
     await flushTimers();
     expect(await screen.findByText('People')).toBeTruthy();
