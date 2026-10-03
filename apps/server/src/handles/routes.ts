@@ -12,7 +12,7 @@ import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
   checkHandleAvailability,
   claimHandle,
-  isHandleChangeTooSoon,
+  handleForUser,
   reapExpiredRetiredHandles,
 } from './store';
 
@@ -69,14 +69,13 @@ export function createHandlesRoutes(deps: HandlesRoutesDependencies): Hono {
   });
 
   // Claims (or changes) the caller's handle in one transaction: the change
-  // interval is checked (409 `handle_change_too_soon` with `nextChangeAt`;
-  // the first claim is always allowed), the old handle retires for 30 days,
-  // the new row is written. A unique violation maps to 409 `handle_taken`.
+  // interval is checked (409 `handle_change_too_soon` with `nextChangeAt` in
+  // the error body; the first claim is always allowed), the old handle
+  // retires for 30 days, the new row is written. A unique violation maps to
+  // 409 `handle_taken`. Saving the current handle is a no-op and never
+  // touches the claim budget.
   routes.put('/me/handle', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    if (!claimLimiter.allow(user.id)) {
-      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
-    }
     const body = await c.req.json().catch(() => null);
     const parsed = claimBodySchema.safeParse(body);
     if (!parsed.success) {
@@ -86,28 +85,31 @@ export function createHandlesRoutes(deps: HandlesRoutesDependencies): Hono {
         parsed.error.issues[0]?.message ?? 'Invalid request',
       );
     }
-    try {
-      const claimed = await claimHandle(deps.db, user.id, parsed.data.handle);
-      await reapExpiredRetiredHandles(deps.db);
-      void deps.audit?.record({
-        actorUserId: user.id,
-        aiId: null,
-        groupId: null,
-        action: 'handle.claimed',
-        subjectId: user.id,
-        argsHash: null,
-        costCurrency: null,
-        costAmount: null,
-        result: 'ok',
-        detail: null,
-      });
-      return c.json(claimed);
-    } catch (error) {
-      if (isHandleChangeTooSoon(error)) {
-        throw new HttpError(409, error.code, error.message);
-      }
-      throw error;
+    // Saving the current handle is a no-op: answer without spending the
+    // claim budget. The store re-checks equality inside its transaction, so
+    // this is only a fast path, never the authority.
+    const current = await handleForUser(deps.db, user.id);
+    if (current !== null && current.toLowerCase() === parsed.data.handle.trim().toLowerCase()) {
+      return c.json({ handle: current });
     }
+    if (!claimLimiter.allow(user.id)) {
+      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
+    }
+    const claimed = await claimHandle(deps.db, user.id, parsed.data.handle);
+    await reapExpiredRetiredHandles(deps.db);
+    void deps.audit?.record({
+      actorUserId: user.id,
+      aiId: null,
+      groupId: null,
+      action: 'handle.claimed',
+      subjectId: user.id,
+      argsHash: null,
+      costCurrency: null,
+      costAmount: null,
+      result: 'ok',
+      detail: null,
+    });
+    return c.json(claimed);
   });
 
   return routes;

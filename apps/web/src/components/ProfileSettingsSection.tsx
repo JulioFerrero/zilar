@@ -17,12 +17,13 @@ export function ProfileSettingsSection() {
 
   const trimmed = handle.trim();
   const current = auth.user?.handle ?? '';
+  const unchanged = current !== '' && trimmed.toLowerCase() === current.toLowerCase();
 
   // Debounced live availability for a changed handle. The effect only
   // schedules the check (the lint rule flags synchronous setState inside
   // effects); the timeout callback applies the result once.
   useEffect(() => {
-    if (trimmed === '' || trimmed === current) {
+    if (trimmed === '' || unchanged) {
       return;
     }
     let active = true;
@@ -50,7 +51,7 @@ export function ProfileSettingsSection() {
       active = false;
       clearTimeout(pending);
     };
-  }, [trimmed, current]);
+  }, [trimmed, current, unchanged]);
 
   const save = async (): Promise<void> => {
     if (trimmed === '') {
@@ -115,7 +116,7 @@ export function ProfileSettingsSection() {
           <button
             type="button"
             onClick={() => void save()}
-            disabled={busy}
+            disabled={busy || unchanged}
             className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
           >
             {busy ? 'Saving…' : 'Save username'}
@@ -159,14 +160,18 @@ function friendlyError(error: unknown): string {
         return 'That username is reserved. Try another.';
       case 'handle_taken':
         return 'That username was just taken. Try another.';
-      case 'handle_change_too_soon':
-        // The server message carries the next-change date.
-        return error.message.startsWith('You can change')
-          ? error.message.replace(
-              'You can change your username again on ',
-              'Next change possible on ',
-            )
-          : error.message;
+      case 'handle_change_too_soon': {
+        // The server sends the next-change date as `nextChangeAt` in the
+        // 409 error body; the message is only the fallback.
+        const next = error.detail.nextChangeAt;
+        if (typeof next === 'string' && next !== '') {
+          const date = new Date(next);
+          if (!Number.isNaN(date.getTime())) {
+            return `Next change possible on ${date.toLocaleDateString()}`;
+          }
+        }
+        return error.message;
+      }
       case 'rate_limited':
         return 'Too many tries — wait a little and try again.';
       default:

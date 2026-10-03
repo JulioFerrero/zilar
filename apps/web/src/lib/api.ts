@@ -8,17 +8,20 @@ export const API_BASE = '/api';
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
+  /** Extra fields the server merged into the `error` body (e.g. `nextChangeAt`). */
+  readonly detail: Record<string, unknown>;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, detail: Record<string, unknown> = {}) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.detail = detail;
   }
 }
 
 const errorBodySchema = z.object({
-  error: z.object({ code: z.string(), message: z.string() }),
+  error: z.object({ code: z.string(), message: z.string() }).catchall(z.unknown()),
 });
 
 const meSchema = z.object({
@@ -182,12 +185,7 @@ async function request<T>(path: string, schema: z.ZodType<T>, init: RequestInit 
 
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const parsed = errorBodySchema.safeParse(raw);
-    throw new ApiError(
-      response.status,
-      parsed.success ? parsed.data.error.code : 'request_failed',
-      parsed.success ? parsed.data.error.message : `Request failed (${response.status})`,
-    );
+    throw toApiError(response.status, raw);
   }
 
   const parsed = schema.safeParse(raw);
@@ -199,6 +197,19 @@ async function request<T>(path: string, schema: z.ZodType<T>, init: RequestInit 
     );
   }
   return parsed.data;
+}
+
+// Builds the ApiError for a failed response: `code`/`message` plus any
+// extra body fields on `detail` (e.g. `nextChangeAt`), minus the `requestId`
+// the server adds for tracing.
+function toApiError(status: number, raw: unknown): ApiError {
+  const parsed = errorBodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return new ApiError(status, 'request_failed', `Request failed (${status})`);
+  }
+  const { code, message, requestId: _requestId, ...detail } = parsed.data.error;
+  void _requestId;
+  return new ApiError(status, code, message, detail as Record<string, unknown>);
 }
 
 export function getMe(): Promise<Me> {
@@ -1258,12 +1269,7 @@ async function searchRequest<T>(
 
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const parsed = errorBodySchema.safeParse(raw);
-    throw new ApiError(
-      response.status,
-      parsed.success ? parsed.data.error.code : 'request_failed',
-      parsed.success ? parsed.data.error.message : `Request failed (${response.status})`,
-    );
+    throw toApiError(response.status, raw);
   }
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {
@@ -1534,12 +1540,7 @@ export async function uploadStickerFile(
   }
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const parsed = errorBodySchema.safeParse(raw);
-    throw new ApiError(
-      response.status,
-      parsed.success ? parsed.data.error.code : 'request_failed',
-      parsed.success ? parsed.data.error.message : `Request failed (${response.status})`,
-    );
+    throw toApiError(response.status, raw);
   }
   const parsed = stickerSchema.safeParse(raw);
   if (!parsed.success) {
@@ -1721,12 +1722,7 @@ async function gifRequest(
   }
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const parsed = errorBodySchema.safeParse(raw);
-    throw new ApiError(
-      response.status,
-      parsed.success ? parsed.data.error.code : 'request_failed',
-      parsed.success ? parsed.data.error.message : `Request failed (${response.status})`,
-    );
+    throw toApiError(response.status, raw);
   }
   const parsed = gifPageSchema.safeParse(raw);
   if (!parsed.success) {

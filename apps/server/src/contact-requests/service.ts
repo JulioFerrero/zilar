@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { and, count, desc, eq, sql } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { contactRequests, contacts, handles, user } from '../db/schema';
+import { contactRequests, contacts, handles } from '../db/schema';
 import { HttpError } from '../errors';
 import { addContactPair, syncRoster } from '../contacts/service';
 import { normalizeHandle } from '../handles/rules';
@@ -138,9 +138,11 @@ async function pendingBetween(
 // request in either direction (409 `request_exists` — the reverse request is
 // returned so the web can offer "Accept"), more than 20 pending outgoing
 // (429), a re-request within 7 days after a decline (429
-// `declined_recently`). The duplicate and cooldown reads plus the insert run
-// in one transaction under a per-pair advisory lock, so the check-then-act
-// cannot double-create under concurrency.
+// `declined_recently`). The contact check, the duplicate and cooldown reads
+// plus the insert run in one transaction under a per-pair advisory lock, so
+// a racing accept (which deletes no rows but flips no pending row either —
+// it only touches pending rows) cannot leave a stale pending row behind:
+// the in-transaction contact read sees the committed pair.
 export async function createContactRequest(
   deps: ContactRequestsDeps,
   fromId: string,
@@ -151,15 +153,16 @@ export async function createContactRequest(
   if (target.id === fromId) {
     throw new HttpError(400, 'invalid_request', 'You cannot add yourself');
   }
-  if (await isContact(deps.db, fromId, target.id)) {
-    throw new HttpError(409, 'already_contact', 'You are already contacts');
-  }
 
   const pair = [fromId, target.id].sort().join(':');
 
   return deps.db.transaction(async (tx) => {
     const txDb = tx as unknown as ServerDatabase;
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'contact-request:' + pair}))`);
+
+    if (await isContact(txDb, fromId, target.id)) {
+      throw new HttpError(409, 'already_contact', 'You are already contacts');
+    }
 
     const outgoingFirst = await pendingBetween(txDb, fromId, target.id);
     if (outgoingFirst && outgoingFirst.fromUserId === fromId) {
@@ -314,11 +317,14 @@ async function findActionable(
   return (row as ContactRequestRow | undefined) ?? null;
 }
 
-// Accepts a request (recipient only). The conditional update on
-// `status = 'pending'` makes a double accept change nothing, and accepting
-// an already-accepted request is idempotent: the contact pair write is
-// itself idempotent. Creates the mutual contact exactly like an invite does
-// (the shared `addContactPair` + roster sync with the same retry).
+// Accepts a request (recipient only). The status flip and the contact-pair
+// creation share one transaction under a per-request advisory lock, so a
+// failure after the claim refunds it (the transaction rolls back). The
+// conditional update on `status = 'pending'` keeps a double click to one
+// flip; a re-accept of an `accepted` request re-runs `addContactPair` and
+// the roster sync idempotently, so it repairs a half-finished accept.
+// Creates the mutual contact exactly like an invite does (the shared
+// `addContactPair` + roster sync with the same retry).
 export async function acceptContactRequest(
   deps: ContactRequestsDeps,
   id: string,
@@ -328,32 +334,53 @@ export async function acceptContactRequest(
   if (!existing) {
     throw notFound();
   }
-  if (existing.status === 'accepted') {
-    return existing;
-  }
-  if (existing.status !== 'pending') {
+  if (existing.status !== 'pending' && existing.status !== 'accepted') {
     throw notFound();
   }
   const now = serviceNow(deps);
-  const [row] = await deps.db
-    .update(contactRequests)
-    .set({ status: 'accepted', decidedAt: now })
-    .where(and(eq(contactRequests.id, id), eq(contactRequests.status, 'pending')))
-    .returning();
-  if (!row) {
-    // A concurrent decision won the race: re-read so an accepted row still
-    // answers idempotently instead of 404ing.
-    const [current] = await deps.db
+
+  const settled = await deps.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'contact-accept:' + id}))`);
+
+    const [current] = await tx
       .select()
       .from(contactRequests)
-      .where(eq(contactRequests.id, id))
+      .where(and(eq(contactRequests.id, id), eq(contactRequests.toUserId, viewerId)))
       .limit(1);
-    if (current && (current.status as string) === 'accepted') {
-      return current as ContactRequestRow;
+    if (!current) {
+      throw notFound();
     }
-    throw notFound();
-  }
-  const settled = row as ContactRequestRow;
+    const currentRow = current as ContactRequestRow;
+    if (currentRow.status !== 'pending' && currentRow.status !== 'accepted') {
+      throw notFound();
+    }
+    if (currentRow.status === 'pending') {
+      const [flipped] = await tx
+        .update(contactRequests)
+        .set({ status: 'accepted', decidedAt: now })
+        .where(and(eq(contactRequests.id, id), eq(contactRequests.status, 'pending')))
+        .returning();
+      if (!flipped) {
+        // A concurrent decision won the race: re-read so an accepted row
+        // still answers idempotently instead of 404ing.
+        const [raced] = await tx
+          .select()
+          .from(contactRequests)
+          .where(eq(contactRequests.id, id))
+          .limit(1);
+        if (raced && (raced.status as string) === 'accepted') {
+          return raced as ContactRequestRow;
+        }
+        throw notFound();
+      }
+      auditFor(deps, 'contact_request.accepted', viewerId, (flipped as ContactRequestRow).id);
+      return flipped as ContactRequestRow;
+    }
+    return currentRow;
+  });
+
+  // Idempotent repair: re-runs on every accept of an accepted row, so a
+  // half-finished first accept (pair missing, roster unsynced) heals.
   await addContactPair(deps.db, {
     userId: settled.fromUserId,
     contactUserId: settled.toUserId,
@@ -363,7 +390,6 @@ export async function acceptContactRequest(
     await syncRoster(deps.db, deps.adminClient, deps.domain, settled.fromUserId);
     await syncRoster(deps.db, deps.adminClient, deps.domain, settled.toUserId);
   }
-  auditFor(deps, 'contact_request.accepted', viewerId, settled.id);
   return settled;
 }
 
@@ -460,13 +486,4 @@ export async function profileForHandle(
     image: profile.image,
     relation: await relationFor(db, viewerId, target.id),
   };
-}
-
-export async function userEmailFor(db: ServerDatabase, userId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ email: user.email })
-    .from(user)
-    .where(eq(user.id, userId))
-    .limit(1);
-  return row?.email ?? null;
 }

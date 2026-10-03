@@ -71,15 +71,65 @@ describe('handles', () => {
     expect(await check(bob.cookie, 'bob_new')).toEqual({ available: true });
   });
 
-  it('refuses a change within 14 days with nextChangeAt', async () => {
+  it('refuses a change within 14 days with nextChangeAt in the body', async () => {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
     expect((await setHandle(alice.cookie, 'ada')).status).toBe(200);
 
     const second = await setHandle(alice.cookie, 'ada2');
     expect(second.status).toBe(409);
-    const body = (await second.json()) as { error: { code: string; message: string } };
+    const body = (await second.json()) as {
+      error: { code: string; message: string; nextChangeAt: string };
+    };
     expect(body.error.code).toBe('handle_change_too_soon');
-    expect(body.error.message).toMatch(/20\d\d/);
+    // A real field, not parsed from the message: ISO date in the future.
+    expect(typeof body.error.nextChangeAt).toBe('string');
+    const nextAt = Date.parse(body.error.nextChangeAt);
+    expect(Number.isNaN(nextAt)).toBe(false);
+    expect(nextAt).toBeGreaterThan(Date.now());
+    expect(nextAt).toBeLessThanOrEqual(Date.now() + 14 * 24 * 60 * 60 * 1000 + 60 * 1000);
+  });
+
+  it('re-saving the same handle is a no-op without spending the claim budget', async () => {
+    const alice = await bootstrapUser(context, app, 'alice@example.com');
+    expect((await setHandle(alice.cookie, 'Ada')).status).toBe(200);
+
+    // Same value, same casing: returns the row, no 409, no budget spent.
+    const same = await setHandle(alice.cookie, 'Ada');
+    expect(same.status).toBe(200);
+    expect(await same.json()).toEqual({ handle: 'Ada' });
+
+    // Same value, different casing: still the same handle, not "taken".
+    const recased = await setHandle(alice.cookie, 'ADA');
+    expect(recased.status).toBe(200);
+    expect(await recased.json()).toEqual({ handle: 'Ada' });
+
+    // Burn the whole budget on other handles failing, then re-save: the
+    // no-op fast path still answers 200.
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const response = await setHandle(alice.cookie, `other_${attempt}`);
+      await response.text();
+    }
+    const afterBudget = await setHandle(alice.cookie, 'aDa');
+    expect(afterBudget.status).toBe(200);
+    expect((await context.db.select().from(retiredHandles)).length).toBe(0);
+  });
+
+  it('a casing-only change needs the interval and retires nothing', async () => {
+    const alice = await bootstrapUser(context, app, 'alice@example.com');
+    await claimHandle(context.db, alice.id, 'ada');
+    // Too soon: casing-only still obeys the 14-day interval.
+    await expect(claimHandle(context.db, alice.id, 'ADA')).rejects.toMatchObject({
+      code: 'handle_change_too_soon',
+    });
+    // After the interval the new casing is stored and nothing retires.
+    await context.db
+      .update(handles)
+      .set({ changedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000) })
+      .where(eq(handles.userId, alice.id));
+    expect(await claimHandle(context.db, alice.id, 'ADA')).toEqual({ handle: 'ADA' });
+    expect(await context.db.select().from(retiredHandles)).toHaveLength(0);
+    const check = await checkHandleAvailability(context.db, alice.id, 'ada');
+    expect(check).toEqual({ available: false, reason: 'taken' });
   });
 
   it('reserves the old handle for 30 days for its former owner only', async () => {

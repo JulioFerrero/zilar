@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { contacts } from '../db/schema';
 import { contactRequests } from '../db/schema';
 import { UNNAMED_CONTACT_NAME } from '../contacts/service';
@@ -329,22 +329,47 @@ describe('contact requests', () => {
     const first = await withHandle('first@example.com', 'first_one');
     const second = await withHandle('second@example.com', 'second_one');
     expect((await postRequest(alice.cookie, 'first_one')).status).toBe(201);
-    await new Promise((resolve) => setTimeout(resolve, 5));
     expect((await postRequest(alice.cookie, 'second_one')).status).toBe(201);
     const list = (await (
       await app.request(`${TEST_BASE_URL}/api/contact-requests`, {
         headers: authHeaders(alice.cookie),
       })
-    ).json()) as { outgoing: Array<{ other: { handle: string } }> };
+    ).json()) as { outgoing: Array<{ other: { handle: string }; createdAt: string }> };
+    // Seed order is first-then-second; the list is newest-first regardless.
     expect(list.outgoing.map((entry) => entry.other.handle)).toEqual(['second_one', 'first_one']);
+    expect(
+      Date.parse(list.outgoing[0]?.createdAt ?? '') >=
+        Date.parse(list.outgoing[1]?.createdAt ?? ''),
+    ).toBe(true);
     expect(first.id && second.id).toBeDefined();
   });
 
-  it('orders pending by creation time, not id', async () => {
-    const rows = await context.db
-      .select()
-      .from(contactRequests)
-      .orderBy(desc(contactRequests.createdAt));
-    expect(rows).toHaveLength(0);
+  it('a re-accept repairs a half-finished accept', async () => {
+    const alice = await withHandle('alice@example.com', 'alice_w');
+    const bob = await withHandle('bob@example.com', 'bob_b');
+    const created = await postRequest(alice.cookie, 'bob_b');
+    expect(created.status).toBe(201);
+    const { request } = (await created.json()) as { request: { id: string } };
+
+    const accept = await app.request(`${TEST_BASE_URL}/api/contact-requests/${request.id}/accept`, {
+      method: 'POST',
+      headers: authHeaders(bob.cookie),
+    });
+    expect(accept.status).toBe(200);
+
+    // Simulate the crash between the flip and the pair write: the row says
+    // accepted but the contacts are gone.
+    await context.db.delete(contacts);
+    expect(await context.db.select().from(contacts)).toHaveLength(0);
+
+    const repair = await app.request(`${TEST_BASE_URL}/api/contact-requests/${request.id}/accept`, {
+      method: 'POST',
+      headers: authHeaders(bob.cookie),
+    });
+    expect(repair.status).toBe(200);
+    const rows = await context.db.select().from(contacts);
+    expect(rows.map((row) => `${row.userId}->${row.contactUserId}`).sort()).toEqual(
+      [`${alice.id}->${bob.id}`, `${bob.id}->${alice.id}`].sort(),
+    );
   });
 });

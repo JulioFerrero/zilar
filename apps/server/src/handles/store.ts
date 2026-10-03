@@ -2,7 +2,7 @@
 // key on `handle_lower` is the only uniqueness rule: concurrent claims race
 // on it and the loser maps to 409 `handle_taken`, never check-then-insert.
 
-import { eq, lte, sql } from 'drizzle-orm';
+import { eq, inArray, lte, sql } from 'drizzle-orm';
 import type { ServerDatabase } from '../db/client';
 import { handles, retiredHandles, user } from '../db/schema';
 import { HttpError } from '../errors';
@@ -44,17 +44,10 @@ export async function handleUserIdFor(
   if (userIds.length === 0) {
     return new Map();
   }
-  const rows: Array<{ userId: string | null; handle: string }> = [];
-  for (const id of userIds) {
-    const [row] = await db
-      .select({ userId: handles.userId, handle: handles.handle })
-      .from(handles)
-      .where(eq(handles.userId, id))
-      .limit(1);
-    if (row) {
-      rows.push(row);
-    }
-  }
+  const rows = await db
+    .select({ userId: handles.userId, handle: handles.handle })
+    .from(handles)
+    .where(inArray(handles.userId, [...new Set(userIds)]));
   const byUser = new Map<string, string>();
   for (const row of rows) {
     if (row.userId !== null) {
@@ -98,13 +91,18 @@ export async function checkHandleAvailability(
 }
 
 // Claims `handle` for `userId`: the first claim is always allowed, later
-// ones only 14 days after the previous change. The old handle goes to
-// `retired_handles` for 30 days, reclaimable by its former owner only. The
-// new row is inserted last, so its unique violation (the race backstop) maps
-// to 409 `handle_taken`. Everything runs in one transaction under a
-// per-user advisory lock, and every row the decision depends on is read
-// INSIDE it. Throws `HttpError` with `handle_invalid`, `handle_reserved`,
-// `handle_taken` or `handle_change_too_soon` (with `nextChangeAt`).
+// ones only 14 days after the previous change. Saving the same handle
+// (case-insensitively) returns the existing row before the interval check:
+// it is a no-op (no budget, no retirement); a casing-only change is applied
+// and updates the stored casing, but still obeys the 14-day interval and
+// never retires the handle. Any other change retires the old handle for 30
+// days (reclaimable by its former owner only) and writes the new row last,
+// so its unique violation (the race backstop) maps to 409 `handle_taken`.
+// Everything runs in one transaction under a per-user advisory lock, and
+// every row the decision depends on is read INSIDE it. Throws `HttpError`
+// with `handle_invalid`, `handle_reserved`, `handle_taken` or
+// `handle_change_too_soon` (with `nextChangeAt` in the error detail and the
+// 409 JSON body).
 export async function claimHandle(
   db: ServerDatabase,
   userId: string,
@@ -124,25 +122,42 @@ export async function claimHandle(
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'handle-user:' + userId}))`);
 
     const [existing] = await tx.select().from(handles).where(eq(handles.userId, userId)).limit(1);
+    const lower = normalizeHandle(trimmed);
+    if (existing && existing.handleLower === lower) {
+      if (existing.handle !== trimmed) {
+        // A casing-only change: allowed only after the interval, updates the
+        // stored casing in place, retires nothing.
+        const nextChangeAt = new Date(
+          existing.changedAt.getTime() + HANDLE_CHANGE_INTERVAL_DAYS * 24 * 60 * 60 * 1000,
+        );
+        if (now.getTime() < nextChangeAt.getTime()) {
+          throw new HttpError(409, 'handle_change_too_soon', 'You can change your username again', {
+            nextChangeAt: nextChangeAt.toISOString(),
+          });
+        }
+        const [updated] = await tx
+          .update(handles)
+          .set({ handle: trimmed, changedAt: now })
+          .where(eq(handles.handleLower, existing.handleLower))
+          .returning();
+        if (!updated) {
+          throw new Error('handle casing update returned no row');
+        }
+        return { handle: updated.handle };
+      }
+      return { handle: existing.handle };
+    }
     if (existing) {
       const nextChangeAt = new Date(
         existing.changedAt.getTime() + HANDLE_CHANGE_INTERVAL_DAYS * 24 * 60 * 60 * 1000,
       );
       if (now.getTime() < nextChangeAt.getTime()) {
-        const error = new HttpError(
-          409,
-          'handle_change_too_soon',
-          `You can change your username again on ${nextChangeAt.toISOString()}`,
-        ) as HttpError & { nextChangeAt?: string };
-        error.nextChangeAt = nextChangeAt.toISOString();
-        throw error;
-      }
-      if (existing.handleLower === normalizeHandle(trimmed)) {
-        return { handle: existing.handle };
+        throw new HttpError(409, 'handle_change_too_soon', 'You can change your username again', {
+          nextChangeAt: nextChangeAt.toISOString(),
+        });
       }
     }
 
-    const lower = normalizeHandle(trimmed);
     const [retired] = await tx
       .select()
       .from(retiredHandles)
@@ -256,8 +271,6 @@ export async function queryHandleForUser(db: Queryable, userId: string): Promise
   return row?.handle ?? null;
 }
 
-export function isHandleChangeTooSoon(error: unknown): error is HttpError & {
-  nextChangeAt?: string;
-} {
+export function isHandleChangeTooSoon(error: unknown): error is HttpError {
   return error instanceof HttpError && error.code === 'handle_change_too_soon';
 }

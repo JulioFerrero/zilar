@@ -108,8 +108,8 @@ Done. @usernames and contact requests work end to end: pick a handle during onbo
 - `pnpm install`: exit 0.
 - `pnpm format:check`: pass. `pnpm lint`: pass (fixed 5 oxlint findings: no sync setState-in-effect — promise-helper pattern; `userId` dep in AuthProvider).
 - `pnpm typecheck`: pass (11 tasks).
-- Server: `src/handles src/contact-requests src/contacts src/auth src/authz-sweep.test.ts` — 9 files, 105 passed (sweep: 129 routes, all non-allowlisted 401).
-- Web: `src/routes src/components src/lib/api.test.ts` — 71 files, 718 passed; `src/mock` + hook — 7 files, 86 passed.
+- Server: `src/handles src/contact-requests src/contacts src/auth src/authz-sweep.test.ts` — 9 files, 107 passed (sweep: 129 routes, all non-allowlisted 401).
+- Web: `src/routes src/components src/lib/api.test.ts` — 71 files, 720 passed; `src/mock` + hook — 7 files, 86 passed.
 - Neighbours: full web `src/routes+components+api+mock` green; no other suites touched.
 
 **Security checklist:** no secrets/emails in new responses, logs, or audit (sentinels in tests; by-handle/list/check carry name+handle+image only); deletes/updates scoped (per-user lock, per-pair lock, conditional status updates); caps enforced atomically (PK race, partial unique index + in-tx re-read, advisory locks; all decision rows read INSIDE the tx); permission before effect (session on every route; recipient/sender checks before transitions; owner reclamation only); unknown = not-allowed 404s; every new route in the 401 sweep (none allowlisted) with a rate limit (check 30/10min, claim 10/day, create 20/day, by-handle 30/10min, list 60/min) or a cap (20 outgoing, 7-day cooldown, 14-day interval, 30-day reservation); audits ids-only.
@@ -120,6 +120,21 @@ Done. @usernames and contact requests work end to end: pick a handle during onbo
 3. AddContactDialog's "Accept" deep-links to `/settings/requests` instead of accepting inline (the incoming request row is not fetched by the dialog; the list page owns the call).
 4. The report's item 6 says "not needed" and names no user-facing docs page, but `docs/USER_GUIDE.md` exists and covers features, so one short section was added there per the "only if a page exists" rule.
 5. `useContactHandles`-style batch resolution was dropped: no batch endpoint exists and prefix search is forbidden, so member/contact lists get handles from their own list endpoints (server-joined), and the dialog uses exact lookup.
+6. Scope (lead-approved): `groups/service.ts` (member handle join), `contacts/service.ts` (handle join), `docs/USER_GUIDE.md`, `AuthProvider.tsx`, `mock/api.ts`, `test/renderApp.tsx`, `lib/handles.ts`, `lib/useContactRequestCount.ts`, `HandleSuffix.tsx` — all touched only for this task's handle plumbing.
+7. Web `ApiError` gained a `detail` bag (extra error-body fields like `nextChangeAt`); the server `HttpError` gained the same. Both default to `{}` so every other route's errors serialize exactly as before.
+
+**Review fixes (lead review of f6856cd):**
+1. Handle gate redirects only on `handle === null`; while the user or `getMe()` is still loading (`undefined`) it renders nothing extra — no Navigate, no flash (new test: a late-arriving handle never triggers the gate).
+2. `nextChangeAt` is a real field in the 409 JSON body via `HttpError.detail` (serialized by the central `onError`; other routes unaffected — detail defaults to `{}`). `PUT /me/handle` throws the store error directly instead of rebuilding it. The web reads `error.detail.nextChangeAt`, never the message; the server test asserts the body field is a future ISO date and the web test uses a fixed message to prove the field is read.
+3. Re-saving the same handle (case-insensitive) returns the existing row before the interval check and skips the claim-budget limiter (fast path in the route, re-checked inside the store tx). A casing-only change is applied but still obeys the 14-day interval and retires nothing (tested). Profile Save is disabled while the value equals the current one.
+4. Accept flips the status and creates the pair under one per-request advisory-lock transaction (failure rolls back); every re-accept of an `accepted` row re-runs `addContactPair` + roster sync idempotently, so it repairs a half-finished accept (new test deletes the pair and re-accepts).
+5. Scope noted under Deviations item 6.
+6. The vacuous `orders pending by creation time, not id` test is deleted; the newest-first test no longer sleeps and asserts via `createdAt` ordering.
+7. Accept/decline/cancel now pass the shared read limiter (60/min per user) like the list route.
+8. Dead export `userEmailFor` deleted (nothing used it).
+9. `handleUserIdFor` is one `inArray` query instead of one select per id.
+10. The mock uses the shared reserved list from `lib/handles.ts` (which mirrors the server's `RESERVED_HANDLES`); the mock suite asserts every word maps to `reserved`.
+11. The `isContact` check moved inside the create transaction (under the per-pair lock), so a racing accept cannot leave a stale pending row.
 
 
 ## Review (written by Claude)

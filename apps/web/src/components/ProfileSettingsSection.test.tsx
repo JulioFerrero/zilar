@@ -9,10 +9,17 @@ vi.mock('@/lib/api', () => ({
   ApiError: class ApiError extends Error {
     readonly status: number;
     readonly code: string;
-    constructor(status: number, code: string, message: string) {
+    readonly detail: Record<string, unknown>;
+    constructor(
+      status: number,
+      code: string,
+      message: string,
+      detail: Record<string, unknown> = {},
+    ) {
       super(message);
       this.status = status;
       this.code = code;
+      this.detail = detail;
     }
   },
   claimHandle: vi.fn(),
@@ -50,21 +57,36 @@ describe('ProfileSettingsSection', () => {
       target: { value: 'ada_new' },
     });
     await waitFor(() => expect(checkMock).toHaveBeenCalledWith('ada_new'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save username' }));
+    const saveButton = screen.getByRole('button', { name: 'Save username' });
+    expect(saveButton.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(saveButton);
     await waitFor(() => expect(claimMock).toHaveBeenCalledWith('ada_new'));
     expect(await screen.findByText('Saved.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Copy share link' })).toBeTruthy();
   });
 
-  it('shows the too-soon message with the next-change date', async () => {
+  it('disables Save while the value equals the current handle', async () => {
+    renderSection('ada');
+    expect(screen.getByRole('button', { name: 'Save username' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    expect(checkMock).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Your @username'), { target: { value: 'ADA' } });
+    expect(screen.getByRole('button', { name: 'Save username' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    expect(checkMock).not.toHaveBeenCalled();
+  });
+
+  it('shows the too-soon message from the nextChangeAt body field', async () => {
     const { ApiError } = await import('@/lib/api');
     checkMock.mockResolvedValue({ available: false, reason: 'taken' });
+    // The date comes from the body field, not the message: a fixed message
+    // proves the web reads the field.
     claimMock.mockRejectedValue(
-      new ApiError(
-        409,
-        'handle_change_too_soon',
-        'You can change your username again on 2026-10-20T00:00:00.000Z',
-      ),
+      new ApiError(409, 'handle_change_too_soon', 'Too soon', {
+        nextChangeAt: '2026-10-20T00:00:00.000Z',
+      }),
     );
     renderSection('ada');
 

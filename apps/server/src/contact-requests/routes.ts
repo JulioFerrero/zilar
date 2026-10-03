@@ -127,10 +127,13 @@ export function createContactRequestsRoutes(deps: ContactRequestsRoutesDependenc
     return c.json(await listContactRequests(service(), user.id));
   });
 
-  // Accepts a request (recipient only). Idempotent: accepting twice changes
-  // nothing after the first accept.
+  // Accepts a request (recipient only). Idempotent and repairing: every
+  // accept re-runs the pair write and the roster sync.
   routes.post('/contact-requests/:id/accept', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    if (!readLimiter.allow(user.id)) {
+      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
+    }
     const request = await acceptContactRequest(service(), c.req.param('id'), user.id);
     return c.json({ request: toJson(request) });
   });
@@ -139,6 +142,9 @@ export function createContactRequestsRoutes(deps: ContactRequestsRoutesDependenc
   // the same 404.
   routes.post('/contact-requests/:id/decline', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    if (!readLimiter.allow(user.id)) {
+      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
+    }
     const request = await declineContactRequest(service(), c.req.param('id'), user.id);
     return c.json({ request: toJson(request) });
   });
@@ -147,6 +153,9 @@ export function createContactRequestsRoutes(deps: ContactRequestsRoutesDependenc
   // same 404.
   routes.delete('/contact-requests/:id', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
+    if (!readLimiter.allow(user.id)) {
+      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
+    }
     const request = await cancelContactRequest(service(), c.req.param('id'), user.id);
     return c.json({ request: toJson(request) });
   });

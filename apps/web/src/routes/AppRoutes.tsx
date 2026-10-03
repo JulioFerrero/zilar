@@ -60,9 +60,11 @@ function RequireAuth({ children }: { children: ReactNode }) {
   }
   // T-0163: people who already have an account but no handle are sent to
   // the handle step once at their next visit; skip is always allowed, so
-  // the app works without a handle.
+  // the app works without a handle. Only when the handle is known-absent
+  // (`null`): while the user or `getMe()` is still loading (`undefined`)
+  // the gate does nothing — no Navigate, no flash.
   if (
-    (auth.user?.handle ?? null) === null &&
+    auth.user?.handle === null &&
     location.pathname !== '/welcome/handle' &&
     !location.pathname.startsWith('/welcome/handle/')
   ) {

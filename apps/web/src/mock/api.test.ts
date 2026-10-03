@@ -71,11 +71,16 @@ describe('mockRequest', () => {
 
   it('checks and claims handles through the real schemas', async () => {
     const { checkHandle, claimHandle } = await import('@/lib/api');
+    const { RESERVED_HANDLES } = await import('@/lib/handles');
     expect((await getMe()).handle ?? null).toBeNull();
     expect(await checkHandle('ab')).toEqual({ available: false, reason: 'invalid' });
-    expect(await checkHandle('admin')).toEqual({ available: false, reason: 'reserved' });
     expect(await checkHandle('taken_user')).toEqual({ available: false, reason: 'taken' });
     expect(await checkHandle('ada_new')).toEqual({ available: true });
+    // Every reserved word maps to `reserved`, like the server.
+    expect(RESERVED_HANDLES.size).toBeGreaterThan(0);
+    for (const word of RESERVED_HANDLES) {
+      expect(await checkHandle(word)).toEqual({ available: false, reason: 'reserved' });
+    }
     expect(await claimHandle('ada_new')).toEqual({ handle: 'ada_new' });
     expect((await getMe()).handle).toBe('ada_new');
   });

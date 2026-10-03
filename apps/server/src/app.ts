@@ -511,7 +511,12 @@ export function createApp({
     if (error instanceof HttpError) {
       return c.json(
         {
-          error: { code: error.code, message: error.message, requestId: requestIdValue },
+          error: {
+            code: error.code,
+            message: error.message,
+            requestId: requestIdValue,
+            ...error.detail,
+          },
         },
         error.status,
       );

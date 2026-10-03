@@ -1,4 +1,5 @@
 import type { ChatEntry, Connection, Contact, Machine, Me, PublicAi } from '@/lib/api';
+import { RESERVED_HANDLES } from '@/lib/handles';
 import { currentUserId, PEOPLE } from './ids';
 import { mockChats } from './chats';
 import { mockGroupDetails } from './groups';
@@ -1180,34 +1181,22 @@ function notFound(message: string): Response {
 }
 
 // T-0163: mock handle availability. `taken-user` is always taken; reserved
-// words and bad shapes map like the server; everything else is free.
+// words and bad shapes map like the server (reserved-first, like
+// `classifyHandle`); everything else is free. The reserved list is the
+// shared one (`lib/handles.ts`), not a copy.
 function mockCheckHandle(raw: string): { available: boolean; reason?: string } {
   const normalized = raw.toLowerCase();
+  if (RESERVED_HANDLES.has(normalized)) {
+    return { available: false, reason: 'reserved' };
+  }
   if (!/^[a-z][a-z0-9_]{2,31}$/.test(raw)) {
     return { available: false, reason: 'invalid' };
-  }
-  if (MOCK_RESERVED_HANDLES.has(normalized)) {
-    return { available: false, reason: 'reserved' };
   }
   if (normalized === 'taken_user') {
     return { available: false, reason: 'taken' };
   }
   return { available: true };
 }
-
-const MOCK_RESERVED_HANDLES = new Set([
-  'admin',
-  'support',
-  'root',
-  'system',
-  'zilar',
-  'api',
-  'settings',
-  'me',
-  'bot',
-  'owner',
-  'moderator',
-]);
 
 function readJsonBody(init: RequestInit): Record<string, unknown> {
   if (typeof init.body !== 'string' || init.body === '') {
