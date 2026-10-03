@@ -128,6 +128,7 @@ export function Composer({
   const editMessage = useChatStore((state) => state.editMessage);
   // The target message's text is the initial value; the store keeps the live
   // message under the same id, so the bar never goes stale while editing.
+  // An attachment target edits its caption through the same path (T-0157).
   const targetText = useChatStore((state) => {
     const target = state.editTarget;
     if (target === undefined) return undefined;
@@ -163,6 +164,8 @@ export function Composer({
   const [attachBusy, setAttachBusy] = useState(false);
   const [attachError, setAttachError] = useState<string | undefined>(undefined);
   const [picked, setPicked] = useState<PickedFile | undefined>(undefined);
+  // Production defaults to the real `expo-file-system` stat for unknown
+  // picker sizes (T-0157); tests inject a fake picker.
   const picker = useMemo(() => pickerProp ?? createAttachmentPicker(), [pickerProp]);
   const gifDownloader = useMemo(
     () => gifDownloaderProp ?? createGifDownloader(),

@@ -329,6 +329,53 @@ describe('real store sends attachments (T-0150)', () => {
     await flush();
   });
 
+  it('sends an unknown-size file instead of refusing it as empty', async () => {
+    // Finding 2: only a REAL zero says "That file is empty." An unknown
+    // size (stat failed or never attempted) proceeds to the upload; the
+    // store re-stats right before the slot request.
+    const { store, xmpp } = await setup({ statSize: async () => 240_000 });
+    const { size: _dropped, ...unknownSize } = PHOTO;
+
+    store.getState().sendAttachment(ANA, unknownSize);
+    expect(store.getState().actionError).toBeUndefined();
+    const optimistic = store.getState().messages(ANA).at(-1);
+    expect(optimistic?.status).toBe('sending');
+
+    await flushUntil(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 0);
+    expect(vi.mocked(xmpp.core.requestUploadSlot)).toHaveBeenCalledWith(
+      expect.objectContaining({ filename: 'photo.jpg', size: 240_000 }),
+    );
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === optimistic?.id)?.failed,
+    ).toBeUndefined();
+  });
+
+  it('fails the send (Retry available) when an unknown size cannot be statted', async () => {
+    // A still-unknown size at slot time is an upload failure, never the
+    // "empty" line: the bubble stays with Retry instead of an inline
+    // refusal.
+    const { store, xmpp } = await setup({ statSize: async () => undefined });
+    const { size: _dropped, ...unknownSize } = PHOTO;
+    const before = store.getState().messages(ANA).length;
+
+    store.getState().sendAttachment(ANA, unknownSize);
+    expect(store.getState().messages(ANA)).toHaveLength(before + 1);
+    expect(store.getState().actionError).toBeUndefined();
+
+    const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
+    await flushUntil(
+      () =>
+        store
+          .getState()
+          .messages(ANA)
+          .find((item) => item.id === localId)?.failed === true,
+    );
+    expect(vi.mocked(xmpp.core.requestUploadSlot)).not.toHaveBeenCalled();
+  });
+
   it('keeps two concurrent uploads independent; cancelling one spares the other', async () => {
     const TEAM = 'team@rooms.zilar.test';
     const api = fakeApi();

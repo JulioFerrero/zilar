@@ -14,7 +14,7 @@ import {
   setGifsAvailability,
   type GifItem,
 } from '@/lib/gifs';
-import { createGifsApi, GifsApiError, type GifsApi } from '@/lib/gifs-api';
+import { createGifsApi, GifsApiError, type GifPage, type GifsApi } from '@/lib/gifs-api';
 
 const CELL_ASPECT = 4 / 3;
 
@@ -112,6 +112,11 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
   const [client] = useState<GifsApi>(() => api ?? createGifsApi());
   const inflight = useRef<AbortController | undefined>(undefined);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // The synchronous in-flight guard for infinite scroll (T-0157): a ref set
+  // before the fetch starts, so a second scroll event while a page is in
+  // flight cannot fire an overlapping page load. `loadingMore` state only
+  // mirrors it for the spinner; state sets are async and would race.
+  const loadingMoreRef = useRef(false);
   // The latest query for the Retry button and the scroll pager: written in
   // the change handler (an event, never during render) alongside `setQuery`.
   const queryRef = useRef('');
@@ -127,17 +132,21 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
       const controller = new AbortController();
       inflight.current = controller;
       if (append) {
+        // Guarded synchronously by `loadingMoreRef`: an append never starts
+        // while one is in flight (the scroll handler checks the ref).
+        loadingMoreRef.current = true;
         setLoadingMore(true);
       } else {
+        // A fresh query owns the list now: an append it aborted must not
+        // leave the guard stuck, or infinite scroll would never fire again.
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
         setLoading(true);
         setError(undefined);
         setRateLimited(false);
       }
       const trimmed = search.trim();
-      const request =
-        trimmed === ''
-          ? client.trendingGifs(pos, controller.signal)
-          : client.searchGifs(trimmed, pos, controller.signal);
+      const request = fetchGifPage({ query: trimmed, pos, client, signal: controller.signal });
       void request.then(
         (page) => {
           if (controller.signal.aborted) {
@@ -146,6 +155,7 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
           setItems((previous) => (append ? [...previous, ...page.items] : page.items));
           setNextPos(page.nextPos);
           setLoading(false);
+          loadingMoreRef.current = false;
           setLoadingMore(false);
         },
         (requestError: unknown) => {
@@ -168,6 +178,7 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
               : 'Could not load GIFs. Try again.',
           );
           setLoading(false);
+          loadingMoreRef.current = false;
           setLoadingMore(false);
         },
       );
@@ -273,7 +284,15 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
             onScroll={(event) => {
               const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
               const distance = contentSize.height - (contentOffset.y + layoutMeasurement.height);
-              if (distance < 300 && nextPos !== undefined && !loadingMore && !loading) {
+              // The ref guard is synchronous: a second scroll event while a
+              // page is in flight never fires an overlapping page load.
+              if (
+                distance < 300 &&
+                nextPos !== undefined &&
+                !loadingMoreRef.current &&
+                !loading &&
+                !loadingMore
+              ) {
                 load(queryRef.current, nextPos, true);
               }
             }}
@@ -295,6 +314,23 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
       )}
     </View>
   );
+}
+
+/**
+ * The GIF sheet's pager: given the query and cursor, fetches one page (the
+ * trending feed for an empty query, a search otherwise). Kept here (not on
+ * the panel) so the request shape is unit-testable in Node (T-0157).
+ */
+export async function fetchGifPage(input: {
+  query: string;
+  pos: string | undefined;
+  client: { searchGifs: GifsApi['searchGifs']; trendingGifs: GifsApi['trendingGifs'] };
+  signal: AbortSignal;
+}): Promise<GifPage> {
+  const trimmed = input.query.trim();
+  return trimmed === ''
+    ? input.client.trendingGifs(input.pos, input.signal)
+    : input.client.searchGifs(trimmed, input.pos, input.signal);
 }
 
 /**

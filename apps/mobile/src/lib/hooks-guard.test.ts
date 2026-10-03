@@ -57,4 +57,13 @@ describe('hooksAfterMarker', () => {
     const groupScreen = readFileSync(join(HERE, '..', 'app', 'group', '[id].tsx'), 'utf8');
     expect(groupScreen).toContain(`key={composerOpen ? 'open' : 'closed'}`);
   });
+
+  it('maps the first roles load through describeRolesError load (T-0157)', () => {
+    // T-0140/T-0147 should-fix: the mount load once used a hardcoded generic
+    // line, so a 404 never read as gone. The screen's mount effect maps
+    // through `describeRolesError(error, 'load')`; the mounted render test
+    // (`group-roles-mounted.test.tsx`) pins the rendered line and Retry.
+    const groupScreen = readFileSync(join(HERE, '..', 'app', 'group', '[id].tsx'), 'utf8');
+    expect(groupScreen).toContain("setRolesLoadError(describeRolesError(error, 'load'))");
+  });
 });

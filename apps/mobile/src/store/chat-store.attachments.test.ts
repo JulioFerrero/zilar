@@ -67,6 +67,18 @@ describe('mock store sends attachments (T-0150)', () => {
     });
   });
 
+  it('sends an unknown-size file instead of refusing it as empty', () => {
+    // Finding 2: only a REAL zero says "That file is empty."
+    const store = createChatStore();
+    const { size: _dropped, ...unknownSize } = PHOTO;
+    const before = store.getState().messages('ana').length;
+
+    store.getState().sendAttachment('ana', unknownSize);
+    expect(store.getState().messages('ana')).toHaveLength(before + 1);
+    expect(store.getState().actionError).toBeUndefined();
+    expect(store.getState().messages('ana').at(-1)?.status).toBe('sending');
+  });
+
   it('clears a stale error banner on a later validated send', () => {
     const store = createChatStore();
     store.getState().sendAttachment('ana', { ...PHOTO, size: 0 });

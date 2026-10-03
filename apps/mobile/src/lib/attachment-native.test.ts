@@ -1,23 +1,37 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { cacheDestinationFor, createGifDownloader } from './attachment-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
+
+import {
+  cacheDestinationFor,
+  createAttachmentOpener,
+  createAttachmentPicker,
+  createGifDownloader,
+  createSizeReader,
+} from './attachment-native';
 import { cleanFilename } from './attachments';
+
+const mockedImagePicker = vi.mocked(ImagePicker, true);
+const mockedFileSystem = vi.mocked(FileSystem, true);
 
 vi.mock('expo-document-picker', () => ({
   getDocumentAsync: async () => ({ canceled: true }),
 }));
 
 vi.mock('expo-file-system/legacy', () => ({
-  downloadAsync: async () => {
+  downloadAsync: vi.fn(async () => {
     throw new Error('no network in tests');
-  },
-  getInfoAsync: async () => ({ exists: false }),
+  }),
+  getInfoAsync: vi.fn(async () => ({ exists: false })),
   cacheDirectory: 'file:///cache/',
 }));
 
 vi.mock('expo-image-picker', () => ({
-  requestMediaLibraryPermissionsAsync: async () => ({ granted: false }),
-  requestCameraPermissionsAsync: async () => ({ granted: false }),
+  requestMediaLibraryPermissionsAsync: vi.fn(async () => ({ granted: false })),
+  requestCameraPermissionsAsync: vi.fn(async () => ({ granted: false })),
+  launchImageLibraryAsync: vi.fn(async () => ({ canceled: true })),
+  launchCameraAsync: vi.fn(async () => ({ canceled: true })),
 }));
 
 vi.mock('expo-file-system', () => ({
@@ -29,6 +43,192 @@ vi.mock('expo-file-system', () => ({
 vi.mock('react-native', () => ({
   Share: { share: async () => {} },
 }));
+
+describe('attachment picker unknown size (T-0157 item 1)', () => {
+  const URI = 'file:///cache/stage.png';
+
+  function pickerFor(getInfo: (uri: string) => Promise<unknown>) {
+    const reader = createSizeReader(getInfo as never);
+    return createAttachmentPicker(reader);
+  }
+
+  function libraryOk(fileSize: number | undefined) {
+    mockedImagePicker.requestMediaLibraryPermissionsAsync.mockResolvedValueOnce({
+      granted: true,
+    } as never);
+    mockedImagePicker.launchImageLibraryAsync.mockResolvedValueOnce({
+      canceled: false,
+      assets: [
+        {
+          uri: URI,
+          fileName: 'stage.png',
+          mimeType: 'image/png',
+          ...(fileSize === undefined ? {} : { fileSize }),
+          width: 640,
+          height: 420,
+          type: 'image',
+        },
+      ],
+    } as never);
+  }
+
+  it('reads the real size from the file when the picker reports none', async () => {
+    libraryOk(undefined);
+    const picker = pickerFor(async () => ({ exists: true, isDirectory: false, size: 240_000 }));
+    const result = await picker.pickImageOrVideo();
+    expect(result).toMatchObject({
+      status: 'picked',
+      file: { name: 'stage.png', mimeType: 'image/png', size: 240_000 },
+    });
+  });
+
+  it('says "empty" only for a real zero, not for an unknown size', async () => {
+    libraryOk(undefined);
+    const picker = pickerFor(async () => ({ exists: true, isDirectory: false, size: 0 }));
+    await expect(picker.pickImageOrVideo()).resolves.toMatchObject({
+      status: 'error',
+      message: 'That file is empty.',
+    });
+  });
+
+  it('refuses an over-cap file found only by the stat', async () => {
+    libraryOk(undefined);
+    const picker = pickerFor(async () => ({
+      exists: true,
+      isDirectory: false,
+      size: 60 * 1024 * 1024,
+    }));
+    await expect(picker.pickImageOrVideo()).resolves.toMatchObject({
+      status: 'error',
+      message: 'That file is larger than 50 MB.',
+    });
+  });
+
+  it('treats an unreadable stat as unknown, not as empty', async () => {
+    libraryOk(undefined);
+    const picker = pickerFor(async () => {
+      throw new Error('no stat');
+    });
+    const result = await picker.pickImageOrVideo();
+    // Unknown stays unknown: the send layer must not refuse it as empty.
+    expect(result).toMatchObject({ status: 'picked' });
+    if (result.status === 'picked') {
+      expect(result.file.size).toBeUndefined();
+    }
+  });
+
+  it('keeps a reported zero as empty without a stat', async () => {
+    libraryOk(0);
+    const getInfo = vi.fn(async () => ({ exists: true, isDirectory: false, size: 999 }));
+    const picker = pickerFor(getInfo as never);
+    await expect(picker.pickImageOrVideo()).resolves.toMatchObject({
+      status: 'error',
+      message: 'That file is empty.',
+    });
+    expect(getInfo).not.toHaveBeenCalled();
+  });
+
+  it('resolves an unknown picker size through the default production reader', async () => {
+    // Finding 1: the app must actually run the real-size stat. The default
+    // picker (no injected reader, the production wiring path) reads unknown
+    // sizes through the `expo-file-system` stat — mocked one module down at
+    // `expo-file-system/legacy`'s `getInfoAsync` here.
+    libraryOk(undefined);
+    mockedFileSystem.getInfoAsync.mockResolvedValueOnce({
+      exists: true,
+      isDirectory: false,
+      size: 240_000,
+    } as never);
+    const picker = createAttachmentPicker();
+    const result = await picker.pickImageOrVideo();
+    expect(result).toMatchObject({
+      status: 'picked',
+      file: { name: 'stage.png', mimeType: 'image/png', size: 240_000 },
+    });
+  });
+});
+
+describe('attachment opener size cap (T-0157 item 2)', () => {
+  const URL = 'https://upload.zilar.test/get/big.bin';
+
+  function openerFor(
+    download: (
+      url: string,
+      dest: unknown,
+      options?: { onProgress?: (progress: { bytesWritten: number; totalBytes: number }) => void },
+    ) => Promise<{ uri: string }>,
+  ) {
+    return createAttachmentOpener({
+      apiUrl: 'http://127.0.0.1:3188',
+      getToken: async () => undefined,
+      download: download as never,
+    });
+  }
+
+  it('refuses a file whose announced length exceeds the cap', async () => {
+    // The progress callback fires with the announced total first: the
+    // opener aborts before any share, reporting the plain over-cap line.
+    let seenSignal: AbortSignal | undefined;
+    const download = vi.fn(
+      async (
+        _url: string,
+        _dest: unknown,
+        options?: {
+          signal?: AbortSignal;
+          onProgress?: (progress: { bytesWritten: number; totalBytes: number }) => void;
+        },
+      ) => {
+        seenSignal = options?.signal;
+        options?.onProgress?.({ bytesWritten: 0, totalBytes: 60 * 1024 * 1024 });
+        if (seenSignal?.aborted === true) {
+          const error = new Error('The operation was aborted.');
+          error.name = 'AbortError';
+          throw error;
+        }
+        return { uri: 'file:///cache/big.bin' };
+      },
+    );
+    await expect(openerFor(download).open(URL, 'big.bin')).resolves.toMatchObject({
+      status: 'error',
+      message: 'That file is larger than 50 MB.',
+    });
+    expect(seenSignal?.aborted).toBe(true);
+  });
+
+  it('aborts mid-download once the written bytes pass the cap', async () => {
+    let seenSignal: AbortSignal | undefined;
+    const download = vi.fn(
+      async (
+        _url: string,
+        _dest: unknown,
+        options?: {
+          signal?: AbortSignal;
+          onProgress?: (progress: { bytesWritten: number; totalBytes: number }) => void;
+        },
+      ) => {
+        seenSignal = options?.signal;
+        options?.onProgress?.({ bytesWritten: 51 * 1024 * 1024, totalBytes: -1 });
+        if (seenSignal?.aborted === true) {
+          const error = new Error('The operation was aborted.');
+          error.name = 'AbortError';
+          throw error;
+        }
+        return { uri: 'file:///cache/big.bin' };
+      },
+    );
+    await expect(openerFor(download).open(URL, 'big.bin')).resolves.toMatchObject({
+      status: 'error',
+      message: 'That file is larger than 50 MB.',
+    });
+    expect(seenSignal?.aborted).toBe(true);
+  });
+
+  it('opens a file under the cap', async () => {
+    const download = vi.fn(async () => ({ uri: 'file:///cache/small.bin' }));
+    const opener = openerFor(download);
+    await expect(opener.open(URL, 'small.bin')).resolves.toMatchObject({ status: 'opened' });
+  });
+});
 
 describe('attachment opener destination (T-0150 review)', () => {
   it('sanitizes a traversal name to its bare file name', () => {

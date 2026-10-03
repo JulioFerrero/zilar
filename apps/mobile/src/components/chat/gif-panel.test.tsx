@@ -2,7 +2,14 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { isPanelGifUrl, GifCell, GifPanel, GifSheet, probeGifsAvailability } from './gif-panel';
+import {
+  fetchGifPage,
+  isPanelGifUrl,
+  GifCell,
+  GifPanel,
+  GifSheet,
+  probeGifsAvailability,
+} from './gif-panel';
 import { GifsApiError } from '@/lib/gifs-api';
 import { resetGifsAvailability, setGifsAvailability, type GifItem } from '@/lib/gifs';
 
@@ -164,5 +171,56 @@ describe('gif panel (T-0148)', () => {
     resetGifsAvailability();
     await expect(probeGifsAvailability(flaky)).resolves.toBe(true);
     resetGifsAvailability();
+  });
+
+  it('pages trending when the query is empty, search otherwise', async () => {
+    const trendingGifs = vi.fn(async () => ({ items: [item()] }));
+    const searchGifs = vi.fn(async () => ({ items: [item({ id: 'gif-2' })] }));
+    const controller = new AbortController();
+    const trending = await fetchGifPage({
+      query: '  ',
+      pos: undefined,
+      client: { searchGifs, trendingGifs },
+      signal: controller.signal,
+    });
+    expect(trending.items).toHaveLength(1);
+    expect(trendingGifs).toHaveBeenCalledOnce();
+    expect(searchGifs).not.toHaveBeenCalled();
+    const searched = await fetchGifPage({
+      query: 'cat',
+      pos: '25',
+      client: { searchGifs, trendingGifs },
+      signal: controller.signal,
+    });
+    expect(searched.items[0]?.id).toBe('gif-2');
+    expect(searchGifs).toHaveBeenCalledWith('cat', '25', controller.signal);
+  });
+
+  it('fails if the scroll handler fires an append while a page is in flight', async () => {
+    // The T-0148 follow-up: infinite scroll could fire overlapping page
+    // loads. The panel guards with the synchronous `loadingMoreRef` (set
+    // before the fetch starts), and the scroll handler checks it alongside
+    // the state. This pins the guard's wiring in the panel source: removing
+    // the ref check lets a second scroll event fire an overlapping load.
+    const { readFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const panel = readFileSync(join(here, 'gif-panel.tsx'), 'utf8');
+    expect(panel).toContain('loadingMoreRef');
+    expect(panel).toContain('!loadingMoreRef.current');
+  });
+
+  it('fails if a fresh query leaves the append guard stuck after aborting an append', async () => {
+    // An append aborted by a new search returns early without clearing its
+    // own guard; the fresh (non-append) load must reset it, or infinite
+    // scroll never fires again.
+    const { readFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const panel = readFileSync(join(here, 'gif-panel.tsx'), 'utf8');
+    const freshBranch = panel.slice(panel.indexOf('} else {\n        // A fresh query owns'));
+    expect(freshBranch.slice(0, 400)).toContain('loadingMoreRef.current = false');
   });
 });

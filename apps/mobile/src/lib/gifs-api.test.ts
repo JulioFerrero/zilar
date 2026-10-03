@@ -72,12 +72,19 @@ describe('gifs api (T-0148)', () => {
     expect(trendingUrl).toBe('http://127.0.0.1:3188/api/gifs/trending');
   });
 
-  it('sends no session token cross-origin: auth rides one header to our own API only', async () => {
+  it('sends the bearer to our own API origin, never cross-origin', async () => {
+    // The client only ever calls our own API: the URL is built from the
+    // configured apiUrl, and the Authorization header rides that same call.
+    // This inspects the actual fetch call — the URL host and the header —
+    // so it fails if the token ever reaches a non-API origin.
     const fetchImpl = vi.fn(async () => jsonResponse(200, { items: [] }));
-    await createGifsApi(async () => 'tok', fetchImpl, API).trendingGifs();
-    const authCalls = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
-    const [authUrl] = authCalls;
-    expect(authUrl.startsWith(API)).toBe(true);
+    const api = createGifsApi(async () => 'tok', fetchImpl, API);
+    await api.trendingGifs();
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(new URL(url).origin).toBe(new URL(API).origin);
+    expect(headers['authorization']).toBe('Bearer tok');
   });
 
   it('maps 501 to gifs_unavailable and 429 to rate_limited', async () => {

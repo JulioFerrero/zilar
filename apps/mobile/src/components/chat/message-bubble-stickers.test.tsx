@@ -242,8 +242,39 @@ describe('MessageBubble sticker branch', () => {
   });
 
   it('keeps Edit and Copy text for a plain text message', () => {
+    // `canEditMessage` needs a recent `createdAt`: the fixture above is a
+    // fixed 2026 date, so this case uses a fresh timestamp (T-0157: the gate
+    // now also covers attachment captions, still within the same window).
     const html = bubbleHtml({
-      message: stickerMessage({ senderId: 'me', text: 'hello', card: undefined }),
+      message: stickerMessage({
+        senderId: 'me',
+        text: 'hello',
+        card: undefined,
+        createdAt: new Date(),
+      }),
+    });
+    expect(html).toContain('data-can-edit="true"');
+    expect(html).toContain('data-can-copy="true"');
+  });
+
+  it('offers Edit for my own attachment message (caption edit)', () => {
+    // T-0157 item 5: a long-press Edit on an attachment message edits its
+    // caption through the same correction path; the store test pins the
+    // stanza, this pins the menu gate.
+    const html = bubbleHtml({
+      message: stickerMessage({
+        senderId: 'me',
+        text: 'Stage!',
+        card: undefined,
+        createdAt: new Date(),
+        attachment: {
+          kind: 'file',
+          url: 'https://upload.zilar.test/get/tickets.pdf',
+          name: 'tickets.pdf',
+          size: 2_411_724,
+          mime: 'application/pdf',
+        },
+      }),
     });
     expect(html).toContain('data-can-edit="true"');
     expect(html).toContain('data-can-copy="true"');
