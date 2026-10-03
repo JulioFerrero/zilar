@@ -184,7 +184,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0154](T-0154-mobile-voice-messages.md) | Mobile voice messages: record, send, play (expo-audio) | planned | meta/muse-spark-1.3-contributor | T-0150 | Spec ready |
 | [T-0156](T-0156-server-deploy-nits.md) | Server and deploy nits bundle | planned | meta/muse-spark-1.3-contributor | T-0145, T-0151 | Spec ready |
 | [T-0157](T-0157-mobile-nits-2.md) | Mobile nits bundle 2: attachments, GIFs, roles load error | planned | meta/muse-spark-1.3-contributor | T-0148, T-0150 | Spec ready |
-| [T-0158](T-0158-scheduled-backups.md) | Scheduled backups with retention and a freshness check | planned | meta/muse-spark-1.3-contributor | T-0151 | Spec ready |
 | [T-0159](T-0159-install-rehearsal.md) | Fresh production install rehearsal (run only on a free machine) | planned | meta/muse-spark-1.3-contributor | T-0145, T-0151, T-0158 | Spec ready |
 | [T-0148](T-0148-mobile-gifs.md) | Mobile GIFs | 2026-10-01 |
 | [T-0151](T-0151-deploy-storage-safety.md) | Production storage safety | 2026-10-01 |
@@ -201,3 +200,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0170](T-0170-voice-transcripts.md) | Voice transcripts on demand (owner-configured OpenAI-compatible endpoint) | planned | meta/muse-spark-1.3-contributor | T-0162 | Spec ready; schema task |
 | [T-0171](T-0171-block-users.md) | Block users, part 1 (blocklist, requests, web UI) | planned | meta/muse-spark-1.3-contributor | T-0163 | Spec ready; schema task |
 | [T-0155](T-0155-web-ui-polish-2.md) | Web UI polish round 2: Machines and Approvals layout, notification cards, sticker nits | 2026-10-03 |
+| [T-0158](T-0158-scheduled-backups.md) | Scheduled backups with retention, a freshness check in doctor, offsite hint, bare-metal timer and a Coolify guide | 2026-10-03 |
