@@ -1,5 +1,12 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Bot, ChevronRight, ShieldCheck, UserPlus, UserRound } from 'lucide-react-native';
+import {
+  Bot,
+  ChevronRight,
+  ShieldCheck,
+  UserPlus,
+  UserRound,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
@@ -25,18 +32,18 @@ export default function SettingsScreen() {
   );
 }
 
+// One entry per settings row icon; the type makes a missing entry a compile
+// error. Append one line per new row.
+const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
+  profile: UserRound,
+  ai: Bot,
+  requests: UserPlus,
+  approvals: ShieldCheck,
+};
+
 function hubIcon(icon: SettingsIconId, scheme: 'light' | 'dark') {
-  const color = ICON[scheme];
-  if (icon === 'profile') {
-    return <UserRound size={22} color={color} />;
-  }
-  if (icon === 'requests') {
-    return <UserPlus size={22} color={color} />;
-  }
-  if (icon === 'approvals') {
-    return <ShieldCheck size={22} color={color} />;
-  }
-  return <Bot size={22} color={color} />;
+  const Icon = HUB_ICONS[icon];
+  return <Icon size={22} color={ICON[scheme]} />;
 }
 
 function UserCard({ profile }: { profile: MyProfile | null }) {
