@@ -1,7 +1,7 @@
 ---
 id: T-0155
 title: Web UI polish round 2 (Machines, Approvals, dialogs, text size, sticker nits)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0155-web-ui-polish-2
 model: meta/muse-spark-1.3-contributor
@@ -143,3 +143,9 @@ real backend unaffected).
 - None.
 
 ## Review (written by Claude)
+
+Approved and merged after one pre-review. Format, lint, typecheck and the web suites for the machine cards, Machines, Approvals, Notifications, Stickers and the sticker panel pass on the final tree (80 tests plus the new card test).
+
+- Lead fixes after the pre-review: the revoked machine card showed the name twice (now once, with a wrapping hardware line, and a test that fails if it returns); the Favorites unfavorite star uses the same bordered style as the picker star; a code comment that described a class the code does not have; one landmark name ("Notifications on this device") for all three states of that card.
+- Not re-verified by me: the 390 px layout claims from the worker's browser audit. They need a look on the phone width after the next release.
+- `ApprovedMachineCard`: the title already was the machine name, the worker only added a tooltip and a comment; accepted.

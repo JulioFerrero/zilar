@@ -299,9 +299,9 @@ export function StickerPanel({
   // The sticker grid: 5 columns of fixed 56 px square tiles inside a
   // min-344px panel (5 x 56 + 4 x 8 gap + 2 x 8 padding = 328 px, leaving
   // room for the scrollbar), so tiles never overlap. The image stays
-  // object-contain inside its tile with breathing room (T-0155: `p-1.5`
-  // plus an `m-0.5` ring box, so the star's backdrop corner never touches
-  // the art) and the star is a small corner button fully inside the tile.
+  // object-contain inside its tile with breathing room (T-0155: `p-1.5`,
+  // so the star's backdrop corner never touches the art) and the star is a
+  // small corner button fully inside the tile.
   const TILE_PX = 56;
 
   const toggleFavorite = (sticker: StickerChoice): void => {

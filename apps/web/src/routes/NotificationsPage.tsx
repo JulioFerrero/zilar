@@ -401,7 +401,7 @@ export function NotificationsPage() {
                 “Add to Home Screen”, then open Zilar from the home screen and enable below.
               </p>
             )}
-            <section aria-label="This device" className="flex flex-col gap-2">
+            <section aria-label="Notifications on this device" className="flex flex-col gap-2">
               <h2 className="text-[16px] font-semibold">This device</h2>
               <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
                 <span className="min-w-0 flex-1 basis-40">

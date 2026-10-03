@@ -615,7 +615,7 @@ export function StickersPage() {
                       aria-label={`Unfavorite ${sticker.emoji ?? 'sticker'}`}
                       title={`Unfavorite ${sticker.emoji ?? 'sticker'}`}
                       onClick={() => void unstar(sticker.id)}
-                      className="absolute top-0.5 right-0.5 flex size-5 items-center justify-center rounded-full bg-black/60 text-[10px] leading-none text-white"
+                      className="absolute top-0.5 right-0.5 flex size-5 items-center justify-center rounded-full border border-edge bg-black/70 text-[10px] leading-none text-white"
                     >
                       ★
                     </button>
