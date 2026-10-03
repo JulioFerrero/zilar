@@ -8,7 +8,8 @@
     "xmpp:e2e": "tsx src/xmpp-e2e.ts",
     "lead": "tsx src/lead/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "gate": "tsx src/gate/cli.ts"
   },
   "dependencies": {
     "zod": "^4.6.5"
