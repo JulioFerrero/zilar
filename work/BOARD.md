@@ -181,7 +181,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0150](T-0150-mobile-attachments.md) | Mobile attachments | 2026-10-01 |
 | [T-0152](T-0152-web-sticker-ui.md) | Web sticker UI fixes | 2026-10-01 |
 | [T-0153](T-0153-web-settings-layout.md) | Web settings pages layout | 2026-10-01 |
-| [T-0154](T-0154-mobile-voice-messages.md) | Mobile voice messages: record, send, play (expo-audio) | planned | meta/muse-spark-1.3-contributor | T-0150 | Spec ready |
 | [T-0148](T-0148-mobile-gifs.md) | Mobile GIFs | 2026-10-01 |
 | [T-0151](T-0151-deploy-storage-safety.md) | Production storage safety | 2026-10-01 |
 | [T-0160](T-0160-rename-zilar.md) | Rename everything from Zilar to Zilar | 2026-10-02 |
@@ -203,3 +202,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0159](T-0159-install-rehearsal.md) | Fresh production install rehearsal: report with findings (push host defect, docs notes) | 2026-10-03 |
 | [T-0157](T-0157-mobile-nits-2.md) | Mobile nits bundle 2: attachments, GIFs, search jump, roles load error | 2026-10-03 |
 | [T-0170](T-0170-voice-transcripts.md) | Voice transcripts on demand (owner-configured OpenAI-compatible endpoint) | 2026-10-03 |
+| [T-0154](T-0154-mobile-voice-messages.md) | Mobile voice messages: record, send, play (expo-audio) | 2026-10-03 |
