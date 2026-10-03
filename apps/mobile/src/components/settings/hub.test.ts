@@ -6,7 +6,7 @@ describe('settingsHubRows', () => {
   it('maps every settings item to a hub row', () => {
     const rows = settingsHubRows();
 
-    expect(rows.map((row) => row.id)).toEqual(['profile', 'ais', 'requests']);
+    expect(rows.map((row) => row.id)).toEqual(['profile', 'ais', 'requests', 'approvals']);
     for (const row of rows) {
       expect(row.title).not.toBe('');
       expect(row.subtitle).not.toBe('');
@@ -22,5 +22,6 @@ describe('settingsHubRows', () => {
     expect(rows[0]?.href).toBe('/settings/profile');
     expect(rows[1]?.href).toBe('/ais');
     expect(rows[2]?.href).toBe('/settings/requests');
+    expect(rows[3]?.href).toBe('/settings/approvals');
   });
 });
