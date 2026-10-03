@@ -39,6 +39,7 @@ import {
   type TranscriptMap,
 } from '@/lib/voice-transcripts';
 import {
+  consumeTranscribeConsent,
   transcribeVoiceNote,
   type TranscribePhase,
   type VoiceTranscribeSource,
@@ -149,6 +150,9 @@ export function VoiceMessage({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const whistlePort = useMemo(() => whistle ?? createWhistlePort(), [whistle]);
   const transcribeRun = useRef(0);
+  // The one-shot model-download consent (T-0179, round 1): set only by the
+  // sheet's Download button for this run, consumed by `confirmDownload`.
+  const transcribeConsent = useRef({ confirmed: false });
   const bars = useMemo(() => sampleBars(voice.waveform, BAR_COUNT), [voice.waveform]);
 
   // A stored transcript is shown at once on the next app start: read it
@@ -266,8 +270,10 @@ export function VoiceMessage({
             : source.headers === undefined
               ? { localUri: source.uri }
               : { url: source.uri, headers: source.headers };
-        // The model is ready here (the confirm ran first), so no
-        // `confirmDownload`: the flow proceeds straight to transcribing.
+        // The model download needs the user's yes (round 1): the sheet's
+        // Download sets `transcribeConsent` for this run, and the gate
+        // consumes it — no yes, no download, the sheet re-opens instead.
+        const consent = transcribeConsent.current;
         const result = await transcribeVoiceNote({
           port: whistlePort,
           source: audioSource,
@@ -276,6 +282,21 @@ export function VoiceMessage({
             if (transcribeRun.current === run) {
               setTranscribePhase(phase);
             }
+          },
+          confirmDownload: async () => {
+            if (transcribeRun.current !== run) {
+              return false;
+            }
+            const ok = consumeTranscribeConsent(consent, () => {
+              if (transcribeRun.current === run) {
+                setConfirmOpen(true);
+              }
+            });
+            if (!ok && transcribeRun.current === run) {
+              setTranscribeBusy(false);
+              setTranscribePhase(undefined);
+            }
+            return ok;
           },
         });
         if (transcribeRun.current !== run) {
@@ -316,6 +337,9 @@ export function VoiceMessage({
     if (!showTranscribe || transcribeBusy) {
       return;
     }
+    // The user's yes must be fresh (round 1): a previous confirm never
+    // carries over — the model check decides whether the sheet opens.
+    transcribeConsent.current.confirmed = false;
     void whistlePort
       .modelStatus()
       .then((status) => {
@@ -332,6 +356,7 @@ export function VoiceMessage({
 
   const confirmTranscribe = () => {
     setConfirmOpen(false);
+    transcribeConsent.current.confirmed = true;
     runTranscribe();
   };
 

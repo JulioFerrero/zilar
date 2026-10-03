@@ -53,6 +53,26 @@ export type TranscribeVoiceNoteResult =
   | { status: 'cancelled' }
   | { status: 'error'; message: string };
 
+/**
+ * One-shot gate for the model download consent (T-0179, round 1): the flow
+ * must never download the model without the user's yes. Returns true only
+ * when the user already confirmed in the sheet for this run, consuming the
+ * yes; otherwise re-opens the confirm sheet and returns false, so the run
+ * stops with `cancelled`. A stale yes (confirmed, then the model still
+ * missing) re-opens the sheet instead of downloading.
+ */
+export function consumeTranscribeConsent(
+  consent: { confirmed: boolean },
+  reopen: () => void,
+): boolean {
+  if (consent.confirmed) {
+    consent.confirmed = false;
+    return true;
+  }
+  reopen();
+  return false;
+}
+
 function phaseOf(input: TranscribeVoiceNoteInput): (phase: TranscribePhase) => void {
   return (phase) => input.onPhase?.(phase);
 }

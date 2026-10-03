@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createWhistlePort, type WhistlePort } from './whistle-port';
 import {
+  consumeTranscribeConsent,
   TRANSCRIBE_DOWNLOAD_FAILED_MESSAGE,
   TRANSCRIBE_EMPTY_MESSAGE,
   TRANSCRIBE_FAILED_MESSAGE,
@@ -230,5 +231,54 @@ describe('transcribe voice note (T-0179)', () => {
     expect(transcribeCacheName('m-1')).toBe('voice-transcribe-m-1.m4a');
     expect(transcribeCacheName('../../x')).toBe('voice-transcribe-______x.m4a');
     expect(transcribeCacheName('')).toBe('voice-transcribe-note.m4a');
+  });
+});
+
+describe('transcribe consent gate (T-0179, round 1)', () => {
+  it('a fresh yes downloads once and consumes it', async () => {
+    const downloadModel = vi.fn(async () => {});
+    const result = await transcribeVoiceNote({
+      port: port({ modelStatus: async () => 'missing', downloadModel }),
+      source: { localUri: 'file:///cache/rec.m4a' },
+      confirmDownload: () =>
+        Promise.resolve(consumeTranscribeConsent({ confirmed: true }, () => {})),
+      files: files(),
+    });
+    expect(result).toMatchObject({ status: 'done' });
+    expect(downloadModel).toHaveBeenCalledTimes(1);
+  });
+
+  it('a stale yes re-opens the sheet and downloads nothing', async () => {
+    const downloadModel = vi.fn(async () => {});
+    const consent = { confirmed: true };
+    let reopened = 0;
+    const first = await transcribeVoiceNote({
+      port: port({ modelStatus: async () => 'missing', downloadModel }),
+      source: { localUri: 'file:///cache/rec.m4a' },
+      confirmDownload: () =>
+        Promise.resolve(
+          consumeTranscribeConsent(consent, () => {
+            reopened += 1;
+          }),
+        ),
+      files: files(),
+    });
+    expect(first).toMatchObject({ status: 'done' });
+    // The model still reports missing after the user confirmed once: the
+    // same yes must not download again — the sheet re-opens instead.
+    const second = await transcribeVoiceNote({
+      port: port({ modelStatus: async () => 'missing', downloadModel }),
+      source: { localUri: 'file:///cache/rec.m4a' },
+      confirmDownload: () =>
+        Promise.resolve(
+          consumeTranscribeConsent(consent, () => {
+            reopened += 1;
+          }),
+        ),
+      files: files(),
+    });
+    expect(second).toEqual({ status: 'cancelled' });
+    expect(reopened).toBe(1);
+    expect(downloadModel).toHaveBeenCalledTimes(1);
   });
 });
