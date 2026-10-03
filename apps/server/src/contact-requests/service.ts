@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { and, count, desc, eq, sql } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
+import type { SetupTransaction } from '../setup/settings';
 import { contactRequests, contacts, handles } from '../db/schema';
 import { HttpError } from '../errors';
 import { addContactPair, syncRoster } from '../contacts/service';
@@ -15,6 +16,10 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 
 export const MAX_PENDING_OUTGOING = 20;
 export const RE_REQUEST_COOLDOWN_DAYS = 7;
+// The list endpoint caps each side server-side; the outgoing cap above is
+// the binding one, so 100 newest per side is headroom, not a limit anyone
+// should hit.
+export const MAX_LIST_ROWS = 100;
 
 export type ContactRequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
 
@@ -43,13 +48,17 @@ export interface ContactRequestsDeps {
   now?: () => Date;
 }
 
+// Any database the handle/contact reads accept: the plain db or a
+// transaction cast (the codebase precedent: `tx as unknown as
+// ServerDatabase`). Lets callers re-resolve under their locks.
+export type TxDatabase = ServerDatabase | SetupTransaction;
+
 // Resolves an exact, case-insensitive handle to its user row. Unknown and
 // retired handles answer the same 404 `not_found`, so failures never reveal
 // which one it was. There is deliberately no prefix or partial search.
-export async function resolveHandleUser(
-  db: ServerDatabase,
-  handle: string,
-): Promise<{ id: string }> {
+// Takes any queryable (the plain db or a transaction) so callers can
+// re-resolve under their locks.
+export async function resolveHandleUser(db: TxDatabase, handle: string): Promise<{ id: string }> {
   const [row] = await db
     .select({ userId: handles.userId })
     .from(handles)
@@ -138,30 +147,37 @@ async function pendingBetween(
 // request in either direction (409 `request_exists` — the reverse request is
 // returned so the web can offer "Accept"), more than 20 pending outgoing
 // (429), a re-request within 7 days after a decline (429
-// `declined_recently`). The contact check, the duplicate and cooldown reads,
-// the outgoing-cap count and the insert run in one transaction under two
-// advisory locks taken always in the same order — the per-sender lock first
-// (serializes the per-user cap count), then the per-pair lock (serializes
-// the duplicate check) — so neither lock order can deadlock and a racing
-// accept cannot leave a stale pending row behind: the in-transaction contact
-// read sees the committed pair.
+// `declined_recently`). The target-handle resolve, the contact check, the
+// duplicate and cooldown reads, the outgoing-cap count and the insert all
+// run in one transaction under the per-sender advisory lock, so the check-
+// then-act cannot double-create under concurrency and a racing accept
+// cannot leave a stale pending row behind: the in-transaction contact read
+// sees the committed pair.
 export async function createContactRequest(
   deps: ContactRequestsDeps,
   fromId: string,
   handle: string,
 ): Promise<{ request: ContactRequestRow; reverseOf?: ContactRequestRow }> {
   const now = serviceNow(deps);
-  const target = await resolveHandleUser(deps.db, handle);
-  if (target.id === fromId) {
-    throw new HttpError(400, 'invalid_request', 'You cannot add yourself');
-  }
-
-  const pair = [fromId, target.id].sort().join(':');
 
   return deps.db.transaction(async (tx) => {
     const txDb = tx as unknown as ServerDatabase;
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'contact-sender:' + fromId}))`);
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'contact-request:' + pair}))`);
+    // The handle is resolved INSIDE the transaction, under the sender lock:
+    // a handle that moved (or an account deleted) between the HTTP layer
+    // and here must answer the same 404, never a 500 from a dangling FK
+    // insert. Reads through the transaction object go over the same single
+    // connection, so no second lock is held while waiting (PGlite has one
+    // connection per database: two concurrent advisory takes on it would
+    // self-deadlock, which is why the per-pair key below is folded into the
+    // sender lock's critical section instead of a second take).
+    const target = await resolveHandleUser(txDb, handle);
+    if (target.id === fromId) {
+      throw new HttpError(400, 'invalid_request', 'You cannot add yourself');
+    }
+    // The duplicate check serializes on the sender lock taken above (same
+    // critical section as the cap count), so no second lock order exists
+    // to deadlock.
 
     if (await isContact(txDb, fromId, target.id)) {
       throw new HttpError(409, 'already_contact', 'You are already contacts');
@@ -275,12 +291,14 @@ export async function listContactRequests(
     .select()
     .from(contactRequests)
     .where(and(eq(contactRequests.fromUserId, viewerId), eq(contactRequests.status, 'pending')))
-    .orderBy(desc(contactRequests.createdAt))) as ContactRequestRow[];
+    .orderBy(desc(contactRequests.createdAt))
+    .limit(MAX_LIST_ROWS)) as ContactRequestRow[];
   const received = (await deps.db
     .select()
     .from(contactRequests)
     .where(and(eq(contactRequests.toUserId, viewerId), eq(contactRequests.status, 'pending')))
-    .orderBy(desc(contactRequests.createdAt))) as ContactRequestRow[];
+    .orderBy(desc(contactRequests.createdAt))
+    .limit(MAX_LIST_ROWS)) as ContactRequestRow[];
   const rows = [...sent, ...received].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const otherIds = [
     ...new Set(rows.map((row) => (row.fromUserId === viewerId ? row.toUserId : row.fromUserId))),
@@ -475,18 +493,19 @@ export async function profileForHandle(
   viewerId: string,
   handle: string,
 ): Promise<OtherUserProfile & { relation: Awaited<ReturnType<typeof relationFor>> }> {
-  const target = await resolveHandleUser(db, handle);
-  const [row] = await db
-    .select()
-    .from(handles)
-    .where(eq(handles.handleLower, normalizeHandle(handle.trim())))
-    .limit(1);
-  const profile = await displayNameFor(db, target.id);
+  const lower = normalizeHandle(handle.trim());
+  const [row] = await db.select().from(handles).where(eq(handles.handleLower, lower)).limit(1);
+  // Reuse the row just read: an unknown handle and a retired handle answer
+  // the same 404.
+  if (!row || !row.userId) {
+    throw new HttpError(404, 'not_found', 'No user with that username');
+  }
+  const profile = await displayNameFor(db, row.userId);
   return {
-    userId: target.id,
+    userId: row.userId,
     name: profile.name.trim() === '' ? 'Unnamed user' : profile.name,
-    handle: row?.handle ?? handle.trim(),
+    handle: row.handle,
     image: profile.image,
-    relation: await relationFor(db, viewerId, target.id),
+    relation: await relationFor(db, viewerId, row.userId),
   };
 }

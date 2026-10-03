@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { screen } from '@testing-library/react';
+import { matchRoutes } from 'react-router';
 import { renderApp } from '@/test/renderApp';
 
 describe('handle gate', () => {
@@ -35,5 +36,67 @@ describe('handle gate', () => {
     renderApp('/u/bob_b');
     expect(await screen.findByRole('dialog', { name: 'Add contact' })).toBeTruthy();
     expect(screen.getByDisplayValue('bob_b')).toBeTruthy();
+  });
+
+  it('opens the Add contact dialog prefilled from /@handle', async () => {
+    renderApp('/@bob_b');
+    expect(await screen.findByRole('dialog', { name: 'Add contact' })).toBeTruthy();
+    expect(screen.getByDisplayValue('bob_b')).toBeTruthy();
+  });
+
+  it('sends a logged-out /@handle visitor to login (returning to /@handle)', async () => {
+    const { AuthProvider } = await import('@/auth/AuthProvider');
+    const { ChatStoreProvider } = await import('@/store/ChatStoreProvider');
+    const { createChatStore } = await import('@/store/store');
+    const { render } = await import('@testing-library/react');
+    const { MemoryRouter, useLocation } = await import('react-router');
+    const { AppRoutes } = await import('@/routes/AppRoutes');
+    function ShowPath() {
+      const location = useLocation();
+      return <div data-testid="path">{`${location.pathname}${location.search}`}</div>;
+    }
+    // Full router (not renderApp): guest + initial entry /@bob_b must land
+    // on /login, and the location state must carry `from: /@bob_b` so the
+    // login flow returns to the real share URL afterwards. The state is
+    // read through a second probe route instead of a captured variable
+    // (reassigning outer variables during render is a lint error).
+    function ShowFrom() {
+      const location = useLocation();
+      const state = location.state as { from?: string } | null;
+      return <div data-testid="from">{state?.from ?? ''}</div>;
+    }
+    render(
+      <AuthProvider value={{ status: 'guest', user: undefined, refetch: async () => {} }}>
+        <ChatStoreProvider store={createChatStore()}>
+          <MemoryRouter initialEntries={['/@bob_b']}>
+            <AppRoutes />
+            <ShowPath />
+            <ShowFrom />
+          </MemoryRouter>
+        </ChatStoreProvider>
+      </AuthProvider>,
+    );
+    expect(await screen.findByText('Sign in to Zilar')).toBeTruthy();
+    expect(screen.getByTestId('path').textContent).toBe('/login');
+    expect(screen.getByTestId('from').textContent).toBe('/@bob_b');
+  });
+
+  it('redirects a bare /@ home like the catch-all', async () => {
+    const { unmount } = renderApp('/@');
+    expect(await screen.findByText(/Chats|New chat|Invite a friend/)).toBeTruthy();
+    unmount();
+  });
+
+  it('keeps static routes ahead of the atHandle gate', () => {
+    // Static routes are declared before the dynamic gate, so they win.
+    const routes = [
+      { path: '/settings/ais', element: <div /> },
+      { path: '/u/:handle', element: <div /> },
+      { path: '/:atHandle', element: <div /> },
+      { path: '*', element: <div /> },
+    ];
+    expect(matchRoutes(routes, '/@ada')?.[0]?.params).toMatchObject({ atHandle: '@ada' });
+    expect(matchRoutes(routes, '/settings/ais')?.[0]?.route.path).toBe('/settings/ais');
+    expect(matchRoutes(routes, '/u/bob_b')?.[0]?.route.path).toBe('/u/:handle');
   });
 });

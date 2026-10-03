@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router';
 import type { ReactNode } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
 import { SKELETON_DELAY_MS } from '@/components/Skeleton';
@@ -176,12 +176,17 @@ export function AppRoutes() {
       />
       {/* Share links: /@handle opens the Add contact dialog prefilled with
           the result when logged in, and goes to login (returning afterwards)
-          when logged out. /u/handle is the fallback for routers that cannot
-          match `@` (react-router matches it, but some static hosts do not).
-          Both are plain top-level routes so the handle gate (which only
-          guards the chat and settings pages) never redirects them. */}
+          when logged out. react-router matches params only as full segments,
+          so `/@:handle` never matches: instead a single-segment `/:atHandle`
+          gate renders the dialog only for values starting with `@` and
+          redirects anything else home (exactly like the catch-all below, so
+          no real route is shadowed — static routes always win over dynamic
+          ones). `/u/:handle` is the fallback for hosts that cannot serve
+          `@` paths. All three sit outside the handle gate (which only
+          guards the chat and settings pages), so a share link never
+          redirects to /welcome/handle. */}
       <Route path="/u/:handle" element={<AddContactRoute />} />
-      <Route path="/@:handle" element={<AddContactRoute />} />
+      <Route path="/:atHandle" element={<AtHandleGate />} />
       <Route
         path="/settings/integrations"
         element={
@@ -211,4 +216,19 @@ function JoinRoute() {
 function RequestsRoute() {
   const navigate = useNavigate();
   return <RequestsPage onBack={() => navigate('/')} />;
+}
+
+// The `/@handle` gate: react-router cannot match `/@:handle` (a param must
+// be a full segment), so this single-segment route checks the value itself.
+// Values starting with `@` render the Add contact dialog for the rest;
+// anything else (including a bare `/@`) redirects home, exactly like the
+// catch-all below. Static routes (`/login`, `/settings/*`, …) always win
+// over this dynamic one, so no real route is shadowed.
+function AtHandleGate() {
+  const params = useParams<{ atHandle?: string }>();
+  const value = params.atHandle ?? '';
+  if (!value.startsWith('@') || value.length < 2) {
+    return <Navigate to="/" replace />;
+  }
+  return <AddContactRoute atHandle={value.slice(1)} />;
 }
