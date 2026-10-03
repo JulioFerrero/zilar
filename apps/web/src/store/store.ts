@@ -37,6 +37,7 @@ import {
   putChatPref,
   removeTopicAi,
   removeTopicMember,
+  setGroupVisibility as setGroupVisibilityApi,
   setMembersCanCreateTopics,
   setTopicRoles,
 } from '@/lib/api';
@@ -199,9 +200,15 @@ export interface ChatStore {
   /**
    * T-0124: creates a channel (the broadcast feed: moderated room, only
    * admins post) and opens it. Rejects on failure.
+   * T-0164: `visibility: 'public'` + `handle` creates it with its directory
+   * entry in one transaction.
    */
-  createChannel: (title: string, memberIds: string[], description?: string) => Promise<string>;
-  /**
+  createChannel: (
+    title: string,
+    memberIds: string[],
+    description?: string,
+    options?: { visibility?: 'private' | 'public'; handle?: string },
+  ) => Promise<string>; /**
    * T-0124: leaves a channel (subscribers) through the member route. Admins
    * remove others the same way. Rejects on failure.
    */
@@ -211,6 +218,20 @@ export interface ChatStore {
    * the room affiliation follows at once. Rejects on failure.
    */
   changeChannelRole: (chatId: string, userId: string, role: 'admin' | 'member') => Promise<void>;
+  /**
+   * T-0164: the owner flips a group public (with a handle) or back to
+   * private. The detail refreshes from server truth. Rejects on failure.
+   */
+  setGroupVisibility: (
+    chatId: string,
+    input: { visibility: 'private' | 'public'; handle?: string },
+  ) => Promise<void>;
+  /**
+   * T-0164: joins a public group or channel with one request (private or
+   * unknown answers the same 404). Refreshes the list and returns the
+   * General chat id to open, like the link join. Rejects on failure.
+   */
+  joinPublicGroup: (groupId: string) => Promise<string | undefined>;
   /** Flips the group's "members can create topics" switch. Rejects on failure. */
   setMembersCanCreateTopics: (chatId: string, allowed: boolean) => Promise<void>;
   /**
@@ -323,7 +344,16 @@ export interface ChatStore {
    */
   mediaTrustedHosts: ReadonlySet<string> | undefined;
   sendTyping: (chatId: string) => void;
-  createGroup: (title: string, memberIds: string[]) => Promise<string>;
+  createGroup: (
+    title: string,
+    memberIds: string[],
+    options?: {
+      kind?: 'group' | 'channel';
+      description?: string;
+      visibility?: 'private' | 'public';
+      handle?: string;
+    },
+  ) => Promise<string>;
   createInvite: () => Promise<string>;
   signOut: () => Promise<void>;
   start: () => void;
@@ -845,6 +875,19 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         }
         const updated = await setMembersCanCreateTopics(groupId, allowed);
         set((state) => ({ groupInfos: { ...state.groupInfos, [chatId]: updated } }));
+      },
+      // T-0164 (mock): visibility flips through the mock API's PATCH, and
+      // joining appends the mock user like the mock's link join does.
+      setGroupVisibility: async (chatId, input) => {
+        const groupId = get().groupInfos[chatId]?.id;
+        if (groupId === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const updated = await setGroupVisibilityApi(groupId, input);
+        set((state) => ({ groupInfos: { ...state.groupInfos, [chatId]: updated } }));
+      },
+      joinPublicGroup: async () => {
+        throw new Error('joinPublicGroup is not available in the mock store');
       },
       chatPrefs: {},
       // Mock mode talks to the in-memory mock API (T-0113): the same merge

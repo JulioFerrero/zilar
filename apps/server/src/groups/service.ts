@@ -9,6 +9,7 @@ import {
   groupMembers,
   groups,
   handles,
+  retiredHandles,
   topicAis,
   topicMembers,
   topics,
@@ -25,6 +26,9 @@ import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
 import { deleteRoutinesForAiInGroup } from '../routines/service';
 import { deleteToolsForAiInGroup } from '../tools/service';
 import { syncTopicRoom } from '../topics/rooms';
+import { isUniqueViolation } from '../handles/store';
+import { classifyHandle, normalizeHandle } from '../handles/rules';
+import { handleForGroup, type GroupVisibility } from './visibility';
 
 export const MAX_GROUP_MEMBERS = 50;
 export const ROOM_LOCALPART_LENGTH = 16;
@@ -63,6 +67,13 @@ export interface GroupDetail {
   kind: ChannelKind;
   // T-0124: the channel's short blurb, or null when none.
   description: string | null;
+  // T-0164: `private` groups stay invisible and invite-only, like before;
+  // `public` ones hold exactly one `handles` row and appear in the
+  // directory. Optional in older payloads = `private`.
+  visibility: GroupVisibility;
+  // T-0164: the group's `@handle` while public, null while private.
+  // Optional in older payloads = null.
+  handle: string | null;
   members: GroupMemberView[];
   ais: GroupAiView[];
 }
@@ -82,6 +93,10 @@ export interface ChatGroup {
   role: GroupRole;
   kind: ChannelKind;
   description: string | null;
+  // T-0164: the group's `visibility` (private stays invite-only; public is
+  // in the directory) and its `@handle` while public (null while private).
+  visibility: GroupVisibility;
+  handle: string | null;
 }
 
 export interface CreateGroupInput {
@@ -95,6 +110,12 @@ export interface CreateGroupInput {
   // is accepted for both and stored on the row.
   kind?: ChannelKind | undefined;
   description?: string | undefined;
+  // T-0164: `public` creates the group with a handle in one transaction
+  // (same rules as the visibility change: shape, reserved words, 409
+  // `handle_taken` on a race); `private` (default) behaves as before.
+  visibility?: 'private' | 'public' | undefined;
+  handle?: string | undefined;
+  now?: Date;
 }
 
 export interface AddGroupMembersInput {
@@ -179,10 +200,31 @@ export async function createGroup(
   await assertContacts(db, input.creatorId, memberIds);
   const kind: ChannelKind = input.kind ?? 'group';
   const description = input.description?.trim() === '' ? null : (input.description ?? null);
+  const now = input.now ?? new Date();
 
   const groupId = randomUUID();
   const roomLocalpart = randomRoomLocalpart();
   let roomCreated = false;
+
+  // T-0164: a public create validates the handle up front (shape + reserved
+  // words), so the transaction below never has to roll back for a bad
+  // value; the uniqueness race still maps to 409 `handle_taken` inside.
+  const wantPublic = input.visibility === 'public';
+  const trimmedHandle = (input.handle ?? '').trim();
+  if (wantPublic) {
+    if (trimmedHandle === '') {
+      throw new HttpError(400, 'invalid_request', 'A public group needs a handle');
+    }
+    const rule = classifyHandle(trimmedHandle);
+    if (rule === 'invalid') {
+      throw new HttpError(400, 'handle_invalid', 'That handle is not valid');
+    }
+    if (rule === 'reserved') {
+      throw new HttpError(409, 'handle_reserved', 'That handle is reserved');
+    }
+  } else if (input.handle !== undefined) {
+    throw new HttpError(400, 'invalid_request', 'A private group has no handle');
+  }
 
   try {
     await db.transaction(async (tx) => {
@@ -193,6 +235,7 @@ export async function createGroup(
         createdBy: input.creatorId,
         kind,
         description,
+        ...(wantPublic ? { visibility: 'public' as const } : {}),
       });
       await tx
         .insert(groupMembers)
@@ -215,6 +258,50 @@ export async function createGroup(
         isGeneral: true,
         createdBy: input.creatorId,
       });
+
+      // T-0164: a public create claims the handle in the same transaction
+      // (the creator's first claim is always allowed — no interval — and a
+      // retired reservation of this group reads as free, reclaimed by
+      // deleting it here). Concurrent creates race on the primary key:
+      // exactly one wins and the loser maps to 409 `handle_taken`.
+      if (wantPublic) {
+        const lower = normalizeHandle(trimmedHandle);
+        const [taken] = await tx
+          .select()
+          .from(handles)
+          .where(eq(handles.handleLower, lower))
+          .limit(1);
+        if (taken) {
+          throw new HttpError(409, 'handle_taken', 'That handle is taken');
+        }
+        const [retired] = await tx
+          .select()
+          .from(retiredHandles)
+          .where(eq(retiredHandles.handleLower, lower))
+          .limit(1);
+        if (retired) {
+          const reserved = retired.reservedUntil.getTime() > now.getTime();
+          if (reserved && retired.formerGroupId !== groupId) {
+            throw new HttpError(409, 'handle_taken', 'That handle is taken');
+          }
+          await tx.delete(retiredHandles).where(eq(retiredHandles.handleLower, lower));
+        }
+        try {
+          await tx.insert(handles).values({
+            handleLower: lower,
+            handle: trimmedHandle,
+            userId: null,
+            groupId,
+            createdAt: now,
+            changedAt: now,
+          });
+        } catch (error) {
+          if (isUniqueViolation(error)) {
+            throw new HttpError(409, 'handle_taken', 'That handle is taken');
+          }
+          throw error;
+        }
+      }
 
       // T-0124: a channel's room is moderated with `members_by_default:
       // false`, so subscribers (affiliation `member`) join as visitors:
@@ -271,6 +358,7 @@ export async function getGroupDetail(
   }
   const members = await listGroupMembers(db, groupId);
   const aiViews = await listGroupAis(db, groupId);
+  const handle = await handleForGroup(db, groupId);
   return {
     id: group.id,
     title: group.title,
@@ -279,6 +367,8 @@ export async function getGroupDetail(
     membersCanCreateTopics: group.membersCanCreateTopics,
     kind: group.kind,
     description: group.description,
+    visibility: group.visibility,
+    handle,
     members,
     ais: aiViews,
   };
@@ -914,6 +1004,7 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
       title: groups.title,
       kind: groups.kind,
       description: groups.description,
+      visibility: groups.visibility,
     })
     .from(groups)
     .where(inArray(groups.id, groupIds));
@@ -922,9 +1013,21 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
     .from(groupMembers)
     .where(inArray(groupMembers.groupId, groupIds))
     .groupBy(groupMembers.groupId);
+  // T-0164: the `@handle` of every public group on the list, in the same
+  // query shape as the member handles elsewhere.
+  const handleRows = await db
+    .select({ groupId: handles.groupId, handle: handles.handle })
+    .from(handles)
+    .where(inArray(handles.groupId, groupIds));
 
   const groupsById = new Map(groupRows.map((row) => [row.id, row]));
   const countsById = new Map(counts.map((row) => [row.groupId, Number(row.total)]));
+  const handlesById = new Map<string, string>();
+  for (const row of handleRows) {
+    if (row.groupId !== null) {
+      handlesById.set(row.groupId, row.handle);
+    }
+  }
 
   return memberships.flatMap((membership) => {
     const group = groupsById.get(membership.groupId);
@@ -940,6 +1043,8 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
         role: membership.role,
         kind: group.kind,
         description: group.description,
+        visibility: group.visibility,
+        handle: handlesById.get(group.id) ?? null,
       },
     ];
   });

@@ -10,6 +10,7 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
+  checkGroupHandleAvailability,
   checkHandleAvailability,
   claimHandle,
   handleForUser,
@@ -21,7 +22,14 @@ export const HANDLE_CHECK_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 export const HANDLE_CLAIM_RATE_LIMIT_MAX = 10;
 export const HANDLE_CLAIM_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-const checkQuerySchema = z.object({ handle: z.string().min(1).max(64) });
+const checkQuerySchema = z.object({
+  handle: z.string().min(1).max(64),
+  // T-0164: `kind=group` asks whether a handle is free for a public group
+  // or channel (a handle held by the asker's own retired group reservation
+  // counts as available, like the user path). Absent (or `user`) keeps the
+  // T-0163 user answer.
+  kind: z.enum(['user', 'group']).optional(),
+});
 
 const claimBodySchema = z.object({ handle: z.string().min(1).max(64) }).strict();
 
@@ -55,15 +63,24 @@ export function createHandlesRoutes(deps: HandlesRoutesDependencies): Hono {
 
   // Live availability for the typed handle: `{ available, reason? }` with
   // the exact reason (`invalid` | `reserved` | `taken`). A handle held by
-  // the asker's own retired reservation counts as available.
+  // the asker's own retired reservation counts as available. T-0164:
+  // `kind=group` answers for a public group or channel instead (own group
+  // reservations count as available; other groups' and users' rows read as
+  // taken — same namespace, same primary key).
   routes.get('/handles/check', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
     if (!checkLimiter.allow(user.id)) {
       throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
     }
-    const parsed = checkQuerySchema.safeParse({ handle: c.req.query('handle') ?? '' });
+    const parsed = checkQuerySchema.safeParse({
+      handle: c.req.query('handle') ?? '',
+      ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+    });
     if (!parsed.success) {
       return c.json({ available: false, reason: 'invalid' });
+    }
+    if (parsed.data.kind === 'group') {
+      return c.json(await checkGroupHandleAvailability(deps.db, parsed.data.handle));
     }
     return c.json(await checkHandleAvailability(deps.db, user.id, parsed.data.handle));
   });

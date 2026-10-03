@@ -261,6 +261,20 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     removeGroupMember: vi.fn(async () => {
       throw new Error('not implemented');
     }),
+    setGroupVisibility: vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [],
+      ais: [],
+    })),
+    searchDirectory: vi.fn(async () => ({ entries: [], next: null })),
+    lookupGroupByHandle: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
+    joinPublicGroup: vi.fn(async () => {
+      throw new Error('not implemented');
+    }),
     listAis: vi.fn(async () => []),
     addGroupAi: vi.fn(async () => ({
       id: 'g1',

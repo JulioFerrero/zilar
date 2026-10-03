@@ -36,7 +36,9 @@ describe('NewChatButton', () => {
     fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'Crew' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
-    await waitFor(() => expect(createGroup).toHaveBeenCalledWith('Crew', ['u-ana']));
+    // T-0164: the dialog passes a third options object (empty for a
+    // private group without a description).
+    await waitFor(() => expect(createGroup).toHaveBeenCalledWith('Crew', ['u-ana'], {}));
     // The new group shows in the list and, once opened, in the header too, so
     // the check waits for it to open instead of expecting a single "Crew".
     await waitFor(() => expect(store.getState().activeChatId).toBe(room.id));

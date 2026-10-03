@@ -1,0 +1,1 @@
+ALTER TABLE "groups" ADD COLUMN "visibility" text DEFAULT 'private' NOT NULL;

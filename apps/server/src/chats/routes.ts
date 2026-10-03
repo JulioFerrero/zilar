@@ -32,6 +32,11 @@ export type ChatListEntry =
       subscriberCount?: number;
       /** The channel's short blurb, or null. Absent on groups. */
       description?: string | null;
+      // T-0164: `private` stays invite-only; `public` is in the directory.
+      // The web paints a "Public" label from these, like the CHANNEL tag.
+      visibility: 'private' | 'public';
+      /** The group's `@handle` while public, null while private. */
+      handle: string | null;
       /** Visible topics (archived excluded); General keeps the group chatJid. */
       topics: TopicView[];
     };
@@ -86,6 +91,10 @@ export function createChatsRoutes({ auth, db, config }: ChatsRoutesDependencies)
         ...(group.kind === 'channel'
           ? { subscriberCount: group.memberCount, description: group.description }
           : {}),
+        // T-0164: visibility + handle ride every group entry (the web
+        // paints a "Public" label from them); null handle while private.
+        visibility: group.visibility,
+        handle: group.handle,
         topics: [],
       })),
     ];

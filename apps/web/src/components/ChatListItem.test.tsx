@@ -23,6 +23,21 @@ const personChat: ChatSummary = {
   muted: false,
 };
 
+// T-0164: a public group carries `visibility: 'public'` on its row (from
+// the chat list entry), like the CHANNEL tag for channels.
+const publicGroup: ChatSummary = {
+  id: 'c-hiking',
+  title: 'Hiking club',
+  kind: 'group',
+  isAI: false,
+  space: 'personal',
+  unread: 0,
+  muted: false,
+  memberCount: 12,
+  visibility: 'public',
+  handle: 'hiking_club',
+};
+
 describe('ChatListItem', () => {
   it('shows writing… while a draft exists for an AI chat', () => {
     const { store } = renderApp('/', { chats: [aiChat], messagesByChat: {} });
@@ -170,5 +185,12 @@ describe('ChatListItem', () => {
     });
 
     expect(screen.getByText('a **bold** word')).toBeTruthy();
+  });
+
+  it('shows a PUBLIC tag on public groups, and none on private ones', () => {
+    renderApp('/', { chats: [publicGroup, personChat], messagesByChat: {} });
+
+    expect(screen.getByText('PUBLIC')).toBeTruthy();
+    expect(screen.queryByText('CHANNEL')).toBeNull();
   });
 });

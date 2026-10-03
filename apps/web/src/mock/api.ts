@@ -1905,6 +1905,10 @@ function chatEntries(): ChatEntry[] {
               description: chat.description ?? null,
             }
           : {}),
+        // T-0164: visibility + handle ride the entry (the web paints the
+        // PUBLIC label from them); null handle while private.
+        visibility: detail?.visibility ?? 'private',
+        handle: detail?.handle ?? null,
       } as ChatEntry & { topics?: unknown[] };
       // T-0111: the Dev team group carries its visible topics (archived
       // excluded). The mock has one user, who sees every topic.
@@ -2133,10 +2137,14 @@ export async function mockRequest(
 
   // T-0163: live handle availability, in memory for the page load.
   // `taken-user` is always taken; anything valid-shaped and non-reserved is
-  // free.
+  // free. T-0164: `kind=group` also reports the `@acme` handle as taken.
   if (head === 'handles' && first === 'check' && method === 'GET') {
     const params = new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
-    return jsonResponse(mockCheckHandle((params.get('handle') ?? '').trim()));
+    const raw = (params.get('handle') ?? '').trim();
+    if (params.get('kind') === 'group' && raw.toLowerCase() === 'acme') {
+      return jsonResponse({ available: false, reason: 'taken' });
+    }
+    return jsonResponse(mockCheckHandle(raw));
   }
 
   if (head === 'chats' && method === 'GET') {
@@ -2757,6 +2765,102 @@ export async function mockRequest(
     return notImplemented();
   }
 
+  // T-0164: the Explore directory in memory for the page load. Only mock
+  // groups marked public (the Acme channel, plus any group flipped public
+  // through PATCH) appear — never users, never private groups. `q` matches
+  // handle or title prefixes (case-insensitive, at least 2 characters);
+  // empty lists newest first; `kind` filters; 20 per page with an opaque
+  // index cursor.
+  if (head === 'directory' && method === 'GET') {
+    const params = new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
+    const q = (params.get('q') ?? '').trim();
+    const kind = params.get('kind');
+    if (q !== '' && q.length < 2) {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'Search needs at least 2 characters' } },
+        400,
+      );
+    }
+    if (kind !== null && kind !== 'group' && kind !== 'channel') {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'Invalid kind filter' } },
+        400,
+      );
+    }
+    const lower = q.toLowerCase();
+    const rows = (
+      Object.entries(mockGroupDetails) as Array<[string, (typeof mockGroupDetails)[string]]>
+    )
+      .filter(
+        ([, detail]) =>
+          detail.visibility === 'public' && detail.handle !== undefined && detail.handle !== null,
+      )
+      .filter(([, detail]) => kind === null || detail.kind === kind)
+      .filter(
+        ([, detail]) =>
+          q === '' ||
+          (detail.handle !== undefined &&
+            detail.handle !== null &&
+            detail.handle.toLowerCase().startsWith(lower)) ||
+          detail.title.toLowerCase().startsWith(lower),
+      )
+      .map(([, detail]) => ({
+        id: detail.id,
+        kind: detail.kind ?? 'group',
+        title: detail.title,
+        handle: detail.handle ?? '',
+        description: detail.description ?? null,
+        memberCount: detail.members.length,
+        joined: detail.members.some((member) => member.userId === currentUserId),
+      }))
+      .reverse();
+    const start = Number(params.get('cursor') ?? '0') || 0;
+    return jsonResponse({ entries: rows.slice(start, start + 20), next: null });
+  }
+
+  // T-0164: exact public-group lookup by `@handle` in memory. Users,
+  // private groups and unknown handles answer the same 404.
+  if (head === 'groups' && first === 'by-handle' && second !== undefined && method === 'GET') {
+    const raw = decodeURIComponent(second).trim().toLowerCase();
+    const detail = Object.values(mockGroupDetails).find(
+      (item) =>
+        item.visibility === 'public' &&
+        item.handle !== undefined &&
+        item.handle !== null &&
+        item.handle.toLowerCase() === raw,
+    );
+    if (detail === undefined || detail.handle === undefined || detail.handle === null) {
+      return jsonResponse({ error: { code: 'not_found', message: 'No public group' } }, 404);
+    }
+    return jsonResponse({
+      id: detail.id,
+      kind: detail.kind ?? 'group',
+      title: detail.title,
+      handle: detail.handle,
+      description: detail.description ?? null,
+      memberCount: detail.members.length,
+      joined: detail.members.some((member) => member.userId === currentUserId),
+    });
+  }
+
+  // T-0164: open join of a public mock group. Private and unknown groups
+  // answer the same 404; joining twice reports `alreadyMember: true`.
+  if (head === 'groups' && second === 'join' && method === 'POST') {
+    const groupId = decodeURIComponent(first ?? '');
+    const detail = Object.values(mockGroupDetails).find((item) => item.id === groupId);
+    if (detail === undefined || detail.visibility !== 'public') {
+      return jsonResponse({ error: { code: 'not_found', message: 'Group not found' } }, 404);
+    }
+    if (detail.members.some((member) => member.userId === currentUserId)) {
+      return jsonResponse({ groupId: detail.id, alreadyMember: true });
+    }
+    detail.members = [
+      ...detail.members,
+      { userId: currentUserId, name: mockPersonName(currentUserId), role: 'member', roles: [] },
+    ];
+    return jsonResponse({ groupId: detail.id, alreadyMember: false });
+  }
+
   // T-0124: creating groups and channels in mock mode. The row lands in
   // `mockGroupDetails` under a fresh chat id; the mock user owns it.
   if (head === 'groups' && first === undefined && method === 'POST') {
@@ -2809,6 +2913,10 @@ export async function mockRequest(
 
   // T-0111: the group's topic settings switch. The mock has one user,
   // the group owner, so PATCH always succeeds for the Dev team group.
+  // T-0164: the same route carries `visibility` + `handle` (owner only —
+  // the mock user owns every mock group). Going public needs a
+  // valid-shaped, non-reserved, free handle (`taken_user` and `acme` read
+  // as taken, like the handle endpoints); going private clears it.
   if (head === 'groups' && second === undefined && method === 'PATCH') {
     const groupId = decodeURIComponent(first ?? '');
     const detail = Object.values(mockGroupDetails).find((item) => item.id === groupId);
@@ -2816,16 +2924,48 @@ export async function mockRequest(
       return notFound('Group not found');
     }
     const body = readJsonBody(init);
+    let updated = detail;
     if (typeof body.membersCanCreateTopics === 'boolean') {
-      const updated = { ...detail, membersCanCreateTopics: body.membersCanCreateTopics };
+      updated = { ...updated, membersCanCreateTopics: body.membersCanCreateTopics };
+    }
+    if (body.visibility === 'private' || body.visibility === 'public') {
+      if (body.visibility === 'private') {
+        updated = { ...updated, visibility: 'private', handle: null };
+      } else {
+        const raw = typeof body.handle === 'string' ? body.handle.trim() : '';
+        const checked = mockCheckHandle(raw);
+        if (!checked.available) {
+          const code =
+            checked.reason === 'invalid'
+              ? 'handle_invalid'
+              : checked.reason === 'reserved'
+                ? 'handle_reserved'
+                : 'handle_taken';
+          return jsonResponse(
+            { error: { code, message: 'That handle is not available' } },
+            code === 'handle_invalid' ? 400 : 409,
+          );
+        }
+        if (raw.toLowerCase() === 'acme' && detail.id !== 'g-acme') {
+          return jsonResponse(
+            { error: { code: 'handle_taken', message: 'That handle is taken' } },
+            409,
+          );
+        }
+        updated = { ...updated, visibility: 'public', handle: raw };
+      }
+    }
+    if (updated !== detail) {
       for (const [chatId, entry] of Object.entries(mockGroupDetails)) {
         if (entry.id === groupId) {
           mockGroupDetails[chatId] = updated;
         }
       }
-      return jsonResponse(updated);
     }
-    return jsonResponse(detail);
+    if (typeof body.membersCanCreateTopics === 'boolean' && updated === detail) {
+      return jsonResponse(detail);
+    }
+    return jsonResponse(updated);
   }
 
   // T-0124: channel member routes in mock mode (the mock user owns every

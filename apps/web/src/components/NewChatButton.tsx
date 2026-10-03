@@ -1,6 +1,7 @@
 import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AddContactDialog } from './AddContactDialog';
+import { ExplorePage } from './ExplorePage';
 import { InviteDialog } from './InviteDialog';
 import { NewAiDialog } from './ais/NewAiDialog';
 import { NewGroupDialog } from './NewGroupDialog';
@@ -13,15 +14,21 @@ import { cn } from '@/lib/utils';
 const MENU_ITEM_CLASS =
   'flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none';
 
-type Dialog = 'group' | 'channel' | 'message' | 'invite' | 'add-contact' | 'ai' | 'topic';
+type Dialog =
+  'group' | 'channel' | 'message' | 'invite' | 'add-contact' | 'ai' | 'topic' | 'explore';
 
 /** New chat: a full-width primary key on wide screens, a primary FAB on narrow. */
 export function NewChatButton({
   defaultGroupId,
   onAddContact,
+  onExplore,
 }: {
   defaultGroupId?: string;
   onAddContact?: () => void;
+  // T-0164: reaching the Explore directory from the + new chat menu. When
+  // provided, the menu entry delegates to the owner (ChatList's overlay);
+  // otherwise the button renders its own overlay.
+  onExplore?: () => void;
 } = {}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog | undefined>(undefined);
@@ -49,6 +56,15 @@ export function NewChatButton({
   const openDialog = (next: Dialog): void => {
     setMenuOpen(false);
     setDialog(next);
+  };
+
+  const openExplore = (): void => {
+    setMenuOpen(false);
+    if (onExplore !== undefined) {
+      onExplore();
+    } else {
+      setDialog('explore');
+    }
   };
 
   // Groups the viewer may create a topic in: owner/admin always, members
@@ -179,6 +195,9 @@ export function NewChatButton({
             >
               New channel
             </button>
+            <button type="button" role="menuitem" className={MENU_ITEM_CLASS} onClick={openExplore}>
+              Explore groups
+            </button>
             <button
               type="button"
               role="menuitem"
@@ -256,6 +275,7 @@ export function NewChatButton({
 
       {dialog === 'group' && <NewGroupDialog onClose={closeDialog} />}
       {dialog === 'channel' && <NewGroupDialog onClose={closeDialog} channel />}
+      {dialog === 'explore' && <ExplorePage onClose={closeDialog} />}
       {dialog === 'ai' && <NewAiDialog onClose={closeDialog} />}
       {dialog === 'invite' && <InviteDialog onClose={closeDialog} />}
       {dialog === 'add-contact' && <AddContactDialog onClose={closeDialog} />}

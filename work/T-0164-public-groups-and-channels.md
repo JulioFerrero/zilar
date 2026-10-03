@@ -1,7 +1,7 @@
 ---
 id: T-0164
 title: Public and private groups and channels (handles, directory, open join)
-status: planned
+status: review
 milestone: M5
 branch: task/T-0164-public-groups-and-channels
 model: meta/muse-spark-1.3-contributor
@@ -78,5 +78,44 @@ Join requests that an admin approves, banning users from a public group, reporti
 ---
 
 ## Report (written by the worker when done)
+
+Done. Public and private groups and channels work end to end: the owner flips a group/channel public with a `@handle` (same namespace as `@username`s), it appears in Explore search, another user joins with one tap, going private hides it at once while keeping members and reserving the handle 30 days.
+
+**Server** (`apps/server/src/`):
+- `db/schema.ts` + migration `0036_loose_wendell_vaughn.sql` (one migration only, journal + snapshot, prettier-written like T-0124): `groups.visibility` (`private`/`public`, default `private`; every existing group stays private). No handle-table change — the T-0163 `handles.group_id` column + exactly-one check is reused as specced.
+- `groups/visibility.ts` (new): `setGroupVisibility` in one tx under a per-group advisory lock (all decision rows read INSIDE): owner-only (non-owner/stranger = same 404 as missing, like `changeMemberRole`), public needs a valid handle (`handle_invalid` 400 / `handle_reserved` / `handle_taken` 409, same rules/reserved words/case-insensitive PK as users), same-handle is a no-op (casing-only change obeys the 14-day interval, updates casing, retires nothing — like users), 14-day interval on changes (409 `handle_change_too_soon` + `nextChangeAt`), public→private moves the handle row to `retired_handles` (30-day reservation for this group; reclaimable), plus `handleForGroup`. Audits `group.visibility_changed` (ids only) from the route after commit.
+- `groups/join.ts` (new): `joinPublicGroup` — open join for public groups only (private/unknown = same 404). Reuses the invite-link join pieces (`syncPublicTopicsByLink`, same room affiliation + direct invitation + audit shape, new action `group.joined_public` ids-only) without duplicating XMPP logic; `addGroupMembers`/`joinByInviteLink` are not reused because they enforce the contacts/manager/link-claim rules that don't apply (same reason T-0115 didn't reuse `addGroupMembers`). Idempotent (`alreadyMember: true`). Cap `PUBLIC_GROUP_MAX_MEMBERS` 5000 (people+AIs share it): refused before the tx AND counted atomically inside it, so concurrent joins never exceed it.
+- `groups/service.ts`: `GroupDetail` + `ChatGroup` gain `visibility`/`handle` (null while private); `createGroup` accepts `visibility`+`handle` (public create claims the handle in the same tx, `handle_taken` on a race; validated up front for shape/reserved). `directory/service.ts` (new): `searchDirectory` (public only, handle/title prefix case-insensitive with LIKE-escaping, q>=2 chars, kind filter, 20/page newest-first cursor, exact-handle-first in-page ranking, counts from `group_members`, `joined` per row) + `publicGroupForHandle` (exact case-insensitive; users/private/unknown = same 404) + `PUBLIC_GROUP_MAX_MEMBERS`.
+- Routes: `PATCH /groups/:id` gains `visibility`+`handle` (owner-only 404 path; other settings keep the 403 pattern; `visibility` without `handle` value pairing validated); `POST /groups/:id/join` (30/hr per user); `GET /directory` + `GET /groups/by-handle/:handle` (30/10min per user, shared limiter); `GET /handles/check?kind=group` via new `checkGroupHandleAvailability` (own group reservation reads available). `POST /groups` accepts `visibility`+`handle`. `chats/routes.ts` entries gain `visibility`+`handle`. `app.ts` mounts the directory router. `invite-links/service.ts`: only `export` added on `syncPublicTopicsByLink` + `assertGroupHasRoom` (no behavior change).
+- Tests `groups/visibility.test.ts` (16): private-by-default, one-request public create (+taken race on create, private+handle 400), owner make-public + directory by handle/title prefix, non-owner same-404, invalid/reserved/taken (incl. a user's handle), two-racing-groups one-winner, private-again (immediate hide, members kept, stranger refused, owner reuses), 14-day `nextChangeAt`, one-tap idempotent join + private/unknown same-404 (code+message equality), by-handle exact/case-insensitive/no-prefix/users-share-404/private-shares-404, q>=2 + kind filter + newest-first cursor, LIKE-wildcard escaping, `kind=group` check, audits ids-only (asserts no handle/title text), public channel join keeps subscriber rule (empty audience, member row, public detail), 401 on new routes.
+
+**Web** (`apps/web/src/`):
+- `lib/api.ts`: `visibility`/`handle` on group entries + details (optional → older servers parse), `searchDirectory`/`lookupGroupByHandle`/`joinPublicGroup`/`setGroupVisibility`/`checkGroupHandle` + zod schemas.
+- Create flow: `NewGroupDialog` Private/Public choice (default Private) for groups and channels; public asks handle (live `kind=group` check) + one-line description (groups too). Channel create passes visibility/handle through (fixed mid-task: first version silently dropped them in channel mode). Tests `NewGroupDialog.test.tsx` (3, new): default-private call shape, public call shape, no-handle refusal. `NewChatButton.test.tsx` + `Channels.test.tsx` assertions updated for the new call args.
+- Settings: `VisibilitySection.tsx` (new, in `GroupPanel` + `ChannelPanel`, owner only): switch with public-explainer ("Anyone can find and join…"), private confirmation (leaves-at-once + members-stay + 30-day reservation), handle live check, `nextChangeAt` message, copy share link `<origin>/@handle`. Tests (6, new).
+- Explore: `ExplorePage.tsx` (new, overlay): search (debounced, 2-char min, empty = newest), Groups/Channels filter, rows (title, @handle, description, count, Join/Open), Show more, real empty/error states with Retry. Reachable from chat-list menu ("Explore groups"), + new chat menu, empty state (`EmptyState onExplore`). Tests (6, new).
+- `/@handle` (`GroupHandleRoute.tsx`, new, via `AtHandleGate`): logged in resolves group card (title, description, count, Join/Open; channel wording) else falls back to Add contact; logged out → login → back. `/u/:handle` unchanged (persons only). Tests (4, new, incl. guest→login).
+- Labels: `PUBLIC` tag next to the title in `ChatListItem` + `ChatHeader` (same tag style as `CHANNEL`); store maps `visibility`/`handle` from entries (incl. topic rows). Tests in `ChatListItem.test.tsx` + `ChatView.test.tsx`.
+- Mock: `c-acme` channel seeded public `@acme`; `chatEntries` carries visibility/handle; mock `GET /directory`, `GET /groups/by-handle/:handle`, `POST /groups/:id/join`, PATCH visibility/handle (taken/invalid/reserved mapping), `handles/check?kind=group` reports `acme` taken.
+- `lib/api.test.ts`: new `public groups API` block (6 tests: paths, methods, bodies).
+- Store: `createGroup`/`createChannel` options, `setGroupVisibility` (refreshes detail + list), `joinPublicGroup` (joins, refreshes, returns General chat id); mock store implements `setGroupVisibility` via mock PATCH. Test ApiClient stubs extended.
+
+**Commands (real results):**
+- `pnpm install`: exit 0.
+- `pnpm format:check`: pass ("All matched files use Prettier code style!", incl. prettier-written drizzle meta).
+- `pnpm lint`: pass (fixed 3 findings: sync setState-in-effect in ExplorePage moved into the timeout callback, unused import, no-useless-spread).
+- `pnpm typecheck`: pass (11 tasks; fixed ApiClient stub gaps + guest-auth shape).
+- Server: `src/directory src/groups src/handles src/invite-links src/authz-sweep.test.ts` — 6 files, 102 passed (sweep: `/api/directory`, `/api/groups/by-handle/:handle`, `/api/groups/:id/join` all 401, no allowlist change). Neighbours `src/chats src/contact-requests src/auth`: 8 files, 115 passed.
+- Web: `src/routes src/components src/lib/api.test.ts` — 77 files, 774 passed; `src/store src/mock src/auth` — 238 passed. Full web suite = 81+ files green in the scoped runs (routes+components+api, store+mock+auth overlap; no file left unrun between them).
+- Not run: full `turbo test` / `pnpm build` (per AGENTS.md the lead runs full suites; machine load 11+ during the run).
+
+**Security checklist:** no secrets in new responses/logs/audits (audits `{groupId}` / `{groupId, visibility}` only; handles are public by design; `logPath` needs no change — no bearer tokens in new paths); writes scoped by groupId (+userId for joins); uniqueness/caps atomic (handle PK race + in-tx retired re-read; 5000-cap counted inside the join tx as well as pre-checked); permission before effect (owner/member/visibility read INSIDE the tx before any write); unknown = not-allowed 404s (join, by-handle, visibility — code+message equality tested); every new route in the 401 sweep with a rate limit (directory/by-handle 30/10min, join 30/hr) or cap (14-day interval, 30-day reservation, 5000 cap, 10/day handle-claim untouched); audits ids-only (asserted).
+
+**Notes/deviations:**
+1. Scope needing sign-off (mirrors T-0124/T-0163 precedents): `packages/chat-core/src/types.ts` (optional `visibility`/`handle` on ChatSummary — the PUBLIC label needs them on list/header rows), `apps/web/src/mock/api.ts` + `mock/groups.ts` (Explore/join/visibility in mock mode), `apps/server/src/chats/routes.ts` (visibility/handle on entries), `apps/server/src/invite-links/service.ts` (two `export` keywords only), `apps/web/src/store/*test*` stubs + `NewChatButton/Channels/ChatListItem/ChatView` test edits, `realStore.ts` + `store.ts` (allowed as "web files" but the interface edits go beyond). Nothing else touched.
+2. `POST /groups` accepting `visibility`+`handle` is not literally in the API list but the create flow ("Public asks for a handle") requires it; one transaction, no private-then-public window.
+3. Directory ranking reorders only inside each page (exact handle → handle prefix → title prefix); across cursor pages a later page's handle-match can outrank an earlier page's title-match. Accepted as a cosmetic quirk.
+4. `GET /api/handles/check?kind=group` takes no group id (create-flow checks run before the row exists); the asker's own retired reservation therefore reads as `taken` in the create dialog, but claiming still succeeds when it is theirs (the store re-checks ownership inside the tx). Only affects the live hint, never the outcome.
+5. OOM flake (shared machine, load ~12): `GroupHandleRoute.test.tsx` crashed the worker once with heap OOM; passed on retry after load dropped. No code change.
 
 ## Review (written by Claude)

@@ -73,6 +73,12 @@ const groupEntrySchema = z.object({
   subscriberCount: z.number().optional(),
   // T-0124: the channel's short blurb. Optional so older payloads parse.
   description: z.string().nullable().optional(),
+  // T-0164: `public` groups are in the directory; `private` stay
+  // invite-only. Optional so older payloads parse as private.
+  visibility: z.enum(['private', 'public']).optional(),
+  // T-0164: the group's `@handle` while public, null while private.
+  // Optional so older payloads parse as none.
+  handle: z.string().nullable().optional(),
   // T-0111: present on servers with topics (T-0108); absent on older ones.
   // Parsed loosely here — each entry is validated by `topicSchema` when
   // mapping to chats — and unknown entries are dropped there.
@@ -135,6 +141,13 @@ const groupDetailSchema = z.object({
   kind: z.enum(['group', 'channel']).optional(),
   // T-0124: the channel's short blurb. Optional so older payloads parse.
   description: z.string().nullable().optional(),
+  // T-0164: `public` groups hold exactly one handle row and appear in the
+  // directory; `private` stay invite-only. Optional so older payloads parse
+  // as private.
+  visibility: z.enum(['private', 'public']).optional(),
+  // T-0164: the group's `@handle` while public, null while private.
+  // Optional so older payloads parse as none.
+  handle: z.string().nullable().optional(),
   members: z.array(groupMemberSchema),
   ais: z.array(groupAiSchema),
 });
@@ -1990,4 +2003,98 @@ export function cancelContactRequest(id: string): Promise<{ request: ContactRequ
   return request(`/contact-requests/${encodeURIComponent(id)}`, decidedRequestSchema, {
     method: 'DELETE',
   });
+}
+
+// --- Public groups and channels (T-0164) -----------------------------------
+// A public group or channel holds its own `@handle` (the same namespace as
+// `@username`s), appears in the directory, and joins with one tap. A
+// private group stays invisible and invite-only, exactly as before.
+
+export const directoryEntrySchema = z.object({
+  id: z.string(),
+  kind: z.enum(['group', 'channel']),
+  title: z.string(),
+  handle: z.string(),
+  description: z.string().nullable(),
+  memberCount: z.number(),
+  joined: z.boolean(),
+});
+
+export type DirectoryEntry = z.infer<typeof directoryEntrySchema>;
+
+const directoryPageSchema = z.object({
+  entries: z.array(directoryEntrySchema),
+  next: z.string().nullable(),
+});
+
+export interface DirectoryPage {
+  entries: DirectoryEntry[];
+  next: string | null;
+}
+
+export interface SearchDirectoryInput {
+  q?: string;
+  kind?: 'group' | 'channel';
+  cursor?: string;
+}
+
+export function searchDirectory(input: SearchDirectoryInput = {}): Promise<DirectoryPage> {
+  const params = new URLSearchParams();
+  if (input.q !== undefined && input.q !== '') {
+    params.set('q', input.q);
+  }
+  if (input.kind !== undefined) {
+    params.set('kind', input.kind);
+  }
+  if (input.cursor !== undefined && input.cursor !== '') {
+    params.set('cursor', input.cursor);
+  }
+  const suffix = params.size === 0 ? '' : `?${params.toString()}`;
+  return request(`/directory${suffix}`, directoryPageSchema);
+}
+
+// Exact match of one public group by `@handle` (case-insensitive). A
+// private group and an unknown handle answer the same 404.
+export function lookupGroupByHandle(handle: string): Promise<DirectoryEntry> {
+  return request(`/groups/by-handle/${encodeURIComponent(handle)}`, directoryEntrySchema);
+}
+
+const publicJoinResultSchema = z.object({
+  groupId: z.string(),
+  alreadyMember: z.boolean(),
+});
+
+export type PublicJoinResult = z.infer<typeof publicJoinResultSchema>;
+
+// Joins a public group or channel with one request (private or unknown
+// answers the same 404; a full group 409 `group_full`; joining twice is
+// harmless with `alreadyMember: true`).
+export function joinPublicGroup(groupId: string): Promise<PublicJoinResult> {
+  return request(`/groups/${encodeURIComponent(groupId)}/join`, publicJoinResultSchema, {
+    method: 'POST',
+  });
+}
+
+// Owner-only: flips a group public (with a handle) or back to private.
+// Unique violations map to 409 `handle_taken`; the 14-day interval to 409
+// `handle_change_too_soon` with `nextChangeAt` in the error detail.
+export function setGroupVisibility(
+  groupId: string,
+  input: { visibility: 'private' | 'public'; handle?: string },
+): Promise<GroupDetail> {
+  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+// Live availability of a handle for a public group or channel (the same
+// shape, reserved words and uniqueness as `@username`s; the asker's own
+// group reservation counts as available).
+export function checkGroupHandle(handle: string): Promise<HandleCheck> {
+  const params = new URLSearchParams();
+  params.set('handle', handle);
+  params.set('kind', 'group');
+  return request(`/handles/check?${params.toString()}`, handleCheckSchema);
 }

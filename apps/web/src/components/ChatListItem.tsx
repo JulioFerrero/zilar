@@ -47,7 +47,10 @@ export function ChatListItem({
   const [menuOpen, setMenuOpen] = useState(false);
   // T-0124: channels get a megaphone avatar badge and the CHANNEL tag (as in
   // the mockup); the header shows "N subscribers".
+  // T-0164: public groups and channels get a PUBLIC tag next to the title,
+  // in the same tag style.
   const isChannel = chat.chatKind === 'channel';
+  const isPublic = chat.visibility === 'public';
 
   return (
     <div className="group relative">
@@ -90,6 +93,11 @@ export function ChatListItem({
             {isChannel && (
               <span className="font-mono shrink-0 rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
                 CHANNEL
+              </span>
+            )}
+            {isPublic && (
+              <span className="font-mono shrink-0 rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
+                PUBLIC
               </span>
             )}
             <span className="ml-auto flex shrink-0 items-center gap-2 pl-1.5">

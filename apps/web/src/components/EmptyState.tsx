@@ -7,10 +7,13 @@ export function EmptyState({
   variant,
   onInvite,
   onAddContact,
+  onExplore,
 }: {
   variant: EmptyStateVariant;
   onInvite?: () => void;
   onAddContact?: () => void;
+  // T-0164: reaching the Explore directory from the empty state.
+  onExplore?: () => void;
 }) {
   if (variant === 'no-chats') {
     return (
@@ -29,6 +32,17 @@ export function EmptyState({
             onClick={onAddContact}
           >
             Add contact
+          </Button>
+        )}
+        {onExplore !== undefined && (
+          <Button
+            type="button"
+            size="lg"
+            variant="outline"
+            className="rounded-full px-5"
+            onClick={onExplore}
+          >
+            Explore groups
           </Button>
         )}
       </div>

@@ -137,6 +137,13 @@ export interface ChatSummary {
   subscriberCount?: number;
   /** T-0124: the channel's short blurb, or null. Absent on groups. */
   description?: string | null;
+  /**
+   * T-0164: `public` groups and channels are in the directory and joinable
+   * by anyone signed in; `private` stay invite-only. Absent = private.
+   */
+  visibility?: 'private' | 'public';
+  /** T-0164: the group's `@handle` while public, null while private. */
+  handle?: string | null;
   /** The caller's membership role, for channels (admins post, members read). */
   myRole?: 'owner' | 'admin' | 'member';
   aiStatus?: AiStatus;

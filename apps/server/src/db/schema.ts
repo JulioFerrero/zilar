@@ -196,6 +196,12 @@ export const groups = pgTable('groups', {
     .default('group'),
   // T-0124: the channel's short blurb, shown in its panel. Null = none.
   description: text('description'),
+  // T-0164: `private` groups stay invisible and invite-only, like before;
+  // `public` ones hold exactly one `handles` row (`group_id`) and appear in
+  // the directory, joinable by anyone signed in. Defaults to private.
+  visibility: text('visibility', { enum: ['private', 'public'] })
+    .notNull()
+    .default('private'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

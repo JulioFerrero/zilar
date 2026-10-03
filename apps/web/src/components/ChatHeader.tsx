@@ -88,6 +88,11 @@ export function ChatHeader({
         )}
         <span className="truncate text-[15px] leading-5 font-semibold">{chat.title}</span>
         {chat.isAI && <AiBadge />}
+        {chat.visibility === 'public' && (
+          <span className="font-mono shrink-0 rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
+            PUBLIC
+          </span>
+        )}
         {isTopic && chat.topic?.visibility === 'private' && (
           <span className="flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
             <Lock className="size-3" aria-hidden="true" />
