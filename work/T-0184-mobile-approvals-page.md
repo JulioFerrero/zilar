@@ -96,4 +96,10 @@ Creating rules by hand, push notifications for approvals, the per-topic approval
 Round 1 checks (real results): `pnpm format:check` passes except the pre-existing untracked `PREREVIEW.md` at the repo root (not mine, left untouched); `pnpm lint` clean; `pnpm typecheck` 11/11 pass; `pnpm --filter @zilar/mobile test --maxWorkers=2 approvals`: 4 files, 60 tests, all pass.
 - The lead tests on the emulator and the phone.
 
+### Round 2 (lead review finding, one commit)
+- A failed decision wedged the row: `decideScreenRow` could return `{ kind: 'error' }` but the screen only handled `decided`/`gone`/`stale`, so `busy` stayed set with an empty error and the buttons stayed disabled for ever (and `rowsForList` kept the stuck `busy` across reloads). Fix: the screen now has the `error` branch — clears `busy`, sets the row's inline `error` to the fixed plain message ("Could not send the decision. Try again.", never the server's raw text), buttons usable again for retry. `rowsForList` takes the in-flight id set (`decidingIds.current`, passed from `load`) and only keeps `busy` for a row with a request still in flight; a stuck `busy` clears on reload while the inline error stays visible. Tests: network-error decide ends with buttons enabled + visible fixed error line; later reload keeps it usable; second tap decides normally; in-flight busy still kept across reloads. Commit `c7796bb`.
+
+Round 2 checks (real results): `pnpm format:check` clean ("All matched files use Prettier code style!"); `pnpm lint` clean; `pnpm typecheck` 11/11 pass; `pnpm --filter @zilar/mobile test --maxWorkers=2 approvals`: 4 files, 63 tests, all pass.
+- The lead tests on the emulator and the phone.
+
 ## Review (written by Claude)
