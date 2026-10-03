@@ -1,6 +1,6 @@
 import { formatDuration } from '@zilar/chat-core';
 import type { VoiceMeta } from '@zilar/protocol';
-import { Pause, Play } from 'lucide-react-native';
+import { AudioLines, Pause, Play } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -10,6 +10,7 @@ import {
   subscribeVoiceState,
   type VoicePlayerControls,
 } from './voice-player';
+import { VoiceTranscribeConfirm } from './voice-transcribe-confirm';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -31,6 +32,19 @@ import {
   type VoicePlayback,
   type VoiceSpeed,
 } from '@/lib/voice-native';
+import {
+  readTranscripts,
+  saveTranscript,
+  type StoredTranscript,
+  type TranscriptMap,
+} from '@/lib/voice-transcripts';
+import {
+  consumeTranscribeConsent,
+  transcribeVoiceNote,
+  type TranscribePhase,
+  type VoiceTranscribeSource,
+} from '@/lib/voice-transcribe-flow';
+import { createWhistlePort, type WhistlePort } from '@/lib/whistle-port';
 import { useChatStore } from '@/store/chat-store-provider';
 import type { UiMessage } from '@/lib/types';
 import { useColorScheme } from 'nativewind';
@@ -83,14 +97,22 @@ type VoiceMessageProps = {
   playback?: VoicePlayback | undefined;
   /** The screen-owned player for this bubble; tests inject a fake. */
   controls?: VoicePlayerControls | undefined;
+  /** The on-device transcription engine; tests inject a fake. */
+  whistle?: WhistlePort | undefined;
+  /** Stored transcripts; tests inject a fake map. */
+  transcripts?: TranscriptMap | undefined;
+  /** Persists one transcript; tests inject a fake. */
+  onSaveTranscript?: ((id: string, entry: StoredTranscript) => Promise<void> | void) | undefined;
 };
 
 /**
- * A voice bubble (T-0154): play/pause, a progress bar, elapsed/total time,
- * and a speed toggle. Playback comes from the local file while the upload
- * runs and from the served URL after (trusted hosts only — an untrusted
- * voice shows the waveform and the duration but never fetches). Only one
- * voice plays at a time through the shared registry.
+ * A voice bubble (T-0154, on-device transcription T-0179): play/pause, a
+ * progress bar, elapsed/total time, and a speed toggle. Playback comes from
+ * the local file while the upload runs and from the served URL after
+ * (trusted hosts only — an untrusted voice shows the waveform and the
+ * duration but never fetches). Only one voice plays at a time through the
+ * shared registry. On phones with the Whistle engine a Transcribe button
+ * runs the on-device model and keeps the text on the phone only.
  */
 export function VoiceMessage({
   voice,
@@ -100,6 +122,9 @@ export function VoiceMessage({
   onCancelVoice,
   playback,
   controls,
+  whistle,
+  transcripts,
+  onSaveTranscript,
 }: VoiceMessageProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const { pressed, reduceMotion, setPressed } = useKeyPress();
@@ -113,7 +138,41 @@ export function VoiceMessage({
   const [positionMs, setPositionMs] = useState(0);
   const [playError, setPlayError] = useState<string | undefined>(undefined);
   const [showTranscript, setShowTranscript] = useState(false);
+  // The on-device transcript, kept locally (never on the wire): the stored
+  // value wins, then the freshly transcribed text of this session.
+  const [storedTranscripts, setStoredTranscripts] = useState<TranscriptMap | undefined>(
+    () => transcripts,
+  );
+  const [localText, setLocalText] = useState<StoredTranscript | undefined>(undefined);
+  const [transcribeBusy, setTranscribeBusy] = useState(false);
+  const [transcribePhase, setTranscribePhase] = useState<TranscribePhase | undefined>(undefined);
+  const [transcribeError, setTranscribeError] = useState<string | undefined>(undefined);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const whistlePort = useMemo(() => whistle ?? createWhistlePort(), [whistle]);
+  const transcribeRun = useRef(0);
+  // The one-shot model-download consent (T-0179, round 1): set only by the
+  // sheet's Download button for this run, consumed by `confirmDownload`.
+  const transcribeConsent = useRef({ confirmed: false });
   const bars = useMemo(() => sampleBars(voice.waveform, BAR_COUNT), [voice.waveform]);
+
+  // A stored transcript is shown at once on the next app start: read it
+  // here when the caller did not inject one (no re-run).
+  useEffect(() => {
+    if (transcripts !== undefined) {
+      return;
+    }
+    let cancelled = false;
+    void readTranscripts()
+      .then((all) => {
+        if (!cancelled) {
+          setStoredTranscripts(all);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [transcripts, message.id]);
 
   // The host owns play state, progress and play failures; the bubble only
   // mirrors its own subscription. Claiming only records UI state (finding
@@ -170,6 +229,135 @@ export function VoiceMessage({
       : upload.localUri !== undefined && upload.localUri !== ''
         ? true
         : voice.url !== undefined && isPlayableVoiceUrl(voice.url, hosts);
+
+  const storedText = storedTranscripts?.[message.id];
+  const transcriptText = storedText ?? localText;
+  const hasTranscript = transcriptText !== undefined || voice.transcript !== undefined;
+  const shownText = transcriptText?.text ?? voice.transcript?.text;
+
+  // The Transcribe button shows only on phones with the engine, only when
+  // no transcript exists yet, and only when the audio is playable. Probing
+  // the engine is synchronous and safe (it only reads the ABI list).
+  let whistleAvailable = false;
+  try {
+    whistleAvailable = whistlePort.isAvailable();
+  } catch {
+    whistleAvailable = false;
+  }
+  const showTranscribe = whistleAvailable && !hasTranscript && playable;
+
+  const runTranscribe = () => {
+    transcribeRun.current += 1;
+    const run = transcribeRun.current;
+    setTranscribeBusy(true);
+    setTranscribeError(undefined);
+    setTranscribePhase(undefined);
+    void voiceAudioSource({ voice, localUri: upload.localUri, trustedHosts: hosts })
+      .then(async (source) => {
+        if (transcribeRun.current !== run) {
+          return;
+        }
+        if (source === undefined) {
+          setTranscribeBusy(false);
+          setTranscribeError('Could not read that voice message.');
+          return;
+        }
+        // A local file transcribes in place; a served URL downloads to the
+        // cache with its headers (the flow always deletes the cached file).
+        const audioSource: VoiceTranscribeSource =
+          upload.localUri !== undefined && upload.localUri !== ''
+            ? { localUri: upload.localUri }
+            : { url: source.uri, headers: source.headers };
+        // The model download needs the user's yes (round 1): the sheet's
+        // Download sets `transcribeConsent` for this run, and the gate
+        // consumes it — no yes, no download, the sheet re-opens instead.
+        const consent = transcribeConsent.current;
+        const result = await transcribeVoiceNote({
+          port: whistlePort,
+          source: audioSource,
+          audioMs: voice.duration_ms,
+          onPhase: (phase) => {
+            if (transcribeRun.current === run) {
+              setTranscribePhase(phase);
+            }
+          },
+          confirmDownload: async () => {
+            if (transcribeRun.current !== run) {
+              return false;
+            }
+            const ok = consumeTranscribeConsent(consent, () => {
+              if (transcribeRun.current === run) {
+                setConfirmOpen(true);
+              }
+            });
+            if (!ok && transcribeRun.current === run) {
+              setTranscribeBusy(false);
+              setTranscribePhase(undefined);
+            }
+            return ok;
+          },
+        });
+        if (transcribeRun.current !== run) {
+          return;
+        }
+        setTranscribeBusy(false);
+        setTranscribePhase(undefined);
+        if (result.status === 'cancelled') {
+          return;
+        }
+        if (result.status === 'error') {
+          setTranscribeError(result.message);
+          return;
+        }
+        const text = result.transcript.text.trim();
+        const entry: StoredTranscript =
+          result.transcript.language === ''
+            ? { text }
+            : { text, language: result.transcript.language };
+        setLocalText(entry);
+        setShowTranscript(true);
+        setStoredTranscripts((current) => ({ ...current, [message.id]: entry }));
+        try {
+          await (onSaveTranscript?.(message.id, entry) ?? saveTranscript(message.id, entry));
+        } catch {
+          // The text is already on screen; a blocked store keeps it local.
+        }
+      })
+      .catch(() => {
+        if (transcribeRun.current === run) {
+          setTranscribeBusy(false);
+          setTranscribePhase(undefined);
+          setTranscribeError('Could not transcribe that voice note. Try again.');
+        }
+      });
+  };
+
+  const startTranscribe = () => {
+    if (!showTranscribe || transcribeBusy) {
+      return;
+    }
+    // The user's yes must be fresh (round 1): a previous confirm never
+    // carries over — the model check decides whether the sheet opens.
+    transcribeConsent.current.confirmed = false;
+    void whistlePort
+      .modelStatus()
+      .then((status) => {
+        if (status === 'ready') {
+          runTranscribe();
+        } else {
+          setConfirmOpen(true);
+        }
+      })
+      .catch(() => {
+        runTranscribe();
+      });
+  };
+
+  const confirmTranscribe = () => {
+    setConfirmOpen(false);
+    transcribeConsent.current.confirmed = true;
+    runTranscribe();
+  };
 
   // Resolves the audio source lazily on play (the bearer must be fresh),
   // then hands it to the screen-owned player. `resolvePlaySource` carries
@@ -324,6 +512,34 @@ export function VoiceMessage({
             </Text>
           </Pressable>
         )}
+        {transcriptText === undefined && voice.transcript === undefined && showTranscribe ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Transcribe voice message"
+            disabled={transcribeBusy}
+            onPress={startTranscribe}
+            className="rounded-md px-1.5 py-0.5 disabled:opacity-60"
+            style={iconKey}
+          >
+            <AudioLines size={14} color={ICON_COLOR} />
+          </Pressable>
+        ) : null}
+        {transcriptText !== undefined && voice.transcript === undefined ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={showTranscript ? 'Hide transcript' : 'Show transcript'}
+            onPress={() => setShowTranscript((value) => !value)}
+            className="rounded-md px-1.5 py-0.5"
+            style={showTranscript ? segment : iconKey}
+          >
+            <Text
+              className="text-[11px] font-semibold"
+              color={showTranscript ? undefined : ICON_COLOR}
+            >
+              Aa
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
       {uploading ? (
         <View className="mt-1 flex-row items-center gap-2">
@@ -345,11 +561,37 @@ export function VoiceMessage({
       {playError !== undefined && !uploading ? (
         <Text className="mt-1 px-0.5 text-[12px] text-danger">{playError}</Text>
       ) : null}
-      {showTranscript && voice.transcript ? (
-        <Text className="mt-1.5 text-[14px] leading-5 text-muted-foreground">
-          {voice.transcript.text}
+      {transcribeBusy || transcribePhase !== undefined ? (
+        <Text className="mt-1 px-0.5 text-[12px] text-muted-foreground">
+          {transcribePhase?.kind === 'downloading'
+            ? `Downloading the model… ${Math.round(transcribePhase.fraction * 100)}%`
+            : transcribePhase?.kind === 'loading'
+              ? 'Loading the model…'
+              : 'Transcribing…'}
         </Text>
       ) : null}
+      {transcribeError !== undefined && !transcribeBusy ? (
+        <View className="mt-1 flex-row items-center gap-2 px-0.5">
+          <Text className="text-[12px] text-danger">{transcribeError}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry transcription"
+            onPress={startTranscribe}
+            className="rounded px-1 py-0.5 active:bg-surface-raised"
+          >
+            <Text className="text-[12px] font-semibold text-danger">Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {showTranscript && shownText !== undefined ? (
+        <Text className="mt-1.5 text-[14px] leading-5 text-muted-foreground">{shownText}</Text>
+      ) : null}
+      <VoiceTranscribeConfirm
+        open={confirmOpen}
+        busy={transcribeBusy}
+        onDownload={confirmTranscribe}
+        onClose={() => setConfirmOpen(false)}
+      />
     </View>
   );
 }
