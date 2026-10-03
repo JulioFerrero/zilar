@@ -1,7 +1,7 @@
 ---
 id: T-0176
 title: Mobile: icons (not emoji) in the attach popup; a too-short press records nothing and says nothing
-status: review
+status: merged
 milestone: M5
 branch: task/T-0176-mobile-attach-icons-short-press
 model: meta/muse-spark-1.3-contributor
@@ -106,3 +106,6 @@ Verified: scope is the Allowed files, the recorder logic (a press under 1 s is c
 1. **Vacuous fallback-icon test** (`attach-sheet.test.tsx:121`). It only asserts the file name, which also renders on the thumbnail path. Make it fail when the icon is wrong or missing: render the failed-preview state (or test `isImageName` and the chosen icon through an exported seam) and assert the `FileText` icon for `doc.pdf` and the image icon for `pic.png`. Mutation-check it by swapping the branches.
 2. **Julio asked for icons everywhere** ("always icons for the UI, not emojis"). `attachment-message.tsx:215` and `attachment-video.tsx:136` still render a paperclip glyph. Replace both with the lucide `FileText` (file) / `Video` (video) icon, same size and colour rules as the attach sheet, and add both files and their tests to this task's scope. Pin with a source test that no `\p{Extended_Pictographic}` character remains in either file.
 3. *(No change needed.)* The post-`stop()` short guard at `voice-recorder.tsx:125` is unreachable on the real path; fine as a safety net.
+
+### Round 1 result
+**Verdict:** Approved. Findings 1 and 2 fixed (the icon choice is now a tested seam; the paperclip glyphs in `attachment-message.tsx` and `attachment-video.tsx` are icons, each pinned by a no-emoji source test). Re-ran format, lint, typecheck and `attach voice` tests after the rebase: 18 files, 168 tests passed. The post-`stop()` guard keeps a harmless leftover file only on an unreachable path.
