@@ -18,6 +18,7 @@ import { getSessionToken } from '@/lib/session-token';
 import { AlwaysAllowedRow, RevokeConfirmDialog } from '@/components/approvals/always-allowed-row';
 import { PendingApprovalRow } from '@/components/approvals/approval-row';
 import {
+  claimDecision,
   confirmationForDecision,
   decideScreenRow,
   groupRulesForScreen,
@@ -69,6 +70,10 @@ function ApprovalsBody() {
   const [revokeError, setRevokeError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const revokingRef = useRef(false);
+  // Per-id in-flight guard: a second tap while the first POST is running
+  // does nothing (the disabled button alone cannot stop a tap that lands
+  // before React re-renders).
+  const decidingIds = useRef(new Set<string>());
 
   // The confirmation line after a decision ("Approved once", …) shows for a
   // few seconds where the row was, then clears itself.
@@ -193,40 +198,48 @@ function ApprovalsBody() {
 
   const decide = useCallback(
     (id: string, decision: ApprovalDecision) => {
+      if (!claimDecision(decidingIds.current, id)) {
+        return;
+      }
       setRows((previous) => {
         const current = previous[id];
         if (current === undefined) {
+          decidingIds.current.delete(id);
           return previous;
         }
         return { ...previous, [id]: { ...current, busy: decision, error: '' } };
       });
       void decideScreenRow(api, id, decision).then((outcome) => {
-        if (outcome.kind === 'decided') {
-          decidedIds.current.add(id);
-          setRows((previous) => {
-            const next = { ...previous };
-            delete next[id];
-            return next;
-          });
-          showNotice(confirmationForDecision(decision));
-        } else if (outcome.kind === 'gone') {
-          // Decided or expired elsewhere: drop the row and explain, instead
-          // of failing silently.
-          decidedIds.current.add(id);
-          setRows((previous) => {
-            const next = { ...previous };
-            delete next[id];
-            return next;
-          });
-          showNotice(outcome.message);
-        } else {
-          setRows((previous) => {
-            const current = previous[id];
-            if (current === undefined) {
-              return previous;
-            }
-            return { ...previous, [id]: { ...current, busy: null, error: outcome.message } };
-          });
+        try {
+          if (outcome.kind === 'decided') {
+            decidedIds.current.add(id);
+            setRows((previous) => {
+              const next = { ...previous };
+              delete next[id];
+              return next;
+            });
+            showNotice(confirmationForDecision(decision));
+          } else if (outcome.kind === 'gone') {
+            // Decided or expired elsewhere: drop the row and explain, instead
+            // of failing silently.
+            decidedIds.current.add(id);
+            setRows((previous) => {
+              const next = { ...previous };
+              delete next[id];
+              return next;
+            });
+            showNotice(outcome.message);
+          } else {
+            setRows((previous) => {
+              const current = previous[id];
+              if (current === undefined) {
+                return previous;
+              }
+              return { ...previous, [id]: { ...current, busy: null, error: outcome.message } };
+            });
+          }
+        } finally {
+          decidingIds.current.delete(id);
         }
       });
     },

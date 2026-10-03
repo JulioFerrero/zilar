@@ -141,6 +141,20 @@ export function revokeFailedMessage(error: unknown): string {
 }
 
 /**
+ * Per-id in-flight guard for decisions. A second tap while the first POST
+ * is running returns false (the caller does nothing); otherwise it claims
+ * the id and returns true. The caller releases the id when the POST
+ * settles. Pure over a `Set` so tests pin it without rendering.
+ */
+export function claimDecision(inFlight: Set<string>, id: string): boolean {
+  if (inFlight.has(id)) {
+    return false;
+  }
+  inFlight.add(id);
+  return true;
+}
+
+/**
  * Drops a revoked rule from the list; a 404 means it is already gone
  * (revoked elsewhere), so the row drops quietly like a success.
  */

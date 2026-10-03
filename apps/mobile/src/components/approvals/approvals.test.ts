@@ -5,6 +5,7 @@ import { ApprovalsApiError } from '@/lib/approvals-api';
 
 import { expiresInText, worstCaseText } from './format-relative';
 import {
+  claimDecision,
   confirmationForDecision,
   decideScreenRow,
   groupRulesForScreen,
@@ -75,6 +76,22 @@ describe('worstCaseText', () => {
 
   it('is empty when the action has no money attached', () => {
     expect(worstCaseText(null)).toBe('');
+  });
+});
+
+describe('claimDecision', () => {
+  it('claims an idle id once; a second tap while in flight does nothing', () => {
+    const inFlight = new Set<string>();
+    expect(claimDecision(inFlight, 'apr-1')).toBe(true);
+    expect(claimDecision(inFlight, 'apr-1')).toBe(false);
+    inFlight.delete('apr-1');
+    expect(claimDecision(inFlight, 'apr-1')).toBe(true);
+  });
+
+  it('tracks ids independently', () => {
+    const inFlight = new Set<string>();
+    expect(claimDecision(inFlight, 'apr-1')).toBe(true);
+    expect(claimDecision(inFlight, 'apr-2')).toBe(true);
   });
 });
 
