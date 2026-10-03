@@ -193,6 +193,50 @@ iOS, wiring transcripts into the chat UI or the server, word timestamps, keyword
   expected first-run numbers (model load ms, ttft, tok/s) are shown by the dev
   screen but no real transcription has executed yet (no device here).
 
+### Round 1 (review findings 1–7, one commit each)
+
+- Finding 1 (`aae4fb2`): `whistle-port.ts` no longer hardcodes
+  `isAvailable: () => false`; the production port calls the real synchronous
+  native check (`getNativeModule()?.isAvailable() ?? false`, try/catch) via a
+  lazy `require` that never executes under Vitest (tests always inject the
+  fake through `deps`). Tests: fake-available reports true, unlinked reports
+  false (the require throws → false).
+- Finding 2 (`5f1d13c`): native `resampleTo16k` now receives channel count 1
+  (the `appendDecodedSamples` mono buffer, never the interleaved path twice).
+  `whistle-last-voice.ts` gained tested `downmixToMono`/`resampleMonoTo16k`
+  twins of the native arithmetic, including a decode-order test.
+- Finding 3 (`8457d35`): `expo-module.config.json` declares
+  `"platforms": ["android"]` only; the stale `ios/ZilarWhistleModule.swift`
+  comment in Kotlin fixed.
+- Finding 4 (`e392f44`): `whistle-checksum.test.ts` now drives the real
+  `downloadModel` through new `modelFile`/`tempFile` dep seams with fake file
+  handles — verified-present skips download, corrupt is removed + re-downloaded,
+  truncated rejects `bad_checksum`, failed download leaves no partial.
+- Finding 5 (`d87a477`): native decode rejects over 10 min up front (extractor
+  duration + per-sample `sampleTime` + PCM size cap), fails on a 30 s
+  MediaCodec stall (`too_long` mapped in `result.ts`); the JS `inFlight` guard
+  clears on failure too (tested: a failed call followed by a good one).
+- Finding 6 (`077234c`): JS plans chunks with the tested `planQuietCutChunks`
+  (`planRangesMs`, exported) and passes `(startMs, endMs)` ranges to the new
+  native `transcribeRanges`; `transcribeFile` stays as the whole-clip path.
+  The native `splitIntoChunks` is removed; `sliceRanges` clamps + hard-caps at
+  28 s. The dev screen passes the known voice duration as `audioMs`. Note:
+  the quiet-cut needs sample amplitudes, which JS cannot read without decoding
+  first — so without `amplitudes` the plan uses even 28 s windows and the
+  quiet-cut engages when the caller supplies them (tests cover both).
+- Finding 7 (`3c0b60a`): static `whistleErrorFor` import in `download.ts`,
+  honest `sha256OfFile` comment (`file.bytes()` reads fully), JNI returns
+  `"NEEDLE_ERROR:<detail>"` strings instead of NULL, Kotlin keeps the engine
+  error text. Finding 8 skipped per the review.
+- Native re-verified after every Kotlin/C++ change in the scratch clone:
+  `compileReleaseKotlin` (findings 5, 6) and full `assembleRelease` (findings
+  6, 7) BUILD SUCCESSFUL.
+- Checks (final, this round): `pnpm format:check` pass, `pnpm lint` pass,
+  `pnpm typecheck` (11 tasks) pass,
+  `pnpm --filter @zilar/mobile test --maxWorkers=2 whistle` 4 files / 41 passed,
+  neighbours (routes-dir, voice-native, voice-recorder-seam, voice-message)
+  4 files / 33 passed.
+
 ## Review (written by Claude)
 
 **Verdict:** Round 1: changes requested
