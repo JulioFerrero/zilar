@@ -1,7 +1,6 @@
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
-import { useColorScheme } from 'nativewind';
 
 import { LoadingScreen } from '@/auth/RequireAuth';
 import { useSession } from '@/auth/session';
@@ -15,7 +14,6 @@ import {
 } from '@/components/directory/handle-helpers';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import type { DirectoryEntry } from '@/lib/directory-api';
 import { useChatStore } from '@/store/chat-store-provider';
 
@@ -44,8 +42,6 @@ export default function GroupHandleRoute() {
 
 function HandleCard({ handle }: { handle: string | undefined }) {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
-  void scheme;
   const { api } = useDirectoryApi();
   const reloadChats = useChatStore((state) => state.reloadChats);
   const [view, setView] = useState<HandleView>(
@@ -210,7 +206,7 @@ function HandleCard({ handle }: { handle: string | undefined }) {
               className="mt-5 w-full items-center rounded-full bg-accent px-4 py-2.5 active:opacity-90 disabled:opacity-60"
             >
               <Text className="text-[15px] font-medium text-accent-foreground">
-                {busy ? 'Joining…' : handleJoinLabel(view.entry as DirectoryEntry)}
+                {busy ? 'Joining…' : handleJoinLabel(view.entry)}
               </Text>
             </Pressable>
             <Pressable

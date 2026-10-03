@@ -685,7 +685,7 @@ function GroupTopics() {
         visibility={visibilityTruth?.visibility ?? 'private'}
         handle={visibilityTruth?.handle ?? null}
         live={{ picked, typed }}
-        busy={visibilityBusy}
+        busy={visibilityBusy || visibilityTruth === null}
         checking={checking}
         check={check}
         error={visibilityLoadError !== '' ? visibilityLoadError : visibilityError}

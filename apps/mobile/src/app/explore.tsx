@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ChevronLeft, Compass, RefreshCw } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -121,9 +121,6 @@ function ExploreList() {
       reload();
     }, [reload]),
   );
-
-  const listRef = useRef<FlatList<DirectoryEntry> | null>(null);
-  void listRef;
 
   const loadMore = () => {
     if (next === null || loadingMore) {

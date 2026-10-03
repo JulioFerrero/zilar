@@ -1,7 +1,7 @@
 ---
 id: T-0183
 title: Mobile: Explore public groups and channels, open @group links, group visibility and handle
-status: review
+status: merged
 milestone: M5
 branch: task/T-0183-mobile-explore-group-handles
 model: meta/muse-spark-1.3-contributor
@@ -163,3 +163,5 @@ Full verification after both: `pnpm lint` pass, `pnpm --filter
 left untouched); all task files pass Prettier. Status stays `review`.
 
 ## Review (written by Claude)
+
+**Verdict:** Round 1: changes requested (post-join navigation raced the chat list refresh; raw server text in the Explore error), both fixed by the worker. Round 2 pre-review: one minor should-fix (Save in the visibility sheet did nothing until the state had loaded) and dead code, fixed by the lead (the sheet shows Saving until it has loaded; unused variables and imports removed). Wire parity with the server and web checked by the pre-review. Format, lint, typecheck and 19 tests pass. Accepted gap: directory rows show initials, not the group picture (mobile `Avatar` has no image prop yet).
