@@ -984,3 +984,30 @@ describe('ZILAR_LEAD_ALLOW_ALL', () => {
     }
   });
 });
+
+describe('npx for tools the repo already has', () => {
+  const ctx = { worktree: '/w/zilar-T-0001', task: 'T-0001' };
+  it.each([
+    'npx prettier --write apps/mobile/src/a.ts',
+    'npx prettier --check a.ts',
+    'npx vitest run new-chat',
+    'npx oxlint apps/mobile',
+  ])('rejects %s with the replacement in the message', (command) => {
+    const result = classifyPermission({ id: 'p', action: 'shell', commands: [command] }, ctx);
+    expect(result.verdict).toBe('reject');
+    expect(result.message).toContain('pnpm exec prettier --write');
+  });
+
+  it('still lets npx tsc --noEmit and npx expo run:ios follow their own rules', () => {
+    const tsc = classifyPermission(
+      { id: 'p', action: 'shell', commands: ['npx tsc --noEmit'] },
+      ctx,
+    );
+    expect(tsc.verdict).toBe('allow');
+    const expo = classifyPermission(
+      { id: 'p', action: 'shell', commands: ['npx expo run:ios --no-bundler'] },
+      ctx,
+    );
+    expect(expo.verdict).not.toBe('reject');
+  });
+});

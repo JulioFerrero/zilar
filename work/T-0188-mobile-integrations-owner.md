@@ -1,0 +1,58 @@
+---
+id: T-0188
+title: Mobile: owner integrations (Telegram bot, email, voice transcription)
+status: planned
+milestone: M5
+branch: task/T-0188-mobile-integrations-owner
+model: meta/muse-spark-1.3-contributor
+effort: low
+depends_on: []
+estimate: 1 day
+---
+
+# T-0188: Mobile: owner integrations (Telegram bot, email, voice transcription)
+
+## Spec (written by Claude, do not edit)
+
+### Why
+Web has an owner-only Integrations page. The owner cannot configure Telegram, email or the transcription endpoint from the phone. Julio, 2026-10-03: "implement all the features we have in web into the mobile app". Roadmap: `docs/ROADMAP_MOBILE_PARITY.md`.
+
+### Verified facts (do not re-derive)
+- Web: `apps/web/src/routes/IntegrationsPage.tsx` (597 lines), client functions in `apps/web/src/lib/api.ts`: `getIntegrationsStatus()` (~1666), `saveTelegramBotToken(botToken)` (~1670), `removeTelegramBotToken()`, `saveEmailSettings(input)` (~1689), `getVoiceTranscriptionStatus()` (~1712), `saveVoiceTranscriptionSettings(...)` (~1724), `removeVoiceTranscriptionSettings()` (~1741).
+- Server: `apps/server/src/integrations/routes.ts`, `apps/server/src/voice-transcription/`. A 404 means 'not the owner' (the same answer as an unknown route): hide the settings row on 404. Secrets (bot token, SMTP password, API key) are write-only: never shown again, never logged, never stored on the phone.
+- The phone now transcribes voice notes on the device (Whistle, T-0179). The web card for the server transcription endpoint is still part of parity: add it, with one line of help that on-device transcription needs no setup.
+- Conventions (all mobile parity tasks): API module in `apps/mobile/src/lib/<area>-api.ts` mirroring the web client function names, validated at the boundary, with an error class carrying `status` and `code`; a hook that returns the real API or the mock (copy `use-ais-api.ts`); screens under `apps/mobile/src/app/`, guarded by `RequireAuth`; components under `apps/mobile/src/components/<area>/`; lucide icons, no emoji; every list has loading, empty and error states; error text shown to the user is always a fixed plain sentence, never the server's raw message; no new dependency (`expo-image-picker`, `expo-document-picker`, `expo-clipboard`, `zod` are already installed); never log tokens, codes, keys or message text; one row in `settings-items.ts` per settings page (`ownerOnly` where the web page is owner-only).
+
+### What to build
+1. `apps/mobile/src/lib/integrations-api.ts` (+ tests): the functions above, zod-validated, `status` and `code` on errors.
+2. `apps/mobile/src/app/settings/integrations.tsx`: three cards (Telegram bot, Email, Voice transcription), each with its configured state, Save and Remove (confirm before Remove). Secret fields are secure text inputs cleared after a successful save. Row 'Integrations' (lucide `Plug`, `ownerOnly`) in `settings-items.ts`; if the status call answers 404 the screen shows 'Only the owner can change this.'.
+3. Tests (Vitest): API, each card's states, the 404 owner gate, a test that a saved secret is absent from the rendered tree and from every logged call.
+
+### Read first
+`AGENTS.md`, `docs/ROADMAP_MOBILE_PARITY.md`, `docs/design/ui-style.md`, `apps/mobile/src/lib/approvals-api.ts` and `apps/mobile/src/lib/ais-api.ts` (the API module pattern), `apps/mobile/src/components/ais/use-ais-api.ts` and `require-ais-auth.tsx` (the real-or-mock hook and the auth guard), `apps/mobile/src/app/ais/index.tsx` (a screen with header, list, empty and error states), `apps/mobile/src/lib/settings-items.ts` (add your row), plus the web files named above.
+
+### Allowed files
+`apps/mobile/src/lib/integrations-api.ts` and tests, `apps/mobile/src/app/settings/integrations.tsx`, `apps/mobile/src/components/integrations/**`, `apps/mobile/src/lib/settings-items.ts` (one row).
+
+### Checks
+```bash
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm --filter @zilar/mobile test --maxWorkers=2 integrations
+```
+Say in the Report that the lead tests on the emulator and the phone.
+
+### Acceptance
+- The owner can save and remove the Telegram token, email settings and transcription endpoint from the phone.
+- Nobody else sees the page; no secret is ever shown back or logged.
+- No emoji in UI, no new dependency, no server change, no unrelated file touched.
+
+### Out of scope
+The server-side transcription feature itself (T-0170), the first-run setup page.
+
+---
+
+## Report (written by the worker when done)
+
+## Review (written by Claude)

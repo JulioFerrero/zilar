@@ -16,7 +16,8 @@ Chat list with folders and search, chat and group screens, topics, channels, pin
 | 1 | T-0184 | `ApprovalsPage`, `AlwaysAllowedList` | Approvals page: pending, history, always-allowed rules |
 | 2 | T-0185 | `MachinesPage`, `machines/*`, `ConnectionsPage` | Machines (approve, deny, revoke, rename, delete) and model connections (create, test, delete) |
 | 2 | T-0186 | `NotificationsPage` | Notification settings (needs the push work of T-0172 on the server side) |
-| 2 | T-0187 | `StickersPage`, `PackEditor`, `TelegramImportDialog` | Manage sticker packs: discover, add, reorder, create and edit, favourites, Telegram import |
+| 2 | T-0187 | `StickersPage` | Manage sticker packs: my packs, discover, add and remove, reorder, favourites |
+| 2 | T-0191 | `PackEditor`, `TelegramImportDialog` | Create and edit sticker packs, import from Telegram (after T-0187) |
 | 2 | T-0188 | `IntegrationsPage` (owner) | Owner integrations: Telegram, email, voice transcription settings |
 | 3 | T-0189 | `tools/*`, `AiActivity`, `AiPanel` | AI tools, routines and the activity feed on the AI screen |
 | 3 | T-0190 | `MentionPicker`, `InviteDialog`, `NewGroupDialog` | @mention picker in the composer and the remaining dialog gaps |

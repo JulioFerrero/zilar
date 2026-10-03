@@ -38,9 +38,12 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Tool host approval | New sites a tool wants to contact need one approval per tool; runs use declared ∩ approved hosts; approvals happen through the AI's card | server, web | 🟡 Merged (off by default) | T-0132 |
 | Model side of AI tools | Tool guide in the turn, several model rounds per turn, "working on it" progress line | server | 🟡 Merged (not tried against a real model yet) | T-0106 |
 | Tools and Routines UI | Tool list, read-only source, version history with revert, Run now, routines with plain-words schedules, pause/resume/delete | web | 🟡 Merged | T-0107 |
-| Voice messages | Record and play on web (server converts to AAC/M4A, sent as an attachment); the phone mic button is still a stub | server, web | 🟡 Merged (web) · 🧭 Planned (mobile, T-0154) | T-0154 |
+| Voice messages | Hold the mic to record, release to send; a real waveform of the recording; AAC 128 kbps mono; playback with speed; the server converts to AAC/M4A; the archive keeps voice notes through a reload | server, web, mobile | 🟡 Merged (live on a phone: record, send, play) | T-0154, T-0176 |
 | Telegram sticker import | Bring your Telegram packs (needs a bot token in the server config) | server | 🟡 Merged (not yet tried with a real bot) | T-0123 |
 | Mobile GIFs | Render, search and send GIFs on the phone (needs the GIF provider key in the server env) | mobile | 🟡 Merged (not yet on a device) | T-0148 |
+| One emoji button | A single button opens a sheet with Emoji, Stickers and GIFs tabs; the field keeps its natural height | mobile | 🟡 Merged (checked on a phone) | T-0175 |
+| Voice transcripts on the phone | A Transcribe button on every voice note on an Android arm64 phone: the Whistle model (17 MB, downloaded once after a yes) runs on the device, free, offline and private; long notes are cut at quiet moments; the text is kept on the phone | mobile (Android) | 🟡 Merged (a 2-minute clip transcribed in 13 s on a real phone) | T-0177, T-0178, T-0179 |
+| Voice transcripts from a server endpoint | Owner-configured OpenAI-compatible endpoint; "Show transcript" on web | server, web | 🟡 Merged | T-0170 |
 | Push in the production deploy | ejabberd component, compose, wizard keys, doctor | deploy | 🟡 Merged (not yet on a real deploy) | T-0145 |
 | Production storage safety | Sticker volume, backup/restore of both file stores, disk check, upload quotas | deploy, docs | 🟡 Merged (not yet on a real deploy) | T-0151 |
 | Native iOS push | Push chain through Apple's servers (needs an Apple Developer account) | | 🧭 Planned | T-0005 |
@@ -53,6 +56,8 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Server-made XMPP accounts | JWT-only login, no passwords on the chat server, members-only rooms | server | ✅ Live | T-0003, T-0017 |
 | Contacts from invites | Roster and nicknames follow invites | server | ✅ Live | T-0020 |
 | Session in the OS keychain | Mobile stores the session securely | mobile | ✅ Live | T-0026 |
+| Contacts by @handle | Find a person by exact @handle, a profile card, and send, accept, decline or cancel contact requests (web, and now the phone) | server, web, mobile | 🟡 Merged | T-0163, T-0182 |
+| Sign-in hints | The login screens tell people with no invite what to do, without revealing whether an email has an account; code requests are limited to 3 per minute | server, web, mobile | ✅ Live (limit) · 🟡 Merged (hints) | T-0180 |
 
 ## 3. AIs
 
@@ -121,6 +126,8 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Self-hosted install | Production images and compose (Caddy, Coolify; config baked into images, no bind mounts), SMTP sign-in codes, `./deploy/zilar init/up/doctor/backup/restore/create-admin`, bare-metal guide ([`INSTALL_DOCKER.md`](INSTALL_DOCKER.md)) | deploy | 🟡 Merged (wizard proven live on scratch containers) | T-0126, T-0128, T-0129, T-0127 |
 | Built by an AI team | A lead Claude writes specs and reviews every diff; workers implement in isolated worktrees; the `lead` CLI launches, supervises, reviews and merges; a fail-closed permission policy guards what workers may run | devtools | ✅ | T-0038, T-0051 → [`LEAD_PLAYBOOK.md`](LEAD_PLAYBOOK.md) |
 | Mobile parity (chat prefs, pins, invites, roles, search, channels, stickers) | Per-user mute/archive/pin, pinned banner, invite links, roles, message search, channels, stickers — same features as web | mobile | 🟡 Merged (not run on a simulator or device yet) | T-0135, T-0136, T-0137, T-0138, T-0139, T-0140, T-0143, T-0144, T-0147 |
+| Connection resilience | The chat connection survives idle networks and blips: backoff retries, keepalive pings, server pings answered, a watchdog that replaces a client stuck on "Connecting" after 5, 8, 12, 20 s | xmpp-core, mobile, web | ✅ Live (reproduced and fixed on a device) | T-0174 |
+| Mobile parity programme | Every web feature on the phone, in waves: [`ROADMAP_MOBILE_PARITY.md`](ROADMAP_MOBILE_PARITY.md) | mobile | 🧭 In progress (T-0181 to T-0191) | T-0181 .. T-0191 |
 
 ## Timeline
 
@@ -131,3 +138,4 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | 2026-09-29 | Attachments, audit log, kill switch, machines and runner hub (**M3**), approvals, action gateway, "always allow" rules (**M4**), tool sandbox and tools store |
 | 2026-09-30 | Topics (server, web, mobile), chat preferences, message search, routines scheduler and tool adapters, keyless web tools, production images, SMTP mailer, install wizard, invite links, group roles, pinned messages, stickers, channels, tools UI, tool host approval, mobile parity |
 | 2026-10-01 | Web push + PWA, smarter search, GIFs, sticker creator, model side of AI tools, mobile stickers and channels |
+| 2026-10-02 to 2026-10-03 | Rename to Zilar, release v0.1.13, hold-to-record voice notes with a real waveform, one emoji sheet, connection watchdog, on-device voice transcripts (Whistle), contacts by @handle on the phone, mobile parity roadmap |

@@ -321,6 +321,16 @@ const REJECT_RULES: Rule[] = [
     message: 'Never bypass git hooks with --no-verify. Fix the failing check instead.',
   },
   {
+    // The repo already has these tools; `npx` could download and run a
+    // different, unreviewed copy. The worker is told the exact replacement
+    // and carries on without waiting for the lead (found 2026-10-03: every
+    // worker asked for `npx prettier` and each ask needed a manual answer).
+    test: (segment) => /^npx\s+(prettier|vitest|eslint|oxlint|jest|turbo)(\s|$)/.test(segment),
+    verdict: 'reject',
+    message:
+      'No npx for tools this repo already has. From the repo root use: pnpm exec prettier --write <files>, pnpm lint, pnpm format:check, pnpm typecheck, and for tests only pnpm --filter <package> test --maxWorkers=2 <path>. Then continue.',
+  },
+  {
     test: (segment) => isBareShell(segment),
     verdict: 'reject',
     message:

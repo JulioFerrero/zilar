@@ -63,3 +63,25 @@ adb -s <device> install -r app/build/outputs/apk/release/app-release.apk
 - `@babel/plugin-transform-react-jsx` must be a devDependency of `apps/mobile` (a production bundle needs it; pnpm's strict layout does not provide it otherwise).
 - A vivo phone may show a confirmation prompt on the phone for a USB install; the first `adb install` can fail with an empty message until it is accepted. A phone that shows as `unauthorized` needs the "Allow USB debugging" prompt accepted.
 - Recording needs the microphone permission, which the app asks for on first use.
+
+## 8. iOS release build (install on an iPhone)
+
+A Release build for a real iPhone with the server URL baked in. It needs Xcode, an Apple Development certificate in the keychain, and the iPhone paired and unlocked. With a free Apple account the app stops opening after 7 days (rebuild and reinstall) and the first launch needs **Settings, General, VPN and Device Management, your Apple ID, Trust**.
+
+```bash
+cd <scratch-worktree> && git checkout --detach main && pnpm install --frozen-lockfile
+cd apps/mobile
+EXPO_PUBLIC_ZILAR_API_URL=https://<domain> NODE_ENV=production pnpm exec expo prebuild --platform ios --clean --no-install
+cd ios && LANG=en_US.UTF-8 pod install
+# find the signing team id (the OU of your certificate) and the phone's hardware id
+security find-certificate -c "Apple Development" -p | openssl x509 -noout -subject
+xcrun devicectl list devices -j devices.json   # hardwareProperties.udid
+EXPO_PUBLIC_ZILAR_API_URL=https://<domain> NODE_ENV=production \
+  xcodebuild -workspace Zilar.xcworkspace -scheme Zilar -configuration Release \
+  -destination "id=<hardware-udid>" -derivedDataPath <dir> \
+  DEVELOPMENT_TEAM=<team-id> CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates build
+# the first build compiles every pod: about 10 minutes
+xcrun devicectl device install app --device <coredevice-id> <dir>/Build/Products/Release-iphoneos/Zilar.app
+```
+
+Facts that cost time: `xcodebuild -destination` wants the hardware id (`00008140-…`), `devicectl` wants the CoreDevice id (a UUID); `expo prebuild --no-install` skips CocoaPods, so run `pod install`; the Whistle transcription module is Android only and does nothing on iOS.

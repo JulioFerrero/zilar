@@ -6,12 +6,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { JoinLinkForm } from '@/components/chat/join-link';
 import { NewChannelSheet } from '@/components/chat/new-channel-sheet';
+import { AddContactSheet } from '@/components/contacts/add-contact-sheet';
+import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import { useChatStore } from '@/store/chat-store-provider';
 
-type NewChatAction = 'channel' | 'group' | 'message' | 'join';
+type NewChatAction = 'channel' | 'group' | 'message' | 'join' | 'add-contact';
 
 /** The 56 px primary FAB with a "New channel" / "New group" / "New message" / "Join" menu. */
 export function NewChatButton() {
@@ -21,6 +23,9 @@ export function NewChatButton() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [action, setAction] = useState<NewChatAction | undefined>(undefined);
   const createChannel = useChatStore((state) => state.createChannel);
+  const chats = useChatStore((state) => state.chats);
+  const me = useChatStore((state) => state.me);
+  const { api: contactsApi } = useContactsApi();
   const [channelBusy, setChannelBusy] = useState(false);
   const [channelError, setChannelError] = useState('');
 
@@ -111,6 +116,14 @@ export function NewChatButton() {
             </Pressable>
             <Pressable
               accessibilityRole="menuitem"
+              accessibilityLabel="Add contact"
+              onPress={() => openDialog('add-contact')}
+              className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
+            >
+              <Text className="text-[16px] text-foreground">Add contact</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="menuitem"
               accessibilityLabel="Join with a link"
               onPress={() => openDialog('join')}
               className="px-4 py-3.5 active:bg-surface-raised"
@@ -134,6 +147,22 @@ export function NewChatButton() {
         >
           {action === 'join' ? (
             <JoinLinkForm onSubmit={joinWithToken} />
+          ) : action === 'add-contact' ? (
+            <AddContactSheet
+              api={contactsApi}
+              chats={chats}
+              myJid={me?.jid ?? undefined}
+              onMessage={(chatId) => {
+                setAction(undefined);
+                router.push({ pathname: '/chat/[id]', params: { id: chatId } });
+              }}
+              onOpenRequests={() => {
+                setAction(undefined);
+                setMenuOpen(false);
+                router.push('/settings/requests');
+              }}
+              onClose={() => setAction(undefined)}
+            />
           ) : action === 'channel' ? (
             <NewChannelSheet
               busy={channelBusy}
