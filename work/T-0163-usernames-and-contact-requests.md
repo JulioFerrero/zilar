@@ -1,7 +1,7 @@
 ---
 id: T-0163
 title: @usernames and contact requests
-status: review
+status: merged
 milestone: M5
 branch: task/T-0163-usernames-and-contact-requests
 model: meta/muse-spark-1.3-contributor
@@ -145,3 +145,10 @@ Done. @usernames and contact requests work end to end: pick a handle during onbo
 
 
 ## Review (written by Claude)
+
+Approved and merged after six pre-review rounds (each found something real).
+
+- Rounds 1-5 (worker): the handle gate no longer fires while the profile loads; `nextChangeAt` is a real body field; saving your own handle is a no-op; accept repairs itself; the `/@handle` share route works through a single-segment route (react-router cannot match `/@:handle`); the target handle is resolved inside the create transaction; "Skip for now" is remembered for the browser session; opposite-direction concurrent requests are stopped by a database index on the unordered pair; the reverse request answers 200; a unique-violation recovery runs outside the aborted transaction (real Postgres), covered by a unit test with a faked 23505 because the test database has one connection.
+- Round 6 (lead, small): audit rows are written after the commit (create) and after the pair write (accept, once, by the call that flipped the row), so a rolled-back or half-failed request leaves no phantom audit entry, with tests; dead `async` and unused parameter removed; vacuous test lines trimmed.
+- Scope sign-off (lead): `errors.ts` (`HttpError.detail`, spread before the fixed fields), `app.ts` and `app.test.ts`, `groups/service.ts`, `contacts/service.ts`, `AuthProvider`, `realStore`, `mock/api`, `renderApp`, `lib/handles*`, `useContactRequestCount`, `HandleSuffix`, `EmptyState`, `ChatList`, `NewChatButton`, `NamePage`, `AuthFlow`, `docs/USER_GUIDE.md`.
+- Known, accepted: a rare race on the reserved copy of an old handle self-heals on expiry; real-Postgres concurrency is covered by the faked-error test only. Needs a manual check on chat.zilar.app: sign in, choose a handle, add a second account by handle, accept, and open a `/@handle` link.

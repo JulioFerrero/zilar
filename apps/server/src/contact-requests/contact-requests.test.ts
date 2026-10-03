@@ -307,13 +307,12 @@ describe('contact requests', () => {
     const { createContactRequest } = await import('./service');
     const service = { db: context.db };
     for (let index = 0; index < 19; index += 1) {
-      const target = await withHandle(`target${index}@example.com`, `target_${index}`);
+      await withHandle(`target${index}@example.com`, `target_${index}`);
       expect((await postRequest(alice.cookie, `target_${index}`)).status).toBe(201);
-      expect(target.email).toContain('@example.com');
     }
     // At 19 pending, two concurrent creates to different targets serialize
     // on the per-sender lock: exactly one wins, the other hits the cap.
-    const [extraA, extraB] = await Promise.all([
+    await Promise.all([
       withHandle('extra-a@example.com', 'extra_aaa'),
       withHandle('extra-b@example.com', 'extra_bbb'),
     ]);
@@ -328,10 +327,6 @@ describe('contact requests', () => {
     expect((lost[0] as PromiseRejectedResult).reason).toMatchObject({
       code: 'too_many_requests',
     });
-    expect([extraA.email, extraB.email].sort()).toEqual([
-      'extra-a@example.com',
-      'extra-b@example.com',
-    ]);
 
     // And one more serial create also hits the cap.
     await withHandle('extra@example.com', 'extra_one');
@@ -541,5 +536,47 @@ describe('contact requests', () => {
     expect(rows.map((row) => `${row.userId}->${row.contactUserId}`).sort()).toEqual(
       [`${alice.id}->${bob.id}`, `${bob.id}->${alice.id}`].sort(),
     );
+  });
+
+  it('audits create and accept once each, with ids only, after the commit', async () => {
+    const alice = await withHandle('alice@example.com', 'alice_a');
+    const bob = await withHandle('bob@example.com', 'bob_audit');
+    const { createContactRequest, acceptContactRequest } = await import('./service');
+    const records: Array<{ action: string; subjectId: string | null; detail: unknown }> = [];
+    const audit = {
+      record: async (entry: { action: string; subjectId: string | null; detail: unknown }) => {
+        records.push(entry);
+      },
+    } as unknown as NonNullable<Parameters<typeof createContactRequest>[0]['audit']>;
+    const service = { db: context.db, audit };
+
+    const { request } = await createContactRequest(service, alice.id, 'bob_audit');
+    await acceptContactRequest(service, request.id, bob.id);
+    await acceptContactRequest(service, request.id, bob.id);
+
+    expect(records.map((entry) => entry.action)).toEqual([
+      'contact_request.created',
+      'contact_request.accepted',
+    ]);
+    for (const entry of records) {
+      expect(entry.subjectId).toBe(request.id);
+      expect(entry.detail).toBeNull();
+    }
+  });
+
+  it('writes no audit row when a create is refused', async () => {
+    const alice = await withHandle('alice@example.com', 'alice_r');
+    const { createContactRequest } = await import('./service');
+    const records: string[] = [];
+    const audit = {
+      record: async (entry: { action: string }) => {
+        records.push(entry.action);
+      },
+    } as unknown as NonNullable<Parameters<typeof createContactRequest>[0]['audit']>;
+
+    await expect(
+      createContactRequest({ db: context.db, audit }, alice.id, 'nobody_here'),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(records).toEqual([]);
   });
 });

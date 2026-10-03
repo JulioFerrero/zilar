@@ -166,7 +166,7 @@ export async function createContactRequest(
 
   let targetId: string | undefined;
   try {
-    return await deps.db.transaction(async (tx) => {
+    const created = await deps.db.transaction(async (tx) => {
       const txDb = tx as unknown as ServerDatabase;
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'contact-sender:' + fromId}))`);
       // The handle is resolved INSIDE the transaction, under the sender lock:
@@ -239,9 +239,14 @@ export async function createContactRequest(
       if (!row) {
         throw new Error('contact request insert returned no row');
       }
-      auditFor(deps, 'contact_request.created', fromId, row.id);
       return { request: row as ContactRequestRow };
     });
+    // Audited after the commit: a rolled-back create leaves no audit row.
+    // Only a fresh row has no `reverseOf`.
+    if (created.reverseOf === undefined) {
+      auditFor(deps, 'contact_request.created', fromId, created.request.id);
+    }
+    return created;
   } catch (error) {
     if (error instanceof HttpError) {
       throw error;
@@ -308,11 +313,11 @@ export function isPendingPairViolation(error: unknown): boolean {
   return false;
 }
 
-async function toView(
+function toView(
   row: ContactRequestRow,
   viewerId: string,
   profileByUser: Map<string, { name: string; image: string | null; handle: string | null }>,
-): Promise<ContactRequestView> {
+): ContactRequestView {
   const otherId = row.fromUserId === viewerId ? row.toUserId : row.fromUserId;
   const profile = profileByUser.get(otherId);
   return {
@@ -352,11 +357,11 @@ export async function listContactRequests(
   const otherIds = [
     ...new Set(rows.map((row) => (row.fromUserId === viewerId ? row.toUserId : row.fromUserId))),
   ];
-  const profileByUser = await profilesByUser(deps.db, viewerId, otherIds);
+  const profileByUser = await profilesByUser(deps.db, otherIds);
   const incoming: ContactRequestView[] = [];
   const outgoing: ContactRequestView[] = [];
   for (const row of rows) {
-    const view = await toView(row, viewerId, profileByUser);
+    const view = toView(row, viewerId, profileByUser);
     if (row.toUserId === viewerId) {
       incoming.push(view);
     } else {
@@ -372,7 +377,6 @@ export async function listContactRequests(
 // the `toView` defaults.
 async function profilesByUser(
   db: ServerDatabase,
-  _viewerId: string,
   otherIds: string[],
 ): Promise<Map<string, { name: string; image: string | null; handle: string | null }>> {
   const byUser = new Map<string, { name: string; image: string | null; handle: string | null }>();
@@ -434,6 +438,7 @@ export async function acceptContactRequest(
   }
   const now = serviceNow(deps);
 
+  let flippedNow = false;
   const settled = await deps.db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'contact-accept:' + id}))`);
 
@@ -468,7 +473,7 @@ export async function acceptContactRequest(
         }
         throw notFound();
       }
-      auditFor(deps, 'contact_request.accepted', viewerId, (flipped as ContactRequestRow).id);
+      flippedNow = true;
       return flipped as ContactRequestRow;
     }
     return currentRow;
@@ -484,6 +489,11 @@ export async function acceptContactRequest(
   if (deps.adminClient && deps.domain) {
     await syncRoster(deps.db, deps.adminClient, deps.domain, settled.fromUserId);
     await syncRoster(deps.db, deps.adminClient, deps.domain, settled.toUserId);
+  }
+  // Audited once, after the commit and the pair write, by the call that
+  // actually flipped the row; an idempotent re-accept adds nothing.
+  if (flippedNow) {
+    auditFor(deps, 'contact_request.accepted', viewerId, settled.id);
   }
   return settled;
 }
