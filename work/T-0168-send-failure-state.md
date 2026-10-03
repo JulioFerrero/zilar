@@ -1,7 +1,7 @@
 ---
 id: T-0168
 title: A failed voice or attachment send shows "Not sent" with Retry, never a clock forever
-status: planned
+status: review
 milestone: M5
 branch: task/T-0168-send-failure-state
 model: meta/muse-spark-1.3-contributor
@@ -51,5 +51,84 @@ Text message retry and offline queueing, a full mobile failure UI, automatic ret
 ---
 
 ## Report (written by the worker when done)
+
+### What I did
+Gave voice and attachment sends a real failure state instead of a clock forever:
+- `packages/chat-core/src/types.ts`: added `'failed'` to `MessageStatus` and a new
+  `SendFailureReason` union (`too_large | unsupported_file | server_unavailable |
+  upload_refused | network | timed_out`) plus an optional `failureReason` on
+  `UiMessage`. New `packages/chat-core/src/failures.ts` maps each reason to one
+  fixed user-safe label (`sendFailureLabel`).
+- `apps/web/src/store/realStore.ts`:
+  - `advanceStatus` never moves into or out of `failed` (only an explicit retry does,
+    via new `markSendRetrying`); the echo reconcile in `handleMessage` therefore
+    cannot downgrade a failed bubble (`{...ui, status: advanceStatus(...)}`).
+  - New `markSendFailed` (bubble + list preview leave `sending` for `failed` with a
+    reason, keeping local bytes; mirrors the legacy `failed` flag), `removeFailedMessage`
+    (drops only a `failed`-status local bubble and falls the preview back to the
+    previous message), `sendFailureReasonFor` (error class / HTTP status / offline
+    only — never raw text or URLs), and a per-attempt 60 s `SEND_TIMEOUT_MS` deadline
+    (`armSendTimeout`/`settleSendTimeout` with a run token, cleared on `stop()`).
+  - `sendVoice` pipeline extracted to re-runnable `runVoiceSend`; recording bytes are
+    kept in `pendingVoices` until the stanza send succeeds (echo also drops them).
+    New actions `retryVoice` and `deleteFailedMessage`. `runAttachmentUpload` and
+    `retryAttachment` use the same failure/timeout path (GIF sends go through
+    `sendAttachment`, so they are covered; stickers keep their existing flag-only path).
+- UI (`apps/web`): `MessageTicks` renders a red alert with accessible name "Not sent"
+  for `failed`; `MessageBubble` renders a `SendFailure` row under a failed own voice /
+  attachment bubble ("Not sent: <reason>", Retry, Delete — all keyboard-reachable
+  buttons with accessible names). Legacy `failed`-flag-without-status rows are kept
+  for older bubbles.
+- `apps/web/src/store/store.ts`: interface entries plus mock-store behavior (retry
+  clears back to `sending`, delete drops the bubble) so the UI is exercisable.
+- `apps/mobile` (minimal, typecheck + spec item 5): `STATUS_RANK` accepts `failed`
+  (same closed-ladder rule), `Ticks`/`outgoingTicks` treat `failed` like `sending`,
+  and `BubbleMeta` shows a plain "Not sent" text on failed own messages.
+
+### Files changed
+`packages/chat-core/src/types.ts`, `packages/chat-core/src/failures.ts` (new) +
+`failures.test.ts` (new) + `index.ts` export, `apps/web/src/store/realStore.ts`,
+`apps/web/src/store/store.ts`, `apps/web/src/store/realStore.test.tsx` (updated 1
+old-behavior assertion, new T-0168 suite), `apps/web/src/components/MessageBubble.tsx`,
+`MessageTicks.tsx`, `SendFailure.test.tsx` (new), `apps/mobile/src/store/real-store.ts`,
+`apps/mobile/src/components/chat/ticks.tsx`,
+`apps/mobile/src/components/chat/message-bubble.tsx`.
+
+### Commands and real results
+- `pnpm install`: ok (1049 packages).
+- `pnpm format:check`: pass (after `prettier --write` on 2 files).
+- `pnpm lint`: pass, no warnings.
+- `pnpm typecheck` (turbo, all 11 tasks incl. `@zilar/mobile`): pass.
+- `pnpm --filter @zilar/chat-core test --maxWorkers=2`: 11 files, 136 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 src/store src/components src/lib/voice`:
+  69 files, 756 passed (incl. 9 new T-0168 store tests + 4 new SendFailure UI tests).
+- Targeted re-run after final edits (`realStore`, `SendFailure`, `AttachmentBubbles`,
+  `StickerPanel`): 4 files, 157 passed.
+
+### Problems / deviations
+- Existing test `marks a failed upload failed and retries it` asserted
+  `status: 'sending'` on failure; updated to `status: 'failed'` + `failureReason:
+  'upload_refused'` + back-to-`sending` on retry (the intended spec change).
+- Sticker sends keep their old flag-only failure path (separate `markStickerFailed`,
+  not the shared catch the spec conditions on) — out of scope, untouched.
+- No AbortController: neither `VoicePort` nor `AttachmentPort` accepts a signal, so
+  the timeout marks `failed` and ignores the late result instead of cancelling the
+  request (allowed by the spec's "otherwise ignore its late result"). Widening the
+  ports would touch shared lib signatures owned by other tasks.
+- `canEditMessage` already excludes voice/attachment payloads only via `text ===
+  undefined` for voice (voice messages carry no text) — a failed voice bubble has no
+  text so Edit stays hidden; failed attachments with captions keep the text-edit path
+  (edits the caption, pre-existing behavior).
+
+### Security checklist
+- Reasons are fixed buckets from error class/HTTP status/offline; tests assert raw
+  messages, URLs and tokens never reach the stored message or UI.
+- `removeFailedMessage`/`deleteFailedMessage` only touch messages with
+  `status === 'failed'` in the named chat; nothing is sent on delete (the stanza never
+  went out, so no retraction needed).
+- No new routes, no caps, no audit entries, no secrets in logs.
+
+### Open questions
+None.
 
 ## Review (written by Claude)

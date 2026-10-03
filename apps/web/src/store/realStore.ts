@@ -8,6 +8,7 @@ import type {
   MessageStatus,
   ReactionsState,
   ReplyRef,
+  SendFailureReason,
   UiMention,
   UiMessage,
   UiReaction,
@@ -144,6 +145,79 @@ const CHAT_REFRESH_DEBOUNCE_MS = 500;
 export const TOPIC_REFRESH_INTERVAL_MS = 60_000;
 // Waits between XMPP connect attempts after a failed token or login.
 export const CONNECT_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
+
+// A send that neither succeeds nor fails within this long is marked failed
+// with the reason `timed_out`, so a hung request cannot sit on the clock.
+export const SEND_TIMEOUT_MS = 60_000;
+
+/**
+ * Maps any send-pipeline error to a fixed user-safe `SendFailureReason`
+ * (T-0168). Raw error text, URLs and tokens never reach the UI or the logs:
+ * the tables below read only the error class (`VoiceError`/`AttachmentError`
+ * code, HTTP status, offline state).
+ */
+export function sendFailureReasonFor(error: unknown, offline: boolean): SendFailureReason {
+  if (offline) {
+    return 'network';
+  }
+  const code = errorCodeOf(error);
+  if (code === 'too_large' || code === 'voice_too_large' || code === 'empty_file') {
+    return 'too_large';
+  }
+  if (code === 'unsupported' || code === 'voice_empty' || code === 'invalid_response') {
+    return 'unsupported_file';
+  }
+  if (code === 'convert_failed' || code === 'voice_failed' || code.startsWith('voice_')) {
+    return 'server_unavailable';
+  }
+  if (code === 'upload_refused' || code === 'upload_failed') {
+    return 'upload_refused';
+  }
+  if (code === 'timed_out') {
+    return 'timed_out';
+  }
+  if (code === 'network_error' || code === 'network') {
+    return 'network';
+  }
+  const status = httpStatusOf(error);
+  if (status !== undefined) {
+    if (status === 413) {
+      return 'too_large';
+    }
+    if (status === 415) {
+      return 'unsupported_file';
+    }
+    if (status === 403 || status === 404 || status === 409) {
+      return 'upload_refused';
+    }
+    if (status >= 500) {
+      return 'server_unavailable';
+    }
+    return 'network';
+  }
+  if (error instanceof Error && /timed out|timeout|aborted/i.test(error.message)) {
+    return 'timed_out';
+  }
+  return 'network';
+}
+
+/** The typed `code` of a `VoiceError`/`AttachmentError`, or `''`. */
+function errorCodeOf(error: unknown): string {
+  if (error !== null && typeof error === 'object' && 'code' in error) {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === 'string' ? code : '';
+  }
+  return '';
+}
+
+/** The HTTP status of an `ApiError`, or undefined. */
+function httpStatusOf(error: unknown): number | undefined {
+  if (error !== null && typeof error === 'object' && 'status' in error) {
+    const status = (error as { status?: unknown }).status;
+    return typeof status === 'number' ? status : undefined;
+  }
+  return undefined;
+}
 
 // A finished draft is kept until its final XMPP message arrives. If that never
 // happens (XMPP down), it is dropped after this long so it cannot stick.
@@ -455,11 +529,12 @@ function sortMessages(messages: UiMessage[]): UiMessage[] {
 
 /** Drops the `failed` flag without leaving an `undefined` value behind. */
 function clearFailure(message: UiMessage): UiMessage {
-  if (message.failed === undefined) {
+  if (message.failed === undefined && message.failureReason === undefined) {
     return message;
   }
   const next: UiMessage = { ...message };
   delete next.failed;
+  delete next.failureReason;
   return next;
 }
 
@@ -726,6 +801,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const pendingOutgoing = new Map<string, string[]>();
     // An outgoing attachment's bytes, kept for a Retry after a failed upload.
     const pendingAttachments = new Map<string, File>();
+    // An outgoing voice recording's bytes, kept for a Retry after a failed
+    // send (T-0168); dropped once the stanza send succeeds, like attachments.
+    const pendingVoices = new Map<string, { blob: Blob; waveform: number[] }>();
+    // One in-flight send attempt's timeout handle and run token, keyed by the
+    // message's alias root (T-0168). The run token lets a retry's timer and a
+    // previous run's late pipeline agree on which outcome counts.
+    const sendTimeouts = new Map<string, { timer: ReturnType<typeof setTimeout>; run: object }>();
+    const sendTimeoutRuns = new Map<string, object>();
     const messageAliases = new Map<string, string>();
     // Local optimistic id -> the server id it resolved to, once known.
     const messageServerIds = new Map<string, string>();
@@ -1178,7 +1261,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           message.reactions === undefined &&
           message.mentions === undefined &&
           message.edited === undefined &&
-          message.failed === undefined
+          message.failed === undefined &&
+          message.failureReason === undefined
         ) {
           return message;
         }
@@ -1192,6 +1276,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         delete deleted.mentions;
         delete deleted.edited;
         delete deleted.failed;
+        delete deleted.failureReason;
         return deleted;
       }
       const text = state.text ?? message.text;
@@ -1316,9 +1401,19 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     // A status only moves forward: sending -> sent -> read. A late echo or
     // send confirmation must never downgrade a message the peer already read.
-    const STATUS_RANK: Record<MessageStatus, number> = { sending: 0, sent: 1, read: 2 };
+    // `failed` is outside the ladder: `advanceStatus` never moves into or out
+    // of it by accident — only an explicit retry does.
+    const STATUS_RANK: Record<MessageStatus, number> = {
+      sending: 0,
+      sent: 1,
+      read: 2,
+      failed: 2,
+    };
 
     function advanceStatus(current: MessageStatus, next: MessageStatus): MessageStatus {
+      if (current === 'failed' || next === 'failed') {
+        return current;
+      }
       return STATUS_RANK[next] > STATUS_RANK[current] ? next : current;
     }
 
@@ -1401,6 +1496,110 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       });
     }
 
+    // A failed voice or attachment send (T-0168): the bubble leaves
+    // `sending` for `failed` with a fixed user-safe reason, keeping its local
+    // blob/file so it can be retried. The `failed` flag mirrors the status
+    // for readers that only check it. A failure never moves a message that
+    // already settled (`sent`/`read`/`failed`): a late hang racing a success
+    // must not downgrade it.
+    function markSendFailed(chatId: string, messageId: string, reason: SendFailureReason): void {
+      set((state) => {
+        const fail = (item: UiMessage): UiMessage =>
+          item.status === 'sending' && sameMessage(item.id, messageId)
+            ? { ...item, status: 'failed' as const, failed: true, failureReason: reason }
+            : item;
+        const next = listFor(state, chatId).map(fail);
+        const last = state.chats.find((chat) => chat.id === chatId)?.lastMessage;
+        const lastMatches =
+          last !== undefined && last.status === 'sending' && sameMessage(last.id, messageId);
+        return {
+          messagesByChat: { ...state.messagesByChat, [chatId]: next },
+          chats: lastMatches
+            ? state.chats.map((chat) =>
+                chat.id === chatId && chat.lastMessage !== undefined
+                  ? {
+                      ...chat,
+                      lastMessage: {
+                        ...chat.lastMessage,
+                        status: 'failed' as const,
+                        failed: true,
+                        failureReason: reason,
+                      },
+                    }
+                  : chat,
+              )
+            : state.chats,
+        };
+      });
+    }
+
+    // Moves a failed bubble back to `sending` for an explicit retry (T-0168).
+    // Only `failed` messages move: this is the one path that may leave that
+    // status, so `advanceStatus` can stay closed to it.
+    function markSendRetrying(chatId: string, messageId: string): void {
+      set((state) => {
+        const retry = (item: UiMessage): UiMessage =>
+          item.status === 'failed' && sameMessage(item.id, messageId)
+            ? { ...clearFailure(item), status: 'sending' as const }
+            : item;
+        const next = listFor(state, chatId).map(retry);
+        const last = state.chats.find((chat) => chat.id === chatId)?.lastMessage;
+        const lastMatches =
+          last !== undefined && last.status === 'failed' && sameMessage(last.id, messageId);
+        return {
+          messagesByChat: { ...state.messagesByChat, [chatId]: next },
+          chats: lastMatches
+            ? state.chats.map((chat) =>
+                chat.id === chatId && chat.lastMessage !== undefined
+                  ? {
+                      ...chat,
+                      lastMessage: {
+                        ...clearFailure(chat.lastMessage),
+                        status: 'sending' as const,
+                      },
+                    }
+                  : chat,
+              )
+            : state.chats,
+        };
+      });
+    }
+
+    // Removes a failed local bubble (T-0168): the send never reached the
+    // server, so there is nothing to retract — only a local message still in
+    // `failed` status may go. Its kept bytes go with it.
+    function removeFailedMessage(chatId: string, messageId: string): void {
+      pendingAttachments.delete(aliasRoot(messageId));
+      pendingAttachments.delete(messageId);
+      set((state) => {
+        const next = listFor(state, chatId).filter(
+          (item) => !(item.status === 'failed' && sameMessage(item.id, messageId)),
+        );
+        if (next.length === listFor(state, chatId).length) {
+          return state;
+        }
+        const last = state.chats.find((chat) => chat.id === chatId)?.lastMessage;
+        const lastMatches =
+          last !== undefined && last.status === 'failed' && sameMessage(last.id, messageId);
+        return {
+          messagesByChat: { ...state.messagesByChat, [chatId]: sortMessages(next) },
+          chats: lastMatches
+            ? state.chats.map((chat) => {
+                if (chat.id !== chatId) {
+                  return chat;
+                }
+                const latest = [...next].reverse().find((item) => item.chatId === chatId);
+                if (latest === undefined) {
+                  const { lastMessage: _dropped, ...rest } = chat;
+                  return rest;
+                }
+                return { ...chat, lastMessage: latest };
+              })
+            : state.chats,
+        };
+      });
+    }
+
     // A failed sticker keeps the message and shows a Retry instead of a
     // silent "sending" state, like attachments do.
     function markStickerFailed(chatId: string, messageId: string): void {
@@ -1468,6 +1667,45 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }));
     }
 
+    // One send attempt's deadline (T-0168): when it fires while the message is
+    // still `sending`, the send is marked `failed` with `timed_out` and the
+    // pipeline's late result is ignored. The run token pairs each timer with
+    // its pipeline, so a retry's timer and a previous run's late result agree
+    // on which outcome counts. The timer handle is dropped on `stop()` via
+    // the same map.
+    function armSendTimeout(chatId: string, messageId: string, run: object): void {
+      const key = aliasRoot(messageId);
+      const previous = sendTimeouts.get(key);
+      if (previous !== undefined) {
+        clearTimeout(previous.timer);
+      }
+      const timer = setTimeout(() => {
+        if (sendTimeoutRuns.get(key) !== run) {
+          return;
+        }
+        sendTimeouts.delete(key);
+        sendTimeoutRuns.delete(key);
+        markSendFailed(chatId, messageId, 'timed_out');
+      }, SEND_TIMEOUT_MS);
+      sendTimeouts.set(key, { timer, run });
+      sendTimeoutRuns.set(key, run);
+    }
+
+    // The pipeline settled this run: drop its timer without firing, so a late
+    // success after a manual failure (or the reverse) cannot flip the message.
+    function settleSendTimeout(messageId: string, run: object): void {
+      const key = aliasRoot(messageId);
+      if (sendTimeoutRuns.get(key) !== run) {
+        return;
+      }
+      const pending = sendTimeouts.get(key);
+      if (pending !== undefined && pending.run === run) {
+        clearTimeout(pending.timer);
+        sendTimeouts.delete(key);
+      }
+      sendTimeoutRuns.delete(key);
+    }
+
     // The upload steps of an attachment, re-runnable from a Retry: read the
     // image size when it is one, PUT the bytes, then send the payload message.
     function runAttachmentUpload(
@@ -1479,9 +1717,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     ): void {
       const current = core;
       if (current === undefined) {
-        markAttachmentFailed(chat.id, localId);
+        markSendFailed(chat.id, localId, 'network');
         return;
       }
+      const run = {};
+      armSendTimeout(chat.id, localId, run);
       void (async () => {
         try {
           const kind = attachmentPort.classify(file);
@@ -1503,10 +1743,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           linkMessageIds(localId, sent.id);
           linkLocalToServer(localId, sent.id);
           rememberOriginId(localId, sent.id);
+          settleSendTimeout(localId, run);
           updateMessageStatus(chat.id, localId, 'sent');
           pendingAttachments.delete(localId);
-        } catch {
+        } catch (error) {
+          settleSendTimeout(localId, run);
           // Keep the local bytes so the bubble can offer a Retry.
+          markSendFailed(chat.id, localId, sendFailureReasonFor(error, core === undefined));
+          // Pre-timeout code read only the `failed` flag; keep it in sync.
           markAttachmentFailed(chat.id, localId);
         }
       })();
@@ -2216,6 +2460,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (localId !== undefined) {
           linkMessageIds(localId, ui.id);
           linkLocalToServer(localId, ui.id);
+          // The stanza reached the server: its kept retry bytes (voice or
+          // attachment) can go, whichever pipeline stored them.
+          const root = aliasRoot(localId);
+          pendingVoices.delete(localId);
+          pendingVoices.delete(root);
+          pendingAttachments.delete(localId);
+          pendingAttachments.delete(root);
         }
         set((state) => {
           const existing = listFor(state, chatId);
@@ -2927,6 +3178,57 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         };
       });
       void syncBadge().catch(() => undefined);
+    }
+
+    // The voice pipeline, re-runnable from a Retry (T-0168): convert, PUT
+    // the bytes, then send the payload message. Every throw — conversion,
+    // upload or the final send — lands the bubble in `failed` with a fixed
+    // user-safe reason, never a clock forever. The recording's bytes stay
+    // in `pendingVoices` until the stanza send succeeds, so a Retry after
+    // the cause is fixed re-runs the same pipeline from the retained blob.
+    function runVoiceSend(
+      chat: ChatSummary,
+      localId: string,
+      blob: Blob,
+      waveform: number[],
+      replyTo: ReplyRef | undefined,
+    ): void {
+      const current = core;
+      if (current === undefined) {
+        markSendFailed(chat.id, localId, 'network');
+        return;
+      }
+      const run = {};
+      armSendTimeout(chat.id, localId, run);
+      void (async () => {
+        try {
+          const converted = await voicePort.convert(blob);
+          const url = await voicePort.upload(current, converted.audio);
+          const voice: VoiceMeta = {
+            duration_ms: converted.durationMs,
+            mime: 'audio/mp4',
+            waveform,
+            url,
+          };
+          updateMessageVoice(chat.id, localId, voice);
+          const sent = await current.sendMessage(chat.id, coreKind(chat), '', {
+            payload: { v: 0, type: 'voice', data: voice },
+            ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+          });
+          linkMessageIds(localId, sent.id);
+          linkLocalToServer(localId, sent.id);
+          rememberOriginId(localId, sent.id);
+          settleSendTimeout(localId, run);
+          updateMessageStatus(chat.id, localId, 'sent');
+          pendingVoices.delete(localId);
+          pendingVoices.delete(aliasRoot(localId));
+        } catch (error) {
+          settleSendTimeout(localId, run);
+          // The optimistic bubble keeps its local audio; the failure shows
+          // "Not sent" with Retry and Delete instead of a clock.
+          markSendFailed(chat.id, localId, sendFailureReasonFor(error, core === undefined));
+        }
+      })();
     }
 
     return {
@@ -3652,40 +3954,47 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         queue.push(localId);
         pendingOutgoing.set(signature, queue);
         setChatMessage(chatId, message, true);
+        pendingVoices.set(localId, { blob: recording.blob, waveform });
         const mine = myJid();
         if (mine !== undefined) {
           rememberAuthor(localId, { jid: mine, resolved: true });
         }
 
-        const current = core;
-        if (current === undefined) {
+        runVoiceSend(chat, localId, recording.blob, waveform, replyTo);
+      },
+      retryVoice: (chatId, messageId) => {
+        const root = aliasRoot(messageId);
+        const kept = pendingVoices.get(root) ?? pendingVoices.get(messageId);
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (kept === undefined || chat === undefined) {
           return;
         }
-
-        void (async () => {
-          try {
-            const converted = await voicePort.convert(recording.blob);
-            const url = await voicePort.upload(current, converted.audio);
-            const voice: VoiceMeta = {
-              duration_ms: converted.durationMs,
-              mime: 'audio/mp4',
-              waveform,
-              url,
-            };
-            updateMessageVoice(chatId, localId, voice);
-            const sent = await current.sendMessage(chatId, coreKind(chat), '', {
-              payload: { v: 0, type: 'voice', data: voice },
-              ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
-            });
-            linkMessageIds(localId, sent.id);
-            linkLocalToServer(localId, sent.id);
-            rememberOriginId(localId, sent.id);
-            updateMessageStatus(chatId, localId, 'sent');
-          } catch {
-            // The optimistic bubble keeps its local audio and stays "sending";
-            // the next attempt would resend after a reconnect.
+        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        if (message === undefined || message.status !== 'failed' || message.voice === undefined) {
+          return;
+        }
+        markSendRetrying(chatId, messageId);
+        runVoiceSend(chat, messageId, kept.blob, kept.waveform, message.replyTo);
+      },
+      deleteFailedMessage: (chatId, messageId) => {
+        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        if (message === undefined || message.status !== 'failed') {
+          return;
+        }
+        if (message.voice !== undefined) {
+          pendingVoices.delete(aliasRoot(messageId));
+          pendingVoices.delete(messageId);
+        }
+        const root = aliasRoot(messageId);
+        if (sendTimeoutRuns.has(root)) {
+          const pending = sendTimeouts.get(root);
+          if (pending !== undefined) {
+            clearTimeout(pending.timer);
+            sendTimeouts.delete(root);
           }
-        })();
+          sendTimeoutRuns.delete(root);
+        }
+        removeFailedMessage(chatId, messageId);
       },
       sendAttachment: (chatId, file, options) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
@@ -3823,7 +4132,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (message === undefined) {
           return;
         }
-        clearAttachmentFailure(chatId, messageId);
+        // An explicit retry moves the bubble back to `sending` (T-0168): the
+        // only path that may leave `failed`.
+        if (message.status === 'failed') {
+          markSendRetrying(chatId, messageId);
+        } else {
+          clearAttachmentFailure(chatId, messageId);
+        }
         runAttachmentUpload(chat, messageId, file, message.text ?? '', message.replyTo);
       },
       createGroup: async (title, memberIds, options) => {
@@ -3982,6 +4297,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           clearTimeout(timer);
         }
         typingTimers = {};
+        for (const pending of sendTimeouts.values()) {
+          clearTimeout(pending.timer);
+        }
+        sendTimeouts.clear();
+        sendTimeoutRuns.clear();
         if (refreshTimer !== undefined) {
           clearTimeout(refreshTimer);
           refreshTimer = undefined;

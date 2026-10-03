@@ -9,9 +9,9 @@ type TicksProps = {
   size?: number;
 };
 
-/** `✓` sent, `✓✓` read, a clock while sending. */
+/** `✓` sent, `✓✓` read, a clock while sending (and on a failed send). */
 export function Ticks({ status, color, size = 15 }: TicksProps) {
-  if (status === 'sending') {
+  if (status === 'sending' || status === 'failed') {
     return <Clock size={size - 2} color={color} />;
   }
   const Icon = status === 'read' ? CheckCheck : Check;

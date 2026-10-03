@@ -305,6 +305,10 @@ export interface ChatStore {
   retrySticker: (chatId: string, messageId: string) => void;
   /** Re-runs a failed attachment upload, keeping the original file. */
   retryAttachment: (chatId: string, messageId: string) => void;
+  /** Re-runs a failed voice send from the retained recording (T-0168). */
+  retryVoice: (chatId: string, messageId: string) => void;
+  /** Removes a failed local bubble; the send never reached the server (T-0168). */
+  deleteFailedMessage: (chatId: string, messageId: string) => void;
   /**
    * Toggles my reaction of `emoji` on a message and sends my complete set
    * (XEP-0444). Optimistic; it reverts when the send fails.
@@ -1371,6 +1375,34 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         }));
       },
       retryAttachment: () => {},
+      // Mock mode keeps no bytes: a retry just clears the failure flag and a
+      // delete drops the failed bubble, so the failure UI is exercisable.
+      retryVoice: (chatId, messageId) => {
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: (state.messagesByChat[chatId] ?? []).map((item) => {
+              if (item.id !== messageId || item.status !== 'failed') {
+                return item;
+              }
+              const next: UiMessage = { ...item, status: 'sending' };
+              delete next.failed;
+              delete next.failureReason;
+              return next;
+            }),
+          },
+        }));
+      },
+      deleteFailedMessage: (chatId, messageId) => {
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: (state.messagesByChat[chatId] ?? []).filter(
+              (item) => item.id !== messageId || item.status !== 'failed',
+            ),
+          },
+        }));
+      },
       setSearch: (value) => set({ search: value }),
       searchChat: undefined,
       setSearchChat: (chatId) => set({ searchChat: chatId }),

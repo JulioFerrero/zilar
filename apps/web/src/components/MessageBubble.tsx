@@ -5,8 +5,10 @@ import {
   formatTime,
   isAiJid,
   isBigEmoji,
+  sendFailureLabel,
   shouldRenderMarkdown,
   type ChatSummary,
+  type SendFailureReason,
   type UiMessage,
 } from '@zilar/chat-core';
 import { MoreHorizontal } from 'lucide-react';
@@ -45,6 +47,49 @@ function senderColor(id: string): string {
     hash = Math.imul(hash, 0x01000193);
   }
   return SENDER_COLORS[(hash >>> 0) % SENDER_COLORS.length] ?? SENDER_COLORS[0];
+}
+
+/**
+ * The "Not sent" row under a failed own message (T-0168): a red label with
+ * the fixed reason, a Retry button that re-runs the same pipeline from the
+ * retained blob, and a Delete button that removes the local bubble. All
+ * three are plain buttons, keyboard reachable with accessible names.
+ */
+export function SendFailure({
+  chatId,
+  messageId,
+  reason,
+  onRetry,
+}: {
+  chatId: string;
+  messageId: string;
+  reason: SendFailureReason | undefined;
+  onRetry: () => void;
+}) {
+  const storeApi = useChatStoreApi();
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2 px-0.5 text-[12px]">
+      <span className="font-semibold text-danger">
+        Not sent{reason === undefined ? '' : `: ${sendFailureLabel(reason)}`}
+      </span>
+      <button
+        type="button"
+        aria-label="Retry sending message"
+        onClick={onRetry}
+        className="font-semibold text-muted-foreground underline"
+      >
+        Retry
+      </button>
+      <button
+        type="button"
+        aria-label="Delete unsent message"
+        onClick={() => storeApi.getState().deleteFailedMessage(chatId, messageId)}
+        className="font-semibold text-muted-foreground underline"
+      >
+        Delete
+      </button>
+    </div>
+  );
 }
 
 function MessageMeta({
@@ -207,6 +252,10 @@ export function MessageBubble({
     isGifVideoAttachment(message.attachment, mediaHosts);
   const attachmentFile = message.attachment?.kind === 'file' && !gifVideo;
   const failed = message.failed === true;
+  // A failed own send (T-0168): the bubble left `sending` for `failed` and
+  // shows "Not sent" with Retry and Delete. The legacy `failed` flag without
+  // the status keeps the old rows below, so older bubbles still render.
+  const sendFailed = own && message.status === 'failed' && !generating;
   const imageOnly =
     (message.image !== undefined || attachmentImage || gifVideo) &&
     !hasText &&
@@ -454,7 +503,14 @@ export function MessageBubble({
                       width={message.attachment.width}
                       height={message.attachment.height}
                     />
-                    {failed ? (
+                    {sendFailed ? (
+                      <SendFailure
+                        chatId={chat.id}
+                        messageId={message.id}
+                        reason={message.failureReason}
+                        onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+                      />
+                    ) : failed ? (
                       <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
                         <span>Upload failed</span>
                         <button
@@ -484,16 +540,31 @@ export function MessageBubble({
                       attachment={message.attachment}
                       own={own}
                       uploading={isSending && !failed}
-                      failed={failed}
+                      failed={failed && !sendFailed}
                       onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
                     />
+                    {sendFailed && (
+                      <SendFailure
+                        chatId={chat.id}
+                        messageId={message.id}
+                        reason={message.failureReason}
+                        onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+                      />
+                    )}
                   </div>
                 )}
 
                 {gifVideo && message.attachment !== undefined && (
                   <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
                     <GifMessage attachment={message.attachment} />
-                    {failed ? (
+                    {sendFailed ? (
+                      <SendFailure
+                        chatId={chat.id}
+                        messageId={message.id}
+                        reason={message.failureReason}
+                        onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+                      />
+                    ) : failed ? (
                       <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
                         <span>Upload failed</span>
                         <button
@@ -520,6 +591,14 @@ export function MessageBubble({
                 {message.voice !== undefined && (
                   <div className="px-3 py-1.5">
                     <VoiceMessage voice={message.voice} own={own} />
+                    {sendFailed && (
+                      <SendFailure
+                        chatId={chat.id}
+                        messageId={message.id}
+                        reason={message.failureReason}
+                        onRetry={() => storeApi.getState().retryVoice(chat.id, message.id)}
+                      />
+                    )}
                   </div>
                 )}
 

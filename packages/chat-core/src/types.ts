@@ -4,7 +4,21 @@ export type ChatKind = 'dm' | 'group' | 'ai';
 
 export type Space = 'personal' | 'work';
 
-export type MessageStatus = 'sending' | 'sent' | 'read';
+export type MessageStatus = 'sending' | 'sent' | 'read' | 'failed';
+
+/**
+ * Why an outgoing voice or attachment send failed (T-0168). Fixed, user-safe
+ * buckets chosen from the error class: raw error text, URLs and tokens never
+ * reach the UI or the logs. A failed message keeps its local blob/file so it
+ * can be retried; only an explicit retry moves it back to `sending`.
+ */
+export type SendFailureReason =
+  | 'too_large'
+  | 'unsupported_file'
+  | 'server_unavailable'
+  | 'upload_refused'
+  | 'network'
+  | 'timed_out';
 
 export type AiStatus = 'idle' | 'working';
 
@@ -54,8 +68,14 @@ export interface UiMessage {
   /**
    * True when an outgoing attachment could not be uploaded. The message keeps
    * its local data and shows a Retry action instead of a "sending" state.
+   * Mirrors `status: 'failed'` for readers that only check the flag.
    */
   failed?: boolean;
+  /**
+   * Why an outgoing voice or attachment send failed (T-0168). Always a fixed
+   * `SendFailureReason`, never raw error text.
+   */
+  failureReason?: SendFailureReason;
   /** XEP-0444 reaction chips, newest state first-used; empty/absent means none. */
   reactions?: UiReaction[];
   /** True when the message was corrected (XEP-0308) after it was sent. */
